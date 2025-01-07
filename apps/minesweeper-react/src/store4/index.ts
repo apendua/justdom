@@ -1,6 +1,6 @@
 import { merge, NEVER, Observable, switchMap } from "rxjs";
 import {
-  $changes,
+  $watch,
   $observe,
   dependencies,
   invalidate,
@@ -57,7 +57,7 @@ export class Field extends Store<FieldState> {
 
   // @Field.state("flag")
   @invalidate(function () {
-    return $changes(this.state).flag;
+    return $watch(this.state).flag;
   })
   public get flag(): boolean {
     return this.state.flag;
@@ -157,7 +157,7 @@ export class Fields extends Store<{ keys: string[] }> {
         }
         return merge(
           ...keys.map((key) => {
-            return $changes(this.getField(key)).uncovered;
+            return $watch(this.getField(key)).uncovered;
           }),
         );
       }),
@@ -172,7 +172,7 @@ export class Fields extends Store<{ keys: string[] }> {
         }
         return merge(
           ...keys.map((key) => {
-            return $changes(this.getField(key)).flag;
+            return $watch(this.getField(key)).flag;
           }),
         );
       }),
@@ -180,7 +180,7 @@ export class Fields extends Store<{ keys: string[] }> {
   }
 
   @invalidate(function () {
-    return merge($changes(this).fieldKeys, this.changesToUncoveredProp());
+    return merge($watch(this).fieldKeys, this.changesToUncoveredProp());
   })
   public get coveredFields(): Field[] {
     return this.fieldKeys.flatMap((key) => {
@@ -198,7 +198,7 @@ export class Fields extends Store<{ keys: string[] }> {
   }
 
   @invalidate(function () {
-    return merge($changes(this).fieldKeys, this.changesToUncoveredProp());
+    return merge($watch(this).fieldKeys, this.changesToUncoveredProp());
   })
   public get uncoveredFields(): Field[] {
     return this.fieldKeys.flatMap((key) => {
@@ -208,7 +208,7 @@ export class Fields extends Store<{ keys: string[] }> {
   }
 
   @invalidate(function () {
-    return merge($changes(this).fieldKeys, this.changesToFlagProp());
+    return merge($watch(this).fieldKeys, this.changesToFlagProp());
   })
   public get flaggedFields(): Field[] {
     return this.fieldKeys.flatMap((key) => {

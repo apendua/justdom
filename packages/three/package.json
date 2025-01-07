@@ -1,0 +1,51 @@
+{
+  "name": "@apendua.dev/three",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Reactive Three.js based on store4",
+  "keywords": [
+    "compare",
+    "json",
+    "ordering"
+  ],
+  "license": "MIT",
+  "author": "apendua",
+  "type": "module",
+  "exports": {
+    ".": {
+      "require": "./lib/index.js",
+      "import": "./src/index.js",
+      "types": "./lib-types/index.d.ts"
+    }
+  },
+  "main": "./lib/index.js",
+  "module": "./src/index.js",
+  "files": [
+    "lib",
+    "src",
+    "lib-types"
+  ],
+  "scripts": {
+    "build": "tsc && npm run build:package.json && npm run build:types",
+    "build:package.json": "echo '{\"type\":\"commonjs\"}' > lib/package.json",
+    "build:types": "tsc --project tsconfig.types.json",
+    "test": "jest",
+    "test:coverage": "jest --coverage",
+    "test:watch": "jest --watch"
+  },
+  "dependencies": {
+    "rxjs": "^7.5.7",
+    "three": "~0.172.0"
+  },
+  "devDependencies": {
+    "@types/jest": "^29.5.14",
+    "@types/node": "^22.10.1",
+    "@types/three": "~0.171.0",
+    "eslint": "^8.26.0",
+    "fast-check": "^3.23.1",
+    "jest": "^29.7.0",
+    "jest-environment-jsdom": "^29.7.0",
+    "ts-jest": "^29.2.5",
+    "typescript": "^5.7.2"
+  }
+}

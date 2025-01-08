@@ -7,11 +7,12 @@
   "type": "module",
   "exports": {
     ".": {
+      "require": "./lib/index.js",
       "import": "./src/index.js",
       "types": "./lib-types/index.d.ts"
     }
   },
-  "main": "./src/index.js",
+  "main": "./lib/index.js",
   "module": "./src/index.js",
   "files": [
     "lib",

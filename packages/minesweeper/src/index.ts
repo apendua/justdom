@@ -6,7 +6,7 @@ import {
   invalidate,
   Store,
 } from "@apendua.dev/store4";
-import { register } from "@apendua.dev/store4react";
+import { createProperty } from "@apendua.dev/context";
 import {
   BBox,
   VectorLike,
@@ -256,4 +256,4 @@ export class Fields extends Store<{ keys: string[] }> {
   }
 }
 
-register(Fields, new Fields({}));
+export const FieldsContext = createProperty<Fields>(new Fields({}));

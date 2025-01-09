@@ -5,6 +5,7 @@ import {
   dependencies,
   invalidate,
   Store,
+  batch,
 } from "@apendua.dev/store4";
 import { createProperty } from "@apendua.dev/context";
 import {
@@ -107,15 +108,17 @@ export class Field extends Store<FieldState> {
   }
 
   public uncover(): void {
-    if (this.uncovered) {
-      return;
-    }
-    this.mutate((state) => {
-      state.uncovered = true;
+    batch(() => {
+      if (this.uncovered) {
+        return;
+      }
+      this.mutate((state) => {
+        state.uncovered = true;
+      });
+      if (this.nMines === 0) {
+        this.neighbors.forEach((neighbor) => neighbor.uncover());
+      }
     });
-    if (this.nMines === 0) {
-      this.neighbors.forEach((neighbor) => neighbor.uncover());
-    }
   }
 
   public toggleFlag(): void {

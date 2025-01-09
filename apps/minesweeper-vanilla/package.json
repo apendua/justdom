@@ -1,0 +1,35 @@
+{
+  "name": "@apendua.dev/minesweeper-vanilla",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build": "tsc && vite build",
+    "build:watch": "",
+    "dev": "vite",
+    "generate:pwa-assets": "pwa-assets-generator",
+    "preview": "vite preview",
+    "test": "jest",
+    "test:watch": "jest --watch"
+  },
+  "dependencies": {
+    "@apendua.dev/context": "workspace:*",
+    "@apendua.dev/dom": "workspace:*",
+    "@apendua.dev/geometry": "workspace:*",
+    "@apendua.dev/minesweeper": "workspace:*",
+    "@apendua.dev/store4": "workspace:*",
+    "@apendua.dev/store4react": "workspace:*",
+    "@testing-library/jest-dom": "^6.6.3",
+    "@testing-library/react": "^16.0.1",
+    "@testing-library/user-event": "^14.5.2",
+    "@types/jest": "^29.5.14",
+    "@types/lodash": "^4.14.189",
+    "@types/node": "^22.10.1",
+    "@vite-pwa/assets-generator": "^0.2.6",
+    "eslint": "^9.2.0",
+    "lodash": "^4.17.21",
+    "rxjs": "^7.5.7",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.1",
+    "vite-plugin-pwa": "^0.21.1"
+  }
+}

@@ -109,7 +109,7 @@ export class Field extends Store<FieldState> {
 
   public uncover(): void {
     batch(() => {
-      if (this.uncovered) {
+      if (this.state.uncovered) {
         return;
       }
       this.mutate((state) => {

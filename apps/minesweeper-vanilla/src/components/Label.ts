@@ -14,7 +14,7 @@ export default function Label(ctx: WeakKey, props: LabelProps) {
   const viewport = ViewportContext.get(ctx);
   return svg("text")
     .init((el) => {
-      el.setAttribute("font-size", "14");
+      el.setAttribute("font-size", "20");
       el.setAttribute("font-family", "Arial");
       el.setAttribute("font-weight", "bold");
       el.setAttribute("fill", "black");

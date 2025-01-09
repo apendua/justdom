@@ -80,7 +80,7 @@ class Viewport {
 
   @dependencies("fieldWidth")
   get fieldHeight() {
-    return 0.8 * this.fieldWidth;
+    return this.fieldWidth;
   }
 
   @dependencies("fieldWidth", "nColumns", "width")

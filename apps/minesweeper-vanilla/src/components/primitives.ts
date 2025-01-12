@@ -9,9 +9,9 @@ import { $evaluate } from "@apendua.dev/store4";
 class ReactiveHTMLBuilder<
   T extends keyof HTMLElementTagNameMap,
 > extends HTMLBuilder<T> {
-  set$<K extends keyof WritableProps<HTMLElementTagNameMap>>(
+  set$<K extends keyof WritableProps<HTMLElementTagNameMap[T]>>(
     key: K,
-    getValue: () => HTMLElementTagNameMap[keyof HTMLElementTagNameMap][K],
+    getValue: () => WritableProps<HTMLElementTagNameMap[T]>[K],
   ) {
     return this.set(key, $evaluate(getValue));
   }
@@ -28,12 +28,13 @@ export function html<T extends keyof HTMLElementTagNameMap>(tag: T) {
 class ReactiveSVGBuilder<
   T extends keyof SVGElementTagNameMap,
 > extends SVGBuilder<T> {
-  set$<K extends keyof WritableProps<SVGElementTagNameMap>>(
+  set$<K extends keyof WritableProps<SVGElementTagNameMap[T]>>(
     key: K,
-    getValue: () => SVGElementTagNameMap[keyof SVGElementTagNameMap][K],
+    getValue: () => WritableProps<SVGElementTagNameMap[T]>[K],
   ) {
     return this.set(key, $evaluate(getValue));
   }
+
   setAttribute$(name: string, getValue: () => Primitive) {
     return this.setAttribute(name, $evaluate(getValue));
   }

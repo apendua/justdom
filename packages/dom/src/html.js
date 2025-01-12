@@ -105,7 +105,7 @@ export class HTMLBuilder {
       for (const fn of this.#effects) {
         subscriber.add(fn(element).subscribe());
       }
-      if (this.#children && this.#children.length > 0) {
+      if (this.#children.length > 0) {
         const fragment = document.createDocumentFragment();
         subscribeChildren(subscriber, fragment, this.#children);
         element.appendChild(fragment);

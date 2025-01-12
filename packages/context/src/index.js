@@ -14,12 +14,15 @@
 /**
  * Creates a property with a default value.
  * @template T
- * @param {T} defaultValue
+ * @param {() => T} getDefaultValue
  * @returns {Property<T>}
  */
-export function createProperty(defaultValue) {
+export function createProperty(getDefaultValue) {
   const key = Symbol("key");
   const property = Object.create(null);
+  /** @type {{ value: T }} */
+  let cached;
+
   /**
    * @param {Context} ctx
    * @returns {T}
@@ -28,8 +31,12 @@ export function createProperty(defaultValue) {
     if (key in ctx) {
       return /** @type {T} */ (ctx[key]);
     }
-    return defaultValue;
+    if (!cached) {
+      cached = { value: getDefaultValue() };
+    }
+    return cached.value;
   };
+
   /**
    * @param {Context} ctx
    * @param {T} value
@@ -38,5 +45,6 @@ export function createProperty(defaultValue) {
   property.set = (ctx, value) => {
     return Object.assign(Object.create(ctx), { [key]: value });
   };
+
   return property;
 }

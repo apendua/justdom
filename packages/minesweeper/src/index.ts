@@ -259,4 +259,4 @@ export class Fields extends Store<{ keys: string[] }> {
   }
 }
 
-export const FieldsContext = createProperty<Fields>(new Fields({}));
+export const FieldsContext = createProperty<Fields>(() => new Fields({}));

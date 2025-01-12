@@ -1,6 +1,6 @@
 import { dependencies, observable } from "@apendua.dev/store4";
 import { Observable } from "rxjs";
-import { createProperty } from "@apendua.dev/dom";
+import { createProperty } from "@apendua.dev/context";
 
 interface Dimensions {
   width: number;
@@ -37,6 +37,6 @@ class Root {
   }
 }
 
-export const RootContext = createProperty(new Root());
+export const RootContext = createProperty(() => new Root());
 
 export default Root;

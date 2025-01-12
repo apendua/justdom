@@ -116,12 +116,12 @@ class Viewport {
   }
 }
 
-export const ViewportContext = createProperty(
-  new Viewport({
+export const ViewportContext = createProperty(() => {
+  return new Viewport({
     allFields: [{ x: 0, y: 0, z: 0 }],
     screenWidth: window.innerWidth,
     screenHeight: window.innerHeight,
-  }),
-);
+  });
+});
 
 export default Viewport;

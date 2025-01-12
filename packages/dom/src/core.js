@@ -23,7 +23,7 @@ import { combineLatest, map, Observable } from "rxjs";
  * @template {object} T
  * @typedef {{
  *   [P in keyof T as IfEquals<{ [Q in P]: T[P] }, { -readonly [Q in P]: T[P] },
- *   T[P] extends Primitive ? P : never>]?: T[P] & Primitive
+ *   T[P] extends (...args: any[]) => any ? never : P>]?: T[P] extends (...args: any[]) => any ? never : T[P];
  * }} WritableProps
  */
 

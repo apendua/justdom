@@ -1,7 +1,12 @@
+export { ThreeBuilder, $ } from "./three.js";
+export { collection } from "./core.js";
+
 /**
- * @typedef {import('./context.js').Context} Context
+ * @template {object} T
+ * @typedef {import('./core.js').WritableProps<T>} WritableProps
  */
 
-export { build } from "./entity.js";
-export { collection } from "./core.js";
-export { createProperty } from "./context.js";
+/**
+ * @template {object} T
+ * @typedef {import('./core.js').CopyableProps<T>} CopyableProps
+ */

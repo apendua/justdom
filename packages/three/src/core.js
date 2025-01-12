@@ -3,7 +3,6 @@ import { Observable } from "rxjs";
 
 /**
  * @import { Subscriber, Subscription } from "rxjs";
- * @import { Vector3, Euler, Quaternion } from "three";
  */
 
 /**
@@ -28,29 +27,8 @@ import { Observable } from "rxjs";
 /**
  * @template {object} T
  * @typedef {{
- *    [P in keyof T as T[P] extends Vector3 ? P : never]?: T[P];
- *  }} Vector3Props
- */
-
-/**
- * @template {object} T
- * @typedef {{
- *    [P in keyof T as T[P] extends Euler ? P : never]?: T[P];
- *  }} EulerProps
- */
-
-/**
- * @template {object} T
- * @typedef {{
  *    [P in keyof T as T[P] extends { copy: (x: T[P]) => void } ? P : never]?: T[P];
  *  }} CopyableProps
- */
-
-/**
- * @template {object} T
- * @typedef {{
- *    [P in keyof T as T[P] extends Quaternion ? P : never]?: T[P];
- *  }} QuaternionProps
  */
 
 /**
@@ -92,6 +70,8 @@ export function subscribeChildren(subscriber, object, children) {
               object.remove(oldChildEntity);
               object.add(newChildEntity);
             }
+          } else {
+            object.add(newChildEntity);
           }
           childEntities.set(index, newChildEntity);
         }

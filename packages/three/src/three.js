@@ -24,11 +24,11 @@ export class ThreeBuilder {
   #properties;
   /** @type {Record<PropertyKey, Observable<unknown>>} */
   #copy;
-  /** @type {EventHandlers} */
+  /** @type {Record<string, (...args: any[]) => void>} */
   #handlers;
   /** @type {Array<Observable<Object3D>>} */
   #children;
-  /** @type {Array<(e: Entity) => Observable<void>>} */
+  /** @type {Array<(e: Entity) => Observable<unknown>>} */
   #effects;
   /** @type {Array<(e: Entity) => void>} */
   #initializers;
@@ -117,7 +117,7 @@ export class ThreeBuilder {
   }
 
   /**
-   * @param {(e: Entity) => Observable<void>} fn
+   * @param {(e: Entity) => Observable<unknown>} fn
    * @returns {this}
    */
   effect(fn) {
@@ -126,13 +126,11 @@ export class ThreeBuilder {
   }
 
   /**
-   * @template {keyof EventHandlers} K
-   * @param {K} key
-   * @param {EventHandlers[K]} value
+   * @param {Parameters<Entity["addEventListener"]>} args
    * @returns {this}
    */
-  on(key, value) {
-    this.#handlers[key] = value;
+  on(...args) {
+    this.#handlers[args[0]] = args[1];
     return this;
   }
 

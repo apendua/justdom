@@ -13,7 +13,15 @@ export {
   rectAreaLight,
   lightProbe,
 } from "./entities.js";
-export { on, add, set, copy, effect } from "./operators.js";
+export {
+  on,
+  add,
+  set,
+  copy,
+  effect,
+  just,
+  sharedResource,
+} from "./operators.js";
 export { collection } from "./core.js";
 export { render, animate } from "./render.js";
 export { stopPropagation, interactive } from "./interactions.js";

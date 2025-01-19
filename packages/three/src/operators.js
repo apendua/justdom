@@ -1,4 +1,10 @@
-import { distinctUntilChanged, Observable, switchMap } from "rxjs";
+import {
+  distinctUntilChanged,
+  Observable,
+  ReplaySubject,
+  share,
+  switchMap,
+} from "rxjs";
 
 /**
  * @import { WritableProps, CopyableProps, XREventMap, Parent, EventListener } from './core.js';
@@ -84,7 +90,7 @@ export function copy(key, value) {
 /**
  * @template TChild
  * @template {Parent<TChild>} TEntity
- * @param {Observable<TChild>[]} children
+ * @param {Observable<TChild | null>[]} children
  * @returns {(source: Observable<TEntity>) => Observable<TEntity>}
  */
 export function add(...children) {
@@ -99,9 +105,13 @@ export function add(...children) {
                   distinctUntilChanged(),
                   switchMap((childEntity) => {
                     return new Observable(() => {
-                      entity.add(childEntity);
+                      if (childEntity) {
+                        entity.add(childEntity);
+                      }
                       return () => {
-                        entity.remove(childEntity);
+                        if (childEntity) {
+                          entity.remove(childEntity);
+                        }
                       };
                     });
                   }),
@@ -117,9 +127,9 @@ export function add(...children) {
 }
 
 /**
- * @template {object} TEntity
- * @param {(entity: TEntity) => Observable<never>} fn
- * @returns {(source: Observable<TEntity>) => Observable<TEntity>}
+ * @template T
+ * @param {(entity: T) => Observable<never>} fn
+ * @returns {(source: Observable<T>) => Observable<T>}
  */
 export function effect(fn) {
   return (source) => {
@@ -132,4 +142,25 @@ export function effect(fn) {
       }),
     );
   };
+}
+
+/**
+ * @template T
+ * @param {T} value
+ * @returns {Observable<T>}
+ */
+export function just(value) {
+  return new Observable((subscriber) => {
+    subscriber.next(value);
+  });
+}
+
+/**
+ * @template T
+ * @returns {(source: Observable<T>) => Observable<T>}
+ */
+export function sharedResource() {
+  return share({
+    connector: () => new ReplaySubject(),
+  });
 }

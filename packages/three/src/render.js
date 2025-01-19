@@ -95,6 +95,19 @@ export function render(fn, options = {}) {
     }
     subscriber.add(interactionManager.init(controller1).subscribe());
 
+    // Add simple rays to controllers. This will need to be revisited.
+    const geometry = new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(0, 0, 0),
+      new THREE.Vector3(0, 0, -1),
+    ]);
+
+    const line = new THREE.Line(geometry);
+    line.name = "line";
+    line.scale.z = 5;
+
+    controller0.add(line.clone());
+    controller1.add(line.clone());
+
     subscriber.add(
       fn(ctx)
         .pipe(

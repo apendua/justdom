@@ -104,6 +104,7 @@ export function collection(items, renderItem) {
     const childSubscriptions = new Map();
     subscriber.add(
       items.subscribe((newItems) => {
+        console.log("newItems", newItems);
         for (let index = 0; index < newItems.length; index += 1) {
           const item = newItems[index];
           if (!childSubscriptions.has(item)) {

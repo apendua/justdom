@@ -2,10 +2,6 @@ import * as THREE from "three";
 import { Observable } from "rxjs";
 
 /**
- * @import { Subscriber, Subscription } from "rxjs";
- */
-
-/**
  * @template X
  * @template Y
  * @template [A=X]
@@ -17,10 +13,19 @@ import { Observable } from "rxjs";
  */
 
 /**
+ * @template X
+ * @template A
+ * @template [B=never]
+ * @typedef {(
+ *   X extends (...args: any[]) => any ? A : B
+ * )} IfFunction
+ */
+
+/**
  * @template {object} T
  * @typedef {{
  *   [P in keyof T as IfEquals<{ [Q in P]: T[P] }, { -readonly [Q in P]: T[P] },
- *   T[P] extends (...args: any[]) => any ? never : P>]?: T[P] extends (...args: any[]) => any ? never : T[P];
+ *   IfFunction<T[P], never, P>>]?: IfFunction<T[P], never, T[P]>;
  * }} WritableProps
  */
 
@@ -32,67 +37,70 @@ import { Observable } from "rxjs";
  */
 
 /**
- * @param {Subscriber<unknown>} subscriber
- * @param {Record<string, Observable<unknown>>} dictionary
- * @param {(key: string, value: unknown) => void} fn
+ * @template TData
+ * @template TTarget
+ * @typedef {object} Event
+ * @property {TData} data
+ * @property {TTarget} target
+ * @property {THREE.Intersection<THREE.Object3D<XREventMap>>} [intersection]
  */
-export function watchAll(subscriber, dictionary, fn) {
-  for (const key of Object.keys(dictionary)) {
-    subscriber.add(
-      dictionary[key].subscribe({
-        next: (value) => fn(key, value),
-      }),
-    );
-  }
-}
 
 /**
- * Subscribes to child observables and appends them to the parent object.
- * @param {Subscriber<unknown>} subscriber
- * @param {THREE.Object3D} object
- * @param {Array<Observable<THREE.Object3D>>} children
+ * @typedef {object} InteractionEventMap
+ * @property {Event<XRInputSource, THREE.XRTargetRaySpace>} selectstart
+ * @property {Event<XRInputSource, THREE.XRTargetRaySpace>} selectend
+ * @property {Event<XRInputSource, THREE.XRTargetRaySpace>} selectmissed
+ * @property {Event<XRInputSource, THREE.XRTargetRaySpace>} squeezestart
+ * @property {Event<XRInputSource, THREE.XRTargetRaySpace>} squeezeend
+ * @property {Event<XRInputSource, THREE.XRTargetRaySpace>} squeezemissed
  */
-export function subscribeChildren(subscriber, object, children) {
-  /** @type {Map<number, THREE.Object3D>} */
-  const childEntities = new Map();
-  for (const [index, child] of children.entries()) {
-    subscriber.add(
-      child.subscribe((newChildEntity) => {
-        const oldChildEntity = childEntities.get(index);
-        if (!newChildEntity) {
-          if (oldChildEntity) {
-            object.remove(oldChildEntity);
-            childEntities.delete(index);
-          }
-        } else {
-          if (oldChildEntity) {
-            if (oldChildEntity !== newChildEntity) {
-              object.remove(oldChildEntity);
-              object.add(newChildEntity);
-            }
-          } else {
-            object.add(newChildEntity);
-          }
-          childEntities.set(index, newChildEntity);
-        }
-      }),
-    );
-  }
-}
 
 /**
- * Creates a group observable from an array of items and a render function.
+ * @typedef {InteractionEventMap[keyof InteractionEventMap]} InteractionEvent
+ */
+
+/**
+ * @typedef {keyof InteractionEventMap} InteractionEventType
+ */
+
+/**
+ * @typedef {THREE.Object3DEventMap & InteractionEventMap} XREventMap
+ */
+
+/**
+ * @template E
+ * @typedef {(e: E) => void} Handler
+ */
+
+/**
+ * @template {object} EventMap
+ * @typedef {{
+ *   addEventListener: <K extends keyof EventMap>(type: K, listener: Handler<EventMap[K]>) => void;
+ *   removeEventListener: <K extends keyof EventMap>(type: K, listener: Handler<EventMap[K]>) => void;
+ * }} EventListener
+ */
+
+/**
  * @template T
- * @param {Observable<T[]>} items - An observable of items.
- * @param {(item: T) => Observable<THREE.Object3D>} renderItem
- * @returns {Observable<THREE.Group>}
+ * @typedef {{
+ *   add: (child: T) => void;
+ *   remove: (child: T) => void;
+ * }} Parent
+ */
+
+/**
+ * @template T
+ * @param {Observable<T[]>} items
+ * @param {(item: T) => Observable<THREE.Object3D<XREventMap>>} renderItem
+ * @returns {Observable<THREE.Group<XREventMap>>}
  */
 export function collection(items, renderItem) {
   return new Observable((subscriber) => {
+    /** @type {THREE.Group<XREventMap>} */
     const groupEntity = new THREE.Group();
-    /** @type {Map<T, THREE.Object3D>} */
+    /** @type {Map<T, THREE.Object3D<XREventMap>>} */
     const childEntities = new Map();
-    /** @type {Map<T, Subscription>} */
+    /** @type {Map<T, import('rxjs').Subscription>} */
     const childSubscriptions = new Map();
     subscriber.add(
       items.subscribe((newItems) => {

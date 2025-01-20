@@ -94,12 +94,12 @@ export class Field extends Store<FieldState> {
   public get statusText(): string {
     if (!this.uncovered) {
       if (this.flag) {
-        return "🚩";
+        return "?";
       }
       return "";
     }
     if (this.mine) {
-      return "💥";
+      return "X";
     }
     if (this.nMines > 0) {
       return `${this.nMines}`;
@@ -109,7 +109,7 @@ export class Field extends Store<FieldState> {
 
   public uncover(): void {
     batch(() => {
-      if (this.state.uncovered) {
+      if (this.state.uncovered || this.state.flag) {
         return;
       }
       this.mutate((state) => {

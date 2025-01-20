@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { Observable } from "rxjs";
+import { distinctUntilChanged, Observable } from "rxjs";
 
 /**
  * @template X
@@ -91,7 +91,7 @@ import { Observable } from "rxjs";
 /**
  * @template T
  * @param {Observable<T[]>} items
- * @param {(item: T) => Observable<THREE.Object3D<XREventMap>>} renderItem
+ * @param {(item: T) => Observable<THREE.Object3D<XREventMap> | null>} renderItem
  * @returns {Observable<THREE.Group<XREventMap>>}
  */
 export function collection(items, renderItem) {
@@ -104,21 +104,23 @@ export function collection(items, renderItem) {
     const childSubscriptions = new Map();
     subscriber.add(
       items.subscribe((newItems) => {
-        console.log("newItems", newItems);
         for (let index = 0; index < newItems.length; index += 1) {
           const item = newItems[index];
           if (!childSubscriptions.has(item)) {
             childSubscriptions.set(
               item,
-              renderItem(item).subscribe((newChildEntity) => {
-                const oldChildEntity = childEntities.get(item);
-                if (oldChildEntity) {
-                  groupEntity.remove(oldChildEntity);
-                } else {
-                  groupEntity.add(newChildEntity);
-                }
-                childEntities.set(item, newChildEntity);
-              }),
+              renderItem(item)
+                .pipe(distinctUntilChanged())
+                .subscribe((newChildEntity) => {
+                  const oldChildEntity = childEntities.get(item);
+                  if (oldChildEntity) {
+                    groupEntity.remove(oldChildEntity);
+                  }
+                  if (newChildEntity) {
+                    groupEntity.add(newChildEntity);
+                    childEntities.set(item, newChildEntity);
+                  }
+                }),
             );
           }
         }
@@ -140,6 +142,9 @@ export function collection(items, renderItem) {
     return () => {
       for (const subscription of childSubscriptions.values()) {
         subscription.unsubscribe();
+      }
+      for (const childEntity of childEntities.values()) {
+        groupEntity.remove(childEntity);
       }
     };
   });

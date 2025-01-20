@@ -161,6 +161,6 @@ export function just(value) {
  */
 export function sharedResource() {
   return share({
-    connector: () => new ReplaySubject(),
+    connector: () => new ReplaySubject(1),
   });
 }

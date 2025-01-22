@@ -37,22 +37,55 @@ import { distinctUntilChanged, Observable } from "rxjs";
  */
 
 /**
- * @template TData
+ * @typedef {object} InputEvent
+ * @property {XRInputSource} inputSource
+ * @property {THREE.Object3D<XREventMap>} target
+ * @property {THREE.Object3D<XREventMap>} originalTarget
+ * @property {THREE.XRTargetRaySpace} controller
+ * @property {THREE.Intersection<THREE.Object3D<XREventMap>>} intersection
+ */
+
+/**
+ * @typedef {object} InputCancelEvent
+ * @property {XRInputSource} inputSource
+ * @property {THREE.Object3D<XREventMap>} target
+ * @property {THREE.Object3D<XREventMap>} originalTarget
+ * @property {THREE.XRTargetRaySpace} controller
+ */
+
+/**
+ * @typedef {object} PointerEvent
+ * @property {THREE.Object3D<XREventMap>} target
+ * @property {THREE.Object3D<XREventMap>} originalTarget
+ * @property {THREE.XRTargetRaySpace} controller
+ * @property {THREE.Intersection<THREE.Object3D<XREventMap>>} intersection
+ */
+
+/**
+ * @typedef {object} PointerCancelEvent
+ * @property {THREE.Object3D<XREventMap>} target
+ * @property {THREE.Object3D<XREventMap>} originalTarget
+ * @property {THREE.XRTargetRaySpace} controller
+ */
+
+/**
  * @template TTarget
- * @typedef {object} Event
- * @property {TData} data
+ * @typedef {object} SimpleEvent
  * @property {TTarget} target
  * @property {THREE.Intersection<THREE.Object3D<XREventMap>>} [intersection]
  */
 
 /**
  * @typedef {object} InteractionEventMap
- * @property {Event<XRInputSource, THREE.XRTargetRaySpace>} selectstart
- * @property {Event<XRInputSource, THREE.XRTargetRaySpace>} selectend
- * @property {Event<XRInputSource, THREE.XRTargetRaySpace>} selectmissed
- * @property {Event<XRInputSource, THREE.XRTargetRaySpace>} squeezestart
- * @property {Event<XRInputSource, THREE.XRTargetRaySpace>} squeezeend
- * @property {Event<XRInputSource, THREE.XRTargetRaySpace>} squeezemissed
+ * @property {InputEvent} selectstart
+ * @property {InputEvent} selectend
+ * @property {InputCancelEvent} selectmissed
+ * @property {InputEvent} squeezestart
+ * @property {InputEvent} squeezeend
+ * @property {InputCancelEvent} squeezemissed
+ * @property {PointerEvent} pointermove
+ * @property {PointerEvent} pointerenter
+ * @property {PointerCancelEvent} pointerleave
  */
 
 /**
@@ -90,7 +123,7 @@ import { distinctUntilChanged, Observable } from "rxjs";
 
 /**
  * @template T
- * @param {Observable<T[]>} items
+ * @param {Observable<Iterable<T>>} items
  * @param {(item: T) => Observable<THREE.Object3D<XREventMap> | null>} renderItem
  * @returns {Observable<THREE.Group<XREventMap>>}
  */
@@ -104,8 +137,10 @@ export function collection(items, renderItem) {
     const childSubscriptions = new Map();
     subscriber.add(
       items.subscribe((newItems) => {
-        for (let index = 0; index < newItems.length; index += 1) {
-          const item = newItems[index];
+        /** @type {Set<T>} */
+        const newItemsSet = new Set();
+        for (const item of newItems) {
+          newItemsSet.add(item);
           if (!childSubscriptions.has(item)) {
             childSubscriptions.set(
               item,
@@ -124,7 +159,6 @@ export function collection(items, renderItem) {
             );
           }
         }
-        const newItemsSet = new Set(newItems);
         for (const [item, childSubscription] of childSubscriptions.entries()) {
           if (!newItemsSet.has(item)) {
             const childEntity = childEntities.get(item);

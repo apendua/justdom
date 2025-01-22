@@ -16,12 +16,11 @@ export const RendererContext = createProperty(
 const listeners = new WeakMap();
 
 /**
- * @param {WeakKey} ctx
+ * @param {THREE.WebGLRenderer} renderer
  * @param {XRFrameRequestCallback} fn
  * @return {Observable<never>}
  */
-export function animate(ctx, fn) {
-  const renderer = RendererContext.get(ctx);
+function addListener(renderer, fn) {
   return new Observable(() => {
     let set = listeners.get(renderer);
     if (!set) {
@@ -36,6 +35,16 @@ export function animate(ctx, fn) {
       }
     };
   });
+}
+
+/**
+ * @param {WeakKey} ctx
+ * @param {XRFrameRequestCallback} fn
+ * @return {Observable<never>}
+ */
+export function animate(ctx, fn) {
+  const renderer = RendererContext.get(ctx);
+  return addListener(renderer, fn);
 }
 
 /**
@@ -87,13 +96,21 @@ export function render(fn, options = {}) {
     if (options.createControllerModel) {
       controllerGrip0.add(options.createControllerModel(controllerGrip0));
     }
-    subscriber.add(interactionManager.init(controller0).subscribe());
+    subscriber.add(
+      interactionManager
+        .init(controller0, (fn) => addListener(renderer, fn))
+        .subscribe(),
+    );
     const controller1 = renderer.xr.getController(1);
     const controllerGrip1 = renderer.xr.getControllerGrip(1);
     if (options.createControllerModel) {
       controllerGrip1.add(options.createControllerModel(controllerGrip1));
     }
-    subscriber.add(interactionManager.init(controller1).subscribe());
+    subscriber.add(
+      interactionManager
+        .init(controller1, (fn) => addListener(renderer, fn))
+        .subscribe(),
+    );
 
     // Add simple rays to controllers. This will need to be revisited.
     const geometry = new THREE.BufferGeometry().setFromPoints([
@@ -129,7 +146,7 @@ export function render(fn, options = {}) {
           fn(time, frame);
         }
       }
-      renderer.render(scene.value, camera);
+      renderer.render(scene.getValue(), camera);
     });
 
     subscriber.next(renderer);

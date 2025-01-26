@@ -1,9 +1,9 @@
-import { css, list, text } from "@apendua.dev/dom";
-import { html, svg } from "./primitives";
+import { css, list, text, html, svg, set, append, on } from "@apendua.dev/dom";
 import { RootContext } from "../store4/Root";
 import { Field, Fields, FieldsContext, getKey } from "@apendua.dev/minesweeper";
 import { $observe, makeReactive } from "@apendua.dev/store4";
 import Viewport, { ViewportContext } from "../store4/Viewport";
+import { attr$ } from "../utils/operators";
 import { switchMap, tap } from "rxjs";
 import Label from "./Label";
 import FieldSet from "./FieldSet";
@@ -88,30 +88,33 @@ const Game = (ctx: WeakKey) => {
 
   return $observe(state).game.pipe(
     switchMap((game) => {
+      console.log("NEW GAME");
       const newContext = FieldsContext.set(ctx, game);
-      return html("div")
-        .set("className", fullscreen)
-        .append(
-          html("button")
-            .on("click", () => {
+      return html("div").pipe(
+        set("className", fullscreen),
+        append(
+          html("button").pipe(
+            on("click", () => {
               state.game = Fields.generate({});
-            })
-            .append(text`Restart`)
-            .get(),
-          html("span")
-            .append(
+            }),
+            append(text`Restart`),
+          ),
+          html("span").pipe(
+            append(
               text`width = ${screenWidth}, height = ${screenHeight}, mines = ${minesLeft}`,
-            )
-            .get(),
-          svg("svg")
-            .setAttribute$("width", () => dimensions.screenWidth.toString())
-            .setAttribute$("height", () => dimensions.screenHeight.toString())
-            .setAttribute$(
+            ),
+          ),
+        ),
+        append(
+          svg("svg").pipe(
+            attr$("width", () => dimensions.screenWidth.toString()),
+            attr$("height", () => dimensions.screenHeight.toString()),
+            attr$(
               "viewbox",
               () => `0 0 ${dimensions.screenWidth} ${dimensions.screenHeight}`,
-            )
-            .on("click", handleOnClick)
-            .append(
+            ),
+            on<SVGSVGElement, "click">("click", handleOnClick),
+            append(
               FieldSet(newContext, {
                 get fields() {
                   return game.coveredFields;
@@ -128,15 +131,13 @@ const Game = (ctx: WeakKey) => {
               list($observe(game).allFields, (field) =>
                 FieldStatus(ctx, field),
               ),
-            )
-            .get()
-            .pipe(
-              tap((svg) => {
-                svgRef = svg;
-              }),
             ),
-        )
-        .get();
+            tap((svg) => {
+              svgRef = svg;
+            }),
+          ),
+        ),
+      );
     }),
   );
 };

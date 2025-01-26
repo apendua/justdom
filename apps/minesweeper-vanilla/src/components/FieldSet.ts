@@ -1,7 +1,8 @@
 import { findBorder, getNodes, grow, VectorLike } from "@apendua.dev/geometry";
+import { svg } from "@apendua.dev/dom";
 import { memo } from "@apendua.dev/store4";
 import Viewport, { ViewportContext } from "../store4/Viewport";
-import { svg } from "./primitives";
+import { attr$ } from "../utils/operators";
 
 function makePoint({ x, y }: VectorLike): string {
   return `${x.toFixed(2)},${y.toFixed(2)}`;
@@ -65,12 +66,12 @@ class FieldSetStore {
 const FieldSet = (ctx: WeakKey, props: FieldSetProps) => {
   const viewport = ViewportContext.get(ctx);
   const store = new FieldSetStore(props, viewport);
-  return svg("path")
-    .setAttribute$("d", () => store.d)
-    .setAttribute$("fill-opacity", () => props.opacity ?? 0.5)
-    .setAttribute$("fill", () => props.fill ?? "black")
-    .setAttribute$("cursor", () => props.cursor ?? "pointer")
-    .get();
+  return svg("path").pipe(
+    attr$("d", () => store.d),
+    attr$("fill-opacity", () => props.opacity ?? 0.5),
+    attr$("fill", () => props.fill ?? "black"),
+    attr$("cursor", () => props.cursor ?? "pointer"),
+  );
 };
 
 export default FieldSet;

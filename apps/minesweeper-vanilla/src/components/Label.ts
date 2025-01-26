@@ -1,7 +1,8 @@
-import { text } from "@apendua.dev/dom";
+import { text, svg, append } from "@apendua.dev/dom";
 import { ViewportContext } from "../store4/Viewport";
-import { svg } from "./primitives";
 import { $observe } from "@apendua.dev/store4";
+import { tap } from "rxjs";
+import { attr$ } from "../utils/operators";
 
 interface LabelProps {
   x: number;
@@ -12,8 +13,8 @@ interface LabelProps {
 
 export default function Label(ctx: WeakKey, props: LabelProps) {
   const viewport = ViewportContext.get(ctx);
-  return svg("text")
-    .init((el) => {
+  return svg("text").pipe(
+    tap((el) => {
       el.setAttribute("font-size", "20");
       el.setAttribute("font-family", "Arial");
       el.setAttribute("font-weight", "bold");
@@ -21,9 +22,9 @@ export default function Label(ctx: WeakKey, props: LabelProps) {
       el.setAttribute("alignment-baseline", "middle");
       el.setAttribute("baseline-shift", "-2");
       el.setAttribute("text-anchor", "middle");
-    })
-    .setAttribute$("x", () => viewport.mapHexToPixels(props).x)
-    .setAttribute$("y", () => viewport.mapHexToPixels(props).y)
-    .append(text`${$observe(props).text}`)
-    .get();
+    }),
+    attr$("x", () => viewport.mapHexToPixels(props).x),
+    attr$("y", () => viewport.mapHexToPixels(props).y),
+    append(text`${$observe(props).text}`),
+  );
 }

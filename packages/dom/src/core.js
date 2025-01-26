@@ -28,24 +28,17 @@ import { combineLatest, map, Observable } from "rxjs";
  */
 
 /**
- * @template T
- * @typedef {T | (() => T) | Observable<T>} Getter
+ * @template E
+ * @typedef {(e: E) => void} Handler
  */
 
 /**
- * @param {Subscriber<unknown>} subscriber
- * @param {Record<string, Observable<unknown>>} dictionary
- * @param {(key: string, value: unknown) => void} fn
+ * @template {object} EventMap
+ * @typedef {{
+ *   addEventListener: <K extends keyof EventMap>(type: K, listener: Handler<EventMap[K]>) => void;
+ *   removeEventListener: <K extends keyof EventMap>(type: K, listener: Handler<EventMap[K]>) => void;
+ * }} EventListener
  */
-export function watchAll(subscriber, dictionary, fn) {
-  for (const key of Object.keys(dictionary)) {
-    subscriber.add(
-      dictionary[key].subscribe({
-        next: (value) => fn(key, value),
-      }),
-    );
-  }
-}
 
 /**
  * Creates a text node observable.
@@ -306,8 +299,10 @@ export function list(items, renderItem) {
         }
       }),
     );
+    console.log("NEW LIST", documentFragment);
     subscriber.next(documentFragment);
     return () => {
+      console.log("LIST DONE");
       for (const subscription of childSubscriptions.values()) {
         subscription.unsubscribe();
       }

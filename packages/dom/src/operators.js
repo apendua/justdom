@@ -1,11 +1,5 @@
-import {
-  distinctUntilChanged,
-  Observable,
-  ReplaySubject,
-  share,
-  switchMap,
-} from "rxjs";
-import { removeSegment, replaceSegment, toSegment } from "./helpers.js";
+import { map, Observable, ReplaySubject, share, switchMap } from "rxjs";
+import { fragment } from "./core";
 
 /**
  * @import { WritableProps, EventListener, Primitive } from './core.js';
@@ -191,44 +185,12 @@ export function append(...children) {
   return (source) => {
     return source.pipe(
       switchMap((entity) => {
-        return new Observable((subscriber) => {
-          /** @type {Map<number, [Node, Node]>} */
-          const segments = new Map();
-          const fragment = document.createDocumentFragment();
-
-          for (let i = 0; i < children.length; i++) {
-            const node = fragment.appendChild(document.createComment(""));
-            segments.set(i, toSegment(node));
-          }
-
-          children.forEach((child, i) => {
-            subscriber.add(
-              child.pipe(distinctUntilChanged()).subscribe({
-                next: (newElement) => {
-                  const oldSegment = segments.get(i);
-                  if (oldSegment) {
-                    segments.set(i, replaceSegment(newElement, oldSegment));
-                  }
-                },
-                complete: () => {
-                  const oldSegment = segments.get(i);
-                  if (oldSegment) {
-                    removeSegment(oldSegment);
-                    segments.delete(i);
-                  }
-                },
-              }),
-            );
-          });
-
-          entity.appendChild(fragment);
-          subscriber.next(entity);
-          return () => {
-            for (const segment of segments.values()) {
-              removeSegment(segment);
-            }
-          };
-        });
+        return fragment(...children).pipe(
+          map((fragment) => {
+            entity.appendChild(fragment);
+            return entity;
+          }),
+        );
       }),
     );
   };

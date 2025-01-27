@@ -21,7 +21,8 @@ function assertValidSegment(segment) {
  * @returns {Node}
  */
 function replaceNode(newNode, oldNode) {
-  return oldNode.parentNode.replaceChild(newNode, oldNode);
+  oldNode.parentNode.replaceChild(newNode, oldNode);
+  return newNode;
 }
 
 /**
@@ -41,7 +42,6 @@ export function replaceSegment(newNode, segment) {
   }
   if (newNode instanceof DocumentFragment) {
     const { firstChild, lastChild } = newNode;
-    console.log("REPLACE SEGMENT", segment, newNode, firstChild, lastChild);
     if (!firstChild || !lastChild) {
       return toSegment(replaceNode(document.createComment(""), segment[0]));
     }
@@ -56,17 +56,45 @@ export function replaceSegment(newNode, segment) {
 
 /**
  * @param {[Node, Node]} segment
+ * @param {Node} child
+ * @returns {[Node, Node]}
+ */
+export function moveSegmentBefore(segment, child) {
+  assertValidSegment(segment);
+  const { parentNode } = child;
+  if (!parentNode) {
+    throw new Error("Invalid child. Must have a parent.");
+  }
+  /** @type {Node | null} */
+  let node = segment[1];
+  while (node) {
+    /** @type {Node | null} */
+    const previousSibling = node.previousSibling;
+    parentNode.insertBefore(node, child);
+    node = previousSibling;
+    if (node === segment[0]) {
+      break;
+    }
+  }
+  return segment;
+}
+
+/**
+ * @param {[Node, Node]} segment
  */
 export function removeSegment(segment) {
-  console.log("REMOVE SEGMENT", segment);
   assertValidSegment(segment);
+  const endNode = segment[1].nextSibling;
   /** @type {Node | null} */
   let node = segment[0];
-  while (node && node !== segment[1].nextSibling) {
+  while (node) {
     /** @type {Node | null} */
     const next = node.nextSibling;
     node.parentNode?.removeChild(node);
     node = next;
+    if (node === endNode) {
+      break;
+    }
   }
 }
 

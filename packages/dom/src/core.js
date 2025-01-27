@@ -1,4 +1,10 @@
-import { combineLatest, map, Observable } from "rxjs";
+import { combineLatest, distinctUntilChanged, map, Observable } from "rxjs";
+import {
+  moveSegmentBefore,
+  removeSegment,
+  replaceSegment,
+  toSegment,
+} from "./helpers";
 
 /**
  * @import { Subscriber, Subscription } from "rxjs";
@@ -159,54 +165,67 @@ export function css(strings, ...values) {
 }
 
 /**
- * Subscribes to child observables and appends them to a document fragment.
- * @param {Subscriber<unknown>} subscriber - The subscriber.
- * @param {DocumentFragment} documentFragment - The document fragment.
- * @param {Array<Observable<Node>>} children - The child observables.
+ * @template T
+ * @param {() => void} fn
+ * @returns {(source: Observable<T>) => Observable<T>}
  */
-export function subscribeChildren(subscriber, documentFragment, children) {
-  /** @type {Array<Node>} */
-  const childElements = new Array(children.length).fill(null);
-  for (const [index, child] of children.entries()) {
-    subscriber.add(
-      child.subscribe((childElement) => {
-        if (!childElement) {
-          if (childElements[index]) {
-            const placeholder = document.createComment("PLACEHOLDER");
-            childElements[index].parentNode?.replaceChild(
-              placeholder,
-              childElements[index],
-            );
-            childElements[index] = placeholder;
-          }
-        } else {
-          if (childElements[index]) {
-            if (childElement !== childElements[index]) {
-              childElements[index].parentNode?.replaceChild(
-                childElement,
-                childElements[index],
-              );
-            }
-          } else {
-            documentFragment.appendChild(childElement);
-          }
-          childElements[index] = childElement;
-        }
-      }),
-    );
-  }
+export function teardown(fn) {
+  return (source) => {
+    return new Observable((subscriber) => {
+      source.subscribe(subscriber);
+      return fn;
+    });
+  };
 }
 
 /**
  * Creates a document fragment observable from child observables.
- * @param {Array<Observable<Node>>} children - The child observables.
+ * @param {Array<Observable<Node | null>>} children - The child observables.
  * @returns {Observable<DocumentFragment>} An observable that emits a DocumentFragment.
  */
-export function fragment(children) {
+export function fragment(...children) {
   return new Observable((subscriber) => {
-    const documentFragment = document.createDocumentFragment();
-    subscribeChildren(subscriber, documentFragment, children);
-    subscriber.next(documentFragment);
+    /** @type {Map<number, [Node, Node]>} */
+    const segments = new Map();
+    const fragment = document.createDocumentFragment();
+
+    for (let i = 0; i < children.length; i++) {
+      const node = fragment.appendChild(document.createComment(""));
+      segments.set(i, toSegment(node));
+    }
+
+    children.forEach((child, i) => {
+      subscriber.add(
+        child
+          .pipe(
+            distinctUntilChanged(),
+            teardown(() => {
+              const oldSegment = segments.get(i);
+              if (oldSegment) {
+                removeSegment(oldSegment);
+                segments.delete(i);
+              }
+            }),
+          )
+          .subscribe({
+            next: (newNode) => {
+              const oldSegment = segments.get(i);
+              if (oldSegment) {
+                segments.set(i, replaceSegment(newNode, oldSegment));
+              }
+            },
+          }),
+      );
+    });
+
+    subscriber.next(fragment);
+    return () => {
+      // TODO: I think this one is unnecessary. Let's use some tests
+      //       to confirm it and remove it if it's not needed.
+      for (const segment of segments.values()) {
+        removeSegment(segment);
+      }
+    };
   });
 }
 
@@ -219,90 +238,95 @@ export function fragment(children) {
  */
 export function list(items, renderItem) {
   return new Observable((subscriber) => {
-    const documentFragment = document.createDocumentFragment();
-    const listEnd = document.createComment("LIST END");
-    documentFragment.appendChild(listEnd);
-    /** @type {Map<T, Node>} */
-    const childElements = new Map();
+    const fragment = document.createDocumentFragment();
+    const listEnd = fragment.appendChild(document.createComment("LIST END"));
+    /** @type {Map<T, [Node, Node]>} */
+    const childSegments = new Map();
     /** @type {Map<T, Subscription>} */
     const childSubscriptions = new Map();
     subscriber.add(
       items.subscribe((newItems) => {
         for (let index = newItems.length - 1; index >= 0; index -= 1) {
           const item = newItems[index];
+          let nextSegment;
+          let i = index + 1;
+          while (!nextSegment && i < newItems.length) {
+            nextSegment = childSegments.get(newItems[i]);
+            i += 1;
+          }
+          if (!childSegments.has(item)) {
+            // NOTE: Only put placeholder where the new item should be inserted. The actual element
+            //       will be inserted by the subscription.
+            const nextNode = nextSegment?.[0] ?? listEnd;
+            const { parentNode } = nextNode;
+            if (parentNode) {
+              const newComment = parentNode.insertBefore(
+                document.createComment(""),
+                nextNode,
+              );
+              childSegments.set(item, toSegment(newComment));
+            }
+          }
           if (!childSubscriptions.has(item)) {
-            const child = renderItem(item);
             childSubscriptions.set(
               item,
-              child.subscribe((newChildElement) => {
-                const oldChildElement = childElements.get(item);
-                if (oldChildElement) {
-                  listEnd.parentNode?.replaceChild(
-                    newChildElement,
-                    oldChildElement,
-                  );
-                } else {
-                  let nextChildElement;
-                  let i = index + 1;
-                  while (!nextChildElement && i < newItems.length) {
-                    nextChildElement = childElements.get(newItems[i]);
-                    i += 1;
-                  }
-                  if (nextChildElement) {
-                    listEnd.parentNode?.insertBefore(
-                      newChildElement,
-                      nextChildElement,
-                    );
-                  } else {
-                    listEnd.parentNode?.insertBefore(newChildElement, listEnd);
-                  }
-                }
-                childElements.set(item, newChildElement);
-              }),
+              renderItem(item)
+                .pipe(
+                  distinctUntilChanged(),
+                  teardown(() => {
+                    const oldSegment = childSegments.get(item);
+                    if (oldSegment) {
+                      removeSegment(oldSegment);
+                      childSegments.delete(item);
+                    }
+                    childSubscriptions.delete(item);
+                  }),
+                )
+                .subscribe({
+                  next: (newNode) => {
+                    const oldSegment = childSegments.get(item);
+                    if (oldSegment) {
+                      childSegments.set(
+                        item,
+                        replaceSegment(newNode, oldSegment),
+                      );
+                    }
+                  },
+                }),
             );
           } else {
-            const childElement = childElements.get(item);
-            if (childElement) {
-              let nextChildElement;
-              let i = index + 1;
-              while (!nextChildElement && i < newItems.length) {
-                nextChildElement = childElements.get(newItems[i]);
-                i += 1;
-              }
-              if (nextChildElement) {
+            const childSegment = childSegments.get(item);
+            if (childSegment) {
+              if (nextSegment) {
                 if (
-                  childElement &&
-                  childElement.nextSibling !== nextChildElement
+                  childSegment &&
+                  childSegment[1].nextSibling !== nextSegment[0]
                 ) {
-                  listEnd.parentNode?.insertBefore(
-                    childElement,
-                    nextChildElement,
-                  );
+                  moveSegmentBefore(childSegment, nextSegment[0]);
                 }
               } else {
-                listEnd.parentNode?.insertBefore(childElement, listEnd);
+                moveSegmentBefore(childSegment, listEnd);
               }
             }
           }
         }
         const newItemsSet = new Set(newItems);
+        for (const [item, childSegment] of childSegments.entries()) {
+          if (!newItemsSet.has(item)) {
+            removeSegment(childSegment);
+            childSegments.delete(item);
+          }
+        }
         for (const [item, childSubscription] of childSubscriptions.entries()) {
           if (!newItemsSet.has(item)) {
-            const childElement = childElements.get(item);
-            if (childElement) {
-              listEnd.parentNode?.removeChild(childElement);
-              childElements.delete(item);
-            }
             childSubscription.unsubscribe();
             childSubscriptions.delete(item);
           }
         }
       }),
     );
-    console.log("NEW LIST", documentFragment);
-    subscriber.next(documentFragment);
+    subscriber.next(fragment);
     return () => {
-      console.log("LIST DONE");
       for (const subscription of childSubscriptions.values()) {
         subscription.unsubscribe();
       }

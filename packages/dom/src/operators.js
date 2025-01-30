@@ -1,5 +1,5 @@
-import { map, Observable, ReplaySubject, share, switchMap } from "rxjs";
-import { fragment } from "./core";
+import { Observable, switchMap, tap } from "rxjs";
+import { effect, fragment } from "./core.js";
 
 /**
  * @import { WritableProps, EventListener, Primitive } from './core.js';
@@ -46,6 +46,16 @@ export function on(type, handler) {
 }
 
 /**
+ * @template T
+ * @param {Observable<T>} value
+ * @param {(value: T) => void} fn
+ * @returns {Observable<T>}
+ */
+function each(value, fn) {
+  return value.pipe(tap(fn));
+}
+
+/**
  * @template {object} TEntity
  * @template {keyof WritableProps<TEntity>} K
  * @param {K} key
@@ -53,22 +63,7 @@ export function on(type, handler) {
  * @returns {(source: Observable<TEntity>) => Observable<TEntity>}   *
  */
 export function set(key, value) {
-  return (source) => {
-    return source.pipe(
-      switchMap((entity) => {
-        return new Observable((subscriber) => {
-          subscriber.add(
-            value.subscribe({
-              next: (v) => {
-                entity[key] = v;
-              },
-            }),
-          );
-          subscriber.next(entity);
-        });
-      }),
-    );
-  };
+  return effect((entity) => each(value, (v) => (entity[key] = v)));
 }
 
 /**
@@ -84,32 +79,21 @@ export function set(key, value) {
  * @param {Observable<Primitive>} value
  * @returns {(source: Observable<TEntity>) => Observable<TEntity>}
  */
-export function attr(key, value) {
-  return (source) => {
-    return source.pipe(
-      switchMap((entity) => {
-        return new Observable((subscriber) => {
-          subscriber.add(
-            value.subscribe({
-              next: (v) => {
-                if (v === null || v === undefined) {
-                  entity.removeAttribute(key);
-                } else {
-                  entity.setAttribute(key, v.toString());
-                }
-              },
-            }),
-          );
-          subscriber.next(entity);
-        });
-      }),
-    );
-  };
+export function setAttribute(key, value) {
+  return effect((entity) =>
+    each(value, (v) => {
+      if (v === undefined) {
+        entity.removeAttribute(key);
+      } else {
+        entity.setAttribute(key, v === null ? "null" : v.toString());
+      }
+    }),
+  );
 }
 
 /**
  * @typedef {object} ObjectWithData
- * @property {Record<string, string>} dataset
+ * @property {DOMStringMap} dataset
  */
 
 /**
@@ -119,26 +103,17 @@ export function attr(key, value) {
  * @returns {(source: Observable<TEntity>) => Observable<TEntity>}
  */
 export function data(key, value) {
-  return (source) => {
-    return source.pipe(
-      switchMap((entity) => {
-        return new Observable((subscriber) => {
-          subscriber.add(
-            value.subscribe({
-              next: (v) => {
-                if (v === null || v === undefined) {
-                  delete entity.dataset[key];
-                } else {
-                  entity.dataset[key] = v.toString();
-                }
-              },
-            }),
-          );
-          subscriber.next(entity);
-        });
-      }),
-    );
-  };
+  return effect((entity) =>
+    each(value, (v) => {
+      if (v === undefined) {
+        delete entity.dataset[key];
+      } else {
+        // We are trying to mimic the behavior of the dataset property
+        // See: https://developer.mozilla.org/en-US/docs/Web/API/HTMLElement/dataset#setting_values
+        entity.dataset[key] = v === null ? "null" : v.toString();
+      }
+    }),
+  );
 }
 
 /**
@@ -154,26 +129,7 @@ export function data(key, value) {
  * @returns {(source: Observable<TEntity>) => Observable<TEntity>}
  */
 export function style(key, value) {
-  return (source) => {
-    return source.pipe(
-      switchMap((entity) => {
-        return new Observable((subscriber) => {
-          subscriber.add(
-            value.subscribe({
-              next: (v) => {
-                if (v === null || v === undefined) {
-                  delete entity.style[key];
-                } else {
-                  entity.style[key] = v;
-                }
-              },
-            }),
-          );
-          subscriber.next(entity);
-        });
-      }),
-    );
-  };
+  return effect((entity) => each(value, (v) => (entity.style[key] = v)));
 }
 
 /**
@@ -182,55 +138,7 @@ export function style(key, value) {
  * @returns {(source: Observable<TElement>) => Observable<TElement>}
  */
 export function append(...children) {
-  return (source) => {
-    return source.pipe(
-      switchMap((entity) => {
-        return fragment(...children).pipe(
-          map((fragment) => {
-            entity.appendChild(fragment);
-            return entity;
-          }),
-        );
-      }),
-    );
-  };
-}
-
-/**
- * @template T
- * @param {(entity: T) => Observable<never>} fn
- * @returns {(source: Observable<T>) => Observable<T>}
- */
-export function effect(fn) {
-  return (source) => {
-    return source.pipe(
-      switchMap((entity) => {
-        return new Observable((subscriber) => {
-          subscriber.add(fn(entity).subscribe());
-          subscriber.next(entity);
-        });
-      }),
-    );
-  };
-}
-
-/**
- * @template T
- * @param {T} value
- * @returns {Observable<T>}
- */
-export function just(value) {
-  return new Observable((subscriber) => {
-    subscriber.next(value);
-  });
-}
-
-/**
- * @template T
- * @returns {(source: Observable<T>) => Observable<T>}
- */
-export function sharedResource() {
-  return share({
-    connector: () => new ReplaySubject(1),
-  });
+  return effect((entity) =>
+    each(fragment(...children), (node) => entity.appendChild(node)),
+  );
 }

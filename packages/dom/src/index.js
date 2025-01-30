@@ -1,17 +1,9 @@
 export { svg } from "./svg.js";
 export { html } from "./html.js";
-export { list, fragment, textNode, css, text, string } from "./core.js";
-export {
-  on,
-  set,
-  attr,
-  data,
-  style,
-  append,
-  effect,
-  just,
-  sharedResource,
-} from "./operators.js";
+export { collection, fragment, effect, just, shared } from "./core.js";
+export { stylesheet } from "./stylesheet.js";
+export { render, text, textNode } from "./text.js";
+export { on, set, setAttribute, data, style, append } from "./operators.js";
 
 /**
  * @template {object} T

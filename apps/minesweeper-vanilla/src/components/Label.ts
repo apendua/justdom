@@ -2,7 +2,7 @@ import { text, svg, append } from "@apendua.dev/dom";
 import { ViewportContext } from "../store4/Viewport";
 import { $observe } from "@apendua.dev/store4";
 import { tap } from "rxjs";
-import { attr$ } from "../utils/operators";
+import { setAttribute$ } from "../utils/operators";
 
 interface LabelProps {
   x: number;
@@ -23,8 +23,8 @@ export default function Label(ctx: WeakKey, props: LabelProps) {
       el.setAttribute("baseline-shift", "-2");
       el.setAttribute("text-anchor", "middle");
     }),
-    attr$("x", () => viewport.mapHexToPixels(props).x),
-    attr$("y", () => viewport.mapHexToPixels(props).y),
+    setAttribute$("x", () => viewport.mapHexToPixels(props).x),
+    setAttribute$("y", () => viewport.mapHexToPixels(props).y),
     append(text`${$observe(props).text}`),
   );
 }

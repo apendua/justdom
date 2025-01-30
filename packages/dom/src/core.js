@@ -1,10 +1,16 @@
-import { combineLatest, distinctUntilChanged, map, Observable } from "rxjs";
+import {
+  distinctUntilChanged,
+  Observable,
+  ReplaySubject,
+  share,
+  switchMap,
+} from "rxjs";
 import {
   moveSegmentBefore,
   removeSegment,
   replaceSegment,
   toSegment,
-} from "./helpers";
+} from "./helpers.js";
 
 /**
  * @import { Subscriber, Subscription } from "rxjs";
@@ -47,135 +53,68 @@ import {
  */
 
 /**
- * Creates a text node observable.
- * @param {string | Observable<string>} value - The text content or an observable of text content.
- * @returns {Observable<Text>} An observable that emits a Text node.
+ * @template T
+ * @param {() => void} [fn]
+ * @returns {(source: Observable<T>) => Observable<T>}
  */
-export function textNode(value) {
-  return new Observable((subscriber) => {
-    if (typeof value === "string") {
-      const myTextNode = document.createTextNode(value);
-      subscriber.next(myTextNode);
-    } else {
-      const myTextNode = document.createTextNode("");
-      value.subscribe((newValue) => {
-        myTextNode.textContent = newValue;
-      });
-      subscriber.next(myTextNode);
+export function teardown(fn) {
+  return (source) => {
+    if (!fn) {
+      return source;
     }
-  });
+    return new Observable((subscriber) => {
+      source.subscribe(subscriber);
+      return fn;
+    });
+  };
 }
 
 /**
- * Creates a class name observable.
- * @param {Observable<string>} value - An observable of CSS class content.
- * @returns {Observable<string>}
+ * @template T
+ * @param {(entity: T) => Observable<unknown>} fn
+ * @param {(entity: T) => () => void} [onTeardown]
+ * @returns {(source: Observable<T>) => Observable<T>}
  */
-export function style(value) {
-  return new Observable((subscriber) => {
-    const styleElement = document.createElement("style");
-    const key = `class_${Math.random().toString(36).slice(2)}`;
-    subscriber.add(
-      value.subscribe((newValue) => {
-        styleElement.innerHTML = `.${key} {\n${newValue}\n}`;
+export function effect(fn, onTeardown) {
+  return (source) => {
+    return source.pipe(
+      switchMap((entity) => {
+        return new Observable((subscriber) => {
+          subscriber.add(
+            fn(entity)
+              .pipe(teardown(onTeardown?.(entity)))
+              .subscribe({
+                error: (error) => {
+                  subscriber.error(error);
+                },
+              }),
+          );
+          subscriber.next(entity);
+        });
       }),
     );
-    document.head.appendChild(styleElement);
-    subscriber.next(key);
-    return () => {
-      document.head.removeChild(styleElement);
-    };
-  });
+  };
 }
 
 /**
- * Creates an observable that emits a single value.
  * @template T
- * @param {T} value - The value to emit.
- * @returns {Observable<T>} An observable that emits the value.
+ * @param {T} value
+ * @returns {Observable<T>}
  */
-function just(value) {
+export function just(value) {
   return new Observable((subscriber) => {
     subscriber.next(value);
   });
 }
 
 /**
- * @typedef {string | number | Observable<string> | Observable<number>} Renderable
- */
-
-/**
- * Renders text from template strings and values.
- * @param {TemplateStringsArray} strings - The template strings.
- * @param {...Renderable} values - The values to interpolate.
- * @returns {Observable<string>} An observable that emits the rendered text.
- */
-function renderText(strings, ...values) {
-  if (values.length === 0) {
-    return just(strings.join(""));
-  }
-  return combineLatest(
-    values.map((value) => {
-      if (value instanceof Observable) {
-        return /** @type {Observable<unknown>} */ (value).pipe(
-          map((v) => v?.toString() ?? ""),
-        );
-      }
-      return just(value.toString());
-    }),
-  ).pipe(
-    map((observedValues) => {
-      let rendered = "";
-      strings.forEach((str, index) => {
-        rendered += str + (observedValues[index] || "");
-      });
-      return rendered;
-    }),
-  );
-}
-
-/**
- * Creates a string observable from template strings and values.
- * @param {TemplateStringsArray} strings - The template strings.
- * @param {...Renderable} values - The values to interpolate.
- * @returns {Observable<string>} An observable that emits the rendered string.
- */
-export function string(strings, ...values) {
-  return renderText(strings, ...values);
-}
-
-/**
- * Creates a text node observable from template strings and values.
- * @param {TemplateStringsArray} strings - The template strings.
- * @param {...Renderable} values - The values to interpolate.
- * @returns {Observable<Text>} An observable that emits a Text node.
- */
-export function text(strings, ...values) {
-  return textNode(renderText(strings, ...values));
-}
-
-/**
- * Creates a CSS class name observable from template strings and values.
- * @param {TemplateStringsArray} strings - The template strings.
- * @param {...Renderable} values - The values to interpolate.
- * @returns {Observable<string>}
- */
-export function css(strings, ...values) {
-  return style(renderText(strings, ...values));
-}
-
-/**
  * @template T
- * @param {() => void} fn
  * @returns {(source: Observable<T>) => Observable<T>}
  */
-export function teardown(fn) {
-  return (source) => {
-    return new Observable((subscriber) => {
-      source.subscribe(subscriber);
-      return fn;
-    });
-  };
+export function shared() {
+  return share({
+    connector: () => new ReplaySubject(1),
+  });
 }
 
 /**
@@ -214,6 +153,9 @@ export function fragment(...children) {
                 segments.set(i, replaceSegment(newNode, oldSegment));
               }
             },
+            error: (error) => {
+              subscriber.error(error);
+            },
           }),
       );
     });
@@ -232,11 +174,11 @@ export function fragment(...children) {
 /**
  * Creates a list observable from an array of items and a render function.
  * @template T
- * @param {Observable<T[]>} items - An observable of items.
- * @param {(item: T) => Observable<Exclude<Node, DocumentFragment>>} renderItem - A function to render an item.
- * @returns {Observable<DocumentFragment>} An observable that emits a DocumentFragment.
+ * @param {Observable<T[]>} items
+ * @param {(item: T) => Observable<Exclude<Node, DocumentFragment>>} renderItem
+ * @returns {Observable<DocumentFragment>}
  */
-export function list(items, renderItem) {
+export function collection(items, renderItem) {
   return new Observable((subscriber) => {
     const fragment = document.createDocumentFragment();
     const listEnd = fragment.appendChild(document.createComment("LIST END"));
@@ -291,6 +233,9 @@ export function list(items, renderItem) {
                         replaceSegment(newNode, oldSegment),
                       );
                     }
+                  },
+                  error: (error) => {
+                    subscriber.error(error);
                   },
                 }),
             );

@@ -1,7 +1,7 @@
 import { type Observable } from "rxjs";
 import {
   set,
-  attr,
+  setAttribute,
   effect,
   type WritableProps,
   type Primitive,
@@ -16,11 +16,11 @@ export function set$<T extends object, K extends keyof WritableProps<T>>(
   return set(key, $evaluate(getValue));
 }
 
-export function attr$<T extends ObjectWithAttributes>(
+export function setAttribute$<T extends ObjectWithAttributes>(
   key: string,
   getValue: () => Primitive,
 ): (source: Observable<T>) => Observable<T> {
-  return attr(key, $evaluate(getValue));
+  return setAttribute(key, $evaluate(getValue));
 }
 
 export function effect$<T>(

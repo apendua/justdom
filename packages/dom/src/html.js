@@ -1,8 +1,4 @@
-import { just } from "./operators.js";
-
-/**
- * @import { Observable } from 'rxjs';
- */
+import { Observable } from "rxjs";
 
 /**
  * @template {keyof HTMLElementTagNameMap} Tag
@@ -10,5 +6,7 @@ import { just } from "./operators.js";
  * @returns {Observable<HTMLElementTagNameMap[Tag]>}
  */
 export function html(tag) {
-  return just(document.createElement(tag));
+  return new Observable((subscriber) => {
+    subscriber.next(document.createElement(tag));
+  });
 }

@@ -3,6 +3,7 @@ import {
   $watch,
   $observe,
   dependencies,
+  cached,
   invalidate,
   Store,
   batch,
@@ -76,7 +77,7 @@ export class Field extends Store<FieldState> {
     return this.#fieldSetup.z;
   }
 
-  @dependencies()
+  @cached()
   public get neighbors(): Field[] {
     return getNeighbors(this.#fieldSetup).flatMap((vector) => {
       const neighborKey = getKey(vector);
@@ -192,7 +193,7 @@ export class Fields extends Store<{ keys: string[] }> {
     });
   }
 
-  @dependencies()
+  @cached()
   public get totalMines(): number {
     return this.fieldKeys.filter((key) => {
       const field = this.getField(key);

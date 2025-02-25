@@ -23,7 +23,7 @@ export {
   sharedResource,
 } from "./operators.js";
 export { collection } from "./core.js";
-export { render, animate } from "./render.js";
+export { render, animate, size } from "./render.js";
 export { stopPropagation, interactive } from "./interactions.js";
 
 /**

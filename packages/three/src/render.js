@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { BehaviorSubject, tap, Observable } from "rxjs";
+import { BehaviorSubject, tap, Observable, combineLatest, map } from "rxjs";
 import { createProperty } from "@apendua.dev/context";
 import { InteractionManager, InteractionContext } from "./interactions.js";
 
@@ -11,6 +11,29 @@ export const RendererContext = createProperty(
     throw new Error("RendererContext not set");
   },
 );
+
+export const RendererSizeContext = createProperty(
+  /**
+   * @returns {{
+   *   width: Observable<number>;
+   *   height: Observable<number>;
+   * }}
+   */
+  () => {
+    throw new Error("RendererSizeContext not set");
+  },
+);
+
+/**
+ * @param {WeakKey} ctx
+ * @returns {Observable<{ width: number; height: number }>}
+ */
+export function size(ctx) {
+  const { width, height } = RendererSizeContext.get(ctx);
+  return combineLatest([width, height]).pipe(
+    map(([width, height]) => ({ width, height })),
+  );
+}
 
 /** @type {WeakMap<THREE.WebGLRenderer, Set<XRFrameRequestCallback>>} */
 const listeners = new WeakMap();
@@ -60,21 +83,25 @@ export function animate(ctx, fn) {
 export function render(fn, options = {}) {
   return new Observable((subscriber) => {
     const renderer = new THREE.WebGLRenderer();
+    const width = new BehaviorSubject(window.innerWidth);
+    const height = new BehaviorSubject(window.innerHeight);
 
     renderer.setPixelRatio(window.devicePixelRatio);
-    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setSize(width.getValue(), height.getValue());
 
     const camera = new THREE.PerspectiveCamera(
       70,
-      window.innerWidth / window.innerHeight,
+      width.getValue() / height.getValue(),
       0.1,
       20,
     );
 
     function onResize() {
-      camera.aspect = window.innerWidth / window.innerHeight;
+      width.next(window.innerWidth);
+      height.next(window.innerHeight);
+      camera.aspect = width.getValue() / height.getValue();
       camera.updateProjectionMatrix();
-      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.setSize(width.getValue(), height.getValue());
     }
 
     window.addEventListener("resize", onResize);
@@ -90,6 +117,10 @@ export function render(fn, options = {}) {
 
     ctx = RendererContext.set(ctx, renderer);
     ctx = InteractionContext.set(ctx, interactionManager);
+    ctx = RendererSizeContext.set(ctx, {
+      width: width.asObservable(),
+      height: height.asObservable(),
+    });
 
     const controller0 = renderer.xr.getController(0);
     const controllerGrip0 = renderer.xr.getControllerGrip(0);

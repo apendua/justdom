@@ -34,6 +34,16 @@ export function group() {
 }
 
 /**
+ * @param {ConstructorParameters<typeof THREE.SkinnedMesh>} args
+ * @returns {Observable<THREE.SkinnedMesh<THREE.BufferGeometry, THREE.Material | THREE.Material[], XREventMap>>}
+ */
+export function skinnedMesh(...args) {
+  return new Observable((subscriber) => {
+    subscriber.next(new THREE.SkinnedMesh(...args));
+  });
+}
+
+/**
  * @returns {Observable<THREE.Scene>}
  */
 export function scene() {

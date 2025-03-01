@@ -73,6 +73,8 @@ export function animate(ctx, fn) {
 /**
  * @typedef {object} RenderOptions
  * @property {(grip: THREE.XRGripSpace) => THREE.Object3D} [createControllerModel]
+ * @property {(renderer: THREE.WebGLRenderer) => void} [onBeforeRender]
+ * @property {(renderer: THREE.WebGLRenderer) => void} [onAfterRender]
  */
 
 /**
@@ -171,6 +173,7 @@ export function render(fn, options = {}) {
     );
 
     renderer.setAnimationLoop((time, frame) => {
+      options.onBeforeRender?.(renderer);
       const set = listeners.get(renderer);
       if (set) {
         for (const fn of set) {
@@ -178,6 +181,7 @@ export function render(fn, options = {}) {
         }
       }
       renderer.render(scene.getValue(), camera);
+      options.onAfterRender?.(renderer);
     });
 
     subscriber.next(renderer);

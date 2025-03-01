@@ -2,6 +2,7 @@ export {
   object,
   mesh,
   group,
+  skinnedMesh,
   scene,
   perspectiveCamera,
   orthographicCamera,

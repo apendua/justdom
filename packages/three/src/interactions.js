@@ -50,19 +50,23 @@ export class InteractionManager {
    * @param {InteractionEvent & { type: InteractionEventType }} event
    */
   dispatchEvent(object, event) {
+    /** @type {THREE.Object3D<XREventMap>[]} */
+    const allTargets = [];
     let nextObject = object;
     do {
-      // NOTE: Object3D.dispatchEvent mutates the event by updating the target.
-      nextObject.dispatchEvent(event);
-      if (this.#done.get(event)) {
-        return;
-      }
+      allTargets.push(nextObject);
       // This is a little bit naive because we cannot really guarantee that
       // the parent is of the same type as the object.
       nextObject = /** @type {THREE.Object3D<XREventMap>} */ (
         nextObject.parent
       );
     } while (nextObject);
+    for (const target of allTargets) {
+      target.dispatchEvent(event);
+      if (this.#done.get(event)) {
+        return;
+      }
+    }
   }
 
   /**

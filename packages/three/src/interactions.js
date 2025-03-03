@@ -13,11 +13,14 @@ export class InteractionManager {
   #done;
   /** @type {boolean} */
   #shouldUpdateIntersections;
+  /** @type {Set<THREE.Object3D<any>>} */
+  #controllers;
 
   constructor() {
     this.#objects = new Set();
     this.#done = new WeakMap();
     this.#shouldUpdateIntersections = false;
+    this.#controllers = new Set();
   }
 
   /**
@@ -49,18 +52,15 @@ export class InteractionManager {
    * @param {THREE.Object3D<XREventMap>} object
    * @param {InteractionEvent & { type: InteractionEventType }} event
    */
-  dispatchEvent(object, event) {
+  dispatch(object, event) {
     /** @type {THREE.Object3D<XREventMap>[]} */
     const allTargets = [];
-    let nextObject = object;
-    do {
-      allTargets.push(nextObject);
+    while (object && !this.#controllers.has(object)) {
+      allTargets.push(object);
       // This is a little bit naive because we cannot really guarantee that
       // the parent is of the same type as the object.
-      nextObject = /** @type {THREE.Object3D<XREventMap>} */ (
-        nextObject.parent
-      );
-    } while (nextObject);
+      object = /** @type {THREE.Object3D<XREventMap>} */ (object.parent);
+    }
     for (const target of allTargets) {
       target.dispatchEvent(event);
       if (this.#done.get(event)) {
@@ -74,7 +74,7 @@ export class InteractionManager {
    * @param {(fn: XRFrameRequestCallback) => Observable<never>} onAnimationFrame
    * @returns {Observable<void>}
    */
-  init(controller, onAnimationFrame) {
+  addController(controller, onAnimationFrame) {
     return new Observable(() => {
       /** @type {THREE.Object3D<XREventMap> | undefined} */
       let selectedObject;
@@ -91,7 +91,7 @@ export class InteractionManager {
         const { data: inputSource } = event;
         if (intersection) {
           selectedObject = intersection.object;
-          this.dispatchEvent(selectedObject, {
+          this.dispatch(selectedObject, {
             type: "selectstart",
             inputSource,
             target: selectedObject,
@@ -110,7 +110,7 @@ export class InteractionManager {
         const intersection = this.getIntersection(controller);
         const { data: inputSource } = event;
         if (intersection && selectedObject === intersection.object) {
-          this.dispatchEvent(intersection.object, {
+          this.dispatch(intersection.object, {
             type: "selectend",
             inputSource,
             target: selectedObject,
@@ -119,7 +119,7 @@ export class InteractionManager {
             intersection,
           });
         } else if (selectedObject) {
-          this.dispatchEvent(selectedObject, {
+          this.dispatch(selectedObject, {
             type: "selectmissed",
             inputSource,
             target: selectedObject,
@@ -138,7 +138,7 @@ export class InteractionManager {
         const { data: inputSource } = event;
         if (intersection) {
           squeezedObject = intersection.object;
-          this.dispatchEvent(intersection.object, {
+          this.dispatch(intersection.object, {
             type: "squeezestart",
             inputSource,
             target: squeezedObject,
@@ -156,7 +156,7 @@ export class InteractionManager {
         const intersection = this.getIntersection(controller);
         const { data: inputSource } = event;
         if (intersection && squeezedObject === intersection.object) {
-          this.dispatchEvent(intersection.object, {
+          this.dispatch(intersection.object, {
             type: "squeezeend",
             inputSource,
             target: squeezedObject,
@@ -165,7 +165,7 @@ export class InteractionManager {
             intersection,
           });
         } else if (squeezedObject) {
-          this.dispatchEvent(squeezedObject, {
+          this.dispatch(squeezedObject, {
             type: "squeezemissed",
             inputSource,
             target: squeezedObject,
@@ -187,7 +187,7 @@ export class InteractionManager {
         const intersection = this.getIntersection(controller);
         if (intersection) {
           if (targetedObject === intersection.object) {
-            this.dispatchEvent(targetedObject, {
+            this.dispatch(targetedObject, {
               type: "pointermove",
               target: targetedObject,
               originalTarget: targetedObject,
@@ -196,14 +196,14 @@ export class InteractionManager {
             });
           } else {
             if (targetedObject) {
-              this.dispatchEvent(targetedObject, {
+              this.dispatch(targetedObject, {
                 type: "pointerleave",
                 target: targetedObject,
                 originalTarget: targetedObject,
                 controller,
               });
             }
-            this.dispatchEvent(intersection.object, {
+            this.dispatch(intersection.object, {
               type: "pointerenter",
               target: intersection.object,
               originalTarget: intersection.object,
@@ -213,7 +213,7 @@ export class InteractionManager {
           }
           targetedObject = intersection.object;
         } else if (!intersection && targetedObject) {
-          this.dispatchEvent(targetedObject, {
+          this.dispatch(targetedObject, {
             type: "pointerleave",
             target: targetedObject,
             originalTarget: targetedObject,
@@ -230,6 +230,8 @@ export class InteractionManager {
       const subscription = onAnimationFrame(() => {
         maybeUpdateIntersections();
       }).subscribe();
+
+      this.#controllers.add(controller);
 
       controller.addEventListener("selectstart", onSelectStart);
       controller.addEventListener("selectend", onSelectEnd);

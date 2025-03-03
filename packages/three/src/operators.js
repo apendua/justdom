@@ -7,6 +7,7 @@ import {
 } from "rxjs";
 
 /**
+ * @import { Object3D } from 'three';
  * @import { WritableProps, CopyableProps, XREventMap, Parent, EventListener } from './core.js';
  */
 
@@ -88,9 +89,8 @@ export function copy(key, value) {
 }
 
 /**
- * @template TChild
- * @template {Parent<TChild>} TEntity
- * @param {Observable<TChild | null>[]} children
+ * @template {Object3D<any>} TEntity
+ * @param {Observable<Object3D<any> | null>[]} children
  * @returns {(source: Observable<TEntity>) => Observable<TEntity>}
  */
 export function add(...children) {
@@ -109,8 +109,8 @@ export function add(...children) {
                         entity.add(childEntity);
                       }
                       return () => {
-                        if (childEntity) {
-                          entity.remove(childEntity);
+                        if (childEntity && childEntity.parent) {
+                          childEntity.parent.remove(childEntity);
                         }
                       };
                     });

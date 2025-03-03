@@ -131,7 +131,7 @@ export function render(fn, options = {}) {
     }
     subscriber.add(
       interactionManager
-        .init(controller0, (fn) => addListener(renderer, fn))
+        .addController(controller0, (fn) => addListener(renderer, fn))
         .subscribe(),
     );
     const controller1 = renderer.xr.getController(1);
@@ -141,7 +141,7 @@ export function render(fn, options = {}) {
     }
     subscriber.add(
       interactionManager
-        .init(controller1, (fn) => addListener(renderer, fn))
+        .addController(controller1, (fn) => addListener(renderer, fn))
         .subscribe(),
     );
 

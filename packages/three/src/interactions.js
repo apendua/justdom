@@ -3,7 +3,7 @@ import { Observable, switchMap } from "rxjs";
 import { createProperty } from "@apendua.dev/context";
 
 /**
- * @import { XREventMap, InteractionEvent, InteractionEventType } from "./core.js";
+ * @import { XREventMap, InteractionEvent, InteractionEventType, InteractionEventMap } from "./core.js";
  */
 
 export class InteractionManager {
@@ -49,8 +49,9 @@ export class InteractionManager {
   }
 
   /**
+   * @template {InteractionEventType} TEvent
    * @param {THREE.Object3D<XREventMap>} object
-   * @param {InteractionEvent & { type: InteractionEventType }} event
+   * @param {XREventMap[TEvent] & THREE.BaseEvent<TEvent>} event
    */
   dispatch(object, event) {
     /** @type {THREE.Object3D<XREventMap>[]} */
@@ -110,8 +111,15 @@ export class InteractionManager {
         const intersection = this.getIntersection(controller);
         const { data: inputSource } = event;
         if (intersection && selectedObject === intersection.object) {
-          this.dispatch(intersection.object, {
+          this.dispatch(selectedObject, {
             type: "selectend",
+            inputSource,
+            target: selectedObject,
+            originalTarget: selectedObject,
+            controller,
+          });
+          this.dispatch(selectedObject, {
+            type: "select",
             inputSource,
             target: selectedObject,
             originalTarget: selectedObject,
@@ -119,6 +127,13 @@ export class InteractionManager {
             intersection,
           });
         } else if (selectedObject) {
+          this.dispatch(selectedObject, {
+            type: "selectend",
+            inputSource,
+            target: selectedObject,
+            originalTarget: selectedObject,
+            controller,
+          });
           this.dispatch(selectedObject, {
             type: "selectmissed",
             inputSource,
@@ -156,8 +171,15 @@ export class InteractionManager {
         const intersection = this.getIntersection(controller);
         const { data: inputSource } = event;
         if (intersection && squeezedObject === intersection.object) {
-          this.dispatch(intersection.object, {
+          this.dispatch(squeezedObject, {
             type: "squeezeend",
+            inputSource,
+            target: squeezedObject,
+            originalTarget: squeezedObject,
+            controller,
+          });
+          this.dispatch(squeezedObject, {
+            type: "squeeze",
             inputSource,
             target: squeezedObject,
             originalTarget: squeezedObject,
@@ -165,6 +187,13 @@ export class InteractionManager {
             intersection,
           });
         } else if (squeezedObject) {
+          this.dispatch(squeezedObject, {
+            type: "squeezeend",
+            inputSource,
+            target: squeezedObject,
+            originalTarget: squeezedObject,
+            controller,
+          });
           this.dispatch(squeezedObject, {
             type: "squeezemissed",
             inputSource,

@@ -78,10 +78,12 @@ import { distinctUntilChanged, Observable } from "rxjs";
 /**
  * @typedef {object} InteractionEventMap
  * @property {InputEvent} selectstart
- * @property {InputEvent} selectend
+ * @property {InputCancelEvent} selectend
+ * @property {InputEvent} select
  * @property {InputCancelEvent} selectmissed
  * @property {InputEvent} squeezestart
- * @property {InputEvent} squeezeend
+ * @property {InputCancelEvent} squeezeend
+ * @property {InputEvent} squeeze
  * @property {InputCancelEvent} squeezemissed
  * @property {PointerEvent} pointermove
  * @property {PointerEvent} pointerenter

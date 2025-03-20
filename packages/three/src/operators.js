@@ -128,7 +128,7 @@ export function add(...children) {
 
 /**
  * @template T
- * @param {(entity: T) => Observable<never>} fn
+ * @param {(entity: T) => Observable<unknown>} fn
  * @returns {(source: Observable<T>) => Observable<T>}
  */
 export function effect(fn) {

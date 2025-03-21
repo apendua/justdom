@@ -141,3 +141,13 @@ export function lightProbe(...args) {
     subscriber.next(new THREE.LightProbe(...args));
   });
 }
+
+/**
+ * @param  {ConstructorParameters<typeof THREE.PositionalAudio>} args
+ * @returns {Observable<THREE.PositionalAudio>}
+ */
+export function positionalAudio(...args) {
+  return new Observable((subscriber) => {
+    subscriber.next(new THREE.PositionalAudio(...args));
+  });
+}

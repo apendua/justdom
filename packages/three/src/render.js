@@ -35,6 +35,27 @@ export function size(ctx) {
   );
 }
 
+export const CameraContext = createProperty(
+  /**
+   * @returns {THREE.Camera}
+   */
+  () => {
+    throw new Error("CameraContext not set");
+  },
+);
+
+/**
+ * @param {WeakKey} ctx
+ * @returns {Observable<THREE.Camera>}
+ */
+export function camera(ctx) {
+  return new Observable((subscriber) => {
+    const camera = CameraContext.get(ctx);
+    subscriber.next(camera);
+    return () => {};
+  });
+}
+
 /** @type {WeakMap<THREE.WebGLRenderer, Set<XRFrameRequestCallback>>} */
 const listeners = new WeakMap();
 
@@ -118,6 +139,7 @@ export function render(fn, options = {}) {
     let ctx = {};
 
     ctx = RendererContext.set(ctx, renderer);
+    ctx = CameraContext.set(ctx, camera);
     ctx = InteractionContext.set(ctx, interactionManager);
     ctx = RendererSizeContext.set(ctx, {
       width: width.asObservable(),

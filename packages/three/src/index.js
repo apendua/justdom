@@ -13,6 +13,7 @@ export {
   hemisphereLight,
   rectAreaLight,
   lightProbe,
+  positionalAudio,
 } from "./entities.js";
 export {
   on,
@@ -24,7 +25,7 @@ export {
   sharedResource,
 } from "./operators.js";
 export { collection } from "./core.js";
-export { render, animate, size } from "./render.js";
+export { render, animate, size, camera } from "./render.js";
 export { stopPropagation, interactive } from "./interactions.js";
 
 /**

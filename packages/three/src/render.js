@@ -155,6 +155,7 @@ export function render(fn, options = {}) {
     const hand0 = renderer.xr.getHand(0);
     if (options.createHandModel) {
       hand0.add(options.createHandModel(hand0));
+      controllerGrip0.add(options.createHandModel(hand0));
     }
     subscriber.add(
       interactionManager
@@ -166,6 +167,7 @@ export function render(fn, options = {}) {
     const hand1 = renderer.xr.getHand(1);
     if (options.createHandModel) {
       hand1.add(options.createHandModel(hand1));
+      controllerGrip1.add(options.createHandModel(hand1));
     }
     if (options.createControllerModel) {
       controllerGrip1.add(options.createControllerModel(controllerGrip1));

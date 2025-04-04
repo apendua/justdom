@@ -94,6 +94,7 @@ export function animate(ctx, fn) {
 /**
  * @typedef {object} RenderOptions
  * @property {(grip: THREE.XRGripSpace) => THREE.Object3D} [createControllerModel]
+ * @property {(grip: THREE.XRHandSpace) => THREE.Object3D} [createHandModel]
  * @property {(renderer: THREE.WebGLRenderer) => void} [onBeforeRender]
  * @property {(renderer: THREE.WebGLRenderer) => void} [onAfterRender]
  */
@@ -151,6 +152,10 @@ export function render(fn, options = {}) {
     if (options.createControllerModel) {
       controllerGrip0.add(options.createControllerModel(controllerGrip0));
     }
+    const hand0 = renderer.xr.getHand(0);
+    if (options.createHandModel) {
+      hand0.add(options.createHandModel(hand0));
+    }
     subscriber.add(
       interactionManager
         .addController(controller0, (fn) => addListener(renderer, fn))
@@ -158,6 +163,10 @@ export function render(fn, options = {}) {
     );
     const controller1 = renderer.xr.getController(1);
     const controllerGrip1 = renderer.xr.getControllerGrip(1);
+    const hand1 = renderer.xr.getHand(1);
+    if (options.createHandModel) {
+      hand1.add(options.createHandModel(hand1));
+    }
     if (options.createControllerModel) {
       controllerGrip1.add(options.createControllerModel(controllerGrip1));
     }
@@ -185,8 +194,10 @@ export function render(fn, options = {}) {
         .pipe(
           tap((scene) => {
             scene.add(camera);
+            scene.add(hand0);
             scene.add(controller0);
             scene.add(controllerGrip0);
+            scene.add(hand1);
             scene.add(controller1);
             scene.add(controllerGrip1);
           }),

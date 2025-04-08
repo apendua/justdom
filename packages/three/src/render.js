@@ -56,6 +56,33 @@ export function camera(ctx) {
   });
 }
 
+/**
+ * @param {WeakKey} ctx
+ * @returns {Observable<XRSession | null>}
+ */
+export function session(ctx) {
+  return new Observable((subscriber) => {
+    const renderer = RendererContext.get(ctx);
+    const onSessionStart = () => {
+      const session = renderer.xr.getSession();
+      if (session) {
+        subscriber.next(session);
+      }
+    };
+    const onSessionEnd = () => {
+      subscriber.next(null);
+    };
+    renderer.xr.addEventListener("sessionstart", onSessionStart);
+    renderer.xr.addEventListener("sessionend", onSessionEnd);
+    // if session is already started, emit it
+    onSessionStart();
+    return () => {
+      renderer.xr.removeEventListener("sessionstart", onSessionStart);
+      renderer.xr.removeEventListener("sessionend", onSessionEnd);
+    };
+  });
+}
+
 /** @type {WeakMap<THREE.WebGLRenderer, Set<XRFrameRequestCallback>>} */
 const listeners = new WeakMap();
 

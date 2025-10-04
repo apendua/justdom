@@ -25,6 +25,16 @@ export function mesh(...args) {
 }
 
 /**
+ * @param {ConstructorParameters<typeof THREE.LineSegments>} args
+ * @returns {Observable<THREE.LineSegments<THREE.BufferGeometry, THREE.Material | THREE.Material[], XREventMap>>}
+ */
+export function lineSegments(...args) {
+  return new Observable((subscriber) => {
+    subscriber.next(new THREE.LineSegments(...args));
+  });
+}
+
+/**
  * @returns {Observable<THREE.Group<XREventMap>>}
  */
 export function group() {

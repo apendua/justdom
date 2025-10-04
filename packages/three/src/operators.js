@@ -164,3 +164,32 @@ export function sharedResource() {
     connector: () => new ReplaySubject(1),
   });
 }
+
+/**
+ * @typedef {object} Disposable
+ * @property {() => void} dispose
+ */
+
+/**
+ * @template {Disposable} T
+ * @template {unknown[]} Args
+ * @param {(...args: Args) => T} factory
+ * @returns {(source: Observable<Args>) => Observable<T>}
+ */
+export function disposable(factory) {
+  return switchMap(
+    /**
+     * @param {Args} args
+     * @returns {Observable<T>}
+     */
+    (args) => {
+      return new Observable((subscriber) => {
+        const value = factory(...args);
+        subscriber.next(value);
+        return () => {
+          value.dispose();
+        };
+      });
+    },
+  );
+}

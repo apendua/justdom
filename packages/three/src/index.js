@@ -1,6 +1,7 @@
 export {
   object,
   mesh,
+  lineSegments,
   group,
   skinnedMesh,
   scene,
@@ -23,6 +24,7 @@ export {
   effect,
   just,
   sharedResource,
+  disposable,
 } from "./operators.js";
 export { collection } from "./core.js";
 export { render, animate, size, camera, session } from "./render.js";

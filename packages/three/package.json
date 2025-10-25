@@ -52,6 +52,6 @@
   },
   "peerDependencies": {
     "@apendua.dev/context": "workspace:*",
-    "three": "~0.172.0"
+    "three": "~0.180.0"
   }
 }

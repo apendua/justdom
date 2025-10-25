@@ -29,6 +29,12 @@ function defaultSwap(array, i, j) {
 }
 
 /**
+ * Special index indicating that an element has been removed from the heap.
+ * Used in onMove callbacks.
+ */
+const REMOVED_INDEX = -1;
+
+/**
  * Get the parent index in a heap
  * @param {number} i - Child index
  * @returns {number} Parent index
@@ -134,7 +140,8 @@ export class Heap {
     const value = this.memory[pos];
     this.memory[pos] = x;
     if (x !== value) {
-      this.onMove?.(value, -1);
+      // Notify that the element has been removed from the heap
+      this.onMove?.(value, REMOVED_INDEX);
     }
     this.onMove?.(this.memory[pos], pos);
     // NOTE: If pos = 0, then siftUp is a no-op here.
@@ -154,7 +161,8 @@ export class Heap {
     }
     const lastElement = /** @type {T} */ (this.memory.pop());
     if (pos === this.memory.length) {
-      this.onMove?.(lastElement, -1);
+      // Notify that the element has been removed from the heap
+      this.onMove?.(lastElement, REMOVED_INDEX);
       return lastElement;
     }
     return this.replace(lastElement, pos);
@@ -173,6 +181,7 @@ export class Heap {
       this.remove(this.memory.length - 1);
     } else {
       this.memory = [];
+      this.onMove?.(value, REMOVED_INDEX);
     }
     siftDown(this.memory, 0, this.memory.length - 1, this.cmp, this.swap);
     return value;

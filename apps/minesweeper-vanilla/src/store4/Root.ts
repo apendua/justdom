@@ -1,4 +1,4 @@
-import { dependencies, observable } from "@apendua.dev/store4";
+import { invalidate } from "@apendua.dev/store4";
 import { Observable } from "rxjs";
 import { createProperty } from "@apendua.dev/context";
 
@@ -8,13 +8,10 @@ interface Dimensions {
 }
 
 class Root {
-  @observable(function () {
-    return new Observable<Dimensions>((subscriber) => {
+  @invalidate(function () {
+    return new Observable((subscriber) => {
       const listener = () => {
-        subscriber.next({
-          width: window.innerWidth,
-          height: window.innerHeight,
-        });
+        subscriber.next({});
       };
       window.addEventListener("resize", listener);
       return () => {
@@ -26,12 +23,10 @@ class Root {
     return { width: window.innerWidth, height: window.innerHeight };
   }
 
-  @dependencies("dimensions")
   public get screenWidth(): number {
     return this.dimensions.width;
   }
 
-  @dependencies("dimensions")
   public get screenHeight(): number {
     return this.dimensions.height;
   }

@@ -2,7 +2,6 @@ import { merge, NEVER, Observable, switchMap } from "rxjs";
 import {
   $watch,
   $observe,
-  dependencies,
   cached,
   invalidate,
   Store,
@@ -52,7 +51,6 @@ export class Field extends Store<FieldState> {
     return this.#fieldSetup.mine;
   }
 
-  @Field.state("uncovered")
   public get uncovered(): boolean {
     return this.state.uncovered;
   }
@@ -86,12 +84,10 @@ export class Field extends Store<FieldState> {
     });
   }
 
-  @dependencies("neighbors")
   public get nMines(): number {
     return this.neighbors.filter((neighbor) => neighbor.mine).length;
   }
 
-  @dependencies("flag", "mine", "uncovered", "nMines")
   public get statusText(): string {
     if (!this.uncovered) {
       if (this.flag) {
@@ -148,7 +144,6 @@ export class Fields extends Store<{ keys: string[] }> {
     return this.#fields.get(key);
   }
 
-  @Fields.state("keys")
   public get fieldKeys(): string[] {
     return [...this.state.keys];
   }
@@ -221,17 +216,14 @@ export class Fields extends Store<{ keys: string[] }> {
     });
   }
 
-  @dependencies("uncoveredFields")
   public get numberOfCoveredMines(): number {
     return this.uncoveredFields.filter((field) => field.mine).length;
   }
 
-  @dependencies("flaggedFields", "totalMines")
   public get minesLeft(): number {
     return this.totalMines - this.flaggedFields.length;
   }
 
-  @dependencies("fieldKeys")
   public get allFields(): Field[] {
     return this.fieldKeys.flatMap((key) => {
       const field = this.getField(key);
@@ -239,7 +231,6 @@ export class Fields extends Store<{ keys: string[] }> {
     });
   }
 
-  @dependencies("allFields")
   public get bounds(): BBox {
     return getFieldSetBBox(this.allFields);
   }

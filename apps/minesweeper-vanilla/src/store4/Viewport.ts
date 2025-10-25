@@ -1,4 +1,4 @@
-import { $watch, dependencies, invalidate } from "@apendua.dev/store4";
+import { $watch, invalidate } from "@apendua.dev/store4";
 import {
   getFieldBBox,
   getFieldSetBBox,
@@ -61,39 +61,32 @@ class Viewport {
     return getFieldSetBBox(this.#props.allFields);
   }
 
-  @dependencies("width", "origin", "bounds")
   get nColumns() {
     const baseWidth = getFieldBBox(this.origin).width;
     return this.bounds.width / baseWidth;
   }
 
-  @dependencies("height", "origin", "bounds")
   get nRows() {
     const baseHeight = getFieldBBox(this.origin).height;
     return this.bounds.height / baseHeight;
   }
 
-  @dependencies("width", "nColumns")
   get fieldWidth() {
     return Math.round(this.width / this.nColumns);
   }
 
-  @dependencies("fieldWidth")
   get fieldHeight() {
     return this.fieldWidth;
   }
 
-  @dependencies("fieldWidth", "nColumns", "width")
   get offsetX() {
     return this.width / 2 - (this.nColumns * this.fieldWidth) / 2;
   }
 
-  @dependencies("fieldHeight", "nRows", "height")
   get offsetY() {
     return this.height / 2 - (this.nRows * this.fieldHeight) / 2;
   }
 
-  @dependencies("fieldWidth", "fieldHeight", "offsetX", "offsetY", "origin")
   public get mapHexToPixels() {
     return getHexToPixelsMapping({
       origin: this.origin,
@@ -104,7 +97,6 @@ class Viewport {
     });
   }
 
-  @dependencies("fieldWidth", "fieldHeight", "offsetX", "offsetY", "origin")
   public get mapPixelsToHex() {
     return getPixelsToHexMapping({
       origin: this.origin,

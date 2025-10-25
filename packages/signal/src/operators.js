@@ -136,6 +136,20 @@ export function takeNothing() {
 }
 
 /**
+ * @template T
+ * @param {Observable<unknown>} notifier
+ * @returns {(source: Observable<T>) => Observable<T>}
+ */
+export function takeUntilCompleted(notifier) {
+  return (source) => {
+    return new Observable((subscriber) => {
+      source.subscribe(subscriber);
+      notifier.pipe(takeNothing()).subscribe(subscriber);
+    });
+  };
+}
+
+/**
  * @param {Observable<unknown>} observable
  */
 export function subscribeTo(observable) {
@@ -152,12 +166,18 @@ export function invalidateOn(observable) {
 /**
  * @param {() => void} fn
  */
-export function autorun(fn) {
-  const signal = new Derived(() => {
+function createAutorunSignal(fn) {
+  return new Derived(() => {
     fn();
     return {};
   });
-  addDependency(signal);
+}
+
+/**
+ * @param {() => void} fn
+ */
+export function autorun(fn) {
+  addDependency(createAutorunSignal(fn));
 }
 
 /**
@@ -165,32 +185,19 @@ export function autorun(fn) {
  * @return {Observable<never>}
  */
 export function $autorun(fn) {
-  return new Observable((subscriber) => {
-    const signal = new Derived(() => {
-      fn();
-      return {};
-    });
-    const subscription = signal.getChanges().subscribe({
-      error: (err) => {
-        subscriber.error(err);
-      },
-    });
-    return () => {
-      subscription.unsubscribe();
-    };
-  });
+  return toObservable(createAutorunSignal(fn)).pipe(takeNothing());
 }
 
 /**
- * @template T
- * @param {T} value
- * @param {(value: T) => void} fn
- * @return {Observable<T>}
+ * @param {() => (void | (() => void))} fn
  */
-export function $withEffects(value, fn) {
-  return $reactive(() => {
-    fn(value);
-    return value;
+function createEffectSignal(fn) {
+  return new Derived((ctx) => {
+    const cleanup = fn();
+    if (typeof cleanup === "function") {
+      ctx.onInvalidate(cleanup);
+    }
+    return {};
   });
 }
 
@@ -198,37 +205,15 @@ export function $withEffects(value, fn) {
  * @param {() => (void | (() => void))} fn
  */
 export function effect(fn) {
-  const signal = new Derived((ctx) => {
-    const cleanup = fn();
-    if (typeof cleanup === "function") {
-      ctx.onInvalidate(cleanup);
-    }
-    return {};
-  });
-  addDependency(signal);
+  addDependency(createEffectSignal(fn));
 }
 
 /**
  * @param {() => (void | (() => void))} fn
+ * @return {Observable<never>}
  */
 export function $effect(fn) {
-  return new Observable((subscriber) => {
-    const signal = new Derived((ctx) => {
-      const cleanup = fn();
-      if (typeof cleanup === "function") {
-        ctx.onInvalidate(cleanup);
-      }
-      return {};
-    });
-    const subscription = signal.getChanges().subscribe({
-      error: (err) => {
-        subscriber.error(err);
-      },
-    });
-    return () => {
-      subscription.unsubscribe();
-    };
-  });
+  return toObservable(createEffectSignal(fn)).pipe(takeNothing());
   // return $reactive(() => {
   //   const cleanup = fn();
   //   // By returning a new function, we ensure that the cleanup is always called
@@ -243,4 +228,51 @@ export function $effect(fn) {
   //     return new Observable(() => cleanup);
   //   }),
   // );
+}
+
+/**
+ * @template T
+ * @param {(onInvalidate: (cleanup: () => void) => void) => T} fn
+ * @return {Derived<T>}
+ */
+function createResourceSignal(fn) {
+  return new Derived((ctx) => {
+    return fn(ctx.onInvalidate.bind(ctx));
+  });
+}
+
+/**
+ * @template T
+ * @param {(onInvalidate: (cleanup: () => void) => void) => T} fn
+ * @return {Observable<T>}
+ */
+export function $resource(fn) {
+  return toObservable(createResourceSignal(fn));
+}
+
+/**
+ * @template T
+ * @param {T} value
+ * @returns {Observable<T>}
+ */
+export function just(value) {
+  return new Observable((subscriber) => {
+    subscriber.next(value);
+  });
+}
+
+/**
+ * @template T
+ * @param {T} value
+ * @param {(value: T) => void} [fn]
+ * @returns {Observable<T>}
+ */
+export function $(value, fn) {
+  if (!fn) {
+    return just(value);
+  }
+  return $reactive(() => {
+    fn(value);
+    return value;
+  });
 }

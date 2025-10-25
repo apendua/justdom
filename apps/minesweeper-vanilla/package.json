@@ -17,6 +17,7 @@
     "@apendua.dev/geometry": "workspace:*",
     "@apendua.dev/hmr": "workspace:*",
     "@apendua.dev/minesweeper": "workspace:*",
+    "@apendua.dev/signal": "workspace:*",
     "@apendua.dev/store4": "workspace:*",
     "@apendua.dev/store4react": "workspace:*",
     "@testing-library/jest-dom": "^6.9.1",

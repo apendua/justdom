@@ -1,12 +1,5 @@
 import { merge, NEVER, Observable, switchMap } from "rxjs";
-import {
-  $watch,
-  $observe,
-  cached,
-  invalidate,
-  Store,
-  batch,
-} from "@apendua.dev/store4";
+import { $watch, $observe, cached, Store, batch } from "@apendua.dev/store4";
 import { createProperty } from "@apendua.dev/context";
 import {
   BBox,
@@ -55,10 +48,6 @@ export class Field extends Store<FieldState> {
     return this.state.uncovered;
   }
 
-  // @Field.state("flag")
-  @invalidate(function () {
-    return $watch(this.state).flag;
-  })
   public get flag(): boolean {
     return this.state.flag;
   }
@@ -178,9 +167,7 @@ export class Fields extends Store<{ keys: string[] }> {
     );
   }
 
-  @invalidate(function () {
-    return merge($watch(this).fieldKeys, this.changesToUncoveredProp());
-  })
+  @cached()
   public get coveredFields(): Field[] {
     return this.fieldKeys.flatMap((key) => {
       const field = this.getField(key);
@@ -196,9 +183,7 @@ export class Fields extends Store<{ keys: string[] }> {
     }).length;
   }
 
-  @invalidate(function () {
-    return merge($watch(this).fieldKeys, this.changesToUncoveredProp());
-  })
+  @cached()
   public get uncoveredFields(): Field[] {
     return this.fieldKeys.flatMap((key) => {
       const field = this.getField(key);
@@ -206,9 +191,7 @@ export class Fields extends Store<{ keys: string[] }> {
     });
   }
 
-  @invalidate(function () {
-    return merge($watch(this).fieldKeys, this.changesToFlagProp());
-  })
+  @cached()
   public get flaggedFields(): Field[] {
     return this.fieldKeys.flatMap((key) => {
       const field = this.getField(key);

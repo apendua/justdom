@@ -2,6 +2,15 @@ import { Observable, share, Subject } from "rxjs";
 import UpdateQueue from "./UpdateQueue.js";
 // import nextTick from "./nextTick.js";
 
+export class NoValueError extends Error {
+  /**
+   * @param {string} [message]
+   */
+  constructor(message) {
+    super(message || "No value available");
+  }
+}
+
 /**
  * @import {Subscription} from "rxjs";
  * @import {Task} from "./UpdateQueue.js"
@@ -48,7 +57,7 @@ export function hasActiveComputation() {
 }
 
 /**
- * @param {Task | (() => Task)} computation
+ * @param {Task} computation
  */
 export function invalidate(computation) {
   updateQueue.invalidate(computation);
@@ -198,6 +207,9 @@ export class Derived {
     try {
       newValue = this.#recompute();
     } catch (err) {
+      if (err instanceof NoValueError) {
+        return;
+      }
       if (!this.#notifier.observed) {
         throw err;
       }
@@ -228,15 +240,15 @@ export class Derived {
       } else {
         this.#current.value = newValue;
       }
+      return this.#current.value;
+    } finally {
+      activeComputation = oldComputation;
       for (const [dependency, subscription] of this.#subscriptions) {
         if (!this.#dependencies.has(dependency)) {
           subscription.unsubscribe();
           this.#subscriptions.delete(dependency);
         }
       }
-      return this.#current.value;
-    } finally {
-      activeComputation = oldComputation;
     }
   }
 
@@ -249,7 +261,9 @@ export class Derived {
       try {
         this.#recompute();
       } catch (err) {
-        subscriber.error(err);
+        if (!(err instanceof NoValueError)) {
+          subscriber.error(err);
+        }
       }
       return () => {
         for (const subscription of this.#subscriptions.values()) {
@@ -278,7 +292,7 @@ export class Derived {
     return {
       getValue: () => {
         if (!this.#current) {
-          throw new Error("Signal has not been initialized yet");
+          throw new NoValueError("Signal has not been initialized yet");
         }
         return this.#current.value;
       },
@@ -341,21 +355,56 @@ export class Initial {
   }
 }
 
-export class NullSignal {
-  /** @type {Subject<Dependency>} */
+/**
+ * @template T
+ */
+export class Source {
+  /** @type {Subject<Source<T>>} */
   #notifier = new Subject();
 
-  /** @type {Observable<Dependency>} */
+  /** @type {Observable<Source<T>>} */
   #changes = this.#notifier.asObservable();
 
-  /** @type {number} */
-  #priority;
+  /** @type {(() => T) | undefined} */
+  #getInitialValue;
+
+  /** @type {{ value: T } | null} */
+  #current = null;
 
   /**
-   * @param {number} [priority]
+   * @param {Observable<T>} source
+   * @param {() => T} [getInitialValue]
    */
-  constructor(priority = 0) {
-    this.#priority = priority;
+  constructor(source, getInitialValue) {
+    this.#changes = this.#getChanges(source);
+    if (getInitialValue) {
+      this.#getInitialValue = () => nonReactive(getInitialValue);
+    }
+  }
+
+  /**
+   * @param {T} value
+   */
+  #set(value) {
+    if (!this.#current) {
+      this.#current = { value };
+      updateQueue.invalidate(this);
+    } else {
+      this.#current.value = value;
+      updateQueue.invalidate(this);
+    }
+  }
+
+  get() {
+    addDependency(this);
+    if (!this.#current) {
+      if (this.#getInitialValue) {
+        this.#current = { value: this.#getInitialValue() };
+      } else {
+        throw new NoValueError();
+      }
+    }
+    return this.#current.value;
   }
 
   update() {
@@ -367,25 +416,131 @@ export class NullSignal {
   }
 
   getPriority() {
-    return this.#priority;
+    return 0;
+  }
+
+  /**
+   * @param {Observable<T>} source
+   * @returns {Observable<Source<T>>}
+   */
+  #getChanges(source) {
+    return new Observable((subscriber) => {
+      let initialized = false;
+      subscriber.add(
+        this.#notifier.subscribe({
+          next: () => {
+            if (initialized) {
+              subscriber.next(this);
+            }
+          },
+          error: (err) => {
+            subscriber.error(err);
+          },
+          complete: () => {
+            subscriber.complete();
+          },
+        }),
+      );
+      subscriber.add(
+        source.subscribe({
+          next: (value) => {
+            this.#set(value);
+          },
+          error: (err) => {
+            subscriber.error(err);
+          },
+          complete: () => {
+            subscriber.complete();
+          },
+        }),
+      );
+      // If source.subscribe() emits "next" synchronously, we do not
+      // consider this a change, and we skip the initial notification.
+      initialized = true;
+    }).pipe(
+      share({
+        resetOnRefCountZero: true,
+      }),
+    );
   }
 }
 
+export class Changes {
+  /** @type {Subject<Changes>} */
+  #notifier = new Subject();
+
+  /** @type {Observable<Changes>} */
+  #changes = this.#notifier.asObservable();
+
+  /**
+   * @param {Observable<unknown>} source
+   */
+  constructor(source) {
+    this.#changes = this.#getChanges(source);
+  }
+
+  update() {
+    this.#notifier.next(this);
+  }
+
+  getChanges() {
+    return this.#changes;
+  }
+
+  getPriority() {
+    return 0;
+  }
+
+  /**
+   * @param {Observable<unknown>} source
+   * @returns {Observable<Changes>}
+   */
+  #getChanges(source) {
+    return new Observable((subscriber) => {
+      this.#notifier.subscribe(subscriber);
+      subscriber.add(
+        source.subscribe({
+          next: () => {
+            updateQueue.invalidate(this);
+          },
+          error: (err) => {
+            subscriber.error(err);
+          },
+          complete: () => {
+            subscriber.complete();
+          },
+        }),
+      );
+    }).pipe(
+      share({
+        resetOnRefCountZero: true,
+      }),
+    );
+  }
+}
+
+/**
+ * @template {Dependency} T
+ */
 export class Dedupe {
-  /** @type {Observable<Dependency>} */
+  /** @type {Observable<Dedupe<T>>} */
   #changes;
 
   /** @type {number} */
   #priority;
 
-  /** @type {Subject<Dependency>} */
+  /** @type {Subject<Dedupe<T>>} */
   #notifier = new Subject();
 
+  /** @type {{ value: T } | null} */
+  #lastChange = null;
+
   /**
-   * @param {Observable<Dependency>} changes
+   * @param {Observable<T>} changes
+   * @param {number} [priority=1]
    */
-  constructor(changes) {
-    this.#priority = 0;
+  constructor(changes, priority = 1) {
+    this.#priority = priority;
     this.#changes = this.#getChanges(changes);
   }
 
@@ -393,6 +548,19 @@ export class Dedupe {
     this.#notifier.next(this);
   }
 
+  getLastChange() {
+    addDependency(this);
+    if (!this.#lastChange) {
+      throw new NoValueError();
+    }
+    return this.#lastChange.value;
+  }
+
+  hasLastChange() {
+    addDependency(this);
+    return this.#lastChange !== null;
+  }
+
   getChanges() {
     return this.#changes;
   }
@@ -402,13 +570,19 @@ export class Dedupe {
   }
 
   /**
-   * @param {Observable<Dependency>} changes
+   * @param {Observable<T>} changes
+   * @returns {Observable<Dedupe<T>>}
    */
   #getChanges(changes) {
     return new Observable((subscriber) => {
       this.#notifier.subscribe(subscriber);
       const subscription = changes.subscribe((dependency) => {
         this.#priority = Math.max(this.#priority, dependency.getPriority() + 1);
+        if (!this.#lastChange) {
+          this.#lastChange = { value: dependency };
+        } else {
+          this.#lastChange.value = dependency;
+        }
         updateQueue.push(this);
       });
       return () => {

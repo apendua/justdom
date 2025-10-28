@@ -55,13 +55,11 @@ export default class UpdateQueue {
   }
 
   /**
-   * @param {Task | (() => Task)} taskOrFn
+   * @param {Task} task
    */
-  invalidate(taskOrFn) {
-    const willFlush = this.queue.size === 0 && !this.isBatching;
-    const task = typeof taskOrFn === "function" ? taskOrFn() : taskOrFn;
+  invalidate(task) {
     this.push(task);
-    if (willFlush) {
+    if (this.queue.size === 1 && !this.isBatching) {
       this.flush();
     }
   }

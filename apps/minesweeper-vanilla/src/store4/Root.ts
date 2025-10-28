@@ -1,25 +1,17 @@
-import { invalidate } from "@apendua.dev/store4";
-import { Observable } from "rxjs";
+import { fromEvent } from "rxjs";
 import { createProperty } from "@apendua.dev/context";
+import { addDependency, Changes } from "@apendua.dev/signal";
 
 interface Dimensions {
   width: number;
   height: number;
 }
 
+const resize = new Changes(fromEvent(window, "resize"));
+
 class Root {
-  @invalidate(function () {
-    return new Observable((subscriber) => {
-      const listener = () => {
-        subscriber.next({});
-      };
-      window.addEventListener("resize", listener);
-      return () => {
-        window.removeEventListener("resize", listener);
-      };
-    });
-  })
   public get dimensions(): Dimensions {
+    addDependency(resize);
     return { width: window.innerWidth, height: window.innerHeight };
   }
 

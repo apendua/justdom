@@ -1,20 +1,15 @@
 /* eslint-env jest */
 
-import { Subject } from "rxjs";
-import {
-  addDependency,
-  batch,
-  Dedupe,
-  invalidate,
-  NullSignal,
-} from "./Signal.js";
+import { BehaviorSubject, Subject } from "rxjs";
+import { addDependency, batch, Dedupe, Source } from "./Signal.js";
 import {
   $reactive,
   derived,
   initial,
   $effect,
   $autorun,
-  toSignal,
+  toObservable,
+  toChanges,
 } from "./operators.js";
 
 describe("diamond dependency", function () {
@@ -136,25 +131,39 @@ describe("observe", function () {
     expect(spy).toHaveBeenNthCalledWith(3, 1);
   });
 
-  it("should work with manual invalidate()", function () {
-    let value = 0;
-    const signal = new NullSignal();
+  it("should return the same values as source observable", function () {
+    const source = new BehaviorSubject(0);
+    const signal = new Source(source);
+    const observe = toObservable(signal);
+    const spy = jest.fn();
+    const subscription = observe.subscribe(spy);
+
+    source.next(1);
+    source.next(1); // source is not deduped by default
+    source.next(2);
+
+    expect(spy).toHaveBeenCalledTimes(4);
+    expect(spy).toHaveBeenNthCalledWith(1, 0);
+    expect(spy).toHaveBeenNthCalledWith(2, 1);
+    expect(spy).toHaveBeenNthCalledWith(3, 1);
+    expect(spy).toHaveBeenNthCalledWith(4, 2);
+
+    subscription.unsubscribe();
+  });
+
+  it("should use BehaviorSubject as source", function () {
+    const source = new BehaviorSubject(0);
+    const signal = new Source(source);
     const observable = $reactive(() => {
       addDependency(signal);
-      return value;
+      return source.getValue();
     });
     const spy = jest.fn();
     const subscription = observable.subscribe(spy);
 
-    /** @param {number} v */
-    function setValue(v) {
-      value = v;
-      invalidate(signal);
-    }
-
-    setValue(1);
-    setValue(1); // same value, should be no-op
-    setValue(2);
+    source.next(1);
+    source.next(1); // same value, should be no-op
+    source.next(2);
 
     expect(spy).toHaveBeenCalledTimes(3);
     expect(spy).toHaveBeenNthCalledWith(1, 0);
@@ -189,12 +198,12 @@ describe("effect", function () {
   });
 });
 
-describe("toSignal", function () {
+describe("toChanges", function () {
   it("should convert an observable to a signal", function () {
     /** @type {Subject<void>} */
     const changes = new Subject();
     let value = 0;
-    const dependency = new Dedupe(changes.pipe(toSignal()));
+    const dependency = new Dedupe(changes.pipe(toChanges()));
     const setValue = (/** @type {number} */ v) => {
       if (value !== v) {
         value = v;

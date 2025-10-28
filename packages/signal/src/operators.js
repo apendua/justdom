@@ -1,11 +1,12 @@
 import { Observable } from "rxjs";
 import {
   addDependency,
+  Changes,
   Dedupe,
   Derived,
   Initial,
-  invalidate,
-  NullSignal,
+  NoValueError,
+  Source,
 } from "./Signal.js";
 
 /**
@@ -30,9 +31,11 @@ export function toObservable(signal) {
     try {
       subscriber.next(signal.get());
     } catch (err) {
-      subscription.unsubscribe();
-      subscriber.error(err);
-      return;
+      if (!(err instanceof NoValueError)) {
+        subscription.unsubscribe();
+        subscriber.error(err);
+        return;
+      }
     }
     return () => {
       subscription.unsubscribe();
@@ -79,40 +82,32 @@ export function initial(value) {
 
 /**
  * @template T
- * @param {number} [priority=0]
- * @returns {(source: Observable<T>) => Observable<Dependency>}
+ * @returns {(source: Observable<T>) => Observable<Source<T>>}
  */
-export function toSignal(priority = 0) {
+export function toSource() {
   return (source) => {
-    const signal = new NullSignal(priority);
-    return new Observable((subscriber) => {
-      subscriber.add(
-        source.subscribe({
-          next: () => {
-            invalidate(() => {
-              subscriber.next(signal);
-              return signal;
-            });
-          },
-          error: (err) => {
-            subscriber.error(err);
-          },
-          complete: () => {
-            subscriber.complete();
-          },
-        }),
-      );
-    });
+    return new Source(source).getChanges();
   };
 }
 
 /**
+ * @template T
+ * @returns {(source: Observable<T>) => Observable<Changes>}
+ */
+export function toChanges() {
+  return (source) => {
+    return new Changes(source).getChanges();
+  };
+}
+
+/**
+ * @param {number} [priority=1]
  * @returns {(source: Observable<Dependency>) => Observable<Dependency>}
  */
-export function dedupe() {
+export function dedupe(priority = 1) {
   return (source) => {
     return new Observable((subscriber) => {
-      new Dedupe(source).getChanges().subscribe(subscriber);
+      new Dedupe(source, priority).getChanges().subscribe(subscriber);
     });
   };
 }
@@ -153,14 +148,14 @@ export function takeUntilCompleted(notifier) {
  * @param {Observable<unknown>} observable
  */
 export function subscribeTo(observable) {
-  addDependency(new Dedupe(observable.pipe(takeNothing())));
+  addDependency(new Changes(observable.pipe(takeNothing())));
 }
 
 /**
  * @param {Observable<unknown>} observable
  */
 export function invalidateOn(observable) {
-  addDependency(new Dedupe(observable.pipe(toSignal())));
+  addDependency(new Changes(observable));
 }
 
 /**

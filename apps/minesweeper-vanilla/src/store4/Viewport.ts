@@ -1,4 +1,4 @@
-import { $watch, invalidate } from "@apendua.dev/store4";
+import { cached } from "@apendua.dev/store4";
 import {
   getFieldBBox,
   getFieldSetBBox,
@@ -22,9 +22,7 @@ class Viewport {
     this.#props = props;
   }
 
-  @invalidate(function () {
-    return $watch(this.#props).allFields;
-  })
+  @cached()
   public get origin(): VectorLike {
     let point: VectorLike | undefined;
     let row = Infinity;
@@ -40,23 +38,15 @@ class Viewport {
     return point ?? { x: 0, y: 0, z: 0 };
   }
 
-  @invalidate(function () {
-    return $watch(this.#props).screenWidth;
-  })
   get width() {
     return this.#props.screenWidth;
   }
 
-  @invalidate(function () {
-    return $watch(this.#props).screenHeight;
-  })
   get height() {
     return this.#props.screenHeight;
   }
 
-  @invalidate(function () {
-    return $watch(this.#props).allFields;
-  })
+  @cached()
   get bounds() {
     return getFieldSetBBox(this.#props.allFields);
   }

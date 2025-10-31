@@ -131,20 +131,6 @@ export function takeNothing() {
 }
 
 /**
- * @template T
- * @param {Observable<unknown>} notifier
- * @returns {(source: Observable<T>) => Observable<T>}
- */
-export function takeUntilCompleted(notifier) {
-  return (source) => {
-    return new Observable((subscriber) => {
-      source.subscribe(subscriber);
-      notifier.pipe(takeNothing()).subscribe(subscriber);
-    });
-  };
-}
-
-/**
  * @param {Observable<unknown>} observable
  */
 export function subscribeTo(observable) {
@@ -209,20 +195,6 @@ export function effect(fn) {
  */
 export function $effect(fn) {
   return toObservable(createEffectSignal(fn)).pipe(takeNothing());
-  // return $reactive(() => {
-  //   const cleanup = fn();
-  //   // By returning a new function, we ensure that the cleanup is always called
-  //   // even if the same cleanup function is returned multiple times.
-  //   return () => {
-  //     if (typeof cleanup === "function") {
-  //       cleanup();
-  //     }
-  //   };
-  // }).pipe(
-  //   switchMap((cleanup) => {
-  //     return new Observable(() => cleanup);
-  //   }),
-  // );
 }
 
 /**
@@ -230,7 +202,7 @@ export function $effect(fn) {
  * @param {(onInvalidate: (cleanup: () => void) => void) => T} fn
  * @return {Derived<T>}
  */
-function createResourceSignal(fn) {
+function createDisposableSignal(fn) {
   return new Derived((ctx) => {
     return fn(ctx.onInvalidate.bind(ctx));
   });
@@ -241,8 +213,8 @@ function createResourceSignal(fn) {
  * @param {(onInvalidate: (cleanup: () => void) => void) => T} fn
  * @return {Observable<T>}
  */
-export function $resource(fn) {
-  return toObservable(createResourceSignal(fn));
+export function $disposable(fn) {
+  return toObservable(createDisposableSignal(fn));
 }
 
 /**

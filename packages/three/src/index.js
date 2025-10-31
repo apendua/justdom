@@ -16,16 +16,7 @@ export {
   lightProbe,
   positionalAudio,
 } from "./entities.js";
-export {
-  on,
-  add,
-  set,
-  copy,
-  effect,
-  just,
-  sharedResource,
-  disposable,
-} from "./operators.js";
+export { on, add, set, copy, effect, just, disposable } from "./operators.js";
 export { collection } from "./core.js";
 export { render, animate, size, camera, session } from "./render.js";
 export { stopPropagation, interactive } from "./interactions.js";

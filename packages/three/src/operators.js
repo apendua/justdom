@@ -1,10 +1,4 @@
-import {
-  distinctUntilChanged,
-  Observable,
-  ReplaySubject,
-  share,
-  switchMap,
-} from "rxjs";
+import { distinctUntilChanged, Observable, switchMap } from "rxjs";
 
 /**
  * @import { Object3D } from 'three';
@@ -152,16 +146,6 @@ export function effect(fn) {
 export function just(value) {
   return new Observable((subscriber) => {
     subscriber.next(value);
-  });
-}
-
-/**
- * @template T
- * @returns {(source: Observable<T>) => Observable<T>}
- */
-export function sharedResource() {
-  return share({
-    connector: () => new ReplaySubject(1),
   });
 }
 

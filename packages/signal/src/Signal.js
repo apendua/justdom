@@ -532,9 +532,6 @@ export class Dedupe {
   /** @type {Subject<Dedupe<T>>} */
   #notifier = new Subject();
 
-  /** @type {{ value: T } | null} */
-  #lastChange = null;
-
   /**
    * @param {Observable<T>} changes
    * @param {number} [priority=1]
@@ -546,19 +543,6 @@ export class Dedupe {
 
   update() {
     this.#notifier.next(this);
-  }
-
-  getLastChange() {
-    addDependency(this);
-    if (!this.#lastChange) {
-      throw new NoValueError();
-    }
-    return this.#lastChange.value;
-  }
-
-  hasLastChange() {
-    addDependency(this);
-    return this.#lastChange !== null;
   }
 
   getChanges() {
@@ -578,11 +562,6 @@ export class Dedupe {
       this.#notifier.subscribe(subscriber);
       const subscription = changes.subscribe((dependency) => {
         this.#priority = Math.max(this.#priority, dependency.getPriority() + 1);
-        if (!this.#lastChange) {
-          this.#lastChange = { value: dependency };
-        } else {
-          this.#lastChange.value = dependency;
-        }
         updateQueue.push(this);
       });
       return () => {

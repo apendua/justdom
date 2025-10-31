@@ -1,7 +1,7 @@
 import { findBorder, getNodes, grow, VectorLike } from "@apendua.dev/geometry";
 import { svg } from "@apendua.dev/dom";
 import { $factory } from "@apendua.dev/hmr";
-import { cached } from "@apendua.dev/store4";
+import { memo } from "@apendua.dev/store4";
 import Viewport, { ViewportContext } from "../store4/Viewport";
 import { setAttribute$ } from "../utils/operators";
 
@@ -43,7 +43,7 @@ class FieldSetStore {
     this.#viewport = viewport;
   }
 
-  @cached()
+  @memo()
   get d() {
     console.log("EVALUATE");
     const loops = findBorder(this.#props.fields);

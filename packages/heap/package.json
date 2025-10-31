@@ -26,11 +26,12 @@
     "lib-types"
   ],
   "scripts": {
-    "build": "tsc && npm run build:package.json && npm run build:types",
+    "build": "tsc && npm run build:package.json && npm run build:types && npm run test:lib",
     "build:package.json": "echo '{\"type\":\"commonjs\"}' > lib/package.json",
     "build:types": "tsc --project tsconfig.types.json",
     "test": "jest",
     "test:coverage": "jest --coverage",
+    "test:lib": "jest --config jest.lib.config.cjs",
     "test:watch": "jest --watch"
   },
   "dependencies": {

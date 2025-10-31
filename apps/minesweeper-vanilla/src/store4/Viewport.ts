@@ -1,4 +1,4 @@
-import { cached } from "@apendua.dev/store4";
+import { memo } from "@apendua.dev/store4";
 import {
   getFieldBBox,
   getFieldSetBBox,
@@ -22,7 +22,7 @@ class Viewport {
     this.#props = props;
   }
 
-  @cached()
+  @memo()
   public get origin(): VectorLike {
     let point: VectorLike | undefined;
     let row = Infinity;
@@ -46,7 +46,7 @@ class Viewport {
     return this.#props.screenHeight;
   }
 
-  @cached()
+  @memo()
   get bounds() {
     return getFieldSetBBox(this.#props.allFields);
   }

@@ -1,5 +1,5 @@
-import { merge, NEVER, Observable, switchMap } from "rxjs";
-import { $watch, $observe, cached, Store, batch } from "@apendua.dev/store4";
+import { batch } from "@apendua.dev/signal";
+import { memo, makeReactive } from "@apendua.dev/store4";
 import { createProperty } from "@apendua.dev/context";
 import {
   BBox,
@@ -22,13 +22,14 @@ export function getKey({ x, y, z }: VectorLike): string {
   return `${x},${y},${z}`;
 }
 
-export class Field extends Store<FieldState> {
+export class Field {
+  #state: FieldState;
   #fields: Fields;
   #fieldSetup: FieldSetup;
 
   public constructor(props: FieldData, fields: Fields) {
     const { uncovered, flag, ...fieldSetup } = props;
-    super({
+    this.#state = makeReactive({
       uncovered,
       flag,
     });
@@ -45,11 +46,11 @@ export class Field extends Store<FieldState> {
   }
 
   public get uncovered(): boolean {
-    return this.state.uncovered;
+    return this.#state.uncovered;
   }
 
   public get flag(): boolean {
-    return this.state.flag;
+    return this.#state.flag;
   }
 
   public get x(): number {
@@ -64,7 +65,7 @@ export class Field extends Store<FieldState> {
     return this.#fieldSetup.z;
   }
 
-  @cached()
+  @memo()
   public get neighbors(): Field[] {
     return getNeighbors(this.#fieldSetup).flatMap((vector) => {
       const neighborKey = getKey(vector);
@@ -95,12 +96,10 @@ export class Field extends Store<FieldState> {
 
   public uncover(): void {
     batch(() => {
-      if (this.state.uncovered || this.state.flag) {
+      if (this.#state.uncovered || this.#state.flag) {
         return;
       }
-      this.mutate((state) => {
-        state.uncovered = true;
-      });
+      this.#state.uncovered = true;
       if (this.nMines === 0) {
         this.neighbors.forEach((neighbor) => neighbor.uncover());
       }
@@ -108,17 +107,16 @@ export class Field extends Store<FieldState> {
   }
 
   public toggleFlag(): void {
-    this.mutate((state) => {
-      state.flag = !state.flag;
-    });
+    this.#state.flag = !this.#state.flag;
   }
 }
 
-export class Fields extends Store<{ keys: string[] }> {
+export class Fields {
+  #state: { keys: string[] };
   #fields: Map<string, Field> = new Map();
 
   public constructor(fields: Record<string, FieldSetup>) {
-    super({ keys: Object.keys(fields) });
+    this.#state = makeReactive({ keys: Object.keys(fields) });
     for (const [key, field] of Object.entries(fields)) {
       const fieldData: FieldData = {
         ...field,
@@ -134,40 +132,10 @@ export class Fields extends Store<{ keys: string[] }> {
   }
 
   public get fieldKeys(): string[] {
-    return [...this.state.keys];
+    return [...this.#state.keys];
   }
 
-  private changesToUncoveredProp(this: Fields): Observable<object> {
-    return $observe(this).fieldKeys.pipe(
-      switchMap((keys) => {
-        if (keys.length === 0) {
-          return NEVER;
-        }
-        return merge(
-          ...keys.map((key) => {
-            return $watch(this.getField(key)).uncovered;
-          }),
-        );
-      }),
-    );
-  }
-
-  private changesToFlagProp(this: Fields): Observable<object> {
-    return $observe(this).fieldKeys.pipe(
-      switchMap((keys) => {
-        if (keys.length === 0) {
-          return NEVER;
-        }
-        return merge(
-          ...keys.map((key) => {
-            return $watch(this.getField(key)).flag;
-          }),
-        );
-      }),
-    );
-  }
-
-  @cached()
+  @memo()
   public get coveredFields(): Field[] {
     return this.fieldKeys.flatMap((key) => {
       const field = this.getField(key);
@@ -175,7 +143,7 @@ export class Fields extends Store<{ keys: string[] }> {
     });
   }
 
-  @cached()
+  @memo()
   public get totalMines(): number {
     return this.fieldKeys.filter((key) => {
       const field = this.getField(key);
@@ -183,7 +151,7 @@ export class Fields extends Store<{ keys: string[] }> {
     }).length;
   }
 
-  @cached()
+  @memo()
   public get uncoveredFields(): Field[] {
     return this.fieldKeys.flatMap((key) => {
       const field = this.getField(key);
@@ -191,7 +159,7 @@ export class Fields extends Store<{ keys: string[] }> {
     });
   }
 
-  @cached()
+  @memo()
   public get flaggedFields(): Field[] {
     return this.fieldKeys.flatMap((key) => {
       const field = this.getField(key);

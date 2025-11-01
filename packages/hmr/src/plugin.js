@@ -52,9 +52,11 @@ if (import.meta.hot) {
   const factories = $factory.get();
   import.meta.hot.accept((newModule) => {
     if (!newModule) {
+      import.meta.hot.invalidate();
       return;
     }
     if (!Object.keys(newModule).every((key) => names.includes(key))) {
+      import.meta.hot.invalidate();
       return;
     }
     for (let i = 0; i < names.length; i++) {

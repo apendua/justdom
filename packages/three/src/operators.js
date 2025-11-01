@@ -1,8 +1,8 @@
-import { distinctUntilChanged, Observable, switchMap } from "rxjs";
+import { distinctUntilChanged, identity, Observable, switchMap } from "rxjs";
 
 /**
  * @import { Object3D } from 'three';
- * @import { WritableProps, CopyableProps, XREventMap, Parent, EventListener } from './core.js';
+ * @import { WritableProps, CopyableProps, XREventMap, Component, EventListener } from './core.js';
  */
 
 /**
@@ -84,7 +84,7 @@ export function copy(key, value) {
 
 /**
  * @template {Object3D<any>} TEntity
- * @param {Observable<Object3D<any> | null>[]} children
+ * @param {Observable<Component>[]} children
  * @returns {(source: Observable<TEntity>) => Observable<TEntity>}
  */
 export function add(...children) {
@@ -99,14 +99,7 @@ export function add(...children) {
                   distinctUntilChanged(),
                   switchMap((childEntity) => {
                     return new Observable(() => {
-                      if (childEntity) {
-                        entity.add(childEntity);
-                      }
-                      return () => {
-                        if (childEntity && childEntity.parent) {
-                          childEntity.parent.remove(childEntity);
-                        }
-                      };
+                      return childEntity.mount(entity);
                     });
                   }),
                 )
@@ -176,4 +169,38 @@ export function disposable(factory) {
       });
     },
   );
+}
+
+/**
+ * @returns {(source: Observable<Object3D>) => Observable<Component>}
+ */
+export function toComponent() {
+  return (source) => {
+    return new Observable((subscriber) => {
+      subscriber.add(
+        source.subscribe({
+          next: (entity) => {
+            subscriber.next({
+              mount: (parent) => {
+                parent.add(entity);
+                return () => {
+                  parent.remove(entity);
+                };
+              },
+            });
+          },
+        }),
+      );
+    });
+  };
+}
+
+/**
+ * @template {Object3D} T
+ * @param {T} object
+ * @param {(source: Observable<T>) => Observable<T>} [operator]
+ * @returns {Observable<Component>}
+ */
+export function $(object, operator) {
+  return just(object).pipe(operator ?? identity, toComponent());
 }

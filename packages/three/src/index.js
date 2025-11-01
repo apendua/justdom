@@ -16,8 +16,18 @@ export {
   lightProbe,
   positionalAudio,
 } from "./entities.js";
-export { on, add, set, copy, effect, just, disposable } from "./operators.js";
-export { collection } from "./core.js";
+export {
+  on,
+  add,
+  set,
+  copy,
+  effect,
+  just,
+  disposable,
+  toComponent,
+  $,
+} from "./operators.js";
+export { collection, addDynamic } from "./core.js";
 export { render, animate, size, camera, session } from "./render.js";
 export { stopPropagation, interactive } from "./interactions.js";
 

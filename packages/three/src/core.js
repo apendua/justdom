@@ -1,5 +1,6 @@
 import * as THREE from "three";
-import { distinctUntilChanged, Observable } from "rxjs";
+import { distinctUntilChanged, Observable, switchMap, takeUntil } from "rxjs";
+import { just } from "./operators";
 
 /**
  * @template X
@@ -124,17 +125,21 @@ import { distinctUntilChanged, Observable } from "rxjs";
  */
 
 /**
- * @template T
- * @param {Observable<Iterable<T>>} items
- * @param {(item: T) => Observable<THREE.Object3D<XREventMap> | null>} renderItem
- * @returns {Observable<THREE.Group<XREventMap>>}
+ * @typedef {object} Component
+ * @property {(parent: THREE.Object3D) => () => void} mount
  */
-export function collection(items, renderItem) {
+
+/**
+ * @template T
+ * @param {THREE.Object3D} parent
+ * @param {Observable<Iterable<T>>} items
+ * @param {(item: T) => Observable<Component>} renderItem
+ * @returns {Observable<never>}
+ */
+export function addToParent(parent, items, renderItem) {
   return new Observable((subscriber) => {
-    /** @type {THREE.Group<XREventMap>} */
-    const groupEntity = new THREE.Group();
-    /** @type {Map<T, THREE.Object3D<XREventMap>>} */
-    const childEntities = new Map();
+    /** @type {Map<T, () => void>} */
+    const mountedChildEntities = new Map();
     /** @type {Map<T, import('rxjs').Subscription>} */
     const childSubscriptions = new Map();
     subscriber.add(
@@ -149,13 +154,15 @@ export function collection(items, renderItem) {
               renderItem(item)
                 .pipe(distinctUntilChanged())
                 .subscribe((newChildEntity) => {
-                  const oldChildEntity = childEntities.get(item);
-                  if (oldChildEntity) {
-                    groupEntity.remove(oldChildEntity);
+                  const unmount = mountedChildEntities.get(item);
+                  if (unmount) {
+                    unmount();
                   }
                   if (newChildEntity) {
-                    groupEntity.add(newChildEntity);
-                    childEntities.set(item, newChildEntity);
+                    mountedChildEntities.set(
+                      item,
+                      newChildEntity.mount(parent),
+                    );
                   }
                 }),
             );
@@ -163,10 +170,10 @@ export function collection(items, renderItem) {
         }
         for (const [item, childSubscription] of childSubscriptions.entries()) {
           if (!newItemsSet.has(item)) {
-            const childEntity = childEntities.get(item);
-            if (childEntity) {
-              groupEntity.remove(childEntity);
-              childEntities.delete(item);
+            const unmount = mountedChildEntities.get(item);
+            if (unmount) {
+              unmount();
+              mountedChildEntities.delete(item);
             }
             childSubscription.unsubscribe();
             childSubscriptions.delete(item);
@@ -174,14 +181,43 @@ export function collection(items, renderItem) {
         }
       }),
     );
-    subscriber.next(groupEntity);
     return () => {
       for (const subscription of childSubscriptions.values()) {
         subscription.unsubscribe();
       }
-      for (const childEntity of childEntities.values()) {
-        groupEntity.remove(childEntity);
+      for (const unmount of mountedChildEntities.values()) {
+        unmount();
       }
     };
+  });
+}
+
+/**
+ * @template T
+ * @template {THREE.Object3D} U
+ * @param {Observable<Iterable<T>>} items
+ * @param {(item: T) => Observable<Component>} renderItem
+ * @returns {(source: Observable<U>) => Observable<U>}
+ */
+export function addDynamic(items, renderItem) {
+  return switchMap((parent) => {
+    return just(parent).pipe(takeUntil(addToParent(parent, items, renderItem)));
+  });
+}
+
+/**
+ * @template T
+ * @param {Observable<Iterable<T>>} items
+ * @param {(item: T) => Observable<Component>} renderItem
+ * @returns {Observable<THREE.Group<XREventMap>>}
+ */
+export function collection(items, renderItem) {
+  return new Observable((subscriber) => {
+    /** @type {THREE.Group<XREventMap>} */
+    const parent = new THREE.Group();
+    subscriber.add(
+      addToParent(parent, items, renderItem).subscribe(subscriber),
+    );
+    subscriber.next(parent);
   });
 }

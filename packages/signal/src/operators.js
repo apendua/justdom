@@ -243,3 +243,24 @@ export function $(value, fn) {
     return value;
   });
 }
+
+/**
+ * @template {object} T
+ * @template {Partial<T>} U
+ * @param {U} obj
+ * @param {T} defaultValues
+ * @returns {T & U}
+ */
+export function defaults(obj, defaultValues) {
+  return /** @type {T & U} */ (
+    new Proxy(obj, {
+      get(target, prop, receiver) {
+        const value = Reflect.get(target, prop, receiver);
+        if (value !== undefined) {
+          return value;
+        }
+        return /** @type {any} */ (defaultValues)[prop];
+      },
+    })
+  );
+}

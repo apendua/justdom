@@ -1,6 +1,5 @@
-import { Observable } from "rxjs";
+import { Observable, switchAll, switchMap } from "rxjs";
 import {
-  addDependency,
   Changes,
   Dedupe,
   Derived,
@@ -57,15 +56,6 @@ export function derived(fn) {
   return {
     get: () => signal.get(),
   };
-}
-
-/**
- * @template T
- * @param {() => T} fn
- * @return {Observable<T>}
- */
-export function $reactive(fn) {
-  return toObservable(new Derived(fn));
 }
 
 /**
@@ -131,90 +121,57 @@ export function takeNothing() {
 }
 
 /**
- * @param {Observable<unknown>} observable
- */
-export function subscribeTo(observable) {
-  addDependency(new Changes(observable.pipe(takeNothing())));
-}
-
-/**
- * @param {Observable<unknown>} observable
- */
-export function invalidateOn(observable) {
-  addDependency(new Changes(observable));
-}
-
-/**
- * @param {() => void} fn
- */
-function createAutorunSignal(fn) {
-  return new Derived(() => {
-    fn();
-    return {};
-  });
-}
-
-/**
- * @param {() => void} fn
+ * @template T
+ * @param {() => T} fn
+ * @return {T}
  */
 export function autorun(fn) {
-  addDependency(createAutorunSignal(fn));
-}
-
-/**
- * @param {() => void} fn
- * @return {Observable<never>}
- */
-export function $autorun(fn) {
-  return toObservable(createAutorunSignal(fn)).pipe(takeNothing());
-}
-
-/**
- * @param {() => (void | (() => void))} fn
- */
-function createEffectSignal(fn) {
-  return new Derived((ctx) => {
-    const cleanup = fn();
-    if (typeof cleanup === "function") {
-      ctx.onInvalidate(cleanup);
-    }
-    return {};
-  });
-}
-
-/**
- * @param {() => (void | (() => void))} fn
- */
-export function effect(fn) {
-  addDependency(createEffectSignal(fn));
-}
-
-/**
- * @param {() => (void | (() => void))} fn
- * @return {Observable<never>}
- */
-export function $effect(fn) {
-  return toObservable(createEffectSignal(fn)).pipe(takeNothing());
+  return new Derived(fn).get();
 }
 
 /**
  * @template T
- * @param {(onInvalidate: (cleanup: () => void) => void) => T} fn
- * @return {Derived<T>}
- */
-function createDisposableSignal(fn) {
-  return new Derived((ctx) => {
-    return fn(ctx.onInvalidate.bind(ctx));
-  });
-}
-
-/**
- * @template T
- * @param {(onInvalidate: (cleanup: () => void) => void) => T} fn
+ * @param {() => T} fn
  * @return {Observable<T>}
  */
-export function $disposable(fn) {
-  return toObservable(createDisposableSignal(fn));
+export function $autorun(fn) {
+  return toObservable(new Derived(fn));
+}
+
+/**
+ * @template T, U
+ * @param {(value: T) => Observable<U>} fn
+ * @returns {(source: Observable<T>) => Observable<U>}
+ */
+export function reactiveMap(fn) {
+  return switchMap((value) => {
+    return $autorun(() => fn(value)).pipe(switchAll());
+  });
+}
+
+/**
+ * @template T
+ * @param {(value: T) => Observable<void>} fn
+ * @returns {(source: Observable<T>) => Observable<T>}
+ */
+export function effect(fn) {
+  return switchMap((value) => {
+    return new Observable((subscriber) => {
+      subscriber.next(value);
+      subscriber.add(fn(value).pipe(takeNothing()).subscribe(subscriber));
+    });
+  });
+}
+
+/**
+ * @template T
+ * @param {(value: T) => void} fn
+ * @returns {(source: Observable<T>) => Observable<T>}
+ */
+export function reactiveEffect(fn) {
+  return effect((value) => {
+    return $autorun(() => fn(value));
+  });
 }
 
 /**
@@ -238,7 +195,7 @@ export function $(value, fn) {
   if (!fn) {
     return just(value);
   }
-  return $reactive(() => {
+  return $autorun(() => {
     fn(value);
     return value;
   });

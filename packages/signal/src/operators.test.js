@@ -1,12 +1,16 @@
 /* eslint-env jest */
 
 import { BehaviorSubject, Subject } from "rxjs";
-import { addDependency, batch, Dedupe, Source } from "./Signal.js";
 import {
-  $reactive,
+  addDependency,
+  batch,
+  Dedupe,
+  onInvalidate,
+  Source,
+} from "./Signal.js";
+import {
   derived,
   initial,
-  $effect,
   $autorun,
   toObservable,
   toChanges,
@@ -89,7 +93,7 @@ describe("observe", function () {
   it("should observe values when signal changes", function () {
     const signal = initial(0);
     const spy = jest.fn();
-    const subscription = $reactive(() => {
+    const subscription = $autorun(() => {
       return signal.get();
     }).subscribe({
       next(value) {
@@ -112,7 +116,7 @@ describe("observe", function () {
     const s1 = initial(1);
     const s2 = derived(() => s1.get() % 2);
     const spy = jest.fn();
-    const subscription = $reactive(() => {
+    const subscription = $autorun(() => {
       return s2.get();
     }).subscribe({
       next(value) {
@@ -154,7 +158,7 @@ describe("observe", function () {
   it("should use BehaviorSubject as source", function () {
     const source = new BehaviorSubject(0);
     const signal = new Source(source);
-    const observable = $reactive(() => {
+    const observable = $autorun(() => {
       addDependency(signal);
       return source.getValue();
     });
@@ -174,14 +178,14 @@ describe("observe", function () {
   });
 });
 
-describe("effect", function () {
+describe("effect = autorun & onInvalidate", function () {
   it("should run side effects when signal changes", function () {
     const signal = initial(0);
     const spy = jest.fn();
     const cleanup = jest.fn();
-    const subscription = $effect(() => {
+    const subscription = $autorun(() => {
       spy(signal.get());
-      return cleanup;
+      onInvalidate(cleanup);
     }).subscribe();
 
     signal.set(1);

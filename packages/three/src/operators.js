@@ -1,4 +1,4 @@
-import { distinctUntilChanged, identity, Observable, switchMap } from "rxjs";
+import { distinctUntilChanged, Observable, switchMap } from "rxjs";
 
 /**
  * @import { Object3D } from 'three';
@@ -198,9 +198,13 @@ export function toComponent() {
 /**
  * @template {Object3D} T
  * @param {T} object
- * @param {(source: Observable<T>) => Observable<T>} [operator]
+ * @param {Array<(source: Observable<T>) => Observable<T>>} [operators]
  * @returns {Observable<Component>}
  */
-export function $(object, operator) {
-  return just(object).pipe(operator ?? identity, toComponent());
+export function $(object, operators = []) {
+  const observable = operators.reduce(
+    (obs, operator) => operator(obs),
+    just(object),
+  );
+  return toComponent()(observable);
 }

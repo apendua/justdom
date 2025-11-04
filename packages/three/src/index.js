@@ -25,6 +25,7 @@ export {
   just,
   disposable,
   toComponent,
+  Nothing,
   $,
 } from "./operators.js";
 export { collection, addDynamic } from "./core.js";

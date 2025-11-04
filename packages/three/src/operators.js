@@ -172,7 +172,7 @@ export function disposable(factory) {
 }
 
 /**
- * @returns {(source: Observable<Object3D>) => Observable<Component>}
+ * @returns {(source: Observable<Object3D | null>) => Observable<Component>}
  */
 export function toComponent() {
   return (source) => {
@@ -180,19 +180,29 @@ export function toComponent() {
       subscriber.add(
         source.subscribe({
           next: (entity) => {
-            subscriber.next({
-              mount: (parent) => {
-                parent.add(entity);
-                return () => {
-                  parent.remove(entity);
-                };
-              },
-            });
+            if (!entity) {
+              subscriber.next({
+                mount: () => () => {},
+              });
+            } else {
+              subscriber.next({
+                mount: (parent) => {
+                  parent.add(entity);
+                  return () => {
+                    parent.remove(entity);
+                  };
+                },
+              });
+            }
           },
         }),
       );
     });
   };
+}
+
+export function Nothing() {
+  return just(null).pipe(toComponent());
 }
 
 /**

@@ -1,5 +1,6 @@
 import { Observable, switchAll, switchMap } from "rxjs";
 import {
+  addDependency,
   Changes,
   Dedupe,
   Derived,
@@ -139,6 +140,32 @@ export function $autorun(fn) {
 }
 
 /**
+ * @template T
+ * @param {Observable<T>} observable
+ */
+export function use(observable) {
+  addDependency(new Source(observable));
+}
+
+/**
+ * @template T
+ * @param {() => Observable<T>} fn
+ * @returns {T}
+ */
+export function reactive(fn) {
+  return new Source(autorun(fn)).get();
+}
+
+/**
+ * @template T
+ * @param {() => Observable<T>} fn
+ * @returns {Observable<T>}
+ */
+export function $reactive(fn) {
+  return $autorun(fn).pipe(switchAll());
+}
+
+/**
  * @template T, U
  * @param {(value: T) => Observable<U>} fn
  * @returns {(source: Observable<T>) => Observable<U>}
@@ -151,14 +178,20 @@ export function reactiveMap(fn) {
 
 /**
  * @template T
- * @param {(value: T) => Observable<void>} fn
+ * @param {(value: T) => Observable<never>} fn
  * @returns {(source: Observable<T>) => Observable<T>}
  */
-export function effect(fn) {
+export function effectMap(fn) {
   return switchMap((value) => {
     return new Observable((subscriber) => {
       subscriber.next(value);
-      subscriber.add(fn(value).pipe(takeNothing()).subscribe(subscriber));
+      subscriber.add(
+        fn(value).subscribe({
+          error: (err) => {
+            subscriber.error(err);
+          },
+        }),
+      );
     });
   });
 }
@@ -169,8 +202,8 @@ export function effect(fn) {
  * @returns {(source: Observable<T>) => Observable<T>}
  */
 export function reactiveEffect(fn) {
-  return effect((value) => {
-    return $autorun(() => fn(value));
+  return effectMap((value) => {
+    return $autorun(() => fn(value)).pipe(takeNothing());
   });
 }
 

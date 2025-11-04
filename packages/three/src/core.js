@@ -133,7 +133,7 @@ import { just } from "./operators";
  * @template T
  * @param {THREE.Object3D} parent
  * @param {Observable<Iterable<T>>} items
- * @param {(item: T) => Observable<Component>} renderItem
+ * @param {(item: T, index: number) => Observable<Component>} renderItem
  * @returns {Observable<never>}
  */
 export function addToParent(parent, items, renderItem) {
@@ -146,12 +146,14 @@ export function addToParent(parent, items, renderItem) {
       items.subscribe((newItems) => {
         /** @type {Set<T>} */
         const newItemsSet = new Set();
-        for (const item of newItems) {
+        const newItemsArray = Array.from(newItems);
+        for (let i = 0; i < newItemsArray.length; i++) {
+          const item = newItemsArray[i];
           newItemsSet.add(item);
           if (!childSubscriptions.has(item)) {
             childSubscriptions.set(
               item,
-              renderItem(item)
+              renderItem(item, i)
                 .pipe(distinctUntilChanged())
                 .subscribe((newChildEntity) => {
                   const unmount = mountedChildEntities.get(item);
@@ -196,7 +198,7 @@ export function addToParent(parent, items, renderItem) {
  * @template T
  * @template {THREE.Object3D} U
  * @param {Observable<Iterable<T>>} items
- * @param {(item: T) => Observable<Component>} renderItem
+ * @param {(item: T, index: number) => Observable<Component>} renderItem
  * @returns {(source: Observable<U>) => Observable<U>}
  */
 export function addDynamic(items, renderItem) {
@@ -208,7 +210,7 @@ export function addDynamic(items, renderItem) {
 /**
  * @template T
  * @param {Observable<Iterable<T>>} items
- * @param {(item: T) => Observable<Component>} renderItem
+ * @param {(item: T, index: number) => Observable<Component>} renderItem
  * @returns {Observable<THREE.Group<XREventMap>>}
  */
 export function collection(items, renderItem) {

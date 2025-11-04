@@ -348,3 +348,13 @@ export function interactive(ctx) {
     );
   };
 }
+
+/**
+ * @param {THREE.Object3D} object
+ * @param {THREE.Matrix4} matrix
+ */
+export function resetMatrix(object, matrix) {
+  object.matrix.copy(matrix);
+  object.matrix.decompose(object.position, object.quaternion, object.scale);
+  object.updateWorldMatrix(false, true);
+}

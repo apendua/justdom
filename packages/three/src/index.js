@@ -29,7 +29,7 @@ export {
 } from "./operators.js";
 export { collection, addDynamic } from "./core.js";
 export { render, animate, size, camera, session } from "./render.js";
-export { stopPropagation, interactive } from "./interactions.js";
+export { stopPropagation, interactive, resetMatrix } from "./interactions.js";
 
 /**
  * @template {object} T

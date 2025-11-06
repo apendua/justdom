@@ -10,6 +10,7 @@ import {
 } from "./Signal.js";
 
 /**
+ * @import {MonoTypeOperatorFunction} from "rxjs"
  * @import {Dependency} from "./Signal.js"
  */
 
@@ -207,30 +208,35 @@ export function reactiveEffect(fn) {
   });
 }
 
+/** @type {WeakMap<object, Dependency>} */
+const ownEffects = new WeakMap();
+
+/**
+ * @template {object} T
+ * @param {T} obj
+ * @param {Dependency} effects
+ */
+export function setEffects(obj, effects) {
+  ownEffects.set(obj, effects);
+}
+
 /**
  * @template T
  * @param {T} value
  * @returns {Observable<T>}
  */
 export function just(value) {
+  // if (typeof value === "object" && value !== null) {
+  //   const effects = ownEffects.get(value);
+  //   if (effects) {
+  //     return $autorun(() => {
+  //       addDependency(effects);
+  //       return value;
+  //     });
+  //   }
+  // }
   return new Observable((subscriber) => {
     subscriber.next(value);
-  });
-}
-
-/**
- * @template T
- * @param {T} value
- * @param {(value: T) => void} [fn]
- * @returns {Observable<T>}
- */
-export function $(value, fn) {
-  if (!fn) {
-    return just(value);
-  }
-  return $autorun(() => {
-    fn(value);
-    return value;
   });
 }
 
@@ -253,4 +259,15 @@ export function defaults(obj, defaultValues) {
       },
     })
   );
+}
+
+/**
+ * @template T
+ * @param {Array<MonoTypeOperatorFunction<T>>} operators
+ * @returns {MonoTypeOperatorFunction<T>}
+ */
+export function all(operators) {
+  return (source) => {
+    return operators.reduce((obs, fn) => fn(obs), source);
+  };
 }

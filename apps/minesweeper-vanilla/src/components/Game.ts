@@ -1,7 +1,8 @@
 import { stylesheet, text, html, set, append, on } from "@apendua.dev/dom";
 import { RootContext } from "../store4/Root";
 import { Fields, FieldsContext } from "@apendua.dev/minesweeper";
-import { $observe, makeReactive } from "@apendua.dev/store4";
+import { $observe } from "@apendua.dev/store4";
+import { store } from "@apendua.dev/signal";
 import Viewport, { ViewportContext } from "../store4/Viewport";
 import { switchMap } from "rxjs";
 import Minefield from "./Minefield";
@@ -18,7 +19,7 @@ const Game = (ctx: WeakKey) => {
   const dimensions = RootContext.get(ctx);
   const { screenWidth, screenHeight } = $observe(dimensions);
 
-  const state = makeReactive({
+  const state = store({
     game: Fields.generate({}),
   });
 

@@ -1,5 +1,5 @@
-import { batch } from "@apendua.dev/signal";
-import { memo, makeReactive } from "@apendua.dev/store4";
+import { batch, store } from "@apendua.dev/signal";
+import { memo } from "@apendua.dev/store4";
 import { createProperty } from "@apendua.dev/context";
 import {
   BBox,
@@ -29,7 +29,7 @@ export class Field {
 
   public constructor(props: FieldData, fields: Fields) {
     const { uncovered, flag, ...fieldSetup } = props;
-    this.#state = makeReactive({
+    this.#state = store({
       uncovered,
       flag,
     });
@@ -116,7 +116,7 @@ export class Fields {
   #fields: Map<string, Field> = new Map();
 
   public constructor(fields: Record<string, FieldSetup>) {
-    this.#state = makeReactive({ keys: Object.keys(fields) });
+    this.#state = store({ keys: Object.keys(fields) });
     for (const [key, field] of Object.entries(fields)) {
       const fieldData: FieldData = {
         ...field,

@@ -4,7 +4,7 @@ import { addDependency, Changes, Source } from "./Signal.js";
 import { all, setEffects } from "./operators.js";
 
 /**
- * @import {MonoTypeOperatorFunction, Observable} from "rxjs"
+ * @import {MonoTypeOperatorFunction} from "rxjs"
  */
 
 /**

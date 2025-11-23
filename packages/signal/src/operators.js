@@ -1,8 +1,12 @@
-import { Observable, switchAll, switchMap } from "rxjs";
+import {
+  BehaviorSubject,
+  Observable,
+  switchAll,
+  switchMap,
+  takeUntil,
+} from "rxjs";
 import {
   addDependency,
-  Changes,
-  Dedupe,
   Derived,
   Initial,
   NoValueError,
@@ -74,38 +78,6 @@ export function initial(value) {
 
 /**
  * @template T
- * @returns {(source: Observable<T>) => Observable<Source<T>>}
- */
-export function toSource() {
-  return (source) => {
-    return new Source(source).getChanges();
-  };
-}
-
-/**
- * @template T
- * @returns {(source: Observable<T>) => Observable<Changes>}
- */
-export function toChanges() {
-  return (source) => {
-    return new Changes(source).getChanges();
-  };
-}
-
-/**
- * @param {number} [priority=1]
- * @returns {(source: Observable<Dependency>) => Observable<Dependency>}
- */
-export function dedupe(priority = 1) {
-  return (source) => {
-    return new Observable((subscriber) => {
-      new Dedupe(source, priority).getChanges().subscribe(subscriber);
-    });
-  };
-}
-
-/**
- * @template T
  * @returns {(source: Observable<T>) => Observable<never>}
  */
 export function takeNothing() {
@@ -138,6 +110,17 @@ export function autorun(fn) {
  */
 export function $autorun(fn) {
   return toObservable(new Derived(fn));
+}
+
+/**
+ * @template T, U
+ * @param {(value: T) => U} fn
+ * @returns {(source: Observable<T>) => Observable<U>}
+ */
+export function autorunMap(fn) {
+  return switchMap((value) => {
+    return $autorun(() => fn(value));
+  });
 }
 
 /**
@@ -179,7 +162,16 @@ export function reactiveMap(fn) {
 
 /**
  * @template T
- * @param {(value: T) => Observable<never>} fn
+ * @param {Observable<unknown>} observable
+ * @returns {(source: Observable<T>) => Observable<T>}
+ */
+export function sideEffect(observable) {
+  return takeUntil(observable.pipe(takeNothing()));
+}
+
+/**
+ * @template T
+ * @param {(value: T) => Observable<unknown>} fn
  * @returns {(source: Observable<T>) => Observable<T>}
  */
 export function effectMap(fn) {
@@ -204,7 +196,7 @@ export function effectMap(fn) {
  */
 export function reactiveEffect(fn) {
   return effectMap((value) => {
-    return $autorun(() => fn(value)).pipe(takeNothing());
+    return $autorun(() => fn(value));
   });
 }
 
@@ -214,10 +206,15 @@ const ownEffects = new WeakMap();
 /**
  * @template {object} T
  * @param {T} obj
- * @param {Dependency} effects
+ * @param {Dependency | Array<MonoTypeOperatorFunction<T>>} effects
  */
 export function setEffects(obj, effects) {
-  ownEffects.set(obj, effects);
+  if (Array.isArray(effects)) {
+    const subject = new BehaviorSubject(obj);
+    ownEffects.set(obj, new Source(subject.pipe(all(effects))));
+  } else {
+    ownEffects.set(obj, effects);
+  }
 }
 
 /**
@@ -226,15 +223,15 @@ export function setEffects(obj, effects) {
  * @returns {Observable<T>}
  */
 export function just(value) {
-  // if (typeof value === "object" && value !== null) {
-  //   const effects = ownEffects.get(value);
-  //   if (effects) {
-  //     return $autorun(() => {
-  //       addDependency(effects);
-  //       return value;
-  //     });
-  //   }
-  // }
+  if (typeof value === "object" && value !== null) {
+    const effects = ownEffects.get(value);
+    if (effects) {
+      return $autorun(() => {
+        addDependency(effects);
+        return value;
+      });
+    }
+  }
   return new Observable((subscriber) => {
     subscriber.next(value);
   });

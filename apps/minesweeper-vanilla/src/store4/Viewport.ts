@@ -7,7 +7,7 @@ import {
   to2D,
   VectorLike,
 } from "@apendua.dev/geometry";
-import { createProperty } from "@apendua.dev/context";
+import { createProperty } from "@apendua.dev/signal";
 
 interface ViewportProps {
   allFields: VectorLike[];

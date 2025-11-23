@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { BehaviorSubject, tap, Observable, combineLatest, map } from "rxjs";
-import { createProperty } from "@apendua.dev/context";
+import { createProperty } from "@apendua.dev/signal";
 import { InteractionManager, InteractionContext } from "./interactions.js";
 
 export const RendererContext = createProperty(

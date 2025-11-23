@@ -19,6 +19,7 @@ export {
 export {
   on,
   add,
+  init,
   set,
   copy,
   effect,
@@ -27,10 +28,13 @@ export {
   toComponent,
   Nothing,
   $,
+  addToParent,
 } from "./operators.js";
 export { collection, addDynamic } from "./core.js";
 export { render, animate, size, camera, session } from "./render.js";
 export { stopPropagation, interactive, resetMatrix } from "./interactions.js";
+export { default as LayoutNode } from "./LayoutNode.js";
+export * from "./LayoutNode.js";
 
 /**
  * @template {object} T
@@ -44,4 +48,8 @@ export { stopPropagation, interactive, resetMatrix } from "./interactions.js";
 
 /**
  * @typedef {import('./core.js').XREventMap} XREventMap
+ */
+
+/**
+ * @typedef {import('./core.js').Component} Component
  */

@@ -1,6 +1,14 @@
 import * as THREE from "three";
-import { distinctUntilChanged, Observable, switchMap, takeUntil } from "rxjs";
+import {
+  distinctUntilChanged,
+  filter,
+  Observable,
+  Subject,
+  switchMap,
+  takeUntil,
+} from "rxjs";
 import { just } from "./operators";
+import { addDependency, batch, Changes, Derived } from "@apendua.dev/signal";
 
 /**
  * @template X
@@ -126,22 +134,40 @@ import { just } from "./operators";
 
 /**
  * @typedef {object} Component
- * @property {(parent: THREE.Object3D) => () => void} mount
+ * @property {(parent: THREE.Object3D) => () => void} addTo
  */
 
 /**
  * @template T
  * @param {THREE.Object3D} parent
  * @param {Observable<Iterable<T>>} items
- * @param {(item: T, index: number) => Observable<Component>} renderItem
+ * @param {(item: T, index: () => number) => Observable<Component>} renderItem
  * @returns {Observable<never>}
  */
-export function addToParent(parent, items, renderItem) {
+export function addDynamicToParent(parent, items, renderItem) {
   return new Observable((subscriber) => {
     /** @type {Map<T, () => void>} */
     const mountedChildEntities = new Map();
     /** @type {Map<T, import('rxjs').Subscription>} */
     const childSubscriptions = new Map();
+    /** @type {Map<T, number>} */
+    const childIndexes = new Map();
+    /** @type {Subject<T>} */
+    const childIndexesSubject = new Subject();
+    /**
+     * @param {T} item
+     * @returns {() => number}
+     */
+    const createGetIndex = (item) => {
+      const changes = new Changes(
+        childIndexesSubject.pipe(filter((changedItem) => changedItem === item)),
+      );
+      const index = new Derived(() => {
+        addDependency(changes);
+        return childIndexes.get(item) ?? -1;
+      });
+      return () => index.get();
+    };
     subscriber.add(
       items.subscribe((newItems) => {
         /** @type {Set<T>} */
@@ -153,7 +179,7 @@ export function addToParent(parent, items, renderItem) {
           if (!childSubscriptions.has(item)) {
             childSubscriptions.set(
               item,
-              renderItem(item, i)
+              renderItem(item, createGetIndex(item))
                 .pipe(distinctUntilChanged())
                 .subscribe((newChildEntity) => {
                   const unmount = mountedChildEntities.get(item);
@@ -163,13 +189,29 @@ export function addToParent(parent, items, renderItem) {
                   if (newChildEntity) {
                     mountedChildEntities.set(
                       item,
-                      newChildEntity.mount(parent),
+                      newChildEntity.addTo(parent),
                     );
                   }
                 }),
             );
           }
         }
+        // Update/ remove indexes in a batch.
+        batch(() => {
+          for (let i = 0; i < newItemsArray.length; i++) {
+            const item = newItemsArray[i];
+            if (childIndexes.get(item) !== i) {
+              childIndexes.set(item, i);
+              childIndexesSubject.next(item);
+            }
+          }
+          for (const item of childSubscriptions.keys()) {
+            if (!newItemsSet.has(item)) {
+              childIndexes.delete(item);
+              childIndexesSubject.next(item);
+            }
+          }
+        });
         for (const [item, childSubscription] of childSubscriptions.entries()) {
           if (!newItemsSet.has(item)) {
             const unmount = mountedChildEntities.get(item);
@@ -198,19 +240,21 @@ export function addToParent(parent, items, renderItem) {
  * @template T
  * @template {THREE.Object3D} U
  * @param {Observable<Iterable<T>>} items
- * @param {(item: T, index: number) => Observable<Component>} renderItem
+ * @param {(item: T, index: () => number) => Observable<Component>} renderItem
  * @returns {(source: Observable<U>) => Observable<U>}
  */
 export function addDynamic(items, renderItem) {
   return switchMap((parent) => {
-    return just(parent).pipe(takeUntil(addToParent(parent, items, renderItem)));
+    return just(parent).pipe(
+      takeUntil(addDynamicToParent(parent, items, renderItem)),
+    );
   });
 }
 
 /**
  * @template T
  * @param {Observable<Iterable<T>>} items
- * @param {(item: T, index: number) => Observable<Component>} renderItem
+ * @param {(item: T, index: () => number) => Observable<Component>} renderItem
  * @returns {Observable<THREE.Group<XREventMap>>}
  */
 export function collection(items, renderItem) {
@@ -218,7 +262,7 @@ export function collection(items, renderItem) {
     /** @type {THREE.Group<XREventMap>} */
     const parent = new THREE.Group();
     subscriber.add(
-      addToParent(parent, items, renderItem).subscribe(subscriber),
+      addDynamicToParent(parent, items, renderItem).subscribe(subscriber),
     );
     subscriber.next(parent);
   });

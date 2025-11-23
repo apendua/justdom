@@ -1,4 +1,4 @@
-import { distinctUntilChanged, Observable, switchMap } from "rxjs";
+import { distinctUntilChanged, Observable, switchMap, tap } from "rxjs";
 
 /**
  * @import { Object3D } from 'three';
@@ -30,6 +30,21 @@ export function on(type, handler) {
 
 /**
  * @template {object} TEntity
+ * @param {Partial<WritableProps<TEntity>>} props
+ * @returns {(source: Observable<TEntity>) => Observable<TEntity>}   *
+ */
+export function init(props) {
+  return (source) => {
+    return source.pipe(
+      tap((entity) => {
+        Object.assign(entity, props);
+      }),
+    );
+  };
+}
+
+/**
+ * @template {object} TEntity
  * @template {keyof WritableProps<TEntity>} K
  * @param {K} key
  * @param {Observable<TEntity[K]>} value
@@ -45,6 +60,7 @@ export function set(key, value) {
               next: (v) => {
                 entity[key] = v;
               },
+              error: (err) => subscriber.error(err),
             }),
           );
           subscriber.next(entity);
@@ -83,6 +99,22 @@ export function copy(key, value) {
 }
 
 /**
+ *
+ * @param {Object3D<any>} parent
+ * @param {Observable<Component>} child
+ */
+export function addToParent(parent, child) {
+  return child.pipe(
+    distinctUntilChanged(),
+    switchMap((component) => {
+      return new Observable(() => {
+        return component.addTo(parent);
+      });
+    }),
+  );
+}
+
+/**
  * @template {Object3D<any>} TEntity
  * @param {Observable<Component>[]} children
  * @returns {(source: Observable<TEntity>) => Observable<TEntity>}
@@ -93,20 +125,9 @@ export function add(...children) {
       switchMap((entity) => {
         return new Observable((subscriber) => {
           children.forEach((child) => {
-            subscriber.add(
-              child
-                .pipe(
-                  distinctUntilChanged(),
-                  switchMap((childEntity) => {
-                    return new Observable(() => {
-                      return childEntity.mount(entity);
-                    });
-                  }),
-                )
-                .subscribe(),
-            );
-            subscriber.next(entity);
+            subscriber.add(addToParent(entity, child).subscribe());
           });
+          subscriber.next(entity);
         });
       }),
     );
@@ -182,11 +203,11 @@ export function toComponent() {
           next: (entity) => {
             if (!entity) {
               subscriber.next({
-                mount: () => () => {},
+                addTo: () => () => {},
               });
             } else {
               subscriber.next({
-                mount: (parent) => {
+                addTo: (parent) => {
                   parent.add(entity);
                   return () => {
                     parent.remove(entity);

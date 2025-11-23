@@ -4,17 +4,11 @@ import { BehaviorSubject, Subject } from "rxjs";
 import {
   addDependency,
   batch,
-  Dedupe,
+  Changes,
   onInvalidate,
   Source,
 } from "./Signal.js";
-import {
-  derived,
-  initial,
-  $autorun,
-  toObservable,
-  toChanges,
-} from "./operators.js";
+import { derived, initial, $autorun, toObservable } from "./operators.js";
 
 describe("diamond dependency", function () {
   it("should update all dependants when a signal changes", function () {
@@ -207,7 +201,7 @@ describe("toChanges", function () {
     /** @type {Subject<void>} */
     const changes = new Subject();
     let value = 0;
-    const dependency = new Dedupe(changes.pipe(toChanges()));
+    const dependency = new Changes(changes);
     const setValue = (/** @type {number} */ v) => {
       if (value !== v) {
         value = v;

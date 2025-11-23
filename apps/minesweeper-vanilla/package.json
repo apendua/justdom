@@ -12,7 +12,6 @@
     "test:watch": "jest --watch"
   },
   "dependencies": {
-    "@apendua.dev/context": "workspace:*",
     "@apendua.dev/dom": "workspace:*",
     "@apendua.dev/geometry": "workspace:*",
     "@apendua.dev/hmr": "workspace:*",

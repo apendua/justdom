@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { Observable, switchMap } from "rxjs";
-import { createProperty } from "@apendua.dev/context";
+import { createProperty } from "@apendua.dev/signal";
 
 /**
  * @import { XREventMap, InteractionEvent, InteractionEventType, InteractionEventMap } from "./core.js";

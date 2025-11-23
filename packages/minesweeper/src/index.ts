@@ -1,6 +1,5 @@
-import { batch, store } from "@apendua.dev/signal";
+import { batch, store, createProperty } from "@apendua.dev/signal";
 import { memo } from "@apendua.dev/store4";
-import { createProperty } from "@apendua.dev/context";
 import {
   BBox,
   VectorLike,

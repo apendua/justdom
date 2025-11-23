@@ -28,13 +28,12 @@
     "test:watch": "jest --watch"
   },
   "dependencies": {
-    "@apendua.dev/context": "workspace:*",
     "@apendua.dev/geometry": "workspace:*",
-    "@apendua.dev/signal": "workspace:*",
     "@apendua.dev/store4": "workspace:*",
     "rxjs": "^7.8.2"
   },
   "devDependencies": {
+    "@apendua.dev/signal": "workspace:*",
     "@types/jest": "^30.0.0",
     "@types/node": "^24.7.0",
     "eslint": "^9.37.0",
@@ -43,5 +42,8 @@
     "jest-environment-jsdom": "^29.7.0",
     "ts-jest": "^29.4.4",
     "typescript": "^5.9.3"
+  },
+  "peerDependencies": {
+    "@apendua.dev/signal": "workspace:*"
   }
 }

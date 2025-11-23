@@ -80,7 +80,7 @@ export function nonReactive(fn) {
 
 /**
  * @template T
- * @typedef {object} Context
+ * @typedef {object} EvaluationContext
  * @property {() => T} getValue
  * @property {() => boolean} hasValue
  * @property {(fn: () => void) => void} onInvalidate
@@ -123,7 +123,7 @@ export class Derived {
   /** @type {Observable<Dependency>} */
   #changes = this.#getChanges();
 
-  /** @type {(ctx: Context<T>) => T} */
+  /** @type {(ctx: EvaluationContext<T>) => T} */
   #evaluate;
 
   /** @type {number} */
@@ -142,7 +142,7 @@ export class Derived {
   };
 
   /**
-   * @param {(ctx: Context<T>) => T} evaluate
+   * @param {(ctx: EvaluationContext<T>) => T} evaluate
    */
   constructor(evaluate) {
     this.#evaluate = evaluate;
@@ -286,7 +286,7 @@ export class Derived {
   }
 
   /**
-   * @returns {Context<T>}
+   * @returns {EvaluationContext<T>}
    */
   #getContext() {
     return {

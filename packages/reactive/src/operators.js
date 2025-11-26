@@ -1,9 +1,4 @@
-import {
-  addDependency,
-  Derived,
-  Source,
-  toObservable,
-} from "@apendua.dev/signal";
+import { addDependency, Derived, Source, toObservable } from "@apendua.dev/signal";
 import { Observable, switchMap } from "rxjs";
 
 /**

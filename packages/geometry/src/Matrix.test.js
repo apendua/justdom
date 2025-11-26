@@ -94,9 +94,7 @@ describe("Test Matrix", () => {
       expect(m.mul(n).isEqual(M([1, 1, 1, 4, 4, 4, 7, 7, 7]))).toBe(true);
     });
     test("should multiply two matrices (bis)", () => {
-      expect(n.mul(m).isEqual(M([9, 12, 15, -9, -12, -15, 9, 12, 15]))).toBe(
-        true,
-      );
+      expect(n.mul(m).isEqual(M([9, 12, 15, -9, -12, -15, 9, 12, 15]))).toBe(true);
     });
   });
   describe("Matrix.det", () => {
@@ -126,14 +124,10 @@ describe("Test Matrix", () => {
       v = V(1, 2, 3);
     });
     test("should multiply matrix by a 2D inline vector", () => {
-      expect(m.mulVector({ x: 1, y: 2 }).isEqual({ x: 2, y: 11, z: 20 })).toBe(
-        true,
-      );
+      expect(m.mulVector({ x: 1, y: 2 }).isEqual({ x: 2, y: 11, z: 20 })).toBe(true);
     });
     test("should multiply matrix by a 3D inline vector", () => {
-      expect(
-        m.mulVector({ x: 1, y: 2, z: 3 }).isEqual({ x: 8, y: 26, z: 44 }),
-      ).toBe(true);
+      expect(m.mulVector({ x: 1, y: 2, z: 3 }).isEqual({ x: 8, y: 26, z: 44 })).toBe(true);
     });
     test("should multiply matrix by a vector", () => {
       expect(m.mulVector(v).isEqual({ x: 8, y: 26, z: 44 })).toBe(true);

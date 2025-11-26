@@ -1,11 +1,6 @@
 import { filter, ReplaySubject, Subject } from "rxjs";
 // import { memoize } from "./utils.js";
-import {
-  addDependency,
-  Changes,
-  Source,
-  setEffects,
-} from "@apendua.dev/signal";
+import { addDependency, Changes, Source, setEffects } from "@apendua.dev/signal";
 import { all } from "./operators.js";
 import Emitter from "./Emitter.js";
 
@@ -100,8 +95,7 @@ function store(data, operators = []) {
   /** @type {Emitter<Record<PropertyKey, unknown>>} */
   const eventListener = new Emitter();
   const addEventListener = eventListener.addEventListener.bind(eventListener);
-  const removeEventListener =
-    eventListener.removeEventListener.bind(eventListener);
+  const removeEventListener = eventListener.removeEventListener.bind(eventListener);
 
   const proxy = new Proxy(state, {
     get(_, key) {

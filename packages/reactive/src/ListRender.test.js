@@ -21,9 +21,7 @@ describe("renders a simple DOM tree", () => {
         ),
       ]),
     );
-    expect(innerHTML.get()).toBe(
-      "<div><span>Hello,</span><span>World!</span></div>",
-    );
+    expect(innerHTML.get()).toBe("<div><span>Hello,</span><span>World!</span></div>");
     innerHTML.dispose();
     expect(innerHTML.get()).toBe("<div></div>");
   });

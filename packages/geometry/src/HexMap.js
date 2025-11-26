@@ -41,9 +41,7 @@ OFFSETS.forEach((v) => {
   ORDER_TO_OFFSET[v.order] = v;
 });
 
-const PROJECTION_MATRIX = new Matrix([
-  -0.5, 0.5, 0, 0.25, 0.25, -0.5, 1.0, 1.0, 1.0,
-]);
+const PROJECTION_MATRIX = new Matrix([-0.5, 0.5, 0, 0.25, 0.25, -0.5, 1.0, 1.0, 1.0]);
 // const PROJECTION_MATRIX_INVERSE = new Matrix([
 //   -1, 2 / 3, 1 / 3,
 //   1, 2 / 3, 1 / 3,
@@ -100,11 +98,7 @@ class HexMap {
    * @param {HexMapOptions} [options={}]
    */
   constructor(generator, options = {}) {
-    const {
-      origin = new Vector(1, 0, 0),
-      maxFields = 1000,
-      predicate = () => false,
-    } = options;
+    const { origin = new Vector(1, 0, 0), maxFields = 1000, predicate = () => false } = options;
     this.#fields = new Map();
     this.#invariant = origin.x + origin.y + origin.z;
     let seeds = [Vector.zero().add(origin)];
@@ -174,9 +168,7 @@ class HexMap {
    * @returns {T[]}
    */
   getNeighbors(field) {
-    return OFFSETS.map((offset) => this.getField(offset.add(field))).filter(
-      (x) => !!x,
-    );
+    return OFFSETS.map((offset) => this.getField(offset.add(field))).filter((x) => !!x);
   }
 
   /**

@@ -268,10 +268,7 @@ export function siftUp(array, start, end, cmp, swap = defaultSwap) {
 export function siftDown(array, i, end, cmp, swap = defaultSwap) {
   const l = left(i);
   const r = right(i);
-  if (
-    (l <= end && cmp(array[i], array[l]) < 0) ||
-    (r <= end && cmp(array[i], array[r]) < 0)
-  ) {
+  if ((l <= end && cmp(array[i], array[l]) < 0) || (r <= end && cmp(array[i], array[r]) < 0)) {
     if (l > end || (r <= end && cmp(array[l], array[r]) <= 0)) {
       // i.e. array[i] < array[r] && array[l] <= array[r]
       swap(array, i, r);

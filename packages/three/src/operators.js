@@ -43,9 +43,7 @@ export function copy(key, value) {
           subscriber.add(
             value.subscribe({
               next: (v) => {
-                /** @type {Record<K, { copy: (v: TEntity[K]) => void }>} */ (
-                  entity
-                )[key].copy(v);
+                /** @type {Record<K, { copy: (v: TEntity[K]) => void }>} */ (entity)[key].copy(v);
               },
             }),
           );
@@ -144,9 +142,6 @@ export function Nothing() {
  * @returns {Observable<Component>}
  */
 export function $(object, operators = []) {
-  const observable = operators.reduce(
-    (obs, operator) => operator(obs),
-    just(object),
-  );
+  const observable = operators.reduce((obs, operator) => operator(obs), just(object));
   return toComponent()(observable);
 }

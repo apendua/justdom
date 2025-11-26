@@ -138,7 +138,5 @@ export function style(key, value) {
  * @returns {(source: Observable<TElement>) => Observable<TElement>}
  */
 export function append(...children) {
-  return effect((entity) =>
-    each(fragment(...children), (node) => entity.appendChild(node)),
-  );
+  return effect((entity) => each(fragment(...children), (node) => entity.appendChild(node)));
 }

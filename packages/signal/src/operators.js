@@ -1,11 +1,5 @@
 import { BehaviorSubject, Observable, switchAll, switchMap } from "rxjs";
-import {
-  addDependency,
-  Derived,
-  Initial,
-  NoValueError,
-  Source,
-} from "./Signal.js";
+import { addDependency, Derived, Initial, NoValueError, Source } from "./Signal.js";
 
 /**
  * @import {MonoTypeOperatorFunction} from "rxjs"

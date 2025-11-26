@@ -59,9 +59,7 @@ function identity(x) {
   return x;
 }
 
-const PROJECTION_MATRIX = new Matrix([
-  -0.5, 0.5, 0, 0.25, 0.25, -0.5, 1.0, 1.0, 1.0,
-]);
+const PROJECTION_MATRIX = new Matrix([-0.5, 0.5, 0, 0.25, 0.25, -0.5, 1.0, 1.0, 1.0]);
 
 /**
  * @param {VectorLike} v
@@ -180,13 +178,7 @@ export const getFieldSetBBox = (fieldSet) => {
  * }} options
  * @returns {Matrix}
  */
-export const getViewportMatrix = ({
-  origin,
-  offsetX,
-  offsetY,
-  fieldWidth,
-  fieldHeight,
-}) => {
+export const getViewportMatrix = ({ origin, offsetX, offsetY, fieldWidth, fieldHeight }) => {
   const bbox = getFieldBBox(origin);
   const A = fieldWidth;
   const B = offsetX - bbox.minX * fieldWidth;
@@ -205,13 +197,7 @@ export const getViewportMatrix = ({
  * }} options
  * @returns {((v: VectorLike) => VectorLike)}
  */
-export const getHexToPixelsMapping = ({
-  origin,
-  offsetX,
-  offsetY,
-  fieldWidth,
-  fieldHeight,
-}) => {
+export const getHexToPixelsMapping = ({ origin, offsetX, offsetY, fieldWidth, fieldHeight }) => {
   const V = getViewportMatrix({
     origin,
     offsetX,
@@ -239,13 +225,7 @@ export const getHexToPixelsMapping = ({
  * }} options
  * @returns {((p: VectorLike) => { hex?: VectorLike; off?: VectorLike })}
  */
-export const getPixelsToHexMapping = ({
-  origin,
-  offsetX,
-  offsetY,
-  fieldWidth,
-  fieldHeight,
-}) => {
+export const getPixelsToHexMapping = ({ origin, offsetX, offsetY, fieldWidth, fieldHeight }) => {
   const invariant = new Vector(1, 1, 1).dot(origin);
   const P = PROJECTION_MATRIX.inv();
   const V = getViewportMatrix({
@@ -303,10 +283,7 @@ export const createFieldSet = (options) => {
     for (const seed of seeds) {
       const key = getKey(seed);
       if (!fields.has(key) && predicate(seed, distance)) {
-        fields.set(
-          key,
-          generator(new Vector(seed.x, seed.y, seed.z), distance),
-        );
+        fields.set(key, generator(new Vector(seed.x, seed.y, seed.z), distance));
         for (const offset of OFFSETS) {
           const newSeed = seed.add(offset);
           const newKey = getKey(newSeed);

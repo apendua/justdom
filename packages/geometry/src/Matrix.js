@@ -78,9 +78,7 @@ export default class Matrix {
         this.e0 * this.e4 * this.e8 +
         this.e3 * this.e7 * this.e2 +
         this.e6 * this.e1 * this.e5 -
-        (this.e0 * this.e7 * this.e5 +
-          this.e3 * this.e1 * this.e8 +
-          this.e6 * this.e4 * this.e2),
+        (this.e0 * this.e7 * this.e5 + this.e3 * this.e1 * this.e8 + this.e6 * this.e4 * this.e2),
     });
     return this.det;
   }

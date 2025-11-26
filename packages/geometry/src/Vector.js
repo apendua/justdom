@@ -219,11 +219,7 @@ export default class Vector {
    * @returns {Vector}
    */
   floor() {
-    return new Vector(
-      Math.floor(this.x),
-      Math.floor(this.y),
-      Math.floor(this.z),
-    );
+    return new Vector(Math.floor(this.x), Math.floor(this.y), Math.floor(this.z));
   }
 
   /**
@@ -241,11 +237,7 @@ export default class Vector {
    * @returns {Vector}
    */
   cross({ x, y, z = 0 }) {
-    return new Vector(
-      this.y * z - this.z * y,
-      this.z * x - this.x * z,
-      this.x * y - this.y * x,
-    );
+    return new Vector(this.y * z - this.z * y, this.z * x - this.x * z, this.x * y - this.y * x);
   }
 
   /**

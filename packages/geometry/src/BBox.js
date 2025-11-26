@@ -38,12 +38,7 @@ export default class BBox {
    * @param {Partial<IBBox>} options
    */
   constructor(options = {}) {
-    const {
-      minX = Infinity,
-      maxX = -Infinity,
-      minY = Infinity,
-      maxY = -Infinity,
-    } = options;
+    const { minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity } = options;
     this.minX = minX;
     this.minY = minY;
     this.maxX = maxX;

@@ -45,9 +45,7 @@ describe("DOM Operators", () => {
       const value$ = new Subject();
       const source$ = just(div);
 
-      const subscription = source$
-        .pipe(setAttribute("data-test", value$))
-        .subscribe();
+      const subscription = source$.pipe(setAttribute("data-test", value$)).subscribe();
 
       value$.next("test value");
       expect(div.getAttribute("data-test")).toBe("test value");
@@ -61,9 +59,7 @@ describe("DOM Operators", () => {
       const value$ = new Subject();
       const source$ = just(div);
 
-      const subscription = source$
-        .pipe(setAttribute("data-test", value$))
-        .subscribe();
+      const subscription = source$.pipe(setAttribute("data-test", value$)).subscribe();
 
       value$.next("test value");
       expect(div.getAttribute("data-test")).toBe("test value");
@@ -80,9 +76,7 @@ describe("DOM Operators", () => {
       const value$ = new Subject();
       const source$ = just(div);
 
-      const subscription = source$
-        .pipe(setAttribute("data-test", value$))
-        .subscribe();
+      const subscription = source$.pipe(setAttribute("data-test", value$)).subscribe();
 
       value$.next("test value");
       expect(div.getAttribute("data-test")).toBe("test value");
@@ -97,9 +91,7 @@ describe("DOM Operators", () => {
       const value$ = new Subject();
       const source$ = just(div);
 
-      const subscription = source$
-        .pipe(setAttribute("data-test-key", value$))
-        .subscribe();
+      const subscription = source$.pipe(setAttribute("data-test-key", value$)).subscribe();
 
       value$.next("test value");
       expect(div.dataset.testKey).toBe("test value");
@@ -113,9 +105,7 @@ describe("DOM Operators", () => {
       const value$ = new Subject();
       const source$ = just(div);
 
-      const subscription = source$
-        .pipe(setAttribute("data-test-key", value$))
-        .subscribe();
+      const subscription = source$.pipe(setAttribute("data-test-key", value$)).subscribe();
 
       value$.next("test value");
       expect(div.dataset.testKey).toBe("test value");
@@ -199,9 +189,7 @@ describe("DOM Operators", () => {
       const value$ = new Subject();
       const source$ = new Observable((subscriber) => subscriber.next(div));
 
-      const subscription = source$
-        .pipe(style("backgroundColor", value$))
-        .subscribe();
+      const subscription = source$.pipe(style("backgroundColor", value$)).subscribe();
 
       value$.next("red");
       expect(div.style.backgroundColor).toBe("red");

@@ -106,10 +106,7 @@ export function encloseSegment(segment) {
   assertValidSegment(segment);
   return [
     segment[0].parentNode.insertBefore(document.createComment(""), segment[0]),
-    segment[1].parentNode.insertBefore(
-      document.createComment(""),
-      segment[1].nextSibling,
-    ),
+    segment[1].parentNode.insertBefore(document.createComment(""), segment[1].nextSibling),
   ];
 }
 

@@ -55,11 +55,7 @@ class FieldSetStore {
     const borderWidth = this.#props.borderWidth ?? 1;
     return loops
       .map((loop) =>
-        makePathString(
-          Array.from(
-            grow(loop.map(this.#viewport.mapHexToPixels), borderWidth / 2),
-          ),
-        ),
+        makePathString(Array.from(grow(loop.map(this.#viewport.mapHexToPixels), borderWidth / 2))),
       )
       .join(" ");
   }

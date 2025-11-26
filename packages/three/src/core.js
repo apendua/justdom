@@ -1,12 +1,5 @@
 import * as THREE from "three";
-import {
-  distinctUntilChanged,
-  filter,
-  Observable,
-  Subject,
-  switchMap,
-  takeUntil,
-} from "rxjs";
+import { distinctUntilChanged, filter, Observable, Subject, switchMap, takeUntil } from "rxjs";
 import { just } from "./operators";
 import { addDependency, batch, Changes, Derived } from "@apendua.dev/signal";
 
@@ -187,10 +180,7 @@ export function addDynamicToParent(parent, items, renderItem) {
                     unmount();
                   }
                   if (newChildEntity) {
-                    mountedChildEntities.set(
-                      item,
-                      newChildEntity.addTo(parent),
-                    );
+                    mountedChildEntities.set(item, newChildEntity.addTo(parent));
                   }
                 }),
             );
@@ -245,9 +235,7 @@ export function addDynamicToParent(parent, items, renderItem) {
  */
 export function addDynamic(items, renderItem) {
   return switchMap((parent) => {
-    return just(parent).pipe(
-      takeUntil(addDynamicToParent(parent, items, renderItem)),
-    );
+    return just(parent).pipe(takeUntil(addDynamicToParent(parent, items, renderItem)));
   });
 }
 
@@ -261,9 +249,7 @@ export function collection(items, renderItem) {
   return new Observable((subscriber) => {
     /** @type {THREE.Group<XREventMap>} */
     const parent = new THREE.Group();
-    subscriber.add(
-      addDynamicToParent(parent, items, renderItem).subscribe(subscriber),
-    );
+    subscriber.add(addDynamicToParent(parent, items, renderItem).subscribe(subscriber));
     subscriber.next(parent);
   });
 }

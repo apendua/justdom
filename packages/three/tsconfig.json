@@ -14,11 +14,7 @@
     "declaration": true,
     "sourceMap": true,
     "sourceRoot": "./src",
-    "typeRoots": [
-      "./src/types",
-      "./node_modules/@types",
-      "./node_modules/@webgpu/types"
-    ],
+    "typeRoots": ["./src/types", "./node_modules/@types", "./node_modules/@webgpu/types"],
     "rootDirs": ["./src"],
     "rootDir": "./src",
     "outDir": "./lib"

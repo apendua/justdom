@@ -56,9 +56,7 @@ const Game = (ctx: WeakKey) => {
             append(text`Restart`),
           ),
           html("span").pipe(
-            append(
-              text`width = ${screenWidth}, height = ${screenHeight}, mines = ${minesLeft}`,
-            ),
+            append(text`width = ${screenWidth}, height = ${screenHeight}, mines = ${minesLeft}`),
           ),
         ),
         append(Minefield(newContext, game)),

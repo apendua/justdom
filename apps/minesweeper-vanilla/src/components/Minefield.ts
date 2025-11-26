@@ -40,9 +40,7 @@ const Minefield = $factory((ctx: WeakKey, game: Fields) => {
         const pt = svgRef.createSVGPoint();
         pt.x = x;
         pt.y = y;
-        const { hex } = viewport.mapPixelsToHex(
-          pt.matrixTransform(ctm.inverse()),
-        );
+        const { hex } = viewport.mapPixelsToHex(pt.matrixTransform(ctm.inverse()));
         if (hex) {
           const key = getKey(hex);
           if (e.shiftKey) {
@@ -58,10 +56,7 @@ const Minefield = $factory((ctx: WeakKey, game: Fields) => {
   return svg("svg").pipe(
     setAttribute$("width", () => dimensions.screenWidth.toString()),
     setAttribute$("height", () => dimensions.screenHeight.toString()),
-    setAttribute$(
-      "viewbox",
-      () => `0 0 ${dimensions.screenWidth} ${dimensions.screenHeight}`,
-    ),
+    setAttribute$("viewbox", () => `0 0 ${dimensions.screenWidth} ${dimensions.screenHeight}`),
     on<SVGSVGElement, "click">("click", handleOnClick),
     append(
       FieldSet(ctx, {

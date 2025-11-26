@@ -1,13 +1,7 @@
 /* eslint-env jest */
 
 import { BehaviorSubject, Subject } from "rxjs";
-import {
-  addDependency,
-  batch,
-  Changes,
-  onInvalidate,
-  Source,
-} from "./Signal.js";
+import { addDependency, batch, Changes, onInvalidate, Source } from "./Signal.js";
 import { derived, initial, $autorun, toObservable } from "./operators.js";
 
 describe("diamond dependency", function () {

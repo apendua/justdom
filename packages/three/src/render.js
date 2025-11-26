@@ -30,9 +30,7 @@ export const RendererSizeContext = createProperty(
  */
 export function size(ctx) {
   const { width, height } = RendererSizeContext.get(ctx);
-  return combineLatest([width, height]).pipe(
-    map(([width, height]) => ({ width, height })),
-  );
+  return combineLatest([width, height]).pipe(map(([width, height]) => ({ width, height })));
 }
 
 export const CameraContext = createProperty(
@@ -147,12 +145,7 @@ export function render(fn, options = {}) {
     renderer.setPixelRatio(window.devicePixelRatio);
     renderer.setSize(width.getValue(), height.getValue());
 
-    const camera = new THREE.PerspectiveCamera(
-      70,
-      width.getValue() / height.getValue(),
-      0.1,
-      20,
-    );
+    const camera = new THREE.PerspectiveCamera(70, width.getValue() / height.getValue(), 0.1, 20);
 
     function onResize() {
       width.next(window.innerWidth);
@@ -192,9 +185,7 @@ export function render(fn, options = {}) {
     //   controllerGrip0.add(options.createHandModel(hand0));
     // }
     subscriber.add(
-      interactionManager
-        .addController(controller0, (fn) => addListener(renderer, fn))
-        .subscribe(),
+      interactionManager.addController(controller0, (fn) => addListener(renderer, fn)).subscribe(),
     );
     const controller1 = renderer.xr.getController(1);
     const controllerGrip1 = renderer.xr.getControllerGrip(1);
@@ -206,9 +197,7 @@ export function render(fn, options = {}) {
       controllerGrip1.add(options.createControllerModel(controllerGrip1));
     }
     subscriber.add(
-      interactionManager
-        .addController(controller1, (fn) => addListener(renderer, fn))
-        .subscribe(),
+      interactionManager.addController(controller1, (fn) => addListener(renderer, fn)).subscribe(),
     );
 
     // Add simple rays to controllers. This will need to be revisited.

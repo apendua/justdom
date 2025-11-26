@@ -1,16 +1,5 @@
-import {
-  distinctUntilChanged,
-  Observable,
-  ReplaySubject,
-  share,
-  switchMap,
-} from "rxjs";
-import {
-  moveSegmentBefore,
-  removeSegment,
-  replaceSegment,
-  toSegment,
-} from "./helpers.js";
+import { distinctUntilChanged, Observable, ReplaySubject, share, switchMap } from "rxjs";
+import { moveSegmentBefore, removeSegment, replaceSegment, toSegment } from "./helpers.js";
 
 /**
  * @import { Subscriber, Subscription } from "rxjs";
@@ -202,10 +191,7 @@ export function collection(items, renderItem) {
             const nextNode = nextSegment?.[0] ?? listEnd;
             const { parentNode } = nextNode;
             if (parentNode) {
-              const newComment = parentNode.insertBefore(
-                document.createComment(""),
-                nextNode,
-              );
+              const newComment = parentNode.insertBefore(document.createComment(""), nextNode);
               childSegments.set(item, toSegment(newComment));
             }
           }
@@ -228,10 +214,7 @@ export function collection(items, renderItem) {
                   next: (newNode) => {
                     const oldSegment = childSegments.get(item);
                     if (oldSegment) {
-                      childSegments.set(
-                        item,
-                        replaceSegment(newNode, oldSegment),
-                      );
+                      childSegments.set(item, replaceSegment(newNode, oldSegment));
                     }
                   },
                   error: (error) => {
@@ -243,10 +226,7 @@ export function collection(items, renderItem) {
             const childSegment = childSegments.get(item);
             if (childSegment) {
               if (nextSegment) {
-                if (
-                  childSegment &&
-                  childSegment[1].nextSibling !== nextSegment[0]
-                ) {
+                if (childSegment && childSegment[1].nextSibling !== nextSegment[0]) {
                   moveSegmentBefore(childSegment, nextSegment[0]);
                 }
               } else {

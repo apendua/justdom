@@ -62,9 +62,7 @@ class Emitter {
    * @param {TEventMap[TEvent]} payload
    */
   emit(event, payload) {
-    const listeners = /** @type {Set<Handler<TEventMap[TEvent]>>} */ (
-      this.#listeners.get(event)
-    );
+    const listeners = /** @type {Set<Handler<TEventMap[TEvent]>>} */ (this.#listeners.get(event));
     if (listeners) {
       nonReactive(() => {
         for (const listener of listeners) {

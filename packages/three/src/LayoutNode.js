@@ -425,11 +425,7 @@ class LayoutNode {
    * @param {LayoutOrientation} [orientationZ]
    * @returns {void}
    */
-  setOrientation(
-    orientationX,
-    orientationY = orientationX,
-    orientationZ = orientationX,
-  ) {
+  setOrientation(orientationX, orientationY = orientationX, orientationZ = orientationX) {
     batch(() => {
       this.#state.orientation.X = orientationX;
       this.#state.orientation.Y = orientationY;
@@ -626,13 +622,11 @@ class LayoutNode {
         spacing = this.#state.spacing[direction];
         break;
       case "SPACE_BETWEEN":
-        spacing =
-          children.length > 1 ? totalSpacing / (children.length - 1) : 0;
+        spacing = children.length > 1 ? totalSpacing / (children.length - 1) : 0;
         break;
     }
 
-    const totalSize =
-      totalFixedSize + totalWeight * unitSize + spacing * (children.length - 1);
+    const totalSize = totalFixedSize + totalWeight * unitSize + spacing * (children.length - 1);
 
     /** @type {number} */
     let start;
@@ -700,9 +694,7 @@ class LayoutNode {
     switch (this.#state.alignment[direction]) {
       case "START":
         if (this.#state.orientation[direction] === "POSITIVE") {
-          return (
-            -this.getInnerSize(direction) / 2 + node.getSize(direction) / 2
-          );
+          return -this.getInnerSize(direction) / 2 + node.getSize(direction) / 2;
         }
         return this.getInnerSize(direction) / 2 - node.getSize(direction) / 2;
       case "END":
@@ -744,9 +736,7 @@ class LayoutNode {
       return this.getMinSize(direction);
     }
     if (this.#state.stretch[direction] > 0) {
-      return (
-        this.#state.stretch[direction] * this.parentNode.getUnitSize(direction)
-      );
+      return this.#state.stretch[direction] * this.parentNode.getUnitSize(direction);
     }
     return this.getMinSize(direction);
   }
@@ -772,9 +762,7 @@ class LayoutNode {
     const children = this.getChildren();
     const totalFixedSize = this.getTotalFixedSize(direction);
     const availableSize =
-      innerSize -
-      totalFixedSize -
-      this.#state.spacing[direction] * (children.length - 1);
+      innerSize - totalFixedSize - this.#state.spacing[direction] * (children.length - 1);
     return availableSize / totalWeight;
   }
 
@@ -851,10 +839,7 @@ class LayoutNode {
         minSize = childMinSize;
       }
     }
-    return Math.max(
-      this.#state.minSize[direction],
-      minSize + this.#state.padding[direction] * 2,
-    );
+    return Math.max(this.#state.minSize[direction], minSize + this.#state.padding[direction] * 2);
   }
 
   /**
@@ -863,10 +848,7 @@ class LayoutNode {
    * @returns {LayoutNode}
    */
   insertBefore(node, before) {
-    this.#treeNode.insertBefore(
-      node.#treeNode,
-      before ? before.#treeNode : null,
-    );
+    this.#treeNode.insertBefore(node.#treeNode, before ? before.#treeNode : null);
     this.#object.add(node.#object);
     this.#events.next("UPDATED_CHILDREN");
     node.#events.next("UPDATED_PARENT");

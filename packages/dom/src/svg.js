@@ -7,8 +7,6 @@ import { Observable } from "rxjs";
  */
 export function svg(tag) {
   return new Observable((subscriber) => {
-    subscriber.next(
-      document.createElementNS("http://www.w3.org/2000/svg", tag),
-    );
+    subscriber.next(document.createElementNS("http://www.w3.org/2000/svg", tag));
   });
 }

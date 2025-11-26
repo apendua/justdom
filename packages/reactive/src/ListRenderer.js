@@ -123,9 +123,7 @@ export default class ListRenderer {
                 // NOTE: Only put placeholder where the new item should be inserted. The actual element
                 //       will be inserted by the subscription.
                 if (!nextSegment) {
-                  const newPlaceholder = container.appendChild(
-                    this.#createPlaceholder(),
-                  );
+                  const newPlaceholder = container.appendChild(this.#createPlaceholder());
                   childSegments.set(item, toSegment(newPlaceholder));
                 } else {
                   const nextNode = nextSegment[0];
@@ -158,10 +156,7 @@ export default class ListRenderer {
                       next: (newMountable) => {
                         const oldSegment = childSegments.get(item);
                         if (oldSegment) {
-                          childSegments.set(
-                            item,
-                            newMountable.replace(oldSegment),
-                          );
+                          childSegments.set(item, newMountable.replace(oldSegment));
                         }
                       },
                       error: (error) => {
@@ -198,10 +193,7 @@ export default class ListRenderer {
                 childSegments.delete(item);
               }
             }
-            for (const [
-              item,
-              childSubscription,
-            ] of childSubscriptions.entries()) {
+            for (const [item, childSubscription] of childSubscriptions.entries()) {
               if (!newItemsSet.has(item)) {
                 childSubscription.unsubscribe();
                 childSubscriptions.delete(item);

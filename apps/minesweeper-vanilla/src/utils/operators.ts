@@ -6,7 +6,7 @@ import {
   type Primitive,
   type ObjectWithAttributes,
 } from "@apendua.dev/dom";
-import { $autorun, reactiveEffect } from "@apendua.dev/signal";
+import { $autorun } from "@apendua.dev/signal";
 
 export function set$<T extends object, K extends keyof WritableProps<T>>(
   key: K,
@@ -20,10 +20,4 @@ export function setAttribute$<T extends ObjectWithAttributes>(
   getValue: () => Primitive,
 ): (source: Observable<T>) => Observable<T> {
   return setAttribute(key, $autorun(getValue));
-}
-
-export function effect$<T>(
-  fn: (value: T) => void,
-): (source: Observable<T>) => Observable<T> {
-  return reactiveEffect(fn);
 }

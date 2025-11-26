@@ -1,10 +1,17 @@
 import { filter, ReplaySubject, Subject } from "rxjs";
 // import { memoize } from "./utils.js";
-import { addDependency, Changes, Source } from "./Signal.js";
-import { all, setEffects } from "./operators.js";
+import {
+  addDependency,
+  Changes,
+  Source,
+  setEffects,
+} from "@apendua.dev/signal";
+import { all } from "./operators.js";
+import Emitter from "./Emitter.js";
 
 /**
  * @import {MonoTypeOperatorFunction} from "rxjs"
+ * @import {IEmitter} from "./Emitter.js";
  */
 
 /**
@@ -38,12 +45,31 @@ function memoize(fn) {
   };
 }
 
+/** @type {WeakMap<object, Emitter<Record<PropertyKey, unknown>>>} */
+const emitters = new WeakMap();
+
+/**
+ * @template {IEmitter<Record<any, any>>} T
+ * @template {keyof T["__EVENT_MAP__"]} TEvent
+ * @param {T} data
+ * @param {TEvent} event
+ * @param {T["__EVENT_MAP__"][TEvent]} payload
+ * @return {void}
+ */
+export function emit(data, event, payload) {
+  let emitter = emitters.get(data);
+  if (emitter) {
+    emitter.emit(event, payload);
+  }
+}
+
 /**
  * @template {object} T
+ * @template {object} [TEventMap={}]
  * @overload
  * @param {T} data
- * @param {Array<MonoTypeOperatorFunction<T>>} [operators]
- * @return {T}
+ * @param {Array<MonoTypeOperatorFunction<T & IEmitter<TEventMap>>>} [operators]
+ * @return {T & IEmitter<TEventMap>}
  */
 
 /**
@@ -60,7 +86,7 @@ function store(data, operators = []) {
 
   /** @type {Subject<object>} */
   const subject = new ReplaySubject(1);
-  const effects = new Source(subject.pipe(all(operators)));
+  const effects = new Source(subject.pipe(all(...operators)));
 
   /**
    * @param {PropertyKey} key
@@ -71,9 +97,20 @@ function store(data, operators = []) {
 
   /** @type {WeakMap<object, object>} */
   const cache = new WeakMap();
+  /** @type {Emitter<Record<PropertyKey, unknown>>} */
+  const eventListener = new Emitter();
+  const addEventListener = eventListener.addEventListener.bind(eventListener);
+  const removeEventListener =
+    eventListener.removeEventListener.bind(eventListener);
 
   const proxy = new Proxy(state, {
     get(_, key) {
+      if (key === "addEventListener") {
+        return addEventListener;
+      }
+      if (key === "removeEventListener") {
+        return removeEventListener;
+      }
       addDependency(effects);
       addDependency(getChangesAtKey(key));
       if (isPlainObject(state[key])) {
@@ -115,6 +152,7 @@ function store(data, operators = []) {
 
   subject.next(proxy);
   setEffects(proxy, effects);
+  emitters.set(proxy, eventListener);
 
   return /** @type {T} */ (proxy);
 }

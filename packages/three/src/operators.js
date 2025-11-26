@@ -1,8 +1,8 @@
-import { distinctUntilChanged, Observable, switchMap, tap } from "rxjs";
+import { distinctUntilChanged, Observable, switchMap } from "rxjs";
 
 /**
  * @import { Object3D } from 'three';
- * @import { WritableProps, CopyableProps, XREventMap, Component, EventListener } from './core.js';
+ * @import { CopyableProps, XREventMap, Component, EventListener } from './core.js';
  */
 
 /**
@@ -22,48 +22,6 @@ export function on(type, handler) {
           return () => {
             entity.removeEventListener(type, handler);
           };
-        });
-      }),
-    );
-  };
-}
-
-/**
- * @template {object} TEntity
- * @param {Partial<WritableProps<TEntity>>} props
- * @returns {(source: Observable<TEntity>) => Observable<TEntity>}   *
- */
-export function init(props) {
-  return (source) => {
-    return source.pipe(
-      tap((entity) => {
-        Object.assign(entity, props);
-      }),
-    );
-  };
-}
-
-/**
- * @template {object} TEntity
- * @template {keyof WritableProps<TEntity>} K
- * @param {K} key
- * @param {Observable<TEntity[K]>} value
- * @returns {(source: Observable<TEntity>) => Observable<TEntity>}   *
- */
-export function set(key, value) {
-  return (source) => {
-    return source.pipe(
-      switchMap((entity) => {
-        return new Observable((subscriber) => {
-          subscriber.add(
-            value.subscribe({
-              next: (v) => {
-                entity[key] = v;
-              },
-              error: (err) => subscriber.error(err),
-            }),
-          );
-          subscriber.next(entity);
         });
       }),
     );
@@ -136,24 +94,6 @@ export function add(...children) {
 
 /**
  * @template T
- * @param {(entity: T) => Observable<unknown>} fn
- * @returns {(source: Observable<T>) => Observable<T>}
- */
-export function effect(fn) {
-  return (source) => {
-    return source.pipe(
-      switchMap((entity) => {
-        return new Observable((subscriber) => {
-          subscriber.add(fn(entity).subscribe());
-          subscriber.next(entity);
-        });
-      }),
-    );
-  };
-}
-
-/**
- * @template T
  * @param {T} value
  * @returns {Observable<T>}
  */
@@ -161,35 +101,6 @@ export function just(value) {
   return new Observable((subscriber) => {
     subscriber.next(value);
   });
-}
-
-/**
- * @typedef {object} Disposable
- * @property {() => void} dispose
- */
-
-/**
- * @template {Disposable} T
- * @template {unknown[]} Args
- * @param {(...args: Args) => T} factory
- * @returns {(source: Observable<Args>) => Observable<T>}
- */
-export function disposable(factory) {
-  return switchMap(
-    /**
-     * @param {Args} args
-     * @returns {Observable<T>}
-     */
-    (args) => {
-      return new Observable((subscriber) => {
-        const value = factory(...args);
-        subscriber.next(value);
-        return () => {
-          value.dispose();
-        };
-      });
-    },
-  );
 }
 
 /**

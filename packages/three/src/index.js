@@ -19,12 +19,8 @@ export {
 export {
   on,
   add,
-  init,
-  set,
   copy,
-  effect,
   just,
-  disposable,
   toComponent,
   Nothing,
   $,
@@ -32,7 +28,7 @@ export {
 } from "./operators.js";
 export { collection, addDynamic } from "./core.js";
 export { render, animate, size, camera, session } from "./render.js";
-export { stopPropagation, interactive, resetMatrix } from "./interactions.js";
+export { interactions, resetMatrix } from "./interactions.js";
 export { default as LayoutNode } from "./LayoutNode.js";
 export * from "./LayoutNode.js";
 

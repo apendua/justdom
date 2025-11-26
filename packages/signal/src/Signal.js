@@ -1,5 +1,6 @@
-import { Observable, share, Subject } from "rxjs";
+import { Observable, share, Subject, takeUntil } from "rxjs";
 import UpdateQueue from "./UpdateQueue.js";
+import nextTick from "./nextTick.js";
 // import nextTick from "./nextTick.js";
 
 export class NoValueError extends Error {
@@ -355,6 +356,12 @@ export class Initial {
   }
 }
 
+const myNextTick = nextTick().pipe(
+  share({
+    resetOnRefCountZero: true,
+  }),
+);
+
 /**
  * @template T
  */
@@ -397,6 +404,9 @@ export class Source {
 
   get() {
     addDependency(this);
+    if (!this.#notifier.observed) {
+      this.#changes.pipe(takeUntil(myNextTick)).subscribe();
+    }
     if (!this.#current) {
       if (this.#getInitialValue) {
         this.#current = { value: this.#getInitialValue() };
@@ -444,7 +454,11 @@ export class Source {
       subscriber.add(
         source.subscribe({
           next: (value) => {
-            this.#set(value);
+            if (initialized) {
+              this.#set(value);
+            } else {
+              this.#current = { value };
+            }
           },
           error: (err) => {
             subscriber.error(err);

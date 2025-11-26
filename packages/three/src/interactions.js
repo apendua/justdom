@@ -311,32 +311,23 @@ export const InteractionContext = createProperty(
 );
 
 /**
- * @param {WeakKey} ctx
- * @param {InteractionEvent} event
+ * @typedef {object} Interactions
+ * @property {(event: InteractionEvent) => void} stopPropagation
+ * @property {<TEntity extends THREE.Object3D<XREventMap>>() => (source: Observable<TEntity>) => Observable<TEntity>} makeInteractive
  */
-export const stopPropagation = (ctx, event) => {
-  const manager = InteractionContext.get(ctx);
-  manager.stopPropagation(event);
-};
 
 /**
  * @param {WeakKey} ctx
+ * @return {Interactions}
  */
-export const updateIntersections = (ctx) => {
+export function interactions(ctx) {
   const manager = InteractionContext.get(ctx);
-  manager.updateIntersections();
-};
-
-/**
- * @template {THREE.Object3D<XREventMap>} TEntity
- * @param {WeakKey} ctx
- * @return {(source: Observable<TEntity>) => Observable<TEntity>}
- */
-export function interactive(ctx) {
-  const manager = InteractionContext.get(ctx);
-  return (source) => {
-    return source.pipe(
-      switchMap((entity) => {
+  return {
+    stopPropagation: (event) => {
+      manager.stopPropagation(event);
+    },
+    makeInteractive: () => {
+      return switchMap((entity) => {
         manager.add(entity);
         return new Observable((subscriber) => {
           subscriber.next(entity);
@@ -344,8 +335,8 @@ export function interactive(ctx) {
             manager.remove(entity);
           };
         });
-      }),
-    );
+      });
+    },
   };
 }
 

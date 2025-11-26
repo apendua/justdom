@@ -1,6 +1,6 @@
 /* eslint-env jest */
+import { $autorun } from "@apendua.dev/signal";
 import store from "./store.js";
-import { $autorun } from "./operators.js";
 
 test("observes value", () => {
   const state = store({ value: 1 });

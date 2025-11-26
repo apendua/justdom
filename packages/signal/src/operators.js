@@ -1,10 +1,4 @@
-import {
-  BehaviorSubject,
-  Observable,
-  switchAll,
-  switchMap,
-  takeUntil,
-} from "rxjs";
+import { BehaviorSubject, Observable, switchAll, switchMap } from "rxjs";
 import {
   addDependency,
   Derived,
@@ -78,24 +72,6 @@ export function initial(value) {
 
 /**
  * @template T
- * @returns {(source: Observable<T>) => Observable<never>}
- */
-export function takeNothing() {
-  return (source) => {
-    return new Observable((subscriber) => {
-      const subscription = source.subscribe({
-        complete: () => subscriber.complete(),
-        error: (err) => subscriber.error(err),
-      });
-      return () => {
-        subscription.unsubscribe();
-      };
-    });
-  };
-}
-
-/**
- * @template T
  * @param {() => T} fn
  * @return {T}
  */
@@ -121,14 +97,6 @@ export function autorunMap(fn) {
   return switchMap((value) => {
     return $autorun(() => fn(value));
   });
-}
-
-/**
- * @template T
- * @param {Observable<T>} observable
- */
-export function use(observable) {
-  addDependency(new Source(observable));
 }
 
 /**
@@ -162,15 +130,6 @@ export function reactiveMap(fn) {
 
 /**
  * @template T
- * @param {Observable<unknown>} observable
- * @returns {(source: Observable<T>) => Observable<T>}
- */
-export function sideEffect(observable) {
-  return takeUntil(observable.pipe(takeNothing()));
-}
-
-/**
- * @template T
  * @param {(value: T) => Observable<unknown>} fn
  * @returns {(source: Observable<T>) => Observable<T>}
  */
@@ -186,17 +145,6 @@ export function effectMap(fn) {
         }),
       );
     });
-  });
-}
-
-/**
- * @template T
- * @param {(value: T) => void} fn
- * @returns {(source: Observable<T>) => Observable<T>}
- */
-export function reactiveEffect(fn) {
-  return effectMap((value) => {
-    return $autorun(() => fn(value));
   });
 }
 

@@ -16,6 +16,7 @@
     "@apendua.dev/geometry": "workspace:*",
     "@apendua.dev/hmr": "workspace:*",
     "@apendua.dev/minesweeper": "workspace:*",
+    "@apendua.dev/reactive": "workspace:*",
     "@apendua.dev/signal": "workspace:*",
     "@apendua.dev/store4": "workspace:*",
     "@apendua.dev/store4react": "workspace:*",

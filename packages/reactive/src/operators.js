@@ -1,4 +1,4 @@
-import { addDependency, Derived, Source, toObservable } from "@apendua.dev/signal";
+import { $reactive, addDependency, Derived, Source, toObservable } from "@apendua.dev/signal";
 import { Observable, switchMap } from "rxjs";
 
 /**
@@ -45,9 +45,12 @@ export function takeNothing() {
 }
 
 /**
- * @param {Observable<unknown>} observable
+ * @param {(() => Observable<unknown>) | Observable<unknown>} observable
  */
 export function use(observable) {
+  if (typeof observable === "function") {
+    observable = $reactive(observable);
+  }
   addDependency(new Source(observable.pipe(takeNothing())));
 }
 
@@ -113,4 +116,14 @@ export const just = (value, operators = []) => {
   return new Observable((subscriber) => {
     subscriber.next(value);
   }).pipe(all(...operators));
+};
+
+/**
+ * @template T
+ * @param {T} value
+ * @returns {void}
+ * @param  {MonoTypeOperatorFunction<T>[]} [operators]
+ */
+export const justUse = (value, operators = []) => {
+  return use(just(value, operators));
 };

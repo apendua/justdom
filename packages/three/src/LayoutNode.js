@@ -2,11 +2,11 @@ import * as THREE from "three";
 import { filter, NEVER, Subject } from "rxjs";
 import { batch } from "@apendua.dev/signal";
 import { decorate, invalidate, invalidateFn, memo } from "@apendua.dev/store4";
-import { just, replaceSegment, store } from "@apendua.dev/reactive";
+import { replaceSegment, store } from "@apendua.dev/reactive";
 import TreeNode from "./TreeNode.js";
 
 /**
- * @import {Observable, MonoTypeOperatorFunction} from "rxjs";
+ * @import {MonoTypeOperatorFunction} from "rxjs";
  * @import {INode, Mountable, Container} from "@apendua.dev/reactive";
  * @import {Component} from './core.js';
  */
@@ -103,15 +103,11 @@ class LayoutNode {
   /** @type {T} */
   #object;
 
-  /** @type {Observable<unknown>} */
-  #effects;
-
   /**
    * @param {T} object
    * @param {LayoutOptions} [options]
-   * @param {MonoTypeOperatorFunction<LayoutNode<T>>[]} [operators]
    */
-  constructor(object, options = {}, operators = []) {
+  constructor(object, options = {}) {
     const {
       direction = "Y",
       visible = true,
@@ -152,7 +148,6 @@ class LayoutNode {
       orientation: { X: orientationX, Y: orientationY, Z: orientationZ },
     });
     this.#object = object;
-    this.#effects = just(this, operators);
     events.set(this, this.#events);
   }
 
@@ -916,11 +911,9 @@ class LayoutNode {
        * @param {THREE.Object3D} parent
        */
       addTo: (parent) => {
-        const subscription = this.#effects.subscribe();
         parent.add(this.#object);
         return () => {
           parent.remove(this.#object);
-          subscription.unsubscribe();
         };
       },
       /**

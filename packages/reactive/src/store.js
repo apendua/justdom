@@ -1,7 +1,5 @@
-import { filter, ReplaySubject, Subject } from "rxjs";
-// import { memoize } from "./utils.js";
-import { addDependency, Changes, Source, setEffects } from "@apendua.dev/signal";
-import { all } from "./operators.js";
+import { filter, Subject } from "rxjs";
+import { addDependency, Changes } from "@apendua.dev/signal";
 import Emitter from "./Emitter.js";
 
 /**
@@ -69,19 +67,14 @@ export function emit(data, event, payload) {
 
 /**
  * @param {object} data
- * @param {Array<MonoTypeOperatorFunction<object>>} [operators]
  * @return {object}
  */
-function store(data, operators = []) {
+function store(data) {
   // TODO(@apendua): Handle array methods to trigger reactivity.
   const state = /** @type {Record<PropertyKey, unknown>} */ ({ ...data });
   /** @type {Subject<{ key: PropertyKey }>} */
   const changes = new Subject();
   const ownKeys = Symbol("ownKeys");
-
-  /** @type {Subject<object>} */
-  const subject = new ReplaySubject(1);
-  const effects = new Source(subject.pipe(all(...operators)));
 
   /**
    * @param {PropertyKey} key
@@ -105,7 +98,6 @@ function store(data, operators = []) {
       if (key === "removeEventListener") {
         return removeEventListener;
       }
-      addDependency(effects);
       addDependency(getChangesAtKey(key));
       if (isPlainObject(state[key])) {
         let storeAtKey = cache.get(state[key]);
@@ -127,7 +119,6 @@ function store(data, operators = []) {
       return true;
     },
     has(_, key) {
-      addDependency(effects);
       addDependency(getChangesAtKey(key));
       return key in state;
     },
@@ -138,16 +129,12 @@ function store(data, operators = []) {
       return true;
     },
     ownKeys() {
-      addDependency(effects);
       addDependency(getChangesAtKey(ownKeys));
       return Reflect.ownKeys(state);
     },
   });
 
-  subject.next(proxy);
-  setEffects(proxy, effects);
   emitters.set(proxy, eventListener);
-
   return /** @type {T} */ (proxy);
 }
 

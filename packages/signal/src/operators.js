@@ -1,5 +1,5 @@
-import { BehaviorSubject, Observable, switchAll, switchMap } from "rxjs";
-import { addDependency, Derived, Initial, NoValueError, Source } from "./Signal.js";
+import { Observable, switchAll, switchMap } from "rxjs";
+import { Derived, Initial, NoValueError, Source } from "./Signal.js";
 
 /**
  * @import {MonoTypeOperatorFunction} from "rxjs"
@@ -142,71 +142,13 @@ export function effectMap(fn) {
   });
 }
 
-/** @type {WeakMap<object, Dependency>} */
-const ownEffects = new WeakMap();
-
-/**
- * @template {object} T
- * @param {T} obj
- * @param {Dependency | Array<MonoTypeOperatorFunction<T>>} effects
- */
-export function setEffects(obj, effects) {
-  if (Array.isArray(effects)) {
-    const subject = new BehaviorSubject(obj);
-    ownEffects.set(obj, new Source(subject.pipe(all(effects))));
-  } else {
-    ownEffects.set(obj, effects);
-  }
-}
-
 /**
  * @template T
  * @param {T} value
  * @returns {Observable<T>}
  */
 export function just(value) {
-  if (typeof value === "object" && value !== null) {
-    const effects = ownEffects.get(value);
-    if (effects) {
-      return $autorun(() => {
-        addDependency(effects);
-        return value;
-      });
-    }
-  }
   return new Observable((subscriber) => {
     subscriber.next(value);
   });
-}
-
-/**
- * @template {object} T
- * @template {Partial<T>} U
- * @param {U} obj
- * @param {T} defaultValues
- * @returns {T & U}
- */
-export function defaults(obj, defaultValues) {
-  return /** @type {T & U} */ (
-    new Proxy(obj, {
-      get(target, prop, receiver) {
-        const value = Reflect.get(target, prop, receiver);
-        if (value !== undefined) {
-          return value;
-        }
-        return /** @type {any} */ (defaultValues)[prop];
-      },
-    })
-  );
-}
-
-/**
- * @template T
- * @param {Array<MonoTypeOperatorFunction<T>>} operators
- * @returns {MonoTypeOperatorFunction<T>}
- */
-export function all(operators) {
-  return (source) => {
-    return operators.reduce((obs, fn) => fn(obs), source);
-  };
 }

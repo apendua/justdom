@@ -1,18 +1,31 @@
 /* eslint-env jest */
 
 import { BehaviorSubject, Subject } from "rxjs";
-import { addDependency, batch, Changes, onInvalidate, Source } from "./Signal.js";
-import { derived, initial, $autorun, toObservable } from "./operators.js";
+import { addDependency, batch, Changes, Derived, Initial, onInvalidate, Source } from "./Signal.js";
+import { toObservable } from "./operators.js";
+
+/**
+ * @import {Observable} from "rxjs";
+ */
+
+/**
+ * @template T
+ * @param {() => T} fn
+ * @return {Observable<T>}
+ */
+function observable(fn) {
+  return toObservable(new Derived(fn));
+}
 
 describe("diamond dependency", function () {
   it("should update all dependants when a signal changes", function () {
-    const s1 = initial(0);
-    const s2 = derived(() => s1.get() + 1);
-    const s3 = derived(() => s1.get() + s2.get());
-    const s4 = derived(() => s1.get() + s2.get() + s3.get());
+    const s1 = new Initial(0);
+    const s2 = new Derived(() => s1.get() + 1);
+    const s3 = new Derived(() => s1.get() + s2.get());
+    const s4 = new Derived(() => s1.get() + s2.get() + s3.get());
 
     const spy = jest.fn();
-    const subscription = $autorun(() => {
+    const subscription = observable(() => {
       spy(s4.get());
     }).subscribe();
 
@@ -33,12 +46,12 @@ describe("diamond dependency", function () {
 
 describe("batching", function () {
   it("should batch updates", function () {
-    const s1 = initial(0);
-    const s2 = initial(0);
-    const s3 = derived(() => s1.get() + s2.get());
+    const s1 = new Initial(0);
+    const s2 = new Initial(0);
+    const s3 = new Derived(() => s1.get() + s2.get());
 
     const spy = jest.fn();
-    const subscription = $autorun(() => {
+    const subscription = observable(() => {
       spy(s3.get());
     }).subscribe();
 
@@ -57,9 +70,9 @@ describe("batching", function () {
 
 describe("autorun", function () {
   it("should re-run whenever input changes", function () {
-    const signal = initial(0);
+    const signal = new Initial(0);
     const spy = jest.fn();
-    const subscription = $autorun(() => {
+    const subscription = observable(() => {
       spy(signal.get());
     }).subscribe();
 
@@ -79,9 +92,9 @@ describe("autorun", function () {
 
 describe("observe", function () {
   it("should observe values when signal changes", function () {
-    const signal = initial(0);
+    const signal = new Initial(0);
     const spy = jest.fn();
-    const subscription = $autorun(() => {
+    const subscription = observable(() => {
       return signal.get();
     }).subscribe({
       next(value) {
@@ -101,10 +114,10 @@ describe("observe", function () {
   });
 
   it("should observe value when derived signal changes", function () {
-    const s1 = initial(1);
-    const s2 = derived(() => s1.get() % 2);
+    const s1 = new Initial(1);
+    const s2 = new Derived(() => s1.get() % 2);
     const spy = jest.fn();
-    const subscription = $autorun(() => {
+    const subscription = observable(() => {
       return s2.get();
     }).subscribe({
       next(value) {
@@ -146,12 +159,11 @@ describe("observe", function () {
   it("should use BehaviorSubject as source", function () {
     const source = new BehaviorSubject(0);
     const signal = new Source(source);
-    const observable = $autorun(() => {
+    const spy = jest.fn();
+    const subscription = observable(() => {
       addDependency(signal);
       return source.getValue();
-    });
-    const spy = jest.fn();
-    const subscription = observable.subscribe(spy);
+    }).subscribe(spy);
 
     source.next(1);
     source.next(1); // same value, should be no-op
@@ -168,10 +180,10 @@ describe("observe", function () {
 
 describe("effect = autorun & onInvalidate", function () {
   it("should run side effects when signal changes", function () {
-    const signal = initial(0);
+    const signal = new Initial(0);
     const spy = jest.fn();
     const cleanup = jest.fn();
-    const subscription = $autorun(() => {
+    const subscription = observable(() => {
       spy(signal.get());
       onInvalidate(cleanup);
     }).subscribe();
@@ -203,7 +215,7 @@ describe("toChanges", function () {
       }
     };
     const spy = jest.fn();
-    const subscription = $autorun(() => {
+    const subscription = observable(() => {
       addDependency(dependency);
       spy(value);
     }).subscribe();

@@ -1,6 +1,6 @@
 import { BehaviorSubject, map, tap } from "rxjs";
-import { effectMap, just } from "@apendua.dev/signal";
 import { replaceSegment, toSegment } from "./helpers.js";
+import { just, effectMap } from "./operators.js";
 import ListRenderer from "./ListRenderer.js";
 
 describe("renders a simple DOM tree", () => {

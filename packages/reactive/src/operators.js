@@ -1,5 +1,5 @@
-import { $reactive, addDependency, Derived, Source, toObservable } from "@apendua.dev/signal";
-import { Observable, switchMap } from "rxjs";
+import { addDependency, Derived, Source, toObservable } from "@apendua.dev/signal";
+import { Observable, switchAll, switchMap } from "rxjs";
 
 /**
  * @import { MonoTypeOperatorFunction } from 'rxjs';
@@ -45,11 +45,71 @@ export function takeNothing() {
 }
 
 /**
+ * @template T
+ * @param {() => T} fn
+ * @return {Observable<T>}
+ */
+export function observable(fn) {
+  return toObservable(new Derived(fn));
+}
+
+/**
+ * @template T
+ * @param {() => Observable<T>} fn
+ * @returns {Observable<T>}
+ */
+export function flatten(fn) {
+  return observable(fn).pipe(switchAll());
+}
+
+/**
+ * @template T, U
+ * @param {(value: T) => U} fn
+ * @returns {(source: Observable<T>) => Observable<U>}
+ */
+export function map(fn) {
+  return switchMap((value) => {
+    return observable(() => fn(value));
+  });
+}
+
+/**
+ * @template T, U
+ * @param {(value: T) => Observable<U>} fn
+ * @returns {(source: Observable<T>) => Observable<U>}
+ */
+export function flatMap(fn) {
+  return switchMap((value) => {
+    return flatten(() => fn(value));
+  });
+}
+
+/**
+ * @template T
+ * @param {(value: T) => Observable<unknown>} fn
+ * @returns {(source: Observable<T>) => Observable<T>}
+ */
+export function effectMap(fn) {
+  return switchMap((value) => {
+    return new Observable((subscriber) => {
+      subscriber.next(value);
+      subscriber.add(
+        fn(value).subscribe({
+          error: (err) => {
+            subscriber.error(err);
+          },
+        }),
+      );
+    });
+  });
+}
+
+/**
  * @param {(() => Observable<unknown>) | Observable<unknown>} observable
  */
 export function use(observable) {
   if (typeof observable === "function") {
-    observable = $reactive(observable);
+    observable = flatten(observable);
   }
   addDependency(new Source(observable.pipe(takeNothing())));
 }

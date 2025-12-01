@@ -1,12 +1,12 @@
 /* eslint-env jest */
-import { $autorun } from "@apendua.dev/signal";
+import { observable } from "./operators.js";
 import store from "./store.js";
 
 test("observes value", () => {
   const state = store({ value: 1 });
   /** @type {number[]} */
   const values = [];
-  $autorun(() => state.value).subscribe((value) => {
+  observable(() => state.value).subscribe((value) => {
     values.push(value);
   });
   state.value = 2;
@@ -24,7 +24,7 @@ test("observes derived value", () => {
   };
   /** @type {number[]} */
   const values = [];
-  $autorun(() => derived.double).subscribe((value) => {
+  observable(() => derived.double).subscribe((value) => {
     values.push(value);
   });
   state.value = 2;
@@ -41,7 +41,7 @@ test("nested store", () => {
   });
   /** @type {number[]} */
   const values = [];
-  $autorun(() => state.nested.value).subscribe((value) => {
+  observable(() => state.nested.value).subscribe((value) => {
     values.push(value);
   });
   state.nested.value = 2;
@@ -58,7 +58,7 @@ test("nested store replacement", () => {
   });
   /** @type {number[]} */
   const values = [];
-  $autorun(() => state.nested.value).subscribe((value) => {
+  observable(() => state.nested.value).subscribe((value) => {
     values.push(value);
   });
   state.nested = { value: 2 };
@@ -74,7 +74,7 @@ test("deleting property", () => {
   });
   /** @type {Array<number | undefined>} */
   const values = [];
-  $autorun(() => state.value).subscribe((value) => {
+  observable(() => state.value).subscribe((value) => {
     values.push(value);
   });
   delete state.value;
@@ -89,7 +89,7 @@ test("has property", () => {
   });
   /** @type {boolean[]} */
   const values = [];
-  $autorun(() => "value" in state).subscribe((hasValue) => {
+  observable(() => "value" in state).subscribe((hasValue) => {
     values.push(hasValue);
   });
   delete state.value;
@@ -105,7 +105,7 @@ test("ownKeys", () => {
   });
   /** @type {Array<Array<string | symbol>>} */
   const values = [];
-  $autorun(() => Reflect.ownKeys(state)).subscribe((keys) => {
+  observable(() => Reflect.ownKeys(state)).subscribe((keys) => {
     values.push(keys);
   });
   state.c = 3;

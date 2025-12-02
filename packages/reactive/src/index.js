@@ -8,6 +8,7 @@ export {
   all,
   just,
   justUse,
+  join,
   flatten,
   observable,
   map,

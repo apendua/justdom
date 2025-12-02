@@ -94,7 +94,7 @@ export function effectMap(fn) {
     return new Observable((subscriber) => {
       subscriber.next(value);
       subscriber.add(
-        fn(value).subscribe({
+        flatten(() => fn(value)).subscribe({
           error: (err) => {
             subscriber.error(err);
           },
@@ -102,6 +102,17 @@ export function effectMap(fn) {
       );
     });
   });
+}
+
+/**
+ * @template T
+ * @template U
+ * @param {T} props
+ * @param {MonoTypeOperatorFunction<T>[]} operators
+ * @returns {MonoTypeOperatorFunction<U>}
+ */
+export function join(props, operators) {
+  return effectMap(() => just(props, operators));
 }
 
 /**
@@ -120,7 +131,7 @@ export function use(observable) {
  *
  * @overload
  * @param {K} key
- * @param {Observable<TEntity[K]>} value
+ * @param {Observable<TEntity[K]> | (() => TEntity[K])} value
  * @returns {(source: Observable<TEntity>) => Observable<TEntity>}
  *
  * @overload
@@ -128,7 +139,7 @@ export function use(observable) {
  * @returns {(source: Observable<TEntity>) => Observable<TEntity>}
  *
  * @param {K|Partial<WritableProps<Record<string, unknown>>>} keyOrProps
- * @param {Observable<unknown>} [value]
+ * @param {Observable<unknown> | (() => unknown)} [value]
  * @returns {(source: Observable<Record<string, unknown>>) => Observable<Record<string, unknown>>}
  */
 export function set(keyOrProps, value) {
@@ -139,6 +150,9 @@ export function set(keyOrProps, value) {
   }
   if (!value) {
     throw new Error("Value observable is required when key is provided.");
+  }
+  if (typeof value === "function") {
+    value = observable(value);
   }
   return switchMap((entity) => {
     return new Observable((subscriber) => {

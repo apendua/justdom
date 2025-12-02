@@ -1,5 +1,5 @@
 import { distinctUntilChanged, Observable, tap } from "rxjs";
-import { rightToLeft, removeSegment, toSegment } from "./helpers.js";
+import { removeSegment, toSegment } from "./helpers.js";
 
 /**
  * @import { Subscription } from "rxjs";
@@ -174,14 +174,30 @@ export default class ListRenderer {
                       childSegment &&
                       childSegment[1].nextSibling !== nextSegment[0]
                     ) {
-                      rightToLeft(childSegment, (node) => {
+                      /** @type {T | null} */
+                      let node = childSegment[1];
+                      while (node) {
+                        /** @type {T | null} */
+                        const previousSibling = node.previousSibling;
                         parentNode.insertBefore(node, nextSegment[0]);
-                      });
+                        if (node === childSegment[0]) {
+                          break;
+                        }
+                        node = previousSibling;
+                      }
                     }
                   } else {
-                    rightToLeft(childSegment, (node) => {
+                    /** @type {T | null} */
+                    let node = childSegment[1];
+                    while (node) {
+                      /** @type {T | null} */
+                      const previousSibling = node.previousSibling;
                       container.appendChild(node);
-                    });
+                      if (node === childSegment[0]) {
+                        break;
+                      }
+                      node = previousSibling;
+                    }
                   }
                 }
               }

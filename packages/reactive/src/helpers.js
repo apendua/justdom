@@ -47,28 +47,6 @@ export function replaceSegment(newSegment, oldSegment) {
 /**
  * @template {INode<T>} T
  * @param {Segment<T>} segment
- * @param {(node: T) => void} fn
- * @returns {Segment<T>}
- */
-export function rightToLeft(segment, fn) {
-  assertValidSegment(segment);
-  /** @type {T | null} */
-  let node = segment[1];
-  while (node) {
-    /** @type {T | null} */
-    const previousSibling = node.previousSibling;
-    fn(node);
-    node = previousSibling;
-    if (node === segment[0]) {
-      break;
-    }
-  }
-  return segment;
-}
-
-/**
- * @template {INode<T>} T
- * @param {Segment<T>} segment
  */
 export function removeSegment(segment) {
   assertValidSegment(segment);

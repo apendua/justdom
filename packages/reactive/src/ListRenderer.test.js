@@ -46,7 +46,7 @@ describe("renders a simple DOM tree", () => {
     expect(innerHTML.get()).toBe("<ul></ul>");
   });
 
-  it("updates HTML when items change", () => {
+  it("updates HTML when items are added", () => {
     const items$ = new BehaviorSubject(["A"]);
     const innerHTML = inspectHTML(
       $("ul", [
@@ -64,6 +64,28 @@ describe("renders a simple DOM tree", () => {
     expect(innerHTML.get()).toBe("<ul><li>A</li></ul>");
     items$.next(["A", "B"]);
     expect(innerHTML.get()).toBe("<ul><li>A</li><li>B</li></ul>");
+    innerHTML.dispose();
+    expect(innerHTML.get()).toBe("<ul></ul>");
+  });
+
+  it("updates HTML when items are removed", () => {
+    const items$ = new BehaviorSubject(["A", "B", "C", "D"]);
+    const innerHTML = inspectHTML(
+      $("ul", [
+        children(
+          list(items$, (item) => {
+            return $("li", [
+              tap((li) => {
+                li.textContent = item;
+              }),
+            ]);
+          }),
+        ),
+      ]),
+    );
+    expect(innerHTML.get()).toBe("<ul><li>A</li><li>B</li><li>C</li><li>D</li></ul>");
+    items$.next(["A", "B", "C"]);
+    expect(innerHTML.get()).toBe("<ul><li>A</li><li>B</li><li>C</li></ul>");
     innerHTML.dispose();
     expect(innerHTML.get()).toBe("<ul></ul>");
   });

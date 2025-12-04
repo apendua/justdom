@@ -1,7 +1,11 @@
 import { combineLatest, map, Observable } from "rxjs";
-import { just } from "./core.js";
+import { observable, just } from "@apendua.dev/reactive";
+import { toMountable } from "./dom.js";
 
-/** @import { Primitive} from "./core.js" */
+/**
+ * @import { Mountable } from "@apendua.dev/reactive";
+ * @import { Primitive} from "./core.js";
+ */
 
 /**
  * Creates a text node observable.
@@ -26,7 +30,7 @@ export function textNode(value) {
 }
 
 /**
- * @typedef {Primitive | Observable<Primitive>} Renderable
+ * @typedef {Primitive | Observable<Primitive> | (() => Primitive)} Renderable
  */
 
 /**
@@ -43,6 +47,9 @@ export function render(strings, ...values) {
     values.map((value) => {
       if (value instanceof Observable) {
         return value.pipe(map((v) => v?.toString() ?? ""));
+      }
+      if (typeof value === "function") {
+        return observable(() => value() ?? "");
       }
       if (!value) {
         return just("");
@@ -64,8 +71,8 @@ export function render(strings, ...values) {
  * Creates a text node observable from template strings and values.
  * @param {TemplateStringsArray} strings - The template strings.
  * @param {...Renderable} values - The values to interpolate.
- * @returns {Observable<Text>} An observable that emits a Text node.
+ * @returns {Observable<Mountable<Node>>} An observable that emits a Text node.
  */
 export function text(strings, ...values) {
-  return textNode(render(strings, ...values));
+  return textNode(render(strings, ...values)).pipe(map(toMountable));
 }

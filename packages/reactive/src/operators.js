@@ -1,5 +1,5 @@
 import { addDependency, Derived, Source, toObservable } from "@apendua.dev/signal";
-import { Observable, switchAll, switchMap } from "rxjs";
+import { Observable, switchAll, switchMap, tap } from "rxjs";
 
 /**
  * @import { MonoTypeOperatorFunction } from 'rxjs';
@@ -14,7 +14,6 @@ import { Observable, switchAll, switchMap } from "rxjs";
 export function effects(fn) {
   return switchMap((value) => {
     return new Observable((subscriber) => {
-      subscriber.next(value);
       subscriber.add(
         toObservable(new Derived(() => fn(value))).subscribe({
           error: (err) => {
@@ -22,6 +21,7 @@ export function effects(fn) {
           },
         }),
       );
+      subscriber.next(value);
     });
   });
 }
@@ -92,7 +92,6 @@ export function flatMap(fn) {
 export function effectMap(fn) {
   return switchMap((value) => {
     return new Observable((subscriber) => {
-      subscriber.next(value);
       subscriber.add(
         flatten(() => fn(value)).subscribe({
           error: (err) => {
@@ -100,6 +99,7 @@ export function effectMap(fn) {
           },
         }),
       );
+      subscriber.next(value);
     });
   });
 }
@@ -135,17 +135,17 @@ export function use(observable) {
  * @returns {(source: Observable<TEntity>) => Observable<TEntity>}
  *
  * @overload
- * @param {Partial<WritableProps<TEntity>>} props
+ * @param {Partial<WritableProps<TEntity>>} values
  * @returns {(source: Observable<TEntity>) => Observable<TEntity>}
  *
- * @param {K|Partial<WritableProps<Record<string, unknown>>>} keyOrProps
+ * @param {K|Partial<WritableProps<Record<string, unknown>>>} keyOrValues
  * @param {Observable<unknown> | (() => unknown)} [value]
  * @returns {(source: Observable<Record<string, unknown>>) => Observable<Record<string, unknown>>}
  */
-export function set(keyOrProps, value) {
-  if (typeof keyOrProps === "object") {
+export function set(keyOrValues, value) {
+  if (typeof keyOrValues === "object") {
     return effects((entity) => {
-      Object.assign(entity, keyOrProps);
+      Object.assign(entity, keyOrValues);
     });
   }
   if (!value) {
@@ -154,18 +154,12 @@ export function set(keyOrProps, value) {
   if (typeof value === "function") {
     value = observable(value);
   }
-  return switchMap((entity) => {
-    return new Observable((subscriber) => {
-      subscriber.add(
-        value.subscribe({
-          next: (v) => {
-            entity[keyOrProps] = v;
-          },
-          error: (err) => subscriber.error(err),
-        }),
-      );
-      subscriber.next(entity);
-    });
+  return effectMap((entity) => {
+    return value.pipe(
+      tap((v) => {
+        entity[keyOrValues] = v;
+      }),
+    );
   });
 }
 

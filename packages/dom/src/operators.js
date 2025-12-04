@@ -1,49 +1,12 @@
-import { Observable, switchMap, tap } from "rxjs";
-import { effect, fragment } from "./core.js";
+import { tap } from "rxjs";
+import { effectMap, effects, observable, set, on } from "@apendua.dev/reactive";
 
 /**
- * @import { WritableProps, EventListener, Primitive } from './core.js';
+ * @import { Observable } from 'rxjs';
+ * @import { WritableProps, Primitive } from './core.js';
  */
 
-/**
- * @template {HTMLElement} TElement1
- * @template {keyof HTMLElementEventMap} T
- * @overload
- * @param {T} type
- * @param {(e: HTMLElementEventMap[T]) => void} handler
- * @returns {(source: Observable<TElement1>) => Observable<TElement1>}
- */
-
-/**
- * @template {SVGElement} TElement2
- * @template {keyof SVGElementEventMap} T
- * @overload
- * @param {T} type
- * @param {(e: SVGElementEventMap[T]) => void} handler
- * @returns {(source: Observable<TElement2>) => Observable<TElement2>}
- */
-
-/**
- * @template {EventListener<Record<string, unknown>>} TElement3
- * @param {string} type
- * @param {(e: unknown) => void} handler
- * @returns {(source: Observable<TElement3>) => Observable<TElement3>}
- */
-export function on(type, handler) {
-  return (source) => {
-    return source.pipe(
-      switchMap((entity) => {
-        return new Observable((subscriber) => {
-          entity.addEventListener(type, handler);
-          subscriber.next(entity);
-          return () => {
-            entity.removeEventListener(type, handler);
-          };
-        });
-      }),
-    );
-  };
-}
+export { set, on };
 
 /**
  * @template T
@@ -56,17 +19,6 @@ function each(value, fn) {
 }
 
 /**
- * @template {object} TEntity
- * @template {keyof WritableProps<TEntity>} K
- * @param {K} key
- * @param {Observable<TEntity[K]>} value
- * @returns {(source: Observable<TEntity>) => Observable<TEntity>}   *
- */
-export function set(key, value) {
-  return effect((entity) => each(value, (v) => (entity[key] = v)));
-}
-
-/**
  * @typedef {object} ObjectWithAttributes
  * @property {(key: string, value: string) => void} setAttribute
  * @property {(key: string) => void} removeAttribute
@@ -74,21 +26,49 @@ export function set(key, value) {
 
 /**
  * @template {ObjectWithAttributes} TEntity
- * @template {string} K
- * @param {K} key
- * @param {Observable<Primitive>} value
+ *
+ * @overload
+ * @param {string} key
+ * @param {Observable<Primitive> | (() => Primitive)} value
+ * @returns {(source: Observable<TEntity>) => Observable<TEntity>}
+ *
+ * @overload
+ * @param {Record<string, Primitive>} values
+ * @returns {(source: Observable<TEntity>) => Observable<TEntity>}
+ *
+ * @param {string|Record<string, Primitive>} keyOrValues
+ * @param {Observable<Primitive> | (() => Primitive)} [value]
  * @returns {(source: Observable<TEntity>) => Observable<TEntity>}
  */
-export function setAttribute(key, value) {
-  return effect((entity) =>
-    each(value, (v) => {
-      if (v === undefined) {
-        entity.removeAttribute(key);
-      } else {
-        entity.setAttribute(key, v === null ? "null" : v.toString());
+export function attr(keyOrValues, value) {
+  if (typeof keyOrValues === "object") {
+    return effects((entity) => {
+      for (const [key, val] of Object.entries(keyOrValues)) {
+        if (val === undefined) {
+          entity.removeAttribute(key);
+        } else {
+          entity.setAttribute(key, val === null ? "null" : val.toString());
+        }
       }
-    }),
-  );
+    });
+  }
+  if (!value) {
+    throw new Error("Value observable is required when key is provided.");
+  }
+  if (typeof value === "function") {
+    value = observable(value);
+  }
+  return effectMap((entity) => {
+    return value.pipe(
+      tap((v) => {
+        if (v === undefined) {
+          entity.removeAttribute(keyOrValues);
+        } else {
+          entity.setAttribute(keyOrValues, v === null ? "null" : v.toString());
+        }
+      }),
+    );
+  });
 }
 
 /**
@@ -103,7 +83,7 @@ export function setAttribute(key, value) {
  * @returns {(source: Observable<TEntity>) => Observable<TEntity>}
  */
 export function data(key, value) {
-  return effect((entity) =>
+  return effectMap((entity) =>
     each(value, (v) => {
       if (v === undefined) {
         delete entity.dataset[key];
@@ -124,19 +104,37 @@ export function data(key, value) {
 /**
  * @template {ObjectWithStyle} TEntity
  * @template {keyof WritableProps<CSSStyleDeclaration>} K
+ *
+ * @overload
  * @param {K} key
- * @param {Observable<CSSStyleDeclaration[K]>} value
+ * @param {Observable<CSSStyleDeclaration[K]> | (() => CSSStyleDeclaration[K])} value
+ * @returns {(source: Observable<TEntity>) => Observable<TEntity>}
+ *
+ * @overload
+ * @param {Partial<WritableProps<CSSStyleDeclaration>>} values
+ * @returns {(source: Observable<TEntity>) => Observable<TEntity>}
+ *
+ * @param {K|Partial<WritableProps<CSSStyleDeclaration>>} keyOrValues
+ * @param {Observable<CSSStyleDeclaration[K]> | (() => CSSStyleDeclaration[K])} [value]
  * @returns {(source: Observable<TEntity>) => Observable<TEntity>}
  */
-export function style(key, value) {
-  return effect((entity) => each(value, (v) => (entity.style[key] = v)));
-}
-
-/**
- * @template {Element} TElement
- * @param {Observable<Node | null>[]} children
- * @returns {(source: Observable<TElement>) => Observable<TElement>}
- */
-export function append(...children) {
-  return effect((entity) => each(fragment(...children), (node) => entity.appendChild(node)));
+export function style(keyOrValues, value) {
+  if (typeof keyOrValues === "object") {
+    return effects((entity) => {
+      Object.assign(entity.style, keyOrValues);
+    });
+  }
+  if (!value) {
+    throw new Error("Value observable is required when key is provided.");
+  }
+  if (typeof value === "function") {
+    value = observable(value);
+  }
+  return effectMap((entity) => {
+    return value.pipe(
+      tap((v) => {
+        entity.style[keyOrValues] = v;
+      }),
+    );
+  });
 }

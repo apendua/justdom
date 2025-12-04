@@ -1,4 +1,4 @@
-import { stylesheet, text, html, set, append, on } from "@apendua.dev/dom";
+import { stylesheet, text, set, on, children, $ } from "@apendua.dev/dom";
 import { RootContext } from "../store4/Root";
 import { Fields, FieldsContext } from "@apendua.dev/minesweeper";
 import { $observe } from "@apendua.dev/store4";
@@ -46,21 +46,21 @@ const Game = (ctx: WeakKey) => {
   return $observe(state).game.pipe(
     switchMap((game) => {
       const newContext = FieldsContext.set(ctx, game);
-      return html("div").pipe(
+      return $("div", [
         set("className", fullscreen),
-        append(
-          html("button").pipe(
+        children(
+          $("button", [
             on("click", () => {
               state.game = Fields.generate({});
             }),
-            append(text`Restart`),
-          ),
-          html("span").pipe(
-            append(text`width = ${screenWidth}, height = ${screenHeight}, mines = ${minesLeft}`),
-          ),
+            children(text`Restart`),
+          ]),
+          $("span", [
+            children(text`width = ${screenWidth}, height = ${screenHeight}, mines = ${minesLeft}`),
+          ]),
+          Minefield(newContext, game),
         ),
-        append(Minefield(newContext, game)),
-      );
+      ]);
     }),
   );
 };

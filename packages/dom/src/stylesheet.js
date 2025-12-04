@@ -1,6 +1,5 @@
-import { Observable } from "rxjs";
+import { Observable, ReplaySubject, share } from "rxjs";
 import { render } from "./text.js";
-import { shared } from "./core.js";
 
 /**
  * Creates a class name observable.
@@ -31,5 +30,9 @@ export function styleElement(value) {
  * @returns {Observable<string>}
  */
 export function stylesheet(strings, ...values) {
-  return styleElement(render(strings, ...values)).pipe(shared());
+  return styleElement(render(strings, ...values)).pipe(
+    share({
+      connector: () => new ReplaySubject(1),
+    }),
+  );
 }

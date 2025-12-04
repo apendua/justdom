@@ -1,8 +1,6 @@
-import { text, svg, append } from "@apendua.dev/dom";
+import { text, $$, children, attr } from "@apendua.dev/dom";
 import { ViewportContext } from "../store4/Viewport";
 import { $observe } from "@apendua.dev/store4";
-import { tap } from "rxjs";
-import { setAttribute$ } from "../utils/operators";
 
 interface LabelProps {
   x: number;
@@ -13,18 +11,18 @@ interface LabelProps {
 
 export default function Label(ctx: WeakKey, props: LabelProps) {
   const viewport = ViewportContext.get(ctx);
-  return svg("text").pipe(
-    tap((el) => {
-      el.setAttribute("font-size", "20");
-      el.setAttribute("font-family", "Arial");
-      el.setAttribute("font-weight", "bold");
-      el.setAttribute("fill", "black");
-      el.setAttribute("alignment-baseline", "middle");
-      el.setAttribute("baseline-shift", "-2");
-      el.setAttribute("text-anchor", "middle");
+  return $$("text", [
+    attr({
+      "font-size": 20,
+      "font-family": "Arial",
+      "font-weight": "bold",
+      fill: "black",
+      "alignment-baseline": "middle",
+      "baseline-shift": "-2",
+      "text-anchor": "middle",
     }),
-    setAttribute$("x", () => viewport.mapHexToPixels(props).x),
-    setAttribute$("y", () => viewport.mapHexToPixels(props).y),
-    append(text`${$observe(props).text}`),
-  );
+    attr("x", () => viewport.mapHexToPixels(props).x),
+    attr("y", () => viewport.mapHexToPixels(props).y),
+    children(text`${$observe(props).text}`),
+  ]);
 }

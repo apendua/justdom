@@ -5,6 +5,9 @@ if (!root) {
   throw new Error("Root element not found");
 }
 
-Game({}).subscribe((element) => {
-  root.replaceChildren(element);
+Game({}).subscribe((mountable) => {
+  if (!root.firstChild) {
+    root.appendChild(document.createComment(""));
+  }
+  mountable.replace([root.firstChild!, root.lastChild!]);
 });

@@ -1,7 +1,8 @@
 import userEvent from "@testing-library/user-event";
-import { Observable, Subject } from "rxjs";
-import { on, set, setAttribute, data, style, append } from "./operators.js";
-import { just } from "./core.js";
+import { just } from "@apendua.dev/reactive";
+import { map, Observable, Subject } from "rxjs";
+import { on, set, attr, data, style } from "./operators.js";
+import { children, toMountable } from "./dom.js";
 
 describe("DOM Operators", () => {
   describe("operator: on()", () => {
@@ -38,14 +39,14 @@ describe("DOM Operators", () => {
     });
   });
 
-  describe("operator: setAttribute()", () => {
+  describe("operator: attr()", () => {
     it("should set attribute", () => {
       const div = document.createElement("div");
       /** @type {Subject<string>} */
       const value$ = new Subject();
       const source$ = just(div);
 
-      const subscription = source$.pipe(setAttribute("data-test", value$)).subscribe();
+      const subscription = source$.pipe(attr("data-test", value$)).subscribe();
 
       value$.next("test value");
       expect(div.getAttribute("data-test")).toBe("test value");
@@ -59,7 +60,7 @@ describe("DOM Operators", () => {
       const value$ = new Subject();
       const source$ = just(div);
 
-      const subscription = source$.pipe(setAttribute("data-test", value$)).subscribe();
+      const subscription = source$.pipe(attr("data-test", value$)).subscribe();
 
       value$.next("test value");
       expect(div.getAttribute("data-test")).toBe("test value");
@@ -76,7 +77,7 @@ describe("DOM Operators", () => {
       const value$ = new Subject();
       const source$ = just(div);
 
-      const subscription = source$.pipe(setAttribute("data-test", value$)).subscribe();
+      const subscription = source$.pipe(attr("data-test", value$)).subscribe();
 
       value$.next("test value");
       expect(div.getAttribute("data-test")).toBe("test value");
@@ -91,7 +92,7 @@ describe("DOM Operators", () => {
       const value$ = new Subject();
       const source$ = just(div);
 
-      const subscription = source$.pipe(setAttribute("data-test-key", value$)).subscribe();
+      const subscription = source$.pipe(attr("data-test-key", value$)).subscribe();
 
       value$.next("test value");
       expect(div.dataset.testKey).toBe("test value");
@@ -105,7 +106,7 @@ describe("DOM Operators", () => {
       const value$ = new Subject();
       const source$ = just(div);
 
-      const subscription = source$.pipe(setAttribute("data-test-key", value$)).subscribe();
+      const subscription = source$.pipe(attr("data-test-key", value$)).subscribe();
 
       value$.next("test value");
       expect(div.dataset.testKey).toBe("test value");
@@ -205,9 +206,9 @@ describe("DOM Operators", () => {
       const child = document.createElement("span");
 
       const source$ = just(parent);
-      const child$ = just(child);
+      const child$ = just(child).pipe(map(toMountable));
 
-      const subscription = source$.pipe(append(child$)).subscribe();
+      const subscription = source$.pipe(children(child$)).subscribe();
 
       expect(parent.contains(child)).toBe(true);
 

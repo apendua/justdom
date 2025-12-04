@@ -1,10 +1,9 @@
-import { collection, svg, append, on } from "@apendua.dev/dom";
+import { list, $$, children, attr, on } from "@apendua.dev/dom";
 import { $factory } from "@apendua.dev/hmr";
 import { RootContext } from "../store4/Root";
 import { Field, Fields, getKey } from "@apendua.dev/minesweeper";
 import { $observe } from "@apendua.dev/store4";
 import { ViewportContext } from "../store4/Viewport";
-import { setAttribute$ } from "../utils/operators";
 import { tap } from "rxjs";
 import Label from "./Label";
 import FieldSet from "./FieldSet";
@@ -53,12 +52,12 @@ const Minefield = $factory((ctx: WeakKey, game: Fields) => {
     }
   };
 
-  return svg("svg").pipe(
-    setAttribute$("width", () => dimensions.screenWidth.toString()),
-    setAttribute$("height", () => dimensions.screenHeight.toString()),
-    setAttribute$("viewbox", () => `0 0 ${dimensions.screenWidth} ${dimensions.screenHeight}`),
-    on<SVGSVGElement, "click">("click", handleOnClick),
-    append(
+  return $$("svg", [
+    attr("width", () => dimensions.screenWidth.toString()),
+    attr("height", () => dimensions.screenHeight.toString()),
+    attr("viewbox", () => `0 0 ${dimensions.screenWidth} ${dimensions.screenHeight}`),
+    on("click", handleOnClick),
+    children(
       FieldSet(ctx, {
         get fields() {
           return game.coveredFields;
@@ -72,12 +71,12 @@ const Minefield = $factory((ctx: WeakKey, game: Fields) => {
         borderWidth: 2,
         cutHoles: true,
       }),
-      collection($observe(game).allFields, (field) => FieldStatus(ctx, field)),
+      list($observe(game).allFields, (field) => FieldStatus(ctx, field)),
     ),
     tap((svg) => {
       svgRef = svg;
     }),
-  );
+  ]);
 });
 
 export default Minefield;

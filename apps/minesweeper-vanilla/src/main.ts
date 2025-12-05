@@ -1,3 +1,5 @@
+import { just } from "@apendua.dev/reactive";
+import { children } from "@apendua.dev/dom";
 import Game from "./components/Game";
 
 const root = document.querySelector<HTMLDivElement>("#root");
@@ -5,9 +7,8 @@ if (!root) {
   throw new Error("Root element not found");
 }
 
-Game({}).subscribe((mountable) => {
-  if (!root.firstChild) {
-    root.appendChild(document.createComment(""));
-  }
-  mountable.replace([root.firstChild!, root.lastChild!]);
+just(root, [children(Game({}))]).subscribe({
+  error: (err) => {
+    console.error("Error mounting the game:", err);
+  },
 });

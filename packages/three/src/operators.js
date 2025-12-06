@@ -1,32 +1,10 @@
+import { just } from "@apendua.dev/reactive";
 import { distinctUntilChanged, Observable, switchMap } from "rxjs";
 
 /**
  * @import { Object3D } from 'three';
- * @import { CopyableProps, XREventMap, Component, EventListener } from './core.js';
+ * @import { CopyableProps, Component } from './core.js';
  */
-
-/**
- * @template {EventListener<XREventMap>} TEntity
- * @template {keyof XREventMap} T
- * @param {T} type
- * @param {(e: XREventMap[T]) => void} handler
- * @returns {(source: Observable<TEntity>) => Observable<TEntity>}
- */
-export function on(type, handler) {
-  return (source) => {
-    return source.pipe(
-      switchMap((entity) => {
-        return new Observable((subscriber) => {
-          entity.addEventListener(type, handler);
-          subscriber.next(entity);
-          return () => {
-            entity.removeEventListener(type, handler);
-          };
-        });
-      }),
-    );
-  };
-}
 
 /**
  * @template {object} TEntity
@@ -59,7 +37,7 @@ export function copy(key, value) {
  * @param {Object3D<any>} parent
  * @param {Observable<Component>} child
  */
-export function addToParent(parent, child) {
+function addToParent(parent, child) {
   return child.pipe(
     distinctUntilChanged(),
     switchMap((component) => {
@@ -88,17 +66,6 @@ export function add(...children) {
       }),
     );
   };
-}
-
-/**
- * @template T
- * @param {T} value
- * @returns {Observable<T>}
- */
-export function just(value) {
-  return new Observable((subscriber) => {
-    subscriber.next(value);
-  });
 }
 
 /**
@@ -142,6 +109,5 @@ export function Nothing() {
  * @returns {Observable<Component>}
  */
 export function $(object, operators = []) {
-  const observable = operators.reduce((obs, operator) => operator(obs), just(object));
-  return toComponent()(observable);
+  return just(object, operators).pipe(toComponent());
 }

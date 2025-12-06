@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { distinctUntilChanged, filter, Observable, Subject, switchMap, takeUntil } from "rxjs";
-import { just } from "./operators";
+import { just } from "@apendua.dev/reactive";
 import { addDependency, batch, Changes, Derived } from "@apendua.dev/signal";
 
 /**

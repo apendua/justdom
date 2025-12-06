@@ -16,7 +16,7 @@ export {
   lightProbe,
   positionalAudio,
 } from "./entities.js";
-export { on, add, copy, just, toComponent, Nothing, $, addToParent } from "./operators.js";
+export { add, copy, toComponent, Nothing, $ } from "./operators.js";
 export { collection, addDynamic } from "./core.js";
 export { render, animate, size, camera, session } from "./render.js";
 export { interactions, resetMatrix } from "./interactions.js";

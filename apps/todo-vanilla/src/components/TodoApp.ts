@@ -117,11 +117,11 @@ const TodoApp = $factory((ctx: WeakKey) => {
       $("ul", [
         set("className", listStyle),
         children(
-          list(toObservable(todos), (todo) => {
+          list(toObservable(todos), (todo, i) => {
             return TodoItem(ctx, todo.id, [
               set({
                 get text() {
-                  return todo.text;
+                  return `${i() + 1}. ${todo.text}`;
                 },
                 get completed() {
                   return todo.completed;

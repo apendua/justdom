@@ -1,5 +1,6 @@
-import { distinctUntilChanged, Observable, tap } from "rxjs";
+import { distinctUntilChanged, filter, Observable, Subject, tap } from "rxjs";
 import { removeSegment, toSegment } from "./helpers.js";
+import { addDependency, batch, Changes, Derived } from "@apendua.dev/signal";
 
 /**
  * @import { Subscription } from "rxjs";
@@ -97,8 +98,8 @@ export default class ListRenderer {
   /**
    * Creates a list observable from an array of items and a render function.
    * @template U
-   * @param {Observable<U[]>} items
-   * @param {(item: U) => Observable<Mountable<T>>} render
+   * @param {Observable<Iterable<U>>} items
+   * @param {(item: U, getIndex: () => number) => Observable<Mountable<T>>} render
    * @returns {Observable<Mountable<T>>}
    */
   renderList(items, render) {
@@ -108,15 +109,35 @@ export default class ListRenderer {
       const childSegments = new Map();
       /** @type {Map<U, Subscription>} */
       const childSubscriptions = new Map();
+      /** @type {Map<U, number>} */
+      const childIndexes = new Map();
+      /** @type {Subject<U>} */
+      const childIndexesSubject = new Subject();
+      /**
+       * @param {U} item
+       * @returns {() => number}
+       */
+      const createGetIndex = (item) => {
+        const changes = new Changes(
+          childIndexesSubject.pipe(filter((changedItem) => changedItem === item)),
+        );
+        const index = new Derived(() => {
+          addDependency(changes);
+          return childIndexes.get(item) ?? -1;
+        });
+        return () => index.get();
+      };
       const subscription = items
         .pipe(
           tap((newItems) => {
-            for (let index = newItems.length - 1; index >= 0; index -= 1) {
-              const item = newItems[index];
+            const newItemsSet = new Set(newItems);
+            const newItemsArray = Array.from(newItems);
+            for (let index = newItemsArray.length - 1; index >= 0; index -= 1) {
+              const item = newItemsArray[index];
               let nextSegment;
               let i = index + 1;
-              while (!nextSegment && i < newItems.length) {
-                nextSegment = childSegments.get(newItems[i]);
+              while (!nextSegment && i < newItemsArray.length) {
+                nextSegment = childSegments.get(newItemsArray[i]);
                 i += 1;
               }
               if (!childSegments.has(item)) {
@@ -140,7 +161,7 @@ export default class ListRenderer {
               if (!childSubscriptions.has(item)) {
                 childSubscriptions.set(
                   item,
-                  render(item)
+                  render(item, createGetIndex(item))
                     .pipe(
                       distinctUntilChanged(),
                       teardown(() => {
@@ -202,7 +223,22 @@ export default class ListRenderer {
                 }
               }
             }
-            const newItemsSet = new Set(newItems);
+            // Update/ remove indexes in a batch.
+            batch(() => {
+              for (let i = 0; i < newItemsArray.length; i++) {
+                const item = newItemsArray[i];
+                if (childIndexes.get(item) !== i) {
+                  childIndexes.set(item, i);
+                  childIndexesSubject.next(item);
+                }
+              }
+              for (const item of childSubscriptions.keys()) {
+                if (!newItemsSet.has(item)) {
+                  childIndexes.delete(item);
+                  childIndexesSubject.next(item);
+                }
+              }
+            });
             for (const [item, childSegment] of childSegments.entries()) {
               if (!newItemsSet.has(item)) {
                 removeSegment(childSegment);

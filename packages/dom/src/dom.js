@@ -97,7 +97,7 @@ export function children(...children) {
 /**
  * @template T
  * @param {Observable<Array<T>>} items
- * @param {(item: T) => Observable<Mountable<Node>>} renderItem
+ * @param {(item: T, getIndex: () => number) => Observable<Mountable<Node>>} renderItem
  */
 export function list(items, renderItem) {
   return renderer.renderList(items, renderItem);

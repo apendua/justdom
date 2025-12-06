@@ -1,5 +1,5 @@
 import { addDependency, Derived, Source, toObservable } from "@apendua.dev/signal";
-import { Observable, switchAll, switchMap, tap } from "rxjs";
+import { Observable, share, switchAll, switchMap, tap } from "rxjs";
 
 /**
  * @import { MonoTypeOperatorFunction } from 'rxjs';
@@ -12,18 +12,29 @@ import { Observable, switchAll, switchMap, tap } from "rxjs";
  * @returns {(source: Observable<T>) => Observable<T>}
  */
 export function effects(fn) {
-  return switchMap((value) => {
-    return new Observable((subscriber) => {
-      subscriber.add(
-        toObservable(new Derived(() => fn(value))).subscribe({
-          error: (err) => {
-            subscriber.error(err);
-          },
-        }),
-      );
-      subscriber.next(value);
-    });
-  });
+  return (source) => {
+    const shared = source.pipe(
+      share({
+        resetOnRefCountZero: true,
+      }),
+    );
+    return shared.pipe(
+      switchMap((value) => {
+        return new Observable((subscriber) => {
+          // finish everything as soon as source completes
+          subscriber.add(shared.pipe(takeNothing()).subscribe(subscriber));
+          subscriber.add(
+            toObservable(new Derived(() => fn(value))).subscribe({
+              error: (err) => {
+                subscriber.error(err);
+              },
+            }),
+          );
+          subscriber.next(value);
+        });
+      }),
+    );
+  };
 }
 
 /**
@@ -90,18 +101,29 @@ export function flatMap(fn) {
  * @returns {(source: Observable<T>) => Observable<T>}
  */
 export function effectMap(fn) {
-  return switchMap((value) => {
-    return new Observable((subscriber) => {
-      subscriber.add(
-        flatten(() => fn(value)).subscribe({
-          error: (err) => {
-            subscriber.error(err);
-          },
-        }),
-      );
-      subscriber.next(value);
-    });
-  });
+  return (source) => {
+    const shared = source.pipe(
+      share({
+        resetOnRefCountZero: true,
+      }),
+    );
+    return shared.pipe(
+      switchMap((value) => {
+        return new Observable((subscriber) => {
+          // finish everything as soon as source completes
+          subscriber.add(shared.pipe(takeNothing()).subscribe(subscriber));
+          subscriber.add(
+            flatten(() => fn(value)).subscribe({
+              error: (err) => {
+                subscriber.error(err);
+              },
+            }),
+          );
+          subscriber.next(value);
+        });
+      }),
+    );
+  };
 }
 
 /**

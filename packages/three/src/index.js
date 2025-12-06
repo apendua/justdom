@@ -1,23 +1,5 @@
-export {
-  object,
-  mesh,
-  lineSegments,
-  group,
-  skinnedMesh,
-  scene,
-  perspectiveCamera,
-  orthographicCamera,
-  directionalLight,
-  ambientLight,
-  pointLight,
-  spotLight,
-  hemisphereLight,
-  rectAreaLight,
-  lightProbe,
-  positionalAudio,
-} from "./entities.js";
-export { add, copy, toComponent, Nothing, $ } from "./operators.js";
-export { collection, addDynamic } from "./core.js";
+export { children, copy, Nothing, $ } from "./operators.js";
+export { list } from "./core.js";
 export { render, animate, size, camera, session } from "./render.js";
 export { interactions, resetMatrix } from "./interactions.js";
 export { default as LayoutNode } from "./LayoutNode.js";

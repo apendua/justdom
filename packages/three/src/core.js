@@ -1,7 +1,10 @@
-import * as THREE from "three";
-import { distinctUntilChanged, filter, Observable, Subject, switchMap, takeUntil } from "rxjs";
+import { distinctUntilChanged, filter, Observable, Subject } from "rxjs";
 import { just } from "@apendua.dev/reactive";
 import { addDependency, batch, Changes, Derived } from "@apendua.dev/signal";
+
+/**
+ * @import { Object3D, XRTargetRaySpace, Intersection, Object3DEventMap } from 'three';
+ */
 
 /**
  * @template X
@@ -41,40 +44,40 @@ import { addDependency, batch, Changes, Derived } from "@apendua.dev/signal";
 /**
  * @typedef {object} InputEvent
  * @property {XRInputSource} inputSource
- * @property {THREE.Object3D<XREventMap>} target
- * @property {THREE.Object3D<XREventMap>} originalTarget
- * @property {THREE.XRTargetRaySpace} controller
- * @property {THREE.Intersection<THREE.Object3D<XREventMap>>} intersection
+ * @property {Object3D<XREventMap>} target
+ * @property {Object3D<XREventMap>} originalTarget
+ * @property {XRTargetRaySpace} controller
+ * @property {Intersection<Object3D<XREventMap>>} intersection
  */
 
 /**
  * @typedef {object} InputCancelEvent
  * @property {XRInputSource} inputSource
- * @property {THREE.Object3D<XREventMap>} target
- * @property {THREE.Object3D<XREventMap>} originalTarget
- * @property {THREE.XRTargetRaySpace} controller
+ * @property {Object3D<XREventMap>} target
+ * @property {Object3D<XREventMap>} originalTarget
+ * @property {XRTargetRaySpace} controller
  */
 
 /**
  * @typedef {object} PointerEvent
- * @property {THREE.Object3D<XREventMap>} target
- * @property {THREE.Object3D<XREventMap>} originalTarget
- * @property {THREE.XRTargetRaySpace} controller
- * @property {THREE.Intersection<THREE.Object3D<XREventMap>>} intersection
+ * @property {Object3D<XREventMap>} target
+ * @property {Object3D<XREventMap>} originalTarget
+ * @property {XRTargetRaySpace} controller
+ * @property {Intersection<Object3D<XREventMap>>} intersection
  */
 
 /**
  * @typedef {object} PointerCancelEvent
- * @property {THREE.Object3D<XREventMap>} target
- * @property {THREE.Object3D<XREventMap>} originalTarget
- * @property {THREE.XRTargetRaySpace} controller
+ * @property {Object3D<XREventMap>} target
+ * @property {Object3D<XREventMap>} originalTarget
+ * @property {XRTargetRaySpace} controller
  */
 
 /**
  * @template TTarget
  * @typedef {object} SimpleEvent
  * @property {TTarget} target
- * @property {THREE.Intersection<THREE.Object3D<XREventMap>>} [intersection]
+ * @property {Intersection<Object3D<XREventMap>>} [intersection]
  */
 
 /**
@@ -101,7 +104,7 @@ import { addDependency, batch, Changes, Derived } from "@apendua.dev/signal";
  */
 
 /**
- * @typedef {THREE.Object3DEventMap & InteractionEventMap} XREventMap
+ * @typedef {Object3DEventMap & InteractionEventMap} XREventMap
  */
 
 /**
@@ -127,12 +130,12 @@ import { addDependency, batch, Changes, Derived } from "@apendua.dev/signal";
 
 /**
  * @typedef {object} Component
- * @property {(parent: THREE.Object3D) => () => void} addTo
+ * @property {(parent: Object3D) => () => void} addTo
  */
 
 /**
  * @template T
- * @param {THREE.Object3D} parent
+ * @param {Object3D} parent
  * @param {Observable<Iterable<T>>} items
  * @param {(item: T, index: () => number) => Observable<Component>} renderItem
  * @returns {Observable<never>}
@@ -228,28 +231,17 @@ export function addDynamicToParent(parent, items, renderItem) {
 
 /**
  * @template T
- * @template {THREE.Object3D} U
  * @param {Observable<Iterable<T>>} items
  * @param {(item: T, index: () => number) => Observable<Component>} renderItem
- * @returns {(source: Observable<U>) => Observable<U>}
+ * @returns {Observable<Component>}
  */
-export function addDynamic(items, renderItem) {
-  return switchMap((parent) => {
-    return just(parent).pipe(takeUntil(addDynamicToParent(parent, items, renderItem)));
-  });
-}
-
-/**
- * @template T
- * @param {Observable<Iterable<T>>} items
- * @param {(item: T, index: () => number) => Observable<Component>} renderItem
- * @returns {Observable<THREE.Group<XREventMap>>}
- */
-export function collection(items, renderItem) {
-  return new Observable((subscriber) => {
-    /** @type {THREE.Group<XREventMap>} */
-    const parent = new THREE.Group();
-    subscriber.add(addDynamicToParent(parent, items, renderItem).subscribe(subscriber));
-    subscriber.next(parent);
+export function list(items, renderItem) {
+  return just({
+    addTo: (parent) => {
+      const subscription = addDynamicToParent(parent, items, renderItem).subscribe();
+      return () => {
+        subscription.unsubscribe();
+      };
+    },
   });
 }

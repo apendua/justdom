@@ -50,28 +50,24 @@ function addToParent(parent, child) {
 
 /**
  * @template {Object3D<any>} TEntity
- * @param {Observable<Component>[]} children
+ * @param {Observable<Component>[]} observables
  * @returns {(source: Observable<TEntity>) => Observable<TEntity>}
  */
-export function add(...children) {
-  return (source) => {
-    return source.pipe(
-      switchMap((entity) => {
-        return new Observable((subscriber) => {
-          children.forEach((child) => {
-            subscriber.add(addToParent(entity, child).subscribe());
-          });
-          subscriber.next(entity);
-        });
-      }),
-    );
-  };
+export function children(...observables) {
+  return switchMap((entity) => {
+    return new Observable((subscriber) => {
+      observables.forEach((observable) => {
+        subscriber.add(addToParent(entity, observable).subscribe());
+      });
+      subscriber.next(entity);
+    });
+  });
 }
 
 /**
  * @returns {(source: Observable<Object3D | null>) => Observable<Component>}
  */
-export function toComponent() {
+function toComponent() {
   return (source) => {
     return new Observable((subscriber) => {
       subscriber.add(
@@ -103,7 +99,7 @@ export function Nothing() {
 }
 
 /**
- * @template {Object3D} T
+ * @template {Object3D<any>} T
  * @param {T} object
  * @param {Array<(source: Observable<T>) => Observable<T>>} [operators]
  * @returns {Observable<Component>}

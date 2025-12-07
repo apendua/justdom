@@ -1,7 +1,7 @@
 /* eslint-env jest */
 
 import { merge } from "rxjs";
-import { Initial, Derived, Dedupe, batch, nonReactive } from "./Signal.js";
+import { Signal, Derived, Dedupe, batch, nonReactive } from "./Signal.js";
 
 it("should not memoize value if not subscribed", function () {
   let computeCount = 0;
@@ -30,7 +30,7 @@ it("should memoize value when subscribed", function () {
 });
 
 it("should only emit if value changes", function () {
-  const initial = new Initial(1);
+  const initial = new Signal(1);
   const spy = jest.fn();
   const subscription = initial.getChanges().subscribe(spy);
   expect(initial.get()).toBe(1);
@@ -43,7 +43,7 @@ it("should only emit if value changes", function () {
 });
 
 it("should update value when input changes", function () {
-  const initial = new Initial(1);
+  const initial = new Signal(1);
   const derived = new Derived(() => initial.get() + 1);
   const spy = jest.fn();
   const subscription = derived.getChanges().subscribe(spy);
@@ -57,7 +57,7 @@ it("should update value when input changes", function () {
 });
 
 it("should only emit if derived value changes", function () {
-  const initial = new Initial(1);
+  const initial = new Signal(1);
   const derived = new Derived(() => initial.get() % 2);
   const spy = jest.fn();
   const subscription = derived.getChanges().subscribe(spy);
@@ -73,8 +73,8 @@ it("should only emit if derived value changes", function () {
 });
 
 it("should batch updates", function () {
-  const s1 = new Initial(0);
-  const s2 = new Initial(0);
+  const s1 = new Signal(0);
+  const s2 = new Signal(0);
   const s3 = new Derived(() => s1.get() + s2.get());
 
   const spy = jest.fn();
@@ -94,7 +94,7 @@ it("should batch updates", function () {
 });
 
 it("should dedupe updates", function () {
-  const initial = new Initial(1);
+  const initial = new Signal(1);
   const derived = new Derived(() => 2 * initial.get());
   const changes = merge(initial.getChanges(), derived.getChanges());
   const deduped = new Dedupe(changes);
@@ -113,7 +113,7 @@ it("should dedupe updates", function () {
 });
 
 it("should not rerun if changes happen within no-reactive block", function () {
-  const initial = new Initial(1);
+  const initial = new Signal(1);
   const derived = new Derived(() => nonReactive(() => initial.get()));
   const spy = jest.fn();
   const subscription = derived.getChanges().subscribe(spy);

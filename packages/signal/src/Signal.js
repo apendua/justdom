@@ -311,7 +311,7 @@ export class Derived {
  * @template T
  * @implements {Dependency}
  */
-export class Initial {
+export class Signal {
   /** @type {Subject<Dependency>} */
   #notifier = new Subject();
 

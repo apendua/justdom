@@ -1,7 +1,7 @@
 /* eslint-env jest */
 
 import { BehaviorSubject, Subject } from "rxjs";
-import { addDependency, batch, Changes, Derived, Initial, onInvalidate, Source } from "./Signal.js";
+import { addDependency, batch, Changes, Derived, Signal, onInvalidate, Source } from "./Signal.js";
 import { toObservable } from "./operators.js";
 
 /**
@@ -19,7 +19,7 @@ function observable(fn) {
 
 describe("diamond dependency", function () {
   it("should update all dependants when a signal changes", function () {
-    const s1 = new Initial(0);
+    const s1 = new Signal(0);
     const s2 = new Derived(() => s1.get() + 1);
     const s3 = new Derived(() => s1.get() + s2.get());
     const s4 = new Derived(() => s1.get() + s2.get() + s3.get());
@@ -46,8 +46,8 @@ describe("diamond dependency", function () {
 
 describe("batching", function () {
   it("should batch updates", function () {
-    const s1 = new Initial(0);
-    const s2 = new Initial(0);
+    const s1 = new Signal(0);
+    const s2 = new Signal(0);
     const s3 = new Derived(() => s1.get() + s2.get());
 
     const spy = jest.fn();
@@ -70,7 +70,7 @@ describe("batching", function () {
 
 describe("autorun", function () {
   it("should re-run whenever input changes", function () {
-    const signal = new Initial(0);
+    const signal = new Signal(0);
     const spy = jest.fn();
     const subscription = observable(() => {
       spy(signal.get());
@@ -92,7 +92,7 @@ describe("autorun", function () {
 
 describe("observe", function () {
   it("should observe values when signal changes", function () {
-    const signal = new Initial(0);
+    const signal = new Signal(0);
     const spy = jest.fn();
     const subscription = observable(() => {
       return signal.get();
@@ -114,7 +114,7 @@ describe("observe", function () {
   });
 
   it("should observe value when derived signal changes", function () {
-    const s1 = new Initial(1);
+    const s1 = new Signal(1);
     const s2 = new Derived(() => s1.get() % 2);
     const spy = jest.fn();
     const subscription = observable(() => {
@@ -180,7 +180,7 @@ describe("observe", function () {
 
 describe("effect = autorun & onInvalidate", function () {
   it("should run side effects when signal changes", function () {
-    const signal = new Initial(0);
+    const signal = new Signal(0);
     const spy = jest.fn();
     const cleanup = jest.fn();
     const subscription = observable(() => {

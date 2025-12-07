@@ -1,6 +1,6 @@
 import { $factory } from "@apendua.dev/hmr";
 import { stylesheet, text, $, children, list } from "@apendua.dev/dom";
-import { Initial, toObservable } from "@apendua.dev/signal";
+import { Signal, toObservable } from "@apendua.dev/signal";
 import { store, on, set, observable } from "@apendua.dev/reactive";
 import TodoItem from "./TodoItem";
 
@@ -61,11 +61,11 @@ interface Todo {
 }
 
 const TodoApp = $factory((ctx: WeakKey) => {
-  const todos = new Initial<Todo[]>([
+  const todos = new Signal<Todo[]>([
     store<Todo>({ id: "1", text: "Learn Apendua", completed: false }),
     store<Todo>({ id: "2", text: "Build a Todo App", completed: true }),
   ]);
-  const inputValue = new Initial<string>("");
+  const inputValue = new Signal<string>("");
 
   const addTodo = () => {
     const text = inputValue.get().trim();

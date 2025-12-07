@@ -11,7 +11,7 @@ let factories = [];
  * @template TValue
  * @template {unknown[]} TArgs
  * @param {(...args: TArgs) => Observable<TValue>} fn
- * @returns
+ * @returns {(...args: TArgs) => Observable<TValue>}
  */
 function $factory(fn) {
   // NOTE: We expect that this code will be removed by the bundler

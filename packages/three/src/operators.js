@@ -1,7 +1,10 @@
-import { just } from "@apendua.dev/reactive";
+import * as THREE from "three";
+import { effects, just, fromEvent } from "@apendua.dev/reactive";
 import { distinctUntilChanged, Observable, switchMap } from "rxjs";
+import { addDependency, Changes } from "@apendua.dev/signal";
 
 /**
+ * @import { MonoTypeOperatorFunction } from 'rxjs';
  * @import { Object3D } from 'three';
  * @import { CopyableProps, Component } from './core.js';
  */
@@ -106,4 +109,34 @@ export function Nothing() {
  */
 export function $(object, operators = []) {
   return just(object, operators).pipe(toComponent());
+}
+
+/**
+ * @template {Object3D<any>} T
+ * @param {(obj: T) => void} fn
+ * @returns {MonoTypeOperatorFunction<T>}
+ */
+export function layoutEffects(fn) {
+  /**
+   * @template {Object3D<THREE.Object3DEventMap>} T
+   * @param {T} obj
+   * @param {() => void} fn
+   * @returns {void}
+   */
+  function useWhenAttachedToScene(obj, fn) {
+    addDependency(new Changes(fromEvent(obj, "added")));
+    addDependency(new Changes(fromEvent(obj, "removed")));
+    if (!obj.parent) {
+      return;
+    }
+    if (obj.parent instanceof THREE.Scene) {
+      fn();
+      return;
+    }
+    return useWhenAttachedToScene(obj.parent, fn);
+  }
+
+  return effects((obj) => {
+    useWhenAttachedToScene(obj, () => fn(obj));
+  });
 }

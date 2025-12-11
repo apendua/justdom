@@ -1,5 +1,5 @@
 import { addDependency, Derived, Source, toObservable } from "@apendua.dev/signal";
-import { Observable, share, switchAll, switchMap, tap } from "rxjs";
+import { NEVER, Observable, share, switchAll, switchMap, tap } from "rxjs";
 
 /**
  * @import { MonoTypeOperatorFunction } from 'rxjs';
@@ -138,11 +138,14 @@ export function join(props, operators) {
 }
 
 /**
- * @param {(() => Observable<unknown>) | Observable<unknown>} observable
+ * @param {(() => void) | (() => Observable<unknown>) | Observable<unknown>} observable
  */
 export function use(observable) {
   if (typeof observable === "function") {
-    observable = flatten(observable);
+    const fn = observable;
+    observable = flatten(() => {
+      return fn() ?? NEVER;
+    });
   }
   addDependency(new Source(observable.pipe(takeNothing())));
 }

@@ -1,6 +1,6 @@
 export { default as ListRenderer } from "./ListRenderer.js";
 export * from "./ListRenderer.js";
-export { default as Emitter, on } from "./Emitter.js";
+export { default as Emitter, on, fromEvent } from "./Emitter.js";
 export {
   effects,
   use,

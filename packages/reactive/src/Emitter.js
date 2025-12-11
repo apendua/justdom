@@ -92,6 +92,24 @@ export function on(event, handler) {
   });
 }
 
+/**
+ * @template {object} TEventMap
+ * @template {keyof TEventMap} TEvent
+ * @param {IEmitter<TEventMap>} emitter
+ * @param {TEvent} event
+ * @returns {Observable<TEventMap[TEvent]>}
+ */
+export function fromEvent(emitter, event) {
+  return new Observable((subscriber) => {
+    /** @type {Handler<TEventMap[TEvent]>} */
+    const handler = (e) => subscriber.next(e);
+    emitter.addEventListener(event, handler);
+    return () => {
+      emitter.removeEventListener(event, handler);
+    };
+  });
+}
+
 // /**
 //  * @template {object} TEventMap
 //  * @typedef {<TEvent extends keyof TEventMap, TEntity extends IEmitter<TEventMap>>(

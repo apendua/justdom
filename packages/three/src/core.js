@@ -171,6 +171,9 @@ export function addDynamicToParent(parent, items, renderItem) {
         const newItemsArray = Array.from(newItems);
         for (let i = 0; i < newItemsArray.length; i++) {
           const item = newItemsArray[i];
+          if (!childIndexes.has(item)) {
+            childIndexes.set(item, i);
+          }
           newItemsSet.add(item);
           if (!childSubscriptions.has(item)) {
             childSubscriptions.set(

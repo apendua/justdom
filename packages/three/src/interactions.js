@@ -344,8 +344,21 @@ export function interactions(ctx) {
  * @param {THREE.Object3D} object
  * @param {THREE.Matrix4} matrix
  */
-export function resetMatrix(object, matrix) {
-  object.matrix.copy(matrix);
-  object.matrix.decompose(object.position, object.quaternion, object.scale);
-  object.updateWorldMatrix(false, true);
+export function setLocalMatrix(object, matrix) {
+  matrix.decompose(object.position, object.quaternion, object.scale);
+  object.updateMatrix();
+}
+
+/**
+ * @param {THREE.Object3D} object
+ * @param {THREE.Matrix4} matrix
+ */
+export function setWorldMatrix(object, matrix) {
+  const { parent } = object;
+  if (parent) {
+    parent.updateWorldMatrix(true, false);
+    setLocalMatrix(object, parent.matrixWorld.clone().invert().multiply(matrix));
+  } else {
+    setLocalMatrix(object, matrix);
+  }
 }

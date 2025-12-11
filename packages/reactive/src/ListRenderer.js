@@ -134,6 +134,9 @@ export default class ListRenderer {
             const newItemsArray = Array.from(newItems);
             for (let index = newItemsArray.length - 1; index >= 0; index -= 1) {
               const item = newItemsArray[index];
+              if (!childIndexes.has(item)) {
+                childIndexes.set(item, index);
+              }
               let nextSegment;
               let i = index + 1;
               while (!nextSegment && i < newItemsArray.length) {

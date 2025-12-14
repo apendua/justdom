@@ -343,6 +343,13 @@ export class Signal {
     }
   }
 
+  /**
+   * @param {(value: T) => T} fn
+   */
+  setFn(fn) {
+    this.set(fn(this.#value));
+  }
+
   update() {
     this.#notifier.next(this);
   }

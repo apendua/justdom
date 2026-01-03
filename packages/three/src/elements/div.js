@@ -1,11 +1,13 @@
 import * as THREE from "three";
 import { onInvalidate, Signal } from "@apendua.dev/signal";
-import { effects, just, set, use } from "@apendua.dev/reactive";
+import { effects, just, on, set, use } from "@apendua.dev/reactive";
 import { animate } from "../render.js";
 import { $, children } from "../operators.js";
 import { shareObservable } from "@apendua.dev/store4";
+import { interactions } from "../interactions.js";
 
 /**
+ * @import {XREventMap} from '../core.js';
  * @import {Observable} from 'rxjs';
  */
 
@@ -47,6 +49,7 @@ const square = makeRectangleGeometry(0, 0, 1, -1);
  * @returns {Observable<THREE.Object3D>}
  */
 export function div(ctx, element) {
+  /** @type {THREE.Object3D<XREventMap>} */
   const object = new THREE.Object3D();
   /** @type {Signal<undefined | string>} */
   const backgroundColor = new Signal(undefined);
@@ -102,7 +105,25 @@ export function div(ctx, element) {
     );
   });
 
+  const { makeInteractive } = interactions(ctx);
+
   return just(object, [
+    makeInteractive(),
+    on("select", () => {
+      element.click();
+    }),
+    on("selectstart", () => {
+      element.dataset.xrActive = "true";
+    }),
+    on("selectend", () => {
+      delete element.dataset.xrActive;
+    }),
+    on("pointerenter", () => {
+      element.dataset.xrHover = "true";
+    }),
+    on("pointerleave", () => {
+      delete element.dataset.xrHover;
+    }),
     effects((obj) => {
       use(
         animate(ctx, () => {

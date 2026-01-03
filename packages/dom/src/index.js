@@ -1,6 +1,6 @@
 export { $, $$, children, list } from "./dom.js";
-export { stylesheet } from "./stylesheet.js";
-export { render, text, textNode } from "./text.js";
+export { stylesheet, fontFace } from "./stylesheet.js";
+export { renderText, text, textNode } from "./text.js";
 export { on, set, attr, data, style } from "./operators.js";
 
 /**
@@ -10,6 +10,10 @@ export { on, set, attr, data, style } from "./operators.js";
 
 /**
  * @typedef {import('./core.js').Primitive} Primitive
+ */
+
+/**
+ * @typedef {import('./text.js').Renderable} Renderable
  */
 
 /**

@@ -39,7 +39,7 @@ export function textNode(value) {
  * @param {...Renderable} values - The values to interpolate.
  * @returns {Observable<string>} An observable that emits the rendered text.
  */
-export function render(strings, ...values) {
+export function renderText(strings, ...values) {
   if (values.length === 0) {
     return just(strings.join(""));
   }
@@ -74,5 +74,5 @@ export function render(strings, ...values) {
  * @returns {Observable<Mountable<Node>>} An observable that emits a Text node.
  */
 export function text(strings, ...values) {
-  return textNode(render(strings, ...values)).pipe(map(toMountable));
+  return textNode(renderText(strings, ...values)).pipe(map(toMountable));
 }

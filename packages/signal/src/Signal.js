@@ -217,7 +217,7 @@ export class Derived {
       this.#notifier.error(err);
       return;
     }
-    if (newValue !== oldValue) {
+    if (!Object.is(oldValue, newValue)) {
       this.#notifier.next(this);
     }
   }
@@ -337,7 +337,7 @@ export class Signal {
    * @param {T} value
    */
   set(value) {
-    if (this.#value !== value) {
+    if (!Object.is(this.#value, value)) {
       this.#value = value;
       updateQueue.invalidate(this);
     }

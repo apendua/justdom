@@ -40,6 +40,7 @@
     "rxjs": "^7.8.2"
   },
   "devDependencies": {
+    "@apendua.dev/dom": "workspace:*",
     "@apendua.dev/signal": "workspace:*",
     "@types/jest": "^30.0.0",
     "@types/node": "^24.7.0",

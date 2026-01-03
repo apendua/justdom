@@ -1,5 +1,5 @@
 import { addDependency, Derived, Source, toObservable } from "@apendua.dev/signal";
-import { NEVER, Observable, share, switchAll, switchMap, tap } from "rxjs";
+import { NEVER, Observable, ReplaySubject, share, switchAll, switchMap, tap } from "rxjs";
 
 /**
  * @import { MonoTypeOperatorFunction } from 'rxjs';
@@ -208,7 +208,13 @@ export const all = (...operators) => {
 export const just = (value, operators = []) => {
   return new Observable((subscriber) => {
     subscriber.next(value);
-  }).pipe(all(...operators));
+  }).pipe(
+    all(...operators),
+    share({
+      connector: () => new ReplaySubject(1),
+      resetOnRefCountZero: true,
+    }),
+  );
 };
 
 /**

@@ -1,10 +1,10 @@
 import { $factory } from "@apendua.dev/hmr";
-import { stylesheet, text, $, children, list } from "@apendua.dev/dom";
+import { className, text, $, children, list } from "@apendua.dev/dom";
 import { Signal, toObservable } from "@apendua.dev/signal";
 import { store, on, set, observable } from "@apendua.dev/reactive";
 import TodoItem from "./TodoItem";
 
-const containerStyle = stylesheet`
+const containerStyle = className`
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -12,13 +12,13 @@ const containerStyle = stylesheet`
   font-family: sans-serif;
 `;
 
-const headerStyle = stylesheet`
+const headerStyle = className`
   font-size: 2rem;
   margin-bottom: 1rem;
   color: #333;
 `;
 
-const inputContainerStyle = stylesheet`
+const inputContainerStyle = className`
   display: flex;
   gap: 0.5rem;
   margin-bottom: 1rem;
@@ -26,7 +26,7 @@ const inputContainerStyle = stylesheet`
   max-width: 400px;
 `;
 
-const inputStyle = stylesheet`
+const inputStyle = className`
   flex-grow: 1;
   padding: 0.5rem;
   font-size: 1rem;
@@ -34,7 +34,7 @@ const inputStyle = stylesheet`
   border-radius: 4px;
 `;
 
-const buttonStyle = stylesheet`
+const buttonStyle = className`
   padding: 0.5rem 1rem;
   font-size: 1rem;
   background-color: #007bff;
@@ -47,7 +47,7 @@ const buttonStyle = stylesheet`
   }
 `;
 
-const listStyle = stylesheet`
+const listStyle = className`
   list-style: none;
   padding: 0;
   width: 100%;

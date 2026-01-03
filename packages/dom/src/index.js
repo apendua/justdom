@@ -1,5 +1,5 @@
 export { $, $$, children, list } from "./dom.js";
-export { stylesheet, fontFace } from "./stylesheet.js";
+export { stylesheet, fontFace, className, CLASS_NAME } from "./stylesheet.js";
 export { renderText, text, textNode } from "./text.js";
 export { on, set, attr, data, style } from "./operators.js";
 

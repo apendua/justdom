@@ -1,8 +1,8 @@
 import { $factory } from "@apendua.dev/hmr";
-import { stylesheet, text, $, children, style } from "@apendua.dev/dom";
+import { className, text, $, children, style } from "@apendua.dev/dom";
 import { store, on, set, emit, Op, join } from "@apendua.dev/reactive";
 
-const itemStyle = stylesheet`
+const itemStyle = className`
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -14,14 +14,14 @@ const itemStyle = stylesheet`
   box-shadow: 0 1px 2px rgba(0,0,0,0.1);
 `;
 
-const textStyle = stylesheet`
+const textStyle = className`
   flex-grow: 1;
   margin-left: 0.5rem;
   cursor: pointer;
   user-select: none;
 `;
 
-const deleteButtonStyle = stylesheet`
+const deleteButtonStyle = className`
   background: #ff4d4d;
   color: white;
   border: none;

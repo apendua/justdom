@@ -1,4 +1,4 @@
-import { stylesheet, text, set, on, children, $ } from "@apendua.dev/dom";
+import { text, set, on, children, $, className } from "@apendua.dev/dom";
 import { RootContext } from "../store4/Root";
 import { Fields, FieldsContext } from "@apendua.dev/minesweeper";
 import { $observe } from "@apendua.dev/store4";
@@ -7,7 +7,7 @@ import Viewport, { ViewportContext } from "../store4/Viewport";
 import { switchMap } from "rxjs";
 import Minefield from "./Minefield";
 
-const fullscreen = stylesheet`
+const fullscreen = className`
   position: absolute;
   top: 0;
   left: 0;

@@ -14,7 +14,14 @@ export function toObservable(signal) {
   return new Observable((subscriber) => {
     const subscription = signal.getChanges().subscribe({
       next: () => {
-        subscriber.next(signal.get());
+        try {
+          subscriber.next(signal.get());
+        } catch (err) {
+          if (err instanceof NoValueError) {
+            return;
+          }
+          throw err;
+        }
       },
       error: (err) => {
         subscriber.error(err);

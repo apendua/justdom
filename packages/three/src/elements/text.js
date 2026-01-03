@@ -5,7 +5,6 @@ import { effects, flatten, just, set, use } from "@apendua.dev/reactive";
 import { animate } from "../render.js";
 import { $, children } from "../operators.js";
 import { shareObservable } from "@apendua.dev/store4";
-import { TTFLoader } from "three/examples/jsm/loaders/TTFLoader.js";
 import { Font } from "three/examples/jsm/loaders/FontLoader.js";
 
 /**
@@ -51,17 +50,23 @@ const loadFont = shareObservable(
    */
   (path) => {
     return new Observable((subscriber) => {
-      const loader = new TTFLoader();
-      loader.load(
-        path,
-        (font) => {
-          subscriber.next(new Font(font));
-        },
-        () => {},
-        (error) => {
-          console.warn(error);
-        },
-      );
+      import("three/examples/jsm/loaders/TTFLoader.js")
+        .then(({ TTFLoader }) => {
+          const loader = new TTFLoader();
+          loader.load(
+            path,
+            (font) => {
+              subscriber.next(new Font(font));
+            },
+            () => {},
+            (error) => {
+              console.warn(error);
+            },
+          );
+        })
+        .catch((err) => {
+          subscriber.error(err);
+        });
     });
   },
 );

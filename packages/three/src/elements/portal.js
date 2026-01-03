@@ -9,17 +9,6 @@ import { text } from "./text";
  */
 
 /**
- * @param {Node} node
- * @param {(node: Node) => void} callback
- */
-function forEachDescendant(node, callback) {
-  node.childNodes.forEach((child) => {
-    callback(child);
-    forEachDescendant(child, callback);
-  });
-}
-
-/**
  * @param {WeakKey} ctx
  */
 export function createPortal(ctx) {
@@ -35,14 +24,14 @@ export function createPortal(ctx) {
   function cleanup(node) {
     const object = nodeToObject.get(node);
     if (object) {
-      const cleanupFn = objectToCleanup.get(object);
-      if (cleanupFn) {
-        cleanupFn();
-      }
-      nodeToObject.delete(node);
-      objectToCleanup.delete(object);
+      object.traverse((child) => {
+        const cleanupFn = objectToCleanup.get(child);
+        if (cleanupFn) {
+          cleanupFn();
+        }
+        objectToCleanup.delete(child);
+      });
     }
-    forEachDescendant(node, cleanup);
   }
 
   /**
@@ -144,9 +133,7 @@ export function createPortal(ctx) {
             if (childObject && parentObject) {
               parentObject.remove(childObject);
             }
-            forEachDescendant(node, (child) => {
-              nodeToObject.delete(child);
-            });
+            cleanup(node);
           }
         });
       }

@@ -60,7 +60,7 @@ export function renderText(strings, ...values) {
     map((observedValues) => {
       let rendered = "";
       strings.forEach((str, index) => {
-        rendered += str + (observedValues[index] || "");
+        rendered += str + (observedValues[index] ?? "");
       });
       return rendered;
     }),

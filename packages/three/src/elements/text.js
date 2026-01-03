@@ -109,6 +109,8 @@ export function text(ctx, textNode) {
     const fontUrl = findFontUrl(fontFamily.get());
     return new Source(loadFont(fontUrl)).get();
   });
+  /** @type {Signal<string>} */
+  const textContent = new Signal(textNode.textContent);
 
   // const material = new Derived(() => {
   //   const basic = new THREE.MeshBasicMaterial();
@@ -153,6 +155,7 @@ export function text(ctx, textNode) {
           textColor.set(style.color);
           fontFamily.set(style.fontFamily);
           fontSize.set(parseFloat(style.fontSize));
+          textContent.set(textNode.textContent);
 
           const textRect = range.getBoundingClientRect();
           const parentRect = textNode.parentElement?.getBoundingClientRect();
@@ -173,7 +176,7 @@ export function text(ctx, textNode) {
           "geometry",
           flatten(() => {
             const fontUrl = findFontUrl(fontFamily.get());
-            return generateText(fontUrl, textNode.textContent || "");
+            return generateText(fontUrl, textContent.get() || "");
           }),
         ),
         effects((obj) => {

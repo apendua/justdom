@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { onInvalidate, Signal } from "@apendua.dev/signal";
+import { batch, Lazy, onInvalidate } from "@apendua.dev/signal";
 import { effects, just, on, set, use } from "@apendua.dev/reactive";
 import { animate } from "../render.js";
 import { $, children } from "../operators.js";
@@ -51,12 +51,10 @@ const square = makeRectangleGeometry(0, 0, 1, -1);
 export function div(ctx, element) {
   /** @type {THREE.Object3D<XREventMap>} */
   const object = new THREE.Object3D();
-  /** @type {Signal<undefined | string>} */
-  const backgroundColor = new Signal(undefined);
-  /** @type {Signal<undefined | string>} */
-  const borderColor = new Signal(undefined);
-  /** @type {Signal<string>} */
-  const fontFamily = new Signal("");
+  /** @type {Lazy<string>} */
+  const backgroundColor = new Lazy();
+  /** @type {Lazy<string>} */
+  const borderColor = new Lazy();
 
   // const material = new Derived(() => {
   //   const basic = new THREE.MeshBasicMaterial();
@@ -128,20 +126,19 @@ export function div(ctx, element) {
       use(
         animate(ctx, () => {
           const style = getComputedStyle(element);
-          backgroundColor.set(style.backgroundColor);
-          borderColor.set(style.borderColor);
-          // console.log("COMPUTED", style.fontFamily);
-          fontFamily.set(style.fontFamily);
-
           const elementRect = element.getBoundingClientRect();
           const parentRect = element.parentElement?.getBoundingClientRect();
-          if (parentRect) {
-            const left = elementRect.left - parentRect.left;
-            const top = elementRect.top - parentRect.top;
-            obj.position.set(left, top, -0.01);
-          } else {
-            obj.position.set(elementRect.left, elementRect.top, -0.01);
-          }
+          batch(() => {
+            backgroundColor.set(style.backgroundColor);
+            borderColor.set(style.borderColor);
+            if (parentRect) {
+              const left = elementRect.left - parentRect.left;
+              const top = elementRect.top - parentRect.top;
+              obj.position.set(left, top, -0.01);
+            } else {
+              obj.position.set(elementRect.left, elementRect.top, -0.01);
+            }
+          });
         }),
       );
     }),
@@ -174,18 +171,6 @@ export function div(ctx, element) {
                 elementRect.height - borderWidth * 2,
                 1,
               );
-            }),
-          );
-        }),
-      ]),
-      $(new THREE.Mesh(), [
-        set("material", borderMaterial()),
-        set("geometry", just(square)),
-        effects((obj) => {
-          obj.position.set(-10, -10, 0.008);
-          use(
-            animate(ctx, () => {
-              obj.scale.set(10, 10, 1);
             }),
           );
         }),

@@ -127,6 +127,9 @@ export class Derived {
   /** @type {(ctx: EvaluationContext<T>) => T} */
   #evaluate;
 
+  /** @type {(a: T, b: T) => boolean} */
+  #isEqual;
+
   /** @type {number} */
   #priority = 0;
 
@@ -144,9 +147,11 @@ export class Derived {
 
   /**
    * @param {(ctx: EvaluationContext<T>) => T} evaluate
+   * @param {(a: T, b: T) => boolean} [isEqual]
    */
-  constructor(evaluate) {
+  constructor(evaluate, isEqual = Object.is) {
     this.#evaluate = evaluate;
+    this.#isEqual = isEqual;
   }
 
   get() {
@@ -217,7 +222,7 @@ export class Derived {
       this.#notifier.error(err);
       return;
     }
-    if (!Object.is(oldValue, newValue)) {
+    if (!this.#isEqual(oldValue, newValue)) {
       this.#notifier.next(this);
     }
   }
@@ -311,6 +316,68 @@ export class Derived {
  * @template T
  * @implements {Dependency}
  */
+export class Lazy {
+  /** @type {Subject<Dependency>} */
+  #notifier = new Subject();
+
+  /** @type {Observable<Dependency>} */
+  #changes = this.#notifier.asObservable();
+
+  /** @type {(a: T, b: T) => boolean} */
+  #isEqual;
+
+  /** @type {{ value: T } | undefined} */
+  #current;
+
+  /**
+   * @param {(a: T, b: T) => boolean} [isEqual]
+   */
+  constructor(isEqual = Object.is) {
+    this.#isEqual = isEqual;
+  }
+
+  get() {
+    addDependency(this);
+    if (!this.#current) {
+      throw new NoValueError("No value available");
+    }
+    return this.#current.value;
+  }
+
+  /**
+   * @param {T} value
+   */
+  set(value) {
+    if (!this.#current || !this.#isEqual(this.#current.value, value)) {
+      this.#current = Object.freeze({ value });
+      updateQueue.invalidate(this);
+    }
+  }
+
+  /**
+   * @param {(current?: { value: T }) => T} fn
+   */
+  setFn(fn) {
+    this.set(fn(this.#current));
+  }
+
+  update() {
+    this.#notifier.next(this);
+  }
+
+  getChanges() {
+    return this.#changes;
+  }
+
+  getPriority() {
+    return 0;
+  }
+}
+
+/**
+ * @template T
+ * @implements {Dependency}
+ */
 export class Signal {
   /** @type {Subject<Dependency>} */
   #notifier = new Subject();
@@ -321,10 +388,15 @@ export class Signal {
   /** @type {T} */
   #value;
 
+  /** @type {(a: T, b: T) => boolean} */
+  #isEqual;
+
   /**
    * @param {T} value
+   * @param {(a: T, b: T) => boolean} [isEqual]
    */
-  constructor(value) {
+  constructor(value, isEqual = Object.is) {
+    this.#isEqual = isEqual;
     this.#value = value;
   }
 
@@ -337,7 +409,7 @@ export class Signal {
    * @param {T} value
    */
   set(value) {
-    if (!Object.is(this.#value, value)) {
+    if (!this.#isEqual(this.#value, value)) {
       this.#value = value;
       updateQueue.invalidate(this);
     }

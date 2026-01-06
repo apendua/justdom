@@ -1,7 +1,7 @@
 import * as THREE from "three";
-import { map, Observable } from "rxjs";
-import { batch, Derived, Lazy, NoValueError, onInvalidate } from "@apendua.dev/signal";
-import { effects, flatten, just, set, use } from "@apendua.dev/reactive";
+import { Observable } from "rxjs";
+import { batch, Lazy, NoValueError, onInvalidate } from "@apendua.dev/signal";
+import { effects, flatten, just, set, use, map } from "@apendua.dev/reactive";
 import { animate } from "../render.js";
 import { $, children } from "../operators.js";
 import { shareObservable } from "@apendua.dev/store4";
@@ -94,22 +94,31 @@ function measureTextWidth(font, text) {
  * Wrap text into lines based on maximum width
  * @param {Font} font
  * @param {string} text
- * @param {number} maxWidth
+ * @param {number[]} lineWidths
  * @returns {string[]}
  */
-function wrapText(font, text, maxWidth) {
+function wrapText(font, text, lineWidths) {
+  if (lineWidths.length === 0) {
+    return [text];
+  }
   const words = text.split(/(\s+)/);
   const lines = [];
   let currentLine = "";
+  let maxLineWidth = lineWidths[0];
 
   for (let i = 0; i < words.length; i++) {
     const word = words[i];
     const testLine = currentLine + word;
     const testWidth = measureTextWidth(font, testLine);
 
-    if (testWidth > maxWidth && currentLine !== "") {
-      lines.push(currentLine.trimEnd());
-      currentLine = word.trimStart();
+    if (testWidth > maxLineWidth && currentLine !== "") {
+      if (lines.length < lineWidths.length - 1) {
+        lines.push(currentLine.trimEnd());
+        currentLine = word.trimStart();
+        maxLineWidth = lineWidths[lines.length];
+      } else {
+        maxLineWidth = Infinity;
+      }
     } else {
       currentLine = testLine;
     }
@@ -159,49 +168,32 @@ const generateTextGeometry = shareObservable(
    * @param {string} text
    * @param {string} fontUrl
    * @param {number} fontSize
-   * @param {number} textWidth
-   * @param {string} textAlign
-   * @param {number} lineHeight
+   * @param {DOMRect} textRect
+   * @param {DOMRectList} textRects
    * @returns {Observable<THREE.BufferGeometry>}
    */
-  (text, fontUrl, fontSize, textWidth, textAlign, lineHeight) => {
+  (text, fontUrl, fontSize, textRect, textRects) => {
+    // TODO(@apendua): Handle textAlign = "justify", which requires slightly different shape generation logic.
     return loadFont(fontUrl).pipe(
       map((font) => {
         const scale = fontSize / (font.data.ascender - font.data.underlinePosition);
-        // Add 1 pixel tollerance to avoid wrapping issues
-        const maxWidth = (textWidth + 1) / scale;
 
-        // Break text into lines based on textWidth
-        const lines = wrapText(font, text, maxWidth);
+        const lineWidths = Array.from(textRects).map((rect) => (rect.width + 1) / scale);
+        const lines = wrapText(font, text, lineWidths);
 
-        // Generate shapes for each line and position them
         /** @type {THREE.Shape[]} */
         const allShapes = [];
-        let yOffset = 0;
 
-        lines.forEach((line) => {
-          if (!line) return;
-
+        lines.forEach((line, i) => {
           const lineShapes = font.generateShapes(line, font.data.resolution * scale);
-          const lineWidth = measureTextWidth(font, line) * scale;
 
-          // Calculate x offset based on alignment
-          let xOffset = 0;
-          if (textAlign === "center") {
-            xOffset = (textWidth - lineWidth) / 2;
-          } else if (textAlign === "right" || textAlign === "end") {
-            xOffset = textWidth - lineWidth;
-          }
-          // 'left', 'start', or default is 0
+          const xOffset = textRects[i] ? textRects[i].left - textRect.left : 0;
+          const yOffset = textRects[i] ? -textRects[i].top + textRect.top : 0;
 
-          // Position shapes for this line
           lineShapes.forEach((shape) => {
             translateShape(shape, xOffset, yOffset);
             allShapes.push(shape);
           });
-
-          // Move to next line
-          yOffset -= lineHeight;
         });
 
         const geometry = new THREE.ShapeGeometry(allShapes);
@@ -257,22 +249,23 @@ export function text(ctx, textNode) {
   // });
   /** @type {Lazy<string>} */
   const textContent = new Lazy();
-  /** @type {Lazy<string>} */
-  const textAlign = new Lazy();
-  /** @type {Lazy<string>} */
-  const lineHeight = new Lazy();
+  /** @type {Lazy<boolean>} */
+  const textJustify = new Lazy();
   /** @type {Lazy<DOMRect>} */
-  const textRect = new Lazy((a, b) => shallowEqual(a.toJSON(), b.toJSON()));
-
-  const lineHeightPx = new Derived(() => {
-    const height = lineHeight.get();
-    if (height === "normal") {
-      return fontSize.get() * 1.2;
+  const textRect = new Lazy((a, b) => {
+    return shallowEqual(a.toJSON(), b.toJSON());
+  });
+  /** @type {Lazy<DOMRectList>} */
+  const textRects = new Lazy((a, b) => {
+    if (a.length !== b.length) {
+      return false;
     }
-    if (height.endsWith("px")) {
-      return parseFloat(height);
+    for (let i = 0; i < a.length; i++) {
+      if (!shallowEqual(a[i].toJSON(), b[i].toJSON())) {
+        return false;
+      }
     }
-    return parseFloat(height) * fontSize.get();
+    return true;
   });
 
   // const material = new Derived(() => {
@@ -332,9 +325,9 @@ export function text(ctx, textNode) {
             fontFamily.set(style.fontFamily);
             fontSize.set(parseFloat(style.fontSize));
             textContent.set(textNode.textContent);
-            textAlign.set(style.textAlign);
-            lineHeight.set(style.lineHeight);
+            textJustify.set(style.textAlign === "justify");
             textRect.set(textRange.getBoundingClientRect());
+            textRects.set(textRange.getClientRects());
           });
         }),
       );
@@ -350,9 +343,8 @@ export function text(ctx, textNode) {
               textContent.get() || "",
               fontUrl,
               fontSize.get(),
-              textRect.get().width,
-              textAlign.get(),
-              lineHeightPx.get(),
+              textRect.get(),
+              textRects.get(),
             );
           }),
         ),

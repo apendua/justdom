@@ -47,6 +47,14 @@ export function addDependency(dependency) {
 export function onInvalidate(fn) {
   if (activeComputation) {
     activeComputation.onInvalidate(fn);
+  } else {
+    console.warn(
+      new Error(
+        "onInvalidate called outside of a computation. " +
+          "It's almost certainly not what you want. " +
+          "Please examine the stack trace and make sure everything is working as expected.",
+      ),
+    );
   }
 }
 

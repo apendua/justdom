@@ -1,47 +1,17 @@
 import * as THREE from "three";
-import { batch, Lazy, onInvalidate } from "@apendua.dev/signal";
+import { onInvalidate } from "@apendua.dev/signal";
 import { effects, just, on, set, use } from "@apendua.dev/reactive";
 import { animate } from "../render.js";
 import { $, children } from "../operators.js";
-import { shareObservable } from "@apendua.dev/store4";
+import { shareSignal } from "@apendua.dev/store4";
 import { interactions } from "../interactions.js";
+import VisualProperties from "./VisualProperties.js";
+import { makeRectangleGeometry, shrinkRectangle } from "./rectangle.js";
 
 /**
  * @import {XREventMap} from '../core.js';
  * @import {Observable} from 'rxjs';
  */
-
-/**
- * @param {number} left
- * @param {number} top
- * @param {number} width
- * @param {number} height
- * @returns {THREE.BufferGeometry}
- */
-function makeRectangleGeometry(left, top, width, height) {
-  const geometry = new THREE.BufferGeometry();
-  const vertices = new Float32Array([
-    left,
-    top,
-    0,
-    left,
-    top - height,
-    0,
-    left + width,
-    top - height,
-    0,
-    left + width,
-    top,
-    0,
-  ]);
-  const indices = [0, 1, 2, 2, 3, 0];
-  geometry.setAttribute("position", new THREE.BufferAttribute(vertices, 3));
-  geometry.setIndex(indices);
-  geometry.computeVertexNormals();
-  return geometry;
-}
-
-const square = makeRectangleGeometry(0, 0, 1, -1);
 
 /**
  * @param {WeakKey} ctx
@@ -51,10 +21,7 @@ const square = makeRectangleGeometry(0, 0, 1, -1);
 export function div(ctx, element) {
   /** @type {THREE.Object3D<XREventMap>} */
   const object = new THREE.Object3D();
-  /** @type {Lazy<string>} */
-  const backgroundColor = new Lazy();
-  /** @type {Lazy<string>} */
-  const borderColor = new Lazy();
+  const properties = new VisualProperties();
 
   // const material = new Derived(() => {
   //   const basic = new THREE.MeshBasicMaterial();
@@ -67,54 +34,58 @@ export function div(ctx, element) {
   //   return basic;
   // });
 
-  const backgroundMaterial = shareObservable(() => {
-    return just(
-      new THREE.MeshBasicMaterial({
+  const fillMaterial = shareSignal(
+    /**
+     * @param {THREE.Color} color
+     * @param {number} opacity
+     * @returns {THREE.Material}
+     */
+    (color, opacity) => {
+      const material = new THREE.MeshBasicMaterial({
         side: THREE.DoubleSide,
-      }),
-      [
-        effects((material) => {
-          material.color.set(backgroundColor.get() ?? "white");
-        }),
-        effects((material) => {
-          onInvalidate(() => {
-            material.dispose();
-          });
-        }),
-      ],
-    );
-  });
+        color,
+        opacity,
+        transparent: opacity < 1.0,
+      });
+      onInvalidate(() => {
+        material.dispose();
+      });
+      return material;
+    },
+  );
 
-  const borderMaterial = shareObservable(() => {
-    return just(
-      new THREE.MeshBasicMaterial({
-        side: THREE.DoubleSide,
-      }),
-      [
-        effects((material) => {
-          material.color.set(borderColor.get() ?? "purple");
-        }),
-        effects((material) => {
-          onInvalidate(() => {
-            material.dispose();
-          });
-        }),
-      ],
-    );
-  });
-
-  const { makeInteractive } = interactions(ctx);
+  const { makeInteractive, stopPropagation } = interactions(ctx);
 
   return just(object, [
     makeInteractive(),
-    on("select", () => {
-      element.click();
+    on("select", (e) => {
+      const event = new MouseEvent("click", {
+        bubbles: true,
+      });
+      element.dispatchEvent(event);
+      stopPropagation(e);
     }),
-    on("selectstart", () => {
+    on("selectstart", (e) => {
+      const event = new MouseEvent("mousedown", {
+        bubbles: true,
+      });
+      element.dispatchEvent(event);
       element.dataset.xrActive = "true";
+      stopPropagation(e);
     }),
-    on("selectend", () => {
+    on("selectend", (e) => {
+      const event = new MouseEvent("mouseup", {
+        bubbles: true,
+      });
+      element.dispatchEvent(event);
       delete element.dataset.xrActive;
+      stopPropagation(e);
+    }),
+    on("pointermove", () => {
+      const event = new MouseEvent("mousemove", {
+        bubbles: false,
+      });
+      element.dispatchEvent(event);
     }),
     on("pointerenter", () => {
       element.dataset.xrHover = "true";
@@ -125,54 +96,64 @@ export function div(ctx, element) {
     effects((obj) => {
       use(
         animate(ctx, () => {
-          const style = getComputedStyle(element);
           const elementRect = element.getBoundingClientRect();
           const parentRect = element.parentElement?.getBoundingClientRect();
-          batch(() => {
-            backgroundColor.set(style.backgroundColor);
-            borderColor.set(style.borderColor);
-            if (parentRect) {
-              const left = elementRect.left - parentRect.left;
-              const top = elementRect.top - parentRect.top;
-              obj.position.set(left, top, -0.01);
-            } else {
-              obj.position.set(elementRect.left, elementRect.top, -0.01);
-            }
-          });
+          if (parentRect) {
+            obj.position.set(
+              elementRect.left - parentRect.left,
+              elementRect.top - parentRect.top,
+              -2,
+            );
+          } else {
+            obj.position.set(elementRect.left, elementRect.top, -2);
+          }
+        }),
+      );
+      use(
+        animate(ctx, () => {
+          properties.setFromElement(element);
         }),
       );
     }),
     children(
       $(new THREE.Mesh(), [
-        set("material", borderMaterial()),
-        set("geometry", just(square)),
+        set("material", () => fillMaterial(properties.borderColor, properties.borderAlpha)),
+        set("geometry", () => {
+          const geometry = makeRectangleGeometry(properties.getRectangleParams(), {
+            left: properties.borderLeftWidth,
+            right: properties.borderRightWidth,
+            top: properties.borderTopWidth,
+            bottom: properties.borderBottomWidth,
+          });
+          onInvalidate(() => {
+            geometry.dispose();
+          });
+          return geometry;
+        }),
         effects((obj) => {
-          use(
-            animate(ctx, () => {
-              const elementRect = element.getBoundingClientRect();
-              obj.position.set(0, 0, 0.009);
-              obj.scale.set(elementRect.width, elementRect.height, 1);
-            }),
-          );
+          obj.position.set(0, 0, 1);
+          obj.renderOrder = -properties.layerNo;
         }),
       ]),
       $(new THREE.Mesh(), [
-        set("material", backgroundMaterial()),
-        set("geometry", just(square)),
-        effects((obj) => {
-          use(
-            animate(ctx, () => {
-              const elementRect = element.getBoundingClientRect();
-              const style = getComputedStyle(element);
-              const borderWidth = parseFloat(style.borderWidth);
-              obj.position.set(borderWidth, borderWidth, 0.005);
-              obj.scale.set(
-                elementRect.width - borderWidth * 2,
-                elementRect.height - borderWidth * 2,
-                1,
-              );
+        set("material", () => fillMaterial(properties.backgroundColor, properties.backgroundAlpha)),
+        set("geometry", () => {
+          const geometry = makeRectangleGeometry(
+            shrinkRectangle(properties.getRectangleParams(), {
+              left: properties.borderLeftWidth,
+              right: properties.borderRightWidth,
+              top: properties.borderTopWidth,
+              bottom: properties.borderBottomWidth,
             }),
           );
+          onInvalidate(() => {
+            geometry.dispose();
+          });
+          return geometry;
+        }),
+        effects((obj) => {
+          obj.position.set(0, 0, 1);
+          obj.renderOrder = -properties.layerNo;
         }),
       ]),
     ),

@@ -11,7 +11,7 @@ import { Font } from "three/examples/jsm/loaders/FontLoader.js";
  * @param {string} fontFamily
  * @returns {string}
  */
-function findFontUrl(fontFamily) {
+export function findFontUrl(fontFamily) {
   // Normalize the font family name (remove quotes, trim)
   const normalizedFamily = fontFamily.replace(/['"]/g, "").trim().toLowerCase();
   for (let i = 0; i < document.styleSheets.length; i++) {
@@ -43,7 +43,7 @@ function findFontUrl(fontFamily) {
   throw new NoValueError();
 }
 
-const loadFont = shareObservable(
+export const loadFont = shareObservable(
   /**
    * @param {string} path
    * @returns {Observable<Font>}

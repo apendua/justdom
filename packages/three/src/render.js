@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { BehaviorSubject, tap, Observable, combineLatest, map } from "rxjs";
+import { BehaviorSubject, tap, Subject, Observable, combineLatest, map } from "rxjs";
 import { createProperty } from "@apendua.dev/signal";
 import { InteractionManager, InteractionContext } from "./interactions.js";
 
@@ -113,6 +113,9 @@ function addListener(renderer, fn) {
   });
 }
 
+/** @type {WeakMap<THREE.WebGLRenderer, Subject<{ time: number, frame: XRFrame }>>} */
+const frameSubject = new WeakMap();
+
 /**
  * @param {WeakKey} ctx
  * @param {XRFrameRequestCallback} fn
@@ -121,6 +124,19 @@ function addListener(renderer, fn) {
 export function animate(ctx, fn) {
   const renderer = RendererContext.get(ctx);
   return addListener(renderer, fn);
+}
+
+/**
+ * @param {WeakKey} ctx
+ * @returns {Observable<{ time: number, frame: XRFrame }>}
+ */
+export function frames(ctx) {
+  const renderer = RendererContext.get(ctx);
+  const subject = frameSubject.get(renderer);
+  if (!subject) {
+    throw new Error("No frame subject found for renderer");
+  }
+  return subject.asObservable();
 }
 
 /**
@@ -229,8 +245,13 @@ export function render(fn, options = {}) {
         .subscribe(scene),
     );
 
+    /** @type {Subject<{ time: number, frame: XRFrame }>} */
+    const subject = new Subject();
+    frameSubject.set(renderer, subject);
+
     renderer.setAnimationLoop((time, frame) => {
       options.onBeforeRender?.(renderer);
+      subject.next({ time, frame });
       const set = listeners.get(renderer);
       if (set) {
         for (const fn of set) {

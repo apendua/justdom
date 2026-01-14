@@ -1,7 +1,15 @@
 /* eslint-env jest */
 
 import { merge } from "rxjs";
-import { Signal, Derived, Dedupe, batch, nonReactive } from "./Signal.js";
+import {
+  Signal,
+  Derived,
+  Dedupe,
+  batch,
+  nonReactive,
+  onInvalidate,
+  addDependency,
+} from "./Signal.js";
 
 it("should not memoize value if not subscribed", function () {
   let computeCount = 0;
@@ -27,6 +35,69 @@ it("should memoize value when subscribed", function () {
   expect(derived.get()).toBe(42);
   expect(computeCount).toBe(1);
   subscription.unsubscribe();
+});
+
+it("invokes cleanup after last subscriber unsubscribes", function () {
+  const cleanup = jest.fn();
+  const derived = new Derived(() => {
+    onInvalidate(cleanup);
+  });
+  const subscription1 = derived.getChanges().subscribe();
+  const subscription2 = derived.getChanges().subscribe();
+  subscription1.unsubscribe();
+  subscription2.unsubscribe();
+  expect(cleanup).toHaveBeenCalledTimes(1);
+});
+
+it("invokes cleanup in a deferred manner", async function () {
+  const cleanup = jest.fn();
+  const derived = new Derived(
+    () => {
+      onInvalidate(cleanup);
+    },
+    {
+      deferred: true,
+    },
+  );
+  const subscription1 = derived.getChanges().subscribe();
+  const subscription2 = derived.getChanges().subscribe();
+  subscription1.unsubscribe();
+  subscription2.unsubscribe();
+  expect(cleanup).toHaveBeenCalledTimes(0);
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  expect(cleanup).toHaveBeenCalledTimes(1);
+});
+
+it("invokes cleanup after any relevant change in dependency", function () {
+  const cleanup = jest.fn();
+  const source = new Signal(1);
+  const derived = new Derived(() => {
+    addDependency(source);
+    onInvalidate(cleanup);
+    return source.get() * 2;
+  });
+  const subscription1 = derived.getChanges().subscribe();
+  const subscription2 = derived.getChanges().subscribe();
+  expect(derived.get()).toBe(2);
+  expect(derived.getEvaluations()).toBe(1);
+  expect(cleanup).toHaveBeenCalledTimes(0);
+  subscription1.unsubscribe();
+  expect(derived.getEvaluations()).toBe(1);
+  expect(cleanup).toHaveBeenCalledTimes(0);
+  subscription2.unsubscribe();
+  expect(derived.getEvaluations()).toBe(1);
+  expect(cleanup).toHaveBeenCalledTimes(1);
+  source.set(2);
+  expect(derived.get()).toBe(4);
+  expect(derived.getEvaluations()).toBe(2);
+  expect(cleanup).toHaveBeenCalledTimes(1);
+  const subscription3 = derived.getChanges().subscribe();
+  expect(derived.get()).toBe(4);
+  expect(derived.getEvaluations()).toBe(3);
+  expect(cleanup).toHaveBeenCalledTimes(2);
+  subscription3.unsubscribe();
+  expect(derived.getEvaluations()).toBe(3);
+  expect(cleanup).toHaveBeenCalledTimes(3);
 });
 
 it("should only emit if value changes", function () {

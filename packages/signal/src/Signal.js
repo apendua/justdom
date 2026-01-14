@@ -105,11 +105,12 @@ export function batch(fn) {
   return updateQueue.batch(fn);
 }
 
-// const myNextTick = nextTick().pipe(
-//   share({
-//     resetOnRefCountZero: true,
-//   }),
-// );
+/**
+ * @template T
+ * @typedef {object} DerivedOptions
+ * @property {(a: T, b: T) => boolean} [isEqual]
+ * @property {boolean} [deferred]
+ */
 
 /**
  * @template T
@@ -129,8 +130,11 @@ export class Derived {
   /** @type {{ value: T } | null} */
   #current = null;
 
+  /** @type {boolean} */
+  #deferred = false;
+
   /** @type {Observable<Dependency>} */
-  #changes = this.#getChanges();
+  #changes;
 
   /** @type {(ctx: EvaluationContext<T>) => T} */
   #evaluate;
@@ -155,11 +159,18 @@ export class Derived {
 
   /**
    * @param {(ctx: EvaluationContext<T>) => T} evaluate
-   * @param {(a: T, b: T) => boolean} [isEqual]
+   * @param {((a: T, b: T) => boolean) | DerivedOptions<T>} [options]
    */
-  constructor(evaluate, isEqual = Object.is) {
+  constructor(evaluate, options = Object.is) {
     this.#evaluate = evaluate;
-    this.#isEqual = isEqual;
+    if (typeof options === "function") {
+      this.#isEqual = options;
+    } else {
+      const { isEqual = Object.is, deferred = false } = options;
+      this.#isEqual = isEqual;
+      this.#deferred = deferred;
+    }
+    this.#changes = this.#getChanges(this.#deferred);
   }
 
   get() {
@@ -212,6 +223,9 @@ export class Derived {
 
   update() {
     if (!this.#current) {
+      // If we have no current value, there's no way we can figure out if
+      // something changed or not, so we just notify all potential dependents,
+      // in case they would like to recompute.
       this.#notifier.next(this);
       return;
     }
@@ -267,10 +281,13 @@ export class Derived {
   }
 
   /**
+   * @param {boolean} deferred
    * @returns {Observable<Dependency>}
    */
-  #getChanges() {
+  #getChanges(deferred) {
     return new Observable((subscriber) => {
+      // This subscription will be unnsubscribed outomatically
+      // as soon as subscriber is closed.
       this.#notifier.subscribe(subscriber);
       try {
         this.#recompute();
@@ -285,10 +302,11 @@ export class Derived {
         }
         this.#subscriptions.clear();
         this.#cleanup();
+        this.#current = null;
       };
     }).pipe(
       share({
-        resetOnRefCountZero: true,
+        resetOnRefCountZero: deferred ? () => myNextTick : true,
       }),
     );
   }

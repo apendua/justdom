@@ -1,4 +1,4 @@
-import { nonReactive } from "@apendua.dev/signal";
+import { Manual, nonReactive } from "@apendua.dev/signal";
 import { Observable, switchMap } from "rxjs";
 
 /**
@@ -83,10 +83,12 @@ class Emitter {
 export function on(event, handler) {
   return switchMap((entity) => {
     return new Observable((subscriber) => {
-      entity.addEventListener(event, handler);
+      const signal = new Manual(handler);
+      entity.addEventListener(event, signal.recompute);
+      subscriber.add(signal.getChanges().subscribe());
       subscriber.next(entity);
       return () => {
-        entity.removeEventListener(event, handler);
+        entity.removeEventListener(event, signal.recompute);
       };
     });
   });

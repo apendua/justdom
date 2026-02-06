@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { BehaviorSubject, tap, Subject, Observable, combineLatest, map } from "rxjs";
-import { createProperty } from "@apendua.dev/signal";
+import { createProperty, Manual } from "@apendua.dev/signal";
 import { InteractionManager, InteractionContext } from "./interactions.js";
 
 export const RendererContext = createProperty(
@@ -97,15 +97,18 @@ const listeners = new WeakMap();
  * @return {Observable<never>}
  */
 function addListener(renderer, fn) {
-  return new Observable(() => {
+  return new Observable((subscriber) => {
+    // We wrap fn with manual signal to ensure that potential dependencies are keep tracked of and properly cached (if needed).
+    const signal = new Manual(fn);
     let set = listeners.get(renderer);
     if (!set) {
       set = new Set();
       listeners.set(renderer, set);
     }
-    set.add(fn);
+    subscriber.add(signal.getChanges().subscribe());
+    set.add(signal.recompute);
     return () => {
-      set.delete(fn);
+      set.delete(signal.recompute);
       if (set.size === 0) {
         listeners.delete(renderer);
       }

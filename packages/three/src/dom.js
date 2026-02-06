@@ -7,17 +7,19 @@ import { createPortal } from "./elements/portal.js";
 /**
  * @import {MonoTypeOperatorFunction} from 'rxjs';
  * @import {Mountable} from "@apendua.dev/reactive";
- * @import {Component} from './core.js';
+ * @import {Component,XREventMap} from './core.js';
  */
 
 /**
  * @param {WeakKey} ctx
  * @param {Observable<Mountable<Node>>} mountable$
- * @param {MonoTypeOperatorFunction<THREE.Object3D>[]} [operators]
+ * @param {MonoTypeOperatorFunction<THREE.Object3D<XREventMap>>[]} [operators]
  * @returns {Observable<Component>}
  */
 export function dom(ctx, mountable$, operators = []) {
-  return just(new THREE.Group(), operators).pipe(
+  /** @type {THREE.Group<XREventMap>} */
+  const group = new THREE.Group();
+  return just(group, operators).pipe(
     switchMap((obj) => {
       return new Observable((subscriber) => {
         subscriber.next({

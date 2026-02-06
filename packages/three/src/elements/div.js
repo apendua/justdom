@@ -132,7 +132,7 @@ export function div(ctx, element) {
         }),
         effects((obj) => {
           obj.position.set(0, 0, 1);
-          obj.renderOrder = -properties.layerNo;
+          obj.renderOrder = properties.layerNo;
         }),
       ]),
       $(new THREE.Mesh(), [
@@ -153,7 +153,7 @@ export function div(ctx, element) {
         }),
         effects((obj) => {
           obj.position.set(0, 0, 1);
-          obj.renderOrder = -properties.layerNo;
+          obj.renderOrder = properties.layerNo;
         }),
       ]),
     ),

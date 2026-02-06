@@ -87,7 +87,7 @@ export function createPortal(ctx) {
   containerElement.style.position = "absolute";
   containerElement.style.top = "0";
   containerElement.style.left = "0";
-  // container.style.visibility = "hidden";
+  containerElement.style.visibility = "hidden";
   document.body.appendChild(containerElement);
 
   const containerObject = new THREE.Group();

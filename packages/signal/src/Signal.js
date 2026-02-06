@@ -720,9 +720,6 @@ export class Manual {
   /** @type {{ value: T } | null} */
   #current = null;
 
-  /** @type {{ value: T } | null} */
-  #previous = null;
-
   /** @type {boolean} */
   #deferred = false;
 
@@ -810,14 +807,7 @@ export class Manual {
   }
 
   update() {
-    if (!this.#previous || !this.#current) {
-      this.#notifier.next(this);
-      return;
-    }
-    if (!this.#isEqual(this.#previous.value, this.#current.value)) {
-      this.#previous.value = this.#current.value;
-      this.#notifier.next(this);
-    }
+    this.#notifier.next(this);
   }
 
   /**
@@ -835,15 +825,10 @@ export class Manual {
     try {
       activeComputation = this;
       const newValue = this.#evaluate(...args);
-      if (!this.#notifier.observed) {
-        return newValue;
-      }
-      if (!this.#current) {
+      if (!this.#current || !this.#isEqual(this.#current.value, newValue)) {
         this.#current = { value: newValue };
-      } else {
-        this.#current.value = newValue;
+        updateQueue.invalidate(this);
       }
-      updateQueue.push(this);
       return this.#current.value;
     } finally {
       activeComputation = oldComputation;

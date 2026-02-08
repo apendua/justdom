@@ -15,6 +15,9 @@ export function createPortal(ctx) {
   /** @type {WeakMap<Node, Object3D>} */
   const nodeToObject = new WeakMap();
 
+  /** @type {WeakMap<Object3D, Node>} */
+  const objectToNode = new WeakMap();
+
   /** @type {WeakMap<Object3D, () => void>} */
   const objectToCleanup = new WeakMap();
 
@@ -24,14 +27,23 @@ export function createPortal(ctx) {
   function cleanup(node) {
     const object = nodeToObject.get(node);
     if (object) {
-      object.traverse((child) => {
-        const cleanupFn = objectToCleanup.get(child);
-        if (cleanupFn) {
-          cleanupFn();
+      const cleanupFn = objectToCleanup.get(object);
+      if (cleanupFn) {
+        cleanupFn();
+        objectToCleanup.delete(object);
+      }
+      object.children.forEach((child) => {
+        const childNode = objectToNode.get(child);
+        if (childNode) {
+          cleanup(childNode);
         }
-        objectToCleanup.delete(child);
       });
+      nodeToObject.delete(node);
+      objectToNode.delete(object);
     }
+    node.childNodes.forEach((childNode) => {
+      cleanup(childNode);
+    });
   }
 
   /**
@@ -47,8 +59,7 @@ export function createPortal(ctx) {
     if (node.nodeType === Node.ELEMENT_NODE) {
       const element = /** @type {HTMLElement} */ (node);
       switch (element.tagName.toLowerCase()) {
-        case "div":
-        case "span": {
+        default: {
           observable = div(ctx, element);
         }
       }
@@ -69,6 +80,7 @@ export function createPortal(ctx) {
       throw new Error("Failed to create Object3D for node");
     }
     nodeToObject.set(node, object);
+    objectToNode.set(object, node);
     objectToCleanup.set(object, () => {
       subscription.unsubscribe();
     });
@@ -114,22 +126,28 @@ export function createPortal(ctx) {
    */
   const mutationCallback = (mutationList) => {
     console.log("mutations observed", mutationList);
+    /** @type {Set<Node>} */
+    const alreadySeen = new Set();
     for (const mutation of mutationList) {
+      const parentObject = nodeToObject.get(mutation.target);
       if (mutation.type === "childList") {
-        /** @type {Set<Node>} */
-        const alreadySeen = new Set();
         mutation.addedNodes.forEach((node) => {
           alreadySeen.add(node);
           const childObject = getOrCreateObjectForNode(node);
-          const parentObject = nodeToObject.get(mutation.target);
           if (childObject && parentObject) {
             parentObject.add(childObject);
           }
         });
+      }
+    }
+    for (const mutation of mutationList) {
+      const parentObject = nodeToObject.get(mutation.target);
+      if (mutation.type === "childList") {
         mutation.removedNodes.forEach((node) => {
+          // If this node was added somewhere else it does not make sense to clean it up,
+          // so if we detect that it was already seen, we skip it.
           if (!alreadySeen.has(node)) {
             const childObject = nodeToObject.get(node);
-            const parentObject = nodeToObject.get(mutation.target);
             if (childObject && parentObject) {
               parentObject.remove(childObject);
             }
@@ -154,6 +172,7 @@ export function createPortal(ctx) {
     mutationObserver.disconnect();
   });
   nodeToObject.set(containerElement, containerObject);
+  objectToNode.set(containerObject, containerElement);
 
   return {
     /**

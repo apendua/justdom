@@ -82,6 +82,9 @@ function normalize(properties) {
  * @returns {number}
  */
 function parseSize(value, units) {
+  if (!value) {
+    return 0;
+  }
   if (value.endsWith("px")) {
     return parseFloat(value) * units.px;
   } else if (value.endsWith("em")) {
@@ -123,7 +126,7 @@ function getInheritedOpacity(element) {
   let layer = 0;
   while (el) {
     const style = getComputedStyle(el);
-    const op = parseFloat(style.opacity);
+    const op = parseFloat(style.opacity || "1");
     opacity *= isNaN(op) ? 1.0 : op;
     el = el.parentElement;
     layer++;
@@ -190,12 +193,12 @@ export default class VisualProperties {
   setFromElement(element) {
     const style = getComputedStyle(element);
     const rect = element.getBoundingClientRect();
-    const fontSize = parseFloat(style.fontSize);
+    const fontSize = parseFloat(style.fontSize || "0");
     const [backgroundColor, backgroundAlpha] = parseColor(style.backgroundColor);
     const [borderColor, borderAlpha] = parseColor(style.borderColor);
     const [textColor, textAlpha] = parseColor(style.color);
     const [inheritedOpacity, layerNo] = getInheritedOpacity(element);
-    const opacity = parseFloat(style.opacity) * inheritedOpacity;
+    const opacity = parseFloat(style.opacity || "1") * inheritedOpacity;
     const xHeight = fontSize * this.getRelativeXHeight(style.fontFamily, style.fontWeight);
     /** @type {Units} */
     const unitsW = {

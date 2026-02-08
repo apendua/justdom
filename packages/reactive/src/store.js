@@ -110,7 +110,7 @@ function store(data) {
       return state[key];
     },
     set(_, key, value) {
-      if (state[key] === value) {
+      if (Object.is(state[key], value)) {
         return true;
       }
       state[key] = value;

@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { Observable } from "rxjs";
 import { batch, Lazy, NoValueError, onInvalidate } from "@apendua.dev/signal";
-import { effects, flatten, just, set, use, map } from "@apendua.dev/reactive";
+import { effects, component, just, set, use, map } from "@apendua.dev/reactive";
 import { animate } from "../render.js";
 import { $, children } from "../operators.js";
 import { shareObservable } from "@apendua.dev/store4";
@@ -337,7 +337,7 @@ export function text(ctx, textNode) {
         set("material", textMaterial()),
         set(
           "geometry",
-          flatten(() => {
+          component(() => {
             const fontUrl = findFontUrl(fontFamily.get());
             return generateTextGeometry(
               textContent.get() || "",

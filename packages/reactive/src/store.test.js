@@ -1,5 +1,5 @@
 /* eslint-env jest */
-import { observable } from "./operators.js";
+import { observable } from "./factories.js";
 import store from "./store.js";
 
 test("observes value", () => {

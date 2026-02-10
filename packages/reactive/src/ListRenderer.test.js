@@ -1,6 +1,7 @@
 import { BehaviorSubject, map, tap } from "rxjs";
 import { replaceSegment, toSegment } from "./helpers.js";
-import { just, effectMap } from "./operators.js";
+import { effectMap } from "./operators.js";
+import { just } from "./factories.js";
 import ListRenderer from "./ListRenderer.js";
 
 describe("renders a simple DOM tree", () => {

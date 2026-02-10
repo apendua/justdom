@@ -1,8 +1,10 @@
 import { addDependency, Derived, Source, toObservable } from "@apendua.dev/signal";
-import { NEVER, Observable, ReplaySubject, share, switchAll, switchMap, tap } from "rxjs";
+import { NEVER, tap } from "rxjs";
+import { onEachValue, subscribeTo, subscribeAndEmit } from "./util.js";
+import { observable, component, just } from "./factories.js";
 
 /**
- * @import { MonoTypeOperatorFunction } from 'rxjs';
+ * @import { Observable, MonoTypeOperatorFunction } from 'rxjs';
  * @import { WritableProps } from './core.js';
  */
 
@@ -12,29 +14,7 @@ import { NEVER, Observable, ReplaySubject, share, switchAll, switchMap, tap } fr
  * @returns {(source: Observable<T>) => Observable<T>}
  */
 export function effects(fn) {
-  return (source) => {
-    const shared = source.pipe(
-      share({
-        resetOnRefCountZero: true,
-      }),
-    );
-    return shared.pipe(
-      switchMap((value) => {
-        return new Observable((subscriber) => {
-          // finish everything as soon as source completes
-          subscriber.add(shared.pipe(takeNothing()).subscribe(subscriber));
-          subscriber.add(
-            toObservable(new Derived(() => fn(value))).subscribe({
-              error: (err) => {
-                subscriber.error(err);
-              },
-            }),
-          );
-          subscriber.next(value);
-        });
-      }),
-    );
-  };
+  return onEachValue(subscribeAndEmit((value) => toObservable(new Derived(() => fn(value)))));
 }
 
 /**
@@ -42,35 +22,7 @@ export function effects(fn) {
  * @returns {(source: Observable<T>) => Observable<never>}
  */
 export function takeNothing() {
-  return (source) => {
-    return new Observable((subscriber) => {
-      const subscription = source.subscribe({
-        complete: () => subscriber.complete(),
-        error: (err) => subscriber.error(err),
-      });
-      return () => {
-        subscription.unsubscribe();
-      };
-    });
-  };
-}
-
-/**
- * @template T
- * @param {() => T} fn
- * @return {Observable<T>}
- */
-export function observable(fn) {
-  return toObservable(new Derived(fn));
-}
-
-/**
- * @template T
- * @param {() => Observable<T>} fn
- * @returns {Observable<T>}
- */
-export function flatten(fn) {
-  return observable(fn).pipe(switchAll());
+  return onEachValue(null);
 }
 
 /**
@@ -79,9 +31,7 @@ export function flatten(fn) {
  * @returns {(source: Observable<T>) => Observable<U>}
  */
 export function map(fn) {
-  return switchMap((value) => {
-    return observable(() => fn(value));
-  });
+  return onEachValue(subscribeTo((value) => observable(() => fn(value))));
 }
 
 /**
@@ -90,9 +40,7 @@ export function map(fn) {
  * @returns {(source: Observable<T>) => Observable<U>}
  */
 export function flatMap(fn) {
-  return switchMap((value) => {
-    return flatten(() => fn(value));
-  });
+  return onEachValue(subscribeTo((value) => component(() => fn(value))));
 }
 
 /**
@@ -101,29 +49,7 @@ export function flatMap(fn) {
  * @returns {(source: Observable<T>) => Observable<T>}
  */
 export function effectMap(fn) {
-  return (source) => {
-    const shared = source.pipe(
-      share({
-        resetOnRefCountZero: true,
-      }),
-    );
-    return shared.pipe(
-      switchMap((value) => {
-        return new Observable((subscriber) => {
-          // finish everything as soon as source completes
-          subscriber.add(shared.pipe(takeNothing()).subscribe(subscriber));
-          subscriber.add(
-            flatten(() => fn(value)).subscribe({
-              error: (err) => {
-                subscriber.error(err);
-              },
-            }),
-          );
-          subscriber.next(value);
-        });
-      }),
-    );
-  };
+  return onEachValue(subscribeAndEmit((value) => component(() => fn(value))));
 }
 
 /**
@@ -135,19 +61,6 @@ export function effectMap(fn) {
  */
 export function join(props, operators) {
   return effectMap(() => just(props, operators));
-}
-
-/**
- * @param {(() => void) | (() => Observable<unknown>) | Observable<unknown>} observable
- */
-export function use(observable) {
-  if (typeof observable === "function") {
-    const fn = observable;
-    observable = flatten(() => {
-      return fn() ?? NEVER;
-    });
-  }
-  addDependency(new Source(observable.pipe(takeNothing())));
 }
 
 /**
@@ -190,39 +103,23 @@ export function set(keyOrValues, value) {
 
 /**
  * @template T
- * @param  {...MonoTypeOperatorFunction<T>} operators
- * @returns {MonoTypeOperatorFunction<T>}
- */
-export const all = (...operators) => {
-  return (source) => {
-    return operators.reduce((prev, fn) => fn(prev), source);
-  };
-};
-
-/**
- * @template T
- * @param {T} value
- * @returns {Observable<T>}
- * @param  {MonoTypeOperatorFunction<T>[]} [operators]
- */
-export const just = (value, operators = []) => {
-  return new Observable((subscriber) => {
-    subscriber.next(value);
-  }).pipe(
-    all(...operators),
-    share({
-      connector: () => new ReplaySubject(1),
-      resetOnRefCountZero: true,
-    }),
-  );
-};
-
-/**
- * @template T
  * @param {T} value
  * @returns {void}
  * @param  {MonoTypeOperatorFunction<T>[]} [operators]
  */
-export const justUse = (value, operators = []) => {
+export function justUse(value, operators = []) {
   return use(just(value, operators));
-};
+}
+
+/**
+ * @param {(() => void) | (() => Observable<unknown>) | Observable<unknown>} observable
+ */
+export function use(observable) {
+  if (typeof observable === "function") {
+    const fn = observable;
+    observable = component(() => {
+      return fn() ?? NEVER;
+    });
+  }
+  addDependency(new Source(observable.pipe(takeNothing())));
+}

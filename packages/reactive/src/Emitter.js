@@ -2,6 +2,10 @@ import { Manual, nonReactive } from "@apendua.dev/signal";
 import { Observable, switchMap } from "rxjs";
 
 /**
+ * @import { Subscriber } from 'rxjs';
+ */
+
+/**
  * @template T
  * @typedef {(payload: T) => void} Handler
  */
@@ -82,7 +86,7 @@ class Emitter {
  */
 export function on(event, handler) {
   return switchMap((entity) => {
-    return new Observable((subscriber) => {
+    return new Observable((/** @type {Subscriber<TEntity>} */ subscriber) => {
       const signal = new Manual(handler);
       entity.addEventListener(event, signal.recompute);
       subscriber.add(signal.getChanges().subscribe());

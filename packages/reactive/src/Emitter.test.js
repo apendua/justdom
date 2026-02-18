@@ -1,11 +1,7 @@
 /* eslint-env: jest */
 
-import { Observable } from "rxjs";
 import Emitter, { on } from "./Emitter.js";
-
-/**
- * @import { MonoTypeOperatorFunction } from 'rxjs';
- */
+import { just } from "./factories.js";
 
 /**
  * @typedef {Object} TestEventMap
@@ -27,29 +23,6 @@ class Test extends Emitter {
     this.#prop1 = value;
   }
 }
-
-/**
- * @template T
- * @param  {...MonoTypeOperatorFunction<T>} operators
- * @returns {MonoTypeOperatorFunction<T>}
- */
-const all = (...operators) => {
-  return (source) => {
-    return operators.reduce((prev, fn) => fn(prev), source);
-  };
-};
-
-/**
- * @template T
- * @param {T} value
- * @returns {Observable<T>}
- * @param  {MonoTypeOperatorFunction<T>[]} [operators]
- */
-const just = (value, operators = []) => {
-  return new Observable((subscriber) => {
-    subscriber.next(value);
-  }).pipe(all(...operators));
-};
 
 describe("EventListener", () => {
   it("should subscribe using on operator", () => {

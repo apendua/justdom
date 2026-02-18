@@ -3,7 +3,7 @@ import { Derived, toObservable } from "@apendua.dev/signal";
 import { onEachValue, subscribeTo, all } from "./util.js";
 
 /**
- * @import { MonoTypeOperatorFunction } from 'rxjs';
+ * @import { MonoTypeOperatorFunction, Subscriber } from 'rxjs';
  */
 
 /**
@@ -27,11 +27,11 @@ export function component(fn) {
 /**
  * @template T
  * @param {T} value
+ * @param {MonoTypeOperatorFunction<T>[]} [operators]
  * @returns {Observable<T>}
- * @param  {MonoTypeOperatorFunction<T>[]} [operators]
  */
-export const just = (value, operators = []) => {
-  return new Observable((subscriber) => {
+export function just(value, operators = []) {
+  return new Observable((/** @type {Subscriber<T>}*/ subscriber) => {
     subscriber.next(value);
   }).pipe(
     all(...operators),
@@ -40,4 +40,4 @@ export const just = (value, operators = []) => {
       resetOnRefCountZero: true,
     }),
   );
-};
+}

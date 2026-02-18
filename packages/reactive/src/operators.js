@@ -66,16 +66,18 @@ export function join(props, operators) {
 /**
  * @template {object} TEntity
  * @template {keyof WritableProps<TEntity>} K
- *
  * @overload
  * @param {K} key
  * @param {Observable<TEntity[K]> | (() => TEntity[K])} value
  * @returns {(source: Observable<TEntity>) => Observable<TEntity>}
  *
+ * @template {object} TEntity
  * @overload
  * @param {Partial<WritableProps<TEntity>>} values
  * @returns {(source: Observable<TEntity>) => Observable<TEntity>}
  *
+ * @template {object} TEntity
+ * @template {keyof WritableProps<TEntity>} K
  * @param {K|Partial<WritableProps<Record<string, unknown>>>} keyOrValues
  * @param {Observable<unknown> | (() => unknown)} [value]
  * @returns {(source: Observable<Record<string, unknown>>) => Observable<Record<string, unknown>>}

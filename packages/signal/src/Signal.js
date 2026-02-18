@@ -13,7 +13,7 @@ export class NoValueError extends Error {
 }
 
 /**
- * @import {Subscription} from "rxjs";
+ * @import {Subscription, Subscriber} from "rxjs";
  * @import {Task} from "./UpdateQueue.js"
  */
 
@@ -285,7 +285,7 @@ export class Derived {
    * @returns {Observable<Dependency>}
    */
   #getChanges(deferred) {
-    return new Observable((subscriber) => {
+    return new Observable((/** @type {Subscriber<Dependency>} */ subscriber) => {
       // This subscription will be unnsubscribed outomatically
       // as soon as subscriber is closed.
       this.#notifier.subscribe(subscriber);
@@ -539,7 +539,7 @@ export class Source {
    * @returns {Observable<Source<T>>}
    */
   #getChanges(source) {
-    return new Observable((subscriber) => {
+    return new Observable((/** @type {Subscriber<Source<T>>} */ subscriber) => {
       let initialized = false;
       subscriber.add(
         this.#notifier.subscribe({
@@ -615,7 +615,7 @@ export class Changes {
    * @returns {Observable<Changes>}
    */
   #getChanges(source) {
-    return new Observable((subscriber) => {
+    return new Observable((/** @type {Subscriber<Changes>} */ subscriber) => {
       this.#notifier.subscribe(subscriber);
       subscriber.add(
         source.subscribe({
@@ -677,7 +677,7 @@ export class Dedupe {
    * @returns {Observable<Dedupe<T>>}
    */
   #getChanges(changes) {
-    return new Observable((subscriber) => {
+    return new Observable((/** @type {Subscriber<Dedupe<T>>} */ subscriber) => {
       this.#notifier.subscribe(subscriber);
       const subscription = changes.subscribe((dependency) => {
         this.#priority = Math.max(this.#priority, dependency.getPriority() + 1);
@@ -846,7 +846,7 @@ export class Manual {
    * @returns {Observable<Dependency>}
    */
   #getChanges(deferred) {
-    return new Observable((subscriber) => {
+    return new Observable((/** @type {Subscriber<Dependency>} */ subscriber) => {
       // This subscription will be unnsubscribed outomatically
       // as soon as subscriber is closed.
       this.#notifier.subscribe(subscriber);

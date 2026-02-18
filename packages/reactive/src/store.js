@@ -135,7 +135,7 @@ function store(data) {
   });
 
   emitters.set(proxy, eventListener);
-  return /** @type {T} */ (proxy);
+  return proxy;
 }
 
 export default store;

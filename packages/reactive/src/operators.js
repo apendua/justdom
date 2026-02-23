@@ -40,7 +40,7 @@ export function map(fn) {
  * @returns {(source: Observable<T>) => Observable<U>}
  */
 export function flatMap(fn) {
-  return onEachValue(subscribeTo((value) => component(() => fn(value))));
+  return onEachValue(subscribeTo(component(fn)));
 }
 
 /**
@@ -49,7 +49,7 @@ export function flatMap(fn) {
  * @returns {(source: Observable<T>) => Observable<T>}
  */
 export function effectMap(fn) {
-  return onEachValue(subscribeAndEmit((value) => component(() => fn(value))));
+  return onEachValue(subscribeAndEmit(component(fn)));
 }
 
 /**
@@ -121,7 +121,7 @@ export function use(observable) {
     const fn = observable;
     observable = component(() => {
       return fn() ?? NEVER;
-    });
+    })();
   }
   addDependency(new Source(observable.pipe(takeNothing())));
 }

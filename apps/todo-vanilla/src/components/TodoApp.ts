@@ -1,8 +1,7 @@
-import { $factory } from "@apendua.dev/hmr";
 import { className, text, $, children, list } from "@apendua.dev/dom";
 import { Signal, toObservable } from "@apendua.dev/signal";
-import { store, on, set, observable } from "@apendua.dev/reactive";
-import TodoItem from "./TodoItem";
+import { store, on, set, observable, component } from "@apendua.dev/reactive";
+import TodoItem from "./TodoItem.js";
 
 const containerStyle = className`
   display: flex;
@@ -60,9 +59,9 @@ interface Todo {
   completed: boolean;
 }
 
-const TodoApp = $factory((ctx: WeakKey) => {
+const TodoApp = component((ctx: WeakKey) => {
   const todos = new Signal<Todo[]>([
-    store<Todo>({ id: "1", text: "Learn Apendua", completed: false }),
+    store<Todo>({ id: "1", text: "Learn justDOM", completed: false }),
     store<Todo>({ id: "2", text: "Build a Todo App", completed: true }),
   ]);
   const inputValue = new Signal<string>("");

@@ -1,5 +1,4 @@
 import { list, $$, children, attr, on } from "@apendua.dev/dom";
-import { $factory } from "@apendua.dev/hmr";
 import { RootContext } from "../store4/Root";
 import { Field, Fields, getKey } from "@apendua.dev/minesweeper";
 import { $observe } from "@apendua.dev/store4";
@@ -7,6 +6,7 @@ import { ViewportContext } from "../store4/Viewport";
 import { tap } from "rxjs";
 import Label from "./Label";
 import FieldSet from "./FieldSet";
+import { component } from "@apendua.dev/reactive";
 
 const FieldStatus = (ctx: WeakKey, field: Field) => {
   return Label(ctx, {
@@ -25,7 +25,7 @@ const FieldStatus = (ctx: WeakKey, field: Field) => {
   });
 };
 
-const Minefield = $factory((ctx: WeakKey, game: Fields) => {
+const Minefield = component((ctx: WeakKey, game: Fields) => {
   const dimensions = RootContext.get(ctx);
   const viewport = ViewportContext.get(ctx);
 

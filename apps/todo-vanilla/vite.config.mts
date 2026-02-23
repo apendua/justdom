@@ -44,5 +44,5 @@ export default defineConfig({
     target: "esnext",
     sourcemap: true,
   },
-  base: "/apps/minesweeper-vanilla/",
+  base: "/apps/todo-vanilla/",
 });

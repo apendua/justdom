@@ -1,6 +1,5 @@
-import { $factory } from "@apendua.dev/hmr";
 import { className, text, $, children, style } from "@apendua.dev/dom";
-import { store, on, set, emit, Op, join } from "@apendua.dev/reactive";
+import { store, on, set, emit, Op, join, component } from "@apendua.dev/reactive";
 
 const itemStyle = className`
   display: flex;
@@ -23,7 +22,7 @@ const textStyle = className`
 
 const deleteButtonStyle = className`
   background: #ff4d4d;
-  color: white;
+  color: #ffffff;
   border: none;
   padding: 0.25rem 0.5rem;
   border-radius: 4px;
@@ -44,7 +43,7 @@ interface TodoEvents {
   change: boolean;
 }
 
-const TodoItem = $factory((_: WeakKey, id: string, operators: Op<TodoProps, TodoEvents>) => {
+const TodoItem = component((_: WeakKey, id: string, operators: Op<TodoProps, TodoEvents>) => {
   const props = store<TodoProps, TodoEvents>({
     text: "",
     completed: false,

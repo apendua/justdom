@@ -16,12 +16,15 @@ export function observable(fn) {
 }
 
 /**
- * @template T
- * @param {() => Observable<T>} fn
- * @returns {Observable<T>}
+ * @template {unknown[]} TArgs
+ * @template TValue
+ * @param {(...args: TArgs) => Observable<TValue>} fn
+ * @returns {(...args: TArgs) => Observable<TValue>}
  */
 export function component(fn) {
-  return observable(fn).pipe(onEachValue(subscribeTo((value) => value)));
+  return (...args) => {
+    return observable(() => fn(...args)).pipe(onEachValue(subscribeTo((value) => value)));
+  };
 }
 
 /**

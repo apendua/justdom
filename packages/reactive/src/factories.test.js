@@ -34,7 +34,7 @@ describe("component()", () => {
 
     const subscription = component(() => {
       return just(2 * signal.get());
-    }).subscribe({
+    })().subscribe({
       next,
       complete,
     });

@@ -1,8 +1,8 @@
 import { findBorder, getNodes, grow, VectorLike } from "@apendua.dev/geometry";
 import { attr, $$ } from "@apendua.dev/dom";
-import { $factory } from "@apendua.dev/hmr";
 import { memo } from "@apendua.dev/store4";
 import Viewport, { ViewportContext } from "../store4/Viewport";
+import { component } from "@apendua.dev/reactive";
 
 function makePoint({ x, y }: VectorLike): string {
   return `${x.toFixed(2)},${y.toFixed(2)}`;
@@ -60,7 +60,7 @@ class FieldSetStore {
   }
 }
 
-const FieldSet = $factory((ctx: WeakKey, props: FieldSetProps) => {
+const FieldSet = component((ctx: WeakKey, props: FieldSetProps) => {
   const viewport = ViewportContext.get(ctx);
   const store = new FieldSetStore(props, viewport);
   return $$("path", [

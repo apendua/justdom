@@ -346,7 +346,7 @@ export function text(ctx, textNode) {
               textRect.get(),
               textRects.get(),
             );
-          }),
+          })(),
         ),
         effects((obj) => {
           obj.position.set(0, fontSize.get(), 0.01);

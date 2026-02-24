@@ -106,20 +106,14 @@ export default function HMRPlugin() {
 
       const header = `import { $newReloader, $reloadable } from "@apendua.dev/hmr";`;
       const footer = `
-export const __hmr_reloadables__ = ${JSON.stringify(reloadables)};
-
 if (import.meta.hot) {
   const reload = $newReloader();
+  const reloadables = new Set(${JSON.stringify(reloadables)});
   import.meta.hot.on("beforeUpdate", () => {
     $newReloader();
   });
   import.meta.hot.accept((newModule) => {
-    if (!newModule || !newModule.__hmr_reloadables__) {
-      import.meta.hot.invalidate();
-      return;
-    }
-    if (newModule.__hmr_reloadables__.length !== __hmr_reloadables__.length ||
-        newModule.__hmr_reloadables__.some((name, index) => name !== __hmr_reloadables__[index])) {
+    if (!newModule || Object.keys(newModule).some((key) => !reloadables.has(key))) {
       import.meta.hot.invalidate();
       return;
     }

@@ -74,6 +74,7 @@ export function $newReloader() {
   return (newModule) => {
     Object.keys(newModule).forEach((key) => {
       if (reloadable[key]) {
+        console.log(`Reloading ${key}...`);
         reloadable[key].next(newModule[key]);
       }
     });

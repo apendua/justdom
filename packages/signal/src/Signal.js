@@ -55,6 +55,8 @@ export function onInvalidate(fn) {
           "Please examine the stack trace and make sure everything is working as expected.",
       ),
     );
+    // To prevent memory leaks, invalidate immediately if we're not inside a computation.
+    fn();
   }
 }
 

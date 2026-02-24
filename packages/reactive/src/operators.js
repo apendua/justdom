@@ -53,17 +53,6 @@ export function effectMap(fn) {
 }
 
 /**
- * @template T
- * @template U
- * @param {T} props
- * @param {MonoTypeOperatorFunction<T>[]} operators
- * @returns {MonoTypeOperatorFunction<U>}
- */
-export function join(props, operators) {
-  return effectMap(() => just(props, operators));
-}
-
-/**
  * @template {object} TEntity
  * @template {keyof WritableProps<TEntity>} K
  * @overload
@@ -109,7 +98,7 @@ export function set(keyOrValues, value) {
  * @returns {void}
  * @param  {MonoTypeOperatorFunction<T>[]} [operators]
  */
-export function justUse(value, operators = []) {
+export function useEffects(value, operators = []) {
   return use(just(value, operators));
 }
 

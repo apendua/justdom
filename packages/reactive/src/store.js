@@ -1,6 +1,7 @@
 import { filter, Subject } from "rxjs";
 import { addDependency, Changes } from "@apendua.dev/signal";
 import Emitter from "./Emitter.js";
+import { useEffects } from "./operators.js";
 
 /**
  * @import {MonoTypeOperatorFunction} from "rxjs"
@@ -67,9 +68,10 @@ export function emit(data, event, payload) {
 
 /**
  * @param {object} data
+ * @param {Array<MonoTypeOperatorFunction<unknown>>} [operators]
  * @return {object}
  */
-function store(data) {
+function store(data, operators = []) {
   // TODO(@apendua): Handle array methods to trigger reactivity.
   const state = /** @type {Record<PropertyKey, unknown>} */ ({ ...data });
   /** @type {Subject<{ key: PropertyKey }>} */
@@ -135,6 +137,7 @@ function store(data) {
   });
 
   emitters.set(proxy, eventListener);
+  useEffects(proxy, operators);
   return proxy;
 }
 

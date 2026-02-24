@@ -1,5 +1,5 @@
 import { className, text, $, children, style } from "@apendua.dev/dom";
-import { store, on, set, emit, Op, join, component } from "@apendua.dev/reactive";
+import { store, on, set, emit, Op, component } from "@apendua.dev/reactive";
 
 const itemStyle = className`
   display: flex;
@@ -43,18 +43,19 @@ interface TodoEvents {
   change: boolean;
 }
 
+const defaults: TodoProps = {
+  text: "",
+  completed: false,
+};
+
 const TodoItem = component((_: WeakKey, id: string, operators: Op<TodoProps, TodoEvents>) => {
-  const props = store<TodoProps, TodoEvents>({
-    text: "",
-    completed: false,
-  });
+  const props = store(defaults, operators);
 
   const toggleCompleted = () => {
     emit(props, "change", !props.completed);
   };
 
   return $("li", [
-    join(props, operators),
     set("className", itemStyle),
     children(
       $("input", [

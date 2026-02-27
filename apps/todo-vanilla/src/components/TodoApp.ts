@@ -116,22 +116,25 @@ const TodoApp = component((ctx: WeakKey) => {
       $("ul", [
         set("className", listStyle),
         children(
-          list(toObservable(todos), (todo, i) => {
-            return TodoItem(ctx, todo.id, [
-              set({
-                get text() {
-                  return `${i() + 1}. ${todo.text}`;
-                },
-                get completed() {
-                  return todo.completed;
-                },
-              }),
-              on("change", (completed) => {
-                todo.completed = completed;
-              }),
-              on("delete", () => deleteTodo(todo.id)),
-            ]);
-          }),
+          list(
+            toObservable(todos),
+            component((todo, i) => {
+              return TodoItem(ctx, todo.id, [
+                set({
+                  get text() {
+                    return `${i() + 1}. ${todo.text}`;
+                  },
+                  get completed() {
+                    return todo.completed;
+                  },
+                }),
+                on("change", (completed) => {
+                  todo.completed = completed;
+                }),
+                on("delete", () => deleteTodo(todo.id)),
+              ]);
+            }),
+          ),
         ),
       ]),
     ),

@@ -1,5 +1,6 @@
 import { className, text, $, children, style } from "@apendua.dev/dom";
 import { store, on, set, emit, Op, component } from "@apendua.dev/reactive";
+import { makeNonReactive } from "@apendua.dev/signal";
 
 const itemStyle = className`
   display: flex;
@@ -51,9 +52,9 @@ const defaults: TodoProps = {
 const TodoItem = component((_: WeakKey, id: string, operators: Op<TodoProps, TodoEvents>) => {
   const props = store(defaults, operators);
 
-  const toggleCompleted = () => {
+  const toggleCompleted = makeNonReactive(() => {
     emit(props, "change", !props.completed);
-  };
+  });
 
   return $("li", [
     set("className", itemStyle),

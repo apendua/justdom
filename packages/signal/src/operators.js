@@ -1,5 +1,5 @@
 import { Observable } from "rxjs";
-import { NoValueError } from "./Signal.js";
+import { callNonReactive, NoValueError } from "./Signal.js";
 
 /**
  * @import {Dependency} from "./Signal.js"
@@ -15,7 +15,9 @@ export function toObservable(signal) {
     const subscription = signal.getChanges().subscribe({
       next: () => {
         try {
-          subscriber.next(signal.get());
+          callNonReactive(() => {
+            subscriber.next(signal.get());
+          });
         } catch (err) {
           if (err instanceof NoValueError) {
             return;
@@ -28,7 +30,9 @@ export function toObservable(signal) {
       },
     });
     try {
-      subscriber.next(signal.get());
+      callNonReactive(() => {
+        subscriber.next(signal.get());
+      });
     } catch (err) {
       if (!(err instanceof NoValueError)) {
         subscription.unsubscribe();

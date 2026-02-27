@@ -79,7 +79,7 @@ export function invalidate(computation) {
  * @param {() => T} fn
  * @returns {T}
  */
-export function nonReactive(fn) {
+export function callNonReactive(fn) {
   const oldComputation = activeComputation;
   activeComputation = null;
   try {
@@ -87,6 +87,18 @@ export function nonReactive(fn) {
   } finally {
     activeComputation = oldComputation;
   }
+}
+
+/**
+ * @template TResult
+ * @template {unknown[]} TArgs
+ * @param {(...args: TArgs) => TResult} fn
+ * @returns {(...args: TArgs) => TResult}
+ */
+export function makeNonReactive(fn) {
+  return function (...args) {
+    return callNonReactive(() => fn(...args));
+  };
 }
 
 /**
@@ -209,7 +221,7 @@ export class Derived {
     this.#dependencies.add(changes);
     if (this.#notifier.observed) {
       if (!this.#subscriptions.has(changes)) {
-        nonReactive(() => {
+        callNonReactive(() => {
           this.#subscriptions.set(changes, changes.subscribe(this.#listener));
         });
       }
@@ -220,7 +232,7 @@ export class Derived {
    * @param {() => void} fn
    */
   onInvalidate(fn) {
-    this.#cleanupListeners.push(fn);
+    this.#cleanupListeners.push(makeNonReactive(fn));
   }
 
   update() {
@@ -292,7 +304,9 @@ export class Derived {
       // as soon as subscriber is closed.
       this.#notifier.subscribe(subscriber);
       try {
-        this.#recompute();
+        callNonReactive(() => {
+          this.#recompute();
+        });
       } catch (err) {
         if (!(err instanceof NoValueError)) {
           subscriber.error(err);
@@ -492,7 +506,7 @@ export class Source {
   constructor(source, getInitialValue) {
     this.#changes = this.#getChanges(source);
     if (getInitialValue) {
-      this.#getInitialValue = () => nonReactive(getInitialValue);
+      this.#getInitialValue = makeNonReactive(getInitialValue);
     }
   }
 
@@ -794,7 +808,7 @@ export class Manual {
     this.#dependencies.add(changes);
     if (this.#notifier.observed) {
       if (!this.#subscriptions.has(changes)) {
-        nonReactive(() => {
+        callNonReactive(() => {
           this.#subscriptions.set(changes, changes.subscribe());
         });
       }
@@ -805,7 +819,7 @@ export class Manual {
    * @param {() => void} fn
    */
   onInvalidate(fn) {
-    this.#cleanupListeners.push(fn);
+    this.#cleanupListeners.push(makeNonReactive(fn));
   }
 
   update() {

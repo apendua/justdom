@@ -1,8 +1,8 @@
-import { Manual, nonReactive } from "@apendua.dev/signal";
+import { Manual, callNonReactive } from "@apendua.dev/signal";
 import { Observable, switchMap } from "rxjs";
 
 /**
- * @import { Subscriber } from 'rxjs';
+ * @import { Subscriber, MonoTypeOperatorFunction } from 'rxjs';
  */
 
 /**
@@ -68,7 +68,7 @@ class Emitter {
   emit(event, payload) {
     const listeners = /** @type {Set<Handler<TEventMap[TEvent]>>} */ (this.#listeners.get(event));
     if (listeners) {
-      nonReactive(() => {
+      callNonReactive(() => {
         for (const listener of listeners) {
           listener(payload);
         }

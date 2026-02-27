@@ -6,7 +6,7 @@ import {
   Derived,
   Dedupe,
   batch,
-  nonReactive,
+  callNonReactive,
   onInvalidate,
   addDependency,
 } from "./Signal.js";
@@ -185,7 +185,7 @@ it("should dedupe updates", function () {
 
 it("should not rerun if changes happen within no-reactive block", function () {
   const initial = new Signal(1);
-  const derived = new Derived(() => nonReactive(() => initial.get()));
+  const derived = new Derived(() => callNonReactive(() => initial.get()));
   const spy = jest.fn();
   const subscription = derived.getChanges().subscribe(spy);
   expect(derived.get()).toBe(1);

@@ -96,9 +96,9 @@ export function set(keyOrValues, value) {
  * @template T
  * @param {T} value
  * @returns {void}
- * @param  {MonoTypeOperatorFunction<T>[]} [operators]
+ * @param  {MonoTypeOperatorFunction<T>[]} operators
  */
-export function useEffects(value, operators = []) {
+export function useEffects(value, operators) {
   return use(just(value, operators));
 }
 
@@ -108,6 +108,8 @@ export function useEffects(value, operators = []) {
 export function use(observable) {
   if (typeof observable === "function") {
     const fn = observable;
+    // Calling component immediately is safe, because it wil just return an observable,
+    // and the inner function won't be executed until the observable is subscribed to.
     observable = component(() => {
       return fn() ?? NEVER;
     })();

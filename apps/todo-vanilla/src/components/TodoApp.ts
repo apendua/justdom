@@ -1,6 +1,15 @@
 import { className, text, $, children, list } from "@apendua.dev/dom";
 import { Signal, toObservable } from "@apendua.dev/signal";
-import { store, on, set, observable, component } from "@apendua.dev/reactive";
+import {
+  store,
+  on,
+  set,
+  observable,
+  component,
+  suspend,
+  withFallback,
+  waitFor,
+} from "@apendua.dev/reactive";
 import TodoItem from "./TodoItem.js";
 
 const containerStyle = className`
@@ -65,6 +74,7 @@ const TodoApp = component((ctx: WeakKey) => {
     store<Todo>({ id: "2", text: "Build a Todo App", completed: true }),
   ]);
   const inputValue = new Signal<string>("");
+  // const suspense = new Suspense();
 
   const addTodo = () => {
     const text = inputValue.get().trim();
@@ -78,67 +88,75 @@ const TodoApp = component((ctx: WeakKey) => {
     todos.set(todos.get().filter((t) => t.id !== id));
   };
 
-  return $("div", [
-    set("className", containerStyle),
-    children(
-      $("h1", [set("className", headerStyle), children(text`Todo App`)]),
-      $("div", [
-        set("className", inputContainerStyle),
-        children(
-          $("input", [
-            set("className", inputStyle),
-            set({
-              placeholder: "Add a new todo...",
-              get value() {
-                return inputValue.get();
-              },
-            }),
-            on("input", (e) => {
-              const target = e.target as HTMLInputElement;
-              inputValue.set(target.value);
-            }),
-            on("keydown", (e) => {
-              if (e.key === "Enter") {
-                addTodo();
-              }
-            }),
-          ]),
-          $("button", [set("className", buttonStyle), children(text`Add`), on("click", addTodo)]),
-        ),
-      ]),
-      $("p", [
-        children(
-          text`Remaining Todos: ${observable(
-            () => todos.get().filter((t) => !t.completed).length,
-          )}`,
-        ),
-      ]),
-      $("ul", [
-        set("className", listStyle),
-        children(
-          list(
-            toObservable(todos),
-            component((todo, i) => {
-              return TodoItem(ctx, todo.id, [
-                set({
-                  get text() {
-                    return `${i() + 1}. ${todo.text}`;
-                  },
-                  get completed() {
-                    return todo.completed;
-                  },
-                }),
-                on("change", (completed) => {
-                  todo.completed = completed;
-                }),
-                on("delete", () => deleteTodo(todo.id)),
-              ]);
-            }),
+  ctx = suspend(ctx, () => text`Loading...`);
+
+  // Add artificial delay to demonstrate suspense.
+  waitFor(ctx, new Promise((resolve) => setTimeout(resolve, 1000)));
+
+  return withFallback(
+    ctx,
+    $("div", [
+      set("className", containerStyle),
+      children(
+        $("h1", [set("className", headerStyle), children(text`Todo App`)]),
+        $("div", [
+          set("className", inputContainerStyle),
+          children(
+            $("input", [
+              set("className", inputStyle),
+              set({
+                placeholder: "Add a new todo...",
+                get value() {
+                  return inputValue.get();
+                },
+              }),
+              on("input", (e) => {
+                const target = e.target as HTMLInputElement;
+                inputValue.set(target.value);
+              }),
+              on("keydown", (e) => {
+                if (e.key === "Enter") {
+                  addTodo();
+                }
+              }),
+            ]),
+            $("button", [set("className", buttonStyle), children(text`Add`), on("click", addTodo)]),
           ),
-        ),
-      ]),
-    ),
-  ]);
+        ]),
+        $("p", [
+          children(
+            text`Remaining Todos: ${observable(
+              () => todos.get().filter((t) => !t.completed).length,
+            )}`,
+          ),
+        ]),
+        $("ul", [
+          set("className", listStyle),
+          children(
+            list(
+              toObservable(todos),
+              component((todo, i) => {
+                return TodoItem(ctx, todo.id, [
+                  set({
+                    get text() {
+                      return `${i() + 1}. ${todo.text}`;
+                    },
+                    get completed() {
+                      return todo.completed;
+                    },
+                  }),
+                  on("change", (completed) => {
+                    todo.completed = completed;
+                  }),
+                  on("delete", () => deleteTodo(todo.id)),
+                ]);
+              }),
+            ),
+          ),
+        ]),
+      ),
+    ]),
+  );
 });
 
 export default TodoApp;

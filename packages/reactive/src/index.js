@@ -5,6 +5,7 @@ export { effects, use, set, useEffects, map, flatMap, effectMap } from "./operat
 export { just, component, observable } from "./factories.js";
 export { all } from "./util.js";
 export { default as store, emit } from "./store.js";
+export { suspend, waitFor, withFallback } from "./suspend.js";
 export * from "./helpers.js";
 export * from "./types.js";
 

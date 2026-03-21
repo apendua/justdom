@@ -1,5 +1,5 @@
 import { createProperty } from "@apendua.dev/signal";
-import { Observable, ReplaySubject, shareReplay, switchMap, takeUntil } from "rxjs";
+import { NEVER, Observable, ReplaySubject, shareReplay, switchMap, takeUntil } from "rxjs";
 import { takeNothing } from "./operators";
 
 /**
@@ -68,7 +68,7 @@ class Manager {
 const Context = createProperty(() => {
   return new Manager({
     // This effectively renders nothing while suspended.
-    fallback: () => new Observable(),
+    fallback: () => NEVER,
   });
 });
 

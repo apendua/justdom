@@ -1,14 +1,9 @@
 /**
- * @typedef {Object} Context
- * @property {symbol} [key] - A symbol key with an unknown value.
- */
-
-/**
  * Represents a property with getter and setter functions.
  * @template T
- * @typedef {Object} Property
- * @property {(ctx: Context) => T} get - Function to get the property value from the context.
- * @property {(ctx: Context, value: T) => Context} set - Function to set the property value in the context.
+ * @typedef {object} Property
+ * @property {(ctx: WeakKey) => T} get - Function to get the property value from the context.
+ * @property {(ctx: WeakKey, value: T) => WeakKey} set - Function to set the property value in the context.
  */
 
 /**
@@ -24,7 +19,7 @@ export function createProperty(getDefaultValue) {
   let cached;
 
   /**
-   * @param {Context} ctx
+   * @param {WeakKey} ctx
    * @returns {T}
    */
   property.get = (ctx) => {
@@ -38,9 +33,9 @@ export function createProperty(getDefaultValue) {
   };
 
   /**
-   * @param {Context} ctx
+   * @param {WeakKey} ctx
    * @param {T} value
-   * @returns {Context}
+   * @returns {WeakKey}
    */
   property.set = (ctx, value) => {
     return Object.assign(Object.create(ctx), { [key]: value });

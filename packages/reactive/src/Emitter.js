@@ -1,8 +1,9 @@
 import { Manual, callNonReactive } from "@apendua.dev/signal";
-import { Observable, switchMap } from "rxjs";
+import { Observable } from "rxjs";
+import { effectMap } from "./operators.js";
 
 /**
- * @import { Subscriber, MonoTypeOperatorFunction } from 'rxjs';
+ * @import { Subscriber } from 'rxjs';
  */
 
 /**
@@ -85,7 +86,7 @@ class Emitter {
  * @returns {(source: Observable<TEntity>) => Observable<TEntity>}
  */
 export function on(event, handler) {
-  return switchMap((entity) => {
+  return effectMap((entity) => {
     return new Observable((/** @type {Subscriber<TEntity>} */ subscriber) => {
       const signal = new Manual(handler);
       entity.addEventListener(event, signal.recompute);

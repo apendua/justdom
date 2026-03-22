@@ -4,7 +4,7 @@ import { distinctUntilChanged, Observable, switchMap } from "rxjs";
 import { addDependency, Changes } from "@apendua.dev/signal";
 
 /**
- * @import { MonoTypeOperatorFunction } from 'rxjs';
+ * @import { MonoTypeOperatorFunction, Subscriber } from 'rxjs';
  * @import { Object3D } from 'three';
  * @import { CopyableProps, Component } from './core.js';
  */
@@ -36,17 +36,23 @@ export function copy(key, value) {
 }
 
 /**
- *
+ * @param {() => () => void} fn
+ * @returns {Observable<never>}
+ */
+function teardown(fn) {
+  return new Observable(() => fn());
+}
+
+/**
  * @param {Object3D<any>} parent
  * @param {Observable<Component>} child
+ * @return {Observable<never>}
  */
 function addToParent(parent, child) {
   return child.pipe(
     distinctUntilChanged(),
     switchMap((component) => {
-      return new Observable(() => {
-        return component.addTo(parent);
-      });
+      return teardown(() => component.addTo(parent));
     }),
   );
 }
@@ -58,12 +64,27 @@ function addToParent(parent, child) {
  */
 export function children(...observables) {
   return switchMap((entity) => {
-    return new Observable((subscriber) => {
+    return new Observable((/** @type {Subscriber<TEntity>} */ subscriber) => {
       observables.forEach((observable) => {
         subscriber.add(addToParent(entity, observable).subscribe());
       });
       subscriber.next(entity);
     });
+  });
+}
+
+/**
+ * @param {Observable<Component>[]} observables
+ * @returns {Observable<Component>}
+ */
+export function fragment(...observables) {
+  return just({
+    addTo: (parent) => {
+      const subscriptions = observables.map((observable) =>
+        addToParent(parent, observable).subscribe(),
+      );
+      return () => subscriptions.forEach((subscription) => subscription.unsubscribe());
+    },
   });
 }
 

@@ -14,7 +14,7 @@ const configuration = {
     reloadable: ["shareObservable"],
   },
   "@apendua.dev/dom": {
-    reloadable: ["stylesheet", "className"],
+    reloadable: ["stylesheet", "className", "fontFace"],
   },
 };
 
@@ -122,6 +122,9 @@ if (import.meta.hot) {
 }`;
       let i = 0;
       return `${header}\n${code.replace(definitionRegEx, (p0, p1, p2, p3, p4, p5) => {
+        if (!allNames[p4]) {
+          return p0;
+        }
         const definition = allDefinitions[i++];
         if (!definition || !definition.exported) {
           return p0;

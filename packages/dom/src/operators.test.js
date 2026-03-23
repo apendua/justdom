@@ -1,3 +1,5 @@
+import { describe, it, mock } from "node:test";
+import assert from "node:assert/strict";
 import userEvent from "@testing-library/user-event";
 import { just } from "@apendua.dev/reactive";
 import { map, Observable, Subject } from "rxjs";
@@ -7,18 +9,18 @@ import { children, toMountable } from "./dom.js";
 describe("DOM Operators", () => {
   describe("operator: on()", () => {
     it("should handle click events", async () => {
-      const handleClick = jest.fn();
+      const handleClick = mock.fn();
       const button = document.createElement("button");
       const source$ = just(button);
 
       const subscription = source$.pipe(on("click", handleClick)).subscribe();
 
       await userEvent.click(button);
-      expect(handleClick).toHaveBeenCalledTimes(1);
+      assert.strictEqual(handleClick.mock.calls.length, 1);
 
       subscription.unsubscribe();
       await userEvent.click(button);
-      expect(handleClick).toHaveBeenCalledTimes(1);
+      assert.strictEqual(handleClick.mock.calls.length, 1);
     });
   });
 
@@ -32,10 +34,10 @@ describe("DOM Operators", () => {
       const subscription = source$.pipe(set("value", value$)).subscribe();
 
       value$.next("test value");
-      expect(input.value).toBe("test value");
+      assert.strictEqual(input.value, "test value");
 
       subscription.unsubscribe();
-      expect(input.value).toBe("test value");
+      assert.strictEqual(input.value, "test value");
     });
   });
 
@@ -49,7 +51,7 @@ describe("DOM Operators", () => {
       const subscription = source$.pipe(attr("data-test", value$)).subscribe();
 
       value$.next("test value");
-      expect(div.getAttribute("data-test")).toBe("test value");
+      assert.strictEqual(div.getAttribute("data-test"), "test value");
 
       subscription.unsubscribe();
     });
@@ -63,10 +65,10 @@ describe("DOM Operators", () => {
       const subscription = source$.pipe(attr("data-test", value$)).subscribe();
 
       value$.next("test value");
-      expect(div.getAttribute("data-test")).toBe("test value");
+      assert.strictEqual(div.getAttribute("data-test"), "test value");
 
       value$.next(undefined);
-      expect(div.getAttribute("data-test")).toBeNull();
+      assert.strictEqual(div.getAttribute("data-test"), null);
 
       subscription.unsubscribe();
     });
@@ -80,10 +82,10 @@ describe("DOM Operators", () => {
       const subscription = source$.pipe(attr("data-test", value$)).subscribe();
 
       value$.next("test value");
-      expect(div.getAttribute("data-test")).toBe("test value");
+      assert.strictEqual(div.getAttribute("data-test"), "test value");
 
       subscription.unsubscribe();
-      expect(div.getAttribute("data-test")).toBe("test value");
+      assert.strictEqual(div.getAttribute("data-test"), "test value");
     });
 
     it("should update dataset when data-* attribute is set", () => {
@@ -95,7 +97,7 @@ describe("DOM Operators", () => {
       const subscription = source$.pipe(attr("data-test-key", value$)).subscribe();
 
       value$.next("test value");
-      expect(div.dataset.testKey).toBe("test value");
+      assert.strictEqual(div.dataset.testKey, "test value");
 
       subscription.unsubscribe();
     });
@@ -109,10 +111,10 @@ describe("DOM Operators", () => {
       const subscription = source$.pipe(attr("data-test-key", value$)).subscribe();
 
       value$.next("test value");
-      expect(div.dataset.testKey).toBe("test value");
+      assert.strictEqual(div.dataset.testKey, "test value");
 
       value$.next(undefined);
-      expect(div.dataset.testKey).toBeUndefined();
+      assert.strictEqual(div.dataset.testKey, undefined);
 
       subscription.unsubscribe();
     });
@@ -128,7 +130,7 @@ describe("DOM Operators", () => {
       const subscription = source$.pipe(data("testKey", value$)).subscribe();
 
       value$.next("test value");
-      expect(div.dataset.testKey).toBe("test value");
+      assert.strictEqual(div.dataset.testKey, "test value");
 
       subscription.unsubscribe();
     });
@@ -142,10 +144,10 @@ describe("DOM Operators", () => {
       const subscription = source$.pipe(data("testKey", value$)).subscribe();
 
       value$.next("test value");
-      expect(div.dataset.testKey).toBe("test value");
+      assert.strictEqual(div.dataset.testKey, "test value");
 
       value$.next(undefined);
-      expect(div.dataset.testKey).toBeUndefined();
+      assert.strictEqual(div.dataset.testKey, undefined);
 
       subscription.unsubscribe();
     });
@@ -159,10 +161,10 @@ describe("DOM Operators", () => {
       const subscription = source$.pipe(data("testKey", value$)).subscribe();
 
       value$.next("test value");
-      expect(div.getAttribute("data-test-key")).toBe("test value");
+      assert.strictEqual(div.getAttribute("data-test-key"), "test value");
 
       subscription.unsubscribe();
-      expect(div.getAttribute("data-test-key")).toBe("test value");
+      assert.strictEqual(div.getAttribute("data-test-key"), "test value");
     });
 
     it("should remove data-* attribute when dataset value is undefined", () => {
@@ -174,10 +176,10 @@ describe("DOM Operators", () => {
       const subscription = source$.pipe(data("testKey", value$)).subscribe();
 
       value$.next("test value");
-      expect(div.getAttribute("data-test-key")).toBe("test value");
+      assert.strictEqual(div.getAttribute("data-test-key"), "test value");
 
       value$.next(undefined);
-      expect(div.getAttribute("data-test-key")).toBeNull();
+      assert.strictEqual(div.getAttribute("data-test-key"), null);
 
       subscription.unsubscribe();
     });
@@ -193,10 +195,10 @@ describe("DOM Operators", () => {
       const subscription = source$.pipe(style("backgroundColor", value$)).subscribe();
 
       value$.next("red");
-      expect(div.style.backgroundColor).toBe("red");
+      assert.strictEqual(div.style.backgroundColor, "red");
 
       subscription.unsubscribe();
-      expect(div.style.backgroundColor).toBe("red");
+      assert.strictEqual(div.style.backgroundColor, "red");
     });
   });
 
@@ -210,10 +212,10 @@ describe("DOM Operators", () => {
 
       const subscription = source$.pipe(children(child$)).subscribe();
 
-      expect(parent.contains(child)).toBe(true);
+      assert.strictEqual(parent.contains(child), true);
 
       subscription.unsubscribe();
-      expect(parent.contains(child)).toBe(false);
+      assert.strictEqual(parent.contains(child), false);
     });
   });
 });

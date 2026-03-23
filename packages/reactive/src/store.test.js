@@ -1,4 +1,5 @@
-/* eslint-env jest */
+import { test } from "node:test";
+import assert from "node:assert/strict";
 import { observable } from "./factories.js";
 import store from "./store.js";
 
@@ -12,7 +13,7 @@ test("observes value", () => {
   state.value = 2;
   state.value = 2;
   state.value = 3;
-  expect(values).toEqual([1, 2, 3]);
+  assert.deepStrictEqual(values, [1, 2, 3]);
 });
 
 test("observes derived value", () => {
@@ -30,7 +31,7 @@ test("observes derived value", () => {
   state.value = 2;
   state.value = 2;
   state.value = 3;
-  expect(values).toEqual([2, 4, 6]);
+  assert.deepStrictEqual(values, [2, 4, 6]);
 });
 
 test("nested store", () => {
@@ -47,7 +48,7 @@ test("nested store", () => {
   state.nested.value = 2;
   state.nested.value = 2;
   state.nested.value = 3;
-  expect(values).toEqual([1, 2, 3]);
+  assert.deepStrictEqual(values, [1, 2, 3]);
 });
 
 test("nested store replacement", () => {
@@ -64,7 +65,7 @@ test("nested store replacement", () => {
   state.nested = { value: 2 };
   state.nested = { value: 2 };
   state.nested = { value: 3 };
-  expect(values).toEqual([1, 2, 3]);
+  assert.deepStrictEqual(values, [1, 2, 3]);
 });
 
 test("deleting property", () => {
@@ -79,7 +80,7 @@ test("deleting property", () => {
   });
   delete state.value;
   state.value = 2;
-  expect(values).toEqual([1, undefined, 2]);
+  assert.deepStrictEqual(values, [1, undefined, 2]);
 });
 
 test("has property", () => {
@@ -94,7 +95,7 @@ test("has property", () => {
   });
   delete state.value;
   state.value = 2;
-  expect(values).toEqual([true, false, true]);
+  assert.deepStrictEqual(values, [true, false, true]);
 });
 
 test("ownKeys", () => {
@@ -110,7 +111,7 @@ test("ownKeys", () => {
   });
   state.c = 3;
   delete state.a;
-  expect(values).toEqual([
+  assert.deepStrictEqual(values, [
     ["a", "b"],
     ["a", "b", "c"],
     ["b", "c"],

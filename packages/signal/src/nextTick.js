@@ -5,7 +5,7 @@ import { Observable } from "rxjs";
  */
 function nextTick() {
   return new Observable((subscriber) => {
-    /** @type {number | undefined} */
+    /** @type {ReturnType<typeof setTimeout> | undefined} */
     let handle;
     function scheduleNextTick() {
       return setTimeout(() => {

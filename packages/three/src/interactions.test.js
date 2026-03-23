@@ -1,5 +1,7 @@
+import { describe, test } from "node:test";
+import assert from "node:assert/strict";
 import * as THREE from "three";
-import { setLocalMatrix, setWorldMatrix } from "./interactions";
+import { setLocalMatrix, setWorldMatrix } from "./interactions.js";
 
 describe("setLocalMatrix and setWorldMatrix", () => {
   test("setting the same matrix does not change the object's transformation", () => {
@@ -15,15 +17,15 @@ describe("setLocalMatrix and setWorldMatrix", () => {
     child.updateMatrixWorld();
     const childWorldMatrix = child.matrixWorld.clone();
     setWorldMatrix(child, childWorldMatrix);
-    expect(child.matrixWorld.equals(childWorldMatrix)).toBe(true);
+    assert.strictEqual(child.matrixWorld.equals(childWorldMatrix), true);
 
     const childLocalMatrix = child.matrix.clone();
     setLocalMatrix(child, childLocalMatrix);
 
-    expect(child.matrix.equals(childLocalMatrix)).toBe(true);
+    assert.strictEqual(child.matrix.equals(childLocalMatrix), true);
     child.updateMatrixWorld();
 
-    expect(child.matrixWorld.equals(childWorldMatrix)).toBe(true);
+    assert.strictEqual(child.matrixWorld.equals(childWorldMatrix), true);
   });
 
   test("local matrix can be derived from world matricies", () => {
@@ -40,12 +42,12 @@ describe("setLocalMatrix and setWorldMatrix", () => {
     const childLocalMatrix = child.matrix.clone();
 
     const relativeMatrix = parent.matrixWorld.clone().invert().multiply(child.matrixWorld);
-    expect(relativeMatrix.equals(childLocalMatrix)).toBe(true);
+    assert.strictEqual(relativeMatrix.equals(childLocalMatrix), true);
 
     setLocalMatrix(child, relativeMatrix);
     child.updateMatrixWorld();
 
-    expect(child.matrix.equals(childLocalMatrix)).toBe(true);
-    expect(child.matrixWorld.equals(childWorldMatrix)).toBe(true);
+    assert.strictEqual(child.matrix.equals(childLocalMatrix), true);
+    assert.strictEqual(child.matrixWorld.equals(childWorldMatrix), true);
   });
 });

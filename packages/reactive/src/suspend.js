@@ -1,6 +1,6 @@
 import { createProperty } from "@apendua.dev/signal";
 import { NEVER, Observable, ReplaySubject, shareReplay, switchMap, takeUntil } from "rxjs";
-import { takeNothing } from "./operators";
+import { takeNothing } from "./operators.js";
 
 /**
  * @import { Mountable } from "./types.js";

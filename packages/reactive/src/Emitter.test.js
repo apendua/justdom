@@ -1,4 +1,5 @@
-/* eslint-env: jest */
+import { describe, it, mock } from "node:test";
+import assert from "node:assert/strict";
 
 import Emitter, { on } from "./Emitter.js";
 import { just } from "./factories.js";
@@ -26,7 +27,7 @@ class Test extends Emitter {
 
 describe("EventListener", () => {
   it("should subscribe using on operator", () => {
-    const spy = jest.fn();
+    const spy = mock.fn();
     const test = new Test();
     const subscription = just(test, [
       on("anotherEvent", (e) => {
@@ -36,12 +37,12 @@ describe("EventListener", () => {
     test.emit("anotherEvent", 42);
     subscription.unsubscribe();
     test.emit("anotherEvent", 100); // should not trigger the spy
-    expect(spy).toHaveBeenCalledTimes(1);
-    expect(spy.mock.calls[0][0]).toBe(42);
+    assert.strictEqual(spy.mock.calls.length, 1);
+    assert.strictEqual(spy.mock.calls[0].arguments[0], 42);
   });
 
   it("should subscribe to DOM event using on operator", () => {
-    const spy = jest.fn();
+    const spy = mock.fn();
     const element = document.createElement("div");
     const subscription = just(element, [
       on("click", (e) => {
@@ -51,7 +52,7 @@ describe("EventListener", () => {
     element.click();
     subscription.unsubscribe();
     element.click(); // should not trigger the spy
-    expect(spy).toHaveBeenCalledTimes(1);
-    expect(spy.mock.calls[0][0]).toBeInstanceOf(MouseEvent);
+    assert.strictEqual(spy.mock.calls.length, 1);
+    assert.ok(spy.mock.calls[0].arguments[0] instanceof MouseEvent);
   });
 });

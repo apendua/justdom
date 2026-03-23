@@ -1,4 +1,5 @@
-/* eslint-env jest */
+import { describe, test, beforeEach } from "node:test";
+import assert from "node:assert/strict";
 import Vector from "./Vector.js";
 
 /**
@@ -32,7 +33,7 @@ describe("Test Vector", () => {
       v = V(1.21, 3.41, 5.61);
     });
     test("should properly serialize a vector", () => {
-      expect(v.toString()).toBe("[1.21,3.41,5.61]");
+      assert.strictEqual(v.toString(), "[1.21,3.41,5.61]");
     });
   });
   describe("Vector.toFixed", () => {
@@ -40,7 +41,7 @@ describe("Test Vector", () => {
       v = V(1.21, 3.41, 5.61);
     });
     test("should properly serialize a vector", () => {
-      expect(v.toFixed(1)).toBe("[1.2,3.4,5.6]");
+      assert.strictEqual(v.toFixed(1), "[1.2,3.4,5.6]");
     });
   });
   describe("Vector.floor", () => {
@@ -48,7 +49,7 @@ describe("Test Vector", () => {
       v = V(1.21, 3.41, 5.61);
     });
     test('should apply "floor" to all coordinates', () => {
-      expect(v.floor().isEqual(V(1, 3, 5))).toBe(true);
+      assert.strictEqual(v.floor().isEqual(V(1, 3, 5)), true);
     });
   });
   describe("Vector.min", () => {
@@ -58,13 +59,13 @@ describe("Test Vector", () => {
       v3 = V(2, 3, 1);
     });
     test("should find that x is the minimal coordinate", () => {
-      expect(v1.min).toBe(1);
+      assert.strictEqual(v1.min, 1);
     });
     test("should find that y is the minimal coordinate", () => {
-      expect(v2.min).toBe(1);
+      assert.strictEqual(v2.min, 1);
     });
     test("should find that z is the minimal coordinate", () => {
-      expect(v3.min).toBe(1);
+      assert.strictEqual(v3.min, 1);
     });
   });
   describe("Vector.order", () => {
@@ -77,22 +78,22 @@ describe("Test Vector", () => {
       v6 = V(3, 2, 1);
     });
     test("should find XYZ ordering", () => {
-      expect(v1.order).toBe(Vector.XYZ);
+      assert.strictEqual(v1.order, Vector.XYZ);
     });
     test("should find XZY ordering", () => {
-      expect(v2.order).toBe(Vector.XZY);
+      assert.strictEqual(v2.order, Vector.XZY);
     });
     test("should find YXZ ordering", () => {
-      expect(v3.order).toBe(Vector.YXZ);
+      assert.strictEqual(v3.order, Vector.YXZ);
     });
     test("should find ZXY ordering", () => {
-      expect(v4.order).toBe(Vector.ZXY);
+      assert.strictEqual(v4.order, Vector.ZXY);
     });
     test("should find YZX ordering", () => {
-      expect(v5.order).toBe(Vector.YZX);
+      assert.strictEqual(v5.order, Vector.YZX);
     });
     test("should find ZYX ordering", () => {
-      expect(v6.order).toBe(Vector.ZYX);
+      assert.strictEqual(v6.order, Vector.ZYX);
     });
   });
   describe("Vector.add", () => {
@@ -101,10 +102,10 @@ describe("Test Vector", () => {
       u = V(1, 1, 0);
     });
     test("should add two vectors", () => {
-      expect(v.add(u).toString()).toBe("[2,1,1]");
+      assert.strictEqual(v.add(u).toString(), "[2,1,1]");
     });
     test('should add an "inline" to a vector', () => {
-      expect(v.add(V(1, 1, 0)).toString()).toBe("[2,1,1]");
+      assert.strictEqual(v.add(V(1, 1, 0)).toString(), "[2,1,1]");
     });
   });
   describe("Vector.sub", () => {
@@ -113,10 +114,10 @@ describe("Test Vector", () => {
       u = V(1, 1, 0);
     });
     test("should subtract two vectors", () => {
-      expect(v.sub(u).toString()).toBe("[0,-1,1]");
+      assert.strictEqual(v.sub(u).toString(), "[0,-1,1]");
     });
     test('should subtract an "inline" from a vector', () => {
-      expect(v.sub(V(1, 1, 0)).toString()).toBe("[0,-1,1]");
+      assert.strictEqual(v.sub(V(1, 1, 0)).toString(), "[0,-1,1]");
     });
   });
   describe("Vector.mul", () => {
@@ -124,7 +125,7 @@ describe("Test Vector", () => {
       v = V(1, 1, 1);
     });
     test("should multiply vector by scalar", () => {
-      expect(v.mul(2).toString()).toBe("[2,2,2]");
+      assert.strictEqual(v.mul(2).toString(), "[2,2,2]");
     });
   });
   describe("Vector.div", () => {
@@ -132,7 +133,7 @@ describe("Test Vector", () => {
       v = V(2, 2, 2);
     });
     test("should divide vector by scalar", () => {
-      expect(v.div(2).toString()).toBe("[1,1,1]");
+      assert.strictEqual(v.div(2).toString(), "[1,1,1]");
     });
   });
   describe("Vector.dot", () => {
@@ -140,10 +141,10 @@ describe("Test Vector", () => {
       v = V(1, -1, 2);
     });
     test("should compute dot product of two vectors", () => {
-      expect(v.dot(v)).toBe(6);
+      assert.strictEqual(v.dot(v), 6);
     });
     test('should compute dot product of vector and "inline"', () => {
-      expect(v.dot(V(1, 1, 1))).toBe(2);
+      assert.strictEqual(v.dot(V(1, 1, 1)), 2);
     });
   });
   describe("Vector.length", () => {
@@ -151,7 +152,7 @@ describe("Test Vector", () => {
       v = V(3, 4, 0);
     });
     test("should compute vector length", () => {
-      expect(v.length).toBe(5);
+      assert.strictEqual(v.length, 5);
     });
   });
   describe("Vector.length2", () => {
@@ -159,7 +160,7 @@ describe("Test Vector", () => {
       v = V(1, 2, 3);
     });
     test("should compute length squared", () => {
-      expect(v.length2).toBe(14);
+      assert.strictEqual(v.length2, 14);
     });
   });
   describe("Vector.cross", () => {
@@ -168,13 +169,13 @@ describe("Test Vector", () => {
       u = V(1, 1, 1);
     });
     test("should compute cross product of two vectors", () => {
-      expect(v.cross(u).toString()).toBe("[-1,0,1]");
+      assert.strictEqual(v.cross(u).toString(), "[-1,0,1]");
     });
     test("should compute cross product of two vectors (bis)", () => {
-      expect(u.cross(v).toString()).toBe("[1,0,-1]");
+      assert.strictEqual(u.cross(v).toString(), "[1,0,-1]");
     });
     test('should compute cross product of vector and "inline"', () => {
-      expect(v.cross(V(1, 1, 1)).toString()).toBe("[-1,0,1]");
+      assert.strictEqual(v.cross(V(1, 1, 1)).toString(), "[-1,0,1]");
     });
   });
 });

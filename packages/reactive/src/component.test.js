@@ -1,3 +1,5 @@
+import { it, mock } from "node:test";
+import assert from "node:assert/strict";
 import { Lazy, makeNonReactive, Signal } from "@apendua.dev/signal";
 import { component, observable } from "./factories.js";
 import { on } from "./Emitter.js";
@@ -75,11 +77,11 @@ it("updates child component state immedately after rendering in a two-way bindin
     ]);
   });
 
-  const next = jest.fn();
+  const next = mock.fn();
   const subscription = container().subscribe(next);
 
-  expect(next).toHaveBeenCalledTimes(1);
-  expect(next.mock.calls[0][0]).toBe("[Hello!]");
+  assert.strictEqual(next.mock.calls.length, 1);
+  assert.strictEqual(next.mock.calls[0].arguments[0], "[Hello!]");
 
   subscription.unsubscribe();
 });

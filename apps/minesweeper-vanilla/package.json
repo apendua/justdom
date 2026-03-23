@@ -3,13 +3,14 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "build": "tsc && vite build",
+    "build": "npm run test && npm run compile && vite build",
     "build:watch": "",
+    "compile": "tsc",
     "dev": "vite",
     "generate:pwa-assets": "pwa-assets-generator",
     "preview": "vite preview",
-    "test": "jest",
-    "test:watch": "jest --watch"
+    "test": "if find src -type f \\( -name '*.test.ts' -o -name '*.test.tsx' -o -name '*.test.js' -o -name '*.test.jsx' \\) | grep -q .; then vitest run --environment jsdom; else echo 'No tests found, skipping'; fi",
+    "test:watch": "vitest --environment jsdom"
   },
   "dependencies": {
     "@apendua.dev/dom": "workspace:*",
@@ -20,10 +21,8 @@
     "@apendua.dev/signal": "workspace:*",
     "@apendua.dev/store4": "workspace:*",
     "@apendua.dev/store4react": "workspace:*",
-    "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.0",
     "@testing-library/user-event": "^14.6.1",
-    "@types/jest": "^30.0.0",
     "@types/lodash": "^4.17.20",
     "@types/node": "^24.7.0",
     "@vite-pwa/assets-generator": "^1.0.1",
@@ -32,6 +31,7 @@
     "rxjs": "^7.8.2",
     "typescript": "^5.9.3",
     "vite": "^7.1.9",
-    "vite-plugin-pwa": "^1.0.3"
+    "vite-plugin-pwa": "^1.0.3",
+    "vitest": "^3.2.4"
   }
 }

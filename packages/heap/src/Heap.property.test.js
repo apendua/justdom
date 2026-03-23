@@ -1,4 +1,5 @@
-/* eslint-env jest */
+import { test } from "node:test";
+import assert from "node:assert/strict";
 
 import * as fc from "fast-check";
 import { Heap, sortBy } from "./Heap.js";
@@ -24,7 +25,7 @@ test("sorts a random array of numbers", () => {
         array1.sort(cmp);
         sortBy(array2, cmp);
 
-        expect(array1).toEqual(array2);
+        assert.deepStrictEqual(array1, array2);
       },
     ),
   );
@@ -49,10 +50,10 @@ function createMemory(cmp) {
       const l = 2 * i + 1;
       const r = 2 * i + 1;
       if (l < memory.length) {
-        expect(cmp(memory[i], memory[l])).toBeGreaterThanOrEqual(0);
+        assert.ok(cmp(memory[i], memory[l]) >= 0);
       }
       if (r < memory.length) {
-        expect(cmp(memory[i], memory[r])).toBeGreaterThanOrEqual(0);
+        assert.ok(cmp(memory[i], memory[r]) >= 0);
       }
     }
   }

@@ -1,4 +1,5 @@
-/* eslint-env jest */
+import { describe, test, beforeEach } from "node:test";
+import assert from "node:assert/strict";
 import BBox from "./BBox.js";
 import HexMap from "./HexMap.js";
 import Vector from "./Vector.js";
@@ -14,6 +15,34 @@ import Vector from "./Vector.js";
 function identity(v) {
   return v;
 }
+
+/**
+ * @param {Vector} v
+ * @returns {{ x: number; y: number; z: number }}
+ */
+function toPlainVector(v) {
+  return { x: v.x, y: v.y, z: v.z };
+}
+
+/**
+ * @param {[Vector, Vector][]} edges
+ * @returns {[{ x: number; y: number; z: number }, { x: number; y: number; z: number }][]}
+ */
+function toPlainEdges(edges) {
+  return edges.map(([a, b]) => [toPlainVector(a), toPlainVector(b)]);
+}
+
+/**
+ * @param {{ hex: Vector; off: Vector }} value
+ * @returns {{ hex: { x: number; y: number; z: number }; off: { x: number; y: number; z: number } }}
+ */
+function toPlainHexOffset(value) {
+  return {
+    hex: toPlainVector(value.hex),
+    off: toPlainVector(value.off),
+  };
+}
+
 describe("Test HexMap", () => {
   /** @type {HexMap<VectorLike>} */
   let hexMap;
@@ -26,10 +55,10 @@ describe("Test HexMap", () => {
       hexMap = new HexMap(identity);
     });
     test("should not have any fields", () => {
-      expect(hexMap.getSize()).toBe(0);
+      assert.strictEqual(hexMap.getSize(), 0);
     });
     test("getField() should return no value", () => {
-      expect(hexMap.getField({ x: 0, y: 0, z: 0 })).toBeFalsy();
+      assert.ok(!hexMap.getField({ x: 0, y: 0, z: 0 }));
     });
   });
   describe("Single field HexMap", () => {
@@ -53,13 +82,13 @@ describe("Test HexMap", () => {
       });
     });
     test("should have exactly one fields", () => {
-      expect(hexMap.getSize()).toBe(1);
+      assert.strictEqual(hexMap.getSize(), 1);
     });
     test("getField() should return the only field", () => {
-      expect(hexMap.getField({ x: 1, y: 0, z: 0 })).toBeTruthy();
+      assert.ok(hexMap.getField({ x: 1, y: 0, z: 0 }));
     });
     test("should evaluate edges", () => {
-      expect(HexMap.getEdges({ x: 1, y: 0, z: 0 })).toEqual([
+      assert.deepStrictEqual(toPlainEdges(HexMap.getEdges({ x: 1, y: 0, z: 0 })), [
         [
           { x: 2, y: 0, z: 0 },
           { x: 2, y: 1, z: 0 },
@@ -87,7 +116,8 @@ describe("Test HexMap", () => {
       ]);
     });
     test("should evaluate bounding box", () => {
-      expect(hexMap.bbox).toEqual(
+      assert.deepStrictEqual(
+        hexMap.bbox,
         new BBox({
           minX: -1,
           maxX: 0,
@@ -97,47 +127,50 @@ describe("Test HexMap", () => {
       );
     });
     test("should evaluate projected border", () => {
-      expect(HexMap.getNodes({ x: 1, y: 0, z: 0 }).map((v) => toPixels(v))).toEqual([
-        { x: 1, y: 4 },
-        { x: 3, y: 5 },
-        { x: 5, y: 4 },
-        { x: 5, y: 2 },
-        { x: 3, y: 1 },
-        { x: 1, y: 2 },
-      ]);
+      assert.deepStrictEqual(
+        HexMap.getNodes({ x: 1, y: 0, z: 0 }).map((v) => toPixels(v)),
+        [
+          { x: 1, y: 4 },
+          { x: 3, y: 5 },
+          { x: 5, y: 4 },
+          { x: 5, y: 2 },
+          { x: 3, y: 1 },
+          { x: 1, y: 2 },
+        ],
+      );
     });
     test("should find hex based on pixel (1)", () => {
-      expect(toHex({ x: 2, y: 2 })).toEqual({
+      assert.deepStrictEqual(toPlainHexOffset(toHex({ x: 2, y: 2 })), {
         hex: { x: 1, y: 0, z: 0 },
         off: { x: 0, y: -1, z: 1 },
       });
     });
     test("should find hex based on pixel (2)", () => {
-      expect(toHex({ x: 2, y: 3 })).toEqual({
+      assert.deepStrictEqual(toPlainHexOffset(toHex({ x: 2, y: 3 })), {
         hex: { x: 1, y: 0, z: 0 },
         off: { x: 1, y: -1, z: 0 },
       });
     });
     test("should find hex based on pixel (3)", () => {
-      expect(toHex({ x: 2, y: 4 })).toEqual({
+      assert.deepStrictEqual(toPlainHexOffset(toHex({ x: 2, y: 4 })), {
         hex: { x: 1, y: 0, z: 0 },
         off: { x: 1, y: 0, z: -1 },
       });
     });
     test("should find hex based on pixel (4)", () => {
-      expect(toHex({ x: 4, y: 2 })).toEqual({
+      assert.deepStrictEqual(toPlainHexOffset(toHex({ x: 4, y: 2 })), {
         hex: { x: 1, y: 0, z: 0 },
         off: { x: -1, y: 0, z: 1 },
       });
     });
     test("should find hex based on pixel (5)", () => {
-      expect(toHex({ x: 4, y: 3 })).toEqual({
+      assert.deepStrictEqual(toPlainHexOffset(toHex({ x: 4, y: 3 })), {
         hex: { x: 1, y: 0, z: 0 },
         off: { x: -1, y: 1, z: 0 },
       });
     });
     test("should find hex based on pixel (6)", () => {
-      expect(toHex({ x: 4, y: 4 })).toEqual({
+      assert.deepStrictEqual(toPlainHexOffset(toHex({ x: 4, y: 4 })), {
         hex: { x: 1, y: 0, z: 0 },
         off: { x: 0, y: 1, z: -1 },
       });
@@ -167,10 +200,11 @@ describe("Test HexMap", () => {
       });
     });
     test("should have 4 fields", () => {
-      expect(hexMap.getAllFields().length).toBe(4);
+      assert.strictEqual(hexMap.getAllFields().length, 4);
     });
     test("should evaluate bounding box", () => {
-      expect(hexMap.bbox).toEqual(
+      assert.deepStrictEqual(
+        hexMap.bbox,
         new BBox({
           minX: -0.5,
           minY: -0.5,
@@ -180,7 +214,7 @@ describe("Test HexMap", () => {
       );
     });
     test("should evaluate projected border", () => {
-      expect(HexMap.findBorder(hexMap.getAllFields())[0].map(toPixels)).toEqual([
+      assert.deepStrictEqual(HexMap.findBorder(hexMap.getAllFields())[0].map(toPixels), [
         { x: 3, y: 5 },
         { x: 3, y: 7 },
         { x: 5, y: 8 },

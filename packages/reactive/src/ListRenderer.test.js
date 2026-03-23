@@ -1,3 +1,5 @@
+import { describe, it } from "node:test";
+import assert from "node:assert/strict";
 import { BehaviorSubject, map, tap } from "rxjs";
 import { replaceSegment, toSegment } from "./helpers.js";
 import { effectMap } from "./operators.js";
@@ -22,9 +24,9 @@ describe("renders a simple DOM tree", () => {
         ),
       ]),
     );
-    expect(innerHTML.get()).toBe("<div><span>Hello,</span><span>World!</span></div>");
+    assert.strictEqual(innerHTML.get(), "<div><span>Hello,</span><span>World!</span></div>");
     innerHTML.dispose();
-    expect(innerHTML.get()).toBe("<div></div>");
+    assert.strictEqual(innerHTML.get(), "<div></div>");
   });
 
   it("renders a list of items", () => {
@@ -42,9 +44,9 @@ describe("renders a simple DOM tree", () => {
         ),
       ]),
     );
-    expect(innerHTML.get()).toBe("<ul><li>A</li><li>B</li><li>C</li></ul>");
+    assert.strictEqual(innerHTML.get(), "<ul><li>A</li><li>B</li><li>C</li></ul>");
     innerHTML.dispose();
-    expect(innerHTML.get()).toBe("<ul></ul>");
+    assert.strictEqual(innerHTML.get(), "<ul></ul>");
   });
 
   it("updates HTML when items are added", () => {
@@ -62,11 +64,11 @@ describe("renders a simple DOM tree", () => {
         ),
       ]),
     );
-    expect(innerHTML.get()).toBe("<ul><li>A</li></ul>");
+    assert.strictEqual(innerHTML.get(), "<ul><li>A</li></ul>");
     items$.next(["A", "B"]);
-    expect(innerHTML.get()).toBe("<ul><li>A</li><li>B</li></ul>");
+    assert.strictEqual(innerHTML.get(), "<ul><li>A</li><li>B</li></ul>");
     innerHTML.dispose();
-    expect(innerHTML.get()).toBe("<ul></ul>");
+    assert.strictEqual(innerHTML.get(), "<ul></ul>");
   });
 
   it("updates HTML when items are removed", () => {
@@ -84,11 +86,11 @@ describe("renders a simple DOM tree", () => {
         ),
       ]),
     );
-    expect(innerHTML.get()).toBe("<ul><li>A</li><li>B</li><li>C</li><li>D</li></ul>");
+    assert.strictEqual(innerHTML.get(), "<ul><li>A</li><li>B</li><li>C</li><li>D</li></ul>");
     items$.next(["A", "B", "C"]);
-    expect(innerHTML.get()).toBe("<ul><li>A</li><li>B</li><li>C</li></ul>");
+    assert.strictEqual(innerHTML.get(), "<ul><li>A</li><li>B</li><li>C</li></ul>");
     innerHTML.dispose();
-    expect(innerHTML.get()).toBe("<ul></ul>");
+    assert.strictEqual(innerHTML.get(), "<ul></ul>");
   });
 });
 

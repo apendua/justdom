@@ -2,20 +2,15 @@
   "compilerOptions": {
     "target": "ES2020",
     "lib": ["ES2020", "DOM"],
-    "esModuleInterop": true,
-    "experimentalDecorators": true,
-    "strict": true,
-    "noImplicitAny": true,
     "module": "ESNext",
     "moduleResolution": "Node",
-    "isolatedModules": true,
-    "declaration": true,
-    "sourceMap": true,
     "sourceRoot": "./src",
     "typeRoots": ["./types", "./node_modules/@types"],
     "rootDirs": ["./src"],
     "rootDir": "./src",
     "outDir": "./lib"
   },
-  "include": ["src"]
+  "include": ["src"],
+  "extends": "../../common/config/typescript/tsconfig.package-base.json",
+  "exclude": ["src/**/*.test.*", "src/test/**", "src/testUtils/**"]
 }

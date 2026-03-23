@@ -1,4 +1,5 @@
-/* eslint-env jest */
+import { it, mock } from "node:test";
+import assert from "node:assert/strict";
 
 import { merge } from "rxjs";
 import {
@@ -17,10 +18,10 @@ it("should not memoize value if not subscribed", function () {
     computeCount++;
     return 42;
   });
-  expect(derived.get()).toBe(42);
-  expect(computeCount).toBe(1);
-  expect(derived.get()).toBe(42);
-  expect(computeCount).toBe(2);
+  assert.strictEqual(derived.get(), 42);
+  assert.strictEqual(computeCount, 1);
+  assert.strictEqual(derived.get(), 42);
+  assert.strictEqual(computeCount, 2);
 });
 
 it("should memoize value when subscribed", function () {
@@ -30,15 +31,15 @@ it("should memoize value when subscribed", function () {
     return 42;
   });
   const subscription = derived.getChanges().subscribe();
-  expect(derived.get()).toBe(42);
-  expect(computeCount).toBe(1);
-  expect(derived.get()).toBe(42);
-  expect(computeCount).toBe(1);
+  assert.strictEqual(derived.get(), 42);
+  assert.strictEqual(computeCount, 1);
+  assert.strictEqual(derived.get(), 42);
+  assert.strictEqual(computeCount, 1);
   subscription.unsubscribe();
 });
 
 it("invokes cleanup after last subscriber unsubscribes", function () {
-  const cleanup = jest.fn();
+  const cleanup = mock.fn();
   const derived = new Derived(() => {
     onInvalidate(cleanup);
   });
@@ -46,11 +47,11 @@ it("invokes cleanup after last subscriber unsubscribes", function () {
   const subscription2 = derived.getChanges().subscribe();
   subscription1.unsubscribe();
   subscription2.unsubscribe();
-  expect(cleanup).toHaveBeenCalledTimes(1);
+  assert.strictEqual(cleanup.mock.calls.length, 1);
 });
 
 it("invokes cleanup in a deferred manner", async function () {
-  const cleanup = jest.fn();
+  const cleanup = mock.fn();
   const derived = new Derived(
     () => {
       onInvalidate(cleanup);
@@ -63,13 +64,13 @@ it("invokes cleanup in a deferred manner", async function () {
   const subscription2 = derived.getChanges().subscribe();
   subscription1.unsubscribe();
   subscription2.unsubscribe();
-  expect(cleanup).toHaveBeenCalledTimes(0);
+  assert.strictEqual(cleanup.mock.calls.length, 0);
   await new Promise((resolve) => setTimeout(resolve, 0));
-  expect(cleanup).toHaveBeenCalledTimes(1);
+  assert.strictEqual(cleanup.mock.calls.length, 1);
 });
 
 it("invokes cleanup after any relevant change in dependency", function () {
-  const cleanup = jest.fn();
+  const cleanup = mock.fn();
   const source = new Signal(1);
   const derived = new Derived(() => {
     addDependency(source);
@@ -78,69 +79,69 @@ it("invokes cleanup after any relevant change in dependency", function () {
   });
   const subscription1 = derived.getChanges().subscribe();
   const subscription2 = derived.getChanges().subscribe();
-  expect(derived.get()).toBe(2);
-  expect(derived.getEvaluations()).toBe(1);
-  expect(cleanup).toHaveBeenCalledTimes(0);
+  assert.strictEqual(derived.get(), 2);
+  assert.strictEqual(derived.getEvaluations(), 1);
+  assert.strictEqual(cleanup.mock.calls.length, 0);
   subscription1.unsubscribe();
-  expect(derived.getEvaluations()).toBe(1);
-  expect(cleanup).toHaveBeenCalledTimes(0);
+  assert.strictEqual(derived.getEvaluations(), 1);
+  assert.strictEqual(cleanup.mock.calls.length, 0);
   subscription2.unsubscribe();
-  expect(derived.getEvaluations()).toBe(1);
-  expect(cleanup).toHaveBeenCalledTimes(1);
+  assert.strictEqual(derived.getEvaluations(), 1);
+  assert.strictEqual(cleanup.mock.calls.length, 1);
   source.set(2);
-  expect(derived.get()).toBe(4);
-  expect(derived.getEvaluations()).toBe(2);
-  expect(cleanup).toHaveBeenCalledTimes(1);
+  assert.strictEqual(derived.get(), 4);
+  assert.strictEqual(derived.getEvaluations(), 2);
+  assert.strictEqual(cleanup.mock.calls.length, 1);
   const subscription3 = derived.getChanges().subscribe();
-  expect(derived.get()).toBe(4);
-  expect(derived.getEvaluations()).toBe(3);
-  expect(cleanup).toHaveBeenCalledTimes(2);
+  assert.strictEqual(derived.get(), 4);
+  assert.strictEqual(derived.getEvaluations(), 3);
+  assert.strictEqual(cleanup.mock.calls.length, 2);
   subscription3.unsubscribe();
-  expect(derived.getEvaluations()).toBe(3);
-  expect(cleanup).toHaveBeenCalledTimes(3);
+  assert.strictEqual(derived.getEvaluations(), 3);
+  assert.strictEqual(cleanup.mock.calls.length, 3);
 });
 
 it("should only emit if value changes", function () {
   const initial = new Signal(1);
-  const spy = jest.fn();
+  const spy = mock.fn();
   const subscription = initial.getChanges().subscribe(spy);
-  expect(initial.get()).toBe(1);
+  assert.strictEqual(initial.get(), 1);
   initial.set(1);
-  expect(initial.get()).toBe(1);
+  assert.strictEqual(initial.get(), 1);
   initial.set(2);
-  expect(initial.get()).toBe(2);
+  assert.strictEqual(initial.get(), 2);
   subscription.unsubscribe();
-  expect(spy).toHaveBeenCalledTimes(1);
+  assert.strictEqual(spy.mock.calls.length, 1);
 });
 
 it("should update value when input changes", function () {
   const initial = new Signal(1);
   const derived = new Derived(() => initial.get() + 1);
-  const spy = jest.fn();
+  const spy = mock.fn();
   const subscription = derived.getChanges().subscribe(spy);
-  expect(derived.get()).toBe(2);
+  assert.strictEqual(derived.get(), 2);
   initial.set(2);
-  expect(derived.get()).toBe(3);
+  assert.strictEqual(derived.get(), 3);
   initial.set(3);
-  expect(derived.get()).toBe(4);
+  assert.strictEqual(derived.get(), 4);
   subscription.unsubscribe();
-  expect(spy).toHaveBeenCalledTimes(2);
+  assert.strictEqual(spy.mock.calls.length, 2);
 });
 
 it("should only emit if derived value changes", function () {
   const initial = new Signal(1);
   const derived = new Derived(() => initial.get() % 2);
-  const spy = jest.fn();
+  const spy = mock.fn();
   const subscription = derived.getChanges().subscribe(spy);
-  expect(derived.get()).toBe(1);
+  assert.strictEqual(derived.get(), 1);
   initial.set(3);
-  expect(derived.get()).toBe(1);
+  assert.strictEqual(derived.get(), 1);
   initial.set(2);
-  expect(derived.get()).toBe(0);
+  assert.strictEqual(derived.get(), 0);
   initial.set(3);
-  expect(derived.get()).toBe(1);
+  assert.strictEqual(derived.get(), 1);
   subscription.unsubscribe();
-  expect(spy).toHaveBeenCalledTimes(2);
+  assert.strictEqual(spy.mock.calls.length, 2);
 });
 
 it("should batch updates", function () {
@@ -148,7 +149,7 @@ it("should batch updates", function () {
   const s2 = new Signal(0);
   const s3 = new Derived(() => s1.get() + s2.get());
 
-  const spy = jest.fn();
+  const spy = mock.fn();
   const subscription = s3.getChanges().subscribe(() => {
     spy(s3.get());
   });
@@ -158,8 +159,8 @@ it("should batch updates", function () {
     s2.set(5);
   });
 
-  expect(spy).toHaveBeenCalledTimes(1);
-  expect(spy).toHaveBeenNthCalledWith(1, 8);
+  assert.strictEqual(spy.mock.calls.length, 1);
+  assert.deepStrictEqual(spy.mock.calls[1 - 1].arguments, [8]);
 
   subscription.unsubscribe();
 });
@@ -169,7 +170,7 @@ it("should dedupe updates", function () {
   const derived = new Derived(() => 2 * initial.get());
   const changes = merge(initial.getChanges(), derived.getChanges());
   const deduped = new Dedupe(changes);
-  const spy = jest.fn();
+  const spy = mock.fn();
   const subscription = deduped.getChanges().subscribe(spy);
   for (let i = 2; i <= 100; i++) {
     initial.set(i);
@@ -179,18 +180,18 @@ it("should dedupe updates", function () {
   //       of the relationship between them. However, subsequent sets to
   //       input only cause input to emit, and dedupe only emits once
   //       for all those changes.
-  expect(spy).toHaveBeenCalledTimes(100);
+  assert.strictEqual(spy.mock.calls.length, 100);
   subscription.unsubscribe();
 });
 
 it("should not rerun if changes happen within no-reactive block", function () {
   const initial = new Signal(1);
   const derived = new Derived(() => callNonReactive(() => initial.get()));
-  const spy = jest.fn();
+  const spy = mock.fn();
   const subscription = derived.getChanges().subscribe(spy);
-  expect(derived.get()).toBe(1);
+  assert.strictEqual(derived.get(), 1);
   initial.set(2);
-  expect(derived.get()).toBe(1);
-  expect(spy).toHaveBeenCalledTimes(0);
+  assert.strictEqual(derived.get(), 1);
+  assert.strictEqual(spy.mock.calls.length, 0);
   subscription.unsubscribe();
 });

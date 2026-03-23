@@ -1,4 +1,5 @@
-/* eslint-env jest */
+import { describe, test, beforeEach } from "node:test";
+import assert from "node:assert/strict";
 /* eslint prefer-arrow-callback: "off", no-unused-expressions: "off" */
 import Matrix from "./Matrix.js";
 import Vector from "./Vector.js";
@@ -32,10 +33,10 @@ describe("Test Matrix", () => {
       n = M([1, 1, 0, 0, 1, 0, 0, 0, 1]);
     });
     test("should check if matrices are the same", () => {
-      expect(m.isEqual(m)).toBe(true);
+      assert.strictEqual(m.isEqual(m), true);
     });
     test("should check if matrices are different", () => {
-      expect(n.isEqual(m)).toBe(false);
+      assert.strictEqual(n.isEqual(m), false);
     });
   });
   describe("Matrix.zero", () => {
@@ -43,7 +44,7 @@ describe("Test Matrix", () => {
       m = M([0, 0, 0, 0, 0, 0, 0, 0, 0]);
     });
     test("should check if matrix is equal to zero matrix", () => {
-      expect(m.isEqual(Matrix.zero())).toBe(true);
+      assert.strictEqual(m.isEqual(Matrix.zero()), true);
     });
   });
   describe("Matrix.identity", () => {
@@ -51,7 +52,7 @@ describe("Test Matrix", () => {
       m = M([1, 0, 0, 0, 1, 0, 0, 0, 1]);
     });
     test("should equal the identity matrix", () => {
-      expect(m.isEqual(Matrix.identity())).toBe(true);
+      assert.strictEqual(m.isEqual(Matrix.identity()), true);
     });
   });
   describe("Matrix", () => {
@@ -59,7 +60,7 @@ describe("Test Matrix", () => {
       m = M();
     });
     test("should create a zero matrix by default", () => {
-      expect(m.isEqual(Matrix.zero())).toBe(true);
+      assert.strictEqual(m.isEqual(Matrix.zero()), true);
     });
   });
   describe("Matrix.add", () => {
@@ -68,7 +69,7 @@ describe("Test Matrix", () => {
       n = M([8, 7, 6, 5, 4, 3, 2, 1, 0]);
     });
     test("should add two matrices", () => {
-      expect(m.add(n).isEqual(M([8, 8, 8, 8, 8, 8, 8, 8, 8]))).toBe(true);
+      assert.strictEqual(m.add(n).isEqual(M([8, 8, 8, 8, 8, 8, 8, 8, 8])), true);
     });
   });
   describe("Matrix.sub", () => {
@@ -76,7 +77,7 @@ describe("Test Matrix", () => {
       m = M([0, 1, 2, 3, 4, 5, 6, 7, 8]);
     });
     test("matrix subtract the same matrix should equal zero", () => {
-      expect(m.sub(m).isEqual(Matrix.zero())).toBe(true);
+      assert.strictEqual(m.sub(m).isEqual(Matrix.zero()), true);
     });
   });
   describe("Matrix.mul", () => {
@@ -85,16 +86,16 @@ describe("Test Matrix", () => {
       n = M([1, 1, 1, -1, -1, -1, 1, 1, 1]);
     });
     test("should not change matrix if multiplied by right identity", () => {
-      expect(m.mul(Matrix.identity()).isEqual(m)).toBe(true);
+      assert.strictEqual(m.mul(Matrix.identity()).isEqual(m), true);
     });
     test("should not change matrix if multiplied by left identity", () => {
-      expect(Matrix.identity().mul(m).isEqual(m)).toBe(true);
+      assert.strictEqual(Matrix.identity().mul(m).isEqual(m), true);
     });
     test("should multiply two matrices", () => {
-      expect(m.mul(n).isEqual(M([1, 1, 1, 4, 4, 4, 7, 7, 7]))).toBe(true);
+      assert.strictEqual(m.mul(n).isEqual(M([1, 1, 1, 4, 4, 4, 7, 7, 7])), true);
     });
     test("should multiply two matrices (bis)", () => {
-      expect(n.mul(m).isEqual(M([9, 12, 15, -9, -12, -15, 9, 12, 15]))).toBe(true);
+      assert.strictEqual(n.mul(m).isEqual(M([9, 12, 15, -9, -12, -15, 9, 12, 15])), true);
     });
   });
   describe("Matrix.det", () => {
@@ -103,10 +104,10 @@ describe("Test Matrix", () => {
       n = M([1, 0, 0, 1, 2, 0, 1, 1, 3]);
     });
     test("should evaluate determinat of the matrix", () => {
-      expect(m.det).toBe(0);
+      assert.strictEqual(m.det, 0);
     });
     test("should evaluate determinat of the matrix (bis)", () => {
-      expect(n.det).toBe(6);
+      assert.strictEqual(n.det, 6);
     });
   });
   describe("Matrix.inv", () => {
@@ -115,7 +116,7 @@ describe("Test Matrix", () => {
       n = m.inv();
     });
     test("should invert a matrix", () => {
-      expect(m.mul(n).isEqual(Matrix.identity())).toBe(true);
+      assert.strictEqual(m.mul(n).isEqual(Matrix.identity()), true);
     });
   });
   describe("Matrix.mulVector", () => {
@@ -124,13 +125,13 @@ describe("Test Matrix", () => {
       v = V(1, 2, 3);
     });
     test("should multiply matrix by a 2D inline vector", () => {
-      expect(m.mulVector({ x: 1, y: 2 }).isEqual({ x: 2, y: 11, z: 20 })).toBe(true);
+      assert.strictEqual(m.mulVector({ x: 1, y: 2 }).isEqual({ x: 2, y: 11, z: 20 }), true);
     });
     test("should multiply matrix by a 3D inline vector", () => {
-      expect(m.mulVector({ x: 1, y: 2, z: 3 }).isEqual({ x: 8, y: 26, z: 44 })).toBe(true);
+      assert.strictEqual(m.mulVector({ x: 1, y: 2, z: 3 }).isEqual({ x: 8, y: 26, z: 44 }), true);
     });
     test("should multiply matrix by a vector", () => {
-      expect(m.mulVector(v).isEqual({ x: 8, y: 26, z: 44 })).toBe(true);
+      assert.strictEqual(m.mulVector(v).isEqual({ x: 8, y: 26, z: 44 }), true);
     });
   });
   describe("Matrix.mulVectorOnTheLeft", () => {
@@ -139,7 +140,7 @@ describe("Test Matrix", () => {
       v = V(1, 2, 3);
     });
     test("should multiply vector by matrix", () => {
-      expect(m.mulVectorOnTheLeft(v).toString()).toBe("[24,30,36]");
+      assert.strictEqual(m.mulVectorOnTheLeft(v).toString(), "[24,30,36]");
     });
   });
 });

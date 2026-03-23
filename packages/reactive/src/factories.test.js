@@ -1,11 +1,18 @@
+import { describe, it, mock } from "node:test";
+import assert from "node:assert/strict";
 import { observable, component, just } from "./factories.js";
 import { Signal } from "@apendua.dev/signal";
+
+function assertNthCallArgumentEqual(fn, callIndex, argumentIndex, expected) {
+  assert.ok(fn.mock.calls.length > callIndex);
+  assert.deepStrictEqual(fn.mock.calls[callIndex].arguments[argumentIndex], expected);
+}
 
 describe("observable()", () => {
   it("creates an observable that emits values from a signal", () => {
     const signal = new Signal(0);
-    const next = jest.fn();
-    const complete = jest.fn();
+    const next = mock.fn();
+    const complete = mock.fn();
 
     const subscription = observable(() => {
       return 2 * signal.get();
@@ -14,13 +21,13 @@ describe("observable()", () => {
       complete,
     });
 
-    expect(next).toHaveBeenCalledWith(0);
+    assertNthCallArgumentEqual(next, 0, 0, 0);
 
     signal.set(1);
-    expect(next).toHaveBeenCalledWith(2);
+    assertNthCallArgumentEqual(next, 1, 0, 2);
 
     signal.set(2);
-    expect(next).toHaveBeenCalledWith(4);
+    assertNthCallArgumentEqual(next, 2, 0, 4);
 
     subscription.unsubscribe();
   });
@@ -29,8 +36,8 @@ describe("observable()", () => {
 describe("component()", () => {
   it("creates an observable that emits values from a signal", () => {
     const signal = new Signal(0);
-    const next = jest.fn();
-    const complete = jest.fn();
+    const next = mock.fn();
+    const complete = mock.fn();
 
     const subscription = component(() => {
       return just(2 * signal.get());
@@ -39,13 +46,13 @@ describe("component()", () => {
       complete,
     });
 
-    expect(next).toHaveBeenCalledWith(0);
+    assertNthCallArgumentEqual(next, 0, 0, 0);
 
     signal.set(1);
-    expect(next).toHaveBeenCalledWith(2);
+    assertNthCallArgumentEqual(next, 1, 0, 2);
 
     signal.set(2);
-    expect(next).toHaveBeenCalledWith(4);
+    assertNthCallArgumentEqual(next, 2, 0, 4);
 
     subscription.unsubscribe();
   });

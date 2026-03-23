@@ -1,6 +1,6 @@
 import * as THREE from "three";
-import { div } from "./div";
-import { text } from "./text";
+import { div } from "./div.js";
+import { text } from "./text.js";
 
 /**
  * @import {Observable} from 'rxjs';

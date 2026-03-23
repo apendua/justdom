@@ -1,0 +1,26 @@
+{
+  "name": "@apendua.dev/jsdom-env",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Shared node:test JSDOM environment bootstrap",
+  "license": "MIT",
+  "author": "apendua",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.js"
+  },
+  "main": "./src/index.js",
+  "module": "./src/index.js",
+  "files": [
+    "src"
+  ],
+  "scripts": {
+    "build": "echo 'No build required'"
+  },
+  "dependencies": {
+    "jsdom": "^26.1.0"
+  },
+  "devDependencies": {
+    "@types/jsdom": "^21.1.7"
+  }
+}

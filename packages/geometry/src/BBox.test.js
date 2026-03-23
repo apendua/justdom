@@ -1,4 +1,5 @@
-/* eslint-env jest */
+import { describe, test, beforeEach } from "node:test";
+import assert from "node:assert/strict";
 import BBox from "./BBox.js";
 
 /**
@@ -27,15 +28,15 @@ describe("Test BBox", () => {
   });
   describe("BBox.isEqual", () => {
     test("should check if bounding boxes are equal", () => {
-      expect(bbox1.isEqual(bbox1)).toBe(true);
+      assert.strictEqual(bbox1.isEqual(bbox1), true);
     });
     test("should check if bounding boxes are not equal", () => {
-      expect(bbox1.isEqual(bbox2)).toBe(false);
+      assert.strictEqual(bbox1.isEqual(bbox2), false);
     });
   });
   describe("BBox.addBBox", () => {
     test('should evaluate a "sum" of two bounding boxes', () => {
-      expect(bbox1.addBBox(bbox2).isEqual(bbox(1, 2, 7, 8))).toBe(true);
+      assert.strictEqual(bbox1.addBBox(bbox2).isEqual(bbox(1, 2, 7, 8)), true);
     });
   });
 });

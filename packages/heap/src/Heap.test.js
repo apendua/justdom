@@ -1,8 +1,9 @@
-/* eslint-env jest */
+import { suite, test, beforeEach } from "node:test";
+import assert from "node:assert/strict";
 
 import { Heap } from "./Heap.js";
 
-describe("Empty heap", function () {
+suite("Empty heap", function () {
   /** @type {Heap<number>} */
   let heap;
 
@@ -11,28 +12,28 @@ describe("Empty heap", function () {
   });
 
   test("size is 0", function () {
-    expect(heap.size).toEqual(0);
+    assert.deepStrictEqual(heap.size, 0);
   });
 
   test("isEmpty = true", function () {
-    expect(heap.isEmpty()).toEqual(true);
+    assert.deepStrictEqual(heap.isEmpty(), true);
   });
 
   test("clear works", function () {
     heap.clear();
-    expect(heap.size).toEqual(0);
+    assert.deepStrictEqual(heap.size, 0);
   });
 
   test("throws on pop", function () {
-    expect(heap.pop.bind(heap)).toThrow(/empty/);
+    assert.throws(heap.pop.bind(heap), /empty/);
   });
 
   test("throws on replace", function () {
-    expect(heap.replace.bind(heap)).toThrow(/empty/);
+    assert.throws(() => heap.replace(0), /empty/);
   });
 });
 
-describe("Heap with a single element", function () {
+suite("Heap with a single element", function () {
   /** @type {Heap<number>} */
   let heap;
   /** @type {number} */
@@ -45,29 +46,29 @@ describe("Heap with a single element", function () {
   });
 
   test("size = 1", function () {
-    expect(heap.size).toEqual(1);
+    assert.deepStrictEqual(heap.size, 1);
   });
 
   test("isEmpty = false", function () {
-    expect(heap.isEmpty()).toEqual(false);
+    assert.deepStrictEqual(heap.isEmpty(), false);
   });
 
   test("clear works", function () {
     heap.clear();
-    expect(heap.size).toEqual(0);
+    assert.deepStrictEqual(heap.size, 0);
   });
 
   test("pop returns the item", function () {
-    expect(heap.pop()).toEqual(item);
+    assert.deepStrictEqual(heap.pop(), item);
   });
 
   test("becomes empty after pop()", function () {
     heap.pop();
-    expect(heap.isEmpty()).toEqual(true);
+    assert.deepStrictEqual(heap.isEmpty(), true);
   });
 });
 
-describe("Heap with many items", function () {
+suite("Heap with many items", function () {
   /** @type {number[]} */
   let data;
   /** @type {Heap<number>} */
@@ -80,15 +81,15 @@ describe("Heap with many items", function () {
   });
 
   test("returns correct size", function () {
-    expect(heap.size).toEqual(data.length);
+    assert.deepStrictEqual(heap.size, data.length);
   });
 
   test("returns largest item on pop()", function () {
-    expect(heap.pop()).toEqual(5);
-    expect(heap.pop()).toEqual(4);
-    expect(heap.pop()).toEqual(3);
-    expect(heap.pop()).toEqual(2);
-    expect(heap.pop()).toEqual(1);
+    assert.deepStrictEqual(heap.pop(), 5);
+    assert.deepStrictEqual(heap.pop(), 4);
+    assert.deepStrictEqual(heap.pop(), 3);
+    assert.deepStrictEqual(heap.pop(), 2);
+    assert.deepStrictEqual(heap.pop(), 1);
   });
 });
 
@@ -97,7 +98,7 @@ describe("Heap with many items", function () {
  * @property {number} value
  */
 
-describe("Position tracking", function () {
+suite("Position tracking", function () {
   /** @type {Item[]} */
   let data;
   /** @type {Heap<Item>} */
@@ -145,7 +146,7 @@ describe("Position tracking", function () {
     // NOTE: data is already has the heap property, so in fact
     //       the positions are initially unchanged
     for (let i = 0; i < data.length; i += 1) {
-      expect(positions.get(data[i])).toEqual(i);
+      assert.deepStrictEqual(positions.get(data[i]), i);
     }
   });
 
@@ -165,11 +166,11 @@ describe("Position tracking", function () {
     //   4   2
     //  / \
     // 1   3
-    expect(positions.get(item)).toEqual(0);
-    expect(positions.get(data[0])).toEqual(1);
-    expect(positions.get(data[1])).toEqual(4);
-    expect(positions.get(data[2])).toEqual(2);
-    expect(positions.get(data[3])).toEqual(3);
+    assert.deepStrictEqual(positions.get(item), 0);
+    assert.deepStrictEqual(positions.get(data[0]), 1);
+    assert.deepStrictEqual(positions.get(data[1]), 4);
+    assert.deepStrictEqual(positions.get(data[2]), 2);
+    assert.deepStrictEqual(positions.get(data[3]), 3);
   });
 
   test("replaces element at given position with element of larger value", function () {
@@ -188,10 +189,10 @@ describe("Position tracking", function () {
     //   4   2
     //  /
     // 3
-    expect(positions.get(item)).toEqual(0);
-    expect(positions.get(data[0])).toEqual(1);
-    expect(positions.get(data[1])).toEqual(3);
-    expect(positions.get(data[2])).toEqual(2);
+    assert.deepStrictEqual(positions.get(item), 0);
+    assert.deepStrictEqual(positions.get(data[0]), 1);
+    assert.deepStrictEqual(positions.get(data[1]), 3);
+    assert.deepStrictEqual(positions.get(data[2]), 2);
   });
 
   test("replaces element at given position with element of lower value", function () {
@@ -210,9 +211,9 @@ describe("Position tracking", function () {
     //   1   2
     //  /
     // 0
-    expect(positions.get(item)).toEqual(3);
-    expect(positions.get(data[0])).toEqual(0);
-    expect(positions.get(data[2])).toEqual(2);
-    expect(positions.get(data[3])).toEqual(1);
+    assert.deepStrictEqual(positions.get(item), 3);
+    assert.deepStrictEqual(positions.get(data[0]), 0);
+    assert.deepStrictEqual(positions.get(data[2]), 2);
+    assert.deepStrictEqual(positions.get(data[3]), 1);
   });
 });

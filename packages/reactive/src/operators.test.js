@@ -1,3 +1,5 @@
+import { describe, it, mock } from "node:test";
+import assert from "node:assert/strict";
 import { Subject } from "rxjs";
 import { effects, map, takeNothing } from "./operators.js";
 import { Signal } from "@apendua.dev/signal";
@@ -7,7 +9,7 @@ describe("effects()", () => {
     /** @type {Subject<{ value: number }>} */
     const source = new Subject();
     const signal = new Signal(0);
-    const complete = jest.fn();
+    const complete = mock.fn();
     const entity = { value: 0 };
     const entity2 = { value: 0 };
 
@@ -21,24 +23,24 @@ describe("effects()", () => {
         complete,
       });
 
-    expect(entity.value).toBe(0);
+    assert.strictEqual(entity.value, 0);
 
     signal.set(1);
     source.next(entity);
-    expect(entity.value).toBe(1);
+    assert.strictEqual(entity.value, 1);
 
     signal.set(2);
-    expect(entity.value).toBe(2);
+    assert.strictEqual(entity.value, 2);
 
     source.next(entity2);
-    expect(entity2.value).toBe(2);
+    assert.strictEqual(entity2.value, 2);
 
     signal.set(3);
-    expect(entity.value).toBe(2);
-    expect(entity2.value).toBe(3);
+    assert.strictEqual(entity.value, 2);
+    assert.strictEqual(entity2.value, 3);
 
     source.complete();
-    expect(complete).toHaveBeenCalled();
+    assert.ok(complete.mock.calls.length > 0);
 
     subscription.unsubscribe();
   });
@@ -63,10 +65,10 @@ describe("effects()", () => {
 
     signal.set(1);
     source.next(result);
-    expect(result).toEqual([1, 2]);
+    assert.deepStrictEqual(result, [1, 2]);
 
     signal.set(3);
-    expect(result).toEqual([1, 2, 3, 6]);
+    assert.deepStrictEqual(result, [1, 2, 3, 6]);
 
     source.complete();
     subscription.unsubscribe();
@@ -77,20 +79,20 @@ describe("takeNothing()", () => {
   it("emits no values and completes with the source", () => {
     /** @type {Subject<number>} */
     const source = new Subject();
-    const complete = jest.fn();
+    const complete = mock.fn();
 
     const subscription = source.pipe(takeNothing()).subscribe({
       complete,
     });
 
     source.next(1);
-    expect(complete).not.toHaveBeenCalled();
+    assert.strictEqual(complete.mock.calls.length, 0);
 
     source.next(2);
-    expect(complete).not.toHaveBeenCalled();
+    assert.strictEqual(complete.mock.calls.length, 0);
 
     source.complete();
-    expect(complete).toHaveBeenCalled();
+    assert.ok(complete.mock.calls.length > 0);
 
     subscription.unsubscribe();
   });
@@ -101,8 +103,8 @@ describe("map()", () => {
     /** @type {Subject<number> } */
     const source = new Subject();
     const signal = new Signal(0);
-    const next = jest.fn();
-    const complete = jest.fn();
+    const next = mock.fn();
+    const complete = mock.fn();
 
     const subscription = source
       .pipe(
@@ -115,20 +117,47 @@ describe("map()", () => {
         complete,
       });
 
-    expect(next).not.toHaveBeenCalled();
+    assert.strictEqual(next.mock.calls.length, 0);
 
     signal.set(1);
     source.next(1);
-    expect(next).toHaveBeenCalledWith(2);
+    assert.ok(
+      next.mock.calls.some((call) => {
+        try {
+          assert.deepStrictEqual(call.arguments, [2]);
+          return true;
+        } catch {
+          return false;
+        }
+      }),
+    );
 
     signal.set(2);
-    expect(next).toHaveBeenCalledWith(3);
+    assert.ok(
+      next.mock.calls.some((call) => {
+        try {
+          assert.deepStrictEqual(call.arguments, [3]);
+          return true;
+        } catch {
+          return false;
+        }
+      }),
+    );
 
     source.next(3);
-    expect(next).toHaveBeenCalledWith(5);
+    assert.ok(
+      next.mock.calls.some((call) => {
+        try {
+          assert.deepStrictEqual(call.arguments, [5]);
+          return true;
+        } catch {
+          return false;
+        }
+      }),
+    );
 
     source.complete();
-    expect(complete).toHaveBeenCalled();
+    assert.ok(complete.mock.calls.length > 0);
 
     subscription.unsubscribe();
   });

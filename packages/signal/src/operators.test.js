@@ -1,4 +1,5 @@
-/* eslint-env jest */
+import { describe, it, mock } from "node:test";
+import assert from "node:assert/strict";
 
 import { BehaviorSubject, Subject } from "rxjs";
 import { addDependency, batch, Changes, Derived, Signal, onInvalidate, Source } from "./Signal.js";
@@ -24,7 +25,7 @@ describe("diamond dependency", function () {
     const s3 = new Derived(() => s1.get() + s2.get());
     const s4 = new Derived(() => s1.get() + s2.get() + s3.get());
 
-    const spy = jest.fn();
+    const spy = mock.fn();
     const subscription = observable(() => {
       spy(s4.get());
     }).subscribe();
@@ -34,11 +35,11 @@ describe("diamond dependency", function () {
     s1.set(2);
     s1.set(3);
 
-    expect(spy).toHaveBeenCalledTimes(4);
-    expect(spy).toHaveBeenNthCalledWith(1, 2);
-    expect(spy).toHaveBeenNthCalledWith(2, 6);
-    expect(spy).toHaveBeenNthCalledWith(3, 10);
-    expect(spy).toHaveBeenNthCalledWith(4, 14);
+    assert.strictEqual(spy.mock.calls.length, 4);
+    assert.deepStrictEqual(spy.mock.calls[1 - 1].arguments, [2]);
+    assert.deepStrictEqual(spy.mock.calls[2 - 1].arguments, [6]);
+    assert.deepStrictEqual(spy.mock.calls[3 - 1].arguments, [10]);
+    assert.deepStrictEqual(spy.mock.calls[4 - 1].arguments, [14]);
 
     subscription.unsubscribe();
   });
@@ -50,7 +51,7 @@ describe("batching", function () {
     const s2 = new Signal(0);
     const s3 = new Derived(() => s1.get() + s2.get());
 
-    const spy = jest.fn();
+    const spy = mock.fn();
     const subscription = observable(() => {
       spy(s3.get());
     }).subscribe();
@@ -60,9 +61,9 @@ describe("batching", function () {
       s2.set(5);
     });
 
-    expect(spy).toHaveBeenCalledTimes(2);
-    expect(spy).toHaveBeenNthCalledWith(1, 0);
-    expect(spy).toHaveBeenNthCalledWith(2, 8);
+    assert.strictEqual(spy.mock.calls.length, 2);
+    assert.deepStrictEqual(spy.mock.calls[1 - 1].arguments, [0]);
+    assert.deepStrictEqual(spy.mock.calls[2 - 1].arguments, [8]);
 
     subscription.unsubscribe();
   });
@@ -71,7 +72,7 @@ describe("batching", function () {
 describe("autorun", function () {
   it("should re-run whenever input changes", function () {
     const signal = new Signal(0);
-    const spy = jest.fn();
+    const spy = mock.fn();
     const subscription = observable(() => {
       spy(signal.get());
     }).subscribe();
@@ -82,18 +83,18 @@ describe("autorun", function () {
     signal.set(3);
     subscription.unsubscribe();
 
-    expect(spy).toHaveBeenCalledTimes(4);
-    expect(spy).toHaveBeenNthCalledWith(1, 0);
-    expect(spy).toHaveBeenNthCalledWith(2, 1);
-    expect(spy).toHaveBeenNthCalledWith(3, 2);
-    expect(spy).toHaveBeenNthCalledWith(4, 3);
+    assert.strictEqual(spy.mock.calls.length, 4);
+    assert.deepStrictEqual(spy.mock.calls[1 - 1].arguments, [0]);
+    assert.deepStrictEqual(spy.mock.calls[2 - 1].arguments, [1]);
+    assert.deepStrictEqual(spy.mock.calls[3 - 1].arguments, [2]);
+    assert.deepStrictEqual(spy.mock.calls[4 - 1].arguments, [3]);
   });
 });
 
 describe("observe", function () {
   it("should observe values when signal changes", function () {
     const signal = new Signal(0);
-    const spy = jest.fn();
+    const spy = mock.fn();
     const subscription = observable(() => {
       return signal.get();
     }).subscribe({
@@ -107,16 +108,16 @@ describe("observe", function () {
     signal.set(2);
     subscription.unsubscribe();
 
-    expect(spy).toHaveBeenCalledTimes(3);
-    expect(spy).toHaveBeenNthCalledWith(1, 0);
-    expect(spy).toHaveBeenNthCalledWith(2, 1);
-    expect(spy).toHaveBeenNthCalledWith(3, 2);
+    assert.strictEqual(spy.mock.calls.length, 3);
+    assert.deepStrictEqual(spy.mock.calls[1 - 1].arguments, [0]);
+    assert.deepStrictEqual(spy.mock.calls[2 - 1].arguments, [1]);
+    assert.deepStrictEqual(spy.mock.calls[3 - 1].arguments, [2]);
   });
 
   it("should observe value when derived signal changes", function () {
     const s1 = new Signal(1);
     const s2 = new Derived(() => s1.get() % 2);
-    const spy = jest.fn();
+    const spy = mock.fn();
     const subscription = observable(() => {
       return s2.get();
     }).subscribe({
@@ -130,28 +131,28 @@ describe("observe", function () {
     s1.set(3);
     subscription.unsubscribe();
 
-    expect(spy).toHaveBeenCalledTimes(3);
-    expect(spy).toHaveBeenNthCalledWith(1, 1);
-    expect(spy).toHaveBeenNthCalledWith(2, 0);
-    expect(spy).toHaveBeenNthCalledWith(3, 1);
+    assert.strictEqual(spy.mock.calls.length, 3);
+    assert.deepStrictEqual(spy.mock.calls[1 - 1].arguments, [1]);
+    assert.deepStrictEqual(spy.mock.calls[2 - 1].arguments, [0]);
+    assert.deepStrictEqual(spy.mock.calls[3 - 1].arguments, [1]);
   });
 
   it("should return the same values as source observable", function () {
     const source = new BehaviorSubject(0);
     const signal = new Source(source);
     const observe = toObservable(signal);
-    const spy = jest.fn();
+    const spy = mock.fn();
     const subscription = observe.subscribe(spy);
 
     source.next(1);
     source.next(1); // source is not deduped by default
     source.next(2);
 
-    expect(spy).toHaveBeenCalledTimes(4);
-    expect(spy).toHaveBeenNthCalledWith(1, 0);
-    expect(spy).toHaveBeenNthCalledWith(2, 1);
-    expect(spy).toHaveBeenNthCalledWith(3, 1);
-    expect(spy).toHaveBeenNthCalledWith(4, 2);
+    assert.strictEqual(spy.mock.calls.length, 4);
+    assert.deepStrictEqual(spy.mock.calls[1 - 1].arguments, [0]);
+    assert.deepStrictEqual(spy.mock.calls[2 - 1].arguments, [1]);
+    assert.deepStrictEqual(spy.mock.calls[3 - 1].arguments, [1]);
+    assert.deepStrictEqual(spy.mock.calls[4 - 1].arguments, [2]);
 
     subscription.unsubscribe();
   });
@@ -159,7 +160,7 @@ describe("observe", function () {
   it("should use BehaviorSubject as source", function () {
     const source = new BehaviorSubject(0);
     const signal = new Source(source);
-    const spy = jest.fn();
+    const spy = mock.fn();
     const subscription = observable(() => {
       addDependency(signal);
       return source.getValue();
@@ -169,10 +170,10 @@ describe("observe", function () {
     source.next(1); // same value, should be no-op
     source.next(2);
 
-    expect(spy).toHaveBeenCalledTimes(3);
-    expect(spy).toHaveBeenNthCalledWith(1, 0);
-    expect(spy).toHaveBeenNthCalledWith(2, 1);
-    expect(spy).toHaveBeenNthCalledWith(3, 2);
+    assert.strictEqual(spy.mock.calls.length, 3);
+    assert.deepStrictEqual(spy.mock.calls[1 - 1].arguments, [0]);
+    assert.deepStrictEqual(spy.mock.calls[2 - 1].arguments, [1]);
+    assert.deepStrictEqual(spy.mock.calls[3 - 1].arguments, [2]);
 
     subscription.unsubscribe();
   });
@@ -181,8 +182,8 @@ describe("observe", function () {
 describe("effect = autorun & onInvalidate", function () {
   it("should run side effects when signal changes", function () {
     const signal = new Signal(0);
-    const spy = jest.fn();
-    const cleanup = jest.fn();
+    const spy = mock.fn();
+    const cleanup = mock.fn();
     const subscription = observable(() => {
       spy(signal.get());
       onInvalidate(cleanup);
@@ -193,12 +194,12 @@ describe("effect = autorun & onInvalidate", function () {
     signal.set(2);
     subscription.unsubscribe();
 
-    expect(spy).toHaveBeenCalledTimes(3);
-    expect(spy).toHaveBeenNthCalledWith(1, 0);
-    expect(spy).toHaveBeenNthCalledWith(2, 1);
-    expect(spy).toHaveBeenNthCalledWith(3, 2);
+    assert.strictEqual(spy.mock.calls.length, 3);
+    assert.deepStrictEqual(spy.mock.calls[1 - 1].arguments, [0]);
+    assert.deepStrictEqual(spy.mock.calls[2 - 1].arguments, [1]);
+    assert.deepStrictEqual(spy.mock.calls[3 - 1].arguments, [2]);
 
-    expect(cleanup).toHaveBeenCalledTimes(3);
+    assert.strictEqual(cleanup.mock.calls.length, 3);
   });
 });
 
@@ -214,7 +215,7 @@ describe("toChanges", function () {
         changes.next();
       }
     };
-    const spy = jest.fn();
+    const spy = mock.fn();
     const subscription = observable(() => {
       addDependency(dependency);
       spy(value);
@@ -225,9 +226,9 @@ describe("toChanges", function () {
     setValue(2);
     subscription.unsubscribe();
 
-    expect(spy).toHaveBeenCalledTimes(3);
-    expect(spy).toHaveBeenNthCalledWith(1, 0);
-    expect(spy).toHaveBeenNthCalledWith(2, 1);
-    expect(spy).toHaveBeenNthCalledWith(3, 2);
+    assert.strictEqual(spy.mock.calls.length, 3);
+    assert.deepStrictEqual(spy.mock.calls[1 - 1].arguments, [0]);
+    assert.deepStrictEqual(spy.mock.calls[2 - 1].arguments, [1]);
+    assert.deepStrictEqual(spy.mock.calls[3 - 1].arguments, [2]);
   });
 });

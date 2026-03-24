@@ -135,58 +135,62 @@ import { addDependency, batch, Changes, Derived } from "@apendua.dev/signal";
 
 /**
  * @template T
+ * @template K
  * @param {Object3D} parent
  * @param {Observable<Iterable<T>>} items
+ * @param {(item: T) => K} getKey
  * @param {(item: T, index: () => number) => Observable<Component>} renderItem
  * @returns {Observable<never>}
  */
-export function addDynamicToParent(parent, items, renderItem) {
+export function addDynamicToParent(parent, items, getKey, renderItem) {
   return new Observable((subscriber) => {
-    /** @type {Map<T, () => void>} */
+    /** @type {Map<K, () => void>} */
     const mountedChildEntities = new Map();
-    /** @type {Map<T, import('rxjs').Subscription>} */
+    /** @type {Map<K, import('rxjs').Subscription>} */
     const childSubscriptions = new Map();
-    /** @type {Map<T, number>} */
+    /** @type {Map<K, number>} */
     const childIndexes = new Map();
-    /** @type {Subject<T>} */
+    /** @type {Subject<K>} */
     const childIndexesSubject = new Subject();
     /**
      * @param {T} item
      * @returns {() => number}
      */
     const createGetIndex = (item) => {
+      const key = getKey(item);
       const changes = new Changes(
-        childIndexesSubject.pipe(filter((changedItem) => changedItem === item)),
+        childIndexesSubject.pipe(filter((changedKey) => changedKey === key)),
       );
       const index = new Derived(() => {
         addDependency(changes);
-        return childIndexes.get(item) ?? -1;
+        return childIndexes.get(key) ?? -1;
       });
       return () => index.get();
     };
     subscriber.add(
       items.subscribe((newItems) => {
-        /** @type {Set<T>} */
+        /** @type {Set<K>} */
         const newItemsSet = new Set();
         const newItemsArray = Array.from(newItems);
         for (let i = 0; i < newItemsArray.length; i++) {
           const item = newItemsArray[i];
-          if (!childIndexes.has(item)) {
-            childIndexes.set(item, i);
+          const key = getKey(item);
+          if (!childIndexes.has(key)) {
+            childIndexes.set(key, i);
           }
-          newItemsSet.add(item);
-          if (!childSubscriptions.has(item)) {
+          newItemsSet.add(key);
+          if (!childSubscriptions.has(key)) {
             childSubscriptions.set(
-              item,
+              key,
               renderItem(item, createGetIndex(item))
                 .pipe(distinctUntilChanged())
                 .subscribe((newChildEntity) => {
-                  const unmount = mountedChildEntities.get(item);
+                  const unmount = mountedChildEntities.get(key);
                   if (unmount) {
                     unmount();
                   }
                   if (newChildEntity) {
-                    mountedChildEntities.set(item, newChildEntity.addTo(parent));
+                    mountedChildEntities.set(key, newChildEntity.addTo(parent));
                   }
                 }),
             );
@@ -196,27 +200,28 @@ export function addDynamicToParent(parent, items, renderItem) {
         batch(() => {
           for (let i = 0; i < newItemsArray.length; i++) {
             const item = newItemsArray[i];
-            if (childIndexes.get(item) !== i) {
-              childIndexes.set(item, i);
-              childIndexesSubject.next(item);
+            const key = getKey(item);
+            if (childIndexes.get(key) !== i) {
+              childIndexes.set(key, i);
+              childIndexesSubject.next(key);
             }
           }
-          for (const item of childSubscriptions.keys()) {
-            if (!newItemsSet.has(item)) {
-              childIndexes.delete(item);
-              childIndexesSubject.next(item);
+          for (const key of childSubscriptions.keys()) {
+            if (!newItemsSet.has(key)) {
+              childIndexes.delete(key);
+              childIndexesSubject.next(key);
             }
           }
         });
-        for (const [item, childSubscription] of childSubscriptions.entries()) {
-          if (!newItemsSet.has(item)) {
-            const unmount = mountedChildEntities.get(item);
+        for (const [key, childSubscription] of childSubscriptions.entries()) {
+          if (!newItemsSet.has(key)) {
+            const unmount = mountedChildEntities.get(key);
             if (unmount) {
               unmount();
-              mountedChildEntities.delete(item);
+              mountedChildEntities.delete(key);
             }
             childSubscription.unsubscribe();
-            childSubscriptions.delete(item);
+            childSubscriptions.delete(key);
           }
         }
       }),
@@ -241,7 +246,35 @@ export function addDynamicToParent(parent, items, renderItem) {
 export function list(items, renderItem) {
   return just({
     addTo: (parent) => {
-      const subscription = addDynamicToParent(parent, items, renderItem).subscribe();
+      const subscription = addDynamicToParent(
+        parent,
+        items,
+        (item) => item,
+        renderItem,
+      ).subscribe();
+      return () => {
+        subscription.unsubscribe();
+      };
+    },
+  });
+}
+
+/**
+ * @template K
+ * @template T
+ * @param {Observable<Iterable<[K, T]>>} items
+ * @param {(item: T, key: K, index: () => number) => Observable<Component>} renderItem
+ * @returns {Observable<Component>}
+ */
+export function keyedList(items, renderItem) {
+  return just({
+    addTo: (parent) => {
+      const subscription = addDynamicToParent(
+        parent,
+        items,
+        (item) => item[0],
+        (item, index) => renderItem(item[1], item[0], index),
+      ).subscribe();
       return () => {
         subscription.unsubscribe();
       };

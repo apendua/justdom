@@ -1,4 +1,4 @@
-import { list, $$, children, attr, on } from "@apendua.dev/dom";
+import { list, $$, children, attr, on, className } from "@apendua.dev/dom";
 import { RootContext } from "../store4/Root";
 import { Field, Fields, getKey } from "@apendua.dev/minesweeper";
 import { $observe } from "@apendua.dev/store4";
@@ -24,6 +24,10 @@ const FieldStatus = (ctx: WeakKey, field: Field) => {
     },
   });
 };
+
+const noSelect = className`
+  user-select: none;
+`;
 
 const Minefield = component((ctx: WeakKey, game: Fields) => {
   const dimensions = RootContext.get(ctx);
@@ -53,6 +57,7 @@ const Minefield = component((ctx: WeakKey, game: Fields) => {
   };
 
   return $$("svg", [
+    attr("class", noSelect),
     attr("width", () => dimensions.screenWidth.toString()),
     attr("height", () => dimensions.screenHeight.toString()),
     attr("viewbox", () => `0 0 ${dimensions.screenWidth} ${dimensions.screenHeight}`),

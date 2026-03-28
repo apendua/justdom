@@ -1,4 +1,4 @@
-import { Manual, callNonReactive } from "@apendua.dev/signal";
+import { Computation, withComputation } from "@apendua.dev/signal";
 import { Observable } from "rxjs";
 import { effectMap } from "./operators.js";
 
@@ -69,7 +69,7 @@ class Emitter {
   emit(event, payload) {
     const listeners = /** @type {Set<Handler<TEventMap[TEvent]>>} */ (this.#listeners.get(event));
     if (listeners) {
-      callNonReactive(() => {
+      withComputation(null, () => {
         for (const listener of listeners) {
           listener(payload);
         }
@@ -88,12 +88,17 @@ class Emitter {
 export function on(event, handler) {
   return effectMap((entity) => {
     return new Observable((/** @type {Subscriber<TEntity>} */ subscriber) => {
-      const signal = new Manual(handler);
-      entity.addEventListener(event, signal.recompute);
-      subscriber.add(signal.getChanges().subscribe());
+      const computation = new Computation();
+      const listener = computation.bind(handler);
+      entity.addEventListener(event, listener);
+      subscriber.add(
+        computation.subscribe({
+          error: (err) => subscriber.error(err),
+        }),
+      );
       subscriber.next(entity);
       return () => {
-        entity.removeEventListener(event, signal.recompute);
+        entity.removeEventListener(event, listener);
       };
     });
   });

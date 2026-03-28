@@ -10,7 +10,7 @@ function assertNthCallArgumentEqual(fn, callIndex, argumentIndex, expected) {
 
 describe("observable()", () => {
   it("creates an observable that emits values from a signal", () => {
-    const signal = new Signal(0);
+    const signal = Signal.of(0);
     const next = mock.fn();
     const complete = mock.fn();
 
@@ -35,7 +35,7 @@ describe("observable()", () => {
 
 describe("component()", () => {
   it("creates an observable that emits values from a signal", () => {
-    const signal = new Signal(0);
+    const signal = Signal.of(0);
     const next = mock.fn();
     const complete = mock.fn();
 

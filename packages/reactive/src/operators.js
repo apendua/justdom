@@ -1,4 +1,4 @@
-import { addDependency, Derived, Source, toObservable } from "@apendua.dev/signal";
+import { addDependency, Derived, toObservable } from "@apendua.dev/signal";
 import { NEVER, tap } from "rxjs";
 import { onEachValue, subscribeTo, subscribeAndEmit } from "./util.js";
 import { observable, component, just } from "./factories.js";
@@ -114,5 +114,5 @@ export function use(observable) {
       return fn() ?? NEVER;
     })();
   }
-  addDependency(new Source(observable.pipe(takeNothing())));
+  addDependency(observable.pipe(takeNothing()));
 }

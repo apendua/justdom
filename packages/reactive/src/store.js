@@ -1,5 +1,5 @@
 import { filter, Subject } from "rxjs";
-import { addDependency, Changes } from "@apendua.dev/signal";
+import { addDependency } from "@apendua.dev/signal";
 import Emitter from "./Emitter.js";
 import { useEffects } from "./operators.js";
 
@@ -81,9 +81,7 @@ function store(data, operators = []) {
   /**
    * @param {PropertyKey} key
    */
-  const getChangesAtKey = memoize(
-    (key) => new Changes(changes.pipe(filter((change) => change.key === key))),
-  );
+  const getChangesAtKey = memoize((key) => changes.pipe(filter((change) => change.key === key)));
 
   /** @type {WeakMap<object, object>} */
   const cache = new WeakMap();

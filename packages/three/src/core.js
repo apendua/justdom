@@ -1,6 +1,6 @@
 import { distinctUntilChanged, filter, Observable, Subject } from "rxjs";
 import { just } from "@apendua.dev/reactive";
-import { addDependency, batch, Changes, Derived } from "@apendua.dev/signal";
+import { addDependency, batch, Derived } from "@apendua.dev/signal";
 
 /**
  * @import { Object3D, XRTargetRaySpace, Intersection, Object3DEventMap } from 'three';
@@ -158,9 +158,7 @@ export function addDynamicToParent(parent, items, getKey, renderItem) {
      */
     const createGetIndex = (item) => {
       const key = getKey(item);
-      const changes = new Changes(
-        childIndexesSubject.pipe(filter((changedKey) => changedKey === key)),
-      );
+      const changes = childIndexesSubject.pipe(filter((changedKey) => changedKey === key));
       const index = new Derived(() => {
         addDependency(changes);
         return childIndexes.get(key) ?? -1;

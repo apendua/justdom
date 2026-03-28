@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { batch, Lazy, NoValueError, onInvalidate } from "@apendua.dev/signal";
+import { batch, Signal, NoValueError, onInvalidate } from "@apendua.dev/signal";
 import { effects, component, just, set, use } from "@apendua.dev/reactive";
 import { animate } from "../render.js";
 import { $, children } from "../operators.js";
@@ -76,27 +76,27 @@ function shallowEqual(objA, objB) {
  */
 export function text(ctx, textNode) {
   const object = new THREE.Object3D();
-  /** @type {Lazy<string>} */
-  const textColor = new Lazy();
-  /** @type {Lazy<string>} */
-  const fontFamily = new Lazy();
-  /** @type {Lazy<number>} */
-  const fontSize = new Lazy();
+  /** @type {Signal<string>} */
+  const textColor = new Signal();
+  /** @type {Signal<string>} */
+  const fontFamily = new Signal();
+  /** @type {Signal<number>} */
+  const fontSize = new Signal();
   // /** @type {Derived<Font>} */
   // const font = new Derived(() => {
   //   const fontUrl = findFontUrl(fontFamily.get());
-  //   return new Source(loadFont(fontUrl)).get();
+  //   return getValueFromDependency(loadFont(fontUrl));
   // });
-  /** @type {Lazy<string>} */
-  const textContent = new Lazy();
-  /** @type {Lazy<boolean>} */
-  const textJustify = new Lazy();
-  /** @type {Lazy<DOMRect>} */
-  const textRect = new Lazy((a, b) => {
+  /** @type {Signal<string>} */
+  const textContent = new Signal();
+  /** @type {Signal<boolean>} */
+  const textJustify = new Signal();
+  /** @type {Signal<DOMRect>} */
+  const textRect = new Signal(undefined, (a, b) => {
     return shallowEqual(a.toJSON(), b.toJSON());
   });
-  /** @type {Lazy<DOMRectList>} */
-  const textRects = new Lazy((a, b) => {
+  /** @type {Signal<DOMRectList>} */
+  const textRects = new Signal(undefined, (a, b) => {
     if (a.length !== b.length) {
       return false;
     }

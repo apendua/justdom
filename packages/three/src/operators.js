@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { effects, just, fromEvent } from "@apendua.dev/reactive";
 import { distinctUntilChanged, Observable, switchMap } from "rxjs";
-import { addDependency, Changes } from "@apendua.dev/signal";
+import { addDependency } from "@apendua.dev/signal";
 
 /**
  * @import { MonoTypeOperatorFunction, Subscriber } from 'rxjs';
@@ -145,8 +145,8 @@ export function layoutEffects(fn) {
    * @returns {void}
    */
   function useWhenAttachedToScene(obj, fn) {
-    addDependency(new Changes(fromEvent(obj, "added")));
-    addDependency(new Changes(fromEvent(obj, "removed")));
+    addDependency(fromEvent(obj, "added"));
+    addDependency(fromEvent(obj, "removed"));
     if (!obj.parent) {
       return;
     }

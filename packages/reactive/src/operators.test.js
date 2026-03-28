@@ -8,7 +8,7 @@ describe("effects()", () => {
   it("applies effects until the source completes", () => {
     /** @type {Subject<{ value: number }>} */
     const source = new Subject();
-    const signal = new Signal(0);
+    const signal = Signal.of(0);
     const complete = mock.fn();
     const entity = { value: 0 };
     const entity2 = { value: 0 };
@@ -48,7 +48,7 @@ describe("effects()", () => {
   it("applies effects in order", () => {
     /** @type {Subject<number[]>} */
     const source = new Subject();
-    const signal = new Signal(0);
+    const signal = Signal.of(0);
     /** @type {number[]} */
     const result = [];
 
@@ -102,7 +102,7 @@ describe("map()", () => {
   it("maps values until the source completes", () => {
     /** @type {Subject<number> } */
     const source = new Subject();
-    const signal = new Signal(0);
+    const signal = Signal.of(0);
     const next = mock.fn();
     const complete = mock.fn();
 

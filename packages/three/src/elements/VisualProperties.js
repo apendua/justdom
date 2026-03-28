@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { decorate, memo } from "@apendua.dev/store4";
-import { addDependency, batch, Changes, NoValueError } from "@apendua.dev/signal";
+import { addDependency, batch, NoValueError } from "@apendua.dev/signal";
 import { store } from "@apendua.dev/reactive";
 import { filter, Subject } from "rxjs";
 
@@ -142,11 +142,9 @@ export default class VisualProperties {
   #properties;
 
   /** @type {Subject<EventType>} */
-  #events;
+  #events = new Subject();
 
-  constructor() {
-    this.#events = new Subject();
-  }
+  #anyInitializedEvent = this.#events.pipe(filter((e) => e === "INITIALIZED"));
 
   /**
    * @param {string} fontFamily
@@ -255,7 +253,7 @@ export default class VisualProperties {
    */
   #assertInitialized() {
     if (!this.#properties) {
-      addDependency(new Changes(this.#events.pipe(filter((e) => e === "INITIALIZED"))));
+      addDependency(this.#anyInitializedEvent);
       throw new NoValueError("VisualProperties not initialized");
     }
   }

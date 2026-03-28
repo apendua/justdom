@@ -1,112 +1,22 @@
-import { Observable, share, Subject, takeUntil } from "rxjs";
+import { of, share } from "rxjs";
 import UpdateQueue from "./UpdateQueue.js";
+import { NoValueError, addDependency, withComputation, setPriority, getPriority } from "./core.js";
+import Computation from "./Computation.js";
 import nextTick from "./nextTick.js";
-// import nextTick from "./nextTick.js";
-
-export class NoValueError extends Error {
-  /**
-   * @param {string} [message]
-   */
-  constructor(message) {
-    super(message || "No value available");
-  }
-}
 
 /**
- * @import {Subscription, Subscriber} from "rxjs";
- * @import {Task} from "./UpdateQueue.js"
+ * @import {Subscribable} from "rxjs";
  */
 
 /**
- * @typedef {object} Dependency
- * @property {() => number} getPriority
- * @property {() => Observable<Dependency>} getChanges
+ * @typedef {Subscribable<unknown>} Dependency
  */
-
-/**
- * @typedef {object} Computation
- * @property {(dependency: Dependency) => void} addDependency
- * @property {(fn: () => void) => void} onInvalidate
- */
-
-/** @type {Computation | null} */
-let activeComputation = null;
-
-/**
- * @param {Dependency} dependency
- */
-export function addDependency(dependency) {
-  if (activeComputation) {
-    activeComputation.addDependency(dependency);
-  }
-}
-
-/**
- * @param {() => void} fn
- */
-export function onInvalidate(fn) {
-  if (activeComputation) {
-    activeComputation.onInvalidate(fn);
-  } else {
-    console.warn(
-      new Error(
-        "onInvalidate called outside of a computation. " +
-          "It's almost certainly not what you want. " +
-          "Please examine the stack trace and make sure everything is working as expected.",
-      ),
-    );
-    // To prevent memory leaks, invalidate immediately if we're not inside a computation.
-    fn();
-  }
-}
-
-/**
- * @returns {boolean}
- */
-export function hasActiveComputation() {
-  return !!activeComputation;
-}
-
-/**
- * @param {Task} computation
- */
-export function invalidate(computation) {
-  updateQueue.invalidate(computation);
-}
-
-/**
- * @template T
- * @param {() => T} fn
- * @returns {T}
- */
-export function callNonReactive(fn) {
-  const oldComputation = activeComputation;
-  activeComputation = null;
-  try {
-    return fn();
-  } finally {
-    activeComputation = oldComputation;
-  }
-}
-
-/**
- * @template TResult
- * @template {unknown[]} TArgs
- * @param {(...args: TArgs) => TResult} fn
- * @returns {(...args: TArgs) => TResult}
- */
-export function makeNonReactive(fn) {
-  return function (...args) {
-    return callNonReactive(() => fn(...args));
-  };
-}
 
 /**
  * @template T
  * @typedef {object} EvaluationContext
  * @property {() => T} getValue
  * @property {() => boolean} hasValue
- * @property {(fn: () => void) => void} onInvalidate
  */
 
 /** @type {UpdateQueue} */
@@ -126,29 +36,22 @@ export function batch(fn) {
  * @property {boolean} [deferred]
  */
 
+const onNextTick = nextTick().pipe(
+  share({
+    resetOnRefCountZero: true,
+  }),
+);
+
 /**
  * @template T
  * @implements {Dependency}
- * @implements {Computation}
  */
-export class Derived {
-  /** @type {Set<Observable<Dependency>>} */
-  #dependencies = new Set();
-
-  /** @type {Map<Observable<Dependency>, Subscription>} */
-  #subscriptions = new Map();
-
-  /** @type {Subject<Dependency>} */
-  #notifier = new Subject();
-
+export class Derived extends Computation {
   /** @type {{ value: T } | null} */
   #current = null;
 
   /** @type {boolean} */
   #deferred = false;
-
-  /** @type {Observable<Dependency>} */
-  #changes;
 
   /** @type {(ctx: EvaluationContext<T>) => T} */
   #evaluate;
@@ -162,20 +65,27 @@ export class Derived {
   /** @type {number} */
   #evaluations = 0;
 
-  /** @type {Array<() => void>} */
-  #cleanupListeners = [];
-
-  /** @type {(computation: Dependency) => void} */
-  #listener = (dependency) => {
-    this.#priority = Math.max(this.#priority, dependency.getPriority() + 1);
-    updateQueue.push(this);
-  };
-
   /**
    * @param {(ctx: EvaluationContext<T>) => T} evaluate
    * @param {((a: T, b: T) => boolean) | DerivedOptions<T>} [options]
    */
   constructor(evaluate, options = Object.is) {
+    super({
+      resetOnRefCountZero: () => {
+        return this.#deferred ? onNextTick : of(null);
+      },
+      onDependencyInvalidate: () => {
+        updateQueue.invalidate(this, getPriority(this));
+      },
+      onSubscribe: () => {
+        withComputation(null, () => {
+          this.#recompute();
+        });
+      },
+      onUnsubscribe: () => {
+        this.#current = null;
+      },
+    });
     this.#evaluate = evaluate;
     if (typeof options === "function") {
       this.#isEqual = options;
@@ -184,27 +94,16 @@ export class Derived {
       this.#isEqual = isEqual;
       this.#deferred = deferred;
     }
-    this.#changes = this.#getChanges(this.#deferred);
   }
 
   get() {
-    addDependency(this);
-    if (!this.#current) {
-      return this.#recompute();
+    if (this.#current) {
+      addDependency(this);
+      return this.#current.value;
     }
-    return this.#current.value;
-  }
-
-  isActive() {
-    return this.#notifier.observed;
-  }
-
-  getPriority() {
-    return this.#priority;
-  }
-
-  getChanges() {
-    return this.#changes;
+    const value = this.#recompute();
+    addDependency(this);
+    return value;
   }
 
   getEvaluations() {
@@ -215,32 +114,16 @@ export class Derived {
    * @param {Dependency} dependency
    */
   addDependency(dependency) {
-    const changes = dependency.getChanges();
-    const priority = dependency.getPriority();
-    this.#priority = Math.max(this.#priority, priority + 1);
-    this.#dependencies.add(changes);
-    if (this.#notifier.observed) {
-      if (!this.#subscriptions.has(changes)) {
-        callNonReactive(() => {
-          this.#subscriptions.set(changes, changes.subscribe(this.#listener));
-        });
-      }
-    }
+    this.#priority = Math.max(this.#priority, getPriority(dependency) + 1);
+    return super.addDependency(dependency);
   }
 
-  /**
-   * @param {() => void} fn
-   */
-  onInvalidate(fn) {
-    this.#cleanupListeners.push(makeNonReactive(fn));
-  }
-
-  update() {
+  invalidate() {
     if (!this.#current) {
       // If we have no current value, there's no way we can figure out if
       // something changed or not, so we just notify all potential dependents,
       // in case they would like to recompute.
-      this.#notifier.next(this);
+      super.invalidate();
       return;
     }
     const oldValue = this.#current.value;
@@ -252,85 +135,33 @@ export class Derived {
       if (err instanceof NoValueError) {
         return;
       }
-      if (!this.#notifier.observed) {
-        throw err;
-      }
-      this.#notifier.error(err);
+      this.error(err);
       return;
     }
     if (!this.#isEqual(oldValue, newValue)) {
-      this.#notifier.next(this);
+      super.invalidate();
     }
   }
 
   #recompute() {
-    this.#cleanup();
-
-    this.#priority = 0;
-    this.#dependencies = new Set();
-    this.#evaluations += 1;
-
-    const oldComputation = activeComputation;
-    try {
-      activeComputation = this;
-      const newValue = this.#evaluate(this.#getContext());
-      if (!this.#notifier.observed) {
-        return newValue;
-      }
-      if (!this.#current) {
-        this.#current = { value: newValue };
-      } else {
-        this.#current.value = newValue;
-      }
-      return this.#current.value;
-    } finally {
-      activeComputation = oldComputation;
-      for (const [dependency, subscription] of this.#subscriptions) {
-        if (!this.#dependencies.has(dependency)) {
-          subscription.unsubscribe();
-          this.#subscriptions.delete(dependency);
-        }
-      }
-    }
-  }
-
-  /**
-   * @param {boolean} deferred
-   * @returns {Observable<Dependency>}
-   */
-  #getChanges(deferred) {
-    return new Observable((/** @type {Subscriber<Dependency>} */ subscriber) => {
-      // This subscription will be unnsubscribed outomatically
-      // as soon as subscriber is closed.
-      this.#notifier.subscribe(subscriber);
+    return this.run(() => {
       try {
-        callNonReactive(() => {
-          this.#recompute();
-        });
-      } catch (err) {
-        if (!(err instanceof NoValueError)) {
-          subscriber.error(err);
+        this.#priority = 0;
+        this.#evaluations += 1;
+        const newValue = this.#evaluate(this.#getContext());
+        if (!this.isActive()) {
+          return newValue;
         }
+        if (!this.#current) {
+          this.#current = { value: newValue };
+        } else {
+          this.#current.value = newValue;
+        }
+        return this.#current.value;
+      } finally {
+        setPriority(this, this.#priority);
       }
-      return () => {
-        for (const subscription of this.#subscriptions.values()) {
-          subscription.unsubscribe();
-        }
-        this.#subscriptions.clear();
-        this.#cleanup();
-        this.#current = null;
-      };
-    }).pipe(
-      share({
-        resetOnRefCountZero: deferred ? () => myNextTick : true,
-      }),
-    );
-  }
-
-  #cleanup() {
-    const cleanupListeners = this.#cleanupListeners;
-    cleanupListeners.forEach((fn) => fn());
-    this.#cleanupListeners = [];
+    });
   }
 
   /**
@@ -347,10 +178,15 @@ export class Derived {
       hasValue: () => {
         return !!this.#current;
       },
-      onInvalidate: (fn) => {
-        this.onInvalidate(fn);
-      },
     };
+  }
+
+  /**
+   * @template TValue
+   * @param {(ctx: EvaluationContext<TValue>) => TValue} fn
+   */
+  static of(fn) {
+    return new Derived(fn);
   }
 }
 
@@ -358,13 +194,7 @@ export class Derived {
  * @template T
  * @implements {Dependency}
  */
-export class Lazy {
-  /** @type {Subject<Dependency>} */
-  #notifier = new Subject();
-
-  /** @type {Observable<Dependency>} */
-  #changes = this.#notifier.asObservable();
-
+export class Signal extends Computation {
   /** @type {(a: T, b: T) => boolean} */
   #isEqual;
 
@@ -372,10 +202,13 @@ export class Lazy {
   #current;
 
   /**
+   * @param {{ value: T }} [current]
    * @param {(a: T, b: T) => boolean} [isEqual]
    */
-  constructor(isEqual = Object.is) {
+  constructor(current, isEqual = Object.is) {
+    super();
     this.#isEqual = isEqual;
+    this.#current = current;
   }
 
   get() {
@@ -397,493 +230,26 @@ export class Lazy {
   }
 
   /**
-   * @param {(current?: { value: T }) => T} fn
-   */
-  setFn(fn) {
-    this.set(fn(this.#current));
-  }
-
-  update() {
-    this.#notifier.next(this);
-  }
-
-  getChanges() {
-    return this.#changes;
-  }
-
-  getPriority() {
-    return 0;
-  }
-}
-
-/**
- * @template T
- * @implements {Dependency}
- */
-export class Signal {
-  /** @type {Subject<Dependency>} */
-  #notifier = new Subject();
-
-  /** @type {Observable<Dependency>} */
-  #changes = this.#notifier.asObservable();
-
-  /** @type {T} */
-  #value;
-
-  /** @type {(a: T, b: T) => boolean} */
-  #isEqual;
-
-  /**
-   * @param {T} value
-   * @param {(a: T, b: T) => boolean} [isEqual]
-   */
-  constructor(value, isEqual = Object.is) {
-    this.#isEqual = isEqual;
-    this.#value = value;
-  }
-
-  get() {
-    addDependency(this);
-    return this.#value;
-  }
-
-  /**
-   * @param {T} value
-   */
-  set(value) {
-    if (!this.#isEqual(this.#value, value)) {
-      this.#value = value;
-      updateQueue.invalidate(this);
-    }
-  }
-
-  /**
    * @param {(value: T) => T} fn
+   * @param {() => T} [onNoValue]
    */
-  setFn(fn) {
-    this.set(fn(this.#value));
-  }
-
-  update() {
-    this.#notifier.next(this);
-  }
-
-  getChanges() {
-    return this.#changes;
-  }
-
-  getPriority() {
-    return 0;
-  }
-}
-
-const myNextTick = nextTick().pipe(
-  share({
-    resetOnRefCountZero: true,
-  }),
-);
-
-/**
- * @template T
- */
-export class Source {
-  /** @type {Subject<Source<T>>} */
-  #notifier = new Subject();
-
-  /** @type {Observable<Source<T>>} */
-  #changes = this.#notifier.asObservable();
-
-  /** @type {(() => T) | undefined} */
-  #getInitialValue;
-
-  /** @type {{ value: T } | null} */
-  #current = null;
-
-  /**
-   * @param {Observable<T>} source
-   * @param {() => T} [getInitialValue]
-   */
-  constructor(source, getInitialValue) {
-    this.#changes = this.#getChanges(source);
-    if (getInitialValue) {
-      this.#getInitialValue = makeNonReactive(getInitialValue);
-    }
-  }
-
-  /**
-   * @param {T} value
-   */
-  #set(value) {
+  setFn(fn, onNoValue) {
     if (!this.#current) {
-      this.#current = { value };
-      updateQueue.invalidate(this);
-    } else {
-      this.#current.value = value;
-      updateQueue.invalidate(this);
-    }
-  }
-
-  get() {
-    addDependency(this);
-    if (!this.#notifier.observed) {
-      this.#changes.pipe(takeUntil(myNextTick)).subscribe();
-    }
-    if (!this.#current) {
-      if (this.#getInitialValue) {
-        this.#current = { value: this.#getInitialValue() };
-      } else {
+      if (!onNoValue) {
         throw new NoValueError();
       }
+      this.set(onNoValue());
+      return;
     }
-    return this.#current.value;
-  }
-
-  update() {
-    this.#notifier.next(this);
-  }
-
-  getChanges() {
-    return this.#changes;
-  }
-
-  getPriority() {
-    return 0;
+    this.set(fn(this.#current.value));
   }
 
   /**
-   * @param {Observable<T>} source
-   * @returns {Observable<Source<T>>}
+   * @template TValue
+   * @param {TValue} value
+   * @returns {Signal<TValue>}
    */
-  #getChanges(source) {
-    return new Observable((/** @type {Subscriber<Source<T>>} */ subscriber) => {
-      let initialized = false;
-      subscriber.add(
-        this.#notifier.subscribe({
-          next: () => {
-            if (initialized) {
-              subscriber.next(this);
-            }
-          },
-          error: (err) => {
-            subscriber.error(err);
-          },
-          complete: () => {
-            subscriber.complete();
-          },
-        }),
-      );
-      subscriber.add(
-        source.subscribe({
-          next: (value) => {
-            if (initialized) {
-              this.#set(value);
-            } else {
-              this.#current = { value };
-            }
-          },
-          error: (err) => {
-            subscriber.error(err);
-          },
-          complete: () => {
-            subscriber.complete();
-          },
-        }),
-      );
-      // If source.subscribe() emits "next" synchronously, we do not
-      // consider this a change, and we skip the initial notification.
-      initialized = true;
-    }).pipe(
-      share({
-        resetOnRefCountZero: true,
-      }),
-    );
-  }
-}
-
-export class Changes {
-  /** @type {Subject<Changes>} */
-  #notifier = new Subject();
-
-  /** @type {Observable<Changes>} */
-  #changes = this.#notifier.asObservable();
-
-  /**
-   * @param {Observable<unknown>} source
-   */
-  constructor(source) {
-    this.#changes = this.#getChanges(source);
-  }
-
-  update() {
-    this.#notifier.next(this);
-  }
-
-  getChanges() {
-    return this.#changes;
-  }
-
-  getPriority() {
-    return 0;
-  }
-
-  /**
-   * @param {Observable<unknown>} source
-   * @returns {Observable<Changes>}
-   */
-  #getChanges(source) {
-    return new Observable((/** @type {Subscriber<Changes>} */ subscriber) => {
-      this.#notifier.subscribe(subscriber);
-      subscriber.add(
-        source.subscribe({
-          next: () => {
-            updateQueue.invalidate(this);
-          },
-          error: (err) => {
-            subscriber.error(err);
-          },
-          complete: () => {
-            subscriber.complete();
-          },
-        }),
-      );
-    }).pipe(
-      share({
-        resetOnRefCountZero: true,
-      }),
-    );
-  }
-}
-
-/**
- * @template {Dependency} T
- */
-export class Dedupe {
-  /** @type {Observable<Dedupe<T>>} */
-  #changes;
-
-  /** @type {number} */
-  #priority;
-
-  /** @type {Subject<Dedupe<T>>} */
-  #notifier = new Subject();
-
-  /**
-   * @param {Observable<T>} changes
-   * @param {number} [priority=1]
-   */
-  constructor(changes, priority = 1) {
-    this.#priority = priority;
-    this.#changes = this.#getChanges(changes);
-  }
-
-  update() {
-    this.#notifier.next(this);
-  }
-
-  getChanges() {
-    return this.#changes;
-  }
-
-  getPriority() {
-    return this.#priority;
-  }
-
-  /**
-   * @param {Observable<T>} changes
-   * @returns {Observable<Dedupe<T>>}
-   */
-  #getChanges(changes) {
-    return new Observable((/** @type {Subscriber<Dedupe<T>>} */ subscriber) => {
-      this.#notifier.subscribe(subscriber);
-      const subscription = changes.subscribe((dependency) => {
-        this.#priority = Math.max(this.#priority, dependency.getPriority() + 1);
-        updateQueue.push(this);
-      });
-      return () => {
-        subscription.unsubscribe();
-      };
-    }).pipe(
-      share({
-        resetOnRefCountZero: true,
-      }),
-    );
-  }
-}
-
-/**
- * @template T
- * @typedef {object} ManualOptions
- * @property {(a: T, b: T) => boolean} [isEqual]
- * @property {boolean} [deferred]
- */
-
-/**
- * @template T
- * @template {unknown[]} TArgs
- * @implements {Dependency}
- * @implements {Computation}
- */
-export class Manual {
-  /** @type {Set<Observable<Dependency>>} */
-  #dependencies = new Set();
-
-  /** @type {Map<Observable<Dependency>, Subscription>} */
-  #subscriptions = new Map();
-
-  /** @type {Subject<Dependency>} */
-  #notifier = new Subject();
-
-  /** @type {{ value: T } | null} */
-  #current = null;
-
-  /** @type {boolean} */
-  #deferred = false;
-
-  /** @type {Observable<Dependency>} */
-  #changes;
-
-  /** @type {(...args: TArgs) => T} */
-  #evaluate;
-
-  /** @type {(a: T, b: T) => boolean} */
-  #isEqual;
-
-  /** @type {number} */
-  #priority = 0;
-
-  /** @type {number} */
-  #evaluations = 0;
-
-  /** @type {Array<() => void>} */
-  #cleanupListeners = [];
-
-  /**
-   * @param {(...args: TArgs) => T} evaluate
-   * @param {((a: T, b: T) => boolean) | ManualOptions<T>} [options]
-   */
-  constructor(evaluate, options = Object.is) {
-    this.#evaluate = evaluate;
-    if (typeof options === "function") {
-      this.#isEqual = options;
-    } else {
-      const { isEqual = Object.is, deferred = false } = options;
-      this.#isEqual = isEqual;
-      this.#deferred = deferred;
-    }
-    this.#changes = this.#getChanges(this.#deferred);
-    this.recompute = this.recompute.bind(this);
-  }
-
-  get() {
-    addDependency(this);
-    if (!this.#current) {
-      throw new NoValueError("Signal has not been initialized yet");
-    }
-    return this.#current.value;
-  }
-
-  isActive() {
-    return this.#notifier.observed;
-  }
-
-  getPriority() {
-    return this.#priority;
-  }
-
-  getChanges() {
-    return this.#changes;
-  }
-
-  getEvaluations() {
-    return this.#evaluations;
-  }
-
-  /**
-   * @param {Dependency} dependency
-   */
-  addDependency(dependency) {
-    const changes = dependency.getChanges();
-    const priority = dependency.getPriority();
-    this.#priority = Math.max(this.#priority, priority + 1);
-    this.#dependencies.add(changes);
-    if (this.#notifier.observed) {
-      if (!this.#subscriptions.has(changes)) {
-        callNonReactive(() => {
-          this.#subscriptions.set(changes, changes.subscribe());
-        });
-      }
-    }
-  }
-
-  /**
-   * @param {() => void} fn
-   */
-  onInvalidate(fn) {
-    this.#cleanupListeners.push(makeNonReactive(fn));
-  }
-
-  update() {
-    this.#notifier.next(this);
-  }
-
-  /**
-   * @param {TArgs} args
-   * @returns {T}
-   */
-  recompute(...args) {
-    this.#cleanup();
-
-    this.#priority = 0;
-    this.#dependencies = new Set();
-    this.#evaluations += 1;
-
-    const oldComputation = activeComputation;
-    try {
-      activeComputation = this;
-      const newValue = this.#evaluate(...args);
-      if (!this.#current || !this.#isEqual(this.#current.value, newValue)) {
-        this.#current = { value: newValue };
-        updateQueue.invalidate(this);
-      }
-      return this.#current.value;
-    } finally {
-      activeComputation = oldComputation;
-      for (const [dependency, subscription] of this.#subscriptions) {
-        if (!this.#dependencies.has(dependency)) {
-          subscription.unsubscribe();
-          this.#subscriptions.delete(dependency);
-        }
-      }
-    }
-  }
-
-  /**
-   * @param {boolean} deferred
-   * @returns {Observable<Dependency>}
-   */
-  #getChanges(deferred) {
-    return new Observable((/** @type {Subscriber<Dependency>} */ subscriber) => {
-      // This subscription will be unnsubscribed outomatically
-      // as soon as subscriber is closed.
-      this.#notifier.subscribe(subscriber);
-      return () => {
-        for (const subscription of this.#subscriptions.values()) {
-          subscription.unsubscribe();
-        }
-        this.#subscriptions.clear();
-        this.#cleanup();
-        this.#current = null;
-      };
-    }).pipe(
-      share({
-        resetOnRefCountZero: deferred ? () => myNextTick : true,
-      }),
-    );
-  }
-
-  #cleanup() {
-    const cleanupListeners = this.#cleanupListeners;
-    cleanupListeners.forEach((fn) => fn());
-    this.#cleanupListeners = [];
+  static of(value) {
+    return new Signal({ value });
   }
 }

@@ -1,6 +1,6 @@
 import { it, mock } from "node:test";
 import assert from "node:assert/strict";
-import { Lazy, makeNonReactive, Signal } from "@apendua.dev/signal";
+import { makeNonReactive, Signal } from "@apendua.dev/signal";
 import { component, observable } from "./factories.js";
 import { on } from "./Emitter.js";
 import store, { emit } from "./store.js";
@@ -60,9 +60,9 @@ const Input = component((operators) => {
 
 it("updates child component state immedately after rendering in a two-way binding scenario", () => {
   const container = component(() => {
-    /** @type {Lazy<InputHandle>} */
-    const handle = new Lazy();
-    const text = new Signal("");
+    /** @type {Signal<InputHandle>} */
+    const handle = new Signal();
+    const text = Signal.of("");
 
     use(() => {
       handle.get().reset("Hello!");

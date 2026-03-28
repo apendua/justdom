@@ -1,8 +1,8 @@
 import { Observable } from "rxjs";
-import { callNonReactive, NoValueError } from "./Signal.js";
+import { NoValueError, withComputation } from "./core.js";
 
 /**
- * @import {Dependency} from "./Signal.js"
+ * @import {Dependency} from "./core.js"
  */
 
 /**
@@ -12,10 +12,10 @@ import { callNonReactive, NoValueError } from "./Signal.js";
  */
 export function toObservable(signal) {
   return new Observable((subscriber) => {
-    const subscription = signal.getChanges().subscribe({
+    const subscription = signal.subscribe({
       next: () => {
         try {
-          callNonReactive(() => {
+          withComputation(null, () => {
             subscriber.next(signal.get());
           });
         } catch (err) {
@@ -30,7 +30,7 @@ export function toObservable(signal) {
       },
     });
     try {
-      callNonReactive(() => {
+      withComputation(null, () => {
         subscriber.next(signal.get());
       });
     } catch (err) {

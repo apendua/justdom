@@ -1,6 +1,6 @@
 import { distinctUntilChanged, filter, Observable, Subject, tap } from "rxjs";
 import { removeSegment, toSegment } from "./helpers.js";
-import { addDependency, batch, Changes, Derived } from "@apendua.dev/signal";
+import { addDependency, batch, Derived } from "@apendua.dev/signal";
 
 /**
  * @import { Subscription } from "rxjs";
@@ -118,9 +118,7 @@ export default class ListRenderer {
        * @returns {() => number}
        */
       const createGetIndex = (item) => {
-        const changes = new Changes(
-          childIndexesSubject.pipe(filter((changedItem) => changedItem === item)),
-        );
+        const changes = childIndexesSubject.pipe(filter((changedItem) => changedItem === item));
         const index = new Derived(() => {
           addDependency(changes);
           return childIndexes.get(item) ?? -1;

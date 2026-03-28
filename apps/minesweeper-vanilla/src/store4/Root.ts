@@ -1,12 +1,12 @@
 import { fromEvent } from "rxjs";
-import { addDependency, Changes, createProperty } from "@apendua.dev/signal";
+import { addDependency, createProperty } from "@apendua.dev/signal";
 
 interface Dimensions {
   width: number;
   height: number;
 }
 
-const resize = new Changes(fromEvent(window, "resize"));
+const resize = fromEvent(window, "resize");
 
 class Root {
   public get dimensions(): Dimensions {

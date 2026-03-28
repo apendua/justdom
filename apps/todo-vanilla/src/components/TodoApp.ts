@@ -69,11 +69,11 @@ interface Todo {
 }
 
 const TodoApp = component((ctx: WeakKey) => {
-  const todos = new Signal<Todo[]>([
+  const todos = Signal.of<Todo[]>([
     store<Todo>({ id: "1", text: "Learn justDOM", completed: false }),
     store<Todo>({ id: "2", text: "Build a Todo App", completed: true }),
   ]);
-  const inputValue = new Signal<string>("");
+  const inputValue = Signal.of<string>("");
   // const suspense = new Suspense();
 
   const addTodo = () => {

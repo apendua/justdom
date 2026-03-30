@@ -374,5 +374,18 @@ export default class VisualProperties {
   }
 }
 
+/**
+ *
+ * @param {THREE.Color} oldColor
+ * @param {THREE.Color} newColor
+ * @returns {boolean}
+ */
+function areColorsEqual(oldColor, newColor) {
+  return oldColor.equals(newColor);
+}
+
 decorate(VisualProperties.prototype, "getRelativeXHeight", memo());
 decorate(VisualProperties.prototype, "getRectangleParams", memo());
+decorate(VisualProperties.prototype, "backgroundColor", memo(areColorsEqual));
+decorate(VisualProperties.prototype, "borderColor", memo(areColorsEqual));
+decorate(VisualProperties.prototype, "textColor", memo(areColorsEqual));

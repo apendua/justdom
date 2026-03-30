@@ -1,8 +1,8 @@
-import { Observable, ReplaySubject, share, Subject } from "rxjs";
+import { Observable, share, Subject } from "rxjs";
 import { withComputation, makeNonReactive, skipSynchronousValues, NoValueError } from "./core.js";
 
 /**
- * @import {Observer, Unsubscribable, ObservableInput} from "rxjs";
+ * @import {Observer, Subscriber, Unsubscribable, ObservableInput} from "rxjs";
  */
 
 /**
@@ -47,7 +47,7 @@ class Computation {
    */
   constructor(options) {
     this.#options = { ...options };
-    this.#changes = new Observable((subscriber) => {
+    this.#changes = new Observable((/** @type {Subscriber<void>} */ subscriber) => {
       this.#notifier.subscribe(subscriber);
       for (const observable of this.#dependencies) {
         this.#subscribeTo(observable);

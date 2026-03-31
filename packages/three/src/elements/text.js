@@ -5,6 +5,7 @@ import { animate } from "../render.js";
 import { $, children } from "../operators.js";
 import { shareObservable } from "@apendua.dev/store4";
 import { generateTextGeometry } from "./textHelpers.js";
+import { getBoundingClientRectCached, getComputedStyleCached } from "./cache.js";
 
 /**
  * @import { Observable } from "rxjs";
@@ -140,7 +141,9 @@ export function text(ctx, textNode) {
   return just(object, [
     effects((obj) => {
       const { left, top } = textRect.get();
-      const parentRect = textNode.parentElement?.getBoundingClientRect();
+      const parentRect = textNode.parentElement
+        ? getBoundingClientRectCached(textNode.parentElement)
+        : null;
       if (parentRect) {
         const offsetX = left - parentRect.left;
         const offsetY = top - parentRect.top;
@@ -155,7 +158,7 @@ export function text(ctx, textNode) {
           if (!textNode.parentElement) {
             return;
           }
-          const style = getComputedStyle(textNode.parentElement);
+          const style = getComputedStyleCached(textNode.parentElement);
 
           const textRange = document.createRange();
           textRange.selectNodeContents(textNode);

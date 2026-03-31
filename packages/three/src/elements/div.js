@@ -7,6 +7,7 @@ import { shareSignal } from "@apendua.dev/store4";
 import { interactions } from "../interactions.js";
 import VisualProperties from "./VisualProperties.js";
 import { makeRectangleGeometry, shrinkRectangle } from "./rectangle.js";
+import { getBoundingClientRectCached } from "./cache.js";
 
 /**
  * @import {XREventMap} from '../core.js';
@@ -96,8 +97,10 @@ export function div(ctx, element) {
     effects((obj) => {
       use(
         animate(ctx, () => {
-          const elementRect = element.getBoundingClientRect();
-          const parentRect = element.parentElement?.getBoundingClientRect();
+          const elementRect = getBoundingClientRectCached(element);
+          const parentRect = element.parentElement
+            ? getBoundingClientRectCached(element.parentElement)
+            : null;
           if (parentRect) {
             obj.position.set(
               elementRect.left - parentRect.left,

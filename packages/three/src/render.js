@@ -2,6 +2,7 @@ import * as THREE from "three";
 import { BehaviorSubject, tap, Subject, Observable, combineLatest, map } from "rxjs";
 import { Computation, createProperty } from "@apendua.dev/signal";
 import { InteractionManager, InteractionContext } from "./interactions.js";
+import { clearCache } from "./elements/cache.js";
 
 export const RendererContext = createProperty(
   /**
@@ -258,6 +259,7 @@ export function render(fn, options = {}) {
     frameSubject.set(renderer, subject);
 
     renderer.setAnimationLoop((time, frame) => {
+      clearCache();
       options.onBeforeRender?.(renderer);
       subject.next({ time, frame });
       const set = listeners.get(renderer);

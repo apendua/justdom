@@ -3,9 +3,32 @@ import { decorate, memo } from "@apendua.dev/store4";
 import { addDependency, batch, NoValueError } from "@apendua.dev/signal";
 import { store } from "@apendua.dev/reactive";
 import { filter, Subject } from "rxjs";
+import { getBoundingClientRectCached, getComputedStyleCached } from "./cache.js";
 
 /**
  * @imprt {RectangleParams} from './rectangle.js';
+ */
+
+/**
+ * @typedef {object} RawVisualProperties
+ * @property {number} totalWidth
+ * @property {number} totalHeight
+ * @property {number} opacity
+ * @property {number} fontSize
+ * @property {string} fontFamily
+ * @property {string} fontWeight
+ * @property {string} borderLeftWidth
+ * @property {string} borderRightWidth
+ * @property {string} borderTopWidth
+ * @property {string} borderBottomWidth
+ * @property {string} borderBottomLeftRadius
+ * @property {string} borderBottomRightRadius
+ * @property {string} borderTopLeftRadius
+ * @property {string} borderTopRightRadius
+ * @property {string} backgroundColor
+ * @property {string} borderColor
+ * @property {string} textColor
+ * @property {number} layerNo
  */
 
 /**
@@ -35,34 +58,34 @@ import { filter, Subject } from "rxjs";
  * @property {number} layerNo
  */
 
-/**
- * @param {IVisualProperties} properties
- * @returns {IVisualProperties}
- */
-function normalize(properties) {
-  const p = { ...properties };
-  if (p.borderLeftTopRadius + p.borderLeftBottomRadius > p.totalHeight) {
-    const scale = p.totalHeight / (p.borderLeftTopRadius + p.borderLeftBottomRadius);
-    p.borderLeftTopRadius *= scale;
-    p.borderLeftBottomRadius *= scale;
-  }
-  if (p.borderRightTopRadius + p.borderRightBottomRadius > p.totalHeight) {
-    const scale = p.totalHeight / (p.borderRightTopRadius + p.borderRightBottomRadius);
-    p.borderRightTopRadius *= scale;
-    p.borderRightBottomRadius *= scale;
-  }
-  if (p.borderTopLeftRadius + p.borderTopRightRadius > p.totalWidth) {
-    const scale = p.totalWidth / (p.borderTopLeftRadius + p.borderTopRightRadius);
-    p.borderTopLeftRadius *= scale;
-    p.borderTopRightRadius *= scale;
-  }
-  if (p.borderBottomLeftRadius + p.borderBottomRightRadius > p.totalWidth) {
-    const scale = p.totalWidth / (p.borderBottomLeftRadius + p.borderBottomRightRadius);
-    p.borderBottomLeftRadius *= scale;
-    p.borderBottomRightRadius *= scale;
-  }
-  return p;
-}
+// /**
+//  * @param {IVisualProperties} properties
+//  * @returns {IVisualProperties}
+//  */
+// function normalize(properties) {
+//   const p = { ...properties };
+//   if (p.borderLeftTopRadius + p.borderLeftBottomRadius > p.totalHeight) {
+//     const scale = p.totalHeight / (p.borderLeftTopRadius + p.borderLeftBottomRadius);
+//     p.borderLeftTopRadius *= scale;
+//     p.borderLeftBottomRadius *= scale;
+//   }
+//   if (p.borderRightTopRadius + p.borderRightBottomRadius > p.totalHeight) {
+//     const scale = p.totalHeight / (p.borderRightTopRadius + p.borderRightBottomRadius);
+//     p.borderRightTopRadius *= scale;
+//     p.borderRightBottomRadius *= scale;
+//   }
+//   if (p.borderTopLeftRadius + p.borderTopRightRadius > p.totalWidth) {
+//     const scale = p.totalWidth / (p.borderTopLeftRadius + p.borderTopRightRadius);
+//     p.borderTopLeftRadius *= scale;
+//     p.borderTopRightRadius *= scale;
+//   }
+//   if (p.borderBottomLeftRadius + p.borderBottomRightRadius > p.totalWidth) {
+//     const scale = p.totalWidth / (p.borderBottomLeftRadius + p.borderBottomRightRadius);
+//     p.borderBottomLeftRadius *= scale;
+//     p.borderBottomRightRadius *= scale;
+//   }
+//   return p;
+// }
 
 /**
  * @typedef {'INITIALIZED'} EventType
@@ -125,9 +148,9 @@ function getInheritedOpacity(element) {
   let el = element.parentElement;
   let layer = 0;
   while (el) {
-    const style = getComputedStyle(el);
-    const op = parseFloat(style.opacity || "1");
-    opacity *= isNaN(op) ? 1.0 : op;
+    // const style = getComputedStyle(el);
+    // const op = parseFloat(style.opacity || "1");
+    // opacity *= isNaN(op) ? 1.0 : op;
     el = el.parentElement;
     layer++;
   }
@@ -138,7 +161,7 @@ function getInheritedOpacity(element) {
  * @implements {IVisualProperties}
  */
 export default class VisualProperties {
-  /** @type {IVisualProperties | undefined} */
+  /** @type {RawVisualProperties | undefined} */
   #properties;
 
   /** @type {Subject<EventType>} */
@@ -168,20 +191,19 @@ export default class VisualProperties {
 
   getRectangleParams() {
     this.#assertInitialized();
-    const p = this.#properties;
     return {
       left: 0,
-      right: p.totalWidth,
+      right: this.totalWidth,
       top: 0,
-      bottom: p.totalHeight,
-      leftTop: p.borderLeftTopRadius,
-      leftBottom: p.totalHeight - p.borderLeftBottomRadius,
-      bottomLeft: p.borderBottomLeftRadius,
-      bottomRight: p.totalWidth - p.borderBottomRightRadius,
-      rightBottom: p.totalHeight - p.borderRightBottomRadius,
-      rightTop: p.borderRightTopRadius,
-      topRight: p.totalWidth - p.borderTopRightRadius,
-      topLeft: p.borderTopLeftRadius,
+      bottom: this.totalHeight,
+      leftTop: this.borderLeftTopRadius,
+      leftBottom: this.totalHeight - this.borderLeftBottomRadius,
+      bottomLeft: this.borderBottomLeftRadius,
+      bottomRight: this.totalWidth - this.borderBottomRightRadius,
+      rightBottom: this.totalHeight - this.borderRightBottomRadius,
+      rightTop: this.borderRightTopRadius,
+      topRight: this.totalWidth - this.borderTopRightRadius,
+      topLeft: this.borderTopLeftRadius,
     };
   }
 
@@ -189,55 +211,32 @@ export default class VisualProperties {
    * @param {HTMLElement} element
    */
   setFromElement(element) {
-    const style = getComputedStyle(element);
-    const rect = element.getBoundingClientRect();
+    const style = getComputedStyleCached(element);
+    const rect = getBoundingClientRectCached(element);
     const fontSize = parseFloat(style.fontSize || "0");
-    const [backgroundColor, backgroundAlpha] = parseColor(style.backgroundColor);
-    const [borderColor, borderAlpha] = parseColor(style.borderColor);
-    const [textColor, textAlpha] = parseColor(style.color);
     const [inheritedOpacity, layerNo] = getInheritedOpacity(element);
     const opacity = parseFloat(style.opacity || "1") * inheritedOpacity;
-    const xHeight = fontSize * this.getRelativeXHeight(style.fontFamily, style.fontWeight);
-    /** @type {Units} */
-    const unitsW = {
-      px: 1,
-      em: fontSize,
-      ex: xHeight,
-      percent: rect.width / 100,
-    };
-    /** @type {Units} */
-    const unitsH = {
-      px: 1,
-      em: fontSize,
-      ex: xHeight,
-      percent: rect.height / 100,
-    };
-    /** @type {IVisualProperties} */
-    const properties = normalize({
+    /** @type {RawVisualProperties} */
+    const properties = {
       totalWidth: rect.width,
       totalHeight: rect.height,
+      opacity,
       fontSize,
-      xHeight,
-      borderLeftWidth: parseSize(style.borderLeftWidth, unitsW),
-      borderRightWidth: parseSize(style.borderRightWidth, unitsW),
-      borderTopWidth: parseSize(style.borderTopWidth, unitsH),
-      borderBottomWidth: parseSize(style.borderBottomWidth, unitsH),
-      borderBottomLeftRadius: parseSize(style.borderBottomLeftRadius, unitsW),
-      borderBottomRightRadius: parseSize(style.borderBottomRightRadius, unitsW),
-      borderTopLeftRadius: parseSize(style.borderTopLeftRadius, unitsW),
-      borderTopRightRadius: parseSize(style.borderTopRightRadius, unitsW),
-      borderLeftBottomRadius: parseSize(style.borderBottomLeftRadius, unitsH),
-      borderLeftTopRadius: parseSize(style.borderTopLeftRadius, unitsH),
-      borderRightBottomRadius: parseSize(style.borderBottomRightRadius, unitsH),
-      borderRightTopRadius: parseSize(style.borderTopRightRadius, unitsH),
-      backgroundColor: backgroundColor,
-      backgroundAlpha: backgroundAlpha * opacity,
-      borderColor: borderColor,
-      borderAlpha: borderAlpha * opacity,
-      textColor: textColor,
-      textAlpha: textAlpha * opacity,
+      fontFamily: style.fontFamily,
+      fontWeight: style.fontWeight,
+      borderLeftWidth: style.borderLeftWidth,
+      borderRightWidth: style.borderRightWidth,
+      borderTopWidth: style.borderTopWidth,
+      borderBottomWidth: style.borderBottomWidth,
+      borderBottomLeftRadius: style.borderBottomLeftRadius,
+      borderBottomRightRadius: style.borderBottomRightRadius,
+      borderTopLeftRadius: style.borderTopLeftRadius,
+      borderTopRightRadius: style.borderTopRightRadius,
+      backgroundColor: style.backgroundColor,
+      borderColor: style.borderColor,
+      textColor: style.color,
       layerNo,
-    });
+    };
     batch(() => {
       if (this.#properties) {
         Object.assign(this.#properties, properties);
@@ -249,7 +248,7 @@ export default class VisualProperties {
   }
 
   /**
-   * @returns {asserts this is {#properties: IVisualProperties}}
+   * @returns {asserts this is {#properties: RawVisualProperties}}
    */
   #assertInitialized() {
     if (!this.#properties) {
@@ -275,97 +274,129 @@ export default class VisualProperties {
 
   get xHeight() {
     this.#assertInitialized();
-    return this.#properties.xHeight;
+    return this.getRelativeXHeight(this.#properties.fontFamily, this.#properties.fontWeight);
+  }
+
+  /**
+   * @returns {Units}
+   */
+  get unitsW() {
+    this.#assertInitialized();
+    return {
+      px: 1,
+      em: this.#properties.fontSize,
+      ex: this.xHeight,
+      percent: this.totalWidth / 100,
+    };
+  }
+
+  /**
+   * @returns {Units}
+   */
+  get unitsH() {
+    this.#assertInitialized();
+    return {
+      px: 1,
+      em: this.#properties.fontSize,
+      ex: this.xHeight,
+      percent: this.totalHeight / 100,
+    };
   }
 
   get borderLeftWidth() {
     this.#assertInitialized();
-    return this.#properties.borderLeftWidth;
+    return parseSize(this.#properties.borderLeftWidth, this.unitsW);
   }
 
   get borderRightWidth() {
     this.#assertInitialized();
-    return this.#properties.borderRightWidth;
+    return parseSize(this.#properties.borderRightWidth, this.unitsW);
   }
 
   get borderTopWidth() {
     this.#assertInitialized();
-    return this.#properties.borderTopWidth;
+    return parseSize(this.#properties.borderTopWidth, this.unitsH);
   }
 
   get borderBottomWidth() {
     this.#assertInitialized();
-    return this.#properties.borderBottomWidth;
+    return parseSize(this.#properties.borderBottomWidth, this.unitsH);
   }
 
   get borderBottomLeftRadius() {
     this.#assertInitialized();
-    return this.#properties.borderBottomLeftRadius;
+    return parseSize(this.#properties.borderBottomLeftRadius, this.unitsW);
   }
 
   get borderBottomRightRadius() {
     this.#assertInitialized();
-    return this.#properties.borderBottomRightRadius;
+    return parseSize(this.#properties.borderBottomRightRadius, this.unitsW);
   }
 
   get borderTopLeftRadius() {
     this.#assertInitialized();
-    return this.#properties.borderTopLeftRadius;
+    return parseSize(this.#properties.borderTopLeftRadius, this.unitsW);
   }
 
   get borderTopRightRadius() {
     this.#assertInitialized();
-    return this.#properties.borderTopRightRadius;
+    return parseSize(this.#properties.borderTopRightRadius, this.unitsW);
   }
 
   get borderLeftBottomRadius() {
     this.#assertInitialized();
-    return this.#properties.borderLeftBottomRadius;
+    return parseSize(this.#properties.borderBottomLeftRadius, this.unitsH);
   }
 
   get borderLeftTopRadius() {
     this.#assertInitialized();
-    return this.#properties.borderLeftTopRadius;
+    return parseSize(this.#properties.borderTopLeftRadius, this.unitsH);
   }
 
   get borderRightBottomRadius() {
     this.#assertInitialized();
-    return this.#properties.borderRightBottomRadius;
+    return parseSize(this.#properties.borderBottomRightRadius, this.unitsH);
   }
 
   get borderRightTopRadius() {
     this.#assertInitialized();
-    return this.#properties.borderRightTopRadius;
+    return parseSize(this.#properties.borderTopRightRadius, this.unitsH);
   }
 
   get backgroundColor() {
     this.#assertInitialized();
-    return this.#properties.backgroundColor;
+    const [backgroundColor] = parseColor(this.#properties.backgroundColor);
+    return backgroundColor;
   }
 
   get backgroundAlpha() {
     this.#assertInitialized();
-    return this.#properties.backgroundAlpha;
+    const [, backgroundAlpha] = parseColor(this.#properties.backgroundColor);
+    return backgroundAlpha * this.#properties.opacity;
   }
 
   get borderColor() {
     this.#assertInitialized();
-    return this.#properties.borderColor;
+    const [borderColor] = parseColor(this.#properties.borderColor);
+    return borderColor;
   }
 
   get borderAlpha() {
     this.#assertInitialized();
-    return this.#properties.borderAlpha;
+    const [, borderAlpha] = parseColor(this.#properties.borderColor);
+    return borderAlpha * this.#properties.opacity;
   }
 
   get textColor() {
     this.#assertInitialized();
-    return this.#properties.textColor;
+    const [textColor] = parseColor(this.#properties.textColor);
+    return textColor;
   }
 
   get textAlpha() {
     this.#assertInitialized();
-    return this.#properties.textAlpha;
+    const [, textAlpha] = parseColor(this.#properties.textColor);
+    return textAlpha * this.#properties.opacity;
   }
 
   get layerNo() {
@@ -374,18 +405,29 @@ export default class VisualProperties {
   }
 }
 
-/**
- *
- * @param {THREE.Color} oldColor
- * @param {THREE.Color} newColor
- * @returns {boolean}
- */
-function areColorsEqual(oldColor, newColor) {
-  return oldColor.equals(newColor);
-}
-
 decorate(VisualProperties.prototype, "getRelativeXHeight", memo());
 decorate(VisualProperties.prototype, "getRectangleParams", memo());
-decorate(VisualProperties.prototype, "backgroundColor", memo(areColorsEqual));
-decorate(VisualProperties.prototype, "borderColor", memo(areColorsEqual));
-decorate(VisualProperties.prototype, "textColor", memo(areColorsEqual));
+decorate(VisualProperties.prototype, "totalWidth", memo());
+decorate(VisualProperties.prototype, "totalHeight", memo());
+decorate(VisualProperties.prototype, "fontSize", memo());
+decorate(VisualProperties.prototype, "xHeight", memo());
+decorate(VisualProperties.prototype, "unitsW", memo());
+decorate(VisualProperties.prototype, "unitsH", memo());
+decorate(VisualProperties.prototype, "borderLeftWidth", memo());
+decorate(VisualProperties.prototype, "borderRightWidth", memo());
+decorate(VisualProperties.prototype, "borderTopWidth", memo());
+decorate(VisualProperties.prototype, "borderBottomWidth", memo());
+decorate(VisualProperties.prototype, "borderBottomLeftRadius", memo());
+decorate(VisualProperties.prototype, "borderBottomRightRadius", memo());
+decorate(VisualProperties.prototype, "borderTopLeftRadius", memo());
+decorate(VisualProperties.prototype, "borderTopRightRadius", memo());
+decorate(VisualProperties.prototype, "borderLeftBottomRadius", memo());
+decorate(VisualProperties.prototype, "borderLeftTopRadius", memo());
+decorate(VisualProperties.prototype, "borderRightBottomRadius", memo());
+decorate(VisualProperties.prototype, "borderRightTopRadius", memo());
+decorate(VisualProperties.prototype, "backgroundColor", memo());
+decorate(VisualProperties.prototype, "backgroundAlpha", memo());
+decorate(VisualProperties.prototype, "borderColor", memo());
+decorate(VisualProperties.prototype, "borderAlpha", memo());
+decorate(VisualProperties.prototype, "textColor", memo());
+decorate(VisualProperties.prototype, "textAlpha", memo());

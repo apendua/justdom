@@ -13,9 +13,8 @@
   "type": "module",
   "exports": {
     ".": {
-      "require": "./lib/index.js",
-      "import": "./src/index.js",
-      "types": "./lib-types/index.d.ts"
+      "types": "./lib-types/index.d.ts",
+      "import": "./src/index.js"
     }
   },
   "main": "./lib/index.js",
@@ -26,10 +25,9 @@
     "lib-types"
   ],
   "scripts": {
-    "build": "npm run test && npm run compile && npm run build:package.json && npm run build:types",
-    "build:package.json": "echo '{\"type\":\"commonjs\"}' > lib/package.json",
+    "build": "npm run test && npm run compile && npm run build:types",
     "build:types": "tsc --project tsconfig.types.json",
-    "compile": "tsc",
+    "compile": "tsc --project tsconfig.build.json",
     "test": "node --import ./src/test/setup-jsdom.js --test \"src/**/*.test.js\"",
     "test:coverage": "node --import ./src/test/setup-jsdom.js --test --experimental-test-coverage \"src/**/*.test.js\"",
     "test:watch": "node --import ./src/test/setup-jsdom.js --test --watch \"src/**/*.test.js\""

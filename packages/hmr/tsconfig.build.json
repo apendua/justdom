@@ -1,0 +1,16 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "lib": ["ES2020", "DOM"],
+    "module": "Node16",
+    "moduleResolution": "Node16",
+    "sourceRoot": "./src",
+    "typeRoots": ["./types", "./node_modules/@types"],
+    "rootDirs": ["./src"],
+    "rootDir": "./src",
+    "outDir": "./lib"
+  },
+  "include": ["src"],
+  "extends": "../../common/config/typescript/tsconfig.package-base.json",
+  "exclude": ["src/**/*.test.*", "src/test/**", "src/testUtils/**"]
+}

@@ -9,8 +9,8 @@
   "type": "module",
   "exports": {
     ".": {
-      "import": "./lib/index.js",
-      "types": "./lib-types/index.d.ts"
+      "types": "./lib-types/index.d.ts",
+      "import": "./lib/index.js"
     }
   },
   "main": "./lib/index.js",
@@ -23,7 +23,7 @@
   "scripts": {
     "build": "npm run test && npm run compile && npm run build:types",
     "build:types": "tsc --project tsconfig.types.json",
-    "compile": "tsc",
+    "compile": "tsc --project tsconfig.build.json",
     "test": "node --test \"src/**/*.test.js\"",
     "test:coverage": "node --test --experimental-test-coverage \"src/**/*.test.js\"",
     "test:watch": "node --test --watch \"src/**/*.test.js\""

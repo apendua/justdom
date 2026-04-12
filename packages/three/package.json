@@ -47,7 +47,7 @@
     "eslint": "^9.37.0",
     "fast-check": "^4.3.0",
     "three": "~0.180.0",
-    "typescript": "^5.9.3"
+    "typescript": "^6.0.2"
   },
   "peerDependencies": {
     "@apendua.dev/signal": "workspace:*",

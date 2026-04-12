@@ -13,12 +13,12 @@
   "type": "module",
   "exports": {
     ".": {
-      "import": "./src/index.js",
-      "types": "./lib-types/index.d.ts"
+      "types": "./lib-types/index.d.ts",
+      "import": "./src/index.js"
     },
     "./plugin": {
-      "import": "./src/plugin.js",
-      "types": "./lib-types/plugin.d.ts"
+      "types": "./lib-types/plugin.d.ts",
+      "import": "./src/plugin.js"
     }
   },
   "main": "./src/index.js",
@@ -43,7 +43,7 @@
     "@types/node": "^24.7.0",
     "eslint": "^9.37.0",
     "fast-check": "^4.3.0",
-    "typescript": "^5.9.3",
+    "typescript": "^6.0.2",
     "vite": "^7.1.9"
   },
   "peerDependencies": {

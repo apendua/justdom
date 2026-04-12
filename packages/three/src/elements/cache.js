@@ -1,20 +1,47 @@
-/** @type {WeakMap<Element, CSSStyleDeclaration>} */
+import { addDependency, Derived } from "@apendua.dev/signal";
+import { Subject } from "rxjs";
+
+/** @type {WeakMap<Node, Subject<unknown>>} */
+const subjects = new WeakMap();
+
+/**
+ * @param {Node} node
+ * @param {Subject<unknown>} subject
+ * @returns {void}
+ */
+export function setSubject(node, subject) {
+  subjects.set(node, subject);
+}
+
+/** @type {WeakMap<Element, Map<string | null, Derived<CSSStyleDeclaration>>>} */
 let computedStyleCache = new WeakMap();
 
 /**
  * @param {Element} element
+ * @param {string | null} [pseudoElement]
  * @returns {CSSStyleDeclaration}
  */
-export function getComputedStyleCached(element) {
-  let style = computedStyleCache.get(element);
-  if (!style) {
-    style = getComputedStyle(element);
-    computedStyleCache.set(element, style);
+export function getComputedStyleCached(element, pseudoElement = null) {
+  let signalMap = computedStyleCache.get(element);
+  if (!signalMap) {
+    signalMap = new Map();
+    computedStyleCache.set(element, signalMap);
   }
-  return style;
+  let signal = signalMap.get(pseudoElement);
+  if (!signal) {
+    signal = new Derived(() => {
+      const subject = subjects.get(element);
+      if (subject) {
+        addDependency(subject);
+      }
+      return getComputedStyle(element, pseudoElement);
+    });
+    signalMap.set(pseudoElement, signal);
+  }
+  return signal.get();
 }
 
-/** @type {WeakMap<Element, DOMRect>} */
+/** @type {WeakMap<Element, Derived<DOMRect>>} */
 let boundingClientRectCache = new WeakMap();
 
 /**
@@ -22,15 +49,16 @@ let boundingClientRectCache = new WeakMap();
  * @returns {DOMRect}
  */
 export function getBoundingClientRectCached(element) {
-  let rect = boundingClientRectCache.get(element);
-  if (!rect) {
-    rect = element.getBoundingClientRect();
-    boundingClientRectCache.set(element, rect);
+  let signal = boundingClientRectCache.get(element);
+  if (!signal) {
+    signal = new Derived(() => {
+      const subject = subjects.get(element);
+      if (subject) {
+        addDependency(subject);
+      }
+      return element.getBoundingClientRect();
+    });
+    boundingClientRectCache.set(element, signal);
   }
-  return rect;
-}
-
-export function clearCache() {
-  computedStyleCache = new WeakMap();
-  boundingClientRectCache = new WeakMap();
+  return signal.get();
 }

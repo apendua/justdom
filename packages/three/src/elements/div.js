@@ -1,7 +1,6 @@
 import * as THREE from "three";
-import { onInvalidate } from "@apendua.dev/signal";
-import { effects, just, on, set, use } from "@apendua.dev/reactive";
-import { animate } from "../render.js";
+import { onCleanup } from "@apendua.dev/signal";
+import { effects, just, on, set } from "@apendua.dev/reactive";
 import { $, children } from "../operators.js";
 import { shareSignal } from "@apendua.dev/store4";
 import { interactions } from "../interactions.js";
@@ -29,7 +28,7 @@ export function div(ctx, element) {
   //   new Derived(() => {
   //     basic.color.set(backgroundColor.get());
   //   }).get();
-  //   onInvalidate(() => {
+  //   onCleanup(() => {
   //     basic.dispose();
   //   });
   //   return basic;
@@ -48,7 +47,7 @@ export function div(ctx, element) {
         opacity,
         transparent: opacity < 1.0,
       });
-      onInvalidate(() => {
+      onCleanup(() => {
         material.dispose();
       });
       return material;
@@ -95,28 +94,16 @@ export function div(ctx, element) {
       delete element.dataset.xrHover;
     }),
     effects((obj) => {
-      use(
-        animate(ctx, () => {
-          const elementRect = getBoundingClientRectCached(element);
-          const parentRect = element.parentElement
-            ? getBoundingClientRectCached(element.parentElement)
-            : null;
-          if (parentRect) {
-            obj.position.set(
-              elementRect.left - parentRect.left,
-              elementRect.top - parentRect.top,
-              -2,
-            );
-          } else {
-            obj.position.set(elementRect.left, elementRect.top, -2);
-          }
-        }),
-      );
-      use(
-        animate(ctx, () => {
-          properties.setFromElement(element);
-        }),
-      );
+      const elementRect = getBoundingClientRectCached(element);
+      const parentRect = element.parentElement
+        ? getBoundingClientRectCached(element.parentElement)
+        : null;
+      if (parentRect) {
+        obj.position.set(elementRect.left - parentRect.left, elementRect.top - parentRect.top, -2);
+      } else {
+        obj.position.set(elementRect.left, elementRect.top, -2);
+      }
+      properties.setFromElement(element);
     }),
     children(
       $(new THREE.Mesh(), [
@@ -128,7 +115,7 @@ export function div(ctx, element) {
             top: properties.borderTopWidth,
             bottom: properties.borderBottomWidth,
           });
-          onInvalidate(() => {
+          onCleanup(() => {
             geometry.dispose();
           });
           return geometry;
@@ -149,7 +136,7 @@ export function div(ctx, element) {
               bottom: properties.borderBottomWidth,
             }),
           );
-          onInvalidate(() => {
+          onCleanup(() => {
             geometry.dispose();
           });
           return geometry;

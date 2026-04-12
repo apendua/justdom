@@ -113,14 +113,6 @@ import { addDependency, batch, Derived } from "@apendua.dev/signal";
  */
 
 /**
- * @template {object} EventMap
- * @typedef {{
- *   addEventListener: <K extends keyof EventMap>(type: K, listener: Handler<EventMap[K]>) => void;
- *   removeEventListener: <K extends keyof EventMap>(type: K, listener: Handler<EventMap[K]>) => void;
- * }} EventListener
- */
-
-/**
  * @template T
  * @typedef {{
  *   add: (child: T) => void;

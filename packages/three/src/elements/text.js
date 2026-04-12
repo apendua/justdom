@@ -153,27 +153,23 @@ export function text(ctx, textNode) {
       }
     }),
     effects(() => {
-      use(
-        animate(ctx, () => {
-          if (!textNode.parentElement) {
-            return;
-          }
-          const style = getComputedStyleCached(textNode.parentElement);
+      if (!textNode.parentElement) {
+        return;
+      }
+      const style = getComputedStyleCached(textNode.parentElement);
 
-          const textRange = document.createRange();
-          textRange.selectNodeContents(textNode);
+      const textRange = document.createRange();
+      textRange.selectNodeContents(textNode);
 
-          batch(() => {
-            textColor.set(style.color);
-            fontFamily.set(style.fontFamily);
-            fontSize.set(parseFloat(style.fontSize));
-            textContent.set(textNode.textContent);
-            textJustify.set(style.textAlign === "justify");
-            textRect.set(textRange.getBoundingClientRect());
-            textRects.set(textRange.getClientRects());
-          });
-        }),
-      );
+      batch(() => {
+        textColor.set(style.color);
+        fontFamily.set(style.fontFamily);
+        fontSize.set(parseFloat(style.fontSize));
+        textContent.set(textNode.textContent);
+        textJustify.set(style.textAlign === "justify");
+        textRect.set(textRange.getBoundingClientRect());
+        textRects.set(textRange.getClientRects());
+      });
     }),
     children(
       $(new THREE.Mesh(), [

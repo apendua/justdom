@@ -1,8 +1,8 @@
 import * as THREE from "three";
 import { decorate, memo } from "@apendua.dev/store4";
 import { addDependency, batch, NoValueError } from "@apendua.dev/signal";
-import { store } from "@apendua.dev/reactive";
-import { filter, Subject } from "rxjs";
+import { fromEvent, store } from "@apendua.dev/reactive";
+import { filter, from, Subject } from "rxjs";
 import { getBoundingClientRectCached, getComputedStyleCached } from "./cache.js";
 
 /**
@@ -174,6 +174,11 @@ export default class VisualProperties {
    * @param {string} fontWeight
    */
   getRelativeXHeight(fontFamily, fontWeight) {
+    if (document.fonts.status !== "loaded") {
+      addDependency(from(document.fonts.ready));
+      throw new NoValueError("Fonts not loaded");
+    }
+    addDependency(fromEvent(document.fonts, "loadingdone"));
     const element = document.createElement("span");
     element.style.fontFamily = fontFamily;
     element.style.fontWeight = fontWeight;
@@ -209,9 +214,10 @@ export default class VisualProperties {
 
   /**
    * @param {HTMLElement} element
+   * @param {string | null} [pseudoElement]
    */
-  setFromElement(element) {
-    const style = getComputedStyleCached(element);
+  setFromElement(element, pseudoElement = null) {
+    const style = getComputedStyleCached(element, pseudoElement);
     const rect = getBoundingClientRectCached(element);
     const fontSize = parseFloat(style.fontSize || "0");
     const [inheritedOpacity, layerNo] = getInheritedOpacity(element);

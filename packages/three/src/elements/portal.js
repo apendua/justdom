@@ -1,6 +1,9 @@
 import * as THREE from "three";
+import { observable } from "@apendua.dev/reactive";
+import { Subject } from "rxjs";
 import { div } from "./div.js";
 import { text } from "./text.js";
+import { getBoundingClientRectCached, setSubject } from "./cache.js";
 
 /**
  * @import {Observable} from 'rxjs';
@@ -20,6 +23,13 @@ export function createPortal(ctx) {
 
   /** @type {WeakMap<Object3D, () => void>} */
   const objectToCleanup = new WeakMap();
+
+  /** @type {Subject<unknown>} */
+  const subject = new Subject();
+
+  function invalidateLayout() {
+    subject.next(undefined);
+  }
 
   /**
    * @param {Node} node
@@ -54,24 +64,25 @@ export function createPortal(ctx) {
     if (nodeToObject.has(node)) {
       return nodeToObject.get(node);
     }
+    setSubject(node, subject);
     /** @type {Observable<THREE.Object3D> | undefined} */
-    let observable;
+    let object$;
     if (node.nodeType === Node.ELEMENT_NODE) {
       const element = /** @type {HTMLElement} */ (node);
       switch (element.tagName.toLowerCase()) {
         default: {
-          observable = div(ctx, element);
+          object$ = div(ctx, element);
         }
       }
     } else if (node.nodeType === Node.TEXT_NODE) {
-      observable = text(ctx, /** @type {Text} */ (node));
+      object$ = text(ctx, /** @type {Text} */ (node));
     }
-    if (!observable) {
+    if (!object$) {
       return undefined;
     }
     /** @type {THREE.Object3D | undefined} */
     let object;
-    const subscription = observable.subscribe({
+    const subscription = object$.subscribe({
       next: (value) => {
         object = value;
       },
@@ -101,16 +112,13 @@ export function createPortal(ctx) {
   containerElement.style.left = "0";
   containerElement.style.visibility = "hidden";
   document.body.appendChild(containerElement);
+  setSubject(containerElement, subject);
 
   const containerObject = new THREE.Group();
 
-  /**
-   * @param {ResizeObserverEntry[]} entries
-   */
-  function resizeCallback(entries) {
-    console.log("resize observed", entries);
+  function resizeCallback() {
     const scale = 0.01;
-    const boundingRect = containerElement.getBoundingClientRect();
+    const boundingRect = getBoundingClientRectCached(containerElement);
     const sizeX = scale * boundingRect.width;
     const sizeY = scale * boundingRect.height;
     containerObject.scale.set(scale, scale, scale);
@@ -118,8 +126,7 @@ export function createPortal(ctx) {
     containerObject.position.set(-sizeX / 2, sizeY / 2, 0);
   }
 
-  const resizeObserver = new ResizeObserver(resizeCallback);
-  resizeObserver.observe(containerElement);
+  const resizeSubscription = observable(resizeCallback).subscribe();
 
   /**
    * @param {MutationRecord[]} mutationList
@@ -156,10 +163,23 @@ export function createPortal(ctx) {
         });
       }
     }
+    invalidateLayout();
   };
 
   const mutationObserver = new MutationObserver(mutationCallback);
-  mutationObserver.observe(containerElement, { childList: true, subtree: true });
+  mutationObserver.observe(containerElement, {
+    childList: true,
+    subtree: true,
+    attributes: true,
+    attributeFilter: ["data-xr-hover", "data-xr-active", "class"],
+  });
+
+  function fontLoadingCallback() {
+    invalidateLayout();
+  }
+  if (document.fonts) {
+    document.fonts.addEventListener("loadingdone", fontLoadingCallback);
+  }
 
   objectToCleanup.set(containerObject, () => {
     if (containerElement.parentNode) {
@@ -168,7 +188,10 @@ export function createPortal(ctx) {
     if (containerObject.parent) {
       containerObject.parent.remove(containerObject);
     }
-    resizeObserver.disconnect();
+    if (document.fonts) {
+      document.fonts.removeEventListener("loadingdone", fontLoadingCallback);
+    }
+    resizeSubscription.unsubscribe();
     mutationObserver.disconnect();
   });
   nodeToObject.set(containerElement, containerObject);

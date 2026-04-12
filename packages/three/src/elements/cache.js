@@ -1,12 +1,16 @@
 import { addDependency, Derived } from "@apendua.dev/signal";
-import { Subject } from "rxjs";
+import { filter, Subject } from "rxjs";
 
-/** @type {WeakMap<Node, Subject<unknown>>} */
+/**
+ * @typedef {"attributes" | "childList" | "fontLoaded" | "characterData"} MutationType
+ */
+
+/** @type {WeakMap<Node, Subject<Set<MutationType>>>} */
 const subjects = new WeakMap();
 
 /**
  * @param {Node} node
- * @param {Subject<unknown>} subject
+ * @param {Subject<Set<MutationType>>} subject
  * @returns {void}
  */
 export function setSubject(node, subject) {
@@ -29,10 +33,19 @@ export function getComputedStyleCached(element, pseudoElement = null) {
   }
   let signal = signalMap.get(pseudoElement);
   if (!signal) {
+    const dependency = subjects
+      .get(element)
+      ?.pipe(
+        filter(
+          (mutations) =>
+            mutations.has("childList") ||
+            mutations.has("attributes") ||
+            mutations.has("fontLoaded"),
+        ),
+      );
     signal = new Derived(() => {
-      const subject = subjects.get(element);
-      if (subject) {
-        addDependency(subject);
+      if (dependency) {
+        addDependency(dependency);
       }
       return getComputedStyle(element, pseudoElement);
     });
@@ -51,10 +64,19 @@ let boundingClientRectCache = new WeakMap();
 export function getBoundingClientRectCached(element) {
   let signal = boundingClientRectCache.get(element);
   if (!signal) {
+    const dependency = subjects
+      .get(element)
+      ?.pipe(
+        filter(
+          (mutations) =>
+            mutations.has("childList") ||
+            mutations.has("fontLoaded") ||
+            mutations.has("characterData"),
+        ),
+      );
     signal = new Derived(() => {
-      const subject = subjects.get(element);
-      if (subject) {
-        addDependency(subject);
+      if (dependency) {
+        addDependency(dependency);
       }
       return element.getBoundingClientRect();
     });

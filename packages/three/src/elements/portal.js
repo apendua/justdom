@@ -9,6 +9,7 @@ import { getBoundingClientRectCached, setSubject } from "./cache.js";
  * @import {Observable} from 'rxjs';
  * @import {Mountable} from "@apendua.dev/reactive";
  * @import {Object3D} from 'three';
+ * @import {MutationType} from './cache.js';
  */
 
 /**
@@ -24,11 +25,14 @@ export function createPortal(ctx) {
   /** @type {WeakMap<Object3D, () => void>} */
   const objectToCleanup = new WeakMap();
 
-  /** @type {Subject<unknown>} */
+  /** @type {Subject<Set<MutationType>>} */
   const subject = new Subject();
 
-  function invalidateLayout() {
-    subject.next(undefined);
+  /**
+   * @param {Set<MutationType>} mutations
+   */
+  function invalidateLayout(mutations) {
+    subject.next(mutations);
   }
 
   /**
@@ -135,6 +139,8 @@ export function createPortal(ctx) {
     console.log("mutations observed", mutationList);
     /** @type {Set<Node>} */
     const alreadySeen = new Set();
+    /** @type {Set<MutationType>} */
+    const mutations = new Set();
     for (const mutation of mutationList) {
       const parentObject = nodeToObject.get(mutation.target);
       if (mutation.type === "childList") {
@@ -146,6 +152,7 @@ export function createPortal(ctx) {
           }
         });
       }
+      mutations.add(mutation.type);
     }
     for (const mutation of mutationList) {
       const parentObject = nodeToObject.get(mutation.target);
@@ -163,7 +170,7 @@ export function createPortal(ctx) {
         });
       }
     }
-    invalidateLayout();
+    invalidateLayout(mutations);
   };
 
   const mutationObserver = new MutationObserver(mutationCallback);
@@ -172,10 +179,11 @@ export function createPortal(ctx) {
     subtree: true,
     attributes: true,
     attributeFilter: ["data-xr-hover", "data-xr-active", "class"],
+    characterData: true,
   });
 
   function fontLoadingCallback() {
-    invalidateLayout();
+    invalidateLayout(new Set(["fontLoaded"]));
   }
   if (document.fonts) {
     document.fonts.addEventListener("loadingdone", fontLoadingCallback);

@@ -14,3 +14,4 @@ export {
 } from "./core.js";
 export { default as Computation } from "./Computation.js";
 export { toObservable } from "./operators.js";
+export * from "./types.js";

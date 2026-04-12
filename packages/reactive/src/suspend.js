@@ -3,24 +3,29 @@ import { NEVER, Observable, ReplaySubject, shareReplay, switchMap, takeUntil } f
 import { takeNothing } from "./operators.js";
 
 /**
- * @import { Mountable } from "./types.js";
+ * @import { Property } from "@apendua.dev/signal";
+ * @import { INode, Mountable } from "./types.js";
  */
 
 /**
+ * @template {INode<T>} T
  * @typedef {object} SuspendOptions
- * @property {() => Observable<Mountable<Node>>} fallback
+ * @property {() => Observable<Mountable<T>>} fallback
  */
 
+/**
+ * @template {INode<T>} T
+ */
 class Manager {
   /** @type {Set<Promise<unknown>>} */
   #promises = new Set();
   /** @type {ReplaySubject<boolean>} */
   #subject = new ReplaySubject(1);
-  /** @type {SuspendOptions} */
+  /** @type {SuspendOptions<T>} */
   #options;
 
   /**
-   * @param {SuspendOptions} options
+   * @param {SuspendOptions<T>} options
    */
   constructor(options) {
     this.#options = { ...options };
@@ -47,12 +52,12 @@ class Manager {
   }
 
   /**
-   * @param {Observable<Mountable<Node>>} content
-   * @returns {Observable<Mountable<Node>>}
+   * @param {Observable<Mountable<T>>} content
+   * @returns {Observable<Mountable<T>>}
    */
   render(content) {
     return new Observable((subscriber) => {
-      const shared = shareReplay({ bufferSize: 1, refCount: true })(content);
+      const shared = content.pipe(shareReplay({ bufferSize: 1, refCount: true }));
       this.#subject
         .pipe(
           switchMap((value) => (value ? shared : this.#options.fallback())),
@@ -65,6 +70,7 @@ class Manager {
   }
 }
 
+/** @type {Property<Manager<any>>} */
 const Context = createProperty(() => {
   return new Manager({
     // This effectively renders nothing while suspended.
@@ -83,12 +89,13 @@ export function waitFor(ctx, promise) {
 }
 
 /**
+ * @template {INode<T>} T
  * @param {WeakKey} ctx
- * @param {SuspendOptions | SuspendOptions['fallback']} [fallbackOrOptions]
+ * @param {SuspendOptions<T> | SuspendOptions<T>['fallback']} [fallbackOrOptions]
  * @returns {WeakKey}
  */
 export function suspend(ctx, fallbackOrOptions) {
-  /** @type {SuspendOptions} */
+  /** @type {SuspendOptions<T>} */
   const options = {};
   if (typeof fallbackOrOptions === "function") {
     options.fallback = fallbackOrOptions;
@@ -101,9 +108,10 @@ export function suspend(ctx, fallbackOrOptions) {
 }
 
 /**
+ * @template {INode<T>} T
  * @param {WeakKey} ctx
- * @param {Observable<Mountable<Node>>} content
- * @returns {Observable<Mountable<Node>>}
+ * @param {Observable<Mountable<T>>} content
+ * @returns {Observable<Mountable<T>>}
  */
 export function withFallback(ctx, content) {
   const manager = Context.get(ctx);

@@ -22,8 +22,9 @@
     "build": "npm run test && npm run compile && npm run build:types",
     "build:types": "tsc --project tsconfig.types.json",
     "compile": "tsc --project tsconfig.build.json",
-    "test": "node --test \"src/**/*.test.js\"",
-    "test:coverage": "node --test --experimental-test-coverage \"src/**/*.test.js\"",
+    "test": "npm run test:typecheck && node --test \"src/**/*.test.js\"",
+    "test:coverage": "npm run test:typecheck && node --test --experimental-test-coverage \"src/**/*.test.js\"",
+    "test:typecheck": "tsc --project tsconfig.json --noEmit",
     "test:watch": "node --test --watch \"src/**/*.test.js\""
   },
   "dependencies": {

@@ -3,16 +3,21 @@ import { describe, it, mock } from "node:test";
 
 import { withComputation, makeNonReactive } from "./core.js";
 
+const fakeComputation = {
+  addDependency: () => {},
+  onCleanup: () => {},
+};
+
 describe("withComputation", function () {
   it("returns callback result", function () {
-    const result = withComputation({}, () => 42);
+    const result = withComputation(fakeComputation, () => 42);
     assert.strictEqual(result, 42);
   });
 
   it("rethrows callback errors", function () {
     const err = new Error("failure");
     assert.throws(() => {
-      withComputation({}, () => {
+      withComputation(fakeComputation, () => {
         throw err;
       });
     }, err);

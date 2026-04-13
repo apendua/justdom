@@ -3,6 +3,12 @@ import assert from "node:assert/strict";
 import { observable, component, just } from "./factories.js";
 import { Signal } from "@apendua.dev/signal";
 
+/**
+ * @param {it.Mock<(...args: unknown[]) => unknown>} fn
+ * @param {number} callIndex
+ * @param {number} argumentIndex
+ * @param {unknown} expected
+ */
 function assertNthCallArgumentEqual(fn, callIndex, argumentIndex, expected) {
   assert.ok(fn.mock.calls.length > callIndex);
   assert.deepStrictEqual(fn.mock.calls[callIndex].arguments[argumentIndex], expected);

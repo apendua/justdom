@@ -1,6 +1,5 @@
 {
   "compilerOptions": {
-    "lib": ["ES2022", "DOM"],
     "sourceRoot": "./src",
     "typeRoots": ["./node_modules/@types", "./node_modules/@webgpu/types"],
     "rootDirs": ["./src"],
@@ -8,6 +7,6 @@
     "outDir": "./lib"
   },
   "include": ["src"],
-  "extends": "../../common/config/typescript/tsconfig.package-base.json",
+  "extends": "../../common/config/typescript/tsconfig.package-browser-base.json",
   "exclude": ["src/**/*.test.*", "src/test/**", "src/testUtils/**"]
 }

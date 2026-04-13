@@ -17,11 +17,11 @@ function identity(v) {
 }
 
 /**
- * @param {Vector} v
+ * @param {VectorLike} v
  * @returns {{ x: number; y: number; z: number }}
  */
 function toPlainVector(v) {
-  return { x: v.x, y: v.y, z: v.z };
+  return { x: v.x, y: v.y, z: v.z ?? 0 };
 }
 
 /**
@@ -33,13 +33,13 @@ function toPlainEdges(edges) {
 }
 
 /**
- * @param {{ hex: Vector; off: Vector }} value
- * @returns {{ hex: { x: number; y: number; z: number }; off: { x: number; y: number; z: number } }}
+ * @param {{ hex?: VectorLike; off?: VectorLike }} value
+ * @returns {{ hex?: { x: number; y: number; z: number }; off?: { x: number; y: number; z: number } }}
  */
 function toPlainHexOffset(value) {
   return {
-    hex: toPlainVector(value.hex),
-    off: toPlainVector(value.off),
+    hex: value.hex && toPlainVector(value.hex),
+    off: value.off && toPlainVector(value.off),
   };
 }
 

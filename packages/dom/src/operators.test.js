@@ -1,6 +1,6 @@
 import { describe, it, mock } from "node:test";
 import assert from "node:assert/strict";
-import userEvent from "@testing-library/user-event";
+import { userEvent } from "@testing-library/user-event";
 import { just } from "@apendua.dev/reactive";
 import { map, Observable, Subject } from "rxjs";
 import { on, set, attr, data, style } from "./operators.js";

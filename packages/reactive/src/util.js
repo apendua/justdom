@@ -80,3 +80,34 @@ export function all(...operators) {
     return operators.reduce((prev, fn) => fn(prev), source);
   };
 }
+
+/**
+ * @template T, U
+ * @param {(value: T) => U} fn
+ * @return {(value: T) => U}
+ */
+export function memoize(fn) {
+  /** @type {Map<T, U>} */
+  const cache = new Map();
+  return (arg) => {
+    if (cache.has(arg)) {
+      return /** @type {U} */ (cache.get(arg));
+    }
+    const result = fn(arg);
+    cache.set(arg, result);
+    return result;
+  };
+}
+
+/**
+ * @param {unknown} value
+ * @return {value is Record<PropertyKey, unknown>}
+ */
+export function isPlainObject(value) {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    value.constructor === Object &&
+    Object.prototype.toString.call(value) === "[object Object]"
+  );
+}

@@ -1,43 +1,13 @@
 import { filter, Subject } from "rxjs";
-import { addDependency } from "@apendua.dev/signal";
+import { addDependency, batch, Derived, withComputation } from "@apendua.dev/signal";
 import Emitter from "./Emitter.js";
 import { useEffects } from "./operators.js";
+import { memoize, isPlainObject } from "./util.js";
 
 /**
  * @import {MonoTypeOperatorFunction} from "rxjs"
  * @import {IEmitter} from "./Emitter.js";
  */
-
-/**
- * @param {unknown} value
- * @return {value is Record<PropertyKey, unknown>}
- */
-function isPlainObject(value) {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    value.constructor === Object &&
-    Object.prototype.toString.call(value) === "[object Object]"
-  );
-}
-
-/**
- * @template T, U
- * @param {(value: T) => U} fn
- * @return {(value: T) => U}
- */
-function memoize(fn) {
-  /** @type {Map<T, U>} */
-  const cache = new Map();
-  return (arg) => {
-    if (cache.has(arg)) {
-      return /** @type {U} */ (cache.get(arg));
-    }
-    const result = fn(arg);
-    cache.set(arg, result);
-    return result;
-  };
-}
 
 /** @type {WeakMap<object, Emitter<Record<PropertyKey, unknown>>>} */
 const emitters = new WeakMap();
@@ -59,6 +29,25 @@ export function emit(data, event, payload) {
 
 /**
  * @template {object} T
+ * @param {T} oldValue
+ * @param {T} newValue
+ */
+export function replace(oldValue, newValue) {
+  if (!isPlainObject(newValue) || !isPlainObject(oldValue)) {
+    throw new Error("replace can only be used with plain objects");
+  }
+  batch(() => {
+    Object.assign(oldValue, newValue);
+    for (const k of Reflect.ownKeys(oldValue)) {
+      if (!Reflect.has(newValue, k)) {
+        delete oldValue[k];
+      }
+    }
+  });
+}
+
+/**
+ * @template {object} T
  * @template {object} [TEventMap={}]
  * @overload
  * @param {T} data
@@ -73,15 +62,46 @@ export function emit(data, event, payload) {
  */
 function store(data, operators = []) {
   // TODO(@apendua): Handle array methods to trigger reactivity.
-  const state = /** @type {Record<PropertyKey, unknown>} */ ({ ...data });
+  /** @type {Record<PropertyKey, unknown>} */
+  const state = withComputation(null, () => {
+    if (!isPlainObject(data)) {
+      throw new Error("Store can only be created from a plain object");
+    }
+    const newData = { ...data };
+    for (const [key, value] of Object.entries(newData)) {
+      if (isPlainObject(value)) {
+        newData[key] = store(value);
+      }
+    }
+    return newData;
+  });
   /** @type {Subject<{ key: PropertyKey }>} */
   const changes = new Subject();
   const ownKeys = Symbol("ownKeys");
 
+  /** @type {Map<PropertyKey, Derived<unknown>>} */
+  const derived = new Map();
+
+  /** @type {Map<PropertyKey, () => unknown>} */
+  const getters = new Map();
+  /** @type {Map<PropertyKey, (value: unknown) => void>} */
+  const setters = new Map();
+
+  for (const [key, descriptor] of Object.entries(Object.getOwnPropertyDescriptors(data))) {
+    if (descriptor.get) {
+      getters.set(key, descriptor.get);
+    }
+    if (descriptor.set) {
+      setters.set(key, descriptor.set);
+    }
+  }
+
   /**
    * @param {PropertyKey} key
    */
-  const getChangesAtKey = memoize((key) => changes.pipe(filter((change) => change.key === key)));
+  const getChangesAtKey = memoize((/** @type {PropertyKey} */ key) =>
+    changes.pipe(filter((change) => change.key === key)),
+  );
 
   /** @type {WeakMap<object, object>} */
   const cache = new WeakMap();
@@ -91,7 +111,7 @@ function store(data, operators = []) {
   const removeEventListener = eventListener.removeEventListener.bind(eventListener);
 
   const proxy = new Proxy(state, {
-    get(_, key) {
+    get(_, key, receiver) {
       if (key === "addEventListener") {
         return addEventListener;
       }
@@ -99,23 +119,39 @@ function store(data, operators = []) {
         return removeEventListener;
       }
       addDependency(getChangesAtKey(key));
-      if (isPlainObject(state[key])) {
-        let storeAtKey = cache.get(state[key]);
-        if (!storeAtKey) {
-          storeAtKey = store(state[key]);
-          cache.set(state[key], storeAtKey);
-        }
-        return storeAtKey;
+      const getter = getters.get(key);
+      if (!getter) {
+        return state[key];
       }
-      return state[key];
+      let signal = derived.get(key);
+      if (!signal) {
+        signal = new Derived(() => getter.call(receiver));
+        derived.set(key, signal);
+      }
+      return signal.get();
     },
-    set(_, key, value) {
-      if (Object.is(state[key], value)) {
-        return true;
+    set(_, key, newValue, receiver) {
+      const setter = setters.get(key);
+      if (setter) {
+        batch(() => {
+          setter.call(receiver, newValue);
+        });
+      } else {
+        if (isPlainObject(newValue)) {
+          const oldValue = state[key];
+          if (isPlainObject(oldValue)) {
+            replace(oldValue, newValue);
+            return true;
+          }
+          newValue = store(newValue);
+        }
+        if (Object.is(state[key], newValue)) {
+          return true;
+        }
+        state[key] = newValue;
+        changes.next({ key });
+        changes.next({ key: ownKeys });
       }
-      state[key] = value;
-      changes.next({ key });
-      changes.next({ key: ownKeys });
       return true;
     },
     has(_, key) {

@@ -78,9 +78,7 @@ export class Derived extends Computation {
         updateQueue.invalidate(this, getPriority(this));
       },
       onSubscribe: () => {
-        withComputation(null, () => {
-          this.#recompute();
-        });
+        this.#recompute();
       },
       onUnsubscribe: () => {
         this.#current = null;

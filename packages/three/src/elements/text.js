@@ -1,14 +1,19 @@
 import * as THREE from "three";
-import { batch, Signal, NoValueError, onInvalidate } from "@apendua.dev/signal";
-import { effects, component, just, set, use } from "@apendua.dev/reactive";
-import { animate } from "../render.js";
+import { NoValueError, onCleanup, Derived } from "@apendua.dev/signal";
+import { effects, component, just, set, fields, use } from "@apendua.dev/reactive";
 import { $, children } from "../operators.js";
-import { shareObservable } from "@apendua.dev/store4";
-import { generateTextGeometry } from "./textHelpers.js";
-import { getBoundingClientRectCached, getComputedStyleCached } from "./cache.js";
+import { generateTextGeometry, rectsEqual } from "./textHelpers.js";
+import {
+  getBoundingClientRectCached,
+  getComputedStyleCached,
+  getParentElement,
+  getTextClientRects,
+  getTextContent,
+} from "./cache.js";
 
 /**
  * @import { Observable } from "rxjs";
+ * @import { Rect } from "./textHelpers.js";
  */
 
 /**
@@ -71,118 +76,111 @@ function shallowEqual(objA, objB) {
 }
 
 /**
+ * @param {Rect} textRect
+ * @param {Rect[]} textRects
+ * @returns {Rect[]}
+ */
+function getRelativeTextRects(textRect, textRects) {
+  /** @type {Rect[]} */
+  const relativeRects = [];
+  for (let i = 0; i < textRects.length; i++) {
+    const rect = textRects[i];
+    relativeRects.push({
+      left: rect.left - textRect.left,
+      top: rect.top - textRect.top,
+      width: rect.width,
+      height: rect.height,
+    });
+  }
+  return relativeRects;
+}
+
+/**
  * @param {WeakKey} ctx
  * @param {Text} textNode
  * @returns {Observable<THREE.Object3D>}
  */
 export function text(ctx, textNode) {
   const object = new THREE.Object3D();
-  /** @type {Signal<string>} */
-  const textColor = new Signal();
-  /** @type {Signal<string>} */
-  const fontFamily = new Signal();
-  /** @type {Signal<number>} */
-  const fontSize = new Signal();
   // /** @type {Derived<Font>} */
   // const font = new Derived(() => {
   //   const fontUrl = findFontUrl(fontFamily.get());
   //   return getValueFromDependency(loadFont(fontUrl));
   // });
-  /** @type {Signal<string>} */
-  const textContent = new Signal();
-  /** @type {Signal<boolean>} */
-  const textJustify = new Signal();
-  /** @type {Signal<DOMRect>} */
-  const textRect = new Signal(undefined, (a, b) => {
-    return shallowEqual(a.toJSON(), b.toJSON());
-  });
-  /** @type {Signal<DOMRectList>} */
-  const textRects = new Signal(undefined, (a, b) => {
-    if (a.length !== b.length) {
-      return false;
-    }
-    for (let i = 0; i < a.length; i++) {
-      if (!shallowEqual(a[i].toJSON(), b[i].toJSON())) {
-        return false;
-      }
-    }
-    return true;
+  const textContent = new Derived(() => {
+    return getTextContent(textNode);
   });
 
-  // const material = new Derived(() => {
-  //   const basic = new THREE.MeshBasicMaterial();
-  //   new Derived(() => {
-  //     basic.color.set(backgroundColor.get());
-  //   }).get();
-  //   onInvalidate(() => {
-  //     basic.dispose();
-  //   });
-  //   return basic;
-  // });
+  const textRect = fields(() => {
+    return getTextClientRects(textNode)[0];
+  });
 
-  const textMaterial = shareObservable(() => {
-    return just(
-      new THREE.MeshBasicMaterial({
-        side: THREE.DoubleSide,
-      }),
-      [
-        effects((material) => {
-          material.color.set(textColor.get() ?? "black");
-        }),
-        effects((material) => {
-          onInvalidate(() => {
-            material.dispose();
-          });
-        }),
-      ],
-    );
+  const textRects = new Derived(
+    () => {
+      const [boundingRect, clientRects] = getTextClientRects(textNode);
+      return getRelativeTextRects(boundingRect, Array.from(clientRects));
+    },
+    (a, b) => {
+      return (
+        a.length == b.length &&
+        a.every((rectA, index) => {
+          return rectsEqual(rectA, b[index]);
+        })
+      );
+    },
+  );
+
+  const style = fields(() => {
+    return getComputedStyleCached(textNode);
+  });
+
+  const fontUrl = new Derived(() => {
+    return findFontUrl(style.fontFamily);
+  });
+
+  const fontSize = new Derived(() => {
+    const size = parseFloat(style.fontSize);
+    if (Number.isNaN(size)) {
+      throw new NoValueError();
+    }
+    return size;
+  });
+
+  const parentRect = fields(() => {
+    const parentElement = getParentElement(textNode);
+    if (!parentElement) {
+      throw new NoValueError();
+    }
+    return getBoundingClientRectCached(parentElement);
   });
 
   return just(object, [
     effects((obj) => {
-      const { left, top } = textRect.get();
-      const parentRect = textNode.parentElement
-        ? getBoundingClientRectCached(textNode.parentElement)
-        : null;
-      if (parentRect) {
-        const offsetX = left - parentRect.left;
-        const offsetY = top - parentRect.top;
-        obj.position.set(offsetX, offsetY, -0.01);
-      } else {
-        obj.position.set(left, top, -0.01);
-      }
-    }),
-    effects(() => {
-      if (!textNode.parentElement) {
-        return;
-      }
-      const style = getComputedStyleCached(textNode.parentElement);
-
-      const textRange = document.createRange();
-      textRange.selectNodeContents(textNode);
-
-      batch(() => {
-        textColor.set(style.color);
-        fontFamily.set(style.fontFamily);
-        fontSize.set(parseFloat(style.fontSize));
-        textContent.set(textNode.textContent);
-        textJustify.set(style.textAlign === "justify");
-        textRect.set(textRange.getBoundingClientRect());
-        textRects.set(textRange.getClientRects());
-      });
+      const offsetX = textRect.left - parentRect.left;
+      const offsetY = textRect.top - parentRect.top;
+      obj.position.set(offsetX, offsetY, -0.01);
     }),
     children(
       $(new THREE.Mesh(), [
-        set("material", textMaterial()),
+        set("material", () => {
+          const basic = new THREE.MeshBasicMaterial({
+            side: THREE.DoubleSide,
+          });
+          use(() => {
+            basic.color.set(style.color ?? "black");
+          });
+          onCleanup(() => {
+            basic.dispose();
+          });
+          return basic;
+        }),
         set(
           "geometry",
           component(() => {
-            const fontUrl = findFontUrl(fontFamily.get());
             return generateTextGeometry(
-              textContent.get() || "",
-              fontUrl,
+              textContent.get(),
+              fontUrl.get(),
               fontSize.get(),
-              textRect.get(),
               textRects.get(),
             );
           })(),

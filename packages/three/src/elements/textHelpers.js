@@ -1,9 +1,33 @@
 import * as THREE from "three";
 import { Observable } from "rxjs";
-import { onInvalidate } from "@apendua.dev/signal";
+import { onCleanup } from "@apendua.dev/signal";
 import { map } from "@apendua.dev/reactive";
 import { shareObservable } from "@apendua.dev/store4";
 import { Font } from "three/examples/jsm/loaders/FontLoader.js";
+
+/**
+ * @typedef {object} Rect
+ * @property {number} left
+ * @property {number} top
+ * @property {number} width
+ * @property {number} height
+ */
+
+const EPSILON = 1e-2;
+
+/**
+ * @param {Rect} rectA
+ * @param {Rect} rectB
+ * @returns {boolean}
+ */
+export const rectsEqual = (rectA, rectB) => {
+  return (
+    Math.abs(rectA.left - rectB.left) < EPSILON &&
+    Math.abs(rectA.top - rectB.top) < EPSILON &&
+    Math.abs(rectA.width - rectB.width) < EPSILON &&
+    Math.abs(rectA.height - rectB.height) < EPSILON
+  );
+};
 
 export const loadFont = shareObservable(
   /**
@@ -130,11 +154,10 @@ export const generateTextGeometry = shareObservable(
    * @param {string} text
    * @param {string} fontUrl
    * @param {number} fontSize
-   * @param {DOMRect} textRect
-   * @param {DOMRectList} textRects
+   * @param {Rect[]} textRects
    * @returns {Observable<THREE.BufferGeometry>}
    */
-  (text, fontUrl, fontSize, textRect, textRects) => {
+  (text, fontUrl, fontSize, textRects) => {
     // TODO(@apendua): Handle textAlign = "justify", which requires slightly different shape generation logic.
     return loadFont(fontUrl).pipe(
       map((font) => {
@@ -149,8 +172,8 @@ export const generateTextGeometry = shareObservable(
         lines.forEach((line, i) => {
           const lineShapes = font.generateShapes(line, font.data.resolution * scale);
 
-          const xOffset = textRects[i] ? textRects[i].left - textRect.left : 0;
-          const yOffset = textRects[i] ? -textRects[i].top + textRect.top : 0;
+          const xOffset = textRects[i]?.left ?? 0;
+          const yOffset = textRects[i]?.top ?? 0;
 
           lineShapes.forEach((shape) => {
             translateShape(shape, xOffset, yOffset);
@@ -159,7 +182,7 @@ export const generateTextGeometry = shareObservable(
         });
 
         const geometry = new THREE.ShapeGeometry(allShapes);
-        onInvalidate(() => {
+        onCleanup(() => {
           geometry.dispose();
         });
         return geometry;

@@ -1,3 +1,4 @@
+import { Derived, onCleanup } from "@apendua.dev/signal";
 import { Observable } from "rxjs";
 
 /**
@@ -110,4 +111,114 @@ export function isPlainObject(value) {
     value.constructor === Object &&
     Object.prototype.toString.call(value) === "[object Object]"
   );
+}
+
+/**
+ * @param {unknown} a
+ * @param {unknown} b
+ * @returns {boolean}
+ */
+export function shallowEqual(a, b) {
+  if (Object.is(a, b)) {
+    return true;
+  }
+  if (isPlainObject(a) && isPlainObject(b)) {
+    const aKeys = Object.keys(a);
+    const bKeys = Object.keys(b);
+    if (aKeys.length !== bKeys.length) {
+      return false;
+    }
+    return aKeys.every((key) => Object.is(a[key], b[key]));
+  }
+  if (Array.isArray(a) && Array.isArray(b)) {
+    if (a.length !== b.length) {
+      return false;
+    }
+    return a.every((item, index) => Object.is(item, b[index]));
+  }
+  return false;
+}
+
+/**
+ * @template {object} T
+ * @template {keyof T} K
+ * @typedef {{ [P in K]-?: T[P] } & Omit<T, K>} RequiredKeys
+ */
+
+/**
+ * @template TKey, TValue
+ * @typedef {object} Cache
+ * @property {(key: TKey) => TValue | undefined} get
+ * @property {(key: TKey, value: TValue) => void} set
+ * @property {(key: TKey) => void} delete
+ */
+
+/**
+ * @template TKey
+ * @template TValue
+ * @template {unknown[]} TArgs
+ * @typedef {object} MemoizeOptions
+ * @property {(...args: TArgs) => TKey} [getKey]
+ * @property {Cache<TKey, Derived<TValue>>} [cache]
+ * @property {(a: TValue, b: TValue) => boolean} [isEqual]
+ */
+
+/**
+ * @template TKey
+ * @template TValue
+ * @template {unknown[]} TArgs
+ * @overload
+ * @param {(...args: TArgs) => TValue} fn
+ * @param {RequiredKeys<MemoizeOptions<TKey, TValue, TArgs>, "getKey" | "cache">} [options]
+ * @returns {(...args: TArgs) => TValue}
+ */
+
+/**
+ * @template TKey
+ * @template TValue
+ * @overload
+ * @param {(key: TKey) => TValue} fn
+ * @param {MemoizeOptions<TKey, TValue, [TKey]>} [options]
+ * @returns {(key: TKey) => TValue}
+ */
+
+/**
+ * @param {(...args: unknown[]) => unknown} fn
+ * @param {MemoizeOptions<unknown, unknown, unknown[]>} [options]
+ * @returns {(...args: unknown[]) => unknown}
+ */
+export function memoize2(fn, options = {}) {
+  const {
+    cache = /** @type {Cache<unknown, Derived<unknown>>} */ (new Map()),
+    getKey = (...args) => args[0],
+    isEqual,
+  } = options;
+
+  /**
+   * @param {unknown[]} args
+   * @returns {Derived<unknown>}
+   */
+  function getSignal(...args) {
+    const key = getKey(...args);
+    const signal = cache.get(key);
+    if (signal) {
+      return signal;
+    }
+    /** @type {Derived<unknown>} */
+    const newSignal = new Derived(
+      () => {
+        cache.set(key, newSignal);
+        onCleanup(() => {
+          cache.delete(key);
+        });
+        return fn(...args);
+      },
+      { deferred: true, isEqual },
+    );
+    return newSignal;
+  }
+
+  return (...args) => {
+    return getSignal(...args).get();
+  };
 }

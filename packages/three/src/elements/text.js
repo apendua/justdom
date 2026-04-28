@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { NoValueError, onCleanup } from "@apendua.dev/signal";
-import { effects, just, set, fields } from "@apendua.dev/reactive";
+import { effects, just, set, selector } from "@apendua.dev/reactive";
 import { $, children } from "../operators.js";
 import { generateTextTexture, getTextRenderStyle, makeTextQuadGeometry } from "./textHelpers.js";
 import {
@@ -33,15 +33,15 @@ function getViewportDpr() {
 export function text(_, textNode) {
   const object = new THREE.Object3D();
 
-  const textRect = fields(() => {
+  const textRect = selector(() => {
     return getTextClientRects(textNode)[0];
   });
 
-  const style = fields(() => {
+  const style = selector(() => {
     return getComputedStyleCached(textNode);
   });
 
-  const textureData = fields(() => {
+  const textureData = selector(() => {
     // console.log(
     //   "Generating text texture for:",
     //   withComputation(null, () => textContent.get()),
@@ -54,7 +54,7 @@ export function text(_, textNode) {
     );
   });
 
-  const parentRect = fields(() => {
+  const parentRect = selector(() => {
     const parentElement = getParentElement(textNode);
     if (!parentElement) {
       throw new NoValueError();

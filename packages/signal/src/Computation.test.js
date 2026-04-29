@@ -8,7 +8,7 @@ describe("Computation", function () {
   it("subscribes to dependencies added before activation", function () {
     const notify = mock.fn();
     const dependency = new Subject();
-    const computation = new Computation({ onDependencyInvalidate: notify });
+    const computation = new Computation({ onInvalidateDependency: notify });
 
     computation.addDependency(dependency);
     dependency.next(undefined);
@@ -26,7 +26,7 @@ describe("Computation", function () {
   it("subscribes immediately when dependency is added while active", function () {
     const notify = mock.fn();
     const dependency = new Subject();
-    const computation = new Computation({ onDependencyInvalidate: notify });
+    const computation = new Computation({ onInvalidateDependency: notify });
     const subscription = computation.subscribe({});
 
     computation.addDependency(dependency);
@@ -41,7 +41,7 @@ describe("Computation", function () {
   it("does not create duplicate subscriptions for the same dependency", function () {
     const notify = mock.fn();
     const dependency = new Subject();
-    const computation = new Computation({ onDependencyInvalidate: notify });
+    const computation = new Computation({ onInvalidateDependency: notify });
     const subscription = computation.subscribe({});
 
     computation.addDependency(dependency);
@@ -56,7 +56,7 @@ describe("Computation", function () {
   it("skips synchronous emissions when subscribing to a dependency", function () {
     const notify = mock.fn();
     const dependency = new BehaviorSubject(0);
-    const computation = new Computation({ onDependencyInvalidate: notify });
+    const computation = new Computation({ onInvalidateDependency: notify });
 
     computation.addDependency(dependency);
     const subscription = computation.subscribe({});
@@ -72,7 +72,7 @@ describe("Computation", function () {
   it("shares a single dependency subscription across multiple observers", function () {
     const notify = mock.fn();
     const dependency = new Subject();
-    const computation = new Computation({ onDependencyInvalidate: notify });
+    const computation = new Computation({ onInvalidateDependency: notify });
 
     const subscription1 = computation.subscribe({});
     const subscription2 = computation.subscribe({});
@@ -149,7 +149,7 @@ describe("Computation", function () {
     const notify = mock.fn();
     const dependency1 = new Subject();
     const dependency2 = new Subject();
-    const computation = new Computation({ onDependencyInvalidate: notify });
+    const computation = new Computation({ onInvalidateDependency: notify });
     const subscription = computation.subscribe({});
 
     computation.run(() => {

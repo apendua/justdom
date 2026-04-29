@@ -15,7 +15,7 @@ import { withComputation, makeNonReactive, skipSynchronousValues, NoValueError }
 /**
  * @typedef {object} ComputationOptions
  * @property {boolean | (() => ObservableInput<unknown>)} [resetOnRefCountZero]
- * @property {(observable: Subscribable<unknown>) => void} [onDependencyInvalidate]
+ * @property {(observable: Subscribable<unknown>) => void} [onInvalidateDependency]
  * @property {() => void} [onSubscribe]
  * @property {() => void} [onUnsubscribe]
  */
@@ -169,7 +169,7 @@ class Computation {
           observable,
           skipSynchronousValues(observable).subscribe({
             next: () => {
-              this.#options.onDependencyInvalidate?.(observable);
+              this.#options.onInvalidateDependency?.(observable);
             },
             error: (err) => {
               this.#notifier.error(err);

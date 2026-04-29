@@ -50,7 +50,7 @@ export function addDependency(dependency) {
  * @param {() => T} [getDefaultValue]
  * @returns {T}
  */
-export function getValueFromDependency(dependency, getDefaultValue) {
+export function valueOf(dependency, getDefaultValue) {
   /** @type {{ value: T } | undefined} */
   let observed;
   /** @type {boolean} */

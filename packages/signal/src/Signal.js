@@ -1,6 +1,6 @@
 import { of, share } from "rxjs";
 import UpdateQueue from "./UpdateQueue.js";
-import { NoValueError, addDependency, withComputation, setPriority, getPriority } from "./core.js";
+import { NoValueError, addDependency, setPriority, getPriority } from "./core.js";
 import Computation from "./Computation.js";
 import nextTick from "./nextTick.js";
 
@@ -74,7 +74,7 @@ export class Derived extends Computation {
       resetOnRefCountZero: () => {
         return this.#deferred ? onNextTick : of(null);
       },
-      onDependencyInvalidate: () => {
+      onInvalidateDependency: () => {
         updateQueue.invalidate(this, getPriority(this));
       },
       onSubscribe: () => {

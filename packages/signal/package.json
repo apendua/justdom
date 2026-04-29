@@ -34,7 +34,6 @@
     "test:watch": "node --test --watch \"src/**/*.test.js\""
   },
   "dependencies": {
-    "@apendua.dev/heap": "workspace:*",
     "rxjs": "^7.8.2"
   },
   "devDependencies": {

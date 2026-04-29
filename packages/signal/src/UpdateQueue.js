@@ -1,4 +1,4 @@
-import { Heap } from "@apendua.dev/heap";
+import { Heap } from "./Heap.js";
 
 /**
  * @typedef {object} Task

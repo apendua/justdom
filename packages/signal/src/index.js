@@ -6,7 +6,7 @@ export {
   onInvalidate,
   withComputation,
   makeNonReactive,
-  getValueFromDependency,
+  valueOf,
   setPriority,
   setPriorityFn,
   getPriority,

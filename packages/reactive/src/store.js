@@ -103,8 +103,6 @@ function store(data, operators = []) {
     changes.pipe(filter((change) => change.key === key)),
   );
 
-  /** @type {WeakMap<object, object>} */
-  const cache = new WeakMap();
   /** @type {Emitter<Record<PropertyKey, unknown>>} */
   const eventListener = new Emitter();
   const addEventListener = eventListener.addEventListener.bind(eventListener);
@@ -131,28 +129,28 @@ function store(data, operators = []) {
       return signal.get();
     },
     set(_, key, newValue, receiver) {
-      const setter = setters.get(key);
-      if (setter) {
-        batch(() => {
+      return withComputation(null, () => {
+        const setter = setters.get(key);
+        if (setter) {
           setter.call(receiver, newValue);
-        });
-      } else {
-        if (isPlainObject(newValue)) {
-          const oldValue = state[key];
-          if (isPlainObject(oldValue)) {
-            replace(oldValue, newValue);
+        } else {
+          if (isPlainObject(newValue)) {
+            const oldValue = state[key];
+            if (isPlainObject(oldValue)) {
+              replace(oldValue, newValue);
+              return true;
+            }
+            newValue = store(newValue);
+          }
+          if (Object.is(state[key], newValue)) {
             return true;
           }
-          newValue = store(newValue);
+          state[key] = newValue;
+          changes.next({ key });
+          changes.next({ key: ownKeys });
         }
-        if (Object.is(state[key], newValue)) {
-          return true;
-        }
-        state[key] = newValue;
-        changes.next({ key });
-        changes.next({ key: ownKeys });
-      }
-      return true;
+        return true;
+      });
     },
     has(_, key) {
       addDependency(getChangesAtKey(key));

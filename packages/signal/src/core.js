@@ -152,6 +152,15 @@ export function skipSynchronousValues(source) {
   });
 }
 
+export class CircularDependencyError extends Error {
+  /**
+   * @param {string} [message]
+   */
+  constructor(message) {
+    super(message || "Circular dependency detected");
+  }
+}
+
 export class NoValueError extends Error {
   /**
    * @param {string} [message]

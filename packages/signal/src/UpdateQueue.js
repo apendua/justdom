@@ -8,7 +8,11 @@ import { Heap } from "./Heap.js";
 export default class UpdateQueue {
   /** @type {WeakMap<Task, number>} */
   #priorities = new WeakMap();
+
+  /** @type {boolean} */
   #isBatching = false;
+
+  /** @type {boolean} */
   #isFlushing = false;
 
   /** @type {Map<Task, number>} */
@@ -59,11 +63,19 @@ export default class UpdateQueue {
     if (this.#isFlushing) {
       return;
     }
-    this.#isFlushing = true;
-    while (this.#queue.size > 0) {
-      this.#queue.pop().invalidate();
+    try {
+      this.#isFlushing = true;
+      while (this.#queue.size > 0) {
+        this.#queue.pop().invalidate();
+      }
+    } catch (err) {
+      // If we failed in the middle of a flush, we'd better clear the queue to avoid running into
+      // troubles if someone tries to invalidate something later on.
+      this.#queue.clear();
+      throw err;
+    } finally {
+      this.#isFlushing = false;
     }
-    this.#isFlushing = false;
   }
 
   /**

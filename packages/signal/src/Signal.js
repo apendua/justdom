@@ -1,6 +1,13 @@
 import { of, share } from "rxjs";
 import UpdateQueue from "./UpdateQueue.js";
-import { NoValueError, addDependency, setPriority, getPriority } from "./core.js";
+import {
+  NoValueError,
+  CircularDependencyError,
+  addDependency,
+  setPriority,
+  getPriority,
+  makeNonReactive,
+} from "./core.js";
 import Computation from "./Computation.js";
 import nextTick from "./nextTick.js";
 
@@ -65,6 +72,9 @@ export class Derived extends Computation {
   /** @type {number} */
   #evaluations = 0;
 
+  /** @type {boolean} */
+  #recomputing = false;
+
   /**
    * @param {(ctx: EvaluationContext<T>) => T} evaluate
    * @param {((a: T, b: T) => boolean) | DerivedOptions<T>} [options]
@@ -74,7 +84,7 @@ export class Derived extends Computation {
       resetOnRefCountZero: () => {
         return this.#deferred ? onNextTick : of(null);
       },
-      onInvalidateDependency: () => {
+      onInvalidateDependency: (dependency) => {
         updateQueue.invalidate(this, getPriority(this));
       },
       onSubscribe: () => {
@@ -100,6 +110,8 @@ export class Derived extends Computation {
       return this.#current.value;
     }
     const value = this.#recompute();
+    // addDependency will need to know the priority of the current computation,
+    // which will only be known after recompute() is called.
     addDependency(this);
     return value;
   }
@@ -117,6 +129,11 @@ export class Derived extends Computation {
   }
 
   invalidate() {
+    // If invalidate was called while recomputing, it means we have a circular dependency,
+    // i.e. we depenend on a signal that was updated during the current recomputation.
+    if (this.#recomputing) {
+      throw new CircularDependencyError();
+    }
     if (!this.#current) {
       // If we have no current value, there's no way we can figure out if
       // something changed or not, so we just notify all potential dependents,
@@ -143,9 +160,16 @@ export class Derived extends Computation {
 
   #recompute() {
     return this.run(() => {
+      // If we're already recomputing, it means we have a circular dependency
+      // between different derived computations. We fail quickly and let the
+      // user fix the problem.
+      if (this.#recomputing) {
+        throw new CircularDependencyError();
+      }
       try {
         this.#priority = 0;
         this.#evaluations += 1;
+        this.#recomputing = true;
         const newValue = this.#evaluate(this.#getContext());
         if (!this.isActive()) {
           return newValue;
@@ -157,6 +181,7 @@ export class Derived extends Computation {
         }
         return this.#current.value;
       } finally {
+        this.#recomputing = false;
         setPriority(this, this.#priority);
       }
     });
@@ -205,7 +230,7 @@ export class Signal extends Computation {
    */
   constructor(current, isEqual = Object.is) {
     super();
-    this.#isEqual = isEqual;
+    this.#isEqual = makeNonReactive(isEqual);
     this.#current = current;
   }
 
@@ -236,10 +261,10 @@ export class Signal extends Computation {
       if (!onNoValue) {
         throw new NoValueError();
       }
-      this.set(onNoValue());
-      return;
+      this.set(makeNonReactive(onNoValue)());
+    } else {
+      this.set(makeNonReactive(fn)(this.#current.value));
     }
-    this.set(fn(this.#current.value));
   }
 
   /**

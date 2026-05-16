@@ -145,6 +145,7 @@ class Computation {
 
   /**
    * @param {() => void} fn
+   * @returns {void}
    */
   onCleanup(fn) {
     fn = makeNonReactive(fn);

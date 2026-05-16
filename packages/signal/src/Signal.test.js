@@ -2,7 +2,7 @@ import { it, mock } from "node:test";
 import assert from "node:assert/strict";
 
 import { Signal, Derived, batch } from "./Signal.js";
-import { makeNonReactive, addDependency, onCleanup } from "./core.js";
+import { makeNonReactive, addDependency, onCleanup, CircularDependencyError } from "./core.js";
 
 it("should not memoize value if not subscribed", function () {
   let computeCount = 0;
@@ -169,4 +169,43 @@ it("should not rerun if changes happen within no-reactive block", function () {
   assert.strictEqual(derived.get(), 1);
   assert.strictEqual(spy.mock.calls.length, 0);
   subscription.unsubscribe();
+});
+
+it("should detect circular dependencies on initial subscribe", function () {
+  const onError = mock.fn();
+  const s1 = Signal.of(0);
+  const s2 = new Derived(() => {
+    s1.set(s1.get() + 1);
+  });
+  s2.subscribe({
+    error: onError,
+  });
+  assert.equal(onError.mock.calls.length, 1);
+  assert.equal(onError.mock.calls[0].arguments[0] instanceof CircularDependencyError, true);
+});
+
+it("should gracefully handle circular dependencies which converge to a stable state", function () {
+  const onError = mock.fn();
+  const s1 = Signal.of(0);
+  const s2 = new Derived(() => {
+    // This looks like a circular dependency, but upon the second iteration the set
+    // operation becomes a no-op, so it is actually safe to allow this.
+    // This may be useful in certain scenarios.
+    s1.set(Math.abs(s1.get()));
+  });
+  s2.subscribe({
+    error: onError,
+  });
+  s1.set(-1);
+  assert.equal(s1.get(), 1);
+  assert.equal(onError.mock.calls.length, 0);
+});
+
+it("should detect circular dependencies in derived computations", function () {
+  /** @type {Derived<number>} */
+  const a = new Derived(() => b.get() + 1);
+  /** @type {Derived<number>} */
+  const b = new Derived(() => a.get() + 1);
+  assert.throws(() => a.get(), CircularDependencyError);
+  assert.throws(() => b.get(), CircularDependencyError);
 });

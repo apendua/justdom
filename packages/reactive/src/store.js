@@ -28,17 +28,28 @@ export function emit(data, event, payload) {
 }
 
 /**
- * @template {object} T
- * @param {T} oldValue
- * @param {T} newValue
+ * @param {object} value
+ */
+function ownKeysNoComputation(value) {
+  return withComputation(null, () => Reflect.ownKeys(value));
+}
+
+/**
+ * @param {unknown} value
+ * @return {value is Record<PropertyKey, unknown>}
+ */
+function isPlainObjectNoComputation(value) {
+  return withComputation(null, () => isPlainObject(value));
+}
+
+/**
+ * @param {Record<PropertyKey, unknown>} oldValue
+ * @param {Record<PropertyKey, unknown>} newValue
  */
 export function replace(oldValue, newValue) {
-  if (!isPlainObject(newValue) || !isPlainObject(oldValue)) {
-    throw new Error("replace can only be used with plain objects");
-  }
   batch(() => {
     Object.assign(oldValue, newValue);
-    for (const k of Reflect.ownKeys(oldValue)) {
+    for (const k of ownKeysNoComputation(oldValue)) {
       if (!Reflect.has(newValue, k)) {
         delete oldValue[k];
       }
@@ -129,28 +140,28 @@ function store(data, operators = []) {
       return signal.get();
     },
     set(_, key, newValue, receiver) {
-      return withComputation(null, () => {
-        const setter = setters.get(key);
-        if (setter) {
-          setter.call(receiver, newValue);
-        } else {
-          if (isPlainObject(newValue)) {
-            const oldValue = state[key];
-            if (isPlainObject(oldValue)) {
-              replace(oldValue, newValue);
-              return true;
-            }
-            newValue = store(newValue);
-          }
-          if (Object.is(state[key], newValue)) {
+      const setter = setters.get(key);
+      if (setter) {
+        setter.call(receiver, newValue);
+      } else {
+        if (isPlainObject(newValue)) {
+          const oldValue = state[key];
+          // We need to use non-reactive version of isPlainObject to prevent accidentally creating
+          // a circular dependency on oldValue should it be a store itself.
+          if (isPlainObjectNoComputation(oldValue)) {
+            replace(oldValue, newValue);
             return true;
           }
-          state[key] = newValue;
-          changes.next({ key });
-          changes.next({ key: ownKeys });
+          newValue = store(newValue);
         }
-        return true;
-      });
+        if (Object.is(state[key], newValue)) {
+          return true;
+        }
+        state[key] = newValue;
+        changes.next({ key });
+        changes.next({ key: ownKeys });
+      }
+      return true;
     },
     has(_, key) {
       addDependency(getChangesAtKey(key));

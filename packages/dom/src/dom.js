@@ -1,9 +1,11 @@
-import { effectMap, just, ListRenderer, replaceSegment, toSegment } from "@apendua.dev/reactive";
+import { effectMap, just } from "@apendua.dev/reactive";
+import ListRenderer from "./ListRenderer.js";
+import { replaceSegment, toSegment } from "./helpers.js";
 import { map, tap } from "rxjs";
 
 /**
  * @import {Observable, MonoTypeOperatorFunction} from 'rxjs';
- * @import {Mountable, Container} from "@apendua.dev/reactive";
+ * @import {Mountable, Container} from "./types.js";
  */
 
 /**

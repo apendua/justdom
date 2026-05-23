@@ -7,7 +7,7 @@ import { getBoundingClientRectCached, setSubject } from "./cache.js";
 
 /**
  * @import {Observable} from 'rxjs';
- * @import {Mountable} from "@apendua.dev/reactive";
+ * @import {Mountable} from "@apendua.dev/dom";
  * @import {Object3D} from 'three';
  * @import {MutationType} from './cache.js';
  */

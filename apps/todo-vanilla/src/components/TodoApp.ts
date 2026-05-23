@@ -1,15 +1,15 @@
-import { className, text, $, children, list } from "@apendua.dev/dom";
-import { Signal, toObservable } from "@apendua.dev/signal";
 import {
-  store,
-  on,
-  set,
-  observable,
-  component,
+  className,
+  text,
+  $,
+  children,
+  list,
   suspend,
   withFallback,
   waitFor,
-} from "@apendua.dev/reactive";
+} from "@apendua.dev/dom";
+import { Signal, toObservable } from "@apendua.dev/signal";
+import { store, on, set, observable, component } from "@apendua.dev/reactive";
 import TodoItem from "./TodoItem.js";
 
 const containerStyle = className`

@@ -1,10 +1,14 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { BehaviorSubject, map, tap } from "rxjs";
+import { effectMap, just } from "@apendua.dev/reactive";
 import { replaceSegment, toSegment } from "./helpers.js";
-import { effectMap } from "./operators.js";
-import { just } from "./factories.js";
 import ListRenderer from "./ListRenderer.js";
+
+/**
+ * @import {Observable, MonoTypeOperatorFunction} from "rxjs"
+ * @import {Mountable, Container} from "./types.js"
+ */
 
 describe("renders a simple DOM tree", () => {
   it("renders an element with children", () => {
@@ -93,11 +97,6 @@ describe("renders a simple DOM tree", () => {
     assert.strictEqual(innerHTML.get(), "<ul></ul>");
   });
 });
-
-/**
- * @import {Observable, MonoTypeOperatorFunction} from "rxjs"
- * @import {Mountable, Container} from "./types.js"
- */
 
 /**
  * @returns {Container<Node>}

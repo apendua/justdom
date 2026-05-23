@@ -1,10 +1,11 @@
 /**
- * @typedef {Node & { parentNode: ParentNode }} NodeWithParent
+ * @import { INode, NodeWithParent, Segment } from './types.js';
  */
 
 /**
- * @param {[Node, Node]} segment
- * @returns {asserts segment is [NodeWithParent, NodeWithParent]}
+ * @template {INode<T>} T
+ * @param {Segment<T>} segment
+ * @returns {asserts segment is [NodeWithParent<T>, NodeWithParent<T>]}
  */
 function assertValidSegment(segment) {
   if (!segment[0].parentNode || !segment[1].parentNode) {
@@ -16,79 +17,44 @@ function assertValidSegment(segment) {
 }
 
 /**
- * @param {Node} newNode
- * @param {NodeWithParent} oldNode
- * @returns {Node}
+ * @template {INode<T>} T
+ * @param {Segment<T>} newSegment
+ * @param {Segment<T>} oldSegment
+ * @returns {Segment<T>}
  */
-function replaceNode(newNode, oldNode) {
-  oldNode.parentNode.replaceChild(newNode, oldNode);
-  return newNode;
-}
-
-/**
- * @param {Node | null} newNode
- * @param {[Node, Node]} segment
- * @returns {[Node, Node]}
- */
-export function replaceSegment(newNode, segment) {
-  assertValidSegment(segment);
-  /** @type {Node | null} */
-  let node = segment[0].nextSibling;
-  while (node && node !== segment[1].nextSibling) {
-    /** @type {Node | null} */
+export function replaceSegment(newSegment, oldSegment) {
+  assertValidSegment(oldSegment);
+  const { parentNode } = oldSegment[0];
+  /** @type {T | null} */
+  let node = oldSegment[0].nextSibling;
+  while (node && node !== oldSegment[1].nextSibling) {
+    /** @type {T | null} */
     const next = node.nextSibling;
-    node.parentNode?.removeChild(node);
+    parentNode.removeChild(node);
     node = next;
   }
-  if (newNode instanceof DocumentFragment) {
-    const { firstChild, lastChild } = newNode;
-    if (!firstChild || !lastChild) {
-      return toSegment(replaceNode(document.createComment(""), segment[0]));
-    }
-    replaceNode(newNode, segment[0]);
-    return encloseSegment([firstChild, lastChild]);
+  node = newSegment[0];
+  while (node && node !== newSegment[1]) {
+    /** @type {T | null} */
+    const next = node.nextSibling;
+    parentNode.insertBefore(node, oldSegment[0]);
+    node = next;
   }
-  if (newNode) {
-    return toSegment(replaceNode(newNode, segment[0]));
-  }
-  return toSegment(replaceNode(document.createComment(""), segment[0]));
+  parentNode.replaceChild(newSegment[1], oldSegment[0]);
+  return newSegment;
 }
 
 /**
- * @param {[Node, Node]} segment
- * @param {Node} child
- * @returns {[Node, Node]}
- */
-export function moveSegmentBefore(segment, child) {
-  assertValidSegment(segment);
-  const { parentNode } = child;
-  if (!parentNode) {
-    throw new Error("Invalid child. Must have a parent.");
-  }
-  /** @type {Node | null} */
-  let node = segment[1];
-  while (node) {
-    /** @type {Node | null} */
-    const previousSibling = node.previousSibling;
-    parentNode.insertBefore(node, child);
-    node = previousSibling;
-    if (node === segment[0]) {
-      break;
-    }
-  }
-  return segment;
-}
-
-/**
- * @param {[Node, Node]} segment
+ * @template {INode<T>} T
+ * @param {Segment<T>} segment
  */
 export function removeSegment(segment) {
   assertValidSegment(segment);
   const endNode = segment[1].nextSibling;
-  /** @type {Node | null} */
+  /** @type {T | null} */
   let node = segment[0];
   while (node) {
-    /** @type {Node | null} */
+    /** @type {T | null} */
     const next = node.nextSibling;
     node.parentNode?.removeChild(node);
     node = next;
@@ -99,20 +65,9 @@ export function removeSegment(segment) {
 }
 
 /**
- * @param {[Node, Node]} segment
- * @returns {[Node, Node]}
- */
-export function encloseSegment(segment) {
-  assertValidSegment(segment);
-  return [
-    segment[0].parentNode.insertBefore(document.createComment(""), segment[0]),
-    segment[1].parentNode.insertBefore(document.createComment(""), segment[1].nextSibling),
-  ];
-}
-
-/**
- * @param {Node} node
- * @returns {[Node, Node]}
+ * @template {INode<T>} T
+ * @param {T} node
+ * @returns {Segment<T>}
  */
 export function toSegment(node) {
   return [node, node];

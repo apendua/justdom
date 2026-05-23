@@ -6,7 +6,7 @@ import { createPortal } from "./elements/portal.js";
 
 /**
  * @import {MonoTypeOperatorFunction} from 'rxjs';
- * @import {Mountable} from "@apendua.dev/reactive";
+ * @import {Mountable} from "@apendua.dev/dom";
  * @import {Component,XREventMap} from './core.js';
  */
 

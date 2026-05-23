@@ -3,8 +3,8 @@ import { observable, just } from "@apendua.dev/reactive";
 import { toMountable } from "./dom.js";
 
 /**
- * @import { Mountable } from "@apendua.dev/reactive";
- * @import { Primitive} from "./core.js";
+ * @import { Primitive } from "./core.js";
+ * @import { Mountable } from "./types.js";
  */
 
 /**

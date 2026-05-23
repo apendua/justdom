@@ -1,8 +1,8 @@
-import { Derived, onCleanup } from "@apendua.dev/signal";
+import { Derived } from "@apendua.dev/signal";
 import { Observable } from "rxjs";
 
 /**
- * @import { MonoTypeOperatorFunction, Subscription, Subscriber } from 'rxjs';
+ * @import { MonoTypeOperatorFunction, Subscription, Subscriber, Subscribable, ShareConfig } from 'rxjs';
  */
 
 /**
@@ -205,15 +205,12 @@ export function memoize2(fn, options = {}) {
       return signal;
     }
     /** @type {Derived<unknown>} */
-    const newSignal = new Derived(
-      () => {
+    const newSignal = new Derived(() => fn(...args), { deferred: true, isEqual });
+    newSignal.addSideEffect(
+      new Observable(() => {
         cache.set(key, newSignal);
-        onCleanup(() => {
-          cache.delete(key);
-        });
-        return fn(...args);
-      },
-      { deferred: true, isEqual },
+        return () => cache.delete(key);
+      }),
     );
     return newSignal;
   }

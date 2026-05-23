@@ -1,4 +1,4 @@
-import { of, share } from "rxjs";
+import { Observable, of, share } from "rxjs";
 import UpdateQueue from "./UpdateQueue.js";
 import {
   NoValueError,
@@ -87,12 +87,6 @@ export class Derived extends Computation {
       onInvalidateDependency: (dependency) => {
         updateQueue.invalidate(this, getPriority(this));
       },
-      onSubscribe: () => {
-        this.#recompute();
-      },
-      onUnsubscribe: () => {
-        this.#current = null;
-      },
     });
     this.#evaluate = evaluate;
     if (typeof options === "function") {
@@ -102,6 +96,20 @@ export class Derived extends Computation {
       this.#isEqual = isEqual;
       this.#deferred = deferred;
     }
+    this.addSideEffect(
+      new Observable(() => {
+        try {
+          this.#recompute();
+        } catch (err) {
+          if (!(err instanceof NoValueError)) {
+            throw err;
+          }
+        }
+        return () => {
+          this.#current = null;
+        };
+      }),
+    );
   }
 
   get() {
@@ -122,10 +130,19 @@ export class Derived extends Computation {
 
   /**
    * @param {Dependency} dependency
+   * @returns {void}
    */
   addDependency(dependency) {
     this.#priority = Math.max(this.#priority, getPriority(dependency) + 1);
-    return super.addDependency(dependency);
+    super.addDependency(dependency);
+  }
+
+  /**
+   * @param {Dependency} observable
+   * @returns {void}
+   */
+  addSideEffect(observable) {
+    super.addDependency(observable, true);
   }
 
   invalidate() {

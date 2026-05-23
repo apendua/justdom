@@ -1,5 +1,5 @@
 import { Observable, share, Subject } from "rxjs";
-import { withComputation, makeNonReactive, skipSynchronousValues, NoValueError } from "./core.js";
+import { withComputation, makeNonReactive, skipSynchronousValues } from "./core.js";
 
 /**
  * @import {Observer, Subscriber, Unsubscribable, ObservableInput} from "rxjs";
@@ -16,8 +16,6 @@ import { withComputation, makeNonReactive, skipSynchronousValues, NoValueError }
  * @typedef {object} ComputationOptions
  * @property {boolean | (() => ObservableInput<unknown>)} [resetOnRefCountZero]
  * @property {(observable: Subscribable<unknown>) => void} [onInvalidateDependency]
- * @property {() => void} [onSubscribe]
- * @property {() => void} [onUnsubscribe]
  */
 
 /**
@@ -27,8 +25,8 @@ class Computation {
   /** @type {Map<Subscribable<unknown>, Unsubscribable>} */
   #subscriptions = new Map();
 
-  /** @type {Set<Subscribable<unknown>>} */
-  #dependencies = new Set();
+  /** @type {Map<Subscribable<unknown>, boolean>} */
+  #dependencies = new Map();
 
   /** @type {Subject<void>} */
   #notifier = new Subject();
@@ -49,16 +47,8 @@ class Computation {
     this.#options = { ...options };
     this.#changes = new Observable((/** @type {Subscriber<void>} */ subscriber) => {
       this.#notifier.subscribe(subscriber);
-      for (const observable of this.#dependencies) {
+      for (const observable of this.#dependencies.keys()) {
         this.#subscribeTo(observable);
-      }
-      try {
-        this.#options.onSubscribe?.();
-      } catch (err) {
-        if (!(err instanceof NoValueError)) {
-          subscriber.error(err);
-          return;
-        }
       }
       return () => {
         for (const subscription of this.#subscriptions.values()) {
@@ -66,7 +56,6 @@ class Computation {
         }
         this.#subscriptions.clear();
         this.cleanup();
-        this.#options.onUnsubscribe?.();
       };
     }).pipe(
       share({
@@ -92,11 +81,24 @@ class Computation {
 
   /**
    * @param {Subscribable<unknown>} observable
+   * @param {boolean} [peristent=false]
    */
-  addDependency(observable) {
-    this.#dependencies.add(observable);
+  addDependency(observable, peristent = false) {
+    this.#dependencies.set(observable, peristent);
     if (this.#notifier.observed) {
       this.#subscribeTo(observable);
+    }
+  }
+
+  /**
+   * @param {Subscribable<unknown>} observable
+   */
+  removeDependency(observable) {
+    this.#dependencies.delete(observable);
+    const subscription = this.#subscriptions.get(observable);
+    if (subscription) {
+      subscription.unsubscribe();
+      this.#subscriptions.delete(observable);
     }
   }
 
@@ -116,7 +118,11 @@ class Computation {
     this.cleanup();
     return withComputation(this, () => {
       try {
-        this.#dependencies = new Set();
+        for (const [observable, peristent] of this.#dependencies.entries()) {
+          if (!peristent) {
+            this.#dependencies.delete(observable);
+          }
+        }
         return fn();
       } finally {
         for (const [observable, subscription] of this.#subscriptions.entries()) {

@@ -7,5 +7,5 @@
   },
   "include": ["src"],
   "extends": "../../common/config/typescript/tsconfig.package-browser-base.json",
-  "exclude": ["src/**/*.test.*", "src/test/**", "src/testUtils/**"]
+  "exclude": ["src/**/*.bench.*", "src/**/*.test.*", "src/test/**", "src/testUtils/**"]
 }

@@ -25,6 +25,7 @@
     "lib-types"
   ],
   "scripts": {
+    "bench": "node --test \"src/**/*.bench.js\"",
     "build": "npm run test && npm run compile && npm run build:types",
     "build:types": "tsc --project tsconfig.types.json",
     "compile": "tsc --project tsconfig.build.json",

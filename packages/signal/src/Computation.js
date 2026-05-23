@@ -25,8 +25,11 @@ class Computation {
   /** @type {Map<Subscribable<unknown>, Unsubscribable>} */
   #subscriptions = new Map();
 
-  /** @type {Map<Subscribable<unknown>, boolean>} */
-  #dependencies = new Map();
+  /** @type {Set<Subscribable<unknown>>} */
+  #dependencies = new Set();
+
+  /** @type {Set<Subscribable<unknown>>} */
+  #persistent = new Set();
 
   /** @type {Subject<void>} */
   #notifier = new Subject();
@@ -84,7 +87,10 @@ class Computation {
    * @param {boolean} [peristent=false]
    */
   addDependency(observable, peristent = false) {
-    this.#dependencies.set(observable, peristent);
+    this.#dependencies.add(observable);
+    if (peristent) {
+      this.#persistent.add(observable);
+    }
     if (this.#notifier.observed) {
       this.#subscribeTo(observable);
     }
@@ -95,6 +101,9 @@ class Computation {
    */
   removeDependency(observable) {
     this.#dependencies.delete(observable);
+    if (this.#persistent.has(observable)) {
+      this.#persistent.delete(observable);
+    }
     const subscription = this.#subscriptions.get(observable);
     if (subscription) {
       subscription.unsubscribe();
@@ -118,11 +127,7 @@ class Computation {
     this.cleanup();
     return withComputation(this, () => {
       try {
-        for (const [observable, peristent] of this.#dependencies.entries()) {
-          if (!peristent) {
-            this.#dependencies.delete(observable);
-          }
-        }
+        this.#dependencies = new Set(this.#persistent);
         return fn();
       } finally {
         for (const [observable, subscription] of this.#subscriptions.entries()) {

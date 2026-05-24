@@ -1,6 +1,7 @@
-import { Computation, withComputation } from "@apendua.dev/signal";
+import Computation from "./Computation.js";
+import { withComputation } from "./core.js";
 import { Observable } from "rxjs";
-import { effectMap } from "./operators.js";
+import { effectMap } from "./reactive-operators.js";
 
 /**
  * @import { Subscriber } from 'rxjs';
@@ -121,21 +122,5 @@ export function fromEvent(emitter, event) {
     };
   });
 }
-
-// /**
-//  * @template {object} TEventMap
-//  * @typedef {<TEvent extends keyof TEventMap, TEntity extends IEmitter<TEventMap>>(
-//  *   event: TEvent,
-//  *   handler: (e: TEventMap[TEvent]) => void) => (source: Observable<TEntity>
-//  * ) => Observable<TEntity>} EventOperator
-//  */
-
-// /**
-//  * @template {object} TEventMap
-//  * @returns {EventOperator<TEventMap>}
-//  */
-// export function eventOperator() {
-//   return /** @type {EventOperator<TEventMap>} */ (on);
-// }
 
 export default Emitter;

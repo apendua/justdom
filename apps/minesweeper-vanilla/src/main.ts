@@ -1,4 +1,4 @@
-import { just } from "@apendua.dev/reactive";
+import { just } from "@apendua.dev/signal";
 import { children } from "@apendua.dev/dom";
 import Game from "./components/Game";
 

@@ -84,7 +84,7 @@ export class Derived extends Computation {
       resetOnRefCountZero: () => {
         return this.#deferred ? onNextTick : of(null);
       },
-      onInvalidateDependency: (dependency) => {
+      onInvalidateDependency: () => {
         updateQueue.invalidate(this, getPriority(this));
       },
     });

@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { Observable, switchMap, takeUntil } from "rxjs";
-import { effects, just } from "@apendua.dev/reactive";
+import { effects, just } from "@apendua.dev/signal";
 import { onInvalidate } from "@apendua.dev/signal";
 import { createPortal } from "./elements/portal.js";
 

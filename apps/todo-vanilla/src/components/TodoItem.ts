@@ -1,5 +1,5 @@
 import { className, text, $, children, style } from "@apendua.dev/dom";
-import { store, on, set, emit, Op, component } from "@apendua.dev/reactive";
+import { store, on, set, emit, Op, component } from "@apendua.dev/signal";
 import { makeNonReactive } from "@apendua.dev/signal";
 
 const itemStyle = className`

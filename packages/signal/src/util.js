@@ -1,4 +1,4 @@
-import { Derived } from "@apendua.dev/signal";
+import { Derived } from "./Signal.js";
 import { Observable } from "rxjs";
 
 /**

@@ -1,11 +1,13 @@
-import { addDependency, Derived, toObservable } from "@apendua.dev/signal";
+import { addDependency } from "./core.js";
+import { Derived } from "./Signal.js";
+import { toObservable } from "./operators.js";
 import { NEVER, tap } from "rxjs";
 import { onEachValue, subscribeTo, subscribeAndEmit } from "./util.js";
 import { observable, component, just } from "./factories.js";
 
 /**
  * @import { Observable, MonoTypeOperatorFunction } from 'rxjs';
- * @import { WritableProps } from './core.js';
+ * @import { WritableProps } from './reactive-types.js';
  */
 
 /**

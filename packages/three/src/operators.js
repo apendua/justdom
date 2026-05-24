@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { effects, just, fromEvent } from "@apendua.dev/reactive";
+import { effects, just, fromEvent } from "@apendua.dev/signal";
 import { distinctUntilChanged, Observable, switchMap } from "rxjs";
 import { addDependency } from "@apendua.dev/signal";
 

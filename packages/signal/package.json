@@ -29,15 +29,17 @@
     "build": "npm run test && npm run compile && npm run build:types",
     "build:types": "tsc --project tsconfig.types.json",
     "compile": "tsc --project tsconfig.build.json",
-    "test": "npm run test:typecheck && node --test \"src/**/*.test.js\"",
-    "test:coverage": "npm run test:typecheck && node --test --experimental-test-coverage \"src/**/*.test.js\"",
+    "test": "npm run test:typecheck && node --import ./src/test/setup-jsdom.js --test \"src/**/*.test.js\"",
+    "test:coverage": "npm run test:typecheck && node --import ./src/test/setup-jsdom.js --test --experimental-test-coverage \"src/**/*.test.js\"",
     "test:typecheck": "tsc --project tsconfig.json --noEmit",
-    "test:watch": "node --test --watch \"src/**/*.test.js\""
+    "test:watch": "node --import ./src/test/setup-jsdom.js --test --watch \"src/**/*.test.js\""
   },
   "dependencies": {
     "rxjs": "^7.8.2"
   },
   "devDependencies": {
+    "@apendua.dev/hmr": "workspace:*",
+    "@apendua.dev/jsdom-env": "workspace:*",
     "@types/node": "^24.7.0",
     "eslint": "^9.37.0",
     "fast-check": "^4.3.0",

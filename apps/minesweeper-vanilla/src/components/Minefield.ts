@@ -6,7 +6,7 @@ import { ViewportContext } from "../store4/Viewport";
 import { tap } from "rxjs";
 import Label from "./Label";
 import FieldSet from "./FieldSet";
-import { component } from "@apendua.dev/reactive";
+import { component } from "@apendua.dev/signal";
 
 const FieldStatus = (ctx: WeakKey, field: Field) => {
   return Label(ctx, {

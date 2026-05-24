@@ -1,5 +1,5 @@
 import { combineLatest, map, Observable } from "rxjs";
-import { observable, just } from "@apendua.dev/reactive";
+import { observable, just } from "@apendua.dev/signal";
 import { toMountable } from "./dom.js";
 
 /**

@@ -1,4 +1,4 @@
-import { effectMap, just } from "@apendua.dev/reactive";
+import { effectMap, just } from "@apendua.dev/signal";
 import ListRenderer from "./ListRenderer.js";
 import { replaceSegment, toSegment } from "./helpers.js";
 import { map, tap } from "rxjs";

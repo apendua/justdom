@@ -1,8 +1,8 @@
 import { describe, it, mock } from "node:test";
 import assert from "node:assert/strict";
 import { Subject } from "rxjs";
-import { effects, map, takeNothing } from "./operators.js";
-import { Signal } from "@apendua.dev/signal";
+import { effects, map, takeNothing } from "./reactive-operators.js";
+import { Signal } from "./Signal.js";
 
 describe("effects()", () => {
   it("applies effects until the source completes", () => {

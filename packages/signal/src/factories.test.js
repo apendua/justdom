@@ -1,7 +1,7 @@
 import { describe, it, mock } from "node:test";
 import assert from "node:assert/strict";
 import { observable, component, just } from "./factories.js";
-import { Signal } from "@apendua.dev/signal";
+import { Signal } from "./Signal.js";
 
 /**
  * @param {it.Mock<(...args: unknown[]) => unknown>} fn

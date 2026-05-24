@@ -1,9 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { NoValueError, Signal } from "@apendua.dev/signal";
+import { Signal } from "./Signal.js";
+import { NoValueError } from "./core.js";
 import { observable } from "./factories.js";
 import selector, { arraySelector } from "./selector.js";
-import { use } from "./operators.js";
+import { use } from "./reactive-operators.js";
 
 test("only triggers on relevant changes", () => {
   const source = new Signal({ value: { x: 1, y: 1 } });
@@ -41,7 +42,7 @@ test("supports nested fields", () => {
 
 test("shallow copy of object properties", () => {
   /** @type {Signal<TestObject>} */
-  const source = new Signal({ value: { x: 1, y: 1 } });
+  const source = new Signal({ value: /** @type {TestObject} */ ({ x: 1, y: 1 }) });
   const sourceS = selector(() => source.get());
 
   /** @type {TestObject[]} */

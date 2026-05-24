@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { observable } from "@apendua.dev/reactive";
+import { observable } from "@apendua.dev/signal";
 import { Subject } from "rxjs";
 import { div } from "./div.js";
 import { text } from "./text.js";

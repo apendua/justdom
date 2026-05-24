@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { onCleanup } from "@apendua.dev/signal";
-import { effects, just, on, set } from "@apendua.dev/reactive";
+import { effects, just, on, set } from "@apendua.dev/signal";
 import { $, children } from "../operators.js";
 import { shareSignal } from "@apendua.dev/store4";
 import { interactions } from "../interactions.js";

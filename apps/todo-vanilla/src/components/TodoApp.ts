@@ -9,7 +9,7 @@ import {
   waitFor,
 } from "@apendua.dev/dom";
 import { Signal, toObservable } from "@apendua.dev/signal";
-import { store, on, set, observable, component } from "@apendua.dev/reactive";
+import { store, on, set, observable, component } from "@apendua.dev/signal";
 import TodoItem from "./TodoItem.js";
 
 const containerStyle = className`

@@ -34,7 +34,6 @@
     "test:watch": "node --import ./src/test/setup-jsdom.js --test --watch \"src/**/*.test.js\""
   },
   "dependencies": {
-    "@apendua.dev/reactive": "workspace:*",
     "@apendua.dev/signal": "workspace:*",
     "rxjs": "^7.8.2"
   },

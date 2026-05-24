@@ -2,7 +2,7 @@ import { text, set, on, children, $, className } from "@apendua.dev/dom";
 import { RootContext } from "../store4/Root";
 import { Fields, FieldsContext } from "@apendua.dev/minesweeper";
 import { $observe } from "@apendua.dev/store4";
-import { store } from "@apendua.dev/reactive";
+import { store } from "@apendua.dev/signal";
 import Viewport, { ViewportContext } from "../store4/Viewport";
 import { switchMap } from "rxjs";
 import Minefield from "./Minefield";

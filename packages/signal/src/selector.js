@@ -1,4 +1,5 @@
-import { Derived, NoValueError } from "@apendua.dev/signal";
+import { Derived } from "./Signal.js";
+import { NoValueError } from "./core.js";
 import { isPlainObject, memoize2, shallowEqual } from "./util.js";
 
 /**

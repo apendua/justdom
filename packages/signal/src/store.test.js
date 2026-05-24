@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { observable } from "./factories.js";
 import store, { replace } from "./store.js";
-import { use } from "./operators.js";
+import { use } from "./reactive-operators.js";
 
 test("observes value", () => {
   const state = store({ value: 1 });

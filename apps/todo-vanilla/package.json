@@ -15,7 +15,6 @@
   "dependencies": {
     "@apendua.dev/dom": "workspace:*",
     "@apendua.dev/hmr": "workspace:*",
-    "@apendua.dev/reactive": "workspace:*",
     "@apendua.dev/signal": "workspace:*",
     "@testing-library/user-event": "^14.6.1",
     "@types/node": "^24.7.0",

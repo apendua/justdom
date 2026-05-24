@@ -7,7 +7,7 @@
  * @type {Record<string, PackageConfiguration>}
  */
 const configuration = {
-  "@apendua.dev/reactive": {
+  "@apendua.dev/signal": {
     reloadable: ["component"],
   },
   "@apendua.dev/store4": {
@@ -56,7 +56,7 @@ export default function HMRPlugin() {
         }
         const importedNames = importMatch[1].split(",").map((s) => s.trim());
         for (const name of importedNames) {
-          // TODO: Add support for renamed imports (e.g. `import { component as _component } from "@apendua.dev/reactive";`)
+          // TODO: Add support for renamed imports (e.g. `import { component as _component } from "@apendua.dev/signal";`)
           if (packageConfig.reloadable.includes(name)) {
             allNames[name] = { packageName };
           }

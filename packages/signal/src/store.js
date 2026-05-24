@@ -1,7 +1,8 @@
 import { filter, Subject } from "rxjs";
-import { addDependency, batch, Derived, withComputation } from "@apendua.dev/signal";
+import { addDependency, withComputation } from "./core.js";
+import { batch, Derived } from "./Signal.js";
 import Emitter from "./Emitter.js";
-import { useEffects } from "./operators.js";
+import { useEffects } from "./reactive-operators.js";
 import { memoize, isPlainObject } from "./util.js";
 
 /**

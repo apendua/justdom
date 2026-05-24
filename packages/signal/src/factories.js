@@ -1,5 +1,6 @@
 import { share, Observable, ReplaySubject } from "rxjs";
-import { Derived, toObservable } from "@apendua.dev/signal";
+import { Derived } from "./Signal.js";
+import { toObservable } from "./operators.js";
 import { onEachValue, subscribeTo, all } from "./util.js";
 
 /**

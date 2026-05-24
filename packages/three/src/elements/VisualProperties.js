@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { decorate, memo } from "@apendua.dev/store4";
 import { addDependency, batch, NoValueError } from "@apendua.dev/signal";
-import { fromEvent, store } from "@apendua.dev/reactive";
+import { fromEvent, store } from "@apendua.dev/signal";
 import { filter, from, Subject } from "rxjs";
 import { getBoundingClientRectCached, getComputedStyleCached } from "./cache.js";
 

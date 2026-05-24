@@ -1,5 +1,5 @@
 import { distinctUntilChanged, filter, Observable, Subject } from "rxjs";
-import { just } from "@apendua.dev/reactive";
+import { just } from "@apendua.dev/signal";
 import { addDependency, batch, Derived } from "@apendua.dev/signal";
 
 /**

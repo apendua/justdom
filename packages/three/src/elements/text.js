@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { NoValueError, onCleanup } from "@apendua.dev/signal";
-import { effects, just, set, selector } from "@apendua.dev/reactive";
+import { effects, just, set, selector } from "@apendua.dev/signal";
 import { $, children } from "../operators.js";
 import { generateTextTexture, getTextRenderStyle, makeTextQuadGeometry } from "./textHelpers.js";
 import {

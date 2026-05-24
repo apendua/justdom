@@ -1,6 +1,6 @@
 import { createProperty } from "@apendua.dev/signal";
 import { NEVER, Observable, ReplaySubject, shareReplay, switchMap, takeUntil } from "rxjs";
-import { takeNothing } from "@apendua.dev/reactive";
+import { takeNothing } from "@apendua.dev/signal";
 
 /**
  * @import { Property } from "@apendua.dev/signal";

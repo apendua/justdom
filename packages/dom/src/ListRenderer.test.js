@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { BehaviorSubject, map, tap } from "rxjs";
-import { effectMap, just } from "@apendua.dev/reactive";
+import { effectMap, just } from "@apendua.dev/signal";
 import { replaceSegment, toSegment } from "./helpers.js";
 import ListRenderer from "./ListRenderer.js";
 

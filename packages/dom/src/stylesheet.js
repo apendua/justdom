@@ -1,6 +1,6 @@
 import { map, Observable, ReplaySubject, share } from "rxjs";
 import { renderText } from "./text.js";
-import { effectMap } from "@apendua.dev/reactive";
+import { effectMap } from "@apendua.dev/signal";
 
 /** @type {Observable<string>} */
 export const CLASS_NAME = new Observable();

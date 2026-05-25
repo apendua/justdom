@@ -4,7 +4,7 @@ import { Signal } from "./Signal.js";
 import { NoValueError } from "./core.js";
 import { observable } from "./factories.js";
 import selector, { arraySelector } from "./selector.js";
-import { use } from "./reactive-operators.js";
+import { use } from "./operators.js";
 
 test("only triggers on relevant changes", () => {
   const source = new Signal({ value: { x: 1, y: 1 } });

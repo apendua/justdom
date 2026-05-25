@@ -1,7 +1,7 @@
 import Computation from "./Computation.js";
 import { withComputation } from "./core.js";
 import { Observable } from "rxjs";
-import { effectMap } from "./reactive-operators.js";
+import { effectMap } from "./operators.js";
 
 /**
  * @import { Subscriber } from 'rxjs';

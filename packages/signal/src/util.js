@@ -1,7 +1,7 @@
 import Computation from "./Computation.js";
-import nextTick from "./nextTick.js";
+import { onNextTick } from "./nextTick.js";
 import { Derived } from "./Signal.js";
-import { Observable, share } from "rxjs";
+import { Observable } from "rxjs";
 
 /**
  * @import { MonoTypeOperatorFunction, Subscription, Subscriber, Subscribable, ShareConfig } from 'rxjs';
@@ -244,12 +244,6 @@ export function memoize2(fn, options = {}) {
   );
   return (...args) => getSignal(...args).get();
 }
-
-export const onNextTick = nextTick().pipe(
-  share({
-    resetOnRefCountZero: true,
-  }),
-);
 
 /**
  * @template {unknown[]} TArgs

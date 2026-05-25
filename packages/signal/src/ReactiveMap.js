@@ -1,9 +1,10 @@
 import { addDependency } from "./core.js";
 import { filter, Subject } from "rxjs";
 import LazyIterable from "./LazyIterable.js";
+import { memoize3 } from "./util.js";
 
 /**
- * @import { Observable } from 'rxjs';
+ * @import { Dependency } from './core.js';
  */
 
 /**
@@ -22,26 +23,15 @@ export default class ReactiveMap {
   /** @type {Subject<ReactiveMapEvent<K>>} */
   #events = new Subject();
 
-  /** @type {Map<K, Observable<ReactiveMapEvent<K>>>} */
-  #keyEvents = new Map();
-
   // Stream that only fires when the set of keys changes (add/delete/clear).
   #structureEvents = this.#events.pipe(
     filter((event) => event.type === "added" || event.type === "deleted" || event.type === "clear"),
   );
 
-  /**
-   * @param {K} key
-   * @returns {Observable<ReactiveMapEvent<K>>}
-   */
-  #getKeyEvents(key) {
-    let obs = this.#keyEvents.get(key);
-    if (!obs) {
-      obs = this.#events.pipe(filter((event) => event.type === "clear" || event.key === key));
-      this.#keyEvents.set(key, obs);
-    }
-    return obs;
-  }
+  /** @type {(key: K) => Dependency} */
+  #getKeyEvents = memoize3((key) => {
+    return this.#events.pipe(filter((event) => event.type === "clear" || event.key === key));
+  });
 
   get size() {
     addDependency(this.#events);
@@ -86,14 +76,12 @@ export default class ReactiveMap {
   delete(key) {
     if (this.#map.has(key)) {
       this.#map.delete(key);
-      this.#keyEvents.delete(key);
       this.#events.next({ type: "deleted", key });
     }
   }
 
   clear() {
     this.#map.clear();
-    this.#keyEvents.clear();
     this.#events.next({ type: "clear" });
   }
 

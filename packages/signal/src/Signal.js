@@ -1,4 +1,4 @@
-import { Observable, of, share } from "rxjs";
+import { Observable, of } from "rxjs";
 import UpdateQueue from "./UpdateQueue.js";
 import {
   NoValueError,
@@ -9,7 +9,7 @@ import {
   makeNonReactive,
 } from "./core.js";
 import Computation from "./Computation.js";
-import nextTick from "./nextTick.js";
+import { onNextTick } from "./nextTick.js";
 
 /**
  * @import {Subscribable} from "rxjs";
@@ -42,12 +42,6 @@ export function batch(fn) {
  * @property {(a: T, b: T) => boolean} [isEqual]
  * @property {boolean} [deferred]
  */
-
-const onNextTick = nextTick().pipe(
-  share({
-    resetOnRefCountZero: true,
-  }),
-);
 
 /**
  * @template T

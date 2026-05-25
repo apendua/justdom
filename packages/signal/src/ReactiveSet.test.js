@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { observable } from "./factories.js";
-import { use } from "./reactive-operators.js";
+import { use } from "./operators.js";
 import ReactiveSet from "./ReactiveSet.js";
 
 describe("ReactiveSet", () => {

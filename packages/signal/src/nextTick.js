@@ -1,4 +1,4 @@
-import { Observable } from "rxjs";
+import { Observable, share } from "rxjs";
 
 /**
  * @returns {Observable<void>}
@@ -21,5 +21,11 @@ function nextTick() {
     };
   });
 }
+
+export const onNextTick = nextTick().pipe(
+  share({
+    resetOnRefCountZero: true,
+  }),
+);
 
 export default nextTick;

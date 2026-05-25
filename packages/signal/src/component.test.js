@@ -5,7 +5,7 @@ import { makeNonReactive } from "./core.js";
 import { component, observable } from "./factories.js";
 import { on } from "./Emitter.js";
 import store, { emit } from "./store.js";
-import { set, use } from "./reactive-operators.js";
+import { set, use } from "./operators.js";
 
 /**
  * @import { Observable, MonoTypeOperatorFunction } from 'rxjs';

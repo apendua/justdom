@@ -10,10 +10,10 @@ export {
   setPriority,
   setPriorityFn,
   getPriority,
+  toObservable,
   NoValueError,
 } from "./core.js";
 export { default as Computation } from "./Computation.js";
-export { toObservable } from "./operators.js";
 export * from "./types.js";
 
 // reactive
@@ -27,7 +27,7 @@ export {
   flatMap,
   effectMap,
   takeNothing,
-} from "./reactive-operators.js";
+} from "./operators.js";
 export { observable, component, just } from "./factories.js";
 export { all } from "./util.js";
 export { default as store, emit } from "./store.js";

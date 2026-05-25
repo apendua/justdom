@@ -1,9 +1,10 @@
 import { addDependency } from "./core.js";
 import { filter, Subject } from "rxjs";
 import LazyIterable from "./LazyIterable.js";
+import { memoize3 } from "./util.js";
 
 /**
- * @import { Observable } from 'rxjs';
+ * @import { Dependency } from './core.js';
  */
 
 /**
@@ -21,21 +22,10 @@ export default class ReactiveSet {
   /** @type {Subject<ReactiveSetEvent<V>>} */
   #events = new Subject();
 
-  /** @type {Map<V, Observable<ReactiveSetEvent<V>>>} */
-  #valueEvents = new Map();
-
-  /**
-   * @param {V} value
-   * @returns {Observable<ReactiveSetEvent<V>>}
-   */
-  #getValueEvents(value) {
-    let obs = this.#valueEvents.get(value);
-    if (!obs) {
-      obs = this.#events.pipe(filter((event) => event.type === "clear" || event.value === value));
-      this.#valueEvents.set(value, obs);
-    }
-    return obs;
-  }
+  /** @type {(value: V) => Dependency} */
+  #getValueEvents = memoize3((value) => {
+    return this.#events.pipe(filter((event) => event.type === "clear" || event.value === value));
+  });
 
   get size() {
     addDependency(this.#events);
@@ -67,14 +57,12 @@ export default class ReactiveSet {
   delete(value) {
     if (this.#set.has(value)) {
       this.#set.delete(value);
-      this.#valueEvents.delete(value);
       this.#events.next({ type: "deleted", value });
     }
   }
 
   clear() {
     this.#set.clear();
-    this.#valueEvents.clear();
     this.#events.next({ type: "clear" });
   }
 

@@ -3,7 +3,7 @@ import { addDependency, withComputation } from "./core.js";
 import { batch, Derived } from "./Signal.js";
 import Emitter from "./Emitter.js";
 import { useEffects } from "./reactive-operators.js";
-import { memoize, isPlainObject } from "./util.js";
+import { isPlainObject, memoize3 } from "./util.js";
 
 /**
  * @import {MonoTypeOperatorFunction} from "rxjs"
@@ -111,7 +111,7 @@ function store(data, operators = []) {
   /**
    * @param {PropertyKey} key
    */
-  const getChangesAtKey = memoize((/** @type {PropertyKey} */ key) =>
+  const getChangesAtKey = memoize3((/** @type {PropertyKey} */ key) =>
     changes.pipe(filter((change) => change.key === key)),
   );
 

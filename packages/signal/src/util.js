@@ -1,8 +1,11 @@
+import Computation from "./Computation.js";
+import nextTick from "./nextTick.js";
 import { Derived } from "./Signal.js";
-import { Observable } from "rxjs";
+import { Observable, share } from "rxjs";
 
 /**
  * @import { MonoTypeOperatorFunction, Subscription, Subscriber, Subscribable, ShareConfig } from 'rxjs';
+ * @import { Dependency } from './core.js';
  */
 
 /**
@@ -83,24 +86,6 @@ export function all(...operators) {
 }
 
 /**
- * @template T, U
- * @param {(value: T) => U} fn
- * @return {(value: T) => U}
- */
-export function memoize(fn) {
-  /** @type {Map<T, U>} */
-  const cache = new Map();
-  return (arg) => {
-    if (cache.has(arg)) {
-      return /** @type {U} */ (cache.get(arg));
-    }
-    const result = fn(arg);
-    cache.set(arg, result);
-    return result;
-  };
-}
-
-/**
  * @param {unknown} value
  * @return {value is Record<PropertyKey, unknown>}
  */
@@ -159,6 +144,63 @@ export function shallowEqual(a, b) {
  * @template {unknown[]} TArgs
  * @typedef {object} MemoizeOptions
  * @property {(...args: TArgs) => TKey} [getKey]
+ * @property {Cache<TKey, TValue>} [cache]
+ */
+
+/**
+ * @typedef {object} HasSideEffects
+ * @property {(observable: Subscribable<unknown>) => void} addSideEffect
+ */
+
+/**
+ * @template TKey
+ * @template {HasSideEffects} TValue
+ * @template {unknown[]} TArgs
+ * @overload
+ * @param {(...args: TArgs) => TValue} fn
+ * @param {RequiredKeys<MemoizeOptions<TKey, TValue, TArgs>, "getKey" | "cache">} [options]
+ * @returns {(...args: TArgs) => TValue}
+ *//**
+ * @template TKey
+ * @template TValue
+ * @overload
+ * @param {(key: TKey) => TValue} fn
+ * @param {MemoizeOptions<TKey, TValue, [TKey]>} [options]
+ * @returns {(key: TKey) => TValue}
+ *//**
+ * @param {(...args: unknown[]) => HasSideEffects} fn
+ * @param {MemoizeOptions<unknown, unknown, unknown[]>} [options]
+ * @returns {(...args: unknown[]) => unknown}
+ */
+export function memoize(fn, options = {}) {
+  const {
+    cache = /** @type {Cache<unknown, HasSideEffects>} */ (new Map()),
+    getKey = (...args) => args[0],
+  } = options;
+  return (...args) => {
+    const key = getKey(...args);
+    const value = cache.get(key);
+    if (value) {
+      return value;
+    }
+    /** @type {HasSideEffects} */
+    const newValue = fn(...args);
+    newValue.addSideEffect(
+      new Observable(() => {
+        cache.set(key, newValue);
+        return () => cache.delete(key);
+      }),
+    );
+    return newValue;
+  };
+}
+
+/**
+ * @template TKey
+ * @template TValue
+ * @template {unknown[]} TArgs
+ * @typedef {object} Memoize2Options
+ * @property {(...args: TArgs) => TKey} [getKey]
  * @property {Cache<TKey, Derived<TValue>>} [cache]
  * @property {(a: TValue, b: TValue) => boolean} [isEqual]
  */
@@ -169,22 +211,18 @@ export function shallowEqual(a, b) {
  * @template {unknown[]} TArgs
  * @overload
  * @param {(...args: TArgs) => TValue} fn
- * @param {RequiredKeys<MemoizeOptions<TKey, TValue, TArgs>, "getKey" | "cache">} [options]
+ * @param {RequiredKeys<Memoize2Options<TKey, TValue, TArgs>, "getKey" | "cache">} [options]
  * @returns {(...args: TArgs) => TValue}
- */
-
-/**
+ *//**
  * @template TKey
  * @template TValue
  * @overload
  * @param {(key: TKey) => TValue} fn
- * @param {MemoizeOptions<TKey, TValue, [TKey]>} [options]
+ * @param {Memoize2Options<TKey, TValue, [TKey]>} [options]
  * @returns {(key: TKey) => TValue}
- */
-
-/**
+ *//**
  * @param {(...args: unknown[]) => unknown} fn
- * @param {MemoizeOptions<unknown, unknown, unknown[]>} [options]
+ * @param {Memoize2Options<unknown, unknown, unknown[]>} [options]
  * @returns {(...args: unknown[]) => unknown}
  */
 export function memoize2(fn, options = {}) {
@@ -193,29 +231,51 @@ export function memoize2(fn, options = {}) {
     getKey = (...args) => args[0],
     isEqual,
   } = options;
-
-  /**
-   * @param {unknown[]} args
-   * @returns {Derived<unknown>}
-   */
-  function getSignal(...args) {
-    const key = getKey(...args);
-    const signal = cache.get(key);
-    if (signal) {
-      return signal;
-    }
-    /** @type {Derived<unknown>} */
-    const newSignal = new Derived(() => fn(...args), { deferred: true, isEqual });
-    newSignal.addSideEffect(
-      new Observable(() => {
-        cache.set(key, newSignal);
-        return () => cache.delete(key);
+  const getSignal = memoize(
+    (...args) =>
+      new Derived(() => fn(...args), {
+        isEqual,
+        deferred: true,
       }),
-    );
-    return newSignal;
-  }
+    {
+      cache,
+      getKey,
+    },
+  );
+  return (...args) => getSignal(...args).get();
+}
 
-  return (...args) => {
-    return getSignal(...args).get();
-  };
+export const onNextTick = nextTick().pipe(
+  share({
+    resetOnRefCountZero: true,
+  }),
+);
+
+/**
+ * @template {unknown[]} TArgs
+ * @param {(...args: TArgs) => Subscribable<unknown>} fn
+ * @param {MemoizeOptions<unknown, Computation, TArgs>} [options]
+ * @returns {(...args: TArgs) => Dependency}
+ */
+export function memoize3(fn, options = {}) {
+  const {
+    cache = /** @type {Cache<unknown, Computation>} */ (new Map()),
+    getKey = (...args) => args[0],
+  } = options;
+  return memoize(
+    (...args) => {
+      const computation = new Computation({
+        onInvalidateDependency() {
+          this.invalidate();
+        },
+        resetOnRefCountZero: () => onNextTick,
+      });
+      computation.addSideEffect(fn(...args));
+      return computation;
+    },
+    {
+      cache,
+      getKey,
+    },
+  );
 }

@@ -137,14 +137,6 @@ export class Derived extends Computation {
     super.addDependency(dependency);
   }
 
-  /**
-   * @param {Dependency} observable
-   * @returns {void}
-   */
-  addSideEffect(observable) {
-    super.addDependency(observable, true);
-  }
-
   invalidate() {
     // If invalidate was called while recomputing, it means we have a circular dependency,
     // i.e. we depenend on a signal that was updated during the current recomputation.

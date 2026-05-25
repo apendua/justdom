@@ -15,7 +15,7 @@ import { withComputation, makeNonReactive, skipSynchronousValues } from "./core.
 /**
  * @typedef {object} ComputationOptions
  * @property {boolean | (() => ObservableInput<unknown>)} [resetOnRefCountZero]
- * @property {(observable: Subscribable<unknown>) => void} [onInvalidateDependency]
+ * @property {(this: Computation, observable: Subscribable<unknown>) => void} [onInvalidateDependency]
  */
 
 /**
@@ -29,7 +29,7 @@ class Computation {
   #dependencies = new Set();
 
   /** @type {Set<Subscribable<unknown>>} */
-  #persistent = new Set();
+  #sideEffects = new Set();
 
   /** @type {Subject<void>} */
   #notifier = new Subject();
@@ -84,13 +84,9 @@ class Computation {
 
   /**
    * @param {Subscribable<unknown>} observable
-   * @param {boolean} [peristent=false]
    */
-  addDependency(observable, peristent = false) {
+  addDependency(observable) {
     this.#dependencies.add(observable);
-    if (peristent) {
-      this.#persistent.add(observable);
-    }
     if (this.#notifier.observed) {
       this.#subscribeTo(observable);
     }
@@ -99,11 +95,20 @@ class Computation {
   /**
    * @param {Subscribable<unknown>} observable
    */
-  removeDependency(observable) {
-    this.#dependencies.delete(observable);
-    if (this.#persistent.has(observable)) {
-      this.#persistent.delete(observable);
+  addSideEffect(observable) {
+    this.#sideEffects.add(observable);
+    this.addDependency(observable);
+  }
+
+  /**
+   * @param {Subscribable<unknown>} observable
+   */
+  removeSideEffect(observable) {
+    if (!this.#sideEffects.has(observable)) {
+      return;
     }
+    this.#dependencies.delete(observable);
+    this.#sideEffects.delete(observable);
     const subscription = this.#subscriptions.get(observable);
     if (subscription) {
       subscription.unsubscribe();
@@ -127,7 +132,7 @@ class Computation {
     this.cleanup();
     return withComputation(this, () => {
       try {
-        this.#dependencies = new Set(this.#persistent);
+        this.#dependencies = new Set(this.#sideEffects);
         return fn();
       } finally {
         for (const [observable, subscription] of this.#subscriptions.entries()) {
@@ -181,7 +186,7 @@ class Computation {
           observable,
           skipSynchronousValues(observable).subscribe({
             next: () => {
-              this.#options.onInvalidateDependency?.(observable);
+              this.#options.onInvalidateDependency?.call(this, observable);
             },
             error: (err) => {
               this.#notifier.error(err);

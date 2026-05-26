@@ -170,7 +170,7 @@ function children(...children) {
  * @param {(item: T) => Observable<Mountable<Node>>} renderItem
  */
 function list(items, renderItem) {
-  return renderer.renderList(items, renderItem);
+  return renderer.renderList(items, (item) => item, renderItem);
 }
 
 /**

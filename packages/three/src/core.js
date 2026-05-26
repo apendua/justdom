@@ -1,5 +1,5 @@
 import { distinctUntilChanged, filter, Observable, Subject } from "rxjs";
-import { just } from "@apendua.dev/signal";
+import { just, observable } from "@apendua.dev/signal";
 import { addDependency, batch, Derived } from "@apendua.dev/signal";
 
 /**
@@ -229,11 +229,23 @@ export function addDynamicToParent(parent, items, getKey, renderItem) {
 
 /**
  * @template T
- * @param {Observable<Iterable<T>>} items
+ * @param {Observable<T> | (() => T)} value
+ */
+function normalize(value) {
+  if (typeof value === "function") {
+    return observable(value);
+  }
+  return value;
+}
+
+/**
+ * @template T
+ * @param {Observable<Iterable<T>> | (() => Iterable<T>)} items
  * @param {(item: T, index: () => number) => Observable<Component>} renderItem
  * @returns {Observable<Component>}
  */
 export function list(items, renderItem) {
+  items = normalize(items);
   return just({
     addTo: (parent) => {
       const subscription = addDynamicToParent(
@@ -252,11 +264,12 @@ export function list(items, renderItem) {
 /**
  * @template K
  * @template T
- * @param {Observable<Iterable<[K, T]>>} items
+ * @param {Observable<Iterable<[K, T]>> | (() => Iterable<[K, T]>)} items
  * @param {(item: T, key: K, index: () => number) => Observable<Component>} renderItem
  * @returns {Observable<Component>}
  */
 export function keyedList(items, renderItem) {
+  items = normalize(items);
   return just({
     addTo: (parent) => {
       const subscription = addDynamicToParent(

@@ -1,4 +1,4 @@
-import { effectMap, just } from "@apendua.dev/signal";
+import { effectMap, just, observable } from "@apendua.dev/signal";
 import ListRenderer from "./ListRenderer.js";
 import { replaceSegment, toSegment } from "./helpers.js";
 import { map, tap } from "rxjs";
@@ -98,11 +98,38 @@ export function children(...children) {
 
 /**
  * @template T
- * @param {Observable<Array<T>>} items
+ * @param {Observable<T> | (() => T)} value
+ */
+function normalize(value) {
+  if (typeof value === "function") {
+    return observable(value);
+  }
+  return value;
+}
+
+/**
+ * @template T
+ * @param {Observable<Iterable<T>> | (() => Iterable<T>)} items
  * @param {(item: T, getIndex: () => number) => Observable<Mountable<Node>>} renderItem
  */
 export function list(items, renderItem) {
-  return renderer.renderList(items, renderItem);
+  items = normalize(items);
+  return renderer.renderList(items, (item) => item, renderItem);
+}
+
+/**
+ * @template K
+ * @template T
+ * @param {Observable<Iterable<[K, T]>> | (() => Iterable<[K, T]>) } items
+ * @param {(item: T, key: K, index: () => number) => Observable<Mountable<Node>>} renderItem
+ */
+export function keyedList(items, renderItem) {
+  items = normalize(items);
+  return renderer.renderList(
+    items,
+    (item) => item[0],
+    (item, index) => renderItem(item[1], item[0], index),
+  );
 }
 
 /**

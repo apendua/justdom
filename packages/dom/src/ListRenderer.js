@@ -98,55 +98,61 @@ export default class ListRenderer {
   /**
    * Creates a list observable from an array of items and a render function.
    * @template U
+   * @template K
    * @param {Observable<Iterable<U>>} items
+   * @param {(item: U) => K} getKey
    * @param {(item: U, getIndex: () => number) => Observable<Mountable<T>>} render
    * @returns {Observable<Mountable<T>>}
    */
-  renderList(items, render) {
+  renderList(items, getKey, render) {
     return new Observable((subscriber) => {
       const container = this.#createContainer();
-      /** @type {Map<U, Segment<T>>} */
+      /** @type {Map<K, Segment<T>>} */
       const childSegments = new Map();
-      /** @type {Map<U, Subscription>} */
+      /** @type {Map<K, Subscription>} */
       const childSubscriptions = new Map();
-      /** @type {Map<U, number>} */
+      /** @type {Map<K, number>} */
       const childIndexes = new Map();
-      /** @type {Subject<U>} */
+      /** @type {Subject<K>} */
       const childIndexesSubject = new Subject();
       /**
        * @param {U} item
        * @returns {() => number}
        */
       const createGetIndex = (item) => {
-        const changes = childIndexesSubject.pipe(filter((changedItem) => changedItem === item));
+        const key = getKey(item);
+        const changes = childIndexesSubject.pipe(filter((changedKey) => changedKey === key));
         const index = new Derived(() => {
           addDependency(changes);
-          return childIndexes.get(item) ?? -1;
+          return childIndexes.get(key) ?? -1;
         });
         return () => index.get();
       };
       const subscription = items
         .pipe(
           tap((newItems) => {
-            const newItemsSet = new Set(newItems);
+            const newItemsSet = new Set();
             const newItemsArray = Array.from(newItems);
             for (let index = newItemsArray.length - 1; index >= 0; index -= 1) {
               const item = newItemsArray[index];
-              if (!childIndexes.has(item)) {
-                childIndexes.set(item, index);
+              const key = getKey(item);
+              if (!childIndexes.has(key)) {
+                childIndexes.set(key, index);
               }
+              newItemsSet.add(key);
               let nextSegment;
               let i = index + 1;
               while (!nextSegment && i < newItemsArray.length) {
-                nextSegment = childSegments.get(newItemsArray[i]);
+                const k = getKey(newItemsArray[i]);
+                nextSegment = childSegments.get(k);
                 i += 1;
               }
-              if (!childSegments.has(item)) {
+              if (!childSegments.has(key)) {
                 // NOTE: Only put placeholder where the new item should be inserted. The actual element
                 //       will be inserted by the subscription.
                 if (!nextSegment) {
                   const newPlaceholder = container.appendChild(this.#createPlaceholder());
-                  childSegments.set(item, toSegment(newPlaceholder));
+                  childSegments.set(key, toSegment(newPlaceholder));
                 } else {
                   const nextNode = nextSegment[0];
                   const { parentNode } = nextNode;
@@ -155,30 +161,30 @@ export default class ListRenderer {
                       this.#createPlaceholder(),
                       nextNode,
                     );
-                    childSegments.set(item, toSegment(newPlaceholder));
+                    childSegments.set(key, toSegment(newPlaceholder));
                   }
                 }
               }
-              if (!childSubscriptions.has(item)) {
+              if (!childSubscriptions.has(key)) {
                 childSubscriptions.set(
-                  item,
+                  key,
                   render(item, createGetIndex(item))
                     .pipe(
                       distinctUntilChanged(),
                       teardown(() => {
-                        const oldSegment = childSegments.get(item);
+                        const oldSegment = childSegments.get(key);
                         if (oldSegment) {
                           removeSegment(oldSegment);
-                          childSegments.delete(item);
+                          childSegments.delete(key);
                         }
-                        childSubscriptions.delete(item);
+                        childSubscriptions.delete(key);
                       }),
                     )
                     .subscribe({
                       next: (newMountable) => {
-                        const oldSegment = childSegments.get(item);
+                        const oldSegment = childSegments.get(key);
                         if (oldSegment) {
-                          childSegments.set(item, newMountable.replace(oldSegment));
+                          childSegments.set(key, newMountable.replace(oldSegment));
                         }
                       },
                       error: (error) => {
@@ -187,7 +193,7 @@ export default class ListRenderer {
                     }),
                 );
               } else {
-                const childSegment = childSegments.get(item);
+                const childSegment = childSegments.get(key);
                 if (childSegment) {
                   if (nextSegment) {
                     const { parentNode } = nextSegment[0];
@@ -228,28 +234,29 @@ export default class ListRenderer {
             batch(() => {
               for (let i = 0; i < newItemsArray.length; i++) {
                 const item = newItemsArray[i];
-                if (childIndexes.get(item) !== i) {
-                  childIndexes.set(item, i);
-                  childIndexesSubject.next(item);
+                const key = getKey(item);
+                if (childIndexes.get(key) !== i) {
+                  childIndexes.set(key, i);
+                  childIndexesSubject.next(key);
                 }
               }
-              for (const item of childSubscriptions.keys()) {
-                if (!newItemsSet.has(item)) {
-                  childIndexes.delete(item);
-                  childIndexesSubject.next(item);
+              for (const key of childSubscriptions.keys()) {
+                if (!newItemsSet.has(key)) {
+                  childIndexes.delete(key);
+                  childIndexesSubject.next(key);
                 }
               }
             });
-            for (const [item, childSegment] of childSegments.entries()) {
-              if (!newItemsSet.has(item)) {
+            for (const [key, childSegment] of childSegments.entries()) {
+              if (!newItemsSet.has(key)) {
                 removeSegment(childSegment);
-                childSegments.delete(item);
+                childSegments.delete(key);
               }
             }
-            for (const [item, childSubscription] of childSubscriptions.entries()) {
-              if (!newItemsSet.has(item)) {
+            for (const [key, childSubscription] of childSubscriptions.entries()) {
+              if (!newItemsSet.has(key)) {
                 childSubscription.unsubscribe();
-                childSubscriptions.delete(item);
+                childSubscriptions.delete(key);
               }
             }
           }),

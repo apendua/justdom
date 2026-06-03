@@ -13,7 +13,7 @@ import { onEachValue, subscribeTo, all } from "./util.js";
  * @return {Observable<T>}
  */
 export function observable(fn) {
-  return toObservable(new Derived(fn));
+  return toObservable(new Derived(() => fn()));
 }
 
 /**

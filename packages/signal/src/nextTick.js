@@ -28,4 +28,18 @@ export const onNextTick = nextTick().pipe(
   }),
 );
 
+/**
+ * @returns {Promise<void>}
+ */
+export const waitForNextTick = () => {
+  return new Promise((resolve) => {
+    const subscription = onNextTick.subscribe({
+      next: () => {
+        resolve();
+        subscription.unsubscribe();
+      },
+    });
+  });
+};
+
 export default nextTick;

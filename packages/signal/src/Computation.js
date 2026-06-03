@@ -74,6 +74,7 @@ class Computation {
 
   /**
    * @param {unknown} err
+   * @returns {void}
    */
   error(err) {
     if (!this.isActive()) {
@@ -126,14 +127,27 @@ class Computation {
   /**
    * @template T
    * @param {() => T} fn
+   * @param {object} [options]
+   * @param {(dependencies: Subscribable<unknown>[]) => void} [options.onAfterRun]
    * @returns {T}
    */
-  run(fn) {
+  run(fn, options = {}) {
     this.cleanup();
     return withComputation(this, () => {
       try {
         this.#dependencies = new Set(this.#sideEffects);
-        return fn();
+        const result = fn();
+        if (options.onAfterRun) {
+          /** @type {Subscribable<unknown>[]} */
+          const dependencies = [];
+          for (const observable of this.#dependencies) {
+            if (!this.#sideEffects.has(observable)) {
+              dependencies.push(observable);
+            }
+          }
+          options.onAfterRun.call(this, dependencies);
+        }
+        return result;
       } finally {
         for (const [observable, subscription] of this.#subscriptions.entries()) {
           if (!this.#dependencies.has(observable)) {

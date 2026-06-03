@@ -28,6 +28,7 @@ export {
   effectMap,
   takeNothing,
 } from "./operators.js";
+export { memo, memoFn } from "./decorators.js";
 export { observable, component, just } from "./factories.js";
 export { all } from "./util.js";
 export { default as store, emit } from "./store.js";

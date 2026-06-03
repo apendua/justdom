@@ -1,6 +1,7 @@
 import { Derived } from "./Signal.js";
 import { NoValueError } from "./core.js";
-import { isPlainObject, memoize2, shallowEqual } from "./util.js";
+import { isPlainObject, shallowEqual } from "./util.js";
+import { memoize2 } from "./memoize.js";
 
 /**
  * @template T

@@ -3,7 +3,8 @@ import { addDependency, withComputation } from "./core.js";
 import { batch, Derived } from "./Signal.js";
 import Emitter from "./Emitter.js";
 import { useEffects } from "./operators.js";
-import { isPlainObject, memoize3 } from "./util.js";
+import { isPlainObject } from "./util.js";
+import { memoize3 } from "./memoize.js";
 
 /**
  * @import {MonoTypeOperatorFunction} from "rxjs"

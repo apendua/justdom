@@ -233,11 +233,16 @@ export function toObservable(signal) {
       error: (err) => {
         subscriber.error(err);
       },
+      complete: () => {
+        subscriber.complete();
+      },
     });
     try {
-      withComputation(null, () => {
-        subscriber.next(signal.get());
-      });
+      if (!subscriber.closed) {
+        withComputation(null, () => {
+          subscriber.next(signal.get());
+        });
+      }
     } catch (err) {
       if (!(err instanceof NoValueError)) {
         subscription.unsubscribe();

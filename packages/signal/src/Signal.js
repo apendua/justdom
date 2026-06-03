@@ -61,9 +61,6 @@ export class Derived extends Computation {
   #isEqual;
 
   /** @type {number} */
-  #priority = 0;
-
-  /** @type {number} */
   #evaluations = 0;
 
   /** @type {boolean} */
@@ -107,28 +104,22 @@ export class Derived extends Computation {
   }
 
   get() {
+    // We want to register this as dependency before recompute, to make sure that subscription to own changes
+    // is created early, so that the recomute properly recognizes isActive() stauts. In order for this to work
+    // the priority calculation needs to be decoupled from addDependency (old implementation), and instead it's
+    // now performed in the onAfterRun callback of the run() method.
+    //
+    // Please think carefully before changing the order of these operations, as multiple invariants may break
+    // if the order is messed up.
+    addDependency(this);
     if (this.#current) {
-      addDependency(this);
       return this.#current.value;
     }
-    const value = this.#recompute();
-    // addDependency will need to know the priority of the current computation,
-    // which will only be known after recompute() is called.
-    addDependency(this);
-    return value;
+    return this.#recompute();
   }
 
   getEvaluations() {
     return this.#evaluations;
-  }
-
-  /**
-   * @param {Dependency} dependency
-   * @returns {void}
-   */
-  addDependency(dependency) {
-    this.#priority = Math.max(this.#priority, getPriority(dependency) + 1);
-    super.addDependency(dependency);
   }
 
   invalidate() {
@@ -162,7 +153,7 @@ export class Derived extends Computation {
   }
 
   #recompute() {
-    return this.run(() => {
+    const recompute = () => {
       // If we're already recomputing, it means we have a circular dependency
       // between different derived computations. We fail quickly and let the
       // user fix the problem.
@@ -170,7 +161,6 @@ export class Derived extends Computation {
         throw new CircularDependencyError();
       }
       try {
-        this.#priority = 0;
         this.#evaluations += 1;
         this.#recomputing = true;
         const newValue = this.#evaluate(this.#getContext());
@@ -185,8 +175,16 @@ export class Derived extends Computation {
         return this.#current.value;
       } finally {
         this.#recomputing = false;
-        setPriority(this, this.#priority);
       }
+    };
+    return this.run(recompute, {
+      onAfterRun: (dependencies) => {
+        let maxPriority = 0;
+        for (const dependency of dependencies) {
+          maxPriority = Math.max(maxPriority, getPriority(dependency) + 1);
+        }
+        setPriority(this, maxPriority);
+      },
     });
   }
 

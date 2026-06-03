@@ -1,7 +1,7 @@
 import { addDependency } from "./core.js";
 import { filter, Subject } from "rxjs";
 import LazyIterable from "./LazyIterable.js";
-import { memoize3 } from "./util.js";
+import { memoize3 } from "./memoize.js";
 
 /**
  * @import { Dependency } from './core.js';

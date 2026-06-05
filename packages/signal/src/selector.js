@@ -1,7 +1,7 @@
 import { Derived } from "./Signal.js";
 import { NoValueError } from "./core.js";
 import { isPlainObject, shallowEqual } from "./util.js";
-import { memoize2 } from "./memoize.js";
+import { memoize, memoizeDerived } from "./memoize.js";
 
 /**
  * @template T
@@ -40,11 +40,11 @@ function typeOf(value) {
  * @returns {ProxyHandler<object>}
  */
 function createProxyHandler(source) {
-  const getType = memoize2((/** @type {PropertyKey} */ key) => {
+  const getType = memoize((/** @type {PropertyKey} */ key) => {
     return typeOf(source.get()[key]);
   });
 
-  const get = memoize2((/** @type {PropertyKey} */ key) => {
+  const get = memoize((/** @type {PropertyKey} */ key) => {
     const type = getType(key);
     if (type === "object") {
       return selector(() => {
@@ -75,41 +75,43 @@ function createProxyHandler(source) {
     isEqual: arrayEqual,
   });
 
-  const has = memoize2((/** @type {PropertyKey} */ key) => {
+  const has = memoize((/** @type {PropertyKey} */ key) => {
     return Reflect.has(source.get(), key);
   });
 
-  // const hasOwnPropertyDescriptor = memoize2((/** @type {PropertyKey} */ key) => {
+  // const hasOwnPropertyDescriptor = memoize((/** @type {PropertyKey} */ key) => {
   //   return Reflect.getOwnPropertyDescriptor(source.get(), key) !== undefined;
   // });
 
-  const getOwnPropertyDescriptor = memoize2(
-    (/** @type {PropertyKey} */ key) => {
-      // if (!hasOwnPropertyDescriptor(key)) {
-      //   return undefined;
-      // }
-      // return selector(() => {
-      //   const descriptor = Reflect.getOwnPropertyDescriptor(source.get(), key);
-      //   if (!descriptor) {
-      //     throw new NoValueError(`No property descriptor found for key "${String(key)}"`);
-      //   }
-      //   return descriptor;
-      // });
-      // return Reflect.getOwnPropertyDescriptor(source.get(), key);
-      const { configurable, enumerable, writable } =
-        Reflect.getOwnPropertyDescriptor(source.get(), key) || {};
-      return {
-        configurable,
-        enumerable,
-        writable,
-      };
-    },
-    {
-      isEqual: shallowEqual,
-    },
-  );
+  const getOwnPropertyDescriptor = memoizeDerived((/** @type {PropertyKey} */ key) => {
+    // if (!hasOwnPropertyDescriptor(key)) {
+    //   return undefined;
+    // }
+    // return selector(() => {
+    //   const descriptor = Reflect.getOwnPropertyDescriptor(source.get(), key);
+    //   if (!descriptor) {
+    //     throw new NoValueError(`No property descriptor found for key "${String(key)}"`);
+    //   }
+    //   return descriptor;
+    // });
+    // return Reflect.getOwnPropertyDescriptor(source.get(), key);
+    return new Derived(
+      () => {
+        const { configurable, enumerable, writable } =
+          Reflect.getOwnPropertyDescriptor(source.get(), key) || {};
+        return {
+          configurable,
+          enumerable,
+          writable,
+        };
+      },
+      {
+        isEqual: shallowEqual,
+      },
+    );
+  });
 
-  const getPrototypeOf = memoize2(() => {
+  const getPrototypeOf = memoize(() => {
     return Object.getPrototypeOf(source.get());
   });
 

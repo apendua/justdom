@@ -1,8 +1,7 @@
 import * as THREE from "three";
 import { onCleanup } from "@apendua.dev/signal";
-import { effects, just, on, set } from "@apendua.dev/signal";
+import { effects, just, on, set, memoize } from "@apendua.dev/signal";
 import { $, children } from "../operators.js";
-import { shareSignal } from "@apendua.dev/store4";
 import { interactions } from "../interactions.js";
 import VisualProperties from "./VisualProperties.js";
 import { makeRectangleGeometry, shrinkRectangle } from "./rectangle.js";
@@ -34,7 +33,7 @@ export function div(ctx, element) {
   //   return basic;
   // });
 
-  const fillMaterial = shareSignal(
+  const fillMaterial = memoize(
     /**
      * @param {THREE.Color} color
      * @param {number} opacity

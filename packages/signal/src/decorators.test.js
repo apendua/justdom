@@ -31,7 +31,7 @@ describe("memo", () => {
   });
 
   it("memoizes getter result per instance", () => {
-    // memoize2 (used internally) only caches within an active reactive
+    // memoize (used internally) only caches within an active reactive
     // computation. Wrap access in a subscribed Derived and use a Signal
     // dependency so we can trigger a clean re-evaluation.
     const compute = mock.fn(() => ({ result: 1 }));

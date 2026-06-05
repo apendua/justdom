@@ -1,3 +1,4 @@
+import { createRecursiveCache } from "./cache.js";
 import Computation from "./Computation.js";
 import { onNextTick } from "./nextTick.js";
 import { Derived } from "./Signal.js";
@@ -55,7 +56,7 @@ import { Observable } from "rxjs";
  * @param {MemoizeOptions<unknown, unknown, unknown[]>} [options]
  * @returns {(...args: unknown[]) => unknown}
  */
-export function memoize(fn, options = {}) {
+export function memoizeImpl(fn, options = {}) {
   const {
     cache = /** @type {Cache<unknown, HasSideEffects>} */ (new Map()),
     getKey = (...args) => args[0],
@@ -84,50 +85,84 @@ export function memoize(fn, options = {}) {
  * @template TKey
  * @template TValue
  * @template {unknown[]} TArgs
- * @typedef {object} Memoize2Options
- * @property {(...args: TArgs) => TKey} [getKey]
- * @property {Cache<TKey, Derived<TValue>>} [cache]
- * @property {(a: TValue, b: TValue) => boolean} [isEqual]
+ * @overload
+ * @param {(...args: TArgs) => TValue} fn
+ * @param {RequiredKeys<MemoizeOptions<TKey, Derived<TValue>, TArgs>, "getKey" | "cache">} [options]
+ * @returns {(...args: TArgs) => TValue}
+ *//**
+ * @template {unknown[]} TArgs
+ * @template TValue
+ * @overload
+ * @param {(...args: TArgs) => TValue} fn
+ * @param {MemoizeOptions<TArgs, Derived<TValue>, TArgs>} [options]
+ * @returns {(...args: TArgs) => TValue}
+ *//**
+ * @param {(...args: unknown[]) => unknown} fn
+ * @param {MemoizeOptions<unknown[], Derived<unknown>, unknown[]>} [options]
+ * @returns {(...args: unknown[]) => unknown}
  */
+export function memoize(fn, options = {}) {
+  const { cache = createRecursiveCache(), getKey = (...args) => args } = options;
+  return (...args) => {
+    const key = getKey(...args);
+    const signal = cache.get(key);
+    if (signal) {
+      return signal.get();
+    }
+    const newSignal = new Derived(() => fn(...args), {
+      deferred: true,
+    });
+    newSignal.addSideEffect(
+      new Observable(() => {
+        cache.set(key, newSignal);
+        return () => {
+          cache.delete(key);
+        };
+      }),
+    );
+    return newSignal.get();
+  };
+}
 
 /**
  * @template TKey
  * @template TValue
  * @template {unknown[]} TArgs
  * @overload
- * @param {(...args: TArgs) => TValue} fn
- * @param {RequiredKeys<Memoize2Options<TKey, TValue, TArgs>, "getKey" | "cache">} [options]
+ * @param {(...args: TArgs) => Derived<TValue>} fn
+ * @param {RequiredKeys<MemoizeOptions<TKey, Derived<TValue>, TArgs>, "getKey" | "cache">} [options]
  * @returns {(...args: TArgs) => TValue}
  *//**
- * @template TKey
+ * @template {unknown[]} TArgs
  * @template TValue
  * @overload
- * @param {(key: TKey) => TValue} fn
- * @param {Memoize2Options<TKey, TValue, [TKey]>} [options]
- * @returns {(key: TKey) => TValue}
+ * @param {(...args: TArgs) => Derived<TValue>} fn
+ * @param {MemoizeOptions<TArgs, Derived<TValue>, TArgs>} [options]
+ * @returns {(...args: TArgs) => TValue}
  *//**
- * @param {(...args: unknown[]) => unknown} fn
- * @param {Memoize2Options<unknown, unknown, unknown[]>} [options]
+ * @param {(...args: unknown[]) => Derived<unknown>} fn
+ * @param {MemoizeOptions<unknown[], Derived<unknown>, unknown[]>} [options]
  * @returns {(...args: unknown[]) => unknown}
  */
-export function memoize2(fn, options = {}) {
-  const {
-    cache = /** @type {Cache<unknown, Derived<unknown>>} */ (new Map()),
-    getKey = (...args) => args[0],
-    isEqual,
-  } = options;
-  const getSignal = memoize(
-    (...args) =>
-      new Derived(() => fn(...args), {
-        isEqual,
-        deferred: true,
+export function memoizeDerived(fn, options = {}) {
+  const { cache = createRecursiveCache(), getKey = (...args) => args } = options;
+  return (...args) => {
+    const key = getKey(...args);
+    const signal = cache.get(key);
+    if (signal) {
+      return signal.get();
+    }
+    const newSignal = fn(...args);
+    newSignal.addSideEffect(
+      new Observable(() => {
+        cache.set(key, newSignal);
+        return () => {
+          cache.delete(key);
+        };
       }),
-    {
-      cache,
-      getKey,
-    },
-  );
-  return (...args) => getSignal(...args).get();
+    );
+    return newSignal.get();
+  };
 }
 
 /**
@@ -138,38 +173,42 @@ export function memoize2(fn, options = {}) {
  * @param {RequiredKeys<MemoizeOptions<TKey, Computation, TArgs>, "getKey" | "cache">} [options]
  * @returns {(...args: TArgs) => Dependency}
  *//**
- * @template TKey
+ * @template {unknown[]} TArgs
  * @overload
- * @param {(key: TKey) => Dependency} fn
- * @param {MemoizeOptions<TKey, Computation, [TKey]>} [options]
- * @returns {(key: TKey) => Dependency}
+ * @param {(...args: TArgs) => Dependency} fn
+ * @param {MemoizeOptions<TArgs, Computation, TArgs>} [options]
+ * @returns {(...args: TArgs) => Dependency}
  *//**
  * @template {unknown[]} TArgs
  * @param {(...args: TArgs) => Dependency} fn
- * @param {MemoizeOptions<unknown, Computation, TArgs>} [options]
+ * @param {MemoizeOptions<TArgs, Computation, TArgs>} [options]
  * @returns {(...args: TArgs) => Dependency}
  */
 export function memoize3(fn, options = {}) {
-  const {
-    cache = /** @type {Cache<unknown, Computation>} */ (new Map()),
-    getKey = (...args) => args[0],
-  } = options;
-  return memoize(
-    (...args) => {
-      const computation = new Computation({
-        onInvalidateDependency() {
-          this.invalidate();
-        },
-        resetOnRefCountZero: () => onNextTick,
-      });
-      computation.addSideEffect(fn(...args));
+  const { cache = createRecursiveCache(), getKey = (...args) => args } = options;
+  return (...args) => {
+    const key = getKey(...args);
+    const computation = cache.get(key);
+    if (computation) {
       return computation;
-    },
-    {
-      cache,
-      getKey,
-    },
-  );
+    }
+    const newComputation = new Computation({
+      onInvalidateDependency() {
+        this.invalidate();
+      },
+      resetOnRefCountZero: () => onNextTick,
+    });
+    newComputation.addSideEffect(fn(...args));
+    newComputation.addSideEffect(
+      new Observable(() => {
+        cache.set(key, newComputation);
+        return () => {
+          cache.delete(key);
+        };
+      }),
+    );
+    return newComputation;
+  };
 }
 
 /**

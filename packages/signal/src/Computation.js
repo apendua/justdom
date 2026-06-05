@@ -138,14 +138,7 @@ class Computation {
         this.#dependencies = new Set(this.#sideEffects);
         const result = fn();
         if (options.onAfterRun) {
-          /** @type {Subscribable<unknown>[]} */
-          const dependencies = [];
-          for (const observable of this.#dependencies) {
-            if (!this.#sideEffects.has(observable)) {
-              dependencies.push(observable);
-            }
-          }
-          options.onAfterRun.call(this, dependencies);
+          options.onAfterRun.call(this, Array.from(this.#dependencies));
         }
         return result;
       } finally {

@@ -1,5 +1,5 @@
-import { createRecursiveCache } from "./cache.js";
-import { memoize2, weakMemoize } from "./memoize.js";
+import { memoizeDerived, weakMemoize } from "./memoize.js";
+import { Derived } from "./Signal.js";
 
 /**
  * @template {object} T
@@ -18,10 +18,15 @@ export function memo(isEqual = Object.is) {
       throw new Error("memo decorator can only be applied to getters");
     }
     const getter = descriptor.get;
-    const getValue = memoize2((target) => getter.apply(target), {
-      cache: new WeakMap(),
-      isEqual,
-    });
+    const getValue = memoizeDerived(
+      (/** @type {WeakKey} */ target) => {
+        return new Derived(getter.bind(target), { deferred: true, isEqual });
+      },
+      {
+        cache: new WeakMap(),
+        getKey: (target) => target,
+      },
+    );
     descriptor.get = function get() {
       return getValue(this);
     };
@@ -49,11 +54,17 @@ export function memoFn(getKey = (...args) => args, isEqual = Object.is) {
     /** @type {(...args: unknown[]) => TValue} */
     const originalFn = descriptor.value;
     const getBoundFn = weakMemoize((target) => {
-      return memoize2((...args) => originalFn.apply(target, args), {
-        cache: createRecursiveCache(),
-        getKey,
-        isEqual,
-      });
+      return memoizeDerived(
+        (...args) => {
+          return new Derived(originalFn.bind(target, ...args), {
+            isEqual,
+            deferred: true,
+          });
+        },
+        {
+          getKey,
+        },
+      );
     });
     descriptor.value = function value(/** @type {unknown[]} */ ...args) {
       return getBoundFn(this)(...args);

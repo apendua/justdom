@@ -1,4 +1,4 @@
-import { Observable, of } from "rxjs";
+import { Observable, of, tap } from "rxjs";
 import UpdateQueue from "./UpdateQueue.js";
 import {
   NoValueError,
@@ -211,6 +211,21 @@ export class Derived extends Computation {
    */
   static of(fn) {
     return new Derived(fn);
+  }
+
+  /**
+   * @template TValue
+   * @param {Observable<TValue>} observable
+   * @returns {Derived<TValue>}
+   */
+  static from(observable) {
+    /** @type {Signal<TValue>} */
+    const signal = new Signal();
+    const derived = new Derived(() => {
+      return signal.get();
+    });
+    derived.addSideEffect(observable.pipe(tap((value) => signal.set(value))));
+    return derived;
   }
 }
 

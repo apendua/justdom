@@ -1,7 +1,7 @@
 import { describe, it, mock } from "node:test";
 import assert from "node:assert/strict";
 
-import { memoize, memoize2, memoize3 } from "./memoize.js";
+import { memoizeImpl, memoize, memoize3 } from "./memoize.js";
 import { Derived } from "./Signal.js";
 import { waitForNextTick } from "./nextTick.js";
 import { Subject, tap } from "rxjs";
@@ -20,12 +20,12 @@ function inComputation(fn) {
   sub.unsubscribe();
 }
 
-describe("memoize()", () => {
+describe("memoizeImpl()", () => {
   it("memoize signal inside a reactive computation", async () => {
     const compute = mock.fn((/** @type {number} */ x) => ({ value: x }));
     /** @type {Map<number, Derived<{ value: number }>>} */
     const cache = new Map();
-    const memoized = memoize(
+    const memoized = memoizeImpl(
       (/** @type {number} */ x) => {
         return new Derived(() => {
           return compute(x);
@@ -47,18 +47,20 @@ describe("memoize()", () => {
       assert.strictEqual(a.get(), b.get());
       assert.notStrictEqual(a, c);
     });
+    await waitForNextTick();
     assert.equal(cache.size, 0);
     assert.equal(compute.mock.calls.length, 2);
   });
 });
 
-describe("memoize2()", () => {
+describe("memoize()", () => {
   it("memoize signal inside a reactive computation", async () => {
     const compute = mock.fn((/** @type {number} */ x) => ({ value: x }));
     /** @type {Map<number, Derived<{ value: number }>>} */
     const cache = new Map();
-    const memoized = memoize2(compute, {
+    const memoized = memoize(compute, {
       cache,
+      getKey: (x) => x,
     });
     inComputation(() => {
       const a = memoized(1);
@@ -90,6 +92,7 @@ describe("memoize3()", () => {
         ),
       {
         cache,
+        getKey: (x) => x,
       },
     );
     inComputation(() => {

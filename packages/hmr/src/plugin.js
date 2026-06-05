@@ -10,9 +10,6 @@ const configuration = {
   "@apendua.dev/signal": {
     reloadable: ["component"],
   },
-  "@apendua.dev/store4": {
-    reloadable: ["shareObservable"],
-  },
   "@apendua.dev/dom": {
     reloadable: ["stylesheet", "className", "fontFace"],
   },

@@ -31,7 +31,6 @@
   },
   "dependencies": {
     "@apendua.dev/geometry": "workspace:*",
-    "@apendua.dev/store4": "workspace:*",
     "rxjs": "^7.8.2"
   },
   "devDependencies": {

@@ -1,4 +1,3 @@
-import { memo } from "@apendua.dev/store4";
 import {
   getFieldBBox,
   getFieldSetBBox,
@@ -7,7 +6,7 @@ import {
   to2D,
   VectorLike,
 } from "@apendua.dev/geometry";
-import { createProperty } from "@apendua.dev/signal";
+import { createProperty, memo } from "@apendua.dev/signal";
 
 interface ViewportProps {
   allFields: VectorLike[];

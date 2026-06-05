@@ -1,25 +1,7 @@
 import { describe, it, mock } from "node:test";
 import assert from "node:assert/strict";
-import { memo, memoFn } from "./decorators.js";
+import { memo, memoFn, decorate } from "./decorators.js";
 import { Derived, Signal } from "./Signal.js";
-
-/**
- * @template {object} T
- * @template {keyof T} K
- * @param {T} target
- * @param {K} key
- * @param {Array<(target: T, key: K, descriptor: PropertyDescriptor) => void>} decorators
- */
-export function decorate(target, key, ...decorators) {
-  const descriptor = Object.getOwnPropertyDescriptor(target, key);
-  if (!descriptor) {
-    throw new Error(`No descriptor found for ${key.toString()}`);
-  }
-  for (const decorator of decorators) {
-    decorator(target, key, descriptor);
-  }
-  Object.defineProperty(target, key, descriptor);
-}
 
 describe("memo", () => {
   it("throws when applied to a non-getter", () => {

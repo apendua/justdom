@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { addDependency, batch, NoValueError, memo, decorate } from "@apendua.dev/signal";
+import { addDependency, batch, NoValueError, memo, decorate, memoFn } from "@apendua.dev/signal";
 import { fromEvent, store } from "@apendua.dev/signal";
 import { filter, from, Subject } from "rxjs";
 import { getBoundingClientRectCached, getComputedStyleCached } from "./cache.js";
@@ -410,8 +410,8 @@ export default class VisualProperties {
   }
 }
 
-decorate(VisualProperties.prototype, "getRelativeXHeight", memo());
-decorate(VisualProperties.prototype, "getRectangleParams", memo());
+decorate(VisualProperties.prototype, "getRelativeXHeight", memoFn());
+decorate(VisualProperties.prototype, "getRectangleParams", memoFn());
 decorate(VisualProperties.prototype, "totalWidth", memo());
 decorate(VisualProperties.prototype, "totalHeight", memo());
 decorate(VisualProperties.prototype, "fontSize", memo());

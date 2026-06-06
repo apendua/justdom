@@ -1,6 +1,6 @@
 import { text, $$, children, attr } from "@apendua.dev/dom";
+import { observe } from "@apendua.dev/signal";
 import { ViewportContext } from "../store4/Viewport";
-import { $observe } from "@apendua.dev/store4";
 
 interface LabelProps {
   x: number;
@@ -23,6 +23,6 @@ export default function Label(ctx: WeakKey, props: LabelProps) {
     }),
     attr("x", () => viewport.mapHexToPixels(props).x),
     attr("y", () => viewport.mapHexToPixels(props).y),
-    children(text`${$observe(props).text}`),
+    children(text`${observe(props).text}`),
   ]);
 }

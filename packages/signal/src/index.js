@@ -27,6 +27,8 @@ export {
   flatMap,
   effectMap,
   takeNothing,
+  observe,
+  observeFn,
 } from "./operators.js";
 export { memo, memoFn, decorate, mutate } from "./decorators.js";
 export { observable, component, just } from "./factories.js";

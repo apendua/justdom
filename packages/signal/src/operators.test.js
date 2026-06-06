@@ -1,9 +1,13 @@
-import { describe, it, mock } from "node:test";
+import { describe, it, beforeEach, mock } from "node:test";
 import assert from "node:assert/strict";
-
-import { Subject } from "rxjs";
-import { Signal } from "./Signal.js";
-import { effects, map, takeNothing } from "./operators.js";
+import { merge, Subject } from "rxjs";
+import store from "./store.js";
+import Computation from "./Computation.js";
+import { decorate, memoFn } from "./decorators.js";
+import { Signal, batch } from "./Signal.js";
+import Emitter, { on } from "./Emitter.js";
+import { just } from "./factories.js";
+import { effects, map, takeNothing, observe, observeFn } from "./operators.js";
 
 describe("effects()", () => {
   it("applies effects until the source completes", () => {
@@ -159,6 +163,388 @@ describe("map()", () => {
 
     source.complete();
     assert.ok(complete.mock.calls.length > 0);
+
+    subscription.unsubscribe();
+  });
+});
+
+class Counter {
+  /** @type {{ count: number }} */
+  #state;
+
+  /**
+   * @param {number} value
+   */
+  constructor(value) {
+    this.#state = store({ count: value });
+  }
+
+  get count() {
+    return this.#state.count;
+  }
+
+  get multiplyBy() {
+    /**
+     * @param {number} value
+     */
+    return (value) => this.#state.count * value;
+  }
+
+  /**
+   * @param {number} value
+   */
+  getCountMultipliedBy(value) {
+    return this.count * value;
+  }
+
+  /**
+   * @param {number} value
+   */
+  getCountModulo(value) {
+    return this.count % value;
+  }
+
+  get countSquared() {
+    return this.count ** 2;
+  }
+
+  increment() {
+    this.#state.count += 1;
+  }
+
+  observeRawCount() {
+    return observe(this.#state).count;
+  }
+
+  /**
+   * @param {number} [value]
+   */
+  reset(value = 0) {
+    this.#state.count = value;
+  }
+}
+
+describe("Counter", () => {
+  it("increments value", () => {
+    const counter = new Counter(0);
+    assert.strictEqual(counter.count, 0);
+    counter.increment();
+    assert.strictEqual(counter.count, 1);
+    counter.increment();
+    assert.strictEqual(counter.count, 2);
+  });
+
+  it("watch values", () => {
+    const counter = new Counter(0);
+    const values = observe(counter).count;
+    /** @type {number[]} */
+    const result = [];
+    const subscription = values.subscribe((value) => {
+      result.push(value);
+    });
+    counter.increment();
+    counter.reset();
+    counter.reset();
+    counter.increment();
+    counter.increment();
+    assert.deepStrictEqual(result, [0, 1, 0, 1, 2]);
+    subscription.unsubscribe();
+  });
+
+  it("watch values squared", () => {
+    const counter = new Counter(0);
+    const values = observe(counter).countSquared;
+    /** @type {number[]} */
+    const result = [];
+    const subscription = values.subscribe((value) => {
+      result.push(value);
+    });
+    counter.increment();
+    counter.reset();
+    counter.reset();
+    counter.increment();
+    counter.increment();
+    counter.reset(-2);
+    assert.deepStrictEqual(result, [0, 1, 0, 1, 4]);
+    subscription.unsubscribe();
+  });
+
+  it("watch function values (1)", () => {
+    const counter = new Counter(0);
+    const values = observeFn(counter).getCountMultipliedBy(2);
+    /** @type {number[]} */
+    const result = [];
+    const subscription = values.subscribe((value) => {
+      result.push(value);
+    });
+    counter.increment();
+    counter.reset();
+    counter.reset();
+    counter.increment();
+    counter.increment();
+    counter.reset(-2);
+    assert.deepStrictEqual(result, [0, 2, 0, 2, 4, -4]);
+    subscription.unsubscribe();
+  });
+
+  it("watch function values (2)", () => {
+    const counter = new Counter(0);
+    const values = observeFn(counter).getCountModulo(2);
+    /** @type {number[]} */
+    const result = [];
+    const subscription = values.subscribe((value) => {
+      result.push(value);
+    });
+    counter.increment();
+    counter.reset();
+    counter.reset();
+    counter.increment();
+    counter.increment();
+    counter.reset(-2);
+    // Since we are using Object.is to compare values, -0 and 0 are different.
+    assert.deepStrictEqual(result, [0, 1, 0, 1, 0, -0]);
+    subscription.unsubscribe();
+  });
+});
+
+it("watch function values (3)", () => {
+  const counter = new Counter(0);
+  const values = observeFn(counter).multiplyBy(2);
+  /** @type {number[]} */
+  const result = [];
+  const subscription = values.subscribe((value) => {
+    result.push(value);
+  });
+  counter.increment();
+  counter.reset();
+  counter.reset();
+  counter.increment();
+  counter.increment();
+  counter.reset(-2);
+  assert.deepStrictEqual(result, [0, 2, 0, 2, 4, -4]);
+  subscription.unsubscribe();
+});
+
+describe("Counting method re-runs", () => {
+  /**
+   * @type {import("node:test").Mock<any>}
+   */
+  let spyOnMultiplyBy;
+
+  class MyStore {
+    /** @type {{ value: number }} */
+    #state;
+
+    /**
+     * @param {number} value
+     */
+    constructor(value) {
+      this.#state = store({ value });
+    }
+
+    // @MyStore.state("value")
+    get value() {
+      return this.#state.value;
+    }
+
+    set value(value) {
+      this.#state.value = value;
+    }
+
+    /**
+     * @param {number} value
+     */
+    multiplyBy(value) {
+      spyOnMultiplyBy();
+      return this.value * value;
+    }
+
+    /**
+     * @param {string} value
+     */
+    id(value) {
+      return { value };
+    }
+  }
+
+  decorate(MyStore.prototype, "multiplyBy", memoFn());
+  decorate(MyStore.prototype, "id", memoFn());
+
+  beforeEach(() => {
+    spyOnMultiplyBy = mock.fn();
+  });
+
+  it("only re-runs when value changes", () => {
+    const store = new MyStore(0);
+    const values = observeFn(store).multiplyBy(2);
+    /** @type {number[]} */
+    const result = [];
+    const subscription = values.subscribe((value) => {
+      result.push(value);
+    });
+    store.value = 1;
+    store.value = 1;
+    store.value = 1;
+    store.value = 2;
+    store.value = 3;
+    store.value = 3;
+    store.value = 3;
+    store.value = 3;
+    store.value = 3;
+    store.value = 4;
+    assert.deepStrictEqual(result, [0, 2, 4, 6, 8]);
+    assert.strictEqual(spyOnMultiplyBy.mock.calls.length, 5);
+    subscription.unsubscribe();
+  });
+
+  it("only re-runs when value changes with (two observables)", () => {
+    const store = new MyStore(0);
+    const values = merge(observeFn(store).multiplyBy(2), observeFn(store).multiplyBy(3));
+    /** @type {number[]} */
+    const result = [];
+    const subscription = values.subscribe((value) => {
+      result.push(value);
+    });
+    store.value = 1;
+    store.value = 1;
+    store.value = 1;
+    store.value = 2;
+    store.value = 3;
+    store.value = 3;
+    store.value = 3;
+    store.value = 3;
+    store.value = 3;
+    store.value = 4;
+    assert.deepStrictEqual(result, [0, 0, 2, 3, 4, 6, 6, 9, 8, 12]);
+    assert.strictEqual(spyOnMultiplyBy.mock.calls.length, 10);
+    subscription.unsubscribe();
+  });
+
+  it("takes the latest update from a batch", () => {
+    const store = new MyStore(0);
+    const values = observeFn(store).multiplyBy(2);
+    /** @type {number[]} */
+    const result = [];
+    const subscription = values.subscribe((value) => {
+      result.push(value);
+    });
+    batch(() => {
+      store.value = 1;
+      store.value = 2;
+      store.value = 3;
+      store.value = 4;
+    });
+    assert.deepStrictEqual(result, [0, 8]);
+    assert.strictEqual(spyOnMultiplyBy.mock.calls.length, 2);
+    subscription.unsubscribe();
+  });
+
+  /**
+   * @param {number} [ms]
+   */
+  const pause = (ms = 0) =>
+    new Promise((resolve) => {
+      setTimeout(resolve, ms);
+    });
+
+  it("cleans up cache after unsubscribe", async () => {
+    const store = new MyStore(0);
+    const values = observeFn(store).multiplyBy(2);
+    const subscription = values.subscribe();
+    subscription.unsubscribe();
+    await pause();
+    await pause();
+    assert.strictEqual(spyOnMultiplyBy.mock.calls.length, 1);
+    const values2 = observeFn(store).multiplyBy(2);
+    const subscription2 = values2.subscribe();
+    subscription2.unsubscribe();
+    assert.strictEqual(spyOnMultiplyBy.mock.calls.length, 2);
+  });
+
+  /**
+   * @param {() => void} fn
+   */
+  function inComputation(fn) {
+    const computation = new Computation();
+    const sub = computation.subscribe({});
+    computation.run(() => {
+      fn();
+    });
+    sub.unsubscribe();
+  }
+
+  it("does not re-run if value is read right before subscribe, when in a computation", () => {
+    inComputation(() => {
+      const store = new MyStore(2);
+      const value = store.multiplyBy(2);
+      const subscription = observeFn(store).multiplyBy(2).subscribe();
+      assert.strictEqual(value, 4);
+      assert.strictEqual(spyOnMultiplyBy.mock.calls.length, 1);
+      subscription.unsubscribe();
+    });
+  });
+
+  it("re-runs if value is read right before subscribe and there's a small delay", async () => {
+    const store = new MyStore(2);
+    const value = store.multiplyBy(2);
+    await pause();
+    await pause();
+    const subscription = observeFn(store).multiplyBy(2).subscribe();
+    assert.strictEqual(value, 4);
+    assert.strictEqual(spyOnMultiplyBy.mock.calls.length, 2);
+    subscription.unsubscribe();
+  });
+
+  it("subscribes to observeRawCount", () => {
+    const counter = new Counter(0);
+    const values = counter.observeRawCount();
+    /** @type {number[]} */
+    const result = [];
+    const subscription = values.subscribe((value) => {
+      result.push(value);
+    });
+    counter.increment();
+    counter.reset();
+    counter.reset();
+    counter.increment();
+    counter.increment();
+    assert.deepStrictEqual(result, [0, 1, 0, 1, 2]);
+    subscription.unsubscribe();
+  });
+
+  /**
+   * @typedef {Object} TestEvent
+   * @property {string} test
+   */
+
+  it("memoizes value until listener is unsubscribed", async () => {
+    const myStore = new MyStore(0);
+    const spy = mock.fn();
+    /** @type {Emitter<TestEvent>} */
+    const emitter = new Emitter();
+    const subscription = just(emitter, [
+      on("test", (event) => {
+        spy(event, myStore.id("test"));
+      }),
+    ]).subscribe();
+
+    emitter.emit("test", "a");
+    await Promise.resolve();
+
+    emitter.emit("test", "b");
+    await Promise.resolve();
+
+    emitter.emit("test", "c");
+    await Promise.resolve();
+
+    assert.strictEqual(spy.mock.calls.length, 3);
+    const firstCallId = spy.mock.calls[0].arguments[1];
+    assert.strictEqual(spy.mock.calls[0].arguments[0], "a");
+    assert.strictEqual(spy.mock.calls[0].arguments[1], firstCallId);
+    assert.strictEqual(spy.mock.calls[1].arguments[0], "b");
+    assert.strictEqual(spy.mock.calls[1].arguments[1], firstCallId);
+    assert.strictEqual(spy.mock.calls[2].arguments[0], "c");
+    assert.strictEqual(spy.mock.calls[2].arguments[1], firstCallId);
 
     subscription.unsubscribe();
   });

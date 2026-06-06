@@ -1,8 +1,7 @@
 import { text, set, on, children, $, className } from "@apendua.dev/dom";
-import { RootContext } from "../store4/Root";
 import { Fields, FieldsContext } from "@apendua.dev/minesweeper";
-import { $observe } from "@apendua.dev/store4";
-import { store } from "@apendua.dev/signal";
+import { store, observe } from "@apendua.dev/signal";
+import { RootContext } from "../store4/Root";
 import Viewport, { ViewportContext } from "../store4/Viewport";
 import { switchMap } from "rxjs";
 import Minefield from "./Minefield";
@@ -17,15 +16,15 @@ const fullscreen = className`
 
 const Game = (ctx: WeakKey) => {
   const dimensions = RootContext.get(ctx);
-  const { screenWidth, screenHeight } = $observe(dimensions);
+  const { screenWidth, screenHeight } = observe(dimensions);
 
   const state = store({
     game: Fields.generate({}),
   });
 
-  const minesLeft = $observe(state).game.pipe(
+  const minesLeft = observe(state).game.pipe(
     switchMap((game) => {
-      return $observe(game).minesLeft;
+      return observe(game).minesLeft;
     }),
   );
 
@@ -43,7 +42,7 @@ const Game = (ctx: WeakKey) => {
 
   ctx = ViewportContext.set(ctx, viewport);
 
-  return $observe(state).game.pipe(
+  return observe(state).game.pipe(
     switchMap((game) => {
       const newContext = FieldsContext.set(ctx, game);
       return $("div", [

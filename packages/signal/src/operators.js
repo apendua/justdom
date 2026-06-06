@@ -117,3 +117,73 @@ export function use(observable) {
   }
   addDependency(observable.pipe(takeNothing()));
 }
+
+/**
+ * @template {object} T
+ * @typedef {{
+ *   readonly [K in keyof T as T[K] extends (...args: any[]) => any ? never : K]-?:
+ *     Observable<T[K]>
+ * }} Observe
+ */
+
+/**
+ * @template {object} T
+ * @overload
+ * @param {T} target
+ * @returns {Observe<T>}
+ */
+
+/**
+ * @param {Record<PropertyKey, unknown>} target
+ */
+export function observe(target) {
+  return new Proxy(target, {
+    get(_1, name) {
+      return toObservable(new Derived(() => target[name]));
+    },
+  });
+}
+
+/**
+ * @template {object} T
+ * @typedef {{
+ *   readonly [K in keyof T as T[K] extends (...args: any[]) => infer R
+ *     ? R extends void
+ *       ? never
+ *       : K
+ *     : never
+ *   ]-?:
+ *     T[K] extends (...args: infer U) => any
+ *       ? (...args: U) => Observable<ReturnType<T[K]>>
+ *       : never
+ * }} ObserveFn
+ */
+
+/**
+ * @template {object} T
+ * @overload
+ * @param {T} target
+ * @returns {ObserveFn<T>}
+ */
+
+/**
+ * @param {Record<PropertyKey, unknown>} target
+ */
+export function observeFn(target) {
+  return new Proxy(target, {
+    get(_1, name) {
+      return new Proxy(new Function(), {
+        apply(_2, _3, args) {
+          return toObservable(
+            new Derived(() => {
+              if (typeof target[name] !== "function") {
+                throw new Error(`Property ${String(name)} is not a function.`);
+              }
+              return target[name](...args);
+            }),
+          );
+        },
+      });
+    },
+  });
+}

@@ -1,7 +1,7 @@
 import { list, $$, children, attr, on, className } from "@apendua.dev/dom";
-import { RootContext } from "../store4/Root";
 import { Field, Fields, getKey } from "@apendua.dev/minesweeper";
-import { $observe } from "@apendua.dev/store4";
+import { observe } from "@apendua.dev/signal";
+import { RootContext } from "../store4/Root";
 import { ViewportContext } from "../store4/Viewport";
 import { tap } from "rxjs";
 import Label from "./Label";
@@ -76,7 +76,7 @@ const Minefield = component((ctx: WeakKey, game: Fields) => {
         borderWidth: 2,
         cutHoles: true,
       }),
-      list($observe(game).allFields, (field) => FieldStatus(ctx, field)),
+      list(observe(game).allFields, (field) => FieldStatus(ctx, field)),
     ),
     tap((svg) => {
       svgRef = svg;

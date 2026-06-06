@@ -153,6 +153,7 @@ export function frames(ctx) {
  * @property {(grip: THREE.XRHandSpace) => THREE.Object3D} [createHandModel]
  * @property {(renderer: THREE.WebGLRenderer) => void} [onBeforeRender]
  * @property {(renderer: THREE.WebGLRenderer) => void} [onAfterRender]
+ * @property {boolean} [antialias]
  */
 
 /**
@@ -162,7 +163,9 @@ export function frames(ctx) {
  */
 export function render(fn, options = {}) {
   return new Observable((subscriber) => {
-    const renderer = new THREE.WebGLRenderer();
+    const renderer = new THREE.WebGLRenderer({
+      antialias: options.antialias,
+    });
     const width = new BehaviorSubject(window.innerWidth);
     const height = new BehaviorSubject(window.innerHeight);
 

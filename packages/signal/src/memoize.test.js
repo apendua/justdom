@@ -3,7 +3,6 @@ import assert from "node:assert/strict";
 
 import { memoizeImpl, memoize, memoize3 } from "./memoize.js";
 import { Derived } from "./Signal.js";
-import { waitForNextTick } from "./nextTick.js";
 import { Subject, tap } from "rxjs";
 import { addDependency } from "./core.js";
 import Computation from "./Computation.js";
@@ -21,7 +20,7 @@ function inComputation(fn) {
 }
 
 describe("memoizeImpl()", () => {
-  it("memoize signal inside a reactive computation", async () => {
+  it("memoize signal inside a reactive computation", () => {
     const compute = mock.fn((/** @type {number} */ x) => ({ value: x }));
     /** @type {Map<number, Derived<{ value: number }>>} */
     const cache = new Map();
@@ -47,14 +46,13 @@ describe("memoizeImpl()", () => {
       assert.strictEqual(a.get(), b.get());
       assert.notStrictEqual(a, c);
     });
-    await waitForNextTick();
     assert.equal(cache.size, 0);
     assert.equal(compute.mock.calls.length, 2);
   });
 });
 
 describe("memoize()", () => {
-  it("memoize signal inside a reactive computation", async () => {
+  it("memoize signal inside a reactive computation", () => {
     const compute = mock.fn((/** @type {number} */ x) => ({ value: x }));
     /** @type {Map<number, Derived<{ value: number }>>} */
     const cache = new Map();
@@ -70,14 +68,13 @@ describe("memoize()", () => {
       assert.strictEqual(a, b);
       assert.notStrictEqual(a, c);
     });
-    await waitForNextTick();
     assert.equal(cache.size, 0);
     assert.equal(compute.mock.calls.length, 2);
   });
 });
 
 describe("memoize3()", () => {
-  it("memoize signal inside a reactive computation", async () => {
+  it("memoize signal inside a reactive computation", () => {
     const spy = mock.fn((/** @type {number} */ x) => ({ value: x }));
     /** @type {Map<number, Computation>} */
     const cache = new Map();
@@ -107,7 +104,6 @@ describe("memoize3()", () => {
       assert.notStrictEqual(a, c);
       subject.next();
     });
-    await waitForNextTick();
     assert.equal(cache.size, 0);
     assert.equal(spy.mock.calls.length, 2);
   });

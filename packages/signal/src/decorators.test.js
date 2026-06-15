@@ -228,11 +228,7 @@ describe("memoFn", () => {
     }
 
     // Ignore the argument, always use the same cache key
-    decorate(
-      Foo.prototype,
-      "double",
-      memoFn(() => []),
-    );
+    decorate(Foo.prototype, "double", memoFn({ getKey: () => [] }));
 
     const foo = new Foo();
     const derivedA = new Derived(() => foo.double(1));

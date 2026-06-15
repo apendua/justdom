@@ -1,4 +1,4 @@
-import { Observable, of, tap } from "rxjs";
+import { interval, Observable, of, tap } from "rxjs";
 import UpdateQueue from "./UpdateQueue.js";
 import {
   NoValueError,
@@ -9,7 +9,6 @@ import {
   makeNonReactive,
 } from "./core.js";
 import Computation from "./Computation.js";
-import { onNextTick } from "./nextTick.js";
 
 /**
  * @import {Subscribable} from "rxjs";
@@ -41,6 +40,7 @@ export function batch(fn) {
  * @typedef {object} DerivedOptions
  * @property {(a: T, b: T) => boolean} [isEqual]
  * @property {boolean} [deferred]
+ * @property {number} [cacheTTL]
  */
 
 /**
@@ -51,8 +51,8 @@ export class Derived extends Computation {
   /** @type {{ value: T } | null} */
   #current = null;
 
-  /** @type {boolean} */
-  #deferred = false;
+  /** @type {number} */
+  #cacheTTL = -1;
 
   /** @type {(ctx: EvaluationContext<T>) => T} */
   #evaluate;
@@ -73,7 +73,7 @@ export class Derived extends Computation {
   constructor(evaluate, options = Object.is) {
     super({
       resetOnRefCountZero: () => {
-        return this.#deferred ? onNextTick : of(null);
+        return this.#cacheTTL >= 0 ? interval(this.#cacheTTL) : of(null);
       },
       onInvalidateDependency: () => {
         updateQueue.invalidate(this, getPriority(this));
@@ -83,9 +83,9 @@ export class Derived extends Computation {
     if (typeof options === "function") {
       this.#isEqual = options;
     } else {
-      const { isEqual = Object.is, deferred = false } = options;
+      const { isEqual = Object.is, cacheTTL = -1 } = options;
       this.#isEqual = isEqual;
-      this.#deferred = deferred;
+      this.#cacheTTL = cacheTTL;
     }
     this.addSideEffect(
       new Observable(() => {
@@ -216,14 +216,21 @@ export class Derived extends Computation {
   /**
    * @template TValue
    * @param {Observable<TValue>} observable
+   * @param {object} [options]
+   * @param {number} [options.cacheTTL]
    * @returns {Derived<TValue>}
    */
-  static from(observable) {
+  static from(observable, options = {}) {
     /** @type {Signal<TValue>} */
     const signal = new Signal();
-    const derived = new Derived(() => {
-      return signal.get();
-    });
+    const derived = new Derived(
+      () => {
+        return signal.get();
+      },
+      {
+        cacheTTL: options.cacheTTL,
+      },
+    );
     derived.addSideEffect(observable.pipe(tap((value) => signal.set(value))));
     return derived;
   }

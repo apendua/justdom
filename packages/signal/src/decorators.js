@@ -5,9 +5,27 @@ import { batch, Derived } from "./Signal.js";
 /**
  * @template {object} T
  * @template {keyof T} [K=keyof T]
- * @param {(oldValue: T[K], newValue: T[K]) => boolean} [isEqual]
+ * @typedef {object} MemoOptions
+ * @property {number} [cacheTTL]
+ * @property {(oldValue: T[K], newValue: T[K]) => boolean} [isEqual]
  */
-export function memo(isEqual = Object.is) {
+
+/**
+ * @template {object} T
+ * @template {keyof T} [K=keyof T]
+ * @param {MemoOptions<T, K> | MemoOptions<T, K>["isEqual"]} [options]
+ */
+export function memo(options = {}) {
+  /** @type {(a: T[K], b: T[K]) => boolean} */
+  let isEqual;
+  /** @type {number | undefined} */
+  let cacheTTL;
+  if (typeof options === "function") {
+    isEqual = options;
+  } else {
+    ({ isEqual = Object.is, cacheTTL } = options);
+  }
+
   /**
    * @param {T} _prototype
    * @param {K} _name
@@ -21,7 +39,7 @@ export function memo(isEqual = Object.is) {
     const getter = descriptor.get;
     const getValue = memoizeDerived(
       (/** @type {WeakKey} */ target) => {
-        return new Derived(getter.bind(target), { deferred: true, isEqual });
+        return new Derived(getter.bind(target), { isEqual, cacheTTL });
       },
       {
         cache: new WeakMap(),
@@ -36,12 +54,39 @@ export function memo(isEqual = Object.is) {
 
 /**
  * @template TValue
- * @template {PropertyKey} TKey
- * @template {{ [P in TKey]: (...args: any[]) => TValue }} T
- * @param {(...args: unknown[]) => unknown[]} [getKey]
- * @param {(oldValue: TValue, newValue: TValue) => boolean} [isEqual]
+ * @template {unknown[]} TArgs
+ * @typedef {object} MemoFnOptions
+ * @property {number} [cacheTTL]
+ * @property {(oldValue: TValue, newValue: TValue) => boolean} [isEqual]
+ * @property {(...args: TArgs) => unknown[]} [getKey]
  */
-export function memoFn(getKey = (...args) => args, isEqual = Object.is) {
+
+/**
+ * @template {PropertyKey} TKey
+ * @template {{ [P in TKey]: (...args: any[]) => any }} T
+ * @param {MemoFnOptions<ReturnType<T[TKey]>, Parameters<T[TKey]>> | MemoFnOptions<ReturnType<T[TKey]>, Parameters<T[TKey]>>["isEqual"]} [options]
+ */
+export function memoFn(options = {}) {
+  /**
+   * @typedef {ReturnType<T[TKey]>} TValue
+   */
+
+  /**
+   * @typedef {Parameters<T[TKey]>} TArgs
+   */
+
+  /** @type {(a: TValue, b: TValue) => boolean} */
+  let isEqual;
+  /** @type {number | undefined} */
+  let cacheTTL;
+  /** @type {((...args: TArgs) => unknown[]) | undefined} */
+  let getKey;
+  if (typeof options === "function") {
+    isEqual = options;
+  } else {
+    ({ isEqual = Object.is, cacheTTL, getKey } = options);
+  }
+
   /**
    * @param {T} _prototype
    * @param {TKey} _name
@@ -52,14 +97,14 @@ export function memoFn(getKey = (...args) => args, isEqual = Object.is) {
     if (typeof descriptor.value !== "function") {
       throw new Error("memoFn decorator can only be applied to functions");
     }
-    /** @type {(...args: unknown[]) => TValue} */
+    /** @type {(...args: Parameters<T[TKey]>) => TValue} */
     const originalFn = descriptor.value;
     const getBoundFn = weakMemoize((target) => {
       return memoizeDerived(
         (...args) => {
-          return new Derived(originalFn.bind(target, ...args), {
+          return new Derived(() => originalFn.apply(target, args), {
             isEqual,
-            deferred: true,
+            cacheTTL,
           });
         },
         {
@@ -67,7 +112,7 @@ export function memoFn(getKey = (...args) => args, isEqual = Object.is) {
         },
       );
     });
-    descriptor.value = function value(/** @type {unknown[]} */ ...args) {
+    descriptor.value = function value(/** @type {TArgs} */ ...args) {
       return getBoundFn(this)(...args);
     };
   };

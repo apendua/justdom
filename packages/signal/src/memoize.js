@@ -1,6 +1,5 @@
 import { createRecursiveCache } from "./cache.js";
 import Computation from "./Computation.js";
-import { onNextTick } from "./nextTick.js";
 import { Derived } from "./Signal.js";
 import { Observable } from "rxjs";
 
@@ -94,7 +93,7 @@ export function memoizeImpl(fn, options = {}) {
  * @template TValue
  * @overload
  * @param {(...args: TArgs) => TValue} fn
- * @param {MemoizeOptions<TArgs, Derived<TValue>, TArgs>} [options]
+ * @param {MemoizeOptions<unknown[], Derived<TValue>, TArgs>} [options]
  * @returns {(...args: TArgs) => TValue}
  *//**
  * @param {(...args: unknown[]) => unknown} fn
@@ -109,9 +108,7 @@ export function memoize(fn, options = {}) {
     if (signal) {
       return signal.get();
     }
-    const newSignal = new Derived(() => fn(...args), {
-      deferred: true,
-    });
+    const newSignal = new Derived(() => fn(...args));
     newSignal.addSideEffect(
       new Observable(() => {
         cache.set(key, newSignal);
@@ -137,7 +134,7 @@ export function memoize(fn, options = {}) {
  * @template TValue
  * @overload
  * @param {(...args: TArgs) => Derived<TValue>} fn
- * @param {MemoizeOptions<TArgs, Derived<TValue>, TArgs>} [options]
+ * @param {MemoizeOptions<unknown[], Derived<TValue>, TArgs>} [options]
  * @returns {(...args: TArgs) => TValue}
  *//**
  * @param {(...args: unknown[]) => Derived<unknown>} fn
@@ -176,7 +173,7 @@ export function memoizeDerived(fn, options = {}) {
  * @template {unknown[]} TArgs
  * @overload
  * @param {(...args: TArgs) => Dependency} fn
- * @param {MemoizeOptions<TArgs, Computation, TArgs>} [options]
+ * @param {MemoizeOptions<unknown[], Computation, TArgs>} [options]
  * @returns {(...args: TArgs) => Dependency}
  *//**
  * @template {unknown[]} TArgs
@@ -196,7 +193,6 @@ export function memoize3(fn, options = {}) {
       onInvalidateDependency() {
         this.invalidate();
       },
-      resetOnRefCountZero: () => onNextTick,
     });
     newComputation.addSideEffect(fn(...args));
     newComputation.addSideEffect(

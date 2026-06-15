@@ -49,7 +49,7 @@ it("invokes cleanup in a deferred manner", async function () {
       onCleanup(cleanup);
     },
     {
-      deferred: true,
+      cacheTTL: 0,
     },
   );
   const subscription1 = derived.subscribe({});

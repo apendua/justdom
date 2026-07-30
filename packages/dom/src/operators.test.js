@@ -200,6 +200,74 @@ describe("DOM Operators", () => {
       subscription.unsubscribe();
       assert.strictEqual(div.style.backgroundColor, "red");
     });
+
+    it("should set a custom property", () => {
+      const div = document.createElement("div");
+      /** @type {Subject<string>} */
+      const value$ = new Subject();
+      const source$ = new Observable((subscriber) => subscriber.next(div));
+
+      const subscription = source$.pipe(style("--accent", value$)).subscribe();
+
+      value$.next("red");
+      assert.strictEqual(div.style.getPropertyValue("--accent"), "red");
+
+      value$.next("blue");
+      assert.strictEqual(div.style.getPropertyValue("--accent"), "blue");
+
+      subscription.unsubscribe();
+    });
+
+    it("should serialize a custom property into the style attribute", () => {
+      const div = document.createElement("div");
+      const source$ = new Observable((subscriber) => subscriber.next(div));
+
+      const subscription = source$.pipe(style("--accent", () => "rebeccapurple")).subscribe();
+
+      assert.strictEqual(div.getAttribute("style"), "--accent: rebeccapurple;");
+
+      subscription.unsubscribe();
+    });
+
+    it("should remove a custom property when the value goes away", () => {
+      const div = document.createElement("div");
+      /** @type {Subject<string | undefined>} */
+      const value$ = new Subject();
+      const source$ = new Observable((subscriber) => subscriber.next(div));
+
+      const subscription = source$.pipe(style("--accent", value$)).subscribe();
+
+      value$.next("red");
+      assert.strictEqual(div.style.getPropertyValue("--accent"), "red");
+
+      value$.next(undefined);
+      assert.strictEqual(div.style.getPropertyValue("--accent"), "");
+
+      subscription.unsubscribe();
+    });
+
+    it("should accept custom properties alongside regular ones in the object form", () => {
+      const div = document.createElement("div");
+      const source$ = new Observable((subscriber) => subscriber.next(div));
+
+      const subscription = source$.pipe(style({ color: "red", "--accent": "blue" })).subscribe();
+
+      assert.strictEqual(div.style.color, "red");
+      assert.strictEqual(div.style.getPropertyValue("--accent"), "blue");
+
+      subscription.unsubscribe();
+    });
+
+    it("should coerce non-string custom property values", () => {
+      const div = document.createElement("div");
+      const source$ = new Observable((subscriber) => subscriber.next(div));
+
+      const subscription = source$.pipe(style("--count", () => 3)).subscribe();
+
+      assert.strictEqual(div.style.getPropertyValue("--count"), "3");
+
+      subscription.unsubscribe();
+    });
   });
 
   describe("operator: append()", () => {

@@ -14,11 +14,19 @@ const itemStyle = className`
   box-shadow: 0 1px 2px rgba(0,0,0,0.1);
 `;
 
+// The completed state is expressed as two css custom properties rather than as
+// inline `style("color", ...)` declarations. The rule stays static, so it can
+// be extended with things an inline style cannot reach — pseudo classes, media
+// queries — while the element only carries the values. The defaults live in the
+// `var()` fallbacks, so the properties are removed rather than set to a neutral
+// value when a todo is not completed.
 const textStyle = className`
   flex-grow: 1;
   margin-left: 0.5rem;
   cursor: pointer;
   user-select: none;
+  text-decoration: var(--todo-text-decoration, none);
+  color: var(--todo-text-color, inherit);
 `;
 
 const deleteButtonStyle = className`
@@ -70,8 +78,8 @@ const TodoItem = component((_: WeakKey, id: string, operators: Op<TodoProps, Tod
       ]),
       $("span", [
         set("className", textStyle),
-        style("textDecoration", () => (props.completed ? "line-through" : "none")),
-        style("color", () => (props.completed ? "#888" : "inherit")),
+        style("--todo-text-decoration", () => (props.completed ? "line-through" : undefined)),
+        style("--todo-text-color", () => (props.completed ? "#888" : undefined)),
         children(text`${() => props.text}`),
         on("click", toggleCompleted),
       ]),

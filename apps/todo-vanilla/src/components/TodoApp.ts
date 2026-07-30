@@ -10,7 +10,12 @@ import {
 } from "@apendua.dev/dom";
 import { Signal, toObservable } from "@apendua.dev/signal";
 import { store, on, set, observable, component } from "@apendua.dev/signal";
+import ProgressBar from "./ProgressBar.js";
 import TodoItem from "./TodoItem.js";
+
+// Artificial delay used to demonstrate suspense. The progress bar is given the
+// same duration, so it fills up just as the content arrives.
+const LOADING_DELAY = 1000;
 
 const containerStyle = className`
   display: flex;
@@ -88,10 +93,10 @@ const TodoApp = component((ctx: WeakKey) => {
     todos.set(todos.get().filter((t) => t.id !== id));
   };
 
-  ctx = suspend(ctx, () => text`Loading...`);
+  ctx = suspend(ctx, () => ProgressBar(LOADING_DELAY));
 
   // Add artificial delay to demonstrate suspense.
-  waitFor(ctx, new Promise((resolve) => setTimeout(resolve, 1000)));
+  waitFor(ctx, new Promise((resolve) => setTimeout(resolve, LOADING_DELAY)));
 
   return withFallback(
     ctx,

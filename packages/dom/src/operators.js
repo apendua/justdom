@@ -102,6 +102,42 @@ export function data(key, value) {
  */
 
 /**
+ * @typedef {`--${string}`} CustomProperty
+ */
+
+/**
+ * @typedef {Partial<WritableProps<CSSStyleDeclaration>> &
+ *   Partial<Record<CustomProperty, Primitive>>} StyleValues
+ */
+
+/**
+ * Applies a single style declaration.
+ *
+ * Custom properties are not exposed as named properties of
+ * `CSSStyleDeclaration`, so `style["--x"] = value` is silently dropped and
+ * `setProperty` is the only way to set one. Regular properties keep going
+ * through plain assignment so that the values `CSSStyleDeclaration` accepts
+ * are unchanged.
+ *
+ * @param {CSSStyleDeclaration} style
+ * @param {string} key
+ * @param {unknown} value
+ * @returns {void}
+ */
+function applyStyle(style, key, value) {
+  if (!key.startsWith("--")) {
+    // @ts-expect-error -- indexed write, checked by the overloads above.
+    style[key] = value;
+    return;
+  }
+  if (value === undefined || value === null) {
+    style.removeProperty(key);
+  } else {
+    style.setProperty(key, `${value}`);
+  }
+}
+
+/**
  * @template {ObjectWithStyle} TEntity
  * @template {keyof WritableProps<CSSStyleDeclaration>} K
  *
@@ -111,17 +147,24 @@ export function data(key, value) {
  * @returns {(source: Observable<TEntity>) => Observable<TEntity>}
  *
  * @overload
- * @param {Partial<WritableProps<CSSStyleDeclaration>>} values
+ * @param {CustomProperty} key
+ * @param {Observable<Primitive> | (() => Primitive)} value
  * @returns {(source: Observable<TEntity>) => Observable<TEntity>}
  *
- * @param {K|Partial<WritableProps<CSSStyleDeclaration>>} keyOrValues
- * @param {Observable<CSSStyleDeclaration[K]> | (() => CSSStyleDeclaration[K])} [value]
+ * @overload
+ * @param {StyleValues} values
+ * @returns {(source: Observable<TEntity>) => Observable<TEntity>}
+ *
+ * @param {K|CustomProperty|StyleValues} keyOrValues
+ * @param {Observable<any> | (() => any)} [value]
  * @returns {(source: Observable<TEntity>) => Observable<TEntity>}
  */
 export function style(keyOrValues, value) {
   if (typeof keyOrValues === "object") {
     return effects((entity) => {
-      Object.assign(entity.style, keyOrValues);
+      for (const [key, val] of Object.entries(keyOrValues)) {
+        applyStyle(entity.style, key, val);
+      }
     });
   }
   if (!value) {
@@ -133,7 +176,8 @@ export function style(keyOrValues, value) {
   return effectMap((entity) => {
     return value.pipe(
       tap((v) => {
-        entity.style[keyOrValues] = v;
+        // `keyof CSSStyleDeclaration` includes its numeric index signature.
+        applyStyle(entity.style, String(keyOrValues), v);
       }),
     );
   });

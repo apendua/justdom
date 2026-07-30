@@ -1,7 +1,7 @@
 import { effectMap, just, observable } from "@apendua.dev/signal";
 import ListRenderer from "./ListRenderer.js";
 import { replaceSegment, toSegment } from "./helpers.js";
-import { map, tap } from "rxjs";
+import { defer, map, tap } from "rxjs";
 
 /**
  * @import {Observable, MonoTypeOperatorFunction} from 'rxjs';
@@ -9,13 +9,26 @@ import { map, tap } from "rxjs";
  */
 
 /**
+ * Creates an element observable.
+ *
+ * The element itself is created on *subscribe*, not when `$()` is called. That
+ * matters for two reasons:
+ *
+ * - Without `defer`, the argument evaluation order makes children get created
+ *   before their parents, which is the reverse of document order. Creating on
+ *   subscribe means elements are acquired top-down instead, matching the order
+ *   the operator chain runs in.
+ * - The same element observable can be mounted in more than one place. Eager
+ *   creation gave every subscriber the *same* node, so the second mount stole
+ *   it from the first and only one copy was rendered.
+ *
  * @template {keyof HTMLElementTagNameMap} Tag
  * @param {Tag} tag
  * @param {MonoTypeOperatorFunction<HTMLElementTagNameMap[Tag]>[]} operators
  * @returns {Observable<Mountable<Node>>}
  */
 export function $(tag, operators = []) {
-  return just(document.createElement(tag), operators).pipe(map(toMountable));
+  return defer(() => just(document.createElement(tag), operators)).pipe(map(toMountable));
 }
 
 /**
@@ -25,9 +38,9 @@ export function $(tag, operators = []) {
  * @returns {Observable<Mountable<Node>>}
  */
 export function $$(tag, operators = []) {
-  return just(document.createElementNS("http://www.w3.org/2000/svg", tag), operators).pipe(
-    map(toMountable),
-  );
+  return defer(() =>
+    just(document.createElementNS("http://www.w3.org/2000/svg", tag), operators),
+  ).pipe(map(toMountable));
 }
 
 /**

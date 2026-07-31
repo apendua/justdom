@@ -85,7 +85,7 @@ describe("renderToString()", () => {
     assert.ok(generatedClassName, "expected the paragraph to carry a generated class name");
     assert.match(
       html,
-      new RegExp(`<style>\\.${generatedClassName} \\{\\s*color: red;\\s*\\}</style>`),
+      new RegExp(`<style[^>]*>\\.${generatedClassName} \\{\\s*color: red;\\s*\\}</style>`),
     );
   });
 

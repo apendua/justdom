@@ -4,6 +4,7 @@ import { just, Signal, set, toObservable } from "@apendua.dev/signal";
 import { userEvent } from "@testing-library/user-event";
 import { $, children, list } from "./dom.js";
 import { text } from "./text.js";
+import { className } from "./stylesheet.js";
 import { on } from "./operators.js";
 import { hydrate } from "./hydrate.js";
 
@@ -166,6 +167,35 @@ describe("hydrate()", () => {
 
     subscription.unsubscribe();
     assert.strictEqual(root.querySelectorAll("p").length, 0);
+  });
+
+  it("should adopt the stylesheet the server injected", () => {
+    const style = className`
+      color: teal;
+    `;
+    // Server render: mount, capture both the markup and the injected styles.
+    const server = document.createElement("main");
+    const serverSubscription = just(server, [
+      children($("p", [set("className", style), children(text`styled`)])),
+    ]).subscribe();
+    const markup = server.innerHTML;
+    const head = document.head.innerHTML;
+    serverSubscription.unsubscribe();
+
+    // Re-create the document the browser would receive.
+    document.head.innerHTML = head;
+    const stylesFromServer = document.head.querySelectorAll("style").length;
+    assert.strictEqual(stylesFromServer, 1);
+
+    const root = serverRendered(markup);
+    hydrate(root, $("p", [set("className", style), children(text`styled`)])).subscribe();
+
+    assert.strictEqual(
+      document.head.querySelectorAll("style").length,
+      1,
+      "expected the server stylesheet to be adopted, not duplicated",
+    );
+    document.head.innerHTML = "";
   });
 
   describe("mismatches", () => {

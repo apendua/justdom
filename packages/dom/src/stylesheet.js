@@ -1,26 +1,45 @@
 import { map, Observable, ReplaySubject, share } from "rxjs";
 import { renderText } from "./text.js";
 import { effectMap } from "@apendua.dev/signal";
+import { isHydrating } from "./hydrate.js";
+
+const STYLE_KEY_ATTRIBUTE = "data-style-key";
 
 /** @type {Observable<string>} */
 export const CLASS_NAME = new Observable();
 
 /**
  * Creates a class name observable.
+ *
+ * The generated name is stamped onto the element so that a server rendered
+ * stylesheet can be found again while hydrating. Without that the client would
+ * inject a second copy of every rule: harmless to look at, since the names are
+ * derived from the source and therefore agree, but a duplicate of each
+ * stylesheet in the document.
+ *
  * @param {Observable<string>} value - An observable of CSS class content.
+ * @param {string} key - The generated name this stylesheet defines.
  * @returns {Observable<string>}
  */
-function styleElement(value) {
+function styleElement(value, key) {
   return new Observable((subscriber) => {
-    const styleElement = document.createElement("style");
+    const adopted = isHydrating()
+      ? document.head.querySelector(`style[${STYLE_KEY_ATTRIBUTE}="${key}"]`)
+      : null;
+    const styleElement = adopted ?? document.createElement("style");
+    if (!adopted) {
+      styleElement.setAttribute(STYLE_KEY_ATTRIBUTE, key);
+    }
     subscriber.add(
       value.subscribe((newValue) => {
         styleElement.innerHTML = newValue;
       }),
     );
-    document.head.appendChild(styleElement);
+    if (!adopted) {
+      document.head.appendChild(styleElement);
+    }
     return () => {
-      document.head.removeChild(styleElement);
+      styleElement.remove();
     };
   });
 }
@@ -127,6 +146,7 @@ export function className(strings, ...values) {
     effectMap((key) => {
       return styleElement(
         renderText(strings, ...values).pipe(map((value) => `.${key} {${value}}`)),
+        key,
       );
     }),
     share({
@@ -145,7 +165,7 @@ export function className(strings, ...values) {
 export function stylesheet(strings, ...values) {
   const className$ = constant(stableName("class_", strings, values.length === 0));
   return className$.pipe(
-    effectMap(() => {
+    effectMap((key) => {
       return styleElement(
         renderText(
           strings,
@@ -156,6 +176,7 @@ export function stylesheet(strings, ...values) {
             return value;
           }),
         ),
+        key,
       );
     }),
     share({

@@ -1,6 +1,7 @@
 import { createProperty } from "@apendua.dev/signal";
 import { NEVER, Observable, ReplaySubject, shareReplay, switchMap, takeUntil } from "rxjs";
 import { takeNothing } from "@apendua.dev/signal";
+import { withoutHydration } from "./hydrate.js";
 
 /**
  * @import { Property } from "@apendua.dev/signal";
@@ -58,12 +59,21 @@ class Manager {
   render(content) {
     return new Observable((subscriber) => {
       const shared = content.pipe(shareReplay({ bufferSize: 1, refCount: true }));
+      // Ensure that both content and fallback are always subscribed to,
+      // so that their effects are applied and cleanup works correctly.
+      //
+      // The content is subscribed first, before anything is on screen. While
+      // hydrating it must not claim anything: a synchronous server render can
+      // only ever serialize the fallback, so the fallback is what the markup
+      // holds, and the content has to build its own nodes and wait to be
+      // swapped in.
+      const keepAlive = new Observable((observer) =>
+        withoutHydration(() => shared.pipe(takeNothing()).subscribe(observer)),
+      );
       this.#subject
         .pipe(
           switchMap((value) => (value ? shared : this.#options.fallback())),
-          // Ensure that both content and fallback are always subscribed to,
-          // so that their effects are applied and cleanup works correctly.
-          takeUntil(shared.pipe(takeNothing())),
+          takeUntil(keepAlive),
         )
         .subscribe(subscriber);
     });

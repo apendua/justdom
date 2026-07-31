@@ -7,6 +7,7 @@ import { text } from "./text.js";
 import { className } from "./stylesheet.js";
 import { on } from "./operators.js";
 import { hydrate } from "./hydrate.js";
+import { suspend, waitFor, withFallback } from "./suspend.js";
 
 /**
  * Renders `build()` the way a server would, and returns the markup.
@@ -309,6 +310,75 @@ describe("hydrate()", () => {
 
       subscription.unsubscribe();
       assert.strictEqual(root.querySelectorAll("li").length, 0);
+    });
+  });
+
+  describe("suspense", () => {
+    /**
+     * @param {number} delay
+     * @returns {import("rxjs").Observable<import("./types.js").Mountable<Node>>}
+     */
+    function build(delay) {
+      const ctx = suspend({}, () => $("p", [children(text`Loading...`)]));
+      waitFor(ctx, new Promise((resolve) => setTimeout(resolve, delay)));
+      return withFallback(ctx, $("section", [children(text`Real content`)]));
+    }
+
+    it("should adopt the fallback, which is all a server render can capture", async () => {
+      // A synchronous render always serializes the fallback: the boundary only
+      // settles a tick later, so the markup can never hold the content.
+      const markup = renderToString(() => build(10));
+      assert.match(markup, /Loading/);
+
+      const root = serverRendered(markup);
+      const fallbackNode = root.querySelector("p");
+      const warn = mock.method(console, "warn", () => {});
+
+      /** @type {{ elements: string[], texts: number }} */
+      let created;
+      try {
+        created = recordCreations(() => {
+          hydrate(root, build(10)).subscribe();
+        });
+      } finally {
+        warn.mock.restore();
+      }
+
+      assert.strictEqual(warn.mock.calls.length, 0, "expected no mismatch");
+      assert.strictEqual(root.querySelector("p"), fallbackNode, "expected the fallback adopted");
+      assert.ok(!created.elements.includes("p"), "expected the fallback not to be rebuilt");
+      assert.ok(
+        created.elements.includes("section"),
+        "expected the content to be built up front, off to one side",
+      );
+
+      await new Promise((resolve) => setTimeout(resolve, 40));
+
+      assert.strictEqual(root.querySelector("section")?.textContent, "Real content");
+      assert.strictEqual(root.querySelector("p"), null, "expected the fallback to be swapped out");
+    });
+
+    it("should keep the swapped in content reactive", async () => {
+      const label = Signal.of("first");
+      const buildDynamic = () => {
+        const ctx = suspend({}, () => $("p", [children(text`Loading...`)]));
+        waitFor(ctx, new Promise((resolve) => setTimeout(resolve, 10)));
+        return withFallback(ctx, $("section", [children(text`${() => label.get()}`)]));
+      };
+      const root = serverRendered(renderToString(buildDynamic));
+      const warn = mock.method(console, "warn", () => {});
+      try {
+        hydrate(root, buildDynamic()).subscribe();
+      } finally {
+        warn.mock.restore();
+      }
+      assert.strictEqual(warn.mock.calls.length, 0);
+
+      await new Promise((resolve) => setTimeout(resolve, 40));
+      assert.strictEqual(root.querySelector("section")?.textContent, "first");
+
+      label.set("second");
+      assert.strictEqual(root.querySelector("section")?.textContent, "second");
     });
   });
 

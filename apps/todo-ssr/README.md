@@ -88,18 +88,14 @@ rebuilding it. Three pieces make that work:
    form stays the behaviour whenever the script has not run.
 
 Measured in Chromium against this app: the client creates **zero** DOM nodes,
-every server rendered `<li>` survives, and toggling causes no navigation. With
-JavaScript disabled the same button posts the form and the server re-renders.
+every server rendered `<li>` survives, and adding, completing and deleting a
+todo all happen without a single navigation. With JavaScript disabled the same
+buttons post their forms and the server re-renders, so nothing is lost.
 
-### Lists are the missing piece
-
-[`src/components/TodoApp.js`](./src/components/TodoApp.js) spreads the todos
-into a fixed set of children rather than using `list()`. `list()` renders items
-inside a container that server rendered markup has no counterpart for, so
-hydrating it fails the structural check and falls back to a full client render.
-The consequence is that *structural* changes — adding and deleting — still go to
-the server, while field changes like completing a todo happen in the browser.
-Switch the spread back to `list()` once list hydration lands.
+The list is a plain `list()` over the todos, adopted item by item, which is why
+adding and deleting can be handled in the browser at all: the renderer keeps the
+segment map it seeded while hydrating, so it can insert and remove around the
+nodes it adopted.
 
 ## Not covered
 

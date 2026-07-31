@@ -1,5 +1,6 @@
 import { $, attr, children, className, set, style, text } from "@apendua.dev/dom";
 import { component, makeNonReactive, on } from "@apendua.dev/signal";
+import { removeTodo } from "../todos.js";
 
 /**
  * @import { Filter, Todo } from "../todos.js";
@@ -81,6 +82,13 @@ const TodoItem = component(
               set("className", buttonStyle),
               attr({ type: "submit", formaction: `/todos/${todo.id}/delete` }),
               children(text`Delete`),
+              on(
+                "click",
+                makeNonReactive((event) => {
+                  event.preventDefault();
+                  removeTodo(todo.id);
+                }),
+              ),
             ]),
           ),
         ]),

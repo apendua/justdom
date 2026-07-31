@@ -1,6 +1,6 @@
-import { $, attr, children, className, set, text } from "@apendua.dev/dom";
-import { component, observable } from "@apendua.dev/signal";
-import { selectTodos, todos } from "../todos.js";
+import { $, attr, children, className, list, set, text } from "@apendua.dev/dom";
+import { component, makeNonReactive, observable, on } from "@apendua.dev/signal";
+import { addTodo, selectTodos, todos } from "../todos.js";
 import TodoItem from "./TodoItem.js";
 
 /**
@@ -103,6 +103,16 @@ const TodoApp = component(
         $("form", [
           set("className", inputRowStyle),
           attr({ method: "post", action: "/todos" }),
+          on(
+            "submit",
+            makeNonReactive((event) => {
+              const form = /** @type {HTMLFormElement} */ (event.currentTarget);
+              const field = /** @type {HTMLInputElement} */ (form.elements.namedItem("text"));
+              event.preventDefault();
+              addTodo(field.value);
+              field.value = "";
+            }),
+          ),
           children(
             $("input", [attr({ type: "hidden", name: "filter", value: filter })]),
             $("input", [
@@ -127,13 +137,11 @@ const TodoApp = component(
         ]),
         $("ul", [
           set("className", listStyle),
-          // NOTE: This spreads the todos into a fixed set of children rather
-          //       than using list(). list() renders its items inside its own
-          //       container, which server rendered markup has no counterpart
-          //       for, so hydrating it falls back to a full client render.
-          //       Switch back to list() once it can be hydrated.
           children(
-            ...selectTodos(filter).map((todo, index) => TodoItem(todo, () => index, filter)),
+            list(
+              () => selectTodos(filter),
+              component((todo, getIndex) => TodoItem(todo, getIndex, filter)),
+            ),
           ),
         ]),
         $("p", [

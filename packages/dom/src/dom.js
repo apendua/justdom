@@ -95,9 +95,60 @@ function createPlaceholder() {
   return document.createComment("");
 }
 
+/**
+ * The container a list adopts, made out of the envelope comments already in the
+ * markup. The trailing one can only be claimed once the items have taken
+ * theirs, so it is claimed on demand rather than up front.
+ *
+ * @returns {Container<Node>}
+ */
+function claimContainer() {
+  const start = claimComment();
+  /** @type {Node | null} */
+  let end = null;
+  const endOfContainer = () => {
+    if (!end) {
+      end = claimComment();
+    }
+    if (!end) {
+      throw new Error("Cannot claim a container outside of hydration.");
+    }
+    return end;
+  };
+  if (!start) {
+    throw new Error("Cannot claim a container outside of hydration.");
+  }
+  return {
+    /**
+     * @param {Node} child
+     */
+    appendChild(child) {
+      const last = endOfContainer();
+      if (!last.parentNode) {
+        throw new Error("Cannot append child to a removed container.");
+      }
+      return last.parentNode.insertBefore(child, last);
+    },
+    toMountable() {
+      const last = endOfContainer();
+      return {
+        /**
+         * @param {[Node, Node]} segment
+         */
+        replace: (segment) => replaceSegment([start, last], segment),
+      };
+    },
+  };
+}
+
 const renderer = new ListRenderer({
   createContainer,
   createPlaceholder,
+  hydration: {
+    isActive: isHydrating,
+    claimContainer,
+    claimItem: (subscribe) => claimSegment(subscribe).segment,
+  },
 });
 
 /**

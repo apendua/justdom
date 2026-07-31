@@ -3,15 +3,25 @@ import { createRequire } from "node:module";
 
 const requireFromCwd = createRequire(`${process.cwd()}/`);
 
+const DEFAULT_HTML = "<!doctype html><html><body></body></html>";
+
 /**
- * @param {{ ignoreCss?: boolean }} [options]
+ * Creates a JSDOM instance and installs its globals on `globalThis`.
+ *
+ * It may be called more than once; every call replaces the previously installed
+ * globals with the ones coming from the freshly created instance. The returned
+ * instance can be used to serialize the document, or to close the window once
+ * it is no longer needed.
+ *
+ * @param {{ ignoreCss?: boolean, html?: string }} [options]
+ * @returns {JSDOM}
  */
-export function setupJsdom({ ignoreCss = false } = {}) {
+export function setupJsdom({ ignoreCss = false, html = DEFAULT_HTML } = {}) {
   if (ignoreCss) {
     requireFromCwd.extensions[".css"] = () => {};
   }
 
-  const dom = new JSDOM("<!doctype html><html><body></body></html>");
+  const dom = new JSDOM(html);
 
   Object.defineProperty(globalThis, "window", {
     configurable: true,
@@ -53,4 +63,6 @@ export function setupJsdom({ ignoreCss = false } = {}) {
     configurable: true,
     value: dom.window.MouseEvent,
   });
+
+  return dom;
 }

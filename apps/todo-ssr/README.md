@@ -97,13 +97,33 @@ adding and deleting can be handled in the browser at all: the renderer keeps the
 segment map it seeded while hydrating, so it can insert and remove around the
 nodes it adopted.
 
-## Not covered
+## Fetch before rendering, do not suspend
 
-- **Async rendering.** `suspend`/`waitFor` from `@apendua.dev/dom` resolve
-  asynchronously, which breaks the "no `await` while the globals are swapped in"
-  invariant this example relies on. Supporting it needs either one jsdom instance
-  per in-flight request with the globals swapped around each synchronous chunk,
-  or serializing renders behind a queue.
+`renderToString` is synchronous, so a `suspend` boundary is always serialized as
+its *fallback* — the boundary only settles a tick after the mount, whether or
+not anything is actually pending. Hydration handles that gracefully: the client
+adopts the fallback and swaps the content in once it resolves, without rebuilding
+the page. But the content itself never reaches the markup, which is the whole
+point of rendering on the server.
+
+So resolve the data first and render from it:
+
+```js
+const data = await fetchTodos();
+todos.set(data.map(store));
+renderToString(() => TodoApp(filter)); // nothing pending, nothing to await
+```
+
+Nothing suspends, the content is in the markup, and the client seeds the same
+signals from the payload — which is exactly what this app already does with its
+in-memory state. `suspend`/`waitFor` is then left doing what it is good at:
+transitions *after* hydration, where there is no serialization problem at all.
+
+Server rendering content that is still pending would mean an asynchronous
+`renderToString` — breaking the "no `await` while the globals are swapped in"
+invariant — plus a marker per boundary so the client could tell which branch the
+markup holds. That is a streaming SSR design, and the pattern above avoids
+needing it.
 
 [dom]: ../../packages/dom
 [express]: https://expressjs.com/

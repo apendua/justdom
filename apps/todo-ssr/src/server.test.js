@@ -39,6 +39,18 @@ describe("server", () => {
   });
 
   /**
+   * The rendered markup, without the state payload. The payload carries every
+   * todo regardless of the filter, so a filtered-out title still appears in the
+   * document -- as data, not as rendered output.
+   *
+   * @param {string} html
+   * @returns {string}
+   */
+  function rendered(html) {
+    return html.split('<script type="application/json"')[0];
+  }
+
+  /**
    * @param {string} path
    * @param {Record<string, string>} body
    * @returns {Promise<Response>}
@@ -64,7 +76,7 @@ describe("server", () => {
 
     assert.match(html, /aria-current="page"/);
     assert.match(html, /1 of 1 remaining/);
-    assert.doesNotMatch(html, /Only todo/);
+    assert.doesNotMatch(rendered(html), /Only todo/);
   });
 
   it("should add a todo and redirect back, preserving the filter", async () => {

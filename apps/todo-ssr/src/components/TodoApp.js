@@ -1,4 +1,4 @@
-import { $, attr, children, className, list, set, text } from "@apendua.dev/dom";
+import { $, attr, children, className, set, text } from "@apendua.dev/dom";
 import { component, observable } from "@apendua.dev/signal";
 import { selectTodos, todos } from "../todos.js";
 import TodoItem from "./TodoItem.js";
@@ -127,11 +127,13 @@ const TodoApp = component(
         ]),
         $("ul", [
           set("className", listStyle),
+          // NOTE: This spreads the todos into a fixed set of children rather
+          //       than using list(). list() renders its items inside its own
+          //       container, which server rendered markup has no counterpart
+          //       for, so hydrating it falls back to a full client render.
+          //       Switch back to list() once it can be hydrated.
           children(
-            list(
-              () => selectTodos(filter),
-              component((todo, getIndex) => TodoItem(todo, getIndex, filter)),
-            ),
+            ...selectTodos(filter).map((todo, index) => TodoItem(todo, () => index, filter)),
           ),
         ]),
         $("p", [

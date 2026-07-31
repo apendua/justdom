@@ -5,15 +5,15 @@ A minimal server side rendering example for [`@apendua.dev/signal`][signal] and
 tree inside a [jsdom][jsdom] document and sends the serialized HTML to the
 browser.
 
-The rendered page is a todo list. There is **no client side JavaScript at all** —
-every interaction is a plain form submission handled by express, which mutates
-the server side signals and redirects back to the page, which is then rendered
-again from scratch. Hydration is deliberately out of scope; see
-[Not covered](#not-covered).
+The rendered page is a todo list. It works with no client side JavaScript at
+all — every interaction is a form submission that express handles by mutating
+the server side signals and redirecting — and it *also* hydrates, so a browser
+that runs the script takes over the markup and updates it in place instead.
+Same components, both ways round; see [Hydration](#hydration).
 
 ```sh
-rushx dev     # http://localhost:3000, restarts on change
-rushx start   # no watcher
+rushx dev     # builds the client bundle, then serves on http://localhost:3000
+rushx start   # no watcher, expects the bundle to exist
 rushx test    # typecheck + node:test
 ```
 
@@ -70,12 +70,39 @@ simply happen once, during the mount.
   are harmless in the response, and a browser-side hydration story would
   actually need them.
 
+## Hydration
+
+The browser is sent the same component tree, and adopts the markup rather than
+rebuilding it. Three pieces make that work:
+
+1. **The state travels with the page.** `src/server.js` serializes the todos
+   into a `<script type="application/json">` next to the mount point. The
+   client cannot adopt markup it would not have produced itself, so it has to
+   start from the state the server rendered from.
+2. **A client bundle.** [`src/client/main.js`](./src/client/main.js) is built by
+   vite into `dist/client/`, which express serves. It seeds the same signals
+   from the payload and calls `hydrate()` from `@apendua.dev/dom/hydrate`.
+3. **Handlers that intercept.** The toggle button carries an `on("click")` that
+   calls `preventDefault()` and flips the todo in place. It is part of the
+   component the *server* renders too — it simply never fires there — so the
+   form stays the behaviour whenever the script has not run.
+
+Measured in Chromium against this app: the client creates **zero** DOM nodes,
+every server rendered `<li>` survives, and toggling causes no navigation. With
+JavaScript disabled the same button posts the form and the server re-renders.
+
+### Lists are the missing piece
+
+[`src/components/TodoApp.js`](./src/components/TodoApp.js) spreads the todos
+into a fixed set of children rather than using `list()`. `list()` renders items
+inside a container that server rendered markup has no counterpart for, so
+hydrating it fails the structural check and falls back to a full client render.
+The consequence is that *structural* changes — adding and deleting — still go to
+the server, while field changes like completing a todo happen in the browser.
+Switch the spread back to `list()` once list hydration lands.
+
 ## Not covered
 
-- **Hydration.** Making the served markup interactive would mean shipping the
-  component tree to the browser and adopting the existing nodes instead of
-  creating new ones. `@apendua.dev/dom` always calls `document.createElement`,
-  so that needs renderer support that does not exist yet.
 - **Async rendering.** `suspend`/`waitFor` from `@apendua.dev/dom` resolve
   asynchronously, which breaks the "no `await` while the globals are swapped in"
   invariant this example relies on. Supporting it needs either one jsdom instance

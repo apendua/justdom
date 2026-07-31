@@ -1,5 +1,5 @@
 import { $, attr, children, className, set, style, text } from "@apendua.dev/dom";
-import { component } from "@apendua.dev/signal";
+import { component, makeNonReactive, on } from "@apendua.dev/signal";
 
 /**
  * @import { Filter, Todo } from "../todos.js";
@@ -36,6 +36,11 @@ const buttonStyle = className`
  * A single todo, rendered as a form with two submit buttons. There is no client
  * side JavaScript in this example, so all interactions are plain form
  * submissions; `formaction` is what lets one form drive two different routes.
+ *
+ * Once the page is hydrated the toggle button stops submitting and flips the
+ * todo in place instead. The handler is part of the same component the server
+ * renders -- it simply never fires there -- so the form remains the behaviour
+ * for a browser that has not run, or cannot run, the script.
  */
 const TodoItem = component(
   /**
@@ -58,6 +63,13 @@ const TodoItem = component(
               attr({ type: "submit" }),
               attr("aria-label", () => (todo.completed ? "Mark as active" : "Mark as completed")),
               children(text`${() => (todo.completed ? "☑" : "☐")}`),
+              on(
+                "click",
+                makeNonReactive((event) => {
+                  event.preventDefault();
+                  todo.completed = !todo.completed;
+                }),
+              ),
             ]),
             $("span", [
               set("className", labelStyle),

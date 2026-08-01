@@ -82,6 +82,12 @@ const restartButton = className`
   cursor: pointer;
 `;
 
+const hint = className`
+  font-size: 11px;
+  color: #868e96;
+  white-space: nowrap;
+`;
+
 const statusBadge = className`
   padding: 7px 14px;
   border-radius: 8px;
@@ -134,6 +140,7 @@ const Menu = component((_ctx: WeakKey, props: MenuProps) => {
           }}`,
         ),
       ]),
+      $("span", [attr("class", hint), children(text`Long-press or right-click a tile to flag it`)]),
     ),
   ]);
 });

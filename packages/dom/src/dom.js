@@ -1,10 +1,13 @@
 import { effectMap, just, observable } from "@apendua.dev/signal";
 import ListRenderer from "./ListRenderer.js";
-import { replaceSegment, toSegment } from "./helpers.js";
-import { defer, map, tap } from "rxjs";
+import { removeSegment, replaceSegment, toSegment } from "./helpers.js";
+import { claimComment, claimElement, claimSegment, isHydrating, withCursor } from "./hydrate.js";
+import { defer, distinctUntilChanged, map, Observable, tap } from "rxjs";
+
+const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
 
 /**
- * @import {Observable, MonoTypeOperatorFunction} from 'rxjs';
+ * @import {MonoTypeOperatorFunction} from 'rxjs';
  * @import {Mountable, Container} from "./types.js";
  */
 
@@ -28,7 +31,12 @@ import { defer, map, tap } from "rxjs";
  * @returns {Observable<Mountable<Node>>}
  */
 export function $(tag, operators = []) {
-  return defer(() => just(document.createElement(tag), operators)).pipe(map(toMountable));
+  return defer(() => {
+    const element = /** @type {HTMLElementTagNameMap[Tag]} */ (
+      claimElement(tag) ?? document.createElement(tag)
+    );
+    return just(element, operators);
+  }).pipe(map(toMountable));
 }
 
 /**
@@ -38,9 +46,12 @@ export function $(tag, operators = []) {
  * @returns {Observable<Mountable<Node>>}
  */
 export function $$(tag, operators = []) {
-  return defer(() =>
-    just(document.createElementNS("http://www.w3.org/2000/svg", tag), operators),
-  ).pipe(map(toMountable));
+  return defer(() => {
+    const element = /** @type {SVGElementTagNameMap[Tag]} */ (
+      claimElement(tag, SVG_NAMESPACE) ?? document.createElementNS(SVG_NAMESPACE, tag)
+    );
+    return just(element, operators);
+  }).pipe(map(toMountable));
 }
 
 /**
@@ -96,6 +107,9 @@ const renderer = new ListRenderer({
  */
 export function children(...children) {
   return effectMap((node) => {
+    if (isHydrating()) {
+      return hydrateFragment(node, children);
+    }
     return renderer.renderFragment(children).pipe(
       tap((mountable) => {
         if (!node.firstChild || !node.lastChild) {
@@ -106,6 +120,60 @@ export function children(...children) {
         }
       }),
     );
+  });
+}
+
+/**
+ * The hydrating counterpart of `renderFragment`.
+ *
+ * The normal path builds the children inside a detached fragment and then
+ * replaces everything the parent already held, which is precisely what must not
+ * happen to server rendered markup. Here each child claims the nodes that are
+ * already in place instead, and only the *second* and later emissions go
+ * through the usual replace, against the segment that was claimed.
+ *
+ * @param {Node} node
+ * @param {Array<Observable<Mountable<Node>>>} children
+ * @returns {Observable<unknown>}
+ */
+function hydrateFragment(node, children) {
+  return new Observable((subscriber) => {
+    withCursor(node, () => {
+      // Every rendered fragment is bracketed by a pair of comments.
+      claimComment();
+      for (const child of children) {
+        /** @type {[Node, Node] | undefined} */
+        let segment;
+        let adopted = false;
+        const claimed = claimSegment(() => {
+          subscriber.add(
+            child.pipe(distinctUntilChanged()).subscribe({
+              next: (mountable) => {
+                if (!adopted) {
+                  // Already in the document -- this is the markup we adopted.
+                  adopted = true;
+                  return;
+                }
+                if (segment) {
+                  segment = mountable.replace(segment);
+                }
+              },
+              error: (error) => subscriber.error(error),
+            }),
+          );
+        });
+        segment = claimed.segment;
+        subscriber.add(() => {
+          // A mismatch can tear this down mid-flight, with the segment already
+          // detached, so only remove what is still in the document.
+          if (segment && segment[0].parentNode && segment[1].parentNode) {
+            removeSegment(segment);
+          }
+        });
+      }
+      claimComment();
+    });
+    subscriber.next(undefined);
   });
 }
 

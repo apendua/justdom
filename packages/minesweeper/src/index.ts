@@ -89,17 +89,26 @@ export class Field {
 
   public uncover(): void {
     batch(() => {
-      if (this.#state.uncovered || this.#state.flag) {
+      if (this.#state.uncovered || this.#state.flag || this.#fields.isGameOver) {
         return;
       }
       this.#state.uncovered = true;
-      if (this.nMines === 0) {
+      if (this.mine) {
+        this.#fields.revealMines();
+      } else if (this.nMines === 0) {
         this.neighbors.forEach((neighbor) => neighbor.uncover());
       }
     });
   }
 
+  public reveal(): void {
+    this.#state.uncovered = true;
+  }
+
   public toggleFlag(): void {
+    if (this.#fields.isGameOver) {
+      return;
+    }
     this.#state.flag = !this.#state.flag;
   }
 }
@@ -166,6 +175,34 @@ export class Fields {
 
   public get minesLeft(): number {
     return this.totalMines - this.flaggedFields.length;
+  }
+
+  @memo()
+  public get isLost(): boolean {
+    return this.uncoveredFields.some((field) => field.mine);
+  }
+
+  @memo()
+  public get isWon(): boolean {
+    return (
+      !this.isLost &&
+      this.uncoveredFields.length > 0 &&
+      this.coveredFields.length === this.totalMines
+    );
+  }
+
+  public get isGameOver(): boolean {
+    return this.isWon || this.isLost;
+  }
+
+  public revealMines(): void {
+    batch(() => {
+      for (const field of this.allFields) {
+        if (field.mine) {
+          field.reveal();
+        }
+      }
+    });
   }
 
   public get allFields(): Field[] {

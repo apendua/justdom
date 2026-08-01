@@ -2,7 +2,6 @@ import { $, $$, CLASS_NAME, attr, children, set, stylesheet, text } from "@apend
 import { component, makeNonReactive, store } from "@apendua.dev/signal";
 import { ASSETS_PREFIX, SVG_HEIGHT, SVG_WIDTH } from "../constants";
 import { RootContext } from "../store/Root";
-import AlertModal from "./AlertModal";
 import Board from "./Board";
 import MenuModal from "./MenuModal";
 import Pattern from "./Pattern";
@@ -123,6 +122,9 @@ const Game = component((ctx: WeakKey) => {
             get game() {
               return root.game;
             },
+            get mode() {
+              return root.mode;
+            },
             onMenuOpen: () => setMenuVisible(true),
             onCreateNewGame: () => root.createNewGame(),
           }),
@@ -133,15 +135,7 @@ const Game = component((ctx: WeakKey) => {
           return state.isMenuVisible;
         },
         onClose: () => setMenuVisible(false),
-        onCreateNewGame: () => root.createNewGame(),
-      }),
-      AlertModal(ctx, {
-        get isVisible() {
-          return !root.hasCookie;
-        },
-        message: "This site uses cookies to remember who you are between visits",
-        buttonText: "Accept",
-        onButtonClick: () => root.acceptCookies(),
+        onCreateNewGame: (mode) => root.createNewGame(mode),
       }),
     ),
   ]);

@@ -10,13 +10,14 @@ import {
   text,
 } from "@apendua.dev/dom";
 import { component } from "@apendua.dev/signal";
+import { HOTSEAT, VERSUS_COMPUTER, type GameMode } from "../store/Root";
 import ActionItem from "./ActionItem";
 import { menuItem, modal, modalFill } from "./styles";
 
 interface MenuModalProps {
   isVisible: boolean;
   onClose?: () => void;
-  onCreateNewGame?: () => Promise<unknown>;
+  onCreateNewGame?: (mode: GameMode) => Promise<unknown>;
 }
 
 const backdrop = stylesheet`
@@ -38,9 +39,17 @@ const menuList = stylesheet`
 `;
 
 /**
- * The full screen menu behind the hamburger button.
+ * The full screen menu behind the hamburger button, and the only place the two
+ * ways of playing are chosen.
  */
 const MenuModal = component((ctx: WeakKey, props: MenuModalProps) => {
+  const newGame = (title: string, mode: GameMode) =>
+    ActionItem(ctx, {
+      title,
+      action: () => props.onCreateNewGame?.(mode),
+      onReady: () => props.onClose?.(),
+    });
+
   return $("div", [
     set("className", renderText`${modal} ${backdrop}`),
     attr("hidden", () => (props.isVisible ? undefined : "")),
@@ -49,11 +58,8 @@ const MenuModal = component((ctx: WeakKey, props: MenuModalProps) => {
       $("ul", [
         set("className", menuList),
         children(
-          ActionItem(ctx, {
-            title: "Create New Game",
-            action: () => props.onCreateNewGame?.(),
-            onReady: () => props.onClose?.(),
-          }),
+          newGame("New Game vs Computer", VERSUS_COMPUTER),
+          newGame("New Game — Hotseat", HOTSEAT),
           $("li", [
             set("className", menuItem),
             on("click", () => props.onClose?.()),

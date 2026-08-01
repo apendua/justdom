@@ -13,6 +13,13 @@ import { CLASS_NAME, stylesheet } from "@apendua.dev/dom";
  */
 export const menuItem = stylesheet`
   .${CLASS_NAME} {
+    --menu-item-hatch: repeating-linear-gradient(
+      45deg,
+      transparent,
+      transparent 10px,
+      rgba(0, 0, 0, 0.2) 10px,
+      rgba(0, 0, 0, 0.2) 20px
+    );
     flex-grow: 0;
     display: inline-block;
     cursor: pointer;
@@ -43,16 +50,22 @@ export const menuItem = stylesheet`
 
   .${CLASS_NAME}[data-disabled],
   .${CLASS_NAME}[data-disabled]:hover {
-    background: repeating-linear-gradient(
-      45deg,
-      transparent,
-      transparent 10px,
-      rgba(0, 0, 0, 0.2) 10px,
-      rgba(0, 0, 0, 0.2) 20px
-    );
+    background: var(--menu-item-hatch);
     border-color: #222;
     cursor: auto;
     color: #222;
+  }
+
+  /*
+   * Something to read rather than something to press: same hatched bar as a
+   * disabled button, but the text has to stay legible on it.
+   */
+  .${CLASS_NAME}[data-readonly],
+  .${CLASS_NAME}[data-readonly]:hover {
+    background: var(--menu-item-hatch);
+    border-color: #222;
+    cursor: auto;
+    color: white;
   }
 `;
 

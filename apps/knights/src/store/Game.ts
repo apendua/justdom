@@ -1,9 +1,12 @@
-import { mutate, store } from "@apendua.dev/signal";
+import { memo, mutate, store } from "@apendua.dev/signal";
 import {
   ATTACKER,
   DEFENDER,
+  HUMAN,
   TIMING_FRAMES_PER_SECOND,
   TIMING_MOVE_BY_ONE_FIELD,
+  type Controller,
+  type Side,
 } from "../constants";
 import { getDirection } from "../helpers/neighbors";
 import type { FieldCoords, GameSetup } from "../types";
@@ -25,18 +28,14 @@ interface GameState {
   currentActor: number;
   currentRound: number;
   actorHasMoved: boolean;
-  attackerId: string;
-  defenderId: string;
 }
 
 export interface GameOptions {
   gameId: string;
-  userId: string;
   /**
-   * When set, both teams are handed to the same player and the game starts
-   * right away, skipping the team chooser.
+   * Who gives the orders for each of the two armies.
    */
-  onePlayer?: boolean;
+  controllers: Record<Side, Controller>;
 }
 
 /**
@@ -44,38 +43,27 @@ export interface GameOptions {
  */
 export default class Game {
   public readonly gameId: string;
-  public readonly userId: string;
   public readonly nRows: number;
   public readonly nColumns: number;
   public readonly obstacles: FieldCoords[];
   public readonly actors: Actor[];
+  public readonly controllers: Record<Side, Controller>;
 
   #state: GameState;
   #queue = new ActionQueue();
 
   public constructor(setup: GameSetup, options: GameOptions) {
-    const { gameId, userId, onePlayer = false } = options;
-    this.gameId = gameId;
-    this.userId = userId;
+    this.gameId = options.gameId;
+    this.controllers = { ...options.controllers };
     this.nRows = setup.nRows;
     this.nColumns = setup.nColumns;
     this.obstacles = setup.obstacles.map(({ row, column }) => ({ row, column }));
     this.actors = setup.actors.map((actorSetup, idx) => new Actor(actorSetup, idx));
     this.#state = store<GameState>({
-      currentActor: onePlayer ? findNextActor(-1, this.actors) : -1,
-      currentRound: onePlayer ? 0 : -1,
-      actorHasMoved: !onePlayer,
-      attackerId: onePlayer ? userId : "",
-      defenderId: onePlayer ? userId : "",
+      currentActor: findNextActor(-1, this.actors),
+      currentRound: 0,
+      actorHasMoved: false,
     });
-  }
-
-  public get attackerId(): string {
-    return this.#state.attackerId;
-  }
-
-  public get defenderId(): string {
-    return this.#state.defenderId;
   }
 
   public get currentRound(): number {
@@ -84,10 +72,6 @@ export default class Game {
 
   public get actorHasMoved(): boolean {
     return this.#state.actorHasMoved;
-  }
-
-  public get hasStarted(): boolean {
-    return this.#state.currentRound >= 0;
   }
 
   public get currentActor(): Actor | undefined {
@@ -104,29 +88,56 @@ export default class Game {
   }
 
   /**
-   * True when the stack whose turn it is belongs to this player. It stays true
-   * while the stack is animating, which is what lets the toolbar offer to skip
-   * the animation.
+   * The sides that still have somebody standing.
    */
-  public get isControlledByUser(): boolean {
-    const actor = this.currentActor;
-    if (!actor) {
-      return false;
-    }
-    if (this.#state.attackerId === this.userId && actor.side === ATTACKER) {
-      return true;
-    }
-    if (this.#state.defenderId === this.userId && actor.side === DEFENDER) {
-      return true;
-    }
-    return false;
+  @memo((a: Side[], b: Side[]) => a.length === b.length && a.every((side, i) => side === b[i]))
+  public get livingSides(): Side[] {
+    const sides: Side[] = [ATTACKER, DEFENDER];
+    return sides.filter((side) =>
+      this.actors.some((actor) => actor.isAlive && actor.side === side),
+    );
+  }
+
+  public get isOver(): boolean {
+    return this.livingSides.length <= 1;
   }
 
   /**
-   * True when this player may still give the current stack an order.
+   * The side that won, once there is nobody left to fight it.
+   */
+  public get winner(): Side | null {
+    return this.isOver ? (this.livingSides[0] ?? null) : null;
+  }
+
+  /**
+   * Who gives the orders for the stack whose turn it is.
+   */
+  public get currentController(): Controller | undefined {
+    const actor = this.currentActor;
+    return actor && this.controllers[actor.side];
+  }
+
+  /**
+   * True when the stack whose turn it is takes its orders from this screen. It
+   * stays true while the stack is animating, which is what lets the toolbar
+   * offer to skip the animation.
+   */
+  public get isControlledByHuman(): boolean {
+    return !this.isOver && this.currentController === HUMAN;
+  }
+
+  /**
+   * True when the player may still give the current stack an order.
    */
   public get isActive(): boolean {
-    return this.isControlledByUser && !this.#state.actorHasMoved;
+    return this.isControlledByHuman && !this.#state.actorHasMoved;
+  }
+
+  /**
+   * True when the computer owes the board a move.
+   */
+  public get isWaitingForBot(): boolean {
+    return !this.isOver && this.currentController !== HUMAN && !this.#state.actorHasMoved;
   }
 
   /**
@@ -161,10 +172,6 @@ export default class Game {
    */
   @mutate()
   public nextActor(): void {
-    // NOTE: Check if the game has already started.
-    if (this.#state.currentRound < 0) {
-      return;
-    }
     const nextActor = findNextActor(this.#state.currentActor, this.actors);
     this.#state.actorHasMoved = false;
     this.#state.currentRound =
@@ -181,49 +188,12 @@ export default class Game {
     this.#queue.skip();
   }
 
-  @mutate()
-  public startGame(): void {
-    if (this.#state.currentRound > 0) {
-      return;
-    }
-    this.#state.currentActor = findNextActor(-1, this.actors);
-    this.#state.currentRound = 0;
-  }
-
-  @mutate()
-  public claimAttackingTeam(userId: string): void {
-    if (!userId || this.#state.attackerId) {
-      return;
-    }
-    this.#state.attackerId = userId;
-    if (this.#state.defenderId) {
-      this.#begin();
-    }
-  }
-
-  @mutate()
-  public claimDefendingTeam(userId: string): void {
-    if (!userId || this.#state.defenderId) {
-      return;
-    }
-    this.#state.defenderId = userId;
-    if (this.#state.attackerId) {
-      this.#begin();
-    }
-  }
-
   /**
    * Stop whatever is still queued. Called when the game is thrown away, so that
    * a half played move cannot land on the board that replaced it.
    */
   public dispose(): void {
     this.#queue.clear();
-  }
-
-  #begin(): void {
-    this.#state.actorHasMoved = false;
-    this.#state.currentActor = findNextActor(-1, this.actors);
-    this.#state.currentRound = 0;
   }
 
   #beginAttack(actor: Actor, opponent: Actor): void {

@@ -1,15 +1,20 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ATTACKER, DEFENDER, KNIGHT } from "../constants";
+import { ATTACKER, COMPUTER, DEFENDER, HUMAN, KNIGHT, type Controller } from "../constants";
 import type { ActorSetup, GameSetup } from "../types";
 import Game from "./Game";
 
-function knight(side: typeof ATTACKER | typeof DEFENDER, row: number, column: number): ActorSetup {
+function knight(
+  side: typeof ATTACKER | typeof DEFENDER,
+  row: number,
+  column: number,
+  amount = 10,
+): ActorSetup {
   return {
     side,
     row,
     column,
+    amount,
     type: KNIGHT,
-    amount: 10,
     speed: 5,
     strength: 2,
     toughness: 5,
@@ -28,8 +33,10 @@ function duel(): GameSetup {
   };
 }
 
-function newGame(setup: GameSetup = duel()): Game {
-  return new Game(setup, { gameId: "game", userId: "player", onePlayer: true });
+const bothHuman: Record<string, Controller> = { [ATTACKER]: HUMAN, [DEFENDER]: HUMAN };
+
+function newGame(setup: GameSetup = duel(), controllers = bothHuman): Game {
+  return new Game(setup, { gameId: "game", controllers });
 }
 
 /**
@@ -50,34 +57,26 @@ describe("Game", () => {
     vi.useRealTimers();
   });
 
-  it("starts a one player game right away, with both teams in the same hands", () => {
+  it("starts with the first stack ready to be given an order", () => {
     const game = newGame();
-    expect(game.attackerId).toBe("player");
-    expect(game.defenderId).toBe("player");
-    expect(game.hasStarted).toBe(true);
     expect(game.currentRound).toBe(0);
     expect(game.currentActor).toBe(game.actors[0]);
     expect(game.isActive).toBe(true);
+    expect(game.isOver).toBe(false);
+    expect(game.winner).toBe(null);
   });
 
-  it("holds a two player game until both teams are claimed", () => {
-    const game = new Game(duel(), { gameId: "game", userId: "player" });
-    expect(game.hasStarted).toBe(false);
-    expect(game.currentActor).toBeUndefined();
+  it("hands the computer's stacks to the computer", () => {
+    const game = newGame(duel(), { [ATTACKER]: HUMAN, [DEFENDER]: COMPUTER });
 
-    game.claimAttackingTeam("player");
-    expect(game.hasStarted).toBe(false);
+    expect(game.isControlledByHuman).toBe(true);
+    expect(game.isWaitingForBot).toBe(false);
 
-    game.claimDefendingTeam("other");
-    expect(game.hasStarted).toBe(true);
-    expect(game.currentActor).toBe(game.actors[0]);
-  });
-
-  it("refuses to hand the same team to two players", () => {
-    const game = new Game(duel(), { gameId: "game", userId: "player" });
-    game.claimAttackingTeam("player");
-    game.claimAttackingTeam("other");
-    expect(game.attackerId).toBe("player");
+    game.nextActor();
+    expect(game.currentActor?.side).toBe(DEFENDER);
+    expect(game.isControlledByHuman).toBe(false);
+    expect(game.isActive).toBe(false);
+    expect(game.isWaitingForBot).toBe(true);
   });
 
   it("walks a stack to the end of its path", () => {
@@ -85,7 +84,7 @@ describe("Game", () => {
       nRows: 3,
       nColumns: 3,
       obstacles: [],
-      actors: [knight(ATTACKER, 0, 0)],
+      actors: [knight(ATTACKER, 0, 0), knight(DEFENDER, 2, 2)],
     });
     const [actor] = game.actors;
     const path = [
@@ -152,7 +151,7 @@ describe("Game", () => {
       nColumns: 3,
       obstacles: [],
       // Twenty units of health against a stack that hits for exactly twenty.
-      actors: [knight(ATTACKER, 1, 1), { ...knight(DEFENDER, 1, 2), amount: 4 }],
+      actors: [knight(ATTACKER, 1, 1), knight(DEFENDER, 1, 2, 4)],
     });
     const [attacker, defender] = game.actors;
 
@@ -167,10 +166,13 @@ describe("Game", () => {
     // A stack that went down keeps facing the way it fell.
     expect(defender.direction).toBe(-2);
 
-    // There is nothing left to hit back, and the turn skips the dead stack.
+    // There is nothing left to hit back, and the battle is decided.
     vi.advanceTimersByTime(2000);
     expect(attacker.totalHealth).toBe(50);
-    expect(game.currentActor).toBe(attacker);
+    expect(game.isOver).toBe(true);
+    expect(game.winner).toBe(ATTACKER);
+    expect(game.isActive).toBe(false);
+    expect(game.isWaitingForBot).toBe(false);
   });
 
   it("hands the turn round the board, counting rounds as it wraps", () => {

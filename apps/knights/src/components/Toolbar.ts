@@ -1,12 +1,15 @@
 import { $, CLASS_NAME, attr, children, on, set, stylesheet, text } from "@apendua.dev/dom";
 import { component } from "@apendua.dev/signal";
+import { ATTACKER } from "../constants";
 import type Game from "../store/Game";
+import { VERSUS_COMPUTER, type GameMode } from "../store/Root";
 import ActionItem from "./ActionItem";
 import branch from "./branch";
 import { menuItem, menuItems } from "./styles";
 
 interface ToolbarProps {
   game: Game | null;
+  mode: GameMode;
   onMenuOpen?: () => void;
   onCreateNewGame?: () => Promise<unknown>;
 }
@@ -19,57 +22,53 @@ const consoleBar = stylesheet`
 `;
 
 /**
- * The bar along the bottom of the screen: the menu, the team chooser, and the
- * button that hands the turn over.
+ * What the middle of the toolbar has to say about the game: who won, whose turn
+ * it is, or an invitation to start one.
+ */
+function mainSlot(game: Game | null): "create" | "over" | "skip" | "waiting" | "play" {
+  if (!game) {
+    return "create";
+  }
+  if (game.isOver) {
+    return "over";
+  }
+  // An animation can be cut short whoever is playing it out — waiting on the
+  // computer's knights to finish walking is no more interesting than waiting on
+  // your own.
+  if (game.actorHasMoved) {
+    return "skip";
+  }
+  return game.isControlledByHuman ? "play" : "waiting";
+}
+
+/**
+ * The bar along the bottom of the screen: the menu, a note on how the battle is
+ * going, and the button that hands the turn over.
  */
 const Toolbar = component((ctx: WeakKey, props: ToolbarProps) => {
-  const isActive = () => !!props.game?.isControlledByUser;
-
   const handleMainButton = () => {
     const { game } = props;
-    if (!game || !game.isControlledByUser) {
+    if (!game || game.isOver) {
       return;
     }
     if (game.actorHasMoved) {
       // The stack is still playing out its move; let the player cut it short.
       game.skipAnimation();
-    } else if (game.hasStarted) {
+    } else if (game.isControlledByHuman) {
       game.nextActor();
-    } else {
-      game.startGame();
     }
   };
 
   /**
-   * One half of the team chooser. It is gone once both teams are taken, which
-   * is immediately in a one player game.
+   * A stretch of hatched bar. It fills the space the team chooser used to take
+   * up, and carries a caption when there is one worth showing.
    */
-  const teamChooser = (label: string, claimedId: () => string, claim: () => void, white: boolean) =>
-    branch(
-      () => {
-        const { game } = props;
-        if (!game || (game.attackerId && game.defenderId)) {
-          return "hidden" as const;
-        }
-        return claimedId() ? ("taken" as const) : ("open" as const);
-      },
-      (key) => {
-        if (key === "open") {
-          return $("li", [
-            set("className", menuItem),
-            attr({ "data-fill": "" }),
-            attr("data-inverted", () => (white ? "" : undefined)),
-            on("click", claim),
-            children(text`${label}`),
-          ]);
-        }
-        return $("li", [
-          set("className", menuItem),
-          attr({ "data-fill": "", "data-disabled": "" }),
-          children(text`${key === "taken" ? label : ""}`),
-        ]);
-      },
-    );
+  const label = (caption: () => string) =>
+    $("li", [
+      set("className", menuItem),
+      attr({ "data-fill": "", "data-readonly": "" }),
+      children(text`${caption}`),
+    ]);
 
   return $("div", [
     set("className", consoleBar),
@@ -82,22 +81,9 @@ const Toolbar = component((ctx: WeakKey, props: ToolbarProps) => {
             on("click", () => props.onMenuOpen?.()),
             children(text`☰`),
           ]),
-          teamChooser(
-            "Choose white",
-            () => props.game?.attackerId ?? "",
-            () => props.game?.claimAttackingTeam(props.game.userId),
-            true,
-          ),
-          // The middle slot is where a game gets created, and once both teams
-          // are taken, where turns are handed over.
+          label(() => (props.mode === VERSUS_COMPUTER ? "vs Computer" : "Hotseat")),
           branch(
-            () => {
-              const { game } = props;
-              if (!game) {
-                return "create" as const;
-              }
-              return game.attackerId && game.defenderId ? ("play" as const) : ("none" as const);
-            },
+            () => mainSlot(props.game),
             (key) => {
               if (key === "create") {
                 return ActionItem(ctx, {
@@ -105,23 +91,30 @@ const Toolbar = component((ctx: WeakKey, props: ToolbarProps) => {
                   action: () => props.onCreateNewGame?.(),
                 });
               }
-              if (key === "none") {
-                return text``;
+              if (key === "over") {
+                return $("li", [
+                  set("className", menuItem),
+                  attr({ "data-readonly": "" }),
+                  children(
+                    text`${() => (props.game?.winner === ATTACKER ? "White wins" : "Black wins")}`,
+                  ),
+                ]);
+              }
+              if (key === "waiting") {
+                return $("li", [
+                  set("className", menuItem),
+                  attr({ "data-readonly": "" }),
+                  children(text`Thinking…`),
+                ]);
               }
               return $("li", [
                 set("className", menuItem),
-                attr("data-disabled", () => (isActive() ? undefined : "")),
                 on("click", handleMainButton),
-                children(text`${() => (props.game?.hasStarted ? "Continue" : "Start game")}`),
+                children(text`${key === "skip" ? "Skip" : "Continue"}`),
               ]);
             },
           ),
-          teamChooser(
-            "Choose black",
-            () => props.game?.defenderId ?? "",
-            () => props.game?.claimDefendingTeam(props.game.userId),
-            false,
-          ),
+          label(() => (props.game ? `Round ${props.game.currentRound + 1}` : "")),
           $("li", [set("className", menuItem), attr({ "data-disabled": "" }), children(text`⚙`)]),
         ),
       ]),

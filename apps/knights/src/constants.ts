@@ -13,6 +13,20 @@ export const DEFENDER = "DEFENDER";
 
 export type Side = typeof ATTACKER | typeof DEFENDER;
 
+// -------------------------
+// --- who gives the orders ---
+// -------------------------
+export const HUMAN = "HUMAN";
+export const COMPUTER = "COMPUTER";
+
+export type Controller = typeof HUMAN | typeof COMPUTER;
+
+/**
+ * How long the computer is made to look like it is thinking before it moves.
+ * Without it the whole enemy army would play out in one blur.
+ */
+export const TIMING_BOT_THINKS = 400;
+
 export interface Attributes {
   speed: number;
   strength: number;

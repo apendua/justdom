@@ -25,10 +25,25 @@ function teardown(fn) {
 }
 
 /**
+ * Lets a caller supply the nodes from somewhere other than thin air, so the
+ * same list logic can adopt server rendered markup. Kept as an injected
+ * strategy rather than imported directly, so this class stays free of any
+ * assumptions about what a node is.
+ *
+ * @template {INode<T>} T
+ * @typedef {object} ListRendererHydration
+ * @property {() => boolean} isActive Whether the next render should adopt.
+ * @property {() => Container<T>} claimContainer Adopts the container envelope.
+ * @property {(subscribe: () => void) => Segment<T>} claimItem
+ *   Runs `subscribe` and reports which nodes the item adopted.
+ */
+
+/**
  * @template {INode<T>} T
  * @typedef {object} ListRendererOptions
  * @property {() => Container<T>} createContainer
  * @property {() => T} createPlaceholder
+ * @property {ListRendererHydration<T>} [hydration]
  */
 
 /**
@@ -39,6 +54,8 @@ export default class ListRenderer {
   #createContainer;
   /** @type {() => T} */
   #createPlaceholder;
+  /** @type {ListRendererHydration<T> | undefined} */
+  #hydration;
 
   /**
    * @param {ListRendererOptions<T>} options
@@ -46,6 +63,7 @@ export default class ListRenderer {
   constructor(options) {
     this.#createContainer = options.createContainer;
     this.#createPlaceholder = options.createPlaceholder;
+    this.#hydration = options.hydration;
   }
 
   /**
@@ -106,7 +124,10 @@ export default class ListRenderer {
    */
   renderList(items, getKey, render) {
     return new Observable((subscriber) => {
-      const container = this.#createContainer();
+      const hydration = this.#hydration;
+      const hydrating = hydration ? hydration.isActive() : false;
+      const container =
+        hydrating && hydration ? hydration.claimContainer() : this.#createContainer();
       /** @type {Map<K, Segment<T>>} */
       const childSegments = new Map();
       /** @type {Map<K, Subscription>} */
@@ -128,11 +149,73 @@ export default class ListRenderer {
         });
         return () => index.get();
       };
+      /**
+       * Adopts the markup for the initial set of items.
+       *
+       * There is nothing to diff against on the way in, so none of the moving
+       * and removing below applies: the items simply claim what is already
+       * there, left to right, and seed the same maps the diffing path reads on
+       * every later emission.
+       *
+       * @param {U[]} newItemsArray
+       * @returns {void}
+       */
+      const adopt = (newItemsArray) => {
+        if (!hydration) {
+          return;
+        }
+        newItemsArray.forEach((item, index) => {
+          const key = getKey(item);
+          childIndexes.set(key, index);
+          let adopted = false;
+          const segment = hydration.claimItem(() => {
+            childSubscriptions.set(
+              key,
+              render(item, createGetIndex(item))
+                .pipe(
+                  distinctUntilChanged(),
+                  teardown(() => {
+                    const oldSegment = childSegments.get(key);
+                    if (oldSegment) {
+                      removeSegment(oldSegment);
+                      childSegments.delete(key);
+                    }
+                    childSubscriptions.delete(key);
+                  }),
+                )
+                .subscribe({
+                  next: (newMountable) => {
+                    if (!adopted) {
+                      // The markup this item adopted is already in place.
+                      adopted = true;
+                      return;
+                    }
+                    const oldSegment = childSegments.get(key);
+                    if (oldSegment) {
+                      childSegments.set(key, newMountable.replace(oldSegment));
+                    }
+                  },
+                  error: (error) => {
+                    subscriber.error(error);
+                  },
+                }),
+            );
+          });
+          childSegments.set(key, segment);
+        });
+      };
+
+      let adopting = hydrating;
       const subscription = items
         .pipe(
           tap((newItems) => {
             const newItemsSet = new Set();
             const newItemsArray = Array.from(newItems);
+            if (adopting) {
+              adopting = false;
+              adopt(newItemsArray);
+              return;
+            }
             for (let index = newItemsArray.length - 1; index >= 0; index -= 1) {
               const item = newItemsArray[index];
               const key = getKey(item);

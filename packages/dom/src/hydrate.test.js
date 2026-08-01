@@ -2,10 +2,12 @@ import { describe, it, mock } from "node:test";
 import assert from "node:assert/strict";
 import { just, Signal, set, toObservable } from "@apendua.dev/signal";
 import { userEvent } from "@testing-library/user-event";
-import { $, children, list } from "./dom.js";
+import { $, children, keyedList, list } from "./dom.js";
 import { text } from "./text.js";
+import { className } from "./stylesheet.js";
 import { on } from "./operators.js";
 import { hydrate } from "./hydrate.js";
+import { suspend, waitFor, withFallback } from "./suspend.js";
 
 /**
  * Renders `build()` the way a server would, and returns the markup.
@@ -168,6 +170,218 @@ describe("hydrate()", () => {
     assert.strictEqual(root.querySelectorAll("p").length, 0);
   });
 
+  it("should adopt the stylesheet the server injected", () => {
+    const style = className`
+      color: teal;
+    `;
+    // Server render: mount, capture both the markup and the injected styles.
+    const server = document.createElement("main");
+    const serverSubscription = just(server, [
+      children($("p", [set("className", style), children(text`styled`)])),
+    ]).subscribe();
+    const markup = server.innerHTML;
+    const head = document.head.innerHTML;
+    serverSubscription.unsubscribe();
+
+    // Re-create the document the browser would receive.
+    document.head.innerHTML = head;
+    const stylesFromServer = document.head.querySelectorAll("style").length;
+    assert.strictEqual(stylesFromServer, 1);
+
+    const root = serverRendered(markup);
+    hydrate(root, $("p", [set("className", style), children(text`styled`)])).subscribe();
+
+    assert.strictEqual(
+      document.head.querySelectorAll("style").length,
+      1,
+      "expected the server stylesheet to be adopted, not duplicated",
+    );
+    document.head.innerHTML = "";
+  });
+
+  describe("lists", () => {
+    /**
+     * @param {string[]} values
+     * @returns {import("rxjs").Observable<import("./types.js").Mountable<Node>>}
+     */
+    const buildList = (values) =>
+      $("ul", [children(list(just(values), (item) => $("li", [children(text`${item}`)])))]);
+
+    it("should adopt the items the server rendered", () => {
+      const root = serverRendered(renderToString(() => buildList(["a", "b", "c"])));
+      const before = Array.from(root.querySelectorAll("li"));
+
+      const created = recordCreations(() => {
+        hydrate(root, buildList(["a", "b", "c"])).subscribe();
+      });
+
+      assert.deepEqual(created.elements, [], "expected no elements to be created");
+      assert.deepEqual(Array.from(root.querySelectorAll("li")), before, "expected the same nodes");
+      assert.deepEqual(
+        before.map((li) => li.textContent),
+        ["a", "b", "c"],
+      );
+    });
+
+    it("should keep the list reactive after adopting it", () => {
+      const items = Signal.of(["a", "b"]);
+      const build = () =>
+        $("ul", [
+          children(list(toObservable(items), (item) => $("li", [children(text`${item}`)]))),
+        ]);
+      const root = serverRendered(renderToString(build));
+      const adopted = root.querySelector("li");
+
+      hydrate(root, build()).subscribe();
+
+      items.set(["a", "b", "c"]);
+      assert.deepEqual(
+        Array.from(root.querySelectorAll("li")).map((li) => li.textContent),
+        ["a", "b", "c"],
+        "expected an appended item",
+      );
+      assert.strictEqual(root.querySelector("li"), adopted, "expected the first node to survive");
+
+      items.set(["b", "c"]);
+      assert.deepEqual(
+        Array.from(root.querySelectorAll("li")).map((li) => li.textContent),
+        ["b", "c"],
+        "expected a removed item",
+      );
+    });
+
+    it("should adopt a keyed list", () => {
+      /**
+       * @param {Array<[string, string]>} entries
+       */
+      const build = (entries) =>
+        $("ul", [
+          children(keyedList(just(entries), (value) => $("li", [children(text`${value}`)]))),
+        ]);
+      const root = serverRendered(
+        renderToString(() =>
+          build([
+            ["1", "one"],
+            ["2", "two"],
+          ]),
+        ),
+      );
+      const before = Array.from(root.querySelectorAll("li"));
+
+      const created = recordCreations(() => {
+        hydrate(
+          root,
+          build([
+            ["1", "one"],
+            ["2", "two"],
+          ]),
+        ).subscribe();
+      });
+
+      assert.deepEqual(created.elements, []);
+      assert.deepEqual(Array.from(root.querySelectorAll("li")), before);
+    });
+
+    it("should adopt items that render more than one node", () => {
+      const build = () =>
+        $("ul", [
+          children(
+            list(just(["a", "b"]), (item) =>
+              $("li", [children($("span", [children(text`${item}`)]), $("i"))]),
+            ),
+          ),
+        ]);
+      const root = serverRendered(renderToString(build));
+      const before = Array.from(root.querySelectorAll("li, span, i"));
+
+      const created = recordCreations(() => {
+        hydrate(root, build()).subscribe();
+      });
+
+      assert.deepEqual(created.elements, []);
+      assert.deepEqual(Array.from(root.querySelectorAll("li, span, i")), before);
+    });
+
+    it("should remove an adopted list when unsubscribed", () => {
+      const root = serverRendered(renderToString(() => buildList(["a", "b"])));
+
+      const subscription = hydrate(root, buildList(["a", "b"])).subscribe();
+      assert.strictEqual(root.querySelectorAll("li").length, 2);
+
+      subscription.unsubscribe();
+      assert.strictEqual(root.querySelectorAll("li").length, 0);
+    });
+  });
+
+  describe("suspense", () => {
+    /**
+     * @param {number} delay
+     * @returns {import("rxjs").Observable<import("./types.js").Mountable<Node>>}
+     */
+    function build(delay) {
+      const ctx = suspend({}, () => $("p", [children(text`Loading...`)]));
+      waitFor(ctx, new Promise((resolve) => setTimeout(resolve, delay)));
+      return withFallback(ctx, $("section", [children(text`Real content`)]));
+    }
+
+    it("should adopt the fallback, which is all a server render can capture", async () => {
+      // A synchronous render always serializes the fallback: the boundary only
+      // settles a tick later, so the markup can never hold the content.
+      const markup = renderToString(() => build(10));
+      assert.match(markup, /Loading/);
+
+      const root = serverRendered(markup);
+      const fallbackNode = root.querySelector("p");
+      const warn = mock.method(console, "warn", () => {});
+
+      /** @type {{ elements: string[], texts: number }} */
+      let created;
+      try {
+        created = recordCreations(() => {
+          hydrate(root, build(10)).subscribe();
+        });
+      } finally {
+        warn.mock.restore();
+      }
+
+      assert.strictEqual(warn.mock.calls.length, 0, "expected no mismatch");
+      assert.strictEqual(root.querySelector("p"), fallbackNode, "expected the fallback adopted");
+      assert.ok(!created.elements.includes("p"), "expected the fallback not to be rebuilt");
+      assert.ok(
+        created.elements.includes("section"),
+        "expected the content to be built up front, off to one side",
+      );
+
+      await new Promise((resolve) => setTimeout(resolve, 40));
+
+      assert.strictEqual(root.querySelector("section")?.textContent, "Real content");
+      assert.strictEqual(root.querySelector("p"), null, "expected the fallback to be swapped out");
+    });
+
+    it("should keep the swapped in content reactive", async () => {
+      const label = Signal.of("first");
+      const buildDynamic = () => {
+        const ctx = suspend({}, () => $("p", [children(text`Loading...`)]));
+        waitFor(ctx, new Promise((resolve) => setTimeout(resolve, 10)));
+        return withFallback(ctx, $("section", [children(text`${() => label.get()}`)]));
+      };
+      const root = serverRendered(renderToString(buildDynamic));
+      const warn = mock.method(console, "warn", () => {});
+      try {
+        hydrate(root, buildDynamic()).subscribe();
+      } finally {
+        warn.mock.restore();
+      }
+      assert.strictEqual(warn.mock.calls.length, 0);
+
+      await new Promise((resolve) => setTimeout(resolve, 40));
+      assert.strictEqual(root.querySelector("section")?.textContent, "first");
+
+      label.set("second");
+      assert.strictEqual(root.querySelector("section")?.textContent, "second");
+    });
+  });
+
   describe("mismatches", () => {
     it("should rebuild when the tag does not match", () => {
       const root = serverRendered(renderToString(() => $("p", [children(text`hi`)])));
@@ -215,34 +429,19 @@ describe("hydrate()", () => {
       assert.strictEqual(root.querySelectorAll("a").length, 1);
     });
 
-    it("should rebuild a list rather than adopt it", () => {
-      // Lists are not adopted yet: renderList builds its items inside its own
-      // container, which the markup has no counterpart for. That is detected
-      // and turned into a rebuild, so the page is correct either way.
-      const items = Signal.of(["a", "b"]);
-      const build = (/** @type {Signal<string[]>} */ source) =>
-        $("ul", [
-          children(list(toObservable(source), (item) => $("li", [children(text`${item}`)]))),
-        ]);
-      const root = serverRendered(renderToString(() => build(items)));
+    it("should rebuild a list whose markup does not line up", () => {
+      const build = (/** @type {string[]} */ values) =>
+        $("ul", [children(list(just(values), (item) => $("li", [children(text`${item}`)])))]);
+      const root = serverRendered(renderToString(() => build(["a", "b"])));
       const warn = mock.method(console, "warn", () => {});
 
-      const clientItems = Signal.of(["a", "b"]);
       try {
-        hydrate(root, build(clientItems)).subscribe();
+        hydrate(root, build(["a", "b", "c"])).subscribe();
       } finally {
         warn.mock.restore();
       }
 
-      assert.strictEqual(warn.mock.calls.length, 1);
-      assert.deepEqual(
-        Array.from(root.querySelectorAll("li")).map((li) => li.textContent),
-        ["a", "b"],
-        "expected the rebuilt list to match",
-      );
-
-      // And it stays reactive afterwards.
-      clientItems.set(["a", "b", "c"]);
+      assert.strictEqual(warn.mock.calls.length, 1, "expected a warning");
       assert.deepEqual(
         Array.from(root.querySelectorAll("li")).map((li) => li.textContent),
         ["a", "b", "c"],

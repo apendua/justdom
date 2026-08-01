@@ -132,6 +132,27 @@ export function withHydration(fn) {
 }
 
 /**
+ * Runs `fn` with hydration switched off, so that whatever it renders builds its
+ * own nodes. For subtrees the markup does not describe.
+ *
+ * @template T
+ * @param {() => T} fn
+ * @returns {T}
+ */
+export function withoutHydration(fn) {
+  const previousEnabled = enabled;
+  const previousCursor = activeCursor;
+  enabled = false;
+  activeCursor = null;
+  try {
+    return fn();
+  } finally {
+    enabled = previousEnabled;
+    activeCursor = previousCursor;
+  }
+}
+
+/**
  * Runs `fn` while claiming from `parent`'s existing children.
  *
  * @template T

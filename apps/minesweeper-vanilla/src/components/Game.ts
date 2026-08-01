@@ -1,10 +1,11 @@
-import { text, set, on, children, $, className } from "@apendua.dev/dom";
+import { set, children, $, className } from "@apendua.dev/dom";
 import { Fields, FieldsContext } from "@apendua.dev/minesweeper";
 import { store, observe } from "@apendua.dev/signal";
 import { RootContext } from "../store4/Root";
 import Viewport, { ViewportContext } from "../store4/Viewport";
 import { switchMap } from "rxjs";
 import Minefield from "./Minefield";
+import Menu, { SizePreset } from "./Menu";
 
 const fullscreen = className`
   position: absolute;
@@ -14,19 +15,24 @@ const fullscreen = className`
   right: 0;
 `;
 
+export const SIZE_PRESETS: SizePreset[] = [
+  { id: "small", label: "Small", nRows: 9, nColumns: 9, minesRatio: 0.12 },
+  { id: "medium", label: "Medium", nRows: 15, nColumns: 15, minesRatio: 0.16 },
+  { id: "large", label: "Large", nRows: 21, nColumns: 21, minesRatio: 0.2 },
+];
+
 const Game = (ctx: WeakKey) => {
   const dimensions = RootContext.get(ctx);
-  const { screenWidth, screenHeight } = observe(dimensions);
 
   const state = store({
-    game: Fields.generate({}),
+    sizeId: SIZE_PRESETS[0].id,
+    game: Fields.generate(SIZE_PRESETS[0]),
   });
 
-  const minesLeft = observe(state).game.pipe(
-    switchMap((game) => {
-      return observe(game).minesLeft;
-    }),
-  );
+  const startGame = (preset: SizePreset) => {
+    state.sizeId = preset.id;
+    state.game = Fields.generate(preset);
+  };
 
   const viewport = new Viewport({
     get allFields() {
@@ -45,19 +51,21 @@ const Game = (ctx: WeakKey) => {
   return observe(state).game.pipe(
     switchMap((game) => {
       const newContext = FieldsContext.set(ctx, game);
+      const selectedId = state.sizeId;
       return $("div", [
         set("className", fullscreen),
         children(
-          $("button", [
-            on("click", () => {
-              state.game = Fields.generate({});
-            }),
-            children(text`Restart`),
-          ]),
-          $("span", [
-            children(text`width = ${screenWidth}, height = ${screenHeight}, mines = ${minesLeft}`),
-          ]),
           Minefield(newContext, game),
+          Menu(newContext, {
+            presets: SIZE_PRESETS,
+            selectedId,
+            game,
+            onSelect: startGame,
+            onRestart: () => {
+              const preset = SIZE_PRESETS.find((p) => p.id === selectedId) ?? SIZE_PRESETS[0];
+              startGame(preset);
+            },
+          }),
         ),
       ]);
     }),

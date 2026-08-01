@@ -1,33 +1,23 @@
 import { list, $$, children, attr, on, className } from "@apendua.dev/dom";
-import { Field, Fields, getKey } from "@apendua.dev/minesweeper";
+import { Fields, getKey } from "@apendua.dev/minesweeper";
 import { observe } from "@apendua.dev/signal";
 import { RootContext } from "../store4/Root";
 import { ViewportContext } from "../store4/Viewport";
 import { tap } from "rxjs";
-import Label from "./Label";
 import FieldSet from "./FieldSet";
+import FieldStatus from "./FieldStatus";
 import { component } from "@apendua.dev/signal";
 
-const FieldStatus = (ctx: WeakKey, field: Field) => {
-  return Label(ctx, {
-    get x() {
-      return field.x;
-    },
-    get y() {
-      return field.y;
-    },
-    get z() {
-      return field.z;
-    },
-    get text() {
-      return field.statusText;
-    },
-  });
-};
-
 const noSelect = className`
+  position: absolute;
+  top: 0;
+  left: 0;
   user-select: none;
 `;
+
+const COVERED_FILL = "#5c8a58";
+const UNCOVERED_FILL = "#ede4d3";
+const GRID_STROKE = "#2f3b2a";
 
 const Minefield = component((ctx: WeakKey, game: Fields) => {
   const dimensions = RootContext.get(ctx);
@@ -67,12 +57,29 @@ const Minefield = component((ctx: WeakKey, game: Fields) => {
         get fields() {
           return game.coveredFields;
         },
+        fill: COVERED_FILL,
+        opacity: 1,
+        get cursor() {
+          return game.isGameOver ? "default" : "pointer";
+        },
+        borderWidth: 2,
+      }),
+      FieldSet(ctx, {
+        get fields() {
+          return game.uncoveredFields;
+        },
+        fill: UNCOVERED_FILL,
+        opacity: 1,
+        cursor: "default",
         borderWidth: 2,
       }),
       FieldSet(ctx, {
         get fields() {
           return game.allFields;
         },
+        fill: GRID_STROKE,
+        opacity: 0.85,
+        cursor: "default",
         borderWidth: 2,
         cutHoles: true,
       }),

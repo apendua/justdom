@@ -2,11 +2,12 @@
   "name": "@apendua.dev/three",
   "version": "1.0.0",
   "private": true,
-  "description": "Reactive Three.js based on store4",
+  "description": "Reactive Three.js scene graph built on @apendua.dev/signal",
   "keywords": [
-    "compare",
-    "json",
-    "ordering"
+    "three",
+    "reactive",
+    "renderer",
+    "signals"
   ],
   "license": "MIT",
   "author": "apendua",

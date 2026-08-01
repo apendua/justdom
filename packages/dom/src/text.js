@@ -1,5 +1,6 @@
 import { combineLatest, map, Observable } from "rxjs";
 import { observable, just } from "@apendua.dev/signal";
+import { claimText } from "./hydrate.js";
 import { toMountable } from "./dom.js";
 
 /**
@@ -14,11 +15,18 @@ import { toMountable } from "./dom.js";
  */
 export function textNode(value) {
   return new Observable((subscriber) => {
+    // While hydrating, adopt the text node the server produced. Its content is
+    // written anyway rather than trusted: the write costs nothing next to
+    // building a node, and it quietly repairs a server/client disagreement.
+    const claimed = claimText();
     if (typeof value === "string") {
-      const myTextNode = document.createTextNode(value);
+      const myTextNode = claimed ?? document.createTextNode(value);
+      if (claimed) {
+        myTextNode.textContent = value;
+      }
       subscriber.next(myTextNode);
     } else {
-      const myTextNode = document.createTextNode("");
+      const myTextNode = claimed ?? document.createTextNode("");
       subscriber.add(
         value.subscribe((newValue) => {
           myTextNode.textContent = newValue;

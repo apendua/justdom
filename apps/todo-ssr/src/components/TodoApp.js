@@ -1,6 +1,6 @@
 import { $, attr, children, className, list, set, text } from "@apendua.dev/dom";
-import { component, observable } from "@apendua.dev/signal";
-import { selectTodos, todos } from "../todos.js";
+import { component, makeNonReactive, observable, on } from "@apendua.dev/signal";
+import { addTodo, selectTodos, todos } from "../todos.js";
 import TodoItem from "./TodoItem.js";
 
 /**
@@ -103,6 +103,16 @@ const TodoApp = component(
         $("form", [
           set("className", inputRowStyle),
           attr({ method: "post", action: "/todos" }),
+          on(
+            "submit",
+            makeNonReactive((event) => {
+              const form = /** @type {HTMLFormElement} */ (event.currentTarget);
+              const field = /** @type {HTMLInputElement} */ (form.elements.namedItem("text"));
+              event.preventDefault();
+              addTodo(field.value);
+              field.value = "";
+            }),
+          ),
           children(
             $("input", [attr({ type: "hidden", name: "filter", value: filter })]),
             $("input", [

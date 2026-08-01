@@ -5,15 +5,15 @@ A minimal server side rendering example for [`@apendua.dev/signal`][signal] and
 tree inside a [jsdom][jsdom] document and sends the serialized HTML to the
 browser.
 
-The rendered page is a todo list. There is **no client side JavaScript at all** —
-every interaction is a plain form submission handled by express, which mutates
-the server side signals and redirects back to the page, which is then rendered
-again from scratch. Hydration is deliberately out of scope; see
-[Not covered](#not-covered).
+The rendered page is a todo list. It works with no client side JavaScript at
+all — every interaction is a form submission that express handles by mutating
+the server side signals and redirecting — and it *also* hydrates, so a browser
+that runs the script takes over the markup and updates it in place instead.
+Same components, both ways round; see [Hydration](#hydration).
 
 ```sh
-rushx dev     # http://localhost:3000, restarts on change
-rushx start   # no watcher
+rushx dev     # builds the client bundle, then serves on http://localhost:3000
+rushx start   # no watcher, expects the bundle to exist
 rushx test    # typecheck + node:test
 ```
 
@@ -70,17 +70,60 @@ simply happen once, during the mount.
   are harmless in the response, and a browser-side hydration story would
   actually need them.
 
-## Not covered
+## Hydration
 
-- **Hydration.** Making the served markup interactive would mean shipping the
-  component tree to the browser and adopting the existing nodes instead of
-  creating new ones. `@apendua.dev/dom` always calls `document.createElement`,
-  so that needs renderer support that does not exist yet.
-- **Async rendering.** `suspend`/`waitFor` from `@apendua.dev/dom` resolve
-  asynchronously, which breaks the "no `await` while the globals are swapped in"
-  invariant this example relies on. Supporting it needs either one jsdom instance
-  per in-flight request with the globals swapped around each synchronous chunk,
-  or serializing renders behind a queue.
+The browser is sent the same component tree, and adopts the markup rather than
+rebuilding it. Three pieces make that work:
+
+1. **The state travels with the page.** `src/server.js` serializes the todos
+   into a `<script type="application/json">` next to the mount point. The
+   client cannot adopt markup it would not have produced itself, so it has to
+   start from the state the server rendered from.
+2. **A client bundle.** [`src/client/main.js`](./src/client/main.js) is built by
+   vite into `dist/client/`, which express serves. It seeds the same signals
+   from the payload and calls `hydrate()` from `@apendua.dev/dom/hydrate`.
+3. **Handlers that intercept.** The toggle button carries an `on("click")` that
+   calls `preventDefault()` and flips the todo in place. It is part of the
+   component the *server* renders too — it simply never fires there — so the
+   form stays the behaviour whenever the script has not run.
+
+Measured in Chromium against this app: the client creates **zero** DOM nodes,
+every server rendered `<li>` survives, and adding, completing and deleting a
+todo all happen without a single navigation. With JavaScript disabled the same
+buttons post their forms and the server re-renders, so nothing is lost.
+
+The list is a plain `list()` over the todos, adopted item by item, which is why
+adding and deleting can be handled in the browser at all: the renderer keeps the
+segment map it seeded while hydrating, so it can insert and remove around the
+nodes it adopted.
+
+## Fetch before rendering, do not suspend
+
+`renderToString` is synchronous, so a `suspend` boundary is always serialized as
+its *fallback* — the boundary only settles a tick after the mount, whether or
+not anything is actually pending. Hydration handles that gracefully: the client
+adopts the fallback and swaps the content in once it resolves, without rebuilding
+the page. But the content itself never reaches the markup, which is the whole
+point of rendering on the server.
+
+So resolve the data first and render from it:
+
+```js
+const data = await fetchTodos();
+todos.set(data.map(store));
+renderToString(() => TodoApp(filter)); // nothing pending, nothing to await
+```
+
+Nothing suspends, the content is in the markup, and the client seeds the same
+signals from the payload — which is exactly what this app already does with its
+in-memory state. `suspend`/`waitFor` is then left doing what it is good at:
+transitions *after* hydration, where there is no serialization problem at all.
+
+Server rendering content that is still pending would mean an asynchronous
+`renderToString` — breaking the "no `await` while the globals are swapped in"
+invariant — plus a marker per boundary so the client could tell which branch the
+markup holds. That is a streaming SSR design, and the pattern above avoids
+needing it.
 
 [dom]: ../../packages/dom
 [express]: https://expressjs.com/

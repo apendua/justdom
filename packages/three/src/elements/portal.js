@@ -136,7 +136,6 @@ export function createPortal(ctx) {
    * @param {MutationRecord[]} mutationList
    */
   const mutationCallback = (mutationList) => {
-    console.log("mutations observed", mutationList);
     /** @type {Set<Node>} */
     const alreadySeen = new Set();
     /** @type {Set<MutationType>} */

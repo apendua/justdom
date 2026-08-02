@@ -1,7 +1,7 @@
 # @apendua/vite-hmr
 
 A Vite plugin that lets components built with
-[`@apendua/signal`](../signal) and [`@apendua/justdom`](../dom) survive hot
+[`@apendua/signal`](../signal) and [`@apendua/justdom`](../justdom) survive hot
 module reloads without losing their live reactive state.
 
 ## The problem it solves

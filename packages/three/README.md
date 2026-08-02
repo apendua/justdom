@@ -1,7 +1,7 @@
 # @apendua/freedom
 
 A reactive Three.js scene graph, built on [`@apendua/signal`](../signal) with
-the same operator vocabulary as [`@apendua/justdom`](../dom) — `$`, `set`,
+the same operator vocabulary as [`@apendua/justdom`](../justdom) — `$`, `set`,
 `children`, `effects`, `on` — except targeting `THREE.Object3D` instead of DOM
 nodes. No VDOM, no diffing: every reactive value is wired directly to a
 Three.js mutation through an RxJS subscription.
@@ -52,7 +52,7 @@ monorepo's stack.
 ## Projecting DOM into the scene
 
 `dom(ctx, mountable$, operators)` mounts a
-[`@apendua/justdom`](../dom) component tree onto a Three.js `Group` through a
+[`@apendua/justdom`](../justdom) component tree onto a Three.js `Group` through a
 portal, so ordinary DOM-based UI (menus, HUDs, forms) can be composited
 directly into a 3D or WebXR scene and still receive pointer events routed
 through `interactions(ctx)`.

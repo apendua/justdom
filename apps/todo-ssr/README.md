@@ -28,7 +28,7 @@ browser, which is exactly what jsdom provides.
 is a synchronous _mount → serialize → unmount_ cycle:
 
 1. `setupJsdom({ html })` from [`@apendua.dev/jsdom-env`][jsdom-env] — the same
-   helper the `packages/dom` test suite uses — creates a jsdom instance from an
+   helper the `packages/justdom` test suite uses — creates a jsdom instance from an
    HTML shell and installs its globals (`document`, `window`, `Node`, …) on
    `globalThis`.
 2. The component is mounted exactly the way a browser app is mounted in
@@ -125,7 +125,7 @@ invariant — plus a marker per boundary so the client could tell which branch t
 markup holds. That is a streaming SSR design, and the pattern above avoids
 needing it.
 
-[dom]: ../../packages/dom
+[dom]: ../../packages/justdom
 [express]: https://expressjs.com/
 [jsdom]: https://github.com/jsdom/jsdom
 [jsdom-env]: ../../packages/jsdom-env

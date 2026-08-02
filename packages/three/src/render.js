@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { BehaviorSubject, tap, Subject, Observable, combineLatest, map } from "rxjs";
-import { Computation, createProperty } from "@apendua.dev/signal";
+import { Computation, createProperty, Signal } from "@apendua.dev/signal";
 import { InteractionManager, InteractionContext } from "./interactions.js";
 
 export const RendererContext = createProperty(
@@ -86,6 +86,59 @@ export function session(ctx) {
       renderer.xr.removeEventListener("sessionstart", onSessionStart);
     };
   });
+}
+
+/**
+ * One of the player's hands, as three.js models it: where it points, where it
+ * holds, and which input source is currently driving it.
+ *
+ * @typedef {object} ControllerHandle
+ * @property {number} index Position in the renderer's controller list.
+ * @property {THREE.XRTargetRaySpace} controller Target ray space: origin at the
+ *   controller, -Z pointing where it aims.
+ * @property {THREE.XRGripSpace} grip Grip space: where a held object sits.
+ * @property {Signal<XRInputSource | null>} inputSource The connected input
+ *   source, or null while the hand is not being tracked. Carries the gamepad
+ *   and the handedness.
+ */
+
+export const ControllersContext = createProperty(
+  /**
+   * @returns {ControllerHandle[]}
+   */
+  () => {
+    throw new Error("ControllersContext not set");
+  },
+);
+
+/**
+ * The player's hands. Interaction events already say which controller they came
+ * from, so this is for the things that cannot wait to be pointed at: anything
+ * driven by where a hand *is* — held objects, two-handed gestures, proximity.
+ *
+ * @param {WeakKey} ctx
+ * @returns {ControllerHandle[]}
+ */
+export function controllers(ctx) {
+  return ControllersContext.get(ctx);
+}
+
+/**
+ * @param {number} index
+ * @param {THREE.XRTargetRaySpace} controller
+ * @param {THREE.XRGripSpace} grip
+ * @returns {ControllerHandle}
+ */
+function createControllerHandle(index, controller, grip) {
+  /** @type {Signal<XRInputSource | null>} */
+  const inputSource = Signal.of(/** @type {XRInputSource | null} */ (null));
+  controller.addEventListener("connected", (event) => {
+    inputSource.set(event.data);
+  });
+  controller.addEventListener("disconnected", () => {
+    inputSource.set(null);
+  });
+  return { index, controller, grip, inputSource };
 }
 
 /** @type {WeakMap<THREE.WebGLRenderer, Set<XRFrameRequestCallback>>} */
@@ -226,6 +279,11 @@ export function render(fn, options = {}) {
     subscriber.add(
       interactionManager.addController(controller1, (fn) => addListener(renderer, fn)).subscribe(),
     );
+
+    ctx = ControllersContext.set(ctx, [
+      createControllerHandle(0, controller0, controllerGrip0),
+      createControllerHandle(1, controller1, controllerGrip1),
+    ]);
 
     // Add simple rays to controllers. This will need to be revisited.
     const lineGeometry = new THREE.BufferGeometry().setFromPoints([

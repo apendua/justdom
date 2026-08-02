@@ -2,11 +2,12 @@
   "name": "@apendua.dev/dom",
   "version": "1.0.0",
   "private": true,
-  "description": "Reactive DOM implementation based on store4",
+  "description": "Reactive, non-VDOM DOM renderer built on @apendua.dev/signal",
   "keywords": [
-    "compare",
-    "json",
-    "ordering"
+    "dom",
+    "reactive",
+    "renderer",
+    "signals"
   ],
   "license": "MIT",
   "author": "apendua",

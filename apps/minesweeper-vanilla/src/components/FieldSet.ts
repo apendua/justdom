@@ -1,6 +1,6 @@
 import { findBorder, getNodes, grow, VectorLike } from "@apendua.dev/geometry";
 import { attr, $$ } from "@apendua.dev/dom";
-import Viewport, { ViewportContext } from "../store4/Viewport";
+import Viewport, { ViewportContext } from "../store/Viewport";
 import { component, memo } from "@apendua.dev/signal";
 
 function makePoint({ x, y }: VectorLike): string {

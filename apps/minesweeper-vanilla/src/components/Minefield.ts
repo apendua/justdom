@@ -1,8 +1,8 @@
 import { list, $$, children, attr, on, className } from "@apendua.dev/dom";
 import { Field, Fields, getKey } from "@apendua.dev/minesweeper";
 import { observe } from "@apendua.dev/signal";
-import { RootContext } from "../store4/Root";
-import { ViewportContext } from "../store4/Viewport";
+import { RootContext } from "../store/Root";
+import { ViewportContext } from "../store/Viewport";
 import { tap } from "rxjs";
 import FieldSet from "./FieldSet";
 import FieldStatus from "./FieldStatus";

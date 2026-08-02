@@ -1,5 +1,5 @@
 export { default as ListRenderer } from "./ListRenderer.js";
-export { $, $$, children, list } from "./dom.js";
+export { $, $$, children, list, keyedList } from "./dom.js";
 export { stylesheet, fontFace, className, CLASS_NAME } from "./stylesheet.js";
 export { renderText, text, textNode } from "./text.js";
 export { on, set, attr, data, style } from "./operators.js";

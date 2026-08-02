@@ -2,7 +2,7 @@ import { $$, attr, children, text } from "@apendua.dev/dom";
 import { Field } from "@apendua.dev/minesweeper";
 import { component, observable } from "@apendua.dev/signal";
 import { switchMap } from "rxjs";
-import { ViewportContext } from "../store4/Viewport";
+import { ViewportContext } from "../store/Viewport";
 
 type FieldKind = "empty" | "flag" | "mine" | number;
 

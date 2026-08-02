@@ -1,8 +1,8 @@
 import { set, children, $, className } from "@apendua.dev/dom";
 import { Fields, FieldsContext } from "@apendua.dev/minesweeper";
 import { store, observe } from "@apendua.dev/signal";
-import { RootContext } from "../store4/Root";
-import Viewport, { ViewportContext } from "../store4/Viewport";
+import { RootContext } from "../store/Root";
+import Viewport, { ViewportContext } from "../store/Viewport";
 import { switchMap } from "rxjs";
 import Minefield from "./Minefield";
 import Menu, { SizePreset } from "./Menu";

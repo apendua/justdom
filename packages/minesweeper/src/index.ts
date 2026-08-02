@@ -106,7 +106,7 @@ export class Field {
   }
 
   public toggleFlag(): void {
-    if (this.#fields.isGameOver) {
+    if (this.#fields.isGameOver || this.#state.uncovered) {
       return;
     }
     this.#state.flag = !this.#state.flag;

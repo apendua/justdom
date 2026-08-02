@@ -1,10 +1,10 @@
-import { children } from "@apendua.dev/dom";
+import { children } from "@apendua/justdom";
 import { setupJsdom } from "@apendua.dev/jsdom-env";
-import { just } from "@apendua.dev/signal";
+import { just } from "@apendua/signal";
 
 /**
  * @import { Observable } from "rxjs";
- * @import { Mountable } from "@apendua.dev/dom";
+ * @import { Mountable } from "@apendua/justdom";
  */
 
 /**
@@ -29,7 +29,7 @@ const DEFAULT_TEMPLATE = `<!doctype html>
  * The whole thing is a plain, synchronous "mount, serialize, unmount" cycle:
  *
  * 1. a fresh JSDOM instance is created and installed as the global `document`,
- *    so that `@apendua.dev/dom` has a document to create elements in;
+ *    so that `@apendua/justdom` has a document to create elements in;
  * 2. the component is mounted the exact same way a browser app is mounted in
  *    `apps/todo-vanilla/src/main.ts` — by subscribing to
  *    `just(root, [children(...)])`;

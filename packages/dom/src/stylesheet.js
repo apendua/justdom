@@ -1,6 +1,6 @@
 import { map, Observable, ReplaySubject, share } from "rxjs";
 import { renderText } from "./text.js";
-import { effectMap } from "@apendua.dev/signal";
+import { effectMap } from "@apendua/signal";
 import { isHydrating } from "./hydrate.js";
 
 const STYLE_KEY_ATTRIBUTE = "data-style-key";

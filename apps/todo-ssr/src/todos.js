@@ -1,4 +1,4 @@
-import { Signal, store } from "@apendua.dev/signal";
+import { Signal, store } from "@apendua/signal";
 
 /**
  * @typedef {object} Todo

@@ -1,6 +1,6 @@
 import { describe, it, mock } from "node:test";
 import assert from "node:assert/strict";
-import { just, Signal, set, toObservable } from "@apendua.dev/signal";
+import { just, Signal, set, toObservable } from "@apendua/signal";
 import { userEvent } from "@testing-library/user-event";
 import { $, children, keyedList, list } from "./dom.js";
 import { text } from "./text.js";

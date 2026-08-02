@@ -1,5 +1,5 @@
-import { $, attr, children, className, list, set, text } from "@apendua.dev/dom";
-import { component, makeNonReactive, observable, on } from "@apendua.dev/signal";
+import { $, attr, children, className, list, set, text } from "@apendua/justdom";
+import { component, makeNonReactive, observable, on } from "@apendua/signal";
 import { addTodo, selectTodos, todos } from "../todos.js";
 import TodoItem from "./TodoItem.js";
 

@@ -1,8 +1,8 @@
 {
-  "name": "@apendua.dev/dom",
+  "name": "@apendua/justdom",
   "version": "1.0.0",
   "private": true,
-  "description": "Reactive, non-VDOM DOM renderer built on @apendua.dev/signal",
+  "description": "Reactive, non-VDOM DOM renderer built on @apendua/signal",
   "keywords": [
     "dom",
     "reactive",
@@ -39,12 +39,12 @@
     "test:watch": "node --import ./src/test/setup-jsdom.js --test --watch \"src/**/*.test.js\""
   },
   "dependencies": {
-    "@apendua.dev/signal": "workspace:*",
+    "@apendua/signal": "workspace:*",
     "rxjs": "^7.8.2"
   },
   "devDependencies": {
-    "@apendua.dev/hmr": "workspace:*",
     "@apendua.dev/jsdom-env": "workspace:*",
+    "@apendua/vite-hmr": "workspace:*",
     "@testing-library/dom": "^10.4.0",
     "@testing-library/user-event": "^14.6.1",
     "@types/node": "^24.7.0",

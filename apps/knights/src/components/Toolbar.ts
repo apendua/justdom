@@ -1,5 +1,5 @@
-import { $, CLASS_NAME, attr, children, on, set, stylesheet, text } from "@apendua.dev/dom";
-import { component } from "@apendua.dev/signal";
+import { $, CLASS_NAME, attr, children, on, set, stylesheet, text } from "@apendua/justdom";
+import { component } from "@apendua/signal";
 import { ATTACKER } from "../constants";
 import type Game from "../store/Game";
 import { VERSUS_COMPUTER, type GameMode } from "../store/Root";

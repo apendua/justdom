@@ -1,12 +1,12 @@
 import * as THREE from "three";
 import { Observable, switchMap, takeUntil } from "rxjs";
-import { effects, just } from "@apendua.dev/signal";
-import { onInvalidate } from "@apendua.dev/signal";
+import { effects, just } from "@apendua/signal";
+import { onInvalidate } from "@apendua/signal";
 import { createPortal } from "./elements/portal.js";
 
 /**
  * @import {MonoTypeOperatorFunction} from 'rxjs';
- * @import {Mountable} from "@apendua.dev/dom";
+ * @import {Mountable} from "@apendua/justdom";
  * @import {Component,XREventMap} from './core.js';
  */
 

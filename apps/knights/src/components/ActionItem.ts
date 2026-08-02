@@ -1,5 +1,5 @@
-import { $, attr, children, on, set, text } from "@apendua.dev/dom";
-import { component, makeNonReactive, store } from "@apendua.dev/signal";
+import { $, attr, children, on, set, text } from "@apendua/justdom";
+import { component, makeNonReactive, store } from "@apendua/signal";
 import branch from "./branch";
 import { menuItem, spinner } from "./styles";
 

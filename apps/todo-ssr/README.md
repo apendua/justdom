@@ -1,7 +1,7 @@
 # `@apendua.dev/signal-ssr`
 
-A minimal server side rendering example for [`@apendua.dev/signal`][signal] and
-[`@apendua.dev/dom`][dom]: an [express][express] app that renders a component
+A minimal server side rendering example for [`@apendua/signal`][signal] and
+[`@apendua/justdom`][dom]: an [express][express] app that renders a component
 tree inside a [jsdom][jsdom] document and sends the serialized HTML to the
 browser.
 
@@ -19,7 +19,7 @@ rushx test    # typecheck + node:test
 
 ## How it works
 
-`@apendua.dev/dom` builds real DOM nodes through the ambient `document`
+`@apendua/justdom` builds real DOM nodes through the ambient `document`
 (`document.createElement`, `document.createComment`, …) — there is no virtual
 DOM to serialize instead. So all SSR needs is a `document` that exists outside a
 browser, which is exactly what jsdom provides.
@@ -81,7 +81,7 @@ rebuilding it. Three pieces make that work:
    start from the state the server rendered from.
 2. **A client bundle.** [`src/client/main.js`](./src/client/main.js) is built by
    vite into `dist/client/`, which express serves. It seeds the same signals
-   from the payload and calls `hydrate()` from `@apendua.dev/dom/hydrate`.
+   from the payload and calls `hydrate()` from `@apendua/justdom/hydrate`.
 3. **Handlers that intercept.** The toggle button carries an `on("click")` that
    calls `preventDefault()` and flips the todo in place. It is part of the
    component the *server* renders too — it simply never fires there — so the

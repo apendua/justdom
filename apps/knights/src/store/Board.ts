@@ -1,4 +1,4 @@
-import { memo, mutate, store } from "@apendua.dev/signal";
+import { memo, mutate, store } from "@apendua/signal";
 import {
   ANIMATION_KNOCKOUT,
   ANIMATION_WALK,

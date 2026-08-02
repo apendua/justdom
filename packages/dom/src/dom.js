@@ -1,4 +1,4 @@
-import { effectMap, just, observable } from "@apendua.dev/signal";
+import { effectMap, just, observable } from "@apendua/signal";
 import ListRenderer from "./ListRenderer.js";
 import { removeSegment, replaceSegment, toSegment } from "./helpers.js";
 import { claimComment, claimElement, claimSegment, isHydrating, withCursor } from "./hydrate.js";

@@ -1,6 +1,6 @@
 import { describe, it, before, after, beforeEach } from "node:test";
 import assert from "node:assert/strict";
-import { store } from "@apendua.dev/signal";
+import { store } from "@apendua/signal";
 import { createServer } from "./server.js";
 import { todos } from "./todos.js";
 

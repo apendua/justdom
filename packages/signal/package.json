@@ -1,5 +1,5 @@
 {
-  "name": "@apendua.dev/signal",
+  "name": "@apendua/signal",
   "version": "0.1.0",
   "private": true,
   "description": "A custom implementation of signals",
@@ -38,7 +38,7 @@
     "rxjs": "^7.8.2"
   },
   "devDependencies": {
-    "@apendua.dev/hmr": "workspace:*",
+    "@apendua/vite-hmr": "workspace:*",
     "@types/node": "^24.7.0",
     "eslint": "^9.37.0",
     "fast-check": "^4.3.0",

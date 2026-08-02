@@ -1,4 +1,4 @@
-import { mutate, store } from "@apendua.dev/signal";
+import { mutate, store } from "@apendua/signal";
 
 interface QueuedAction {
   run: () => void;

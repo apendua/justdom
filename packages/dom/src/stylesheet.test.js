@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { Signal, just, toObservable } from "@apendua.dev/signal";
+import { Signal, just, toObservable } from "@apendua/signal";
 import { className, fontFace, stylesheet } from "./stylesheet.js";
 
 /**

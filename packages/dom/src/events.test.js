@@ -1,7 +1,7 @@
 import { describe, it, mock } from "node:test";
 import assert from "node:assert/strict";
 
-import { on, just } from "@apendua.dev/signal";
+import { on, just } from "@apendua/signal";
 
 describe("DOM events", () => {
   it("should subscribe to DOM event using on operator", () => {

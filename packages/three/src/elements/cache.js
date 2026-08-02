@@ -1,4 +1,4 @@
-import { addDependency, Derived, NoValueError } from "@apendua.dev/signal";
+import { addDependency, Derived, NoValueError } from "@apendua/signal";
 import { filter, Subject } from "rxjs";
 import { collapseWhitespace, groupIntoLines, preservesWhitespace } from "./textLines.js";
 

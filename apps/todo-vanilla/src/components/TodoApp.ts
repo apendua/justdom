@@ -7,9 +7,9 @@ import {
   suspend,
   withFallback,
   waitFor,
-} from "@apendua.dev/dom";
-import { Signal, toObservable } from "@apendua.dev/signal";
-import { store, on, set, observable, component } from "@apendua.dev/signal";
+} from "@apendua/justdom";
+import { Signal, toObservable } from "@apendua/signal";
+import { store, on, set, observable, component } from "@apendua/signal";
 import ProgressBar from "./ProgressBar.js";
 import TodoItem from "./TodoItem.js";
 

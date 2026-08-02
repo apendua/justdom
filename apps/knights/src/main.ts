@@ -1,5 +1,5 @@
-import { children } from "@apendua.dev/dom";
-import { just } from "@apendua.dev/signal";
+import { children } from "@apendua/justdom";
+import { just } from "@apendua/signal";
 import Game from "./components/Game";
 import Root, { RootContext } from "./store/Root";
 import "./index.css";

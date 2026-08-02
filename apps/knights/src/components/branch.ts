@@ -1,4 +1,4 @@
-import { list, type Mountable } from "@apendua.dev/dom";
+import { list, type Mountable } from "@apendua/justdom";
 import type { Observable } from "rxjs";
 
 /**

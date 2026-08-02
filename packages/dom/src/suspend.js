@@ -1,10 +1,10 @@
-import { createProperty } from "@apendua.dev/signal";
+import { createProperty } from "@apendua/signal";
 import { NEVER, Observable, ReplaySubject, shareReplay, switchMap, takeUntil } from "rxjs";
-import { takeNothing } from "@apendua.dev/signal";
+import { takeNothing } from "@apendua/signal";
 import { withoutHydration } from "./hydrate.js";
 
 /**
- * @import { Property } from "@apendua.dev/signal";
+ * @import { Property } from "@apendua/signal";
  * @import { INode, Mountable } from "./types.js";
  */
 

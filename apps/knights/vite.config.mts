@@ -1,5 +1,5 @@
 import { defineConfig } from "vite";
-import PluginHMR from "@apendua.dev/hmr/plugin";
+import PluginHMR from "@apendua/vite-hmr/plugin";
 
 export default defineConfig({
   plugins: [PluginHMR()],

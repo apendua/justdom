@@ -1,5 +1,5 @@
-import { $$, children, list, on } from "@apendua.dev/dom";
-import { component } from "@apendua.dev/signal";
+import { $$, children, list, on } from "@apendua/justdom";
+import { component } from "@apendua/signal";
 import { tap } from "rxjs";
 import { ANIMATION_IDLE, KNIGHT } from "../constants";
 import { areTheSameField } from "../helpers/map";

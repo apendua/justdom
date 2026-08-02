@@ -1,5 +1,5 @@
-import { hydrate } from "@apendua.dev/dom/hydrate";
-import { store } from "@apendua.dev/signal";
+import { hydrate } from "@apendua/justdom/hydrate";
+import { store } from "@apendua/signal";
 import TodoApp from "../components/TodoApp.js";
 import { parseFilter, todos } from "../todos.js";
 

@@ -1,6 +1,6 @@
-import { set, children, $, className } from "@apendua.dev/dom";
+import { set, children, $, className } from "@apendua/justdom";
 import { Fields, FieldsContext } from "@apendua.dev/minesweeper";
-import { store, observe } from "@apendua.dev/signal";
+import { store, observe } from "@apendua/signal";
 import { RootContext } from "../store/Root";
 import Viewport, { ViewportContext } from "../store/Viewport";
 import { switchMap } from "rxjs";

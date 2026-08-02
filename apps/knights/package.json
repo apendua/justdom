@@ -12,9 +12,9 @@
     "test:watch": "vitest --environment jsdom"
   },
   "dependencies": {
-    "@apendua.dev/dom": "workspace:*",
-    "@apendua.dev/hmr": "workspace:*",
-    "@apendua.dev/signal": "workspace:*",
+    "@apendua/justdom": "workspace:*",
+    "@apendua/signal": "workspace:*",
+    "@apendua/vite-hmr": "workspace:*",
     "@types/node": "^24.7.0",
     "eslint": "^9.37.0",
     "rxjs": "^7.8.2",

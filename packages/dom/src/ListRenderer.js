@@ -1,6 +1,6 @@
 import { distinctUntilChanged, filter, Observable, Subject, tap } from "rxjs";
 import { removeSegment, toSegment } from "./helpers.js";
-import { addDependency, batch, Derived } from "@apendua.dev/signal";
+import { addDependency, batch, Derived } from "@apendua/signal";
 
 /**
  * @import { Subscription } from "rxjs";

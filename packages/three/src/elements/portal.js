@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { observable } from "@apendua.dev/signal";
+import { observable } from "@apendua/signal";
 import { Subject } from "rxjs";
 import { div } from "./div.js";
 import { text } from "./text.js";
@@ -7,7 +7,7 @@ import { getBoundingClientRectCached, setSubject } from "./cache.js";
 
 /**
  * @import {Observable} from 'rxjs';
- * @import {Mountable} from "@apendua.dev/dom";
+ * @import {Mountable} from "@apendua/justdom";
  * @import {Object3D} from 'three';
  * @import {MutationType} from './cache.js';
  */

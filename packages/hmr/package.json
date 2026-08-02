@@ -2,11 +2,13 @@
   "name": "@apendua/vite-hmr",
   "version": "1.0.0",
   "private": true,
-  "description": "A vite plugin for hot module replacement",
+  "description": "A Vite plugin that preserves @apendua/signal component state across hot module reloads",
   "keywords": [
-    "compare",
-    "json",
-    "ordering"
+    "vite",
+    "vite-plugin",
+    "hmr",
+    "hot-reload",
+    "signals"
   ],
   "license": "MIT",
   "author": "apendua",

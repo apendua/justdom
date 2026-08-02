@@ -2,12 +2,15 @@
   "name": "@apendua/justdom",
   "version": "1.0.0",
   "private": true,
-  "description": "Reactive, non-VDOM DOM renderer built on @apendua/signal",
+  "description": "Reactive, non-VDOM DOM renderer built on @apendua/signal, with SSR and hydration support",
   "keywords": [
     "dom",
     "reactive",
     "renderer",
-    "signals"
+    "signals",
+    "vdom-free",
+    "ssr",
+    "hydration"
   ],
   "license": "MIT",
   "author": "apendua",

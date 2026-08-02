@@ -2,12 +2,16 @@
   "name": "@apendua/freedom",
   "version": "1.0.0",
   "private": true,
-  "description": "Reactive Three.js scene graph built on @apendua/signal",
+  "description": "Reactive Three.js scene graph built on @apendua/signal, with WebXR helpers and a DOM-in-scene bridge",
   "keywords": [
     "three",
+    "threejs",
     "reactive",
     "renderer",
-    "signals"
+    "signals",
+    "webxr",
+    "webgl",
+    "3d"
   ],
   "license": "MIT",
   "author": "apendua",

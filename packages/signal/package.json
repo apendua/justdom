@@ -2,11 +2,14 @@
   "name": "@apendua/signal",
   "version": "0.1.0",
   "private": true,
-  "description": "A custom implementation of signals",
+  "description": "A dependency-tracked reactive signals library built on RxJS",
   "keywords": [
     "signals",
     "reactivity",
-    "observable"
+    "reactive-programming",
+    "observable",
+    "rxjs",
+    "state-management"
   ],
   "license": "MIT",
   "author": "apendua",

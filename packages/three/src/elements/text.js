@@ -7,8 +7,7 @@ import {
   getBoundingClientRectCached,
   getComputedStyleCached,
   getParentElement,
-  getTextClientRects,
-  getTextContent,
+  getTextLayout,
 } from "./cache.js";
 
 /**
@@ -33,8 +32,12 @@ function getViewportDpr() {
 export function text(_, textNode) {
   const object = new THREE.Object3D();
 
+  const layout = selector(() => {
+    return getTextLayout(textNode);
+  });
+
   const textRect = selector(() => {
-    return getTextClientRects(textNode)[0];
+    return layout.bounds;
   });
 
   const style = selector(() => {
@@ -42,14 +45,10 @@ export function text(_, textNode) {
   });
 
   const textureData = selector(() => {
-    // console.log(
-    //   "Generating text texture for:",
-    //   withComputation(null, () => textContent.get()),
-    // );
     return generateTextTexture(
-      getTextContent(textNode),
+      layout.lines,
       getTextRenderStyle(style),
-      textRect,
+      layout.bounds,
       getViewportDpr(),
     );
   });

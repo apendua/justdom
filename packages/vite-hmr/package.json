@@ -1,6 +1,6 @@
 {
   "name": "@apendua/vite-hmr",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "description": "A Vite plugin that preserves @apendua/signal component state across hot module reloads",
   "keywords": [
     "vite",

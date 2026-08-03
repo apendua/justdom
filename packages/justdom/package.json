@@ -1,7 +1,6 @@
 {
   "name": "@apendua/justdom",
-  "version": "1.0.0",
-  "private": true,
+  "version": "0.1.0",
   "description": "Reactive, non-VDOM DOM renderer built on @apendua/signal, with SSR and hydration support",
   "keywords": [
     "dom",
@@ -12,6 +11,11 @@
     "ssr",
     "hydration"
   ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/apendua/apendua.dev.git",
+    "directory": "packages/justdom"
+  },
   "license": "MIT",
   "author": "apendua",
   "type": "module",
@@ -54,5 +58,9 @@
     "eslint": "^9.37.0",
     "fast-check": "^4.3.0",
     "typescript": "^6.0.2"
+  },
+  "publishConfig": {
+    "access": "restricted",
+    "registry": "https://npm.pkg.github.com"
   }
 }

@@ -1,7 +1,6 @@
 {
   "name": "@apendua/signal",
   "version": "0.1.0",
-  "private": true,
   "description": "A dependency-tracked reactive signals library built on RxJS",
   "keywords": [
     "signals",
@@ -11,6 +10,11 @@
     "rxjs",
     "state-management"
   ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/apendua/apendua.dev.git",
+    "directory": "packages/signal"
+  },
   "license": "MIT",
   "author": "apendua",
   "type": "module",
@@ -46,5 +50,9 @@
     "eslint": "^9.37.0",
     "fast-check": "^4.3.0",
     "typescript": "^6.0.2"
+  },
+  "publishConfig": {
+    "access": "restricted",
+    "registry": "https://npm.pkg.github.com"
   }
 }

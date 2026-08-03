@@ -1,7 +1,6 @@
 {
   "name": "@apendua/freedom",
-  "version": "1.0.0",
-  "private": true,
+  "version": "0.1.0",
   "description": "Reactive Three.js scene graph built on @apendua/signal, with WebXR helpers and a DOM-in-scene bridge",
   "keywords": [
     "three",
@@ -13,6 +12,11 @@
     "webgl",
     "3d"
   ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/apendua/apendua.dev.git",
+    "directory": "packages/freedom"
+  },
   "license": "MIT",
   "author": "apendua",
   "type": "module",
@@ -56,5 +60,9 @@
   "peerDependencies": {
     "@apendua/signal": "workspace:*",
     "three": "~0.180.0"
+  },
+  "publishConfig": {
+    "access": "restricted",
+    "registry": "https://npm.pkg.github.com"
   }
 }

@@ -1,7 +1,6 @@
 {
   "name": "@apendua/vite-hmr",
-  "version": "1.0.0",
-  "private": true,
+  "version": "0.1.0",
   "description": "A Vite plugin that preserves @apendua/signal component state across hot module reloads",
   "keywords": [
     "vite",
@@ -10,6 +9,11 @@
     "hot-reload",
     "signals"
   ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/apendua/apendua.dev.git",
+    "directory": "packages/vite-hmr"
+  },
   "license": "MIT",
   "author": "apendua",
   "type": "module",
@@ -51,5 +55,9 @@
   },
   "peerDependencies": {
     "vite": "^6.0.1"
+  },
+  "publishConfig": {
+    "access": "restricted",
+    "registry": "https://npm.pkg.github.com"
   }
 }

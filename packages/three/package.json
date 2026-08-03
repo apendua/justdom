@@ -12,6 +12,11 @@
     "webgl",
     "3d"
   ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/apendua/apendua.dev.git",
+    "directory": "packages/freedom"
+  },
   "license": "MIT",
   "author": "apendua",
   "type": "module",

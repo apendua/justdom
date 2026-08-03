@@ -9,6 +9,11 @@
     "hot-reload",
     "signals"
   ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/apendua/apendua.dev.git",
+    "directory": "packages/vite-hmr"
+  },
   "license": "MIT",
   "author": "apendua",
   "type": "module",

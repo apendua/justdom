@@ -11,6 +11,11 @@
     "ssr",
     "hydration"
   ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/apendua/apendua.dev.git",
+    "directory": "packages/justdom"
+  },
   "license": "MIT",
   "author": "apendua",
   "type": "module",

@@ -1,7 +1,7 @@
 import * as THREE from "three";
-import { component, effects, set, emit, observable, on, Op, store } from "@apendua.dev/signal";
-import { dom } from "@apendua.dev/three";
-import { children, $, text } from "@apendua.dev/dom";
+import { component, effects, set, emit, observable, on, Op, store } from "@apendua/signal";
+import { dom } from "@apendua/freedom";
+import { children, $, text } from "@apendua/justdom";
 import { actionButtonClass, debugValue, panelCard, panelStack, panelTitle } from "./styles.js";
 import { PointersContext } from "../elements/context.js";
 

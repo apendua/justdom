@@ -24,7 +24,7 @@ import {
   Op,
   store,
   use,
-} from "@apendua.dev/signal";
+} from "@apendua/signal";
 import {
   $,
   animate,
@@ -33,7 +33,7 @@ import {
   controllers,
   setWorldMatrix,
   ControllerHandle,
-} from "@apendua.dev/three";
+} from "@apendua/freedom";
 import { cylinderGeometry, sphereGeometry } from "../elements/geometry.js";
 import { basicMaterial, stoneMaterial } from "../elements/material.js";
 import { clampDraw, computeLaunch, defaultLaunchOptions } from "../utils/launch.js";

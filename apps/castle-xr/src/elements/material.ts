@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { memoize, onCleanup } from "@apendua.dev/signal";
+import { memoize, onCleanup } from "@apendua/signal";
 
 export const basicMaterial = memoize((color: string) => {
   const material = new THREE.MeshBasicMaterial({

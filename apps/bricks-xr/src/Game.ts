@@ -7,7 +7,7 @@
  * away. That is all of it.
  */
 import * as THREE from "three";
-import { children, keyedList, Nothing, $ } from "@apendua.dev/three";
+import { children, keyedList, Nothing, $ } from "@apendua/freedom";
 import {
   component,
   effects,
@@ -17,7 +17,7 @@ import {
   ReactiveMap,
   set,
   Signal,
-} from "@apendua.dev/signal";
+} from "@apendua/signal";
 import Brick from "./Brick.js";
 import Panel from "./Panel.js";
 import { cellKey, CELL, onBoard, SIZE, snapToCell } from "./grid.js";

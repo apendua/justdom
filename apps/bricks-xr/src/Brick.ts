@@ -19,8 +19,8 @@ import {
   Signal,
   store,
   use,
-} from "@apendua.dev/signal";
-import { $, animate, interactions, XREventMap } from "@apendua.dev/three";
+} from "@apendua/signal";
+import { $, animate, interactions, XREventMap } from "@apendua/freedom";
 import { NEVER } from "rxjs";
 import { CELL } from "./grid.js";
 import { palette } from "./palette.js";

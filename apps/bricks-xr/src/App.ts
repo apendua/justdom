@@ -8,8 +8,8 @@
  * Start.
  */
 import * as THREE from "three";
-import { children, $ } from "@apendua.dev/three";
-import { component, effects, just } from "@apendua.dev/signal";
+import { children, $ } from "@apendua/freedom";
+import { component, effects, just } from "@apendua/signal";
 import Game from "./Game.js";
 import { CELL, SIZE } from "./grid.js";
 import { palette } from "./palette.js";

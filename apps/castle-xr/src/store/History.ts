@@ -1,4 +1,4 @@
-import { Signal } from "@apendua.dev/signal";
+import { Signal } from "@apendua/signal";
 
 /**
  * A change that can be taken back and put back again. Both directions are

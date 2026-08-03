@@ -1,8 +1,8 @@
 import * as THREE from "three";
-import { camera, children, $, list, XREventMap, interactions } from "@apendua.dev/three";
-import { Signal, observeFn } from "@apendua.dev/signal";
-import { on, set, effects, just, use, component } from "@apendua.dev/signal";
-import { ReactiveMap } from "@apendua.dev/signal";
+import { camera, children, $, list, XREventMap, interactions } from "@apendua/freedom";
+import { Signal, observeFn } from "@apendua/signal";
+import { on, set, effects, just, use, component } from "@apendua/signal";
+import { ReactiveMap } from "@apendua/signal";
 
 import { CastleContext, PointersContext, SessionContext } from "./elements/context.js";
 import { boxGeometry } from "./elements/geometry.js";

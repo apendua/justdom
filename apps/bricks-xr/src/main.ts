@@ -1,5 +1,5 @@
 import { map } from "rxjs";
-import { render } from "@apendua.dev/three";
+import { render } from "@apendua/freedom";
 import { XRControllerModelFactory } from "three/examples/jsm/webxr/XRControllerModelFactory.js";
 import { ARButton } from "three/examples/jsm/webxr/ARButton.js";
 import App from "./App.js";

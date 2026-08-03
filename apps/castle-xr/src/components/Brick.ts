@@ -1,4 +1,4 @@
-import { Signal } from "@apendua.dev/signal";
+import { Signal } from "@apendua/signal";
 import * as THREE from "three";
 import {
   effects,
@@ -12,7 +12,7 @@ import {
   component,
   effectMap,
   onCleanup,
-} from "@apendua.dev/signal";
+} from "@apendua/signal";
 import {
   $,
   children,
@@ -21,7 +21,7 @@ import {
   Nothing,
   setLocalMatrix,
   XREventMap,
-} from "@apendua.dev/three";
+} from "@apendua/freedom";
 import { NEVER } from "rxjs";
 import * as RAPIER from "@dimforge/rapier3d";
 import { BrickStyle, brickShape, BrickType } from "./types.js";

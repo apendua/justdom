@@ -9,7 +9,7 @@
  * through here rather than touching the map directly.
  */
 import * as THREE from "three";
-import { batch, ReactiveMap, store } from "@apendua.dev/signal";
+import { batch, ReactiveMap, store } from "@apendua/signal";
 import { allBrickTypes, BrickType } from "../components/types.js";
 import History from "./History.js";
 

@@ -1,7 +1,7 @@
 import * as THREE from "three";
-import { $, children, dom, interactions, XREventMap } from "@apendua.dev/three";
-import { component, effects, emit, on, Op, set, store } from "@apendua.dev/signal";
-import { children as domChildren, $ as $dom, text } from "@apendua.dev/dom";
+import { $, children, dom, interactions, XREventMap } from "@apendua/freedom";
+import { component, effects, emit, on, Op, set, store } from "@apendua/signal";
+import { children as domChildren, $ as $dom, text } from "@apendua/justdom";
 import Brick from "./Brick.js";
 import { BrickType } from "./types.js";
 import { PointersContext } from "../elements/context.js";

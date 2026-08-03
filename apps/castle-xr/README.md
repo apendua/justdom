@@ -5,8 +5,8 @@ knock the whole thing down. The game is won when every brick is lying on the
 ground.
 
 It is built on the same stack as [marblerun](../marblerun/README.md), and the
-building half is deliberately the same to use: `@apendua.dev/signal` for
-reactivity, `@apendua.dev/three` for the reactive scene, `@apendua.dev/dom`
+building half is deliberately the same to use: `@apendua/signal` for
+reactivity, `@apendua/freedom` for the reactive scene, `@apendua/justdom`
 projected into it for the panels, and `@dimforge/rapier3d` for the physics.
 
 ```

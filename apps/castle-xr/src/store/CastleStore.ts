@@ -25,7 +25,13 @@ export interface StoredBrick {
   rotation: [number, number, number];
 }
 
-const STORAGE_KEY = "blocks-xr:castle";
+const STORAGE_KEY = "castle-xr:castle";
+/**
+ * What the key was called before the game was named. Read once so that a castle
+ * built under the old name is still there after the rename; it can go as soon as
+ * this has shipped anywhere.
+ */
+const LEGACY_STORAGE_KEY = "blocks-xr:castle";
 const SAVE_DELAY = 300;
 
 function toStored(brick: BrickState): StoredBrick {
@@ -98,7 +104,7 @@ export default class CastleStore {
 
   load(): void {
     try {
-      const raw = localStorage.getItem(STORAGE_KEY);
+      const raw = localStorage.getItem(STORAGE_KEY) ?? localStorage.getItem(LEGACY_STORAGE_KEY);
       if (raw) {
         this.restore(parseStored(raw));
       }

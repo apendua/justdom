@@ -1,4 +1,4 @@
-# Blocks XR
+# Castle XR
 
 Build a castle out of bricks in passthrough AR, then take a slingshot to it and
 knock the whole thing down. The game is won when every brick is lying on the
@@ -10,8 +10,8 @@ reactivity, `@apendua.dev/three` for the reactive scene, `@apendua.dev/dom`
 projected into it for the panels, and `@dimforge/rapier3d` for the physics.
 
 ```
-rush build --to @apendua.dev/blocks-xr
-cd apps/blocks-xr && npm run dev
+rush build --to @apendua.dev/castle-xr
+cd apps/castle-xr && npm run dev
 ```
 
 Open the printed `https://` URL in a headset browser and press **Start AR**.
@@ -27,8 +27,9 @@ Open the printed `https://` URL in a headset browser and press **Start AR**.
 The emulator is a dynamic import in its own chunk and replaces `navigator.xr`,
 so do not use it on a real headset.
 
-The castle is saved to `localStorage` (key `blocks-xr:castle`) a moment after
-the last change.
+The castle is saved to `localStorage` (key `castle-xr:castle`) a moment after
+the last change. The soundtrack is the house one, `glass_desk_habits.mp3` out of
+`@apendua.dev/media`, started with the session and stopped with it.
 
 ## The board
 
@@ -193,6 +194,7 @@ honest: a castle that was not going to stand up does not stand up.
 | `components/Game.ts`     | The board: the drag, the preview, the siege, the count of what is standing.    |
 | `components/Brick.ts`    | One brick — mesh, collider, ghost and refused styles, the drag.                |
 | `components/Slingshot.ts`| The frame, the bands, the pouch, and the two-handed draw.                      |
+| `components/Music.ts`    | The soundtrack, playing for as long as the session lasts.                      |
 | `elements/rapier.ts`     | Rapier bindings: world, colliders, rigid bodies, the fixed-step loop.          |
 | `views/`                 | The two panels, projected into the scene.                                      |
 

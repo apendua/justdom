@@ -14,5 +14,5 @@ export default defineConfig({
     sourcemap: true,
     chunkSizeWarningLimit: 1024,
   },
-  base: "/apps/blocks-xr/",
+  base: "/apps/castle-xr/",
 });

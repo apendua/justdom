@@ -1,7 +1,7 @@
 import * as THREE from "three";
-import { children, $, list, XREventMap, interactions } from "@apendua.dev/three";
+import { camera, children, $, list, XREventMap, interactions } from "@apendua.dev/three";
 import { Signal, observeFn } from "@apendua.dev/signal";
-import { on, set, effects, just, component } from "@apendua.dev/signal";
+import { on, set, effects, just, use, component } from "@apendua.dev/signal";
 import { ReactiveMap } from "@apendua.dev/signal";
 
 import { CastleContext, PointersContext, SessionContext } from "./elements/context.js";
@@ -9,6 +9,7 @@ import { boxGeometry } from "./elements/geometry.js";
 import { basicMaterial } from "./elements/material.js";
 import { palette } from "./elements/palette.js";
 import Game from "./components/Game.js";
+import Music from "./components/Music.js";
 import BuildUI from "./views/BuildUI.js";
 import SiegeUI from "./views/SiegeUI.js";
 import CastleStore from "./store/CastleStore.js";
@@ -51,6 +52,8 @@ const App = component((ctx: WeakKey) => {
   const scale = 0.1;
   const pointers = new ReactiveMap<THREE.XRTargetRaySpace, Signal<THREE.Vector3>>();
   const position = Signal.of(new THREE.Vector3(0, -0.4, -1.1));
+  // The ears go where the head is, so the soundtrack rides the camera.
+  const listener = new THREE.AudioListener();
   const castle = new CastleStore();
   const gameSession = new Session();
 
@@ -78,7 +81,11 @@ const App = component((ctx: WeakKey) => {
   castle.load();
 
   return just(new THREE.Scene()).pipe(
+    effects(() => {
+      use(camera(ctx).pipe(children($(listener))));
+    }),
     children(
+      Music(ctx, listener),
       list(observeFn(pointers).values(), (pointer) => {
         return $(new THREE.Mesh(), [
           effects((o) => {

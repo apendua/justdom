@@ -29,14 +29,15 @@ import { PointersContext } from "../elements/context.js";
 import { boxGeometry, wedgeCorners, wedgeGeometry } from "../elements/geometry.js";
 import { brickMaterial, ghostMaterial, invisibleMaterial } from "../elements/material.js";
 import { collider, rigidBody } from "../elements/rapier.js";
+import { palette } from "../elements/palette.js";
 
 /** How heavy a brick is for its size. Stone, near enough. */
 const BRICK_DENSITY = 1.4;
 const BRICK_FRICTION = 0.8;
 const BRICK_RESTITUTION = 0.02;
 
-const GHOST_COLOUR = "#bfe3ff";
-const BLOCKED_COLOUR = "#ff5f4d";
+const GHOST_COLOUR = palette.ghost;
+const BLOCKED_COLOUR = palette.refused;
 
 interface Props {
   bodyType: RAPIER.RigidBodyType | null;

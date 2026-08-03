@@ -15,10 +15,20 @@
  * where the stone has to fly.
  */
 import * as THREE from "three";
-import { component, effects, emit, makeNonReactive, Op, store, use } from "@apendua.dev/signal";
+import {
+  component,
+  effects,
+  emit,
+  makeNonReactive,
+  onCleanup,
+  Op,
+  store,
+  use,
+} from "@apendua.dev/signal";
 import {
   $,
   animate,
+  camera,
   children,
   controllers,
   setWorldMatrix,
@@ -28,10 +38,18 @@ import { cylinderGeometry, sphereGeometry } from "../elements/geometry.js";
 import { basicMaterial, stoneMaterial } from "../elements/material.js";
 import { clampDraw, computeLaunch, defaultLaunchOptions } from "../utils/launch.js";
 import { worldOrigin } from "../elements/rapier.js";
+import { palette } from "../elements/palette.js";
 import { ForkHand } from "../store/Session.js";
 
 interface Props {
   forkHand: ForkHand;
+  /**
+   * Hold the slingshot out in front of the head instead of in a hand, aimed
+   * where the player is looking. Together with the keyboard draw below, this is
+   * what makes the game playable at a desk, where the emulator gives you a head
+   * that follows the mouse but hands that have to be dragged about by hand.
+   */
+  gazeAim: boolean;
 }
 
 interface Events {
@@ -41,10 +59,28 @@ interface Events {
 
 const defaults: Props = {
   forkHand: "left",
+  gazeAim: false,
 };
 
 /** The trigger, in the xr-standard gamepad mapping. */
 const TRIGGER = 0;
+
+/**
+ * Drawing the pouch with no hand free to draw it with: hold the key and the
+ * pouch is pulled straight back along the fork's own line, reaching a full draw
+ * after this long, and let go to fire. The bands stretch exactly as they would
+ * under a hand, so what the shot is worth is still there to be seen — and the
+ * shot itself goes through the same arithmetic, so nothing about it is special.
+ */
+const DRAW_KEY = "Space";
+const KEY_DRAW_MS = 1200;
+
+/**
+ * Where the slingshot is held when it is held by the head rather than a hand:
+ * out at arm's length, below the line of sight and off to one side, so it is
+ * neither in the way of the castle nor pressed against the near plane.
+ */
+const GAZE_OFFSET = new THREE.Vector3(0.14, -0.18, -0.45);
 
 // The frame of the slingshot, in metres, relative to the controller: the
 // handle sits in the fist, the fork opens out ahead of it, and the bands meet
@@ -59,8 +95,8 @@ const POUCH_REST = new THREE.Vector3(0, 0.03, -0.13);
 const FRAME_RADIUS = 0.011;
 const BAND_RADIUS = 0.005;
 const STONE_RADIUS = 0.022;
-const FRAME_COLOUR = "#6b4a2f";
-const BAND_COLOUR = "#2b2b2b";
+const FRAME_COLOUR = palette.forkFrame;
+const BAND_COLOUR = palette.band;
 
 /**
  * How close the free hand has to come to the pouch to take hold of it, in board
@@ -116,6 +152,9 @@ const Slingshot = component((ctx: WeakKey, operators: Op<Props, Events>) => {
 
   /** The hand that has hold of the pouch, while it has hold of it. */
   let drawing: ControllerHandle | undefined;
+  /** The keyboard draw, while the key is down and for the frame after it. */
+  let keyDraw: { startedAt: number; released: boolean } | null = null;
+  let view: THREE.Camera | undefined;
 
   const pickHands = () => {
     const fork =
@@ -124,48 +163,102 @@ const Slingshot = component((ctx: WeakKey, operators: Op<Props, Events>) => {
     return { fork, draw };
   };
 
-  const update = makeNonReactive((group: THREE.Object3D) => {
-    const { fork, draw } = pickHands();
+  /**
+   * Where the frame is held: in a hand, or out in front of the head.
+   *
+   * Held by the head, the frame is also pushed away as the draw grows. Looking
+   * straight down a slingshot, a pouch pulled a full draw back would end up
+   * behind the eye it is being pulled towards; letting the fork go out as the
+   * pouch comes in splits that between the two, which is also what a drawn bow
+   * looks like from behind — one arm out, one hand at the cheek.
+   */
+  const holdMatrix = (fork: ControllerHandle | undefined, push: number) => {
+    if (props.gazeAim && view) {
+      view.updateWorldMatrix(true, false);
+      const offset = GAZE_OFFSET.clone();
+      offset.z -= push;
+      return view.matrixWorld.clone().multiply(new THREE.Matrix4().makeTranslation(offset));
+    }
     if (!fork) {
-      return;
+      return null;
     }
     fork.controller.updateWorldMatrix(true, false);
-    // The whole slingshot rides on the fork hand. Written as a world matrix
-    // rather than by parenting, so the frame stays life size however the board
-    // it hangs off is scaled.
-    setWorldMatrix(group, fork.controller.matrixWorld);
+    return fork.controller.matrixWorld.clone();
+  };
 
-    const toWorld = fork.controller.matrixWorld;
-    const toLocal = toWorld.clone().invert();
-    const forkWorld = POUCH_REST.clone().applyMatrix4(toWorld);
+  /** How far into a keyboard draw we are, from nothing to a full pull. */
+  const keyRamp = () =>
+    keyDraw ? Math.min((performance.now() - keyDraw.startedAt) / KEY_DRAW_MS, 1) : 0;
+
+  const fire = (fork: ControllerHandle | undefined, from: THREE.Vector3, pouch: THREE.Vector3) => {
+    const launch = computeLaunch(from, pouch, defaultLaunchOptions);
+    if (!launch) {
+      return;
+    }
+    emit(props, "shoot", { position: launch.position, velocity: launch.velocity });
+    pulse(drawing, 0.8, 60);
+    pulse(fork, 0.5, 40);
+  };
+
+  const update = makeNonReactive((group: THREE.Object3D) => {
+    const { fork, draw } = pickHands();
 
     const origin = worldOrigin(ctx);
     origin?.updateWorldMatrix(true, false);
     const toBoard = origin ? origin.matrixWorld.clone().invert() : new THREE.Matrix4();
     const fromBoard = origin ? origin.matrixWorld.clone() : new THREE.Matrix4();
+    // Board units to metres, so a draw measured in cells can be turned into how
+    // far the frame moves in the room.
+    const metresPerUnit = origin ? origin.matrixWorld.getMaxScaleOnAxis() : 1;
+
+    const toWorld = holdMatrix(
+      fork,
+      0.5 * keyRamp() * defaultLaunchOptions.maxDraw * metresPerUnit,
+    );
+    if (!toWorld) {
+      return;
+    }
+    // The whole slingshot rides on whatever is holding it. Written as a world
+    // matrix rather than by parenting, so the frame stays life size however the
+    // board it hangs off is scaled.
+    setWorldMatrix(group, toWorld);
+
+    const toLocal = toWorld.clone().invert();
+    const forkWorld = POUCH_REST.clone().applyMatrix4(toWorld);
 
     const forkBoard = forkWorld.clone().applyMatrix4(toBoard);
     const handBoard = draw ? handPosition(draw).applyMatrix4(toBoard) : forkBoard.clone();
 
     if (drawing) {
       if (!triggerPressed(drawing)) {
-        const pouchBoard = clampDraw(forkBoard, handBoard, defaultLaunchOptions.maxDraw);
-        const launch = computeLaunch(forkBoard, pouchBoard, defaultLaunchOptions);
-        if (launch) {
-          emit(props, "shoot", { position: launch.position, velocity: launch.velocity });
-          pulse(drawing, 0.8, 60);
-          pulse(fork, 0.5, 40);
-        }
+        fire(fork, forkBoard, clampDraw(forkBoard, handBoard, defaultLaunchOptions.maxDraw));
         drawing = undefined;
       }
     } else if (draw && triggerPressed(draw) && handBoard.distanceTo(forkBoard) < CAPTURE_RADIUS) {
       drawing = draw;
+      keyDraw = null;
       pulse(draw, 0.3, 30);
     }
 
-    const pouchBoard = drawing
-      ? clampDraw(forkBoard, handBoard, defaultLaunchOptions.maxDraw)
-      : forkBoard;
+    let pouchBoard = forkBoard;
+    if (drawing) {
+      pouchBoard = clampDraw(forkBoard, handBoard, defaultLaunchOptions.maxDraw);
+    } else if (keyDraw) {
+      // Straight back along the fork's own line, which is the one direction a
+      // keyboard can mean.
+      const back = new THREE.Vector3(0, 0, 1)
+        .transformDirection(toWorld)
+        .transformDirection(toBoard)
+        .normalize();
+      pouchBoard = forkBoard
+        .clone()
+        .addScaledVector(back, keyRamp() * defaultLaunchOptions.maxDraw);
+      if (keyDraw.released) {
+        fire(fork, forkBoard, pouchBoard);
+        keyDraw = null;
+        pouchBoard = forkBoard;
+      }
+    }
     const pouchLocal = pouchBoard.clone().applyMatrix4(fromBoard).applyMatrix4(toLocal);
 
     pouch.current?.position.copy(pouchLocal);
@@ -197,9 +290,41 @@ const Slingshot = component((ctx: WeakKey, operators: Op<Props, Events>) => {
       }),
     ]);
 
+  const onKeyDown = (event: KeyboardEvent) => {
+    if (event.code !== DRAW_KEY || event.repeat || drawing || keyDraw) {
+      return;
+    }
+    event.preventDefault();
+    keyDraw = { startedAt: performance.now(), released: false };
+  };
+
+  const onKeyUp = (event: KeyboardEvent) => {
+    if (event.code !== DRAW_KEY || !keyDraw) {
+      return;
+    }
+    event.preventDefault();
+    // Fired on the next frame, where the pouch's position is already worked out.
+    keyDraw.released = true;
+  };
+
   return $(new THREE.Group(), [
+    effects(() => {
+      use(
+        camera(ctx).pipe(
+          effects((value) => {
+            view = value;
+          }),
+        ),
+      );
+    }),
     effects((group) => {
       group.matrixAutoUpdate = true;
+      window.addEventListener("keydown", onKeyDown);
+      window.addEventListener("keyup", onKeyUp);
+      onCleanup(() => {
+        window.removeEventListener("keydown", onKeyDown);
+        window.removeEventListener("keyup", onKeyUp);
+      });
       use(
         animate(ctx, () => {
           update(group);
@@ -217,7 +342,7 @@ const Slingshot = component((ctx: WeakKey, operators: Op<Props, Events>) => {
           pouch.current = o;
           o.position.copy(POUCH_REST);
           o.geometry = sphereGeometry(STONE_RADIUS, 16, 12);
-          o.material = stoneMaterial("#3f3a37");
+          o.material = stoneMaterial(palette.stone);
         }),
       ]),
     ),

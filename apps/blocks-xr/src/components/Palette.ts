@@ -7,6 +7,7 @@ import { BrickType } from "./types.js";
 import { PointersContext } from "../elements/context.js";
 import { boxGeometry } from "../elements/geometry.js";
 import { basicMaterial } from "../elements/material.js";
+import { palette } from "../elements/palette.js";
 import { layoutPalette, PALETTE_BRICK_SCALE } from "../utils/paletteLayout.js";
 import { paletteLabel } from "../views/styles.js";
 
@@ -74,7 +75,7 @@ export const Palette = component((ctx: WeakKey, operators: Op<PaletteProps, Pale
             return boxGeometry(layout.plateWidth, PLATE_THICKNESS, layout.plateDepth);
           },
           get material() {
-            return basicMaterial("#123039");
+            return basicMaterial(palette.trayPlate);
           },
         }),
       ]),
@@ -88,7 +89,7 @@ export const Palette = component((ctx: WeakKey, operators: Op<PaletteProps, Pale
               return boxGeometry(handle.width, handle.height, handle.depth);
             },
             get material() {
-              return basicMaterial("#2f7f9c");
+              return basicMaterial(palette.trayRail);
             },
           }),
           makeInteractive(),

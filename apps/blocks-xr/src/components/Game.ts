@@ -53,7 +53,7 @@ interface ProjectileState {
 }
 
 /** Bricks dropped outside this are thrown away rather than placed. */
-const BOARD = new THREE.Box3(new THREE.Vector3(-6.5, -0.5, -6.5), new THREE.Vector3(6.5, 14, 6.5));
+const BOARD = new THREE.Box3(new THREE.Vector3(-3.5, -0.5, -3.5), new THREE.Vector3(3.5, 14, 3.5));
 
 const PHYSICS_FPS = 60;
 /** How near the floor a brick has to be before it counts as fallen. */
@@ -354,7 +354,7 @@ const Game = component((ctx: WeakKey) => {
       );
     }),
     children(
-      Grid(ctx, [set({ size: 24, cellWidth: 0.5 })]),
+      Grid(ctx, [set({ size: 12, cellWidth: 0.5 })]),
       component(() => {
         if (gameSession.phase.get() !== "build") {
           return Nothing();
@@ -362,7 +362,7 @@ const Game = component((ctx: WeakKey) => {
         return Palette(ctx, [
           set({
             // Parked to the right of the board, tipped up towards the player.
-            position: new THREE.Vector3(9, 0.4, 2),
+            position: new THREE.Vector3(6.5, 0.4, 2),
             rotation: new THREE.Euler(0.3, -Math.PI / 8, 0),
           }),
           on("dragstart", () => {
@@ -485,6 +485,9 @@ const Game = component((ctx: WeakKey) => {
           set({
             get forkHand() {
               return gameSession.forkHand.get();
+            },
+            get gazeAim() {
+              return gameSession.gazeAim.get();
             },
           }),
           on("shoot", (shot) => {

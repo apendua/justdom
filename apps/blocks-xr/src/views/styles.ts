@@ -1,6 +1,12 @@
+/**
+ * The panels. Every colour comes from `elements/palette.ts`, the same place the
+ * board and the bricks take theirs from, so the interface and the world it sits
+ * in cannot drift apart.
+ */
 import { fontFace, stylesheet, CLASS_NAME } from "@apendua.dev/dom";
 import fontFile from "@apendua.dev/media/fonts/ZenDots-Regular.ttf";
 import { combineLatest, map, Observable } from "rxjs";
+import { palette } from "../elements/palette.js";
 
 export const fontName = fontFace(fontFile);
 
@@ -16,12 +22,12 @@ export const panelStack = stylesheet`
 export const panelCard = stylesheet`
   .${CLASS_NAME} {
     font-family: '${fontName}';
-    background: #124553;
-    border: 4px solid #4bd3ff;
+    background: ${palette.panel};
+    border: 4px solid ${palette.panelEdge};
     border-radius: 14px;
     box-shadow: 0 10px 24px rgba(0, 0, 0, 0.35);
     padding: 10px;
-    color: #f6fcff;
+    color: ${palette.panelText};
   }
 `;
 
@@ -30,8 +36,8 @@ export const panelTitle = stylesheet`
     text-transform: uppercase;
     letter-spacing: 0.1em;
     font-size: 0.78rem;
-    background: rgba(75, 211, 255, 0.2);
-    border: 2px solid rgba(75, 211, 255, 0.7);
+    background: ${palette.panelWash};
+    border: 2px solid ${palette.panelWashEdge};
     border-radius: 10px;
     padding: 8px 12px;
     margin-bottom: 8px;
@@ -40,19 +46,19 @@ export const panelTitle = stylesheet`
 
 export const actionButton = stylesheet`
   .${CLASS_NAME} {
-    background: #165ab8;
-    border: 2px solid #8bc9ff;
+    background: ${palette.button};
+    border: 2px solid ${palette.buttonEdge};
     text-align: center;
     padding: 12px;
     margin: 6px 0;
     border-radius: 12px;
-    color: #f4fbff;
+    color: ${palette.panelText};
     cursor: pointer;
     user-select: none;
   }
 
   .${CLASS_NAME}:hover, .${CLASS_NAME}[data-xr-hover] {
-    background: #1f79ee;
+    background: ${palette.buttonHover};
   }
 
 `;
@@ -71,9 +77,9 @@ export function actionButtonClass(enabled: Observable<boolean>) {
 /** Added to an action button that currently has nothing to act on. */
 const mutedButton = stylesheet`
   .${CLASS_NAME}, .${CLASS_NAME}:hover, .${CLASS_NAME}[data-xr-hover] {
-    background: #1b3b52;
-    border-color: #3f5f75;
-    color: #6d8ea3;
+    background: ${palette.buttonMuted};
+    border-color: ${palette.buttonMutedEdge};
+    color: ${palette.buttonMutedText};
   }
 `;
 
@@ -85,7 +91,7 @@ export const paletteLabel = stylesheet`
     font-size: 13px;
     text-align: right;
     width: 96px;
-    color: #cdeffd;
+    color: ${palette.panelLabel};
   }
 `;
 
@@ -96,10 +102,10 @@ export const victoryBanner = stylesheet`
     letter-spacing: 0.12em;
     text-align: center;
     font-size: 0.9rem;
-    background: #f6b73c;
-    border: 2px solid #fff0c9;
+    background: ${palette.banner};
+    border: 2px solid ${palette.bannerEdge};
     border-radius: 12px;
-    color: #3a2a05;
+    color: ${palette.bannerText};
     padding: 12px;
     margin-bottom: 8px;
   }
@@ -115,5 +121,20 @@ export const debugValue = stylesheet`
     border-radius: 10px;
     padding: 8px 10px;
     margin-top: 6px;
+  }
+`;
+
+/** A quieter line: a hint rather than a reading. */
+export const hintValue = stylesheet`
+  .${CLASS_NAME} {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px dashed rgba(255, 255, 255, 0.25);
+    border-radius: 10px;
+    padding: 8px 10px;
+    margin-top: 6px;
+    color: ${palette.panelLabel};
   }
 `;

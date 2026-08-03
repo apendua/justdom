@@ -12,6 +12,12 @@ export type ForkHand = "left" | "right";
 export default class Session {
   readonly phase = Signal.of<Phase>("build");
   readonly forkHand = Signal.of<ForkHand>("left");
+  /**
+   * Hold the slingshot out in front of the head rather than in a hand. Meant
+   * for playing at a desk through the emulator, where the head follows the
+   * mouse but the hands have to be dragged into place one at a time.
+   */
+  readonly gazeAim = Signal.of(false);
   readonly shots = Signal.of(0);
   /** Bricks that are still up off the ground. */
   readonly standing = Signal.of(0);
@@ -32,5 +38,9 @@ export default class Session {
 
   swapHands(): void {
     this.forkHand.setFn((hand) => (hand === "left" ? "right" : "left"));
+  }
+
+  toggleGazeAim(): void {
+    this.gazeAim.setFn((value) => !value);
   }
 }

@@ -2,10 +2,12 @@ import * as THREE from "three";
 import { $ } from "@apendua.dev/three";
 import { onCleanup, memoize } from "@apendua.dev/signal";
 import { component, effects, Op, set, store } from "@apendua.dev/signal";
+import { palette } from "../elements/palette.js";
 
 interface GridProps {
   size: number;
   cellWidth: number;
+  colour: string;
   position: THREE.Vector3;
   rotation: THREE.Euler;
 }
@@ -13,9 +15,18 @@ interface GridProps {
 const defaults: GridProps = {
   size: 1,
   cellWidth: 1,
+  colour: palette.gridLine,
   position: new THREE.Vector3(),
   rotation: new THREE.Euler(),
 };
+
+const gridMaterial = memoize((colour: string) => {
+  const material = new THREE.LineBasicMaterial({ color: colour });
+  onCleanup(() => {
+    material.dispose();
+  });
+  return material;
+});
 
 const createGridGeometry = memoize((size: number, cellWidth: number) => {
   const positions = [];
@@ -49,6 +60,9 @@ const Grid = component((_: WeakKey, operators: Op<GridProps>) => {
     set({
       get geometry() {
         return createGridGeometry(props.size, props.cellWidth);
+      },
+      get material() {
+        return gridMaterial(props.colour);
       },
     }),
     effects((o) => {

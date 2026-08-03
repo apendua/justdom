@@ -5,6 +5,7 @@ import * as RAPIER from "@dimforge/rapier3d";
 import { collider, rigidBody } from "../elements/rapier.js";
 import { sphereGeometry } from "../elements/geometry.js";
 import { stoneMaterial } from "../elements/material.js";
+import { palette } from "../elements/palette.js";
 
 interface ProjectileProps {
   position: THREE.Vector3;
@@ -41,7 +42,7 @@ const Projectile = component((ctx: WeakKey, operators: Op<ProjectileProps, Proje
         return sphereGeometry(props.radius);
       },
       get material() {
-        return stoneMaterial("#3f3a37");
+        return stoneMaterial(palette.stone);
       },
     }),
     rigidBody(ctx, RAPIER.RigidBodyType.Dynamic, [

@@ -7,6 +7,7 @@ import { ReactiveMap } from "@apendua.dev/signal";
 import { CastleContext, PointersContext, SessionContext } from "./elements/context.js";
 import { boxGeometry } from "./elements/geometry.js";
 import { basicMaterial } from "./elements/material.js";
+import { palette } from "./elements/palette.js";
 import Game from "./components/Game.js";
 import BuildUI from "./views/BuildUI.js";
 import SiegeUI from "./views/SiegeUI.js";
@@ -19,9 +20,11 @@ import Session from "./store/Session.js";
  * origin is wherever the player's head was when they pressed Start. The physics
  * ground is the top of this slab: a brick standing on the grid is standing on
  * the floor of the simulation.
+ *
+ * The plate is the same square the grid covers: 12 cells of half a unit, which
+ * is 60 cm of table in the room.
  */
-/** The same square the grid covers: 24 cells of half a unit. */
-const FLOOR_SIZE = 12;
+const FLOOR_SIZE = 6;
 const FLOOR_THICKNESS = 0.2;
 
 const Floor = component((ctx: WeakKey) => {
@@ -35,7 +38,7 @@ const Floor = component((ctx: WeakKey) => {
         return boxGeometry(FLOOR_SIZE, FLOOR_THICKNESS, FLOOR_SIZE);
       },
       get material() {
-        return basicMaterial("#2f4032");
+        return basicMaterial(palette.ground);
       },
     }),
     makeInteractive(),
@@ -86,7 +89,7 @@ const App = component((ctx: WeakKey) => {
               return boxGeometry(0.01, 0.01, 0.01);
             },
             get material() {
-              return basicMaterial("#ff0000");
+              return basicMaterial(palette.pointer);
             },
           }),
         ]);
@@ -96,13 +99,15 @@ const App = component((ctx: WeakKey) => {
           o.position.copy(position.get());
         }),
         children(
-          $(new THREE.AmbientLight(0xffffff, 1.8)),
-          $(new THREE.DirectionalLight(0xffffff, 2), [
+          // Enough fill to read the shaded sides, and one clear key light so
+          // the flat faces of a brick do not all come out the same value.
+          $(new THREE.AmbientLight(0xffffff, 0.9)),
+          $(new THREE.DirectionalLight(0xffffff, 1.5), [
             effects((o) => {
               o.position.set(0.6, 1.4, 0.8);
             }),
           ]),
-          $(new THREE.PointLight(0xffffff, 6, 8), [
+          $(new THREE.PointLight(0xffffff, 2.5, 8), [
             effects((o) => {
               o.position.set(-0.6, 0.8, 0.6);
             }),
@@ -118,7 +123,7 @@ const App = component((ctx: WeakKey) => {
               // be hidden and the player only ever sees what applies.
               component(() => {
                 const panel = {
-                  position: new THREE.Vector3(-8.5, 4.5, 1.5),
+                  position: new THREE.Vector3(-7.6, 4.5, 1.5),
                   rotation: new THREE.Euler(0, Math.PI / 8, 0),
                 };
                 if (gameSession.phase.get() === "build") {
@@ -155,6 +160,7 @@ const App = component((ctx: WeakKey) => {
                     ui.shots = gameSession.shots.get();
                     ui.won = gameSession.won.get();
                     ui.forkHand = gameSession.forkHand.get();
+                    ui.gazeAim = gameSession.gazeAim.get();
                   }),
                   on("rebuild", () => {
                     gameSession.beginBuilding();
@@ -162,6 +168,9 @@ const App = component((ctx: WeakKey) => {
                   }),
                   on("swapHands", () => {
                     gameSession.swapHands();
+                  }),
+                  on("toggleGazeAim", () => {
+                    gameSession.toggleGazeAim();
                   }),
                 ]);
               })(),

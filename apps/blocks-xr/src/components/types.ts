@@ -1,3 +1,5 @@
+import { palette } from "../elements/palette.js";
+
 /**
  * The brick catalogue. Every brick is a box whose sides are whole multiples of
  * half a cell, which is what lets any two of them sit flush on the half grid —
@@ -25,35 +27,35 @@ export const brickShapes: Record<BrickType, BrickShape> = {
     type: "cube",
     label: "Cube",
     size: [1, 1, 1],
-    colour: "#9fa7ad",
+    colour: palette.brick.cube,
     profile: "box",
   },
   block: {
     type: "block",
     label: "Block",
     size: [2, 1, 0.5],
-    colour: "#c08a5a",
+    colour: palette.brick.block,
     profile: "box",
   },
   plate: {
     type: "plate",
     label: "Plate",
     size: [2, 0.5, 1],
-    colour: "#7f8b93",
+    colour: palette.brick.plate,
     profile: "box",
   },
   pillar: {
     type: "pillar",
     label: "Pillar",
     size: [0.5, 2, 0.5],
-    colour: "#cfc3ac",
+    colour: palette.brick.pillar,
     profile: "box",
   },
   wedge: {
     type: "wedge",
     label: "Roof",
     size: [1, 1, 1],
-    colour: "#8c4a3f",
+    colour: palette.brick.roof,
     profile: "wedge",
   },
 };

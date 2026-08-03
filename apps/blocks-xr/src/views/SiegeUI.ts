@@ -5,6 +5,7 @@ import { children, list, $, text } from "@apendua.dev/dom";
 import {
   actionButton,
   debugValue,
+  hintValue,
   panelCard,
   panelStack,
   panelTitle,
@@ -21,11 +22,13 @@ interface SiegeUIProps {
   shots: number;
   won: boolean;
   forkHand: ForkHand;
+  gazeAim: boolean;
 }
 
 interface SiegeUIEvents {
   rebuild: void;
   swapHands: void;
+  toggleGazeAim: void;
 }
 
 const defaults: SiegeUIProps = {
@@ -36,6 +39,7 @@ const defaults: SiegeUIProps = {
   shots: 0,
   won: false,
   forkHand: "left",
+  gazeAim: false,
 };
 
 /** The panel while the castle is being knocked down. */
@@ -74,6 +78,13 @@ const SiegeUI = component((ctx: WeakKey, operators: Op<SiegeUIProps, SiegeUIEven
             $("div", [
               set("className", actionButton),
               on("click", () => {
+                emit(props, "toggleGazeAim", undefined);
+              }),
+              children(text`Aim: ${() => (props.gazeAim ? "where you look" : "your hand")}`),
+            ]),
+            $("div", [
+              set("className", actionButton),
+              on("click", () => {
                 emit(props, "rebuild", undefined);
               }),
               children(text`Back To Building`),
@@ -87,6 +98,9 @@ const SiegeUI = component((ctx: WeakKey, operators: Op<SiegeUIProps, SiegeUIEven
             $("div", [set("className", debugValue), children(text`Reach for the pouch`)]),
             $("div", [set("className", debugValue), children(text`Hold trigger, pull back`)]),
             $("div", [set("className", debugValue), children(text`Let go to shoot`)]),
+            // The way to play at a desk, where there is no second hand to reach
+            // with — and no first hand that is easy to aim.
+            $("div", [set("className", hintValue), children(text`No hands? Hold Space`)]),
           ),
         ]),
       ),

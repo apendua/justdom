@@ -34,9 +34,16 @@ the last change.
 
 The board floats a little below eye level and about an arm's length away. It is
 scaled by `0.1`, so one cell is ten centimetres in the room and the whole board
-is a 1.2 m square — a castle you build at a table rather than one you walk
+is a 60 cm square — a castle you build at a table rather than one you walk
 through. The session runs in a `local` reference space, so the origin is
 wherever the player's head was when they pressed Start.
+
+Every colour in the game comes from `elements/palette.ts`, panels included, so
+the interface and the world it sits in cannot drift apart. It is built around
+the teal and cyan the panels already use: the board is the darkest end of that
+family, which leaves the bricks free to be the one warm thing in the scene, and
+cyan is kept for what the player is *about* to do — the ghost of a brick, the
+edge of a panel — so it never competes with anything already built.
 
 ## Bricks and the half grid
 
@@ -118,6 +125,25 @@ The stone is dense and has CCD on: at slingshot speeds it covers more than its
 own diameter in a step and would otherwise pass clean through a brick without
 ever touching it.
 
+### Playing without a headset
+
+Two hands reaching for each other is the one thing an emulator is bad at: the
+head follows the mouse, but each hand has to be dragged into place on its own.
+So the siege panel has a way round both halves of the gesture, and neither of
+them is a different shot — they feed the same arithmetic:
+
+- **Aim: where you look** holds the slingshot out in front of the head instead
+  of in a hand. The stone still leaves along the line from the pouch through the
+  fork; that line is now the one you are looking down.
+- **Hold Space** draws the pouch straight back along the fork, reaching a full
+  draw after 1.2 s, and letting go fires. The bands stretch as they would under
+  a hand, so how far the pull has got is still there to be seen.
+
+Held by the head, a full draw would put the pouch behind the eye it is being
+pulled towards, so the fork goes out as the pouch comes in — half each. It is
+also what a drawn bow looks like from behind: one arm out, one hand at the
+cheek.
+
 ## Winning
 
 A brick is **down** when it is touching the ground — its lowest point, taken
@@ -147,6 +173,7 @@ honest: a castle that was not going to stand up does not stand up.
 
 | Path                     | What it is                                                                     |
 | ------------------------ | ------------------------------------------------------------------------------ |
+| `elements/palette.ts`    | Every colour in the game, panels and world alike.                              |
 | `utils/grid.ts`          | The half grid: rotated extents, corner snapping, and the overlap test.         |
 | `utils/launch.ts`        | What a slingshot does when it is let go. Two points in, a shot out.            |
 | `utils/rotations.ts`     | The 24 orientations of a cube, upright-only alignment, stick-driven turns.     |

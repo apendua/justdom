@@ -118,6 +118,9 @@ job it actually has:
 - **How far it is pulled is how hard the shot is.** Speed is proportional to the
   draw, and the two hands together are the aim and the power
   (`utils/launch.ts`). Letting go of the trigger fires; both hands get a pulse.
+  A full pull is fast enough that the arc is nearly flat across a board this
+  size, so the shot goes more or less where the fork is pointed rather than
+  needing to be lobbed.
 - Which hand holds the fork is a button on the panel, because handedness is not
   something to be guessed at.
 
@@ -152,6 +155,12 @@ floor. Sitting on top of another brick does not count, whatever height that
 happens to be. The castle is beaten when every brick is down *and* the rubble
 has stopped moving, so a wall caught mid-collapse does not declare victory a
 moment early. The panel counts what is still standing while the siege runs.
+
+"Stopped moving" is asked for four counts in a row, and takes turning into
+account as well as travelling. A brick rolling to a halt passes through a moment
+of being slow, flat and apparently finished, and can still end up leaning on
+another one after it — which is not a castle that is down, and was enough to put
+the banner up early once the stone got quick enough to scatter the rubble.
 
 **Back To Building** puts the castle back up exactly as it was built, not as the
 rubble left it: the layout is remembered the moment Ready is pressed.

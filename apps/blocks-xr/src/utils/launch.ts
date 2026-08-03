@@ -32,7 +32,7 @@ export interface Launch {
 export const defaultLaunchOptions: LaunchOptions = {
   minDraw: 0.5,
   maxDraw: 6,
-  speedPerUnit: 3.5,
+  speedPerUnit: 17.5,
   muzzleOffset: 0.4,
 };
 

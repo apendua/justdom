@@ -123,7 +123,7 @@ const App = component((ctx: WeakKey) => {
               // be hidden and the player only ever sees what applies.
               component(() => {
                 const panel = {
-                  position: new THREE.Vector3(-7.6, 4.5, 1.5),
+                  position: new THREE.Vector3(-5.5, 3.5, 1.5),
                   rotation: new THREE.Euler(0, Math.PI / 8, 0),
                 };
                 if (gameSession.phase.get() === "build") {

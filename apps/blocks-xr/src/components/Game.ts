@@ -60,6 +60,10 @@ const PHYSICS_FPS = 60;
 const GROUND_TOLERANCE = 0.2;
 /** Below this the castle is settled enough for the rubble to be counted. */
 const STILL_SPEED = 0.35;
+/** The same, for a brick that has stopped travelling but is still turning. */
+const STILL_SPIN = 0.6;
+/** How many counts in a row have to agree before the castle is called down. */
+const SETTLED_CHECKS = 4;
 /** Bricks are counted this often, in frames. Every frame would be wasteful. */
 const COUNT_EVERY = 12;
 const PROJECTILE_LIFETIME = 12_000;
@@ -118,6 +122,8 @@ const Game = component((ctx: WeakKey) => {
   let view: THREE.Camera | undefined;
   let projectileCounter = 0;
   let frame = 0;
+  /** Consecutive counts that found every brick down and still. */
+  let settled = 0;
 
   const placement: Placement = {
     offset: new THREE.Quaternion(),
@@ -267,6 +273,11 @@ const Game = component((ctx: WeakKey) => {
    * Counts what is still standing. A brick is down once it is touching the
    * ground, whatever way up it ended; the castle is beaten when every brick is
    * down and the rubble has stopped moving.
+   *
+   * "Stopped moving" is asked for a few times over before it is believed. A
+   * brick rolling to a halt passes through a moment of being slow, flat and
+   * apparently finished, and can still come to rest leaning on another one
+   * afterwards — which is not a castle that is down.
    */
   const countStanding = makeNonReactive(() => {
     let standing = 0;
@@ -288,16 +299,19 @@ const Game = component((ctx: WeakKey) => {
         standing += 1;
       }
       const velocity = body.linvel();
+      const spin = body.angvel();
       if (
         velocity.x * velocity.x + velocity.y * velocity.y + velocity.z * velocity.z >
-        STILL_SPEED * STILL_SPEED
+          STILL_SPEED * STILL_SPEED ||
+        spin.x * spin.x + spin.y * spin.y + spin.z * spin.z > STILL_SPIN * STILL_SPIN
       ) {
         moving = true;
       }
     }
     gameSession.standing.set(standing);
     gameSession.total.set(total);
-    if (total > 0 && standing === 0 && !moving) {
+    settled = total > 0 && standing === 0 && !moving ? settled + 1 : 0;
+    if (settled >= SETTLED_CHECKS) {
       gameSession.won.set(true);
     }
   });
@@ -316,6 +330,7 @@ const Game = component((ctx: WeakKey) => {
   use(() => {
     if (gameSession.phase.get() !== "siege") {
       projectiles.clear();
+      settled = 0;
       return;
     }
     return runSimulation(ctx, PHYSICS_FPS, () => {

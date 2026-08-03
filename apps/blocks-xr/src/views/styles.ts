@@ -83,13 +83,19 @@ const mutedButton = stylesheet`
   }
 `;
 
+/**
+ * A brick's name, written on the tray under the brick itself. The portal centres
+ * whatever it renders on the object holding it, so the text has to be centred in
+ * its own box as well — anything else leaves the name sitting off to one side of
+ * the brick it belongs to.
+ */
 export const paletteLabel = stylesheet`
   .${CLASS_NAME} {
     font-family: '${fontName}';
     text-transform: uppercase;
     letter-spacing: 0.08em;
     font-size: 13px;
-    text-align: right;
+    text-align: center;
     width: 96px;
     color: ${palette.panelLabel};
   }

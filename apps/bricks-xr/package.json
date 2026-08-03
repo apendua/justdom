@@ -1,0 +1,29 @@
+{
+  "name": "@apendua.dev/bricks-xr",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build": "npm run test && npm run compile && vite build",
+    "build:watch": "",
+    "compile": "tsc",
+    "dev": "vite",
+    "preview": "vite preview",
+    "test": "if find src -type f \\( -name '*.test.ts' -o -name '*.test.tsx' \\) | grep -q .; then vitest run; else echo 'No tests found, skipping'; fi",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@apendua.dev/dom": "workspace:*",
+    "@apendua.dev/hmr": "workspace:*",
+    "@apendua.dev/signal": "workspace:*",
+    "@apendua.dev/three": "workspace:*",
+    "@iwer/devui": "^1.1.2",
+    "@types/three": "~0.180.0",
+    "@vitejs/plugin-basic-ssl": "^2.1.0",
+    "iwer": "^2.1.1",
+    "rxjs": "^7.8.2",
+    "three": "~0.180.0",
+    "typescript": "^6.0.2",
+    "vite": "^7.1.9",
+    "vitest": "^3.2.4"
+  }
+}

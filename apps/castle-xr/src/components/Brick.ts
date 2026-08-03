@@ -196,7 +196,15 @@ const Brick = component((ctx: WeakKey, operators: Op<Props, Events>) => {
     effects(() => {
       use(just(props, operators));
     }),
+    // While a brick is held it belongs to the hand, and the hand's own movement
+    // is what places it. Every other frame its pose comes from the props —
+    // including the frame it is let go on, which is what puts a brick back where
+    // it came from when the board refuses the drop. Reading the drag state here
+    // is what makes that last part happen, so it is not as redundant as it looks.
     effects((o) => {
+      if (dragState.get()) {
+        return;
+      }
       placeAt(o);
     }),
     effectMap((o) => {

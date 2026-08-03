@@ -15,12 +15,17 @@ cd apps/blocks-xr && npm run dev
 ```
 
 Open the printed `https://` URL in a headset browser and press **Start AR**.
-Adding `?emulator` installs the [iwer](https://github.com/felixtrz/iwer) Quest 3
-emulator, which fakes a headset and two controllers in an ordinary browser;
-`?emulator=headless` does the same without the dev UI, which is what a script
-driving the controllers from outside wants — the dev UI writes a pose of its own
-every frame and would fight it. The emulator is a dynamic import in its own
-chunk and replaces `navigator.xr`, so do not use it on a real headset.
+
+- `?emulator` — installs the [iwer](https://github.com/meta-quest/immersive-web-emulation-runtime)
+  Quest 3 emulator with its DevUI, which fakes a headset and two controllers in
+  an ordinary browser.
+- `?emulator=bare` — the same without the DevUI, and with the `XRDevice` exposed
+  as `window.xrDevice` so a script can drive the headset and controllers
+  directly. The DevUI writes a pose of its own every frame and would otherwise
+  fight whatever the script is doing.
+
+The emulator is a dynamic import in its own chunk and replaces `navigator.xr`,
+so do not use it on a real headset.
 
 The castle is saved to `localStorage` (key `blocks-xr:castle`) a moment after
 the last change.

@@ -12,21 +12,16 @@ declare global {
   }
 }
 
-export interface EmulatorOptions {
-  /**
-   * The dev UI drives the controllers itself, one pose per frame, which is
-   * exactly what a script driving them from outside does not want. Turning it
-   * off leaves the emulated headset under the control of whoever is holding it.
-   */
-  devUI?: boolean;
-}
-
-export function install({ devUI = true }: EmulatorOptions = {}) {
+export function install(options: { devui?: boolean } = {}) {
   console.log("Installing emulator");
+  const { devui = true } = options;
   const xrDevice = new XRDevice(metaQuest3);
   xrDevice.installRuntime();
-  if (devUI) {
+  if (devui) {
+    // The DevUI drives the headset and controller poses from its own panels,
+    // so it is skipped when a script wants to set the poses itself.
     xrDevice.installDevUI(DevUI);
   }
+  // Handy for driving the emulated headset and controllers from scripts.
   window.xrDevice = xrDevice;
 }

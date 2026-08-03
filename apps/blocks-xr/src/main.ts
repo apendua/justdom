@@ -30,9 +30,7 @@ if (import.meta.env.DEV) {
 Promise.resolve(
   query.has("emulator")
     ? import("./emulator.js").then(({ install }) =>
-        // `?emulator=headless` leaves the dev UI out, so a script can drive the
-        // controllers without it writing a pose of its own over the top.
-        install({ devUI: query.get("emulator") !== "headless" }),
+        install({ devui: query.get("emulator") !== "bare" }),
       )
     : undefined,
 )

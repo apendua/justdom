@@ -1,7 +1,6 @@
 {
   "name": "@apendua/justdom",
   "version": "1.0.0",
-  "private": true,
   "description": "Reactive, non-VDOM DOM renderer built on @apendua/signal, with SSR and hydration support",
   "keywords": [
     "dom",
@@ -54,5 +53,9 @@
     "eslint": "^9.37.0",
     "fast-check": "^4.3.0",
     "typescript": "^6.0.2"
+  },
+  "publishConfig": {
+    "access": "restricted",
+    "registry": "https://npm.pkg.github.com"
   }
 }

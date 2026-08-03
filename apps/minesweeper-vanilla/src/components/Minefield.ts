@@ -1,12 +1,12 @@
-import { list, $$, children, attr, on, className } from "@apendua.dev/dom";
+import { list, $$, children, attr, on, className } from "@apendua/justdom";
 import { Field, Fields, getKey } from "@apendua.dev/minesweeper";
-import { observe } from "@apendua.dev/signal";
+import { observe } from "@apendua/signal";
 import { RootContext } from "../store/Root";
 import { ViewportContext } from "../store/Viewport";
 import { tap } from "rxjs";
 import FieldSet from "./FieldSet";
 import FieldStatus from "./FieldStatus";
-import { component } from "@apendua.dev/signal";
+import { component } from "@apendua/signal";
 
 const noSelect = className`
   position: absolute;

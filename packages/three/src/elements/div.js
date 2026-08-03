@@ -1,6 +1,6 @@
 import * as THREE from "three";
-import { onCleanup } from "@apendua.dev/signal";
-import { effects, just, on, set, memoize } from "@apendua.dev/signal";
+import { onCleanup } from "@apendua/signal";
+import { effects, just, on, set, memoize } from "@apendua/signal";
 import { $, children } from "../operators.js";
 import { interactions } from "../interactions.js";
 import VisualProperties from "./VisualProperties.js";

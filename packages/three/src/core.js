@@ -1,6 +1,6 @@
 import { distinctUntilChanged, filter, Observable, Subject } from "rxjs";
-import { just, observable } from "@apendua.dev/signal";
-import { addDependency, batch, Derived } from "@apendua.dev/signal";
+import { just, observable } from "@apendua/signal";
+import { addDependency, batch, Derived } from "@apendua/signal";
 
 /**
  * @import { Object3D, XRTargetRaySpace, Intersection, Object3DEventMap } from 'three';

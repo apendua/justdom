@@ -12,11 +12,11 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@apendua.dev/dom": "workspace:*",
-    "@apendua.dev/hmr": "workspace:*",
     "@apendua.dev/media": "workspace:*",
-    "@apendua.dev/signal": "workspace:*",
-    "@apendua.dev/three": "workspace:*",
+    "@apendua/freedom": "workspace:*",
+    "@apendua/justdom": "workspace:*",
+    "@apendua/signal": "workspace:*",
+    "@apendua/vite-hmr": "workspace:*",
     "@dimforge/rapier3d": "~0.19.3",
     "@iwer/devui": "^1.1.2",
     "@types/lodash": "^4.17.20",

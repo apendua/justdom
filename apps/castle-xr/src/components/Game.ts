@@ -11,7 +11,7 @@
  * player's hands. The game is won when every brick is lying on the ground.
  */
 import * as THREE from "three";
-import { animate, camera, children, keyedList, Nothing, session, $ } from "@apendua.dev/three";
+import { animate, camera, children, keyedList, Nothing, session, $ } from "@apendua/freedom";
 import { switchMap } from "rxjs";
 import {
   batch,
@@ -24,7 +24,7 @@ import {
   set,
   store,
   use,
-} from "@apendua.dev/signal";
+} from "@apendua/signal";
 import * as RAPIER from "@dimforge/rapier3d";
 import Grid from "./Grid.js";
 import Brick from "./Brick.js";

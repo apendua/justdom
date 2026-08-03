@@ -8,8 +8,8 @@ import {
   set,
   stylesheet,
   text,
-} from "@apendua.dev/dom";
-import { component } from "@apendua.dev/signal";
+} from "@apendua/justdom";
+import { component } from "@apendua/signal";
 import { HOTSEAT, VERSUS_COMPUTER, type GameMode } from "../store/Root";
 import ActionItem from "./ActionItem";
 import { menuItem, modal, modalFill } from "./styles";

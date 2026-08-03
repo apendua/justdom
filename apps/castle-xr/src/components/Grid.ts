@@ -1,7 +1,7 @@
 import * as THREE from "three";
-import { $ } from "@apendua.dev/three";
-import { onCleanup, memoize } from "@apendua.dev/signal";
-import { component, effects, Op, set, store } from "@apendua.dev/signal";
+import { $ } from "@apendua/freedom";
+import { onCleanup, memoize } from "@apendua/signal";
+import { component, effects, Op, set, store } from "@apendua/signal";
 import { palette } from "../elements/palette.js";
 
 interface GridProps {

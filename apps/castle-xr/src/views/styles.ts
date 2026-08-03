@@ -3,7 +3,7 @@
  * board and the bricks take theirs from, so the interface and the world it sits
  * in cannot drift apart.
  */
-import { fontFace, stylesheet, CLASS_NAME } from "@apendua.dev/dom";
+import { fontFace, stylesheet, CLASS_NAME } from "@apendua/justdom";
 import fontFile from "@apendua.dev/media/fonts/ZenDots-Regular.ttf";
 import { combineLatest, map, Observable } from "rxjs";
 import { palette } from "../elements/palette.js";

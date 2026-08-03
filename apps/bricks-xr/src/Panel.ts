@@ -3,9 +3,9 @@
  * web page would use — projected into the scene by `dom()`, and clicked by
  * pointing a controller at it. No 3D interface toolkit is involved.
  */
-import { component, effects, emit, on, Op, set, store } from "@apendua.dev/signal";
-import { dom } from "@apendua.dev/three";
-import { children, stylesheet, CLASS_NAME, $, text } from "@apendua.dev/dom";
+import { component, effects, emit, on, Op, set, store } from "@apendua/signal";
+import { dom } from "@apendua/freedom";
+import { children, stylesheet, CLASS_NAME, $, text } from "@apendua/justdom";
 import { palette } from "./palette.js";
 
 interface Props {

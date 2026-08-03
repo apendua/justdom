@@ -2,7 +2,7 @@
 
 A turn based hex battle inspired by Heroes of Might and Magic III, and a port of
 [KnightsJS](https://github.com/apendua/KnightsJS) — originally React, redux and
-Meteor — onto `@apendua.dev/signal` for state and `@apendua.dev/dom` for
+Meteor — onto `@apendua/signal` for state and `@apendua/justdom` for
 rendering. The sprite sheet and the backdrop are the original assets.
 
 ## Playing

@@ -7,10 +7,10 @@
  * @type {Record<string, PackageConfiguration>}
  */
 const configuration = {
-  "@apendua.dev/signal": {
+  "@apendua/signal": {
     reloadable: ["component"],
   },
-  "@apendua.dev/dom": {
+  "@apendua/justdom": {
     reloadable: ["stylesheet", "className", "fontFace"],
   },
 };
@@ -53,7 +53,7 @@ export default function HMRPlugin() {
         }
         const importedNames = importMatch[1].split(",").map((s) => s.trim());
         for (const name of importedNames) {
-          // TODO: Add support for renamed imports (e.g. `import { component as _component } from "@apendua.dev/signal";`)
+          // TODO: Add support for renamed imports (e.g. `import { component as _component } from "@apendua/signal";`)
           if (packageConfig.reloadable.includes(name)) {
             allNames[name] = { packageName };
           }
@@ -101,7 +101,7 @@ export default function HMRPlugin() {
         .map((definition) => definition.name)
         .sort();
 
-      const header = `import { $newReloader, $reloadable } from "@apendua.dev/hmr";`;
+      const header = `import { $newReloader, $reloadable } from "@apendua/vite-hmr";`;
       const footer = `
 if (import.meta.hot) {
   const reload = $newReloader();

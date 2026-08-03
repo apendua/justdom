@@ -1,13 +1,6 @@
 import * as THREE from "three";
-import {
-  component,
-  Derived,
-  effectMap,
-  effects,
-  memoizeDerived,
-  onCleanup,
-} from "@apendua.dev/signal";
-import { $, session } from "@apendua.dev/three";
+import { component, Derived, effectMap, effects, memoizeDerived, onCleanup } from "@apendua/signal";
+import { $, session } from "@apendua/freedom";
 import { Observable, switchMap } from "rxjs";
 import glass_desk_habits from "@apendua.dev/media/glass_desk_habits.mp3";
 

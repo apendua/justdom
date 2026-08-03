@@ -2,7 +2,7 @@
   "name": "@apendua.dev/signal-ssr",
   "version": "0.1.0",
   "private": true,
-  "description": "Server side rendering example based on jsdom, express and @apendua.dev/dom",
+  "description": "Server side rendering example based on jsdom, express and @apendua/justdom",
   "license": "MIT",
   "author": "apendua",
   "type": "module",
@@ -17,9 +17,9 @@
     "test:watch": "node --test --watch \"src/**/*.test.js\""
   },
   "dependencies": {
-    "@apendua.dev/dom": "workspace:*",
     "@apendua.dev/jsdom-env": "workspace:*",
-    "@apendua.dev/signal": "workspace:*",
+    "@apendua/justdom": "workspace:*",
+    "@apendua/signal": "workspace:*",
     "express": "^5.2.1",
     "rxjs": "^7.8.2"
   },

@@ -1,5 +1,5 @@
-import { $$, attr, children } from "@apendua.dev/dom";
-import { component, effectMap, memo, mutate, observable, store } from "@apendua.dev/signal";
+import { $$, attr, children } from "@apendua/justdom";
+import { component, effectMap, memo, mutate, observable, store } from "@apendua/signal";
 import { tap } from "rxjs";
 import {
   ASSETS_PREFIX,

@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { onCleanup } from "@apendua.dev/signal";
+import { onCleanup } from "@apendua/signal";
 
 /**
  * @import {TextLine} from './textLines.js';

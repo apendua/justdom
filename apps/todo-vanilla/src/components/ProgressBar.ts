@@ -1,5 +1,5 @@
-import { className, text, $, children, style } from "@apendua.dev/dom";
-import { set } from "@apendua.dev/signal";
+import { className, text, $, children, style } from "@apendua/justdom";
+import { set } from "@apendua/signal";
 import { map, Observable, ReplaySubject, share, takeWhile, timer } from "rxjs";
 
 const containerStyle = className`

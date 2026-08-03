@@ -13,11 +13,11 @@
     "test:watch": "vitest --environment jsdom"
   },
   "dependencies": {
-    "@apendua.dev/dom": "workspace:*",
     "@apendua.dev/geometry": "workspace:*",
-    "@apendua.dev/hmr": "workspace:*",
     "@apendua.dev/minesweeper": "workspace:*",
-    "@apendua.dev/signal": "workspace:*",
+    "@apendua/justdom": "workspace:*",
+    "@apendua/signal": "workspace:*",
+    "@apendua/vite-hmr": "workspace:*",
     "@testing-library/react": "^16.3.0",
     "@testing-library/user-event": "^14.6.1",
     "@types/lodash": "^4.17.20",

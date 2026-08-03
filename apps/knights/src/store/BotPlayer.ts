@@ -1,4 +1,4 @@
-import { observable } from "@apendua.dev/signal";
+import { observable } from "@apendua/signal";
 import { EMPTY, switchMap, timer, type Subscription } from "rxjs";
 import { TIMING_BOT_THINKS } from "../constants";
 import chooseMove from "./bot";

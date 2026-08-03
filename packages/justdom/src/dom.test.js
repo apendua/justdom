@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { just } from "@apendua.dev/signal";
+import { just } from "@apendua/signal";
 import { $, $$, children } from "./dom.js";
 import { text } from "./text.js";
 

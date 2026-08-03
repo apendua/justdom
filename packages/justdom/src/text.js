@@ -1,5 +1,5 @@
 import { combineLatest, map, Observable } from "rxjs";
-import { observable, just } from "@apendua.dev/signal";
+import { observable, just } from "@apendua/signal";
 import { claimText } from "./hydrate.js";
 import { toMountable } from "./dom.js";
 

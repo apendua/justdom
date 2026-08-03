@@ -1,5 +1,5 @@
-import { batch, createProperty } from "@apendua.dev/signal";
-import { store, memo } from "@apendua.dev/signal";
+import { batch, createProperty } from "@apendua/signal";
+import { store, memo } from "@apendua/signal";
 import { BBox, VectorLike, createRect, getFieldSetBBox, getNeighbors } from "@apendua.dev/geometry";
 import type { FieldData, FieldState, FieldSetup } from "./types.js";
 

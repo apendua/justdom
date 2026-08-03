@@ -1,6 +1,6 @@
-import { className, text, $, children, style } from "@apendua.dev/dom";
-import { store, on, set, emit, Op, component } from "@apendua.dev/signal";
-import { makeNonReactive } from "@apendua.dev/signal";
+import { className, text, $, children, style } from "@apendua/justdom";
+import { store, on, set, emit, Op, component } from "@apendua/signal";
+import { makeNonReactive } from "@apendua/signal";
 
 const itemStyle = className`
   display: flex;

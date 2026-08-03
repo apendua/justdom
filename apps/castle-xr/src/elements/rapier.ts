@@ -9,12 +9,12 @@
  * is the same arithmetic the half grid uses, so a brick placed on the floor of
  * the board is already sitting on the floor of the simulation.
  */
-import { createProperty, onCleanup } from "@apendua.dev/signal";
+import { createProperty, onCleanup } from "@apendua/signal";
 import * as THREE from "three";
 import * as RAPIER from "@dimforge/rapier3d";
 import { MonoTypeOperatorFunction, Observable } from "rxjs";
-import { effects, observable, use, useEffects } from "@apendua.dev/signal";
-import { animate, layoutEffects, setWorldMatrix } from "@apendua.dev/three";
+import { effects, observable, use, useEffects } from "@apendua/signal";
+import { animate, layoutEffects, setWorldMatrix } from "@apendua/freedom";
 
 export interface RapierWorkspace {
   world: RAPIER.World;

@@ -1,4 +1,4 @@
-import { mutate, store } from "@apendua.dev/signal";
+import { mutate, store } from "@apendua/signal";
 import type { ActorType, Side } from "../constants";
 import type { ActorSetup, FieldCoords } from "../types";
 

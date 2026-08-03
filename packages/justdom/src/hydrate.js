@@ -1,5 +1,5 @@
 import { Observable } from "rxjs";
-import { just } from "@apendua.dev/signal";
+import { just } from "@apendua/signal";
 import { children } from "./dom.js";
 
 /**

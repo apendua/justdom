@@ -1,6 +1,6 @@
-import { $$, attr, children, text } from "@apendua.dev/dom";
+import { $$, attr, children, text } from "@apendua/justdom";
 import { Field } from "@apendua.dev/minesweeper";
-import { component, observable } from "@apendua.dev/signal";
+import { component, observable } from "@apendua/signal";
 import { switchMap } from "rxjs";
 import { ViewportContext } from "../store/Viewport";
 

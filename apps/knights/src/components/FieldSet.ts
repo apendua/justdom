@@ -1,5 +1,5 @@
-import { $$, attr } from "@apendua.dev/dom";
-import { component, memo } from "@apendua.dev/signal";
+import { $$, attr } from "@apendua/justdom";
+import { component, memo } from "@apendua/signal";
 import { Complex } from "../helpers/complex";
 import { generateFields } from "../helpers/map";
 import { createEdgeMapping } from "../helpers/mappings";

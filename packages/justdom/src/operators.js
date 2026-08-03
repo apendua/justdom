@@ -1,5 +1,5 @@
 import { tap } from "rxjs";
-import { effectMap, effects, observable, set, on } from "@apendua.dev/signal";
+import { effectMap, effects, observable, set, on } from "@apendua/signal";
 
 /**
  * @import { Observable } from 'rxjs';

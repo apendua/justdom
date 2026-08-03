@@ -1,7 +1,7 @@
 import * as THREE from "three";
-import { effects, just, fromEvent } from "@apendua.dev/signal";
+import { effects, just, fromEvent } from "@apendua/signal";
 import { distinctUntilChanged, Observable, switchMap } from "rxjs";
-import { addDependency } from "@apendua.dev/signal";
+import { addDependency } from "@apendua/signal";
 
 /**
  * @import { MonoTypeOperatorFunction, Subscriber } from 'rxjs';

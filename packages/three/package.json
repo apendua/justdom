@@ -1,13 +1,17 @@
 {
-  "name": "@apendua.dev/three",
+  "name": "@apendua/freedom",
   "version": "1.0.0",
   "private": true,
-  "description": "Reactive Three.js scene graph built on @apendua.dev/signal",
+  "description": "Reactive Three.js scene graph built on @apendua/signal, with WebXR helpers and a DOM-in-scene bridge",
   "keywords": [
     "three",
+    "threejs",
     "reactive",
     "renderer",
-    "signals"
+    "signals",
+    "webxr",
+    "webgl",
+    "3d"
   ],
   "license": "MIT",
   "author": "apendua",
@@ -38,9 +42,9 @@
     "rxjs": "^7.8.2"
   },
   "devDependencies": {
-    "@apendua.dev/dom": "workspace:*",
-    "@apendua.dev/hmr": "workspace:*",
-    "@apendua.dev/signal": "workspace:*",
+    "@apendua/justdom": "workspace:*",
+    "@apendua/signal": "workspace:*",
+    "@apendua/vite-hmr": "workspace:*",
     "@types/node": "^24.7.0",
     "@types/three": "~0.180.0",
     "@webgpu/types": "^0.1.65",
@@ -50,7 +54,7 @@
     "typescript": "^6.0.2"
   },
   "peerDependencies": {
-    "@apendua.dev/signal": "workspace:*",
+    "@apendua/signal": "workspace:*",
     "three": "~0.180.0"
   }
 }

@@ -1,7 +1,7 @@
 import { describe, it, beforeEach } from "node:test";
 import assert from "node:assert/strict";
-import { $, attr, children, className, set, text } from "@apendua.dev/dom";
-import { Signal, store } from "@apendua.dev/signal";
+import { $, attr, children, className, set, text } from "@apendua/justdom";
+import { Signal, store } from "@apendua/signal";
 import TodoApp from "./components/TodoApp.js";
 import { renderToString } from "./renderToString.js";
 import { addTodo, todos, toggleTodo } from "./todos.js";

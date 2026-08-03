@@ -1,6 +1,6 @@
-import { children } from "@apendua.dev/dom";
+import { children } from "@apendua/justdom";
 import TodoApp from "./components/TodoApp";
-import { just } from "@apendua.dev/signal";
+import { just } from "@apendua/signal";
 
 const root = document.querySelector<HTMLDivElement>("#root");
 if (!root) {

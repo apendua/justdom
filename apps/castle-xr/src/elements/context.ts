@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { Observable } from "rxjs";
-import { createProperty } from "@apendua.dev/signal";
-import { XREventMap } from "@apendua.dev/three";
+import { createProperty } from "@apendua/signal";
+import { XREventMap } from "@apendua/freedom";
 import type CastleStore from "../store/CastleStore.js";
 import type Session from "../store/Session.js";
 

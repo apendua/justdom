@@ -12,7 +12,4 @@ export const palette = {
   brick: "#cdb992",
   /** The brick in the hand, at the cell it would land in. */
   ghost: "#bfe3ff",
-  pointer: "#4bd3ff",
 } as const;
-
-export default palette;

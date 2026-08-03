@@ -3,25 +3,21 @@ import { DevUI } from "@iwer/devui";
 
 declare global {
   interface Window {
-    /**
-     * The emulated headset, so the game can be driven from outside the page:
-     * poses and buttons pushed in, the running scene read back. This is how the
-     * build flow and the slingshot are exercised in a headless browser.
-     */
+    /** So the headset and controllers can be driven from a script. */
     xrDevice?: XRDevice;
   }
 }
 
-export function install(options: { devui?: boolean } = {}) {
-  console.log("Installing emulator");
-  const { devui = true } = options;
+/**
+ * A fake headset with two controllers, for running in an ordinary browser. The
+ * DevUI is the panel that moves them about; a script driving them itself wants
+ * it left out, since it writes a pose of its own every frame.
+ */
+export function install(devui = true) {
   const xrDevice = new XRDevice(metaQuest3);
   xrDevice.installRuntime();
   if (devui) {
-    // The DevUI drives the headset and controller poses from its own panels,
-    // so it is skipped when a script wants to set the poses itself.
     xrDevice.installDevUI(DevUI);
   }
-  // Handy for driving the emulated headset and controllers from scripts.
   window.xrDevice = xrDevice;
 }

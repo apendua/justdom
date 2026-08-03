@@ -11,6 +11,8 @@ export default defineConfig({
   build: {
     target: "esnext",
     sourcemap: true,
+    // three.js on its own is over the default warning size.
+    chunkSizeWarningLimit: 1024,
   },
   base: "/apps/bricks-xr/",
 });

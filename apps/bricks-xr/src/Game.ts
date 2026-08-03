@@ -5,11 +5,6 @@
  * in whichever cell the hand is over when the trigger is let go. Bricks already
  * placed can be picked up and moved, and carrying one off the grid throws it
  * away. That is all of it.
- *
- * The bricks are held in a map **keyed by the cell they are in**, so the key
- * says both where a brick is and whether that space is taken: placing is a set,
- * moving is a delete and a set, and "is this cell free" is a lookup. No
- * geometry is ever compared with any other geometry.
  */
 import * as THREE from "three";
 import { children, keyedList, Nothing, $ } from "@apendua.dev/three";
@@ -21,41 +16,46 @@ import {
   on,
   ReactiveMap,
   set,
-  store,
+  Signal,
 } from "@apendua.dev/signal";
 import Brick from "./Brick.js";
-import Grid from "./Grid.js";
-import Panel from "../views/Panel.js";
-import { cellKey, CELL, snapToCell } from "../utils/grid.js";
-
-/** The board is this many cells across, centred on the origin. */
-const SIZE = 10;
-const HALF = (SIZE * CELL) / 2;
+import Panel from "./Panel.js";
+import { cellKey, CELL, onBoard, SIZE, snapToCell } from "./grid.js";
+import { palette } from "./palette.js";
 
 /** Where the brick that hands out copies sits, in a corner of the board. */
-const SOURCE_POSITION = new THREE.Vector3(HALF - CELL / 2, CELL / 2, HALF - CELL / 2);
-/** Its cell is never free: it is where you go to get another brick. */
-const SOURCE_CELL = cellKey(SOURCE_POSITION);
+const SOURCE = new THREE.Vector3((SIZE * CELL - CELL) / 2, CELL / 2, (SIZE * CELL - CELL) / 2);
 
-/** What a released brick may do: land in a cell, be thrown away, or nothing. */
-type Drop =
-  | { at: "cell"; key: string; position: THREE.Vector3 }
-  | { at: "outside" }
-  | { at: "taken" };
+/** What letting go would do: land in a cell, be thrown away, or nothing. */
+type Drop = { at: "cell"; key: string; position: THREE.Vector3 } | { at: "outside" | "taken" };
+
+const gridLines = () => {
+  const points: number[] = [];
+  const edge = (SIZE * CELL) / 2;
+  for (let i = 0; i <= SIZE; i++) {
+    const offset = i * CELL - edge;
+    points.push(-edge, 0, offset, edge, 0, offset, offset, 0, -edge, offset, 0, edge);
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.Float32BufferAttribute(points, 3));
+  // A whisker above the floor, so the two do not fight over the same pixels.
+  return $(
+    new THREE.LineSegments(geometry, new THREE.LineBasicMaterial({ color: palette.gridLine })),
+    [effects((o) => o.position.set(0, 0.005, 0))],
+  );
+};
 
 const Game = component((ctx: WeakKey) => {
-  /** Cell key to the position of the brick in it. */
+  /** Cell name to the brick in it. The name is also the "is it free" test. */
   const bricks = new ReactiveMap<string, THREE.Vector3>();
-  const preview = store<{ position: THREE.Vector3; visible: boolean }>({
-    position: new THREE.Vector3(),
-    visible: false,
-  });
+  /** Where the brick in the hand would land, or null if it may not land. */
+  const preview = Signal.of<THREE.Vector3 | null>(null);
   const board: { current?: THREE.Object3D } = {};
 
   /**
    * What would happen if the brick in the hand were let go now. The hand's pose
    * is in the room; the board is scaled and moved about within it, so the pose
-   * is put back into the board's own coordinates before it is snapped to a cell.
+   * is put back into the board's own coordinates before it is snapped.
    *
    * `from` is the cell a brick was picked up out of, which does not count as
    * taken — a brick put back where it came from has not gone anywhere.
@@ -68,48 +68,38 @@ const Game = component((ctx: WeakKey) => {
       .copy(matrixWorld)
       .premultiply(board.current.matrixWorld.clone().invert());
     const position = snapToCell(new THREE.Vector3().setFromMatrixPosition(local));
-    if (Math.abs(position.x) > HALF || Math.abs(position.z) > HALF || position.y > HALF * 2) {
+    if (!onBoard(position)) {
       return { at: "outside" };
     }
     const key = cellKey(position);
-    if (key === SOURCE_CELL || (bricks.has(key) && key !== from)) {
+    // The corner the source brick stands in is never free.
+    if (key === cellKey(SOURCE) || (bricks.has(key) && key !== from)) {
       return { at: "taken" };
     }
     return { at: "cell", key, position };
   });
 
   /** The ghost shows the cell a brick would land in, and only when it would. */
-  const showPreview = makeNonReactive((matrixWorld: THREE.Matrix4, from?: string) => {
+  const showPreview = (matrixWorld: THREE.Matrix4, from?: string) => {
     const drop = evaluate(matrixWorld, from);
-    if (drop.at === "cell") {
-      preview.position = drop.position;
-    }
-    preview.visible = drop.at === "cell";
-  });
-
-  const hidePreview = makeNonReactive(() => {
-    preview.visible = false;
-  });
+    preview.set(drop.at === "cell" ? drop.position : null);
+  };
 
   return $(new THREE.Group(), [
     effects((o) => {
       board.current = o;
     }),
     children(
-      Grid(ctx, [set({ size: SIZE, cellWidth: CELL })]),
+      gridLines(),
 
-      // The brick on the plane. It never moves: a drag puts it back where it
-      // was and leaves a copy wherever the hand let go.
+      // The brick on the plane. It never moves: letting go puts it back, and
+      // what lands on the board is a copy.
       Brick(ctx, [
-        set({ position: SOURCE_POSITION, draggable: true }),
-        on("dragmove", (event) => {
-          showPreview(event.matrixWorld);
-        }),
+        set({ position: SOURCE, draggable: true }),
+        on("dragmove", (event) => showPreview(event.matrixWorld)),
         on("dragend", (event) => {
           const drop = evaluate(event.matrixWorld);
-          hidePreview();
-          // The brick on the plane stays where it is: letting go puts it back,
-          // and what lands on the board is a copy.
+          preview.set(null);
           if (drop.at === "cell") {
             bricks.set(drop.key, drop.position);
           }
@@ -118,17 +108,11 @@ const Game = component((ctx: WeakKey) => {
 
       // The brick that would be placed if the trigger were let go now.
       component(() => {
-        if (!preview.visible) {
+        const position = preview.get();
+        if (!position) {
           return Nothing();
         }
-        return Brick(ctx, [
-          set({
-            ghost: true,
-            get position() {
-              return preview.position;
-            },
-          }),
-        ]);
+        return Brick(ctx, [set({ ghost: true, position })]);
       })(),
 
       keyedList(
@@ -136,12 +120,10 @@ const Game = component((ctx: WeakKey) => {
         component((position: THREE.Vector3, key: string) => {
           return Brick(ctx, [
             set({ position, draggable: true }),
-            on("dragmove", (event) => {
-              showPreview(event.matrixWorld, key);
-            }),
+            on("dragmove", (event) => showPreview(event.matrixWorld, key)),
             on("dragend", (event) => {
               const drop = evaluate(event.matrixWorld, key);
-              hidePreview();
+              preview.set(null);
               if (drop.at === "cell") {
                 bricks.delete(key);
                 bricks.set(drop.key, drop.position);
@@ -155,16 +137,10 @@ const Game = component((ctx: WeakKey) => {
       ),
 
       Panel(ctx, [
-        set({
-          position: new THREE.Vector3(-HALF - 4, HALF, 2),
-          rotation: new THREE.Euler(0, Math.PI / 8, 0),
-        }),
         effects((panel) => {
           panel.bricks = bricks.size;
         }),
-        on("reset", () => {
-          bricks.clear();
-        }),
+        on("reset", () => bricks.clear()),
       ]),
     ),
   ]);

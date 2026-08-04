@@ -38,7 +38,7 @@ cleanup.
 
 `@apendua/justdom` builds real DOM nodes through the ambient `document`, so
 server rendering only needs a `document` outside the browser (see
-[`@apendua.dev/jsdom-env`](../jsdom-env)) — the exact same component tree
+[`@apendua/jsdom-env`](../jsdom-env)) — the exact same component tree
 mounts on the server and in the browser. `hydrate(root, ...content)`,
 exported from the `@apendua/justdom/hydrate` subpath, mounts against markup
 that's already in the page by *claiming* existing nodes instead of creating

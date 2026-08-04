@@ -27,7 +27,7 @@ browser, which is exactly what jsdom provides.
 [`src/renderToString.js`](./src/renderToString.js) is the whole bridge, and it
 is a synchronous _mount → serialize → unmount_ cycle:
 
-1. `setupJsdom({ html })` from [`@apendua.dev/jsdom-env`][jsdom-env] — the same
+1. `setupJsdom({ html })` from [`@apendua/jsdom-env`][jsdom-env] — the same
    helper the `packages/justdom` test suite uses — creates a jsdom instance from an
    HTML shell and installs its globals (`document`, `window`, `Node`, …) on
    `globalThis`.

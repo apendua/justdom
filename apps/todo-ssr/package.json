@@ -17,7 +17,7 @@
     "test:watch": "node --test --watch \"src/**/*.test.js\""
   },
   "dependencies": {
-    "@apendua.dev/jsdom-env": "workspace:*",
+    "@apendua/jsdom-env": "workspace:*",
     "@apendua/justdom": "workspace:*",
     "@apendua/signal": "workspace:*",
     "express": "^5.2.1",

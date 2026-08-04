@@ -4,6 +4,7 @@ import { ASSETS_PREFIX, SVG_HEIGHT, SVG_WIDTH } from "../constants";
 import { RootContext } from "../store/Root";
 import Board from "./Board";
 import MenuModal from "./MenuModal";
+import Music from "./Music";
 import Pattern from "./Pattern";
 import Toolbar from "./Toolbar";
 import branch from "./branch";
@@ -89,6 +90,7 @@ const Game = component((ctx: WeakKey) => {
   return $("div", [
     set("className", container),
     children(
+      Music(ctx),
       $("div", [set("className", fillingPanel)]),
       $$("svg", [
         attr("class", panel),

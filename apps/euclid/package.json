@@ -1,0 +1,28 @@
+{
+  "name": "@apendua.dev/euclid",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build": "npm run test && npm run compile && vite build",
+    "build:watch": "",
+    "compile": "tsc",
+    "dev": "vite",
+    "preview": "vite preview",
+    "test": "if find src -type f \\( -name '*.test.ts' -o -name '*.test.tsx' -o -name '*.test.js' -o -name '*.test.jsx' \\) | grep -q .; then vitest run --environment jsdom; else echo 'No tests found, skipping'; fi",
+    "test:watch": "vitest --environment jsdom"
+  },
+  "dependencies": {
+    "@apendua.dev/euclid-core": "workspace:*",
+    "@apendua.dev/euclid-lang": "workspace:*",
+    "@apendua/justdom": "workspace:*",
+    "@apendua/signal": "workspace:*",
+    "@apendua/vite-hmr": "workspace:*",
+    "@types/node": "^24.7.0",
+    "eslint": "^9.37.0",
+    "jsdom": "^26.1.0",
+    "rxjs": "^7.8.2",
+    "typescript": "^6.0.2",
+    "vite": "^7.1.9",
+    "vitest": "^3.2.4"
+  }
+}

@@ -1,7 +1,6 @@
-import { map } from "rxjs";
-import { render } from "@apendua/freedom";
+import { from, map, switchMap } from "rxjs";
+import { render, createXRButton } from "@apendua/freedom";
 import { XRControllerModelFactory } from "three/examples/jsm/webxr/XRControllerModelFactory.js";
-import { ARButton } from "three/examples/jsm/webxr/ARButton.js";
 import App from "./App.js";
 
 const root = document.querySelector<HTMLDivElement>("#root");
@@ -21,12 +20,16 @@ Promise.resolve(
 ).then(() => {
   render(App, { createControllerModel: (grip) => factory.createControllerModel(grip) })
     .pipe(
-      map((renderer) => {
-        const fragment = document.createDocumentFragment();
-        fragment.appendChild(renderer.domElement);
-        fragment.appendChild(ARButton.createButton(renderer));
-        return fragment;
-      }),
+      switchMap((renderer) =>
+        from(createXRButton(renderer)).pipe(
+          map((button) => {
+            const fragment = document.createDocumentFragment();
+            fragment.appendChild(renderer.domElement);
+            fragment.appendChild(button);
+            return fragment;
+          }),
+        ),
+      ),
     )
     .subscribe((node) => root.replaceChildren(node));
 });

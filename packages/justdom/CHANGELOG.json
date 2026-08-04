@@ -1,0 +1,28 @@
+{
+  "name": "@apendua/justdom",
+  "entries": [
+    {
+      "version": "0.1.1",
+      "tag": "@apendua/justdom_v0.1.1",
+      "date": "Tue, 04 Aug 2026 21:29:33 GMT",
+      "comments": {
+        "none": [
+          {
+            "comment": "Configure publishing to GitHub Packages"
+          },
+          {
+            "comment": "Add repository metadata for GitHub Packages linkage"
+          },
+          {
+            "comment": "Non-functional change: enable Rush build cache configuration."
+          }
+        ],
+        "patch": [
+          {
+            "comment": "Point the jsdom-env devDependency at the published @apendua/jsdom-env instead of the private @apendua.dev/jsdom-env, which resolved to no registry"
+          }
+        ]
+      }
+    }
+  ]
+}

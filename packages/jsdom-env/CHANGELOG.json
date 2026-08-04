@@ -1,0 +1,17 @@
+{
+  "name": "@apendua/jsdom-env",
+  "entries": [
+    {
+      "version": "0.1.0",
+      "tag": "@apendua/jsdom-env_v0.1.0",
+      "date": "Tue, 04 Aug 2026 21:29:33 GMT",
+      "comments": {
+        "none": [
+          {
+            "comment": "Rename @apendua.dev/jsdom-env to @apendua/jsdom-env and publish it under the @apendua scope"
+          }
+        ]
+      }
+    }
+  ]
+}

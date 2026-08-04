@@ -1,0 +1,28 @@
+{
+  "name": "@apendua/freedom",
+  "entries": [
+    {
+      "version": "0.1.1",
+      "tag": "@apendua/freedom_v0.1.1",
+      "date": "Tue, 04 Aug 2026 21:29:33 GMT",
+      "comments": {
+        "none": [
+          {
+            "comment": "Configure publishing to GitHub Packages"
+          },
+          {
+            "comment": "Add repository metadata for GitHub Packages linkage"
+          },
+          {
+            "comment": "Non-functional change: enable Rush build cache configuration."
+          }
+        ],
+        "dependency": [
+          {
+            "comment": "Updating dependency \"@apendua/justdom\" to `0.1.1`"
+          }
+        ]
+      }
+    }
+  ]
+}

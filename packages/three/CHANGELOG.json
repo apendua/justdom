@@ -2,6 +2,23 @@
   "name": "@apendua/freedom",
   "entries": [
     {
+      "version": "0.2.0",
+      "tag": "@apendua/freedom_v0.2.0",
+      "date": "Tue, 04 Aug 2026 22:07:09 GMT",
+      "comments": {
+        "minor": [
+          {
+            "comment": "Add createXRButton(), which prefers immersive-ar but falls back to immersive-vr on headsets without passthrough."
+          }
+        ],
+        "patch": [
+          {
+            "comment": "Fix createXRButton() leaving the immersive-vr fallback at floor-level origin instead of the local space AR content is authored for."
+          }
+        ]
+      }
+    },
+    {
       "version": "0.1.1",
       "tag": "@apendua/freedom_v0.1.1",
       "date": "Tue, 04 Aug 2026 21:29:33 GMT",

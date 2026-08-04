@@ -15,11 +15,22 @@ import { VRButton } from "three/examples/jsm/webxr/VRButton.js";
  * ARButton's own button, which renders the "AR NOT SUPPORTED" /
  * "WEBXR NEEDS HTTPS" state.
  *
+ * ARButton always requests `local` as the reference space, with its origin
+ * at the headset's position when the session starts. VRButton never touches
+ * `renderer.xr`'s reference space type, so three.js is left on its own
+ * default, `local-floor`, whose origin sits on the floor instead. Scenes here
+ * are laid out for the `local` origin, so falling back to VRButton unchanged
+ * would put everything at floor level, well below the headset's initial
+ * gaze — the fallback session would start, but the scene would appear
+ * missing. Setting the reference space explicitly keeps both paths
+ * consistent, matching what ARButton already does internally.
+ *
  * @param {WebGLRenderer} renderer
  * @param {{ ar?: Partial<ARButtonSessionInit>; vr?: XRSessionInit }} [sessionInit]
  * @returns {Promise<HTMLElement>}
  */
 export async function createXRButton(renderer, sessionInit = {}) {
+  renderer.xr.setReferenceSpaceType("local");
   const xr = navigator.xr;
   if (xr) {
     if (await xr.isSessionSupported("immersive-ar").catch(() => false)) {

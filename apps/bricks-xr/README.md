@@ -15,7 +15,8 @@ rush build --to @apendua.dev/bricks-xr
 cd apps/bricks-xr && npm run dev
 ```
 
-Open the printed `https://` URL in a headset browser and press **Start AR**, or
+Open the printed `https://` URL in a headset browser and press **Start AR**
+(it falls back to plain VR on a headset without passthrough), or
 add `?emulator` to run it in an ordinary browser with the
 [iwer](https://github.com/meta-quest/immersive-web-emulation-runtime) emulator
 (`?emulator=bare` leaves the DevUI out, for driving it from a script).

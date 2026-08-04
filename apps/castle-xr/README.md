@@ -14,7 +14,9 @@ rush build --to @apendua.dev/castle-xr
 cd apps/castle-xr && npm run dev
 ```
 
-Open the printed `https://` URL in a headset browser and press **Start AR**.
+Open the printed `https://` URL in a headset browser and press **Start AR**
+(passthrough). On a headset without passthrough the button falls back to
+plain VR instead of refusing to work.
 
 - `?emulator` — installs the [iwer](https://github.com/meta-quest/immersive-web-emulation-runtime)
   Quest 3 emulator with its DevUI, which fakes a headset and two controllers in

@@ -50,7 +50,7 @@
     "rxjs": "^7.8.2"
   },
   "devDependencies": {
-    "@apendua.dev/jsdom-env": "workspace:*",
+    "@apendua/jsdom-env": "workspace:*",
     "@apendua/vite-hmr": "workspace:*",
     "@testing-library/dom": "^10.4.0",
     "@testing-library/user-event": "^14.6.1",

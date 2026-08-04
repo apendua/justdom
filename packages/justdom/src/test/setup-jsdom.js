@@ -1,3 +1,3 @@
-import { setupJsdom } from "@apendua.dev/jsdom-env";
+import { setupJsdom } from "@apendua/jsdom-env";
 
 setupJsdom();

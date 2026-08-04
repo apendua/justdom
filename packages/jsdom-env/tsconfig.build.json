@@ -1,0 +1,11 @@
+{
+  "compilerOptions": {
+    "sourceRoot": "./src",
+    "rootDirs": ["./src"],
+    "rootDir": "./src",
+    "outDir": "./lib"
+  },
+  "include": ["src"],
+  "extends": "../../common/config/typescript/tsconfig.package-base.json",
+  "exclude": ["src/**/*.test.*", "src/test/**", "src/testUtils/**"]
+}

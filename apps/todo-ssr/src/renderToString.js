@@ -1,5 +1,5 @@
 import { children } from "@apendua/justdom";
-import { setupJsdom } from "@apendua.dev/jsdom-env";
+import { setupJsdom } from "@apendua/jsdom-env";
 import { just } from "@apendua/signal";
 
 /**

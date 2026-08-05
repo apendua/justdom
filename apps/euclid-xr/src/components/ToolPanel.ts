@@ -1,26 +1,42 @@
 import * as THREE from "three";
 import { dom, XREventMap } from "@apendua/freedom";
-import { $, children, on, text } from "@apendua/justdom";
+import { $, children, on, renderText, text } from "@apendua/justdom";
 import { component, effects, set } from "@apendua/signal";
 import { EXAMPLES } from "@apendua.dev/euclid-lang";
 import {
+  buttonActive,
+  buttonGlyph,
+  buttonLabel,
+  buttonRow,
+  exampleButton,
   hintLine,
+  iconButton,
   panelCard,
   panelStack,
   panelTitle,
-  toolButton,
-  toolButtonActive,
 } from "../elements/styles.js";
 import type Studio from "../store/Studio.js";
 import type { Tool } from "../store/Studio.js";
 
-const TOOLS: { tool: Tool; label: string }[] = [
-  { tool: "select", label: "Select / drag" },
-  { tool: "point", label: "Point" },
-  { tool: "line", label: "Line" },
-  { tool: "circle", label: "Circle" },
-  { tool: "intersect", label: "Intersect" },
+const TOOLS: { tool: Tool; glyph: string; label: string; hint: string }[] = [
+  { tool: "select", glyph: "➤", label: "Select", hint: "Trigger: select, or drag a free point." },
+  { tool: "point", glyph: "●", label: "Point", hint: "Trigger: place a point." },
+  { tool: "line", glyph: "/", label: "Line", hint: "Pick two points." },
+  { tool: "circle", glyph: "○", label: "Circle", hint: "Pick the center, then a point." },
+  { tool: "intersect", glyph: "×", label: "Cross", hint: "Trigger near a crossing." },
 ];
+
+// The construction names carry their Elements references, which is more text
+// than a panel button can afford; the code panel still shows the full story.
+const SHORT_NAMES: Record<string, string> = {
+  "Equilateral triangle (Elements I.1)": "Triangle · I.1",
+  "Perpendicular bisector (Elements I.10)": "Bisector · I.10",
+  "Square on a segment (Elements I.46)": "Square · I.46",
+  "Regular hexagon (Elements IV.15)": "Hexagon · IV.15",
+  "Tangents from a point (Elements III.17)": "Tangents · III.17",
+  "Pentagon (Richmond, exact)": "Pentagon · Richmond",
+  "Pentagon (Dürer, approximate)": "Pentagon · Dürer",
+};
 
 /**
  * The palette beside the board: tools, view controls and the bundled example
@@ -37,19 +53,23 @@ const ToolPanel = component((ctx: WeakKey, studio: Studio) => {
 
     const hint = pending
       ? pending.tool === "line"
-        ? "Now pick the second point of the line."
-        : "Now pick a point on the circle."
-      : {
-          select: "Trigger: select, or hold and move a free point.",
-          point: "Trigger: place a point. Snaps to crossings.",
-          line: "Trigger: pick two points for a line.",
-          circle: "Trigger: pick the center, then a point on it.",
-          intersect: "Trigger near a crossing: name that point.",
-        }[tool];
+        ? "Pick the second point."
+        : "Pick a point on the circle."
+      : (TOOLS.find((entry) => entry.tool === tool)?.hint ?? "");
 
-    const button = (label: string, active: boolean, onClick: () => void) =>
+    const iconBtn = (glyph: string, label: string, active: boolean, onClick: () => void) =>
       $("div", [
-        set("className", () => (active ? `${toolButton} ${toolButtonActive}` : `${toolButton}`)),
+        set("className", active ? renderText`${iconButton} ${buttonActive}` : iconButton),
+        on("click", onClick),
+        children(
+          $("div", [set("className", buttonGlyph), children(text`${() => glyph}`)]),
+          $("div", [set("className", buttonLabel), children(text`${() => label}`)]),
+        ),
+      ]);
+
+    const exampleBtn = (label: string, active: boolean, onClick: () => void) =>
+      $("div", [
+        set("className", active ? renderText`${exampleButton} ${buttonActive}` : exampleButton),
         on("click", onClick),
         children(text`${() => label}`),
       ]);
@@ -62,10 +82,16 @@ const ToolPanel = component((ctx: WeakKey, studio: Studio) => {
           $("div", [
             set("className", panelCard),
             children(
-              $("div", [set("className", panelTitle), children(text`Tools`)]),
-              ...TOOLS.map((entry) =>
-                button(entry.label, tool === entry.tool, () => studio.setTool(entry.tool)),
-              ),
+              $("div", [
+                set("className", buttonRow),
+                children(
+                  ...TOOLS.map((entry) =>
+                    iconBtn(entry.glyph, entry.label, tool === entry.tool, () =>
+                      studio.setTool(entry.tool),
+                    ),
+                  ),
+                ),
+              ]),
               $("div", [set("className", hintLine), children(text`${() => hint}`)]),
               $("div", [set("className", hintLine), children(text`Grip: pan the sheet.`)]),
             ),
@@ -73,11 +99,15 @@ const ToolPanel = component((ctx: WeakKey, studio: Studio) => {
           $("div", [
             set("className", panelCard),
             children(
-              $("div", [set("className", panelTitle), children(text`View`)]),
-              button("Zoom in", false, () => studio.zoomBy(1.25)),
-              button("Zoom out", false, () => studio.zoomBy(0.8)),
-              button("Fit drawing", false, () => studio.fitView()),
-              button("Undo", false, () => studio.undo()),
+              $("div", [
+                set("className", buttonRow),
+                children(
+                  iconBtn("+", "In", false, () => studio.zoomBy(1.25)),
+                  iconBtn("−", "Out", false, () => studio.zoomBy(0.8)),
+                  iconBtn("▣", "Fit", false, () => studio.fitView()),
+                  iconBtn("↺", "Undo", false, () => studio.undo()),
+                ),
+              ]),
             ),
           ]),
           $("div", [
@@ -85,8 +115,10 @@ const ToolPanel = component((ctx: WeakKey, studio: Studio) => {
             children(
               $("div", [set("className", panelTitle), children(text`Constructions`)]),
               ...EXAMPLES.map((example) =>
-                button(example.name, exampleName === example.name, () =>
-                  studio.loadExample(example.name),
+                exampleBtn(
+                  SHORT_NAMES[example.name] ?? example.name,
+                  exampleName === example.name,
+                  () => studio.loadExample(example.name),
                 ),
               ),
             ),
@@ -98,6 +130,9 @@ const ToolPanel = component((ctx: WeakKey, studio: Studio) => {
           obj.position.set(0.78, 0.02, -0.72);
           obj.rotation.set(0, -0.55, 0);
           obj.scale.setScalar(0.1);
+          // Test handle, like window.__studio: headless smoke tests aim rays
+          // at panel buttons through the real transform chain.
+          (window as unknown as { __toolPanel: THREE.Object3D }).__toolPanel = obj;
         }),
       ],
     );

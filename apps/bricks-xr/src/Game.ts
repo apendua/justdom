@@ -20,7 +20,7 @@ import {
 } from "@apendua/signal";
 import Brick from "./Brick.js";
 import Panel from "./Panel.js";
-import { createClicks } from "./click.js";
+import { createClicks } from "@apendua.dev/sound";
 import { cellKey, CELL, onBoard, SIZE, snapToCell } from "./grid.js";
 import { palette } from "./palette.js";
 

@@ -33,7 +33,7 @@ import Projectile from "./Projectile.js";
 import Slingshot from "./Slingshot.js";
 import { brickShape, BrickType } from "./types.js";
 import { CastleContext, ListenerContext, SessionContext } from "../elements/context.js";
-import { createClicks } from "../elements/click.js";
+import { createClicks } from "@apendua.dev/sound";
 import { runSimulation, useAsWorldOrigin } from "../elements/rapier.js";
 import {
   align,

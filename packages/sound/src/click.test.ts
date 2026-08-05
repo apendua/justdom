@@ -2,14 +2,8 @@ import assert from "node:assert/strict";
 import test, { describe } from "node:test";
 import { createClickWaveform } from "./click.js";
 
-/**
- * Root mean square of a slice, which is what "how loud is this bit" means.
- *
- * @param {Float32Array} samples
- * @param {number} from
- * @param {number} to
- */
-function level(samples, from, to) {
+/** Root mean square of a slice, which is what "how loud is this bit" means. */
+function level(samples: Float32Array, from: number, to: number): number {
   let total = 0;
   for (let i = from; i < to; i += 1) {
     total += samples[i] * samples[i];

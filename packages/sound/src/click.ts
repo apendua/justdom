@@ -54,11 +54,10 @@ const SEED = 0x9e3779b9;
  * placement in every session makes the same sound, and the sound can be
  * asserted on.
  *
- * @param {number} sampleRate samples per second, e.g. `audioContext.sampleRate`
- * @returns {Float32Array<ArrayBuffer>} samples in [-1, 1], ready for
- *   `AudioBuffer.copyToChannel`
+ * @param sampleRate samples per second, e.g. `audioContext.sampleRate`
+ * @returns samples in [-1, 1], ready for `AudioBuffer.copyToChannel`
  */
-export function createClickWaveform(sampleRate) {
+export function createClickWaveform(sampleRate: number): Float32Array<ArrayBuffer> {
   if (!Number.isFinite(sampleRate) || sampleRate <= 0) {
     throw new Error(`Sample rate must be a positive number, got ${sampleRate}`);
   }

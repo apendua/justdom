@@ -34,12 +34,12 @@ the last change. The soundtrack is the house one, `glass_desk_habits.mp3` out of
 `@apendua.dev/media`, started with the session and stopped with it.
 
 A brick that lands clicks, from the cell it landed in — a knock with a little
-ring in it, the way two magnets sound when they meet. The waveform is generated
-rather than loaded (`createClickWaveform` in `@apendua.dev/media`), and
-`elements/click.ts` parks a handful of `PositionalAudio` voices in the board to
-play it, so the click arrives from where the brick is rather than from the
-middle of your head. It is the one piece of feedback that does not need looking
-at, which is what a brick placed behind the one in your hand needs.
+ring in it, the way two magnets sound when they meet. Both halves of that come
+from `@apendua.dev/sound`: the waveform is generated rather than loaded, and
+`createClicks` parks a handful of `PositionalAudio` voices in the board to play
+it, so the click arrives from where the brick is rather than from the middle of
+your head. It is the one piece of feedback that does not need looking at, which
+is what a brick placed behind the one in your hand needs.
 
 ## The board
 
@@ -205,7 +205,6 @@ honest: a castle that was not going to stand up does not stand up.
 | `components/Brick.ts`    | One brick — mesh, collider, ghost and refused styles, the drag.                |
 | `components/Slingshot.ts`| The frame, the bands, the pouch, and the two-handed draw.                      |
 | `components/Music.ts`    | The soundtrack, playing for as long as the session lasts.                      |
-| `elements/click.ts`      | The click a brick makes when it lands, sounded where it landed.                |
 | `elements/rapier.ts`     | Rapier bindings: world, colliders, rigid bodies, the fixed-step loop.          |
 | `views/`                 | The two panels, projected into the scene.                                      |
 

@@ -1,32 +1,33 @@
 /**
- * The click a brick makes when it lands, sounded where it landed.
+ * Clicks, sounded where they happen.
  *
- * The waveform comes from `@apendua.dev/media` — a knock with a little ring in
- * it, the way two magnets sound when they meet — and everything here is about
- * putting it in the room: a handful of `PositionalAudio` voices parented to the
- * board, so a brick placed at the far corner is heard from the far corner.
+ * `createClickWaveform` says what the click sounds like; this says where it
+ * comes from. A handful of `PositionalAudio` voices are parented to one object —
+ * the board a brick lands on — so a click asked for at a point in that object's
+ * own coordinates is heard from that point in the room.
  *
  * There are several voices because one is not enough. A single node cannot play
- * two clicks at once, and placing bricks quickly is exactly what the game is
+ * two clicks at once, and placing bricks quickly is exactly what these apps are
  * for; the voices are used in turn, so a click only ever cuts off one that is
- * already three placements old.
+ * already several placements old.
  */
 import * as THREE from "three";
-import { createClickWaveform } from "@apendua.dev/media";
+import { createClickWaveform } from "./click.js";
 
-/** How many clicks may overlap before the oldest is cut short. */
-const VOICES = 4;
-
-/**
- * How far away the click starts getting quieter, in metres. The board is a
- * metre square on the far side of it, so this is roughly "the near edge": near
- * the middle the click is at full volume, and across the board it is clearly
- * further off without becoming inaudible.
- */
-const REFERENCE_DISTANCE = 0.25;
-
-/** Loud enough to be felt as contact, and no louder. */
-const VOLUME = 0.35;
+export interface ClicksOptions {
+  /** How many clicks may overlap before the oldest is cut short. */
+  voices?: number;
+  /**
+   * How far away the click starts getting quieter, in metres. The boards in
+   * these apps are about a metre square on the far side of arm's length, so
+   * the default is roughly "the near edge": near the middle a click is at full
+   * volume, and across the board it is clearly further off without becoming
+   * inaudible.
+   */
+  refDistance?: number;
+  /** Loud enough to be felt as contact, quiet enough to sit under the music. */
+  volume?: number;
+}
 
 export interface Clicks {
   /**
@@ -38,18 +39,25 @@ export interface Clicks {
   play(position: THREE.Vector3): void;
 }
 
-export function createClicks(listener: THREE.AudioListener): Clicks {
+const defaults = {
+  voices: 4,
+  refDistance: 0.25,
+  volume: 0.35,
+} satisfies Required<ClicksOptions>;
+
+export function createClicks(listener: THREE.AudioListener, options: ClicksOptions = {}): Clicks {
+  const { voices: count, refDistance, volume } = { ...defaults, ...options };
   const object = new THREE.Group();
   const { context } = listener;
   const waveform = createClickWaveform(context.sampleRate);
   const buffer = context.createBuffer(1, waveform.length, context.sampleRate);
   buffer.copyToChannel(waveform, 0);
 
-  const voices = Array.from({ length: VOICES }, () => {
+  const voices = Array.from({ length: count }, () => {
     const voice = new THREE.PositionalAudio(listener);
     voice.setBuffer(buffer);
-    voice.setRefDistance(REFERENCE_DISTANCE);
-    voice.setVolume(VOLUME);
+    voice.setRefDistance(refDistance);
+    voice.setVolume(volume);
     object.add(voice);
     return voice;
   });

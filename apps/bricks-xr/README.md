@@ -6,7 +6,7 @@ This is [castle-xr](../castle-xr/README.md) with everything taken out of it: no
 physics, no slingshot, no music, no saving, one kind of brick and no tray to pick
 it from. What is left is the part worth reading — a reactive scene, a drag that
 starts on a controller trigger, a click where each brick lands, and a panel of
-ordinary DOM projected into the room — in **six files and 540 lines**, against
+ordinary DOM projected into the room — in **five files and 450 lines**, against
 castle-xr's thirty files and 3400. It is meant to be read start to finish before
 writing an XR app of your own.
 
@@ -32,7 +32,7 @@ add `?emulator` to run it in an ordinary browser with the
 One brick sits on the plane and never leaves it: dragging that one hands over a
 copy. There is nothing to save, so reloading starts you over.
 
-## The six files
+## The five files
 
 | File        | Lines | What it is                                                     |
 | ----------- | ----: | -------------------------------------------------------------- |
@@ -40,11 +40,12 @@ copy. There is nothing to save, so reloading starts you over.
 | `Brick.ts`  |   120 | One brick, and the drag that carries it.                        |
 | `Game.ts`   |   156 | The board: the rules, the ghost, the bricks, the panel.         |
 | `Panel.ts`  |    85 | The interface, as DOM.                                          |
-| `click.ts`  |    81 | The click a brick makes when it lands, sounded where it landed. |
 | `App.ts`    |    58 | The scene: floor, light, ears, and where the board floats.      |
 
 Plus `main.ts` to mount it, `emulator.ts` to fake a headset, and `palette.ts` so
-the colours live in one place.
+the colours live in one place. The click is `@apendua.dev/sound`, shared with
+castle-xr and marblerun — the only dependency of this app that is not the stack
+it is built on.
 
 ## The five ideas in it
 
@@ -81,10 +82,12 @@ interface toolkit is involved.
 
 **A landing is heard as well as seen.** The ears (`AudioListener`) ride the
 camera and a few `PositionalAudio` voices sit inside the board, so a brick
-dropped at the far corner clicks from the far corner. The click itself is
-generated a sample at a time by `@apendua.dev/media` rather than loaded from a
-file — fifty milliseconds of knock, with a little ring left in it. It is the
-one piece of feedback that works while you are looking somewhere else.
+dropped at the far corner clicks from the far corner. The click is generated a
+sample at a time rather than loaded from a file — fifty milliseconds of knock,
+with a little ring left in it — and both halves of it come from
+`@apendua.dev/sound`, which is two calls in this app: `createClicks(listener)`
+on the board, and `clicks.play(cell)` when a brick lands. It is the one piece of
+feedback that works while you are looking somewhere else.
 
 ## What was left out, and where to find it
 

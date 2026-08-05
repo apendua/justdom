@@ -4,7 +4,6 @@ import { component, effects, emit, on, Op, set, store } from "@apendua/signal";
 import { children as domChildren, $ as $dom, text } from "@apendua/justdom";
 import Brick from "./Brick.js";
 import { BrickType } from "./types.js";
-import { PointersContext } from "../elements/context.js";
 import { boxGeometry } from "../elements/geometry.js";
 import { basicMaterial } from "../elements/material.js";
 import { palette } from "../elements/palette.js";
@@ -93,7 +92,6 @@ export const Palette = component((ctx: WeakKey, operators: Op<PaletteProps, Pale
             },
           }),
           makeInteractive(),
-          PointersContext.get(ctx),
         ]);
       }),
       ...layout.labels.map(({ label, x, y, z }) => {
@@ -106,7 +104,6 @@ export const Palette = component((ctx: WeakKey, operators: Op<PaletteProps, Pale
               o.position.set(x, y, z);
               o.rotation.set(-Math.PI / 2, 0, 0);
             }),
-            PointersContext.get(ctx),
           ],
         );
       }),

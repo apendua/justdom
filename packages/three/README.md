@@ -49,6 +49,40 @@ render(Scene).subscribe((renderer) => {
 `createProperty`-based context mechanism shared with the rest of this
 monorepo's stack.
 
+## Pointing at things
+
+`interactions(ctx)` gives an object the `makeInteractive()` operator, which puts
+it in the raycast set and gets it pointer, select and squeeze events. The
+manager raycasts once per controller per update to route those events, and
+publishes the result:
+
+```js
+import { cursors, pointers } from "@apendua/freedom";
+
+children(
+  cursors(ctx), // a white ball, 1 cm across, on every ray hit
+  cursors(ctx, { scale: 2, color: "#ff0000" }), // bigger, red
+  cursors(ctx, { object: myArrow }), // one clone of your own object per hand
+);
+```
+
+`cursors(ctx, options)` is the widget every XR scene ends up wanting: a mark
+where the ray meets the scene, so the player can see what they are about to act
+on. One appears per hand that is pointing at something interactive and goes away
+with the hit. `object` is cloned rather than added, so its geometry and
+materials are shared between hands; `scale` multiplies whatever scale it already
+carries.
+
+Hits are worked out once per frame, after every `animate(ctx, fn)` callback has
+run and with world matrices already refreshed — the last thing before the frame
+is drawn. That is what keeps the widget on the ray: cast any earlier and it
+lands where the hand was pointing, and what it was pointing at, one frame ago.
+
+`pointers(ctx)` is the data behind it — a reactive map from target ray space to
+a signal holding that controller's current `THREE.Intersection`, for scenes that
+want to do something else with the hit (a snapping preview, a measurement, a
+sound).
+
 ## Projecting DOM into the scene
 
 `dom(ctx, mountable$, operators)` mounts a

@@ -11,7 +11,6 @@ import {
   panelTitle,
   victoryBanner,
 } from "./styles.js";
-import { PointersContext } from "../elements/context.js";
 import { ForkHand } from "../store/Session.js";
 
 interface SiegeUIProps {
@@ -110,7 +109,6 @@ const SiegeUI = component((ctx: WeakKey, operators: Op<SiegeUIProps, SiegeUIEven
         obj.position.copy(props.position);
         obj.rotation.copy(props.rotation);
       }),
-      PointersContext.get(ctx),
     ],
   );
 });

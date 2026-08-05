@@ -1,10 +1,9 @@
 import * as THREE from "three";
-import { camera, children, $, list, XREventMap, interactions } from "@apendua/freedom";
-import { Signal, observeFn } from "@apendua/signal";
+import { camera, children, cursors, $, XREventMap, interactions } from "@apendua/freedom";
+import { Signal } from "@apendua/signal";
 import { on, set, effects, just, use, component } from "@apendua/signal";
-import { ReactiveMap } from "@apendua/signal";
 
-import { CastleContext, PointersContext, SessionContext } from "./elements/context.js";
+import { CastleContext, SessionContext } from "./elements/context.js";
 import { boxGeometry } from "./elements/geometry.js";
 import { basicMaterial } from "./elements/material.js";
 import { palette } from "./elements/palette.js";
@@ -43,14 +42,12 @@ const Floor = component((ctx: WeakKey) => {
       },
     }),
     makeInteractive(),
-    PointersContext.get(ctx),
   ]);
 });
 
 const App = component((ctx: WeakKey) => {
   // One board unit is one cell, and a cell is ten centimetres in the room.
   const scale = 0.1;
-  const pointers = new ReactiveMap<THREE.XRTargetRaySpace, Signal<THREE.Vector3>>();
   const position = Signal.of(new THREE.Vector3(0, -0.4, -1.1));
   // The ears go where the head is, so the soundtrack rides the camera.
   const listener = new THREE.AudioListener();
@@ -59,24 +56,6 @@ const App = component((ctx: WeakKey) => {
 
   ctx = CastleContext.set(ctx, castle);
   ctx = SessionContext.set(ctx, gameSession);
-  ctx = PointersContext.set(ctx, (source) => {
-    return source.pipe(
-      on("pointermove", (event) => {
-        if (event.intersection) {
-          let pointer = pointers.get(event.controller);
-          if (pointer) {
-            pointer.set(event.intersection.point);
-          } else {
-            pointer = Signal.of(event.intersection.point);
-            pointers.set(event.controller, pointer);
-          }
-        }
-      }),
-      on("pointerleave", (event) => {
-        pointers.delete(event.controller);
-      }),
-    );
-  });
 
   castle.load();
 
@@ -86,21 +65,7 @@ const App = component((ctx: WeakKey) => {
     }),
     children(
       Music(ctx, listener),
-      list(observeFn(pointers).values(), (pointer) => {
-        return $(new THREE.Mesh(), [
-          effects((o) => {
-            o.position.copy(pointer.get());
-          }),
-          set({
-            get geometry() {
-              return boxGeometry(0.01, 0.01, 0.01);
-            },
-            get material() {
-              return basicMaterial(palette.pointer);
-            },
-          }),
-        ]);
-      }),
+      cursors(ctx, { color: palette.pointer }),
       $(new THREE.Group<XREventMap>(), [
         effects((o) => {
           o.position.copy(position.get());

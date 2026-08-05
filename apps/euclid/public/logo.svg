@@ -7,11 +7,11 @@
   </defs>
   <rect width="64" height="64" rx="14" fill="url(#euclid-bg)" />
   <g fill="none" stroke="#e8e4d8" stroke-width="3" stroke-linecap="round">
-    <circle cx="32" cy="34" r="18" />
-    <path d="M32 34 47.6 25" />
+    <circle cx="32" cy="32" r="19" />
+    <path d="M32 32 48.5 22.5" />
   </g>
   <g fill="#c9a84c">
-    <circle cx="32" cy="34" r="4" />
-    <circle cx="47.6" cy="25" r="4" />
+    <circle cx="32" cy="32" r="4" />
+    <circle cx="48.5" cy="22.5" r="4" />
   </g>
 </svg>

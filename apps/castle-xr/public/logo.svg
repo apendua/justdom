@@ -11,11 +11,11 @@
   </defs>
   <rect width="64" height="64" rx="14" fill="url(#castle-bg)" />
   <g stroke="#d8a13c" stroke-width="2.6" stroke-linejoin="round">
-    <path d="M45 22 45 11" stroke-linecap="round" />
-    <path d="M45 11 54 15 45 19Z" fill="#d8a13c" />
+    <path d="M46 27 46 11" stroke-linecap="round" />
+    <path d="M46 11 53 14.5 46 18Z" fill="#d8a13c" />
   </g>
   <path
-    d="M13 27h8v5h6v-5h8v5h6v-5h8v26H13Z"
+    d="M11 27h10.5v5h5.25v-5h10.5v5h5.25v-5H53v26H11Z"
     fill="url(#castle-stone)"
   />
   <path
@@ -23,7 +23,7 @@
     fill="#1b2430"
   />
   <g fill="#1b2430">
-    <rect x="17.5" y="37" width="5" height="7" rx="2.5" />
-    <rect x="41.5" y="37" width="5" height="7" rx="2.5" />
+    <rect x="16" y="37" width="5" height="7" rx="2.5" />
+    <rect x="43" y="37" width="5" height="7" rx="2.5" />
   </g>
 </svg>

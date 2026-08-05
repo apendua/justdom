@@ -6,15 +6,15 @@
     </linearGradient>
   </defs>
   <rect width="64" height="64" rx="14" fill="url(#euclid-xr-bg)" />
-  <g transform="translate(32 33) rotate(-12)">
+  <g transform="translate(32 32) rotate(-12)">
     <g fill="none" stroke="#e8e4d8" stroke-width="3" stroke-linecap="round">
-      <ellipse cx="-7" cy="0" rx="14" ry="10" />
-      <ellipse cx="7" cy="0" rx="14" ry="10" />
-      <path d="M0 -8.7 0 8.7" stroke-width="2.4" stroke-opacity="0.75" />
+      <ellipse cx="-7.5" cy="0" rx="15.5" ry="12.5" />
+      <ellipse cx="7.5" cy="0" rx="15.5" ry="12.5" />
+      <path d="M0 -10.9 0 10.9" stroke-width="2.4" stroke-opacity="0.75" />
     </g>
     <g fill="#c9a84c">
-      <circle cx="0" cy="-8.7" r="3.8" />
-      <circle cx="0" cy="8.7" r="3.8" />
+      <circle cx="0" cy="-10.9" r="3.8" />
+      <circle cx="0" cy="10.9" r="3.8" />
     </g>
   </g>
 </svg>

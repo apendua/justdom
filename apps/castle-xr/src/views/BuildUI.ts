@@ -3,7 +3,6 @@ import { component, effects, set, emit, observable, on, Op, store } from "@apend
 import { dom } from "@apendua/freedom";
 import { children, $, text } from "@apendua/justdom";
 import { actionButtonClass, debugValue, panelCard, panelStack, panelTitle } from "./styles.js";
-import { PointersContext } from "../elements/context.js";
 
 interface BuildUIProps {
   position: THREE.Vector3;
@@ -90,7 +89,6 @@ const BuildUI = component((ctx: WeakKey, operators: Op<BuildUIProps, BuildUIEven
         obj.position.copy(props.position);
         obj.rotation.copy(props.rotation);
       }),
-      PointersContext.get(ctx),
     ],
   );
 });

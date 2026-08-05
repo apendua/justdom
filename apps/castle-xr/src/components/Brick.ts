@@ -25,7 +25,6 @@ import {
 import { NEVER } from "rxjs";
 import * as RAPIER from "@dimforge/rapier3d";
 import { BrickStyle, brickShape, BrickType } from "./types.js";
-import { PointersContext } from "../elements/context.js";
 import { boxGeometry, wedgeCorners, wedgeGeometry } from "../elements/geometry.js";
 import { brickMaterial, ghostMaterial, invisibleMaterial } from "../elements/material.js";
 import { collider, rigidBody } from "../elements/rapier.js";
@@ -247,7 +246,7 @@ const Brick = component((ctx: WeakKey, operators: Op<Props, Events>) => {
       if (!props.interactive) {
         return NEVER;
       }
-      return just(o, [makeInteractive(), PointersContext.get(ctx)]);
+      return just(o, [makeInteractive()]);
     }),
     on("selectstart", (event) => {
       if (!props.draggable) {

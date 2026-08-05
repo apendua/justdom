@@ -1,9 +1,20 @@
 import * as THREE from "three";
 import { Observable, switchMap } from "rxjs";
-import { createProperty } from "@apendua/signal";
+import { createProperty, ReactiveMap, Signal, withComputation } from "@apendua/signal";
 
 /**
  * @import { XREventMap, InteractionEvent, InteractionEventType, InteractionEventMap } from "./core.js";
+ */
+
+/**
+ * Where a controller's ray currently lands, for every controller that is
+ * pointing at something interactive. Keyed by target ray space, so a two
+ * handed player has two entries; a hand that points at nothing has none.
+ *
+ * @typedef {ReactiveMap<
+ *   THREE.XRTargetRaySpace,
+ *   Signal<THREE.Intersection<THREE.Object3D<XREventMap>>>
+ * >} Pointers
  */
 
 export class InteractionManager {
@@ -15,12 +26,47 @@ export class InteractionManager {
   #shouldUpdateIntersections;
   /** @type {Set<THREE.Object3D<any>>} */
   #controllers;
+  /** @type {Pointers} */
+  #pointers;
 
   constructor() {
     this.#objects = new Set();
     this.#done = new WeakMap();
     this.#shouldUpdateIntersections = false;
     this.#controllers = new Set();
+    this.#pointers = new ReactiveMap();
+  }
+
+  /**
+   * The live hit of every controller that is aiming at something. The manager
+   * already raycasts once per controller per update to route pointer events,
+   * so this is that same result, published instead of thrown away.
+   *
+   * @returns {Pointers}
+   */
+  get pointers() {
+    return this.#pointers;
+  }
+
+  /**
+   * @param {THREE.XRTargetRaySpace} controller
+   * @param {THREE.Intersection<THREE.Object3D<XREventMap>> | undefined} intersection
+   */
+  #setPointer(controller, intersection) {
+    // Reading the map registers a reactive dependency, and this runs from the
+    // animation loop — that is, from inside somebody else's computation.
+    // Detaching first keeps that computation from subscribing to writes it
+    // makes itself on the very next frame.
+    withComputation(null, () => {
+      const pointer = this.#pointers.get(controller);
+      if (!intersection) {
+        this.#pointers.delete(controller);
+      } else if (pointer) {
+        pointer.set(intersection);
+      } else {
+        this.#pointers.set(controller, Signal.of(intersection));
+      }
+    });
   }
 
   /**
@@ -214,6 +260,9 @@ export class InteractionManager {
         }
         this.#shouldUpdateIntersections = false;
         const intersection = this.getIntersection(controller);
+        // Publish the hit before the handlers run: where the ray landed is a
+        // fact about this frame, not something a listener gets to veto.
+        this.#setPointer(controller, intersection);
         if (intersection) {
           if (targetedObject === intersection.object) {
             this.dispatch(targetedObject, {
@@ -275,6 +324,9 @@ export class InteractionManager {
         controller.removeEventListener("squeezeend", onSqueezeEnd);
         controller.removeEventListener("move", onMove);
 
+        this.#controllers.delete(controller);
+        this.#pointers.delete(controller);
+
         if (subscription) {
           subscription.unsubscribe();
         }
@@ -298,6 +350,7 @@ export class InteractionManager {
 
   cleanup() {
     this.#objects.clear();
+    this.#pointers.clear();
   }
 }
 

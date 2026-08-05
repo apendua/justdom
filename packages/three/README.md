@@ -82,6 +82,10 @@ with the hit. `object` is cloned rather than added, so its geometry and
 materials are shared between hands; `scale` multiplies whatever scale it already
 carries.
 
+The ray each controller draws is cut at the same hit, so it stops at the
+surface instead of disappearing into it, and stretches back out to a fixed
+reach when the hand is pointing at nothing.
+
 Hits are worked out once per frame, after every `animate(ctx, fn)` callback has
 run and with world matrices already refreshed — the last thing before the frame
 is drawn. That is what keeps the widget on the ray: cast any earlier and it

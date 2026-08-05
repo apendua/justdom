@@ -8,8 +8,8 @@
  * Start.
  */
 import * as THREE from "three";
-import { children, $ } from "@apendua/freedom";
-import { component, effects, just } from "@apendua/signal";
+import { camera, children, $ } from "@apendua/freedom";
+import { component, effects, just, use } from "@apendua/signal";
 import Game from "./Game.js";
 import { CELL, SIZE } from "./grid.js";
 import { palette } from "./palette.js";
@@ -23,7 +23,14 @@ const floor = new THREE.Mesh(
 floor.position.y = -THICKNESS / 2;
 
 const App = component((ctx: WeakKey) => {
+  // The ears ride the camera, so a brick landing across the board sounds like
+  // it landed across the board rather than in the middle of your head.
+  const listener = new THREE.AudioListener();
+
   return just(new THREE.Scene()).pipe(
+    effects(() => {
+      use(camera(ctx).pipe(children($(listener))));
+    }),
     children(
       $(new THREE.Group(), [
         effects((o) => {
@@ -40,7 +47,7 @@ const App = component((ctx: WeakKey) => {
             effects((o) => {
               o.scale.setScalar(0.1);
             }),
-            children($(floor), Game(ctx)),
+            children($(floor), Game(ctx, listener)),
           ]),
         ),
       ]),

@@ -5,10 +5,10 @@ Grab a brick, drop it on the grid, build something. That is the whole game.
 This is [castle-xr](../castle-xr/README.md) with everything taken out of it: no
 physics, no slingshot, no music, no saving, one kind of brick and no tray to pick
 it from. What is left is the part worth reading — a reactive scene, a drag that
-starts on a controller trigger, and a panel of ordinary DOM projected into the
-room — in **five files and 400 lines**, against castle-xr's thirty files and
-3400. It is meant to be read start to finish before writing an XR app of your
-own.
+starts on a controller trigger, a click where each brick lands, and a panel of
+ordinary DOM projected into the room — in **six files and 540 lines**, against
+castle-xr's thirty files and 3400. It is meant to be read start to finish before
+writing an XR app of your own.
 
 ```
 rush build --to @apendua.dev/bricks-xr
@@ -32,20 +32,21 @@ add `?emulator` to run it in an ordinary browser with the
 One brick sits on the plane and never leaves it: dragging that one hands over a
 copy. There is nothing to save, so reloading starts you over.
 
-## The five files
+## The six files
 
 | File        | Lines | What it is                                                     |
 | ----------- | ----: | -------------------------------------------------------------- |
 | `grid.ts`   |    35 | Where a brick may go. Pure functions, so `grid.test.ts` is easy. |
-| `Brick.ts`  |   116 | One brick, and the drag that carries it.                        |
-| `Game.ts`   |   148 | The board: the rules, the ghost, the bricks, the panel.         |
+| `Brick.ts`  |   120 | One brick, and the drag that carries it.                        |
+| `Game.ts`   |   156 | The board: the rules, the ghost, the bricks, the panel.         |
 | `Panel.ts`  |    85 | The interface, as DOM.                                          |
-| `App.ts`    |    51 | The scene: floor, light, and where the board floats.            |
+| `click.ts`  |    81 | The click a brick makes when it lands, sounded where it landed. |
+| `App.ts`    |    58 | The scene: floor, light, ears, and where the board floats.      |
 
 Plus `main.ts` to mount it, `emulator.ts` to fake a headset, and `palette.ts` so
 the colours live in one place.
 
-## The four ideas in it
+## The five ideas in it
 
 **The cell is the identity.** A brick fills one cell, so the bricks live in a
 `ReactiveMap` keyed by the cell they are in. The key says both where a brick is
@@ -78,6 +79,13 @@ coordinates before anything is decided.
 the scene by `dom()` and clicked by pointing a controller at them. No 3D
 interface toolkit is involved.
 
+**A landing is heard as well as seen.** The ears (`AudioListener`) ride the
+camera and a few `PositionalAudio` voices sit inside the board, so a brick
+dropped at the far corner clicks from the far corner. The click itself is
+generated a sample at a time by `@apendua.dev/media` rather than loaded from a
+file — fifty milliseconds of knock, with a little ring left in it. It is the
+one piece of feedback that works while you are looking somewhere else.
+
 ## What was left out, and where to find it
 
 All of this is in castle-xr, and none of it is needed to build with bricks:
@@ -90,4 +98,4 @@ All of this is in castle-xr, and none of it is needed to build with bricks:
 - **A tray to pick bricks from**, laid out by a pure function.
 - **Undo and redo**, recorded as what a brick looked like before and after.
 - **Saving**, to `localStorage`.
-- **Sound**, and a dot drawn where each controller's ray lands.
+- **A dot drawn where each controller's ray lands.**

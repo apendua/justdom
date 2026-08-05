@@ -12,6 +12,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@apendua.dev/media": "workspace:*",
     "@apendua/freedom": "workspace:*",
     "@apendua/justdom": "workspace:*",
     "@apendua/signal": "workspace:*",

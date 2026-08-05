@@ -52,8 +52,17 @@ monorepo's stack.
 ## Pointing at things
 
 `interactions(ctx)` gives an object the `makeInteractive()` operator, which puts
-it in the raycast set and gets it pointer, select and squeeze events. The
-manager raycasts once per controller per update to route those events, and
+it in the raycast set and gets it pointer, select and squeeze events. It takes
+an optional argument saying whether the object is pointable right now — a
+boolean, a reactive getter, or an observable — so a ghost, a disabled control,
+or anything else that comes and goes can leave and rejoin the raycast set
+without leaving the scene:
+
+```js
+$(new THREE.Mesh(), [makeInteractive(() => props.draggable)]);
+```
+
+The manager raycasts once per controller per update to route those events, and
 publishes the result:
 
 ```js
@@ -72,6 +81,10 @@ on. One appears per hand that is pointing at something interactive and goes away
 with the hit. `object` is cloned rather than added, so its geometry and
 materials are shared between hands; `scale` multiplies whatever scale it already
 carries.
+
+The ray each controller draws is cut at the same hit, so it stops at the
+surface instead of disappearing into it, and stretches back out to a fixed
+reach when the hand is pointing at nothing.
 
 Hits are worked out once per frame, after every `animate(ctx, fn)` callback has
 run and with world matrices already refreshed — the last thing before the frame

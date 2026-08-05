@@ -1,6 +1,16 @@
 import * as THREE from "three";
-import { Observable, switchMap } from "rxjs";
-import { createProperty, ReactiveMap, Signal, withComputation } from "@apendua/signal";
+import { distinctUntilChanged, Observable } from "rxjs";
+import {
+  createProperty,
+  effectMap,
+  effects,
+  just,
+  observable,
+  onCleanup,
+  ReactiveMap,
+  Signal,
+  withComputation,
+} from "@apendua/signal";
 
 /**
  * @import { XREventMap, InteractionEvent, InteractionEventType, InteractionEventMap } from "./core.js";
@@ -15,6 +25,14 @@ import { createProperty, ReactiveMap, Signal, withComputation } from "@apendua/s
  *   THREE.XRTargetRaySpace,
  *   Signal<THREE.Intersection<THREE.Object3D<XREventMap>>>
  * >} Pointers
+ */
+
+/**
+ * A value that may be supplied as a constant, as a reactive getter — anything
+ * `observable()` can track — or as an observable that is subscribed to directly.
+ *
+ * @template T
+ * @typedef {T | (() => T) | Observable<T>} Reactive
  */
 
 export class InteractionManager {
@@ -388,9 +406,26 @@ export const InteractionContext = createProperty(
 );
 
 /**
+ * Normalizes the three accepted shapes of a reactive value into an observable.
+ *
+ * @template T
+ * @param {Reactive<T>} value
+ * @returns {Observable<T>}
+ */
+function asObservable(value) {
+  if (value instanceof Observable) {
+    return value;
+  }
+  if (typeof value === "function") {
+    return observable(/** @type {() => T} */ (value));
+  }
+  return just(value);
+}
+
+/**
  * @typedef {object} Interactions
  * @property {(event: InteractionEvent) => void} stopPropagation
- * @property {<TEntity extends THREE.Object3D<XREventMap>>() => (source: Observable<TEntity>) => Observable<TEntity>} makeInteractive
+ * @property {<TEntity extends THREE.Object3D<XREventMap>>(enabled?: Reactive<boolean>) => (source: Observable<TEntity>) => Observable<TEntity>} makeInteractive
  */
 
 /**
@@ -403,16 +438,33 @@ export function interactions(ctx) {
     stopPropagation: (event) => {
       manager.stopPropagation(event);
     },
-    makeInteractive: () => {
-      return switchMap((entity) => {
-        manager.add(entity);
-        return new Observable((subscriber) => {
-          subscriber.next(entity);
-          return () => {
-            manager.remove(entity);
-          };
-        });
-      });
+    /**
+     * Registers the entity with the interaction manager for as long as the
+     * operator stays subscribed. With no argument the entity is interactive the
+     * whole time; pass a boolean, a reactive getter, or an observable to turn
+     * interactivity on and off while the entity itself stays in the scene.
+     *
+     * The entity is always passed downstream — `enabled` decides whether rays
+     * can hit it, not whether it exists.
+     */
+    makeInteractive: (enabled = true) => {
+      const isEnabled = asObservable(enabled).pipe(distinctUntilChanged());
+      // effectMap rather than switchMap: the registration observable has no
+      // reason to ever complete, and switchMap waits for its inner observable
+      // before passing a completion on, so a source that ended would leave the
+      // entity registered and the stream hanging.
+      return effectMap((entity) =>
+        isEnabled.pipe(
+          effects((value) => {
+            if (value) {
+              manager.add(entity);
+              onCleanup(() => {
+                manager.remove(entity);
+              });
+            }
+          }),
+        ),
+      );
     },
   };
 }

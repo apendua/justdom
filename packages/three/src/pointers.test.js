@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import * as THREE from "three";
 import { Observable } from "rxjs";
 import { InteractionContext, InteractionManager } from "./interactions.js";
-import { cursors, pointers } from "./pointers.js";
+import { cursors, DEFAULT_RAY_LENGTH, fitRayToHit, pointers } from "./pointers.js";
 
 /**
  * @import { Component } from './core.js';
@@ -296,5 +296,98 @@ describe("cursors", () => {
     const [widget] = parent.children;
     assert.deepEqual(widget.position.toArray(), [0, -0.5, -0.75]);
     assert.deepEqual(widget.getWorldPosition(new THREE.Vector3()).toArray(), [0, 0, -1.5]);
+  });
+});
+
+describe("fitRayToHit", () => {
+  /** @type {InteractionManager} */
+  let manager;
+  /** @type {THREE.XRTargetRaySpace} */
+  let controller;
+  /** @type {ReturnType<typeof fakeFrameLoop>} */
+  let loop;
+  /** @type {THREE.Object3D} */
+  let ray;
+
+  beforeEach(() => {
+    manager = new InteractionManager();
+    controller = fakeController();
+    loop = fakeFrameLoop();
+    manager.addController(controller, loop.onAnimationFrame).subscribe();
+    // A unit segment down -Z, the way the renderer draws one.
+    ray = new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(0, 0, 0),
+        new THREE.Vector3(0, 0, -1),
+      ]),
+    );
+    controller.add(ray);
+  });
+
+  test("reaches the default length while the hand points at nothing", () => {
+    const subscription = fitRayToHit(ray, controller, manager.pointers).subscribe();
+    assert.equal(ray.scale.z, DEFAULT_RAY_LENGTH);
+
+    loop.run();
+    assert.equal(ray.scale.z, DEFAULT_RAY_LENGTH);
+
+    subscription.unsubscribe();
+  });
+
+  test("stops at the surface it is pointing at", () => {
+    manager.add(fakeTarget());
+    fitRayToHit(ray, controller, manager.pointers).subscribe();
+
+    loop.run();
+
+    // The target's near face is at z = -1.5, and the ray is a unit segment, so
+    // its far end lands exactly on the hit.
+    assert.equal(ray.scale.z, 1.5);
+    const end = ray.localToWorld(new THREE.Vector3(0, 0, -1));
+    assert.deepEqual(end.toArray(), [0, 0, -1.5]);
+  });
+
+  test("follows the hit in and out as the scene moves", () => {
+    const target = fakeTarget();
+    manager.add(target);
+    fitRayToHit(ray, controller, manager.pointers).subscribe();
+    loop.run();
+    assert.equal(ray.scale.z, 1.5);
+
+    target.position.set(0, 0, -3);
+    target.updateMatrixWorld();
+    manager.updateIntersections();
+    loop.run();
+    assert.equal(ray.scale.z, 2.5);
+  });
+
+  test("goes back to full reach when the ray leaves the object", () => {
+    manager.add(fakeTarget());
+    fitRayToHit(ray, controller, manager.pointers).subscribe();
+    loop.run();
+    assert.equal(ray.scale.z, 1.5);
+
+    aimAway(controller);
+    move(controller);
+    loop.run();
+    assert.equal(ray.scale.z, DEFAULT_RAY_LENGTH);
+  });
+
+  test("takes a fallback length of its own", () => {
+    fitRayToHit(ray, controller, manager.pointers, 12).subscribe();
+    assert.equal(ray.scale.z, 12);
+  });
+
+  test("stops following once unsubscribed", () => {
+    manager.add(fakeTarget());
+    const subscription = fitRayToHit(ray, controller, manager.pointers).subscribe();
+    loop.run();
+    assert.equal(ray.scale.z, 1.5);
+
+    subscription.unsubscribe();
+    aimAway(controller);
+    move(controller);
+    loop.run();
+    assert.equal(ray.scale.z, 1.5);
   });
 });

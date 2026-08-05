@@ -1,6 +1,8 @@
 import * as THREE from "three";
+import { Observable } from "rxjs";
 import {
   addDependency,
+  Derived,
   effects,
   fromEvent,
   memoize,
@@ -13,7 +15,6 @@ import { $ } from "./operators.js";
 import { InteractionContext } from "./interactions.js";
 
 /**
- * @import { Observable } from 'rxjs';
  * @import { Signal } from '@apendua/signal';
  * @import { Component, XREventMap } from './core.js';
  * @import { Pointers } from './interactions.js';
@@ -97,6 +98,40 @@ function follow(pointer) {
  */
 export function pointers(ctx) {
   return InteractionContext.get(ctx).pointers;
+}
+
+/**
+ * How far a ray is drawn when it is pointing at nothing, in metres. Far enough
+ * to read as heading off into the scene, without being a line across the room.
+ */
+export const DEFAULT_RAY_LENGTH = 5;
+
+/**
+ * Ends a controller's ray where the ray itself ends: at whatever it hit, or at
+ * `fallback` when it hit nothing.
+ *
+ * The ray is drawn as a unit segment down -Z, so its length is its z scale —
+ * and the manager casts from the same origin along the same line, which makes
+ * its hit distance and that scale the same number.
+ *
+ * @param {THREE.Object3D} ray The line, already parented to `controller`.
+ * @param {THREE.XRTargetRaySpace} controller
+ * @param {Pointers} all
+ * @param {number} [fallback]
+ * @returns {Observable<never>}
+ */
+export function fitRayToHit(ray, controller, all, fallback = DEFAULT_RAY_LENGTH) {
+  return new Observable((subscriber) => {
+    const length = new Derived(() => {
+      const pointer = all.get(controller);
+      ray.scale.z = pointer ? pointer.get().distance : fallback;
+    });
+    subscriber.add(
+      length.subscribe({
+        error: (err) => subscriber.error(err),
+      }),
+    );
+  });
 }
 
 /**

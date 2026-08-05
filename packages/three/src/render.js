@@ -2,6 +2,7 @@ import * as THREE from "three";
 import { BehaviorSubject, tap, Subject, Observable, combineLatest, map } from "rxjs";
 import { Computation, createProperty, Signal } from "@apendua/signal";
 import { InteractionManager, InteractionContext } from "./interactions.js";
+import { fitRayToHit } from "./pointers.js";
 
 export const RendererContext = createProperty(
   /**
@@ -312,10 +313,15 @@ export function render(fn, options = {}) {
     });
     const line = new THREE.Line(lineGeometry, lineMaterial);
     line.name = "line";
-    line.scale.z = 5;
 
-    controller0.add(line.clone());
-    controller1.add(line.clone());
+    // The length is not fixed: each ray is cut at whatever it is pointing at,
+    // so it stops at the surface rather than disappearing into it. Both clones
+    // share the geometry, which is why the length lives in the scale.
+    for (const controller of [controller0, controller1]) {
+      const ray = line.clone();
+      controller.add(ray);
+      subscriber.add(fitRayToHit(ray, controller, interactionManager.pointers).subscribe());
+    }
 
     subscriber.add(
       fn(ctx)

@@ -35,3 +35,8 @@ export { createXRButton } from "./xr.js";
 /**
  * @typedef {import('./pointers.js').CursorOptions} CursorOptions
  */
+
+/**
+ * @template T
+ * @typedef {import('./interactions.js').Reactive<T>} Reactive
+ */

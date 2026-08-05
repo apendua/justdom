@@ -7,21 +7,8 @@
  * hand, and the ghost of where it would land.
  */
 import * as THREE from "three";
-import {
-  component,
-  effectMap,
-  effects,
-  emit,
-  just,
-  on,
-  Op,
-  set,
-  Signal,
-  store,
-  use,
-} from "@apendua/signal";
+import { component, effects, emit, on, Op, set, Signal, store, use } from "@apendua/signal";
 import { $, animate, interactions, XREventMap } from "@apendua/freedom";
-import { NEVER } from "rxjs";
 import { CELL } from "./grid.js";
 import { palette } from "./palette.js";
 
@@ -82,7 +69,7 @@ const Brick = component((ctx: WeakKey, operators: Op<Props, Events>) => {
     }),
     // Only a brick that can be picked up is worth pointing at; a ghost that
     // could be hit would swallow rays aimed at what is behind it.
-    effectMap((o) => (props.draggable ? just(o, [makeInteractive()]) : NEVER)),
+    makeInteractive(() => props.draggable),
     // Held, the brick is a child of the controller, so its world matrix is
     // whatever the hand is doing. The board is told once a frame.
     effects((o) => {

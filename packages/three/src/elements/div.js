@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { onCleanup } from "@apendua/signal";
-import { effects, just, on, set, memoize } from "@apendua/signal";
+import { Derived, effects, just, on, set, memoize, useEffects } from "@apendua/signal";
 import { $, children } from "../operators.js";
 import { interactions } from "../interactions.js";
 import VisualProperties from "./VisualProperties.js";
@@ -70,50 +70,83 @@ export function div(ctx, element) {
 
   const { makeInteractive, stopPropagation } = interactions(ctx);
 
-  /** @type {MonoTypeOperatorFunction<THREE.Object3D<XREventMap>>[]} */
-  const interactivity = isClickable(element)
-    ? [
-        makeInteractive(),
-        on("select", (e) => {
-          const event = new MouseEvent("click", {
-            bubbles: true,
-          });
-          element.dispatchEvent(event);
-          stopPropagation(e);
-        }),
-        on("selectstart", (e) => {
-          const event = new MouseEvent("mousedown", {
-            bubbles: true,
-          });
-          element.dispatchEvent(event);
-          element.dataset.xrActive = "true";
-          stopPropagation(e);
-        }),
-        on("selectend", (e) => {
-          const event = new MouseEvent("mouseup", {
-            bubbles: true,
-          });
-          element.dispatchEvent(event);
-          delete element.dataset.xrActive;
-          stopPropagation(e);
-        }),
-        on("pointermove", () => {
-          const event = new MouseEvent("mousemove", {
-            bubbles: false,
-          });
-          element.dispatchEvent(event);
-        }),
-        on("pointerenter", () => {
-          element.dataset.xrHover = "true";
-        }),
-        on("pointerleave", () => {
-          delete element.dataset.xrHover;
-        }),
-      ]
-    : [];
+  /**
+   * Whether this element wants to be a ray target, as its own signal so that
+   * the group below is attached and detached only when the answer actually
+   * flips. Reading `isClickable` straight from the effect would rebuild the
+   * group far more often than that: the computed style is deliberately
+   * invalidated by every attribute mutation, and the handlers write
+   * `data-xr-*` back onto this very element, so each pointer event they
+   * handled would tear down the listeners that handled it.
+   */
+  const clickable = new Derived(() => isClickable(element));
+
+  /**
+   * Being a ray target, and forwarding what happens there back to the DOM.
+   * These belong together: an element that stops being clickable has to lose
+   * the handlers too, not just the registration. The interaction manager
+   * dispatches up the parent chain, so a listener left behind on a wrapper
+   * that is no longer clickable would still see events bubbling out of a
+   * button inside it and synthesise a second, spurious click on the wrapper.
+   *
+   * @type {MonoTypeOperatorFunction<THREE.Object3D<XREventMap>>[]}
+   */
+  const interactivity = [
+    makeInteractive(),
+    on("select", (e) => {
+      const event = new MouseEvent("click", {
+        bubbles: true,
+      });
+      element.dispatchEvent(event);
+      stopPropagation(e);
+    }),
+    on("selectstart", (e) => {
+      const event = new MouseEvent("mousedown", {
+        bubbles: true,
+      });
+      element.dispatchEvent(event);
+      element.dataset.xrActive = "true";
+      stopPropagation(e);
+    }),
+    on("selectend", (e) => {
+      const event = new MouseEvent("mouseup", {
+        bubbles: true,
+      });
+      element.dispatchEvent(event);
+      delete element.dataset.xrActive;
+      stopPropagation(e);
+    }),
+    on("pointermove", () => {
+      const event = new MouseEvent("mousemove", {
+        bubbles: false,
+      });
+      element.dispatchEvent(event);
+    }),
+    on("pointerenter", () => {
+      element.dataset.xrHover = "true";
+    }),
+    on("pointerleave", () => {
+      delete element.dataset.xrHover;
+    }),
+  ];
 
   return just(object, [
-    ...interactivity,
+    // `cursor: pointer` is a live stylesheet decision — a button gets disabled,
+    // a card becomes clickable — so interactivity follows it rather than being
+    // fixed at the moment the element was first projected into the scene.
+    effects((obj) => {
+      if (!clickable.get()) {
+        return;
+      }
+      useEffects(obj, interactivity);
+      // Losing the handlers means losing the `pointerleave` that would have
+      // cleared these, so an element that stops being clickable while the ray
+      // is on it would stay stuck in its hover or active styling.
+      onCleanup(() => {
+        delete element.dataset.xrHover;
+        delete element.dataset.xrActive;
+      });
+    }),
     effects((obj) => {
       const elementRect = getBoundingClientRectCached(element);
       const parentRect = element.parentElement

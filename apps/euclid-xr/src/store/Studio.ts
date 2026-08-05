@@ -69,7 +69,9 @@ export default class Studio {
   readonly boardHeight: number;
 
   readonly code = Signal.of<string>(EXAMPLES[0].code);
-  readonly tool = Signal.of<Tool>("point");
+  // Select first, like the 2D editor: dragging free points only arms under
+  // the select tool, so any other default makes points feel undraggable.
+  readonly tool = Signal.of<Tool>("select");
   readonly pending = Signal.of<PendingStep | null>(null);
   readonly selection = Signal.of<string | null>(null);
   readonly cursor = Signal.of<{ x: number; y: number } | null>(null);

@@ -5,12 +5,27 @@ import { $, children } from "../operators.js";
 import { interactions } from "../interactions.js";
 import VisualProperties from "./VisualProperties.js";
 import { makeRectangleGeometry, shrinkRectangle } from "./rectangle.js";
-import { getBoundingClientRectCached } from "./cache.js";
+import { getBoundingClientRectCached, getComputedStyleCached } from "./cache.js";
 
 /**
  * @import {XREventMap} from '../core.js';
  * @import {Observable} from 'rxjs';
+ * @import {MonoTypeOperatorFunction} from 'rxjs';
  */
+
+/**
+ * Whether the element asks to be a ray target of its own. `cursor: pointer`
+ * is the same signal the ordinary web uses to mark an element clickable, so
+ * buttons opt in through their stylesheet with no extra attribute. Everything
+ * else — cards, labels, layout wrappers — stays out of the raycast set; the
+ * portal's blocker plane keeps the panel as a whole opaque to rays.
+ *
+ * @param {HTMLElement} element
+ * @returns {boolean}
+ */
+function isClickable(element) {
+  return getComputedStyleCached(element).cursor === "pointer";
+}
 
 /**
  * @param {WeakKey} ctx
@@ -55,43 +70,50 @@ export function div(ctx, element) {
 
   const { makeInteractive, stopPropagation } = interactions(ctx);
 
+  /** @type {MonoTypeOperatorFunction<THREE.Object3D<XREventMap>>[]} */
+  const interactivity = isClickable(element)
+    ? [
+        makeInteractive(),
+        on("select", (e) => {
+          const event = new MouseEvent("click", {
+            bubbles: true,
+          });
+          element.dispatchEvent(event);
+          stopPropagation(e);
+        }),
+        on("selectstart", (e) => {
+          const event = new MouseEvent("mousedown", {
+            bubbles: true,
+          });
+          element.dispatchEvent(event);
+          element.dataset.xrActive = "true";
+          stopPropagation(e);
+        }),
+        on("selectend", (e) => {
+          const event = new MouseEvent("mouseup", {
+            bubbles: true,
+          });
+          element.dispatchEvent(event);
+          delete element.dataset.xrActive;
+          stopPropagation(e);
+        }),
+        on("pointermove", () => {
+          const event = new MouseEvent("mousemove", {
+            bubbles: false,
+          });
+          element.dispatchEvent(event);
+        }),
+        on("pointerenter", () => {
+          element.dataset.xrHover = "true";
+        }),
+        on("pointerleave", () => {
+          delete element.dataset.xrHover;
+        }),
+      ]
+    : [];
+
   return just(object, [
-    makeInteractive(),
-    on("select", (e) => {
-      const event = new MouseEvent("click", {
-        bubbles: true,
-      });
-      element.dispatchEvent(event);
-      stopPropagation(e);
-    }),
-    on("selectstart", (e) => {
-      const event = new MouseEvent("mousedown", {
-        bubbles: true,
-      });
-      element.dispatchEvent(event);
-      element.dataset.xrActive = "true";
-      stopPropagation(e);
-    }),
-    on("selectend", (e) => {
-      const event = new MouseEvent("mouseup", {
-        bubbles: true,
-      });
-      element.dispatchEvent(event);
-      delete element.dataset.xrActive;
-      stopPropagation(e);
-    }),
-    on("pointermove", () => {
-      const event = new MouseEvent("mousemove", {
-        bubbles: false,
-      });
-      element.dispatchEvent(event);
-    }),
-    on("pointerenter", () => {
-      element.dataset.xrHover = "true";
-    }),
-    on("pointerleave", () => {
-      delete element.dataset.xrHover;
-    }),
+    ...interactivity,
     effects((obj) => {
       const elementRect = getBoundingClientRectCached(element);
       const parentRect = element.parentElement

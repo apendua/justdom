@@ -4,12 +4,14 @@ import { Subject } from "rxjs";
 import { div } from "./div.js";
 import { text } from "./text.js";
 import { getBoundingClientRectCached, setSubject } from "./cache.js";
+import { InteractionContext } from "../interactions.js";
 
 /**
  * @import {Observable} from 'rxjs';
  * @import {Mountable} from "@apendua/justdom";
  * @import {Object3D} from 'three';
  * @import {MutationType} from './cache.js';
+ * @import {XREventMap} from '../core.js';
  */
 
 /**
@@ -120,6 +122,23 @@ export function createPortal(ctx) {
 
   const containerObject = new THREE.Group();
 
+  // With only clickable elements as ray targets (see div.js), the portal
+  // still has to be opaque to rays as a whole — a panel should block the
+  // scene behind it, and a miss between two buttons should not click the
+  // board. One invisible plane spanning the container does that, and doubles
+  // as the single "background" hit target instead of dozens of divs.
+  const blockerMaterial = new THREE.MeshBasicMaterial({
+    colorWrite: false,
+    depthWrite: false,
+  });
+  const blocker =
+    /** @type {THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial, XREventMap>} */ (
+      new THREE.Mesh(new THREE.PlaneGeometry(1, 1), blockerMaterial)
+    );
+  containerObject.add(blocker);
+  const interactionManager = InteractionContext.get(ctx);
+  interactionManager.add(blocker);
+
   function resizeCallback() {
     const scale = 0.01;
     const boundingRect = getBoundingClientRectCached(containerElement);
@@ -128,6 +147,11 @@ export function createPortal(ctx) {
     containerObject.scale.set(scale, scale, scale);
     containerObject.rotation.set(Math.PI, 0, 0);
     containerObject.position.set(-sizeX / 2, sizeY / 2, 0);
+    // Container-local px units, y down; content sits at negative local z
+    // (toward the viewer after the flip above), so +1 puts the blocker just
+    // behind everything the portal draws.
+    blocker.position.set(boundingRect.width / 2, boundingRect.height / 2, 1);
+    blocker.scale.set(Math.max(boundingRect.width, 1e-6), Math.max(boundingRect.height, 1e-6), 1);
   }
 
   const resizeSubscription = observable(resizeCallback).subscribe();
@@ -189,6 +213,9 @@ export function createPortal(ctx) {
   }
 
   objectToCleanup.set(containerObject, () => {
+    interactionManager.remove(blocker);
+    blocker.geometry.dispose();
+    blockerMaterial.dispose();
     if (containerElement.parentNode) {
       containerElement.parentNode.removeChild(containerElement);
     }

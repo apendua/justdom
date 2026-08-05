@@ -1,6 +1,15 @@
 # Change Log - @apendua/freedom
 
-This log was last generated on Wed, 05 Aug 2026 21:24:29 GMT and should not be manually modified.
+This log was last generated on Wed, 05 Aug 2026 21:59:09 GMT and should not be manually modified.
+
+## 0.5.0
+Wed, 05 Aug 2026 21:59:09 GMT
+
+### Minor changes
+
+- makeInteractive now accepts an optional `enabled` argument -- a boolean, a reactive getter, or an observable -- that turns raycast registration on and off while the entity stays in the scene. Omitting it keeps the previous always-interactive behaviour.
+- Projected DOM elements now follow `cursor: pointer` as the stylesheet changes it, instead of deciding once whether they are ray targets. A button that becomes disabled stops being pointable, and stops carrying the handlers that would otherwise fire on events bubbling up from its children.
+- The ray each controller draws is now cut at whatever it is pointing at, so it stops at the surface instead of disappearing into it, and stretches back out to a fixed reach when the hand is pointing at nothing. It used to be drawn at a fixed length regardless.
 
 ## 0.4.0
 Wed, 05 Aug 2026 21:24:29 GMT

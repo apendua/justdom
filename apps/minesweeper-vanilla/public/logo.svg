@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="Hex Minesweeper">
+  <defs>
+    <linearGradient id="ms-hex-bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3b231e" />
+      <stop offset="1" stop-color="#1c100e" />
+    </linearGradient>
+    <radialGradient id="ms-hex-mine" cx="0.35" cy="0.3" r="0.85">
+      <stop offset="0" stop-color="#ffe694" />
+      <stop offset="1" stop-color="#e0a51c" />
+    </radialGradient>
+  </defs>
+  <rect width="64" height="64" rx="14" fill="url(#ms-hex-bg)" />
+  <g
+    fill="#f6e6d8"
+    fill-opacity="0.12"
+    stroke="#f6e6d8"
+    stroke-opacity="0.26"
+    stroke-width="1.6"
+    stroke-linejoin="round"
+  >
+    <path d="M41 32 36.5 39.79 27.5 39.79 23 32 27.5 24.21 36.5 24.21Z" />
+    <path d="M41 16.41 36.5 24.2 27.5 24.2 23 16.41 27.5 8.62 36.5 8.62Z" />
+    <path d="M41 47.59 36.5 55.38 27.5 55.38 23 47.59 27.5 39.8 36.5 39.8Z" />
+    <path d="M27.5 24.21 23 32 14 32 9.5 24.21 14 16.42 23 16.42Z" />
+    <path d="M27.5 39.79 23 47.58 14 47.58 9.5 39.79 14 32 23 32Z" />
+    <path d="M54.5 24.21 50 32 41 32 36.5 24.21 41 16.42 50 16.42Z" />
+    <path d="M54.5 39.79 50 47.58 41 47.58 36.5 39.79 41 32 50 32Z" />
+  </g>
+  <g stroke="#f5c542" stroke-width="3.4" stroke-linecap="round">
+    <path d="M32 17.5V46.5M17.5 32H46.5" />
+    <path d="M21.7 21.7 42.3 42.3M42.3 21.7 21.7 42.3" />
+  </g>
+  <circle cx="32" cy="32" r="10.5" fill="url(#ms-hex-mine)" />
+  <circle cx="28.2" cy="28.2" r="2.6" fill="#fff8e6" fill-opacity="0.9" />
+</svg>

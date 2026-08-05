@@ -32,6 +32,15 @@ const App = component((ctx: WeakKey) => {
       scene.background = new THREE.Color("#141210");
     }),
     children(
+      // The board and panels are all unlit basic materials; these lights are
+      // for the controller models, which are standard materials and would
+      // otherwise render pitch black.
+      $(new THREE.HemisphereLight(0xfff7e8, 0x4a453c, 1.5)),
+      $(new THREE.DirectionalLight(0xffffff, 1.2), [
+        effects((light) => {
+          light.position.set(0.6, 1.4, 0.8);
+        }),
+      ]),
       $(new THREE.Group(), [
         effects((group) => {
           group.position.set(0, -0.05, -0.85);

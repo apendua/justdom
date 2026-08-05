@@ -2,6 +2,18 @@
   "name": "@apendua/freedom",
   "entries": [
     {
+      "version": "0.3.0",
+      "tag": "@apendua/freedom_v0.3.0",
+      "date": "Wed, 05 Aug 2026 15:45:44 GMT",
+      "comments": {
+        "minor": [
+          {
+            "comment": "Portal hover styles now propagate (the computed-style cache no longer swallows invalidations of the live CSSStyleDeclaration), only elements with cursor: pointer become ray targets, and each portal registers a single invisible blocker plane so panels stay opaque to rays."
+          }
+        ]
+      }
+    },
+    {
       "version": "0.2.0",
       "tag": "@apendua/freedom_v0.2.0",
       "date": "Tue, 04 Aug 2026 22:07:09 GMT",

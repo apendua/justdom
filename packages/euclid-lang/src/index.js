@@ -1,5 +1,6 @@
 export { tokenize, KEYWORDS, BUILTINS } from "./tokenizer.js";
 export { parse } from "./parser.js";
+export { EXAMPLES } from "./examples.js";
 export { evaluate, standardEnvironment } from "./interpreter.js";
 export { buildScene } from "./scene.js";
 export {
@@ -25,6 +26,7 @@ export {
 
 /**
  * @typedef {import("./tokenizer.js").Token} Token
+ * @typedef {import("./examples.js").Example} Example
  * @typedef {import("./parser.js").ExpressionNode} ExpressionNode
  * @typedef {import("./parser.js").StatementNode} StatementNode
  * @typedef {import("./parser.js").AssignmentNode} AssignmentNode

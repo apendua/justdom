@@ -21,7 +21,7 @@
     "eslint": "^9.37.0",
     "jsdom": "^26.1.0",
     "rxjs": "^7.8.2",
-    "typescript": "^6.0.2",
+    "typescript": "^7.0.2",
     "vite": "^7.1.9",
     "vitest": "^3.2.4"
   }

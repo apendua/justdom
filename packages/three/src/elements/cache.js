@@ -48,18 +48,29 @@ export function getComputedStyleCached(element, pseudoElement = null) {
             mutations.has("fontLoaded"),
         ),
       );
-    signal = new Derived(() => {
-      if (dependency) {
-        addDependency(dependency);
-      }
-      if (element instanceof Text) {
-        if (!element.parentElement) {
-          throw new NoValueError("Text node has no parent element");
+    signal = new Derived(
+      () => {
+        if (dependency) {
+          addDependency(dependency);
         }
-        return window.getComputedStyle(element.parentElement, pseudoElement);
-      }
-      return window.getComputedStyle(element, pseudoElement);
-    });
+        if (element instanceof Text) {
+          if (!element.parentElement) {
+            throw new NoValueError("Text node has no parent element");
+          }
+          return window.getComputedStyle(element.parentElement, pseudoElement);
+        }
+        return window.getComputedStyle(element, pseudoElement);
+      },
+      {
+        // Browsers hand back a *live* CSSStyleDeclaration with a stable
+        // identity, so the default Object.is equality would treat every
+        // recompute as "unchanged" and swallow the invalidation — leaving
+        // dependents (hover restyles, class swaps) reading stale values
+        // forever. Always propagate; dependents that derive plain values
+        // gate on their own equality.
+        isEqual: () => false,
+      },
+    );
     signalMap.set(pseudoElement, signal);
   }
   return signal.get();

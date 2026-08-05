@@ -54,4 +54,6 @@ the *last* one landed.
 
 ## Used by
 
-`castle-xr`, `marblerun` and `bricks-xr`, each on a brick coming to rest.
+`castle-xr` and `marblerun`, each on a brick coming to rest. Not `bricks-xr`:
+that one is a worked example, kept to the smallest thing that still builds
+something, and a sound is not part of what it is there to show.

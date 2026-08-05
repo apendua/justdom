@@ -20,7 +20,6 @@ import {
 } from "@apendua/signal";
 import Brick from "./Brick.js";
 import Panel from "./Panel.js";
-import { createClicks } from "@apendua.dev/sound";
 import { cellKey, CELL, onBoard, SIZE, snapToCell } from "./grid.js";
 import { palette } from "./palette.js";
 
@@ -46,10 +45,9 @@ const gridLines = () => {
   );
 };
 
-const Game = component((ctx: WeakKey, listener: THREE.AudioListener) => {
+const Game = component((ctx: WeakKey) => {
   /** Cell name to the brick in it. The name is also the "is it free" test. */
   const bricks = new ReactiveMap<string, THREE.Vector3>();
-  const clicks = createClicks(listener);
   /** Where the brick in the hand would land, or null if it may not land. */
   const preview = Signal.of<THREE.Vector3 | null>(null);
   const board: { current?: THREE.Object3D } = {};
@@ -94,9 +92,6 @@ const Game = component((ctx: WeakKey, listener: THREE.AudioListener) => {
     children(
       gridLines(),
 
-      // Inside the board, so a click sounds from the cell it belongs to.
-      $(clicks.object),
-
       // The brick on the plane. It never moves: letting go puts it back, and
       // what lands on the board is a copy.
       Brick(ctx, [
@@ -107,7 +102,6 @@ const Game = component((ctx: WeakKey, listener: THREE.AudioListener) => {
           preview.set(null);
           if (drop.at === "cell") {
             bricks.set(drop.key, drop.position);
-            clicks.play(drop.position);
           }
         }),
       ]),
@@ -133,7 +127,6 @@ const Game = component((ctx: WeakKey, listener: THREE.AudioListener) => {
               if (drop.at === "cell") {
                 bricks.delete(key);
                 bricks.set(drop.key, drop.position);
-                clicks.play(drop.position);
               } else if (drop.at === "outside") {
                 bricks.delete(key);
               }

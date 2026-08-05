@@ -106,7 +106,10 @@ export function waitFor(ctx, promise) {
  */
 export function suspend(ctx, fallbackOrOptions) {
   /** @type {SuspendOptions<T>} */
-  const options = {};
+  // Same default the Context manager uses: render nothing while suspended.
+  // Calling suspend() without a fallback previously left this empty, so
+  // render() called this.#options.fallback() on undefined.
+  const options = { fallback: () => NEVER };
   if (typeof fallbackOrOptions === "function") {
     options.fallback = fallbackOrOptions;
   } else if (fallbackOrOptions) {

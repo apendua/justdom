@@ -60,12 +60,16 @@ export function effectMap(fn) {
  * @param {K} key
  * @param {Observable<TEntity[K]> | (() => TEntity[K])} value
  * @returns {(source: Observable<TEntity>) => Observable<TEntity>}
- *
+ */
+
+/**
  * @template {object} TEntity
  * @overload
  * @param {Partial<WritableProps<TEntity>>} values
  * @returns {(source: Observable<TEntity>) => Observable<TEntity>}
- *
+ */
+
+/**
  * @template {object} TEntity
  * @template {keyof WritableProps<TEntity>} K
  * @param {K|Partial<WritableProps<Record<string, unknown>>>} keyOrValues

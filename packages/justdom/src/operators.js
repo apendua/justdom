@@ -26,16 +26,21 @@ function each(value, fn) {
 
 /**
  * @template {ObjectWithAttributes} TEntity
- *
  * @overload
  * @param {string} key
  * @param {Observable<Primitive> | (() => Primitive)} value
  * @returns {(source: Observable<TEntity>) => Observable<TEntity>}
- *
+ */
+
+/**
+ * @template {ObjectWithAttributes} TEntity
  * @overload
  * @param {Record<string, Primitive>} values
  * @returns {(source: Observable<TEntity>) => Observable<TEntity>}
- *
+ */
+
+/**
+ * @template {ObjectWithAttributes} TEntity
  * @param {string|Record<string, Primitive>} keyOrValues
  * @param {Observable<Primitive> | (() => Primitive)} [value]
  * @returns {(source: Observable<TEntity>) => Observable<TEntity>}
@@ -140,21 +145,30 @@ function applyStyle(style, key, value) {
 /**
  * @template {ObjectWithStyle} TEntity
  * @template {keyof WritableProps<CSSStyleDeclaration>} K
- *
  * @overload
  * @param {K} key
  * @param {Observable<CSSStyleDeclaration[K]> | (() => CSSStyleDeclaration[K])} value
  * @returns {(source: Observable<TEntity>) => Observable<TEntity>}
- *
+ */
+
+/**
+ * @template {ObjectWithStyle} TEntity
  * @overload
  * @param {CustomProperty} key
  * @param {Observable<Primitive> | (() => Primitive)} value
  * @returns {(source: Observable<TEntity>) => Observable<TEntity>}
- *
+ */
+
+/**
+ * @template {ObjectWithStyle} TEntity
  * @overload
  * @param {StyleValues} values
  * @returns {(source: Observable<TEntity>) => Observable<TEntity>}
- *
+ */
+
+/**
+ * @template {ObjectWithStyle} TEntity
+ * @template {keyof WritableProps<CSSStyleDeclaration>} K
  * @param {K|CustomProperty|StyleValues} keyOrValues
  * @param {Observable<any> | (() => any)} [value]
  * @returns {(source: Observable<TEntity>) => Observable<TEntity>}

@@ -252,9 +252,6 @@ export default class VisualProperties {
     this.#events.next("INITIALIZED");
   }
 
-  /**
-   * @returns {asserts this is {#properties: RawVisualProperties}}
-   */
   #assertInitialized() {
     if (!this.#properties) {
       addDependency(this.#anyInitializedEvent);
@@ -262,34 +259,44 @@ export default class VisualProperties {
     }
   }
 
-  get totalWidth() {
+  /**
+   * Typed read access to #properties. This used to be expressed as
+   * "@returns {asserts this is {#properties: RawVisualProperties}}" on
+   * #assertInitialized, but a private name is not valid inside a type
+   * literal; TypeScript 6 accepted it, TypeScript 7 reports TS18016. The
+   * guard is the same one #assertInitialized applies, so reading through
+   * this getter throws identically when the instance is uninitialized.
+   *
+   * @returns {RawVisualProperties}
+   */
+  get #props() {
     this.#assertInitialized();
-    return this.#properties.totalWidth;
+    return /** @type {RawVisualProperties} */ (this.#properties);
+  }
+
+  get totalWidth() {
+    return this.#props.totalWidth;
   }
 
   get totalHeight() {
-    this.#assertInitialized();
-    return this.#properties.totalHeight;
+    return this.#props.totalHeight;
   }
 
   get fontSize() {
-    this.#assertInitialized();
-    return this.#properties.fontSize;
+    return this.#props.fontSize;
   }
 
   get xHeight() {
-    this.#assertInitialized();
-    return this.getRelativeXHeight(this.#properties.fontFamily, this.#properties.fontWeight);
+    return this.getRelativeXHeight(this.#props.fontFamily, this.#props.fontWeight);
   }
 
   /**
    * @returns {Units}
    */
   get unitsW() {
-    this.#assertInitialized();
     return {
       px: 1,
-      em: this.#properties.fontSize,
+      em: this.#props.fontSize,
       ex: this.xHeight,
       percent: this.totalWidth / 100,
     };
@@ -299,114 +306,94 @@ export default class VisualProperties {
    * @returns {Units}
    */
   get unitsH() {
-    this.#assertInitialized();
     return {
       px: 1,
-      em: this.#properties.fontSize,
+      em: this.#props.fontSize,
       ex: this.xHeight,
       percent: this.totalHeight / 100,
     };
   }
 
   get borderLeftWidth() {
-    this.#assertInitialized();
-    return parseSize(this.#properties.borderLeftWidth, this.unitsW);
+    return parseSize(this.#props.borderLeftWidth, this.unitsW);
   }
 
   get borderRightWidth() {
-    this.#assertInitialized();
-    return parseSize(this.#properties.borderRightWidth, this.unitsW);
+    return parseSize(this.#props.borderRightWidth, this.unitsW);
   }
 
   get borderTopWidth() {
-    this.#assertInitialized();
-    return parseSize(this.#properties.borderTopWidth, this.unitsH);
+    return parseSize(this.#props.borderTopWidth, this.unitsH);
   }
 
   get borderBottomWidth() {
-    this.#assertInitialized();
-    return parseSize(this.#properties.borderBottomWidth, this.unitsH);
+    return parseSize(this.#props.borderBottomWidth, this.unitsH);
   }
 
   get borderBottomLeftRadius() {
-    this.#assertInitialized();
-    return parseSize(this.#properties.borderBottomLeftRadius, this.unitsW);
+    return parseSize(this.#props.borderBottomLeftRadius, this.unitsW);
   }
 
   get borderBottomRightRadius() {
-    this.#assertInitialized();
-    return parseSize(this.#properties.borderBottomRightRadius, this.unitsW);
+    return parseSize(this.#props.borderBottomRightRadius, this.unitsW);
   }
 
   get borderTopLeftRadius() {
-    this.#assertInitialized();
-    return parseSize(this.#properties.borderTopLeftRadius, this.unitsW);
+    return parseSize(this.#props.borderTopLeftRadius, this.unitsW);
   }
 
   get borderTopRightRadius() {
-    this.#assertInitialized();
-    return parseSize(this.#properties.borderTopRightRadius, this.unitsW);
+    return parseSize(this.#props.borderTopRightRadius, this.unitsW);
   }
 
   get borderLeftBottomRadius() {
-    this.#assertInitialized();
-    return parseSize(this.#properties.borderBottomLeftRadius, this.unitsH);
+    return parseSize(this.#props.borderBottomLeftRadius, this.unitsH);
   }
 
   get borderLeftTopRadius() {
-    this.#assertInitialized();
-    return parseSize(this.#properties.borderTopLeftRadius, this.unitsH);
+    return parseSize(this.#props.borderTopLeftRadius, this.unitsH);
   }
 
   get borderRightBottomRadius() {
-    this.#assertInitialized();
-    return parseSize(this.#properties.borderBottomRightRadius, this.unitsH);
+    return parseSize(this.#props.borderBottomRightRadius, this.unitsH);
   }
 
   get borderRightTopRadius() {
-    this.#assertInitialized();
-    return parseSize(this.#properties.borderTopRightRadius, this.unitsH);
+    return parseSize(this.#props.borderTopRightRadius, this.unitsH);
   }
 
   get backgroundColor() {
-    this.#assertInitialized();
-    const [backgroundColor] = parseColor(this.#properties.backgroundColor);
+    const [backgroundColor] = parseColor(this.#props.backgroundColor);
     return backgroundColor;
   }
 
   get backgroundAlpha() {
-    this.#assertInitialized();
-    const [, backgroundAlpha] = parseColor(this.#properties.backgroundColor);
-    return backgroundAlpha * this.#properties.opacity;
+    const [, backgroundAlpha] = parseColor(this.#props.backgroundColor);
+    return backgroundAlpha * this.#props.opacity;
   }
 
   get borderColor() {
-    this.#assertInitialized();
-    const [borderColor] = parseColor(this.#properties.borderColor);
+    const [borderColor] = parseColor(this.#props.borderColor);
     return borderColor;
   }
 
   get borderAlpha() {
-    this.#assertInitialized();
-    const [, borderAlpha] = parseColor(this.#properties.borderColor);
-    return borderAlpha * this.#properties.opacity;
+    const [, borderAlpha] = parseColor(this.#props.borderColor);
+    return borderAlpha * this.#props.opacity;
   }
 
   get textColor() {
-    this.#assertInitialized();
-    const [textColor] = parseColor(this.#properties.textColor);
+    const [textColor] = parseColor(this.#props.textColor);
     return textColor;
   }
 
   get textAlpha() {
-    this.#assertInitialized();
-    const [, textAlpha] = parseColor(this.#properties.textColor);
-    return textAlpha * this.#properties.opacity;
+    const [, textAlpha] = parseColor(this.#props.textColor);
+    return textAlpha * this.#props.opacity;
   }
 
   get layerNo() {
-    this.#assertInitialized();
-    return this.#properties.layerNo;
+    return this.#props.layerNo;
   }
 }
 

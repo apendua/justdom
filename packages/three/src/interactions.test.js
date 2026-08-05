@@ -1,7 +1,7 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
-import { BehaviorSubject } from "rxjs";
+import { BehaviorSubject, Subject } from "rxjs";
 import { Signal, just } from "@apendua/signal";
 import {
   InteractionContext,
@@ -28,14 +28,17 @@ function fakeController() {
 }
 
 /**
- * A unit box five meters straight ahead of the controller above, so it is hit
- * by the ray exactly when it is registered with the manager.
+ * A unit box straight ahead of the controller above, so it is hit by the ray
+ * exactly when it is registered with the manager. The distance matters only
+ * when two of them are in play: the nearer one wins the intersection, so a
+ * farther one coming back means the nearer one really was let go of.
  *
+ * @param {number} [distance]
  * @returns {THREE.Object3D<XREventMap>}
  */
-function targetMesh() {
+function targetMesh(distance = 5) {
   const mesh = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshBasicMaterial());
-  mesh.position.set(0, 0, -5);
+  mesh.position.set(0, 0, -distance);
   mesh.updateMatrixWorld();
   return /** @type {THREE.Object3D<XREventMap>} */ (/** @type {unknown} */ (mesh));
 }
@@ -111,6 +114,53 @@ describe("makeInteractive", () => {
     assert.deepEqual(seen, [mesh]);
 
     subscription.unsubscribe();
+    assert.strictEqual(manager.getIntersection(controller), undefined);
+  });
+
+  test("a new entity from the source replaces the one before it", () => {
+    const manager = new InteractionManager();
+    const ctx = InteractionContext.set({}, manager);
+    const { makeInteractive } = interactions(ctx);
+    const controller = fakeController();
+    const near = targetMesh(5);
+    const far = targetMesh(10);
+
+    /** @type {Subject<THREE.Object3D<XREventMap>>} */
+    const source = new Subject();
+    source.pipe(makeInteractive()).subscribe();
+
+    source.next(near);
+    assert.strictEqual(manager.getIntersection(controller)?.object, near);
+
+    // The nearer mesh would still win the intersection if it were left behind.
+    source.next(far);
+    assert.strictEqual(manager.getIntersection(controller)?.object, far);
+  });
+
+  test("completes with its source, and lets go of the entity when it does", () => {
+    const manager = new InteractionManager();
+    const ctx = InteractionContext.set({}, manager);
+    const { makeInteractive } = interactions(ctx);
+    const controller = fakeController();
+    const mesh = targetMesh();
+
+    /** @type {Subject<THREE.Object3D<XREventMap>>} */
+    const source = new Subject();
+    let completed = false;
+    source.pipe(makeInteractive()).subscribe({
+      complete: () => {
+        completed = true;
+      },
+    });
+
+    source.next(mesh);
+    assert.strictEqual(manager.getIntersection(controller)?.object, mesh);
+
+    // The registration observable never completes on its own, so an operator
+    // that waits for it -- switchMap does -- would swallow this completion and
+    // hold the entity in the raycast set forever.
+    source.complete();
+    assert.strictEqual(completed, true);
     assert.strictEqual(manager.getIntersection(controller), undefined);
   });
 

@@ -1,9 +1,12 @@
 import * as THREE from "three";
-import { distinctUntilChanged, Observable, switchMap } from "rxjs";
+import { distinctUntilChanged, Observable } from "rxjs";
 import {
   createProperty,
+  effectMap,
+  effects,
   just,
   observable,
+  onCleanup,
   ReactiveMap,
   Signal,
   withComputation,
@@ -446,25 +449,22 @@ export function interactions(ctx) {
      */
     makeInteractive: (enabled = true) => {
       const isEnabled = asObservable(enabled).pipe(distinctUntilChanged());
-      return switchMap((entity) => {
-        return new Observable((subscriber) => {
-          subscriber.add(
-            isEnabled.subscribe({
-              next: (value) => {
-                if (value) {
-                  manager.add(entity);
-                } else {
-                  manager.remove(entity);
-                }
-              },
-            }),
-          );
-          subscriber.next(entity);
-          return () => {
-            manager.remove(entity);
-          };
-        });
-      });
+      // effectMap rather than switchMap: the registration observable has no
+      // reason to ever complete, and switchMap waits for its inner observable
+      // before passing a completion on, so a source that ended would leave the
+      // entity registered and the stream hanging.
+      return effectMap((entity) =>
+        isEnabled.pipe(
+          effects((value) => {
+            if (value) {
+              manager.add(entity);
+              onCleanup(() => {
+                manager.remove(entity);
+              });
+            }
+          }),
+        ),
+      );
     },
   };
 }

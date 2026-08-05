@@ -220,8 +220,11 @@ const CodePanel = component((_ctx: WeakKey, studio: Studio) => {
 
   return $(new THREE.Mesh(geometry, material), [
     effects((mesh) => {
-      mesh.position.set(-0.78, 0.02, -0.72);
-      mesh.rotation.set(0, 0.55, 0);
+      // Far enough left, and turned shallowly enough, that the card's right
+      // edge (0.25 m from its center) stays clear of the board, which spans
+      // x >= -0.6 with its surface at z = -0.85.
+      mesh.position.set(-0.86, 0.02, -0.7);
+      mesh.rotation.set(0, 0.45, 0);
     }),
     effects(() => {
       drawCard(context, collectView(studio));

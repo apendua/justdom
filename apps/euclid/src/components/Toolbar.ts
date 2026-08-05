@@ -1,4 +1,4 @@
-import { $, children, className, list, on, set, text } from "@apendua/justdom";
+import { $, attr, children, className, list, on, set, text } from "@apendua/justdom";
 import { component } from "@apendua/signal";
 import { EXAMPLES } from "../examples";
 import type AppStore from "../store/App";
@@ -37,14 +37,13 @@ const buttonStyle = className`
     opacity: 0.4;
     cursor: default;
   }
-`;
-
-const activeButtonStyle = className`
-  background: #7c6f4f;
-  color: #ffffff;
-  border-color: #8d7f5c;
-  &:hover {
+  &[data-active="true"] {
     background: #7c6f4f;
+    color: #ffffff;
+    border-color: #8d7f5c;
+    &:hover {
+      background: #7c6f4f;
+    }
   }
 `;
 
@@ -116,11 +115,11 @@ const Toolbar = component((store: AppStore) => {
             () => TOOLS,
             (entry) =>
               $("button", [
-                set("className", () =>
-                  store.tool.get() === entry.tool
-                    ? `${buttonStyle} ${activeButtonStyle}`
-                    : `${buttonStyle}`,
-                ),
+                // A stylesheet observable only yields its class name when
+                // subscribed, so it cannot be spliced into a template string;
+                // the active state rides on a data attribute instead.
+                set("className", buttonStyle),
+                attr("data-active", () => (store.tool.get() === entry.tool ? "true" : undefined)),
                 on("click", () => store.setTool(entry.tool)),
                 children(text`${() => entry.label}`),
               ]),

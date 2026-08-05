@@ -7,6 +7,7 @@
     "build:watch": "",
     "compile": "tsc",
     "dev": "vite",
+    "generate:pwa-assets": "pwa-assets-generator",
     "preview": "vite preview",
     "test": "if find src -type f \\( -name '*.test.ts' -o -name '*.test.tsx' -o -name '*.test.js' -o -name '*.test.jsx' \\) | grep -q .; then vitest run --environment jsdom; else echo 'No tests found, skipping'; fi",
     "test:watch": "vitest --environment jsdom"
@@ -17,6 +18,7 @@
     "@apendua/signal": "workspace:*",
     "@apendua/vite-hmr": "workspace:*",
     "@types/node": "^24.7.0",
+    "@vite-pwa/assets-generator": "^1.0.1",
     "eslint": "^9.37.0",
     "rxjs": "^7.8.2",
     "typescript": "^6.0.2",

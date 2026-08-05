@@ -1,13 +1,42 @@
 import { describe, test, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
-import { NEVER } from "rxjs";
+import { Observable } from "rxjs";
 import { InteractionContext, InteractionManager } from "./interactions.js";
 import { cursors, pointers } from "./pointers.js";
 
 /**
  * @import { Component } from './core.js';
  */
+
+/**
+ * Stands in for the renderer's frame loop. The manager is handed one of these
+ * per controller and is expected to do its raycasting from it — `run()` is a
+ * frame going by.
+ */
+function fakeFrameLoop() {
+  /** @type {Set<XRFrameRequestCallback>} */
+  const callbacks = new Set();
+  return {
+    /**
+     * @param {XRFrameRequestCallback} fn
+     * @returns {Observable<never>}
+     */
+    onAnimationFrame(fn) {
+      return new Observable(() => {
+        callbacks.add(fn);
+        return () => {
+          callbacks.delete(fn);
+        };
+      });
+    },
+    run() {
+      for (const fn of callbacks) {
+        fn(0, /** @type {XRFrame} */ (/** @type {unknown} */ ({})));
+      }
+    },
+  };
+}
 
 /**
  * A stand-in for the target ray space three.js hands out per input source:
@@ -42,8 +71,9 @@ function aimAway(controller) {
 }
 
 /**
- * The manager only raycasts when something says the pose changed, which in a
- * real session is the controller's own "move" event.
+ * A hand's pose changing. three.js fires this from its own frame handling,
+ * before anything else has moved and before world matrices are refreshed, so
+ * it only means "look again", never "look now".
  *
  * @param {THREE.XRTargetRaySpace} controller
  */
@@ -56,59 +86,110 @@ describe("InteractionManager pointers", () => {
   let manager;
   /** @type {THREE.XRTargetRaySpace} */
   let controller;
+  /** @type {ReturnType<typeof fakeFrameLoop>} */
+  let loop;
   /** @type {import('rxjs').Subscription} */
   let subscription;
 
   beforeEach(() => {
     manager = new InteractionManager();
     controller = fakeController();
-    subscription = manager.addController(controller, () => NEVER).subscribe();
+    loop = fakeFrameLoop();
+    subscription = manager.addController(controller, loop.onAnimationFrame).subscribe();
   });
 
   test("publishes where the ray lands", () => {
     manager.add(fakeTarget());
-    move(controller);
+    loop.run();
 
     const pointer = manager.pointers.get(controller);
     assert.ok(pointer);
     assert.deepEqual(pointer.get().point.toArray(), [0, 0, -1.5]);
   });
 
+  test("casts the ray from the frame hook, not from the move event", () => {
+    manager.add(fakeTarget());
+    loop.run();
+
+    // The pose three.js writes on "move" is only readable once world matrices
+    // are refreshed, which happens after this event and before the frame hook.
+    // Reading it any earlier is what makes the hit lag a frame behind the hand.
+    controller.position.set(0.25, 0, 0);
+    move(controller);
+    assert.deepEqual(manager.pointers.get(controller)?.get().point.toArray(), [0, 0, -1.5]);
+
+    controller.updateMatrixWorld();
+    loop.run();
+    assert.deepEqual(manager.pointers.get(controller)?.get().point.toArray(), [0.25, 0, -1.5]);
+  });
+
   test("keeps the same signal while the hand keeps pointing", () => {
     manager.add(fakeTarget());
-    move(controller);
+    loop.run();
     const pointer = manager.pointers.get(controller);
 
     controller.position.set(0.25, 0, 0);
     controller.updateMatrixWorld();
     move(controller);
+    loop.run();
 
     assert.equal(manager.pointers.get(controller), pointer);
     assert.deepEqual(pointer?.get().point.toArray(), [0.25, 0, -1.5]);
   });
 
   test("has no entry for a hand pointing at nothing", () => {
-    move(controller);
+    loop.run();
     assert.equal(manager.pointers.get(controller), undefined);
   });
 
   test("drops the entry when the ray leaves the object", () => {
     manager.add(fakeTarget());
-    move(controller);
+    loop.run();
     assert.ok(manager.pointers.get(controller));
 
     aimAway(controller);
     move(controller);
+    loop.run();
     assert.equal(manager.pointers.get(controller), undefined);
   });
 
   test("drops the entry when the hand goes away", () => {
     manager.add(fakeTarget());
-    move(controller);
+    loop.run();
     assert.ok(manager.pointers.get(controller));
 
     subscription.unsubscribe();
     assert.equal(manager.pointers.get(controller), undefined);
+  });
+
+  test("updates both hands on the same frame", () => {
+    const other = fakeController();
+    other.position.set(0.25, 0, 0);
+    other.updateMatrixWorld();
+    manager.addController(other, loop.onAnimationFrame).subscribe();
+    manager.add(fakeTarget());
+
+    loop.run();
+
+    assert.deepEqual(manager.pointers.get(controller)?.get().point.toArray(), [0, 0, -1.5]);
+    assert.deepEqual(manager.pointers.get(other)?.get().point.toArray(), [0.25, 0, -1.5]);
+  });
+
+  test("updateIntersections() has every hand look again", () => {
+    const target = fakeTarget();
+    manager.add(target);
+    loop.run();
+    assert.deepEqual(manager.pointers.get(controller)?.get().point.toArray(), [0, 0, -1.5]);
+
+    // A hand that never moves still has to notice the scene moving under it.
+    target.position.set(0, 0, -3);
+    target.updateMatrixWorld();
+    loop.run();
+    assert.deepEqual(manager.pointers.get(controller)?.get().point.toArray(), [0, 0, -1.5]);
+
+    manager.updateIntersections();
+    loop.run();
+    assert.deepEqual(manager.pointers.get(controller)?.get().point.toArray(), [0, 0, -2.5]);
   });
 });
 
@@ -117,13 +198,16 @@ describe("cursors", () => {
   let manager;
   /** @type {THREE.XRTargetRaySpace} */
   let controller;
+  /** @type {ReturnType<typeof fakeFrameLoop>} */
+  let loop;
   /** @type {WeakKey} */
   let ctx;
 
   beforeEach(() => {
     manager = new InteractionManager();
     controller = fakeController();
-    manager.addController(controller, () => NEVER).subscribe();
+    loop = fakeFrameLoop();
+    manager.addController(controller, loop.onAnimationFrame).subscribe();
     manager.add(fakeTarget());
     ctx = InteractionContext.set({}, manager);
   });
@@ -141,7 +225,7 @@ describe("cursors", () => {
   }
 
   test("pointers(ctx) reads the manager's live hits", () => {
-    move(controller);
+    loop.run();
     assert.equal(pointers(ctx), manager.pointers);
     assert.ok(pointers(ctx).get(controller));
   });
@@ -150,7 +234,7 @@ describe("cursors", () => {
     const parent = mount(cursors(ctx));
     assert.equal(parent.children.length, 0);
 
-    move(controller);
+    loop.run();
     assert.equal(parent.children.length, 1);
     const [widget] = parent.children;
     assert.ok(widget instanceof THREE.Mesh);
@@ -159,23 +243,25 @@ describe("cursors", () => {
 
     aimAway(controller);
     move(controller);
+    loop.run();
     assert.equal(parent.children.length, 0);
   });
 
   test("follows the hit as the hand moves", () => {
     const parent = mount(cursors(ctx));
-    move(controller);
+    loop.run();
 
     controller.position.set(0.25, 0, 0);
     controller.updateMatrixWorld();
     move(controller);
+    loop.run();
 
     assert.deepEqual(parent.children[0].position.toArray(), [0.25, 0, -1.5]);
   });
 
   test("scales the default ball", () => {
     const parent = mount(cursors(ctx, { scale: 3 }));
-    move(controller);
+    loop.run();
     assert.deepEqual(parent.children[0].scale.toArray(), [3, 3, 3]);
   });
 
@@ -184,7 +270,7 @@ describe("cursors", () => {
     object.scale.setScalar(0.02);
 
     const parent = mount(cursors(ctx, { object, scale: 0.5 }));
-    move(controller);
+    loop.run();
 
     const [widget] = parent.children;
     assert.notEqual(widget, object);
@@ -205,7 +291,7 @@ describe("cursors", () => {
       component.addTo(parent);
     });
 
-    move(controller);
+    loop.run();
 
     const [widget] = parent.children;
     assert.deepEqual(widget.position.toArray(), [0, -0.5, -0.75]);

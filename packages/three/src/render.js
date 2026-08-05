@@ -145,19 +145,31 @@ function createControllerHandle(index, controller, grip) {
 const listeners = new WeakMap();
 
 /**
+ * Callbacks that run after every ordinary frame callback, once the scene has
+ * settled and its world matrices have been brought up to date. Raycasting
+ * lives here: a ray cast any earlier is cast against where things were on the
+ * previous frame, which is exactly one frame of lag in whatever is drawn at
+ * the hit.
+ *
+ * @type {WeakMap<THREE.WebGLRenderer, Set<XRFrameRequestCallback>>}
+ */
+const lateListeners = new WeakMap();
+
+/**
  * @param {THREE.WebGLRenderer} renderer
  * @param {XRFrameRequestCallback} fn
+ * @param {WeakMap<THREE.WebGLRenderer, Set<XRFrameRequestCallback>>} [registry]
  * @return {Observable<never>}
  */
-function addListener(renderer, fn) {
+function addListener(renderer, fn, registry = listeners) {
   return new Observable((subscriber) => {
     // We wrap fn with manual signal to ensure that potential dependencies are keep tracked of and properly cached (if needed).
     const compoutation = new Computation();
     const listener = compoutation.bind(fn);
-    let set = listeners.get(renderer);
+    let set = registry.get(renderer);
     if (!set) {
       set = new Set();
-      listeners.set(renderer, set);
+      registry.set(renderer, set);
     }
     subscriber.add(
       compoutation.subscribe({
@@ -168,7 +180,7 @@ function addListener(renderer, fn) {
     return () => {
       set.delete(listener);
       if (set.size === 0) {
-        listeners.delete(renderer);
+        registry.delete(renderer);
       }
     };
   });
@@ -265,7 +277,9 @@ export function render(fn, options = {}) {
     //   controllerGrip0.add(options.createHandModel(hand0));
     // }
     subscriber.add(
-      interactionManager.addController(controller0, (fn) => addListener(renderer, fn)).subscribe(),
+      interactionManager
+        .addController(controller0, (fn) => addListener(renderer, fn, lateListeners))
+        .subscribe(),
     );
     const controller1 = renderer.xr.getController(1);
     const controllerGrip1 = renderer.xr.getControllerGrip(1);
@@ -277,7 +291,9 @@ export function render(fn, options = {}) {
       controllerGrip1.add(options.createControllerModel(controllerGrip1));
     }
     subscriber.add(
-      interactionManager.addController(controller1, (fn) => addListener(renderer, fn)).subscribe(),
+      interactionManager
+        .addController(controller1, (fn) => addListener(renderer, fn, lateListeners))
+        .subscribe(),
     );
 
     ctx = ControllersContext.set(ctx, [
@@ -324,13 +340,30 @@ export function render(fn, options = {}) {
     renderer.setAnimationLoop((time, frame) => {
       options.onBeforeRender?.(renderer);
       subject.next({ time, frame });
+      const currentScene = scene.getValue();
       const set = listeners.get(renderer);
       if (set) {
         for (const fn of set) {
           fn(time, frame);
         }
       }
-      renderer.render(scene.getValue(), camera);
+      const lateSet = lateListeners.get(renderer);
+      if (lateSet) {
+        // Everything that moves this frame has now moved — three.js has written
+        // the controllers' new poses and the callbacks above have had their
+        // say — but all of it is still sitting in local matrices. Flushing them
+        // here means the late callbacks, which is where rays are cast, see the
+        // scene as it is about to be drawn rather than as it was last frame.
+        // What those callbacks move in turn (a cursor following its hit) is
+        // picked up by the renderer's own flush, a few lines down.
+        if (currentScene.matrixWorldAutoUpdate === true) {
+          currentScene.updateMatrixWorld();
+        }
+        for (const fn of lateSet) {
+          fn(time, frame);
+        }
+      }
+      renderer.render(currentScene, camera);
       options.onAfterRender?.(renderer);
     });
 

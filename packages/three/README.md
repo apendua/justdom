@@ -73,6 +73,11 @@ with the hit. `object` is cloned rather than added, so its geometry and
 materials are shared between hands; `scale` multiplies whatever scale it already
 carries.
 
+Hits are worked out once per frame, after every `animate(ctx, fn)` callback has
+run and with world matrices already refreshed — the last thing before the frame
+is drawn. That is what keeps the widget on the ray: cast any earlier and it
+lands where the hand was pointing, and what it was pointing at, one frame ago.
+
 `pointers(ctx)` is the data behind it — a reactive map from target ray space to
 a signal holding that controller's current `THREE.Intersection`, for scenes that
 want to do something else with the hit (a snapping preview, a measurement, a

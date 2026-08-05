@@ -22,8 +22,14 @@ export class InteractionManager {
   #objects;
   /** @type {WeakMap<InteractionEvent, boolean>} */
   #done;
-  /** @type {boolean} */
-  #shouldUpdateIntersections;
+  /**
+   * One per controller: marks that hand's intersection as due for another
+   * look. Per controller rather than a single flag, so that two hands do not
+   * race for it and leave one of them stuck on a stale hit.
+   *
+   * @type {Set<() => void>}
+   */
+  #invalidate;
   /** @type {Set<THREE.Object3D<any>>} */
   #controllers;
   /** @type {Pointers} */
@@ -32,7 +38,7 @@ export class InteractionManager {
   constructor() {
     this.#objects = new Set();
     this.#done = new WeakMap();
-    this.#shouldUpdateIntersections = false;
+    this.#invalidate = new Set();
     this.#controllers = new Set();
     this.#pointers = new ReactiveMap();
   }
@@ -76,8 +82,15 @@ export class InteractionManager {
     this.#done.set(event, true);
   }
 
+  /**
+   * Ask for every hand's intersection to be worked out again on the next
+   * frame. Worth calling after something moves the scene in a way no
+   * controller motion would account for.
+   */
   updateIntersections() {
-    this.#shouldUpdateIntersections = true;
+    for (const invalidate of this.#invalidate) {
+      invalidate();
+    }
   }
 
   /**
@@ -119,6 +132,9 @@ export class InteractionManager {
   /**
    * @param {THREE.XRTargetRaySpace} controller
    * @param {(fn: XRFrameRequestCallback) => Observable<never>} onAnimationFrame
+   *   Runs the callback once per frame. It must run late — after everything
+   *   that moves the scene, with world matrices already up to date — because
+   *   that is when the ray is worked out.
    * @returns {Observable<void>}
    */
   addController(controller, onAnimationFrame) {
@@ -129,6 +145,13 @@ export class InteractionManager {
       let squeezedObject;
       /** @type {THREE.Object3D<XREventMap> | undefined} */
       let targetedObject;
+      // The hand has to be looked at once when it arrives; after that only
+      // when it moves, or when somebody says the scene changed under it.
+      let shouldUpdateIntersections = true;
+
+      const invalidate = () => {
+        shouldUpdateIntersections = true;
+      };
 
       /**
        * @param {THREE.WebXRSpaceEventMap['selectstart']} event
@@ -251,14 +274,11 @@ export class InteractionManager {
         squeezedObject = undefined;
       };
 
-      /**
-       * @param {boolean} [force]
-       */
-      const maybeUpdateIntersections = (force = false) => {
-        if (!force && !this.#shouldUpdateIntersections) {
+      const maybeUpdateIntersections = () => {
+        if (!shouldUpdateIntersections) {
           return;
         }
-        this.#shouldUpdateIntersections = false;
+        shouldUpdateIntersections = false;
         const intersection = this.getIntersection(controller);
         // Publish the hit before the handlers run: where the ray landed is a
         // fact about this frame, not something a listener gets to veto.
@@ -301,15 +321,18 @@ export class InteractionManager {
         }
       };
 
-      const onMove = () => {
-        maybeUpdateIntersections(true);
-      };
+      // three.js fires this while updating the controller from the XR frame,
+      // which is before anything has moved this frame and before world
+      // matrices are recomputed — the pose it just wrote is not usable yet.
+      // So only note that the ray is stale, and cast it from the frame hook.
+      const onMove = invalidate;
 
       const subscription = onAnimationFrame(() => {
         maybeUpdateIntersections();
       }).subscribe();
 
       this.#controllers.add(controller);
+      this.#invalidate.add(invalidate);
 
       controller.addEventListener("selectstart", onSelectStart);
       controller.addEventListener("selectend", onSelectEnd);
@@ -325,6 +348,7 @@ export class InteractionManager {
         controller.removeEventListener("move", onMove);
 
         this.#controllers.delete(controller);
+        this.#invalidate.delete(invalidate);
         this.#pointers.delete(controller);
 
         if (subscription) {

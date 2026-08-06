@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@apendua.dev/media": "workspace:*",
+    "@apendua.dev/sound": "workspace:*",
     "@apendua/freedom": "workspace:*",
     "@apendua/justdom": "workspace:*",
     "@apendua/signal": "workspace:*",

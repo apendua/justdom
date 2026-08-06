@@ -33,6 +33,14 @@ The castle is saved to `localStorage` (key `castle-xr:castle`) a moment after
 the last change. The soundtrack is the house one, `glass_desk_habits.mp3` out of
 `@apendua.dev/media`, started with the session and stopped with it.
 
+A brick that lands clicks, from the cell it landed in — a knock with a little
+ring in it, the way two magnets sound when they meet. Both halves of that come
+from `@apendua.dev/sound`: the waveform is generated rather than loaded, and
+`createClicks` parks a handful of `PositionalAudio` voices in the board to play
+it, so the click arrives from where the brick is rather than from the middle of
+your head. It is the one piece of feedback that does not need looking at, which
+is what a brick placed behind the one in your hand needs.
+
 ## The board
 
 The board floats a little below eye level and about an arm's length away. It is
@@ -211,4 +219,5 @@ honest: a castle that was not going to stand up does not stand up.
   that can be knocked in two would make aiming worth doing.
 - **A second player.** One builds, one shoots — the phase change is already a
   handover, and the repo has WebRTC signalling for it.
-- **Sound.** A stone leaving the pouch and a wall coming down both want one.
+- **More sound.** A brick landing has a click; a stone leaving the pouch and a
+  wall coming down both still want one.

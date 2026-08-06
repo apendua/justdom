@@ -32,7 +32,8 @@ import Palette from "./Palette.js";
 import Projectile from "./Projectile.js";
 import Slingshot from "./Slingshot.js";
 import { brickShape, BrickType } from "./types.js";
-import { CastleContext, SessionContext } from "../elements/context.js";
+import { CastleContext, ListenerContext, SessionContext } from "../elements/context.js";
+import { createClicks } from "@apendua.dev/sound";
 import { runSimulation, useAsWorldOrigin } from "../elements/rapier.js";
 import {
   align,
@@ -103,6 +104,7 @@ function heldPose(object: Ref<THREE.Object3D>, matrixWorld: THREE.Matrix4) {
 const Game = component((ctx: WeakKey) => {
   const castle = CastleContext.get(ctx);
   const gameSession = SessionContext.get(ctx);
+  const clicks = createClicks(ListenerContext.get(ctx));
 
   const object = createRef<THREE.Object3D>();
   const preview = store<{
@@ -370,6 +372,8 @@ const Game = component((ctx: WeakKey) => {
     }),
     children(
       Grid(ctx, [set({ size: 12, cellWidth: 0.5 })]),
+      // Inside the board, so a click sounds from the cell it belongs to.
+      $(clicks.object),
       component(() => {
         if (gameSession.phase.get() !== "build") {
           return Nothing();
@@ -393,6 +397,7 @@ const Game = component((ctx: WeakKey) => {
               return;
             }
             castle.place({ type: event.brickType, ...drop });
+            clicks.play(drop.position);
           }),
         ]);
       })(),
@@ -462,6 +467,7 @@ const Game = component((ctx: WeakKey) => {
                 event.reset();
                 if (drop) {
                   castle.place({ type: brick.type, ...drop });
+                  clicks.play(drop.position);
                 }
                 return;
               }
@@ -471,6 +477,7 @@ const Game = component((ctx: WeakKey) => {
               }
               if (drop) {
                 castle.move(brickId, drop.position, drop.rotation);
+                clicks.play(drop.position);
               }
             }),
           ]);

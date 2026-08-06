@@ -3,7 +3,7 @@ import { camera, children, cursors, $, XREventMap, interactions } from "@apendua
 import { Signal } from "@apendua/signal";
 import { on, set, effects, just, use, component } from "@apendua/signal";
 
-import { CastleContext, SessionContext } from "./elements/context.js";
+import { CastleContext, ListenerContext, SessionContext } from "./elements/context.js";
 import { boxGeometry } from "./elements/geometry.js";
 import { basicMaterial } from "./elements/material.js";
 import { palette } from "./elements/palette.js";
@@ -49,13 +49,15 @@ const App = component((ctx: WeakKey) => {
   // One board unit is one cell, and a cell is ten centimetres in the room.
   const scale = 0.1;
   const position = Signal.of(new THREE.Vector3(0, -0.4, -1.1));
-  // The ears go where the head is, so the soundtrack rides the camera.
+  // The ears go where the head is, so the soundtrack rides the camera and a
+  // brick landing across the board sounds like it landed across the board.
   const listener = new THREE.AudioListener();
   const castle = new CastleStore();
   const gameSession = new Session();
 
   ctx = CastleContext.set(ctx, castle);
   ctx = SessionContext.set(ctx, gameSession);
+  ctx = ListenerContext.set(ctx, listener);
 
   castle.load();
 

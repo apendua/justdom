@@ -19,6 +19,11 @@ classical constructions.
 - **Grip** — pan the sheet under the ray.
 - Panels are ordinary ray-and-trigger buttons.
 
+Each hand's ray carries freedom's cursor at its end — the same small mark
+wherever it lands, on the paper as on the panels. On the paper it is joined by
+the marks that only mean something there: the rubber band of the tool in
+progress, and the ring around the point a click would snap to.
+
 ## Development
 
 ```

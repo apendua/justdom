@@ -1,9 +1,10 @@
 import * as THREE from "three";
-import { $, children } from "@apendua/freedom";
+import { $, children, cursors } from "@apendua/freedom";
 import { component, effects, just, makeNonReactive } from "@apendua/signal";
 import Board from "./components/Board.js";
 import CodePanel from "./components/CodePanel.js";
 import ToolPanel from "./components/ToolPanel.js";
+import { palette } from "./elements/palette.js";
 import Studio from "./store/Studio.js";
 
 declare global {
@@ -50,6 +51,10 @@ const App = component((ctx: WeakKey) => {
       ]),
       CodePanel(ctx, studio),
       ToolPanel(ctx, studio),
+      // The mark at the end of each ray, on the paper and on the panels
+      // alike. Half the default size: a drawn point is a centimetre across,
+      // and the mark aiming at one should not be the same size as it.
+      cursors(ctx, { color: palette.preview, scale: 0.5 }),
     ),
   );
 });

@@ -466,20 +466,10 @@ const Board = component((ctx: WeakKey, studio: Studio) => {
             loop.material = lineMaterial(palette.preview);
           }),
         ]),
-        // The cursor dot itself.
-        $(new THREE.Mesh(unitDiscGeometry, undefined), [
-          effects((mesh) => {
-            const cursor = studio.cursor.get();
-            mesh.visible = !!cursor;
-            if (cursor) {
-              const { scale } = studio.viewport.get();
-              const radius = 0.002 / scale;
-              mesh.position.set(cursor.x, cursor.y, 0.001);
-              mesh.scale.set(radius, radius, 1);
-            }
-            mesh.material = meshMaterial(palette.preview);
-          }),
-        ]),
+        // Where the ray lands is drawn by freedom's shared cursor, mounted by
+        // the app: the same mark on the paper as on the panels. What is left
+        // here is the part that only means something on the paper — the
+        // rubber bands and the snap ring, in euclid coordinates.
       ),
     ]);
   }

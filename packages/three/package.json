@@ -1,6 +1,6 @@
 {
   "name": "@apendua/freedom",
-  "version": "0.5.1",
+  "version": "0.6.0",
   "description": "Reactive Three.js scene graph built on @apendua/signal, with WebXR helpers and a DOM-in-scene bridge",
   "keywords": [
     "three",

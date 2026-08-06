@@ -115,6 +115,110 @@ export const buttonActive = stylesheet`
   }
 `;
 
+export const dropdownRoot = stylesheet`
+  .${CLASS_NAME} {
+    position: relative;
+  }
+`;
+
+export const dropdownTrigger = stylesheet`
+  .${CLASS_NAME} {
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    min-height: 38px;
+    padding: 6px 10px;
+    background: ${palette.button};
+    border: 2px solid ${palette.buttonEdge};
+    border-radius: 8px;
+    font-size: 13px;
+    color: ${palette.panelText};
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .${CLASS_NAME}:hover, .${CLASS_NAME}[data-xr-hover] {
+    background: ${palette.buttonHover};
+    border-color: #8d7f5c;
+  }
+`;
+
+export const dropdownCaret = stylesheet`
+  .${CLASS_NAME} {
+    font-size: 10px;
+    line-height: 1;
+    color: ${palette.panelMuted};
+  }
+`;
+
+/**
+ * Positioned and stacked above: on the flat build that is what puts the menu
+ * over the page, and in the portal it is what makes it a layer of its own —
+ * drawn in front of the panel, opaque to rays, and clear of it in depth.
+ *
+ * Absolute rather than in flow for a reason that only shows in XR: an in-flow
+ * menu would grow the panel, and the portal centers a panel on its own bounds,
+ * so opening one would slide the whole thing out from under the ray that
+ * opened it.
+ */
+export const dropdownMenu = stylesheet`
+  .${CLASS_NAME} {
+    box-sizing: border-box;
+    position: absolute;
+    z-index: 1;
+    left: 0;
+    right: 0;
+    top: 100%;
+    margin-top: 6px;
+    padding: 4px;
+    background: ${palette.panel};
+    border: 3px solid ${palette.panelEdge};
+    border-radius: 10px;
+  }
+`;
+
+// Doubled, like buttonActive, so it outranks the base rules whichever order
+// the two <style> elements were injected in.
+export const dropdownMenuUp = stylesheet`
+  .${CLASS_NAME}.${CLASS_NAME} {
+    top: auto;
+    bottom: 100%;
+    margin-top: 0;
+    margin-bottom: 6px;
+  }
+`;
+
+export const dropdownOption = stylesheet`
+  .${CLASS_NAME} {
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    /* A ray is a blunter instrument than a mouse. At the distance a panel is
+       mounted at this is around three degrees of arc, which is about where
+       pointing stops being fiddly. */
+    min-height: 36px;
+    padding: 0 8px;
+    border-radius: 6px;
+    font-size: 13px;
+    color: ${palette.panelText};
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .${CLASS_NAME}:hover, .${CLASS_NAME}[data-xr-hover] {
+    background: ${palette.buttonHover};
+  }
+`;
+
+export const dropdownOptionSelected = stylesheet`
+  .${CLASS_NAME}.${CLASS_NAME} {
+    background: ${palette.buttonActive};
+    color: #ffffff;
+  }
+`;
+
 export const hintLine = stylesheet`
   .${CLASS_NAME} {
     font-size: 12.5px;

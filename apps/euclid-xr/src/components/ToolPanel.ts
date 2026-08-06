@@ -9,13 +9,13 @@ import {
   buttonGlyph,
   buttonLabel,
   buttonRow,
-  exampleButton,
   hintLine,
   iconButton,
   panelCard,
   panelStack,
   panelTitle,
 } from "../elements/styles.js";
+import { dropdown } from "./Dropdown.js";
 import type Studio from "../store/Studio.js";
 import type { Tool } from "../store/Studio.js";
 
@@ -84,12 +84,10 @@ const ToolPanel = component((ctx: WeakKey, studio: Studio) => {
       ),
     ]);
 
-  const exampleBtn = (label: string, isActive: () => boolean, onClick: () => void) =>
-    $("div", [
-      set("className", activeClass(exampleButton, isActive)),
-      on("click", onClick),
-      children(text`${() => label}`),
-    ]);
+  const examples = EXAMPLES.map((example) => ({
+    value: example.name,
+    label: SHORT_NAMES[example.name] ?? example.name,
+  }));
 
   return dom(
     ctx,
@@ -134,13 +132,16 @@ const ToolPanel = component((ctx: WeakKey, studio: Studio) => {
           set("className", panelCard),
           children(
             $("div", [set("className", panelTitle), children(text`Constructions`)]),
-            ...EXAMPLES.map((example) =>
-              exampleBtn(
-                SHORT_NAMES[example.name] ?? example.name,
-                () => studio.exampleName.get() === example.name,
-                () => studio.loadExample(example.name),
-              ),
-            ),
+            // Seven buttons' worth of panel, folded into one. It opens upward
+            // so that the menu stays over the panel rather than hanging off
+            // the bottom of it into the room.
+            dropdown({
+              options: examples,
+              direction: "up",
+              placeholder: "Pick a construction…",
+              selected: () => studio.exampleName.get(),
+              onSelect: (name) => studio.loadExample(name),
+            }),
           ),
         ]),
       ),

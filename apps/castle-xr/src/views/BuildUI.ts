@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { component, effects, set, emit, observable, on, Op, store } from "@apendua/signal";
 import { dom } from "@apendua/freedom";
+import type { AudioOutputSelection } from "@apendua.dev/sound";
 import { children, $, text } from "@apendua/justdom";
 import { actionButtonClass, debugValue, panelCard, panelStack, panelTitle } from "./styles.js";
 import { musicCard, MusicCardState } from "./MusicCard.js";
@@ -20,8 +21,6 @@ interface BuildUIEvents {
   clear: void;
   quieter: void;
   louder: void;
-  /** Move the soundtrack to the next output device. */
-  nextOutput: void;
 }
 
 const defaults: BuildUIProps = {
@@ -31,85 +30,94 @@ const defaults: BuildUIProps = {
   canUndo: false,
   canRedo: false,
   volume: 0,
-  output: "",
-  outputs: 0,
 };
 
 /** The panel while the castle is going up. */
-const BuildUI = component((ctx: WeakKey, operators: Op<BuildUIProps, BuildUIEvents>) => {
-  const props = store<BuildUIProps, BuildUIEvents>(defaults, operators);
-  const hasBricks = observable(() => props.bricks > 0);
-  return dom(
-    ctx,
-    $("div", [
-      set("className", panelStack),
-      children(
-        $("div", [
-          set("className", panelCard),
-          children(
-            $("div", [set("className", panelTitle), children(text`Build`)]),
-            $("div", [set("className", debugValue), children(text`Bricks: ${() => props.bricks}`)]),
-            $("div", [
-              set("className", actionButtonClass(hasBricks)),
-              on("click", () => {
-                emit(props, "ready", undefined);
-              }),
-              children(text`Ready`),
-            ]),
-            $("div", [
-              set("className", actionButtonClass(observable(() => props.canUndo))),
-              on("click", () => {
-                emit(props, "undo", undefined);
-              }),
-              children(text`Undo`),
-            ]),
-            $("div", [
-              set("className", actionButtonClass(observable(() => props.canRedo))),
-              on("click", () => {
-                emit(props, "redo", undefined);
-              }),
-              children(text`Redo`),
-            ]),
-            $("div", [
-              set("className", actionButtonClass(hasBricks)),
-              on("click", () => {
-                emit(props, "clear", undefined);
-              }),
-              children(text`Clear`),
-            ]),
+const BuildUI = component(
+  (
+    ctx: WeakKey,
+    /** Where the soundtrack goes, which the music card both shows and sets. */
+    output: AudioOutputSelection,
+    operators: Op<BuildUIProps, BuildUIEvents>,
+  ) => {
+    const props = store<BuildUIProps, BuildUIEvents>(defaults, operators);
+    const hasBricks = observable(() => props.bricks > 0);
+    return dom(
+      ctx,
+      $("div", [
+        set("className", panelStack),
+        children(
+          $("div", [
+            set("className", panelCard),
+            children(
+              $("div", [set("className", panelTitle), children(text`Build`)]),
+              $("div", [
+                set("className", debugValue),
+                children(text`Bricks: ${() => props.bricks}`),
+              ]),
+              $("div", [
+                set("className", actionButtonClass(hasBricks)),
+                on("click", () => {
+                  emit(props, "ready", undefined);
+                }),
+                children(text`Ready`),
+              ]),
+              $("div", [
+                set("className", actionButtonClass(observable(() => props.canUndo))),
+                on("click", () => {
+                  emit(props, "undo", undefined);
+                }),
+                children(text`Undo`),
+              ]),
+              $("div", [
+                set("className", actionButtonClass(observable(() => props.canRedo))),
+                on("click", () => {
+                  emit(props, "redo", undefined);
+                }),
+                children(text`Redo`),
+              ]),
+              $("div", [
+                set("className", actionButtonClass(hasBricks)),
+                on("click", () => {
+                  emit(props, "clear", undefined);
+                }),
+                children(text`Clear`),
+              ]),
+            ),
+          ]),
+          $("div", [
+            set("className", panelCard),
+            children(
+              $("div", [set("className", panelTitle), children(text`Controls`)]),
+              $("div", [set("className", debugValue), children(text`Trigger: grab and place`)]),
+              $("div", [set("className", debugValue), children(text`Grip: pull out a copy`)]),
+              $("div", [set("className", debugValue), children(text`Stick: turn the brick`)]),
+              $("div", [set("className", debugValue), children(text`Off the board: remove`)]),
+              $("div", [set("className", debugValue), children(text`A / B: undo, redo`)]),
+            ),
+          ]),
+          musicCard(
+            props,
+            {
+              quieter: () => {
+                emit(props, "quieter", undefined);
+              },
+              louder: () => {
+                emit(props, "louder", undefined);
+              },
+            },
+            output,
           ),
-        ]),
-        $("div", [
-          set("className", panelCard),
-          children(
-            $("div", [set("className", panelTitle), children(text`Controls`)]),
-            $("div", [set("className", debugValue), children(text`Trigger: grab and place`)]),
-            $("div", [set("className", debugValue), children(text`Grip: pull out a copy`)]),
-            $("div", [set("className", debugValue), children(text`Stick: turn the brick`)]),
-            $("div", [set("className", debugValue), children(text`Off the board: remove`)]),
-            $("div", [set("className", debugValue), children(text`A / B: undo, redo`)]),
-          ),
-        ]),
-        musicCard(props, {
-          quieter: () => {
-            emit(props, "quieter", undefined);
-          },
-          louder: () => {
-            emit(props, "louder", undefined);
-          },
-          nextOutput: () => {
-            emit(props, "nextOutput", undefined);
-          },
+        ),
+      ]),
+      [
+        effects((obj) => {
+          obj.position.copy(props.position);
+          obj.rotation.copy(props.rotation);
         }),
-      ),
-    ]),
-    [
-      effects((obj) => {
-        obj.position.copy(props.position);
-        obj.rotation.copy(props.rotation);
-      }),
-    ],
-  );
-});
+      ],
+    );
+  },
+);
 
 export default BuildUI;

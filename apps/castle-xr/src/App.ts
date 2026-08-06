@@ -116,15 +116,13 @@ const App = component((ctx: WeakKey) => {
                   rotation: new THREE.Euler(0, Math.PI / 8, 0),
                 };
                 if (gameSession.phase.get() === "build") {
-                  return BuildUI(ctx, [
+                  return BuildUI(ctx, musicOutput, [
                     set(panel),
                     effects((ui) => {
                       ui.bricks = castle.bricks.size;
                       ui.canUndo = castle.history.canUndoSignal.get();
                       ui.canRedo = castle.history.canRedoSignal.get();
                       ui.volume = musicVolume.get();
-                      ui.output = musicOutput.label();
-                      ui.outputs = musicOutput.outputs.get().length;
                     }),
                     on("ready", () => {
                       if (castle.size === 0) {
@@ -148,12 +146,9 @@ const App = component((ctx: WeakKey) => {
                     on("louder", () => {
                       stepVolume(1);
                     }),
-                    on("nextOutput", () => {
-                      musicOutput.selectNext();
-                    }),
                   ]);
                 }
-                return SiegeUI(ctx, [
+                return SiegeUI(ctx, musicOutput, [
                   set(panel),
                   effects((ui) => {
                     ui.standing = gameSession.standing.get();
@@ -163,8 +158,6 @@ const App = component((ctx: WeakKey) => {
                     ui.forkHand = gameSession.forkHand.get();
                     ui.gazeAim = gameSession.gazeAim.get();
                     ui.volume = musicVolume.get();
-                    ui.output = musicOutput.label();
-                    ui.outputs = musicOutput.outputs.get().length;
                   }),
                   on("rebuild", () => {
                     gameSession.beginBuilding();
@@ -181,9 +174,6 @@ const App = component((ctx: WeakKey) => {
                   }),
                   on("louder", () => {
                     stepVolume(1);
-                  }),
-                  on("nextOutput", () => {
-                    musicOutput.selectNext();
                   }),
                 ]);
               })(),

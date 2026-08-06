@@ -7,6 +7,7 @@ import { fontFace, stylesheet, CLASS_NAME } from "@apendua/justdom";
 import fontFile from "@apendua.dev/media/fonts/ZenDots-Regular.ttf";
 import { combineLatest, map, Observable } from "rxjs";
 import { palette } from "../elements/palette.js";
+import type { DropdownClasses } from "@apendua/freedom";
 
 export const fontName = fontFace(fontFile);
 
@@ -124,6 +125,103 @@ export const stepValue = stylesheet`
     padding: 12px 8px;
   }
 `;
+
+const dropdownRoot = stylesheet`
+  .${CLASS_NAME} {
+    position: relative;
+    margin-top: 6px;
+  }
+`;
+
+const dropdownTrigger = stylesheet`
+  .${CLASS_NAME} {
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    background: ${palette.button};
+    border: 2px solid ${palette.buttonEdge};
+    border-radius: 12px;
+    padding: 12px;
+    font-size: 1rem;
+    color: ${palette.panelText};
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .${CLASS_NAME}:hover, .${CLASS_NAME}[data-xr-hover] {
+    background: ${palette.buttonHover};
+  }
+`;
+
+const dropdownCaret = stylesheet`
+  .${CLASS_NAME} {
+    font-size: 0.7rem;
+    line-height: 1;
+    color: ${palette.panelLabel};
+  }
+`;
+
+/**
+ * Opens upward, which is not a matter of taste: the music section sits at the
+ * foot of the panel, and a menu hanging off the bottom would trail into the
+ * room. Absolute, so opening one does not grow the panel and slide it out from
+ * under the ray that opened it.
+ */
+const dropdownMenu = stylesheet`
+  .${CLASS_NAME} {
+    box-sizing: border-box;
+    position: absolute;
+    z-index: 1;
+    left: 0;
+    right: 0;
+    bottom: 100%;
+    margin-bottom: 6px;
+    padding: 4px;
+    background: ${palette.panel};
+    border: 3px solid ${palette.panelEdge};
+    border-radius: 12px;
+  }
+`;
+
+const dropdownOption = stylesheet`
+  .${CLASS_NAME} {
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    /* A ray is a blunter instrument than a mouse; this is about three degrees
+       of arc at the distance the panel is mounted at. */
+    min-height: 38px;
+    padding: 0 8px;
+    border-radius: 8px;
+    font-size: 1rem;
+    color: ${palette.panelText};
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .${CLASS_NAME}:hover, .${CLASS_NAME}[data-xr-hover] {
+    background: ${palette.buttonHover};
+  }
+`;
+
+const dropdownOptionSelected = stylesheet`
+  .${CLASS_NAME}.${CLASS_NAME} {
+    background: ${palette.button};
+    color: #ffffff;
+  }
+`;
+
+/** The output picker's dress; the widget itself comes from freedom. */
+export const outputClasses: DropdownClasses = {
+  root: dropdownRoot,
+  trigger: dropdownTrigger,
+  caret: dropdownCaret,
+  menu: dropdownMenu,
+  option: dropdownOption,
+  optionSelected: dropdownOptionSelected,
+};
 
 /**
  * A brick's name, written on the tray under the brick itself. The portal centres

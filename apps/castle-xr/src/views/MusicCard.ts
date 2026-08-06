@@ -1,21 +1,18 @@
 import { component, on, set } from "@apendua/signal";
 import { children, $, text } from "@apendua/justdom";
-import { actionButton, musicRow, panelCard, panelTitle, stepButton, stepValue } from "./styles.js";
+import { dropdown } from "@apendua/freedom";
+import type { AudioOutputSelection } from "@apendua.dev/sound";
+import { musicRow, outputClasses, panelCard, panelTitle, stepButton, stepValue } from "./styles.js";
 
 /** What the card shows. Both phases' panels carry these among their own props. */
 export interface MusicCardState {
   /** How loud the soundtrack is, from 0 to 1. */
   volume: number;
-  /** Where the soundtrack is playing, empty while the browser is choosing. */
-  output: string;
-  /** How many outputs there are to choose between. */
-  outputs: number;
 }
 
 export interface MusicCardActions {
   quieter: () => void;
   louder: () => void;
-  nextOutput: () => void;
 }
 
 /**
@@ -24,9 +21,14 @@ export interface MusicCardActions {
  * here and dropped into either stack.
  *
  * `state` is meant to be a panel's own props store: reading from it here is what
- * ties the readings to it.
+ * ties the readings to it. `output` is the scene's own, which the picker both
+ * shows and sets.
  */
-export function musicCard(state: MusicCardState, actions: MusicCardActions) {
+export function musicCard(
+  state: MusicCardState,
+  actions: MusicCardActions,
+  output: AudioOutputSelection,
+) {
   return $("div", [
     set("className", panelCard),
     children(
@@ -46,14 +48,17 @@ export function musicCard(state: MusicCardState, actions: MusicCardActions) {
       // out for sound, and it is only a desktop with a headset plugged in next
       // to its speakers that has a choice worth making.
       component(() => {
-        if (state.outputs < 2) {
+        if (output.outputs.get().length < 2) {
           return text``;
         }
-        return $("div", [
-          set("className", actionButton),
-          on("click", actions.nextOutput),
-          children(text`Playing on: ${() => state.output || "default"}`),
-        ]);
+        return dropdown({
+          options: () =>
+            output.outputs.get().map(({ deviceId, label }) => ({ value: deviceId, label })),
+          classes: outputClasses,
+          placeholder: "Browser's choice",
+          selected: () => output.deviceId.get(),
+          onSelect: (deviceId) => output.select(deviceId),
+        });
       })(),
     ),
   ]);

@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { component, effects, set, emit, on, Op, store } from "@apendua/signal";
 import { dom } from "@apendua/freedom";
+import type { AudioOutputSelection } from "@apendua.dev/sound";
 import { children, list, $, text } from "@apendua/justdom";
 import {
   actionButton,
@@ -31,8 +32,6 @@ interface SiegeUIEvents {
   toggleGazeAim: void;
   quieter: void;
   louder: void;
-  /** Move the soundtrack to the next output device. */
-  nextOutput: void;
 }
 
 const defaults: SiegeUIProps = {
@@ -45,91 +44,97 @@ const defaults: SiegeUIProps = {
   forkHand: "left",
   gazeAim: false,
   volume: 0,
-  output: "",
-  outputs: 0,
 };
 
 /** The panel while the castle is being knocked down. */
-const SiegeUI = component((ctx: WeakKey, operators: Op<SiegeUIProps, SiegeUIEvents>) => {
-  const props = store<SiegeUIProps, SiegeUIEvents>(defaults, operators);
-  return dom(
-    ctx,
-    $("div", [
-      set("className", panelStack),
-      children(
-        $("div", [
-          set("className", panelCard),
-          children(
-            $("div", [set("className", panelTitle), children(text`Siege`)]),
-            // The banner only exists once there is something to celebrate.
-            list(
-              () => (props.won ? ["won"] : []),
-              () =>
-                $("div", [
-                  set("className", victoryBanner),
-                  children(text`Castle down in ${() => props.shots} shots`),
-                ]),
+const SiegeUI = component(
+  (
+    ctx: WeakKey,
+    /** Where the soundtrack goes, which the music card both shows and sets. */
+    output: AudioOutputSelection,
+    operators: Op<SiegeUIProps, SiegeUIEvents>,
+  ) => {
+    const props = store<SiegeUIProps, SiegeUIEvents>(defaults, operators);
+    return dom(
+      ctx,
+      $("div", [
+        set("className", panelStack),
+        children(
+          $("div", [
+            set("className", panelCard),
+            children(
+              $("div", [set("className", panelTitle), children(text`Siege`)]),
+              // The banner only exists once there is something to celebrate.
+              list(
+                () => (props.won ? ["won"] : []),
+                () =>
+                  $("div", [
+                    set("className", victoryBanner),
+                    children(text`Castle down in ${() => props.shots} shots`),
+                  ]),
+              ),
+              $("div", [
+                set("className", debugValue),
+                children(text`Standing: ${() => props.standing} / ${() => props.total}`),
+              ]),
+              $("div", [set("className", debugValue), children(text`Shots: ${() => props.shots}`)]),
+              $("div", [
+                set("className", actionButton),
+                on("click", () => {
+                  emit(props, "swapHands", undefined);
+                }),
+                children(text`Fork Hand: ${() => props.forkHand}`),
+              ]),
+              $("div", [
+                set("className", actionButton),
+                on("click", () => {
+                  emit(props, "toggleGazeAim", undefined);
+                }),
+                children(text`Aim: ${() => (props.gazeAim ? "where you look" : "your hand")}`),
+              ]),
+              $("div", [
+                set("className", actionButton),
+                on("click", () => {
+                  emit(props, "rebuild", undefined);
+                }),
+                children(text`Back To Building`),
+              ]),
             ),
-            $("div", [
-              set("className", debugValue),
-              children(text`Standing: ${() => props.standing} / ${() => props.total}`),
-            ]),
-            $("div", [set("className", debugValue), children(text`Shots: ${() => props.shots}`)]),
-            $("div", [
-              set("className", actionButton),
-              on("click", () => {
-                emit(props, "swapHands", undefined);
-              }),
-              children(text`Fork Hand: ${() => props.forkHand}`),
-            ]),
-            $("div", [
-              set("className", actionButton),
-              on("click", () => {
-                emit(props, "toggleGazeAim", undefined);
-              }),
-              children(text`Aim: ${() => (props.gazeAim ? "where you look" : "your hand")}`),
-            ]),
-            $("div", [
-              set("className", actionButton),
-              on("click", () => {
-                emit(props, "rebuild", undefined);
-              }),
-              children(text`Back To Building`),
-            ]),
+          ]),
+          $("div", [
+            set("className", panelCard),
+            children(
+              $("div", [set("className", panelTitle), children(text`The Slingshot`)]),
+              $("div", [set("className", debugValue), children(text`Reach for the pouch`)]),
+              $("div", [set("className", debugValue), children(text`Hold trigger, pull back`)]),
+              $("div", [set("className", debugValue), children(text`Let go to shoot`)]),
+              // The way to play at a desk, where there is no second hand to reach
+              // with — and no first hand that is easy to aim.
+              $("div", [set("className", hintValue), children(text`No hands? Hold Space`)]),
+            ),
+          ]),
+          musicCard(
+            props,
+            {
+              quieter: () => {
+                emit(props, "quieter", undefined);
+              },
+              louder: () => {
+                emit(props, "louder", undefined);
+              },
+            },
+            output,
           ),
-        ]),
-        $("div", [
-          set("className", panelCard),
-          children(
-            $("div", [set("className", panelTitle), children(text`The Slingshot`)]),
-            $("div", [set("className", debugValue), children(text`Reach for the pouch`)]),
-            $("div", [set("className", debugValue), children(text`Hold trigger, pull back`)]),
-            $("div", [set("className", debugValue), children(text`Let go to shoot`)]),
-            // The way to play at a desk, where there is no second hand to reach
-            // with — and no first hand that is easy to aim.
-            $("div", [set("className", hintValue), children(text`No hands? Hold Space`)]),
-          ),
-        ]),
-        musicCard(props, {
-          quieter: () => {
-            emit(props, "quieter", undefined);
-          },
-          louder: () => {
-            emit(props, "louder", undefined);
-          },
-          nextOutput: () => {
-            emit(props, "nextOutput", undefined);
-          },
+        ),
+      ]),
+      [
+        effects((obj) => {
+          obj.position.copy(props.position);
+          obj.rotation.copy(props.rotation);
         }),
-      ),
-    ]),
-    [
-      effects((obj) => {
-        obj.position.copy(props.position);
-        obj.rotation.copy(props.rotation);
-      }),
-    ],
-  );
-});
+      ],
+    );
+  },
+);
 
 export default SiegeUI;

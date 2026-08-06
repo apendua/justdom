@@ -123,6 +123,15 @@ function parseSize(value, units) {
 }
 
 /**
+ * A computed CSS colour, as the colour three.js should draw and the alpha it
+ * should draw it with.
+ *
+ * The channels are read as sRGB, which is what CSS means by them. Handing the
+ * three numbers straight to `new THREE.Color(r, g, b)` would instead declare
+ * them to be linear — the working space — and every colour authored in a
+ * stylesheet would arrive on screen lighter and flatter than it was written,
+ * dark panels worst of all.
+ *
  * @param {string} colorString
  * @returns {[THREE.Color, number]}
  */
@@ -136,7 +145,7 @@ function parseColor(colorString) {
   const g = parseInt(match[2], 10) / 255;
   const b = parseInt(match[3], 10) / 255;
   const a = match[4] !== undefined ? parseFloat(match[4]) : 1.0;
-  const color = new THREE.Color(r, g, b);
+  const color = new THREE.Color().setRGB(r, g, b, THREE.SRGBColorSpace);
   return [color, a];
 }
 

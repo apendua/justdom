@@ -2,6 +2,26 @@
   "name": "@apendua/freedom",
   "entries": [
     {
+      "version": "0.6.0",
+      "tag": "@apendua/freedom_v0.6.0",
+      "date": "Thu, 06 Aug 2026 12:02:12 GMT",
+      "comments": {
+        "minor": [
+          {
+            "comment": "Portals can hold a layer above the panel. An element that is positioned with a positive z-index is pushed clear of what it covers, drawn in a render-order band above everything below it, and made opaque to rays by a blocker of its own -- so a dropdown menu is not something a ray can pass through into the buttons behind it. Fully transparent fills no longer write depth, and the portal asks for the rays to be cast again when it mirrors a change, so a menu opening under a resting ray is noticed. The portal's own background blocker now reports its click to the DOM, which is what dismiss-on-outside-click needs, and is two-sided -- being one-sided behind the container's half-turn flip, it was never raycast at all, so panels were not in fact opaque to rays."
+          },
+          {
+            "comment": "Adds getPortalRoot(node), which finds the panel a projected node belongs to, and marks each portal container with data-xr-portal so it can. A component inside a portal that wants to hear \"clicked elsewhere\" has to scope that to its panel: a document listener also hears real mouse clicks on the page around the scene -- the VR button, or an emulator whose every control is a mouse click -- and closes itself the moment you reach for the control that was going to drive the ray."
+          }
+        ],
+        "patch": [
+          {
+            "comment": "A press and a release are matched by the interactive object they landed on rather than by the mesh the ray happened to meet. A projected button is a background quad plus a quad of text, so a hand drifting a few millimetres from the label onto the background between pressing and letting go was counted as a miss and the click was dropped -- most visible on a wide row with a short label, such as an option in a dropdown menu. Squeeze is matched the same way."
+          }
+        ]
+      }
+    },
+    {
       "version": "0.5.1",
       "tag": "@apendua/freedom_v0.5.1",
       "date": "Thu, 06 Aug 2026 07:34:16 GMT",

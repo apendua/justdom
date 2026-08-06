@@ -153,6 +153,23 @@ transformed subtree is reconstructed by dividing the transform back out of
 those rects: exact under translation and scale, approximate under rotation,
 where only axis-aligned bounds survive to be read.
 
+## Animation
+
+CSS transitions, keyframe animations and Web Animations play inside a
+portal: while anything is animating, the affected elements are sampled once
+per frame — through the same invalidation path a mutation takes — and the
+moment nothing is, the sampling stops. An idle panel costs nothing.
+Inline-style writes from a `requestAnimationFrame` loop work too; each one
+is an ordinary mutation scoped to the element it touched.
+
+The cost per frame is the flat web's own hierarchy, and the guidance is the
+same one every web developer already knows. `transform` and `opacity` (and
+colours) are the cheap tier: a style read and a matrix or material write per
+animating element. Animating a *layout* property — `height`, `padding`,
+`font-size` — re-measures the panel every frame, because a growing element
+moves neighbours no one named. It works; save it for moments, not idle
+loops.
+
 ## Layers
 
 An element that is positioned and stacked above — `position` other than

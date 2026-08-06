@@ -16,7 +16,25 @@ import { collapseWhitespace, groupIntoLines, preservesWhitespace } from "./textL
 export const PORTAL_ATTRIBUTE = "data-xr-portal";
 
 /**
- * @typedef {"attributes" | "childList" | "fontLoaded" | "characterData"} MutationType
+ * The kinds of change a batch can announce. The first four mirror what the
+ * portal's observer (and the font API) report. The last two come from the
+ * animation clock, which has no mutations to relay — only time passing under
+ * a running animation: `animated` says the computed styles of the targets'
+ * neighbourhoods may have moved, and `reflow` says client rects have — of
+ * the targets' subtrees, or of everything when layout itself is animating
+ * and no target can name what it displaced.
+ *
+ * @typedef {"attributes" | "childList" | "fontLoaded" | "characterData" | "animated" | "reflow"} MutationType
+ */
+
+/**
+ * How an animated property ranks for invalidation — see `animationClock.js`,
+ * which is organized around it. It lives here with the mutation types
+ * because the two vocabularies translate into each other: paint asks for
+ * `animated` alone, transform adds a targeted `reflow`, layout a portal-wide
+ * one.
+ *
+ * @typedef {"paint" | "transform" | "layout"} AnimationClass
  */
 
 /**
@@ -103,7 +121,11 @@ function affectsRect(batch, node) {
   ) {
     return true;
   }
-  if (!batch.types.has("attributes")) {
+  // `reflow` is the animation clock saying rects moved without any mutation:
+  // an animating transform moves its own subtree's rects exactly the way a
+  // toggled one does, and an animating layout property moves anybody's,
+  // which the clock announces with no targets at all.
+  if (!batch.types.has("attributes") && !batch.types.has("reflow")) {
     return false;
   }
   if (!batch.targets) {
@@ -140,7 +162,8 @@ export function getComputedStyleCached(element, pseudoElement = null) {
           (batch) =>
             (batch.types.has("childList") ||
               batch.types.has("attributes") ||
-              batch.types.has("fontLoaded")) &&
+              batch.types.has("fontLoaded") ||
+              batch.types.has("animated")) &&
             affectsStyle(batch, element),
         ),
       );

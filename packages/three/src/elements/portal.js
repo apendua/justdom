@@ -4,8 +4,10 @@ import { Subject } from "rxjs";
 import { div } from "./div.js";
 import { text } from "./text.js";
 import { getBoundingClientRectCached, PORTAL_ATTRIBUTE, setSubject } from "./cache.js";
+import { createAnimationClock } from "./animationClock.js";
 import { createBlocker, coverBox } from "./blocker.js";
 import { InteractionContext } from "../interactions.js";
+import { frames } from "../render.js";
 
 /**
  * @import {Observable} from 'rxjs';
@@ -38,6 +40,38 @@ export function getPortalRoot(node) {
       ? /** @type {Element} */ (node)
       : (node?.parentElement ?? null);
   return /** @type {HTMLElement | null} */ (element?.closest(`[${PORTAL_ATTRIBUTE}]`) ?? null);
+}
+
+/**
+ * Frames for the animation clock: the renderer's own when this portal lives
+ * inside a `render()` loop — emitted at the top of each frame, so the
+ * invalidations it triggers settle synchronously before that frame draws —
+ * and the browser's otherwise (tests, plain pages).
+ *
+ * @param {WeakKey} ctx
+ * @returns {(tick: () => void) => () => void}
+ */
+function createFrameRequester(ctx) {
+  return (tick) => {
+    try {
+      const subscription = frames(ctx).subscribe(() => tick());
+      return () => subscription.unsubscribe();
+    } catch {
+      let active = true;
+      let handle = 0;
+      const loop = () => {
+        if (active) {
+          tick();
+          handle = requestAnimationFrame(loop);
+        }
+      };
+      handle = requestAnimationFrame(loop);
+      return () => {
+        active = false;
+        cancelAnimationFrame(handle);
+      };
+    }
+  };
 }
 
 /**
@@ -246,9 +280,30 @@ export function createPortal(ctx) {
     childList: true,
     subtree: true,
     attributes: true,
-    attributeFilter: ["data-xr-hover", "data-xr-active", "class"],
+    // `style` makes rAF-driven inline-style animation just work: each write
+    // is a mutation scoped to the element that moved. Safe now that
+    // invalidation is per-target — before that, every inline write would
+    // have re-read the whole portal.
+    attributeFilter: ["data-xr-hover", "data-xr-active", "class", "style"],
     characterData: true,
   });
+
+  // CSS transitions, keyframe animations and Web Animations mutate nothing —
+  // the styles move while the DOM holds still — so the observer above never
+  // hears about them. The clock samples the animating elements once per
+  // frame instead, and requests no frames at all while nothing animates.
+  const animationClock = createAnimationClock(
+    containerElement,
+    (batches) => {
+      for (const batch of batches) {
+        invalidateLayout(batch);
+      }
+      // Animated content moves under a stationary ray just like mutated
+      // content does.
+      interactionManager.updateIntersections();
+    },
+    createFrameRequester(ctx),
+  );
 
   function fontLoadingCallback() {
     // Fonts arriving restyle and re-measure everything at once; there is no
@@ -272,6 +327,7 @@ export function createPortal(ctx) {
     }
     resizeSubscription.unsubscribe();
     mutationObserver.disconnect();
+    animationClock.dispose();
   });
   nodeToObject.set(containerElement, containerObject);
   objectToNode.set(containerObject, containerElement);

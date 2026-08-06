@@ -108,6 +108,10 @@ describe("getComputedStyleCached", () => {
     subject.next({ types: new Set(["characterData"]), targets: new Set([leafA]) });
     assert.deepEqual(reads, { leafA: 4, leafB: 3 });
 
+    // The animation clock's per-frame sample scopes exactly like a mutation.
+    subject.next({ types: new Set(["animated"]), targets: new Set([leafA]) });
+    assert.deepEqual(reads, { leafA: 5, leafB: 3 });
+
     subscriptions.forEach((subscription) => subscription.unsubscribe());
     root.remove();
   });
@@ -154,6 +158,18 @@ describe("getComputedStyleCached", () => {
     // Structural mutations still re-measure everything: layout is non-local.
     subject.next({ types: new Set(["childList"]), targets: new Set([parent]) });
     assert.deepEqual(reads, { child: 3, sibling: 2 });
+
+    // The clock's style sample alone moves no rects…
+    subject.next({ types: new Set(["animated"]), targets: new Set([parent]) });
+    assert.deepEqual(reads, { child: 3, sibling: 2 });
+
+    // …an animating transform moves its own subtree's…
+    subject.next({ types: new Set(["reflow"]), targets: new Set([parent]) });
+    assert.deepEqual(reads, { child: 4, sibling: 2 });
+
+    // …and an animating layout property moves anybody's.
+    subject.next({ types: new Set(["reflow"]), targets: null });
+    assert.deepEqual(reads, { child: 5, sibling: 3 });
 
     subscriptions.forEach((subscription) => subscription.unsubscribe());
     parent.remove();

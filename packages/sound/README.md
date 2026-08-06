@@ -49,8 +49,7 @@ choice is not always the one the player is wearing:
 const output = audioOutputSelection();
 // output.outputs — everything sound could be sent to, as a signal
 // output.deviceId — the chosen one, empty until the player picks
-// output.label()  — its name, for a panel to show
-// output.selectNext() — move on to the next one
+// output.select(id) — send the sound somewhere else
 // output.updates — subscribe (effectMap/use) to keep the list current
 ```
 

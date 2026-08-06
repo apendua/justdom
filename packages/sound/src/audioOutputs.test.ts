@@ -198,7 +198,7 @@ describe("setAudioOutput", () => {
 describe("audioOutputSelection", () => {
   afterEach(restoreGlobals);
 
-  test("cycles through the outputs, starting from the first", async () => {
+  test("sends the sound to a chosen output, and refuses anything else", async () => {
     fakeAudioContext(true);
     fakeMediaDevices([
       { kind: "audiooutput", deviceId: "a", groupId: "1", label: "Speakers" },
@@ -210,17 +210,16 @@ describe("audioOutputSelection", () => {
     await flush();
 
     assert.equal(selection.deviceId.get(), "");
-    assert.equal(selection.label(), "");
 
-    selection.selectNext();
+    selection.select("b");
+    assert.equal(selection.deviceId.get(), "b");
+
+    selection.select("a");
     assert.equal(selection.deviceId.get(), "a");
-    assert.equal(selection.label(), "Speakers");
 
-    selection.selectNext();
-    assert.equal(selection.label(), "Headphones");
-
-    selection.selectNext();
-    assert.equal(selection.label(), "Speakers");
+    // A device that went away between the menu opening and a row being pressed.
+    selection.select("gone");
+    assert.equal(selection.deviceId.get(), "a");
 
     subscription.unsubscribe();
   });
@@ -236,8 +235,7 @@ describe("audioOutputSelection", () => {
     const selection = audioOutputSelection();
     const subscription = selection.updates.subscribe();
     await flush();
-    selection.selectNext();
-    selection.selectNext();
+    selection.select("b");
     assert.equal(selection.deviceId.get(), "b");
 
     devices.pop();
@@ -258,7 +256,7 @@ describe("audioOutputSelection", () => {
     const subscription = selection.updates.subscribe();
     await flush();
 
-    selection.selectNext();
+    selection.select("a");
     assert.equal(selection.deviceId.get(), "");
     assert.deepEqual(selection.outputs.get(), []);
 

@@ -149,13 +149,8 @@ export interface AudioOutputSelection {
    * wherever the browser put it.
    */
   deviceId: Signal<string>;
-  /**
-   * The chosen output's name, empty while none has been picked. Reactive:
-   * reading it inside a computation tracks both signals.
-   */
-  label: () => string;
-  /** Move to the next output, wrapping around. */
-  selectNext: () => void;
+  /** Send the sound to one of `outputs`, by id. */
+  select: (deviceId: string) => void;
   /**
    * Keeps `outputs` current for as long as it stays subscribed; nothing here
    * updates until it is.
@@ -193,19 +188,13 @@ export function audioOutputSelection(): AudioOutputSelection {
     outputs,
     deviceId,
     updates,
-    label: () => {
-      const current = deviceId.get();
-      return outputs.get().find((output) => output.deviceId === current)?.label ?? "";
-    },
-    selectNext: () => {
-      const list = outputs.get();
-      if (list.length === 0) {
-        return;
+    select: (chosen) => {
+      // Only somewhere the sound can actually go. A menu built from `outputs`
+      // cannot offer anything else, but a device can be pulled out between the
+      // menu opening and a row being pressed.
+      if (outputs.get().some((output) => output.deviceId === chosen)) {
+        deviceId.set(chosen);
       }
-      // Nothing picked yet reads as index -1, so the first press lands on the
-      // first output rather than skipping past it.
-      const index = list.findIndex((output) => output.deviceId === deviceId.get());
-      deviceId.set(list[(index + 1) % list.length].deviceId);
     },
   };
 }

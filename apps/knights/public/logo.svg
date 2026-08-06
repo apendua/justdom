@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="Knights">
+  <defs>
+    <linearGradient id="knights-bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#34241d" />
+      <stop offset="1" stop-color="#180f0b" />
+    </linearGradient>
+    <linearGradient id="knights-hex" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#9e3a30" />
+      <stop offset="1" stop-color="#6b201b" />
+    </linearGradient>
+    <linearGradient id="knights-shield" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f4eee1" />
+      <stop offset="1" stop-color="#cfc5b0" />
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="14" fill="url(#knights-bg)" />
+  <path
+    d="M55 32 43.5 51.9 20.5 51.9 9 32 20.5 12.1 43.5 12.1Z"
+    fill="url(#knights-hex)"
+    stroke="#d8a13c"
+    stroke-width="2.6"
+    stroke-linejoin="round"
+  />
+  <path
+    d="M22 22h20v9.5c0 7.6-5.4 12.1-10 14.3-4.6-2.2-10-6.7-10-14.3Z"
+    fill="url(#knights-shield)"
+  />
+  <path
+    d="M23.5 33.5 32 28.5 40.5 33.5"
+    fill="none"
+    stroke="#9e3a30"
+    stroke-width="3.4"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+</svg>

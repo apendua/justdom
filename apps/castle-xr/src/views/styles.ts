@@ -83,6 +83,48 @@ const mutedButton = stylesheet`
   }
 `;
 
+export const musicRow = stylesheet`
+  .${CLASS_NAME} {
+    display: flex;
+    align-items: stretch;
+    gap: 8px;
+    margin: 6px 0;
+  }
+`;
+
+/**
+ * Narrow enough for two of them to flank the reading, wide enough to be an easy
+ * target at arm's length through a controller ray.
+ */
+export const stepButton = stylesheet`
+  .${CLASS_NAME} {
+    flex: 0 0 64px;
+    background: ${palette.button};
+    border: 2px solid ${palette.buttonEdge};
+    text-align: center;
+    padding: 12px 0;
+    border-radius: 12px;
+    color: ${palette.panelText};
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .${CLASS_NAME}:hover, .${CLASS_NAME}[data-xr-hover] {
+    background: ${palette.buttonHover};
+  }
+`;
+
+export const stepValue = stylesheet`
+  .${CLASS_NAME} {
+    flex: 1 1 auto;
+    text-align: center;
+    background: rgba(255, 255, 255, 0.07);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 10px;
+    padding: 12px 8px;
+  }
+`;
+
 /**
  * A brick's name, written on the tray under the brick itself. The portal centres
  * whatever it renders on the object holding it, so the text has to be centred in

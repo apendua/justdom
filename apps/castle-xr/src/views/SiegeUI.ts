@@ -12,8 +12,9 @@ import {
   victoryBanner,
 } from "./styles.js";
 import { ForkHand } from "../store/Session.js";
+import { musicCard, MusicCardState } from "./MusicCard.js";
 
-interface SiegeUIProps {
+interface SiegeUIProps extends MusicCardState {
   position: THREE.Vector3;
   rotation: THREE.Euler;
   standing: number;
@@ -28,6 +29,10 @@ interface SiegeUIEvents {
   rebuild: void;
   swapHands: void;
   toggleGazeAim: void;
+  quieter: void;
+  louder: void;
+  /** Move the soundtrack to the next output device. */
+  nextOutput: void;
 }
 
 const defaults: SiegeUIProps = {
@@ -39,6 +44,9 @@ const defaults: SiegeUIProps = {
   won: false,
   forkHand: "left",
   gazeAim: false,
+  volume: 0,
+  output: "",
+  outputs: 0,
 };
 
 /** The panel while the castle is being knocked down. */
@@ -102,6 +110,17 @@ const SiegeUI = component((ctx: WeakKey, operators: Op<SiegeUIProps, SiegeUIEven
             $("div", [set("className", hintValue), children(text`No hands? Hold Space`)]),
           ),
         ]),
+        musicCard(props, {
+          quieter: () => {
+            emit(props, "quieter", undefined);
+          },
+          louder: () => {
+            emit(props, "louder", undefined);
+          },
+          nextOutput: () => {
+            emit(props, "nextOutput", undefined);
+          },
+        }),
       ),
     ]),
     [

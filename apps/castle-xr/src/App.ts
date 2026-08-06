@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { camera, children, cursors, $, XREventMap, interactions } from "@apendua/freedom";
+import { audioOutputSelection } from "@apendua.dev/sound";
 import { Signal } from "@apendua/signal";
 import { on, set, effects, just, use, component } from "@apendua/signal";
 
@@ -8,7 +9,7 @@ import { boxGeometry } from "./elements/geometry.js";
 import { basicMaterial } from "./elements/material.js";
 import { palette } from "./elements/palette.js";
 import Game from "./components/Game.js";
-import Music from "./components/Music.js";
+import Music, { DEFAULT_VOLUME } from "./components/Music.js";
 import BuildUI from "./views/BuildUI.js";
 import SiegeUI from "./views/SiegeUI.js";
 import CastleStore from "./store/CastleStore.js";
@@ -52,6 +53,16 @@ const App = component((ctx: WeakKey) => {
   // The ears go where the head is, so the soundtrack rides the camera and a
   // brick landing across the board sounds like it landed across the board.
   const listener = new THREE.AudioListener();
+  const musicVolume = Signal.of(DEFAULT_VOLUME);
+  const musicOutput = audioOutputSelection();
+
+  /** Volume moves in tenths, rounded so the readout stays on round numbers. */
+  const stepVolume = (steps: number) => {
+    musicVolume.setFn((volume) => {
+      return Math.min(10, Math.max(0, Math.round(volume * 10) + steps)) / 10;
+    });
+  };
+
   const castle = new CastleStore();
   const gameSession = new Session();
 
@@ -66,7 +77,11 @@ const App = component((ctx: WeakKey) => {
       use(camera(ctx).pipe(children($(listener))));
     }),
     children(
-      Music(ctx, listener),
+      Music(ctx, listener, musicOutput, [
+        effects((music) => {
+          music.volume = musicVolume.get();
+        }),
+      ]),
       cursors(ctx, { color: palette.pointer }),
       $(new THREE.Group<XREventMap>(), [
         effects((o) => {
@@ -107,6 +122,9 @@ const App = component((ctx: WeakKey) => {
                       ui.bricks = castle.bricks.size;
                       ui.canUndo = castle.history.canUndoSignal.get();
                       ui.canRedo = castle.history.canRedoSignal.get();
+                      ui.volume = musicVolume.get();
+                      ui.output = musicOutput.label();
+                      ui.outputs = musicOutput.outputs.get().length;
                     }),
                     on("ready", () => {
                       if (castle.size === 0) {
@@ -124,6 +142,15 @@ const App = component((ctx: WeakKey) => {
                     on("clear", () => {
                       castle.clear();
                     }),
+                    on("quieter", () => {
+                      stepVolume(-1);
+                    }),
+                    on("louder", () => {
+                      stepVolume(1);
+                    }),
+                    on("nextOutput", () => {
+                      musicOutput.selectNext();
+                    }),
                   ]);
                 }
                 return SiegeUI(ctx, [
@@ -135,6 +162,9 @@ const App = component((ctx: WeakKey) => {
                     ui.won = gameSession.won.get();
                     ui.forkHand = gameSession.forkHand.get();
                     ui.gazeAim = gameSession.gazeAim.get();
+                    ui.volume = musicVolume.get();
+                    ui.output = musicOutput.label();
+                    ui.outputs = musicOutput.outputs.get().length;
                   }),
                   on("rebuild", () => {
                     gameSession.beginBuilding();
@@ -145,6 +175,15 @@ const App = component((ctx: WeakKey) => {
                   }),
                   on("toggleGazeAim", () => {
                     gameSession.toggleGazeAim();
+                  }),
+                  on("quieter", () => {
+                    stepVolume(-1);
+                  }),
+                  on("louder", () => {
+                    stepVolume(1);
+                  }),
+                  on("nextOutput", () => {
+                    musicOutput.selectNext();
                   }),
                 ]);
               })(),

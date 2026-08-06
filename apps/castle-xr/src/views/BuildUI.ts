@@ -3,8 +3,9 @@ import { component, effects, set, emit, observable, on, Op, store } from "@apend
 import { dom } from "@apendua/freedom";
 import { children, $, text } from "@apendua/justdom";
 import { actionButtonClass, debugValue, panelCard, panelStack, panelTitle } from "./styles.js";
+import { musicCard, MusicCardState } from "./MusicCard.js";
 
-interface BuildUIProps {
+interface BuildUIProps extends MusicCardState {
   position: THREE.Vector3;
   rotation: THREE.Euler;
   bricks: number;
@@ -17,6 +18,10 @@ interface BuildUIEvents {
   undo: void;
   redo: void;
   clear: void;
+  quieter: void;
+  louder: void;
+  /** Move the soundtrack to the next output device. */
+  nextOutput: void;
 }
 
 const defaults: BuildUIProps = {
@@ -25,6 +30,9 @@ const defaults: BuildUIProps = {
   bricks: 0,
   canUndo: false,
   canRedo: false,
+  volume: 0,
+  output: "",
+  outputs: 0,
 };
 
 /** The panel while the castle is going up. */
@@ -82,6 +90,17 @@ const BuildUI = component((ctx: WeakKey, operators: Op<BuildUIProps, BuildUIEven
             $("div", [set("className", debugValue), children(text`A / B: undo, redo`)]),
           ),
         ]),
+        musicCard(props, {
+          quieter: () => {
+            emit(props, "quieter", undefined);
+          },
+          louder: () => {
+            emit(props, "louder", undefined);
+          },
+          nextOutput: () => {
+            emit(props, "nextOutput", undefined);
+          },
+        }),
       ),
     ]),
     [

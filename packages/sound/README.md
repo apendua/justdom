@@ -54,6 +54,9 @@ the *last* one landed.
 
 ## Used by
 
-`castle-xr` and `marblerun`, each on a brick coming to rest. Not `bricks-xr`:
-that one is a worked example, kept to the smallest thing that still builds
-something, and a sound is not part of what it is there to show.
+`castle-xr` and `marblerun` on a brick coming to rest, and `polytope-xr` on two
+clusters snapping together — which is the same event wearing a different hat,
+and used to be a `Switch1.wav` loaded by hand in that app.
+
+Not `bricks-xr`: that one is a worked example, kept to the smallest thing that
+still builds something, and a sound is not part of what it is there to show.

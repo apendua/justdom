@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import * as THREE from "three";
 import { $, attr, children } from "@apendua/justdom";
 import { InteractionContext, InteractionManager } from "../interactions.js";
-import { createPortal } from "./portal.js";
+import { createPortal, getPortalRoot } from "./portal.js";
 
 // jsdom-env exposes the common DOM globals, but not MutationObserver, which
 // the portal uses to mirror the tree.
@@ -120,6 +120,42 @@ describe("createPortal", () => {
     assert.ok(clicks[0].target instanceof HTMLElement);
 
     document.removeEventListener("click", listener);
+    subscription.unsubscribe();
+    portal.disconnect();
+  });
+
+  test("what it projects can find its way back to the panel it is in", async () => {
+    const manager = new InteractionManager();
+    const ctx = InteractionContext.set({}, manager);
+    const portal = createPortal(ctx);
+    portal.addTo(new THREE.Group());
+
+    /** @type {import("@apendua/justdom").Mountable<Node> | undefined} */
+    let mountable;
+    const tree = $("div", [children($("div", [attr("id", () => "inside")]))]);
+    const subscription = tree.subscribe((value) => {
+      mountable = value;
+    });
+    assert.ok(mountable);
+    portal.mount(mountable);
+    await nextMacrotask();
+
+    const inside = document.getElementById("inside");
+    assert.ok(inside);
+    const root = getPortalRoot(inside);
+    assert.ok(root, "a projected node finds the portal it was projected through");
+    assert.ok(root.contains(inside));
+
+    // Which matters because the page around a panel is full of clicks that are
+    // nothing to do with it: a VR button, an emulator's controls, whatever
+    // else the document is showing. A component listening for "clicked
+    // elsewhere" has to mean elsewhere in the panel, and off the panel there
+    // is nothing to scope to.
+    const elsewhere = document.body.appendChild(document.createElement("button"));
+    assert.equal(getPortalRoot(elsewhere), null);
+    assert.equal(getPortalRoot(null), null);
+    document.body.removeChild(elsewhere);
+
     subscription.unsubscribe();
     portal.disconnect();
   });

@@ -1,6 +1,7 @@
 import { distinctUntilChanged, switchMap, type Observable } from "rxjs";
 import { $, attr, children, list, on, renderText, set, text } from "@apendua/justdom";
 import { effects, observable, onCleanup, Signal } from "@apendua/signal";
+import { getPortalRoot } from "@apendua/freedom";
 import type { Mountable } from "@apendua/justdom";
 import {
   dropdownCaret,
@@ -97,25 +98,32 @@ export function dropdown<T>(props: DropdownProps<T>): Observable<Mountable<Node>
 
   return $("div", [
     set("className", dropdownRoot),
-    // Anywhere but here closes the menu. In a portal the panel's own
+    // Anywhere else in the panel closes the menu. In a portal the panel's own
     // background reports its clicks to the DOM as well, so pointing at the
-    // panel beside the menu and pulling the trigger counts as "outside" the
+    // panel beside the menu and pulling the trigger counts as "elsewhere" the
     // same way pointing at another button does.
+    //
+    // Scoped to the panel rather than the document, and that is not a detail:
+    // on the page around it there is a VR button, and in development an
+    // emulator whose every control is a real mouse click. Listening to the
+    // document would hear those too, and close the menu from under the very
+    // trigger press that was meant to choose from it.
     effects((root: HTMLDivElement) => {
       if (!open.get()) {
         return;
       }
-      const onDocumentClick = (event: MouseEvent) => {
-        // The click that opened the menu is still on its way up to the
-        // document, and it came from inside.
+      const scope: HTMLElement | Document = getPortalRoot(root) ?? document;
+      const onClickElsewhere = (event: Event) => {
+        // The click that opened the menu is still on its way up, and it came
+        // from inside.
         if (event.target instanceof Node && root.contains(event.target)) {
           return;
         }
         open.set(false);
       };
-      document.addEventListener("click", onDocumentClick);
+      scope.addEventListener("click", onClickElsewhere);
       onCleanup(() => {
-        document.removeEventListener("click", onDocumentClick);
+        scope.removeEventListener("click", onClickElsewhere);
       });
     }),
     children(

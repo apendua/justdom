@@ -14,6 +14,34 @@ import { InteractionContext } from "../interactions.js";
  * @import {MutationType} from './cache.js';
  */
 
+const PORTAL_ATTRIBUTE = "data-xr-portal";
+
+/**
+ * The portal a node was projected through, if it was.
+ *
+ * Worth having because a click inside a portal and a click on the page are not
+ * the same kind of event, however alike they look. The ones the portal
+ * synthesises from a ray are the panel's own; the ones the browser raises are
+ * somebody using a mouse on whatever else the page happens to be showing — a
+ * VR button, a debug overlay, an emulator's controls. A component that dresses
+ * itself in a `document` listener to hear "clicked elsewhere" hears both, and
+ * closes itself on the mouse click that was busy pressing the trigger.
+ *
+ * Listening on this instead scopes that to the panel, which is what "elsewhere"
+ * was ever meant to mean. It returns null off the page's own DOM, where
+ * `document` is the right answer and there is nothing to disambiguate.
+ *
+ * @param {Node | null} node
+ * @returns {HTMLElement | null}
+ */
+export function getPortalRoot(node) {
+  const element =
+    node?.nodeType === Node.ELEMENT_NODE
+      ? /** @type {Element} */ (node)
+      : (node?.parentElement ?? null);
+  return /** @type {HTMLElement | null} */ (element?.closest(`[${PORTAL_ATTRIBUTE}]`) ?? null);
+}
+
 /**
  * @param {WeakKey} ctx
  */
@@ -113,6 +141,7 @@ export function createPortal(ctx) {
   }
 
   const containerElement = document.createElement("div");
+  containerElement.setAttribute(PORTAL_ATTRIBUTE, "");
   containerElement.style.position = "absolute";
   containerElement.style.top = "0";
   containerElement.style.left = "0";

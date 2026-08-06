@@ -113,11 +113,26 @@ every twitch of the ray. A class swap restyles and repaints; it does not
 re-measure. So anything that changes size — a menu opening, a section
 expanding — has to be mounted and unmounted rather than hidden and shown.
 
-**The panel's background is clickable.** A ray that lands on the panel but on
-none of its buttons hits the blocker spanning the container, which dispatches a
-bubbling `click` on the portal's root element. That is what "clicked outside"
-means to a menu that wants to close itself; there is no other way for the tree
-inside to learn it happened.
+**The panel's background is clickable, and it is the panel you should listen
+to.** A ray that lands on the panel but on none of its buttons hits the blocker
+spanning the container, which dispatches a bubbling `click` on the portal's
+root element. That is what "clicked outside" means to a menu that wants to
+close itself; there is no other way for the tree inside to learn it happened.
+
+Listen for it on the panel rather than on the document, via
+`getPortalRoot(node)`:
+
+```js
+const scope = getPortalRoot(root) ?? document;
+scope.addEventListener("click", onClickElsewhere);
+```
+
+A `document` listener also hears every real mouse click on the page around the
+scene — the VR button, and in development an emulator whose every control is a
+mouse click. A menu listening there closes itself the moment you reach for the
+control that was going to choose from it, which looks exactly like the ray
+having no effect. `getPortalRoot` returns null off a portal, where `document`
+is the right answer and there is nothing to disambiguate.
 
 ## Layers
 

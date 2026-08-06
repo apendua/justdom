@@ -42,7 +42,7 @@ function setup(cursor, cssText = "") {
   element.style.cursor = cursor;
   document.body.appendChild(element);
 
-  /** @type {Subject<Set<import('./cache.js').MutationType>>} */
+  /** @type {Subject<import('./cache.js').MutationBatch>} */
   const mutations = new Subject();
   setSubject(element, mutations);
 
@@ -88,12 +88,12 @@ function setup(cursor, cssText = "") {
     /** Announce a style change the way the portal's MutationObserver would. */
     restyle: (/** @type {string} */ value) => {
       element.style.cursor = value;
-      mutations.next(new Set(["attributes"]));
+      mutations.next({ types: new Set(["attributes"]), targets: new Set([element]) });
     },
     /** The same, for anything that is not the cursor. */
     restyleWith: (/** @type {string} */ cssText) => {
       element.style.cssText = cssText;
-      mutations.next(new Set(["attributes"]));
+      mutations.next({ types: new Set(["attributes"]), targets: new Set([element]) });
     },
     /** @param {"pointerenter" | "pointerleave"} type */
     dispatch: (type) => {

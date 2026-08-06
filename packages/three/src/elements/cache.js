@@ -1,8 +1,9 @@
 import { addDependency, Derived, NoValueError } from "@apendua/signal";
-import { filter, Subject } from "rxjs";
+import { filter } from "rxjs";
 import { collapseWhitespace, groupIntoLines, preservesWhitespace } from "./textLines.js";
 
 /**
+ * @import {Subject} from 'rxjs';
  * @import {TextLine} from './textLines.js';
  */
 
@@ -10,16 +11,62 @@ import { collapseWhitespace, groupIntoLines, preservesWhitespace } from "./textL
  * @typedef {"attributes" | "childList" | "fontLoaded" | "characterData"} MutationType
  */
 
-/** @type {WeakMap<WeakKey, Subject<Set<MutationType>>>} */
+/**
+ * One announcement from a portal's observer: which kinds of mutation happened,
+ * and the nodes they happened at. `targets` carries the observer's own
+ * `MutationRecord.target`s — the mutated element for `attributes`, the parent
+ * for `childList`, the text node for `characterData` — so caches that can
+ * scope their invalidation have something to scope it by. `null` means the
+ * whole portal is affected: fonts arriving restyle and re-measure everything,
+ * and there is no meaningful target to name.
+ *
+ * @typedef {object} MutationBatch
+ * @property {Set<MutationType>} types
+ * @property {Set<Node> | null} targets
+ */
+
+/** @type {WeakMap<WeakKey, Subject<MutationBatch>>} */
 const subjects = new WeakMap();
 
 /**
  * @param {WeakKey} node
- * @param {Subject<Set<MutationType>>} subject
+ * @param {Subject<MutationBatch>} subject
  * @returns {void}
  */
 export function setSubject(node, subject) {
   subjects.set(node, subject);
+}
+
+/**
+ * Whether a batch can change the computed style of `node`.
+ *
+ * A mutation restyles its target and everything below it — descendant
+ * combinators and plain inheritance both flow that way — but it can also
+ * restyle the target's *siblings* and their subtrees, through `~`, `+` and
+ * the structural pseudo-classes. All of those live inside the target's
+ * parent, so the parent's subtree is the scope a target contributes; a batch
+ * with no targets at all means the whole portal.
+ *
+ * The one selector this deliberately does not model is `:has()`, which lets
+ * a mutation restyle its *ancestors*. Styling inside a portal with `:has()`
+ * whose subject crosses upward past the mutated element's parent may go
+ * stale until the next structural mutation re-announces the tree.
+ *
+ * @param {MutationBatch} batch
+ * @param {Node} node
+ * @returns {boolean}
+ */
+function affectsStyle(batch, node) {
+  if (!batch.targets) {
+    return true;
+  }
+  for (const target of batch.targets) {
+    const scope = target.parentNode ?? target;
+    if (scope.contains(node)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 /** @type {WeakMap<Element | Text, Map<string | null, Derived<CSSStyleDeclaration>>>} */
@@ -42,10 +89,11 @@ export function getComputedStyleCached(element, pseudoElement = null) {
       .get(element)
       ?.pipe(
         filter(
-          (mutations) =>
-            mutations.has("childList") ||
-            mutations.has("attributes") ||
-            mutations.has("fontLoaded"),
+          (batch) =>
+            (batch.types.has("childList") ||
+              batch.types.has("attributes") ||
+              batch.types.has("fontLoaded")) &&
+            affectsStyle(batch, element),
         ),
       );
     signal = new Derived(
@@ -86,14 +134,17 @@ let boundingClientRectCache = new WeakMap();
 export function getBoundingClientRectCached(element) {
   let signal = boundingClientRectCache.get(element);
   if (!signal) {
+    // Deliberately coarse: layout is non-local (a sibling growing moves this
+    // element), so rects pay no attention to `targets` — but the types that
+    // reach them are rare, structural ones.
     const dependency = subjects
       .get(element)
       ?.pipe(
         filter(
-          (mutations) =>
-            mutations.has("childList") ||
-            mutations.has("characterData") ||
-            mutations.has("fontLoaded"),
+          (batch) =>
+            batch.types.has("childList") ||
+            batch.types.has("characterData") ||
+            batch.types.has("fontLoaded"),
         ),
       );
     signal = new Derived(() => {
@@ -211,14 +262,16 @@ let textLayoutCache = new WeakMap();
 export function getTextLayout(text) {
   let signal = textLayoutCache.get(text);
   if (!signal) {
+    // Coarse for the same reason rects are: where a text node wraps depends
+    // on layout the whole tree decides together.
     const dependency = subjects
       .get(text)
       ?.pipe(
         filter(
-          (mutations) =>
-            mutations.has("childList") ||
-            mutations.has("characterData") ||
-            mutations.has("fontLoaded"),
+          (batch) =>
+            batch.types.has("childList") ||
+            batch.types.has("characterData") ||
+            batch.types.has("fontLoaded"),
         ),
       );
     signal = new Derived(() => {
@@ -247,7 +300,7 @@ const parentElementCache = new WeakMap();
 export function getParentElement(node) {
   let signal = parentElementCache.get(node);
   if (!signal) {
-    const dependency = subjects.get(node)?.pipe(filter((mutations) => mutations.has("childList")));
+    const dependency = subjects.get(node)?.pipe(filter((batch) => batch.types.has("childList")));
     signal = new Derived(() => {
       if (dependency) {
         addDependency(dependency);

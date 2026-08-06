@@ -11,7 +11,7 @@ import { InteractionContext } from "../interactions.js";
  * @import {Observable} from 'rxjs';
  * @import {Mountable} from "@apendua/justdom";
  * @import {Object3D} from 'three';
- * @import {MutationType} from './cache.js';
+ * @import {MutationBatch, MutationType} from './cache.js';
  */
 
 const PORTAL_ATTRIBUTE = "data-xr-portal";
@@ -55,14 +55,14 @@ export function createPortal(ctx) {
   /** @type {WeakMap<Object3D, () => void>} */
   const objectToCleanup = new WeakMap();
 
-  /** @type {Subject<Set<MutationType>>} */
+  /** @type {Subject<MutationBatch>} */
   const subject = new Subject();
 
   /**
-   * @param {Set<MutationType>} mutations
+   * @param {MutationBatch} batch
    */
-  function invalidateLayout(mutations) {
-    subject.next(mutations);
+  function invalidateLayout(batch) {
+    subject.next(batch);
   }
 
   /**
@@ -197,7 +197,14 @@ export function createPortal(ctx) {
     /** @type {Set<Node>} */
     const alreadySeen = new Set();
     /** @type {Set<MutationType>} */
-    const mutations = new Set();
+    const types = new Set();
+    // The records already say where each mutation happened — the mutated
+    // element for `attributes`, the parent for `childList`, the text node for
+    // `characterData` — so pass that along and let each cache decide how far
+    // a change at that node can reach, instead of treating every mutation as
+    // portal-wide.
+    /** @type {Set<Node>} */
+    const targets = new Set();
     for (const mutation of mutationList) {
       const parentObject = nodeToObject.get(mutation.target);
       if (mutation.type === "childList") {
@@ -209,7 +216,8 @@ export function createPortal(ctx) {
           }
         });
       }
-      mutations.add(mutation.type);
+      types.add(mutation.type);
+      targets.add(mutation.target);
     }
     for (const mutation of mutationList) {
       const parentObject = nodeToObject.get(mutation.target);
@@ -227,7 +235,7 @@ export function createPortal(ctx) {
         });
       }
     }
-    invalidateLayout(mutations);
+    invalidateLayout({ types, targets });
     // Every hand's hit is worked out only when that hand moves, so a menu that
     // opens under a ray resting on the button that opened it would go on
     // reporting the button as hovered until the player twitched. The scene
@@ -245,7 +253,9 @@ export function createPortal(ctx) {
   });
 
   function fontLoadingCallback() {
-    invalidateLayout(new Set(["fontLoaded"]));
+    // Fonts arriving restyle and re-measure everything at once; there is no
+    // node to scope that to.
+    invalidateLayout({ types: new Set(["fontLoaded"]), targets: null });
   }
   if (document.fonts) {
     document.fonts.addEventListener("loadingdone", fontLoadingCallback);

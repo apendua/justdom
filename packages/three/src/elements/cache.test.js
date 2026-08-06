@@ -24,6 +24,7 @@ describe("getComputedStyleCached", () => {
     window.getComputedStyle = () => live;
 
     try {
+      /** @type {Subject<import("./cache.js").MutationBatch>} */
       const subject = new Subject();
       setSubject(element, subject);
 
@@ -40,7 +41,7 @@ describe("getComputedStyleCached", () => {
       assert.equal(dependent.get(), "rgb(1, 2, 3)");
 
       element.style.backgroundColor = "rgb(4, 5, 6)";
-      subject.next(new Set(["attributes"]));
+      subject.next({ types: new Set(["attributes"]), targets: new Set([element]) });
 
       assert.equal(dependent.get(), "rgb(4, 5, 6)");
       subscription.unsubscribe();
@@ -48,5 +49,66 @@ describe("getComputedStyleCached", () => {
       window.getComputedStyle = original;
       element.remove();
     }
+  });
+
+  test("a style batch reaches its target's parent subtree and nothing else", () => {
+    // root
+    // ├── branchA ── leafA
+    // └── branchB ── leafB
+    const root = document.createElement("div");
+    const branchA = document.createElement("div");
+    const branchB = document.createElement("div");
+    const leafA = document.createElement("div");
+    const leafB = document.createElement("div");
+    branchA.appendChild(leafA);
+    branchB.appendChild(leafB);
+    root.appendChild(branchA);
+    root.appendChild(branchB);
+    document.body.appendChild(root);
+
+    // One subject shared by the whole tree, the way a portal shares one.
+    /** @type {Subject<import("./cache.js").MutationBatch>} */
+    const subject = new Subject();
+    for (const node of [root, branchA, branchB, leafA, leafB]) {
+      setSubject(node, subject);
+    }
+
+    const reads = { leafA: 0, leafB: 0 };
+    const dependents = {
+      leafA: new Derived(() => {
+        reads.leafA += 1;
+        return getComputedStyleCached(leafA).cursor;
+      }),
+      leafB: new Derived(() => {
+        reads.leafB += 1;
+        return getComputedStyleCached(leafB).cursor;
+      }),
+    };
+    const subscriptions = Object.values(dependents).map((dependent) =>
+      dependent.subscribe({ next: () => dependent.get() }),
+    );
+    Object.values(dependents).forEach((dependent) => dependent.get());
+    assert.deepEqual(reads, { leafA: 1, leafB: 1 });
+
+    // An attribute change on leafA can restyle at most leafA's siblings;
+    // nothing under branchB needs another look.
+    subject.next({ types: new Set(["attributes"]), targets: new Set([leafA]) });
+    assert.deepEqual(reads, { leafA: 2, leafB: 1 });
+
+    // On branchA it can restyle branchA's siblings too — `~` and `+` reach
+    // across — and branchB's subtree comes with that.
+    subject.next({ types: new Set(["attributes"]), targets: new Set([branchA]) });
+    assert.deepEqual(reads, { leafA: 3, leafB: 2 });
+
+    // No targets means the whole portal: fonts arriving restyle everything.
+    subject.next({ types: new Set(["fontLoaded"]), targets: null });
+    assert.deepEqual(reads, { leafA: 4, leafB: 3 });
+
+    // A type styles pay no attention to does nothing, targeted or not.
+    subject.next({ types: new Set(["characterData"]), targets: new Set([leafA]) });
+    assert.deepEqual(reads, { leafA: 4, leafB: 3 });
+
+    subscriptions.forEach((subscription) => subscription.unsubscribe());
+    root.remove();
   });
 });

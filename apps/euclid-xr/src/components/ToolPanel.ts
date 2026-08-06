@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { distinctUntilChanged, switchMap, type Observable } from "rxjs";
-import { dom, XREventMap } from "@apendua/freedom";
+import { dom, dropdown, XREventMap } from "@apendua/freedom";
 import { $, children, on, renderText, text } from "@apendua/justdom";
 import { component, effects, observable, set } from "@apendua/signal";
 import { EXAMPLES } from "@apendua.dev/euclid-lang";
@@ -9,13 +9,13 @@ import {
   buttonGlyph,
   buttonLabel,
   buttonRow,
+  dropdownClasses,
   hintLine,
   iconButton,
   panelCard,
   panelStack,
   panelTitle,
 } from "../elements/styles.js";
-import { dropdown } from "./Dropdown.js";
 import type Studio from "../store/Studio.js";
 import type { Tool } from "../store/Studio.js";
 
@@ -132,12 +132,12 @@ const ToolPanel = component((ctx: WeakKey, studio: Studio) => {
           set("className", panelCard),
           children(
             $("div", [set("className", panelTitle), children(text`Constructions`)]),
-            // Seven buttons' worth of panel, folded into one. It opens upward
-            // so that the menu stays over the panel rather than hanging off
-            // the bottom of it into the room.
+            // Seven buttons' worth of panel, folded into one. Its classes open
+            // the menu upward, so that it stays over the panel rather than
+            // hanging off the bottom of it into the room.
             dropdown({
               options: examples,
-              direction: "up",
+              classes: dropdownClasses,
               placeholder: "Pick a construction…",
               selected: () => studio.exampleName.get(),
               onSelect: (name) => studio.loadExample(name),

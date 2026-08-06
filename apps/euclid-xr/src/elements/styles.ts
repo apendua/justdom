@@ -1,4 +1,5 @@
-import { stylesheet, CLASS_NAME } from "@apendua/justdom";
+import { renderText, stylesheet, CLASS_NAME } from "@apendua/justdom";
+import type { DropdownClasses } from "@apendua/freedom";
 import { palette } from "./palette.js";
 
 export const panelStack = stylesheet`
@@ -115,13 +116,13 @@ export const buttonActive = stylesheet`
   }
 `;
 
-export const dropdownRoot = stylesheet`
+const dropdownRoot = stylesheet`
   .${CLASS_NAME} {
     position: relative;
   }
 `;
 
-export const dropdownTrigger = stylesheet`
+const dropdownTrigger = stylesheet`
   .${CLASS_NAME} {
     box-sizing: border-box;
     display: flex;
@@ -145,7 +146,7 @@ export const dropdownTrigger = stylesheet`
   }
 `;
 
-export const dropdownCaret = stylesheet`
+const dropdownCaret = stylesheet`
   .${CLASS_NAME} {
     font-size: 10px;
     line-height: 1;
@@ -163,7 +164,7 @@ export const dropdownCaret = stylesheet`
  * so opening one would slide the whole thing out from under the ray that
  * opened it.
  */
-export const dropdownMenu = stylesheet`
+const dropdownMenu = stylesheet`
   .${CLASS_NAME} {
     box-sizing: border-box;
     position: absolute;
@@ -181,7 +182,7 @@ export const dropdownMenu = stylesheet`
 
 // Doubled, like buttonActive, so it outranks the base rules whichever order
 // the two <style> elements were injected in.
-export const dropdownMenuUp = stylesheet`
+const dropdownMenuUp = stylesheet`
   .${CLASS_NAME}.${CLASS_NAME} {
     top: auto;
     bottom: 100%;
@@ -190,7 +191,7 @@ export const dropdownMenuUp = stylesheet`
   }
 `;
 
-export const dropdownOption = stylesheet`
+const dropdownOption = stylesheet`
   .${CLASS_NAME} {
     box-sizing: border-box;
     display: flex;
@@ -212,12 +213,26 @@ export const dropdownOption = stylesheet`
   }
 `;
 
-export const dropdownOptionSelected = stylesheet`
+const dropdownOptionSelected = stylesheet`
   .${CLASS_NAME}.${CLASS_NAME} {
     background: ${palette.buttonActive};
     color: #ffffff;
   }
 `;
+
+/**
+ * The construction picker's dress. It opens upward, which is not a matter of
+ * taste: the card sits at the foot of the panel, and a menu hanging off the
+ * bottom would trail into the room in front of the board.
+ */
+export const dropdownClasses: DropdownClasses = {
+  root: dropdownRoot,
+  trigger: dropdownTrigger,
+  caret: dropdownCaret,
+  menu: renderText`${dropdownMenu} ${dropdownMenuUp}`,
+  option: dropdownOption,
+  optionSelected: dropdownOptionSelected,
+};
 
 export const hintLine = stylesheet`
   .${CLASS_NAME} {

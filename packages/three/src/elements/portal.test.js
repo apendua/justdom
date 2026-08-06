@@ -72,6 +72,9 @@ describe("createPortal", () => {
     const blocker = added[0];
     assert.ok(blocker instanceof THREE.Mesh, "the blocker plane is registered");
     assert.ok(blocker.geometry instanceof THREE.PlaneGeometry, "the blocker is a plane");
+    // The container is flipped half a turn about x, so the plane faces away
+    // from the viewer and a one-sided mesh would never be raycast at all.
+    assert.equal(blocker.material.side, THREE.DoubleSide, "the blocker is two-sided");
 
     subscription.unsubscribe();
     portal.disconnect();

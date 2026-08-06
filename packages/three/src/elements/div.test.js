@@ -190,6 +190,11 @@ describe("div elevation", () => {
     const [blocker] = registered;
     assert.ok(blocker instanceof THREE.Mesh);
     assert.ok(blocker.geometry instanceof THREE.PlaneGeometry);
+    // A portal flips its container half a turn about x to put the CSS y axis
+    // the right way round, which leaves every plane in it facing away from the
+    // viewer. A one-sided mesh is not raycast from behind, so a blocker that
+    // is not two-sided blocks nothing whatsoever.
+    assert.equal(blocker.material.side, THREE.DoubleSide);
 
     restyleWith("");
     assert.deepEqual(registered, []);

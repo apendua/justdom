@@ -15,6 +15,12 @@ const geometry = new THREE.PlaneGeometry(1, 1);
 const material = new THREE.MeshBasicMaterial({
   colorWrite: false,
   depthWrite: false,
+  // Two-sided, and not as a nicety. A portal flips its container half a turn
+  // about x to put the CSS y axis the right way round, which turns every
+  // plane in it away from the viewer — and a one-sided mesh is not raycast
+  // from behind, so a blocker facing backwards stops nothing at all. The
+  // boxes themselves are two-sided for the same reason.
+  side: THREE.DoubleSide,
 });
 
 /**

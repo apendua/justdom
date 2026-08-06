@@ -1,7 +1,7 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
-import { BehaviorSubject, Subject } from "rxjs";
+import { BehaviorSubject, Observable, Subject } from "rxjs";
 import { Signal, just } from "@apendua/signal";
 import {
   InteractionContext,
@@ -42,6 +42,123 @@ function targetMesh(distance = 5) {
   mesh.updateMatrixWorld();
   return /** @type {THREE.Object3D<XREventMap>} */ (/** @type {unknown} */ (mesh));
 }
+
+/**
+ * What a projected button actually is: an object carrying the handlers, with a
+ * quad of background and a quad of text under it. The text is nearer, so a ray
+ * over the label meets it first and a ray beside the label meets the
+ * background — the same button either way.
+ *
+ * @returns {{
+ *   button: THREE.Object3D<XREventMap>,
+ *   background: THREE.Object3D<XREventMap>,
+ *   label: THREE.Object3D<XREventMap>,
+ * }}
+ */
+function labelledButton() {
+  const button = new THREE.Object3D();
+  const background = targetMesh(6);
+  const label = targetMesh(5);
+  button.add(background, label);
+  button.updateMatrixWorld(true);
+  return {
+    button: /** @type {THREE.Object3D<XREventMap>} */ (/** @type {unknown} */ (button)),
+    background,
+    label,
+  };
+}
+
+/** Slide something out of the ray, as a hand moving does to what it was on. */
+function moveAside(/** @type {THREE.Object3D} */ object) {
+  object.position.x = 100;
+  object.updateMatrixWorld();
+}
+
+/**
+ * A controller wired to the manager, with the frame hook stubbed out: select
+ * events read the intersection themselves, so nothing here needs a frame.
+ *
+ * @param {InteractionManager} manager
+ * @param {THREE.XRTargetRaySpace} controller
+ */
+function connect(manager, controller) {
+  return manager.addController(controller, () => new Observable(() => () => {})).subscribe();
+}
+
+describe("select", () => {
+  test("a press and a release on the same button are a click, whatever the ray met", () => {
+    const manager = new InteractionManager();
+    const controller = fakeController();
+    const subscription = connect(manager, controller);
+    const { button, label } = labelledButton();
+    manager.add(button);
+
+    /** @type {string[]} */
+    const events = [];
+    button.addEventListener("select", () => events.push("select"));
+    button.addEventListener("selectmissed", () => events.push("selectmissed"));
+
+    // Pressed beside the label -- the background quad is what the ray met.
+    assert.strictEqual(manager.getIntersection(controller)?.object, label);
+    controller.dispatchEvent(/** @type {any} */ ({ type: "selectstart", data: {} }));
+
+    // The hand drifts a few millimetres onto the label before letting go. It
+    // has not left the button, and a player would not say it had.
+    moveAside(label);
+    controller.dispatchEvent(/** @type {any} */ ({ type: "selectend", data: {} }));
+
+    assert.deepEqual(events, ["select"]);
+    subscription.unsubscribe();
+  });
+
+  test("a release on a different button is still a miss", () => {
+    const manager = new InteractionManager();
+    const controller = fakeController();
+    const subscription = connect(manager, controller);
+    const near = labelledButton();
+    const far = labelledButton();
+    far.background.position.z = -12;
+    far.label.position.z = -11;
+    far.background.updateMatrixWorld();
+    far.label.updateMatrixWorld();
+    manager.add(near.button);
+    manager.add(far.button);
+
+    /** @type {string[]} */
+    const events = [];
+    near.button.addEventListener("select", () => events.push("select"));
+    near.button.addEventListener("selectmissed", () => events.push("selectmissed"));
+
+    controller.dispatchEvent(/** @type {any} */ ({ type: "selectstart", data: {} }));
+    moveAside(near.label);
+    moveAside(near.background);
+    controller.dispatchEvent(/** @type {any} */ ({ type: "selectend", data: {} }));
+
+    assert.deepEqual(events, ["selectmissed"]);
+    subscription.unsubscribe();
+  });
+
+  test("a release on nothing at all is a miss", () => {
+    const manager = new InteractionManager();
+    const controller = fakeController();
+    const subscription = connect(manager, controller);
+    const { button, background, label } = labelledButton();
+    manager.add(button);
+
+    /** @type {string[]} */
+    const events = [];
+    button.addEventListener("select", () => events.push("select"));
+    button.addEventListener("selectmissed", () => events.push("selectmissed"));
+
+    controller.dispatchEvent(/** @type {any} */ ({ type: "selectstart", data: {} }));
+    moveAside(label);
+    moveAside(background);
+    controller.dispatchEvent(/** @type {any} */ ({ type: "selectend", data: {} }));
+
+    assert.deepEqual(events, ["selectmissed"]);
+    subscription.unsubscribe();
+  });
+});
 
 describe("makeInteractive", () => {
   test("registers the entity while subscribed and unregisters on teardown", () => {

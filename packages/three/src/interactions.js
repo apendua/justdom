@@ -148,6 +148,31 @@ export class InteractionManager {
   }
 
   /**
+   * The registered object a hit belongs to.
+   *
+   * A raycast lands on whichever mesh the ray actually met, and that is rarely
+   * the thing anybody registered: a projected button is a background quad and
+   * a quad of text, both descendants of the object that carries the handlers.
+   * Which of the two the ray happened to touch is not a distinction a player
+   * makes, so anywhere a press has to be matched against a release, they are
+   * compared by this rather than by the mesh.
+   *
+   * @param {THREE.Object3D<XREventMap> | undefined} object
+   * @returns {THREE.Object3D<XREventMap> | undefined}
+   */
+  getTarget(object) {
+    /** @type {THREE.Object3D<XREventMap> | null | undefined} */
+    let node = object;
+    while (node) {
+      if (this.#objects.has(node)) {
+        return node;
+      }
+      node = /** @type {THREE.Object3D<XREventMap> | null} */ (node.parent);
+    }
+    return undefined;
+  }
+
+  /**
    * @param {THREE.XRTargetRaySpace} controller
    * @param {(fn: XRFrameRequestCallback) => Observable<never>} onAnimationFrame
    *   Runs the callback once per frame. It must run late — after everything
@@ -159,8 +184,18 @@ export class InteractionManager {
     return new Observable(() => {
       /** @type {THREE.Object3D<XREventMap> | undefined} */
       let selectedObject;
+      /**
+       * What was pressed, as opposed to which of its meshes the ray met. The
+       * release is matched against this: a hand that drifts from a button's
+       * label onto its background has not left the button.
+       *
+       * @type {THREE.Object3D<XREventMap> | undefined}
+       */
+      let selectedTarget;
       /** @type {THREE.Object3D<XREventMap> | undefined} */
       let squeezedObject;
+      /** @type {THREE.Object3D<XREventMap> | undefined} */
+      let squeezedTarget;
       /** @type {THREE.Object3D<XREventMap> | undefined} */
       let targetedObject;
       // The hand has to be looked at once when it arrives; after that only
@@ -179,6 +214,7 @@ export class InteractionManager {
         const { data: inputSource } = event;
         if (intersection) {
           selectedObject = intersection.object;
+          selectedTarget = this.getTarget(selectedObject);
           this.dispatch(selectedObject, {
             type: "selectstart",
             inputSource,
@@ -197,7 +233,12 @@ export class InteractionManager {
       const onSelectEnd = (event) => {
         const intersection = this.getIntersection(controller);
         const { data: inputSource } = event;
-        if (intersection && selectedObject === intersection.object) {
+        // Still on what was pressed, even if the ray has wandered from its
+        // label to its background in the meantime. `select` is dispatched from
+        // the mesh the press landed on, so the click reaches the same element
+        // that has been wearing the pressed styling since `selectstart`.
+        const releasedOn = intersection && this.getTarget(intersection.object);
+        if (intersection && selectedObject && selectedTarget && releasedOn === selectedTarget) {
           this.dispatch(selectedObject, {
             type: "selectend",
             inputSource,
@@ -230,6 +271,7 @@ export class InteractionManager {
           });
         }
         selectedObject = undefined;
+        selectedTarget = undefined;
       };
 
       /**
@@ -240,6 +282,7 @@ export class InteractionManager {
         const { data: inputSource } = event;
         if (intersection) {
           squeezedObject = intersection.object;
+          squeezedTarget = this.getTarget(squeezedObject);
           this.dispatch(intersection.object, {
             type: "squeezestart",
             inputSource,
@@ -257,7 +300,10 @@ export class InteractionManager {
       const onSqueezeEnd = (event) => {
         const intersection = this.getIntersection(controller);
         const { data: inputSource } = event;
-        if (intersection && squeezedObject === intersection.object) {
+        // Matched by what was grabbed rather than by which of its meshes the
+        // ray met, for the same reason a press and its release are.
+        const releasedOn = intersection && this.getTarget(intersection.object);
+        if (intersection && squeezedObject && squeezedTarget && releasedOn === squeezedTarget) {
           this.dispatch(squeezedObject, {
             type: "squeezeend",
             inputSource,
@@ -290,6 +336,7 @@ export class InteractionManager {
           });
         }
         squeezedObject = undefined;
+        squeezedTarget = undefined;
       };
 
       const maybeUpdateIntersections = () => {

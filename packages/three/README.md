@@ -104,6 +104,69 @@ portal, so ordinary DOM-based UI (menus, HUDs, forms) can be composited
 directly into a 3D or WebXR scene and still receive pointer events routed
 through `interactions(ctx)`.
 
+Two things about a portal are worth knowing before writing UI for one.
+
+**Sizes are re-measured when the tree changes, not when an attribute does.**
+The hover handlers write `data-xr-*` back onto the element they fired on, so
+re-measuring on every attribute mutation would mean re-laying-out the panel on
+every twitch of the ray. A class swap restyles and repaints; it does not
+re-measure. So anything that changes size — a menu opening, a section
+expanding — has to be mounted and unmounted rather than hidden and shown.
+
+**The panel's background is clickable, and it is the panel you should listen
+to.** A ray that lands on the panel but on none of its buttons hits the blocker
+spanning the container, which dispatches a bubbling `click` on the portal's
+root element. That is what "clicked outside" means to a menu that wants to
+close itself; there is no other way for the tree inside to learn it happened.
+
+Listen for it on the panel rather than on the document, via
+`getPortalRoot(node)`:
+
+```js
+const scope = getPortalRoot(root) ?? document;
+scope.addEventListener("click", onClickElsewhere);
+```
+
+A `document` listener also hears every real mouse click on the page around the
+scene — the VR button, and in development an emulator whose every control is a
+mouse click. A menu listening there closes itself the moment you reach for the
+control that was going to choose from it, which looks exactly like the ray
+having no effect. `getPortalRoot` returns null off a portal, where `document`
+is the right answer and there is nothing to disambiguate.
+
+## Layers
+
+An element that is positioned and stacked above — `position` other than
+`static` plus a positive `z-index`, the same declaration the flat build needs
+anyway — becomes a layer of its own rather than one more nested box:
+
+```css
+.menu {
+  position: absolute;
+  z-index: 1;
+  top: 100%;
+}
+```
+
+It is pushed clear of the surface it covers, so the depth buffer and stereo
+both agree that it floats; its whole subtree is drawn in a band above
+everything below it, however shallow the overlay itself is; and it is opaque
+to rays, through a blocker of its own. That last one is the part with no
+counterpart on a flat screen: without it the ray that lands between two menu
+rows carries straight through the menu and hits a panel button a few
+millimetres behind — not a miss, a click on something the menu is covering.
+
+Layers stack by nesting, not by how big the number is: a menu inside a modal
+is two layers up, `z-index: 1000` is still one. Keep an overlay within the
+silhouette of the panel it belongs to where you can, and keep it out of the
+flow — a menu that grew the panel would re-center it, sliding the whole thing
+out from under the ray that opened it.
+
+A native `<select>` cannot work here, layers or not: `<option>` has no CSS box
+to mirror, and the list the browser pops up is chrome rather than DOM, so none
+of it reaches the scene. Dropdowns have to be built from ordinary elements —
+see [`apps/euclid-xr`](../../apps/euclid-xr) for one.
+
 ## Real examples
 
 This package drives several full apps in this monorepo —

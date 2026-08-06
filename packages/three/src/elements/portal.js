@@ -4,6 +4,7 @@ import { Subject } from "rxjs";
 import { div } from "./div.js";
 import { text } from "./text.js";
 import { getBoundingClientRectCached, setSubject } from "./cache.js";
+import { createBlocker, coverBox } from "./blocker.js";
 import { InteractionContext } from "../interactions.js";
 
 /**
@@ -11,8 +12,35 @@ import { InteractionContext } from "../interactions.js";
  * @import {Mountable} from "@apendua/justdom";
  * @import {Object3D} from 'three';
  * @import {MutationType} from './cache.js';
- * @import {XREventMap} from '../core.js';
  */
+
+const PORTAL_ATTRIBUTE = "data-xr-portal";
+
+/**
+ * The portal a node was projected through, if it was.
+ *
+ * Worth having because a click inside a portal and a click on the page are not
+ * the same kind of event, however alike they look. The ones the portal
+ * synthesises from a ray are the panel's own; the ones the browser raises are
+ * somebody using a mouse on whatever else the page happens to be showing — a
+ * VR button, a debug overlay, an emulator's controls. A component that dresses
+ * itself in a `document` listener to hear "clicked elsewhere" hears both, and
+ * closes itself on the mouse click that was busy pressing the trigger.
+ *
+ * Listening on this instead scopes that to the panel, which is what "elsewhere"
+ * was ever meant to mean. It returns null off the page's own DOM, where
+ * `document` is the right answer and there is nothing to disambiguate.
+ *
+ * @param {Node | null} node
+ * @returns {HTMLElement | null}
+ */
+export function getPortalRoot(node) {
+  const element =
+    node?.nodeType === Node.ELEMENT_NODE
+      ? /** @type {Element} */ (node)
+      : (node?.parentElement ?? null);
+  return /** @type {HTMLElement | null} */ (element?.closest(`[${PORTAL_ATTRIBUTE}]`) ?? null);
+}
 
 /**
  * @param {WeakKey} ctx
@@ -113,6 +141,7 @@ export function createPortal(ctx) {
   }
 
   const containerElement = document.createElement("div");
+  containerElement.setAttribute(PORTAL_ATTRIBUTE, "");
   containerElement.style.position = "absolute";
   containerElement.style.top = "0";
   containerElement.style.left = "0";
@@ -127,17 +156,23 @@ export function createPortal(ctx) {
   // scene behind it, and a miss between two buttons should not click the
   // board. One invisible plane spanning the container does that, and doubles
   // as the single "background" hit target instead of dozens of divs.
-  const blockerMaterial = new THREE.MeshBasicMaterial({
-    colorWrite: false,
-    depthWrite: false,
-  });
-  const blocker =
-    /** @type {THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial, XREventMap>} */ (
-      new THREE.Mesh(new THREE.PlaneGeometry(1, 1), blockerMaterial)
-    );
+  const blocker = createBlocker();
   containerObject.add(blocker);
   const interactionManager = InteractionContext.get(ctx);
   interactionManager.add(blocker);
+
+  // Hitting the background is a fact the DOM inside the portal is entitled to
+  // hear about: it is what "clicked outside" means to a menu that wants to
+  // close itself, and there is no other way for it to learn that the ray
+  // landed on the panel rather than on one of its buttons. The event bubbles
+  // out of the container to `document` like any other.
+  //
+  // Deliberately without stopping propagation: a panel the scene made
+  // grabbable is still grabbable by its background, which is how it behaved
+  // before there was anything listening here at all.
+  blocker.addEventListener("select", () => {
+    containerElement.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  });
 
   function resizeCallback() {
     const scale = 0.01;
@@ -150,8 +185,7 @@ export function createPortal(ctx) {
     // Container-local px units, y down; content sits at negative local z
     // (toward the viewer after the flip above), so +1 puts the blocker just
     // behind everything the portal draws.
-    blocker.position.set(boundingRect.width / 2, boundingRect.height / 2, 1);
-    blocker.scale.set(Math.max(boundingRect.width, 1e-6), Math.max(boundingRect.height, 1e-6), 1);
+    coverBox(blocker, boundingRect.width, boundingRect.height, 1);
   }
 
   const resizeSubscription = observable(resizeCallback).subscribe();
@@ -194,6 +228,11 @@ export function createPortal(ctx) {
       }
     }
     invalidateLayout(mutations);
+    // Every hand's hit is worked out only when that hand moves, so a menu that
+    // opens under a ray resting on the button that opened it would go on
+    // reporting the button as hovered until the player twitched. The scene
+    // changed under them; ask for the rays to be cast again.
+    interactionManager.updateIntersections();
   };
 
   const mutationObserver = new MutationObserver(mutationCallback);
@@ -214,8 +253,6 @@ export function createPortal(ctx) {
 
   objectToCleanup.set(containerObject, () => {
     interactionManager.remove(blocker);
-    blocker.geometry.dispose();
-    blockerMaterial.dispose();
     if (containerElement.parentNode) {
       containerElement.parentNode.removeChild(containerElement);
     }

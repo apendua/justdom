@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import * as THREE from "three";
 import { $, attr, children } from "@apendua/justdom";
 import { InteractionContext, InteractionManager } from "../interactions.js";
-import { createPortal } from "./portal.js";
+import { createPortal, getPortalRoot } from "./portal.js";
 
 // jsdom-env exposes the common DOM globals, but not MutationObserver, which
 // the portal uses to mirror the tree.
@@ -72,6 +72,123 @@ describe("createPortal", () => {
     const blocker = added[0];
     assert.ok(blocker instanceof THREE.Mesh, "the blocker plane is registered");
     assert.ok(blocker.geometry instanceof THREE.PlaneGeometry, "the blocker is a plane");
+    // The container is flipped half a turn about x, so the plane faces away
+    // from the viewer and a one-sided mesh would never be raycast at all.
+    assert.equal(blocker.material.side, THREE.DoubleSide, "the blocker is two-sided");
+
+    subscription.unsubscribe();
+    portal.disconnect();
+  });
+
+  test("a click on the panel background is reported to the DOM", async () => {
+    const manager = new InteractionManager();
+    /** @type {THREE.Object3D[]} */
+    const added = [];
+    const originalAdd = manager.add.bind(manager);
+    manager.add = (object) => {
+      added.push(object);
+      originalAdd(object);
+    };
+    const ctx = InteractionContext.set({}, manager);
+
+    const portal = createPortal(ctx);
+    portal.addTo(new THREE.Group());
+
+    /** @type {import("@apendua/justdom").Mountable<Node> | undefined} */
+    let mountable;
+    const tree = $("div", [children($("div", [attr("style", () => "cursor: pointer")]))]);
+    const subscription = tree.subscribe((value) => {
+      mountable = value;
+    });
+    assert.ok(mountable);
+    portal.mount(mountable);
+
+    await nextMacrotask();
+    await nextMacrotask();
+
+    /** @type {Event[]} */
+    const clicks = [];
+    /** @param {Event} event */
+    const listener = (event) => clicks.push(event);
+    document.addEventListener("click", listener);
+
+    // Aiming at the panel but at none of its buttons. Nothing else can tell a
+    // menu that the player looked away from it and clicked.
+    added[0].dispatchEvent(/** @type {any} */ ({ type: "select" }));
+
+    assert.equal(clicks.length, 1, "the background click reaches the document");
+    assert.ok(clicks[0].target instanceof HTMLElement);
+
+    document.removeEventListener("click", listener);
+    subscription.unsubscribe();
+    portal.disconnect();
+  });
+
+  test("what it projects can find its way back to the panel it is in", async () => {
+    const manager = new InteractionManager();
+    const ctx = InteractionContext.set({}, manager);
+    const portal = createPortal(ctx);
+    portal.addTo(new THREE.Group());
+
+    /** @type {import("@apendua/justdom").Mountable<Node> | undefined} */
+    let mountable;
+    const tree = $("div", [children($("div", [attr("id", () => "inside")]))]);
+    const subscription = tree.subscribe((value) => {
+      mountable = value;
+    });
+    assert.ok(mountable);
+    portal.mount(mountable);
+    await nextMacrotask();
+
+    const inside = document.getElementById("inside");
+    assert.ok(inside);
+    const root = getPortalRoot(inside);
+    assert.ok(root, "a projected node finds the portal it was projected through");
+    assert.ok(root.contains(inside));
+
+    // Which matters because the page around a panel is full of clicks that are
+    // nothing to do with it: a VR button, an emulator's controls, whatever
+    // else the document is showing. A component listening for "clicked
+    // elsewhere" has to mean elsewhere in the panel, and off the panel there
+    // is nothing to scope to.
+    const elsewhere = document.body.appendChild(document.createElement("button"));
+    assert.equal(getPortalRoot(elsewhere), null);
+    assert.equal(getPortalRoot(null), null);
+    document.body.removeChild(elsewhere);
+
+    subscription.unsubscribe();
+    portal.disconnect();
+  });
+
+  test("mirroring a change asks for the rays to be cast again", async () => {
+    const manager = new InteractionManager();
+    let updates = 0;
+    const originalUpdate = manager.updateIntersections.bind(manager);
+    manager.updateIntersections = () => {
+      updates += 1;
+      originalUpdate();
+    };
+    const ctx = InteractionContext.set({}, manager);
+
+    const portal = createPortal(ctx);
+    portal.addTo(new THREE.Group());
+
+    /** @type {import("@apendua/justdom").Mountable<Node> | undefined} */
+    let mountable;
+    const tree = $("div", [children($("div", [attr("style", () => "cursor: pointer")]))]);
+    const subscription = tree.subscribe((value) => {
+      mountable = value;
+    });
+    assert.ok(mountable);
+    portal.mount(mountable);
+
+    await nextMacrotask();
+    await nextMacrotask();
+
+    // A hand pointing at the button that opened a menu is not moving, and the
+    // hit is only recomputed when it does — so a menu appearing underneath it
+    // would go unnoticed until the player twitched.
+    assert.ok(updates > 0, "the mirrored mutation invalidated the hits");
 
     subscription.unsubscribe();
     portal.disconnect();

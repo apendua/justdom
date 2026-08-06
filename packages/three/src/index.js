@@ -4,6 +4,7 @@ export { render, animate, size, camera, session, controllers } from "./render.js
 export { interactions, setLocalMatrix, setWorldMatrix } from "./interactions.js";
 export { cursors, pointers } from "./pointers.js";
 export { dom } from "./dom.js";
+export { getPortalRoot } from "./elements/portal.js";
 export { createXRButton } from "./xr.js";
 
 /**

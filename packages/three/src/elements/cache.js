@@ -8,6 +8,14 @@ import { collapseWhitespace, groupIntoLines, preservesWhitespace } from "./textL
  */
 
 /**
+ * The attribute a portal marks its container element with. It lives here —
+ * the leaf module everything on both sides of the portal already imports —
+ * so that helpers which need to know where a portal's tree ends (ancestor
+ * walks, `getPortalRoot`) can share it without importing each other.
+ */
+export const PORTAL_ATTRIBUTE = "data-xr-portal";
+
+/**
  * @typedef {"attributes" | "childList" | "fontLoaded" | "characterData"} MutationType
  */
 
@@ -63,6 +71,46 @@ function affectsStyle(batch, node) {
   for (const target of batch.targets) {
     const scope = target.parentNode ?? target;
     if (scope.contains(node)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Whether a batch can change the client rects of `node`.
+ *
+ * Structural mutations and fonts arriving re-lay-out the whole portal, and
+ * layout is non-local — a sibling growing moves this element — so those stay
+ * portal-wide. Attribute mutations were long assumed unable to move
+ * anything, which is the bargain that keeps hover cheap; but one thing they
+ * *can* do is toggle a CSS transform, and a transform changes the client
+ * rects of exactly the mutated element's own subtree and nobody else's.
+ * Re-measuring that subtree keeps transformed bounds coherent with the
+ * styles that produced them, at the price of a few rect reads per hover.
+ * Sizes an attribute changes through actual layout (padding on hover) still
+ * go stale outside the mutated subtree — that contract stands.
+ *
+ * @param {MutationBatch} batch
+ * @param {Node} node
+ * @returns {boolean}
+ */
+function affectsRect(batch, node) {
+  if (
+    batch.types.has("childList") ||
+    batch.types.has("characterData") ||
+    batch.types.has("fontLoaded")
+  ) {
+    return true;
+  }
+  if (!batch.types.has("attributes")) {
+    return false;
+  }
+  if (!batch.targets) {
+    return true;
+  }
+  for (const target of batch.targets) {
+    if (target.contains(node)) {
       return true;
     }
   }
@@ -134,19 +182,7 @@ let boundingClientRectCache = new WeakMap();
 export function getBoundingClientRectCached(element) {
   let signal = boundingClientRectCache.get(element);
   if (!signal) {
-    // Deliberately coarse: layout is non-local (a sibling growing moves this
-    // element), so rects pay no attention to `targets` — but the types that
-    // reach them are rare, structural ones.
-    const dependency = subjects
-      .get(element)
-      ?.pipe(
-        filter(
-          (batch) =>
-            batch.types.has("childList") ||
-            batch.types.has("characterData") ||
-            batch.types.has("fontLoaded"),
-        ),
-      );
+    const dependency = subjects.get(element)?.pipe(filter((batch) => affectsRect(batch, element)));
     signal = new Derived(() => {
       if (dependency) {
         addDependency(dependency);
@@ -262,18 +298,9 @@ let textLayoutCache = new WeakMap();
 export function getTextLayout(text) {
   let signal = textLayoutCache.get(text);
   if (!signal) {
-    // Coarse for the same reason rects are: where a text node wraps depends
-    // on layout the whole tree decides together.
-    const dependency = subjects
-      .get(text)
-      ?.pipe(
-        filter(
-          (batch) =>
-            batch.types.has("childList") ||
-            batch.types.has("characterData") ||
-            batch.types.has("fontLoaded"),
-        ),
-      );
+    // Same rule as rects: line boxes are client rects, so a transform toggled
+    // on an ancestor moves them too.
+    const dependency = subjects.get(text)?.pipe(filter((batch) => affectsRect(batch, text)));
     signal = new Derived(() => {
       if (dependency) {
         addDependency(dependency);

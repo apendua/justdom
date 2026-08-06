@@ -3,6 +3,7 @@ import { addDependency, batch, NoValueError, memo, decorate, memoFn } from "@ape
 import { fromEvent, store } from "@apendua/signal";
 import { filter, from, Subject } from "rxjs";
 import { getBoundingClientRectCached, getComputedStyleCached } from "./cache.js";
+import { isTransformed } from "./cssTransform.js";
 import { getElevation } from "./elevation.js";
 
 /**
@@ -230,13 +231,20 @@ export default class VisualProperties {
   setFromElement(element, pseudoElement = null) {
     const style = getComputedStyleCached(element, pseudoElement);
     const rect = getBoundingClientRectCached(element);
+    // A client rect includes CSS transforms; the box the mirror draws must
+    // not — its object carries the transform itself, and would apply it a
+    // second time. Layout sizes are whole px, but transform-free, so they
+    // take over whenever a transform sits anywhere on the chain. The rect is
+    // still read either way: it is the dependency that re-runs this when the
+    // layout moves.
+    const transformed = isTransformed(element);
     const fontSize = parseFloat(style.fontSize || "0");
     const [inheritedOpacity, layerNo] = getInheritedOpacity(element);
     const opacity = parseFloat(style.opacity || "1") * inheritedOpacity;
     /** @type {RawVisualProperties} */
     const properties = {
-      totalWidth: rect.width,
-      totalHeight: rect.height,
+      totalWidth: transformed ? element.offsetWidth : rect.width,
+      totalHeight: transformed ? element.offsetHeight : rect.height,
       opacity,
       fontSize,
       fontFamily: style.fontFamily,

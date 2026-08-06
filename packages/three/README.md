@@ -108,10 +108,12 @@ Two things about a portal are worth knowing before writing UI for one.
 
 **Sizes are re-measured when the tree changes, not when an attribute does.**
 The hover handlers write `data-xr-*` back onto the element they fired on, so
-re-measuring on every attribute mutation would mean re-laying-out the panel on
-every twitch of the ray. A class swap restyles and repaints; it does not
-re-measure. So anything that changes size — a menu opening, a section
-expanding — has to be mounted and unmounted rather than hidden and shown.
+re-measuring the panel on every attribute mutation would mean re-laying-out
+the whole thing on every twitch of the ray. A class swap restyles and
+repaints; the one thing it re-measures is the mutated element's own subtree,
+which is what a toggled `transform` moves (see below) — nothing outside it.
+So anything that changes *layout* — a menu opening, a section expanding —
+has to be mounted and unmounted rather than hidden and shown.
 
 **The panel's background is clickable, and it is the panel you should listen
 to.** A ray that lands on the panel but on none of its buttons hits the blocker
@@ -133,6 +135,23 @@ mouse click. A menu listening there closes itself the moment you reach for the
 control that was going to choose from it, which looks exactly like the ray
 having no effect. `getPortalRoot` returns null off a portal, where `document`
 is the right answer and there is nothing to disambiguate.
+
+## Transforms
+
+A CSS `transform` (with its `transform-origin`) is mirrored onto the
+element's object as a matrix, not baked into its geometry — which is what
+makes it the cheap way to move things: a `transform` written by a
+`[data-xr-hover]` or `[data-xr-active]` rule becomes a matrix write, with no
+re-layout and no re-rasterized text. Prefer it for motion, exactly as on the
+flat web.
+
+Two prints of the measuring tape to know about. A transformed element (and
+everything under it) is measured off the layout — whole-pixel offsets —
+rather than the subpixel client rects untransformed content enjoys, because
+client rects come back with the transform already applied. And text inside a
+transformed subtree is reconstructed by dividing the transform back out of
+those rects: exact under translation and scale, approximate under rotation,
+where only axis-aligned bounds survive to be read.
 
 ## Layers
 

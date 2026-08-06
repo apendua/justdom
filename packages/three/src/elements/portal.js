@@ -3,7 +3,7 @@ import { observable } from "@apendua/signal";
 import { Subject } from "rxjs";
 import { div } from "./div.js";
 import { text } from "./text.js";
-import { getBoundingClientRectCached, setSubject } from "./cache.js";
+import { getBoundingClientRectCached, PORTAL_ATTRIBUTE, setSubject } from "./cache.js";
 import { createBlocker, coverBox } from "./blocker.js";
 import { InteractionContext } from "../interactions.js";
 
@@ -13,8 +13,6 @@ import { InteractionContext } from "../interactions.js";
  * @import {Object3D} from 'three';
  * @import {MutationBatch, MutationType} from './cache.js';
  */
-
-const PORTAL_ATTRIBUTE = "data-xr-portal";
 
 /**
  * The portal a node was projected through, if it was.

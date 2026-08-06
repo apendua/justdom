@@ -2,7 +2,7 @@ import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { Subject } from "rxjs";
 import { Derived } from "@apendua/signal";
-import { getComputedStyleCached, setSubject } from "./cache.js";
+import { getBoundingClientRectCached, getComputedStyleCached, setSubject } from "./cache.js";
 
 describe("getComputedStyleCached", () => {
   test("style invalidations propagate even though the declaration is a live object", () => {
@@ -110,5 +110,53 @@ describe("getComputedStyleCached", () => {
 
     subscriptions.forEach((subscription) => subscription.unsubscribe());
     root.remove();
+  });
+
+  test("an attribute batch re-measures its target's own subtree, nothing else", () => {
+    // Attribute mutations cannot move layout — that contract stands — but
+    // they can toggle a CSS transform, which changes the client rects of
+    // exactly the mutated element's subtree.
+    const parent = document.createElement("div");
+    const child = document.createElement("div");
+    const sibling = document.createElement("div");
+    parent.appendChild(child);
+    document.body.appendChild(parent);
+    document.body.appendChild(sibling);
+
+    /** @type {Subject<import("./cache.js").MutationBatch>} */
+    const subject = new Subject();
+    for (const node of [parent, child, sibling]) {
+      setSubject(node, subject);
+    }
+
+    const reads = { child: 0, sibling: 0 };
+    const dependents = {
+      child: new Derived(() => {
+        reads.child += 1;
+        return getBoundingClientRectCached(child);
+      }),
+      sibling: new Derived(() => {
+        reads.sibling += 1;
+        return getBoundingClientRectCached(sibling);
+      }),
+    };
+    const subscriptions = Object.values(dependents).map((dependent) =>
+      dependent.subscribe({ next: () => dependent.get() }),
+    );
+    Object.values(dependents).forEach((dependent) => dependent.get());
+    assert.deepEqual(reads, { child: 1, sibling: 1 });
+
+    // A transform toggled on parent moves child's rect; sibling's is
+    // untouched and stays cached.
+    subject.next({ types: new Set(["attributes"]), targets: new Set([parent]) });
+    assert.deepEqual(reads, { child: 2, sibling: 1 });
+
+    // Structural mutations still re-measure everything: layout is non-local.
+    subject.next({ types: new Set(["childList"]), targets: new Set([parent]) });
+    assert.deepEqual(reads, { child: 3, sibling: 2 });
+
+    subscriptions.forEach((subscription) => subscription.unsubscribe());
+    parent.remove();
+    sibling.remove();
   });
 });

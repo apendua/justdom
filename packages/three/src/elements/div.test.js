@@ -164,6 +164,42 @@ describe("div interactivity", () => {
   });
 });
 
+describe("div transforms", () => {
+  test("a CSS transform lands on the object's matrix, about its origin", () => {
+    const { object, subscription } = setup(
+      "default",
+      "transform: matrix(2, 0, 0, 2, 10, 20); transform-origin: 0px 0px",
+    );
+
+    // Writing the matrix directly: three.js must not recompose it from the
+    // untouched position/quaternion/scale on the next frame.
+    assert.equal(object.matrixAutoUpdate, false);
+
+    // Layout offsets are all zero under jsdom, so the matrix is the CSS one
+    // plus the content step in z.
+    const point = new THREE.Vector3(1, 1, 0).applyMatrix4(object.matrix);
+    assert.equal(point.x, 2 * 1 + 10);
+    assert.equal(point.y, 2 * 1 + 20);
+    assert.equal(point.z, -2);
+
+    subscription.unsubscribe();
+  });
+
+  test("removing the transform hands the object back to ordinary positioning", () => {
+    const { object, restyleWith, subscription } = setup(
+      "default",
+      "transform: matrix(1, 0, 0, 1, 10, 20)",
+    );
+    assert.equal(object.matrixAutoUpdate, false);
+
+    restyleWith("");
+    assert.equal(object.matrixAutoUpdate, true);
+    assert.equal(object.position.z, -2);
+
+    subscription.unsubscribe();
+  });
+});
+
 describe("div elevation", () => {
   test("an ordinary box sits one content step in front of its parent", () => {
     const { object, subscription } = setup("default");

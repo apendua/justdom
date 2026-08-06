@@ -8,6 +8,12 @@ import VisualProperties from "./VisualProperties.js";
 import { makeRectangleGeometry, shrinkRectangle } from "./rectangle.js";
 import { createBlocker, coverBox } from "./blocker.js";
 import { getBoundingClientRectCached, getComputedStyleCached } from "./cache.js";
+import {
+  composeTransform,
+  getOwnTransform,
+  isTransformed,
+  untransformedOffset,
+} from "./cssTransform.js";
 import { isOverlay } from "./elevation.js";
 
 /**
@@ -190,17 +196,35 @@ export function div(ctx, element) {
       });
     }),
     effects((obj) => {
-      const elementRect = getBoundingClientRectCached(element);
-      const parentRect = element.parentElement
-        ? getBoundingClientRectCached(element.parentElement)
-        : null;
       // Only the element that opens a layer pays for it. Everything inside the
       // overlay is positioned against the overlay, so it comes along.
       const z = -CONTENT_STEP - (overlay.get() ? ELEVATION_STEP : 0);
-      if (parentRect) {
-        obj.position.set(elementRect.left - parentRect.left, elementRect.top - parentRect.top, z);
+      if (isTransformed(element)) {
+        // Client rects are transformed bounds — useless for a box that has to
+        // come out untransformed and then carry the CSS transform as its own
+        // matrix — so the position falls back to layout offsets. Layout moves
+        // still re-run this: `setFromElement` below reads the element's rect,
+        // and every structural mutation invalidates it.
+        const offset = untransformedOffset(element, element.parentElement);
+        const own = getOwnTransform(element);
+        obj.matrixAutoUpdate = false;
+        if (own) {
+          composeTransform(obj.matrix, offset.x, offset.y, z, own.matrix, own.origin);
+        } else {
+          obj.matrix.makeTranslation(offset.x, offset.y, z);
+        }
+        obj.matrixWorldNeedsUpdate = true;
       } else {
-        obj.position.set(elementRect.left, elementRect.top, z);
+        obj.matrixAutoUpdate = true;
+        const elementRect = getBoundingClientRectCached(element);
+        const parentRect = element.parentElement
+          ? getBoundingClientRectCached(element.parentElement)
+          : null;
+        if (parentRect) {
+          obj.position.set(elementRect.left - parentRect.left, elementRect.top - parentRect.top, z);
+        } else {
+          obj.position.set(elementRect.left, elementRect.top, z);
+        }
       }
       properties.setFromElement(element);
     }),

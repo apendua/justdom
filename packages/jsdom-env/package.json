@@ -1,6 +1,6 @@
 {
   "name": "@apendua/jsdom-env",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Installs a JSDOM window on globalThis, for running DOM code under node:test",
   "keywords": [
     "jsdom",

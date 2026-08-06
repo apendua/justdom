@@ -2,6 +2,35 @@
   "name": "@apendua/freedom",
   "entries": [
     {
+      "version": "0.5.1",
+      "tag": "@apendua/freedom_v0.5.1",
+      "date": "Thu, 06 Aug 2026 07:34:16 GMT",
+      "comments": {
+        "patch": [
+          {
+            "comment": "Built with TypeScript 7. VisualProperties declared its initialisation guard as 'asserts this is {#properties: ...}', which is not valid TypeScript -- a private name cannot appear in a type literal -- and TypeScript 7 rejects it. Replaced with a private #props getter applying the same guard. No behaviour change."
+          }
+        ],
+        "dependency": [
+          {
+            "comment": "Updating dependency \"@apendua/jsdom-env\" to `0.1.1`"
+          },
+          {
+            "comment": "Updating dependency \"@apendua/justdom\" to `0.1.2`"
+          },
+          {
+            "comment": "Updating dependency \"@apendua/signal\" to `0.1.1`"
+          },
+          {
+            "comment": "Updating dependency \"@apendua/vite-hmr\" to `0.1.1`"
+          },
+          {
+            "comment": "Updating dependency \"@apendua/signal\" to `0.1.1`"
+          }
+        ]
+      }
+    },
+    {
       "version": "0.5.0",
       "tag": "@apendua/freedom_v0.5.0",
       "date": "Wed, 05 Aug 2026 21:59:09 GMT",

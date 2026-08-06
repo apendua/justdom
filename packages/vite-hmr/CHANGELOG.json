@@ -2,6 +2,18 @@
   "name": "@apendua/vite-hmr",
   "entries": [
     {
+      "version": "0.1.1",
+      "tag": "@apendua/vite-hmr_v0.1.1",
+      "date": "Thu, 06 Aug 2026 07:34:16 GMT",
+      "comments": {
+        "patch": [
+          {
+            "comment": "Built with TypeScript 7."
+          }
+        ]
+      }
+    },
+    {
       "version": "0.1.0",
       "tag": "@apendua/vite-hmr_v0.1.0",
       "date": "Tue, 04 Aug 2026 21:29:33 GMT",

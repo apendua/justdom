@@ -2,6 +2,29 @@
   "name": "@apendua/justdom",
   "entries": [
     {
+      "version": "0.1.2",
+      "tag": "@apendua/justdom_v0.1.2",
+      "date": "Thu, 06 Aug 2026 07:34:16 GMT",
+      "comments": {
+        "patch": [
+          {
+            "comment": "Built with TypeScript 7, with each @overload in operators.js moved into its own JSDoc block. Also fixes suspend(): called without a fallback it built an empty options object, and render() invokes options.fallback() unconditionally, so it threw a TypeError. It now defaults to the same '() => NEVER' the Context manager uses, which renders nothing while suspended."
+          }
+        ],
+        "dependency": [
+          {
+            "comment": "Updating dependency \"@apendua/signal\" to `0.1.1`"
+          },
+          {
+            "comment": "Updating dependency \"@apendua/jsdom-env\" to `0.1.1`"
+          },
+          {
+            "comment": "Updating dependency \"@apendua/vite-hmr\" to `0.1.1`"
+          }
+        ]
+      }
+    },
+    {
       "version": "0.1.1",
       "tag": "@apendua/justdom_v0.1.1",
       "date": "Tue, 04 Aug 2026 21:29:33 GMT",

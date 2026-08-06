@@ -232,12 +232,17 @@ export function getTextLayout(text) {
   return signal.get();
 }
 
-/** @type {WeakMap<WeakKey, Derived<Element | null>>} */
+/**
+ * `Node.parentElement` is an `HTMLElement`, and `Derived` is invariant in its
+ * value, so the cache has to say so rather than widening to `Element`.
+ *
+ * @type {WeakMap<WeakKey, Derived<HTMLElement | null>>}
+ */
 const parentElementCache = new WeakMap();
 
 /**
  * @param {Node} node
- * @returns {Element | null}
+ * @returns {HTMLElement | null}
  */
 export function getParentElement(node) {
   let signal = parentElementCache.get(node);

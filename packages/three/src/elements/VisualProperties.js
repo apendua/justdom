@@ -3,6 +3,7 @@ import { addDependency, batch, NoValueError, memo, decorate, memoFn } from "@ape
 import { fromEvent, store } from "@apendua/signal";
 import { filter, from, Subject } from "rxjs";
 import { getBoundingClientRectCached, getComputedStyleCached } from "./cache.js";
+import { getElevation } from "./elevation.js";
 
 /**
  * @imprt {RectangleParams} from './rectangle.js';
@@ -28,6 +29,7 @@ import { getBoundingClientRectCached, getComputedStyleCached } from "./cache.js"
  * @property {string} borderColor
  * @property {string} textColor
  * @property {number} layerNo
+ * @property {number} elevation
  */
 
 /**
@@ -55,6 +57,7 @@ import { getBoundingClientRectCached, getComputedStyleCached } from "./cache.js"
  * @property {THREE.Color} textColor
  * @property {number} textAlpha
  * @property {number} layerNo
+ * @property {number} elevation
  */
 
 // /**
@@ -241,6 +244,7 @@ export default class VisualProperties {
       borderColor: style.borderColor,
       textColor: style.color,
       layerNo,
+      elevation: getElevation(element),
     };
     batch(() => {
       if (this.#properties) {
@@ -394,6 +398,23 @@ export default class VisualProperties {
 
   get layerNo() {
     return this.#props.layerNo;
+  }
+
+  get elevation() {
+    return this.#props.elevation;
+  }
+
+  /**
+   * Where this element's meshes belong in the scene's draw order.
+   *
+   * Depth in the tree decides it within a layer — a child paints over its
+   * parent, which is what the nesting already means. Between layers it does
+   * not decide anything: an overlay is above everything below it however
+   * shallow the overlay happens to be, so each layer takes a band of its own
+   * wide enough that no plausible tree can climb out of one.
+   */
+  get renderOrder() {
+    return this.elevation * 1000 + this.layerNo;
   }
 }
 

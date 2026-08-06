@@ -34,9 +34,11 @@ Object.defineProperty(document, "fonts", {
  * objects `div` hands it and when, not what it then does with them.
  *
  * @param {string} cursor
+ * @param {string} [cssText] Anything else the element should be styled with.
  */
-function setup(cursor) {
+function setup(cursor, cssText = "") {
   const element = document.createElement("div");
+  element.style.cssText = cssText;
   element.style.cursor = cursor;
   document.body.appendChild(element);
 
@@ -46,10 +48,23 @@ function setup(cursor) {
 
   /** @type {string[]} */
   const registrations = [];
+  /** @type {THREE.Object3D[]} */
+  const registered = [];
   const manager = /** @type {InteractionManager} */ (
     /** @type {unknown} */ ({
-      add: () => registrations.push("add"),
-      remove: () => registrations.push("remove"),
+      /** @param {THREE.Object3D} object */
+      add: (object) => {
+        registrations.push("add");
+        registered.push(object);
+      },
+      /** @param {THREE.Object3D} object */
+      remove: (object) => {
+        registrations.push("remove");
+        const index = registered.indexOf(object);
+        if (index >= 0) {
+          registered.splice(index, 1);
+        }
+      },
       stopPropagation: () => {},
     })
   );
@@ -65,10 +80,19 @@ function setup(cursor) {
   return {
     element,
     registrations,
+    registered,
     subscription,
+    get object() {
+      return object;
+    },
     /** Announce a style change the way the portal's MutationObserver would. */
     restyle: (/** @type {string} */ value) => {
       element.style.cursor = value;
+      mutations.next(new Set(["attributes"]));
+    },
+    /** The same, for anything that is not the cursor. */
+    restyleWith: (/** @type {string} */ cssText) => {
+      element.style.cssText = cssText;
       mutations.next(new Set(["attributes"]));
     },
     /** @param {"pointerenter" | "pointerleave"} type */
@@ -136,6 +160,77 @@ describe("div interactivity", () => {
     dispatch("pointerenter");
     assert.equal(element.dataset.xrHover, undefined);
 
+    subscription.unsubscribe();
+  });
+});
+
+describe("div elevation", () => {
+  test("an ordinary box sits one content step in front of its parent", () => {
+    const { object, subscription } = setup("default");
+    assert.equal(object.position.z, -2);
+    subscription.unsubscribe();
+  });
+
+  test("an overlay pushes itself clear of the surface it covers", () => {
+    const { object, subscription } = setup("default", "position: absolute; z-index: 1");
+    assert.equal(object.position.z, -10);
+    subscription.unsubscribe();
+  });
+
+  test("an overlay is opaque to rays, and stops being so when it stops floating", () => {
+    const { registered, restyleWith, subscription } = setup(
+      "default",
+      "position: absolute; z-index: 1",
+    );
+
+    // Not clickable, so the only thing registered is the blocker the layer
+    // brought with it: without it a ray through the gap between two menu rows
+    // carries on into the panel underneath.
+    assert.equal(registered.length, 1);
+    const [blocker] = registered;
+    assert.ok(blocker instanceof THREE.Mesh);
+    assert.ok(blocker.geometry instanceof THREE.PlaneGeometry);
+
+    restyleWith("");
+    assert.deepEqual(registered, []);
+
+    restyleWith("position: absolute; z-index: 1");
+    assert.equal(registered.length, 1);
+
+    subscription.unsubscribe();
+    assert.deepEqual(registered, []);
+  });
+
+  test("a box that floats over nothing carries no blocker", () => {
+    const { registered, subscription } = setup("default", "position: absolute; top: 0");
+    assert.deepEqual(registered, []);
+    subscription.unsubscribe();
+  });
+
+  test("clicking an overlay's own background is reported to the element", () => {
+    const { element, registered, subscription } = setup(
+      "default",
+      "position: absolute; z-index: 1",
+    );
+
+    /** @type {EventTarget[]} */
+    const clicked = [];
+    /** @param {Event} event */
+    const listener = (event) => {
+      if (event.target) {
+        clicked.push(event.target);
+      }
+    };
+    document.addEventListener("click", listener);
+
+    registered[0].dispatchEvent(/** @type {any} */ ({ type: "select" }));
+
+    // The menu's own padding is not a miss to be passed through to whatever is
+    // behind it; it is a click on the menu, and "did the click land inside the
+    // menu" is exactly the question a dismiss-on-outside-click handler asks.
+    assert.deepEqual(clicked, [element]);
+
+    document.removeEventListener("click", listener);
     subscription.unsubscribe();
   });
 });

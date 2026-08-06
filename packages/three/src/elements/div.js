@@ -1,17 +1,44 @@
 import * as THREE from "three";
 import { onCleanup } from "@apendua/signal";
-import { Derived, effects, just, on, set, memoize, useEffects } from "@apendua/signal";
-import { $, children } from "../operators.js";
+import { Derived, effects, just, on, set, memoize, observable, useEffects } from "@apendua/signal";
+import { distinctUntilChanged, switchMap } from "rxjs";
+import { $, children, Nothing } from "../operators.js";
 import { interactions } from "../interactions.js";
 import VisualProperties from "./VisualProperties.js";
 import { makeRectangleGeometry, shrinkRectangle } from "./rectangle.js";
+import { createBlocker, coverBox } from "./blocker.js";
 import { getBoundingClientRectCached, getComputedStyleCached } from "./cache.js";
+import { isOverlay } from "./elevation.js";
 
 /**
  * @import {XREventMap} from '../core.js';
  * @import {Observable} from 'rxjs';
  * @import {MonoTypeOperatorFunction} from 'rxjs';
  */
+
+/**
+ * How far in front of its parent each box sits, in the container's local px.
+ * Small enough to read as one surface, large enough that a child never fights
+ * its parent's background for the same pixels.
+ */
+const CONTENT_STEP = 2;
+
+/**
+ * The extra distance an overlay puts between itself and the surface it floats
+ * above. A few times the ordinary step: enough that stereo reads it as
+ * hovering rather than as one more nested box, and enough room underneath for
+ * the tree it covers, however deep that happens to be. At the scale panels are
+ * usually mounted at this is a matter of millimetres.
+ */
+const ELEVATION_STEP = 8;
+
+/**
+ * Where an overlay's blocker sits, relative to the overlay's own origin. Local
+ * z runs away from the viewer, so this has to land behind the overlay's own
+ * background — which the meshes below put at +1 — and still in front of the
+ * parent's, a whole elevation step further back.
+ */
+const BLOCKER_OFFSET = 2;
 
 /**
  * Whether the element asks to be a ray target of its own. `cursor: pointer`
@@ -60,6 +87,13 @@ export function div(ctx, element) {
         color,
         opacity,
         transparent: opacity < 1.0,
+        // A fully transparent fill is still drawn, and by default still writes
+        // depth — an invisible hole punched through whatever it covers. That
+        // never showed while every box was strictly behind its own children,
+        // but an overlay's wrapper is in front of a whole panel, and most
+        // wrappers have no background at all.
+        colorWrite: opacity > 0,
+        depthWrite: opacity > 0,
       });
       onCleanup(() => {
         material.dispose();
@@ -80,6 +114,14 @@ export function div(ctx, element) {
    * handled would tear down the listeners that handled it.
    */
   const clickable = new Derived(() => isClickable(element));
+
+  /**
+   * Whether this element floats above what it overlaps, as its own signal for
+   * the same reason `clickable` is one: the blocker below is attached and
+   * detached with it, and the computed style it reads is invalidated by every
+   * attribute mutation in the portal.
+   */
+  const overlay = new Derived(() => isOverlay(element));
 
   /**
    * Being a ray target, and forwarding what happens there back to the DOM.
@@ -152,14 +194,41 @@ export function div(ctx, element) {
       const parentRect = element.parentElement
         ? getBoundingClientRectCached(element.parentElement)
         : null;
+      // Only the element that opens a layer pays for it. Everything inside the
+      // overlay is positioned against the overlay, so it comes along.
+      const z = -CONTENT_STEP - (overlay.get() ? ELEVATION_STEP : 0);
       if (parentRect) {
-        obj.position.set(elementRect.left - parentRect.left, elementRect.top - parentRect.top, -2);
+        obj.position.set(elementRect.left - parentRect.left, elementRect.top - parentRect.top, z);
       } else {
-        obj.position.set(elementRect.left, elementRect.top, -2);
+        obj.position.set(elementRect.left, elementRect.top, z);
       }
       properties.setFromElement(element);
     }),
     children(
+      // An overlay is opaque to rays in its own right. Without this the ray
+      // that lands between two menu rows carries on through the menu and hits
+      // a panel button behind it — which is not merely a miss, it is a click
+      // on something the menu is covering.
+      observable(() => overlay.get()).pipe(
+        distinctUntilChanged(),
+        switchMap((isElevated) =>
+          isElevated
+            ? $(createBlocker(), [
+                makeInteractive(),
+                on("select", (e) => {
+                  element.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+                  // Unlike the portal's own blocker, which lets the scene
+                  // behind a panel see the click as well, an overlay is a
+                  // layer: what happens on it does not reach what it covers.
+                  stopPropagation(e);
+                }),
+                effects((obj) => {
+                  coverBox(obj, properties.totalWidth, properties.totalHeight, BLOCKER_OFFSET);
+                }),
+              ])
+            : Nothing(),
+        ),
+      ),
       $(new THREE.Mesh(), [
         set("material", () => fillMaterial(properties.borderColor, properties.borderAlpha)),
         set("geometry", () => {
@@ -176,7 +245,7 @@ export function div(ctx, element) {
         }),
         effects((obj) => {
           obj.position.set(0, 0, 1);
-          obj.renderOrder = properties.layerNo;
+          obj.renderOrder = properties.renderOrder;
         }),
       ]),
       $(new THREE.Mesh(), [
@@ -197,7 +266,7 @@ export function div(ctx, element) {
         }),
         effects((obj) => {
           obj.position.set(0, 0, 1);
-          obj.renderOrder = properties.layerNo;
+          obj.renderOrder = properties.renderOrder;
         }),
       ]),
     ),

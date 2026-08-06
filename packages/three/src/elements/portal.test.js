@@ -76,4 +76,82 @@ describe("createPortal", () => {
     subscription.unsubscribe();
     portal.disconnect();
   });
+
+  test("a click on the panel background is reported to the DOM", async () => {
+    const manager = new InteractionManager();
+    /** @type {THREE.Object3D[]} */
+    const added = [];
+    const originalAdd = manager.add.bind(manager);
+    manager.add = (object) => {
+      added.push(object);
+      originalAdd(object);
+    };
+    const ctx = InteractionContext.set({}, manager);
+
+    const portal = createPortal(ctx);
+    portal.addTo(new THREE.Group());
+
+    /** @type {import("@apendua/justdom").Mountable<Node> | undefined} */
+    let mountable;
+    const tree = $("div", [children($("div", [attr("style", () => "cursor: pointer")]))]);
+    const subscription = tree.subscribe((value) => {
+      mountable = value;
+    });
+    assert.ok(mountable);
+    portal.mount(mountable);
+
+    await nextMacrotask();
+    await nextMacrotask();
+
+    /** @type {Event[]} */
+    const clicks = [];
+    /** @param {Event} event */
+    const listener = (event) => clicks.push(event);
+    document.addEventListener("click", listener);
+
+    // Aiming at the panel but at none of its buttons. Nothing else can tell a
+    // menu that the player looked away from it and clicked.
+    added[0].dispatchEvent(/** @type {any} */ ({ type: "select" }));
+
+    assert.equal(clicks.length, 1, "the background click reaches the document");
+    assert.ok(clicks[0].target instanceof HTMLElement);
+
+    document.removeEventListener("click", listener);
+    subscription.unsubscribe();
+    portal.disconnect();
+  });
+
+  test("mirroring a change asks for the rays to be cast again", async () => {
+    const manager = new InteractionManager();
+    let updates = 0;
+    const originalUpdate = manager.updateIntersections.bind(manager);
+    manager.updateIntersections = () => {
+      updates += 1;
+      originalUpdate();
+    };
+    const ctx = InteractionContext.set({}, manager);
+
+    const portal = createPortal(ctx);
+    portal.addTo(new THREE.Group());
+
+    /** @type {import("@apendua/justdom").Mountable<Node> | undefined} */
+    let mountable;
+    const tree = $("div", [children($("div", [attr("style", () => "cursor: pointer")]))]);
+    const subscription = tree.subscribe((value) => {
+      mountable = value;
+    });
+    assert.ok(mountable);
+    portal.mount(mountable);
+
+    await nextMacrotask();
+    await nextMacrotask();
+
+    // A hand pointing at the button that opened a menu is not moving, and the
+    // hit is only recomputed when it does — so a menu appearing underneath it
+    // would go unnoticed until the player twitched.
+    assert.ok(updates > 0, "the mirrored mutation invalidated the hits");
+
+    subscription.unsubscribe();
+    portal.disconnect();
+  });
 });

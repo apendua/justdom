@@ -59,6 +59,7 @@
     "typescript": "^7.0.2"
   },
   "peerDependencies": {
+    "@apendua/justdom": "workspace:*",
     "@apendua/signal": "workspace:*",
     "three": "~0.180.0"
   },

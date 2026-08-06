@@ -164,8 +164,29 @@ out from under the ray that opened it.
 
 A native `<select>` cannot work here, layers or not: `<option>` has no CSS box
 to mirror, and the list the browser pops up is chrome rather than DOM, so none
-of it reaches the scene. Dropdowns have to be built from ordinary elements —
-see [`apps/euclid-xr`](../../apps/euclid-xr) for one.
+of it reaches the scene. `dropdown(props)` is one built out of ordinary
+elements instead:
+
+```js
+dropdown({
+  options: () => outputs.get().map(({ id, name }) => ({ value: id, label: name })),
+  selected: () => chosen.get(),
+  onSelect: (value) => chosen.set(value),
+  classes: { root, trigger, caret, menu, option, optionSelected },
+  placeholder: "Choose…",
+});
+```
+
+Only the structure is shared: every part is dressed in a class name the caller
+supplies, because a panel's dropdown has to look like that panel. Two of those
+classes carry the requirements above — `root` is the positioning context
+(`position: relative`), and `menu` is the layer (`position: absolute;
+z-index: 1`), with `top: 100%` or `bottom: 100%` deciding which way it opens.
+The menu is mounted and unmounted rather than hidden, for the re-measuring
+reason above, and it closes on a click anywhere else in the panel.
+
+`options` may be a getter, for a list that changes under the player — devices
+coming and going, a document being edited — and the open menu follows it.
 
 ## Real examples
 

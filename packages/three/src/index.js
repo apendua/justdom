@@ -5,6 +5,7 @@ export { interactions, setLocalMatrix, setWorldMatrix } from "./interactions.js"
 export { cursors, pointers } from "./pointers.js";
 export { dom } from "./dom.js";
 export { getPortalRoot } from "./elements/portal.js";
+export { dropdown } from "./elements/dropdown.js";
 export { createXRButton } from "./xr.js";
 
 /**
@@ -35,6 +36,20 @@ export { createXRButton } from "./xr.js";
 
 /**
  * @typedef {import('./pointers.js').CursorOptions} CursorOptions
+ */
+
+/**
+ * @template T
+ * @typedef {import('./elements/dropdown.js').DropdownOption<T>} DropdownOption
+ */
+
+/**
+ * @template T
+ * @typedef {import('./elements/dropdown.js').DropdownProps<T>} DropdownProps
+ */
+
+/**
+ * @typedef {import('./elements/dropdown.js').DropdownClasses} DropdownClasses
  */
 
 /**

@@ -41,11 +41,36 @@ coordinates, not the room's.
 `voices`, `refDistance`, `volume` — and the defaults suit a board about a metre
 square within arm's reach, which is every app here so far.
 
-## Two things worth knowing
+**`audioOutputSelection()`** — which speakers all of this comes out of. A
+desktop headset is rarely the only thing plugged in, and the browser's own
+choice is not always the one the player is wearing:
+
+```ts
+const output = audioOutputSelection();
+// output.outputs — everything sound could be sent to, as a signal
+// output.deviceId — the chosen one, empty until the player picks
+// output.label()  — its name, for a panel to show
+// output.selectNext() — move on to the next one
+// output.updates — subscribe (effectMap/use) to keep the list current
+```
+
+`setAudioOutput(listener.context, deviceId)` applies the choice to an
+`AudioListener`'s context, and `audioOutputs()` is the list on its own for
+anything that wants it without the selection around it.
+
+## Three things worth knowing
 
 **Several voices.** One `PositionalAudio` node cannot play two clicks at once,
 and placing bricks quickly is the whole game. Four voices are used in turn, so a
 click only ever cuts off one that is already several placements old.
+
+**One entry per physical output.** Chromium names the same speakers up to three
+times — as `default`, as `communications`, and under their own name — so the
+list folds those into the device they point at. That is what lets a scene decide
+whether to offer a switch by asking whether there is more than one entry, and
+show nothing on a headset with one way out for sound. Where the platform cannot
+route audio at all — `AudioContext.setSinkId` is Chromium-only — the list is
+empty rather than a switch that does nothing.
 
 **The panner is placed after `play()`.** three.js only moves a positional
 sound's panner while the sound is playing, and reads it as the note starts.
@@ -57,6 +82,10 @@ the *last* one landed.
 `castle-xr` and `marblerun` on a brick coming to rest, and `polytope-xr` on two
 clusters snapping together — which is the same event wearing a different hat,
 and used to be a `Switch1.wav` loaded by hand in that app.
+
+The output picker is used by all five apps with a soundtrack — the three above
+plus `blockout-xr` and `rubik` — each behind a Music section on a panel it
+already had.
 
 Not `bricks-xr`: that one is a worked example, kept to the smallest thing that
 still builds something, and a sound is not part of what it is there to show.

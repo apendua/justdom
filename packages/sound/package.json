@@ -33,7 +33,11 @@
     "test:typecheck": "tsc --project tsconfig.json --noEmit",
     "test:watch": "tsx --test --watch \"src/**/*.test.ts\""
   },
+  "dependencies": {
+    "rxjs": "^7.8.2"
+  },
   "devDependencies": {
+    "@apendua/signal": "workspace:*",
     "@types/node": "^24.7.0",
     "@types/three": "~0.180.0",
     "eslint": "^9.37.0",
@@ -42,6 +46,7 @@
     "typescript": "^7.0.2"
   },
   "peerDependencies": {
+    "@apendua/signal": "workspace:*",
     "three": "^0.180.0"
   }
 }

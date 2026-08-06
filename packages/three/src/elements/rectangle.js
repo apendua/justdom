@@ -128,6 +128,17 @@ export function shrinkRectangle(params, amount) {
  * @returns {THREE.BufferGeometry}
  */
 export function makeRectangleGeometry(params, border) {
+  // A ring of no width has nothing in it. Falling through would push a hole
+  // exactly on top of the outline it was cut from, and the triangulator does
+  // not answer "nothing" to that — on a rounded element it fills a good part
+  // of the shape with slivers, which then draw over the element in whatever
+  // colour the border would have been. An element with no border at all is
+  // the common case, so this is most of them.
+  if (border && border.left <= 0 && border.right <= 0 && border.top <= 0 && border.bottom <= 0) {
+    const empty = new THREE.BufferGeometry();
+    empty.setAttribute("position", new THREE.Float32BufferAttribute([], 3));
+    return empty;
+  }
   const shape = new THREE.Shape();
   drawRoundedRectanglePath(shape, params);
   if (border) {

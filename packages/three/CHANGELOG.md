@@ -1,6 +1,13 @@
 # Change Log - @apendua/freedom
 
-This log was last generated on Wed, 05 Aug 2026 21:59:09 GMT and should not be manually modified.
+This log was last generated on Thu, 06 Aug 2026 07:34:16 GMT and should not be manually modified.
+
+## 0.5.1
+Thu, 06 Aug 2026 07:34:16 GMT
+
+### Patches
+
+- Built with TypeScript 7. VisualProperties declared its initialisation guard as 'asserts this is {#properties: ...}', which is not valid TypeScript -- a private name cannot appear in a type literal -- and TypeScript 7 rejects it. Replaced with a private #props getter applying the same guard. No behaviour change.
 
 ## 0.5.0
 Wed, 05 Aug 2026 21:59:09 GMT

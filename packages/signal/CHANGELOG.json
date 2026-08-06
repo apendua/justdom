@@ -2,6 +2,23 @@
   "name": "@apendua/signal",
   "entries": [
     {
+      "version": "0.1.1",
+      "tag": "@apendua/signal_v0.1.1",
+      "date": "Thu, 06 Aug 2026 07:34:16 GMT",
+      "comments": {
+        "patch": [
+          {
+            "comment": "Built with TypeScript 7. Each @overload in operators.js now sits in its own JSDoc block; packing several into one block made every @template share a scope, which TypeScript 7 rejects as a duplicate identifier. No API change."
+          }
+        ],
+        "dependency": [
+          {
+            "comment": "Updating dependency \"@apendua/vite-hmr\" to `0.1.1`"
+          }
+        ]
+      }
+    },
+    {
       "version": "0.1.0",
       "tag": "@apendua/signal_v0.1.0",
       "date": "Tue, 04 Aug 2026 21:29:33 GMT",

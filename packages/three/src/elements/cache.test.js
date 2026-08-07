@@ -319,6 +319,87 @@ describe("text layout as a dependency", () => {
       document.createRange = originalCreateRange;
     }
   });
+
+  test("a scroll re-measures no text, however long the list is", () => {
+    // The cost that scales with a list rather than with the part of it on
+    // screen. Every number a text measurement reports is relative to the
+    // parent's border box, which scrolls along with the text, so a scroller
+    // sliding its content cannot change any of them — and a Range
+    // measurement is the most expensive read in the file to spend proving it.
+    // Which nodes were measured, rather than how many measurements ran: a
+    // recompute can be driven more than once by dependencies that fire
+    // separately, and that count is an implementation detail. Which text the
+    // browser was asked about is not.
+    /** @type {Set<Node>} */
+    const measured = new Set();
+    const originalCreateRange = document.createRange;
+    const rect = () => ({ left: 10, top: 20, right: 40, bottom: 32, width: 30, height: 12 });
+    document.createRange = () => {
+      return /** @type {Range} */ (
+        /** @type {unknown} */ ({
+          /** @param {Node} node */
+          selectNodeContents: (node) => measured.add(node),
+          setStart: () => {},
+          setEnd: () => {},
+          getBoundingClientRect: rect,
+          getClientRects: () => /** @type {DOMRectList} */ (/** @type {unknown} */ ([rect()])),
+        })
+      );
+    };
+
+    // scroller > row > #text — a row's label, which is where a list keeps
+    // nearly all of its text.
+    const scroller = document.createElement("div");
+    const row = document.createElement("div");
+    const label = document.createTextNode("hello world");
+    row.appendChild(label);
+    scroller.appendChild(row);
+    document.body.appendChild(scroller);
+
+    // …and text sitting directly in the scroller, which is the one case a
+    // scroll really does move: the border box it is measured against is the
+    // window, standing still while the text slides inside it.
+    const loose = document.createTextNode("directly inside");
+    scroller.appendChild(loose);
+
+    /** @type {Subject<import("./cache.js").MutationBatch>} */
+    const subject = new Subject();
+    for (const node of [scroller, row, label, loose]) {
+      setSubject(node, subject);
+    }
+
+    const layouts = [
+      new Derived(() => getTextLayout(label)),
+      new Derived(() => getTextLayout(loose)),
+    ];
+    const subscriptions = layouts.map((layout) => layout.subscribe({ next: () => layout.get() }));
+
+    try {
+      assert.deepEqual(measured, new Set([label, loose]), "both measured to begin with");
+
+      measured.clear();
+      subject.next({ types: new Set(["scroll"]), targets: new Set([scroller]) });
+      assert.deepEqual(
+        measured,
+        new Set([loose]),
+        "a row's label is not re-measured; the text whose own parent scrolled is",
+      );
+
+      // Anything that can genuinely re-break lines still re-measures both.
+      measured.clear();
+      subject.next({ types: new Set(["reflow"]), targets: null });
+      assert.deepEqual(measured, new Set([label, loose]));
+
+      measured.clear();
+      subject.next({ types: new Set(["childList"]), targets: new Set([scroller]) });
+      assert.deepEqual(measured, new Set([label, loose]));
+    } finally {
+      subscriptions.forEach((subscription) => subscription.unsubscribe());
+      subject.complete();
+      scroller.remove();
+      document.createRange = originalCreateRange;
+    }
+  });
 });
 
 /**

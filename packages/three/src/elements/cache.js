@@ -230,6 +230,64 @@ function affectsRect(batch, node) {
   return false;
 }
 
+/**
+ * Whether a batch can change what `measureTextLayout` reports for a text node
+ * — which is a narrower question than whether it moved the text, and the
+ * difference is the whole cost of a scroll.
+ *
+ * Every number that measurement yields is relative to something that scrolls
+ * *with* the text: `left` and `top` to the parent element's border box, the
+ * line boxes to their own union. A scroller sliding its content therefore
+ * translates the text and the box it is measured against by the same amount,
+ * and the measurement recomputes to the numbers it already had — at the price
+ * of a Range measurement per text node per frame, which is the most expensive
+ * read in this file and the one that scales with the length of a list rather
+ * than with how much of it is on screen.
+ *
+ * The exception is a text node whose own parent is the element that scrolled.
+ * Then the border box it is measured against is the window standing still
+ * while the text moves inside it, so its parent-relative position really does
+ * change and it has to be measured again.
+ *
+ * Not modelled, and worth knowing: a scroll-driven animation or a container
+ * query keyed on scroll position can restyle during a scroll and so re-break
+ * lines. Both announce themselves through other batches when they mutate
+ * anything; neither is mirrored today.
+ *
+ * (`parentElement` directly rather than `getParentElement`: this predicate
+ * runs from an rxjs `filter` as the subject emits, outside any computation,
+ * where registering a dependency would attach it to whatever unrelated
+ * computation happened to be on the stack.)
+ *
+ * @param {MutationBatch} batch
+ * @param {Text} text
+ * @returns {boolean}
+ */
+function affectsTextLayout(batch, text) {
+  if (!affectsRect(batch, text)) {
+    return false;
+  }
+  const movedByAnythingElse =
+    batch.types.has("childList") ||
+    batch.types.has("characterData") ||
+    batch.types.has("fontLoaded") ||
+    batch.types.has("attributes") ||
+    batch.types.has("reflow");
+  if (movedByAnythingElse || !batch.types.has("scroll")) {
+    return true;
+  }
+  if (!batch.targets) {
+    return true;
+  }
+  const parentElement = text.parentElement;
+  for (const target of batch.targets) {
+    if (target === parentElement) {
+      return true;
+    }
+  }
+  return false;
+}
+
 /** @type {WeakMap<Element | Text, Map<string | null, Derived<CSSStyleDeclaration>>>} */
 let computedStyleCache = new WeakMap();
 
@@ -484,13 +542,18 @@ export function getTextLayout(text) {
     // on an ancestor moves them too.
     //
     // Which means this re-measures whenever anything moves the text — every
-    // frame of a layout animation, and every frame of a scroll once there is
-    // one. What it must not do is make that re-measurement *look* like a
-    // change to anyone reading it: every field it reports is relative to the
-    // text's own parent or to its own bounds, so a subtree sliding through
-    // the viewport recomputes to the same numbers and the selector proxy
-    // stops there. Nothing downstream — the texture above all — re-runs.
-    const dependency = subjects.get(text)?.pipe(filter((batch) => affectsRect(batch, text)));
+    // frame of a layout animation, for one. What it must not do is make that
+    // re-measurement *look* like a change to anyone reading it: every field
+    // it reports is relative to the text's own parent or to its own bounds,
+    // so a subtree sliding through the viewport recomputes to the same
+    // numbers and the selector proxy stops there. Nothing downstream — the
+    // texture above all — re-runs.
+    //
+    // A scroll is the case where that reasoning is worth acting on rather
+    // than merely absorbing: it is the one kind of movement that provably
+    // cannot change these numbers, so it does not re-measure at all. See
+    // `affectsTextLayout`.
+    const dependency = subjects.get(text)?.pipe(filter((batch) => affectsTextLayout(batch, text)));
     signal = new Derived(() => {
       if (dependency) {
         addDependency(dependency);

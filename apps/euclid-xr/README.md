@@ -8,8 +8,16 @@ source of truth, and every construction step made by hand writes a statement.
 
 The program itself hangs beside the board through freedom's DOM portal, with
 the same token colors as the 2D editor — read-only here, since in XR the code
-writes itself. The right panel holds the tools, view controls and the bundled
-classical constructions.
+writes itself. The right panel holds the tools, view controls, the bundled
+classical constructions and the soundtrack.
+
+The soundtrack is `paper_and_running_water.mp3` out of `@apendua.dev/media`,
+looping for as long as the session lasts and stopping with it, so the browser
+tab stays silent until the headset goes on. It starts at 40% — under the
+drawing rather than over it — and the music card steps it in tenths. On a
+desktop with more than one output plugged in, a picker appears under the
+volume to say which one the sound goes to; a headset with a single output has
+nothing to choose between, so nothing is shown.
 
 ## Controls
 

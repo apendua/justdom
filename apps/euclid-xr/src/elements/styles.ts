@@ -116,6 +116,55 @@ export const buttonActive = stylesheet`
   }
 `;
 
+export const musicRow = stylesheet`
+  .${CLASS_NAME} {
+    display: flex;
+    align-items: stretch;
+    gap: 6px;
+  }
+`;
+
+/**
+ * Narrow enough for two of them to flank the reading, wide enough to be an easy
+ * target at arm's length through a controller ray.
+ */
+export const stepButton = stylesheet`
+  .${CLASS_NAME} {
+    box-sizing: border-box;
+    flex: 0 0 50px;
+    background: ${palette.button};
+    border: 2px solid ${palette.buttonEdge};
+    border-radius: 10px;
+    padding: 10px 0;
+    font-size: 15px;
+    line-height: 1;
+    text-align: center;
+    color: ${palette.panelText};
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .${CLASS_NAME}:hover, .${CLASS_NAME}[data-xr-hover] {
+    background: ${palette.buttonHover};
+    border-color: #8d7f5c;
+  }
+`;
+
+export const stepValue = stylesheet`
+  .${CLASS_NAME} {
+    box-sizing: border-box;
+    flex: 1 1 auto;
+    background: rgba(255, 255, 255, 0.05);
+    border: 2px solid ${palette.buttonEdge};
+    border-radius: 10px;
+    padding: 10px 8px;
+    font-size: 13px;
+    line-height: 1;
+    text-align: center;
+    color: ${palette.panelText};
+  }
+`;
+
 const dropdownRoot = stylesheet`
   .${CLASS_NAME} {
     position: relative;
@@ -232,6 +281,24 @@ export const dropdownClasses: DropdownClasses = {
   menu: renderText`${dropdownMenu} ${dropdownMenuUp}`,
   option: dropdownOption,
   optionSelected: dropdownOptionSelected,
+};
+
+// The picker follows the volume row inside its card rather than a title, so it
+// carries the gap between the two itself.
+const dropdownRootSpaced = stylesheet`
+  .${CLASS_NAME} {
+    position: relative;
+    margin-top: 6px;
+  }
+`;
+
+/**
+ * The output picker's dress: the construction picker's, and it opens upward for
+ * the same reason — the music card is the last one in the stack.
+ */
+export const outputClasses: DropdownClasses = {
+  ...dropdownClasses,
+  root: dropdownRootSpaced,
 };
 
 export const hintLine = stylesheet`

@@ -4,6 +4,7 @@ import { dom, dropdown, XREventMap } from "@apendua/freedom";
 import { $, children, on, renderText, text } from "@apendua/justdom";
 import { component, effects, observable, set } from "@apendua/signal";
 import { EXAMPLES } from "@apendua.dev/euclid-lang";
+import type { AudioOutputSelection } from "@apendua.dev/sound";
 import {
   buttonActive,
   buttonGlyph,
@@ -12,9 +13,13 @@ import {
   dropdownClasses,
   hintLine,
   iconButton,
+  musicRow,
+  outputClasses,
   panelCard,
   panelStack,
   panelTitle,
+  stepButton,
+  stepValue,
 } from "../elements/styles.js";
 import type Studio from "../store/Studio.js";
 import type { Tool } from "../store/Studio.js";
@@ -39,6 +44,16 @@ const SHORT_NAMES: Record<string, string> = {
   "Pentagon (Dürer, approximate)": "Pentagon · Dürer",
 };
 
+/** What the panel needs of the soundtrack: its reading, and the two ways to move it. */
+export interface MusicControls {
+  /** Where the sound goes, which the picker below both shows and sets. */
+  output: AudioOutputSelection;
+  /** How loud the track is now, from 0 to 1. */
+  volume: () => number;
+  /** Move the volume by whole tenths, positive up and negative down. */
+  step: (steps: number) => void;
+}
+
 /**
  * The base class alone or the base plus the active class, following a signal.
  * Switching the class attribute is what keeps state changes granular: the
@@ -52,14 +67,15 @@ const activeClass = (base: Observable<string>, isActive: () => boolean): Observa
   );
 
 /**
- * The palette beside the board: tools, view controls and the bundled example
- * constructions, as portal buttons driven by the controller ray.
+ * The palette beside the board: tools, view controls, the bundled example
+ * constructions and the soundtrack, as portal buttons driven by the controller
+ * ray.
  *
  * The tree is built exactly once — nothing in this body reads a signal. The
  * tool, the pending step and the chosen example reach the DOM through the
  * reactive class and text bindings below.
  */
-const ToolPanel = component((ctx: WeakKey, studio: Studio) => {
+const ToolPanel = component((ctx: WeakKey, studio: Studio, music: MusicControls) => {
   const hint = () => {
     const pending = studio.pending.get();
     if (pending) {
@@ -142,6 +158,49 @@ const ToolPanel = component((ctx: WeakKey, studio: Studio) => {
               selected: () => studio.exampleName.get(),
               onSelect: (name) => studio.loadExample(name),
             }),
+          ),
+        ]),
+        $("div", [
+          set("className", panelCard),
+          children(
+            $("div", [set("className", panelTitle), children(text`Music`)]),
+            $("div", [
+              set("className", musicRow),
+              children(
+                $("div", [
+                  set("className", stepButton),
+                  on("click", () => music.step(-1)),
+                  children(text`−`),
+                ]),
+                $("div", [
+                  set("className", stepValue),
+                  children(text`${() => `${Math.round(music.volume() * 100)}%`}`),
+                ]),
+                $("div", [
+                  set("className", stepButton),
+                  on("click", () => music.step(1)),
+                  children(text`+`),
+                ]),
+              ),
+            ]),
+            // Nothing to switch between is nothing to show: most headsets have
+            // one way out for sound, and it is only a desktop with a headset
+            // plugged in next to its speakers that has a choice worth making.
+            component(() => {
+              if (music.output.outputs.get().length < 2) {
+                return text``;
+              }
+              return dropdown({
+                options: () =>
+                  music.output.outputs
+                    .get()
+                    .map(({ deviceId, label }) => ({ value: deviceId, label })),
+                classes: outputClasses,
+                placeholder: "Browser's choice",
+                selected: () => music.output.deviceId.get(),
+                onSelect: (deviceId) => music.output.select(deviceId),
+              });
+            })(),
           ),
         ]),
       ),

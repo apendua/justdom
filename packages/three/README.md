@@ -165,10 +165,14 @@ is an ordinary mutation scoped to the element it touched.
 The cost per frame is the flat web's own hierarchy, and the guidance is the
 same one every web developer already knows. `transform` and `opacity` (and
 colours) are the cheap tier: a style read and a matrix or material write per
-animating element. Animating a *layout* property — `height`, `padding`,
-`font-size` — re-measures the panel every frame, because a growing element
-moves neighbours no one named. It works; save it for moments, not idle
-loops.
+animating element. Text is no exception — glyphs are rasterized once as a
+mask and coloured by the material, so animating `color` re-draws nothing.
+(The mask needs one colour: text with a `text-shadow`, or a decoration
+explicitly coloured something other than the text, keeps its colours baked
+into the texture and pays a re-draw per change.) Animating a *layout*
+property — `height`, `padding`, `font-size` — re-measures the panel every
+frame, because a growing element moves neighbours no one named. It works;
+save it for moments, not idle loops.
 
 ## Layers
 

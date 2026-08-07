@@ -2,7 +2,13 @@ import * as THREE from "three";
 import { NoValueError, onCleanup } from "@apendua/signal";
 import { effects, just, set, selector } from "@apendua/signal";
 import { $, children } from "../operators.js";
-import { generateTextTexture, getTextRenderStyle, makeTextQuadGeometry } from "./textHelpers.js";
+import {
+  generateTextTexture,
+  getTextRenderStyle,
+  isTintableText,
+  makeTextQuadGeometry,
+} from "./textHelpers.js";
+import { parseColor } from "./VisualProperties.js";
 import {
   getBoundingClientRectCached,
   getComputedStyleCached,
@@ -76,10 +82,33 @@ export function text(_, textNode) {
     };
   });
 
+  // What actually reaches the rasterizer. For tintable text — almost every
+  // label — the colors are pinned to white here, so a color change leaves
+  // every key of this selector untouched and the texture is never re-drawn:
+  // the glyphs become a mask, and the color rides on the material below.
+  // Shadowed or explicitly-decorated text keeps its colors baked.
+  const renderStyle = selector(() => {
+    const renderStyle = getTextRenderStyle(style);
+    if (isTintableText(style)) {
+      return { ...renderStyle, color: "#ffffff", textDecorationColor: "#ffffff" };
+    }
+    return renderStyle;
+  });
+
+  // The color the material paints the mask with. Kept as the raw string so
+  // that the per-frame samples of an animating neighbourhood gate on string
+  // equality; parsing happens in the effect, only when this actually changed.
+  const tint = selector(() => {
+    if (!isTintableText(style)) {
+      return { masked: false, color: "#ffffff" };
+    }
+    return { masked: true, color: style.color || "#000000" };
+  });
+
   const textureData = selector(() => {
     return generateTextTexture(
       measured.lines,
-      getTextRenderStyle(style),
+      renderStyle,
       { width: measured.width, height: measured.height },
       getViewportDpr(),
     );
@@ -130,6 +159,19 @@ export function text(_, textNode) {
             geometry.dispose();
           });
           return geometry;
+        }),
+        // After set("material"), so a re-drawn texture's fresh material gets
+        // tinted too. Baked textures carry their own color and stay white.
+        effects((obj) => {
+          const material = /** @type {THREE.MeshBasicMaterial} */ (obj.material);
+          if (tint.masked) {
+            const [color, alpha] = parseColor(tint.color);
+            material.color.copy(color);
+            material.opacity = alpha;
+          } else {
+            material.color.set("#ffffff");
+            material.opacity = 1;
+          }
         }),
         effects((obj) => {
           obj.position.set(0, 0, 0.01);

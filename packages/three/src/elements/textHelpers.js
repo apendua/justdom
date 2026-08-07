@@ -135,6 +135,30 @@ export function getTextRenderStyle(style) {
 }
 
 /**
+ * Whether the node's glyphs can be rasterized once as a white mask and
+ * colored by the material, instead of baking the color into the texture.
+ * Masked text makes color a material write — animating `color` re-draws
+ * nothing — so it is the preferred path, and almost every label qualifies.
+ *
+ * What disqualifies: a `text-shadow` (the shadow must not take the text's
+ * color, so both get baked), and a decoration explicitly colored something
+ * other than the text (two colors, one mask). A decoration in
+ * `currentcolor` — the default — tints right along with the glyphs.
+ *
+ * @param {CSSStyleDeclaration} style
+ * @returns {boolean}
+ */
+export function isTintableText(style) {
+  const shadow = style.textShadow || "none";
+  if (shadow !== "none") {
+    return false;
+  }
+  const line = style.textDecorationLine || "none";
+  const color = style.textDecorationColor || "currentcolor";
+  return line === "none" || color === "currentcolor";
+}
+
+/**
  * @param {string} text
  * @param {string} textTransform
  * @returns {string}

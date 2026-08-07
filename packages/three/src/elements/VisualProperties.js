@@ -136,7 +136,7 @@ function parseSize(value, units) {
  * @param {string} colorString
  * @returns {[THREE.Color, number]}
  */
-function parseColor(colorString) {
+export function parseColor(colorString) {
   const match = colorString.match(/rgba?\(([^,]+),([^,]+),([^,]+)(?:,\s*([\d.]+))?\)/);
   if (!match) {
     const color = new THREE.Color();

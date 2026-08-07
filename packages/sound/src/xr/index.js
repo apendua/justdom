@@ -4,4 +4,11 @@
  * `@apendua/freedom` in the room.
  */
 export { createMusicControls, DEFAULT_MUSIC_VOLUME, Music } from "./music.js";
-export type { MusicControls, MusicOptions } from "./music.js";
+
+/**
+ * @typedef {import('./music.js').MusicControls} MusicControls
+ */
+
+/**
+ * @typedef {import('./music.js').MusicOptions} MusicOptions
+ */

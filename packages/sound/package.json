@@ -14,28 +14,29 @@
   "type": "module",
   "exports": {
     ".": {
-      "types": "./lib-es/index.d.ts",
-      "import": "./lib-es/index.js"
+      "types": "./lib-types/index.d.ts",
+      "import": "./src/index.js"
     },
     "./xr": {
-      "types": "./lib-es/xr/index.d.ts",
-      "import": "./lib-es/xr/index.js"
+      "types": "./lib-types/xr/index.d.ts",
+      "import": "./src/xr/index.js"
     }
   },
   "main": "./lib/index.js",
-  "module": "./lib-es/index.js",
+  "module": "./src/index.js",
   "files": [
     "src",
     "lib",
-    "lib-es"
+    "lib-types"
   ],
   "scripts": {
-    "build": "npm run test && npm run compile",
+    "build": "npm run test && npm run compile && npm run build:types",
+    "build:types": "tsc --project tsconfig.types.json",
     "compile": "tsc --project tsconfig.build.json",
-    "test": "npm run test:typecheck && tsx --test \"src/**/*.test.ts\"",
-    "test:coverage": "npm run test:typecheck && tsx --test --experimental-test-coverage \"src/**/*.test.ts\"",
+    "test": "npm run test:typecheck && node --test \"src/**/*.test.js\"",
+    "test:coverage": "npm run test:typecheck && node --test --experimental-test-coverage \"src/**/*.test.js\"",
     "test:typecheck": "tsc --project tsconfig.json --noEmit",
-    "test:watch": "tsx --test --watch \"src/**/*.test.ts\""
+    "test:watch": "node --test --watch \"src/**/*.test.js\""
   },
   "dependencies": {
     "rxjs": "^7.8.2"
@@ -47,7 +48,6 @@
     "@types/three": "~0.180.0",
     "eslint": "^9.37.0",
     "three": "~0.180.0",
-    "tsx": "^4.21.0",
     "typescript": "^7.0.2"
   },
   "peerDependencies": {

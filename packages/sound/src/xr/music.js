@@ -15,75 +15,77 @@ import {
   onCleanup,
   Signal,
 } from "@apendua/signal";
-import { $, session, type Component } from "@apendua/freedom";
+import { $, session } from "@apendua/freedom";
 import { Observable, switchMap } from "rxjs";
-import {
-  audioOutputSelection,
-  setAudioOutput,
-  type AudioOutputSelection,
-} from "../audioOutputs.js";
+import { audioOutputSelection, setAudioOutput } from "../audioOutputs.js";
+
+/**
+ * @import { Component } from '@apendua/freedom';
+ * @import { AudioOutputSelection } from '../audioOutputs.js';
+ */
 
 /**
  * One decoded track per URL, however many components ask for it. Memoized on
  * the path rather than fetched per player: a track swapped back and forth is a
  * common enough thing for it to be worth not decoding twice.
  */
-const loadSound = memoizeDerived((path: string) => {
-  return Derived.from(
-    new Observable<AudioBuffer>((subscriber) => {
-      const loader = new THREE.AudioLoader();
-      loader.load(
-        path,
-        (buffer) => {
-          subscriber.next(buffer);
+const loadSound = memoizeDerived(
+  /** @param {string} path */ (path) => {
+    return Derived.from(
+      new Observable(
+        /** @param {import('rxjs').Subscriber<AudioBuffer>} subscriber */ (subscriber) => {
+          const loader = new THREE.AudioLoader();
+          loader.load(
+            path,
+            (buffer) => {
+              subscriber.next(buffer);
+            },
+            () => {},
+            (error) => {
+              subscriber.error(error);
+            },
+          );
+          return () => {};
         },
-        () => {},
-        (error) => {
-          subscriber.error(error);
-        },
-      );
-      return () => {};
-    }),
-  );
-});
+      ),
+    );
+  },
+);
 
 /** Where the volume starts when an app does not say. */
 export const DEFAULT_MUSIC_VOLUME = 0.5;
 
-export interface MusicOptions {
-  /**
-   * The track to loop, as a URL — an asset import out of `@apendua.dev/media`
-   * in every app here, but anything the `AudioLoader` can fetch will do.
-   */
-  track: string;
-  /**
-   * Where the volume starts, from 0 for silence to 1 for as loud as the track
-   * was recorded. Apps that have their own noises to be heard over generally
-   * want less than the default.
-   */
-  volume?: number;
-}
+/**
+ * @typedef {object} MusicOptions
+ * @property {string} track The track to loop, as a URL — an asset import out of
+ *   `@apendua.dev/media` in every app here, but anything the `AudioLoader` can
+ *   fetch will do.
+ * @property {number} [volume] Where the volume starts, from 0 for silence to 1
+ *   for as loud as the track was recorded. Apps that have their own noises to
+ *   be heard over generally want less than the default.
+ */
 
 /**
  * How the soundtrack is set, held apart from the component that plays it: the
  * music starts wherever the scene is built, while the panel that turns it down
  * is usually several routes away, and both reach it through this.
+ *
+ * @typedef {object} MusicControls
+ * @property {Signal<number>} volume From 0 for silence to 1 for as loud as the
+ *   track was recorded.
+ * @property {AudioOutputSelection} output Which device the soundtrack comes out
+ *   of.
+ * @property {(steps: number) => void} step Moves the volume by a number of
+ *   tenths, stopping at silence and at full.
+ * @property {string} track The track being looped, which is what `Music` goes
+ *   and fetches.
  */
-export interface MusicControls {
-  /** From 0 for silence to 1 for as loud as the track was recorded. */
-  volume: Signal<number>;
-  /** Which device the soundtrack comes out of. */
-  output: AudioOutputSelection;
-  /** Moves the volume by a number of tenths, stopping at silence and at full. */
-  step: (steps: number) => void;
-  /** The track being looped, which is what `Music` goes and fetches. */
-  readonly track: string;
-}
 
-export function createMusicControls({
-  track,
-  volume: initial = DEFAULT_MUSIC_VOLUME,
-}: MusicOptions): MusicControls {
+/**
+ * @param {MusicOptions} options
+ * @returns {MusicControls}
+ */
+export function createMusicControls({ track, volume: initial = DEFAULT_MUSIC_VOLUME }) {
   const volume = Signal.of(initial);
   const output = audioOutputSelection();
   return {
@@ -105,13 +107,16 @@ export function createMusicControls({
  * Tying it to the session rather than to page load keeps it out of the way of
  * autoplay policy, and means the browser tab stays silent until the headset
  * goes on.
+ *
+ * @type {(ctx: WeakKey, listener: THREE.AudioListener, controls: MusicControls) => Observable<Component>}
  */
-export const Music: (
-  ctx: WeakKey,
-  listener: THREE.AudioListener,
-  controls: MusicControls,
-) => Observable<Component> = component(
-  (ctx: WeakKey, listener: THREE.AudioListener, controls: MusicControls) => {
+export const Music = component(
+  /**
+   * @param {WeakKey} ctx
+   * @param {THREE.AudioListener} listener
+   * @param {MusicControls} controls
+   */
+  (ctx, listener, controls) => {
     return $(new THREE.Audio(listener), [
       // Volume is kept out of the session effect below, so turning it down
       // takes the gain of the track that is playing rather than starting it

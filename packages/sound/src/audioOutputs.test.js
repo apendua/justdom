@@ -1,25 +1,33 @@
 import assert from "node:assert/strict";
 import test, { afterEach, describe } from "node:test";
-import type { Observable, Subscription } from "rxjs";
 import { audioOutputs, audioOutputSelection, setAudioOutput } from "./audioOutputs.js";
-import type { AudioOutput } from "./audioOutputs.js";
+
+/**
+ * @import { Observable, Subscription } from 'rxjs';
+ * @import { AudioOutput } from './audioOutputs.js';
+ */
 
 /**
  * Node has neither `navigator.mediaDevices` nor `AudioContext`, which is also
  * the shape of a browser that cannot route audio — so both are installed per
  * test, and the absence of either is a case worth testing on its own.
+ *
+ * @typedef {EventTarget & {
+ *   enumerateDevices: () => Promise<MediaDeviceInfo[]>,
+ *   calls: number,
+ * }} FakeMediaDevices
  */
-type FakeMediaDevices = EventTarget & {
-  enumerateDevices: () => Promise<MediaDeviceInfo[]>;
-  calls: number;
-};
 
-function fakeMediaDevices(devices: Partial<MediaDeviceInfo>[]): FakeMediaDevices {
-  const target = new EventTarget() as FakeMediaDevices;
+/**
+ * @param {Partial<MediaDeviceInfo>[]} devices
+ * @returns {FakeMediaDevices}
+ */
+function fakeMediaDevices(devices) {
+  const target = /** @type {FakeMediaDevices} */ (new EventTarget());
   target.calls = 0;
   target.enumerateDevices = async () => {
     target.calls += 1;
-    return devices as MediaDeviceInfo[];
+    return /** @type {MediaDeviceInfo[]} */ (devices);
   };
   Object.defineProperty(globalThis, "navigator", {
     configurable: true,
@@ -29,17 +37,18 @@ function fakeMediaDevices(devices: Partial<MediaDeviceInfo>[]): FakeMediaDevices
 }
 
 /**
- * @param routable whether the platform's audio can be pointed at a device of
- *   our choosing, i.e. whether `AudioContext` has `setSinkId`
- * @returns the sink ids it was pointed at, in order
+ * @param {boolean} routable whether the platform's audio can be pointed at a
+ *   device of our choosing, i.e. whether `AudioContext` has `setSinkId`
+ * @returns {string[]} the sink ids it was pointed at, in order
  */
-function fakeAudioContext(routable: boolean): string[] {
-  const sinkIds: string[] = [];
+function fakeAudioContext(routable) {
+  /** @type {string[]} */
+  const sinkIds = [];
   class FakeAudioContext {}
   if (routable) {
     Object.defineProperty(FakeAudioContext.prototype, "setSinkId", {
       configurable: true,
-      value: async (sinkId: string) => {
+      value: /** @param {string} sinkId */ async (sinkId) => {
         sinkIds.push(sinkId);
       },
     });
@@ -56,19 +65,25 @@ function restoreGlobals() {
   Reflect.deleteProperty(globalThis, "navigator");
 }
 
-function collect(source: Observable<AudioOutput[]>): {
-  values: AudioOutput[][];
-  subscription: Subscription;
-} {
-  const values: AudioOutput[][] = [];
+/**
+ * @param {Observable<AudioOutput[]>} source
+ * @returns {{ values: AudioOutput[][], subscription: Subscription }}
+ */
+function collect(source) {
+  /** @type {AudioOutput[][]} */
+  const values = [];
   const subscription = source.subscribe((value) => {
     values.push(value);
   });
   return { values, subscription };
 }
 
-/** Lets the promise chain inside `enumerateDevices` settle. */
-function flush(): Promise<void> {
+/**
+ * Lets the promise chain inside `enumerateDevices` settle.
+ *
+ * @returns {Promise<void>}
+ */
+function flush() {
   return new Promise((resolve) => {
     setTimeout(resolve, 0);
   });
@@ -134,9 +149,8 @@ describe("audioOutputs", () => {
 
   test("follows devices being plugged in and pulled out", async () => {
     fakeAudioContext(true);
-    const devices: Partial<MediaDeviceInfo>[] = [
-      { kind: "audiooutput", deviceId: "a", groupId: "1", label: "Speakers" },
-    ];
+    /** @type {Partial<MediaDeviceInfo>[]} */
+    const devices = [{ kind: "audiooutput", deviceId: "a", groupId: "1", label: "Speakers" }];
     const mediaDevices = fakeMediaDevices(devices);
 
     const { values, subscription } = collect(audioOutputs());
@@ -226,7 +240,8 @@ describe("audioOutputSelection", () => {
 
   test("hands the choice back once the chosen output is unplugged", async () => {
     fakeAudioContext(true);
-    const devices: Partial<MediaDeviceInfo>[] = [
+    /** @type {Partial<MediaDeviceInfo>[]} */
+    const devices = [
       { kind: "audiooutput", deviceId: "a", groupId: "1", label: "Speakers" },
       { kind: "audiooutput", deviceId: "b", groupId: "2", label: "Headphones" },
     ];

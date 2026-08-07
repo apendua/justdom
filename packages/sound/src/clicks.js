@@ -14,38 +14,41 @@
 import * as THREE from "three";
 import { createClickWaveform } from "./click.js";
 
-export interface ClicksOptions {
-  /** How many clicks may overlap before the oldest is cut short. */
-  voices?: number;
-  /**
-   * How far away the click starts getting quieter, in metres. The boards in
-   * these apps are about a metre square on the far side of arm's length, so
-   * the default is roughly "the near edge": near the middle a click is at full
-   * volume, and across the board it is clearly further off without becoming
-   * inaudible.
-   */
-  refDistance?: number;
-  /** Loud enough to be felt as contact, quiet enough to sit under the music. */
-  volume?: number;
-}
+/**
+ * @typedef {object} ClicksOptions
+ * @property {number} [voices] How many clicks may overlap before the oldest is
+ *   cut short.
+ * @property {number} [refDistance] How far away the click starts getting
+ *   quieter, in metres. The boards in these apps are about a metre square on
+ *   the far side of arm's length, so the default is roughly "the near edge":
+ *   near the middle a click is at full volume, and across the board it is
+ *   clearly further off without becoming inaudible.
+ * @property {number} [volume] Loud enough to be felt as contact, quiet enough
+ *   to sit under the music.
+ */
 
-export interface Clicks {
-  /**
-   * Holds the voices. Add it to whichever object the positions passed to
-   * `play` are measured from — the board, not the scene.
-   */
-  readonly object: THREE.Object3D;
-  /** Sound a click at a point, in that object's own coordinates. */
-  play(position: THREE.Vector3): void;
-}
+/**
+ * @typedef {object} Clicks
+ * @property {THREE.Object3D} object Holds the voices. Add it to whichever
+ *   object the positions passed to `play` are measured from — the board, not
+ *   the scene.
+ * @property {(position: THREE.Vector3) => void} play Sound a click at a point,
+ *   in that object's own coordinates.
+ */
 
+/** @type {Required<ClicksOptions>} */
 const defaults = {
   voices: 4,
   refDistance: 0.25,
   volume: 0.35,
-} satisfies Required<ClicksOptions>;
+};
 
-export function createClicks(listener: THREE.AudioListener, options: ClicksOptions = {}): Clicks {
+/**
+ * @param {THREE.AudioListener} listener
+ * @param {ClicksOptions} [options]
+ * @returns {Clicks}
+ */
+export function createClicks(listener, options = {}) {
   const { voices: count, refDistance, volume } = { ...defaults, ...options };
   const object = new THREE.Group();
   const { context } = listener;

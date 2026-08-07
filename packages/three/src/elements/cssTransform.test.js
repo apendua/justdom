@@ -50,10 +50,23 @@ describe("parseTransform", () => {
     assert.deepEqual(apply(matrix, 0, 1), [3, 4, 0]);
   });
 
-  test("matrix3d() reads column-major, like the engine stores it", () => {
+  test("matrix3d() reads column-major, with CSS z mirrored into local z", () => {
+    // CSS +z is toward the viewer; portal content lives at negative local z,
+    // so a translateZ toward the viewer must land at −z.
     const matrix = parseTransform("matrix3d(2, 0, 0, 0, 0, 3, 0, 0, 0, 0, 1, 0, 10, 20, 30, 1)");
     assert.ok(matrix);
-    assert.deepEqual(apply(matrix, 1, 1, 0), [12, 23, 30]);
+    assert.deepEqual(apply(matrix, 1, 1, 0), [12, 23, -30]);
+  });
+
+  test("a rotateY swings x toward the viewer on the side CSS says it does", () => {
+    // rotateY(90deg) in CSS takes the +x axis to −z (away from the viewer):
+    // matrix3d(cos, 0, -sin, 0, 0, 1, 0, 0, sin, 0, cos, 0, 0, 0, 0, 1).
+    // Away from the viewer is *positive* local z.
+    const matrix = parseTransform("matrix3d(0, 0, -1, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1)");
+    assert.ok(matrix);
+    const [x, y, z] = apply(matrix, 1, 0, 0);
+    assert.ok(Math.abs(x) < 1e-9 && Math.abs(y) < 1e-9);
+    assert.equal(z, 1);
   });
 });
 

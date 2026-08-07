@@ -68,7 +68,13 @@ export function text(_, textNode) {
   });
 
   const textureData = selector(() => {
-    return generateTextTexture(layout.lines, renderStyle, layout.bounds, getViewportDpr());
+    return generateTextTexture(
+      layout.lines,
+      renderStyle,
+      layout.bounds,
+      getViewportDpr(),
+      tint.masked,
+    );
   });
 
   return just(object, [
@@ -100,11 +106,11 @@ export function text(_, textNode) {
           const hadMap = !!material.map;
           const hadAlphaMap = !!material.alphaMap;
           if (tint.masked) {
-            // A mask carries no color worth sampling: its fully transparent
-            // texels are black, and linear filtering would drag that black
-            // into every glyph edge as a dark fringe. As an alpha map only
-            // the coverage is read — the color comes uniformly from the
-            // material, and there is nothing to fringe.
+            // A mask carries no color worth sampling: read it as coverage
+            // through the alpha map (white-on-black, so the green channel is
+            // the smooth canvas antialiasing) and let the color come
+            // uniformly from the material. Nothing to fringe, nothing to
+            // alias.
             material.alphaMap = texture;
             material.map = null;
           } else {

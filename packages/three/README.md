@@ -145,6 +145,11 @@ makes it the cheap way to move things: a `transform` written by a
 re-layout and no re-rasterized text. Prefer it for motion, exactly as on the
 flat web.
 
+3D is real depth here, not a painted illusion: `rotateY` swings half the
+element *behind* its own surface — up to half its width deep — and the depth
+buffer will honestly clip it into the panel. Give anything 3D-rotated enough
+`translateZ` to keep the swing in front.
+
 One print of the measuring tape to know about: a transformed element (and
 everything under it) is measured off the layout — whole-pixel offsets —
 rather than the subpixel client rects untransformed content enjoys, because

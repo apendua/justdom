@@ -14,11 +14,21 @@ import { getComputedStyleCached, hasTransform, PORTAL_ATTRIBUTE } from "./cache.
  */
 
 /**
- * A computed `transform` as a matrix, or null for none.
+ * A computed `transform` as a matrix in portal-local coordinates, or null
+ * for none.
  *
  * CSS lists `matrix3d`'s sixteen values column-major — the same order
  * `Matrix4` stores its elements — and `matrix(a, b, c, d, e, f)` is the 2D
  * column-major shorthand of the same thing.
+ *
+ * The portal's frame is a *z-mirror* of the CSS one: the container flip
+ * lines local y up with CSS y-down, but it leaves local +z pointing away
+ * from the viewer, where CSS +z points toward them (portal content sits at
+ * negative local z). A 3D matrix embedded verbatim would send every
+ * `translateZ` backwards into the panel and spin every `rotateX`/`rotateY`
+ * the wrong way round, so it is conjugated by the flip — S·M·S with
+ * S = diag(1, 1, −1) — which negates the six entries coupling z to the
+ * rest and leaves a 2D matrix exactly alone.
  *
  * @param {string} value
  * @returns {THREE.Matrix4 | null}
@@ -39,7 +49,15 @@ export function parseTransform(value) {
     if (values.length !== 16) {
       return null;
     }
-    return new THREE.Matrix4().fromArray(values);
+    const matrix = new THREE.Matrix4().fromArray(values);
+    const e = matrix.elements;
+    e[2] = -e[2];
+    e[6] = -e[6];
+    e[8] = -e[8];
+    e[9] = -e[9];
+    e[11] = -e[11];
+    e[14] = -e[14];
+    return matrix;
   }
   if (values.length !== 6) {
     return null;
@@ -89,10 +107,10 @@ const scratch = new THREE.Matrix4();
 
 /**
  * `T(position) · T(origin) · M · T(−origin)`, written into `target`: the CSS
- * transform applied about its origin, at the element's layout position. The
- * portal's container flip already makes local space y-down px — the same
- * coordinate system CSS transforms are written in — so the matrix embeds
- * with no axis fixups.
+ * transform applied about its origin, at the element's layout position.
+ * Everything here is already in portal-local coordinates — `parseTransform`
+ * mirrors the z axis, `getOwnTransform` mirrors the origin's z — so this is
+ * plain composition.
  *
  * @param {THREE.Matrix4} target
  * @param {number} x
@@ -126,6 +144,9 @@ export function getOwnTransform(element) {
     element.offsetWidth,
     element.offsetHeight,
   );
+  // The origin's z is a CSS length (toward the viewer); local z runs the
+  // other way — the same mirror the matrix itself is conjugated by.
+  origin.z = -origin.z;
   return { matrix, origin };
 }
 

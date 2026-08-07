@@ -401,9 +401,16 @@ function measureFontExtent(text, context, fallback, side) {
  * @param {TextRenderStyle} style
  * @param {TextBounds} bounds
  * @param {number} viewportDpr
+ * @param {boolean} [mask] Rasterize as a coverage mask: white glyphs on an
+ *   *opaque black* ground, meant to be read through a material's alpha map.
+ *   Opacity is the point — on a transparent canvas the antialiasing lives
+ *   only in the alpha channel, and the un-premultiplication that happens on
+ *   upload rounds every partially covered texel's color back to full white,
+ *   so a coverage read from a color channel comes out aliased. Painted onto
+ *   black, the color channels *are* the coverage, gradient and all.
  * @returns {TextTexture}
  */
-export const generateTextTexture = (lines, style, bounds, viewportDpr) => {
+export const generateTextTexture = (lines, style, bounds, viewportDpr, mask = false) => {
   const measuring = getMeasuringContext();
   measuring.font = style.font;
   const ascent = measureFontExtent("Mg", measuring, style.fontSize * 0.8, "Ascent");
@@ -438,6 +445,10 @@ export const generateTextTexture = (lines, style, bounds, viewportDpr) => {
   }
 
   context.scale(effectiveDpr, effectiveDpr);
+  if (mask) {
+    context.fillStyle = "#000000";
+    context.fillRect(0, 0, textureBounds.width, textureBounds.height);
+  }
   context.font = style.font;
   context.fillStyle = style.color;
   context.textAlign = "left";

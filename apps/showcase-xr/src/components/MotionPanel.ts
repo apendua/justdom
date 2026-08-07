@@ -32,9 +32,11 @@ const keyframesStyle = stylesheet`
     50% { color: rgb(221, 64, 104); }
   }
 
+  /* Lifted far enough that the swing stays clear of the panel: a rotation
+     puts half the element behind its own plane, up to half its width deep. */
   @keyframes ${CLASS_NAME}-flip {
-    from { transform: translateZ(28px) rotateY(0deg); }
-    to { transform: translateZ(28px) rotateY(360deg); }
+    from { transform: translateZ(32px) rotateY(0deg); }
+    to { transform: translateZ(32px) rotateY(360deg); }
   }
 
   .${CLASS_NAME} {
@@ -82,7 +84,7 @@ const liftedStyle = className`
   color: rgb(255, 255, 255);
   background-color: rgb(64, 108, 220);
   border-radius: 10px;
-  transform: rotateY(-24deg) translateZ(18px);
+  transform: rotateY(-24deg) translateZ(36px);
 `;
 
 const laneStyle = className`

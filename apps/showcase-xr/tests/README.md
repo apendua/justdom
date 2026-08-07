@@ -48,9 +48,16 @@ a time. Somewhere with no baseline of its own, the check records one and says
 so. **Under `--strict`, which is how CI runs it, it fails instead**: a green
 check that quietly declined to check is worse than no check at all.
 
+The difference between two machines is not hypothetical: this repository holds
+baselines from a runner and from a dev container that have the *same* fonts and
+differ only in Chromium build, and they disagree by 705 pixels — twice the
+budget. Sharing one set between them would mean either a budget too loose to
+catch a missing border or a check that fails for everyone but one machine.
+
 CI's baselines are the ones that gate a pull request, and CI is where they are
 drawn: dispatch the **Visual regression** workflow with `record: true` and the
-runner redraws them and commits them to the branch. That is also what to do
+runner redraws them and commits them to the branch — a push that runs the check
+against what it just recorded, which is what proves a recording reproduces. That is also what to do
 after a deliberate visual change, or after a Playwright bump — which moves the
 browser build, and so the fingerprint. Recording locally is fine too; it lands
 in a directory of its own and does not disturb CI's.

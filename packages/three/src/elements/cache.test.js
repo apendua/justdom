@@ -453,3 +453,119 @@ describe("getClipBoxCached", () => {
     }
   });
 });
+
+/**
+ * The dropdown arrangement: a positioned anchor with a scroller in it, a row
+ * inside the scroller, and a menu hanging off the row. Where the menu's
+ * containing block sits decides who clips it — which is the thing under test.
+ *
+ * @param {string} anchorStyle
+ * @param {string} rowStyle
+ * @param {string} menuStyle
+ */
+function setupPositioned(anchorStyle, rowStyle, menuStyle) {
+  const container = document.createElement("div");
+  container.setAttribute(PORTAL_ATTRIBUTE, "");
+  const anchor = document.createElement("div");
+  anchor.style.cssText = anchorStyle;
+  const scroller = document.createElement("div");
+  scroller.style.overflow = "hidden";
+  const row = document.createElement("div");
+  row.style.cssText = rowStyle;
+  const menu = document.createElement("div");
+  menu.style.cssText = menuStyle;
+
+  row.appendChild(menu);
+  scroller.appendChild(row);
+  anchor.appendChild(scroller);
+  container.appendChild(anchor);
+  document.body.appendChild(container);
+
+  /**
+   * @param {Element} element
+   * @param {[number, number, number, number]} box
+   */
+  const layout = (element, [left, top, right, bottom]) => {
+    element.getBoundingClientRect = () =>
+      /** @type {DOMRect} */ ({
+        left,
+        top,
+        right,
+        bottom,
+        width: right - left,
+        height: bottom - top,
+      });
+  };
+  layout(anchor, [5, 5, 195, 95]);
+  layout(scroller, [10, 10, 190, 90]);
+
+  return { container, scroller, row, menu };
+}
+
+describe("getClipBoxCached and positioned elements", () => {
+  test("a dropdown menu escapes the scroller its trigger sits in", () => {
+    // dropdown.js ships exactly this: a menu styled `position: absolute;
+    // z-index: 1`. Its containing block is the anchor, above the scroller,
+    // so the scroller's overflow — which binds the row — never reaches it.
+    const { container, row, menu } = setupPositioned(
+      "position: relative",
+      "",
+      "position: absolute; z-index: 1",
+    );
+    try {
+      assert.equal(getClipBoxCached(row).left, 10, "the row is the scroller's to clip");
+      assert.equal(getClipBoxCached(menu), UNCLIPPED);
+    } finally {
+      container.remove();
+    }
+  });
+
+  test("a containing block inside the scroller keeps the menu clipped", () => {
+    // The other common arrangement: the anchor is the row itself. The menu
+    // then lives inside the scroller the way the row does, and scrolls away
+    // with it.
+    const { container, row, menu } = setupPositioned(
+      "",
+      "position: relative",
+      "position: absolute; z-index: 1",
+    );
+    try {
+      assert.deepEqual(getClipBoxCached(menu), getClipBoxCached(row));
+      assert.equal(getClipBoxCached(menu).left, 10);
+    } finally {
+      container.remove();
+    }
+  });
+
+  test("the containing block's own overflow is the clipping that does apply", () => {
+    const { container, menu } = setupPositioned(
+      "position: relative; overflow: hidden",
+      "",
+      "position: absolute; z-index: 1",
+    );
+    try {
+      const clip = getClipBoxCached(menu);
+      // The anchor's padding box, not the scroller's: clipping skips to the
+      // containing block, and picks up everything from there on up.
+      assert.deepEqual(
+        { left: clip.left, top: clip.top, right: clip.right, bottom: clip.bottom },
+        { left: 5, top: 5, right: 195, bottom: 95 },
+      );
+    } finally {
+      container.remove();
+    }
+  });
+
+  test("position: fixed escapes every ancestor there is", () => {
+    const { container, menu } = setupPositioned(
+      "position: relative; overflow: hidden",
+      "",
+      "position: fixed",
+    );
+    try {
+      assert.equal(getClipBoxCached(menu), UNCLIPPED);
+    } finally {
+      container.remove();
+    }
+  });
+});

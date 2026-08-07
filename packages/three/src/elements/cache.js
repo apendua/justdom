@@ -593,6 +593,19 @@ const clipBoxCache = new WeakMap();
  * common case during a scroll — content moving inside a stationary window —
  * leaves this signal, and the uniforms hanging off it, alone.
  *
+ * Who does the confining is decided by where the node's box *lives*, which
+ * for a positioned element is not its parent. CSS hangs an absolutely
+ * positioned box off its containing block — the nearest positioned ancestor —
+ * so `overflow` ancestors *below* that block never clip it, which is how a
+ * dropdown menu whose anchor sits outside a scroller escapes the scroller
+ * its trigger row lives in; and a fixed box escapes every ancestor there is.
+ * The clipping that does apply to it is exactly the clipping that applies to
+ * its containing block's content — the block's own overflow included — and
+ * that is a chain the block's ordinary children already share, so the
+ * memoization survives the skip. (A transform or a filter also establishes a
+ * containing block for positioned descendants; neither is modelled here, the
+ * same way neither is modelled anywhere else in the mirror.)
+ *
  * The walk stops at the portal's container. What the page around the scene
  * does with `body` is none of a panel's business, and its rect is not in the
  * panel's coordinate system anyway.
@@ -613,12 +626,27 @@ export function getClipBoxCached(node) {
         if (self?.hasAttribute(PORTAL_ATTRIBUTE)) {
           return UNCLIPPED;
         }
-        const parent = getParentElement(node);
-        if (!parent || parent.hasAttribute(PORTAL_ATTRIBUTE)) {
+        const position = self ? getComputedStyleCached(self).position || "static" : "static";
+        if (position === "fixed") {
           return UNCLIPPED;
         }
-        const inherited = getClipBoxCached(parent);
-        const own = getOwnClipBox(parent);
+        // The box this node hangs off: its parent in the ordinary case, its
+        // containing block when it is absolutely positioned.
+        let holder = getParentElement(node);
+        if (position === "absolute") {
+          while (
+            holder &&
+            !holder.hasAttribute(PORTAL_ATTRIBUTE) &&
+            (getComputedStyleCached(holder).position || "static") === "static"
+          ) {
+            holder = getParentElement(holder);
+          }
+        }
+        if (!holder || holder.hasAttribute(PORTAL_ATTRIBUTE)) {
+          return UNCLIPPED;
+        }
+        const inherited = getClipBoxCached(holder);
+        const own = getOwnClipBox(holder);
         // Passing the inherited box through unchanged keeps the shared
         // UNCLIPPED object identical the whole way down a subtree nobody
         // clips, which is what lets the elements in it skip the rest.

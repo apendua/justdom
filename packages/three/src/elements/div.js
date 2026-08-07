@@ -151,6 +151,13 @@ export function div(ctx, element) {
    * is not a ray target: the raycaster walks the descendants of whatever is
    * registered, so dropping the registration takes the whole subtree with it.
    * Partly clipped elements stay registered and are trimmed by `clipRaycast`.
+   *
+   * Taking the subtree is deliberate but not exact: `getClipBoxCached` lets an
+   * absolutely positioned descendant escape the clip that hid this element, so
+   * a menu whose containing block sits above the scroller would, on paper,
+   * survive a row that scrolled away — and vanishes here with it. Accepted
+   * until a real panel shows the difference: the arrangements that ship anchor
+   * such a menu outside the scroller or dismiss it on scroll.
    */
   const shown = new Derived(() => {
     const box = clipBox.get();

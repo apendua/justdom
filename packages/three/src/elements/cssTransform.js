@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { getComputedStyleCached, PORTAL_ATTRIBUTE } from "./cache.js";
+import { getComputedStyleCached, hasTransform, PORTAL_ATTRIBUTE } from "./cache.js";
 
 /**
  * CSS transforms, read off the computed style and turned into the matrices
@@ -12,21 +12,6 @@ import { getComputedStyleCached, PORTAL_ATTRIBUTE } from "./cache.js";
  * for elements, and for text (which has no offsets) the transformed rects
  * with the accumulated transform divided back out.
  */
-
-/**
- * Whether a computed `transform` value is one `parseTransform` accepts.
- * Browsers serialize every computed transform — however it was authored — to
- * a single `matrix()`/`matrix3d()`, so under a real engine this is exactly
- * "has a transform". (jsdom passes author values through verbatim; anything
- * unrecognized counts as untransformed there, consistently in both
- * functions.)
- *
- * @param {string} value
- * @returns {boolean}
- */
-function hasTransform(value) {
-  return !!value && value !== "none" && value.startsWith("matrix");
-}
 
 /**
  * A computed `transform` as a matrix, or null for none.
@@ -214,58 +199,4 @@ export function untransformedOffset(element, from) {
   }
   const base = pageOffset(from);
   return { x: position.x - base.x, y: position.y - base.y };
-}
-
-/**
- * Undo the linear part of every CSS transform between the portal root and
- * `element` (inclusive) on a screen-space vector, giving the vector in the
- * element's own untransformed px.
- *
- * Text has no layout offsets to fall back on, so its measurements start from
- * client rects and get the accumulated transform divided back out. Deltas
- * between two points shed the translations, which leaves the linear parts —
- * exact under any mix of translations and scales. A rotated ancestor only
- * ever hands back axis-aligned bounds, so under rotation this is an
- * approximation.
- *
- * @param {HTMLElement} element
- * @param {number} x
- * @param {number} y
- * @returns {{ x: number, y: number }}
- */
-export function untransformVector(element, x, y) {
-  // Accumulate A = M_outer · … · M_inner, in the CSS layout where
-  // x' = a·x + c·y and y' = b·x + d·y.
-  let a = 1;
-  let b = 0;
-  let c = 0;
-  let d = 1;
-  /** @type {HTMLElement | null} */
-  let el = element;
-  while (el && !el.hasAttribute(PORTAL_ATTRIBUTE)) {
-    const matrix = parseTransform(getComputedStyleCached(el).transform);
-    if (matrix) {
-      const m = matrix.elements;
-      const [ma, mb, mc, md] = [m[0], m[1], m[4], m[5]];
-      const na = ma * a + mc * b;
-      const nb = mb * a + md * b;
-      const nc = ma * c + mc * d;
-      const nd = mb * c + md * d;
-      a = na;
-      b = nb;
-      c = nc;
-      d = nd;
-    }
-    el = el.parentElement;
-  }
-  if (a === 1 && b === 0 && c === 0 && d === 1) {
-    return { x, y };
-  }
-  const det = a * d - b * c;
-  if (!det) {
-    // A dimension scaled to nothing has no inverse and nothing sensible to
-    // draw; leave the vector alone rather than blowing it up.
-    return { x, y };
-  }
-  return { x: (d * x - c * y) / det, y: (a * y - b * x) / det };
 }

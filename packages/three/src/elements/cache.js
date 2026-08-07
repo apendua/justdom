@@ -16,6 +16,86 @@ import { collapseWhitespace, groupIntoLines, preservesWhitespace } from "./textL
 export const PORTAL_ATTRIBUTE = "data-xr-portal";
 
 /**
+ * Whether a computed `transform` value is one the mirror treats as a
+ * transform at all. Browsers serialize every computed transform to a single
+ * `matrix()`/`matrix3d()`, so under a real engine this is exactly "has a
+ * transform"; jsdom passes author values through, and anything unrecognized
+ * counts as untransformed everywhere, consistently.
+ *
+ * @param {string} value
+ * @returns {boolean}
+ */
+export function hasTransform(value) {
+  return !!value && value !== "none" && value.startsWith("matrix");
+}
+
+/**
+ * The attribute that switches an element's transform off while something is
+ * being measured. Deliberately absent from the portal observer's filter, so
+ * the toggling is invisible to invalidation — putting it there would make
+ * every measurement announce a mutation, which would schedule another
+ * measurement.
+ */
+const MEASURE_ATTRIBUTE = "data-xr-measure";
+
+/** @type {HTMLStyleElement | null} */
+let measureStyleElement = null;
+
+function ensureMeasureStyle() {
+  if (!measureStyleElement || !measureStyleElement.isConnected) {
+    measureStyleElement = document.createElement("style");
+    // !important outranks inline styles and animation values alike, which is
+    // what lets this switch off a transform mid-transition.
+    measureStyleElement.textContent = `[${MEASURE_ATTRIBUTE}] { transform: none !important; }`;
+    document.head.appendChild(measureStyleElement);
+  }
+}
+
+/**
+ * Run `fn` with every CSS transform between `element` and its portal root
+ * switched off, so the client rects it reads come back in layout space —
+ * the space the mirror draws in, with the transforms re-applied as object
+ * matrices. Transforms do not affect layout, so nothing actually moves; the
+ * one blind spot is an absolutely positioned descendant whose containing
+ * block the transform was.
+ *
+ * Reading the ancestors' styles here registers them as dependencies of the
+ * calling computation, which is the correct thing: a transform toggling on
+ * an ancestor changes what this measurement means.
+ *
+ * @template T
+ * @param {HTMLElement | null} element
+ * @param {() => T} fn
+ * @returns {T}
+ */
+export function withoutTransforms(element, fn) {
+  /** @type {HTMLElement[]} */
+  const affected = [];
+  /** @type {HTMLElement | null} */
+  let el = element;
+  while (el && !el.hasAttribute(PORTAL_ATTRIBUTE)) {
+    if (hasTransform(getComputedStyleCached(el).transform)) {
+      affected.push(el);
+    }
+    el = el.parentElement;
+  }
+  if (!affected.length) {
+    return fn();
+  }
+  ensureMeasureStyle();
+  for (const transformed of affected) {
+    transformed.setAttribute(MEASURE_ATTRIBUTE, "");
+  }
+  try {
+    return fn();
+  } finally {
+    for (const transformed of affected) {
+      transformed.removeAttribute(MEASURE_ATTRIBUTE);
+    }
+  }
+}
+
+/**
  * The kinds of change a batch can announce. The first four mirror what the
  * portal's observer (and the font API) report. The last two come from the
  * animation clock, which has no mutations to relay — only time passing under
@@ -218,8 +298,15 @@ export function getBoundingClientRectCached(element) {
 }
 
 /**
+ * A text node's layout, measured with every transform on the chain switched
+ * off — line boxes read back under a rotation would group by *screen* rows,
+ * which is not where the browser broke the lines.
+ *
  * @typedef {object} TextLayout
  * @property {DOMRect} bounds Union of the text node's line boxes.
+ * @property {number} left Where `bounds` sits relative to the parent
+ *   element's border box, in layout px.
+ * @property {number} top Same, vertically.
  * @property {TextLine[]} lines Line boxes, positioned relative to `bounds`.
  */
 
@@ -240,75 +327,89 @@ function isSingleLine(rects) {
 
 /**
  * Read back the line boxes the browser laid a text node out into, along with
- * the text that landed on each one.
+ * the text that landed on each one. Everything is measured inside
+ * `withoutTransforms`: rects of transformed content are screen-space bounds,
+ * and both the line grouping and the parent-relative position have to happen
+ * in layout space — the object carrying the transform re-applies it.
  * @param {Text} text
  * @returns {TextLayout}
  */
 function measureTextLayout(text) {
+  const parentElement = text.parentElement;
+  if (!parentElement) {
+    throw new NoValueError("Text node has no parent element");
+  }
   const content = text.textContent || "";
   const whiteSpace = getComputedStyleCached(text).whiteSpace || "normal";
-  const range = document.createRange();
-  range.selectNodeContents(text);
-  const bounds = range.getBoundingClientRect();
+  return withoutTransforms(parentElement, () => {
+    const parentRect = parentElement.getBoundingClientRect();
+    const range = document.createRange();
+    range.selectNodeContents(text);
+    const bounds = range.getBoundingClientRect();
+    const left = bounds.left - parentRect.left;
+    const top = bounds.top - parentRect.top;
 
-  const rects = range.getClientRects();
-  if (rects.length === 0) {
-    // Empty, or not laid out at all. Either way there is nothing to draw, and
-    // in particular nothing that should be drawn at the origin instead.
-    return { bounds, lines: [] };
-  }
-
-  // The overwhelmingly common case is a label on a single line, which the
-  // bounding box already describes. Only text that actually wrapped is worth
-  // walking character by character.
-  if (isSingleLine(rects)) {
-    const line = collapseWhitespace(content, whiteSpace);
-    return {
-      bounds,
-      lines: line
-        ? [{ text: line, left: 0, top: 0, width: bounds.width, height: bounds.height }]
-        : [],
-    };
-  }
-
-  const preserved = preservesWhitespace(whiteSpace);
-  /** @type {import('./textLines.js').CharacterRect[]} */
-  const characters = [];
-  for (let index = 0; index < content.length; index++) {
-    range.setStart(text, index);
-    range.setEnd(text, index + 1);
-    const rect = range.getBoundingClientRect();
-    if (rect.width <= 0 || rect.height <= 0) {
-      // Whitespace the layout collapsed away occupies no space and belongs to
-      // no line box.
-      continue;
+    const rects = range.getClientRects();
+    if (rects.length === 0) {
+      // Empty, or not laid out at all. Either way there is nothing to draw,
+      // and in particular nothing that should be drawn at the origin instead.
+      return { bounds, left, top, lines: [] };
     }
-    characters.push({
-      index,
-      blank: !preserved && /\s/.test(content[index]),
-      left: rect.left,
-      right: rect.right,
-      top: rect.top,
-      bottom: rect.bottom,
-    });
-  }
 
-  const lines = [];
-  for (const row of groupIntoLines(characters)) {
-    const line = collapseWhitespace(content.slice(row.start, row.end), whiteSpace);
-    if (!line) {
-      continue;
+    // The overwhelmingly common case is a label on a single line, which the
+    // bounding box already describes. Only text that actually wrapped is
+    // worth walking character by character.
+    if (isSingleLine(rects)) {
+      const line = collapseWhitespace(content, whiteSpace);
+      return {
+        bounds,
+        left,
+        top,
+        lines: line
+          ? [{ text: line, left: 0, top: 0, width: bounds.width, height: bounds.height }]
+          : [],
+      };
     }
-    lines.push({
-      text: line,
-      left: row.left - bounds.left,
-      top: row.top - bounds.top,
-      width: row.right - row.left,
-      height: row.bottom - row.top,
-    });
-  }
 
-  return { bounds, lines };
+    const preserved = preservesWhitespace(whiteSpace);
+    /** @type {import('./textLines.js').CharacterRect[]} */
+    const characters = [];
+    for (let index = 0; index < content.length; index++) {
+      range.setStart(text, index);
+      range.setEnd(text, index + 1);
+      const rect = range.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) {
+        // Whitespace the layout collapsed away occupies no space and belongs
+        // to no line box.
+        continue;
+      }
+      characters.push({
+        index,
+        blank: !preserved && /\s/.test(content[index]),
+        left: rect.left,
+        right: rect.right,
+        top: rect.top,
+        bottom: rect.bottom,
+      });
+    }
+
+    const lines = [];
+    for (const row of groupIntoLines(characters)) {
+      const line = collapseWhitespace(content.slice(row.start, row.end), whiteSpace);
+      if (!line) {
+        continue;
+      }
+      lines.push({
+        text: line,
+        left: row.left - bounds.left,
+        top: row.top - bounds.top,
+        width: row.right - row.left,
+        height: row.bottom - row.top,
+      });
+    }
+
+    return { bounds, left, top, lines };
+  });
 }
 
 /** @type {WeakMap<Text, Derived<TextLayout>>} */

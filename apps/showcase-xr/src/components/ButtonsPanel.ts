@@ -1,4 +1,4 @@
-import { stylesheet, text, $, children, attr, CLASS_NAME } from "@apendua/justdom";
+import { className, stylesheet, text, $, children, attr, CLASS_NAME } from "@apendua/justdom";
 import { set, on } from "@apendua/justdom";
 import { Signal, component, observable } from "@apendua/signal";
 import { cardStyle, captionStyle, classes, headingStyle, rowStyle } from "./panels.js";
@@ -56,6 +56,13 @@ const chipStyle = stylesheet`
   }
 `;
 
+const footnoteStyle = className`
+  margin: 1rem 0 0;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: rgb(122, 128, 148);
+`;
+
 const tiltableStyle = stylesheet`
   .${CLASS_NAME} {
     transition: transform 0.45s ease;
@@ -101,6 +108,12 @@ const ButtonsPanel = component((_ctx: WeakKey) => {
             children(text`${observable(() => (tilted.get() ? "Straighten" : "Tilt the card"))}`),
             on("click", () => tilted.set(!tilted.get())),
           ]),
+        ),
+      ]),
+      $("p", [
+        set("className", footnoteStyle),
+        children(
+          text`This paragraph wraps across several lines on purpose: tilt the card and every line keeps its place, because line breaks are measured with the transforms switched off.`,
         ),
       ]),
     ),

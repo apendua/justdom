@@ -145,13 +145,12 @@ makes it the cheap way to move things: a `transform` written by a
 re-layout and no re-rasterized text. Prefer it for motion, exactly as on the
 flat web.
 
-Two prints of the measuring tape to know about. A transformed element (and
+One print of the measuring tape to know about: a transformed element (and
 everything under it) is measured off the layout — whole-pixel offsets —
 rather than the subpixel client rects untransformed content enjoys, because
-client rects come back with the transform already applied. And text inside a
-transformed subtree is reconstructed by dividing the transform back out of
-those rects: exact under translation and scale, approximate under rotation,
-where only axis-aligned bounds survive to be read.
+client rects come back with the transform already applied. Text is measured
+with the transforms briefly switched off instead, so its line boxes and
+positions are exact whatever the transform — including full 3D rotations.
 
 ## Animation
 

@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { NoValueError, onCleanup } from "@apendua/signal";
+import { onCleanup } from "@apendua/signal";
 import { effects, just, set, selector } from "@apendua/signal";
 import { $, children } from "../operators.js";
 import {
@@ -9,13 +9,7 @@ import {
   makeTextQuadGeometry,
 } from "./textHelpers.js";
 import { parseColor } from "./VisualProperties.js";
-import {
-  getBoundingClientRectCached,
-  getComputedStyleCached,
-  getParentElement,
-  getTextLayout,
-} from "./cache.js";
-import { isTransformed, untransformVector } from "./cssTransform.js";
+import { getComputedStyleCached, getTextLayout } from "./cache.js";
 
 /**
  * @import { Observable } from "rxjs";
@@ -39,47 +33,15 @@ function getViewportDpr() {
 export function text(_, textNode) {
   const object = new THREE.Object3D();
 
+  // Measured with transforms neutralized, so both the line boxes and the
+  // parent-relative position come back in layout space — the space the
+  // mirror draws in, with any transform riding on the ancestors' matrices.
   const layout = selector(() => {
     return getTextLayout(textNode);
   });
 
-  const textRect = selector(() => {
-    return layout.bounds;
-  });
-
   const style = selector(() => {
     return getComputedStyleCached(textNode);
-  });
-
-  // Text has no layout offsets the way elements do, so its measurements come
-  // from client rects — which are transformed bounds the moment a transform
-  // sits anywhere above. The texture draws glyphs in the node's own
-  // untransformed px (the object's ancestors re-apply the transform), so the
-  // accumulated transform is divided back out first. Exact under translation
-  // and scale; a rotated ancestor only hands back axis-aligned bounds, so
-  // there the sizes approximate.
-  const measured = selector(() => {
-    const { bounds, lines } = layout;
-    const parentElement = getParentElement(textNode);
-    if (!parentElement || !isTransformed(parentElement)) {
-      return { width: bounds.width, height: bounds.height, lines };
-    }
-    const size = untransformVector(parentElement, bounds.width, bounds.height);
-    return {
-      width: Math.abs(size.x),
-      height: Math.abs(size.y),
-      lines: lines.map((line) => {
-        const corner = untransformVector(parentElement, line.left, line.top);
-        const extent = untransformVector(parentElement, line.width, line.height);
-        return {
-          text: line.text,
-          left: corner.x,
-          top: corner.y,
-          width: Math.abs(extent.x),
-          height: Math.abs(extent.y),
-        };
-      }),
-    };
   });
 
   // What actually reaches the rasterizer. For tintable text — almost every
@@ -106,41 +68,18 @@ export function text(_, textNode) {
   });
 
   const textureData = selector(() => {
-    return generateTextTexture(
-      measured.lines,
-      renderStyle,
-      { width: measured.width, height: measured.height },
-      getViewportDpr(),
-    );
-  });
-
-  const parentRect = selector(() => {
-    const parentElement = getParentElement(textNode);
-    if (!parentElement) {
-      throw new NoValueError();
-    }
-    return getBoundingClientRectCached(parentElement);
+    return generateTextTexture(layout.lines, renderStyle, layout.bounds, getViewportDpr());
   });
 
   return just(object, [
     effects((obj) => {
-      let offsetX = textRect.left - parentRect.left;
-      let offsetY = textRect.top - parentRect.top;
-      const parentElement = getParentElement(textNode);
-      if (parentElement && isTransformed(parentElement)) {
-        // Both rects are transformed by the same ancestors, so their delta is
-        // the transformed local offset; divide the transform back out.
-        const local = untransformVector(parentElement, offsetX, offsetY);
-        offsetX = local.x;
-        offsetY = local.y;
-      }
-      obj.position.set(offsetX, offsetY, -0.01);
+      obj.position.set(layout.left, layout.top, -0.01);
     }),
     children(
       $(new THREE.Mesh(), [
         // The material is created once and never replaced — the texture swaps
-        // in and out of its `map` slot instead. Identity matters: the tint
-        // effect below writes into whatever material the mesh carries, and a
+        // through its map slots instead. Identity matters: the tint effect
+        // below writes into whatever material the mesh carries, and a
         // replacement material would arrive untinted, with nothing to say the
         // tint should be applied again.
         set("material", () => {
@@ -157,11 +96,22 @@ export function text(_, textNode) {
         }),
         effects((obj) => {
           const material = /** @type {THREE.MeshBasicMaterial} */ (obj.material);
+          const { texture } = textureData;
           const hadMap = !!material.map;
-          material.map = textureData.texture;
-          if (!hadMap) {
-            // Gaining a map changes the program; swapping one texture for
-            // another does not.
+          const hadAlphaMap = !!material.alphaMap;
+          if (tint.masked) {
+            // A mask carries no color worth sampling: its fully transparent
+            // texels are black, and linear filtering would drag that black
+            // into every glyph edge as a dark fringe. As an alpha map only
+            // the coverage is read — the color comes uniformly from the
+            // material, and there is nothing to fringe.
+            material.alphaMap = texture;
+            material.map = null;
+          } else {
+            material.map = texture;
+            material.alphaMap = null;
+          }
+          if (hadMap !== !!material.map || hadAlphaMap !== !!material.alphaMap) {
             material.needsUpdate = true;
           }
         }),
@@ -173,8 +123,7 @@ export function text(_, textNode) {
           });
           return geometry;
         }),
-        // After set("material"), so a re-drawn texture's fresh material gets
-        // tinted too. Baked textures carry their own color and stay white.
+        // After the map effect, so a re-drawn texture's material stays tinted.
         effects((obj) => {
           const material = /** @type {THREE.MeshBasicMaterial} */ (obj.material);
           if (tint.masked) {

@@ -32,6 +32,11 @@ const keyframesStyle = stylesheet`
     50% { color: rgb(221, 64, 104); }
   }
 
+  @keyframes ${CLASS_NAME}-flip {
+    from { transform: translateZ(28px) rotateY(0deg); }
+    to { transform: translateZ(28px) rotateY(360deg); }
+  }
+
   .${CLASS_NAME} {
     animation: ${CLASS_NAME}-shift 4s ease-in-out infinite;
   }
@@ -60,6 +65,24 @@ const breatheStyle = className`
   background-color: rgb(64, 148, 88);
   border-radius: 999px;
   animation: ${keyframesStyle}-breathe 2s ease-in-out infinite;
+`;
+
+const coinStyle = className`
+  width: 2.4rem;
+  height: 2.4rem;
+  background-color: rgb(240, 180, 40);
+  border: 4px solid rgb(178, 122, 24);
+  border-radius: 50%;
+  animation: ${keyframesStyle}-flip 3s linear infinite;
+`;
+
+const liftedStyle = className`
+  padding: 0.35rem 1rem;
+  font-size: 0.85rem;
+  color: rgb(255, 255, 255);
+  background-color: rgb(64, 108, 220);
+  border-radius: 10px;
+  transform: rotateY(-24deg) translateZ(18px);
 `;
 
 const laneStyle = className`
@@ -102,6 +125,14 @@ const MotionPanel = component((_ctx: WeakKey) => {
           $("div", [set("className", spinnerStyle)]),
           $("div", [set("className", pulseStyle)]),
           $("div", [set("className", breatheStyle), children(text`breathing`)]),
+        ),
+      ]),
+      $("p", [set("className", captionStyle), children(text`3d — rotateY & translateZ`)]),
+      $("div", [
+        set("className", rowStyle),
+        children(
+          $("div", [set("className", coinStyle)]),
+          $("div", [set("className", liftedStyle), children(text`off the panel`)]),
         ),
       ]),
       $("p", [set("className", captionStyle), children(text`web animations api`)]),

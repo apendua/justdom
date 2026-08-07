@@ -7,7 +7,6 @@ import {
   isTransformed,
   parseTransform,
   parseTransformOrigin,
-  untransformVector,
 } from "./cssTransform.js";
 
 /**
@@ -135,37 +134,6 @@ describe("transform ancestry", () => {
       // The container's own styling is the portal's business — apps transform
       // the Group the portal mounts on, not the hidden DOM container.
       assert.equal(isTransformed(elements[1]), false);
-    } finally {
-      cleanup();
-    }
-  });
-
-  test("untransformVector divides accumulated scales back out", () => {
-    const { elements, cleanup } = chain(
-      "matrix(2, 0, 0, 2, 0, 0)",
-      "matrix(1, 0, 0, 1, 5, 7)", // translation only: linear part is identity
-      "matrix(3, 0, 0, 1, 0, 0)",
-    );
-    try {
-      assert.deepEqual(untransformVector(elements[2], 60, 20), { x: 10, y: 10 });
-    } finally {
-      cleanup();
-    }
-  });
-
-  test("untransformVector leaves untransformed chains alone", () => {
-    const { elements, cleanup } = chain("", "");
-    try {
-      assert.deepEqual(untransformVector(elements[1], 12.5, 7.25), { x: 12.5, y: 7.25 });
-    } finally {
-      cleanup();
-    }
-  });
-
-  test("untransformVector leaves a degenerate scale alone", () => {
-    const { elements, cleanup } = chain("matrix(0, 0, 0, 1, 0, 0)");
-    try {
-      assert.deepEqual(untransformVector(elements[0], 10, 20), { x: 10, y: 20 });
     } finally {
       cleanup();
     }

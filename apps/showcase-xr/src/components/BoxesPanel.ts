@@ -88,7 +88,7 @@ const badgeStyle = className`
   color: rgb(255, 255, 255);
   background-color: rgb(221, 64, 104);
   border-radius: 6px;
-  transform: rotate(12deg);
+  transform: rotate(12deg) translateZ(30px);
 `;
 
 const BoxesPanel = component((_ctx: WeakKey) => {

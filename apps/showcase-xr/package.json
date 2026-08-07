@@ -2,12 +2,15 @@
   "name": "@apendua.dev/showcase-xr",
   "version": "1.0.0",
   "private": true,
+  "type": "module",
   "scripts": {
     "build": "tsc && vite build",
     "build:watch": "",
     "dev": "vite",
     "preview": "vite preview",
-    "test": ""
+    "test": "",
+    "test:visual": "node --test tests/*.test.js",
+    "test:visual:update": "node --test tests/*.test.js -- --update"
   },
   "dependencies": {
     "@apendua.dev/media": "workspace:*",
@@ -17,11 +20,14 @@
     "@apendua/vite-hmr": "workspace:*",
     "@iwer/devui": "^1.1.2",
     "@types/node": "^24.7.0",
+    "@types/pngjs": "^6.0.5",
     "@types/three": "~0.180.0",
     "@vitejs/plugin-basic-ssl": "^2.1.0",
     "@webgpu/types": "^0.1.65",
     "eslint": "^9.37.0",
     "iwer": "^2.1.1",
+    "playwright-core": "^1.56.0",
+    "pngjs": "^7.0.0",
     "rxjs": "^7.8.2",
     "three": "~0.180.0",
     "typescript": "^7.0.2",

@@ -10,24 +10,20 @@
  * back off the layout instead means the wrapping, the alignment and the
  * whitespace collapsing are the browser's, and there is nothing left to
  * disagree with.
+ *
+ * Reading them back used to mean measuring every character, because a rect
+ * says where a line is but not what is written on it. It does not have to:
+ * the line a character landed on rises with its offset and never falls, so
+ * the offset each line starts at can be found by bisection — a handful of
+ * measurements per line instead of one per character, and the same answer.
  */
 
 /**
- * @typedef {object} CharacterRect
- * @property {number} index Offset of the character within the text node.
- * @property {boolean} blank Whether this character is collapsible whitespace.
- * @property {number} left
- * @property {number} right
- * @property {number} top
- * @property {number} bottom
- */
-
-/**
- * @typedef {object} LineRow
- * @property {number} start Offset of the first rendered character on the line.
- * @property {number} end Offset just past the last rendered character.
- * @property {number} left
- * @property {number} right
+ * One line box, as the vertical band it occupies. Horizontal extent is left
+ * out on purpose: a line's own is measured from the text on it once its
+ * offsets are known, which is what keeps a trailing space from widening it.
+ *
+ * @typedef {object} LineBox
  * @property {number} top
  * @property {number} bottom
  */
@@ -66,59 +62,111 @@ export function collapseWhitespace(text, whiteSpace) {
 }
 
 /**
- * Group per-character rectangles into rows, one per line box. Characters come
- * in document order, so a row ends as soon as a character sits on a different
- * baseline.
+ * Collect the rectangles a range reports into the line boxes they belong to.
+ * A line usually reports one, but a line with both directions of text on it
+ * reports one per run, so rectangles that share a band are merged into it.
  *
- * Rows measure their horizontal extent from the characters that leave a mark:
- * a space kept at the end of a wrapped line hangs past the text it follows, and
- * counting it would report a line wider than the glyphs actually drawn.
- * @param {CharacterRect[]} rects
- * @returns {LineRow[]}
+ * @param {ArrayLike<{ top: number, bottom: number }>} rects In document order,
+ *   which is the order a range reports them in.
+ * @returns {LineBox[]}
  */
-export function groupIntoLines(rects) {
-  /** @type {LineRow[]} */
-  const rows = [];
-  /** @type {boolean[]} */
-  const rowHasInk = [];
-
-  for (const rect of rects) {
-    const row = rows[rows.length - 1];
-    const height = Math.max(1, rect.bottom - rect.top);
-    const continuesRow = row !== undefined && Math.abs(rect.top - row.top) < height / 2;
-
-    if (!continuesRow) {
-      rows.push({
-        start: rect.index,
-        end: rect.index + 1,
-        left: rect.left,
-        right: rect.right,
-        top: rect.top,
-        bottom: rect.bottom,
-      });
-      rowHasInk.push(!rect.blank);
+export function groupLineBoxes(rects) {
+  /** @type {LineBox[]} */
+  const boxes = [];
+  for (let index = 0; index < rects.length; index++) {
+    const rect = rects[index];
+    const height = rect.bottom - rect.top;
+    if (height <= 0) {
+      // A rectangle of no height is not a line box: an empty range reports
+      // one, and so does a collapsed break.
       continue;
     }
-
-    row.end = rect.index + 1;
-    row.top = Math.min(row.top, rect.top);
-    row.bottom = Math.max(row.bottom, rect.bottom);
-
-    const inkOnly = rowHasInk[rows.length - 1];
-    if (rect.blank && inkOnly) {
-      // Whitespace never widens a row that already has glyphs on it.
+    const current = boxes[boxes.length - 1];
+    if (current && Math.abs(rect.top - current.top) < Math.max(1, height) / 2) {
+      current.top = Math.min(current.top, rect.top);
+      current.bottom = Math.max(current.bottom, rect.bottom);
       continue;
     }
-    if (!rect.blank && !inkOnly) {
-      // First glyph after a run of leading whitespace: restart the extent.
-      row.left = rect.left;
-      row.right = rect.right;
-      rowHasInk[rows.length - 1] = true;
-      continue;
-    }
-    row.left = Math.min(row.left, rect.left);
-    row.right = Math.max(row.right, rect.right);
+    boxes.push({ top: rect.top, bottom: rect.bottom });
   }
+  return boxes;
+}
 
-  return rows;
+/**
+ * Where each line box's text begins, as an offset into the text node.
+ *
+ * The search rests on one fact about line breaking: it runs over the text in
+ * logical order, so a character can never land on an earlier line than one
+ * before it. Bidi reorders a line's runs on screen but not the order they
+ * were broken in, which is why lines are told apart by their vertical band
+ * and nothing else. That makes "which line is this character on" monotone in
+ * the offset, and a monotone question is a bisection: about log₂(length)
+ * measurements per line, against one per character for a walk.
+ *
+ * Collapsed whitespace has no box to report, and `lineOf` says so by
+ * answering null. The search steps forward to the next character that does
+ * report one; the characters skipped are blanks, and a blank at a line
+ * boundary is trimmed off both lines regardless of which one it is called
+ * part of.
+ *
+ * @param {number} length How many characters the text node holds.
+ * @param {number} lineCount How many line boxes it was laid out into.
+ * @param {(index: number) => number | null} lineOf Which line box the
+ *   character at an offset sits on, or null if it left no mark.
+ * @returns {number[]} One offset per line box, ascending, starting at 0.
+ */
+export function findLineStarts(length, lineCount, lineOf) {
+  const starts = [0];
+  for (let line = 1; line < lineCount; line++) {
+    let low = starts[line - 1] + 1;
+    let high = length;
+    while (low < high) {
+      let at = (low + high) >> 1;
+      let found = lineOf(at);
+      while (found === null && at + 1 < high) {
+        found = lineOf((at += 1));
+      }
+      if (found !== null && found >= line) {
+        high = at;
+      } else {
+        low = at + 1;
+      }
+    }
+    starts.push(low);
+  }
+  return starts;
+}
+
+/**
+ * The stretch of a line that actually leaves a mark: its own text without the
+ * whitespace the layout collapsed at either end. Measuring *this* is what
+ * keeps a space kept at a wrap point from reporting a line wider than the
+ * glyphs on it, and a line's leading indentation from dragging its left edge
+ * out to where nothing is drawn.
+ *
+ * Preserved whitespace is part of the line and stays, save for the newline a
+ * line ends with, which belongs to the break rather than to either side.
+ *
+ * @param {string} content
+ * @param {number} from
+ * @param {number} to
+ * @param {boolean} preserved Whether `white-space` keeps runs as authored.
+ * @returns {[start: number, end: number]} Empty when the line is all blank.
+ */
+export function trimLineRange(content, from, to, preserved) {
+  let start = from;
+  let end = to;
+  if (preserved) {
+    while (end > start && /[\r\n]/.test(content[end - 1])) {
+      end -= 1;
+    }
+    return [start, end];
+  }
+  while (start < end && /\s/.test(content[start])) {
+    start += 1;
+  }
+  while (end > start && /\s/.test(content[end - 1])) {
+    end -= 1;
+  }
+  return [start, end];
 }

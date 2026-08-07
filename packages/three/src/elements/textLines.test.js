@@ -1,28 +1,72 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
-import { collapseWhitespace, groupIntoLines, preservesWhitespace } from "./textLines.js";
+import {
+  collapseWhitespace,
+  findLineStarts,
+  groupLineBoxes,
+  preservesWhitespace,
+  trimLineRange,
+} from "./textLines.js";
 
 /**
- * Build the per-character rectangles a browser would report for a run of text
- * laid out on a single line, starting at `left` and advancing one unit per
- * character. Whitespace is marked blank unless the caller says otherwise.
+ * A layout engine small enough to assert against: it breaks `text` at spaces
+ * into lines of at most `width` characters, and answers the two questions a
+ * range would — which line boxes there are, and which of them a character
+ * landed on — while counting how often it was asked.
+ *
  * @param {string} text
- * @param {object} options
- * @param {number} options.index Offset of the first character in the text node.
- * @param {number} options.left
- * @param {number} options.top
- * @param {boolean} [options.preserved]
- * @returns {import('./textLines.js').CharacterRect[]}
+ * @param {number} width
  */
-function lineOf(text, { index, left, top, preserved = false }) {
-  return Array.from(text, (char, offset) => ({
-    index: index + offset,
-    blank: !preserved && /\s/.test(char),
-    left: left + offset,
-    right: left + offset + 1,
-    top,
-    bottom: top + 10,
-  }));
+function layOut(text, width) {
+  /** @type {number[]} */
+  const lineOfIndex = new Array(text.length).fill(-1);
+  let line = 0;
+  let column = 0;
+  for (let index = 0; index < text.length; index++) {
+    const wordEnd = text.indexOf(" ", index);
+    if (text[index] === " ") {
+      // A space at a break is collapsed away and lands on no line at all.
+      if (column === 0) {
+        continue;
+      }
+      lineOfIndex[index] = line;
+      column += 1;
+      continue;
+    }
+    if (column > 0) {
+      const wordLength = (wordEnd === -1 ? text.length : wordEnd) - index;
+      if (column + wordLength > width) {
+        line += 1;
+        column = 0;
+      }
+    }
+    lineOfIndex[index] = line;
+    column += 1;
+  }
+
+  let probes = 0;
+  return {
+    lineCount: line + 1,
+    get probes() {
+      return probes;
+    },
+    /** @param {number} index */
+    lineOf(index) {
+      probes += 1;
+      return lineOfIndex[index] === -1 ? null : lineOfIndex[index];
+    },
+    /** The answer the search is supposed to arrive at. */
+    starts() {
+      /** @type {number[]} */
+      const starts = [];
+      for (let index = 0; index < text.length; index++) {
+        if (lineOfIndex[index] !== -1 && lineOfIndex[index] === starts.length) {
+          starts.push(index);
+        }
+      }
+      return starts;
+    },
+  };
 }
 
 describe("preservesWhitespace", () => {
@@ -55,76 +99,114 @@ describe("collapseWhitespace", () => {
   });
 });
 
-describe("groupIntoLines", () => {
-  test("keeps characters that share a baseline on one row", () => {
-    const rows = groupIntoLines(lineOf("abc", { index: 0, left: 5, top: 0 }));
-    assert.deepEqual(rows, [{ start: 0, end: 3, left: 5, right: 8, top: 0, bottom: 10 }]);
+describe("groupLineBoxes", () => {
+  test("one rectangle per line becomes one box per line", () => {
+    const boxes = groupLineBoxes([
+      { top: 0, bottom: 10 },
+      { top: 10, bottom: 20 },
+      { top: 20, bottom: 30 },
+    ]);
+    assert.deepEqual(boxes, [
+      { top: 0, bottom: 10 },
+      { top: 10, bottom: 20 },
+      { top: 20, bottom: 30 },
+    ]);
   });
 
-  test("starts a new row for each line box", () => {
-    const rows = groupIntoLines([
-      ...lineOf("abc", { index: 0, left: 0, top: 0 }),
-      ...lineOf("de", { index: 4, left: 0, top: 16 }),
+  test("a line reported as several runs is still one line", () => {
+    // What a range reports for a line with both directions of text on it.
+    const boxes = groupLineBoxes([
+      { top: 0, bottom: 10 },
+      { top: 0, bottom: 12 },
+      { top: 12, bottom: 22 },
     ]);
-    assert.equal(rows.length, 2);
+    assert.deepEqual(boxes, [
+      { top: 0, bottom: 12 },
+      { top: 12, bottom: 22 },
+    ]);
+  });
+
+  test("sub-pixel differences in baseline do not split a line", () => {
+    const boxes = groupLineBoxes([
+      { top: 0, bottom: 10 },
+      { top: 0.4, bottom: 10.4 },
+    ]);
+    assert.equal(boxes.length, 1);
+  });
+
+  test("nothing laid out is no lines", () => {
+    assert.deepEqual(groupLineBoxes([]), []);
+  });
+});
+
+describe("findLineStarts", () => {
+  test("finds where each line begins, and skips the space that ended the last", () => {
+    const text = "one two three four five six seven eight nine ten";
+    const layout = layOut(text, 12);
+    const starts = findLineStarts(text.length, layout.lineCount, (i) => layout.lineOf(i));
+    assert.deepEqual(starts, layout.starts());
     assert.deepEqual(
-      rows.map((row) => [row.start, row.end, row.top]),
-      [
-        [0, 3, 0],
-        [4, 6, 16],
-      ],
+      starts.map((start, line) =>
+        text.slice(start, line + 1 < starts.length ? starts[line + 1] : text.length).trimEnd(),
+      ),
+      ["one two", "three four", "five six", "seven eight", "nine ten"],
     );
   });
 
-  test("recovers a right-aligned line's own offset rather than the block's", () => {
-    // The browser pushes the shorter second line further right; the row has to
-    // report that offset, because it is what puts the line under the first one.
-    const rows = groupIntoLines([
-      ...lineOf("abcdef", { index: 0, left: 0, top: 0 }),
-      ...lineOf("ghi", { index: 7, left: 3, top: 16 }),
-    ]);
-    assert.deepEqual(
-      rows.map((row) => row.left),
-      [0, 3],
+  test("asks about a handful of characters per line rather than all of them", () => {
+    // The point of the whole exercise: bisection, not a walk. Ten times the
+    // text costs a few more questions per line, not ten times as many.
+    const text = "lorem ipsum dolor sit amet consectetur adipiscing elit sed do ".repeat(10);
+    const layout = layOut(text, 40);
+    findLineStarts(text.length, layout.lineCount, (i) => layout.lineOf(i));
+    assert.ok(
+      layout.probes < text.length / 4,
+      `expected far fewer than ${text.length} probes, got ${layout.probes}`,
     );
   });
 
-  test("a space kept at the end of a wrapped line does not widen it", () => {
-    const rows = groupIntoLines([
-      ...lineOf("ab ", { index: 0, left: 0, top: 0 }),
-      ...lineOf("cd", { index: 3, left: 0, top: 16 }),
-    ]);
-    assert.equal(rows[0].right, 2);
-    assert.equal(rows[0].end, 3, "the trailing space still belongs to the line's text");
+  test("a single line is answered without asking anything", () => {
+    const layout = layOut("no wrapping here", 40);
+    assert.deepEqual(
+      findLineStarts(16, 1, (i) => layout.lineOf(i)),
+      [0],
+    );
+    assert.equal(layout.probes, 0);
   });
 
-  test("leading whitespace does not drag a line's left edge outwards", () => {
-    const rows = groupIntoLines(lineOf(" ab", { index: 0, left: 0, top: 0 }));
-    assert.equal(rows[0].left, 1);
-    assert.equal(rows[0].right, 3);
+  test("text with no spaces to break at is split all the same", () => {
+    // `overflow-wrap: anywhere`, or a script that does not write spaces:
+    // every offset is a break opportunity and the search never sees one.
+    const lineOfIndex = (/** @type {number} */ index) => Math.floor(index / 7);
+    const starts = findLineStarts(28, 4, lineOfIndex);
+    assert.deepEqual(starts, [0, 7, 14, 21]);
   });
 
-  test("preserved whitespace counts towards the extent", () => {
-    const rows = groupIntoLines(lineOf(" ab", { index: 0, left: 0, top: 0, preserved: true }));
-    assert.equal(rows[0].left, 0);
+  test("a run of collapsed whitespace at a break belongs to neither line", () => {
+    // Indices 4, 5 and 6 report nothing at all; the line begins after them.
+    const lineOfIndex = (/** @type {number} */ index) => {
+      if (index >= 4 && index <= 6) {
+        return null;
+      }
+      return index < 4 ? 0 : 1;
+    };
+    assert.deepEqual(findLineStarts(12, 2, lineOfIndex), [0, 7]);
+  });
+});
+
+describe("trimLineRange", () => {
+  test("drops the whitespace collapsed at either end of a line", () => {
+    const content = "one two  three";
+    assert.deepEqual(trimLineRange(content, 0, 9, false), [0, 7]);
+    assert.deepEqual(trimLineRange(content, 7, 14, false), [9, 14]);
   });
 
-  test("a line of nothing but collapsible whitespace still has an extent", () => {
-    const rows = groupIntoLines(lineOf("  ", { index: 0, left: 4, top: 0 }));
-    assert.equal(rows.length, 1);
-    assert.equal(rows[0].left, 4);
-    assert.equal(rows[0].right, 6);
+  test("keeps preserved whitespace, save for the newline that ended the line", () => {
+    const content = "  kept  \nnext";
+    assert.deepEqual(trimLineRange(content, 0, 9, true), [0, 8]);
   });
 
-  test("sub-pixel differences in baseline do not split a row", () => {
-    const rows = groupIntoLines([
-      ...lineOf("ab", { index: 0, left: 0, top: 0 }),
-      ...lineOf("cd", { index: 2, left: 2, top: 0.4 }),
-    ]);
-    assert.equal(rows.length, 1);
-  });
-
-  test("no rendered characters means no rows", () => {
-    assert.deepEqual(groupIntoLines([]), []);
+  test("a line of nothing but collapsible whitespace comes back empty", () => {
+    assert.deepEqual(trimLineRange("a    b", 1, 5, false), [5, 5]);
   });
 });

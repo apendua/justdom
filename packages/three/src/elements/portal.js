@@ -3,6 +3,7 @@ import { observable } from "@apendua/signal";
 import { Subject } from "rxjs";
 import { div } from "./div.js";
 import { text } from "./text.js";
+import { checkbox } from "./checkbox.js";
 import { getBoundingClientRectCached, PORTAL_ATTRIBUTE, setSubject } from "./cache.js";
 import { createAnimationClock } from "./animationClock.js";
 import { createBlocker, coverBox } from "./blocker.js";
@@ -104,6 +105,14 @@ export function createPortal(ctx) {
     if (node.nodeType === Node.ELEMENT_NODE) {
       const element = /** @type {HTMLElement} */ (node);
       switch (element.tagName.toLowerCase()) {
+        case "input": {
+          const input = /** @type {HTMLInputElement} */ (element);
+          // Only the checkbox so far. Every other kind of input is a box with
+          // chrome inside it that the DOM does not describe — a caret, a
+          // slider's thumb, a stepper's arrows — and a box is what `div` draws.
+          object$ = input.type === "checkbox" ? checkbox(ctx, input) : div(ctx, element);
+          break;
+        }
         default: {
           object$ = div(ctx, element);
         }
@@ -258,7 +267,18 @@ export function createPortal(ctx) {
     // is a mutation scoped to the element that moved. Safe now that
     // invalidation is per-target — before that, every inline write would
     // have re-read the whole portal.
-    attributeFilter: ["data-xr-hover", "data-xr-active", "class", "style"],
+    // `disabled` is here for the checkbox: whether one is a ray target follows
+    // it, and it is a reflected attribute, so watching it catches the property
+    // assignment as well as setAttribute. Without it a control disabled after
+    // mounting would stay pointable until something else happened to restyle.
+    attributeFilter: [
+      "data-xr-hover",
+      "data-xr-active",
+      "data-xr-checked",
+      "disabled",
+      "class",
+      "style",
+    ],
     characterData: true,
   });
 

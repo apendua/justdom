@@ -22,11 +22,11 @@ import {
   isTransformed,
   untransformedOffset,
 } from "./cssTransform.js";
-import { isOverlay } from "./elevation.js";
+import { getContentRenderOrder, isOverlay } from "./elevation.js";
 import { isScrollable, scrollDrags } from "./scroll.js";
 
 /**
- * @import {XREventMap} from '../core.js';
+ * @import {Component, XREventMap} from '../core.js';
  * @import {Observable} from 'rxjs';
  * @import {MonoTypeOperatorFunction} from 'rxjs';
  */
@@ -70,11 +70,43 @@ function isClickable(element) {
 }
 
 /**
+ * What a box hands to whatever else is drawn inside it: the properties it is
+ * being drawn from — the same live object its own mesh reads, so a mark keeps
+ * step with the surface it sits on — and where that content belongs in the
+ * draw order, which is one step past the box's own.
+ *
+ * @typedef {object} BoxSurface
+ * @property {VisualProperties} properties
+ * @property {() => number} contentRenderOrder
+ */
+
+/**
+ * @typedef {object} BoxOptions
+ * @property {(element: HTMLElement) => boolean} [clickable] Whether the element
+ *   is a ray target, read reactively. Defaults to the `cursor: pointer` rule
+ *   every ordinary box follows, which is there to tell a button from the card
+ *   it sits on; a control needs no such telling and can answer for itself.
+ * @property {(surface: BoxSurface) => Observable<Component>[]} [content] What
+ *   else belongs inside the box, on top of its background — the tick in a
+ *   checkbox, and nothing at all for an element whose contents are its own
+ *   child nodes.
+ */
+
+/**
+ * The CSS box: the border, the background, the position within its parent, and
+ * the pointer events the element is entitled to hear about — everything an
+ * element is drawn as before anything specific to what it *is* comes into it.
+ *
+ * `div` is this and no more, which is what most elements need; the components
+ * that mirror a control are this plus what the control draws in the middle.
+ *
  * @param {WeakKey} ctx
  * @param {HTMLElement} element
+ * @param {BoxOptions} [options]
  * @returns {Observable<THREE.Object3D>}
  */
-export function div(ctx, element) {
+export function box(ctx, element, options = {}) {
+  const { clickable: isRayTarget = isClickable, content = () => [] } = options;
   /** @type {THREE.Object3D<XREventMap>} */
   const object = new THREE.Object3D();
   const properties = new VisualProperties();
@@ -91,7 +123,7 @@ export function div(ctx, element) {
    * `data-xr-*` back onto this very element, so each pointer event they
    * handled would tear down the listeners that handled it.
    */
-  const clickable = new Derived(() => isClickable(element));
+  const clickable = new Derived(() => isRayTarget(element));
 
   /**
    * Whether this element floats above what it overlaps, as its own signal for
@@ -422,6 +454,19 @@ export function div(ctx, element) {
             ]
           : []),
       ]),
+      ...content({
+        properties,
+        contentRenderOrder: () => getContentRenderOrder(element),
+      }),
     ),
   ]);
+}
+
+/**
+ * @param {WeakKey} ctx
+ * @param {HTMLElement} element
+ * @returns {Observable<THREE.Object3D>}
+ */
+export function div(ctx, element) {
+  return box(ctx, element);
 }

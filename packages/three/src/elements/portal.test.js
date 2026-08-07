@@ -178,6 +178,113 @@ describe("createPortal", () => {
     portal.disconnect();
   });
 
+  test("a checkbox is projected as a control rather than as a box", async () => {
+    const manager = new InteractionManager();
+    /** @type {THREE.Object3D[]} */
+    const added = [];
+    const originalAdd = manager.add.bind(manager);
+    manager.add = (object) => {
+      added.push(object);
+      originalAdd(object);
+    };
+    const ctx = InteractionContext.set({}, manager);
+
+    const portal = createPortal(ctx);
+    portal.addTo(new THREE.Group());
+
+    /** @type {import("@apendua/justdom").Mountable<Node> | undefined} */
+    let mountable;
+    // Deliberately without `cursor: pointer`: an ordinary box has to ask to be
+    // a ray target, and a checkbox does not.
+    const tree = $("div", [children($("input", [attr("type", () => "checkbox")]))]);
+    const subscription = tree.subscribe((value) => {
+      mountable = value;
+    });
+    assert.ok(mountable);
+    portal.mount(mountable);
+
+    await nextMacrotask();
+    await nextMacrotask();
+
+    assert.equal(added.length, 2, "the blocker, and the checkbox itself");
+    const input = /** @type {HTMLInputElement | null} */ (
+      document.querySelector('[data-xr-portal] input[type="checkbox"]')
+    );
+    assert.ok(input);
+    assert.equal(input.checked, false);
+
+    added[1].dispatchEvent(/** @type {any} */ ({ type: "select", target: added[1] }));
+
+    // The click the ray sends is a click, so the DOM does the toggling and the
+    // scene follows the DOM — the same order of events the page sees.
+    assert.equal(input.checked, true);
+    assert.equal(input.dataset.xrChecked, "true");
+
+    subscription.unsubscribe();
+    portal.disconnect();
+  });
+
+  test("disabling a mounted checkbox takes it out of the raycast set", async () => {
+    const manager = new InteractionManager();
+    /** @type {THREE.Object3D[]} */
+    const registered = [];
+    const originalAdd = manager.add.bind(manager);
+    const originalRemove = manager.remove.bind(manager);
+    manager.add = (object) => {
+      registered.push(object);
+      originalAdd(object);
+    };
+    manager.remove = (object) => {
+      const index = registered.indexOf(object);
+      if (index >= 0) {
+        registered.splice(index, 1);
+      }
+      originalRemove(object);
+    };
+    const ctx = InteractionContext.set({}, manager);
+
+    const portal = createPortal(ctx);
+    portal.addTo(new THREE.Group());
+
+    /** @type {import("@apendua/justdom").Mountable<Node> | undefined} */
+    let mountable;
+    const tree = $("div", [children($("input", [attr("type", () => "checkbox")]))]);
+    const subscription = tree.subscribe((value) => {
+      mountable = value;
+    });
+    assert.ok(mountable);
+    portal.mount(mountable);
+
+    await nextMacrotask();
+    await nextMacrotask();
+
+    assert.equal(registered.length, 2, "the blocker, and the checkbox itself");
+
+    const input = /** @type {HTMLInputElement | null} */ (
+      document.querySelector('[data-xr-portal] input[type="checkbox"]')
+    );
+    assert.ok(input);
+    // By property, which is how an application does it — `disabled` is a
+    // reflected attribute, so the observer hears about this too. Nothing else
+    // changes here: the point is that this alone has to carry the news.
+    input.disabled = true;
+
+    await nextMacrotask();
+    await nextMacrotask();
+
+    assert.equal(registered.length, 1, "only the blocker is left");
+
+    input.disabled = false;
+
+    await nextMacrotask();
+    await nextMacrotask();
+
+    assert.equal(registered.length, 2, "and re-enabling brings it back");
+
+    subscription.unsubscribe();
+    portal.disconnect();
+  });
+
   test("mirroring a change asks for the rays to be cast again", async () => {
     const manager = new InteractionManager();
     let updates = 0;

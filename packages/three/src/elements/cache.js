@@ -1,5 +1,5 @@
-import { addDependency, Derived, NoValueError } from "@apendua/signal";
-import { filter } from "rxjs";
+import { addDependency, Derived, fromEvent, NoValueError } from "@apendua/signal";
+import { filter, merge, Subject } from "rxjs";
 import {
   collapseWhitespace,
   findLineStarts,
@@ -10,7 +10,6 @@ import {
 import { clipBoxEqual, intersectClipBoxes, UNCLIPPED } from "./clip.js";
 
 /**
- * @import {Subject} from 'rxjs';
  * @import {TextLine} from './textLines.js';
  * @import {TextBounds} from './textHelpers.js';
  * @import {ClipBox} from './clip.js';
@@ -400,6 +399,64 @@ export function getBoundingClientRectCached(element) {
       return element.getBoundingClientRect();
     });
     boundingClientRectCache.set(element, signal);
+  }
+  return signal.get();
+}
+
+/** @type {WeakMap<HTMLInputElement, Derived<boolean>>} */
+const checkedCache = new WeakMap();
+
+/**
+ * Whether a checkbox is ticked, as something the scene can be drawn from.
+ *
+ * This is the one piece of state here that a MutationObserver cannot report.
+ * Ticking a box touches no attribute — the `checked` attribute says what the
+ * box starts out as, not what it is now — and code that assigns
+ * `input.checked = …` moves a property, which mutates nothing whatsoever. So
+ * the two ways it can move are watched one each: `change`, which the browser
+ * fires for the user's own toggles and for the synthetic click a ray sends,
+ * and the property itself, instrumented below so that an assignment announces
+ * itself the way an attribute mutation would.
+ *
+ * The instrumentation is an own accessor that delegates to the one it shadows,
+ * so the element goes on behaving exactly as it did — including for anything
+ * else holding a reference to it — and is installed once per element, on the
+ * first read.
+ *
+ * @param {HTMLInputElement} element
+ * @returns {boolean}
+ */
+export function getCheckedCached(element) {
+  let signal = checkedCache.get(element);
+  if (!signal) {
+    /** @type {Subject<void>} */
+    const assigned = new Subject();
+    const descriptor = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(element), "checked");
+    const read = descriptor?.get;
+    const write = descriptor?.set;
+    if (read && write) {
+      Object.defineProperty(element, "checked", {
+        configurable: true,
+        enumerable: false,
+        get() {
+          return read.call(this);
+        },
+        /** @param {boolean} value */
+        set(value) {
+          const before = read.call(this);
+          write.call(this, value);
+          if (read.call(this) !== before) {
+            assigned.next();
+          }
+        },
+      });
+    }
+    const dependency = merge(fromEvent(element, "change"), assigned);
+    signal = new Derived(() => {
+      addDependency(dependency);
+      return element.checked;
+    });
+    checkedCache.set(element, signal);
   }
   return signal.get();
 }

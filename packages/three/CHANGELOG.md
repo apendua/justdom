@@ -1,6 +1,20 @@
 # Change Log - @apendua/freedom
 
-This log was last generated on Fri, 07 Aug 2026 21:07:43 GMT and should not be manually modified.
+This log was last generated on Fri, 07 Aug 2026 22:12:45 GMT and should not be manually modified.
+
+## 0.9.0
+Fri, 07 Aug 2026 22:12:45 GMT
+
+### Minor changes
+
+- Portals honour 'overflow: hidden'. An element's clipping ancestors are intersected into one rounded box in its own px and handed to the box shader as uniforms, so the clipped edge comes out of the same distance field the box is already drawn with — antialiased, and rounded where the window is. The box also trims ray hits on partly clipped elements and drops wholly clipped ones from the raycast set and the render traversal. A scroll on the mirrored tree is announced as a reflow of the scroller's subtree, so setting scrollTop scrolls the panel in the scene.
+- Adds scrollable(props): a scrolling window with controls, dressed in caller-supplied classes like dropdown. Arrows move a step and repeat while held, the free track jumps a window, and the thumb reports position and proportion. Presses rather than clicks, because a ray's click only arrives when the trigger comes back up.
+- Scrolling lists can be dragged with the controller ray: hold the trigger over a list with more in it than fits and pull, and the content follows the hand; release while moving and it glides to a stop. The drag is sampled by projecting the ray onto the scroller's own plane each frame, so an angled, scaled or hand-held panel needs no special case and the list keeps up with a hand that has slid off it. A travel threshold separates a drag from a press, and a drag swallows the click on the row it grabbed — the touchscreen bargain. Nothing to opt into: any element that clips its overflow and overflows becomes draggable, and stops being so when it fits again.
+- Positioned elements are clipped by their containing block rather than by every overflow ancestor: an absolutely positioned box escapes scrollers below its containing block — which is how a dropdown menu anchored outside a list survives its trigger row scrolling — and a fixed one escapes them all, exactly as on the page.
+
+### Patches
+
+- Scrolling no longer re-measures text. Every number a text measurement reports is relative to something that scrolls with the text — its position to the parent's border box, its line boxes to their own union — so a scroller sliding its content cannot change any of them, and the Range measurement that proved it each frame was the most expensive read in the layout cache. A scroll frame over a list now costs three client-rect reads per row and no text measurement, where it cost five and two; the saving grows with the length of the list, since a row scrolled out of sight was measured just like a visible one. Text whose own parent is the element that scrolled still measures: there the border box is the window standing still while the text moves inside it.
 
 ## 0.8.1
 Fri, 07 Aug 2026 21:07:43 GMT

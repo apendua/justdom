@@ -6,6 +6,7 @@ export { cursors, pointers } from "./pointers.js";
 export { dom } from "./dom.js";
 export { getPortalRoot } from "./elements/portal.js";
 export { dropdown } from "./elements/dropdown.js";
+export { scrollable } from "./elements/scrollable.js";
 export { createXRButton } from "./xr.js";
 
 /**
@@ -50,6 +51,14 @@ export { createXRButton } from "./xr.js";
 
 /**
  * @typedef {import('./elements/dropdown.js').DropdownClasses} DropdownClasses
+ */
+
+/**
+ * @typedef {import('./elements/scrollable.js').ScrollableClasses} ScrollableClasses
+ */
+
+/**
+ * @typedef {import('./elements/scrollable.js').ScrollableProps} ScrollableProps
  */
 
 /**

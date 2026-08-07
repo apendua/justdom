@@ -234,6 +234,61 @@ reason above, and it closes on a click anywhere else in the panel.
 `options` may be a getter, for a list that changes under the player — devices
 coming and going, a document being edited — and the open menu follows it.
 
+## Clipping and scrolling
+
+An element that hides its overflow clips what is inside it, in the scene as on
+the page:
+
+```css
+.list {
+  height: 168px;
+  overflow: hidden;
+  border-radius: 16px;
+}
+```
+
+Everything below such an element is confined to its padding box, corners
+included: a box is already drawn as a rounded-rectangle distance field, so the
+window is one more call to the same function and its edge is antialiased at any
+scale and under any transform. The clipping ancestors of an element are
+intersected into a single box before that — nesting a scroller inside a clipped
+panel costs nothing, because the intersection of two axis-aligned rectangles is
+another one. Where two of them cross, the corner they leave is square.
+
+The same box also trims ray hits, so the half of a button that has scrolled out
+of sight cannot be pressed, and an element with nothing left showing leaves the
+raycast set and the render traversal entirely, taking its subtree with it.
+
+Scrolling is then the ordinary DOM thing: client rects move with `scrollTop`,
+and a scroll invalidates the panel's layout the way a mutation does.
+
+```js
+element.scrollTop += 48;
+```
+
+What a panel has no equivalent of is the gesture — no wheel, no surface to
+flick — so `scrollable(props)` supplies the controls, built out of ordinary
+elements like the dropdown:
+
+```js
+scrollable({
+  classes: { root, viewport, bar, button, track, thumb, page },
+  content: [$("ul", [...])],
+  step: 48,
+});
+```
+
+`viewport` is the window and must hide its overflow; `bar` holds an arrow at
+each end of a `track`, with a `thumb` saying how much of the content is showing
+and where. An arrow moves `step` px and keeps moving while it is held; the free
+track above and below the thumb — the optional `page` class — jumps a window at
+a time. The bar is mounted only while there is something to scroll. Make it
+chunky: a ray is a blunter instrument than a mouse.
+
+One print of the measuring tape: the clip is placed from the element's client
+rect, which is exact for untransformed and translated content, and falls back
+to transformed bounds for anything rotated or scaled inside a scroller.
+
 ## Real examples
 
 This package drives several full apps in this monorepo —

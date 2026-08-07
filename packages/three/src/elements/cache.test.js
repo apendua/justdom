@@ -4,10 +4,13 @@ import { Subject } from "rxjs";
 import { Derived, selector, toObservable } from "@apendua/signal";
 import {
   getBoundingClientRectCached,
+  getClipBoxCached,
   getComputedStyleCached,
   getTextLayout,
+  PORTAL_ATTRIBUTE,
   setSubject,
 } from "./cache.js";
+import { UNCLIPPED } from "./clip.js";
 
 describe("getComputedStyleCached", () => {
   test("style invalidations propagate even though the declaration is a live object", () => {
@@ -314,6 +317,336 @@ describe("text layout as a dependency", () => {
       subject.complete();
       parent.remove();
       document.createRange = originalCreateRange;
+    }
+  });
+
+  test("a scroll re-measures no text, however long the list is", () => {
+    // The cost that scales with a list rather than with the part of it on
+    // screen. Every number a text measurement reports is relative to the
+    // parent's border box, which scrolls along with the text, so a scroller
+    // sliding its content cannot change any of them — and a Range
+    // measurement is the most expensive read in the file to spend proving it.
+    // Which nodes were measured, rather than how many measurements ran: a
+    // recompute can be driven more than once by dependencies that fire
+    // separately, and that count is an implementation detail. Which text the
+    // browser was asked about is not.
+    /** @type {Set<Node>} */
+    const measured = new Set();
+    const originalCreateRange = document.createRange;
+    const rect = () => ({ left: 10, top: 20, right: 40, bottom: 32, width: 30, height: 12 });
+    document.createRange = () => {
+      return /** @type {Range} */ (
+        /** @type {unknown} */ ({
+          /** @param {Node} node */
+          selectNodeContents: (node) => measured.add(node),
+          setStart: () => {},
+          setEnd: () => {},
+          getBoundingClientRect: rect,
+          getClientRects: () => /** @type {DOMRectList} */ (/** @type {unknown} */ ([rect()])),
+        })
+      );
+    };
+
+    // scroller > row > #text — a row's label, which is where a list keeps
+    // nearly all of its text.
+    const scroller = document.createElement("div");
+    const row = document.createElement("div");
+    const label = document.createTextNode("hello world");
+    row.appendChild(label);
+    scroller.appendChild(row);
+    document.body.appendChild(scroller);
+
+    // …and text sitting directly in the scroller, which is the one case a
+    // scroll really does move: the border box it is measured against is the
+    // window, standing still while the text slides inside it.
+    const loose = document.createTextNode("directly inside");
+    scroller.appendChild(loose);
+
+    /** @type {Subject<import("./cache.js").MutationBatch>} */
+    const subject = new Subject();
+    for (const node of [scroller, row, label, loose]) {
+      setSubject(node, subject);
+    }
+
+    const layouts = [
+      new Derived(() => getTextLayout(label)),
+      new Derived(() => getTextLayout(loose)),
+    ];
+    const subscriptions = layouts.map((layout) => layout.subscribe({ next: () => layout.get() }));
+
+    try {
+      assert.deepEqual(measured, new Set([label, loose]), "both measured to begin with");
+
+      measured.clear();
+      subject.next({ types: new Set(["scroll"]), targets: new Set([scroller]) });
+      assert.deepEqual(
+        measured,
+        new Set([loose]),
+        "a row's label is not re-measured; the text whose own parent scrolled is",
+      );
+
+      // Anything that can genuinely re-break lines still re-measures both.
+      measured.clear();
+      subject.next({ types: new Set(["reflow"]), targets: null });
+      assert.deepEqual(measured, new Set([label, loose]));
+
+      measured.clear();
+      subject.next({ types: new Set(["childList"]), targets: new Set([scroller]) });
+      assert.deepEqual(measured, new Set([label, loose]));
+    } finally {
+      subscriptions.forEach((subscription) => subscription.unsubscribe());
+      subject.complete();
+      scroller.remove();
+      document.createRange = originalCreateRange;
+    }
+  });
+});
+
+/**
+ * A portal-shaped tree with a layout, which jsdom does not otherwise have: a
+ * container standing in for the portal's own element, a scroller that hides
+ * its overflow behind a 2px border and 10px corners, and a row inside it that
+ * slides as the list scrolls.
+ */
+function setupScroller() {
+  let scrollTop = 0;
+  let scrollerBottom = 100;
+
+  const container = document.createElement("div");
+  container.setAttribute(PORTAL_ATTRIBUTE, "");
+  const scroller = document.createElement("div");
+  const row = document.createElement("div");
+  const label = document.createTextNode("row");
+
+  scroller.style.overflow = "hidden";
+  scroller.style.borderWidth = "2px";
+  // Longhands, not the shorthand: jsdom does not expand `border-radius` into
+  // the four corner properties the way a browser's computed style does.
+  scroller.style.borderTopLeftRadius = "10px";
+  scroller.style.borderTopRightRadius = "10px";
+  scroller.style.borderBottomRightRadius = "10px";
+  scroller.style.borderBottomLeftRadius = "10px";
+  row.appendChild(label);
+  scroller.appendChild(row);
+  container.appendChild(scroller);
+  document.body.appendChild(container);
+
+  /** @type {Subject<import("./cache.js").MutationBatch>} */
+  const mutations = new Subject();
+  for (const node of [container, scroller, row, label]) {
+    setSubject(node, mutations);
+  }
+
+  /**
+   * @param {Element} element
+   * @param {() => [number, number, number, number]} rect
+   */
+  const layout = (element, rect) => {
+    element.getBoundingClientRect = () => {
+      const [left, top, right, bottom] = rect();
+      return /** @type {DOMRect} */ ({
+        left,
+        top,
+        right,
+        bottom,
+        width: right - left,
+        height: bottom - top,
+      });
+    };
+  };
+  layout(container, () => [0, 0, 200, 100]);
+  layout(scroller, () => [0, 0, 200, scrollerBottom]);
+  layout(row, () => [0, 20 - scrollTop, 200, 60 - scrollTop]);
+
+  return {
+    container,
+    row,
+    label,
+    /** What a scroll does to a layout: the content moves, the window does not. */
+    scrollBy: (/** @type {number} */ delta) => {
+      scrollTop += delta;
+      mutations.next({ types: new Set(["scroll"]), targets: new Set([scroller]) });
+    },
+    /** A change that does move the window, for contrast. */
+    resizeTo: (/** @type {number} */ bottom) => {
+      scrollerBottom = bottom;
+      mutations.next({ types: new Set(["childList"]), targets: new Set([container]) });
+    },
+  };
+}
+
+describe("getClipBoxCached", () => {
+  test("a scroller confines its descendants to its padding box", () => {
+    const { container, row, label } = setupScroller();
+    try {
+      const clip = getClipBoxCached(row);
+      assert.equal(clip.left, 2, "inside the border, where overflow is clipped");
+      assert.equal(clip.top, 2);
+      assert.equal(clip.right, 198);
+      assert.equal(clip.bottom, 98);
+      // The radius the padding box rounds by is the border-box radius less
+      // the border sitting in front of it.
+      assert.equal(clip.topLeft, 8);
+      // Text inherits the same window: it has no overflow of its own to hide.
+      assert.deepEqual(getClipBoxCached(label), clip);
+    } finally {
+      container.remove();
+    }
+  });
+
+  test("the walk stops at the portal's container, not at the page around it", () => {
+    const { container, row } = setupScroller();
+    document.body.style.overflow = "hidden";
+    try {
+      // Whatever the page does with `body` is none of a panel's business —
+      // and in a browserless layout its rect is all zeros, which would clip
+      // the panel away to nothing if it were consulted.
+      assert.equal(getClipBoxCached(row).right, 198);
+      assert.equal(getClipBoxCached(container), UNCLIPPED);
+    } finally {
+      document.body.style.overflow = "";
+      container.remove();
+    }
+  });
+
+  test("scrolling moves the content without disturbing the window", () => {
+    const { container, row, scrollBy, resizeTo } = setupScroller();
+    try {
+      const clip = new Derived(() => getClipBoxCached(row));
+      let emissions = 0;
+      const subscription = clip.subscribe({ next: () => emissions++ });
+      const window = clip.get();
+
+      scrollBy(50);
+
+      assert.equal(getBoundingClientRectCached(row).top, -30, "the row has moved");
+      assert.deepEqual(clip.get(), window, "the window it is clipped to has not");
+      assert.equal(emissions, 0, "and a clip that has not moved does not propagate");
+
+      // The window itself changing is a different matter, and does.
+      resizeTo(60);
+      assert.equal(clip.get().bottom, 58);
+      assert.equal(emissions, 1);
+
+      subscription.unsubscribe();
+    } finally {
+      container.remove();
+    }
+  });
+});
+
+/**
+ * The dropdown arrangement: a positioned anchor with a scroller in it, a row
+ * inside the scroller, and a menu hanging off the row. Where the menu's
+ * containing block sits decides who clips it — which is the thing under test.
+ *
+ * @param {string} anchorStyle
+ * @param {string} rowStyle
+ * @param {string} menuStyle
+ */
+function setupPositioned(anchorStyle, rowStyle, menuStyle) {
+  const container = document.createElement("div");
+  container.setAttribute(PORTAL_ATTRIBUTE, "");
+  const anchor = document.createElement("div");
+  anchor.style.cssText = anchorStyle;
+  const scroller = document.createElement("div");
+  scroller.style.overflow = "hidden";
+  const row = document.createElement("div");
+  row.style.cssText = rowStyle;
+  const menu = document.createElement("div");
+  menu.style.cssText = menuStyle;
+
+  row.appendChild(menu);
+  scroller.appendChild(row);
+  anchor.appendChild(scroller);
+  container.appendChild(anchor);
+  document.body.appendChild(container);
+
+  /**
+   * @param {Element} element
+   * @param {[number, number, number, number]} box
+   */
+  const layout = (element, [left, top, right, bottom]) => {
+    element.getBoundingClientRect = () =>
+      /** @type {DOMRect} */ ({
+        left,
+        top,
+        right,
+        bottom,
+        width: right - left,
+        height: bottom - top,
+      });
+  };
+  layout(anchor, [5, 5, 195, 95]);
+  layout(scroller, [10, 10, 190, 90]);
+
+  return { container, scroller, row, menu };
+}
+
+describe("getClipBoxCached and positioned elements", () => {
+  test("a dropdown menu escapes the scroller its trigger sits in", () => {
+    // dropdown.js ships exactly this: a menu styled `position: absolute;
+    // z-index: 1`. Its containing block is the anchor, above the scroller,
+    // so the scroller's overflow — which binds the row — never reaches it.
+    const { container, row, menu } = setupPositioned(
+      "position: relative",
+      "",
+      "position: absolute; z-index: 1",
+    );
+    try {
+      assert.equal(getClipBoxCached(row).left, 10, "the row is the scroller's to clip");
+      assert.equal(getClipBoxCached(menu), UNCLIPPED);
+    } finally {
+      container.remove();
+    }
+  });
+
+  test("a containing block inside the scroller keeps the menu clipped", () => {
+    // The other common arrangement: the anchor is the row itself. The menu
+    // then lives inside the scroller the way the row does, and scrolls away
+    // with it.
+    const { container, row, menu } = setupPositioned(
+      "",
+      "position: relative",
+      "position: absolute; z-index: 1",
+    );
+    try {
+      assert.deepEqual(getClipBoxCached(menu), getClipBoxCached(row));
+      assert.equal(getClipBoxCached(menu).left, 10);
+    } finally {
+      container.remove();
+    }
+  });
+
+  test("the containing block's own overflow is the clipping that does apply", () => {
+    const { container, menu } = setupPositioned(
+      "position: relative; overflow: hidden",
+      "",
+      "position: absolute; z-index: 1",
+    );
+    try {
+      const clip = getClipBoxCached(menu);
+      // The anchor's padding box, not the scroller's: clipping skips to the
+      // containing block, and picks up everything from there on up.
+      assert.deepEqual(
+        { left: clip.left, top: clip.top, right: clip.right, bottom: clip.bottom },
+        { left: 5, top: 5, right: 195, bottom: 95 },
+      );
+    } finally {
+      container.remove();
+    }
+  });
+
+  test("position: fixed escapes every ancestor there is", () => {
+    const { container, menu } = setupPositioned(
+      "position: relative; overflow: hidden",
+      "",
+      "position: fixed",
+    );
+    try {
+      assert.equal(getClipBoxCached(menu), UNCLIPPED);
+    } finally {
+      container.remove();
     }
   });
 });

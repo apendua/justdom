@@ -5,9 +5,15 @@ import { distinctUntilChanged, switchMap } from "rxjs";
 import { $, children, Nothing } from "../operators.js";
 import { interactions } from "../interactions.js";
 import VisualProperties from "./VisualProperties.js";
-import { createRectMaterial, rectGeometry, writeRectUniforms } from "./sdfRect.js";
+import {
+  createRectMaterial,
+  rectGeometry,
+  writeClipUniforms,
+  writeRectUniforms,
+} from "./sdfRect.js";
 import { createBlocker, coverBox } from "./blocker.js";
-import { getBoundingClientRectCached, getComputedStyleCached } from "./cache.js";
+import { getBoundingClientRectCached, getClipBoxCached, getComputedStyleCached } from "./cache.js";
+import { clipBoxEqual, clipBoxShows, clipRaycast, toLocalClipBox, UNCLIPPED } from "./clip.js";
 import {
   composeTransform,
   getOwnTransform,
@@ -15,6 +21,7 @@ import {
   untransformedOffset,
 } from "./cssTransform.js";
 import { isOverlay } from "./elevation.js";
+import { isScrollable, scrollDrags } from "./scroll.js";
 
 /**
  * @import {XREventMap} from '../core.js';
@@ -71,6 +78,7 @@ export function div(ctx, element) {
   const properties = new VisualProperties();
 
   const { makeInteractive, stopPropagation } = interactions(ctx);
+  const drags = scrollDrags(ctx);
 
   /**
    * Whether this element wants to be a ray target, as its own signal so that
@@ -92,6 +100,81 @@ export function div(ctx, element) {
   const overlay = new Derived(() => isOverlay(element));
 
   /**
+   * Whether this element is a list with more in it than fits — and so
+   * something to take hold of. Its own signal for the reason the others are:
+   * the handlers below come and go with it, and a list becomes draggable the
+   * moment a row overflows it, without anything being told.
+   */
+  const scrollable = new Derived(() => isScrollable(element));
+
+  /**
+   * What this element's overflow-hiding ancestors leave of it, in its own px —
+   * the space its quad is drawn in, so the same numbers serve the shader and
+   * the raycast filter.
+   *
+   * The origin comes from the client rect, which is exact for an untransformed
+   * element and for a translated one (its rect moves with it, and so does the
+   * box the shader draws). Under a rotation or a scale the rect is the
+   * transformed bounds, and the clip edge inherits that approximation.
+   */
+  const clipBox = new Derived(
+    () => {
+      const box = getClipBoxCached(element);
+      if (box === UNCLIPPED) {
+        return box;
+      }
+      const rect = getBoundingClientRectCached(element);
+      return toLocalClipBox(box, rect.left, rect.top);
+    },
+    { isEqual: clipBoxEqual },
+  );
+
+  /**
+   * The same box, in a variable, because the raycast filter is called from
+   * inside three's traversal — somewhere the reactive graph does not reach.
+   *
+   * @type {import('./clip.js').ClipBox}
+   */
+  let currentClipBox = UNCLIPPED;
+
+  // The quad this element draws itself with, created here rather than inline
+  // below so its hit region is trimmed once: wrapping `raycast` from an
+  // operator would wrap it again on every restyle. Hits are read in the
+  // element's frame, not the quad's — the quad is a unit square scaled to the
+  // element's size, so its own coordinates run 0..1.
+  const boxMesh = new THREE.Mesh(rectGeometry);
+  clipRaycast(boxMesh, () => currentClipBox, object);
+
+  /**
+   * Whether any part of this element survives that clipping. An element
+   * scrolled entirely out of its scroller is not drawn and, more to the point,
+   * is not a ray target: the raycaster walks the descendants of whatever is
+   * registered, so dropping the registration takes the whole subtree with it.
+   * Partly clipped elements stay registered and are trimmed by `clipRaycast`.
+   *
+   * Taking the subtree is deliberate but not exact: `getClipBoxCached` lets an
+   * absolutely positioned descendant escape the clip that hid this element, so
+   * a menu whose containing block sits above the scroller would, on paper,
+   * survive a row that scrolled away — and vanishes here with it. Accepted
+   * until a real panel shows the difference: the arrangements that ship anchor
+   * such a menu outside the scroller or dismiss it on scroll.
+   */
+  const shown = new Derived(() => {
+    const box = clipBox.get();
+    if (box === UNCLIPPED) {
+      return true;
+    }
+    const rect = getBoundingClientRectCached(element);
+    if (rect.width <= 0 || rect.height <= 0) {
+      // Nothing to cull, and nothing that could be hit either way. Culling on
+      // a degenerate box would mean trusting a layout that may not have
+      // happened yet.
+      return true;
+    }
+    return clipBoxShows(box, rect.width, rect.height);
+  });
+
+  /**
    * Being a ray target, and forwarding what happens there back to the DOM.
    * These belong together: an element that stops being clickable has to lose
    * the handlers too, not just the registration. The interaction manager
@@ -102,8 +185,16 @@ export function div(ctx, element) {
    * @type {MonoTypeOperatorFunction<THREE.Object3D<XREventMap>>[]}
    */
   const interactivity = [
-    makeInteractive(),
+    makeInteractive(() => shown.get()),
     on("select", (e) => {
+      // A press that turned into a drag was the player scrolling the list
+      // this button sits in, not pressing the button — the same bargain a
+      // touchscreen strikes, and for the same reason: there is nowhere else
+      // to grab a list that is made of buttons.
+      if (drags.didScroll(e.controller)) {
+        stopPropagation(e);
+        return;
+      }
       const event = new MouseEvent("click", {
         bubbles: true,
       });
@@ -111,6 +202,10 @@ export function div(ctx, element) {
       stopPropagation(e);
     }),
     on("selectstart", (e) => {
+      // Offered to the scroll gesture before anything else: a press over a
+      // list may become a drag, and only holding it will tell. Elements with
+      // no scrolling ancestor are declined and nothing changes for them.
+      drags.begin(e.controller, element, object);
       const event = new MouseEvent("mousedown", {
         bubbles: true,
       });
@@ -119,6 +214,7 @@ export function div(ctx, element) {
       stopPropagation(e);
     }),
     on("selectend", (e) => {
+      drags.end(e.controller);
       const event = new MouseEvent("mouseup", {
         bubbles: true,
       });
@@ -140,6 +236,40 @@ export function div(ctx, element) {
     }),
   ];
 
+  /**
+   * A scrolling list that is not itself a button still has to be grabbable,
+   * or it could only be dragged by its rows — and a list of plain text would
+   * have nothing to grab at all. It becomes a ray target for the gaps
+   * between its rows and for its own padding, gated on `shown` the way the
+   * ordinary interactivity is: a list scrolled entirely out of some outer
+   * scroller is not something a ray should find.
+   *
+   * No hover or press styling comes with this: the list is draggable, not
+   * clickable, and the `data-xr-*` flags are what say "this reacts to being
+   * pointed at". A press that never became a drag still reports a click,
+   * which is what the panel's background would have reported had the list
+   * not been in the way.
+   *
+   * @type {MonoTypeOperatorFunction<THREE.Object3D<XREventMap>>[]}
+   */
+  const draggability = [
+    makeInteractive(() => shown.get()),
+    on("selectstart", (e) => {
+      drags.begin(e.controller, element, object);
+      stopPropagation(e);
+    }),
+    on("selectend", (e) => {
+      drags.end(e.controller);
+      stopPropagation(e);
+    }),
+    on("select", (e) => {
+      if (!drags.didScroll(e.controller)) {
+        element.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      }
+      stopPropagation(e);
+    }),
+  ];
+
   return just(object, [
     // `cursor: pointer` is a live stylesheet decision — a button gets disabled,
     // a card becomes clickable — so interactivity follows it rather than being
@@ -156,6 +286,14 @@ export function div(ctx, element) {
         delete element.dataset.xrHover;
         delete element.dataset.xrActive;
       });
+    }),
+    // A clickable list already carries the gesture through the handlers
+    // above; this is for the ordinary case of a list that is only a list.
+    effects((obj) => {
+      if (clickable.get() || !scrollable.get()) {
+        return;
+      }
+      useEffects(obj, draggability);
     }),
     effects((obj) => {
       // Only the element that opens a layer pays for it. Everything inside the
@@ -190,6 +328,16 @@ export function div(ctx, element) {
       }
       properties.setFromElement(element);
     }),
+    // Kept apart from the layout effect above: a scroll moves content inside a
+    // window that has not moved, so positions change while the clip does not,
+    // and neither recomputes the other's dependencies.
+    effects((obj) => {
+      currentClipBox = clipBox.get();
+      // Fragments outside the box are discarded, but an element with nothing
+      // left to show is worth skipping wholesale — `visible` prunes it and
+      // its descendants from the render traversal.
+      obj.visible = shown.get();
+    }),
     children(
       // An overlay is opaque to rays in its own right. Without this the ray
       // that lands between two menu rows carries on through the menu and hits
@@ -197,35 +345,45 @@ export function div(ctx, element) {
       // on something the menu is covering.
       observable(() => overlay.get()).pipe(
         distinctUntilChanged(),
-        switchMap((isElevated) =>
-          isElevated
-            ? $(createBlocker(), [
-                makeInteractive(),
-                on("select", (e) => {
-                  element.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-                  // Unlike the portal's own blocker, which lets the scene
-                  // behind a panel see the click as well, an overlay is a
-                  // layer: what happens on it does not reach what it covers.
-                  stopPropagation(e);
-                }),
-                effects((obj) => {
-                  coverBox(obj, properties.totalWidth, properties.totalHeight, BLOCKER_OFFSET);
-                }),
-              ])
-            : Nothing(),
-        ),
+        switchMap((isElevated) => {
+          if (!isElevated) {
+            return Nothing();
+          }
+          const blocker = createBlocker();
+          // Opaque only where the overlay is actually showing. The blocker is
+          // a unit plane covering the element rather than a mesh in element
+          // px, so it names the element as the frame the box is read in.
+          clipRaycast(blocker, () => currentClipBox, object);
+          return $(blocker, [
+            makeInteractive(),
+            on("select", (e) => {
+              element.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+              // Unlike the portal's own blocker, which lets the scene
+              // behind a panel see the click as well, an overlay is a
+              // layer: what happens on it does not reach what it covers.
+              stopPropagation(e);
+            }),
+            effects((obj) => {
+              coverBox(obj, properties.totalWidth, properties.totalHeight, BLOCKER_OFFSET);
+            }),
+          ]);
+        }),
       ),
       // The whole box — background and border ring both — is one quad and a
       // distance field. Geometry is shared and never rebuilt: a resize is a
       // scale write, everything else a uniform write, which is what makes a
       // layout animation affordable and a style change nearly free.
-      $(new THREE.Mesh(rectGeometry), [
+      $(boxMesh, [
         set("material", () => {
           const material = createRectMaterial();
           onCleanup(() => {
             material.dispose();
           });
           return material;
+        }),
+        // Its own effect, so a scroll writes four numbers and nothing else.
+        effects((obj) => {
+          writeClipUniforms(/** @type {THREE.ShaderMaterial} */ (obj.material), clipBox.get());
         }),
         effects((obj) => {
           writeRectUniforms(/** @type {THREE.ShaderMaterial} */ (obj.material), properties);

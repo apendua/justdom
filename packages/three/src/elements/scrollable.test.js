@@ -1,0 +1,181 @@
+import { describe, test } from "node:test";
+import assert from "node:assert/strict";
+import { just } from "@apendua/signal";
+import { $, children, text } from "@apendua/justdom";
+import { scrollable } from "./scrollable.js";
+
+/**
+ * @import {Mountable} from "@apendua/justdom";
+ */
+
+// jsdom-env exposes the common DOM globals, but not MutationObserver, which
+// the widget uses to notice content coming and going.
+if (typeof globalThis.MutationObserver === "undefined") {
+  globalThis.MutationObserver = window.MutationObserver;
+}
+
+const classes = {
+  root: just("root"),
+  viewport: just("viewport"),
+  bar: just("bar"),
+  button: just("button"),
+  track: just("track"),
+  thumb: just("thumb"),
+  page: just("page"),
+};
+
+/**
+ * Mount the widget into a real element, with a layout stood in for the way
+ * jsdom will not lay anything out: the window shows `window` px of `content`
+ * px, and scrolling moves a `scrollTop` the stub clamps the way a browser
+ * would.
+ *
+ * @param {object} options
+ * @param {number} options.window
+ * @param {number} options.content
+ * @param {Partial<import('./scrollable.js').ScrollableProps>} [options.props]
+ */
+function mount({ window: shown, content: total, props = {} }) {
+  const host = document.createElement("div");
+  document.body.appendChild(host);
+
+  let scrollTop = 0;
+  /** @type {HTMLElement | null} */
+  let viewport = null;
+
+  const subscription = scrollable({
+    classes,
+    content: [$("div", [children(text`content`)])],
+    ...props,
+  }).subscribe((/** @type {Mountable<Node>} */ mountable) => {
+    const start = document.createComment("");
+    const end = document.createComment("");
+    host.append(start, end);
+    mountable.replace([start, end]);
+  });
+
+  viewport = host.querySelector(".viewport");
+  if (viewport) {
+    // The three numbers the widget samples. `scrollTop` clamps to the
+    // scrollable range, which is what makes "one press past the end" a
+    // no-op rather than a runaway.
+    Object.defineProperty(viewport, "clientHeight", { get: () => shown });
+    Object.defineProperty(viewport, "scrollHeight", { get: () => total });
+    Object.defineProperty(viewport, "scrollTop", {
+      get: () => scrollTop,
+      set: (value) => {
+        scrollTop = Math.max(0, Math.min(value, Math.max(total - shown, 0)));
+      },
+    });
+    viewport.dispatchEvent(new Event("scroll"));
+  }
+
+  return {
+    host,
+    subscription,
+    get scrollTop() {
+      return scrollTop;
+    },
+    /** @param {string} selector */
+    press: (selector) => {
+      const element = /** @type {HTMLElement | null} */ (host.querySelector(selector));
+      assert.ok(element, `no ${selector} to press`);
+      element.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+      element.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+    },
+    /** @param {string} selector */
+    find: (selector) => /** @type {HTMLElement | null} */ (host.querySelector(selector)),
+  };
+}
+
+describe("scrollable", () => {
+  test("the bar appears only when there is something to scroll", () => {
+    const fits = mount({ window: 200, content: 150 });
+    assert.equal(fits.find(".bar"), null, "nothing below the fold, nothing to point at");
+    fits.subscription.unsubscribe();
+    fits.host.remove();
+
+    const overflows = mount({ window: 100, content: 400 });
+    assert.ok(overflows.find(".bar"));
+    overflows.subscription.unsubscribe();
+    overflows.host.remove();
+  });
+
+  test("an arrow moves a step, and the end of the content is the end", () => {
+    const view = mount({ window: 100, content: 400, props: { step: 40 } });
+    try {
+      const [up, down] = [".bar > .button:first-child", ".bar > .button:last-child"];
+      view.press(up);
+      assert.equal(view.scrollTop, 0, "already at the top");
+
+      view.press(down);
+      assert.equal(view.scrollTop, 40);
+      view.press(down);
+      assert.equal(view.scrollTop, 80);
+      view.press(up);
+      assert.equal(view.scrollTop, 40);
+
+      for (let i = 0; i < 20; i++) {
+        view.press(down);
+      }
+      assert.equal(view.scrollTop, 300, "clamped to the bottom of the content");
+    } finally {
+      view.subscription.unsubscribe();
+      view.host.remove();
+    }
+  });
+
+  test("the free track jumps a window at a time", () => {
+    const view = mount({ window: 100, content: 400 });
+    try {
+      view.press(".page:last-child");
+      assert.equal(view.scrollTop, 100);
+      view.press(".page:last-child");
+      assert.equal(view.scrollTop, 200);
+      view.press(".page:first-child");
+      assert.equal(view.scrollTop, 100);
+    } finally {
+      view.subscription.unsubscribe();
+      view.host.remove();
+    }
+  });
+
+  test("the thumb says how much is showing, and where", () => {
+    const view = mount({ window: 100, content: 400 });
+    try {
+      const thumb = view.find(".thumb");
+      assert.ok(thumb);
+      // A quarter of the content is showing, and we are at the top of it.
+      assert.equal(thumb.style.height, "25%");
+      assert.equal(thumb.style.top, "0%");
+
+      view.press(".page:last-child");
+      // 100 of the 300 scrollable px, so a third of the way down the 75% of
+      // the track the thumb does not itself occupy.
+      assert.equal(thumb.style.top, "25%");
+
+      const before = view.find(".page:first-child");
+      assert.ok(before);
+      assert.equal(before.style.height, "25%", "the free track above the thumb follows it");
+    } finally {
+      view.subscription.unsubscribe();
+      view.host.remove();
+    }
+  });
+
+  test("a press that is never released still stops when the panel hears the release", () => {
+    const view = mount({ window: 100, content: 400, props: { step: 10, repeatDelay: 5 } });
+    try {
+      const down = view.find(".bar > .button:last-child");
+      assert.ok(down);
+      down.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+      // The ray drifted off the arrow before the trigger came up, so the
+      // release lands somewhere else entirely.
+      document.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+      assert.equal(view.scrollTop, 10, "the press acted once and stopped repeating");
+    } finally {
+      view.subscription.unsubscribe();
+      view.host.remove();
+    }
+  });
+});

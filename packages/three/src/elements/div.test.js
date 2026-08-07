@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import * as THREE from "three";
 import { Subject } from "rxjs";
 import { InteractionContext } from "../interactions.js";
-import { setSubject } from "./cache.js";
+import { PORTAL_ATTRIBUTE, setSubject } from "./cache.js";
 import { div } from "./div.js";
 
 /**
@@ -79,6 +79,7 @@ function setup(cursor, cssText = "") {
 
   return {
     element,
+    mutations,
     registrations,
     registered,
     subscription,
@@ -311,6 +312,233 @@ describe("div elevation", () => {
     // The menu's own padding is not a miss to be passed through to whatever is
     // behind it; it is a click on the menu, and "did the click land inside the
     // menu" is exactly the question a dismiss-on-outside-click handler asks.
+    assert.deepEqual(clicked, [element]);
+
+    document.removeEventListener("click", listener);
+    subscription.unsubscribe();
+  });
+});
+
+/**
+ * A clickable row inside something that hides its overflow, with the layout
+ * jsdom does not have: a window that stays put and a 40px row that slides
+ * through it, starting 10px into a 100px scroller.
+ */
+function setupScrolledRow() {
+  let scrollTop = 0;
+
+  const container = document.createElement("div");
+  container.setAttribute(PORTAL_ATTRIBUTE, "");
+  const scroller = document.createElement("div");
+  const row = document.createElement("div");
+
+  scroller.style.overflow = "hidden";
+  row.style.cursor = "pointer";
+  scroller.appendChild(row);
+  container.appendChild(scroller);
+  document.body.appendChild(container);
+
+  /** @type {Subject<import('./cache.js').MutationBatch>} */
+  const mutations = new Subject();
+  for (const node of [container, scroller, row]) {
+    setSubject(node, mutations);
+  }
+
+  /**
+   * @param {Element} element
+   * @param {() => [number, number, number, number]} rect
+   */
+  const layout = (element, rect) => {
+    element.getBoundingClientRect = () => {
+      const [left, top, right, bottom] = rect();
+      return /** @type {DOMRect} */ ({
+        left,
+        top,
+        right,
+        bottom,
+        width: right - left,
+        height: bottom - top,
+      });
+    };
+  };
+  layout(container, () => [0, 0, 200, 100]);
+  layout(scroller, () => [0, 0, 200, 100]);
+  layout(row, () => [0, 10 - scrollTop, 200, 50 - scrollTop]);
+
+  /** @type {string[]} */
+  const registrations = [];
+  const manager = /** @type {InteractionManager} */ (
+    /** @type {unknown} */ ({
+      add: () => registrations.push("add"),
+      remove: () => registrations.push("remove"),
+      stopPropagation: () => {},
+    })
+  );
+
+  /** @type {THREE.Object3D<XREventMap>} */
+  let object;
+  const subscription = div(InteractionContext.set({}, manager), row).subscribe((value) => {
+    object = /** @type {THREE.Object3D<XREventMap>} */ (value);
+  });
+
+  return {
+    container,
+    registrations,
+    subscription,
+    get object() {
+      return object;
+    },
+    /** @param {number} value */
+    scrollTo: (value) => {
+      scrollTop = value;
+      mutations.next({ types: new Set(["scroll"]), targets: new Set([scroller]) });
+    },
+  };
+}
+
+describe("div clipping", () => {
+  test("the box is told what its ancestors leave of it, in its own px", () => {
+    const { container, object, scrollTo, subscription } = setupScrolledRow();
+    try {
+      const material = /** @type {THREE.ShaderMaterial} */ (
+        /** @type {THREE.Mesh} */ (object.children[0]).material
+      );
+      // `overflow: hidden` hides it on both axes, so the window is the
+      // scroller's whole padding box: the row starts 10px down it and may
+      // draw from its own -10 to its own 90.
+      assert.deepEqual(material.uniforms.uClip.value.toArray(), [0, -10, 200, 90]);
+
+      scrollTo(30);
+      assert.deepEqual(
+        material.uniforms.uClip.value.toArray(),
+        [0, 20, 200, 120],
+        "the window has not moved, so in the row's coordinates it slides the other way",
+      );
+
+      subscription.unsubscribe();
+    } finally {
+      container.remove();
+    }
+  });
+
+  test("a row scrolled out of its window stops being drawn and stops being a target", () => {
+    const { container, object, registrations, scrollTo, subscription } = setupScrolledRow();
+    try {
+      assert.deepEqual(registrations, ["add"]);
+      assert.equal(object.visible, true);
+
+      // Straddling the top edge: still shown, still a target. What is left of
+      // it is trimmed by the raycast filter rather than by the registration.
+      scrollTo(30);
+      assert.deepEqual(registrations, ["add"]);
+      assert.equal(object.visible, true);
+
+      // Past the top edge entirely, taking its whole subtree out of the
+      // raycast set with it.
+      scrollTo(60);
+      assert.deepEqual(registrations, ["add", "remove"]);
+      assert.equal(object.visible, false);
+
+      // And back.
+      scrollTo(0);
+      assert.deepEqual(registrations, ["add", "remove", "add"]);
+      assert.equal(object.visible, true);
+
+      subscription.unsubscribe();
+    } finally {
+      container.remove();
+    }
+  });
+});
+
+/**
+ * Describe an element as a list with more inside it than fits, the way a real
+ * one would report itself — jsdom lays nothing out, so every one of these is
+ * zero otherwise.
+ *
+ * @param {HTMLElement} element
+ * @param {{ client: number, scroll: number }} size
+ */
+function describeScroller(element, { client, scroll }) {
+  for (const [name, value] of [
+    ["clientHeight", client],
+    ["scrollHeight", scroll],
+    ["clientWidth", client],
+    ["scrollWidth", client],
+  ]) {
+    Object.defineProperty(element, name, { configurable: true, get: () => value });
+  }
+}
+
+describe("div drag-to-scroll", () => {
+  test("a list with more in it than fits becomes something the ray can take hold of", () => {
+    const { element, mutations, registrations, registered, subscription } = setup(
+      "default",
+      "overflow: hidden",
+    );
+    // Not yet: it clips, but everything in it fits, so grabbing it should
+    // still press whatever is under the ray.
+    assert.deepEqual(registrations, []);
+
+    describeScroller(element, { client: 100, scroll: 400 });
+    // A row arriving is a childList mutation, which is what a growing list
+    // announces; nothing has to tell the projection that it now scrolls.
+    mutations.next({ types: new Set(["childList"]), targets: new Set([element]) });
+    assert.deepEqual(registrations, ["add"]);
+
+    subscription.unsubscribe();
+    assert.deepEqual(registrations, ["add", "remove"]);
+    assert.equal(registered.length, 0);
+  });
+
+  test("a list that already overflows is registered from the start", () => {
+    const element = document.createElement("div");
+    element.style.cssText = "overflow: hidden";
+    document.body.appendChild(element);
+    describeScroller(element, { client: 100, scroll: 400 });
+
+    /** @type {Subject<import('./cache.js').MutationBatch>} */
+    const mutations = new Subject();
+    setSubject(element, mutations);
+
+    /** @type {THREE.Object3D[]} */
+    const registered = [];
+    const manager = /** @type {InteractionManager} */ (
+      /** @type {unknown} */ ({
+        /** @param {THREE.Object3D} object */
+        add: (object) => registered.push(object),
+        remove: () => {},
+        stopPropagation: () => {},
+      })
+    );
+    const ctx = InteractionContext.set({}, manager);
+
+    /** @type {THREE.Object3D<XREventMap> | undefined} */
+    let object;
+    const subscription = div(ctx, element).subscribe((value) => {
+      object = /** @type {THREE.Object3D<XREventMap>} */ (value);
+    });
+
+    assert.ok(object);
+    // A plain list is not clickable and carries no hover styling, but it is
+    // draggable — otherwise a list of text could not be scrolled at all.
+    assert.ok(registered.includes(object), "the list itself is a ray target");
+    assert.equal(element.dataset.xrHover, undefined);
+
+    // A press that never became a drag still reports a click, which is what
+    // the panel background would have reported had the list not been there.
+    /** @type {EventTarget[]} */
+    const clicked = [];
+    const listener = (/** @type {Event} */ event) => {
+      if (event.target) {
+        clicked.push(event.target);
+      }
+    };
+    document.addEventListener("click", listener);
+    const controller = new THREE.Object3D();
+    object.dispatchEvent(/** @type {any} */ ({ type: "selectstart", controller }));
+    object.dispatchEvent(/** @type {any} */ ({ type: "selectend", controller }));
+    object.dispatchEvent(/** @type {any} */ ({ type: "select", controller }));
     assert.deepEqual(clicked, [element]);
 
     document.removeEventListener("click", listener);

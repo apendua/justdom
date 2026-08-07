@@ -7,11 +7,13 @@ import {
   preservesWhitespace,
   trimLineRange,
 } from "./textLines.js";
+import { clipBoxEqual, intersectClipBoxes, UNCLIPPED } from "./clip.js";
 
 /**
  * @import {Subject} from 'rxjs';
  * @import {TextLine} from './textLines.js';
  * @import {TextBounds} from './textHelpers.js';
+ * @import {ClipBox} from './clip.js';
  */
 
 /**
@@ -98,14 +100,18 @@ function createMeasurementClone(element) {
 
 /**
  * The kinds of change a batch can announce. The first four mirror what the
- * portal's observer (and the font API) report. The last two come from the
+ * portal's observer (and the font API) report. The next two come from the
  * animation clock, which has no mutations to relay — only time passing under
  * a running animation: `animated` says the computed styles of the targets'
  * neighbourhoods may have moved, and `reflow` says client rects have — of
  * the targets' subtrees, or of everything when layout itself is animating
  * and no target can name what it displaced.
  *
- * @typedef {"attributes" | "childList" | "fontLoaded" | "characterData" | "animated" | "reflow"} MutationType
+ * `scroll` is the last, and the odd one: scrolling mutates nothing and
+ * restyles nothing, so no observer reports it, yet it moves the client rects
+ * of everything inside the scroller. The portal listens for it directly.
+ *
+ * @typedef {"attributes" | "childList" | "fontLoaded" | "characterData" | "animated" | "reflow" | "scroll"} MutationType
  */
 
 /**
@@ -206,7 +212,11 @@ function affectsRect(batch, node) {
   // an animating transform moves its own subtree's rects exactly the way a
   // toggled one does, and an animating layout property moves anybody's,
   // which the clock announces with no targets at all.
-  if (!batch.types.has("attributes") && !batch.types.has("reflow")) {
+  //
+  // `scroll` scopes the same way, and unusually precisely: scrolling moves
+  // the rects of the scroller's own subtree and of nothing else on the page,
+  // so the target the portal names with it is exactly the affected scope.
+  if (!batch.types.has("attributes") && !batch.types.has("reflow") && !batch.types.has("scroll")) {
     return false;
   }
   if (!batch.targets) {
@@ -214,6 +224,64 @@ function affectsRect(batch, node) {
   }
   for (const target of batch.targets) {
     if (target.contains(node)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Whether a batch can change what `measureTextLayout` reports for a text node
+ * — which is a narrower question than whether it moved the text, and the
+ * difference is the whole cost of a scroll.
+ *
+ * Every number that measurement yields is relative to something that scrolls
+ * *with* the text: `left` and `top` to the parent element's border box, the
+ * line boxes to their own union. A scroller sliding its content therefore
+ * translates the text and the box it is measured against by the same amount,
+ * and the measurement recomputes to the numbers it already had — at the price
+ * of a Range measurement per text node per frame, which is the most expensive
+ * read in this file and the one that scales with the length of a list rather
+ * than with how much of it is on screen.
+ *
+ * The exception is a text node whose own parent is the element that scrolled.
+ * Then the border box it is measured against is the window standing still
+ * while the text moves inside it, so its parent-relative position really does
+ * change and it has to be measured again.
+ *
+ * Not modelled, and worth knowing: a scroll-driven animation or a container
+ * query keyed on scroll position can restyle during a scroll and so re-break
+ * lines. Both announce themselves through other batches when they mutate
+ * anything; neither is mirrored today.
+ *
+ * (`parentElement` directly rather than `getParentElement`: this predicate
+ * runs from an rxjs `filter` as the subject emits, outside any computation,
+ * where registering a dependency would attach it to whatever unrelated
+ * computation happened to be on the stack.)
+ *
+ * @param {MutationBatch} batch
+ * @param {Text} text
+ * @returns {boolean}
+ */
+function affectsTextLayout(batch, text) {
+  if (!affectsRect(batch, text)) {
+    return false;
+  }
+  const movedByAnythingElse =
+    batch.types.has("childList") ||
+    batch.types.has("characterData") ||
+    batch.types.has("fontLoaded") ||
+    batch.types.has("attributes") ||
+    batch.types.has("reflow");
+  if (movedByAnythingElse || !batch.types.has("scroll")) {
+    return true;
+  }
+  if (!batch.targets) {
+    return true;
+  }
+  const parentElement = text.parentElement;
+  for (const target of batch.targets) {
+    if (target === parentElement) {
       return true;
     }
   }
@@ -474,13 +542,18 @@ export function getTextLayout(text) {
     // on an ancestor moves them too.
     //
     // Which means this re-measures whenever anything moves the text — every
-    // frame of a layout animation, and every frame of a scroll once there is
-    // one. What it must not do is make that re-measurement *look* like a
-    // change to anyone reading it: every field it reports is relative to the
-    // text's own parent or to its own bounds, so a subtree sliding through
-    // the viewport recomputes to the same numbers and the selector proxy
-    // stops there. Nothing downstream — the texture above all — re-runs.
-    const dependency = subjects.get(text)?.pipe(filter((batch) => affectsRect(batch, text)));
+    // frame of a layout animation, for one. What it must not do is make that
+    // re-measurement *look* like a change to anyone reading it: every field
+    // it reports is relative to the text's own parent or to its own bounds,
+    // so a subtree sliding through the viewport recomputes to the same
+    // numbers and the selector proxy stops there. Nothing downstream — the
+    // texture above all — re-runs.
+    //
+    // A scroll is the case where that reasoning is worth acting on rather
+    // than merely absorbing: it is the one kind of movement that provably
+    // cannot change these numbers, so it does not re-measure at all. See
+    // `affectsTextLayout`.
+    const dependency = subjects.get(text)?.pipe(filter((batch) => affectsTextLayout(batch, text)));
     signal = new Derived(() => {
       if (dependency) {
         addDependency(dependency);
@@ -488,6 +561,163 @@ export function getTextLayout(text) {
       return measureTextLayout(text);
     });
     textLayoutCache.set(text, signal);
+  }
+  return signal.get();
+}
+
+/**
+ * @param {string} value
+ * @returns {number}
+ */
+function pixels(value) {
+  const parsed = parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+/**
+ * The overflow that applies on one axis. A browser always resolves the
+ * longhands, but a headless layout engine may only report the shorthand it
+ * was given, and answering "visible" there would quietly switch clipping off
+ * in every test that uses one.
+ *
+ * @param {CSSStyleDeclaration} style
+ * @param {"overflowX" | "overflowY"} axis
+ * @returns {boolean}
+ */
+function hidesOverflow(style, axis) {
+  const value = style[axis] || style.overflow;
+  return !!value && value !== "visible";
+}
+
+/**
+ * Whether an element clips what overflows it, on either axis — the first half
+ * of "does it scroll", and the same answer the clip walk below acts on.
+ *
+ * @param {CSSStyleDeclaration} style
+ * @returns {boolean}
+ */
+export function clipsOverflow(style) {
+  return hidesOverflow(style, "overflowX") || hidesOverflow(style, "overflowY");
+}
+
+/**
+ * What an element confines its descendants to: its padding box, which is
+ * where CSS puts the edge of `overflow: hidden`, on whichever axes are not
+ * `visible`, with the corners its border radii round — reduced by the border
+ * they sit behind, the same way the box's own inner edge is.
+ *
+ * @param {HTMLElement} element
+ * @returns {ClipBox}
+ */
+function getOwnClipBox(element) {
+  const style = getComputedStyleCached(element);
+  const clipsX = hidesOverflow(style, "overflowX");
+  const clipsY = hidesOverflow(style, "overflowY");
+  if (!clipsX && !clipsY) {
+    return UNCLIPPED;
+  }
+  const rect = getBoundingClientRectCached(element);
+  const borderLeft = pixels(style.borderLeftWidth);
+  const borderRight = pixels(style.borderRightWidth);
+  const borderTop = pixels(style.borderTopWidth);
+  const borderBottom = pixels(style.borderBottomWidth);
+  /**
+   * @param {string} radius
+   * @param {number} first
+   * @param {number} second
+   * @returns {number}
+   */
+  const inset = (radius, first, second) => Math.max(pixels(radius) - Math.max(first, second), 0);
+  return {
+    left: clipsX ? rect.left + borderLeft : UNCLIPPED.left,
+    right: clipsX ? rect.right - borderRight : UNCLIPPED.right,
+    top: clipsY ? rect.top + borderTop : UNCLIPPED.top,
+    bottom: clipsY ? rect.bottom - borderBottom : UNCLIPPED.bottom,
+    // A corner is only rounded on the axes that are actually being clipped:
+    // one that hides overflow in y alone cuts two straight horizontal lines.
+    topLeft: clipsX && clipsY ? inset(style.borderTopLeftRadius, borderLeft, borderTop) : 0,
+    topRight: clipsX && clipsY ? inset(style.borderTopRightRadius, borderRight, borderTop) : 0,
+    bottomRight:
+      clipsX && clipsY ? inset(style.borderBottomRightRadius, borderRight, borderBottom) : 0,
+    bottomLeft:
+      clipsX && clipsY ? inset(style.borderBottomLeftRadius, borderLeft, borderBottom) : 0,
+  };
+}
+
+/** @type {WeakMap<Node, Derived<ClipBox>>} */
+const clipBoxCache = new WeakMap();
+
+/**
+ * The region a node's ancestors confine it to, in client coordinates.
+ *
+ * Each level is derived from the level above, so the chain is memoized the
+ * way every other layout read here is: a scroller that has not moved does not
+ * recompute the clip of anything inside it. Equality is by value, so the
+ * common case during a scroll — content moving inside a stationary window —
+ * leaves this signal, and the uniforms hanging off it, alone.
+ *
+ * Who does the confining is decided by where the node's box *lives*, which
+ * for a positioned element is not its parent. CSS hangs an absolutely
+ * positioned box off its containing block — the nearest positioned ancestor —
+ * so `overflow` ancestors *below* that block never clip it, which is how a
+ * dropdown menu whose anchor sits outside a scroller escapes the scroller
+ * its trigger row lives in; and a fixed box escapes every ancestor there is.
+ * The clipping that does apply to it is exactly the clipping that applies to
+ * its containing block's content — the block's own overflow included — and
+ * that is a chain the block's ordinary children already share, so the
+ * memoization survives the skip. (A transform or a filter also establishes a
+ * containing block for positioned descendants; neither is modelled here, the
+ * same way neither is modelled anywhere else in the mirror.)
+ *
+ * The walk stops at the portal's container. What the page around the scene
+ * does with `body` is none of a panel's business, and its rect is not in the
+ * panel's coordinate system anyway.
+ *
+ * @param {Node} node
+ * @returns {ClipBox}
+ */
+export function getClipBoxCached(node) {
+  let signal = clipBoxCache.get(node);
+  if (!signal) {
+    signal = new Derived(
+      () => {
+        // The portal's own container clips nothing and has nothing above it
+        // worth consulting — the walk ends here rather than climbing out into
+        // the page. (`nodeType` rather than `instanceof Element`: this runs in
+        // environments where that global is not the document's.)
+        const self = node.nodeType === 1 ? /** @type {Element} */ (node) : null;
+        if (self?.hasAttribute(PORTAL_ATTRIBUTE)) {
+          return UNCLIPPED;
+        }
+        const position = self ? getComputedStyleCached(self).position || "static" : "static";
+        if (position === "fixed") {
+          return UNCLIPPED;
+        }
+        // The box this node hangs off: its parent in the ordinary case, its
+        // containing block when it is absolutely positioned.
+        let holder = getParentElement(node);
+        if (position === "absolute") {
+          while (
+            holder &&
+            !holder.hasAttribute(PORTAL_ATTRIBUTE) &&
+            (getComputedStyleCached(holder).position || "static") === "static"
+          ) {
+            holder = getParentElement(holder);
+          }
+        }
+        if (!holder || holder.hasAttribute(PORTAL_ATTRIBUTE)) {
+          return UNCLIPPED;
+        }
+        const inherited = getClipBoxCached(holder);
+        const own = getOwnClipBox(holder);
+        // Passing the inherited box through unchanged keeps the shared
+        // UNCLIPPED object identical the whole way down a subtree nobody
+        // clips, which is what lets the elements in it skip the rest.
+        return own === UNCLIPPED ? inherited : intersectClipBoxes(inherited, own);
+      },
+      { isEqual: clipBoxEqual },
+    );
+    clipBoxCache.set(node, signal);
   }
   return signal.get();
 }

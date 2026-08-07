@@ -6,8 +6,8 @@ import { text } from "./text.js";
 import { getBoundingClientRectCached, PORTAL_ATTRIBUTE, setSubject } from "./cache.js";
 import { createAnimationClock } from "./animationClock.js";
 import { createBlocker, coverBox } from "./blocker.js";
+import { createFrameRequester } from "./frameRequester.js";
 import { InteractionContext } from "../interactions.js";
-import { frames } from "../render.js";
 
 /**
  * @import {Observable} from 'rxjs';
@@ -40,38 +40,6 @@ export function getPortalRoot(node) {
       ? /** @type {Element} */ (node)
       : (node?.parentElement ?? null);
   return /** @type {HTMLElement | null} */ (element?.closest(`[${PORTAL_ATTRIBUTE}]`) ?? null);
-}
-
-/**
- * Frames for the animation clock: the renderer's own when this portal lives
- * inside a `render()` loop — emitted at the top of each frame, so the
- * invalidations it triggers settle synchronously before that frame draws —
- * and the browser's otherwise (tests, plain pages).
- *
- * @param {WeakKey} ctx
- * @returns {(tick: () => void) => () => void}
- */
-function createFrameRequester(ctx) {
-  return (tick) => {
-    try {
-      const subscription = frames(ctx).subscribe(() => tick());
-      return () => subscription.unsubscribe();
-    } catch {
-      let active = true;
-      let handle = 0;
-      const loop = () => {
-        if (active) {
-          tick();
-          handle = requestAnimationFrame(loop);
-        }
-      };
-      handle = requestAnimationFrame(loop);
-      return () => {
-        active = false;
-        cancelAnimationFrame(handle);
-      };
-    }
-  };
 }
 
 /**
@@ -309,8 +277,9 @@ export function createPortal(ctx) {
    * A scroll mutates nothing — no attribute, no child, no character — so the
    * observer never hears about it, and the animation clock has no animation
    * to sample. What it does do is move every client rect inside the scroller,
-   * which is exactly what `reflow` says, scoped to the subtree that moved.
-   * The listener is capturing because scroll events do not bubble.
+   * which `scroll` says, scoped to the subtree that moved — the tightest
+   * scope any batch in this file carries. The listener is capturing because
+   * scroll events do not bubble.
    *
    * @param {Event} event
    */
@@ -319,7 +288,7 @@ export function createPortal(ctx) {
     if (!(target instanceof Node)) {
       return;
     }
-    invalidateLayout({ types: new Set(["reflow"]), targets: new Set([target]) });
+    invalidateLayout({ types: new Set(["scroll"]), targets: new Set([target]) });
     // Content has moved out from under a ray that did not move with it. The
     // manager only recasts when a hand moves or when it is told the scene
     // changed, and this is the second case.

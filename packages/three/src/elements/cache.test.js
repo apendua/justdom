@@ -384,7 +384,7 @@ function setupScroller() {
     /** What a scroll does to a layout: the content moves, the window does not. */
     scrollBy: (/** @type {number} */ delta) => {
       scrollTop += delta;
-      mutations.next({ types: new Set(["reflow"]), targets: new Set([scroller]) });
+      mutations.next({ types: new Set(["scroll"]), targets: new Set([scroller]) });
     },
     /** A change that does move the window, for contrast. */
     resizeTo: (/** @type {number} */ bottom) => {

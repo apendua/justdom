@@ -21,6 +21,7 @@ import {
   untransformedOffset,
 } from "./cssTransform.js";
 import { isOverlay } from "./elevation.js";
+import { isScrollable, scrollDrags } from "./scroll.js";
 
 /**
  * @import {XREventMap} from '../core.js';
@@ -77,6 +78,7 @@ export function div(ctx, element) {
   const properties = new VisualProperties();
 
   const { makeInteractive, stopPropagation } = interactions(ctx);
+  const drags = scrollDrags(ctx);
 
   /**
    * Whether this element wants to be a ray target, as its own signal so that
@@ -96,6 +98,14 @@ export function div(ctx, element) {
    * attribute mutation in the portal.
    */
   const overlay = new Derived(() => isOverlay(element));
+
+  /**
+   * Whether this element is a list with more in it than fits — and so
+   * something to take hold of. Its own signal for the reason the others are:
+   * the handlers below come and go with it, and a list becomes draggable the
+   * moment a row overflows it, without anything being told.
+   */
+  const scrollable = new Derived(() => isScrollable(element));
 
   /**
    * What this element's overflow-hiding ancestors leave of it, in its own px —
@@ -170,6 +180,14 @@ export function div(ctx, element) {
   const interactivity = [
     makeInteractive(() => shown.get()),
     on("select", (e) => {
+      // A press that turned into a drag was the player scrolling the list
+      // this button sits in, not pressing the button — the same bargain a
+      // touchscreen strikes, and for the same reason: there is nowhere else
+      // to grab a list that is made of buttons.
+      if (drags.didScroll(e.controller)) {
+        stopPropagation(e);
+        return;
+      }
       const event = new MouseEvent("click", {
         bubbles: true,
       });
@@ -177,6 +195,10 @@ export function div(ctx, element) {
       stopPropagation(e);
     }),
     on("selectstart", (e) => {
+      // Offered to the scroll gesture before anything else: a press over a
+      // list may become a drag, and only holding it will tell. Elements with
+      // no scrolling ancestor are declined and nothing changes for them.
+      drags.begin(e.controller, element, object);
       const event = new MouseEvent("mousedown", {
         bubbles: true,
       });
@@ -185,6 +207,7 @@ export function div(ctx, element) {
       stopPropagation(e);
     }),
     on("selectend", (e) => {
+      drags.end(e.controller);
       const event = new MouseEvent("mouseup", {
         bubbles: true,
       });
@@ -206,6 +229,40 @@ export function div(ctx, element) {
     }),
   ];
 
+  /**
+   * A scrolling list that is not itself a button still has to be grabbable,
+   * or it could only be dragged by its rows — and a list of plain text would
+   * have nothing to grab at all. It becomes a ray target for the gaps
+   * between its rows and for its own padding, gated on `shown` the way the
+   * ordinary interactivity is: a list scrolled entirely out of some outer
+   * scroller is not something a ray should find.
+   *
+   * No hover or press styling comes with this: the list is draggable, not
+   * clickable, and the `data-xr-*` flags are what say "this reacts to being
+   * pointed at". A press that never became a drag still reports a click,
+   * which is what the panel's background would have reported had the list
+   * not been in the way.
+   *
+   * @type {MonoTypeOperatorFunction<THREE.Object3D<XREventMap>>[]}
+   */
+  const draggability = [
+    makeInteractive(() => shown.get()),
+    on("selectstart", (e) => {
+      drags.begin(e.controller, element, object);
+      stopPropagation(e);
+    }),
+    on("selectend", (e) => {
+      drags.end(e.controller);
+      stopPropagation(e);
+    }),
+    on("select", (e) => {
+      if (!drags.didScroll(e.controller)) {
+        element.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      }
+      stopPropagation(e);
+    }),
+  ];
+
   return just(object, [
     // `cursor: pointer` is a live stylesheet decision — a button gets disabled,
     // a card becomes clickable — so interactivity follows it rather than being
@@ -222,6 +279,14 @@ export function div(ctx, element) {
         delete element.dataset.xrHover;
         delete element.dataset.xrActive;
       });
+    }),
+    // A clickable list already carries the gesture through the handlers
+    // above; this is for the ordinary case of a list that is only a list.
+    effects((obj) => {
+      if (clickable.get() || !scrollable.get()) {
+        return;
+      }
+      useEffects(obj, draggability);
     }),
     effects((obj) => {
       // Only the element that opens a layer pays for it. Everything inside the

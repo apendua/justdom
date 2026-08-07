@@ -100,14 +100,18 @@ function createMeasurementClone(element) {
 
 /**
  * The kinds of change a batch can announce. The first four mirror what the
- * portal's observer (and the font API) report. The last two come from the
+ * portal's observer (and the font API) report. The next two come from the
  * animation clock, which has no mutations to relay — only time passing under
  * a running animation: `animated` says the computed styles of the targets'
  * neighbourhoods may have moved, and `reflow` says client rects have — of
  * the targets' subtrees, or of everything when layout itself is animating
  * and no target can name what it displaced.
  *
- * @typedef {"attributes" | "childList" | "fontLoaded" | "characterData" | "animated" | "reflow"} MutationType
+ * `scroll` is the last, and the odd one: scrolling mutates nothing and
+ * restyles nothing, so no observer reports it, yet it moves the client rects
+ * of everything inside the scroller. The portal listens for it directly.
+ *
+ * @typedef {"attributes" | "childList" | "fontLoaded" | "characterData" | "animated" | "reflow" | "scroll"} MutationType
  */
 
 /**
@@ -208,7 +212,11 @@ function affectsRect(batch, node) {
   // an animating transform moves its own subtree's rects exactly the way a
   // toggled one does, and an animating layout property moves anybody's,
   // which the clock announces with no targets at all.
-  if (!batch.types.has("attributes") && !batch.types.has("reflow")) {
+  //
+  // `scroll` scopes the same way, and unusually precisely: scrolling moves
+  // the rects of the scroller's own subtree and of nothing else on the page,
+  // so the target the portal names with it is exactly the affected scope.
+  if (!batch.types.has("attributes") && !batch.types.has("reflow") && !batch.types.has("scroll")) {
     return false;
   }
   if (!batch.targets) {
@@ -516,6 +524,17 @@ function pixels(value) {
 function hidesOverflow(style, axis) {
   const value = style[axis] || style.overflow;
   return !!value && value !== "visible";
+}
+
+/**
+ * Whether an element clips what overflows it, on either axis — the first half
+ * of "does it scroll", and the same answer the clip walk below acts on.
+ *
+ * @param {CSSStyleDeclaration} style
+ * @returns {boolean}
+ */
+export function clipsOverflow(style) {
+  return hidesOverflow(style, "overflowX") || hidesOverflow(style, "overflowY");
 }
 
 /**

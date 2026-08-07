@@ -1,6 +1,13 @@
 # Change Log - @apendua/freedom
 
-This log was last generated on Fri, 07 Aug 2026 07:20:41 GMT and should not be manually modified.
+This log was last generated on Fri, 07 Aug 2026 15:07:17 GMT and should not be manually modified.
+
+## 0.7.1
+Fri, 07 Aug 2026 15:07:17 GMT
+
+### Patches
+
+- `layoutEffects` now waits for the object to reach a scene once, and stays put when it is later re-parented. It used to re-run on every `added`/`removed` along the ancestor chain, so picking up anything an effect's object hung off — a board, a tray — tore the effect down and built it again over the detached instant in the middle of `Object3D.attach`. Nothing an effect can read has changed across a re-parent, since `attach` keeps the object where it was in the room; for a physics body it meant the whole simulation being rebuilt, and every marble losing the speed it had.
 
 ## 0.7.0
 Fri, 07 Aug 2026 07:20:41 GMT

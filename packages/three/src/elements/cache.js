@@ -1,25 +1,216 @@
 import { addDependency, Derived, NoValueError } from "@apendua/signal";
-import { filter, Subject } from "rxjs";
+import { filter } from "rxjs";
 import { collapseWhitespace, groupIntoLines, preservesWhitespace } from "./textLines.js";
 
 /**
+ * @import {Subject} from 'rxjs';
  * @import {TextLine} from './textLines.js';
  */
 
 /**
- * @typedef {"attributes" | "childList" | "fontLoaded" | "characterData"} MutationType
+ * The attribute a portal marks its container element with. It lives here —
+ * the leaf module everything on both sides of the portal already imports —
+ * so that helpers which need to know where a portal's tree ends (ancestor
+ * walks, `getPortalRoot`) can share it without importing each other.
+ */
+export const PORTAL_ATTRIBUTE = "data-xr-portal";
+
+/**
+ * Whether a computed `transform` value is one the mirror treats as a
+ * transform at all. Browsers serialize every computed transform to a single
+ * `matrix()`/`matrix3d()`, so under a real engine this is exactly "has a
+ * transform"; jsdom passes author values through, and anything unrecognized
+ * counts as untransformed everywhere, consistently.
+ *
+ * @param {string} value
+ * @returns {boolean}
+ */
+export function hasTransform(value) {
+  return !!value && value !== "none" && value.startsWith("matrix");
+}
+
+/**
+ * Whether the element, or any ancestor inside the portal, carries a CSS
+ * transform. Reading the styles here registers them as dependencies of the
+ * calling computation, which is the correct thing: a transform toggling on
+ * an ancestor changes what a measurement of this element means.
+ *
+ * @param {HTMLElement} element
+ * @returns {boolean}
+ */
+function isSubtreeTransformed(element) {
+  /** @type {HTMLElement | null} */
+  let el = element;
+  while (el && !el.hasAttribute(PORTAL_ATTRIBUTE)) {
+    if (hasTransform(getComputedStyleCached(el).transform)) {
+      return true;
+    }
+    el = el.parentElement;
+  }
+  return false;
+}
+
+/**
+ * A detached, untransformed copy of `element` to measure instead of the real
+ * thing, parked off-screen outside the portal's observed subtree.
+ *
+ * Touching the live elements is not an option: masking a transform with an
+ * !important rule interacts with `transition: transform` at the browser's
+ * pace, not ours — a synchronous flush updates the transition *baseline*
+ * while transitions themselves are only generated at frames — so any
+ * mask-and-restore protocol either swallows a transition the mutation meant
+ * to start or manufactures one out of the restore. A clone has no
+ * transitions to disturb.
+ *
+ * The clone's layout reproduces the original's because every resolved style
+ * — the used width included — is copied onto its root; descendants keep
+ * their classes and the document's stylesheets apply as usual. The one
+ * blind spot: a descendant selector that reaches *above* the cloned element
+ * (`.card[data-state] p`) has no ancestors to match against and falls back
+ * to base styling.
+ *
+ * @param {HTMLElement} element
+ * @returns {HTMLElement}
+ */
+function createMeasurementClone(element) {
+  const clone = /** @type {HTMLElement} */ (element.cloneNode(true));
+  const computed = window.getComputedStyle(element);
+  for (let i = 0; i < computed.length; i++) {
+    const property = computed[i];
+    clone.style.setProperty(property, computed.getPropertyValue(property));
+  }
+  clone.style.setProperty("transform", "none", "important");
+  clone.style.setProperty("transition", "none", "important");
+  clone.style.setProperty("animation", "none", "important");
+  clone.style.setProperty("position", "absolute", "important");
+  clone.style.setProperty("top", "0", "important");
+  clone.style.setProperty("left", "-99999px", "important");
+  clone.style.setProperty("visibility", "hidden", "important");
+  return clone;
+}
+
+/**
+ * The kinds of change a batch can announce. The first four mirror what the
+ * portal's observer (and the font API) report. The last two come from the
+ * animation clock, which has no mutations to relay — only time passing under
+ * a running animation: `animated` says the computed styles of the targets'
+ * neighbourhoods may have moved, and `reflow` says client rects have — of
+ * the targets' subtrees, or of everything when layout itself is animating
+ * and no target can name what it displaced.
+ *
+ * @typedef {"attributes" | "childList" | "fontLoaded" | "characterData" | "animated" | "reflow"} MutationType
  */
 
-/** @type {WeakMap<WeakKey, Subject<Set<MutationType>>>} */
+/**
+ * How an animated property ranks for invalidation — see `animationClock.js`,
+ * which is organized around it. It lives here with the mutation types
+ * because the two vocabularies translate into each other: paint asks for
+ * `animated` alone, transform adds a targeted `reflow`, layout a portal-wide
+ * one.
+ *
+ * @typedef {"paint" | "transform" | "layout"} AnimationClass
+ */
+
+/**
+ * One announcement from a portal's observer: which kinds of mutation happened,
+ * and the nodes they happened at. `targets` carries the observer's own
+ * `MutationRecord.target`s — the mutated element for `attributes`, the parent
+ * for `childList`, the text node for `characterData` — so caches that can
+ * scope their invalidation have something to scope it by. `null` means the
+ * whole portal is affected: fonts arriving restyle and re-measure everything,
+ * and there is no meaningful target to name.
+ *
+ * @typedef {object} MutationBatch
+ * @property {Set<MutationType>} types
+ * @property {Set<Node> | null} targets
+ */
+
+/** @type {WeakMap<WeakKey, Subject<MutationBatch>>} */
 const subjects = new WeakMap();
 
 /**
  * @param {WeakKey} node
- * @param {Subject<Set<MutationType>>} subject
+ * @param {Subject<MutationBatch>} subject
  * @returns {void}
  */
 export function setSubject(node, subject) {
   subjects.set(node, subject);
+}
+
+/**
+ * Whether a batch can change the computed style of `node`.
+ *
+ * A mutation restyles its target and everything below it — descendant
+ * combinators and plain inheritance both flow that way — but it can also
+ * restyle the target's *siblings* and their subtrees, through `~`, `+` and
+ * the structural pseudo-classes. All of those live inside the target's
+ * parent, so the parent's subtree is the scope a target contributes; a batch
+ * with no targets at all means the whole portal.
+ *
+ * The one selector this deliberately does not model is `:has()`, which lets
+ * a mutation restyle its *ancestors*. Styling inside a portal with `:has()`
+ * whose subject crosses upward past the mutated element's parent may go
+ * stale until the next structural mutation re-announces the tree.
+ *
+ * @param {MutationBatch} batch
+ * @param {Node} node
+ * @returns {boolean}
+ */
+function affectsStyle(batch, node) {
+  if (!batch.targets) {
+    return true;
+  }
+  for (const target of batch.targets) {
+    const scope = target.parentNode ?? target;
+    if (scope.contains(node)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Whether a batch can change the client rects of `node`.
+ *
+ * Structural mutations and fonts arriving re-lay-out the whole portal, and
+ * layout is non-local — a sibling growing moves this element — so those stay
+ * portal-wide. Attribute mutations were long assumed unable to move
+ * anything, which is the bargain that keeps hover cheap; but one thing they
+ * *can* do is toggle a CSS transform, and a transform changes the client
+ * rects of exactly the mutated element's own subtree and nobody else's.
+ * Re-measuring that subtree keeps transformed bounds coherent with the
+ * styles that produced them, at the price of a few rect reads per hover.
+ * Sizes an attribute changes through actual layout (padding on hover) still
+ * go stale outside the mutated subtree — that contract stands.
+ *
+ * @param {MutationBatch} batch
+ * @param {Node} node
+ * @returns {boolean}
+ */
+function affectsRect(batch, node) {
+  if (
+    batch.types.has("childList") ||
+    batch.types.has("characterData") ||
+    batch.types.has("fontLoaded")
+  ) {
+    return true;
+  }
+  // `reflow` is the animation clock saying rects moved without any mutation:
+  // an animating transform moves its own subtree's rects exactly the way a
+  // toggled one does, and an animating layout property moves anybody's,
+  // which the clock announces with no targets at all.
+  if (!batch.types.has("attributes") && !batch.types.has("reflow")) {
+    return false;
+  }
+  if (!batch.targets) {
+    return true;
+  }
+  for (const target of batch.targets) {
+    if (target.contains(node)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 /** @type {WeakMap<Element | Text, Map<string | null, Derived<CSSStyleDeclaration>>>} */
@@ -42,10 +233,12 @@ export function getComputedStyleCached(element, pseudoElement = null) {
       .get(element)
       ?.pipe(
         filter(
-          (mutations) =>
-            mutations.has("childList") ||
-            mutations.has("attributes") ||
-            mutations.has("fontLoaded"),
+          (batch) =>
+            (batch.types.has("childList") ||
+              batch.types.has("attributes") ||
+              batch.types.has("fontLoaded") ||
+              batch.types.has("animated")) &&
+            affectsStyle(batch, element),
         ),
       );
     signal = new Derived(
@@ -86,16 +279,7 @@ let boundingClientRectCache = new WeakMap();
 export function getBoundingClientRectCached(element) {
   let signal = boundingClientRectCache.get(element);
   if (!signal) {
-    const dependency = subjects
-      .get(element)
-      ?.pipe(
-        filter(
-          (mutations) =>
-            mutations.has("childList") ||
-            mutations.has("characterData") ||
-            mutations.has("fontLoaded"),
-        ),
-      );
+    const dependency = subjects.get(element)?.pipe(filter((batch) => affectsRect(batch, element)));
     signal = new Derived(() => {
       if (dependency) {
         addDependency(dependency);
@@ -108,8 +292,15 @@ export function getBoundingClientRectCached(element) {
 }
 
 /**
+ * A text node's layout, measured with every transform on the chain switched
+ * off — line boxes read back under a rotation would group by *screen* rows,
+ * which is not where the browser broke the lines.
+ *
  * @typedef {object} TextLayout
  * @property {DOMRect} bounds Union of the text node's line boxes.
+ * @property {number} left Where `bounds` sits relative to the parent
+ *   element's border box, in layout px.
+ * @property {number} top Same, vertically.
  * @property {TextLine[]} lines Line boxes, positioned relative to `bounds`.
  */
 
@@ -129,32 +320,39 @@ function isSingleLine(rects) {
 }
 
 /**
- * Read back the line boxes the browser laid a text node out into, along with
- * the text that landed on each one.
+ * The measuring core: line boxes and parent-relative position of one text
+ * node, read off whatever tree the node currently sits in.
+ *
  * @param {Text} text
+ * @param {HTMLElement} parentElement
+ * @param {string} whiteSpace
  * @returns {TextLayout}
  */
-function measureTextLayout(text) {
+function measureTextRects(text, parentElement, whiteSpace) {
   const content = text.textContent || "";
-  const whiteSpace = getComputedStyleCached(text).whiteSpace || "normal";
+  const parentRect = parentElement.getBoundingClientRect();
   const range = document.createRange();
   range.selectNodeContents(text);
   const bounds = range.getBoundingClientRect();
+  const left = bounds.left - parentRect.left;
+  const top = bounds.top - parentRect.top;
 
   const rects = range.getClientRects();
   if (rects.length === 0) {
-    // Empty, or not laid out at all. Either way there is nothing to draw, and
-    // in particular nothing that should be drawn at the origin instead.
-    return { bounds, lines: [] };
+    // Empty, or not laid out at all. Either way there is nothing to draw,
+    // and in particular nothing that should be drawn at the origin instead.
+    return { bounds, left, top, lines: [] };
   }
 
   // The overwhelmingly common case is a label on a single line, which the
-  // bounding box already describes. Only text that actually wrapped is worth
-  // walking character by character.
+  // bounding box already describes. Only text that actually wrapped is
+  // worth walking character by character.
   if (isSingleLine(rects)) {
     const line = collapseWhitespace(content, whiteSpace);
     return {
       bounds,
+      left,
+      top,
       lines: line
         ? [{ text: line, left: 0, top: 0, width: bounds.width, height: bounds.height }]
         : [],
@@ -169,8 +367,8 @@ function measureTextLayout(text) {
     range.setEnd(text, index + 1);
     const rect = range.getBoundingClientRect();
     if (rect.width <= 0 || rect.height <= 0) {
-      // Whitespace the layout collapsed away occupies no space and belongs to
-      // no line box.
+      // Whitespace the layout collapsed away occupies no space and belongs
+      // to no line box.
       continue;
     }
     characters.push({
@@ -198,7 +396,44 @@ function measureTextLayout(text) {
     });
   }
 
-  return { bounds, lines };
+  return { bounds, left, top, lines };
+}
+
+/**
+ * Read back the line boxes the browser laid a text node out into, along with
+ * the text that landed on each one.
+ *
+ * Under a transform anywhere on the chain, the real tree's client rects are
+ * screen-space bounds — a rotation would group lines by screen rows, which
+ * is not where the browser broke them — so the measurement runs against a
+ * detached untransformed clone of the parent instead. The text node is
+ * always a direct child of its parent element, so finding it again in the
+ * clone is an index lookup.
+ *
+ * @param {Text} text
+ * @returns {TextLayout}
+ */
+function measureTextLayout(text) {
+  const parentElement = text.parentElement;
+  if (!parentElement) {
+    throw new NoValueError("Text node has no parent element");
+  }
+  const whiteSpace = getComputedStyleCached(text).whiteSpace || "normal";
+  if (!isSubtreeTransformed(parentElement)) {
+    return measureTextRects(text, parentElement, whiteSpace);
+  }
+  const clone = createMeasurementClone(parentElement);
+  document.body.appendChild(clone);
+  try {
+    const index = Array.prototype.indexOf.call(parentElement.childNodes, text);
+    const cloneText = clone.childNodes[index];
+    if (!(cloneText instanceof Text)) {
+      throw new NoValueError("Text node not found in measurement clone");
+    }
+    return measureTextRects(cloneText, clone, whiteSpace);
+  } finally {
+    clone.remove();
+  }
 }
 
 /** @type {WeakMap<Text, Derived<TextLayout>>} */
@@ -211,16 +446,9 @@ let textLayoutCache = new WeakMap();
 export function getTextLayout(text) {
   let signal = textLayoutCache.get(text);
   if (!signal) {
-    const dependency = subjects
-      .get(text)
-      ?.pipe(
-        filter(
-          (mutations) =>
-            mutations.has("childList") ||
-            mutations.has("characterData") ||
-            mutations.has("fontLoaded"),
-        ),
-      );
+    // Same rule as rects: line boxes are client rects, so a transform toggled
+    // on an ancestor moves them too.
+    const dependency = subjects.get(text)?.pipe(filter((batch) => affectsRect(batch, text)));
     signal = new Derived(() => {
       if (dependency) {
         addDependency(dependency);
@@ -247,7 +475,7 @@ const parentElementCache = new WeakMap();
 export function getParentElement(node) {
   let signal = parentElementCache.get(node);
   if (!signal) {
-    const dependency = subjects.get(node)?.pipe(filter((mutations) => mutations.has("childList")));
+    const dependency = subjects.get(node)?.pipe(filter((batch) => batch.types.has("childList")));
     signal = new Derived(() => {
       if (dependency) {
         addDependency(dependency);

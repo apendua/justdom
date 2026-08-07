@@ -108,10 +108,12 @@ Two things about a portal are worth knowing before writing UI for one.
 
 **Sizes are re-measured when the tree changes, not when an attribute does.**
 The hover handlers write `data-xr-*` back onto the element they fired on, so
-re-measuring on every attribute mutation would mean re-laying-out the panel on
-every twitch of the ray. A class swap restyles and repaints; it does not
-re-measure. So anything that changes size — a menu opening, a section
-expanding — has to be mounted and unmounted rather than hidden and shown.
+re-measuring the panel on every attribute mutation would mean re-laying-out
+the whole thing on every twitch of the ray. A class swap restyles and
+repaints; the one thing it re-measures is the mutated element's own subtree,
+which is what a toggled `transform` moves (see below) — nothing outside it.
+So anything that changes *layout* — a menu opening, a section expanding —
+has to be mounted and unmounted rather than hidden and shown.
 
 **The panel's background is clickable, and it is the panel you should listen
 to.** A ray that lands on the panel but on none of its buttons hits the blocker
@@ -133,6 +135,50 @@ mouse click. A menu listening there closes itself the moment you reach for the
 control that was going to choose from it, which looks exactly like the ray
 having no effect. `getPortalRoot` returns null off a portal, where `document`
 is the right answer and there is nothing to disambiguate.
+
+## Transforms
+
+A CSS `transform` (with its `transform-origin`) is mirrored onto the
+element's object as a matrix, not baked into its geometry — which is what
+makes it the cheap way to move things: a `transform` written by a
+`[data-xr-hover]` or `[data-xr-active]` rule becomes a matrix write, with no
+re-layout and no re-rasterized text. Prefer it for motion, exactly as on the
+flat web.
+
+3D is real depth here, not a painted illusion: `rotateY` swings half the
+element *behind* its own surface — up to half its width deep — and the depth
+buffer will honestly clip it into the panel. Give anything 3D-rotated enough
+`translateZ` to keep the swing in front.
+
+One print of the measuring tape to know about: a transformed element (and
+everything under it) is measured off the layout — whole-pixel offsets —
+rather than the subpixel client rects untransformed content enjoys, because
+client rects come back with the transform already applied. Text under a
+transform is measured against a detached, untransformed clone of its parent
+instead, so its line boxes and positions are exact whatever the transform —
+including full 3D rotations — without the measurement ever touching the live
+elements or the transitions playing on them.
+
+## Animation
+
+CSS transitions, keyframe animations and Web Animations play inside a
+portal: while anything is animating, the affected elements are sampled once
+per frame — through the same invalidation path a mutation takes — and the
+moment nothing is, the sampling stops. An idle panel costs nothing.
+Inline-style writes from a `requestAnimationFrame` loop work too; each one
+is an ordinary mutation scoped to the element it touched.
+
+The cost per frame is the flat web's own hierarchy, and the guidance is the
+same one every web developer already knows. `transform` and `opacity` (and
+colours) are the cheap tier: a style read and a matrix or material write per
+animating element. Text is no exception — glyphs are rasterized once as a
+mask and coloured by the material, so animating `color` re-draws nothing.
+(The mask needs one colour: text with a `text-shadow`, or a decoration
+explicitly coloured something other than the text, keeps its colours baked
+into the texture and pays a re-draw per change.) Animating a *layout*
+property — `height`, `padding`, `font-size` — re-measures the panel every
+frame, because a growing element moves neighbours no one named. It works;
+save it for moments, not idle loops.
 
 ## Layers
 
@@ -196,6 +242,10 @@ This package drives several full apps in this monorepo —
 [`apps/todo-xr`](../../apps/todo-xr) — worth reading for realistic scenes
 combining lighting, keyed lists (`list`/`keyedList`), controller/hand input,
 and DOM panels projected into 3D space.
+[`apps/showcase-xr`](../../apps/showcase-xr) is the animation sampler: three
+panels demonstrating hover/press transitions, CSS keyframes, a Web Animations
+API animation, a `requestAnimationFrame` loop writing inline styles, animated
+text colour, static transforms, and a layout-tier width transition.
 
 ## License
 

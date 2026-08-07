@@ -42,7 +42,7 @@ function setup(cursor, cssText = "") {
   element.style.cursor = cursor;
   document.body.appendChild(element);
 
-  /** @type {Subject<Set<import('./cache.js').MutationType>>} */
+  /** @type {Subject<import('./cache.js').MutationBatch>} */
   const mutations = new Subject();
   setSubject(element, mutations);
 
@@ -88,12 +88,12 @@ function setup(cursor, cssText = "") {
     /** Announce a style change the way the portal's MutationObserver would. */
     restyle: (/** @type {string} */ value) => {
       element.style.cursor = value;
-      mutations.next(new Set(["attributes"]));
+      mutations.next({ types: new Set(["attributes"]), targets: new Set([element]) });
     },
     /** The same, for anything that is not the cursor. */
     restyleWith: (/** @type {string} */ cssText) => {
       element.style.cssText = cssText;
-      mutations.next(new Set(["attributes"]));
+      mutations.next({ types: new Set(["attributes"]), targets: new Set([element]) });
     },
     /** @param {"pointerenter" | "pointerleave"} type */
     dispatch: (type) => {
@@ -159,6 +159,84 @@ describe("div interactivity", () => {
     // And with the listeners detached, a stray event changes nothing.
     dispatch("pointerenter");
     assert.equal(element.dataset.xrHover, undefined);
+
+    subscription.unsubscribe();
+  });
+});
+
+describe("div rendering", () => {
+  test("the whole box is one quad: background and border ring share a mesh", () => {
+    const { object, subscription } = setup(
+      "default",
+      "background-color: rgb(255, 0, 0); border: 2px solid rgb(0, 0, 255)",
+    );
+
+    const meshes = object.children.filter((child) => child instanceof THREE.Mesh);
+    assert.equal(meshes.length, 1);
+    const [mesh] = meshes;
+    assert.ok(mesh.material instanceof THREE.ShaderMaterial);
+
+    const { uFillColor, uBorderColor, uBorder } = mesh.material.uniforms;
+    const fill = uFillColor.value;
+    assert.deepEqual([fill.x, fill.y, fill.z, fill.w], [1, 0, 0, 1]);
+    const border = uBorderColor.value;
+    assert.deepEqual([border.x, border.y, border.z, border.w], [0, 0, 1, 1]);
+    const widths = uBorder.value;
+    assert.deepEqual([widths.x, widths.y, widths.z, widths.w], [2, 2, 2, 2]);
+
+    subscription.unsubscribe();
+  });
+
+  test("a restyle is a uniform write on the same material", () => {
+    const { object, restyleWith, subscription } = setup(
+      "default",
+      "background-color: rgb(255, 0, 0)",
+    );
+    const [mesh] = object.children.filter((child) => child instanceof THREE.Mesh);
+    assert.ok(mesh.material instanceof THREE.ShaderMaterial);
+    const material = mesh.material;
+    const fill = material.uniforms.uFillColor.value;
+
+    restyleWith("background-color: rgb(0, 0, 255)");
+    assert.equal(mesh.material, material);
+    assert.equal(material.uniforms.uFillColor.value, fill);
+    assert.deepEqual([fill.x, fill.y, fill.z, fill.w], [0, 0, 1, 1]);
+
+    subscription.unsubscribe();
+  });
+});
+
+describe("div transforms", () => {
+  test("a CSS transform lands on the object's matrix, about its origin", () => {
+    const { object, subscription } = setup(
+      "default",
+      "transform: matrix(2, 0, 0, 2, 10, 20); transform-origin: 0px 0px",
+    );
+
+    // Writing the matrix directly: three.js must not recompose it from the
+    // untouched position/quaternion/scale on the next frame.
+    assert.equal(object.matrixAutoUpdate, false);
+
+    // Layout offsets are all zero under jsdom, so the matrix is the CSS one
+    // plus the content step in z.
+    const point = new THREE.Vector3(1, 1, 0).applyMatrix4(object.matrix);
+    assert.equal(point.x, 2 * 1 + 10);
+    assert.equal(point.y, 2 * 1 + 20);
+    assert.equal(point.z, -2);
+
+    subscription.unsubscribe();
+  });
+
+  test("removing the transform hands the object back to ordinary positioning", () => {
+    const { object, restyleWith, subscription } = setup(
+      "default",
+      "transform: matrix(1, 0, 0, 1, 10, 20)",
+    );
+    assert.equal(object.matrixAutoUpdate, false);
+
+    restyleWith("");
+    assert.equal(object.matrixAutoUpdate, true);
+    assert.equal(object.position.z, -2);
 
     subscription.unsubscribe();
   });

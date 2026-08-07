@@ -1,0 +1,30 @@
+{
+  "name": "@apendua.dev/showcase-xr",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build": "tsc && vite build",
+    "build:watch": "",
+    "dev": "vite",
+    "preview": "vite preview",
+    "test": ""
+  },
+  "dependencies": {
+    "@apendua.dev/media": "workspace:*",
+    "@apendua/freedom": "workspace:*",
+    "@apendua/justdom": "workspace:*",
+    "@apendua/signal": "workspace:*",
+    "@apendua/vite-hmr": "workspace:*",
+    "@iwer/devui": "^1.1.2",
+    "@types/node": "^24.7.0",
+    "@types/three": "~0.180.0",
+    "@vitejs/plugin-basic-ssl": "^2.1.0",
+    "@webgpu/types": "^0.1.65",
+    "eslint": "^9.37.0",
+    "iwer": "^2.1.1",
+    "rxjs": "^7.8.2",
+    "three": "~0.180.0",
+    "typescript": "^7.0.2",
+    "vite": "^7.1.9"
+  }
+}

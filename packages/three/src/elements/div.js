@@ -1,13 +1,19 @@
 import * as THREE from "three";
 import { onCleanup } from "@apendua/signal";
-import { Derived, effects, just, on, set, memoize, observable, useEffects } from "@apendua/signal";
+import { Derived, effects, just, on, set, observable, useEffects } from "@apendua/signal";
 import { distinctUntilChanged, switchMap } from "rxjs";
 import { $, children, Nothing } from "../operators.js";
 import { interactions } from "../interactions.js";
 import VisualProperties from "./VisualProperties.js";
-import { makeRectangleGeometry, shrinkRectangle } from "./rectangle.js";
+import { createRectMaterial, rectGeometry, writeRectUniforms } from "./sdfRect.js";
 import { createBlocker, coverBox } from "./blocker.js";
 import { getBoundingClientRectCached, getComputedStyleCached } from "./cache.js";
+import {
+  composeTransform,
+  getOwnTransform,
+  isTransformed,
+  untransformedOffset,
+} from "./cssTransform.js";
 import { isOverlay } from "./elevation.js";
 
 /**
@@ -63,44 +69,6 @@ export function div(ctx, element) {
   /** @type {THREE.Object3D<XREventMap>} */
   const object = new THREE.Object3D();
   const properties = new VisualProperties();
-
-  // const material = new Derived(() => {
-  //   const basic = new THREE.MeshBasicMaterial();
-  //   new Derived(() => {
-  //     basic.color.set(backgroundColor.get());
-  //   }).get();
-  //   onCleanup(() => {
-  //     basic.dispose();
-  //   });
-  //   return basic;
-  // });
-
-  const fillMaterial = memoize(
-    /**
-     * @param {THREE.Color} color
-     * @param {number} opacity
-     * @returns {THREE.Material}
-     */
-    (color, opacity) => {
-      const material = new THREE.MeshBasicMaterial({
-        side: THREE.DoubleSide,
-        color,
-        opacity,
-        transparent: opacity < 1.0,
-        // A fully transparent fill is still drawn, and by default still writes
-        // depth — an invisible hole punched through whatever it covers. That
-        // never showed while every box was strictly behind its own children,
-        // but an overlay's wrapper is in front of a whole panel, and most
-        // wrappers have no background at all.
-        colorWrite: opacity > 0,
-        depthWrite: opacity > 0,
-      });
-      onCleanup(() => {
-        material.dispose();
-      });
-      return material;
-    },
-  );
 
   const { makeInteractive, stopPropagation } = interactions(ctx);
 
@@ -190,17 +158,35 @@ export function div(ctx, element) {
       });
     }),
     effects((obj) => {
-      const elementRect = getBoundingClientRectCached(element);
-      const parentRect = element.parentElement
-        ? getBoundingClientRectCached(element.parentElement)
-        : null;
       // Only the element that opens a layer pays for it. Everything inside the
       // overlay is positioned against the overlay, so it comes along.
       const z = -CONTENT_STEP - (overlay.get() ? ELEVATION_STEP : 0);
-      if (parentRect) {
-        obj.position.set(elementRect.left - parentRect.left, elementRect.top - parentRect.top, z);
+      if (isTransformed(element)) {
+        // Client rects are transformed bounds — useless for a box that has to
+        // come out untransformed and then carry the CSS transform as its own
+        // matrix — so the position falls back to layout offsets. Layout moves
+        // still re-run this: `setFromElement` below reads the element's rect,
+        // and every structural mutation invalidates it.
+        const offset = untransformedOffset(element, element.parentElement);
+        const own = getOwnTransform(element);
+        obj.matrixAutoUpdate = false;
+        if (own) {
+          composeTransform(obj.matrix, offset.x, offset.y, z, own.matrix, own.origin);
+        } else {
+          obj.matrix.makeTranslation(offset.x, offset.y, z);
+        }
+        obj.matrixWorldNeedsUpdate = true;
       } else {
-        obj.position.set(elementRect.left, elementRect.top, z);
+        obj.matrixAutoUpdate = true;
+        const elementRect = getBoundingClientRectCached(element);
+        const parentRect = element.parentElement
+          ? getBoundingClientRectCached(element.parentElement)
+          : null;
+        if (parentRect) {
+          obj.position.set(elementRect.left - parentRect.left, elementRect.top - parentRect.top, z);
+        } else {
+          obj.position.set(elementRect.left, elementRect.top, z);
+        }
       }
       properties.setFromElement(element);
     }),
@@ -229,42 +215,28 @@ export function div(ctx, element) {
             : Nothing(),
         ),
       ),
-      $(new THREE.Mesh(), [
-        set("material", () => fillMaterial(properties.borderColor, properties.borderAlpha)),
-        set("geometry", () => {
-          const geometry = makeRectangleGeometry(properties.getRectangleParams(), {
-            left: properties.borderLeftWidth,
-            right: properties.borderRightWidth,
-            top: properties.borderTopWidth,
-            bottom: properties.borderBottomWidth,
-          });
+      // The whole box — background and border ring both — is one quad and a
+      // distance field. Geometry is shared and never rebuilt: a resize is a
+      // scale write, everything else a uniform write, which is what makes a
+      // layout animation affordable and a style change nearly free.
+      $(new THREE.Mesh(rectGeometry), [
+        set("material", () => {
+          const material = createRectMaterial();
           onCleanup(() => {
-            geometry.dispose();
+            material.dispose();
           });
-          return geometry;
+          return material;
         }),
         effects((obj) => {
-          obj.position.set(0, 0, 1);
-          obj.renderOrder = properties.renderOrder;
-        }),
-      ]),
-      $(new THREE.Mesh(), [
-        set("material", () => fillMaterial(properties.backgroundColor, properties.backgroundAlpha)),
-        set("geometry", () => {
-          const geometry = makeRectangleGeometry(
-            shrinkRectangle(properties.getRectangleParams(), {
-              left: properties.borderLeftWidth,
-              right: properties.borderRightWidth,
-              top: properties.borderTopWidth,
-              bottom: properties.borderBottomWidth,
-            }),
+          writeRectUniforms(/** @type {THREE.ShaderMaterial} */ (obj.material), properties);
+          // A quad scaled to nothing has no surface to draw or hit, and a
+          // zero scale is not invertible; an empty box is better described
+          // as very small — same convention as the blocker.
+          obj.scale.set(
+            Math.max(properties.totalWidth, 1e-6),
+            Math.max(properties.totalHeight, 1e-6),
+            1,
           );
-          onCleanup(() => {
-            geometry.dispose();
-          });
-          return geometry;
-        }),
-        effects((obj) => {
           obj.position.set(0, 0, 1);
           obj.renderOrder = properties.renderOrder;
         }),

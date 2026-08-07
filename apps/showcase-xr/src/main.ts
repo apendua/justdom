@@ -1,0 +1,44 @@
+import { from, map, switchMap } from "rxjs";
+import { render, createXRButton } from "@apendua/freedom";
+import Scene from "./components/Scene";
+import "./index.css";
+
+const root = document.querySelector<HTMLDivElement>("#root");
+if (!root) {
+  throw new Error("Root element not found");
+}
+
+const query = new URLSearchParams(location.search);
+
+// Available in production builds too, so the deployed demo can be exercised
+// from an ordinary browser. The import is dynamic, so the emulator and its dev
+// UI stay in a separate chunk that is only fetched when it is asked for.
+Promise.resolve(
+  query.has("emulator") ? import("./emulator.js").then(({ install }) => install()) : undefined,
+)
+  .catch((err) => {
+    console.error("Could not install the XR emulator:", err);
+  })
+  .then(() => {
+    render(Scene, { antialias: true })
+      .pipe(
+        switchMap((renderer) =>
+          from(
+            createXRButton(renderer, {
+              ar: { optionalFeatures: ["hand-tracking"] },
+              vr: { optionalFeatures: ["hand-tracking"] },
+            }),
+          ).pipe(
+            map((button) => {
+              const fragment = document.createDocumentFragment();
+              fragment.appendChild(renderer.domElement);
+              fragment.appendChild(button);
+              return fragment;
+            }),
+          ),
+        ),
+      )
+      .subscribe((node) => {
+        root.replaceChildren(node);
+      });
+  });

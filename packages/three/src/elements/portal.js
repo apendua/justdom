@@ -3,18 +3,18 @@ import { observable } from "@apendua/signal";
 import { Subject } from "rxjs";
 import { div } from "./div.js";
 import { text } from "./text.js";
-import { getBoundingClientRectCached, setSubject } from "./cache.js";
+import { getBoundingClientRectCached, PORTAL_ATTRIBUTE, setSubject } from "./cache.js";
+import { createAnimationClock } from "./animationClock.js";
 import { createBlocker, coverBox } from "./blocker.js";
 import { InteractionContext } from "../interactions.js";
+import { frames } from "../render.js";
 
 /**
  * @import {Observable} from 'rxjs';
  * @import {Mountable} from "@apendua/justdom";
  * @import {Object3D} from 'three';
- * @import {MutationType} from './cache.js';
+ * @import {MutationBatch, MutationType} from './cache.js';
  */
-
-const PORTAL_ATTRIBUTE = "data-xr-portal";
 
 /**
  * The portal a node was projected through, if it was.
@@ -43,6 +43,38 @@ export function getPortalRoot(node) {
 }
 
 /**
+ * Frames for the animation clock: the renderer's own when this portal lives
+ * inside a `render()` loop — emitted at the top of each frame, so the
+ * invalidations it triggers settle synchronously before that frame draws —
+ * and the browser's otherwise (tests, plain pages).
+ *
+ * @param {WeakKey} ctx
+ * @returns {(tick: () => void) => () => void}
+ */
+function createFrameRequester(ctx) {
+  return (tick) => {
+    try {
+      const subscription = frames(ctx).subscribe(() => tick());
+      return () => subscription.unsubscribe();
+    } catch {
+      let active = true;
+      let handle = 0;
+      const loop = () => {
+        if (active) {
+          tick();
+          handle = requestAnimationFrame(loop);
+        }
+      };
+      handle = requestAnimationFrame(loop);
+      return () => {
+        active = false;
+        cancelAnimationFrame(handle);
+      };
+    }
+  };
+}
+
+/**
  * @param {WeakKey} ctx
  */
 export function createPortal(ctx) {
@@ -55,14 +87,14 @@ export function createPortal(ctx) {
   /** @type {WeakMap<Object3D, () => void>} */
   const objectToCleanup = new WeakMap();
 
-  /** @type {Subject<Set<MutationType>>} */
+  /** @type {Subject<MutationBatch>} */
   const subject = new Subject();
 
   /**
-   * @param {Set<MutationType>} mutations
+   * @param {MutationBatch} batch
    */
-  function invalidateLayout(mutations) {
-    subject.next(mutations);
+  function invalidateLayout(batch) {
+    subject.next(batch);
   }
 
   /**
@@ -197,7 +229,14 @@ export function createPortal(ctx) {
     /** @type {Set<Node>} */
     const alreadySeen = new Set();
     /** @type {Set<MutationType>} */
-    const mutations = new Set();
+    const types = new Set();
+    // The records already say where each mutation happened — the mutated
+    // element for `attributes`, the parent for `childList`, the text node for
+    // `characterData` — so pass that along and let each cache decide how far
+    // a change at that node can reach, instead of treating every mutation as
+    // portal-wide.
+    /** @type {Set<Node>} */
+    const targets = new Set();
     for (const mutation of mutationList) {
       const parentObject = nodeToObject.get(mutation.target);
       if (mutation.type === "childList") {
@@ -209,7 +248,8 @@ export function createPortal(ctx) {
           }
         });
       }
-      mutations.add(mutation.type);
+      types.add(mutation.type);
+      targets.add(mutation.target);
     }
     for (const mutation of mutationList) {
       const parentObject = nodeToObject.get(mutation.target);
@@ -227,7 +267,7 @@ export function createPortal(ctx) {
         });
       }
     }
-    invalidateLayout(mutations);
+    invalidateLayout({ types, targets });
     // Every hand's hit is worked out only when that hand moves, so a menu that
     // opens under a ray resting on the button that opened it would go on
     // reporting the button as hovered until the player twitched. The scene
@@ -240,12 +280,35 @@ export function createPortal(ctx) {
     childList: true,
     subtree: true,
     attributes: true,
-    attributeFilter: ["data-xr-hover", "data-xr-active", "class"],
+    // `style` makes rAF-driven inline-style animation just work: each write
+    // is a mutation scoped to the element that moved. Safe now that
+    // invalidation is per-target — before that, every inline write would
+    // have re-read the whole portal.
+    attributeFilter: ["data-xr-hover", "data-xr-active", "class", "style"],
     characterData: true,
   });
 
+  // CSS transitions, keyframe animations and Web Animations mutate nothing —
+  // the styles move while the DOM holds still — so the observer above never
+  // hears about them. The clock samples the animating elements once per
+  // frame instead, and requests no frames at all while nothing animates.
+  const animationClock = createAnimationClock(
+    containerElement,
+    (batches) => {
+      for (const batch of batches) {
+        invalidateLayout(batch);
+      }
+      // Animated content moves under a stationary ray just like mutated
+      // content does.
+      interactionManager.updateIntersections();
+    },
+    createFrameRequester(ctx),
+  );
+
   function fontLoadingCallback() {
-    invalidateLayout(new Set(["fontLoaded"]));
+    // Fonts arriving restyle and re-measure everything at once; there is no
+    // node to scope that to.
+    invalidateLayout({ types: new Set(["fontLoaded"]), targets: null });
   }
   if (document.fonts) {
     document.fonts.addEventListener("loadingdone", fontLoadingCallback);
@@ -264,6 +327,7 @@ export function createPortal(ctx) {
     }
     resizeSubscription.unsubscribe();
     mutationObserver.disconnect();
+    animationClock.dispose();
   });
   nodeToObject.set(containerElement, containerObject);
   objectToNode.set(containerObject, containerElement);

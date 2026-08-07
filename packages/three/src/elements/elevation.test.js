@@ -1,6 +1,6 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
-import { getElevation, isOverlay } from "./elevation.js";
+import { getContentRenderOrder, getElevation, isOverlay } from "./elevation.js";
 
 /**
  * @param {string} cssText
@@ -67,5 +67,25 @@ describe("getElevation", () => {
     assert.equal(getElevation(modal), 1);
     assert.equal(getElevation(body), 1);
     assert.equal(getElevation(menu), 2);
+  });
+});
+
+describe("getContentRenderOrder", () => {
+  test("an element's content draws after its own box, before its child's content", () => {
+    const panel = element("");
+    const button = element("", panel);
+
+    // The box's own figure is elevation·1000 + ancestor count; content is one
+    // deeper — counted from the element itself.
+    assert.equal(getContentRenderOrder(button), getContentRenderOrder(panel) + 1);
+    assert.ok(getContentRenderOrder(panel) > 0);
+  });
+
+  test("an overlay's content draws in the overlay's band", () => {
+    const panel = element("");
+    const menu = element("position: absolute; z-index: 1", panel);
+
+    assert.ok(getContentRenderOrder(menu) >= 1000);
+    assert.ok(getContentRenderOrder(menu) - getContentRenderOrder(panel) >= 1000);
   });
 });

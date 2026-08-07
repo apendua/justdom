@@ -3,11 +3,8 @@ import { addDependency, batch, NoValueError, memo, decorate, memoFn } from "@ape
 import { fromEvent, store } from "@apendua/signal";
 import { filter, from, Subject } from "rxjs";
 import { getBoundingClientRectCached, getComputedStyleCached } from "./cache.js";
+import { isTransformed } from "./cssTransform.js";
 import { getElevation } from "./elevation.js";
-
-/**
- * @imprt {RectangleParams} from './rectangle.js';
- */
 
 /**
  * @typedef {object} RawVisualProperties
@@ -46,10 +43,6 @@ import { getElevation } from "./elevation.js";
  * @property {number} borderBottomRightRadius
  * @property {number} borderTopLeftRadius
  * @property {number} borderTopRightRadius
- * @property {number} borderLeftBottomRadius
- * @property {number} borderLeftTopRadius
- * @property {number} borderRightBottomRadius
- * @property {number} borderRightTopRadius
  * @property {THREE.Color} backgroundColor
  * @property {number} backgroundAlpha
  * @property {THREE.Color} borderColor
@@ -59,35 +52,6 @@ import { getElevation } from "./elevation.js";
  * @property {number} layerNo
  * @property {number} elevation
  */
-
-// /**
-//  * @param {IVisualProperties} properties
-//  * @returns {IVisualProperties}
-//  */
-// function normalize(properties) {
-//   const p = { ...properties };
-//   if (p.borderLeftTopRadius + p.borderLeftBottomRadius > p.totalHeight) {
-//     const scale = p.totalHeight / (p.borderLeftTopRadius + p.borderLeftBottomRadius);
-//     p.borderLeftTopRadius *= scale;
-//     p.borderLeftBottomRadius *= scale;
-//   }
-//   if (p.borderRightTopRadius + p.borderRightBottomRadius > p.totalHeight) {
-//     const scale = p.totalHeight / (p.borderRightTopRadius + p.borderRightBottomRadius);
-//     p.borderRightTopRadius *= scale;
-//     p.borderRightBottomRadius *= scale;
-//   }
-//   if (p.borderTopLeftRadius + p.borderTopRightRadius > p.totalWidth) {
-//     const scale = p.totalWidth / (p.borderTopLeftRadius + p.borderTopRightRadius);
-//     p.borderTopLeftRadius *= scale;
-//     p.borderTopRightRadius *= scale;
-//   }
-//   if (p.borderBottomLeftRadius + p.borderBottomRightRadius > p.totalWidth) {
-//     const scale = p.totalWidth / (p.borderBottomLeftRadius + p.borderBottomRightRadius);
-//     p.borderBottomLeftRadius *= scale;
-//     p.borderBottomRightRadius *= scale;
-//   }
-//   return p;
-// }
 
 /**
  * @typedef {'INITIALIZED'} EventType
@@ -135,7 +99,7 @@ function parseSize(value, units) {
  * @param {string} colorString
  * @returns {[THREE.Color, number]}
  */
-function parseColor(colorString) {
+export function parseColor(colorString) {
   const match = colorString.match(/rgba?\(([^,]+),([^,]+),([^,]+)(?:,\s*([\d.]+))?\)/);
   if (!match) {
     const color = new THREE.Color();
@@ -205,24 +169,6 @@ export default class VisualProperties {
     return rect.height / 100;
   }
 
-  getRectangleParams() {
-    this.#assertInitialized();
-    return {
-      left: 0,
-      right: this.totalWidth,
-      top: 0,
-      bottom: this.totalHeight,
-      leftTop: this.borderLeftTopRadius,
-      leftBottom: this.totalHeight - this.borderLeftBottomRadius,
-      bottomLeft: this.borderBottomLeftRadius,
-      bottomRight: this.totalWidth - this.borderBottomRightRadius,
-      rightBottom: this.totalHeight - this.borderRightBottomRadius,
-      rightTop: this.borderRightTopRadius,
-      topRight: this.totalWidth - this.borderTopRightRadius,
-      topLeft: this.borderTopLeftRadius,
-    };
-  }
-
   /**
    * @param {HTMLElement} element
    * @param {string | null} [pseudoElement]
@@ -230,13 +176,20 @@ export default class VisualProperties {
   setFromElement(element, pseudoElement = null) {
     const style = getComputedStyleCached(element, pseudoElement);
     const rect = getBoundingClientRectCached(element);
+    // A client rect includes CSS transforms; the box the mirror draws must
+    // not — its object carries the transform itself, and would apply it a
+    // second time. Layout sizes are whole px, but transform-free, so they
+    // take over whenever a transform sits anywhere on the chain. The rect is
+    // still read either way: it is the dependency that re-runs this when the
+    // layout moves.
+    const transformed = isTransformed(element);
     const fontSize = parseFloat(style.fontSize || "0");
     const [inheritedOpacity, layerNo] = getInheritedOpacity(element);
     const opacity = parseFloat(style.opacity || "1") * inheritedOpacity;
     /** @type {RawVisualProperties} */
     const properties = {
-      totalWidth: rect.width,
-      totalHeight: rect.height,
+      totalWidth: transformed ? element.offsetWidth : rect.width,
+      totalHeight: transformed ? element.offsetHeight : rect.height,
       opacity,
       fontSize,
       fontFamily: style.fontFamily,
@@ -359,22 +312,6 @@ export default class VisualProperties {
     return parseSize(this.#props.borderTopRightRadius, this.unitsW);
   }
 
-  get borderLeftBottomRadius() {
-    return parseSize(this.#props.borderBottomLeftRadius, this.unitsH);
-  }
-
-  get borderLeftTopRadius() {
-    return parseSize(this.#props.borderTopLeftRadius, this.unitsH);
-  }
-
-  get borderRightBottomRadius() {
-    return parseSize(this.#props.borderBottomRightRadius, this.unitsH);
-  }
-
-  get borderRightTopRadius() {
-    return parseSize(this.#props.borderTopRightRadius, this.unitsH);
-  }
-
   get backgroundColor() {
     const [backgroundColor] = parseColor(this.#props.backgroundColor);
     return backgroundColor;
@@ -428,7 +365,6 @@ export default class VisualProperties {
 }
 
 decorate(VisualProperties.prototype, "getRelativeXHeight", memoFn());
-decorate(VisualProperties.prototype, "getRectangleParams", memoFn());
 decorate(VisualProperties.prototype, "totalWidth", memo());
 decorate(VisualProperties.prototype, "totalHeight", memo());
 decorate(VisualProperties.prototype, "fontSize", memo());
@@ -443,10 +379,6 @@ decorate(VisualProperties.prototype, "borderBottomLeftRadius", memo());
 decorate(VisualProperties.prototype, "borderBottomRightRadius", memo());
 decorate(VisualProperties.prototype, "borderTopLeftRadius", memo());
 decorate(VisualProperties.prototype, "borderTopRightRadius", memo());
-decorate(VisualProperties.prototype, "borderLeftBottomRadius", memo());
-decorate(VisualProperties.prototype, "borderLeftTopRadius", memo());
-decorate(VisualProperties.prototype, "borderRightBottomRadius", memo());
-decorate(VisualProperties.prototype, "borderRightTopRadius", memo());
 decorate(VisualProperties.prototype, "backgroundColor", memo());
 decorate(VisualProperties.prototype, "backgroundAlpha", memo());
 decorate(VisualProperties.prototype, "borderColor", memo());

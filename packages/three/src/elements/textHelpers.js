@@ -135,6 +135,30 @@ export function getTextRenderStyle(style) {
 }
 
 /**
+ * Whether the node's glyphs can be rasterized once as a white mask and
+ * colored by the material, instead of baking the color into the texture.
+ * Masked text makes color a material write — animating `color` re-draws
+ * nothing — so it is the preferred path, and almost every label qualifies.
+ *
+ * What disqualifies: a `text-shadow` (the shadow must not take the text's
+ * color, so both get baked), and a decoration explicitly colored something
+ * other than the text (two colors, one mask). A decoration in
+ * `currentcolor` — the default — tints right along with the glyphs.
+ *
+ * @param {CSSStyleDeclaration} style
+ * @returns {boolean}
+ */
+export function isTintableText(style) {
+  const shadow = style.textShadow || "none";
+  if (shadow !== "none") {
+    return false;
+  }
+  const line = style.textDecorationLine || "none";
+  const color = style.textDecorationColor || "currentcolor";
+  return line === "none" || color === "currentcolor";
+}
+
+/**
  * @param {string} text
  * @param {string} textTransform
  * @returns {string}
@@ -377,9 +401,16 @@ function measureFontExtent(text, context, fallback, side) {
  * @param {TextRenderStyle} style
  * @param {TextBounds} bounds
  * @param {number} viewportDpr
+ * @param {boolean} [mask] Rasterize as a coverage mask: white glyphs on an
+ *   *opaque black* ground, meant to be read through a material's alpha map.
+ *   Opacity is the point — on a transparent canvas the antialiasing lives
+ *   only in the alpha channel, and the un-premultiplication that happens on
+ *   upload rounds every partially covered texel's color back to full white,
+ *   so a coverage read from a color channel comes out aliased. Painted onto
+ *   black, the color channels *are* the coverage, gradient and all.
  * @returns {TextTexture}
  */
-export const generateTextTexture = (lines, style, bounds, viewportDpr) => {
+export const generateTextTexture = (lines, style, bounds, viewportDpr, mask = false) => {
   const measuring = getMeasuringContext();
   measuring.font = style.font;
   const ascent = measureFontExtent("Mg", measuring, style.fontSize * 0.8, "Ascent");
@@ -414,6 +445,10 @@ export const generateTextTexture = (lines, style, bounds, viewportDpr) => {
   }
 
   context.scale(effectiveDpr, effectiveDpr);
+  if (mask) {
+    context.fillStyle = "#000000";
+    context.fillRect(0, 0, textureBounds.width, textureBounds.height);
+  }
   context.font = style.font;
   context.fillStyle = style.color;
   context.textAlign = "left";
@@ -439,10 +474,16 @@ export const generateTextTexture = (lines, style, bounds, viewportDpr) => {
 
   const texture = new THREE.CanvasTexture(canvas);
   texture.flipY = true;
-  texture.colorSpace = THREE.SRGBColorSpace;
-  texture.minFilter = THREE.LinearFilter;
+  // A mask is coverage data, not color. Tagged sRGB it would be uploaded to
+  // an sRGB internal format and the *hardware* would linearize every sample —
+  // a half-covered edge texel would come back as 0.21 instead of 0.5, and the
+  // glyph edges would collapse to a thin, crispy rim.
+  texture.colorSpace = mask ? THREE.NoColorSpace : THREE.SRGBColorSpace;
+  // Mipmapped: a panel at arm's length draws its texture well under 1:1, and
+  // an unmipped linear sample there dances between texels as the head moves.
+  texture.minFilter = THREE.LinearMipmapLinearFilter;
   texture.magFilter = THREE.LinearFilter;
-  texture.generateMipmaps = false;
+  texture.generateMipmaps = true;
   texture.needsUpdate = true;
 
   onCleanup(() => {

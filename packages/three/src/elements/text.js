@@ -9,7 +9,8 @@ import {
   makeTextQuadGeometry,
 } from "./textHelpers.js";
 import { parseColor } from "./VisualProperties.js";
-import { getComputedStyleCached, getTextLayout } from "./cache.js";
+import { getComputedStyleCached, getParentElement, getTextLayout } from "./cache.js";
+import { getContentRenderOrder } from "./elevation.js";
 
 /**
  * @import { Observable } from "rxjs";
@@ -94,6 +95,11 @@ export function text(_, textNode) {
             transparent: true,
             alphaTest: 0.001,
             color: "white",
+            // Text never occludes through the depth buffer: an antialiased
+            // edge pixel that wrote depth would keep out whatever renders
+            // after it — and with the draw order below, nothing that should
+            // sit in front of text renders before it.
+            depthWrite: false,
           });
           onCleanup(() => {
             basic.dispose();
@@ -143,6 +149,19 @@ export function text(_, textNode) {
         }),
         effects((obj) => {
           obj.position.set(0, 0, 0.01);
+        }),
+        // One step past the parent's own box in the draw order. Boxes carry
+        // `elevation * 1000 + layer` and text meshes defaulted to 0, so every
+        // glyph drew *before* the surface it sits on: its antialiased edges
+        // blended with whatever was behind the panel — usually the scene's
+        // dark background — and wrote depth that then kept the surface from
+        // filling in behind them. A thin dark border around every letter, and
+        // no texture could fix it.
+        effects((obj) => {
+          const parentElement = getParentElement(textNode);
+          if (parentElement) {
+            obj.renderOrder = getContentRenderOrder(parentElement);
+          }
         }),
       ]),
     ),

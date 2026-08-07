@@ -474,10 +474,16 @@ export const generateTextTexture = (lines, style, bounds, viewportDpr, mask = fa
 
   const texture = new THREE.CanvasTexture(canvas);
   texture.flipY = true;
-  texture.colorSpace = THREE.SRGBColorSpace;
-  texture.minFilter = THREE.LinearFilter;
+  // A mask is coverage data, not color. Tagged sRGB it would be uploaded to
+  // an sRGB internal format and the *hardware* would linearize every sample —
+  // a half-covered edge texel would come back as 0.21 instead of 0.5, and the
+  // glyph edges would collapse to a thin, crispy rim.
+  texture.colorSpace = mask ? THREE.NoColorSpace : THREE.SRGBColorSpace;
+  // Mipmapped: a panel at arm's length draws its texture well under 1:1, and
+  // an unmipped linear sample there dances between texels as the head moves.
+  texture.minFilter = THREE.LinearMipmapLinearFilter;
   texture.magFilter = THREE.LinearFilter;
-  texture.generateMipmaps = false;
+  texture.generateMipmaps = true;
   texture.needsUpdate = true;
 
   onCleanup(() => {

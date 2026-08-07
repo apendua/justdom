@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import * as THREE from "three";
 import { Subject } from "rxjs";
 import { InteractionContext } from "../interactions.js";
-import { setSubject } from "./cache.js";
+import { PORTAL_ATTRIBUTE, setSubject } from "./cache.js";
 import { checkbox } from "./checkbox.js";
 
 /**
@@ -39,6 +39,12 @@ function setup({ checked = false, disabled = false } = {}) {
   element.checked = checked;
   element.disabled = disabled;
   element.style.cssText = "width: 20px; height: 20px";
+  // jsdom lays nothing out, so the CSS above reaches the computed style but
+  // never the rect — and a box measured at zero, less its borders, comes out
+  // negative and takes the tick's geometry with it. Say what a browser would
+  // have said.
+  element.getBoundingClientRect = () =>
+    /** @type {DOMRect} */ ({ left: 0, top: 0, right: 20, bottom: 20, width: 20, height: 20 });
   document.body.appendChild(element);
 
   /** @type {Subject<MutationBatch>} */
@@ -185,11 +191,25 @@ describe("checkbox", () => {
     restyle("width: 20px; height: 20px; border: 4px solid rgb(0, 0, 0); color: rgb(255, 0, 0)");
 
     const [mark] = marks;
-    assert.ok(mark, "the mark is offset by the border it sits inside");
-    assert.equal(mark.position.x, 4);
-    assert.equal(mark.position.y, 4);
+    assert.ok(mark);
+
+    // The tick is authored in the element's own coordinates — the frame its
+    // clip box is given in — so the border offset is in the vertices rather
+    // than in the mesh's position.
+    assert.equal(mark.position.x, 0);
+    assert.equal(mark.position.y, 0);
     // In front of the background, which `div` draws at +1.
     assert.equal(mark.position.z, 0);
+
+    mark.geometry.computeBoundingBox();
+    const bounds = mark.geometry.boundingBox;
+    assert.ok(bounds);
+    // Inside the content box: past the 4px border on each side, and short of
+    // the far edge 12px later.
+    assert.ok(bounds.min.x >= 4, `left edge ${bounds.min.x} clears the border`);
+    assert.ok(bounds.min.y >= 4, `top edge ${bounds.min.y} clears the border`);
+    assert.ok(bounds.max.x <= 16, `right edge ${bounds.max.x} stays inside`);
+    assert.ok(bounds.max.y <= 16, `bottom edge ${bounds.max.y} stays inside`);
 
     const material = /** @type {MeshBasicMaterial} */ (mark.material);
     assert.equal(material.color.getHexString(), "ff0000");
@@ -228,5 +248,138 @@ describe("checkbox", () => {
     assert.deepEqual(seen, ["change:true", "change:false"]);
 
     subscription.unsubscribe();
+  });
+});
+
+/**
+ * A ticked checkbox 20px square, sitting 10px into a 100px `overflow: hidden`
+ * scroller — the same arrangement `div.test.js` uses for a row, because a
+ * checkbox in a scrolling list is exactly where the tick meets the clip.
+ */
+function setupScrolledCheckbox() {
+  let scrollTop = 0;
+
+  const container = document.createElement("div");
+  container.setAttribute(PORTAL_ATTRIBUTE, "");
+  const scroller = document.createElement("div");
+  const element = document.createElement("input");
+
+  scroller.style.overflow = "hidden";
+  element.type = "checkbox";
+  element.checked = true;
+  scroller.appendChild(element);
+  container.appendChild(scroller);
+  document.body.appendChild(container);
+
+  /** @type {Subject<MutationBatch>} */
+  const mutations = new Subject();
+  for (const node of [container, scroller, element]) {
+    setSubject(node, mutations);
+  }
+
+  /**
+   * @param {Element} target
+   * @param {() => [number, number, number, number]} rect
+   */
+  const layout = (target, rect) => {
+    target.getBoundingClientRect = () => {
+      const [left, top, right, bottom] = rect();
+      return /** @type {DOMRect} */ ({
+        left,
+        top,
+        right,
+        bottom,
+        width: right - left,
+        height: bottom - top,
+      });
+    };
+  };
+  layout(container, () => [0, 0, 200, 100]);
+  layout(scroller, () => [0, 0, 200, 100]);
+  layout(element, () => [0, 10 - scrollTop, 20, 30 - scrollTop]);
+
+  const manager = /** @type {InteractionManager} */ (
+    /** @type {unknown} */ ({ add: () => {}, remove: () => {}, stopPropagation: () => {} })
+  );
+
+  /** @type {Object3D<XREventMap>} */
+  let object;
+  const subscription = checkbox(InteractionContext.set({}, manager), element).subscribe((value) => {
+    object = /** @type {Object3D<XREventMap>} */ (value);
+  });
+
+  return {
+    container,
+    subscription,
+    get mark() {
+      return /** @type {Mesh} */ (
+        object.children.find(
+          (child) =>
+            child instanceof THREE.Mesh && !(child.material instanceof THREE.ShaderMaterial),
+        )
+      );
+    },
+    /** @param {number} value */
+    scrollTo: (value) => {
+      scrollTop = value;
+      mutations.next({ types: new Set(["scroll"]), targets: new Set([scroller]) });
+    },
+  };
+}
+
+describe("checkbox clipping", () => {
+  test("the tick is told what the scroller leaves of it, in the element's own px", () => {
+    const { container, mark, scrollTo, subscription } = setupScrolledCheckbox();
+    try {
+      // `applyClip` hands the uniform to the compiled program rather than
+      // keeping it on the material, so the patch is the only way to reach it
+      // without a GL context — which is also proof the patch is installed.
+      const material = /** @type {MeshBasicMaterial} */ (mark.material);
+      assert.equal(material.customProgramCacheKey?.(), "freedom-clip", "the tick is clipped");
+      /** @type {{uniforms: Record<string, {value: THREE.Vector4}>, vertexShader: string, fragmentShader: string}} */
+      const shader = {
+        uniforms: {},
+        vertexShader: "void main() {\n#include <begin_vertex>\n}",
+        fragmentShader: "void main() {\n#include <alphatest_fragment>\n}",
+      };
+      material.onBeforeCompile(/** @type {any} */ (shader), /** @type {any} */ (null));
+      const clip = shader.uniforms.clipBox;
+      assert.ok(clip, "the clip box reaches the shader");
+
+      // The window is the scroller's whole padding box; the checkbox starts
+      // 10px down it, so it may draw from its own -10 to its own 90.
+      assert.deepEqual(clip.value.toArray(), [0, -10, 200, 90]);
+
+      scrollTo(30);
+      assert.deepEqual(
+        clip.value.toArray(),
+        [0, 20, 200, 120],
+        "the window has not moved, so in the checkbox's coordinates it slides the other way",
+      );
+
+      subscription.unsubscribe();
+    } finally {
+      container.remove();
+    }
+  });
+
+  test("the tick's hit region is trimmed too, not just its drawing", () => {
+    const { container, mark, subscription } = setupScrolledCheckbox();
+    try {
+      // A raycast consults neither a discarded fragment nor `visible`, so a
+      // tick that was only clipped in the shader would still answer rays
+      // aimed at the part of it that has scrolled out of the list — the thing
+      // that makes a scrolling list feel broken rather than unfinished.
+      // `clipRaycast` wraps the mesh's own `raycast`; inheriting the
+      // prototype's means it never did.
+      assert.ok(
+        Object.prototype.hasOwnProperty.call(mark, "raycast"),
+        "the mark carries a raycast filter of its own",
+      );
+
+      subscription.unsubscribe();
+    } finally {
+      container.remove();
+    }
   });
 });

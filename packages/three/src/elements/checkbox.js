@@ -4,6 +4,7 @@ import { distinctUntilChanged, switchMap } from "rxjs";
 import { $, Nothing } from "../operators.js";
 import { box } from "./div.js";
 import { getCheckedCached, getComputedStyleCached } from "./cache.js";
+import { applyClip } from "./clip.js";
 
 /**
  * @import {Observable} from 'rxjs';
@@ -93,10 +94,14 @@ function thickenPolyline(points, halfWidth) {
  *
  * @param {number} width
  * @param {number} height
+ * @param {number} originX Where the content box starts within the element,
+ *   so that the tick comes out in the element's own coordinates — the frame
+ *   its clip box is given in.
+ * @param {number} originY
  * @returns {THREE.BufferGeometry}
  */
-function makeTickGeometry(width, height) {
-  const points = TICK.map(([x, y]) => new THREE.Vector2(x * width, y * height));
+function makeTickGeometry(width, height, originX, originY) {
+  const points = TICK.map(([x, y]) => new THREE.Vector2(originX + x * width, originY + y * height));
   const halfWidth = (TICK_WIDTH * Math.min(width, height)) / 2;
   const { left, right } = thickenPolyline(points, halfWidth);
 
@@ -130,11 +135,27 @@ function makeTickGeometry(width, height) {
  * text's is: `color` is the property most likely to be animated on a control,
  * and a colour change should cost a uniform write rather than a new material.
  *
+ * The mark is clipped like everything else a portal draws. A checkbox in a
+ * scrolling list reaches the edge of its window and is cut there; a tick that
+ * ignored the cut would hang outside the list, and — since a raycast consults
+ * neither a discarded fragment nor `visible` — go on being clickable out
+ * there. `applyClip` handles the drawing, `clipMesh` the hit region.
+ *
  * @param {BoxSurface} surface
  * @returns {Observable<Component>}
  */
-function tick({ properties, contentRenderOrder }) {
-  return $(new THREE.Mesh(), [
+function tick({ properties, contentRenderOrder, clipBox, clipMesh }) {
+  // Created here rather than inline, because `clipMesh` wraps `raycast` and
+  // has to do so exactly once — the same reason `div` builds its own quad
+  // outside the operators that dress it.
+  const mesh = new THREE.Mesh();
+  clipMesh(mesh);
+
+  // Shared with the material's compiled shader; the effect below writes the
+  // current box into it as the element scrolls or the layout moves.
+  const clipUniform = { value: new THREE.Vector4(-1e6, -1e6, 1e6, 1e6) };
+
+  return $(mesh, [
     set("material", () => {
       const material = new THREE.MeshBasicMaterial({
         // Two-sided, and not writing depth, for the same reasons everything
@@ -145,15 +166,21 @@ function tick({ properties, contentRenderOrder }) {
         transparent: true,
         depthWrite: false,
       });
+      applyClip(material, clipUniform);
       onCleanup(() => {
         material.dispose();
       });
       return material;
     }),
     set("geometry", () => {
+      // In the element's own coordinates, not the content box's, so that the
+      // clip box — which is given in the element's frame — applies to the
+      // vertices as they stand.
       const geometry = makeTickGeometry(
         properties.totalWidth - properties.borderLeftWidth - properties.borderRightWidth,
         properties.totalHeight - properties.borderTopWidth - properties.borderBottomWidth,
+        properties.borderLeftWidth,
+        properties.borderTopWidth,
       );
       onCleanup(() => {
         geometry.dispose();
@@ -165,8 +192,14 @@ function tick({ properties, contentRenderOrder }) {
       material.color.copy(properties.textColor);
       material.opacity = properties.textAlpha;
     }),
+    // Its own effect, so that a scroll writes four numbers and nothing else —
+    // the same split `div` makes for the box's clip uniforms.
+    effects(() => {
+      const box = clipBox();
+      clipUniform.value.set(box.left, box.top, box.right, box.bottom);
+    }),
     effects((obj) => {
-      obj.position.set(properties.borderLeftWidth, properties.borderTopWidth, 1 - MARK_STEP);
+      obj.position.set(0, 0, 1 - MARK_STEP);
       // The box's own draw order plus one: transparency is sorted rather than
       // depth-tested, so a mark that drew before the surface it sits on would
       // blend its edges with whatever is behind the panel.

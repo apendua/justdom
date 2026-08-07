@@ -27,6 +27,7 @@ import { isScrollable, scrollDrags } from "./scroll.js";
 
 /**
  * @import {Component, XREventMap} from '../core.js';
+ * @import {ClipBox} from './clip.js';
  * @import {Observable} from 'rxjs';
  * @import {MonoTypeOperatorFunction} from 'rxjs';
  */
@@ -75,9 +76,22 @@ function isClickable(element) {
  * step with the surface it sits on — and where that content belongs in the
  * draw order, which is one step past the box's own.
  *
+ * Content is clipped the way the box itself is, and has to be: an element
+ * scrolled to the edge of an `overflow: hidden` window is cut there, and a
+ * mark drawn inside it that ignored the cut would hang outside the window and
+ * go on being clickable there. Both halves of that are handed over —
+ * `clipBox` for the drawing, `clipMesh` for the hit region — expressed in the
+ * element's own coordinates, which is the frame content should be authored
+ * in.
+ *
  * @typedef {object} BoxSurface
  * @property {VisualProperties} properties
  * @property {() => number} contentRenderOrder
+ * @property {() => ClipBox} clipBox What the overflow-hiding ancestors leave
+ *   of this element, read reactively — for `applyClip`'s uniform.
+ * @property {(mesh: THREE.Mesh) => void} clipMesh Trim a mesh's hits to that
+ *   same region. Call once, on a mesh that is not replaced: it wraps
+ *   `raycast`, so calling it again on every restyle would nest the wrappers.
  */
 
 /**
@@ -457,6 +471,14 @@ export function box(ctx, element, options = {}) {
       ...content({
         properties,
         contentRenderOrder: () => getContentRenderOrder(element),
+        clipBox: () => clipBox.get(),
+        // The snapshot rather than the signal, and this element's frame rather
+        // than the mesh's — the same two reasons the box's own quad is trimmed
+        // this way: the filter runs inside three's traversal, and content is
+        // authored in the element's coordinates.
+        clipMesh: (mesh) => {
+          clipRaycast(mesh, () => currentClipBox, object);
+        },
       }),
     ),
   ]);

@@ -236,6 +236,10 @@ This package drives several full apps in this monorepo —
 [`apps/todo-xr`](../../apps/todo-xr) — worth reading for realistic scenes
 combining lighting, keyed lists (`list`/`keyedList`), controller/hand input,
 and DOM panels projected into 3D space.
+[`apps/showcase-xr`](../../apps/showcase-xr) is the animation sampler: three
+panels demonstrating hover/press transitions, CSS keyframes, a Web Animations
+API animation, a `requestAnimationFrame` loop writing inline styles, animated
+text colour, static transforms, and a layout-tier width transition.
 
 ## License
 

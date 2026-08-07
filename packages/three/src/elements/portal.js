@@ -305,6 +305,28 @@ export function createPortal(ctx) {
     createFrameRequester(ctx),
   );
 
+  /**
+   * A scroll mutates nothing — no attribute, no child, no character — so the
+   * observer never hears about it, and the animation clock has no animation
+   * to sample. What it does do is move every client rect inside the scroller,
+   * which is exactly what `reflow` says, scoped to the subtree that moved.
+   * The listener is capturing because scroll events do not bubble.
+   *
+   * @param {Event} event
+   */
+  const scrollCallback = (event) => {
+    const target = event.target;
+    if (!(target instanceof Node)) {
+      return;
+    }
+    invalidateLayout({ types: new Set(["reflow"]), targets: new Set([target]) });
+    // Content has moved out from under a ray that did not move with it. The
+    // manager only recasts when a hand moves or when it is told the scene
+    // changed, and this is the second case.
+    interactionManager.updateIntersections();
+  };
+  containerElement.addEventListener("scroll", scrollCallback, true);
+
   function fontLoadingCallback() {
     // Fonts arriving restyle and re-measure everything at once; there is no
     // node to scope that to.
@@ -325,6 +347,7 @@ export function createPortal(ctx) {
     if (document.fonts) {
       document.fonts.removeEventListener("loadingdone", fontLoadingCallback);
     }
+    containerElement.removeEventListener("scroll", scrollCallback, true);
     resizeSubscription.unsubscribe();
     mutationObserver.disconnect();
     animationClock.dispose();

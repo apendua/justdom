@@ -4,10 +4,13 @@ import { Subject } from "rxjs";
 import { Derived, selector, toObservable } from "@apendua/signal";
 import {
   getBoundingClientRectCached,
+  getClipBoxCached,
   getComputedStyleCached,
   getTextLayout,
+  PORTAL_ATTRIBUTE,
   setSubject,
 } from "./cache.js";
+import { UNCLIPPED } from "./clip.js";
 
 describe("getComputedStyleCached", () => {
   test("style invalidations propagate even though the declaration is a live object", () => {
@@ -314,6 +317,139 @@ describe("text layout as a dependency", () => {
       subject.complete();
       parent.remove();
       document.createRange = originalCreateRange;
+    }
+  });
+});
+
+/**
+ * A portal-shaped tree with a layout, which jsdom does not otherwise have: a
+ * container standing in for the portal's own element, a scroller that hides
+ * its overflow behind a 2px border and 10px corners, and a row inside it that
+ * slides as the list scrolls.
+ */
+function setupScroller() {
+  let scrollTop = 0;
+  let scrollerBottom = 100;
+
+  const container = document.createElement("div");
+  container.setAttribute(PORTAL_ATTRIBUTE, "");
+  const scroller = document.createElement("div");
+  const row = document.createElement("div");
+  const label = document.createTextNode("row");
+
+  scroller.style.overflow = "hidden";
+  scroller.style.borderWidth = "2px";
+  // Longhands, not the shorthand: jsdom does not expand `border-radius` into
+  // the four corner properties the way a browser's computed style does.
+  scroller.style.borderTopLeftRadius = "10px";
+  scroller.style.borderTopRightRadius = "10px";
+  scroller.style.borderBottomRightRadius = "10px";
+  scroller.style.borderBottomLeftRadius = "10px";
+  row.appendChild(label);
+  scroller.appendChild(row);
+  container.appendChild(scroller);
+  document.body.appendChild(container);
+
+  /** @type {Subject<import("./cache.js").MutationBatch>} */
+  const mutations = new Subject();
+  for (const node of [container, scroller, row, label]) {
+    setSubject(node, mutations);
+  }
+
+  /**
+   * @param {Element} element
+   * @param {() => [number, number, number, number]} rect
+   */
+  const layout = (element, rect) => {
+    element.getBoundingClientRect = () => {
+      const [left, top, right, bottom] = rect();
+      return /** @type {DOMRect} */ ({
+        left,
+        top,
+        right,
+        bottom,
+        width: right - left,
+        height: bottom - top,
+      });
+    };
+  };
+  layout(container, () => [0, 0, 200, 100]);
+  layout(scroller, () => [0, 0, 200, scrollerBottom]);
+  layout(row, () => [0, 20 - scrollTop, 200, 60 - scrollTop]);
+
+  return {
+    container,
+    row,
+    label,
+    /** What a scroll does to a layout: the content moves, the window does not. */
+    scrollBy: (/** @type {number} */ delta) => {
+      scrollTop += delta;
+      mutations.next({ types: new Set(["reflow"]), targets: new Set([scroller]) });
+    },
+    /** A change that does move the window, for contrast. */
+    resizeTo: (/** @type {number} */ bottom) => {
+      scrollerBottom = bottom;
+      mutations.next({ types: new Set(["childList"]), targets: new Set([container]) });
+    },
+  };
+}
+
+describe("getClipBoxCached", () => {
+  test("a scroller confines its descendants to its padding box", () => {
+    const { container, row, label } = setupScroller();
+    try {
+      const clip = getClipBoxCached(row);
+      assert.equal(clip.left, 2, "inside the border, where overflow is clipped");
+      assert.equal(clip.top, 2);
+      assert.equal(clip.right, 198);
+      assert.equal(clip.bottom, 98);
+      // The radius the padding box rounds by is the border-box radius less
+      // the border sitting in front of it.
+      assert.equal(clip.topLeft, 8);
+      // Text inherits the same window: it has no overflow of its own to hide.
+      assert.deepEqual(getClipBoxCached(label), clip);
+    } finally {
+      container.remove();
+    }
+  });
+
+  test("the walk stops at the portal's container, not at the page around it", () => {
+    const { container, row } = setupScroller();
+    document.body.style.overflow = "hidden";
+    try {
+      // Whatever the page does with `body` is none of a panel's business —
+      // and in a browserless layout its rect is all zeros, which would clip
+      // the panel away to nothing if it were consulted.
+      assert.equal(getClipBoxCached(row).right, 198);
+      assert.equal(getClipBoxCached(container), UNCLIPPED);
+    } finally {
+      document.body.style.overflow = "";
+      container.remove();
+    }
+  });
+
+  test("scrolling moves the content without disturbing the window", () => {
+    const { container, row, scrollBy, resizeTo } = setupScroller();
+    try {
+      const clip = new Derived(() => getClipBoxCached(row));
+      let emissions = 0;
+      const subscription = clip.subscribe({ next: () => emissions++ });
+      const window = clip.get();
+
+      scrollBy(50);
+
+      assert.equal(getBoundingClientRectCached(row).top, -30, "the row has moved");
+      assert.deepEqual(clip.get(), window, "the window it is clipped to has not");
+      assert.equal(emissions, 0, "and a clip that has not moved does not propagate");
+
+      // The window itself changing is a different matter, and does.
+      resizeTo(60);
+      assert.equal(clip.get().bottom, 58);
+      assert.equal(emissions, 1);
+
+      subscription.unsubscribe();
+    } finally {
+      container.remove();
     }
   });
 });

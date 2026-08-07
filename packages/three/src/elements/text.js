@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { onCleanup } from "@apendua/signal";
+import { Derived, onCleanup } from "@apendua/signal";
 import { effects, just, set, selector } from "@apendua/signal";
 import { $, children } from "../operators.js";
 import {
@@ -9,8 +9,15 @@ import {
   makeTextQuadGeometry,
 } from "./textHelpers.js";
 import { parseColor } from "./VisualProperties.js";
-import { getComputedStyleCached, getParentElement, getTextLayout } from "./cache.js";
+import {
+  getBoundingClientRectCached,
+  getClipBoxCached,
+  getComputedStyleCached,
+  getParentElement,
+  getTextLayout,
+} from "./cache.js";
 import { getContentRenderOrder } from "./elevation.js";
+import { applyClip, clipBoxEqual, toLocalClipBox, UNCLIPPED } from "./clip.js";
 
 /**
  * @import { Observable } from "rxjs";
@@ -78,9 +85,37 @@ export function text(_, textNode) {
     );
   });
 
+  // Text has an origin of its own — where its line boxes start inside the
+  // parent — so the clip has to be read in that frame, not the parent's. The
+  // bounds cannot supply it: under a transform they are measured on a clone
+  // parked off-screen, whose coordinates say nothing about where the text is.
+  // The parent's rect plus the layout offset is the same number, and true in
+  // both cases.
+  const clipBox = new Derived(
+    () => {
+      const box = getClipBoxCached(textNode);
+      if (box === UNCLIPPED) {
+        return box;
+      }
+      const parentElement = getParentElement(textNode);
+      if (!parentElement) {
+        return UNCLIPPED;
+      }
+      const parentRect = getBoundingClientRectCached(parentElement);
+      return toLocalClipBox(box, parentRect.left + layout.left, parentRect.top + layout.top);
+    },
+    { isEqual: clipBoxEqual },
+  );
+
+  const clipUniform = { value: new THREE.Vector4(-1e6, -1e6, 1e6, 1e6) };
+
   return just(object, [
     effects((obj) => {
       obj.position.set(layout.left, layout.top, -0.01);
+    }),
+    effects(() => {
+      const box = clipBox.get();
+      clipUniform.value.set(box.left, box.top, box.right, box.bottom);
     }),
     children(
       $(new THREE.Mesh(), [
@@ -101,6 +136,7 @@ export function text(_, textNode) {
             // sit in front of text renders before it.
             depthWrite: false,
           });
+          applyClip(basic, clipUniform);
           onCleanup(() => {
             basic.dispose();
           });

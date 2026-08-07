@@ -7,11 +7,13 @@ import {
   preservesWhitespace,
   trimLineRange,
 } from "./textLines.js";
+import { clipBoxEqual, intersectClipBoxes, UNCLIPPED } from "./clip.js";
 
 /**
  * @import {Subject} from 'rxjs';
  * @import {TextLine} from './textLines.js';
  * @import {TextBounds} from './textHelpers.js';
+ * @import {ClipBox} from './clip.js';
  */
 
 /**
@@ -488,6 +490,124 @@ export function getTextLayout(text) {
       return measureTextLayout(text);
     });
     textLayoutCache.set(text, signal);
+  }
+  return signal.get();
+}
+
+/**
+ * @param {string} value
+ * @returns {number}
+ */
+function pixels(value) {
+  const parsed = parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+/**
+ * The overflow that applies on one axis. A browser always resolves the
+ * longhands, but a headless layout engine may only report the shorthand it
+ * was given, and answering "visible" there would quietly switch clipping off
+ * in every test that uses one.
+ *
+ * @param {CSSStyleDeclaration} style
+ * @param {"overflowX" | "overflowY"} axis
+ * @returns {boolean}
+ */
+function hidesOverflow(style, axis) {
+  const value = style[axis] || style.overflow;
+  return !!value && value !== "visible";
+}
+
+/**
+ * What an element confines its descendants to: its padding box, which is
+ * where CSS puts the edge of `overflow: hidden`, on whichever axes are not
+ * `visible`, with the corners its border radii round — reduced by the border
+ * they sit behind, the same way the box's own inner edge is.
+ *
+ * @param {HTMLElement} element
+ * @returns {ClipBox}
+ */
+function getOwnClipBox(element) {
+  const style = getComputedStyleCached(element);
+  const clipsX = hidesOverflow(style, "overflowX");
+  const clipsY = hidesOverflow(style, "overflowY");
+  if (!clipsX && !clipsY) {
+    return UNCLIPPED;
+  }
+  const rect = getBoundingClientRectCached(element);
+  const borderLeft = pixels(style.borderLeftWidth);
+  const borderRight = pixels(style.borderRightWidth);
+  const borderTop = pixels(style.borderTopWidth);
+  const borderBottom = pixels(style.borderBottomWidth);
+  /**
+   * @param {string} radius
+   * @param {number} first
+   * @param {number} second
+   * @returns {number}
+   */
+  const inset = (radius, first, second) => Math.max(pixels(radius) - Math.max(first, second), 0);
+  return {
+    left: clipsX ? rect.left + borderLeft : UNCLIPPED.left,
+    right: clipsX ? rect.right - borderRight : UNCLIPPED.right,
+    top: clipsY ? rect.top + borderTop : UNCLIPPED.top,
+    bottom: clipsY ? rect.bottom - borderBottom : UNCLIPPED.bottom,
+    // A corner is only rounded on the axes that are actually being clipped:
+    // one that hides overflow in y alone cuts two straight horizontal lines.
+    topLeft: clipsX && clipsY ? inset(style.borderTopLeftRadius, borderLeft, borderTop) : 0,
+    topRight: clipsX && clipsY ? inset(style.borderTopRightRadius, borderRight, borderTop) : 0,
+    bottomRight:
+      clipsX && clipsY ? inset(style.borderBottomRightRadius, borderRight, borderBottom) : 0,
+    bottomLeft:
+      clipsX && clipsY ? inset(style.borderBottomLeftRadius, borderLeft, borderBottom) : 0,
+  };
+}
+
+/** @type {WeakMap<Node, Derived<ClipBox>>} */
+const clipBoxCache = new WeakMap();
+
+/**
+ * The region a node's ancestors confine it to, in client coordinates.
+ *
+ * Each level is derived from the level above, so the chain is memoized the
+ * way every other layout read here is: a scroller that has not moved does not
+ * recompute the clip of anything inside it. Equality is by value, so the
+ * common case during a scroll — content moving inside a stationary window —
+ * leaves this signal, and the uniforms hanging off it, alone.
+ *
+ * The walk stops at the portal's container. What the page around the scene
+ * does with `body` is none of a panel's business, and its rect is not in the
+ * panel's coordinate system anyway.
+ *
+ * @param {Node} node
+ * @returns {ClipBox}
+ */
+export function getClipBoxCached(node) {
+  let signal = clipBoxCache.get(node);
+  if (!signal) {
+    signal = new Derived(
+      () => {
+        // The portal's own container clips nothing and has nothing above it
+        // worth consulting — the walk ends here rather than climbing out into
+        // the page. (`nodeType` rather than `instanceof Element`: this runs in
+        // environments where that global is not the document's.)
+        const self = node.nodeType === 1 ? /** @type {Element} */ (node) : null;
+        if (self?.hasAttribute(PORTAL_ATTRIBUTE)) {
+          return UNCLIPPED;
+        }
+        const parent = getParentElement(node);
+        if (!parent || parent.hasAttribute(PORTAL_ATTRIBUTE)) {
+          return UNCLIPPED;
+        }
+        const inherited = getClipBoxCached(parent);
+        const own = getOwnClipBox(parent);
+        // Passing the inherited box through unchanged keeps the shared
+        // UNCLIPPED object identical the whole way down a subtree nobody
+        // clips, which is what lets the elements in it skip the rest.
+        return own === UNCLIPPED ? inherited : intersectClipBoxes(inherited, own);
+      },
+      { isEqual: clipBoxEqual },
+    );
+    clipBoxCache.set(node, signal);
   }
   return signal.get();
 }

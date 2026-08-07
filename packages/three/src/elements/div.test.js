@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import * as THREE from "three";
 import { Subject } from "rxjs";
 import { InteractionContext } from "../interactions.js";
-import { setSubject } from "./cache.js";
+import { PORTAL_ATTRIBUTE, setSubject } from "./cache.js";
 import { div } from "./div.js";
 
 /**
@@ -315,5 +315,137 @@ describe("div elevation", () => {
 
     document.removeEventListener("click", listener);
     subscription.unsubscribe();
+  });
+});
+
+/**
+ * A clickable row inside something that hides its overflow, with the layout
+ * jsdom does not have: a window that stays put and a 40px row that slides
+ * through it, starting 10px into a 100px scroller.
+ */
+function setupScrolledRow() {
+  let scrollTop = 0;
+
+  const container = document.createElement("div");
+  container.setAttribute(PORTAL_ATTRIBUTE, "");
+  const scroller = document.createElement("div");
+  const row = document.createElement("div");
+
+  scroller.style.overflow = "hidden";
+  row.style.cursor = "pointer";
+  scroller.appendChild(row);
+  container.appendChild(scroller);
+  document.body.appendChild(container);
+
+  /** @type {Subject<import('./cache.js').MutationBatch>} */
+  const mutations = new Subject();
+  for (const node of [container, scroller, row]) {
+    setSubject(node, mutations);
+  }
+
+  /**
+   * @param {Element} element
+   * @param {() => [number, number, number, number]} rect
+   */
+  const layout = (element, rect) => {
+    element.getBoundingClientRect = () => {
+      const [left, top, right, bottom] = rect();
+      return /** @type {DOMRect} */ ({
+        left,
+        top,
+        right,
+        bottom,
+        width: right - left,
+        height: bottom - top,
+      });
+    };
+  };
+  layout(container, () => [0, 0, 200, 100]);
+  layout(scroller, () => [0, 0, 200, 100]);
+  layout(row, () => [0, 10 - scrollTop, 200, 50 - scrollTop]);
+
+  /** @type {string[]} */
+  const registrations = [];
+  const manager = /** @type {InteractionManager} */ (
+    /** @type {unknown} */ ({
+      add: () => registrations.push("add"),
+      remove: () => registrations.push("remove"),
+      stopPropagation: () => {},
+    })
+  );
+
+  /** @type {THREE.Object3D<XREventMap>} */
+  let object;
+  const subscription = div(InteractionContext.set({}, manager), row).subscribe((value) => {
+    object = /** @type {THREE.Object3D<XREventMap>} */ (value);
+  });
+
+  return {
+    container,
+    registrations,
+    subscription,
+    get object() {
+      return object;
+    },
+    /** @param {number} value */
+    scrollTo: (value) => {
+      scrollTop = value;
+      mutations.next({ types: new Set(["reflow"]), targets: new Set([scroller]) });
+    },
+  };
+}
+
+describe("div clipping", () => {
+  test("the box is told what its ancestors leave of it, in its own px", () => {
+    const { container, object, scrollTo, subscription } = setupScrolledRow();
+    try {
+      const material = /** @type {THREE.ShaderMaterial} */ (
+        /** @type {THREE.Mesh} */ (object.children[0]).material
+      );
+      // `overflow: hidden` hides it on both axes, so the window is the
+      // scroller's whole padding box: the row starts 10px down it and may
+      // draw from its own -10 to its own 90.
+      assert.deepEqual(material.uniforms.uClip.value.toArray(), [0, -10, 200, 90]);
+
+      scrollTo(30);
+      assert.deepEqual(
+        material.uniforms.uClip.value.toArray(),
+        [0, 20, 200, 120],
+        "the window has not moved, so in the row's coordinates it slides the other way",
+      );
+
+      subscription.unsubscribe();
+    } finally {
+      container.remove();
+    }
+  });
+
+  test("a row scrolled out of its window stops being drawn and stops being a target", () => {
+    const { container, object, registrations, scrollTo, subscription } = setupScrolledRow();
+    try {
+      assert.deepEqual(registrations, ["add"]);
+      assert.equal(object.visible, true);
+
+      // Straddling the top edge: still shown, still a target. What is left of
+      // it is trimmed by the raycast filter rather than by the registration.
+      scrollTo(30);
+      assert.deepEqual(registrations, ["add"]);
+      assert.equal(object.visible, true);
+
+      // Past the top edge entirely, taking its whole subtree out of the
+      // raycast set with it.
+      scrollTo(60);
+      assert.deepEqual(registrations, ["add", "remove"]);
+      assert.equal(object.visible, false);
+
+      // And back.
+      scrollTo(0);
+      assert.deepEqual(registrations, ["add", "remove", "add"]);
+      assert.equal(object.visible, true);
+
+      subscription.unsubscribe();
+    } finally {
+      container.remove();
+    }
   });
 });

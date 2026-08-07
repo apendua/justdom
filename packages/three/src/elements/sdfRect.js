@@ -89,15 +89,23 @@ const fragmentShader = /* glsl */ `
     float coverage = 1.0 - smoothstep(-outerAA, outerAA, outer);
     float fillness = 1.0 - smoothstep(-innerAA, innerAA, inner);
 
-    vec4 color = mix(uBorderColor, uFillColor, fillness);
-    float alpha = color.a * coverage;
+    // Partitioned coverage, not a mix: with no border the inner and outer
+    // edges coincide, and a mix would shade the antialiased fringe with the
+    // border color — which for "border: none" is an opaque currentcolor,
+    // drawing a hairline that is not there. Partitioning makes a zero-width
+    // ring exactly nothing.
+    float fillCoverage = min(fillness, coverage);
+    float borderCoverage = max(coverage - fillness, 0.0);
+    float alpha = uFillColor.a * fillCoverage + uBorderColor.a * borderCoverage;
     // Discarding writes neither color nor depth: a fully transparent fill is
     // not an invisible hole punched through what it covers, same rule the
     // material flags used to enforce.
     if (alpha < 0.001) {
       discard;
     }
-    gl_FragColor = vec4(color.rgb, alpha);
+    vec3 color = (uFillColor.rgb * uFillColor.a * fillCoverage +
+                  uBorderColor.rgb * uBorderColor.a * borderCoverage) / alpha;
+    gl_FragColor = vec4(color, alpha);
 
     #include <tonemapping_fragment>
     #include <colorspace_fragment>

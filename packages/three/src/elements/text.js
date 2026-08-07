@@ -138,19 +138,32 @@ export function text(_, textNode) {
     }),
     children(
       $(new THREE.Mesh(), [
+        // The material is created once and never replaced — the texture swaps
+        // in and out of its `map` slot instead. Identity matters: the tint
+        // effect below writes into whatever material the mesh carries, and a
+        // replacement material would arrive untinted, with nothing to say the
+        // tint should be applied again.
         set("material", () => {
-          const { texture } = textureData;
           const basic = new THREE.MeshBasicMaterial({
             side: THREE.DoubleSide,
             transparent: true,
             alphaTest: 0.001,
-            map: texture,
             color: "white",
           });
           onCleanup(() => {
             basic.dispose();
           });
           return basic;
+        }),
+        effects((obj) => {
+          const material = /** @type {THREE.MeshBasicMaterial} */ (obj.material);
+          const hadMap = !!material.map;
+          material.map = textureData.texture;
+          if (!hadMap) {
+            // Gaining a map changes the program; swapping one texture for
+            // another does not.
+            material.needsUpdate = true;
+          }
         }),
         set("geometry", () => {
           const { width, height } = textureData;

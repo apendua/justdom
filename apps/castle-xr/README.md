@@ -31,7 +31,8 @@ so do not use it on a real headset.
 
 The castle is saved to `localStorage` (key `castle-xr:castle`) a moment after
 the last change. The soundtrack is the house one, `glass_desk_habits.mp3` out of
-`@apendua.dev/media`, started with the session and stopped with it.
+`@apendua.dev/media`, started with the session and stopped with it — played by
+`@apendua.dev/sound/xr`, which every headset app here shares.
 
 A brick that lands clicks, from the cell it landed in — a knock with a little
 ring in it, the way two magnets sound when they meet. Both halves of that come
@@ -204,7 +205,6 @@ honest: a castle that was not going to stand up does not stand up.
 | `components/Game.ts`     | The board: the drag, the preview, the siege, the count of what is standing.    |
 | `components/Brick.ts`    | One brick — mesh, collider, ghost and refused styles, the drag.                |
 | `components/Slingshot.ts`| The frame, the bands, the pouch, and the two-handed draw.                      |
-| `components/Music.ts`    | The soundtrack, playing for as long as the session lasts.                      |
 | `elements/rapier.ts`     | Rapier bindings: world, colliders, rigid bodies, the fixed-step loop.          |
 | `views/`                 | The two panels, projected into the scene.                                      |
 

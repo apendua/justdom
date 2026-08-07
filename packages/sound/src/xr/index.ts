@@ -1,0 +1,7 @@
+/**
+ * The half of this package that needs a headset, kept behind its own entry
+ * point so that the waveforms and voices at `.` stay reachable without
+ * `@apendua/freedom` in the room.
+ */
+export { createMusicControls, DEFAULT_MUSIC_VOLUME, Music } from "./music.js";
+export type { MusicControls, MusicOptions } from "./music.js";

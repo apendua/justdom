@@ -1,10 +1,10 @@
 import * as THREE from "three";
 import { $, camera, children, cursors } from "@apendua/freedom";
-import { component, effects, just, makeNonReactive, Signal, use } from "@apendua/signal";
-import { audioOutputSelection } from "@apendua.dev/sound";
+import { component, effects, just, makeNonReactive, use } from "@apendua/signal";
+import { createMusicControls, Music } from "@apendua.dev/sound/xr";
+import paper_and_running_water from "@apendua.dev/media/paper_and_running_water.mp3";
 import Board from "./components/Board.js";
 import CodePanel from "./components/CodePanel.js";
-import Music, { DEFAULT_VOLUME } from "./components/Music.js";
 import ToolPanel from "./components/ToolPanel.js";
 import { palette } from "./elements/palette.js";
 import Studio from "./store/Studio.js";
@@ -33,15 +33,9 @@ const App = component((ctx: WeakKey) => {
   // The ears go where the head is, so the soundtrack stays put in the room as
   // the board is looked around.
   const listener = new THREE.AudioListener();
-  const musicVolume = Signal.of(DEFAULT_VOLUME);
-  const musicOutput = audioOutputSelection();
-
-  /** Volume moves in tenths, rounded so the readout stays on round numbers. */
-  const stepVolume = (steps: number) => {
-    musicVolume.setFn((volume) => {
-      return Math.min(10, Math.max(0, Math.round(volume * 10) + steps)) / 10;
-    });
-  };
+  // Quieter than the games start at: this one is a drawing table, and the track
+  // is meant to sit behind the work rather than to be the reason for being here.
+  const music = createMusicControls({ track: paper_and_running_water, volume: 0.4 });
 
   return just(new THREE.Scene()).pipe(
     effects((scene) => {
@@ -51,11 +45,7 @@ const App = component((ctx: WeakKey) => {
       use(camera(ctx).pipe(children($(listener))));
     }),
     children(
-      Music(ctx, listener, musicOutput, [
-        effects((music) => {
-          music.volume = musicVolume.get();
-        }),
-      ]),
+      Music(ctx, listener, music),
       // The board and panels are all unlit basic materials; these lights are
       // for the controller models, which are standard materials and would
       // otherwise render pitch black.
@@ -73,11 +63,7 @@ const App = component((ctx: WeakKey) => {
         children(Board(ctx, studio)),
       ]),
       CodePanel(ctx, studio),
-      ToolPanel(ctx, studio, {
-        output: musicOutput,
-        volume: () => musicVolume.get(),
-        step: stepVolume,
-      }),
+      ToolPanel(ctx, studio, music),
       // The mark at the end of each ray, on the paper and on the panels
       // alike. Half the default size: a drawn point is a centimetre across,
       // and the mark aiming at one should not be the same size as it.

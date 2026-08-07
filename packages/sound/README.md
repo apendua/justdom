@@ -11,6 +11,12 @@ room rather than in the middle of your head.
 rush build --to @apendua.dev/sound
 ```
 
+There are two entry points. `@apendua.dev/sound` is the waveforms, the voices
+and the output picker, and needs nothing but three.js. `@apendua.dev/sound/xr`
+is the soundtrack player, which is tied to the life of an XR session and so
+needs `@apendua/freedom` — an optional peer, kept behind its own subpath so
+that a consumer of the first half never has to have it.
+
 ## What is in it
 
 **`createClickWaveform(sampleRate)`** — fifty milliseconds of knock with a
@@ -57,6 +63,34 @@ const output = audioOutputSelection();
 `AudioListener`'s context, and `audioOutputs()` is the list on its own for
 anything that wants it without the selection around it.
 
+## What is in `/xr`
+
+**`createMusicControls({ track, volume? })`** — the soundtrack's state, in one
+object: the volume as a signal, an `audioOutputSelection()` of its own, and a
+`step` that moves the volume by whole tenths and stops at silence and at full.
+The track is a URL, which in every app here is an asset import out of
+`@apendua.dev/media`. Volume starts at `DEFAULT_MUSIC_VOLUME` (0.5) unless the
+app says otherwise.
+
+**`Music(ctx, listener, controls)`** — plays it. The track starts when an XR
+session begins and stops when it ends, which keeps it out of the way of autoplay
+policy and leaves the browser tab silent until the headset goes on. Volume and
+output are followed live, so turning the music down takes the gain of the track
+that is playing rather than starting it over from the top.
+
+```ts
+const listener = new THREE.AudioListener();
+const music = createMusicControls({ track: glass_desk_habits, volume: 0.35 });
+// ...in the scene, with the listener on the camera:
+Music(ctx, listener, music);
+// ...and on a panel somewhere: music.volume.get(), music.step(-1), music.output
+```
+
+Held apart like this because the two ends are rarely near each other: the music
+starts wherever the scene is built, while the panel that turns it down is often
+several routes away, so both reach it through the controls object — passed down,
+or put in a context, as `marblerun` does.
+
 ## Three things worth knowing
 
 **Several voices.** One `PositionalAudio` node cannot play two clicks at once,
@@ -82,9 +116,12 @@ the *last* one landed.
 clusters snapping together — which is the same event wearing a different hat,
 and used to be a `Switch1.wav` loaded by hand in that app.
 
-The output picker is used by all five apps with a soundtrack — the three above
-plus `blockout-xr` and `rubik` — each behind a Music section on a panel it
-already had.
+The soundtrack player and the output picker are used by all six apps with music
+— the three above plus `blockout-xr`, `rubik` and `euclid-xr` — each behind a
+Music section on a panel it already had. Every one of them had its own copy of
+the player before this package took it; `knights` still has its own, and should,
+being a flat page with an `<audio>` element rather than a session to hang the
+track on.
 
 Not `bricks-xr`: that one is a worked example, kept to the smallest thing that
 still builds something, and a sound is not part of what it is there to show.

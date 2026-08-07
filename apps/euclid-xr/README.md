@@ -12,9 +12,10 @@ writes itself. The right panel holds the tools, view controls, the bundled
 classical constructions and the soundtrack.
 
 The soundtrack is `paper_and_running_water.mp3` out of `@apendua.dev/media`,
-looping for as long as the session lasts and stopping with it, so the browser
-tab stays silent until the headset goes on. It starts at 40% — under the
-drawing rather than over it — and the music card steps it in tenths. On a
+played by `@apendua.dev/sound/xr`: looping for as long as the session lasts and
+stopping with it, so the browser tab stays silent until the headset goes on. It
+starts at 40% — under the drawing rather than over it — and the music card
+steps it in tenths. On a
 desktop with more than one output plugged in, a picker appears under the
 volume to say which one the sound goes to; a headset with a single output has
 nothing to choose between, so nothing is shown.

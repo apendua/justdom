@@ -16,6 +16,10 @@
     ".": {
       "types": "./lib-es/index.d.ts",
       "import": "./lib-es/index.js"
+    },
+    "./xr": {
+      "types": "./lib-es/xr/index.d.ts",
+      "import": "./lib-es/xr/index.js"
     }
   },
   "main": "./lib/index.js",
@@ -37,6 +41,7 @@
     "rxjs": "^7.8.2"
   },
   "devDependencies": {
+    "@apendua/freedom": "workspace:*",
     "@apendua/signal": "workspace:*",
     "@types/node": "^24.7.0",
     "@types/three": "~0.180.0",
@@ -46,7 +51,13 @@
     "typescript": "^7.0.2"
   },
   "peerDependencies": {
+    "@apendua/freedom": "workspace:*",
     "@apendua/signal": "workspace:*",
     "three": "^0.180.0"
+  },
+  "peerDependenciesMeta": {
+    "@apendua/freedom": {
+      "optional": true
+    }
   }
 }

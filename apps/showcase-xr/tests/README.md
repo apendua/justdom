@@ -39,12 +39,21 @@ them, so it can neither raise a difference nor hide one.
 **Baseline comparison** is exact, and is only meaningful on a machine that draws
 the way the recording machine did. A different Chromium rasterizes differently;
 a machine with different fonts installed lays the panels' text out differently.
-Both are real differences in what was drawn and neither is a regression, so the
-baselines carry a fingerprint — Chromium's version, the width the app's font
-stack measures a specimen string at, and the viewport — and the check **skips
-itself with an explanation** rather than failing when the fingerprint does not
-match. Re-record with `npm run test:visual:update` to work against baselines
-from your own machine.
+Both are real differences in what was drawn and neither is a regression.
+
+So baselines are filed under a fingerprint of the machine that drew them —
+Chromium's version, the width the app's font stack measures a specimen string
+at, and the viewport — one directory each, and more than one can be committed at
+a time. Somewhere with no baseline of its own, the check records one and says
+so. **Under `--strict`, which is how CI runs it, it fails instead**: a green
+check that quietly declined to check is worse than no check at all.
+
+CI's baselines are the ones that gate a pull request, and CI is where they are
+drawn: dispatch the **Visual regression** workflow with `record: true` and the
+runner redraws them and commits them to the branch. That is also what to do
+after a deliberate visual change, or after a Playwright bump — which moves the
+browser build, and so the fingerprint. Recording locally is fine too; it lands
+in a directory of its own and does not disturb CI's.
 
 **Everything else** asks a question with one answer anywhere: that the panels
 are drawn at all, that they wear the colours their stylesheets asked for, that
@@ -58,10 +67,26 @@ magenta what moved. Read it before re-recording: the tint regression above shows
 up there as every line of text lighting up at once, which is unmistakable, and
 a re-record would have quietly blessed it.
 
-## Not in CI yet
+## In CI
 
-Nothing runs this automatically. What it needs is a machine that draws the same
-way twice, which means pinning the browser and the fonts — a container image
-rather than a bare runner. The harness already takes `PLAYWRIGHT_CHROMIUM_EXECUTABLE`
-(and otherwise looks under `PLAYWRIGHT_BROWSERS_PATH`), so the wiring is a
-question of where it runs, not of what it needs.
+`.github/workflows/visual.yml` runs this on every pull request, on an ordinary
+shared runner. The runner is not pinned to anything except the browser build
+Playwright brings, which is enough because the runner is also what recorded the
+baselines: the fingerprint makes "this machine is not that machine" a failure
+with a name rather than a mystery. A failing run uploads `tests/output` — the
+frames it took and the diff it found — as an artifact.
+
+Locally the harness takes `PLAYWRIGHT_CHROMIUM_EXECUTABLE`, and otherwise looks
+under `PLAYWRIGHT_BROWSERS_PATH` before letting Playwright resolve its own
+download.
+
+## One thing that will bite whoever changes the harness
+
+Playwright's `animations: "disabled"` — the obvious thing to reach for when
+photographing something that moves — rewinds infinite animations to their first
+frame for the capture and plays them again afterwards. That is right for
+photographing a page and wrong here, because what is photographed is not the
+page but a mirror of it that samples the DOM on its own frames: whether the
+rewind reached the scene before the shutter is a race, and it shows up as one
+small rectangle disagreeing with the baseline about a third of the time. The
+freeze in this harness is the only thing that should be stopping animations.

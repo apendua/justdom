@@ -114,13 +114,26 @@ export async function openShowcase({ freeze = true } = {}) {
   });
 
   if (freeze) {
-    // Frames keep coming — the scene has to be drawn — but they all claim to
-    // have arrived at the same moment, so anything driven by the clock draws
-    // the same thing every time. CSS and WAAPI animations run off their own
-    // timelines and are stopped separately, once the session is up.
     await page.addInitScript((time) => {
+      // Frames keep coming — the scene has to be drawn — but they all claim
+      // to have arrived at the same moment, so anything driven by the clock
+      // draws the same thing every time.
       const request = window.requestAnimationFrame.bind(window);
       window.requestAnimationFrame = (callback) => request(() => callback(time));
+
+      // An animation started through the API is pinned as it is created,
+      // because sweeping the ones that exist only pins the ones that exist:
+      // the panel's slider is started by an effect, and an effect can run
+      // again later, leaving a second animation running free behind the
+      // frozen one. That is exactly what it looks like when a baseline
+      // becomes flaky in one small rectangle.
+      const animate = Element.prototype.animate;
+      Element.prototype.animate = function frozenAnimate(...args) {
+        const animation = animate.apply(this, args);
+        animation.pause();
+        animation.currentTime = time;
+        return animation;
+      };
     }, FROZEN_TIME);
   }
 
@@ -159,12 +172,7 @@ export async function enterSession(page, { freeze = true } = {}) {
   await nextFrames(page, 30);
 
   if (freeze) {
-    await page.evaluate((time) => {
-      for (const animation of document.getAnimations()) {
-        animation.pause();
-        animation.currentTime = time;
-      }
-    }, FROZEN_TIME);
+    await freezeAnimations(page);
     await nextFrames(page, 5);
   }
 
@@ -197,14 +205,44 @@ export async function nextFrames(page, count) {
 }
 
 /**
+ * Stop every animation that exists, where it would have been at
+ * `FROZEN_TIME`. Idempotent, and worth repeating: a CSS animation can begin
+ * whenever a class does.
+ *
+ * @param {Page} page
+ * @returns {Promise<void>}
+ */
+export async function freezeAnimations(page) {
+  await page.evaluate((time) => {
+    for (const animation of document.getAnimations()) {
+      animation.pause();
+      animation.currentTime = time;
+    }
+  }, FROZEN_TIME);
+}
+
+/**
  * A photograph of the scene: the renderer's canvas and nothing else.
  *
  * @param {Page} page
+ * @param {object} [options]
+ * @param {boolean} [options.freeze] Pin the animations again before shooting.
+ *   On for anything a baseline will be held against.
  * @returns {Promise<Buffer>} PNG bytes.
  */
-export async function photographScene(page) {
+export async function photographScene(page, { freeze = false } = {}) {
+  if (freeze) {
+    await freezeAnimations(page);
+    await nextFrames(page, 2);
+  }
   const canvas = page.locator("canvas[data-engine]").first();
-  return canvas.screenshot({ animations: "disabled" });
+  // `animations: "disabled"` deliberately not used. It rewinds infinite
+  // animations to their first frame for the capture and plays them again
+  // afterwards — sound for photographing a page, and a race here, because
+  // what is being photographed is not the page but a mirror of it that
+  // samples on its own frames. Whether the rewind reached the scene before
+  // the shutter decided which of two positions the slider was drawn at.
+  return canvas.screenshot({ animations: "allow" });
 }
 
 /**

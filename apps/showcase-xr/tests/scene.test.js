@@ -1,5 +1,6 @@
 import { after, before, describe, test } from "node:test";
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -20,9 +21,11 @@ import { BASELINE, MOVEMENT, comparePng, countNear, inkRatio } from "./pixels.js
  * Two kinds of check live here, and they fail for different reasons:
  *
  *  - The baseline comparison is exact, and is only meaningful against the
- *    machine that drew the baseline. It carries a fingerprint of the renderer
- *    and the fonts, and *skips itself* rather than lying when it is somewhere
- *    else. Regenerate with `npm run test:visual:update`.
+ *    machine that drew the baseline, so baselines are filed under a
+ *    fingerprint of the renderer and the fonts. Somewhere with no baseline of
+ *    its own, it records one and says so; under `--strict`, which is how CI
+ *    runs it, it fails instead — a check that quietly declines to check is
+ *    worse than none.
  *  - Everything else asks a question about the frame that has one answer
  *    anywhere: that the panels are there, that they are wearing the colours
  *    their stylesheets asked for, that animation moves and that a style
@@ -34,38 +37,59 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const BASELINES = join(HERE, "baselines");
 const OUTPUT = join(HERE, "output");
 const UPDATE = process.argv.includes("--update") || process.env.UPDATE_BASELINES === "1";
+/**
+ * Whether having no baseline for this machine is a failure rather than
+ * something to get on with. CI sets it, because a check that quietly declines
+ * to check is worse than no check: the job stays green and the comparison
+ * everyone believes is running is not.
+ */
+const STRICT = process.argv.includes("--strict") || process.env.VISUAL_STRICT === "1";
 
 /** The stylesheet's own accent, which several labels and borders are drawn in. */
 const ACCENT = /** @type {[number, number, number]} */ ([0, 123, 255]);
 
 /**
+ * Baselines are filed under the environment that drew them, so more than one
+ * can be committed at a time and none of them clobbers another: CI keeps its
+ * own, and anyone who records locally keeps theirs beside it. The name is a
+ * digest because the fingerprint itself — a browser build, a font measurement
+ * — makes a poor directory.
+ *
+ * @param {Record<string, string>} stamp
+ * @returns {string}
+ */
+function baselineDirectory(stamp) {
+  const digest = createHash("sha256").update(JSON.stringify(stamp)).digest("hex").slice(0, 8);
+  return join(BASELINES, digest);
+}
+
+/**
  * @param {string} name
  * @param {Buffer} png
  * @param {Record<string, string>} stamp
+ * @returns {{ skipped?: string, recorded?: string, missing?: string, result?: ReturnType<typeof comparePng> }}
  */
 function compareToBaseline(name, png, stamp) {
   mkdirSync(OUTPUT, { recursive: true });
   writeFileSync(join(OUTPUT, `${name}.png`), png);
 
-  const baseline = join(BASELINES, `${name}.png`);
-  const recorded = join(BASELINES, "fingerprint.json");
+  const directory = baselineDirectory(stamp);
+  const baseline = join(directory, `${name}.png`);
   if (UPDATE || !existsSync(baseline)) {
-    mkdirSync(BASELINES, { recursive: true });
-    writeFileSync(baseline, png);
-    writeFileSync(recorded, `${JSON.stringify(stamp, null, 2)}\n`);
-    return { skipped: `baseline written: ${baseline}` };
-  }
-
-  const expected = JSON.parse(readFileSync(recorded, "utf8"));
-  for (const key of Object.keys(stamp)) {
-    if (expected[key] !== stamp[key]) {
+    if (!UPDATE && STRICT) {
       return {
-        skipped:
-          `this machine draws differently from the one the baselines came from ` +
-          `(${key}: ${stamp[key]}, recorded: ${expected[key]}). ` +
-          `Run with --update to redraw them here.`,
+        missing:
+          `no baseline recorded for this machine, and none may be written here.\n` +
+          `  fingerprint: ${JSON.stringify(stamp)}\n` +
+          `  expected at: ${baseline}\n` +
+          `Record one by dispatching the "Visual regression" workflow with ` +
+          `record=true, which redraws the baselines on a runner and commits them.`,
       };
     }
+    mkdirSync(directory, { recursive: true });
+    writeFileSync(baseline, png);
+    writeFileSync(join(directory, "fingerprint.json"), `${JSON.stringify(stamp, null, 2)}\n`);
+    return { recorded: `baseline written: ${baseline}` };
   }
 
   const result = comparePng(png, readFileSync(baseline), BASELINE);
@@ -87,7 +111,7 @@ describe("the showcase in an emulated headset", { timeout: 180_000 }, () => {
     showcase = await openShowcase({ freeze: true });
     await enterSession(showcase.page, { freeze: true });
     stamp = await fingerprint(showcase.page, showcase.browser);
-    scene = await photographScene(showcase.page);
+    scene = await photographScene(showcase.page, { freeze: true });
   });
 
   after(async () => {
@@ -112,9 +136,10 @@ describe("the showcase in an emulated headset", { timeout: 180_000 }, () => {
   });
 
   test("the scene matches its baseline", (t) => {
-    const { skipped, result } = compareToBaseline("scene", scene, stamp);
-    if (skipped) {
-      t.skip(skipped);
+    const { recorded, missing, result } = compareToBaseline("scene", scene, stamp);
+    assert.ok(!missing, missing);
+    if (recorded) {
+      t.skip(recorded);
       return;
     }
     assert.ok(
@@ -131,7 +156,7 @@ describe("the showcase in an emulated headset", { timeout: 180_000 }, () => {
     // there shows up in the headset. A transform is the sharpest way to ask,
     // because it moves a whole panel's worth of pixels and touches the
     // transform path the CSS mapping added.
-    const before = await photographScene(showcase.page);
+    const before = await photographScene(showcase.page, { freeze: true });
     await showcase.page.evaluate(() => {
       const portal = document.querySelector("[data-xr-portal]");
       const card = portal?.querySelector("div");
@@ -142,7 +167,7 @@ describe("the showcase in an emulated headset", { timeout: 180_000 }, () => {
       card.style.transform = "rotate(12deg) scale(0.8)";
     });
     await nextFrames(showcase.page, 10);
-    const after = await photographScene(showcase.page);
+    const after = await photographScene(showcase.page, { freeze: true });
 
     const moved = comparePng(after, before, MOVEMENT);
     assert.ok(
@@ -158,7 +183,7 @@ describe("the showcase in an emulated headset", { timeout: 180_000 }, () => {
       }
     });
     await nextFrames(showcase.page, 10);
-    const restored = await photographScene(showcase.page);
+    const restored = await photographScene(showcase.page, { freeze: true });
     assert.ok(
       comparePng(restored, before, BASELINE).same,
       "taking the transform away did not put the scene back",

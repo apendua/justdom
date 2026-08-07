@@ -1,6 +1,19 @@
 # Change Log - @apendua/freedom
 
-This log was last generated on Thu, 06 Aug 2026 12:02:12 GMT and should not be manually modified.
+This log was last generated on Fri, 07 Aug 2026 07:20:41 GMT and should not be manually modified.
+
+## 0.7.0
+Fri, 07 Aug 2026 07:20:41 GMT
+
+### Minor changes
+
+- New `dropdown(props)`: a select built out of ordinary elements, so that it works in a portal, where a native `<select>` cannot — `<option>` has no CSS box to mirror and the list the browser pops up is chrome rather than DOM. Structure only; every part is dressed in a class name the caller supplies. `options` may be a getter, so an open menu follows a list that changes under it. Moved here out of `apps/euclid-xr`, which now uses it.
+- `@apendua/justdom` is now a peer dependency. It was already what `dom(ctx, ...)` expects to be handed, and building `dropdown` out of it makes the dependency a real one rather than one carried in types alone.
+
+### Patches
+
+- Read computed CSS colours as sRGB, so panels are drawn in the colours they were written in
+- Draw nothing for a border of no width, instead of filling a rounded element with slivers in the border colour
 
 ## 0.6.0
 Thu, 06 Aug 2026 12:02:12 GMT

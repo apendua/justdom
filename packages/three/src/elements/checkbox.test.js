@@ -112,7 +112,17 @@ describe("checkbox", () => {
   test("a ticked box has a mark in it", () => {
     const { marks, subscription } = setup({ checked: true });
     assert.equal(marks.length, 1);
-    assert.ok(marks[0].geometry.getAttribute("position").count > 0, "the tick has a shape");
+
+    // A strip of quads along the polyline, indexed by hand: two vertices per
+    // point of the tick, two triangles per segment between them. Asserted
+    // rather than merely non-empty because the alternative — handing the
+    // outline to `ShapeGeometry` — is a general polygon triangulator, and
+    // importing one pulls three's whole shape subtree into every bundle that
+    // has a portal in it.
+    const { geometry } = marks[0];
+    assert.equal(geometry.getAttribute("position").count, 6, "two vertices per point of the tick");
+    assert.equal(geometry.getIndex()?.count, 12, "two triangles per segment");
+
     subscription.unsubscribe();
   });
 

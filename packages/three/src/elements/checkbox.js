@@ -43,12 +43,13 @@ const TICK_WIDTH = 0.16;
 const MITER_LIMIT = 4;
 
 /**
- * A polyline given width: the outline of the stroke it describes, as a closed
- * polygon, with butt ends and mitred bends.
+ * A polyline given width: the two sides of the stroke it describes, with butt
+ * ends and mitred bends. One point per side per point of the polyline, in the
+ * polyline's own order, so the two arrays pair up index for index.
  *
  * @param {readonly THREE.Vector2[]} points
  * @param {number} halfWidth
- * @returns {THREE.Vector2[]}
+ * @returns {{left: THREE.Vector2[], right: THREE.Vector2[]}}
  */
 function thickenPolyline(points, halfWidth) {
   /** The left-hand normal of each segment. */
@@ -72,13 +73,24 @@ function thickenPolyline(points, halfWidth) {
     const scale = Math.min(halfWidth / miter.dot(before), halfWidth * MITER_LIMIT);
     return miter.multiplyScalar(scale);
   });
-  return [
-    ...points.map((point, i) => point.clone().add(offsets[i])),
-    ...points.map((point, i) => point.clone().sub(offsets[i])).reverse(),
-  ];
+  return {
+    left: points.map((point, i) => point.clone().add(offsets[i])),
+    right: points.map((point, i) => point.clone().sub(offsets[i])),
+  };
 }
 
 /**
+ * The tick as a mesh: one quad per segment of the polyline, spanning the pair
+ * of side points at each of its ends, written straight into a buffer.
+ *
+ * Deliberately not `THREE.Shape` and `ShapeGeometry`. Those exist to
+ * triangulate an arbitrary polygon, and importing them drags three's whole
+ * shape subtree — curves, paths, the earcut triangulator — into every bundle
+ * with a portal in it, some 8 kB gzipped, whether or not anything in the app
+ * is a checkbox. Drawing boxes with a distance field got that subtree out of
+ * the bundle; a mark whose topology is known in advance and never changes has
+ * no business putting it back.
+ *
  * @param {number} width
  * @param {number} height
  * @returns {THREE.BufferGeometry}
@@ -86,8 +98,28 @@ function thickenPolyline(points, halfWidth) {
 function makeTickGeometry(width, height) {
   const points = TICK.map(([x, y]) => new THREE.Vector2(x * width, y * height));
   const halfWidth = (TICK_WIDTH * Math.min(width, height)) / 2;
-  const shape = new THREE.Shape(thickenPolyline(points, halfWidth));
-  return new THREE.ShapeGeometry(shape);
+  const { left, right } = thickenPolyline(points, halfWidth);
+
+  // The two sides interleaved, so that a point's pair sits together: the left
+  // vertex at 2i, the right one after it.
+  const positions = new Float32Array(points.length * 6);
+  for (let i = 0; i < points.length; i++) {
+    positions.set([left[i].x, left[i].y, 0], i * 6);
+    positions.set([right[i].x, right[i].y, 0], i * 6 + 3);
+  }
+
+  /** @type {number[]} */
+  const indices = [];
+  for (let i = 0; i < points.length - 1; i++) {
+    indices.push(2 * i, 2 * i + 2, 2 * i + 3, 2 * i, 2 * i + 3, 2 * i + 1);
+  }
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+  geometry.setIndex(indices);
+  // No normals or UVs: the mark is drawn with a flat, two-sided, unmapped
+  // material, which reads neither.
+  return geometry;
 }
 
 /**

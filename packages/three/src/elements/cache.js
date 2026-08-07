@@ -30,69 +30,63 @@ export function hasTransform(value) {
 }
 
 /**
- * The attribute that switches an element's transform off while something is
- * being measured. Deliberately absent from the portal observer's filter, so
- * the toggling is invisible to invalidation — putting it there would make
- * every measurement announce a mutation, which would schedule another
- * measurement.
- */
-const MEASURE_ATTRIBUTE = "data-xr-measure";
-
-/** @type {HTMLStyleElement | null} */
-let measureStyleElement = null;
-
-function ensureMeasureStyle() {
-  if (!measureStyleElement || !measureStyleElement.isConnected) {
-    measureStyleElement = document.createElement("style");
-    // !important outranks inline styles and animation values alike, which is
-    // what lets this switch off a transform mid-transition.
-    measureStyleElement.textContent = `[${MEASURE_ATTRIBUTE}] { transform: none !important; }`;
-    document.head.appendChild(measureStyleElement);
-  }
-}
-
-/**
- * Run `fn` with every CSS transform between `element` and its portal root
- * switched off, so the client rects it reads come back in layout space —
- * the space the mirror draws in, with the transforms re-applied as object
- * matrices. Transforms do not affect layout, so nothing actually moves; the
- * one blind spot is an absolutely positioned descendant whose containing
- * block the transform was.
- *
- * Reading the ancestors' styles here registers them as dependencies of the
+ * Whether the element, or any ancestor inside the portal, carries a CSS
+ * transform. Reading the styles here registers them as dependencies of the
  * calling computation, which is the correct thing: a transform toggling on
- * an ancestor changes what this measurement means.
+ * an ancestor changes what a measurement of this element means.
  *
- * @template T
- * @param {HTMLElement | null} element
- * @param {() => T} fn
- * @returns {T}
+ * @param {HTMLElement} element
+ * @returns {boolean}
  */
-export function withoutTransforms(element, fn) {
-  /** @type {HTMLElement[]} */
-  const affected = [];
+function isSubtreeTransformed(element) {
   /** @type {HTMLElement | null} */
   let el = element;
   while (el && !el.hasAttribute(PORTAL_ATTRIBUTE)) {
     if (hasTransform(getComputedStyleCached(el).transform)) {
-      affected.push(el);
+      return true;
     }
     el = el.parentElement;
   }
-  if (!affected.length) {
-    return fn();
+  return false;
+}
+
+/**
+ * A detached, untransformed copy of `element` to measure instead of the real
+ * thing, parked off-screen outside the portal's observed subtree.
+ *
+ * Touching the live elements is not an option: masking a transform with an
+ * !important rule interacts with `transition: transform` at the browser's
+ * pace, not ours — a synchronous flush updates the transition *baseline*
+ * while transitions themselves are only generated at frames — so any
+ * mask-and-restore protocol either swallows a transition the mutation meant
+ * to start or manufactures one out of the restore. A clone has no
+ * transitions to disturb.
+ *
+ * The clone's layout reproduces the original's because every resolved style
+ * — the used width included — is copied onto its root; descendants keep
+ * their classes and the document's stylesheets apply as usual. The one
+ * blind spot: a descendant selector that reaches *above* the cloned element
+ * (`.card[data-state] p`) has no ancestors to match against and falls back
+ * to base styling.
+ *
+ * @param {HTMLElement} element
+ * @returns {HTMLElement}
+ */
+function createMeasurementClone(element) {
+  const clone = /** @type {HTMLElement} */ (element.cloneNode(true));
+  const computed = window.getComputedStyle(element);
+  for (let i = 0; i < computed.length; i++) {
+    const property = computed[i];
+    clone.style.setProperty(property, computed.getPropertyValue(property));
   }
-  ensureMeasureStyle();
-  for (const transformed of affected) {
-    transformed.setAttribute(MEASURE_ATTRIBUTE, "");
-  }
-  try {
-    return fn();
-  } finally {
-    for (const transformed of affected) {
-      transformed.removeAttribute(MEASURE_ATTRIBUTE);
-    }
-  }
+  clone.style.setProperty("transform", "none", "important");
+  clone.style.setProperty("transition", "none", "important");
+  clone.style.setProperty("animation", "none", "important");
+  clone.style.setProperty("position", "absolute", "important");
+  clone.style.setProperty("top", "0", "important");
+  clone.style.setProperty("left", "-99999px", "important");
+  clone.style.setProperty("visibility", "hidden", "important");
+  return clone;
 }
 
 /**
@@ -326,11 +320,96 @@ function isSingleLine(rects) {
 }
 
 /**
+ * The measuring core: line boxes and parent-relative position of one text
+ * node, read off whatever tree the node currently sits in.
+ *
+ * @param {Text} text
+ * @param {HTMLElement} parentElement
+ * @param {string} whiteSpace
+ * @returns {TextLayout}
+ */
+function measureTextRects(text, parentElement, whiteSpace) {
+  const content = text.textContent || "";
+  const parentRect = parentElement.getBoundingClientRect();
+  const range = document.createRange();
+  range.selectNodeContents(text);
+  const bounds = range.getBoundingClientRect();
+  const left = bounds.left - parentRect.left;
+  const top = bounds.top - parentRect.top;
+
+  const rects = range.getClientRects();
+  if (rects.length === 0) {
+    // Empty, or not laid out at all. Either way there is nothing to draw,
+    // and in particular nothing that should be drawn at the origin instead.
+    return { bounds, left, top, lines: [] };
+  }
+
+  // The overwhelmingly common case is a label on a single line, which the
+  // bounding box already describes. Only text that actually wrapped is
+  // worth walking character by character.
+  if (isSingleLine(rects)) {
+    const line = collapseWhitespace(content, whiteSpace);
+    return {
+      bounds,
+      left,
+      top,
+      lines: line
+        ? [{ text: line, left: 0, top: 0, width: bounds.width, height: bounds.height }]
+        : [],
+    };
+  }
+
+  const preserved = preservesWhitespace(whiteSpace);
+  /** @type {import('./textLines.js').CharacterRect[]} */
+  const characters = [];
+  for (let index = 0; index < content.length; index++) {
+    range.setStart(text, index);
+    range.setEnd(text, index + 1);
+    const rect = range.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) {
+      // Whitespace the layout collapsed away occupies no space and belongs
+      // to no line box.
+      continue;
+    }
+    characters.push({
+      index,
+      blank: !preserved && /\s/.test(content[index]),
+      left: rect.left,
+      right: rect.right,
+      top: rect.top,
+      bottom: rect.bottom,
+    });
+  }
+
+  const lines = [];
+  for (const row of groupIntoLines(characters)) {
+    const line = collapseWhitespace(content.slice(row.start, row.end), whiteSpace);
+    if (!line) {
+      continue;
+    }
+    lines.push({
+      text: line,
+      left: row.left - bounds.left,
+      top: row.top - bounds.top,
+      width: row.right - row.left,
+      height: row.bottom - row.top,
+    });
+  }
+
+  return { bounds, left, top, lines };
+}
+
+/**
  * Read back the line boxes the browser laid a text node out into, along with
- * the text that landed on each one. Everything is measured inside
- * `withoutTransforms`: rects of transformed content are screen-space bounds,
- * and both the line grouping and the parent-relative position have to happen
- * in layout space — the object carrying the transform re-applies it.
+ * the text that landed on each one.
+ *
+ * Under a transform anywhere on the chain, the real tree's client rects are
+ * screen-space bounds — a rotation would group lines by screen rows, which
+ * is not where the browser broke them — so the measurement runs against a
+ * detached untransformed clone of the parent instead. The text node is
+ * always a direct child of its parent element, so finding it again in the
+ * clone is an index lookup.
+ *
  * @param {Text} text
  * @returns {TextLayout}
  */
@@ -339,77 +418,22 @@ function measureTextLayout(text) {
   if (!parentElement) {
     throw new NoValueError("Text node has no parent element");
   }
-  const content = text.textContent || "";
   const whiteSpace = getComputedStyleCached(text).whiteSpace || "normal";
-  return withoutTransforms(parentElement, () => {
-    const parentRect = parentElement.getBoundingClientRect();
-    const range = document.createRange();
-    range.selectNodeContents(text);
-    const bounds = range.getBoundingClientRect();
-    const left = bounds.left - parentRect.left;
-    const top = bounds.top - parentRect.top;
-
-    const rects = range.getClientRects();
-    if (rects.length === 0) {
-      // Empty, or not laid out at all. Either way there is nothing to draw,
-      // and in particular nothing that should be drawn at the origin instead.
-      return { bounds, left, top, lines: [] };
+  if (!isSubtreeTransformed(parentElement)) {
+    return measureTextRects(text, parentElement, whiteSpace);
+  }
+  const clone = createMeasurementClone(parentElement);
+  document.body.appendChild(clone);
+  try {
+    const index = Array.prototype.indexOf.call(parentElement.childNodes, text);
+    const cloneText = clone.childNodes[index];
+    if (!(cloneText instanceof Text)) {
+      throw new NoValueError("Text node not found in measurement clone");
     }
-
-    // The overwhelmingly common case is a label on a single line, which the
-    // bounding box already describes. Only text that actually wrapped is
-    // worth walking character by character.
-    if (isSingleLine(rects)) {
-      const line = collapseWhitespace(content, whiteSpace);
-      return {
-        bounds,
-        left,
-        top,
-        lines: line
-          ? [{ text: line, left: 0, top: 0, width: bounds.width, height: bounds.height }]
-          : [],
-      };
-    }
-
-    const preserved = preservesWhitespace(whiteSpace);
-    /** @type {import('./textLines.js').CharacterRect[]} */
-    const characters = [];
-    for (let index = 0; index < content.length; index++) {
-      range.setStart(text, index);
-      range.setEnd(text, index + 1);
-      const rect = range.getBoundingClientRect();
-      if (rect.width <= 0 || rect.height <= 0) {
-        // Whitespace the layout collapsed away occupies no space and belongs
-        // to no line box.
-        continue;
-      }
-      characters.push({
-        index,
-        blank: !preserved && /\s/.test(content[index]),
-        left: rect.left,
-        right: rect.right,
-        top: rect.top,
-        bottom: rect.bottom,
-      });
-    }
-
-    const lines = [];
-    for (const row of groupIntoLines(characters)) {
-      const line = collapseWhitespace(content.slice(row.start, row.end), whiteSpace);
-      if (!line) {
-        continue;
-      }
-      lines.push({
-        text: line,
-        left: row.left - bounds.left,
-        top: row.top - bounds.top,
-        width: row.right - row.left,
-        height: row.bottom - row.top,
-      });
-    }
-
-    return { bounds, left, top, lines };
-  });
+    return measureTextRects(cloneText, clone, whiteSpace);
+  } finally {
+    clone.remove();
+  }
 }
 
 /** @type {WeakMap<Text, Derived<TextLayout>>} */

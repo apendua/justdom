@@ -161,9 +161,15 @@ export function createAnimationClock(container, emit, requestFrames) {
 
   /**
    * The batches one sample asks for: a style re-read scoped to the animating
-   * elements always; a rect re-measure of their subtrees when transforms are
-   * moving them; a portal-wide re-measure when layout itself is animating,
-   * which moves elements nobody named.
+   * elements always; a portal-wide rect re-measure when layout itself is
+   * animating, which moves elements nobody named; a subtree rect re-measure
+   * when a *transform* settles — and only then. While a transform animates,
+   * nothing consumes its client rects (elements measure off layout offsets,
+   * text measures with transforms switched off), so per-frame reflow would
+   * buy nothing and cost a text re-measure per tick. The moment the
+   * transform stops is different: the element returns to the subpixel
+   * client-rect path, and the rects its subtree cached mid-flight are
+   * whatever the animation last made of them.
    *
    * @param {Set<Node>} targets
    * @param {Set<Node>} transformTargets
@@ -185,20 +191,16 @@ export function createAnimationClock(container, emit, requestFrames) {
   function buildBatches() {
     /** @type {Set<Node>} */
     const targets = new Set();
-    /** @type {Set<Node>} */
-    const transformTargets = new Set();
     let layout = false;
     for (const [element, keys] of animating) {
       targets.add(element);
       for (const cls of keys.values()) {
         if (cls === "layout") {
           layout = true;
-        } else if (cls === "transform") {
-          transformTargets.add(element);
         }
       }
     }
-    return batchesFor(targets, transformTargets, layout);
+    return batchesFor(targets, new Set(), layout);
   }
 
   /**

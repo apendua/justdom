@@ -2,7 +2,12 @@ import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { Subject } from "rxjs";
 import { Derived } from "@apendua/signal";
-import { getBoundingClientRectCached, getComputedStyleCached, setSubject } from "./cache.js";
+import {
+  getBoundingClientRectCached,
+  getComputedStyleCached,
+  getTextLayout,
+  setSubject,
+} from "./cache.js";
 
 describe("getComputedStyleCached", () => {
   test("style invalidations propagate even though the declaration is a live object", () => {
@@ -174,5 +179,55 @@ describe("getComputedStyleCached", () => {
     subscriptions.forEach((subscription) => subscription.unsubscribe());
     parent.remove();
     sibling.remove();
+  });
+});
+
+describe("text layout under transforms", () => {
+  test("a transformed parent is measured through a clone, and the clone is cleaned up", () => {
+    // jsdom implements no Range geometry; a minimal stand-in lets the clone
+    // path run to completion. It records which trees were measured.
+    /** @type {Node[]} */
+    const measured = [];
+    const originalCreateRange = document.createRange;
+    document.createRange = () =>
+      /** @type {Range} */ (
+        /** @type {unknown} */ ({
+          selectNodeContents: (/** @type {Node} */ node) => {
+            measured.push(node);
+          },
+          setStart: () => {},
+          setEnd: () => {},
+          getBoundingClientRect: () =>
+            /** @type {DOMRect} */ ({ left: 0, top: 0, right: 0, bottom: 0, width: 0, height: 0 }),
+          getClientRects: () => /** @type {DOMRectList} */ (/** @type {unknown} */ ([])),
+        })
+      );
+
+    const parent = document.createElement("div");
+    parent.style.transform = "matrix(2, 0, 0, 2, 0, 0)";
+    parent.style.transition = "transform 0.3s";
+    const textNode = document.createTextNode("hello world");
+    parent.appendChild(textNode);
+    document.body.appendChild(parent);
+    setSubject(parent, new Subject());
+    setSubject(textNode, new Subject());
+
+    const childrenBefore = document.body.childElementCount;
+    try {
+      const layout = getTextLayout(textNode);
+      assert.deepEqual(layout.lines, []);
+      // The measurement ran against a clone's text, not the live node…
+      assert.equal(measured.length, 1);
+      assert.notEqual(measured[0], textNode);
+      assert.equal(measured[0].textContent, "hello world");
+      // …the live parent was never touched — no attributes, no style writes
+      // a `transition: transform` could smooth into a lie…
+      assert.equal(parent.style.transform, "matrix(2, 0, 0, 2, 0, 0)");
+      // …and the clone did not outlive the measurement.
+      assert.equal(document.body.childElementCount, childrenBefore);
+    } finally {
+      parent.remove();
+      document.createRange = originalCreateRange;
+    }
   });
 });

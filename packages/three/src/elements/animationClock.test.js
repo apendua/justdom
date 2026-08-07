@@ -122,15 +122,25 @@ describe("animation clock", () => {
     }
   });
 
-  test("a transform transition re-measures its own subtree as well", () => {
+  test("a transform transition re-measures its subtree only when it settles", () => {
     const { element, emitted, frames, cleanup } = setup();
     try {
       element.dispatchEvent(syntheticEvent("transitionrun", { propertyName: "transform" }));
       frames.step();
-      const [batches] = emitted;
-      assert.equal(batches.length, 2);
-      assert.deepEqual([...batches[1].types], ["reflow"]);
-      assert.deepEqual([...(batches[1].targets ?? [])], [element]);
+      // Mid-flight, nothing consumes the transformed client rects: elements
+      // measure off layout offsets and text measures with transforms
+      // switched off. Only the style sample goes out.
+      const [ticked] = emitted;
+      assert.equal(ticked.length, 1);
+      assert.deepEqual([...ticked[0].types], ["animated"]);
+
+      // The end is different: the element returns to the client-rect path,
+      // and whatever its subtree cached mid-flight is stale.
+      element.dispatchEvent(syntheticEvent("transitionend", { propertyName: "transform" }));
+      const settled = emitted[emitted.length - 1];
+      assert.equal(settled.length, 2);
+      assert.deepEqual([...settled[1].types], ["reflow"]);
+      assert.deepEqual([...(settled[1].targets ?? [])], [element]);
     } finally {
       cleanup();
     }

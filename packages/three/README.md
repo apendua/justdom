@@ -148,9 +148,11 @@ flat web.
 One print of the measuring tape to know about: a transformed element (and
 everything under it) is measured off the layout — whole-pixel offsets —
 rather than the subpixel client rects untransformed content enjoys, because
-client rects come back with the transform already applied. Text is measured
-with the transforms briefly switched off instead, so its line boxes and
-positions are exact whatever the transform — including full 3D rotations.
+client rects come back with the transform already applied. Text under a
+transform is measured against a detached, untransformed clone of its parent
+instead, so its line boxes and positions are exact whatever the transform —
+including full 3D rotations — without the measurement ever touching the live
+elements or the transitions playing on them.
 
 ## Animation
 

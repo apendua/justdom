@@ -1,6 +1,17 @@
 # Change Log - @apendua/freedom
 
-This log was last generated on Fri, 07 Aug 2026 15:07:17 GMT and should not be manually modified.
+This log was last generated on Fri, 07 Aug 2026 17:18:23 GMT and should not be manually modified.
+
+## 0.8.0
+Fri, 07 Aug 2026 17:18:23 GMT
+
+### Minor changes
+
+- Style invalidation is scoped to the mutation's neighbourhood instead of the whole portal: the observer's targets ride along with each batch, and a computed-style cache re-reads only when a change at some target's parent subtree can actually restyle it. A hover twitch went from O(panel) style snapshots to O(neighbourhood). `:has()` crossing upward past the mutated element's parent is a documented limitation.
+- CSS `transform` and `transform-origin` — 2D and 3D alike — are mirrored onto the element's object as a matrix, fixing the mis-render where a transformed element drew as its transformed axis-aligned bounds; `translateZ`/`rotateY` move content into actual scene depth. Transformed elements are measured off layout offsets (client rects come back with the transform already applied); text is measured with the transforms briefly switched off, so line boxes and positions are exact under any transform. Attribute mutations now also re-measure the mutated element's own subtree, which is what a toggled transform moves.
+- CSS transitions, keyframe animations, Web Animations and rAF-driven inline styles now play inside a portal. An animation clock samples the animating elements once per frame through the same invalidation path a mutation takes — style samples scoped to the animating elements, rect re-measures scoped to what the animated properties can actually move — and requests no frames at all while nothing animates. A `getAnimations()` sweep reconciles what events miss and refines keyframe classifications.
+- Text color is tinted onto a glyph mask through the material instead of being baked into the rasterized texture, so animating `color` re-draws no canvas and uploads nothing. The mask rides in the material's alpha map — only coverage is sampled, so linear filtering has no transparent-black texels to drag into glyph edges as a dark fringe. Text with a `text-shadow`, or a decoration explicitly coloured something other than the text, keeps the baked path.
+- Each box renders as one shared unit quad and a signed-distance shader — per-corner radii, per-side border widths and both colours as uniforms — replacing the background + border pair of triangulated meshes. Geometry is never rebuilt: a resize is a scale write, everything else a uniform write, which halves the mesh count per element and makes layout-class animation affordable. Corners are circular where CSS would draw elliptical ones for percentage radii on non-square boxes.
 
 ## 0.7.1
 Fri, 07 Aug 2026 15:07:17 GMT

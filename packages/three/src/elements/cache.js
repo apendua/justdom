@@ -5,6 +5,7 @@ import { collapseWhitespace, groupIntoLines, preservesWhitespace } from "./textL
 /**
  * @import {Subject} from 'rxjs';
  * @import {TextLine} from './textLines.js';
+ * @import {TextBounds} from './textHelpers.js';
  */
 
 /**
@@ -297,7 +298,9 @@ export function getBoundingClientRectCached(element) {
  * which is not where the browser broke the lines.
  *
  * @typedef {object} TextLayout
- * @property {DOMRect} bounds Union of the text node's line boxes.
+ * @property {TextBounds} bounds How big the union of the text node's line
+ *   boxes is. Deliberately a size and not a rectangle — see
+ *   `measureTextRects`.
  * @property {number} left Where `bounds` sits relative to the parent
  *   element's border box, in layout px.
  * @property {number} top Same, vertically.
@@ -333,9 +336,18 @@ function measureTextRects(text, parentElement, whiteSpace) {
   const parentRect = parentElement.getBoundingClientRect();
   const range = document.createRange();
   range.selectNodeContents(text);
-  const bounds = range.getBoundingClientRect();
-  const left = bounds.left - parentRect.left;
-  const top = bounds.top - parentRect.top;
+  const boundsRect = range.getBoundingClientRect();
+  const left = boundsRect.left - parentRect.left;
+  const top = boundsRect.top - parentRect.top;
+  // Size alone, and a plain object: where the text sits in the viewport is
+  // already said by `left` and `top`, in the parent-relative terms the mirror
+  // draws in — and it is the only part of this rectangle that a scroll
+  // changes. Handing the viewport position on as well would make every
+  // dependent of these bounds a dependent of the scroll position too — and a
+  // `DOMRect` is not a plain object, so the selector proxy cannot look inside
+  // one: a fresh identity per measurement would re-run the rasterizer for
+  // every visible label on every frame that moved anything.
+  const bounds = { width: boundsRect.width, height: boundsRect.height };
 
   const rects = range.getClientRects();
   if (rects.length === 0) {
@@ -389,8 +401,8 @@ function measureTextRects(text, parentElement, whiteSpace) {
     }
     lines.push({
       text: line,
-      left: row.left - bounds.left,
-      top: row.top - bounds.top,
+      left: row.left - boundsRect.left,
+      top: row.top - boundsRect.top,
       width: row.right - row.left,
       height: row.bottom - row.top,
     });
@@ -448,6 +460,14 @@ export function getTextLayout(text) {
   if (!signal) {
     // Same rule as rects: line boxes are client rects, so a transform toggled
     // on an ancestor moves them too.
+    //
+    // Which means this re-measures whenever anything moves the text — every
+    // frame of a layout animation, and every frame of a scroll once there is
+    // one. What it must not do is make that re-measurement *look* like a
+    // change to anyone reading it: every field it reports is relative to the
+    // text's own parent or to its own bounds, so a subtree sliding through
+    // the viewport recomputes to the same numbers and the selector proxy
+    // stops there. Nothing downstream — the texture above all — re-runs.
     const dependency = subjects.get(text)?.pipe(filter((batch) => affectsRect(batch, text)));
     signal = new Derived(() => {
       if (dependency) {

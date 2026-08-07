@@ -1,7 +1,7 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { Subject } from "rxjs";
-import { Derived } from "@apendua/signal";
+import { Derived, selector, toObservable } from "@apendua/signal";
 import {
   getBoundingClientRectCached,
   getComputedStyleCached,
@@ -226,6 +226,92 @@ describe("text layout under transforms", () => {
       // …and the clone did not outlive the measurement.
       assert.equal(document.body.childElementCount, childrenBefore);
     } finally {
+      parent.remove();
+      document.createRange = originalCreateRange;
+    }
+  });
+});
+
+describe("text layout as a dependency", () => {
+  test("text that only moved is re-measured, and nothing downstream hears about it", () => {
+    // What a scroll does to a line of text: the whole subtree slides through
+    // the viewport, so the measurement has to run again, and every number it
+    // yields is the number it yielded before. Rasterizing a texture is the
+    // expensive thing hanging off these, and it must not re-run — which is
+    // why the bounds are a size rather than the rectangle they were read
+    // from. Each frame of a scroll would otherwise re-draw every label.
+    let scrolled = 0;
+    let measurements = 0;
+    // jsdom implements no Range geometry, and a `DOMRect` is what a browser
+    // hands back here — an instance of a class, which is exactly the thing
+    // the selector proxy cannot look inside. Taken off `window`, because that
+    // is where jsdom puts it.
+    const rect = () => new window.DOMRect(10, 20 - scrolled, 30, 12);
+
+    const originalCreateRange = document.createRange;
+    document.createRange = () => {
+      measurements++;
+      return /** @type {Range} */ (
+        /** @type {unknown} */ ({
+          selectNodeContents: () => {},
+          setStart: () => {},
+          setEnd: () => {},
+          getBoundingClientRect: rect,
+          getClientRects: () => /** @type {DOMRectList} */ (/** @type {unknown} */ ([rect()])),
+        })
+      );
+    };
+
+    const parent = document.createElement("div");
+    const textNode = document.createTextNode("hello world");
+    parent.appendChild(textNode);
+    document.body.appendChild(parent);
+    // The parent scrolls away with the text it contains, which is the whole
+    // reason the text's own position within it does not change.
+    parent.getBoundingClientRect = () =>
+      /** @type {DOMRect} */ (
+        /** @type {unknown} */ ({ left: 0, top: -scrolled, right: 100, bottom: 100 })
+      );
+
+    /** @type {Subject<import("./cache.js").MutationBatch>} */
+    const subject = new Subject();
+    setSubject(textNode, subject);
+
+    const layout = selector(() => getTextLayout(textNode));
+
+    let rasters = 0;
+    const texture = new Derived(() => {
+      rasters++;
+      return `${layout.bounds.width}x${layout.bounds.height}/${layout.lines.length}`;
+    });
+
+    // Subscribed, because that is how the mirror reads this — an effect
+    // hanging off the texture — and because equality only gets a chance to
+    // stop anything on a graph something is actually watching. A bare `get()`
+    // recomputes on demand and would report nothing either way.
+    /** @type {string[]} */
+    const drawn = [];
+    const subscription = toObservable(texture).subscribe((value) => drawn.push(value));
+
+    try {
+      assert.deepEqual(drawn, ["30x12/1"]);
+      assert.deepEqual({ measurements, rasters }, { measurements: 1, rasters: 1 });
+
+      scrolled = 8;
+      subject.next({ types: new Set(["reflow"]), targets: new Set([parent]) });
+
+      // Re-measured, because a client rect that moved is a client rect that
+      // has to be read again…
+      assert.equal(measurements, 2);
+      // …the text is still where it was in the space the mirror draws in…
+      const moved = getTextLayout(textNode);
+      assert.deepEqual({ left: moved.left, top: moved.top }, { left: 10, top: 20 });
+      // …and the texture was drawn once, and stays drawn.
+      assert.deepEqual(drawn, ["30x12/1"]);
+      assert.equal(rasters, 1);
+    } finally {
+      subscription.unsubscribe();
+      subject.complete();
       parent.remove();
       document.createRange = originalCreateRange;
     }

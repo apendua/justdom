@@ -112,7 +112,7 @@ re-measuring the panel on every attribute mutation would mean re-laying-out
 the whole thing on every twitch of the ray. A class swap restyles and
 repaints; the one thing it re-measures is the mutated element's own subtree,
 which is what a toggled `transform` moves (see below) — nothing outside it.
-So anything that changes *layout* — a menu opening, a section expanding —
+So anything that changes _layout_ — a menu opening, a section expanding —
 has to be mounted and unmounted rather than hidden and shown.
 
 **The panel's background is clickable, and it is the panel you should listen
@@ -146,7 +146,7 @@ re-layout and no re-rasterized text. Prefer it for motion, exactly as on the
 flat web.
 
 3D is real depth here, not a painted illusion: `rotateY` swings half the
-element *behind* its own surface — up to half its width deep — and the depth
+element _behind_ its own surface — up to half its width deep — and the depth
 buffer will honestly clip it into the panel. Give anything 3D-rotated enough
 `translateZ` to keep the swing in front.
 
@@ -175,7 +175,7 @@ animating element. Text is no exception — glyphs are rasterized once as a
 mask and coloured by the material, so animating `color` re-draws nothing.
 (The mask needs one colour: text with a `text-shadow`, or a decoration
 explicitly coloured something other than the text, keeps its colours baked
-into the texture and pays a re-draw per change.) Animating a *layout*
+into the texture and pays a re-draw per change.) Animating a _layout_
 property — `height`, `padding`, `font-size` — re-measures the panel every
 frame, because a growing element moves neighbours no one named. It works;
 save it for moments, not idle loops.
@@ -259,6 +259,12 @@ The same box also trims ray hits, so the half of a button that has scrolled out
 of sight cannot be pressed, and an element with nothing left showing leaves the
 raycast set and the render traversal entirely, taking its subtree with it.
 
+Who clips whom follows the page rather than the parent chain: an absolutely
+positioned element is clipped by its containing block's ancestors, not by
+scrollers below that block — which is how a dropdown anchored outside a list
+stays whole while its trigger row scrolls away — and a `position: fixed`
+element escapes every scroller there is.
+
 Scrolling is then the ordinary DOM thing: client rects move with `scrollTop`,
 and a scroll invalidates the panel's layout the way a mutation does.
 
@@ -266,9 +272,21 @@ and a scroll invalidates the panel's layout the way a mutation does.
 element.scrollTop += 48;
 ```
 
-What a panel has no equivalent of is the gesture — no wheel, no surface to
-flick — so `scrollable(props)` supplies the controls, built out of ordinary
-elements like the dropdown:
+**To scroll by hand, take hold of the list and pull.** Holding the trigger
+anywhere over an element that clips its overflow and has more inside than fits
+drags the content with the hand. The ray is sampled against the list's own
+plane each frame rather than following hit events, so an angled, scaled or
+hand-held panel needs no special case and the list keeps up with a hand that
+has slid off it entirely; let go while moving and it glides to a stop. A drag
+that travels more than a few px is a scroll rather than a press, so pulling a
+list made of buttons does not also press the one you grabbed — the same
+bargain a touchscreen strikes; below that threshold the press is delivered as
+an ordinary click. There is nothing to opt into: a list becomes draggable the
+moment it overflows, and stops being so when it no longer does.
+
+For a scrollbar's kind of control — visible, precise, resting — there is
+`scrollable(props)`, which supplies arrows, a track and a thumb, built out of
+ordinary elements like the dropdown:
 
 ```js
 scrollable({

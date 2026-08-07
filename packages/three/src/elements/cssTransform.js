@@ -8,9 +8,9 @@ import { getComputedStyleCached, hasTransform, PORTAL_ATTRIBUTE } from "./cache.
  * Client rects are useless the moment a transform is involved: the browser
  * reports the transformed axis-aligned bounds, and a box that will get the
  * transform applied as its own object matrix has to be measured *without*
- * it. So everything transformed is measured off the layout instead — offsets
- * for elements, and for text (which has no offsets) the transformed rects
- * with the accumulated transform divided back out.
+ * it. So transformed elements are measured off their layout offsets instead,
+ * and text — which has no offsets — is measured with the transforms briefly
+ * switched off (see `withoutTransforms` in cache.js).
  */
 
 /**

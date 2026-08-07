@@ -4,7 +4,7 @@ import { dom, dropdown, XREventMap } from "@apendua/freedom";
 import { $, children, on, renderText, text } from "@apendua/justdom";
 import { component, effects, observable, set } from "@apendua/signal";
 import { EXAMPLES } from "@apendua.dev/euclid-lang";
-import type { AudioOutputSelection } from "@apendua.dev/sound";
+import type { MusicControls } from "@apendua.dev/sound/xr";
 import {
   buttonActive,
   buttonGlyph,
@@ -43,16 +43,6 @@ const SHORT_NAMES: Record<string, string> = {
   "Pentagon (Richmond, exact)": "Pentagon · Richmond",
   "Pentagon (Dürer, approximate)": "Pentagon · Dürer",
 };
-
-/** What the panel needs of the soundtrack: its reading, and the two ways to move it. */
-export interface MusicControls {
-  /** Where the sound goes, which the picker below both shows and sets. */
-  output: AudioOutputSelection;
-  /** How loud the track is now, from 0 to 1. */
-  volume: () => number;
-  /** Move the volume by whole tenths, positive up and negative down. */
-  step: (steps: number) => void;
-}
 
 /**
  * The base class alone or the base plus the active class, following a signal.
@@ -174,7 +164,7 @@ const ToolPanel = component((ctx: WeakKey, studio: Studio, music: MusicControls)
                 ]),
                 $("div", [
                   set("className", stepValue),
-                  children(text`${() => `${Math.round(music.volume() * 100)}%`}`),
+                  children(text`${() => `${Math.round(music.volume.get() * 100)}%`}`),
                 ]),
                 $("div", [
                   set("className", stepButton),

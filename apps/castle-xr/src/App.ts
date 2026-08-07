@@ -1,6 +1,5 @@
 import * as THREE from "three";
 import { camera, children, cursors, $, XREventMap, interactions } from "@apendua/freedom";
-import { audioOutputSelection } from "@apendua.dev/sound";
 import { Signal } from "@apendua/signal";
 import { on, set, effects, just, use, component } from "@apendua/signal";
 
@@ -9,7 +8,8 @@ import { boxGeometry } from "./elements/geometry.js";
 import { basicMaterial } from "./elements/material.js";
 import { palette } from "./elements/palette.js";
 import Game from "./components/Game.js";
-import Music, { DEFAULT_VOLUME } from "./components/Music.js";
+import { createMusicControls, Music } from "@apendua.dev/sound/xr";
+import glass_desk_habits from "@apendua.dev/media/glass_desk_habits.mp3";
 import BuildUI from "./views/BuildUI.js";
 import SiegeUI from "./views/SiegeUI.js";
 import CastleStore from "./store/CastleStore.js";
@@ -53,15 +53,7 @@ const App = component((ctx: WeakKey) => {
   // The ears go where the head is, so the soundtrack rides the camera and a
   // brick landing across the board sounds like it landed across the board.
   const listener = new THREE.AudioListener();
-  const musicVolume = Signal.of(DEFAULT_VOLUME);
-  const musicOutput = audioOutputSelection();
-
-  /** Volume moves in tenths, rounded so the readout stays on round numbers. */
-  const stepVolume = (steps: number) => {
-    musicVolume.setFn((volume) => {
-      return Math.min(10, Math.max(0, Math.round(volume * 10) + steps)) / 10;
-    });
-  };
+  const music = createMusicControls({ track: glass_desk_habits });
 
   const castle = new CastleStore();
   const gameSession = new Session();
@@ -77,11 +69,7 @@ const App = component((ctx: WeakKey) => {
       use(camera(ctx).pipe(children($(listener))));
     }),
     children(
-      Music(ctx, listener, musicOutput, [
-        effects((music) => {
-          music.volume = musicVolume.get();
-        }),
-      ]),
+      Music(ctx, listener, music),
       cursors(ctx, { color: palette.pointer }),
       $(new THREE.Group<XREventMap>(), [
         effects((o) => {
@@ -116,13 +104,13 @@ const App = component((ctx: WeakKey) => {
                   rotation: new THREE.Euler(0, Math.PI / 8, 0),
                 };
                 if (gameSession.phase.get() === "build") {
-                  return BuildUI(ctx, musicOutput, [
+                  return BuildUI(ctx, music.output, [
                     set(panel),
                     effects((ui) => {
                       ui.bricks = castle.bricks.size;
                       ui.canUndo = castle.history.canUndoSignal.get();
                       ui.canRedo = castle.history.canRedoSignal.get();
-                      ui.volume = musicVolume.get();
+                      ui.volume = music.volume.get();
                     }),
                     on("ready", () => {
                       if (castle.size === 0) {
@@ -141,14 +129,14 @@ const App = component((ctx: WeakKey) => {
                       castle.clear();
                     }),
                     on("quieter", () => {
-                      stepVolume(-1);
+                      music.step(-1);
                     }),
                     on("louder", () => {
-                      stepVolume(1);
+                      music.step(1);
                     }),
                   ]);
                 }
-                return SiegeUI(ctx, musicOutput, [
+                return SiegeUI(ctx, music.output, [
                   set(panel),
                   effects((ui) => {
                     ui.standing = gameSession.standing.get();
@@ -157,7 +145,7 @@ const App = component((ctx: WeakKey) => {
                     ui.won = gameSession.won.get();
                     ui.forkHand = gameSession.forkHand.get();
                     ui.gazeAim = gameSession.gazeAim.get();
-                    ui.volume = musicVolume.get();
+                    ui.volume = music.volume.get();
                   }),
                   on("rebuild", () => {
                     gameSession.beginBuilding();
@@ -170,10 +158,10 @@ const App = component((ctx: WeakKey) => {
                     gameSession.toggleGazeAim();
                   }),
                   on("quieter", () => {
-                    stepVolume(-1);
+                    music.step(-1);
                   }),
                   on("louder", () => {
-                    stepVolume(1);
+                    music.step(1);
                   }),
                 ]);
               })(),

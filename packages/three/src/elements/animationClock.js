@@ -160,13 +160,28 @@ export function createAnimationClock(container, emit, requestFrames) {
   }
 
   /**
-   * The batches one sample of the current membership asks for: a style
-   * re-read scoped to the animating elements always; a rect re-measure of
-   * their subtrees when transforms are moving them; a portal-wide re-measure
-   * when something is animating layout, which moves elements nobody named.
+   * The batches one sample asks for: a style re-read scoped to the animating
+   * elements always; a rect re-measure of their subtrees when transforms are
+   * moving them; a portal-wide re-measure when layout itself is animating,
+   * which moves elements nobody named.
    *
+   * @param {Set<Node>} targets
+   * @param {Set<Node>} transformTargets
+   * @param {boolean} layout
    * @returns {MutationBatch[]}
    */
+  function batchesFor(targets, transformTargets, layout) {
+    /** @type {MutationBatch[]} */
+    const batches = [{ types: new Set(["animated"]), targets }];
+    if (layout) {
+      batches.push({ types: new Set(["reflow"]), targets: null });
+    } else if (transformTargets.size) {
+      batches.push({ types: new Set(["reflow"]), targets: transformTargets });
+    }
+    return batches;
+  }
+
+  /** @returns {MutationBatch[]} */
   function buildBatches() {
     /** @type {Set<Node>} */
     const targets = new Set();
@@ -183,14 +198,7 @@ export function createAnimationClock(container, emit, requestFrames) {
         }
       }
     }
-    /** @type {MutationBatch[]} */
-    const batches = [{ types: new Set(["animated"]), targets }];
-    if (layout) {
-      batches.push({ types: new Set(["reflow"]), targets: null });
-    } else if (transformTargets.size) {
-      batches.push({ types: new Set(["reflow"]), targets: transformTargets });
-    }
-    return batches;
+    return batchesFor(targets, transformTargets, layout);
   }
 
   /**
@@ -201,14 +209,8 @@ export function createAnimationClock(container, emit, requestFrames) {
    * @param {AnimationClass} cls
    */
   function settle(element, cls) {
-    /** @type {MutationBatch[]} */
-    const batches = [{ types: new Set(["animated"]), targets: new Set([element]) }];
-    if (cls === "layout") {
-      batches.push({ types: new Set(["reflow"]), targets: null });
-    } else if (cls === "transform") {
-      batches.push({ types: new Set(["reflow"]), targets: new Set([element]) });
-    }
-    emit(batches);
+    const target = new Set([element]);
+    emit(batchesFor(target, cls === "transform" ? target : new Set(), cls === "layout"));
   }
 
   /**

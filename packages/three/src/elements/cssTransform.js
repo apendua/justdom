@@ -63,24 +63,12 @@ export function parseTransform(value) {
   return new THREE.Matrix4().fromArray([a, b, 0, 0, c, d, 0, 0, 0, 0, 1, 0, e, f, 0, 1]);
 }
 
-/** @type {Record<string, number>} */
-const ORIGIN_KEYWORDS = {
-  left: 0,
-  center: 0.5,
-  right: 1,
-  top: 0,
-  bottom: 1,
-};
-
 /**
  * @param {string} part
  * @param {number} size
  * @returns {number}
  */
 function resolveOriginComponent(part, size) {
-  if (Object.prototype.hasOwnProperty.call(ORIGIN_KEYWORDS, part)) {
-    return ORIGIN_KEYWORDS[part] * size;
-  }
   const parsed = Number.parseFloat(part);
   if (Number.isNaN(parsed)) {
     return size / 2;
@@ -93,10 +81,10 @@ function resolveOriginComponent(part, size) {
 
 /**
  * A computed `transform-origin`, resolved against the untransformed border
- * box. Computed values are always lengths in px, but author values passed
- * through (jsdom, or a stylesheet read early) may still carry percentages
- * and keywords, so those resolve too. Absent components default to the
- * center, as CSS does.
+ * box. Computed values are always lengths in px; percentages (jsdom passes
+ * author values through) resolve too, and anything else — keywords
+ * included — falls back to the center, which is also CSS's default for an
+ * absent component.
  *
  * @param {string} value
  * @param {number} width
@@ -104,12 +92,7 @@ function resolveOriginComponent(part, size) {
  * @returns {{ x: number, y: number, z: number }}
  */
 export function parseTransformOrigin(value, width, height) {
-  const parts = value ? value.trim().split(/\s+/) : [];
-  let [first = "50%", second = "50%", third = "0"] = parts;
-  // Keywords may come in either order; put the horizontal one first.
-  if (first === "top" || first === "bottom" || second === "left" || second === "right") {
-    [first, second] = [second, first];
-  }
+  const [first = "", second = "", third = "0"] = value ? value.trim().split(/\s+/) : [];
   return {
     x: resolveOriginComponent(first, width),
     y: resolveOriginComponent(second, height),

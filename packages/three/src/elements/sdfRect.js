@@ -33,83 +33,77 @@ rectGeometry.setAttribute(
 );
 rectGeometry.setIndex([0, 1, 2, 2, 1, 3]);
 
+// Shader strings ship verbatim in bundles — comments and all — so the
+// explanations live out here, in comments the minifier strips.
+//
+// Fragment walkthrough. Everything happens in centered px coords (y still
+// down, so p.y < 0 is the top half). The corner radius is picked per
+// quadrant — uRadii is (topLeft, topRight, bottomRight, bottomLeft) — and
+// clamped so an oversized radius cannot fold the distance field over
+// itself. `outer` is the box's rounded-rect SDF; `inner` is the border's
+// inner edge: the box inset by each side's width (uBorder is top, right,
+// bottom, left), its corners sharpened by the border they sit behind,
+// degenerating to square when the border outgrows the radius — the way the
+// triangulated ring did.
+//
+// Coverage is then *partitioned* between fill and ring, not mixed: with no
+// border the two edges coincide, and a mix would shade the antialiased
+// fringe with the border color — an opaque currentcolor for "border:
+// none" — drawing a hairline that is not there. Partitioning makes a
+// zero-width ring exactly nothing. Where the combined alpha vanishes the
+// fragment is discarded, writing neither color nor depth: a fully
+// transparent fill is not an invisible hole punched through what it
+// covers — the rule the material flags used to enforce. The tail includes
+// are three's own output transforms, so colors match what the built-in
+// materials produce.
 const vertexShader = /* glsl */ `
-  varying vec2 vUnit;
-
-  void main() {
-    vUnit = position.xy;
-    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-  }
+varying vec2 vUnit;
+void main() {
+  vUnit = position.xy;
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+}
 `;
 
 const fragmentShader = /* glsl */ `
-  varying vec2 vUnit;
-
-  uniform vec2 uSize;
-  // Corner radii: (topLeft, topRight, bottomRight, bottomLeft).
-  uniform vec4 uRadii;
-  // Border widths: (top, right, bottom, left).
-  uniform vec4 uBorder;
-  uniform vec4 uFillColor;
-  uniform vec4 uBorderColor;
-
-  float sdRoundedBox(vec2 p, vec2 halfSize, float radius) {
-    vec2 q = abs(p) - halfSize + radius;
-    return min(max(q.x, q.y), 0.0) + length(max(q, 0.0)) - radius;
+varying vec2 vUnit;
+uniform vec2 uSize;
+uniform vec4 uRadii;
+uniform vec4 uBorder;
+uniform vec4 uFillColor;
+uniform vec4 uBorderColor;
+float sdRoundedBox(vec2 p, vec2 halfSize, float radius) {
+  vec2 q = abs(p) - halfSize + radius;
+  return min(max(q.x, q.y), 0.0) + length(max(q, 0.0)) - radius;
+}
+void main() {
+  vec2 halfSize = 0.5 * uSize;
+  vec2 p = vUnit * uSize - halfSize;
+  float radius = p.x < 0.0
+    ? (p.y < 0.0 ? uRadii.x : uRadii.w)
+    : (p.y < 0.0 ? uRadii.y : uRadii.z);
+  radius = min(radius, min(halfSize.x, halfSize.y));
+  float outer = sdRoundedBox(p, halfSize, radius);
+  vec2 innerHalf = halfSize - 0.5 * vec2(uBorder.w + uBorder.y, uBorder.x + uBorder.z);
+  vec2 innerCenter = 0.5 * vec2(uBorder.w - uBorder.y, uBorder.x - uBorder.z);
+  float innerRadius = max(radius - max(
+    p.x < 0.0 ? uBorder.w : uBorder.y,
+    p.y < 0.0 ? uBorder.x : uBorder.z
+  ), 0.0);
+  float inner = sdRoundedBox(p - innerCenter, max(innerHalf, vec2(0.0)), innerRadius);
+  float coverage = 1.0 - smoothstep(-fwidth(outer), fwidth(outer), outer);
+  float fillness = 1.0 - smoothstep(-fwidth(inner), fwidth(inner), inner);
+  float fillCoverage = min(fillness, coverage);
+  float borderCoverage = max(coverage - fillness, 0.0);
+  float alpha = uFillColor.a * fillCoverage + uBorderColor.a * borderCoverage;
+  if (alpha < 0.001) {
+    discard;
   }
-
-  void main() {
-    // Centered px coords; y still runs down, so p.y < 0.0 is the top half.
-    vec2 halfSize = 0.5 * uSize;
-    vec2 p = vUnit * uSize - halfSize;
-
-    float radius = p.x < 0.0
-      ? (p.y < 0.0 ? uRadii.x : uRadii.w)
-      : (p.y < 0.0 ? uRadii.y : uRadii.z);
-    // Radii too large for the box are clamped rather than left to fold the
-    // distance field over itself.
-    radius = min(radius, min(halfSize.x, halfSize.y));
-
-    float outer = sdRoundedBox(p, halfSize, radius);
-
-    // The inner edge of the border: the box inset by each side's width, its
-    // corners sharpened by the border they sit behind — degenerating to
-    // square when the border is thicker than the radius, the way the
-    // triangulated ring did.
-    vec2 innerHalf = halfSize - 0.5 * vec2(uBorder.w + uBorder.y, uBorder.x + uBorder.z);
-    vec2 innerCenter = 0.5 * vec2(uBorder.w - uBorder.y, uBorder.x - uBorder.z);
-    float innerRadius = max(radius - max(
-      p.x < 0.0 ? uBorder.w : uBorder.y,
-      p.y < 0.0 ? uBorder.x : uBorder.z
-    ), 0.0);
-    float inner = sdRoundedBox(p - innerCenter, max(innerHalf, vec2(0.0)), innerRadius);
-
-    float outerAA = fwidth(outer);
-    float innerAA = fwidth(inner);
-    float coverage = 1.0 - smoothstep(-outerAA, outerAA, outer);
-    float fillness = 1.0 - smoothstep(-innerAA, innerAA, inner);
-
-    // Partitioned coverage, not a mix: with no border the inner and outer
-    // edges coincide, and a mix would shade the antialiased fringe with the
-    // border color — which for "border: none" is an opaque currentcolor,
-    // drawing a hairline that is not there. Partitioning makes a zero-width
-    // ring exactly nothing.
-    float fillCoverage = min(fillness, coverage);
-    float borderCoverage = max(coverage - fillness, 0.0);
-    float alpha = uFillColor.a * fillCoverage + uBorderColor.a * borderCoverage;
-    // Discarding writes neither color nor depth: a fully transparent fill is
-    // not an invisible hole punched through what it covers, same rule the
-    // material flags used to enforce.
-    if (alpha < 0.001) {
-      discard;
-    }
-    vec3 color = (uFillColor.rgb * uFillColor.a * fillCoverage +
-                  uBorderColor.rgb * uBorderColor.a * borderCoverage) / alpha;
-    gl_FragColor = vec4(color, alpha);
-
-    #include <tonemapping_fragment>
-    #include <colorspace_fragment>
-  }
+  vec3 color = (uFillColor.rgb * uFillColor.a * fillCoverage +
+                uBorderColor.rgb * uBorderColor.a * borderCoverage) / alpha;
+  gl_FragColor = vec4(color, alpha);
+  #include <tonemapping_fragment>
+  #include <colorspace_fragment>
+}
 `;
 
 /**

@@ -67,15 +67,12 @@ describe("parseTransformOrigin", () => {
     assert.deepEqual(parseTransformOrigin("50% 100%", 100, 50), { x: 50, y: 50, z: 0 });
   });
 
-  test("keywords resolve, in either order", () => {
-    assert.deepEqual(parseTransformOrigin("left top", 100, 50), { x: 0, y: 0, z: 0 });
-    assert.deepEqual(parseTransformOrigin("top left", 100, 50), { x: 0, y: 0, z: 0 });
-    assert.deepEqual(parseTransformOrigin("bottom right", 100, 50), { x: 100, y: 50, z: 0 });
-  });
-
-  test("absent components default to the center, as CSS does", () => {
+  test("absent or unparseable components default to the center", () => {
+    // Computed values are always px lengths; keywords only ever reach this
+    // through jsdom's author-value passthrough, and degrade to the center
+    // rather than carrying dedicated handling.
     assert.deepEqual(parseTransformOrigin("", 100, 50), { x: 50, y: 25, z: 0 });
-    assert.deepEqual(parseTransformOrigin("left", 100, 50), { x: 0, y: 25, z: 0 });
+    assert.deepEqual(parseTransformOrigin("left top", 100, 50), { x: 50, y: 25, z: 0 });
   });
 
   test("a third component is a z length in px", () => {

@@ -234,6 +234,48 @@ reason above, and it closes on a click anywhere else in the panel.
 `options` may be a getter, for a list that changes under the player — devices
 coming and going, a document being edited — and the open menu follows it.
 
+## Images
+
+An `<img>` in a panel is an ordinary CSS box that happens to have a picture in
+it, and it is drawn as one: the picture is a layer on the same quad that draws
+the background and the border ring, painted between them and the element's
+descendants, which is where CSS paints replaced content. Nothing has to be
+opted into — write the element and it appears.
+
+```css
+.avatar {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  border: 4px solid rgb(221, 64, 104);
+  object-fit: cover;
+}
+```
+
+Because it is the same distance field, the corners come free: that avatar is
+round, not a square photograph behind a round frame, and a picture halfway
+out of a scroller is trimmed by the same clip box that trims the box around
+it. `object-fit` (`fill`, `contain`, `cover`, `none`, `scale-down`) and
+`object-position` are resolved on the CPU into two rectangles — where the
+picture goes and what crops it — so they cost a uniform write, and a
+translucent PNG composites over the element's own background.
+
+Textures are shared by URL and reference-counted: a list of a hundred rows
+wearing the same icon decodes and uploads it once, and the last element to
+let go of a picture disposes it. Loading goes through `THREE.TextureLoader`
+with the usual `crossOrigin: "anonymous"`, so a cross-origin image needs the
+CORS headers any WebGL texture needs. Swapping `src` swaps the picture; the
+element's `load` event is what says so, which also means a `srcset` is
+followed as soon as the browser has resolved it.
+
+Two things to know. A picture that fails to load draws nothing at all — the
+element's own box, border and background stay, but there is no `alt` text and
+no broken-image frame, neither of which has a CSS box to mirror. And an image
+arriving re-measures the panel, because an `<img>` given no size of its own
+takes the one the picture turned out to have; giving images an explicit size
+in the stylesheet avoids that reflow, exactly as it avoids the flash on a
+flat page.
+
 ## Clipping and scrolling
 
 An element that hides its overflow clips what is inside it, in the scene as on

@@ -9,8 +9,10 @@ import {
   createRectMaterial,
   rectGeometry,
   writeClipUniforms,
+  writeImageUniforms,
   writeRectUniforms,
 } from "./sdfRect.js";
+import { contentImage, isImageElement } from "./image.js";
 import { createBlocker, coverBox } from "./blocker.js";
 import { getBoundingClientRectCached, getClipBoxCached, getComputedStyleCached } from "./cache.js";
 import { clipBoxEqual, clipBoxShows, clipRaycast, toLocalClipBox, UNCLIPPED } from "./clip.js";
@@ -106,6 +108,17 @@ export function div(ctx, element) {
    * moment a row overflows it, without anything being told.
    */
   const scrollable = new Derived(() => isScrollable(element));
+
+  /**
+   * The picture this element paints inside its box, for the ones that have
+   * any. Built only for elements that can carry one, and a tag never changes,
+   * so this is decided once rather than watched: an ordinary div pays nothing
+   * — no signal, no effect, no uniform write — for a feature it will never
+   * use, which matters when a panel is a few hundred of them.
+   *
+   * @type {Derived<import('./image.js').ContentImage | null> | null}
+   */
+  const image = isImageElement(element) ? contentImage(element, properties) : null;
 
   /**
    * What this element's overflow-hiding ancestors leave of it, in its own px —
@@ -398,6 +411,16 @@ export function div(ctx, element) {
           obj.position.set(0, 0, 1);
           obj.renderOrder = properties.renderOrder;
         }),
+        // Its own effect, and only where there is a picture: a texture
+        // arriving late must not look like a reason to rewrite the box, and
+        // the box moving must not look like a reason to rebind a texture.
+        ...(image
+          ? [
+              effects((obj) => {
+                writeImageUniforms(/** @type {THREE.ShaderMaterial} */ (obj.material), image.get());
+              }),
+            ]
+          : []),
       ]),
     ),
   ]);

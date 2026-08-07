@@ -296,6 +296,28 @@ export function createPortal(ctx) {
   };
   containerElement.addEventListener("scroll", scrollCallback, true);
 
+  /**
+   * An image arriving is the other event the observer cannot see. Nothing was
+   * mutated and nothing restyled, but an `<img>` the author gave no size to
+   * has just been handed one by the picture, and everything after it in the
+   * flow has moved — so this is portal-wide, the way fonts arriving are, and
+   * for the same reason. Capturing, because `load` does not bubble.
+   *
+   * The picture itself does not come through here: the texture is fetched by
+   * URL rather than read off this element, and `image.js` hears the same
+   * event for itself. This is only the layout half.
+   *
+   * @param {Event} event
+   */
+  const loadCallback = (event) => {
+    if (!(event.target instanceof Element)) {
+      return;
+    }
+    invalidateLayout({ types: new Set(["load"]), targets: null });
+    interactionManager.updateIntersections();
+  };
+  containerElement.addEventListener("load", loadCallback, true);
+
   function fontLoadingCallback() {
     // Fonts arriving restyle and re-measure everything at once; there is no
     // node to scope that to.
@@ -317,6 +339,7 @@ export function createPortal(ctx) {
       document.fonts.removeEventListener("loadingdone", fontLoadingCallback);
     }
     containerElement.removeEventListener("scroll", scrollCallback, true);
+    containerElement.removeEventListener("load", loadCallback, true);
     resizeSubscription.unsubscribe();
     mutationObserver.disconnect();
     animationClock.dispose();

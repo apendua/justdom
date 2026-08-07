@@ -179,6 +179,12 @@ describe("getComputedStyleCached", () => {
     subject.next({ types: new Set(["reflow"]), targets: null });
     assert.deepEqual(reads, { child: 5, sibling: 3 });
 
+    // An image arriving takes the size the picture turned out to have and
+    // pushes everything after it along, so it re-measures the portal — the
+    // same shape of event as a font arriving, and scoped the same way.
+    subject.next({ types: new Set(["load"]), targets: null });
+    assert.deepEqual(reads, { child: 6, sibling: 4 });
+
     subscriptions.forEach((subscription) => subscription.unsubscribe());
     parent.remove();
     sibling.remove();

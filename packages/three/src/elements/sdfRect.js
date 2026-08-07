@@ -2,6 +2,7 @@ import * as THREE from "three";
 
 /**
  * @import VisualProperties from './VisualProperties.js';
+ * @import {ContentImage} from './image.js';
  */
 
 /**
@@ -46,6 +47,17 @@ rectGeometry.setIndex([0, 1, 2, 2, 1, 3]);
 // degenerating to square when the border outgrows the radius — the way the
 // triangulated ring did.
 //
+// Every edge in here turns into coverage the same way — `coverageOf`, a
+// smoothstep one derivative wide about the zero crossing. The floor on that
+// width is not a nicety. A distance to a box has a ridge down its middle
+// where the nearest edge changes, and along that ridge `fwidth` reads zero;
+// `smoothstep(0.0, 0.0, x)` divides by zero and the driver is entitled to
+// answer anything. What it answers is a hairline hole through the middle of
+// the box — invisible until something is big enough and square enough to the
+// viewer to put a pixel row exactly on the ridge, which is what a picture in
+// a panel facing you turned out to be. A floor of a ten-thousandth of a
+// pixel is far below anything an edge can be and safely above zero.
+//
 // Coverage is then *partitioned* between fill and ring, not mixed: with no
 // border the two edges coincide, and a mix would shade the antialiased
 // fringe with the border color — an opaque currentcolor for "border:
@@ -65,6 +77,21 @@ rectGeometry.setIndex([0, 1, 2, 2, 1, 3]);
 // simply multiplies the box's. The edge that falls out is antialiased by
 // the same fwidth, at any scale and under any transform, and a scroller
 // with rounded corners clips its content to them.
+//
+// An `<img>`'s picture is a third layer on the same quad, for the same
+// reason and with the same payoff. CSS paints replaced content over the
+// background and under the descendants, which is exactly the slot between
+// the two things this shader already draws; putting it here means an avatar
+// in a circular box is rounded by the border's own distance field rather
+// than by a second mesh trying to agree with it, and an image scrolled out
+// of a list is trimmed by the clip box that was going to trim its box
+// anyway. Two rectangles say where it goes — uImageRect, where the picture
+// itself lands, and uImageClip, the content box that crops it, which are
+// different rectangles whenever `object-fit` overflows. Both are in element
+// px, both are `object-fit`'s arithmetic already done on the CPU, and the
+// composite is ordinary source-over so a translucent PNG shows the
+// background through it. uImageOpacity at zero is the whole feature
+// switched off, which is what every element that is not an image carries.
 
 const vertexShader = /* glsl */ `
 varying vec2 vUnit;
@@ -83,9 +110,22 @@ uniform vec4 uFillColor;
 uniform vec4 uBorderColor;
 uniform vec4 uClip;
 uniform vec4 uClipRadii;
+uniform sampler2D uImage;
+uniform vec4 uImageRect;
+uniform vec4 uImageClip;
+uniform float uImageOpacity;
 float sdRoundedBox(vec2 p, vec2 halfSize, float radius) {
   vec2 q = abs(p) - halfSize + radius;
   return min(max(q.x, q.y), 0.0) + length(max(q, 0.0)) - radius;
+}
+float coverageOf(float dist) {
+  float w = max(fwidth(dist), 1e-4);
+  return 1.0 - smoothstep(-w, w, dist);
+}
+float boxCoverage(vec2 q, vec4 box) {
+  vec2 halfBox = 0.5 * (box.zw - box.xy);
+  vec2 d = abs(q - 0.5 * (box.xy + box.zw)) - halfBox;
+  return coverageOf(max(d.x, d.y));
 }
 void main() {
   vec2 halfSize = 0.5 * uSize;
@@ -109,16 +149,33 @@ void main() {
     : (p.y < clipCenter.y ? uClipRadii.y : uClipRadii.z);
   clipRadius = min(clipRadius, min(clipHalf.x, clipHalf.y));
   float clipped = sdRoundedBox(p - clipCenter, max(clipHalf, vec2(0.0)), clipRadius);
-  float clipCoverage = 1.0 - smoothstep(-fwidth(clipped), fwidth(clipped), clipped);
-  float coverage = (1.0 - smoothstep(-fwidth(outer), fwidth(outer), outer)) * clipCoverage;
-  float fillness = (1.0 - smoothstep(-fwidth(inner), fwidth(inner), inner)) * clipCoverage;
+  float clipCoverage = coverageOf(clipped);
+  float coverage = coverageOf(outer) * clipCoverage;
+  float fillness = coverageOf(inner) * clipCoverage;
   float fillCoverage = min(fillness, coverage);
   float borderCoverage = max(coverage - fillness, 0.0);
-  float alpha = uFillColor.a * fillCoverage + uBorderColor.a * borderCoverage;
+  vec4 fill = uFillColor;
+  if (uImageOpacity > 0.0) {
+    vec2 q = vUnit * uSize;
+    vec2 uv = (q - uImageRect.xy) / max(uImageRect.zw - uImageRect.xy, vec2(1e-6));
+    // Textures are uploaded flipped, so v runs up while the portal's y runs
+    // down; the clamp is what makes the wrap mode enough to keep a stray
+    // fragment from sampling the far edge.
+    vec4 texel = texture2D(uImage, clamp(vec2(uv.x, 1.0 - uv.y), 0.0, 1.0));
+    float over = texel.a * uImageOpacity *
+      boxCoverage(q, uImageRect) * boxCoverage(q, uImageClip);
+    float under = fill.a * (1.0 - over);
+    float composited = over + under;
+    fill = vec4(
+      composited > 0.0 ? (texel.rgb * over + fill.rgb * under) / composited : vec3(0.0),
+      composited
+    );
+  }
+  float alpha = fill.a * fillCoverage + uBorderColor.a * borderCoverage;
   if (alpha < 0.001) {
     discard;
   }
-  vec3 color = (uFillColor.rgb * uFillColor.a * fillCoverage +
+  vec3 color = (fill.rgb * fill.a * fillCoverage +
                 uBorderColor.rgb * uBorderColor.a * borderCoverage) / alpha;
   gl_FragColor = vec4(color, alpha);
   #include <tonemapping_fragment>
@@ -151,6 +208,14 @@ export function createRectMaterial() {
       // has to be a box the element sits well inside of.
       uClip: { value: new THREE.Vector4(-1e6, -1e6, 1e6, 1e6) },
       uClipRadii: { value: new THREE.Vector4(0, 0, 0, 0) },
+      // No picture until something loads one. Three binds its own empty
+      // texture for a null sampler, so the declaration costs an unused unit
+      // and nothing else; the branch above is skipped for every box in the
+      // panel at once, which is as coherent as a branch gets.
+      uImage: { value: null },
+      uImageRect: { value: new THREE.Vector4(0, 0, 0, 0) },
+      uImageClip: { value: new THREE.Vector4(0, 0, 0, 0) },
+      uImageOpacity: { value: 0 },
     },
   });
 }
@@ -202,4 +267,31 @@ export function writeRectUniforms(material, properties) {
   uFillColor.value.set(fill.r, fill.g, fill.b, properties.backgroundAlpha);
   const border = properties.borderColor;
   uBorderColor.value.set(border.r, border.g, border.b, properties.borderAlpha);
+}
+
+/**
+ * Write the picture an element paints inside its box, or `null` to say it
+ * paints none. Values only, like the rest of this file — a texture arriving,
+ * a resize and an `object-position` transition all end up here, and none of
+ * them recompiles anything.
+ *
+ * @param {THREE.ShaderMaterial} material
+ * @param {ContentImage | null} image
+ * @returns {void}
+ */
+export function writeImageUniforms(material, image) {
+  const { uImage, uImageRect, uImageClip, uImageOpacity } = material.uniforms;
+  if (!image) {
+    // Dropping the reference matters as much as the switch: an element that
+    // has let go of its picture must not be the reason its texture stays
+    // uploaded.
+    uImage.value = null;
+    uImageOpacity.value = 0;
+    return;
+  }
+  uImage.value = image.texture;
+  uImageRect.value.set(image.left, image.top, image.right, image.bottom);
+  const { content } = image;
+  uImageClip.value.set(content.left, content.top, content.right, content.bottom);
+  uImageOpacity.value = image.opacity;
 }

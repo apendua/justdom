@@ -1,8 +1,14 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
+import * as THREE from "three";
 import { Subject } from "rxjs";
 import { setSubject } from "./cache.js";
-import { createRectMaterial, rectGeometry, writeRectUniforms } from "./sdfRect.js";
+import {
+  createRectMaterial,
+  rectGeometry,
+  writeImageUniforms,
+  writeRectUniforms,
+} from "./sdfRect.js";
 import VisualProperties from "./VisualProperties.js";
 
 // Same stub as div.test.js: jsdom has no Font Loading API, and
@@ -85,5 +91,80 @@ describe("sdf rect", () => {
     // Same vectors, mutated in place — what makes per-frame writes safe.
     assert.equal(material.uniforms.uSize.value, before.size);
     assert.equal(material.uniforms.uFillColor.value, before.fill);
+  });
+});
+
+describe("the picture layer", () => {
+  test("a box with no picture carries the feature switched off", () => {
+    const material = createRectMaterial();
+    assert.equal(material.uniforms.uImageOpacity.value, 0);
+    assert.equal(material.uniforms.uImage.value, null);
+  });
+
+  test("both rectangles land, and they are allowed to disagree", () => {
+    const material = createRectMaterial();
+    const texture = new THREE.Texture();
+    writeImageUniforms(material, {
+      texture,
+      opacity: 0.75,
+      left: -45,
+      top: 5,
+      right: 155,
+      bottom: 55,
+      content: { left: 5, top: 5, right: 105, bottom: 55 },
+    });
+
+    const { uImage, uImageRect, uImageClip, uImageOpacity } = material.uniforms;
+    assert.equal(uImage.value, texture);
+    assert.equal(uImageOpacity.value, 0.75);
+    // Where the picture is drawn — outside the box, which is what a `cover`
+    // crop looks like from here.
+    const rect = uImageRect.value;
+    assert.deepEqual([rect.x, rect.y, rect.z, rect.w], [-45, 5, 155, 55]);
+    // What crops it.
+    const clip = uImageClip.value;
+    assert.deepEqual([clip.x, clip.y, clip.z, clip.w], [5, 5, 105, 55]);
+  });
+
+  test("letting go of a picture drops the reference, not just the opacity", () => {
+    // An element that has stopped showing an image must not be the reason its
+    // texture stays uploaded — the cache disposes on the last release, and a
+    // material still holding it would be that last user.
+    const material = createRectMaterial();
+    const texture = new THREE.Texture();
+    writeImageUniforms(material, {
+      texture,
+      opacity: 1,
+      left: 0,
+      top: 0,
+      right: 10,
+      bottom: 10,
+      content: { left: 0, top: 0, right: 10, bottom: 10 },
+    });
+    writeImageUniforms(material, null);
+    assert.equal(material.uniforms.uImageOpacity.value, 0);
+    assert.equal(material.uniforms.uImage.value, null);
+  });
+
+  test("rewriting the picture allocates no new material state", () => {
+    const material = createRectMaterial();
+    const texture = new THREE.Texture();
+    /** @type {import('./image.js').ContentImage} */
+    const image = {
+      texture,
+      opacity: 1,
+      left: 0,
+      top: 0,
+      right: 10,
+      bottom: 10,
+      content: { left: 0, top: 0, right: 10, bottom: 10 },
+    };
+    writeImageUniforms(material, image);
+    const before = material.uniforms.uImageRect.value;
+    writeImageUniforms(material, { ...image, left: 1 });
+    // The same vector, mutated — which is what makes an object-position
+    // transition a per-frame write and not a per-frame allocation.
+    assert.equal(material.uniforms.uImageRect.value, before);
+    assert.equal(before.x, 1);
   });
 });

@@ -164,6 +164,48 @@ describe("div interactivity", () => {
   });
 });
 
+describe("div rendering", () => {
+  test("the whole box is one quad: background and border ring share a mesh", () => {
+    const { object, subscription } = setup(
+      "default",
+      "background-color: rgb(255, 0, 0); border: 2px solid rgb(0, 0, 255)",
+    );
+
+    const meshes = object.children.filter((child) => child instanceof THREE.Mesh);
+    assert.equal(meshes.length, 1);
+    const [mesh] = meshes;
+    assert.ok(mesh.material instanceof THREE.ShaderMaterial);
+
+    const { uFillColor, uBorderColor, uBorder } = mesh.material.uniforms;
+    const fill = uFillColor.value;
+    assert.deepEqual([fill.x, fill.y, fill.z, fill.w], [1, 0, 0, 1]);
+    const border = uBorderColor.value;
+    assert.deepEqual([border.x, border.y, border.z, border.w], [0, 0, 1, 1]);
+    const widths = uBorder.value;
+    assert.deepEqual([widths.x, widths.y, widths.z, widths.w], [2, 2, 2, 2]);
+
+    subscription.unsubscribe();
+  });
+
+  test("a restyle is a uniform write on the same material", () => {
+    const { object, restyleWith, subscription } = setup(
+      "default",
+      "background-color: rgb(255, 0, 0)",
+    );
+    const [mesh] = object.children.filter((child) => child instanceof THREE.Mesh);
+    assert.ok(mesh.material instanceof THREE.ShaderMaterial);
+    const material = mesh.material;
+    const fill = material.uniforms.uFillColor.value;
+
+    restyleWith("background-color: rgb(0, 0, 255)");
+    assert.equal(mesh.material, material);
+    assert.equal(material.uniforms.uFillColor.value, fill);
+    assert.deepEqual([fill.x, fill.y, fill.z, fill.w], [0, 0, 1, 1]);
+
+    subscription.unsubscribe();
+  });
+});
+
 describe("div transforms", () => {
   test("a CSS transform lands on the object's matrix, about its origin", () => {
     const { object, subscription } = setup(

@@ -1,6 +1,14 @@
 # Change Log - @apendua/freedom
 
-This log was last generated on Fri, 07 Aug 2026 17:18:23 GMT and should not be manually modified.
+This log was last generated on Fri, 07 Aug 2026 21:07:43 GMT and should not be manually modified.
+
+## 0.8.1
+Fri, 07 Aug 2026 21:07:43 GMT
+
+### Patches
+
+- A text node's measured layout now reports the size of its line boxes rather than the client rectangle they were read from. The rectangle carried a viewport position that nothing downstream wanted, in a `DOMRect` — an instance of a class, which the selector proxy cannot look inside — so every re-measurement handed its dependents a new identity and re-rasterized the label's texture. Text that only moved, which is what a layout animation and a scroll both do to a whole subtree every frame, now re-measures without re-drawing anything.
+- Wrapped text is measured by the line rather than by the character. A range already reports the line boxes the browser broke the text into; what it does not report is which characters landed on each one, and that used to be recovered by measuring every character in turn. Because a character can never land on an earlier line than the one before it, the offset each line starts at can be found by bisection instead — a handful of measurements per line, and one more per line for its own extent, which is also more faithful than a union of per-character boxes. In Chromium a wrapped paragraph measures in 0.055ms rather than 0.411ms, and a paragraph of Japanese in 0.100ms rather than 1.756ms; single-line labels keep the fast path they had. Every layout tried — wrapped, justified, centred, right-aligned, bidi, CJK, `pre`, `pre-wrap`, `pre-line`, `overflow-wrap: anywhere` — reports what it reported before.
 
 ## 0.8.0
 Fri, 07 Aug 2026 17:18:23 GMT

@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { effects, just, fromEvent } from "@apendua/signal";
+import { effects, just, fromEvent, observable, use } from "@apendua/signal";
 import { distinctUntilChanged, Observable, switchMap } from "rxjs";
 import { addDependency } from "@apendua/signal";
 
@@ -133,31 +133,55 @@ export function $(object, operators = []) {
 }
 
 /**
+ * An effect that waits for the object to take its place in a scene, so that
+ * whatever it reads off the object — a world matrix, most of the time — is a
+ * real answer rather than the one an orphan gives.
+ *
+ * It waits for that once. Being moved to another parent afterwards does not
+ * run it again: `Object3D.attach` keeps the object exactly where it was in the
+ * room, so nothing an effect here could have read has changed, and the
+ * detached instant in the middle of a re-parent is an artefact of how three
+ * splices the graph rather than a moment the object was ever out of the scene.
+ * Reacting to it would tear down and rebuild everything under whatever was
+ * picked up — which, for a physics body, is the whole simulation.
+ *
  * @template {Object3D<any>} T
  * @param {(obj: T) => void} fn
  * @returns {MonoTypeOperatorFunction<T>}
  */
 export function layoutEffects(fn) {
   /**
-   * @template {Object3D<THREE.Object3DEventMap>} T
-   * @param {T} obj
-   * @param {() => void} fn
-   * @returns {void}
+   * @param {Object3D<THREE.Object3DEventMap>} obj
+   * @returns {boolean}
    */
-  function useWhenAttachedToScene(obj, fn) {
+  function isInScene(obj) {
     addDependency(fromEvent(obj, "added"));
     addDependency(fromEvent(obj, "removed"));
     if (!obj.parent) {
-      return;
+      return false;
     }
     if (obj.parent instanceof THREE.Scene) {
-      fn();
-      return;
+      return true;
     }
-    return useWhenAttachedToScene(obj.parent, fn);
+    return isInScene(obj.parent);
   }
 
   return effects((obj) => {
-    useWhenAttachedToScene(obj, () => fn(obj));
+    // Latched rather than filtered: once it has read true the getter stops
+    // looking at the graph at all, which drops the listeners on every ancestor
+    // along with it.
+    let attached = false;
+    use(
+      observable(() => attached || isInScene(obj)).pipe(
+        distinctUntilChanged(),
+        effects((inScene) => {
+          if (!inScene) {
+            return;
+          }
+          attached = true;
+          fn(obj);
+        }),
+      ),
+    );
   });
 }

@@ -75,6 +75,45 @@ describe("renders a simple DOM tree", () => {
     assert.strictEqual(innerHTML.get(), "<ul></ul>");
   });
 
+  it("an emission that changes nothing touches no nodes", () => {
+    // A moved node is a removal and an insertion as far as the DOM is
+    // concerned, even when it lands exactly where it stood — and downstream,
+    // a portal answers any childList mutation with a portal-wide re-measure.
+    // The last item has no successor to be compared against, and used to be
+    // re-appended on every emission for exactly that reason: one phantom
+    // mutation per emission, per list.
+    const items$ = new BehaviorSubject(["A", "B", "C"]);
+    const innerHTML = inspectHTML(
+      $("ul", [
+        children(
+          list(items$, (item) => {
+            return $("li", [
+              tap((li) => {
+                li.textContent = item;
+              }),
+            ]);
+          }),
+        ),
+      ]),
+    );
+    const ul = innerHTML.container.querySelector("ul");
+    assert.ok(ul);
+    const spy = new window.MutationObserver(() => {});
+    spy.observe(ul, { childList: true, subtree: true });
+
+    items$.next(["A", "B", "C"]);
+    items$.next(["A", "B", "C"]);
+    assert.deepEqual(spy.takeRecords(), [], "same items, same order, no mutations");
+
+    // Reordering is still a move, so the guard is not a bypass.
+    items$.next(["C", "A", "B"]);
+    assert.notEqual(spy.takeRecords().length, 0, "a real reorder still moves nodes");
+    assert.strictEqual(innerHTML.get(), "<ul><li>C</li><li>A</li><li>B</li></ul>");
+
+    spy.disconnect();
+    innerHTML.dispose();
+  });
+
   it("updates HTML when items are removed", () => {
     const items$ = new BehaviorSubject(["A", "B", "C", "D"]);
     const innerHTML = inspectHTML(
@@ -232,6 +271,7 @@ function inspectHTML(component) {
     },
   });
   return {
+    container,
     get() {
       return cloneNode(container).innerHTML;
     },

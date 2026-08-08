@@ -1,6 +1,21 @@
 # Change Log - @apendua/freedom
 
-This log was last generated on Fri, 07 Aug 2026 22:12:45 GMT and should not be manually modified.
+This log was last generated on Sat, 08 Aug 2026 14:20:52 GMT and should not be manually modified.
+
+## 0.10.0
+Sat, 08 Aug 2026 14:20:52 GMT
+
+### Minor changes
+
+- `<img>` elements are mirrored into the scene. The picture is a layer on the same signed-distance quad that already draws the element's background and border ring — painted between them and the element's descendants, which is where CSS paints replaced content — so it costs no extra mesh and inherits everything the box already had: an avatar with `border-radius: 50%` comes out round rather than square behind a round frame, and a picture halfway out of a scroller is trimmed by the clip box that was going to trim its box anyway. `object-fit` (all five values) and `object-position` are resolved on the CPU into two rectangles, where the picture goes and what crops it, so a resize or a crop is a uniform write; a translucent PNG composites over the element's own background. It is not free for panels that draw no pictures: `div.js` reaches for the image module unconditionally, so the code ships with any app that projects DOM at all. Measured against two of them, `apps/todo-xr` and `apps/rubik`, it is the same 4,942 bytes minified in both — about 1.7 KB more over the wire once gzipped, and roughly 8% of the library — because it is a fixed cost of the library rather than anything that scales with the app.
+- Textures are shared by URL and reference-counted: a list of a hundred rows wearing the same icon decodes and uploads it once, and the last element to let go of one disposes it. The URL is re-read when the element announces its own `load`, so swapping `src` swaps the picture and a `srcset` is followed as soon as the browser has resolved it — `src` never had to join the portal's attribute filter. A picture that fails to load draws nothing, leaving the element's own box behind it.
+- A portal now hears an image arriving, under a `load` mutation type. Nothing is mutated and nothing restyled when a picture lands, so no observer reports it, but an `<img>` the author gave no size to has just been handed the one the picture turned out to have, and everything after it in the flow has moved — the same shape of event as a font arriving, and scoped portal-wide for the same reason.
+
+### Patches
+
+- Fixed a hairline hole through the middle of large boxes. Every edge in the rect shader becomes coverage through a smoothstep one derivative wide, and a distance to a box has a ridge down its middle where the nearest edge changes — along which `fwidth` reads zero, `smoothstep(0.0, 0.0, x)` divides by zero, and the driver is entitled to answer anything. It was invisible until something was big enough and square enough to the viewer to put a pixel row exactly on the ridge, which a picture in a panel facing you turned out to be. The width now has a floor of a ten-thousandth of a pixel.
+- Images announce their arrival to the portal once per frame rather than once each. A picture landing re-measures the whole portal — an `<img>` given no size takes the one the picture turned out to have, and everything after it in the flow moves — which makes each arrival as expensive as a font's, and unlike fonts they arrive one at a time: a panel of nine icons was reflowing everything nine times over for a layout that settles once, and now does it once. The frame comes from the requester the animation clock already uses, and is given back the moment it fires, so a portal with nothing to announce asks for no frames at all.
+- Fixed a listener that threw where `Element` is not a global. The portal's `load` listener guarded on `event.target instanceof Element`, which is the one thing `cache.js` warns against and the only place in the package that did it — and a reference error inside an event listener goes nowhere, so the announcement simply never happened rather than failing loudly. It reads `nodeType` now, like everything else in the file.
 
 ## 0.9.0
 Fri, 07 Aug 2026 22:12:45 GMT

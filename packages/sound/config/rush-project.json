@@ -8,7 +8,7 @@
   "operationSettings": [
     {
       "operationName": "build",
-      "outputFolderNames": ["lib-es"]
+      "outputFolderNames": ["lib", "lib-types"]
     }
   ]
 }

@@ -256,6 +256,12 @@ export function createPortal(ctx) {
     characterData: true,
   });
 
+  // Shared by everything here that has to wait for a frame rather than be
+  // told about something: the animation clock, which samples styles while
+  // they move, and the images below, which have arrived and want announcing
+  // once rather than each.
+  const requestFrames = createFrameRequester(ctx);
+
   // CSS transitions, keyframe animations and Web Animations mutate nothing —
   // the styles move while the DOM holds still — so the observer above never
   // hears about them. The clock samples the animating elements once per
@@ -270,7 +276,7 @@ export function createPortal(ctx) {
       // content does.
       interactionManager.updateIntersections();
     },
-    createFrameRequester(ctx),
+    requestFrames,
   );
 
   /**
@@ -297,24 +303,57 @@ export function createPortal(ctx) {
   containerElement.addEventListener("scroll", scrollCallback, true);
 
   /**
-   * An image arriving is the other event the observer cannot see. Nothing was
-   * mutated and nothing restyled, but an `<img>` the author gave no size to
-   * has just been handed one by the picture, and everything after it in the
-   * flow has moved — so this is portal-wide, the way fonts arriving are, and
-   * for the same reason. Capturing, because `load` does not bubble.
+   * A frame asked for to announce images that have arrived, and the way to
+   * take the request back; null while nothing is waiting to be announced.
    *
-   * The picture itself does not come through here: the texture is fetched by
-   * URL rather than read off this element, and `image.js` hears the same
-   * event for itself. This is only the layout half.
+   * @type {(() => void) | null}
+   */
+  let loadFrame = null;
+
+  /**
+   * Say that images have arrived — once for however many of them did.
+   *
+   * The announcement is portal-wide, and has to be: an `<img>` the author gave
+   * no size to has just been handed one by the picture, and everything after
+   * it in the flow has moved. That makes each one as expensive as a font
+   * arriving, and unlike fonts they arrive one at a time — a panel of nine
+   * icons announced nine reflows of everything, back to back, for a layout
+   * that settled once. Coalescing them costs a frame nobody was waiting on,
+   * because a picture that has just decoded cannot be on screen before the
+   * next one anyway.
+   */
+  const announceLoads = () => {
+    // The frame sources this can draw on — the renderer's loop and
+    // `requestAnimationFrame` — both deliver asynchronously, so the handle is
+    // always in place by the time this reads it.
+    loadFrame?.();
+    loadFrame = null;
+    invalidateLayout({ types: new Set(["load"]), targets: null });
+    interactionManager.updateIntersections();
+  };
+
+  /**
+   * An image arriving is the other event the observer cannot see: nothing was
+   * mutated and nothing restyled. Capturing, because `load` does not bubble.
+   *
+   * The picture itself does not come through here — the texture is fetched by
+   * URL rather than read off this element, and `image.js` hears the same event
+   * for itself. This is only the layout half.
    *
    * @param {Event} event
    */
   const loadCallback = (event) => {
-    if (!(event.target instanceof Element)) {
+    // `nodeType` rather than `instanceof Element`, for the reason `cache.js`
+    // gives: `Element` is not a global everywhere this runs, and reaching for
+    // one that is missing throws inside an event listener, where nothing is
+    // listening for the error either.
+    const target = event.target;
+    if (!(target instanceof Node) || target.nodeType !== Node.ELEMENT_NODE) {
       return;
     }
-    invalidateLayout({ types: new Set(["load"]), targets: null });
-    interactionManager.updateIntersections();
+    if (!loadFrame) {
+      loadFrame = requestFrames(announceLoads);
+    }
   };
   containerElement.addEventListener("load", loadCallback, true);
 
@@ -340,6 +379,8 @@ export function createPortal(ctx) {
     }
     containerElement.removeEventListener("scroll", scrollCallback, true);
     containerElement.removeEventListener("load", loadCallback, true);
+    // A frame asked for by an image that landed just as the portal came down.
+    loadFrame?.();
     resizeSubscription.unsubscribe();
     mutationObserver.disconnect();
     animationClock.dispose();

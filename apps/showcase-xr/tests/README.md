@@ -16,6 +16,15 @@ npm run test:visual           # check
 npm run test:visual:update    # re-record the baselines
 ```
 
+Both modes are switched by environment variable — `UPDATE_BASELINES=1` to
+record, `VISUAL_STRICT=1` to refuse to record — and deliberately not by a
+command-line flag. `node --test` runs every file in a child process of its own
+whose argv is the file and nothing else, so a flag written after `--` is
+swallowed before any test can read it. This suite spent a while with a
+`--update` that did nothing, which went unnoticed because recording is also
+what happens when there is no baseline to compare against: it worked once, on
+a runner that had none, and failed the next time.
+
 ## How it works
 
 `harness.js` serves the app with Vite, opens it in headless Chromium under
@@ -45,7 +54,7 @@ So baselines are filed under a fingerprint of the machine that drew them —
 Chromium's version, the width the app's font stack measures a specimen string
 at, and the viewport — one directory each, and more than one can be committed at
 a time. Somewhere with no baseline of its own, the check records one and says
-so. **Under `--strict`, which is how CI runs it, it fails instead**: a green
+so. **Under `VISUAL_STRICT=1`, which is how CI runs it, it fails instead**: a green
 check that quietly declined to check is worse than no check at all.
 
 The difference between two machines is not hypothetical: this repository holds
@@ -80,8 +89,49 @@ a re-record would have quietly blessed it.
 shared runner. The runner is not pinned to anything except the browser build
 Playwright brings, which is enough because the runner is also what recorded the
 baselines: the fingerprint makes "this machine is not that machine" a failure
-with a name rather than a mystery. A failing run uploads `tests/output` — the
-frames it took and the diff it found — as an artifact.
+with a name rather than a mystery. Every run uploads `tests/output` — the
+frames it took, the diff it found, and the log it wrote — as an artifact called
+**scene**.
+
+A failing run also says so on the pull request, because the one thing a pixel
+comparison's log cannot tell you is the thing you want to know: it says how
+many pixels moved, and the only useful question is which ones. The comment
+carries that number, how many of the baseline-free checks passed, and a link
+straight to the artifact.
+
+The photograph is a link rather than an image in that comment, and it cannot
+be anything else. An artifact is an authenticated zip; and this repository is
+private, so its own files are unreachable to the proxy GitHub renders comment
+images through. Nothing the workflow can name with the repository's own
+credentials would resolve inside a Markdown image for a reader. Embedding one
+would mean publishing the frame somewhere anonymous — a public gist, say —
+which is a decision about what leaves a private repository, not a workflow
+detail.
+
+Splitting the artifact into one upload per file does not help either, and is
+worth writing down so nobody has to find out twice: an artifact is always
+delivered as a zip, whatever is in it, so three artifacts are three zips
+rather than three files. There is no way to serve a single file out of one.
+
+**The comparison you actually want is the recording.** Redraw the baselines
+and the runner commits what it drew — which lands in *Files changed* as an
+image diff GitHub renders side by side, swipeable, against the picture it
+replaced. That is a real before-and-after in a browser, it costs no extra
+machinery, and it is the same push that turns the check green. It is a thing
+to do once a change is settled rather than to find out whether it should be;
+the artifact is what to open before then.
+
+The comment links straight to the page the **Run workflow** button is on, for
+both of the outcomes that want a recording — a scene that moved, and a runner
+with no baseline of its own. The link cannot go further than the page:
+`workflow_dispatch` takes no inputs through a URL, so the branch still has to
+be chosen in the dropdown, and choosing the wrong one records baselines onto
+the wrong branch. The link carries a branch filter so at least the page opens
+on the right history.
+
+There is one comment per pull request and it is edited in place. It appears
+only when something is wrong, and a later green run rewrites it to say the
+scene is as it was rather than leaving a stale complaint behind.
 
 Locally the harness takes `PLAYWRIGHT_CHROMIUM_EXECUTABLE`, and otherwise looks
 under `PLAYWRIGHT_BROWSERS_PATH` before letting Playwright resolve its own

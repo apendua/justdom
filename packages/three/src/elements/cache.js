@@ -111,7 +111,12 @@ function createMeasurementClone(element) {
  * restyles nothing, so no observer reports it, yet it moves the client rects
  * of everything inside the scroller. The portal listens for it directly.
  *
- * @typedef {"attributes" | "childList" | "fontLoaded" | "characterData" | "animated" | "reflow" | "scroll"} MutationType
+ * `load` is the same shape of thing for an image arriving: no mutation, no
+ * restyle, but an `<img>` given no size of its own takes the one the picture
+ * turned out to have, and everything after it in the flow moves. The portal
+ * listens for that directly too.
+ *
+ * @typedef {"attributes" | "childList" | "fontLoaded" | "characterData" | "animated" | "reflow" | "scroll" | "load"} MutationType
  */
 
 /**
@@ -185,9 +190,10 @@ function affectsStyle(batch, node) {
 /**
  * Whether a batch can change the client rects of `node`.
  *
- * Structural mutations and fonts arriving re-lay-out the whole portal, and
- * layout is non-local — a sibling growing moves this element — so those stay
- * portal-wide. Attribute mutations were long assumed unable to move
+ * Structural mutations, fonts arriving and images arriving re-lay-out the
+ * whole portal, and layout is non-local — a sibling growing moves this
+ * element — so those stay portal-wide. Attribute mutations were long assumed
+ * unable to move
  * anything, which is the bargain that keeps hover cheap; but one thing they
  * *can* do is toggle a CSS transform, and a transform changes the client
  * rects of exactly the mutated element's own subtree and nobody else's.
@@ -204,7 +210,8 @@ function affectsRect(batch, node) {
   if (
     batch.types.has("childList") ||
     batch.types.has("characterData") ||
-    batch.types.has("fontLoaded")
+    batch.types.has("fontLoaded") ||
+    batch.types.has("load")
   ) {
     return true;
   }
@@ -272,7 +279,8 @@ function affectsTextLayout(batch, text) {
     batch.types.has("characterData") ||
     batch.types.has("fontLoaded") ||
     batch.types.has("attributes") ||
-    batch.types.has("reflow");
+    batch.types.has("reflow") ||
+    batch.types.has("load");
   if (movedByAnythingElse || !batch.types.has("scroll")) {
     return true;
   }

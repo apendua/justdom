@@ -23,6 +23,24 @@ if (!document.fonts) {
   });
 }
 
+// jsdom runs no animation frames, and the portal borrows them for the parts
+// of itself that sample rather than listen. A queue flushed by hand is both a
+// frame source and a clock the tests can stop, which is what lets one of them
+// look at the gap between an event arriving and the frame that answers it.
+/** @type {Array<FrameRequestCallback>} */
+const frameCallbacks = [];
+globalThis.requestAnimationFrame = (callback) => frameCallbacks.push(callback);
+globalThis.cancelAnimationFrame = () => {};
+
+/**
+ * @returns {void}
+ */
+function flushFrame() {
+  for (const callback of frameCallbacks.splice(0, frameCallbacks.length)) {
+    callback(0);
+  }
+}
+
 /**
  * @returns {Promise<void>}
  */
@@ -189,6 +207,66 @@ describe("createPortal", () => {
     // hit is only recomputed when it does — so a menu appearing underneath it
     // would go unnoticed until the player twitched.
     assert.ok(updates > 0, "the mirrored mutation invalidated the hits");
+
+    subscription.unsubscribe();
+    portal.disconnect();
+  });
+
+  test("a panel of pictures announces them once, not once each", async () => {
+    // An image arriving re-measures the whole portal, because one that was
+    // given no size takes the picture's and moves everything after it. Nine
+    // icons landing one at a time would mean nine of those for a layout that
+    // settles once, so they are collected onto a frame.
+    const manager = new InteractionManager();
+    let updates = 0;
+    const originalUpdate = manager.updateIntersections.bind(manager);
+    manager.updateIntersections = () => {
+      updates += 1;
+      originalUpdate();
+    };
+    const ctx = InteractionContext.set({}, manager);
+
+    const portal = createPortal(ctx);
+    portal.addTo(new THREE.Group());
+
+    /** @type {import("@apendua/justdom").Mountable<Node> | undefined} */
+    let mountable;
+    const tree = $("div", [
+      children(
+        $("img", [attr("src", () => "data:image/gif;base64,a")]),
+        $("img", [attr("src", () => "data:image/gif;base64,b")]),
+        $("img", [attr("src", () => "data:image/gif;base64,c")]),
+      ),
+    ]);
+    const subscription = tree.subscribe((value) => {
+      mountable = value;
+    });
+    assert.ok(mountable);
+    portal.mount(mountable);
+
+    await nextMacrotask();
+    await nextMacrotask();
+    flushFrame();
+
+    const containers = document.querySelectorAll(`[${"data-xr-portal"}]`);
+    const images = containers[containers.length - 1].querySelectorAll("img");
+    assert.equal(images.length, 3, "three pictures to wait for");
+
+    const before = updates;
+    for (const image of images) {
+      image.dispatchEvent(new Event("load"));
+    }
+    // Nothing yet: the announcement costs a frame nobody is waiting on,
+    // because a picture that has just decoded cannot be on screen before the
+    // next one anyway.
+    assert.equal(updates, before, "the loads were not announced synchronously");
+
+    flushFrame();
+    assert.equal(updates, before + 1, "three pictures, one announcement");
+
+    // And the frame is given back rather than left ticking.
+    flushFrame();
+    assert.equal(updates, before + 1, "nothing keeps asking for frames");
 
     subscription.unsubscribe();
     portal.disconnect();

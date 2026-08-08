@@ -35,6 +35,7 @@ import { getElevation } from "./elevation.js";
  * @property {number} totalHeight
  * @property {number} xHeight
  * @property {number} fontSize
+ * @property {number} opacity
  * @property {number} borderLeftWidth
  * @property {number} borderRightWidth
  * @property {number} borderTopWidth
@@ -296,6 +297,17 @@ export default class VisualProperties {
     return parseSize(this.#props.borderBottomWidth, this.unitsH);
   }
 
+  /**
+   * How see-through the element asked to be, before any colour of its own is
+   * taken into account. The colours below fold it in already; what reads this
+   * on its own is content the element carries rather than paints — a picture,
+   * which has an alpha channel to be scaled rather than a CSS colour to be
+   * multiplied.
+   */
+  get opacity() {
+    return this.#props.opacity;
+  }
+
   get borderBottomLeftRadius() {
     return parseSize(this.#props.borderBottomLeftRadius, this.unitsW);
   }
@@ -375,6 +387,7 @@ decorate(VisualProperties.prototype, "borderLeftWidth", memo());
 decorate(VisualProperties.prototype, "borderRightWidth", memo());
 decorate(VisualProperties.prototype, "borderTopWidth", memo());
 decorate(VisualProperties.prototype, "borderBottomWidth", memo());
+decorate(VisualProperties.prototype, "opacity", memo());
 decorate(VisualProperties.prototype, "borderBottomLeftRadius", memo());
 decorate(VisualProperties.prototype, "borderBottomRightRadius", memo());
 decorate(VisualProperties.prototype, "borderTopLeftRadius", memo());

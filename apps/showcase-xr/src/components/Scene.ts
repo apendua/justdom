@@ -5,14 +5,30 @@ import { effects, just, component } from "@apendua/signal";
 import ButtonsPanel from "./ButtonsPanel.js";
 import MotionPanel from "./MotionPanel.js";
 import BoxesPanel from "./BoxesPanel.js";
+import ImagesPanel from "./ImagesPanel.js";
 
 /**
- * Three panels arranged like a cockpit: interactions in the middle,
- * self-running motion on the left, the box path and layout animation on the
- * right. Each is ordinary DOM projected through its own portal.
+ * Four panels in a two-by-two grid, each column turned in towards the middle
+ * so the set reads as a shallow cockpit rather than a flat wall: interactions
+ * and pictures along the top, self-running motion and the box path along the
+ * bottom. Each is ordinary DOM projected through its own portal.
+ *
+ * Panels are positioned by their centres — a portal puts its object's origin
+ * there — so the two rows are separated by more than half of the tallest one
+ * plus half of the one below it, and the columns by rather more than a panel
+ * is wide, which is where these numbers come from.
  */
 const Scene = component((ctx: WeakKey) => {
   const scale = 0.1;
+
+  /** Half the horizontal distance between the two columns, in container px. */
+  const column = 3.0;
+  /** Half the vertical distance between the two rows. */
+  const row = 2.2;
+  /** How far each column is turned in towards the viewer. */
+  const yaw = 0.32;
+  /** How far forward the turn brings them, so the grid curves rather than shears. */
+  const depth = 1.2;
 
   return just(new THREE.Scene()).pipe(
     children(
@@ -30,17 +46,28 @@ const Scene = component((ctx: WeakKey) => {
           o.position.set(0, 0, -0.65);
         }),
         children(
-          dom(ctx, ButtonsPanel(ctx)),
+          dom(ctx, ButtonsPanel(ctx), [
+            effects((obj) => {
+              obj.position.set(-column, row, depth);
+              obj.rotation.set(0, yaw, 0);
+            }),
+          ]),
+          dom(ctx, ImagesPanel(ctx), [
+            effects((obj) => {
+              obj.position.set(column, row, depth);
+              obj.rotation.set(0, -yaw, 0);
+            }),
+          ]),
           dom(ctx, MotionPanel(ctx), [
             effects((obj) => {
-              obj.position.set(-4.4, 0, 1.4);
-              obj.rotation.set(0, 0.55, 0);
+              obj.position.set(-column, -row, depth);
+              obj.rotation.set(0, yaw, 0);
             }),
           ]),
           dom(ctx, BoxesPanel(ctx), [
             effects((obj) => {
-              obj.position.set(4.4, 0, 1.4);
-              obj.rotation.set(0, -0.55, 0);
+              obj.position.set(column, -row, depth);
+              obj.rotation.set(0, -yaw, 0);
             }),
           ]),
         ),

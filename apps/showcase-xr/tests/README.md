@@ -99,6 +99,19 @@ would mean publishing the frame somewhere anonymous — a public gist, say —
 which is a decision about what leaves a private repository, not a workflow
 detail.
 
+Splitting the artifact into one upload per file does not help either, and is
+worth writing down so nobody has to find out twice: an artifact is always
+delivered as a zip, whatever is in it, so three artifacts are three zips
+rather than three files. There is no way to serve a single file out of one.
+
+**The comparison you actually want is the recording.** Redraw the baselines
+and the runner commits what it drew — which lands in *Files changed* as an
+image diff GitHub renders side by side, swipeable, against the picture it
+replaced. That is a real before-and-after in a browser, it costs no extra
+machinery, and it is the same push that turns the check green. It is a thing
+to do once a change is settled rather than to find out whether it should be;
+the artifact is what to open before then.
+
 There is one comment per pull request and it is edited in place. It appears
 only when something is wrong, and a later green run rewrites it to say the
 scene is as it was rather than leaving a stale complaint behind.

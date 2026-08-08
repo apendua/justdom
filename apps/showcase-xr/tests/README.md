@@ -112,6 +112,14 @@ machinery, and it is the same push that turns the check green. It is a thing
 to do once a change is settled rather than to find out whether it should be;
 the artifact is what to open before then.
 
+The comment links straight to the page the **Run workflow** button is on, for
+both of the outcomes that want a recording — a scene that moved, and a runner
+with no baseline of its own. The link cannot go further than the page:
+`workflow_dispatch` takes no inputs through a URL, so the branch still has to
+be chosen in the dropdown, and choosing the wrong one records baselines onto
+the wrong branch. The link carries a branch filter so at least the page opens
+on the right history.
+
 There is one comment per pull request and it is edited in place. It appears
 only when something is wrong, and a later green run rewrites it to say the
 scene is as it was rather than leaving a stale complaint behind.

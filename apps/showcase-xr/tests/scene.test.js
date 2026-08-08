@@ -119,7 +119,7 @@ describe("the showcase in an emulated headset", { timeout: 180_000 }, () => {
   });
 
   test("the panels are drawn", () => {
-    // Three panels of white cards against a dark room: if the session came up
+    // Four panels of white cards against a dark room: if the session came up
     // empty, or the portal drew nothing, this is what notices.
     const ink = inkRatio(scene);
     assert.ok(ink > 0.15, `expected the scene to be covered in panels, got ${ink.toFixed(3)}`);

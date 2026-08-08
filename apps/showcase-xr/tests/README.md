@@ -16,6 +16,15 @@ npm run test:visual           # check
 npm run test:visual:update    # re-record the baselines
 ```
 
+Both modes are switched by environment variable — `UPDATE_BASELINES=1` to
+record, `VISUAL_STRICT=1` to refuse to record — and deliberately not by a
+command-line flag. `node --test` runs every file in a child process of its own
+whose argv is the file and nothing else, so a flag written after `--` is
+swallowed before any test can read it. This suite spent a while with a
+`--update` that did nothing, which went unnoticed because recording is also
+what happens when there is no baseline to compare against: it worked once, on
+a runner that had none, and failed the next time.
+
 ## How it works
 
 `harness.js` serves the app with Vite, opens it in headless Chromium under
@@ -45,7 +54,7 @@ So baselines are filed under a fingerprint of the machine that drew them —
 Chromium's version, the width the app's font stack measures a specimen string
 at, and the viewport — one directory each, and more than one can be committed at
 a time. Somewhere with no baseline of its own, the check records one and says
-so. **Under `--strict`, which is how CI runs it, it fails instead**: a green
+so. **Under `VISUAL_STRICT=1`, which is how CI runs it, it fails instead**: a green
 check that quietly declined to check is worse than no check at all.
 
 The difference between two machines is not hypothetical: this repository holds

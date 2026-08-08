@@ -10,7 +10,7 @@
     "preview": "vite preview",
     "test": "",
     "test:visual": "node --test tests/*.test.js",
-    "test:visual:update": "node --test tests/*.test.js -- --update"
+    "test:visual:update": "UPDATE_BASELINES=1 node --test tests/*.test.js"
   },
   "dependencies": {
     "@apendua.dev/media": "workspace:*",

@@ -36,14 +36,26 @@ import { BASELINE, MOVEMENT, comparePng, countNear, inkRatio } from "./pixels.js
 const HERE = dirname(fileURLToPath(import.meta.url));
 const BASELINES = join(HERE, "baselines");
 const OUTPUT = join(HERE, "output");
-const UPDATE = process.argv.includes("--update") || process.env.UPDATE_BASELINES === "1";
+/**
+ * Whether to redraw the baselines instead of comparing against them.
+ *
+ * From the environment, and only from the environment. Reading it from
+ * `process.argv` as well is the trap this used to be in: `node --test` runs
+ * every file in a child process of its own whose argv is the file and nothing
+ * else, so a flag written after `--` on the command line is swallowed before
+ * any test can see it. It appeared to work for exactly as long as the runner
+ * had no baseline of its own — recording is also what happens when there is
+ * nothing on record to compare against — and stopped the first time there was
+ * one, reporting the difference it had been asked to overwrite.
+ */
+const UPDATE = process.env.UPDATE_BASELINES === "1";
 /**
  * Whether having no baseline for this machine is a failure rather than
  * something to get on with. CI sets it, because a check that quietly declines
  * to check is worse than no check: the job stays green and the comparison
  * everyone believes is running is not.
  */
-const STRICT = process.argv.includes("--strict") || process.env.VISUAL_STRICT === "1";
+const STRICT = process.env.VISUAL_STRICT === "1";
 
 /** The stylesheet's own accent, which several labels and borders are drawn in. */
 const ACCENT = /** @type {[number, number, number]} */ ([0, 123, 255]);

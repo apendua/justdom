@@ -163,6 +163,39 @@ describe("scrollable", () => {
     }
   });
 
+  test("scrolling moves the thumb without touching the tree", () => {
+    // The killer this pins down: the bar used to be re-diffed on every
+    // scroll event, and the list's last-item handling turned that into a
+    // remove-and-reinsert of the whole scrollbar — one childList mutation
+    // per scrolled frame, which a portal answers with a portal-wide
+    // re-measure and a full rebuild of the bar's mirrored objects. A scroll
+    // may write styles; it must not move nodes.
+    const view = mount({ window: 100, content: 400 });
+    try {
+      const viewport = view.find(".viewport");
+      const thumb = view.find(".thumb");
+      assert.ok(viewport && thumb);
+
+      const spy = new MutationObserver(() => {});
+      spy.observe(view.host, { childList: true, subtree: true });
+
+      for (let top = 4; top <= 120; top += 4) {
+        viewport.scrollTop = top;
+        viewport.dispatchEvent(new Event("scroll"));
+      }
+
+      const records = spy.takeRecords().filter((record) => record.type === "childList");
+      assert.deepEqual(records, [], "thirty scrolled frames moved no nodes");
+      assert.equal(view.find(".thumb"), thumb, "the thumb is the same element it was");
+      assert.equal(thumb.style.top, "30%", "and it followed the scroll all the same");
+
+      spy.disconnect();
+    } finally {
+      view.subscription.unsubscribe();
+      view.host.remove();
+    }
+  });
+
   test("a press that is never released still stops when the panel hears the release", () => {
     const view = mount({ window: 100, content: 400, props: { step: 10, repeatDelay: 5 } });
     try {

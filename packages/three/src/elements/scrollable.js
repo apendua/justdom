@@ -1,5 +1,5 @@
 import { $, children, list, set, style, text } from "@apendua/justdom";
-import { effects, onCleanup, Signal } from "@apendua/signal";
+import { Derived, effects, onCleanup, Signal } from "@apendua/signal";
 import { getPortalRoot } from "./portal.js";
 
 /**
@@ -119,6 +119,15 @@ export function scrollable(props) {
   };
 
   const overflow = () => Math.max(metrics.get().content - metrics.get().window, 0);
+
+  /**
+   * Whether there is anything to scroll, as its own gated signal. The bar is
+   * mounted on this answer, and the answer must not flicker with the
+   * question: `metrics` moves on every frame of a scroll, and a list
+   * selector that read it directly would re-emit — and re-diff the bar —
+   * per frame, when all the mount cares about is the boolean crossing.
+   */
+  const scrollable = new Derived(() => overflow() > 0);
 
   /** How much of the content is showing, as a fraction of it. */
   const visibleFraction = () => {
@@ -271,7 +280,7 @@ export function scrollable(props) {
       // Mounted only while there is something to scroll — and mounted rather
       // than shown, because a portal re-measures on a tree change and not on
       // an attribute one.
-      list(() => (overflow() > 0 ? [BAR] : []), bar),
+      list(() => (scrollable.get() ? [BAR] : []), bar),
     ),
   ]);
 }

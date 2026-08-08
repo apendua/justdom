@@ -206,14 +206,31 @@ export default class ListRenderer {
       };
 
       let adopting = hydrating;
+      /**
+       * The key that ended the previous emission. The move branches below
+       * put an item back in position by re-inserting its nodes, and the DOM
+       * treats re-inserting a node that is already in place as a removal
+       * and an insertion all the same — mutation observers hear both. An
+       * item with no successor has nothing to compare its position against,
+       * so without this it was re-appended on *every* emission: one phantom
+       * childList mutation per emission for every list's last item, which a
+       * portal answers with a portal-wide re-measure.
+       *
+       * @type {K | undefined}
+       */
+      let previousLastKey;
       const subscription = items
         .pipe(
           tap((newItems) => {
             const newItemsSet = new Set();
             const newItemsArray = Array.from(newItems);
+            const lastKey = newItemsArray.length
+              ? getKey(newItemsArray[newItemsArray.length - 1])
+              : undefined;
             if (adopting) {
               adopting = false;
               adopt(newItemsArray);
+              previousLastKey = lastKey;
               return;
             }
             for (let index = newItemsArray.length - 1; index >= 0; index -= 1) {
@@ -297,7 +314,11 @@ export default class ListRenderer {
                         node = previousSibling;
                       }
                     }
-                  } else {
+                  } else if (key !== previousLastKey) {
+                    // No successor to sit in front of, so the item belongs at
+                    // the end — where it already is, if it also ended the
+                    // previous emission, in which case moving it would be a
+                    // pair of mutation records saying nothing.
                     /** @type {T | null} */
                     let node = childSegment[1];
                     while (node) {
@@ -342,6 +363,7 @@ export default class ListRenderer {
                 childSubscriptions.delete(key);
               }
             }
+            previousLastKey = lastKey;
           }),
         )
         .subscribe({

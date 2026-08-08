@@ -80,8 +80,28 @@ a re-record would have quietly blessed it.
 shared runner. The runner is not pinned to anything except the browser build
 Playwright brings, which is enough because the runner is also what recorded the
 baselines: the fingerprint makes "this machine is not that machine" a failure
-with a name rather than a mystery. A failing run uploads `tests/output` — the
-frames it took and the diff it found — as an artifact.
+with a name rather than a mystery. Every run uploads `tests/output` — the
+frames it took, the diff it found, and the log it wrote — as an artifact called
+**scene**.
+
+A failing run also says so on the pull request, because the one thing a pixel
+comparison's log cannot tell you is the thing you want to know: it says how
+many pixels moved, and the only useful question is which ones. The comment
+carries that number, how many of the baseline-free checks passed, and a link
+straight to the artifact.
+
+The photograph is a link rather than an image in that comment, and it cannot
+be anything else. An artifact is an authenticated zip; and this repository is
+private, so its own files are unreachable to the proxy GitHub renders comment
+images through. Nothing the workflow can name with the repository's own
+credentials would resolve inside a Markdown image for a reader. Embedding one
+would mean publishing the frame somewhere anonymous — a public gist, say —
+which is a decision about what leaves a private repository, not a workflow
+detail.
+
+There is one comment per pull request and it is edited in place. It appears
+only when something is wrong, and a later green run rewrites it to say the
+scene is as it was rather than leaving a stale complaint behind.
 
 Locally the harness takes `PLAYWRIGHT_CHROMIUM_EXECUTABLE`, and otherwise looks
 under `PLAYWRIGHT_BROWSERS_PATH` before letting Playwright resolve its own

@@ -21,12 +21,14 @@ export const SIZE_PRESETS: SizePreset[] = [
   { id: "large", label: "Large", nRows: 21, nColumns: 21, minesRatio: 0.2 },
 ];
 
+const DEFAULT_PRESET = SIZE_PRESETS.find((preset) => preset.id === "medium") ?? SIZE_PRESETS[0];
+
 const Game = (ctx: WeakKey) => {
   const dimensions = RootContext.get(ctx);
 
   const state = store({
-    sizeId: SIZE_PRESETS[0].id,
-    game: Fields.generate(SIZE_PRESETS[0]),
+    sizeId: DEFAULT_PRESET.id,
+    game: Fields.generate(DEFAULT_PRESET),
   });
 
   const startGame = (preset: SizePreset) => {

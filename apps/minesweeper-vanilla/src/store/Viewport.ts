@@ -61,7 +61,11 @@ class Viewport {
   }
 
   get fieldWidth() {
-    return Math.round(this.width / this.nColumns);
+    // Fields have a square bounding box, so the same size is used for both axes.
+    // Scale by whichever axis is tighter so the board is never taller/wider than
+    // the viewport (which would clip its top/bottom or left/right edges) — the
+    // other axis just ends up with extra space around the board instead.
+    return Math.round(Math.min(this.width / this.nColumns, this.height / this.nRows));
   }
 
   get fieldHeight() {

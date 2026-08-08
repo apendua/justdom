@@ -429,17 +429,55 @@ export class InteractionManager {
    */
   getIntersection(controller) {
     const raycaster = new THREE.Raycaster().setFromXRController(controller);
-    const objects = Array.from(this.#objects);
-    const intersections =
-      /** @type {typeof raycaster.intersectObjects<THREE.Object3D<XREventMap>>} */ (
-        raycaster.intersectObjects
-      ).call(raycaster, objects);
+    /** @type {THREE.Intersection<THREE.Object3D<XREventMap>>[]} */
+    const intersections = [];
+    for (const object of this.#objects) {
+      intersectVisible(raycaster, object, intersections);
+    }
+    intersections.sort(byDistance);
     return intersections[0];
   }
 
   cleanup() {
     this.#objects.clear();
     this.#pointers.clear();
+  }
+}
+
+/**
+ * @param {{ distance: number }} a
+ * @param {{ distance: number }} b
+ * @returns {number}
+ */
+function byDistance(a, b) {
+  return a.distance - b.distance;
+}
+
+/**
+ * Three's own `intersectObjects` recursion, minus the one thing it refuses
+ * to consult: `visible`. The raycaster deliberately ignores visibility — a
+ * defensible default for a scene tool — but here it made every hidden row
+ * of a scrolled list a full ray test: a registered scroller is raycast as a
+ * subtree, and a 500-row list paid five hundred inverse-matrix transforms
+ * per controller per frame to hit nothing anyone could see. The mirror's
+ * contract is the renderer's: an object culled out of the draw is out of
+ * the raycast, and its subtree with it — which is what `div()` already
+ * promises when it drops a hidden row's registration.
+ *
+ * @param {THREE.Raycaster} raycaster
+ * @param {THREE.Object3D<XREventMap>} object
+ * @param {THREE.Intersection<THREE.Object3D<XREventMap>>[]} intersections
+ * @returns {void}
+ */
+function intersectVisible(raycaster, object, intersections) {
+  if (!object.visible) {
+    return;
+  }
+  if (object.layers.test(raycaster.layers)) {
+    object.raycast(raycaster, intersections);
+  }
+  for (const child of object.children) {
+    intersectVisible(raycaster, /** @type {THREE.Object3D<XREventMap>} */ (child), intersections);
   }
 }
 

@@ -350,3 +350,38 @@ describe("setLocalMatrix and setWorldMatrix", () => {
     assert.strictEqual(child.matrixWorld.equals(childWorldMatrix), true);
   });
 });
+
+describe("getIntersection", () => {
+  test("a hidden subtree is not a ray target, exactly as it is not drawn", () => {
+    // The raycaster three ships ignores `visible` by design; the manager
+    // must not, or every row a scroller culled would still pay a ray test —
+    // five hundred inverse-matrix transforms per controller per frame in a
+    // long list, spent hitting things nobody can see.
+    const manager = new InteractionManager();
+    const root = /** @type {THREE.Object3D<XREventMap>} */ (
+      /** @type {unknown} */ (new THREE.Object3D())
+    );
+    const near = targetMesh(5);
+    const far = targetMesh(6);
+    root.add(near, far);
+    root.updateMatrixWorld(true);
+    manager.add(root);
+    const controller = fakeController();
+
+    assert.equal(manager.getIntersection(controller)?.object, near, "the nearest visible wins");
+
+    near.visible = false;
+    assert.equal(
+      manager.getIntersection(controller)?.object,
+      far,
+      "a hidden mesh neither hits nor occludes",
+    );
+
+    root.visible = false;
+    assert.equal(
+      manager.getIntersection(controller),
+      undefined,
+      "hiding the registered root takes the whole subtree out of the cast",
+    );
+  });
+});

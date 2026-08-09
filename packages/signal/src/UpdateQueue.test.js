@@ -150,18 +150,80 @@ describe("UpdateQueue", () => {
     assert.deepEqual(log, ["negative", "half", "whole"]);
   });
 
-  test("an unbounded priority lands in the last bucket instead of running forever", () => {
+  test("an infinite priority runs last instead of running forever", () => {
     const queue = new UpdateQueue();
     /** @type {string[]} */
     const log = [];
     queue.batch(() => {
-      // The cursor walks levels one at a time, so an unbounded priority used
+      // The cursor walks levels one at a time, so an infinite priority used
       // as an index would leave it climbing with nothing left to find.
-      queue.invalidate(makeTask("unbounded", log), Infinity);
+      queue.invalidate(makeTask("infinite", log), Infinity);
       queue.invalidate(makeTask("nonsense", log), NaN);
       queue.invalidate(makeTask("ordinary", log), 1);
     });
-    assert.deepEqual(log, ["nonsense", "ordinary", "unbounded"]);
+    assert.deepEqual(log, ["nonsense", "ordinary", "infinite"]);
+  });
+
+  test("priorities past the grid still order among themselves, infinity last", () => {
+    const queue = new UpdateQueue();
+    /** @type {string[]} */
+    const log = [];
+    queue.batch(() => {
+      queue.invalidate(makeTask("infinite", log), Infinity);
+      queue.invalidate(makeTask("huge", log), 2 ** 40);
+      queue.invalidate(makeTask("large", log), 100_000);
+      queue.invalidate(makeTask("dense", log), 3);
+    });
+    // "after everything" has to mean after the other out-of-range tasks too,
+    // not merely after the ones that fit on the grid.
+    assert.deepEqual(log, ["dense", "large", "huge", "infinite"]);
+  });
+
+  test("equal out-of-range priorities keep insertion order", () => {
+    const queue = new UpdateQueue();
+    /** @type {string[]} */
+    const log = [];
+    queue.batch(() => {
+      queue.invalidate(makeTask("first", log), Infinity);
+      queue.invalidate(makeTask("second", log), Infinity);
+      queue.invalidate(makeTask("third", log), Infinity);
+    });
+    assert.deepEqual(log, ["first", "second", "third"]);
+  });
+
+  test("a task past the grid can discover shallow work, which runs first", () => {
+    const queue = new UpdateQueue();
+    /** @type {string[]} */
+    const log = [];
+    const shallow = makeTask("shallow", log);
+    const last = makeTask("last", log, () => {
+      queue.invalidate(shallow, 0);
+    });
+    queue.batch(() => {
+      queue.invalidate(last, Infinity);
+      queue.invalidate(makeTask("ordinary", log), 1);
+    });
+    assert.deepEqual(log, ["ordinary", "last", "shallow"]);
+  });
+
+  test("a task re-prioritized off the grid and back runs once, where it landed", () => {
+    const queue = new UpdateQueue();
+    /** @type {string[]} */
+    const log = [];
+    const wanderer = makeTask("wanderer", log);
+    queue.batch(() => {
+      queue.invalidate(wanderer, 1);
+      queue.invalidate(wanderer, Infinity);
+      queue.invalidate(makeTask("middle", log), 2);
+      queue.invalidate(wanderer, 0);
+    });
+    assert.deepEqual(log, ["wanderer", "middle"]);
+
+    // Neither abandoned entry — the dense one at 1 nor the far one — may
+    // resurface on a later flush.
+    log.length = 0;
+    queue.invalidate(makeTask("later", log), 0);
+    assert.deepEqual(log, ["later"]);
   });
 
   test("re-prioritizing deeper leaves no entry behind at the old level", () => {

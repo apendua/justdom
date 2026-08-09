@@ -4,12 +4,13 @@
  */
 
 /**
- * The deepest level the queue will represent. A graph deep enough to reach it
- * would have to be built one dependency at a time and would blow the stack
- * long before it got here; the bound exists to keep a hand-set priority from
- * turning the drain loop into an unbounded walk.
+ * How many levels get a bucket of their own. A graph deep enough to reach
+ * this would have to be built one dependency at a time and would blow the
+ * stack long before it got here, so in practice every real priority is a
+ * dense one. Anything above the limit — including `Infinity` — is still
+ * ordered correctly, just by the slower path below.
  */
-const MAX_PRIORITY = 1 << 16;
+const DENSE_LIMIT = 1 << 12;
 
 /**
  * A priority queue of pending invalidations, drained in ascending priority
@@ -33,6 +34,13 @@ const MAX_PRIORITY = 1 << 16;
  * skipped at drain time by consulting `#queued` — the single source of truth
  * for membership. Stale entries cost one map lookup each, which is less than
  * eagerly deleting from the middle of an array.
+ *
+ * Priorities too large to index a bucket with — `Infinity`, most usefully,
+ * which a hand-written priority function may pass to mean "after everything"
+ * — are held separately and drained last, in priority order. Nothing built
+ * out of real dependencies lands there, so that path never costs the common
+ * case anything; it exists so that the grid's width is an implementation
+ * detail rather than a limit on what callers may ask for.
  */
 export default class UpdateQueue {
   /**
@@ -64,6 +72,25 @@ export default class UpdateQueue {
 
   /** @type {number[]} */
   #next = [];
+
+  /**
+   * Tasks whose priority is too large to index a bucket with, `Infinity`
+   * included. They are held unsorted and drained after every dense level,
+   * lowest priority first, by scanning — the set is empty in every graph
+   * built out of real dependencies, and a handful of entries at worst.
+   *
+   * @type {{ task: Task, priority: number }[]}
+   */
+  #far = [];
+
+  /**
+   * The deepest dense level currently holding work, or -1 when none does.
+   * Once the cursor passes it, whatever is left must be in `#far`, so the
+   * drain switches over instead of walking to the end of the grid.
+   *
+   * @type {number}
+   */
+  #maxDense = -1;
 
   /**
    * The lowest priority that may still hold work. Pushing below it moves it
@@ -134,6 +161,20 @@ export default class UpdateQueue {
     try {
       this.#isFlushing = true;
       while (this.#queued.size > 0) {
+        if (this.#cursor > this.#maxDense) {
+          // Every dense level is spent, so anything still queued is far. A
+          // far task may yet push shallow work, which moves the cursor back
+          // and returns the next turn of this loop to the branch below.
+          const index = this.#takeFar();
+          if (index < 0) {
+            break;
+          }
+          const { task } = this.#far[index];
+          this.#far.splice(index, 1);
+          this.#queued.delete(task);
+          task.invalidate();
+          continue;
+        }
         const bucket = this.#buckets[this.#cursor];
         if (!bucket || bucket.length === 0) {
           this.#cursor += 1;
@@ -168,6 +209,7 @@ export default class UpdateQueue {
             this.#next[i] = 0;
           }
         }
+        this.#far.length = 0;
         this.#hasStale = false;
       }
     } catch (err) {
@@ -177,7 +219,9 @@ export default class UpdateQueue {
       this.#queued.clear();
       this.#buckets = [];
       this.#next = [];
+      this.#far = [];
       this.#cursor = 0;
+      this.#maxDense = -1;
       this.#hasStale = false;
       throw err;
     } finally {
@@ -191,15 +235,14 @@ export default class UpdateQueue {
    * @returns {void}
    */
   #push(task, priority) {
-    // Priorities are depths, so integers ≥ 0 by construction; anything else
-    // is coerced onto the grid rather than trusted as an array index. The
-    // ceiling matters as much as the floor: the cursor walks levels one at a
-    // time, so an unbounded priority — `Infinity` from a hand-written
-    // `setPriorityFn`, say — would leave it climbing forever. Depths are
-    // small, so collapsing everything past the ceiling into the last bucket
-    // costs nothing real: such a task still runs after every shallower one.
-    if (!Number.isInteger(priority) || priority < 0 || priority > MAX_PRIORITY) {
-      priority = Math.min(Math.max(0, Math.floor(priority) || 0), MAX_PRIORITY);
+    // Priorities are depths, so integers ≥ 0 by construction. `Infinity` is
+    // the one out-of-range value with an obvious meaning — after everything
+    // — and it keeps that meaning here; the rest are nonsense as depths and
+    // collapse to the shallowest level rather than being trusted as indices.
+    if (!Number.isFinite(priority)) {
+      priority = priority === Infinity ? Infinity : 0;
+    } else if (!Number.isInteger(priority) || priority < 0) {
+      priority = Math.max(0, Math.floor(priority));
     }
     const current = this.#queued.get(task);
     if (current === priority) {
@@ -209,12 +252,25 @@ export default class UpdateQueue {
       this.#hasStale = true;
     }
     this.#priorities.set(task, priority);
-    if (this.#queued.size === 0) {
+    const wasEmpty = this.#queued.size === 0;
+    if (wasEmpty) {
       // An empty queue's cursor can be anywhere; starting it at the first
       // task keeps a flush from scanning the empty levels below.
+      this.#cursor = 0;
+      this.#maxDense = -1;
+    }
+    this.#queued.set(task, priority);
+    if (priority >= DENSE_LIMIT) {
+      // Too large to index a bucket with. It sorts after every dense level
+      // by construction, so the cursor needs no adjusting for it.
+      this.#far.push({ task, priority });
+      return;
+    }
+    if (wasEmpty || priority < this.#cursor) {
       this.#cursor = priority;
-    } else if (priority < this.#cursor) {
-      this.#cursor = priority;
+    }
+    if (priority > this.#maxDense) {
+      this.#maxDense = priority;
     }
     let bucket = this.#buckets[priority];
     if (!bucket) {
@@ -223,6 +279,30 @@ export default class UpdateQueue {
       this.#next[priority] = 0;
     }
     bucket.push(task);
-    this.#queued.set(task, priority);
+  }
+
+  /**
+   * The index in `#far` of the lowest-priority entry that is still live,
+   * or -1 if there is none. Compacts away the entries left behind by
+   * re-prioritization on the way through, so one pass does both jobs.
+   *
+   * @returns {number}
+   */
+  #takeFar() {
+    let best = -1;
+    let write = 0;
+    for (let read = 0; read < this.#far.length; read++) {
+      const entry = this.#far[read];
+      if (this.#queued.get(entry.task) !== entry.priority) {
+        continue;
+      }
+      this.#far[write] = entry;
+      if (best < 0 || entry.priority < this.#far[best].priority) {
+        best = write;
+      }
+      write++;
+    }
+    this.#far.length = write;
+    return best;
   }
 }

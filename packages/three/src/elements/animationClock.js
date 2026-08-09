@@ -1,3 +1,5 @@
+import { sampleRenderingUpdates } from "./renderingUpdates.js";
+
 /**
  * @import {AnimationClass, MutationBatch, MutationType} from './cache.js';
  */
@@ -88,16 +90,16 @@ function classify(property) {
  * @returns {AnimationClass}
  */
 function classifyKeyframes(effect) {
-  if (
-    typeof KeyframeEffect === "undefined" ||
-    !(effect instanceof KeyframeEffect) ||
-    typeof effect.getKeyframes !== "function"
-  ) {
+  // Duck-typed rather than `instanceof KeyframeEffect`: only that subclass
+  // has keyframes to read, and asking whether it can be read is both the
+  // same question and one that survives a document without the constructor.
+  const keyframed = /** @type {KeyframeEffect | null} */ (effect);
+  if (!keyframed || typeof keyframed.getKeyframes !== "function") {
     return "layout";
   }
   /** @type {AnimationClass} */
   let worst = "paint";
-  for (const frame of effect.getKeyframes()) {
+  for (const frame of keyframed.getKeyframes()) {
     for (const property of Object.keys(frame)) {
       if (
         property === "offset" ||
@@ -145,6 +147,14 @@ export function createAnimationClock(container, emit, requestFrames) {
   /** @type {(() => void) | null} */
   let stopFrames = null;
   let ticks = 0;
+  /**
+   * When the animations were last moved on by hand, in real time. Null
+   * whenever the browser is doing it, so the first frame after it stops
+   * advances by nothing rather than by however long the browser had it.
+   *
+   * @type {number | null}
+   */
+  let lastDrivenAt = null;
 
   function start() {
     if (!stopFrames) {
@@ -256,24 +266,49 @@ export function createAnimationClock(container, emit, requestFrames) {
    * CSS event, refines the conservative guess `animationstart` had to make
    * (keyframes say which properties they animate; the event does not), and
    * clears anything whose end event got lost.
+   *
+   * It is also the *only* way membership is learned while the document is
+   * not being rendered, where no animation event is ever dispatched — which
+   * is why the portal calls it on every mutation, the one signal that still
+   * arrives (observer callbacks are microtasks, owing nothing to frames).
+   *
+   * @param {number} [advanceBy] Milliseconds to move every running animation
+   *   on by first. Nonzero only while the document is suspended, where the
+   *   timeline that would ordinarily do this has stopped.
    */
-  function sweep() {
+  function sweep(advanceBy = 0) {
     if (typeof container.getAnimations !== "function") {
       return;
     }
+    const animations = container.getAnimations({ subtree: true });
+    if (advanceBy > 0) {
+      for (const animation of animations) {
+        if (animation.playState !== "running") {
+          continue;
+        }
+        const current = animation.currentTime;
+        if (typeof current === "number") {
+          // Writing `currentTime` re-anchors the animation against its frozen
+          // timeline, and the style recalc that any subsequent read forces
+          // applies the value that lands on. The classification below re-reads
+          // `playState`, so anything this pushes past its end is retired in
+          // the same pass.
+          animation.currentTime = current + advanceBy;
+        }
+      }
+    }
     /** @type {Map<HTMLElement, Map<string, AnimationClass>>} */
     const seen = new Map();
-    for (const animation of container.getAnimations({ subtree: true })) {
+    for (const animation of animations) {
       // A pending animation is about to run — a start the events may not
       // have announced yet.
       if (animation.playState !== "running" && !animation.pending) {
         continue;
       }
       const effect = animation.effect;
-      const target =
-        typeof KeyframeEffect !== "undefined" && effect instanceof KeyframeEffect
-          ? effect.target
-          : null;
+      // Same duck-typing as above: what matters is that the effect names an
+      // element, not which constructor it came from.
+      const target = effect ? /** @type {KeyframeEffect} */ (effect).target : null;
       if (!(target instanceof HTMLElement) || !container.contains(target)) {
         continue;
       }
@@ -293,9 +328,30 @@ export function createAnimationClock(container, emit, requestFrames) {
         keys.set("waapi", classifyKeyframes(effect));
       }
     }
+    // Anything that was running and no longer is has just landed on its final
+    // value, and — with no `transitionend` to rely on, which is the whole
+    // point of sweeping — this pass is the only notice of it.
+    /** @type {[HTMLElement, AnimationClass][]} */
+    const finished = [];
+    for (const [element, keys] of animating) {
+      if (seen.has(element)) {
+        continue;
+      }
+      /** @type {AnimationClass} */
+      let worst = "paint";
+      for (const cls of keys.values()) {
+        if (CLASS_RANK[cls] > CLASS_RANK[worst]) {
+          worst = cls;
+        }
+      }
+      finished.push([element, worst]);
+    }
     animating.clear();
     for (const [element, keys] of seen) {
       animating.set(element, keys);
+    }
+    for (const [element, cls] of finished) {
+      settle(element, cls);
     }
     if (animating.size) {
       start();
@@ -314,8 +370,21 @@ export function createAnimationClock(container, emit, requestFrames) {
         animating.delete(element);
       }
     }
-    if (ticks % SWEEP_INTERVAL === 0) {
-      sweep();
+    if (sampleRenderingUpdates()) {
+      // Nothing is advancing these animations but us, and no event will say
+      // when one starts or stops, so every frame is a sweep: move them on by
+      // the real time that passed, then read back what is still running.
+      const now = performance.now();
+      const elapsed = lastDrivenAt === null ? 0 : now - lastDrivenAt;
+      lastDrivenAt = now;
+      sweep(elapsed);
+    } else {
+      // The browser is driving; the events keep membership honest and the
+      // sweep is only there to catch what they miss.
+      lastDrivenAt = null;
+      if (ticks % SWEEP_INTERVAL === 0) {
+        sweep();
+      }
     }
     if (!animating.size) {
       stop();
@@ -378,6 +447,15 @@ export function createAnimationClock(container, emit, requestFrames) {
   container.addEventListener("animationcancel", onAnimationRemove);
 
   return {
+    /**
+     * Look for animations the events cannot report. The portal calls this on
+     * every mutation batch: a class swap is what starts most transitions, and
+     * while the document is suspended the mutation is the only trace of it
+     * that reaches us.
+     */
+    sweep() {
+      sweep();
+    },
     dispose() {
       container.removeEventListener("transitionrun", onTransitionAdd);
       container.removeEventListener("transitionstart", onTransitionAdd);

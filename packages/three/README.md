@@ -180,6 +180,22 @@ property — `height`, `padding`, `font-size` — re-measures the panel every
 frame, because a growing element moves neighbours no one named. It works;
 save it for moments, not idle loops.
 
+All of that holds inside an immersive session too, which takes some doing:
+once the headset has the display, the page behind it stops being rendered,
+and everything the browser does in its rendering step stops with it. The
+document timeline no longer advances, so animations would sit frozen at the
+value they had reached; the `transitionrun`/`animationstart`/`transitionend`
+events are never dispatched, so nothing would say one had begun; and
+`scroll` never fires either, so a dragged list would slide while its
+mirrored rows stayed put. A portal notices when the document has stopped
+keeping up with the frames and takes over: it finds animations by looking
+rather than by being told — mutation observers are microtasks and keep
+arriving, so a class swap is still a signal — advances each one by the real
+time that passed, and lets a scroll gesture announce its own scroll. Nothing
+here is switched on by asking whether a session is presenting, which is why
+it behaves under an emulator, where the page is presenting and rendering
+both.
+
 ## Layers
 
 An element that is positioned and stacked above — `position` other than

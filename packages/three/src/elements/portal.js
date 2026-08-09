@@ -236,6 +236,12 @@ export function createPortal(ctx) {
       }
     }
     invalidateLayout({ types, targets });
+    // A class swap is how most transitions begin, and inside an immersive
+    // session the mutation is the only trace of one that reaches us: the
+    // events that would announce it are dispatched with the rendering
+    // updates the session has suspended. Observer callbacks are microtasks
+    // and keep arriving, so this is where the clock gets to look.
+    animationClock.sweep();
     // Every hand's hit is worked out only when that hand moves, so a menu that
     // opens under a ray resting on the button that opened it would go on
     // reporting the button as hovered until the player twitched. The scene

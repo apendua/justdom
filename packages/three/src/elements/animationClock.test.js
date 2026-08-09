@@ -1,6 +1,7 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { createAnimationClock } from "./animationClock.js";
+import { resetRenderingUpdatesForTests } from "./renderingUpdates.js";
 
 /**
  * @import {MutationBatch} from './cache.js';
@@ -204,6 +205,120 @@ describe("animation clock", () => {
       assert.equal(frames.running, false);
       assert.equal(emitted.length, 0);
     } finally {
+      cleanup();
+    }
+  });
+});
+
+describe("animation clock with rendering updates suspended", () => {
+  /**
+   * A running animation the way `getAnimations()` reports one, with a
+   * `currentTime` the clock is expected to move on itself.
+   *
+   * @param {HTMLElement} target
+   * @param {number} duration
+   */
+  function fakeAnimation(target, duration) {
+    return {
+      currentTime: 0,
+      transitionProperty: "opacity",
+      effect: { target },
+      get playState() {
+        return this.currentTime >= duration ? "finished" : "running";
+      },
+      pending: false,
+    };
+  }
+
+  /**
+   * A document whose timeline has stopped, which is what an immersive
+   * session does to the page behind it.
+   *
+   * @param {number} value
+   */
+  function freezeDocumentTime(value) {
+    Object.defineProperty(document, "timeline", {
+      configurable: true,
+      value: { currentTime: value },
+    });
+  }
+
+  test("drives animations itself and needs no events to find them", () => {
+    const { container, element, emitted, frames, clock, cleanup } = setup();
+    const original = performance.now;
+    let clockTime = 0;
+    performance.now = () => clockTime;
+    freezeDocumentTime(500);
+    resetRenderingUpdatesForTests();
+
+    try {
+      const animation = fakeAnimation(element, 100);
+      // @ts-expect-error -- a minimal stand-in for the real thing.
+      container.getAnimations = () => [animation];
+
+      // No transition event was ever dispatched — inside a suspended
+      // document none ever is. The sweep the portal runs on each mutation is
+      // what finds the animation at all.
+      assert.equal(frames.running, false);
+      clock.sweep();
+      assert.equal(frames.running, true);
+
+      // First frame: the detector has one reading, so nothing moves yet.
+      clockTime = 16;
+      frames.step();
+      assert.equal(animation.currentTime, 0);
+
+      // Second: the document time has not moved while real time has, so the
+      // clock takes over and advances the animation by the elapsed time.
+      clockTime = 32;
+      frames.step();
+      assert.equal(animation.currentTime, 0);
+      clockTime = 48;
+      frames.step();
+      assert.equal(animation.currentTime, 16);
+      assert.ok(emitted.length > 0);
+
+      // Driven past its end, it retires — and the settle sample still goes
+      // out, though no `transitionend` will ever arrive to say so.
+      clockTime = 248;
+      frames.step();
+      assert.equal(animation.playState, "finished");
+      assert.equal(frames.running, false);
+    } finally {
+      performance.now = original;
+      resetRenderingUpdatesForTests();
+      cleanup();
+    }
+  });
+
+  test("leaves animations alone while the document is still rendering", () => {
+    const { container, element, frames, clock, cleanup } = setup();
+    const original = performance.now;
+    let clockTime = 0;
+    performance.now = () => clockTime;
+    resetRenderingUpdatesForTests();
+
+    try {
+      const animation = fakeAnimation(element, 1000);
+      // @ts-expect-error -- a minimal stand-in for the real thing.
+      container.getAnimations = () => [animation];
+      clock.sweep();
+
+      // A document that keeps up with the frames is advancing its own
+      // animations; touching `currentTime` here would run them twice as fast.
+      for (const [real, documentTime] of [
+        [16, 516],
+        [32, 532],
+        [48, 548],
+      ]) {
+        freezeDocumentTime(documentTime);
+        clockTime = real;
+        frames.step();
+      }
+      assert.equal(animation.currentTime, 0);
+    } finally {
+      performance.now = original;
+      resetRenderingUpdatesForTests();
       cleanup();
     }
   });

@@ -4,6 +4,14 @@
  */
 
 /**
+ * The deepest level the queue will represent. A graph deep enough to reach it
+ * would have to be built one dependency at a time and would blow the stack
+ * long before it got here; the bound exists to keep a hand-set priority from
+ * turning the drain loop into an unbounded walk.
+ */
+const MAX_PRIORITY = 1 << 16;
+
+/**
  * A priority queue of pending invalidations, drained in ascending priority
  * order so that dependencies always run before their dependents.
  *
@@ -91,9 +99,17 @@ export default class UpdateQueue {
   batch(fn) {
     if (this.#isBatching) {
       fn();
-    } else {
-      this.#isBatching = true;
+      return;
+    }
+    this.#isBatching = true;
+    try {
       fn();
+    } finally {
+      // A batch body that throws must not leave the flag set: nothing would
+      // ever drain the queue again, and every later invalidation would be
+      // silently swallowed. Draining is still right — the writes the body
+      // managed to make before it failed are real, and their dependents are
+      // stale until they run.
       this.#isBatching = false;
       this.flush();
     }
@@ -176,9 +192,14 @@ export default class UpdateQueue {
    */
   #push(task, priority) {
     // Priorities are depths, so integers ≥ 0 by construction; anything else
-    // is coerced onto the grid rather than trusted as an array index.
-    if (!Number.isInteger(priority) || priority < 0) {
-      priority = Math.max(0, Math.floor(priority) || 0);
+    // is coerced onto the grid rather than trusted as an array index. The
+    // ceiling matters as much as the floor: the cursor walks levels one at a
+    // time, so an unbounded priority — `Infinity` from a hand-written
+    // `setPriorityFn`, say — would leave it climbing forever. Depths are
+    // small, so collapsing everything past the ceiling into the last bucket
+    // costs nothing real: such a task still runs after every shallower one.
+    if (!Number.isInteger(priority) || priority < 0 || priority > MAX_PRIORITY) {
+      priority = Math.min(Math.max(0, Math.floor(priority) || 0), MAX_PRIORITY);
     }
     const current = this.#queued.get(task);
     if (current === priority) {

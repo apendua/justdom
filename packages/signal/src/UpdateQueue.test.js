@@ -149,4 +149,121 @@ describe("UpdateQueue", () => {
     });
     assert.deepEqual(log, ["negative", "half", "whole"]);
   });
+
+  test("an unbounded priority lands in the last bucket instead of running forever", () => {
+    const queue = new UpdateQueue();
+    /** @type {string[]} */
+    const log = [];
+    queue.batch(() => {
+      // The cursor walks levels one at a time, so an unbounded priority used
+      // as an index would leave it climbing with nothing left to find.
+      queue.invalidate(makeTask("unbounded", log), Infinity);
+      queue.invalidate(makeTask("nonsense", log), NaN);
+      queue.invalidate(makeTask("ordinary", log), 1);
+    });
+    assert.deepEqual(log, ["nonsense", "ordinary", "unbounded"]);
+  });
+
+  test("re-prioritizing deeper leaves no entry behind at the old level", () => {
+    const queue = new UpdateQueue();
+    /** @type {string[]} */
+    const log = [];
+    const moved = makeTask("moved", log);
+    queue.batch(() => {
+      queue.invalidate(moved, 5);
+      queue.invalidate(moved, 1);
+    });
+    assert.deepEqual(log, ["moved"], "the task runs once, from its new level");
+
+    // Level 5 still holds the entry the move abandoned, at a level this
+    // flush's cursor never reached. A later flush must not resurrect it.
+    log.length = 0;
+    queue.invalidate(makeTask("later", log), 0);
+    assert.deepEqual(log, ["later"], "the abandoned entry does not run again");
+  });
+
+  test("a stale entry between two live ones is skipped, not run", () => {
+    const queue = new UpdateQueue();
+    /** @type {string[]} */
+    const log = [];
+    const middle = makeTask("middle", log);
+    queue.batch(() => {
+      queue.invalidate(makeTask("before", log), 1);
+      queue.invalidate(middle, 1);
+      queue.invalidate(makeTask("after", log), 1);
+      // `middle` now has a stale entry sitting between two tasks that still
+      // have to run out of the same bucket.
+      queue.invalidate(middle, 2);
+    });
+    assert.deepEqual(log, ["before", "after", "middle"]);
+  });
+
+  test("a task pushed deeper mid-flush runs once, at its new level", () => {
+    const queue = new UpdateQueue();
+    /** @type {string[]} */
+    const log = [];
+    const bumped = makeTask("bumped", log);
+    const driver = makeTask("driver", log, () => {
+      // The graph learned mid-flush that this sits deeper than it was queued
+      // at — and the cursor has already been given the shallower level.
+      queue.invalidate(bumped, 3);
+    });
+    queue.batch(() => {
+      queue.invalidate(driver, 0);
+      queue.invalidate(bumped, 1);
+    });
+    assert.deepEqual(log, ["driver", "bumped"]);
+  });
+
+  test("a nested batch defers to the outer one", () => {
+    const queue = new UpdateQueue();
+    /** @type {string[]} */
+    const log = [];
+    queue.batch(() => {
+      queue.invalidate(makeTask("outer", log), 0);
+      queue.batch(() => {
+        queue.invalidate(makeTask("inner", log), 1);
+      });
+      assert.deepEqual(log, [], "the inner batch must not drain on its own");
+    });
+    assert.deepEqual(log, ["outer", "inner"]);
+  });
+
+  test("a task that re-invalidates itself runs again in the same flush", () => {
+    const queue = new UpdateQueue();
+    /** @type {string[]} */
+    const log = [];
+    let runs = 0;
+    /** @type {{ invalidate: () => void }} */
+    const self = makeTask("self", log, () => {
+      if (++runs < 3) {
+        queue.invalidate(self, 0);
+      }
+    });
+    queue.invalidate(self, 0);
+    assert.deepEqual(log, ["self", "self", "self"]);
+  });
+
+  test("a batch body that throws does not wedge the queue", () => {
+    const queue = new UpdateQueue();
+    /** @type {string[]} */
+    const log = [];
+    assert.throws(() => {
+      queue.batch(() => {
+        queue.invalidate(makeTask("queued before the throw", log), 0);
+        throw new Error("boom");
+      });
+    }, /boom/);
+    assert.deepEqual(
+      log,
+      ["queued before the throw"],
+      "work queued before the failure is still real, and still drains",
+    );
+
+    // The batching flag has to survive the failure: if it stayed set, nothing
+    // would drain the queue again and every later invalidation would vanish.
+    log.length = 0;
+    queue.invalidate(makeTask("afterwards", log), 0);
+    assert.deepEqual(log, ["afterwards"], "the queue still flushes afterwards");
+  });
 });

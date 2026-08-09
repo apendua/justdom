@@ -187,6 +187,12 @@ function measureTextWidth(context, text, letterSpacing, wordSpacing) {
   if (!text) {
     return 0;
   }
+  if (!letterSpacing && !wordSpacing) {
+    // Nothing to space out, so the line can be measured as a line — which is
+    // both far cheaper than a call per character and more accurate, since it
+    // is the only way the font's kerning is counted.
+    return context.measureText(text).width;
+  }
   let width = 0;
   for (let i = 0; i < text.length; i++) {
     const char = text[i];
@@ -213,6 +219,15 @@ function measureTextWidth(context, text, letterSpacing, wordSpacing) {
 function drawText(context, text, x, y, letterSpacing, wordSpacing) {
   if (!text) {
     return x;
+  }
+  if (!letterSpacing && !wordSpacing) {
+    // The overwhelmingly common case: no spacing to apply, so the line goes
+    // down in one call rather than two canvas operations per character — a
+    // label of twenty characters was forty. It also comes out kerned, which
+    // glyph-by-glyph drawing cannot be, so it matches the width the browser
+    // measured instead of running a shade wide.
+    context.fillText(text, x, y);
+    return x + context.measureText(text).width;
   }
   let cursor = x;
   for (let i = 0; i < text.length; i++) {

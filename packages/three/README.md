@@ -136,6 +136,53 @@ control that was going to choose from it, which looks exactly like the ray
 having no effect. `getPortalRoot` returns null off a portal, where `document`
 is the right answer and there is nothing to disambiguate.
 
+## Checkboxes
+
+Most elements are a box with other elements in them, which is all a portal has
+to draw. A checkbox is the exception it can still mirror honestly — a box with
+a mark in it — so `<input type="checkbox">` is projected as a component of its
+own rather than as one more box, and the tick is drawn in the scene:
+
+```css
+.done {
+  appearance: none;
+  width: 1.25rem;
+  height: 1.25rem;
+  border: 2px solid #ccc;
+  border-radius: 4px;
+  background: white;
+  color: white; /* the tick */
+}
+
+.done:checked,
+.done[data-xr-checked] {
+  background: #007bff;
+  border-color: #007bff;
+}
+```
+
+Everything but the tick comes from the same declarations any other box is drawn
+from; the tick is drawn in the element's own `color`, the nearest thing CSS has
+to naming it. `appearance: none` is implied in a scene — there is no native
+look to keep — and writing it out is what the flat build needs to match.
+
+Two things differ from an ordinary box. A checkbox is a ray target without
+asking for one, because a control is there to be operated; `cursor: pointer` is
+still worth writing for the page, and a disabled checkbox is not pointable
+however it is dressed. And the ticked state is written back onto the element as
+`data-xr-checked`: `:checked` is a pseudo-class, so it changes no attribute, and
+without something that does, nothing would tell the portal to re-read a style
+that follows it. Write the rule both ways, as above.
+
+The DOM stays the thing that is true. A ray's click is a click, so the browser
+does the toggling and fires `change`, and an application reads `checked` and
+listens for `change` exactly as it would on a page — including
+`set("checked", …)` from the other direction, which the scene follows.
+
+Every other kind of `<input>` is still drawn as a plain box: a text field's
+caret, a range's thumb and a number's steppers are chrome the DOM does not
+describe, and there is nothing honest to mirror.
+
 ## Transforms
 
 A CSS `transform` (with its `transform-origin`) is mirrored onto the

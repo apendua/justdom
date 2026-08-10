@@ -6,6 +6,7 @@ export { cursors, pointers } from "./pointers.js";
 export { dom } from "./dom.js";
 export { getPortalRoot } from "./elements/portal.js";
 export { dropdown } from "./elements/dropdown.js";
+export { keyboard, LAPTOP_LAYOUT } from "./elements/keyboard.js";
 export { scrollable } from "./elements/scrollable.js";
 export { createXRButton } from "./xr.js";
 
@@ -51,6 +52,30 @@ export { createXRButton } from "./xr.js";
 
 /**
  * @typedef {import('./elements/dropdown.js').DropdownClasses} DropdownClasses
+ */
+
+/**
+ * @typedef {import('./elements/keyboard.js').KeyboardKey} KeyboardKey
+ */
+
+/**
+ * @typedef {import('./elements/keyboard.js').KeyboardLayout} KeyboardLayout
+ */
+
+/**
+ * @typedef {import('./elements/keyboard.js').KeyboardModifier} KeyboardModifier
+ */
+
+/**
+ * @typedef {import('./elements/keyboard.js').KeyboardClasses} KeyboardClasses
+ */
+
+/**
+ * @typedef {import('./elements/keyboard.js').KeyboardProps} KeyboardProps
+ */
+
+/**
+ * @typedef {import('./elements/keyboard.js').KeyPress} KeyPress
  */
 
 /**

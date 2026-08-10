@@ -1,6 +1,6 @@
 {
   "name": "@apendua/justdom",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Reactive, non-VDOM DOM renderer built on @apendua/signal, with SSR and hydration support",
   "keywords": [
     "dom",

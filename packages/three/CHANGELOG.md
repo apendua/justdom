@@ -1,6 +1,13 @@
 # Change Log - @apendua/freedom
 
-This log was last generated on Sat, 08 Aug 2026 14:20:52 GMT and should not be manually modified.
+This log was last generated on Mon, 10 Aug 2026 07:14:43 GMT and should not be manually modified.
+
+## 0.10.1
+Mon, 10 Aug 2026 07:14:43 GMT
+
+### Patches
+
+- The interaction manager's raycast honors visible: a subtree culled out of the draw is out of the cast, so a registered scroller no longer pays a ray test per hidden row per controller per frame — the cast is flat in list length. And scrollable() mounts its bar on a gated boolean rather than on the live metrics, so a frame of scrolling updates the thumb's styles and moves no nodes; profiled end to end, the scrollbar used to be unmounted and remounted on every scrolled frame, each remount answered with a portal-wide re-measure, which was most of what dragging a list cost inside a real browser.
 
 ## 0.10.0
 Sat, 08 Aug 2026 14:20:52 GMT

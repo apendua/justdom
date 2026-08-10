@@ -2,6 +2,46 @@
   "name": "@apendua/freedom",
   "entries": [
     {
+      "version": "0.11.0",
+      "tag": "@apendua/freedom_v0.11.0",
+      "date": "Mon, 10 Aug 2026 22:34:42 GMT",
+      "comments": {
+        "patch": [
+          {
+            "comment": "Animations and scroll now keep working inside an immersive session. Once the headset has the display the page behind it stops being rendered, and everything the browser does in its rendering step stops with it: the document timeline no longer advances, so CSS transitions and keyframe animations froze where they stood, and the `transitionrun`/`animationstart`/`transitionend` and `scroll` events — all dispatched from that step — never arrived, so nothing even reported that an animation had begun or that a dragged list had moved. A portal now notices when the document has stopped keeping up with the frames, finds animations by sweeping `getAnimations()` on each mutation instead of waiting for events, advances each running animation by the real time that passed, and has every scroll it performs itself — the drag gesture and the `scrollable` widget's arrows and track alike — announce that scroll, which the portal's listener cannot tell from the real thing. The check is the condition itself — has the document timeline moved between two moments of real time — rather than whether a session is presenting, so it stays correct under an emulator, where the page is presenting and rendering both."
+          },
+          {
+            "comment": "An element no longer flashes at the size it had while it was transformed. A client rect measured under a CSS transform is the transformed bounds, and nothing reads it while the transform is there — the box carries the matrix itself and takes its size from layout offsets. The moment a transition returned the transform to `none`, that cached number became the element's size again: a card that spent its transition rotated five degrees was drawn about a tenth too wide, along with everything inside it, for the few frames until some unrelated mutation happened to re-measure. Nothing was going to invalidate it, either — a transition restyles without relaying out, which is exactly the case rect invalidation ignores in order to keep an animating transform free. The rect cache now depends on whether the element is transformed, so a crossing in either direction re-measures and the frames in between still cost nothing."
+          },
+          {
+            "comment": "Text is rasterized a line at a time rather than a character at a time when there is no letter- or word-spacing to apply, which is nearly always. Drawing glyph by glyph cost two canvas operations per character — a measure and a fill — so relabelling a 46-row list took 886 draw calls where it now takes 56. It also comes out kerned, which glyph-by-glyph drawing cannot be: the line now matches the width the browser measured instead of running a shade wide and having the texture grown to fit it."
+          }
+        ],
+        "minor": [
+          {
+            "comment": "`<input type=\"checkbox\">` is now projected into a scene as a component of its own rather than as one more box, so the tick is drawn where the browser's own is chrome that never reaches the DOM. The box comes from the same CSS the rest of the panel is drawn from, the tick from the element's `color`; the ticked state is written back as `data-xr-checked`, so a style that follows `:checked` is re-read; and the control is a ray target without asking for one, unless it is disabled."
+          },
+          {
+            "comment": "Adds keyboard(props): a clickable board with a standard laptop layout, dressed in caller-supplied classes like dropdown. There is nothing to type into a panel with -- a headset has no keys, and the one the system offers belongs to the compositor rather than the DOM, so none of it reaches the scene. Presses are shaped like KeyboardEvent; shift and the chording modifiers are one-shot, since nobody chords on a board they have to point at, and caps lock is not. The tree is built once and never changes shape: a state change moves a class name and the text inside a key, because a changed tree would cost a re-measure of all seventy-seven boxes."
+          }
+        ],
+        "dependency": [
+          {
+            "comment": "Updating dependency \"@apendua/justdom\" to `0.1.4`"
+          },
+          {
+            "comment": "Updating dependency \"@apendua/signal\" to `0.2.0`"
+          },
+          {
+            "comment": "Updating dependency \"@apendua/justdom\" to `0.1.4`"
+          },
+          {
+            "comment": "Updating dependency \"@apendua/signal\" to `0.2.0`"
+          }
+        ]
+      }
+    },
+    {
       "version": "0.10.1",
       "tag": "@apendua/freedom_v0.10.1",
       "date": "Mon, 10 Aug 2026 07:14:43 GMT",

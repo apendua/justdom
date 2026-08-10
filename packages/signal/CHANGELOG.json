@@ -2,6 +2,18 @@
   "name": "@apendua/signal",
   "entries": [
     {
+      "version": "0.2.0",
+      "tag": "@apendua/signal_v0.2.0",
+      "date": "Mon, 10 Aug 2026 22:34:42 GMT",
+      "comments": {
+        "minor": [
+          {
+            "comment": "Remove deprecated setPriorityFn"
+          }
+        ]
+      }
+    },
+    {
       "version": "0.1.2",
       "tag": "@apendua/signal_v0.1.2",
       "date": "Mon, 10 Aug 2026 07:14:43 GMT",

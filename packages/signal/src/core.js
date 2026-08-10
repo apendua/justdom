@@ -177,18 +177,11 @@ export class NoValueError extends Error {
 /** @type {WeakMap<Dependency, number>} */
 const priorityMap = new WeakMap();
 
-/** @type {WeakMap<Dependency, () => number>} */
-const priorityFnMap = new WeakMap();
-
 /**
  * @param {Dependency} dependency
  * @returns {number}
  */
 export function getPriority(dependency) {
-  const fn = priorityFnMap.get(dependency);
-  if (fn) {
-    return fn();
-  }
   return priorityMap.get(dependency) ?? 0;
 }
 
@@ -199,15 +192,6 @@ export function getPriority(dependency) {
  */
 export function setPriority(dependency, priority) {
   priorityMap.set(dependency, priority);
-}
-
-/**
- * @param {Dependency} dependency
- * @param {() => number} fn
- * @returns {void}
- */
-export function setPriorityFn(dependency, fn) {
-  priorityFnMap.set(dependency, fn);
 }
 
 /**

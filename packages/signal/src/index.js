@@ -8,7 +8,6 @@ export {
   makeNonReactive,
   valueOf,
   setPriority,
-  setPriorityFn,
   getPriority,
   toObservable,
   NoValueError,

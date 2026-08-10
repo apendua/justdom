@@ -189,6 +189,78 @@ describe("getComputedStyleCached", () => {
     parent.remove();
     sibling.remove();
   });
+
+  test("a transform leaving mid-transition re-measures the subtree it polluted", () => {
+    // The rect of a transformed element is its *transformed* bounds, and
+    // nothing reads it while the transform is there — the box carries the
+    // matrix itself and takes its size from layout offsets. The moment the
+    // transform goes, that same cached number becomes the element's size:
+    // a card that spent its transition rotated five degrees would be drawn
+    // a tenth wider than it is until something else happened to re-measure
+    // it. And nothing would: a transition changes styles without relaying
+    // out, which is exactly the batch `affectsRect` ignores.
+    const portal = document.createElement("div");
+    portal.setAttribute(PORTAL_ATTRIBUTE, "");
+    const card = document.createElement("div");
+    const label = document.createElement("div");
+    card.appendChild(label);
+    portal.appendChild(card);
+    document.body.appendChild(portal);
+
+    const original = window.getComputedStyle;
+    // Both elements read one live declaration each, following the card's
+    // inline transform the way a browser's would follow the cascade.
+    const live = {
+      get transform() {
+        return card.style.transform || "none";
+      },
+    };
+    // @ts-expect-error -- a minimal stand-in for the live declaration.
+    window.getComputedStyle = () => live;
+
+    /** @type {Subject<import("./cache.js").MutationBatch>} */
+    const subject = new Subject();
+    for (const node of [portal, card, label]) {
+      setSubject(node, subject);
+    }
+
+    try {
+      let reads = 0;
+      const dependent = new Derived(() => {
+        reads += 1;
+        return getBoundingClientRectCached(label);
+      });
+      const subscription = dependent.subscribe({ next: () => dependent.get() });
+      dependent.get();
+      assert.equal(reads, 1);
+
+      // The tilt goes on. Twice, because the attribute batch invalidates the
+      // rect on its own account as well as flipping the answer this now
+      // hangs on — the price of a crossing, paid once and not per frame.
+      card.style.transform = "matrix(1.026, 0.09, -0.09, 1.026, 0, 0)";
+      subject.next({ types: new Set(["attributes"]), targets: new Set([card]) });
+      assert.equal(reads, 3);
+
+      // The transition runs. The clock samples styles every frame, and none
+      // of those frames moves a rect.
+      for (let frame = 0; frame < 5; frame++) {
+        subject.next({ types: new Set(["animated"]), targets: new Set([card]) });
+      }
+      assert.equal(reads, 3, "a transform in flight costs nothing per frame");
+
+      // And it lands. This is the same `animated` batch as every frame
+      // before it — the only thing that makes it different is that the
+      // answer changed.
+      card.style.transform = "";
+      subject.next({ types: new Set(["animated"]), targets: new Set([card]) });
+      assert.equal(reads, 4, "the rect taken under the transform is no longer usable");
+
+      subscription.unsubscribe();
+    } finally {
+      window.getComputedStyle = original;
+      portal.remove();
+    }
+  });
 });
 
 describe("text layout under transforms", () => {

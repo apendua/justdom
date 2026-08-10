@@ -38,25 +38,41 @@ export function hasTransform(value) {
   return !!value && value !== "none" && value.startsWith("matrix");
 }
 
+/** @type {WeakMap<HTMLElement, Derived<boolean>>} */
+const transformedCache = new WeakMap();
+
 /**
- * Whether the element, or any ancestor inside the portal, carries a CSS
- * transform. Reading the styles here registers them as dependencies of the
- * calling computation, which is the correct thing: a transform toggling on
- * an ancestor changes what a measurement of this element means.
+ * Whether the element, or anything above it inside the portal, carries a CSS
+ * transform — the question every measurement asks before trusting a client
+ * rect, because an ancestor's transform pollutes the rects of the whole
+ * subtree under it.
+ *
+ * Memoized per element and phrased recursively rather than as a walk, which
+ * is what makes it usable as a dependency. The styles it reads are
+ * deliberately invalidated by every attribute mutation in the portal, so a
+ * computation that walked the ancestors itself would re-run on every hover
+ * anywhere above it; a boolean behind its own signal absorbs all of that and
+ * propagates only when the answer actually flips.
  *
  * @param {HTMLElement} element
  * @returns {boolean}
  */
-function isSubtreeTransformed(element) {
-  /** @type {HTMLElement | null} */
-  let el = element;
-  while (el && !el.hasAttribute(PORTAL_ATTRIBUTE)) {
-    if (hasTransform(getComputedStyleCached(el).transform)) {
-      return true;
-    }
-    el = el.parentElement;
+export function isTransformed(element) {
+  let signal = transformedCache.get(element);
+  if (!signal) {
+    signal = new Derived(() => {
+      if (element.hasAttribute(PORTAL_ATTRIBUTE)) {
+        return false;
+      }
+      if (hasTransform(getComputedStyleCached(element).transform)) {
+        return true;
+      }
+      const parent = getParentElement(element);
+      return parent ? isTransformed(parent) : false;
+    });
+    transformedCache.set(element, signal);
   }
-  return false;
+  return signal.get();
 }
 
 /**
@@ -367,6 +383,20 @@ export function getBoundingClientRectCached(element) {
       if (dependency) {
         addDependency(dependency);
       }
+      // A rect measured under a transform is the transformed bounds, and
+      // nothing consumes it while the transform is there — the box carries
+      // the matrix itself and takes its size from layout offsets instead. The
+      // moment the transform goes, that same cached number becomes the
+      // element's size, and a card that spent its transition rotated five
+      // degrees is suddenly a tenth wider than it is. Nothing else would
+      // invalidate it either: a transform arriving or leaving mid-transition
+      // restyles without relaying out, and `affectsRect` rightly ignores the
+      // clock's per-frame `animated` batches.
+      //
+      // So the answer is a dependency. It costs one re-measure each time an
+      // element crosses into or out of a transform, and nothing at all in
+      // between — the boolean absorbs every restyle that does not change it.
+      isTransformed(/** @type {HTMLElement} */ (element));
       return element.getBoundingClientRect();
     });
     boundingClientRectCache.set(element, signal);
@@ -519,7 +549,7 @@ function measureTextLayout(text) {
     throw new NoValueError("Text node has no parent element");
   }
   const whiteSpace = getComputedStyleCached(text).whiteSpace || "normal";
-  if (!isSubtreeTransformed(parentElement)) {
+  if (!isTransformed(parentElement)) {
     return measureTextRects(text, parentElement, whiteSpace);
   }
   const clone = createMeasurementClone(parentElement);

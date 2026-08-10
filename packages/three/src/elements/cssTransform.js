@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { getComputedStyleCached, hasTransform, PORTAL_ATTRIBUTE } from "./cache.js";
+import { getComputedStyleCached, hasTransform, isTransformed } from "./cache.js";
 
 /**
  * CSS transforms, read off the computed style and turned into the matrices
@@ -150,26 +150,11 @@ export function getOwnTransform(element) {
   return { matrix, origin };
 }
 
-/**
- * Whether the element, or anything above it inside the portal, carries a CSS
- * transform — the question every measurement asks before trusting a client
- * rect, because an ancestor's transform pollutes the rects of the whole
- * subtree under it.
- *
- * @param {HTMLElement} element
- * @returns {boolean}
- */
-export function isTransformed(element) {
-  /** @type {HTMLElement | null} */
-  let el = element;
-  while (el && !el.hasAttribute(PORTAL_ATTRIBUTE)) {
-    if (hasTransform(getComputedStyleCached(el).transform)) {
-      return true;
-    }
-    el = el.parentElement;
-  }
-  return false;
-}
+// The question belongs to whatever answers "what does a client rect of this
+// element mean", which is the cache — and the cache is where it has to live
+// anyway, since the rect it guards now depends on it. Re-exported here
+// because this is where the rest of the transform vocabulary is.
+export { isTransformed };
 
 /**
  * @param {HTMLElement} element

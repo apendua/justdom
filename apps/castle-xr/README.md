@@ -50,6 +50,29 @@ is a 60 cm square — a castle you build at a table rather than one you walk
 through. The session runs in a `local` reference space, so the origin is
 wherever the player's head was when they pressed Start.
 
+That is only where it starts. **The board is carried by its floor**: a trigger
+pull on any bare part of the plate picks the whole scene up — board, tray,
+panels and lighting together — and carries it with the hand, so it can be put
+down on the real table in front of you, or off to one side, or wherever the room
+actually has space. Letting go leaves it there.
+
+**It stays level while it is carried** (`utils/carry.ts`). Only where the hand is
+and which way round it is held are taken from the wrist; its roll and pitch are
+dropped. This is the same lesson `alignUpright` teaches about bricks, one size
+up: a hand reaching out across a board rolls and pitches far more than it feels
+like it does, and a board handed the wrist's whole pose arrives on its side with
+the castle sliding off it. What is kept is the turn about the vertical, so the
+board can still be swung round to build at from another side — and it swings
+around the hand rather than jumping to it, so the spot it was grabbed by stays
+under the hand.
+
+The presses are taken by the floor rather than by the scene as a whole, so that
+only the floor can start a carry. A press that bubbled up from anywhere else — a
+panel that did not want it, whatever sits behind one — would otherwise carry the
+board off, which is a surprising thing for a board to do when the player has just
+pressed a button. Carrying is also building-only: during the siege the triggers
+belong to the slingshot.
+
 Every colour in the game comes from `elements/palette.ts`, panels included, so
 the interface and the world it sits in cannot drift apart. It is built around
 the teal and cyan the panels already use: the board is the darkest end of that
@@ -195,6 +218,7 @@ honest: a castle that was not going to stand up does not stand up.
 | Path                     | What it is                                                                     |
 | ------------------------ | ------------------------------------------------------------------------------ |
 | `elements/palette.ts`    | Every colour in the game, panels and world alike.                              |
+| `utils/carry.ts`         | Carrying the board about the room without letting it tip over.                 |
 | `utils/grid.ts`          | The half grid: rotated extents, corner snapping, and the overlap test.         |
 | `utils/launch.ts`        | What a slingshot does when it is let go. Two points in, a shot out.            |
 | `utils/rotations.ts`     | The 24 orientations of a cube, upright-only alignment, stick-driven turns.     |

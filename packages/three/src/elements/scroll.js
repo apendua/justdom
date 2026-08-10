@@ -6,6 +6,7 @@ import {
   PORTAL_ATTRIBUTE,
 } from "./cache.js";
 import { createFrameRequester } from "./frameRequester.js";
+import { sampleRenderingUpdates, scrollElementBy } from "./renderingUpdates.js";
 
 /**
  * Dragging a scrolling list with the controller ray.
@@ -88,24 +89,6 @@ export function findScroller(element) {
 }
 
 /**
- * Clamped exactly as the browser clamps it, which is what should happen at
- * the ends of a list.
- *
- * @param {HTMLElement} scroller
- * @param {number} dx
- * @param {number} dy
- * @returns {void}
- */
-function scrollBy(scroller, dx, dy) {
-  if (dy) {
-    scroller.scrollTop += dy;
-  }
-  if (dx) {
-    scroller.scrollLeft += dx;
-  }
-}
-
-/**
  * The plane a scroller's content lies in, in world space, taken from the
  * object's own orientation.
  *
@@ -178,6 +161,10 @@ export function createScrollDrags(requestFrames) {
   }
 
   function tick() {
+    // This loop is frame-driven, so it is in a position to notice whether the
+    // document is keeping up with it — which decides whether the scrolls
+    // below have to announce themselves.
+    sampleRenderingUpdates();
     for (const [controller, drag] of drags) {
       if (drag.released) {
         drag.velocity.multiplyScalar(INERTIA_DECAY);
@@ -185,7 +172,7 @@ export function createScrollDrags(requestFrames) {
           drags.delete(controller);
           continue;
         }
-        scrollBy(drag.scroller, drag.velocity.x, drag.velocity.y);
+        scrollElementBy(drag.scroller, drag.velocity.x, drag.velocity.y);
         continue;
       }
       const now = sample(drag);
@@ -208,7 +195,7 @@ export function createScrollDrags(requestFrames) {
       scrolled.add(controller);
       // The content follows the hand, so the viewport goes the other way.
       drag.velocity.set(-dx, -dy);
-      scrollBy(drag.scroller, -dx, -dy);
+      scrollElementBy(drag.scroller, -dx, -dy);
     }
     if (drags.size === 0 && stopFrames) {
       stopFrames();

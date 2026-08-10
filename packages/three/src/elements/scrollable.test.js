@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { just } from "@apendua/signal";
 import { $, children, text } from "@apendua/justdom";
 import { scrollable } from "./scrollable.js";
+import { resetRenderingUpdatesForTests, sampleRenderingUpdates } from "./renderingUpdates.js";
 
 /**
  * @import {Mountable} from "@apendua/justdom";
@@ -191,6 +192,41 @@ describe("scrollable", () => {
 
       spy.disconnect();
     } finally {
+      view.subscription.unsubscribe();
+      view.host.remove();
+    }
+  });
+
+  test("an arrow announces its scroll when the browser is not going to", () => {
+    // Inside an immersive session the page stops being rendered, and the
+    // `scroll` event goes with the rendering — which is the only thing that
+    // tells a portal the rects inside the scroller have moved. The thumb
+    // would keep up regardless, because it moves by writing a style and a
+    // style is a mutation the observer sees; the content would not, and an
+    // arrow that slides the thumb down a list that stays put is exactly what
+    // this looked like on a headset.
+    const now = performance.now();
+    Object.defineProperty(document, "timeline", {
+      configurable: true,
+      value: { currentTime: 1000 },
+    });
+    sampleRenderingUpdates(now - 16);
+    assert.equal(sampleRenderingUpdates(now), true, "the document time stood still");
+
+    const view = mount({ window: 100, content: 400, props: { step: 40 } });
+    try {
+      const viewport = view.find(".viewport");
+      assert.ok(viewport);
+      let announced = 0;
+      viewport.addEventListener("scroll", () => {
+        announced += 1;
+      });
+
+      view.press(".bar > .button:last-child");
+      assert.equal(view.scrollTop, 40);
+      assert.equal(announced, 1);
+    } finally {
+      resetRenderingUpdatesForTests();
       view.subscription.unsubscribe();
       view.host.remove();
     }

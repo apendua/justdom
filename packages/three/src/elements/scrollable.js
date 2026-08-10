@@ -1,6 +1,7 @@
 import { $, children, list, set, style, text } from "@apendua/justdom";
 import { Derived, effects, onCleanup, Signal } from "@apendua/signal";
 import { getPortalRoot } from "./portal.js";
+import { scrollElementBy } from "./renderingUpdates.js";
 
 /**
  * @import {Observable} from "rxjs";
@@ -108,10 +109,20 @@ export function scrollable(props) {
     }
   };
 
-  /** @param {number} delta */
+  /**
+   * Every press here scrolls through this, and it goes through
+   * `scrollElementBy` rather than writing `scrollTop` itself because a
+   * portal only learns that a scroller moved from the `scroll` event — and
+   * inside an immersive session the browser never dispatches one. The
+   * widget's own parts would keep up regardless, since the thumb moves by
+   * writing a style and a style is a mutation; the content would not, and an
+   * arrow that slides the thumb down a list that stays put is the whole bug.
+   *
+   * @param {number} delta
+   */
   const scrollBy = (delta) => {
     if (viewport) {
-      viewport.scrollTop += delta;
+      scrollElementBy(viewport, 0, delta);
       // The scroll event that follows is asynchronous, and the thumb has no
       // reason to spend a frame disagreeing with the content.
       sample();

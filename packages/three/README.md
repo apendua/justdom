@@ -191,10 +191,11 @@ mirrored rows stayed put. A portal notices when the document has stopped
 keeping up with the frames and takes over: it finds animations by looking
 rather than by being told — mutation observers are microtasks and keep
 arriving, so a class swap is still a signal — advances each one by the real
-time that passed, and lets a scroll gesture announce its own scroll. Nothing
-here is switched on by asking whether a session is presenting, which is why
-it behaves under an emulator, where the page is presenting and rendering
-both.
+time that passed, and has every scroll it performs itself — the drag gesture
+and the `scrollable` widget's arrows and track alike — announce that scroll,
+which the portal's listener cannot tell from the real thing. Nothing here is
+switched on by asking whether a session is presenting, which is why it
+behaves under an emulator, where the page is presenting and rendering both.
 
 ## Layers
 

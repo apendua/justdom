@@ -88,6 +88,68 @@ export function isRenderingSuspended() {
 }
 
 /**
+ * How long a reading is worth acting on, in ms of real time. Only two loops
+ * ever take one — the animation clock and the scroll gesture — and both stop
+ * running the moment they have nothing to do, so a reading can easily be
+ * minutes old by the time anything asks.
+ */
+const SAMPLE_TTL = 250;
+
+/**
+ * Whether a programmatic scroll has to announce itself, which is a slightly
+ * different question from whether rendering is suspended: an answer nobody
+ * has taken recently is no answer at all, and the two ways of being wrong
+ * are not the same size. Announcing a scroll the browser was going to
+ * announce anyway costs one extra re-measure of the scrolled subtree; not
+ * announcing one it will never announce costs a list that does not move.
+ *
+ * @param {number} now
+ * @returns {boolean}
+ */
+function scrollNeedsAnnouncing(now) {
+  return suspended || lastDocumentTime === null || now - lastSampledAt > SAMPLE_TTL;
+}
+
+/**
+ * Scroll an element, and make sure the mirror hears about it.
+ *
+ * The scroll itself goes through whether or not the document is being
+ * rendered — it is a plain property write, and the browser clamps it to the
+ * scrollable range either way. What does not go through is the `scroll`
+ * event: that is dispatched in the rendering step, which an immersive
+ * session has suspended, and it is the portal's only notice that every
+ * client rect inside the scroller has moved. Without it the content slides
+ * while every mirrored row stays where it was.
+ *
+ * So while the browser is not going to say it, the scroll says it itself.
+ * The portal's listener cannot tell the difference, and neither can anything
+ * else listening: this is a real scroll that really happened.
+ *
+ * @param {HTMLElement} element
+ * @param {number} dx
+ * @param {number} dy
+ * @param {number} [now] Real time, for tests.
+ * @returns {void}
+ */
+export function scrollElementBy(element, dx, dy, now = performance.now()) {
+  const top = element.scrollTop;
+  const left = element.scrollLeft;
+  if (dy) {
+    element.scrollTop += dy;
+  }
+  if (dx) {
+    element.scrollLeft += dx;
+  }
+  if (element.scrollTop === top && element.scrollLeft === left) {
+    // Clamped at an end. Nothing moved, so there is nothing to announce.
+    return;
+  }
+  if (typeof Event === "function" && scrollNeedsAnnouncing(now)) {
+    element.dispatchEvent(new Event("scroll"));
+  }
+}
+
+/**
  * @returns {void}
  */
 export function resetRenderingUpdatesForTests() {

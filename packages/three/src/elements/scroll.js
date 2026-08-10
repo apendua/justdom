@@ -6,7 +6,7 @@ import {
   PORTAL_ATTRIBUTE,
 } from "./cache.js";
 import { createFrameRequester } from "./frameRequester.js";
-import { isRenderingSuspended, sampleRenderingUpdates } from "./renderingUpdates.js";
+import { sampleRenderingUpdates, scrollElementBy } from "./renderingUpdates.js";
 
 /**
  * Dragging a scrolling list with the controller ray.
@@ -86,42 +86,6 @@ export function findScroller(element) {
     el = getParentElement(el);
   }
   return null;
-}
-
-/**
- * Clamped exactly as the browser clamps it, which is what should happen at
- * the ends of a list.
- *
- * The scroll goes through whether or not the document is being rendered —
- * it is a plain property write — but the `scroll` event that tells the
- * mirror to re-measure is dispatched with the rendering updates, which an
- * immersive session has suspended. Without it the list slides while every
- * mirrored row stays where it was. So while rendering is stopped, the
- * gesture announces its own scroll; the portal's listener cannot tell the
- * difference, and in a rendering document the real event still does the job
- * unaided.
- *
- * @param {HTMLElement} scroller
- * @param {number} dx
- * @param {number} dy
- * @returns {void}
- */
-function scrollBy(scroller, dx, dy) {
-  const top = scroller.scrollTop;
-  const left = scroller.scrollLeft;
-  if (dy) {
-    scroller.scrollTop += dy;
-  }
-  if (dx) {
-    scroller.scrollLeft += dx;
-  }
-  if (
-    isRenderingSuspended() &&
-    (scroller.scrollTop !== top || scroller.scrollLeft !== left) &&
-    typeof Event === "function"
-  ) {
-    scroller.dispatchEvent(new Event("scroll"));
-  }
 }
 
 /**
@@ -208,7 +172,7 @@ export function createScrollDrags(requestFrames) {
           drags.delete(controller);
           continue;
         }
-        scrollBy(drag.scroller, drag.velocity.x, drag.velocity.y);
+        scrollElementBy(drag.scroller, drag.velocity.x, drag.velocity.y);
         continue;
       }
       const now = sample(drag);
@@ -231,7 +195,7 @@ export function createScrollDrags(requestFrames) {
       scrolled.add(controller);
       // The content follows the hand, so the viewport goes the other way.
       drag.velocity.set(-dx, -dy);
-      scrollBy(drag.scroller, -dx, -dy);
+      scrollElementBy(drag.scroller, -dx, -dy);
     }
     if (drags.size === 0 && stopFrames) {
       stopFrames();

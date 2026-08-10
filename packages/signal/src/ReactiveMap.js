@@ -1,7 +1,7 @@
 import { addDependency } from "./core.js";
 import { filter, Subject } from "rxjs";
 import LazyIterable from "./LazyIterable.js";
-import { memoize3 } from "./memoize.js";
+import { memoizeDependency } from "./memoize.js";
 
 /**
  * @import { Dependency } from './core.js';
@@ -29,7 +29,7 @@ export default class ReactiveMap {
   );
 
   /** @type {(key: K) => Dependency} */
-  #getKeyEvents = memoize3((key) => {
+  #getKeyEvents = memoizeDependency((key) => {
     return this.#events.pipe(filter((event) => event.type === "clear" || event.key === key));
   });
 

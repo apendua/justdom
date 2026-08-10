@@ -1,7 +1,7 @@
 import { addDependency } from "./core.js";
 import { filter, Subject } from "rxjs";
 import LazyIterable from "./LazyIterable.js";
-import { memoize3 } from "./memoize.js";
+import { memoizeDependency } from "./memoize.js";
 
 /**
  * @import { Dependency } from './core.js';
@@ -23,7 +23,7 @@ export default class ReactiveSet {
   #events = new Subject();
 
   /** @type {(value: V) => Dependency} */
-  #getValueEvents = memoize3((value) => {
+  #getValueEvents = memoizeDependency((value) => {
     return this.#events.pipe(filter((event) => event.type === "clear" || event.value === value));
   });
 

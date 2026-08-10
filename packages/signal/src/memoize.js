@@ -37,51 +37,6 @@ import { Observable } from "rxjs";
 
 /**
  * @template TKey
- * @template {HasSideEffects} TValue
- * @template {unknown[]} TArgs
- * @overload
- * @param {(...args: TArgs) => TValue} fn
- * @param {RequiredKeys<MemoizeOptions<TKey, TValue, TArgs>, "getKey" | "cache">} [options]
- * @returns {(...args: TArgs) => TValue}
- *//**
- * @template TKey
- * @template TValue
- * @overload
- * @param {(key: TKey) => TValue} fn
- * @param {MemoizeOptions<TKey, TValue, [TKey]>} [options]
- * @returns {(key: TKey) => TValue}
- *//**
- * @param {(...args: unknown[]) => HasSideEffects} fn
- * @param {MemoizeOptions<unknown, unknown, unknown[]>} [options]
- * @returns {(...args: unknown[]) => unknown}
- */
-export function memoizeImpl(fn, options = {}) {
-  const {
-    cache = /** @type {Cache<unknown, HasSideEffects>} */ (new Map()),
-    getKey = (...args) => args[0],
-  } = options;
-  return (...args) => {
-    const key = getKey(...args);
-    const value = cache.get(key);
-    if (value) {
-      return value;
-    }
-    /** @type {HasSideEffects} */
-    const newValue = fn(...args);
-    newValue.addSideEffect(
-      new Observable(() => {
-        cache.set(key, newValue);
-        return () => {
-          cache.delete(key);
-        };
-      }),
-    );
-    return newValue;
-  };
-}
-
-/**
- * @template TKey
  * @template TValue
  * @template {unknown[]} TArgs
  * @overload
@@ -181,7 +136,7 @@ export function memoizeDerived(fn, options = {}) {
  * @param {MemoizeOptions<TArgs, Computation, TArgs>} [options]
  * @returns {(...args: TArgs) => Dependency}
  */
-export function memoize3(fn, options = {}) {
+export function memoizeDependency(fn, options = {}) {
   const { cache = createRecursiveCache(), getKey = (...args) => args } = options;
   return (...args) => {
     const key = getKey(...args);

@@ -1,11 +1,14 @@
 import { describe, it, mock } from "node:test";
 import assert from "node:assert/strict";
 
-import { memoizeImpl, memoize, memoize3 } from "./memoize.js";
-import { Derived } from "./Signal.js";
+import { memoize, memoizeDependency } from "./memoize.js";
 import { Subject, tap } from "rxjs";
 import { addDependency } from "./core.js";
 import Computation from "./Computation.js";
+
+/**
+ * @import {Derived} from './Signal.js';
+ */
 
 /**
  * @param {() => void} fn
@@ -18,38 +21,6 @@ function inComputation(fn) {
   });
   sub.unsubscribe();
 }
-
-describe("memoizeImpl()", () => {
-  it("memoize signal inside a reactive computation", () => {
-    const compute = mock.fn((/** @type {number} */ x) => ({ value: x }));
-    /** @type {Map<number, Derived<{ value: number }>>} */
-    const cache = new Map();
-    const memoized = memoizeImpl(
-      (/** @type {number} */ x) => {
-        return new Derived(() => {
-          return compute(x);
-        });
-      },
-      {
-        cache,
-      },
-    );
-    inComputation(() => {
-      const a = memoized(1);
-      a.get();
-      const b = memoized(1);
-      b.get();
-      const c = memoized(2);
-      c.get();
-      assert.strictEqual(cache.size, 2);
-      assert.strictEqual(a, b);
-      assert.strictEqual(a.get(), b.get());
-      assert.notStrictEqual(a, c);
-    });
-    assert.equal(cache.size, 0);
-    assert.equal(compute.mock.calls.length, 2);
-  });
-});
 
 describe("memoize()", () => {
   it("memoize signal inside a reactive computation", () => {
@@ -73,14 +44,14 @@ describe("memoize()", () => {
   });
 });
 
-describe("memoize3()", () => {
+describe("memoizeDependency()", () => {
   it("memoize signal inside a reactive computation", () => {
     const spy = mock.fn((/** @type {number} */ x) => ({ value: x }));
     /** @type {Map<number, Computation>} */
     const cache = new Map();
     /** @type {Subject<void>} */
     const subject = new Subject();
-    const memoized = memoize3(
+    const memoized = memoizeDependency(
       (/** @type {number} */ x) =>
         subject.pipe(
           tap(() => {

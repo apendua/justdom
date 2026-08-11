@@ -9,6 +9,7 @@ import { basicMaterial } from "./elements/material.js";
 import { palette } from "./elements/palette.js";
 import Game from "./components/Game.js";
 import { createMusicControls, Music } from "@apendua.dev/sound/xr";
+import { createDiagnostics, Diagnostics } from "@apendua.dev/diagnostics";
 import glass_desk_habits from "@apendua.dev/media/glass_desk_habits.mp3";
 import BuildUI from "./views/BuildUI.js";
 import SiegeUI from "./views/SiegeUI.js";
@@ -82,6 +83,7 @@ const App = component((ctx: WeakKey) => {
   // brick landing across the board sounds like it landed across the board.
   const listener = new THREE.AudioListener();
   const music = createMusicControls({ track: glass_desk_habits });
+  const diagnostics = createDiagnostics();
 
   const castle = new CastleStore();
   const gameSession = new Session();
@@ -130,6 +132,11 @@ const App = component((ctx: WeakKey) => {
   return just(new THREE.Scene()).pipe(
     effects(() => {
       use(camera(ctx).pipe(children($(listener))));
+    }),
+    // Head-locked, like the ears above and for the same reason: a reading you
+    // have to go and look for is a reading nobody takes while playing.
+    effects(() => {
+      use(Diagnostics(ctx, diagnostics));
     }),
     children(
       Music(ctx, listener, music),
@@ -186,7 +193,7 @@ const App = component((ctx: WeakKey) => {
                   rotation: new THREE.Euler(0, Math.PI / 8, 0),
                 };
                 if (gameSession.phase.get() === "build") {
-                  return BuildUI(ctx, music.output, [
+                  return BuildUI(ctx, music.output, diagnostics, [
                     set(panel),
                     effects((ui) => {
                       ui.bricks = castle.bricks.size;
@@ -218,7 +225,7 @@ const App = component((ctx: WeakKey) => {
                     }),
                   ]);
                 }
-                return SiegeUI(ctx, music.output, [
+                return SiegeUI(ctx, music.output, diagnostics, [
                   set(panel),
                   effects((ui) => {
                     ui.standing = gameSession.standing.get();

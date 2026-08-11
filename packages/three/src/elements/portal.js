@@ -44,9 +44,20 @@ export function getPortalRoot(node) {
 }
 
 /**
- * @param {WeakKey} ctx
+ * @typedef {object} PortalOptions
+ * @property {boolean} [opaqueToRays] Whether the panel stops rays that land on
+ *   it. True by default, which is what any panel with something to press wants.
+ *   False leaves the portal drawn but untouchable, for a readout the player
+ *   only looks at — a head-locked overlay in particular, which sits between
+ *   the eye and everything else and would otherwise be in the way of every
+ *   ray that crossed it.
  */
-export function createPortal(ctx) {
+
+/**
+ * @param {WeakKey} ctx
+ * @param {PortalOptions} [options]
+ */
+export function createPortal(ctx, { opaqueToRays = true } = {}) {
   /** @type {WeakMap<Node, Object3D>} */
   const nodeToObject = new WeakMap();
 
@@ -160,28 +171,36 @@ export function createPortal(ctx) {
 
   const containerObject = new THREE.Group();
 
+  const interactionManager = InteractionContext.get(ctx);
+
   // With only clickable elements as ray targets (see div.js), the portal
   // still has to be opaque to rays as a whole — a panel should block the
   // scene behind it, and a miss between two buttons should not click the
   // board. One invisible plane spanning the container does that, and doubles
   // as the single "background" hit target instead of dozens of divs.
-  const blocker = createBlocker();
-  containerObject.add(blocker);
-  const interactionManager = InteractionContext.get(ctx);
-  interactionManager.add(blocker);
-
-  // Hitting the background is a fact the DOM inside the portal is entitled to
-  // hear about: it is what "clicked outside" means to a menu that wants to
-  // close itself, and there is no other way for it to learn that the ray
-  // landed on the panel rather than on one of its buttons. The event bubbles
-  // out of the container to `document` like any other.
   //
-  // Deliberately without stopping propagation: a panel the scene made
-  // grabbable is still grabbable by its background, which is how it behaved
-  // before there was anything listening here at all.
-  blocker.addEventListener("select", () => {
-    containerElement.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-  });
+  // A panel that says it is not opaque to rays goes without the plane
+  // altogether rather than with an unregistered one: nothing hits it, so
+  // there is no background to cover and nothing to keep in step with the
+  // panel's size.
+  const blocker = opaqueToRays ? createBlocker() : null;
+  if (blocker) {
+    containerObject.add(blocker);
+    interactionManager.add(blocker);
+
+    // Hitting the background is a fact the DOM inside the portal is entitled
+    // to hear about: it is what "clicked outside" means to a menu that wants
+    // to close itself, and there is no other way for it to learn that the ray
+    // landed on the panel rather than on one of its buttons. The event bubbles
+    // out of the container to `document` like any other.
+    //
+    // Deliberately without stopping propagation: a panel the scene made
+    // grabbable is still grabbable by its background, which is how it behaved
+    // before there was anything listening here at all.
+    blocker.addEventListener("select", () => {
+      containerElement.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+  }
 
   function resizeCallback() {
     const scale = 0.01;
@@ -194,7 +213,9 @@ export function createPortal(ctx) {
     // Container-local px units, y down; content sits at negative local z
     // (toward the viewer after the flip above), so +1 puts the blocker just
     // behind everything the portal draws.
-    coverBox(blocker, boundingRect.width, boundingRect.height, 1);
+    if (blocker) {
+      coverBox(blocker, boundingRect.width, boundingRect.height, 1);
+    }
   }
 
   const resizeSubscription = observable(resizeCallback).subscribe();
@@ -393,7 +414,9 @@ export function createPortal(ctx) {
   }
 
   objectToCleanup.set(containerObject, () => {
-    interactionManager.remove(blocker);
+    if (blocker) {
+      interactionManager.remove(blocker);
+    }
     if (containerElement.parentNode) {
       containerElement.parentNode.removeChild(containerElement);
     }

@@ -37,6 +37,10 @@ export { createXRButton } from "./xr.js";
  */
 
 /**
+ * @typedef {import('./elements/portal.js').PortalOptions} PortalOptions
+ */
+
+/**
  * @typedef {import('./pointers.js').CursorOptions} CursorOptions
  */
 

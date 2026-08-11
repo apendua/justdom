@@ -136,6 +136,19 @@ control that was going to choose from it, which looks exactly like the ray
 having no effect. `getPortalRoot` returns null off a portal, where `document`
 is the right answer and there is nothing to disambiguate.
 
+A panel with nothing to press can say so and stop stopping rays:
+
+```js
+dom(ctx, panel, [set({ position })], { opaqueToRays: false });
+```
+
+That is for readouts rather than for controls, and mainly for the one kind of
+panel that is always in the way: a head-locked overlay rides between the eye
+and the whole scene, so an opaque one is a plate the player's own ray keeps
+landing on. What goes is the panel's own background, and only that — a
+`cursor: pointer` element inside is still a ray target, and a panel with one
+in it wanted to be opaque after all.
+
 ## Checkboxes
 
 Most elements are a box with other elements in them, which is all a portal has
@@ -333,8 +346,7 @@ keyboard does rather than the way an engraved one does.
 Two things are set from the inside, because they are the layout the caller
 asked for by name rather than the dressing: the root and its rows are flex
 boxes, and each key gets the `flex-grow` its width unit calls for — 1 for a
-letter, 2.25 for the left shift, 6 for the space bar, every row adding up to
-15. Gaps, corners, colours and type are yours; `key` needs a `cursor: pointer`
+letter, 2.25 for the left shift, 6 for the space bar, every row adding up to 15. Gaps, corners, colours and type are yours; `key` needs a `cursor: pointer`
 like any other control, or rays pass straight through the board.
 
 The tree is built once and never changes shape — a state change moves a class

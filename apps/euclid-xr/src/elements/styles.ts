@@ -79,7 +79,8 @@ export const buttonLabel = stylesheet`
   }
 `;
 
-export const exampleButton = stylesheet`
+/** A plain, full-width button in a panel card. */
+export const panelButton = stylesheet`
   .${CLASS_NAME} {
     background: ${palette.button};
     border: 2px solid ${palette.buttonEdge};

@@ -2,6 +2,7 @@ import * as THREE from "three";
 import { $, camera, children, cursors } from "@apendua/freedom";
 import { component, effects, just, makeNonReactive, use } from "@apendua/signal";
 import { createMusicControls, Music } from "@apendua.dev/sound/xr";
+import { createDiagnostics, Diagnostics } from "@apendua.dev/diagnostics";
 import paper_and_running_water from "@apendua.dev/media/paper_and_running_water.mp3";
 import Board from "./components/Board.js";
 import CodePanel from "./components/CodePanel.js";
@@ -36,6 +37,7 @@ const App = component((ctx: WeakKey) => {
   // Quieter than the games start at: this one is a drawing table, and the track
   // is meant to sit behind the work rather than to be the reason for being here.
   const music = createMusicControls({ track: paper_and_running_water, volume: 0.4 });
+  const diagnostics = createDiagnostics();
 
   return just(new THREE.Scene()).pipe(
     effects((scene) => {
@@ -43,6 +45,11 @@ const App = component((ctx: WeakKey) => {
     }),
     effects(() => {
       use(camera(ctx).pipe(children($(listener))));
+    }),
+    // The frame rate readout rides the head as well: a panel parked in the room
+    // is one the player has to go and find.
+    effects(() => {
+      use(Diagnostics(ctx, diagnostics));
     }),
     children(
       Music(ctx, listener, music),
@@ -63,7 +70,7 @@ const App = component((ctx: WeakKey) => {
         children(Board(ctx, studio)),
       ]),
       CodePanel(ctx, studio),
-      ToolPanel(ctx, studio, music),
+      ToolPanel(ctx, studio, music, diagnostics),
       // The mark at the end of each ray, on the paper and on the panels
       // alike. Half the default size: a drawn point is a centimetre across,
       // and the mark aiming at one should not be the same size as it.

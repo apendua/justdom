@@ -43,6 +43,14 @@ The emulator draws its own exit control into the session canvas, so it is in
 every photograph, in the top right. It is drawn identically in every one of
 them, so it can neither raise a difference nor hide one.
 
+The frame rate readout every headset app here wears is the one thing in the
+scene that cannot be photographed, and it is switched off through
+`window.__diagnostics` before anything is measured. It says a live number over
+a minute of live numbers, so it is a rectangle that never matches the one
+before — and the freeze does not reach it, because the timestamps it counts
+come from the emulated session rather than from the page's animation frames.
+What these baselines are for is the four panels.
+
 ## The two kinds of check, and which one can fail on your machine
 
 **Baseline comparison** is exact, and is only meaningful on a machine that draws
@@ -58,7 +66,7 @@ so. **Under `VISUAL_STRICT=1`, which is how CI runs it, it fails instead**: a gr
 check that quietly declined to check is worse than no check at all.
 
 The difference between two machines is not hypothetical: this repository holds
-baselines from a runner and from a dev container that have the *same* fonts and
+baselines from a runner and from a dev container that have the _same_ fonts and
 differ only in Chromium build, and they disagree by 705 pixels — twice the
 budget. Sharing one set between them would mean either a budget too loose to
 catch a missing border or a check that fails for everyone but one machine.
@@ -114,7 +122,7 @@ delivered as a zip, whatever is in it, so three artifacts are three zips
 rather than three files. There is no way to serve a single file out of one.
 
 **The comparison you actually want is the recording.** Redraw the baselines
-and the runner commits what it drew — which lands in *Files changed* as an
+and the runner commits what it drew — which lands in _Files changed_ as an
 image diff GitHub renders side by side, swipeable, against the picture it
 replaced. That is a real before-and-after in a browser, it costs no extra
 machinery, and it is the same push that turns the check green. It is a thing

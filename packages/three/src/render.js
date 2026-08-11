@@ -191,6 +191,35 @@ function addListener(renderer, fn, registry = listeners) {
 const frameSubject = new WeakMap();
 
 /**
+ * A renderer's frames, whether or not its loop has been installed yet.
+ *
+ * Created on demand rather than when the loop is set up, because the order
+ * those two things happen in is not one a caller can see and not one worth
+ * asking them to know. A scene is *built* before the loop is installed — the
+ * tree has to exist for there to be anything to draw — so everything the
+ * scene constructs, portals included, asks for frames strictly before the
+ * loop that will emit them exists. Handing out the subject early and filling
+ * it in later makes that a non-question.
+ *
+ * It was a question once, and an expensive one: a portal that asked too
+ * early was told there were no frames here, fell back to the browser's own,
+ * and worked perfectly everywhere except inside an immersive session — where
+ * the page is not being rendered, `requestAnimationFrame` never fires, and a
+ * mirror waiting on one stops updating entirely.
+ *
+ * @param {THREE.WebGLRenderer} renderer
+ * @returns {Subject<{ time: number, frame: XRFrame }>}
+ */
+function frameSubjectFor(renderer) {
+  let subject = frameSubject.get(renderer);
+  if (!subject) {
+    subject = new Subject();
+    frameSubject.set(renderer, subject);
+  }
+  return subject;
+}
+
+/**
  * @param {WeakKey} ctx
  * @param {XRFrameRequestCallback} fn
  * @return {Observable<never>}
@@ -205,12 +234,7 @@ export function animate(ctx, fn) {
  * @returns {Observable<{ time: number, frame: XRFrame }>}
  */
 export function frames(ctx) {
-  const renderer = RendererContext.get(ctx);
-  const subject = frameSubject.get(renderer);
-  if (!subject) {
-    throw new Error("No frame subject found for renderer");
-  }
-  return subject.asObservable();
+  return frameSubjectFor(RendererContext.get(ctx)).asObservable();
 }
 
 /**
@@ -339,9 +363,10 @@ export function render(fn, options = {}) {
         .subscribe(scene),
     );
 
-    /** @type {Subject<{ time: number, frame: XRFrame }>} */
-    const subject = new Subject();
-    frameSubject.set(renderer, subject);
+    // The same subject anything built above already holds: the scene was
+    // constructed before this line, and whatever asked it for frames is
+    // waiting on this one.
+    const subject = frameSubjectFor(renderer);
 
     renderer.setAnimationLoop((time, frame) => {
       options.onBeforeRender?.(renderer);

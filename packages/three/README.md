@@ -432,12 +432,20 @@ scrollers below that block — which is how a dropdown anchored outside a list
 stays whole while its trigger row scrolls away — and a `position: fixed`
 element escapes every scroller there is.
 
-Scrolling is then the ordinary DOM thing: client rects move with `scrollTop`,
-and a scroll invalidates the panel's layout the way a mutation does.
+Scrolling is then the ordinary DOM thing to ask for:
 
 ```js
 element.scrollTop += 48;
 ```
+
+What it costs is not the ordinary re-layout, though. Everything inside a
+scroller is mirrored in coordinates a scroll cannot change — positions
+relative to the scroller's content, clip windows relative to the box that
+owns them — and the offset itself is applied as one translation of the
+group carrying the scrolled content. A frame of scrolling therefore
+re-measures nothing and re-rasterizes nothing, however long the list is:
+the clip boxes of the subtree shift by plain arithmetic, and rows crossing
+the window's edge enter and leave the raycast set as they go.
 
 **To scroll by hand, take hold of the list and pull.** Holding the trigger
 anywhere over an element that clips its overflow and has more inside than fits

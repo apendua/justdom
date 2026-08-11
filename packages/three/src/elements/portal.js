@@ -1,10 +1,9 @@
 import * as THREE from "three";
-import { observable } from "@apendua/signal";
-import { Subject } from "rxjs";
-import { div } from "./div.js";
+import { batch, observable } from "@apendua/signal";
+import { div, getContentGroup } from "./div.js";
 import { text } from "./text.js";
 import { checkbox } from "./checkbox.js";
-import { getBoundingClientRectCached, PORTAL_ATTRIBUTE, setSubject } from "./cache.js";
+import { createMirror, getBorderBoxSize, PORTAL_ATTRIBUTE } from "./mirror.js";
 import { createAnimationClock } from "./animationClock.js";
 import { createBlocker, coverBox } from "./blocker.js";
 import { createFrameRequester } from "./frameRequester.js";
@@ -14,7 +13,7 @@ import { InteractionContext } from "../interactions.js";
  * @import {Observable} from 'rxjs';
  * @import {Mountable} from "@apendua/justdom";
  * @import {Object3D} from 'three';
- * @import {MutationBatch, MutationType} from './cache.js';
+ * @import {MutationBatch} from './animationClock.js';
  */
 
 /**
@@ -67,15 +66,14 @@ export function createPortal(ctx, { opaqueToRays = true } = {}) {
   /** @type {WeakMap<Object3D, () => void>} */
   const objectToCleanup = new WeakMap();
 
-  /** @type {Subject<MutationBatch>} */
-  const subject = new Subject();
-
   /**
-   * @param {MutationBatch} batch
+   * The reactive state of everything this portal projects. Every mutation,
+   * scroll, animation sample and load below is routed through it — inside a
+   * signal `batch()`, so however much one flush touches, the reactive graph
+   * settles once — and every cached read the element components make comes
+   * back out of it.
    */
-  function invalidateLayout(batch) {
-    subject.next(batch);
-  }
+  const mirror = createMirror();
 
   /**
    * @param {Node} node
@@ -88,12 +86,6 @@ export function createPortal(ctx, { opaqueToRays = true } = {}) {
         cleanupFn();
         objectToCleanup.delete(object);
       }
-      object.children.forEach((child) => {
-        const childNode = objectToNode.get(child);
-        if (childNode) {
-          cleanup(childNode);
-        }
-      });
       nodeToObject.delete(node);
       objectToNode.delete(object);
     }
@@ -110,7 +102,7 @@ export function createPortal(ctx, { opaqueToRays = true } = {}) {
     if (nodeToObject.has(node)) {
       return nodeToObject.get(node);
     }
-    setSubject(node, subject);
+    mirror.adopt(node);
     /** @type {Observable<THREE.Object3D> | undefined} */
     let object$;
     if (node.nodeType === Node.ELEMENT_NODE) {
@@ -149,11 +141,14 @@ export function createPortal(ctx, { opaqueToRays = true } = {}) {
     objectToCleanup.set(object, () => {
       subscription.unsubscribe();
     });
+    // A box carries its DOM children inside a content group — the group a
+    // scroll translates — so that is where they attach.
+    const content = getContentGroup(object);
     let childNode = node.firstChild;
     while (childNode) {
       const childObject = getOrCreateObjectForNode(childNode);
       if (childObject) {
-        object.add(childObject);
+        content.add(childObject);
       }
       childNode = childNode.nextSibling;
     }
@@ -167,7 +162,7 @@ export function createPortal(ctx, { opaqueToRays = true } = {}) {
   containerElement.style.left = "0";
   containerElement.style.visibility = "hidden";
   document.body.appendChild(containerElement);
-  setSubject(containerElement, subject);
+  mirror.adopt(containerElement);
 
   const containerObject = new THREE.Group();
 
@@ -204,9 +199,9 @@ export function createPortal(ctx, { opaqueToRays = true } = {}) {
 
   function resizeCallback() {
     const scale = 0.01;
-    const boundingRect = getBoundingClientRectCached(containerElement);
-    const sizeX = scale * boundingRect.width;
-    const sizeY = scale * boundingRect.height;
+    const size = getBorderBoxSize(containerElement);
+    const sizeX = scale * size.width;
+    const sizeY = scale * size.height;
     containerObject.scale.set(scale, scale, scale);
     containerObject.rotation.set(Math.PI, 0, 0);
     containerObject.position.set(-sizeX / 2, sizeY / 2, 0);
@@ -214,58 +209,55 @@ export function createPortal(ctx, { opaqueToRays = true } = {}) {
     // (toward the viewer after the flip above), so +1 puts the blocker just
     // behind everything the portal draws.
     if (blocker) {
-      coverBox(blocker, boundingRect.width, boundingRect.height, 1);
+      coverBox(blocker, size.width, size.height, 1);
     }
   }
 
   const resizeSubscription = observable(resizeCallback).subscribe();
 
   /**
+   * One observer flush, applied as one transaction. The mirror routes each
+   * record to the signals of exactly the nodes it names — deduplicating
+   * against `oldValue`, so the hover handlers re-asserting an attribute
+   * invalidate nothing — and the object tree is reconciled for the nodes
+   * that came and went. Wrapping the whole thing in `batch()` is what turns
+   * a flush of many records into a single settling of the reactive graph.
+   *
    * @param {MutationRecord[]} mutationList
    */
   const mutationCallback = (mutationList) => {
-    /** @type {Set<Node>} */
-    const alreadySeen = new Set();
-    /** @type {Set<MutationType>} */
-    const types = new Set();
-    // The records already say where each mutation happened — the mutated
-    // element for `attributes`, the parent for `childList`, the text node for
-    // `characterData` — so pass that along and let each cache decide how far
-    // a change at that node can reach, instead of treating every mutation as
-    // portal-wide.
-    /** @type {Set<Node>} */
-    const targets = new Set();
-    for (const mutation of mutationList) {
-      const parentObject = nodeToObject.get(mutation.target);
-      if (mutation.type === "childList") {
+    batch(() => {
+      mirror.ingest(mutationList);
+      /** @type {Set<Node>} */
+      const alreadySeen = new Set();
+      for (const mutation of mutationList) {
+        if (mutation.type !== "childList") {
+          continue;
+        }
+        const parentObject = nodeToObject.get(mutation.target);
         mutation.addedNodes.forEach((node) => {
           alreadySeen.add(node);
           const childObject = getOrCreateObjectForNode(node);
           if (childObject && parentObject) {
-            parentObject.add(childObject);
+            getContentGroup(parentObject).add(childObject);
           }
         });
       }
-      types.add(mutation.type);
-      targets.add(mutation.target);
-    }
-    for (const mutation of mutationList) {
-      const parentObject = nodeToObject.get(mutation.target);
-      if (mutation.type === "childList") {
+      for (const mutation of mutationList) {
+        if (mutation.type !== "childList") {
+          continue;
+        }
         mutation.removedNodes.forEach((node) => {
-          // If this node was added somewhere else it does not make sense to clean it up,
-          // so if we detect that it was already seen, we skip it.
+          // If this node was added somewhere else it does not make sense to
+          // clean it up, so if we detect that it was already seen, we skip it.
           if (!alreadySeen.has(node)) {
             const childObject = nodeToObject.get(node);
-            if (childObject && parentObject) {
-              parentObject.remove(childObject);
-            }
+            childObject?.removeFromParent();
             cleanup(node);
           }
         });
       }
-    }
-    invalidateLayout({ types, targets });
+    });
     // A class swap is how most transitions begin, and inside an immersive
     // session the mutation is the only trace of one that reaches us: the
     // events that would announce it are dispatched with the rendering
@@ -284,10 +276,13 @@ export function createPortal(ctx, { opaqueToRays = true } = {}) {
     childList: true,
     subtree: true,
     attributes: true,
+    // The old values are what let the mirror tell a write from a change: the
+    // hover handlers re-assert `data-xr-*` on every pointer event, and a
+    // value that merely got written again invalidates nothing at all.
+    attributeOldValue: true,
+    characterDataOldValue: true,
     // `style` makes rAF-driven inline-style animation just work: each write
-    // is a mutation scoped to the element that moved. Safe now that
-    // invalidation is per-target — before that, every inline write would
-    // have re-read the whole portal.
+    // is a mutation scoped to the element that moved.
     // `disabled` is here for the checkbox: whether one is a ray target follows
     // it, and it is a reflected attribute, so watching it catches the property
     // assignment as well as setAttribute. Without it a control disabled after
@@ -309,6 +304,27 @@ export function createPortal(ctx, { opaqueToRays = true } = {}) {
   // once rather than each.
   const requestFrames = createFrameRequester(ctx);
 
+  /**
+   * What the animation clock's batches mean in the mirror's vocabulary:
+   * `animated` is a style change stretched over time, `reflow` is rects
+   * moving without a mutation — a settling transform for its own subtree,
+   * an animating layout property for everyone.
+   *
+   * @param {MutationBatch[]} batches
+   */
+  const applyAnimationBatches = (batches) => {
+    batch(() => {
+      for (const animationBatch of batches) {
+        if (animationBatch.types.has("animated") && animationBatch.targets) {
+          mirror.animatedStyles(animationBatch.targets);
+        }
+        if (animationBatch.types.has("reflow")) {
+          mirror.reflowed(animationBatch.targets);
+        }
+      }
+    });
+  };
+
   // CSS transitions, keyframe animations and Web Animations mutate nothing —
   // the styles move while the DOM holds still — so the observer above never
   // hears about them. The clock samples the animating elements once per
@@ -316,9 +332,7 @@ export function createPortal(ctx, { opaqueToRays = true } = {}) {
   const animationClock = createAnimationClock(
     containerElement,
     (batches) => {
-      for (const batch of batches) {
-        invalidateLayout(batch);
-      }
+      applyAnimationBatches(batches);
       // Animated content moves under a stationary ray just like mutated
       // content does.
       interactionManager.updateIntersections();
@@ -328,11 +342,12 @@ export function createPortal(ctx, { opaqueToRays = true } = {}) {
 
   /**
    * A scroll mutates nothing — no attribute, no child, no character — so the
-   * observer never hears about it, and the animation clock has no animation
-   * to sample. What it does do is move every client rect inside the scroller,
-   * which `scroll` says, scoped to the subtree that moved — the tightest
-   * scope any batch in this file carries. The listener is capturing because
-   * scroll events do not bubble.
+   * observer never hears about it. What it does change is exactly one thing
+   * the mirror keeps: the scroller's offset signal. Everything that follows —
+   * the content group sliding, the clip boxes of the scrolled subtree, the
+   * culling at the window's edges — derives from that signal as arithmetic
+   * on cached values; nothing is re-measured, however long the list is. The
+   * listener is capturing because scroll events do not bubble.
    *
    * @param {Event} event
    */
@@ -341,7 +356,9 @@ export function createPortal(ctx, { opaqueToRays = true } = {}) {
     if (!(target instanceof Node)) {
       return;
     }
-    invalidateLayout({ types: new Set(["scroll"]), targets: new Set([target]) });
+    batch(() => {
+      mirror.scrolled(target);
+    });
     // Content has moved out from under a ray that did not move with it. The
     // manager only recasts when a hand moves or when it is told the scene
     // changed, and this is the second case.
@@ -375,7 +392,9 @@ export function createPortal(ctx, { opaqueToRays = true } = {}) {
     // always in place by the time this reads it.
     loadFrame?.();
     loadFrame = null;
-    invalidateLayout({ types: new Set(["load"]), targets: null });
+    batch(() => {
+      mirror.contentLoaded();
+    });
     interactionManager.updateIntersections();
   };
 
@@ -390,10 +409,6 @@ export function createPortal(ctx, { opaqueToRays = true } = {}) {
    * @param {Event} event
    */
   const loadCallback = (event) => {
-    // `nodeType` rather than `instanceof Element`, for the reason `cache.js`
-    // gives: `Element` is not a global everywhere this runs, and reaching for
-    // one that is missing throws inside an event listener, where nothing is
-    // listening for the error either.
     const target = event.target;
     if (!(target instanceof Node) || target.nodeType !== Node.ELEMENT_NODE) {
       return;
@@ -407,7 +422,9 @@ export function createPortal(ctx, { opaqueToRays = true } = {}) {
   function fontLoadingCallback() {
     // Fonts arriving restyle and re-measure everything at once; there is no
     // node to scope that to.
-    invalidateLayout({ types: new Set(["fontLoaded"]), targets: null });
+    batch(() => {
+      mirror.fontsLoaded();
+    });
   }
   if (document.fonts) {
     document.fonts.addEventListener("loadingdone", fontLoadingCallback);

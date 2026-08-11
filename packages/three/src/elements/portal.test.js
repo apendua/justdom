@@ -1,8 +1,10 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
+import { Derived } from "@apendua/signal";
 import { $, attr, children } from "@apendua/justdom";
 import { InteractionContext, InteractionManager } from "../interactions.js";
+import { getComputedStyleCached } from "./mirror.js";
 import { createPortal, getPortalRoot } from "./portal.js";
 
 // jsdom-env exposes the common DOM globals, but not MutationObserver, which
@@ -417,6 +419,136 @@ describe("createPortal", () => {
     flushFrame();
     assert.equal(updates, before + 1, "nothing keeps asking for frames");
 
+    subscription.unsubscribe();
+    portal.disconnect();
+  });
+
+  test("a scroll is one translation of the content group, and measures nothing", async () => {
+    const manager = new InteractionManager();
+    const ctx = InteractionContext.set({}, manager);
+    const portal = createPortal(ctx);
+    const parent = new THREE.Group();
+    portal.addTo(parent);
+
+    /** @type {import("@apendua/justdom").Mountable<Node> | undefined} */
+    let mountable;
+    const tree = $("div", [
+      children(
+        $("div", [
+          attr("class", () => "list"),
+          attr("style", () => "overflow: hidden"),
+          children($("div"), $("div"), $("div")),
+        ]),
+      ),
+    ]);
+    const subscription = tree.subscribe((value) => {
+      mountable = value;
+    });
+    assert.ok(mountable);
+    portal.mount(mountable);
+
+    await nextMacrotask();
+    await nextMacrotask();
+
+    const containers = document.querySelectorAll("[data-xr-portal]");
+    const container = containers[containers.length - 1];
+    const scroller = /** @type {HTMLElement} */ (container.querySelector(".list"));
+    assert.ok(scroller);
+    let scrollTop = 0;
+    Object.defineProperty(scroller, "scrollTop", { configurable: true, get: () => scrollTop });
+
+    // containerObject carries the blocker mesh and the root element's
+    // object; each element object carries its content group first, then its
+    // own quad.
+    const containerObject = parent.children[0];
+    const rootObject = containerObject.children.find((child) => !(child instanceof THREE.Mesh));
+    assert.ok(rootObject);
+    const scrollerObject = /** @type {THREE.Object3D} */ (rootObject.children[0].children[0]);
+    const contentGroup = scrollerObject.children[0];
+    assert.equal(contentGroup.children.length, 3, "the rows ride in the content group");
+    assert.deepEqual([contentGroup.position.x, contentGroup.position.y], [0, 0]);
+
+    // The regression this pins down: scrolling used to re-measure the
+    // scroller's whole subtree, a cost linear in the length of the list.
+    // Now the stored geometry is scroll-invariant, so a scroll reads nothing
+    // back from the DOM — it is one signal write and one translation.
+    // Off `window`, because that is where jsdom keeps the constructor — the
+    // `Element` global is not defined under the test setup.
+    const originalGetRect = window.Element.prototype.getBoundingClientRect;
+    const originalCreateRange = document.createRange.bind(document);
+    let rectReads = 0;
+    let rangeMeasurements = 0;
+    window.Element.prototype.getBoundingClientRect = function () {
+      rectReads += 1;
+      return originalGetRect.call(this);
+    };
+    document.createRange = () => {
+      rangeMeasurements += 1;
+      return originalCreateRange();
+    };
+    try {
+      scrollTop = 40;
+      scroller.dispatchEvent(new Event("scroll"));
+
+      assert.deepEqual(
+        [contentGroup.position.x, contentGroup.position.y],
+        [0, -40],
+        "the content slides by exactly the offset",
+      );
+      assert.equal(rectReads, 0, "no rects are read back");
+      assert.equal(rangeMeasurements, 0, "no text is re-measured");
+    } finally {
+      window.Element.prototype.getBoundingClientRect = originalGetRect;
+      document.createRange = originalCreateRange;
+    }
+
+    subscription.unsubscribe();
+    portal.disconnect();
+  });
+
+  test("re-writing an attribute with the value it already has invalidates nothing", async () => {
+    // The hover handlers write `data-xr-*` back on every pointer event, and
+    // the observer reports every write. The mirror compares against the
+    // record's oldValue, so only the first write — the actual change — costs
+    // a restyle.
+    const manager = new InteractionManager();
+    const ctx = InteractionContext.set({}, manager);
+    const portal = createPortal(ctx);
+    portal.addTo(new THREE.Group());
+
+    /** @type {import("@apendua/justdom").Mountable<Node> | undefined} */
+    let mountable;
+    const tree = $("div", [children($("div", [attr("id", () => "hovered")]))]);
+    const subscription = tree.subscribe((value) => {
+      mountable = value;
+    });
+    assert.ok(mountable);
+    portal.mount(mountable);
+
+    await nextMacrotask();
+    await nextMacrotask();
+
+    const element = /** @type {HTMLElement} */ (document.getElementById("hovered"));
+    assert.ok(element);
+
+    let reads = 0;
+    const dependent = new Derived(() => {
+      reads += 1;
+      return getComputedStyleCached(element).cursor;
+    });
+    const dependentSubscription = dependent.subscribe({ next: () => dependent.get() });
+    dependent.get();
+    assert.equal(reads, 1);
+
+    element.dataset.xrHover = "true";
+    await nextMacrotask();
+    assert.equal(reads, 2, "the first write is a change");
+
+    element.dataset.xrHover = "true";
+    await nextMacrotask();
+    assert.equal(reads, 2, "the second is not");
+
+    dependentSubscription.unsubscribe();
     subscription.unsubscribe();
     portal.disconnect();
   });

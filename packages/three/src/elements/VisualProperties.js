@@ -2,8 +2,8 @@ import * as THREE from "three";
 import { addDependency, batch, NoValueError, memo, decorate, memoFn } from "@apendua/signal";
 import { fromEvent, store } from "@apendua/signal";
 import { filter, from, Subject } from "rxjs";
-import { getBoundingClientRectCached, getComputedStyleCached } from "./cache.js";
-import { isTransformed } from "./cssTransform.js";
+import { getBorderBoxSize, getComputedStyleCached } from "./mirror.js";
+
 import { getElevation } from "./elevation.js";
 
 /**
@@ -176,21 +176,19 @@ export default class VisualProperties {
    */
   setFromElement(element, pseudoElement = null) {
     const style = getComputedStyleCached(element, pseudoElement);
-    const rect = getBoundingClientRectCached(element);
-    // A client rect includes CSS transforms; the box the mirror draws must
-    // not — its object carries the transform itself, and would apply it a
-    // second time. Layout sizes are whole px, but transform-free, so they
-    // take over whenever a transform sits anywhere on the chain. The rect is
-    // still read either way: it is the dependency that re-runs this when the
-    // layout moves.
-    const transformed = isTransformed(element);
+    // The mirror answers with layout offsets instead of client rects when a
+    // transform sits anywhere on the chain — the box's object carries the
+    // transform itself, and a transformed client rect would apply it a
+    // second time. Reading the size is also the dependency that re-runs
+    // this when the layout moves it.
+    const size = getBorderBoxSize(element);
     const fontSize = parseFloat(style.fontSize || "0");
     const [inheritedOpacity, layerNo] = getInheritedOpacity(element);
     const opacity = parseFloat(style.opacity || "1") * inheritedOpacity;
     /** @type {RawVisualProperties} */
     const properties = {
-      totalWidth: transformed ? element.offsetWidth : rect.width,
-      totalHeight: transformed ? element.offsetHeight : rect.height,
+      totalWidth: size.width,
+      totalHeight: size.height,
       opacity,
       fontSize,
       fontFamily: style.fontFamily,

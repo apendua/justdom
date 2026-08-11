@@ -10,12 +10,12 @@ import {
 } from "./textHelpers.js";
 import { parseColor } from "./VisualProperties.js";
 import {
-  getBoundingClientRectCached,
-  getClipBoxCached,
   getComputedStyleCached,
+  getInteriorClipBox,
   getParentElement,
+  getScrollOffset,
   getTextLayout,
-} from "./cache.js";
+} from "./mirror.js";
 import { getContentRenderOrder } from "./elevation.js";
 import { applyClip, clipBoxEqual, toLocalClipBox, UNCLIPPED } from "./clip.js";
 
@@ -86,23 +86,24 @@ export function text(_, textNode) {
   });
 
   // Text has an origin of its own — where its line boxes start inside the
-  // parent — so the clip has to be read in that frame, not the parent's. The
-  // bounds cannot supply it: under a transform they are measured on a clone
-  // parked off-screen, whose coordinates say nothing about where the text is.
-  // The parent's rect plus the layout offset is the same number, and true in
-  // both cases.
+  // parent — so the clip has to be read in that frame, not the parent's.
+  // The parent's interior window is cached in the parent's border frame,
+  // where a scroll cannot move it; the layout offset is content-space, which
+  // a scroll cannot move either. The scroll offset is the one live term, so
+  // text sliding through its own parent's window pays exactly one
+  // subtraction here — and text whose window did not move pays nothing.
   const clipBox = new Derived(
     () => {
-      const box = getClipBoxCached(textNode);
-      if (box === UNCLIPPED) {
-        return box;
-      }
       const parentElement = getParentElement(textNode);
       if (!parentElement) {
         return UNCLIPPED;
       }
-      const parentRect = getBoundingClientRectCached(parentElement);
-      return toLocalClipBox(box, parentRect.left + layout.left, parentRect.top + layout.top);
+      const box = getInteriorClipBox(parentElement);
+      if (box === UNCLIPPED) {
+        return box;
+      }
+      const scroll = getScrollOffset(parentElement);
+      return toLocalClipBox(box, layout.left - scroll.left, layout.top - scroll.top);
     },
     { isEqual: clipBoxEqual },
   );

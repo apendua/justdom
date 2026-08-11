@@ -1,16 +1,14 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
-import { Subject } from "rxjs";
 import { InteractionContext } from "../interactions.js";
-import { PORTAL_ATTRIBUTE, setSubject } from "./cache.js";
+import { createMirror, PORTAL_ATTRIBUTE } from "./mirror.js";
 import { checkbox } from "./checkbox.js";
 
 /**
  * @import { Mesh, MeshBasicMaterial, Object3D } from "three";
  * @import { InteractionManager } from "../interactions.js";
  * @import { XREventMap } from "../core.js";
- * @import { MutationBatch } from "./cache.js";
  */
 
 // Same reason as in div.test.js: jsdom implements no Font Loading API, and
@@ -26,8 +24,8 @@ Object.defineProperty(document, "fonts", {
 });
 
 /**
- * A checkbox wired the way the portal wires one: a subject standing in for the
- * MutationObserver, and a recording manager in place of the real one.
+ * A checkbox wired the way the portal wires one: a mirror standing in for the
+ * portal's own, and a recording manager in place of the real one.
  *
  * @param {object} [options]
  * @param {boolean} [options.checked] What the box starts out as.
@@ -47,9 +45,8 @@ function setup({ checked = false, disabled = false } = {}) {
     /** @type {DOMRect} */ ({ left: 0, top: 0, right: 20, bottom: 20, width: 20, height: 20 });
   document.body.appendChild(element);
 
-  /** @type {Subject<MutationBatch>} */
-  const mutations = new Subject();
-  setSubject(element, mutations);
+  const mirror = createMirror();
+  mirror.adopt(element);
 
   /** @type {Object3D[]} */
   const registered = [];
@@ -103,7 +100,7 @@ function setup({ checked = false, disabled = false } = {}) {
     /** Announce an attribute change the way the portal's observer would. */
     restyle: (/** @type {string} */ cssText) => {
       element.style.cssText = cssText;
-      mutations.next({ types: new Set(["attributes"]), targets: new Set([element]) });
+      mirror.attributeChanged(element);
     },
   };
 }
@@ -271,10 +268,11 @@ function setupScrolledCheckbox() {
   container.appendChild(scroller);
   document.body.appendChild(container);
 
-  /** @type {Subject<MutationBatch>} */
-  const mutations = new Subject();
+  Object.defineProperty(scroller, "scrollTop", { configurable: true, get: () => scrollTop });
+
+  const mirror = createMirror();
   for (const node of [container, scroller, element]) {
-    setSubject(node, mutations);
+    mirror.adopt(node);
   }
 
   /**
@@ -322,7 +320,7 @@ function setupScrolledCheckbox() {
     /** @param {number} value */
     scrollTo: (value) => {
       scrollTop = value;
-      mutations.next({ types: new Set(["scroll"]), targets: new Set([scroller]) });
+      mirror.scrolled(scroller);
     },
   };
 }

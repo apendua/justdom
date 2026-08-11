@@ -1,4 +1,4 @@
-import { getComputedStyleCached } from "./cache.js";
+import { getComputedStyleCached } from "./mirror.js";
 
 /**
  * Whether an element asks to float above what it overlaps, rather than merely

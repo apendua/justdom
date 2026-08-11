@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { getComputedStyleCached, hasTransform, isTransformed } from "./cache.js";
+import { getComputedStyleCached, hasTransform, isTransformed } from "./mirror.js";
 
 /**
  * CSS transforms, read off the computed style and turned into the matrices
@@ -10,7 +10,7 @@ import { getComputedStyleCached, hasTransform, isTransformed } from "./cache.js"
  * transform applied as its own object matrix has to be measured *without*
  * it. So transformed elements are measured off their layout offsets instead,
  * and text — which has no offsets — is measured with the transforms briefly
- * switched off (see `withoutTransforms` in cache.js).
+ * switched off, against a detached clone (see `mirror.js`).
  */
 
 /**

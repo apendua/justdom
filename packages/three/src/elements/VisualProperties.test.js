@@ -1,8 +1,6 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
-import { Subject } from "rxjs";
-import { setSubject } from "./cache.js";
 import VisualProperties from "./VisualProperties.js";
 
 // Same stub as div.test.js: jsdom has no Font Loading API, and
@@ -26,9 +24,6 @@ function propertiesOf(style) {
   const element = document.createElement("div");
   Object.assign(element.style, style);
   document.body.appendChild(element);
-  /** @type {Subject<import("./cache.js").MutationBatch>} */
-  const subject = new Subject();
-  setSubject(element, subject);
   const properties = new VisualProperties();
   properties.setFromElement(element);
   return properties;

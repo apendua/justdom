@@ -1,11 +1,9 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
-import { Subject } from "rxjs";
 import { Derived } from "@apendua/signal";
 import { InteractionContext } from "../interactions.js";
 import { div } from "./div.js";
-import { setSubject } from "./cache.js";
 import {
   acquireImage,
   contentImage,
@@ -46,10 +44,7 @@ function element(tag, style = {}) {
   const node = document.createElement(tag);
   Object.assign(node.style, style);
   document.body.appendChild(node);
-  /** @type {Subject<import("./cache.js").MutationBatch>} */
-  const subject = new Subject();
-  setSubject(node, subject);
-  return { node, subject };
+  return { node };
 }
 
 /**

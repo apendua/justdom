@@ -1,8 +1,7 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
-import { Subject } from "rxjs";
-import { setSubject, PORTAL_ATTRIBUTE } from "./cache.js";
+import { PORTAL_ATTRIBUTE } from "./mirror.js";
 import { createScrollDrags, findScroller, isScrollable } from "./scroll.js";
 
 /**
@@ -39,7 +38,6 @@ function el(style, parent) {
   const element = document.createElement("div");
   element.style.cssText = style;
   (parent ?? document.body).appendChild(element);
-  setSubject(element, new Subject());
   return element;
 }
 
@@ -57,8 +55,12 @@ function setup() {
   // The list's object: local px, sitting at the world origin facing +z, so a
   // ray from (x, y, 5) pointing at -z lands on the list at exactly (x, y).
   const space = new THREE.Object3D();
+  // The gesture walks two objects per element: a box's DOM children ride in
+  // a content group under its object, the way div.js builds one.
+  const contentGroup = new THREE.Object3D();
+  space.add(contentGroup);
   const rowObject = new THREE.Object3D();
-  space.add(rowObject);
+  contentGroup.add(rowObject);
   space.updateMatrixWorld(true);
 
   const controller = /** @type {THREE.XRTargetRaySpace} */ (

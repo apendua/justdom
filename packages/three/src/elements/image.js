@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { addDependency, Derived, fromEvent, onCleanup, Signal } from "@apendua/signal";
-import { getComputedStyleCached } from "./cache.js";
+import { getComputedStyleCached } from "./mirror.js";
 import { fitImage } from "./objectFit.js";
 
 /**

@@ -4,7 +4,7 @@ import {
   getComputedStyleCached,
   getParentElement,
   PORTAL_ATTRIBUTE,
-} from "./cache.js";
+} from "./mirror.js";
 import { createFrameRequester } from "./frameRequester.js";
 import { sampleRenderingUpdates, scrollElementBy } from "./renderingUpdates.js";
 
@@ -218,7 +218,10 @@ export function createScrollDrags(requestFrames) {
         return;
       }
       // The gesture is measured in the scroller's space, so walk up as many
-      // objects as there are elements between the two.
+      // objects as there are elements between the two. Each element step is
+      // two objects: the parent's content group — the one a scroll
+      // translates — and the parent's own object, whose frame is the
+      // scroller's border box and holds still while its content slides.
       /** @type {THREE.Object3D | null} */
       let space = object;
       for (
@@ -226,7 +229,7 @@ export function createScrollDrags(requestFrames) {
         el && el !== scroller;
         el = getParentElement(el)
       ) {
-        space = space ? space.parent : null;
+        space = space?.parent?.parent ?? null;
       }
       if (!space) {
         return;

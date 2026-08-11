@@ -1,7 +1,8 @@
 import * as THREE from "three";
 import { children, cursors, $, dom } from "@apendua/freedom";
-import { effects, just, component } from "@apendua/signal";
+import { effects, just, component, use } from "@apendua/signal";
 
+import { createDiagnostics, Diagnostics } from "@apendua.dev/diagnostics";
 import ButtonsPanel from "./ButtonsPanel.js";
 import MotionPanel from "./MotionPanel.js";
 import BoxesPanel from "./BoxesPanel.js";
@@ -20,6 +21,10 @@ import ImagesPanel from "./ImagesPanel.js";
  */
 const Scene = component((ctx: WeakKey) => {
   const scale = 0.1;
+  // The frame rate readout, head-locked and up to the left. There is no music
+  // card here to hang a switch off, so it is simply always on — and on a page
+  // whose whole subject is what a portal costs to draw, that is the point.
+  const diagnostics = createDiagnostics();
 
   /** Half the horizontal distance between the two columns, in container px. */
   const column = 3.0;
@@ -31,6 +36,9 @@ const Scene = component((ctx: WeakKey) => {
   const depth = 1.2;
 
   return just(new THREE.Scene()).pipe(
+    effects(() => {
+      use(Diagnostics(ctx, diagnostics));
+    }),
     children(
       $(new THREE.AmbientLight(0xffffff, 2)),
       $(new THREE.PointLight(0xffffff, 60, 8), [

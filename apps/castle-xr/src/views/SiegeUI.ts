@@ -2,6 +2,7 @@ import * as THREE from "three";
 import { component, effects, set, emit, on, Op, store } from "@apendua/signal";
 import { dom } from "@apendua/freedom";
 import type { AudioOutputSelection } from "@apendua.dev/sound";
+import { diagnosticsButton, type DiagnosticsControls } from "@apendua.dev/diagnostics";
 import { children, list, $, text } from "@apendua/justdom";
 import {
   actionButton,
@@ -52,6 +53,8 @@ const SiegeUI = component(
     ctx: WeakKey,
     /** Where the soundtrack goes, which the music card both shows and sets. */
     output: AudioOutputSelection,
+    /** The frame rate panel, which the button under the music card switches. */
+    diagnostics: DiagnosticsControls,
     operators: Op<SiegeUIProps, SiegeUIEvents>,
   ) => {
     const props = store<SiegeUIProps, SiegeUIEvents>(defaults, operators);
@@ -125,6 +128,13 @@ const SiegeUI = component(
             },
             output,
           ),
+          // Its own card next to the music one, because the stack is made of
+          // cards and a button on its own between two of them would look like
+          // something that had fallen out of one.
+          $("div", [
+            set("className", panelCard),
+            children(diagnosticsButton(diagnostics, actionButton)),
+          ]),
         ),
       ]),
       [

@@ -2,8 +2,16 @@ import * as THREE from "three";
 import { component, effects, set, emit, observable, on, Op, store } from "@apendua/signal";
 import { dom } from "@apendua/freedom";
 import type { AudioOutputSelection } from "@apendua.dev/sound";
+import { diagnosticsButton, type DiagnosticsControls } from "@apendua.dev/diagnostics";
 import { children, $, text } from "@apendua/justdom";
-import { actionButtonClass, debugValue, panelCard, panelStack, panelTitle } from "./styles.js";
+import {
+  actionButton,
+  actionButtonClass,
+  debugValue,
+  panelCard,
+  panelStack,
+  panelTitle,
+} from "./styles.js";
 import { musicCard, MusicCardState } from "./MusicCard.js";
 
 interface BuildUIProps extends MusicCardState {
@@ -38,6 +46,8 @@ const BuildUI = component(
     ctx: WeakKey,
     /** Where the soundtrack goes, which the music card both shows and sets. */
     output: AudioOutputSelection,
+    /** The frame rate panel, which the button under the music card switches. */
+    diagnostics: DiagnosticsControls,
     operators: Op<BuildUIProps, BuildUIEvents>,
   ) => {
     const props = store<BuildUIProps, BuildUIEvents>(defaults, operators);
@@ -108,6 +118,13 @@ const BuildUI = component(
             },
             output,
           ),
+          // Its own card next to the music one, because the stack is made of
+          // cards and a button on its own between two of them would look like
+          // something that had fallen out of one.
+          $("div", [
+            set("className", panelCard),
+            children(diagnosticsButton(diagnostics, actionButton)),
+          ]),
         ),
       ]),
       [

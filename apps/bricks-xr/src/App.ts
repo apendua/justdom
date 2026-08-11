@@ -9,7 +9,8 @@
  */
 import * as THREE from "three";
 import { children, $ } from "@apendua/freedom";
-import { component, effects, just } from "@apendua/signal";
+import { component, effects, just, use } from "@apendua/signal";
+import { createDiagnostics, Diagnostics } from "@apendua.dev/diagnostics";
 import Game from "./Game.js";
 import { CELL, SIZE } from "./grid.js";
 import { palette } from "./palette.js";
@@ -23,7 +24,14 @@ const floor = new THREE.Mesh(
 floor.position.y = -THICKNESS / 2;
 
 const App = component((ctx: WeakKey) => {
+  // The frame rate readout, head-locked and up to the left. There is no panel
+  // in this scene to hang a switch off, so it is simply always on.
+  const diagnostics = createDiagnostics();
+
   return just(new THREE.Scene()).pipe(
+    effects(() => {
+      use(Diagnostics(ctx, diagnostics));
+    }),
     children(
       $(new THREE.Group(), [
         effects((o) => {

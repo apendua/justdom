@@ -142,6 +142,48 @@ describe("createPortal", () => {
     portal.disconnect();
   });
 
+  test("a panel that is not opaque to rays keeps none of the background out of their way", async () => {
+    const manager = new InteractionManager();
+    /** @type {THREE.Object3D[]} */
+    const added = [];
+    const originalAdd = manager.add.bind(manager);
+    manager.add = (object) => {
+      added.push(object);
+      originalAdd(object);
+    };
+    const ctx = InteractionContext.set({}, manager);
+
+    const portal = createPortal(ctx, { opaqueToRays: false });
+    const parent = new THREE.Group();
+    portal.addTo(parent);
+
+    /** @type {import("@apendua/justdom").Mountable<Node> | undefined} */
+    let mountable;
+    const tree = $("div", [children($("div", [attr("style", () => "padding: 4px")]))]);
+    const subscription = tree.subscribe((value) => {
+      mountable = value;
+    });
+    assert.ok(mountable);
+    portal.mount(mountable);
+
+    await nextMacrotask();
+    await nextMacrotask();
+
+    assert.equal(added.length, 0, "a readout nobody presses is nothing for a ray to find");
+    // Not merely unregistered: there is no plane in the scene either, so the
+    // panel has nothing to keep the size of.
+    const planes = [];
+    parent.traverse((object) => {
+      if (object instanceof THREE.Mesh && object.geometry instanceof THREE.PlaneGeometry) {
+        planes.push(object);
+      }
+    });
+    assert.equal(planes.length, 0, "no blocker plane is drawn either");
+
+    subscription.unsubscribe();
+    portal.disconnect();
+  });
+
   test("what it projects can find its way back to the panel it is in", async () => {
     const manager = new InteractionManager();
     const ctx = InteractionContext.set({}, manager);

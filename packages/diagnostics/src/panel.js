@@ -3,9 +3,9 @@
  * little else as the thing can be made of.
  */
 import * as THREE from "three";
-import { component, effects } from "@apendua/signal";
+import { component, effects, use } from "@apendua/signal";
 import { $, children, set, style, text } from "@apendua/justdom";
-import { dom } from "@apendua/freedom";
+import { animate, dom } from "@apendua/freedom";
 import { SAMPLE_COUNT, SAMPLE_MS } from "./frameMeter.js";
 import { bar, caption, chart, hudCard, reading, readingRow, unit, UI_SCALE } from "./styles.js";
 
@@ -19,7 +19,7 @@ import { bar, caption, chart, hudCard, reading, readingRow, unit, UI_SCALE } fro
 /**
  * Where the panel hangs, in the camera's own coordinates: up and to the left,
  * a metre out. Both angles come to a little over twenty degrees off centre —
- * out of the way of whatever the scene has put in front of the player, and
+ * clear of whatever the scene has put straight in front of the player, and
  * still inside the sweep of an eye that has decided to look at it.
  *
  * A metre because a head-locked panel is read with both eyes and they have to
@@ -33,6 +33,60 @@ const PLACEMENT = new THREE.Vector3(-0.38, 0.22, -0.95);
  * angle would show the player the panel's edge more than its face.
  */
 const FACING = new THREE.Euler(0.21, 0.38, 0);
+
+/**
+ * Where the panel is drawn in the frame's order: after everything a scene is
+ * likely to have asked for, and far enough clear of it that the panel's own
+ * ordering — which `freedom` writes as small numbers, one per layer of nesting
+ * — survives being shifted up by this.
+ */
+const HUD_RENDER_ORDER = 100000;
+
+/**
+ * Draw the panel over the scene rather than in it.
+ *
+ * A metre out is where the *panel* is; it is not where the game is. Something
+ * closer than that in the same direction — a card at arm's length, a board
+ * carried up to the face — is in front of it and hides it, which is the honest
+ * answer for a thing in the room and the wrong one for an instrument. So the
+ * subtree stops testing itself against the depth buffer and is ordered after
+ * everything else: whatever the scene is doing, the reading is legible.
+ *
+ * Only depth *testing* goes. The order the panel draws itself in — background,
+ * then border, then glyphs — is `renderOrder` rather than depth, and shifting
+ * the whole subtree by a constant leaves it exactly as it was.
+ *
+ * This runs every frame, and the shift is written as "raise anything that is
+ * not already raised" rather than as an addition, for two reasons. Meshes keep
+ * arriving as the portal mirrors the DOM into the scene; and the portal owns
+ * `renderOrder` — it writes each element's own back whenever that element's
+ * nesting is worked out again, which puts the panel's glyphs behind the scene
+ * a frame later and is exactly what this looked like when it was done once.
+ * Idempotent, it survives that. It is a walk of some forty objects and a
+ * comparison each, in a tool whose whole business is not showing up in its own
+ * reading.
+ *
+ * @param {THREE.Object3D} root
+ * @returns {() => void}
+ */
+function drawOnTop(root) {
+  return () => {
+    root.traverse((object) => {
+      if (object.renderOrder < HUD_RENDER_ORDER) {
+        object.renderOrder += HUD_RENDER_ORDER;
+      }
+      const mesh = /** @type {THREE.Mesh} */ (object);
+      if (!mesh.material) {
+        return;
+      }
+      for (const material of Array.isArray(mesh.material) ? mesh.material : [mesh.material]) {
+        if (material.depthTest) {
+          material.depthTest = false;
+        }
+      }
+    });
+  };
+}
 
 /** How much of the last minute one bar stands for, in seconds. */
 const WINDOW_SECONDS = Math.round((SAMPLE_MS * SAMPLE_COUNT) / 1000);
@@ -158,6 +212,9 @@ export const Panel = component(
           obj.position.copy(PLACEMENT);
           obj.rotation.copy(FACING);
           obj.scale.setScalar(UI_SCALE);
+        }),
+        effects((obj) => {
+          use(animate(ctx, drawOnTop(obj)));
         }),
       ],
       { opaqueToRays: false },

@@ -41,10 +41,14 @@ export const hudCard = stylesheet`
     width: ${CARD_WIDTH}px;
     box-sizing: border-box;
     padding: 14px 16px 12px;
-    border: 2px solid rgba(255, 255, 255, 0.16);
+    border: 2px solid rgba(255, 255, 255, 0.22);
     border-radius: 16px;
-    background: rgba(6, 10, 18, 0.34);
-    color: rgba(255, 255, 255, 0.82);
+    /* Faint enough to read the room through and dark enough to read the
+       reading against it. Anything thinner than this and the panel it happens
+       to be floating over decides whether the number is legible — a lesson
+       from the showcase, whose four white cards fill the view. */
+    background: rgba(6, 10, 18, 0.62);
+    color: rgba(255, 255, 255, 0.88);
   }
 `;
 
@@ -78,7 +82,7 @@ export const unit = stylesheet`
     font-size: 16px;
     letter-spacing: 0.18em;
     text-transform: uppercase;
-    color: rgba(255, 255, 255, 0.5);
+    color: rgba(255, 255, 255, 0.62);
   }
 `;
 
@@ -89,7 +93,7 @@ export const chart = stylesheet`
     gap: 2px;
     height: 52px;
     margin-top: 12px;
-    border-bottom: 2px solid rgba(255, 255, 255, 0.12);
+    border-bottom: 2px solid rgba(255, 255, 255, 0.18);
   }
 `;
 
@@ -115,6 +119,6 @@ export const caption = stylesheet`
     margin-top: 8px;
     font-size: 15px;
     letter-spacing: 0.08em;
-    color: rgba(255, 255, 255, 0.42);
+    color: rgba(255, 255, 255, 0.55);
   }
 `;

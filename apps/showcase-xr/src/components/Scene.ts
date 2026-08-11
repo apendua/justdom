@@ -2,11 +2,24 @@ import * as THREE from "three";
 import { children, cursors, $, dom } from "@apendua/freedom";
 import { effects, just, component, use } from "@apendua/signal";
 
-import { createDiagnostics, Diagnostics } from "@apendua.dev/diagnostics";
+import { createDiagnostics, Diagnostics, type DiagnosticsControls } from "@apendua.dev/diagnostics";
 import ButtonsPanel from "./ButtonsPanel.js";
 import MotionPanel from "./MotionPanel.js";
 import BoxesPanel from "./BoxesPanel.js";
 import ImagesPanel from "./ImagesPanel.js";
+
+declare global {
+  interface Window {
+    /**
+     * The frame rate readout, so the visual suite can put it down before it
+     * photographs the scene. The reading is a live number and the chart is a
+     * minute of live numbers, so a photograph with the panel in it is a
+     * photograph that never matches the one before — and what these baselines
+     * are for is the four panels, not the instrument in front of them.
+     */
+    __diagnostics?: DiagnosticsControls;
+  }
+}
 
 /**
  * Four panels in a two-by-two grid, each column turned in towards the middle
@@ -25,6 +38,7 @@ const Scene = component((ctx: WeakKey) => {
   // card here to hang a switch off, so it is simply always on — and on a page
   // whose whole subject is what a portal costs to draw, that is the point.
   const diagnostics = createDiagnostics();
+  window.__diagnostics = diagnostics;
 
   /** Half the horizontal distance between the two columns, in container px. */
   const column = 3.0;

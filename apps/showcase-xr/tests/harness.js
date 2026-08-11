@@ -166,6 +166,18 @@ export async function enterSession(page, { freeze = true } = {}) {
   await page.waitForFunction(() => document.querySelectorAll("canvas").length > 0, undefined, {
     timeout: 30_000,
   });
+
+  // The frame rate readout is an instrument, not scene: it hangs off the
+  // camera in every headset app here, and what it says is a live number over
+  // a minute of live numbers. Photographed, it is a rectangle that never
+  // matches the one before — and the freeze does not stop it, because the
+  // timestamps it counts come from the emulated session rather than from the
+  // page's own animation frames. Put it down before anything is measured or
+  // photographed; what these baselines are for is the four panels.
+  await page.waitForFunction(() => !!window.__diagnostics, undefined, { timeout: 30_000 });
+  await page.evaluate(() => {
+    window.__diagnostics?.visible.set(false);
+  });
   // The panels are built from measured DOM, and the measuring waits on fonts;
   // a few frames of settling is the difference between photographing the
   // scene and photographing it being built.

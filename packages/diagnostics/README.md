@@ -86,10 +86,11 @@ missed, red where the scene has become a slideshow — as fractions of the
 display's own rate, because 72 fps is perfect on one headset and a quarter of
 the frames dropped on another.
 
-The panel is deliberately faint: a third-opaque background, a hairline border,
-and no colour it does not need. It is an instrument, not part of the game.
+The panel is deliberately faint — you can read the room through it — and dark
+enough that the reading is legible against whatever is behind it. It is an
+instrument, not part of the game.
 
-Two things about it are worth knowing.
+Three things about it are worth knowing.
 
 **It lets rays through.** A head-locked panel sits between the player and
 everything else, so an opaque one would be a pane of glass their own pointer
@@ -97,10 +98,28 @@ kept landing on. It is projected through a portal with
 `{ opaqueToRays: false }`, which is a `@apendua/freedom` option this widget is
 the reason for.
 
+**It draws over the scene rather than in it.** A metre out is where the panel
+is; it is not where the game is. A card at arm's length, a board carried up to
+the face, four white panels filling the view — anything nearer in the same
+direction hides it, which is the honest answer for a thing in the room and the
+wrong one for an instrument. So the subtree stops testing itself against the
+depth buffer and is ordered after everything else. Only depth _testing_ goes:
+the order the panel draws itself in is `renderOrder`, and shifting the whole
+subtree by a constant leaves that exactly as it was.
+
 **It measures whether or not it is being drawn.** Counting frames is a `+= 1` in
 a callback the renderer was making anyway; it is drawing the panel that costs
 something, and that is what the switch turns off. A panel switched back on has
 the last minute to show rather than an empty chart.
+
+## A note for anything that photographs a scene
+
+The reading is a live number and the chart is a minute of live numbers, so a
+picture of a scene with this in it never matches the picture before. Anything
+comparing frames — `showcase-xr`'s visual suite is the one here — should put the
+panel down first, through `visible.set(false)` on the controls the app holds.
+Freezing the clock is not enough: the timestamps this counts come from the
+session's frame callbacks rather than from the page's.
 
 ## Keeping it cheap
 

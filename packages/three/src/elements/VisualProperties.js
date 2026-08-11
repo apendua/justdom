@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { addDependency, batch, NoValueError, memo, decorate, memoFn } from "@apendua/signal";
+import { addDependency, batch, Derived, NoValueError, memo, decorate } from "@apendua/signal";
 import { fromEvent, store } from "@apendua/signal";
 import { filter, from, Subject } from "rxjs";
 import { getBorderBoxSize, getComputedStyleCached } from "./mirror.js";
@@ -134,6 +134,50 @@ function getInheritedOpacity(element) {
 }
 
 /**
+ * How tall a lowercase x stands relative to the font size, per font. One
+ * probe element, one layout, per (family, weight) the whole page ever uses —
+ * not per element wearing it: the probe forces a layout of its own, and a
+ * panel of a hundred boxes wearing one font asked a hundred times.
+ *
+ * @type {Map<string, Derived<number>>}
+ */
+const relativeXHeights = new Map();
+
+/**
+ * @param {string} fontFamily
+ * @param {string} fontWeight
+ * @returns {number}
+ */
+function getRelativeXHeightShared(fontFamily, fontWeight) {
+  const key = `${fontFamily}\u0000${fontWeight}`;
+  let signal = relativeXHeights.get(key);
+  if (!signal) {
+    signal = new Derived(() => {
+      if (document.fonts.status !== "loaded") {
+        addDependency(from(document.fonts.ready));
+        throw new NoValueError("Fonts not loaded");
+      }
+      addDependency(fromEvent(document.fonts, "loadingdone"));
+      const element = document.createElement("span");
+      element.style.fontFamily = fontFamily;
+      element.style.fontWeight = fontWeight;
+      element.style.fontSize = "100px";
+      element.style.position = "absolute";
+      element.style.top = "-9999px";
+      element.style.left = "-9999px";
+      element.style.lineHeight = "normal";
+      element.textContent = "x";
+      document.body.appendChild(element);
+      const rect = element.getBoundingClientRect();
+      document.body.removeChild(element);
+      return rect.height / 100;
+    });
+    relativeXHeights.set(key, signal);
+  }
+  return signal.get();
+}
+
+/**
  * @implements {IVisualProperties}
  */
 export default class VisualProperties {
@@ -150,24 +194,7 @@ export default class VisualProperties {
    * @param {string} fontWeight
    */
   getRelativeXHeight(fontFamily, fontWeight) {
-    if (document.fonts.status !== "loaded") {
-      addDependency(from(document.fonts.ready));
-      throw new NoValueError("Fonts not loaded");
-    }
-    addDependency(fromEvent(document.fonts, "loadingdone"));
-    const element = document.createElement("span");
-    element.style.fontFamily = fontFamily;
-    element.style.fontWeight = fontWeight;
-    element.style.fontSize = "100px";
-    element.style.position = "absolute";
-    element.style.top = "-9999px";
-    element.style.left = "-9999px";
-    element.style.lineHeight = "normal";
-    element.textContent = "x";
-    document.body.appendChild(element);
-    const rect = element.getBoundingClientRect();
-    document.body.removeChild(element);
-    return rect.height / 100;
+    return getRelativeXHeightShared(fontFamily, fontWeight);
   }
 
   /**
@@ -374,7 +401,6 @@ export default class VisualProperties {
   }
 }
 
-decorate(VisualProperties.prototype, "getRelativeXHeight", memoFn());
 decorate(VisualProperties.prototype, "totalWidth", memo());
 decorate(VisualProperties.prototype, "totalHeight", memo());
 decorate(VisualProperties.prototype, "fontSize", memo());

@@ -414,19 +414,20 @@ export function box(ctx, element, options = {}) {
       }
       properties.setFromElement(element);
     }),
-    // A scroll, applied where a scroll belongs: one translation of the group
-    // that carries the scrolled content. Nothing inside is re-measured or
-    // repositioned — their coordinates were chosen so the scroll could not
-    // change them.
-    effects(() => {
-      const scroll = getScrollOffset(element);
-      // `|| 0` turns the -0 an unscrolled axis would negate to back into 0.
-      contentGroup.position.set(-scroll.left || 0, -scroll.top || 0, 0);
-    }),
-    // Kept apart from the layout effect above: a scroll moves content inside a
-    // window that has not moved, so the clip shifts while positions do not,
-    // and neither recomputes the other's dependencies.
+    // Everything a scroll can move, kept apart from the layout effect above:
+    // a scroll shifts the clip and slides this element's own content group,
+    // while positions and sizes hold still — so neither recomputes the
+    // other's dependencies. One effect for the three cheap writes rather
+    // than one each; every element pays for its computations up front, in
+    // allocation and subscription, and these always move together.
     effects((obj) => {
+      // A scroll, applied where a scroll belongs: one translation of the
+      // group that carries the scrolled content. Nothing inside is
+      // re-measured or repositioned — their coordinates were chosen so the
+      // scroll could not change them. (`|| 0` turns the -0 an unscrolled
+      // axis would negate to back into 0.)
+      const scroll = getScrollOffset(element);
+      contentGroup.position.set(-scroll.left || 0, -scroll.top || 0, 0);
       currentClipBox = getLocalClipBox(element);
       // Fragments outside the box are discarded, but an element with nothing
       // left to show is worth skipping wholesale — `visible` prunes it and

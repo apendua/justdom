@@ -111,10 +111,11 @@ export function text(_, textNode) {
   const clipUniform = { value: new THREE.Vector4(-1e6, -1e6, 1e6, 1e6) };
 
   return just(object, [
+    // One effect for both cheap writes: where the text sits and what trims
+    // it move together — a scroll shifts the clip while the content-space
+    // position holds still, and a re-layout can move both.
     effects((obj) => {
       obj.position.set(layout.left, layout.top, -0.01);
-    }),
-    effects(() => {
       const box = clipBox.get();
       clipUniform.value.set(box.left, box.top, box.right, box.bottom);
     }),

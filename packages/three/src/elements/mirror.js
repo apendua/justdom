@@ -106,9 +106,57 @@ function scrollOffsetEqual(a, b) {
 }
 
 /**
+ * Which "moment" of page geometry raw reads belong to. Bumped alongside
+ * every dispatch that could move anything, it lets one settling of the
+ * reactive graph share a single `getBoundingClientRect` per element — a
+ * portal-wide re-layout asks about each element three or four times
+ * (position, size, a text's parent, a clip window), and each ask past the
+ * first is the same numbers again. Deliberately a plain counter rather than
+ * a signal: the memo spares duplicate reads, it does not schedule anything.
+ */
+let geometryGeneration = 0;
+
+/**
+ * @typedef {object} ClientRect
+ * @property {number} left
+ * @property {number} top
+ * @property {number} width
+ * @property {number} height
+ */
+
+/** @type {WeakMap<Element, { generation: number, rect: ClientRect }>} */
+const clientRectCache = new WeakMap();
+
+/**
+ * The element's client rect, at most once per geometry generation. A plain
+ * read with no dependencies — the reactive layer decides *when* to come
+ * back, this only keeps it from asking the browser the same question twice
+ * in one settling.
+ *
+ * @param {Element} element
+ * @returns {ClientRect}
+ */
+function readClientRect(element) {
+  const cached = clientRectCache.get(element);
+  if (cached && cached.generation === geometryGeneration) {
+    return cached.rect;
+  }
+  const measured = element.getBoundingClientRect();
+  const rect = {
+    left: measured.left,
+    top: measured.top,
+    width: measured.width,
+    height: measured.height,
+  };
+  clientRectCache.set(element, { generation: geometryGeneration, rect });
+  return rect;
+}
+
+/**
  * @param {Signal<number>} signal
  */
 function bump(signal) {
+  geometryGeneration += 1;
   signal.setFn(
     (value) => value + 1,
     () => 1,
@@ -420,6 +468,10 @@ export class DomMirror {
       return;
     }
     const element = /** @type {Element} */ (node);
+    // Client rects move with a scroll even though nothing reactive depends
+    // on them for it — the raw-read memo must not serve pre-scroll numbers
+    // to whoever measures next.
+    geometryGeneration += 1;
     record.scroll.set({ left: element.scrollLeft || 0, top: element.scrollTop || 0 });
   }
 
@@ -575,16 +627,25 @@ const styleContextCache = new WeakMap();
  * Everything that can invalidate this node's computed style, folded into one
  * number. A counter rather than a value on purpose: computed style is a live
  * object the browser mutates in place, so there is nothing to compare — the
- * chain's job is purely to carry the invalidation to the right nodes.
+ * context's job is purely to carry the invalidation to the right nodes.
  *
- * The shape of the chain is the scope: the node's own attribute signal
- * covers the node and (recursively) its subtree, the parent's member signal
- * covers the mutated element's siblings — `~`, `+` and the structural
- * pseudo-classes reach exactly that far — and the parent's own context
- * carries everything from higher up. A mutation therefore reaches the
- * parent-of-target subtree and nothing else. `:has()`, which lets a
+ * The shape of the sum is the scope: the node's own attribute signal covers
+ * the node and its subtree (every descendant folds it in), the parent's
+ * member signal covers the mutated element's siblings — `~`, `+` and the
+ * structural pseudo-classes reach exactly that far — so a mutation reaches
+ * the parent-of-target subtree and nothing else. `:has()`, which lets a
  * mutation restyle its ancestors, is knowingly not modelled — the same
  * bargain the previous implementation struck.
+ *
+ * The sum reads the ancestors' *signals* directly rather than chaining
+ * through their memoized contexts, and the flatness is load-bearing, not a
+ * style choice. A node created inside the very batch that bumped an epoch
+ * would read a pre-bump number out of a cached ancestor context — the
+ * ancestor only catches up when the queue flushes — and the flush would
+ * then hand every freshly mounted node a "changed" context: one whole
+ * second evaluation of every style, measurement and texture the mount had
+ * just produced. Read flat, the sum is built from the same signal values at
+ * creation and at flush, compares equal, and the flush stops here.
  *
  * @param {Node} node
  * @returns {number}
@@ -596,15 +657,26 @@ function getStyleContext(node) {
       let sum = 0;
       const record = recordOf(node);
       if (record) {
-        sum += record.self.get() + record.mirror.restyle.get();
+        sum += record.mirror.restyle.get();
       }
-      const parent = getParentElement(node);
-      if (parent) {
-        const parentRecord = recordOf(parent);
-        if (parentRecord) {
-          sum += parentRecord.members.get();
+      for (
+        let current = /** @type {Node | null} */ (node), depth = 0;
+        current;
+        current = getParentElement(current), depth += 1
+      ) {
+        const currentRecord = recordOf(current);
+        if (currentRecord) {
+          sum += currentRecord.self.get();
+          if (depth > 0) {
+            sum += currentRecord.members.get();
+          }
         }
-        sum += getStyleContext(parent);
+        if (
+          current.nodeType === Node.ELEMENT_NODE &&
+          /** @type {Element} */ (current).hasAttribute(PORTAL_ATTRIBUTE)
+        ) {
+          break;
+        }
       }
       return sum;
     });
@@ -625,7 +697,8 @@ const reflowContextCache = new WeakMap();
  *
  * A scroll is deliberately absent: every measurement that depends on this
  * is expressed relative to something that scrolls along with it, so a
- * scroll cannot change any of them.
+ * scroll cannot change any of them. Flat for the reason `getStyleContext`
+ * gives.
  *
  * @param {Node} node
  * @returns {number}
@@ -637,11 +710,23 @@ function getReflowContext(node) {
       let sum = 0;
       const record = recordOf(node);
       if (record) {
-        sum += record.reflow.get() + record.mirror.layout.get();
+        sum += record.mirror.layout.get();
       }
-      const parent = getParentElement(node);
-      if (parent) {
-        sum += getReflowContext(parent);
+      for (
+        let current = /** @type {Node | null} */ (node);
+        current;
+        current = getParentElement(current)
+      ) {
+        const currentRecord = recordOf(current);
+        if (currentRecord) {
+          sum += currentRecord.reflow.get();
+        }
+        if (
+          current.nodeType === Node.ELEMENT_NODE &&
+          /** @type {Element} */ (current).hasAttribute(PORTAL_ATTRIBUTE)
+        ) {
+          break;
+        }
       }
       return sum;
     });
@@ -792,7 +877,7 @@ export function getBorderBoxSize(element) {
         if (isTransformed(element)) {
           return { width: element.offsetWidth, height: element.offsetHeight };
         }
-        const rect = element.getBoundingClientRect();
+        const rect = readClientRect(element);
         return { width: rect.width, height: rect.height };
       },
       { isEqual: sizeEqual },
@@ -835,8 +920,8 @@ function positionEqual(a, b) {
  * @returns {ContentPosition}
  */
 function measureOffsetWithin(node, ancestor) {
-  const rect = node.getBoundingClientRect();
-  const ancestorRect = ancestor.getBoundingClientRect();
+  const rect = readClientRect(node);
+  const ancestorRect = readClientRect(ancestor);
   return {
     x: rect.left - ancestorRect.left + (ancestor.scrollLeft || 0),
     y: rect.top - ancestorRect.top + (ancestor.scrollTop || 0),
@@ -1027,10 +1112,17 @@ export function getObjectPosition(element) {
         if (!parent) {
           return { x: 0, y: 0 };
         }
+        // The position style gates the whole anchored branch, so the
+        // overwhelmingly common in-flow element never builds the anchoring
+        // machinery at all.
+        const position = getPositionStyle(element);
+        if (position !== "absolute" && position !== "fixed") {
+          return getContentPosition(element);
+        }
         const anchored = getAnchoredOffset(element);
         const anchor = anchored.anchor;
         if (!anchor || anchor === parent) {
-          // In the flow, or anchored to its own parent: the flow path
+          // Anchored to its own parent (or nowhere better): the flow path
           // already measures against exactly that box.
           return getContentPosition(element);
         }
@@ -1164,59 +1256,46 @@ function getOwnClipWindow(element) {
   return signal.get();
 }
 
-/** @type {WeakMap<HTMLElement, Derived<ClipBox>>} */
-const interiorClipCache = new WeakMap();
+/**
+ * @typedef {object} ClipPair
+ * @property {ClipBox} local What the ancestors leave of the element, in the
+ *   element's own border-box frame.
+ * @property {ClipBox} interior What the element's content is confined to —
+ *   `local` intersected with the element's own overflow window — in the
+ *   same frame.
+ */
+
+/** @type {ClipPair} */
+const UNCLIPPED_PAIR = Object.freeze({ local: UNCLIPPED, interior: UNCLIPPED });
 
 /**
- * What this element's content is confined to, in the element's border-box
- * frame: everything the ancestors left of the element, intersected with the
- * element's own overflow window. This is the box a child inherits, and the
- * one a text node is trimmed by.
- *
- * Passing `UNCLIPPED` through by identity keeps the whole chain one shared
- * object down a subtree nobody clips, which is what lets everything in it
- * skip the arithmetic.
- *
- * @param {HTMLElement} element
- * @returns {ClipBox}
+ * @param {ClipPair} a
+ * @param {ClipPair} b
+ * @returns {boolean}
  */
-export function getInteriorClipBox(element) {
-  let signal = interiorClipCache.get(element);
-  if (!signal) {
-    signal = new Derived(
-      () => {
-        const inherited = getLocalClipBox(element);
-        const own = getOwnClipWindow(element);
-        if (own === UNCLIPPED) {
-          return inherited;
-        }
-        if (inherited === UNCLIPPED) {
-          return own;
-        }
-        return intersectClipBoxes(inherited, own);
-      },
-      { isEqual: clipBoxEqual },
-    );
-    interiorClipCache.set(element, signal);
-  }
-  return signal.get();
+function clipPairEqual(a, b) {
+  return clipBoxEqual(a.local, b.local) && clipBoxEqual(a.interior, b.interior);
 }
 
-/** @type {WeakMap<HTMLElement, Derived<ClipBox>>} */
-const localClipCache = new WeakMap();
+/** @type {WeakMap<HTMLElement, Derived<ClipPair>>} */
+const clipPairCache = new WeakMap();
 
 /**
- * The region the element's ancestors confine it to, in the element's own
- * border-box frame — the frame its quad is drawn in, so the same numbers
- * serve the shader uniform and the raycast filter directly.
+ * The element's clipping, both halves in one computation: what its
+ * ancestors leave of it (`local` — the box its own quad is drawn and
+ * raycast in) and what it passes on to its content (`interior` — the box a
+ * child inherits and a text node is trimmed by). One derived per element
+ * rather than one per half, because the two always move together and a
+ * frame of scrolling recomputes every element in the scrolled subtree —
+ * at half the computations, half the queue traffic.
  *
  * Each level derives from the level above: the holder's interior window —
  * cached in the holder's frame, where a scroll cannot move it — shifted by
  * where this element currently sits in that frame. That offset is the one
- * place the scroll offset enters, so a frame of scrolling recomputes the
- * boxes of the scrolled subtree as plain arithmetic on cached values: no
- * styles are read, nothing is measured, and the equality gate stops the
- * propagation wherever a box came out where it already was.
+ * place the scroll offset enters, so scrolling recomputes the boxes of the
+ * scrolled subtree as plain arithmetic on cached values: no styles are
+ * read, nothing is measured, and the equality gate stops the propagation
+ * wherever a box came out where it already was.
  *
  * Who does the confining is decided by where the box *lives*, which for a
  * positioned element is not its parent: an absolutely positioned box hangs
@@ -1227,50 +1306,88 @@ const localClipCache = new WeakMap();
  * around the scene does with `body` is none of a panel's business.
  *
  * @param {HTMLElement} element
- * @returns {ClipBox}
+ * @returns {ClipPair}
  */
-export function getLocalClipBox(element) {
-  let signal = localClipCache.get(element);
+function getClipPair(element) {
+  let signal = clipPairCache.get(element);
   if (!signal) {
     signal = new Derived(
       () => {
-        if (element.hasAttribute(PORTAL_ATTRIBUTE)) {
-          return UNCLIPPED;
+        const local = evaluateLocalClip(element);
+        const own = getOwnClipWindow(element);
+        if (own === UNCLIPPED) {
+          return local === UNCLIPPED ? UNCLIPPED_PAIR : { local, interior: local };
         }
-        const position = getPositionStyle(element);
-        if (position === "fixed") {
-          return UNCLIPPED;
-        }
-        if (position === "absolute") {
-          const anchored = getAnchoredOffset(element);
-          const anchor = anchored.anchor;
-          if (!anchor || anchor.hasAttribute(PORTAL_ATTRIBUTE)) {
-            return UNCLIPPED;
-          }
-          const base = getInteriorClipBox(anchor);
-          if (base === UNCLIPPED) {
-            return UNCLIPPED;
-          }
-          const scroll = getScrollOffset(anchor);
-          return toLocalClipBox(base, anchored.x - scroll.left, anchored.y - scroll.top);
-        }
-        const holder = getParentElement(element);
-        if (!holder || holder.hasAttribute(PORTAL_ATTRIBUTE)) {
-          return UNCLIPPED;
-        }
-        const base = getInteriorClipBox(holder);
-        if (base === UNCLIPPED) {
-          return UNCLIPPED;
-        }
-        const offset = getContentPosition(element);
-        const scroll = getScrollOffset(holder);
-        return toLocalClipBox(base, offset.x - scroll.left, offset.y - scroll.top);
+        const interior = local === UNCLIPPED ? own : intersectClipBoxes(local, own);
+        return { local, interior };
       },
-      { isEqual: clipBoxEqual },
+      { isEqual: clipPairEqual },
     );
-    localClipCache.set(element, signal);
+    clipPairCache.set(element, signal);
   }
   return signal.get();
+}
+
+/**
+ * @param {HTMLElement} element
+ * @returns {ClipBox}
+ */
+function evaluateLocalClip(element) {
+  if (element.hasAttribute(PORTAL_ATTRIBUTE)) {
+    return UNCLIPPED;
+  }
+  const position = getPositionStyle(element);
+  if (position === "fixed") {
+    return UNCLIPPED;
+  }
+  if (position === "absolute") {
+    const anchored = getAnchoredOffset(element);
+    const anchor = anchored.anchor;
+    if (!anchor || anchor.hasAttribute(PORTAL_ATTRIBUTE)) {
+      return UNCLIPPED;
+    }
+    const base = getClipPair(anchor).interior;
+    if (base === UNCLIPPED) {
+      return UNCLIPPED;
+    }
+    const scroll = getScrollOffset(anchor);
+    return toLocalClipBox(base, anchored.x - scroll.left, anchored.y - scroll.top);
+  }
+  const holder = getParentElement(element);
+  if (!holder || holder.hasAttribute(PORTAL_ATTRIBUTE)) {
+    return UNCLIPPED;
+  }
+  const base = getClipPair(holder).interior;
+  if (base === UNCLIPPED) {
+    return UNCLIPPED;
+  }
+  const offset = getContentPosition(element);
+  const scroll = getScrollOffset(holder);
+  return toLocalClipBox(base, offset.x - scroll.left, offset.y - scroll.top);
+}
+
+/**
+ * What this element's content is confined to, in the element's border-box
+ * frame. `UNCLIPPED` keeps its identity the whole way down a subtree nobody
+ * clips, which is what lets everything in it skip the arithmetic.
+ *
+ * @param {HTMLElement} element
+ * @returns {ClipBox}
+ */
+export function getInteriorClipBox(element) {
+  return getClipPair(element).interior;
+}
+
+/**
+ * The region the element's ancestors confine it to, in the element's own
+ * border-box frame — the frame its quad is drawn in, so the same numbers
+ * serve the shader uniform and the raycast filter directly.
+ *
+ * @param {HTMLElement} element
+ * @returns {ClipBox}
+ */
+export function getLocalClipBox(element) {
+  return getClipPair(element).local;
 }
 
 /** @type {WeakMap<HTMLInputElement, Derived<boolean>>} */
@@ -1433,7 +1550,12 @@ function getWhiteSpace(element) {
  */
 function measureTextRects(text, parentElement, whiteSpace, scrolled) {
   const content = text.textContent || "";
-  const parentRect = parentElement.getBoundingClientRect();
+  // Against the live tree the parent's rect is shareable; a measurement
+  // clone is created and thrown away inside one measurement, so its rect is
+  // read directly.
+  const parentRect = scrolled
+    ? readClientRect(parentElement)
+    : parentElement.getBoundingClientRect();
   const range = document.createRange();
   range.selectNodeContents(text);
   const boundsRect = range.getBoundingClientRect();

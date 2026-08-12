@@ -77,9 +77,9 @@ scene owns is the shape the music card already has.
 
 ## What it draws
 
-A card about 18 cm across, a metre out, twenty degrees up and to the left of
-straight ahead: out of the way of whatever the game has put in front of the
-player, and inside the sweep of an eye that has decided to look for it. On it, a
+A card about 18 cm across, a metre out, fourteen degrees left of straight ahead
+and ten above it: off the middle of the view, where the game is, and inside the
+arc an eye covers without the neck helping. On it, a
 frame rate, and a minute of history as thirty two-second bars. Bars are green
 while the display is keeping up, amber where some of the frames are being
 missed, red where the scene has become a slideshow — as fractions of the

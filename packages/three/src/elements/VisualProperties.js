@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { addDependency, batch, Derived, NoValueError, memo, decorate } from "@apendua/signal";
 import { fromEvent, store } from "@apendua/signal";
-import { filter, from, Subject } from "rxjs";
+import { filter, Subject } from "rxjs";
 import { getBorderBoxSize, getComputedStyleCached } from "./mirror.js";
 
 import { getElevation } from "./elevation.js";
@@ -153,10 +153,14 @@ function getRelativeXHeightShared(fontFamily, fontWeight) {
   let signal = relativeXHeights.get(key);
   if (!signal) {
     signal = new Derived(() => {
-      if (document.fonts.status !== "loaded") {
-        addDependency(from(document.fonts.ready));
-        throw new NoValueError("Fonts not loaded");
-      }
+      // Measured with whatever fonts are at hand, never refused: a face
+      // still on the wire measures as its fallback and is measured again
+      // when `loadingdone` says the loading period closed. Waiting by
+      // throwing was the old behaviour, and per instance it was survivable;
+      // shared, it parked every box that asked during a loading window on
+      // an invalidation that a *second* loading window could leave swallowed
+      // — panels whose quads never drew. A briefly-fallback `ex` metric
+      // corrects itself; an absent box does not.
       addDependency(fromEvent(document.fonts, "loadingdone"));
       const element = document.createElement("span");
       element.style.fontFamily = fontFamily;

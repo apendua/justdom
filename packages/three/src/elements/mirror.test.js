@@ -919,6 +919,66 @@ describe("layout boundaries", () => {
     }
   });
 
+  test("churn inside a list of a fixed size leaves the panel around it alone", () => {
+    // The same wall, from the other side: a clipping box does not let its
+    // contents out — they are clipped, and take no part in the layout beyond
+    // it — so rows arriving and leaving cannot move the panel unless they
+    // move the container itself. A log filling up, a list being filtered, a
+    // reading redrawn inside a bordered box: none of it re-measures the
+    // panel around it.
+    const { container, mirror, label, header, reads } = setupBoundedList();
+    try {
+      const outside = new Derived(() => getContentPosition(header));
+      const subscription = outside.subscribe({ next: () => outside.get() });
+      outside.get();
+
+      // The first change is the one that records the container's size: with
+      // nothing to compare against, the news travels as it always did.
+      label.data = "row one, changed";
+      mirror.characterDataChanged(label);
+      const before = { ...reads };
+
+      // From here on the container is known, and known not to have moved.
+      for (let index = 0; index < 5; index++) {
+        label.data = `row one, changed ${index}`;
+        mirror.characterDataChanged(label);
+      }
+
+      assert.equal(reads.header, before.header, "the panel outside was not measured");
+
+      subscription.unsubscribe();
+    } finally {
+      container.remove();
+    }
+  });
+
+  test("a list that changes size does tell the panel around it", () => {
+    // The channel out, and it has to work: a container that grows with its
+    // contents — anything not given a size of its own — moves everything
+    // after it, and the panel hears about it.
+    const { container, mirror, label, header, reads, resizeScrollerTo } = setupBoundedList();
+    try {
+      const outside = new Derived(() => getContentPosition(header));
+      const subscription = outside.subscribe({ next: () => outside.get() });
+      outside.get();
+
+      label.data = "row one, changed";
+      mirror.characterDataChanged(label);
+      const before = { ...reads };
+
+      // A row arrives and the list grows with it.
+      resizeScrollerTo(140);
+      label.data = "row one, changed again";
+      mirror.characterDataChanged(label);
+
+      assert.ok(reads.header > before.header, "a list that grew re-measures the panel");
+
+      subscription.unsubscribe();
+    } finally {
+      container.remove();
+    }
+  });
+
   test("the scroller resizing re-measures everything inside it", () => {
     // The one channel the outside has, and it has to work: when the panel
     // really does resize the container, its contents re-lay-out.

@@ -187,6 +187,39 @@ function readClientRect(element) {
 }
 
 /**
+ * The last border box each overflow container was seen at, as raw numbers
+ * outside the reactive graph.
+ *
+ * This is the ledger `#settleLayout` decides against: whether a change
+ * inside a container left the container itself the size it was, and so
+ * whether the panel around it needs to hear about it at all. Deliberately
+ * not the `getBorderBoxSize` signal — the question is asked mid-dispatch,
+ * before the graph has run, and the answer wanted is what the browser says
+ * *now* against what the outside was last told.
+ *
+ * @type {WeakMap<Element, BorderBoxSize>}
+ */
+const lastSettledSize = new WeakMap();
+
+/**
+ * Whether the element's border box differs from the last size recorded for
+ * it, recording the new one either way. An element never seen before counts
+ * as changed: nothing outside has been told anything about it yet.
+ *
+ * @param {Element} element
+ * @returns {boolean}
+ */
+function resized(element) {
+  const rect = element.getBoundingClientRect();
+  const previous = lastSettledSize.get(element);
+  if (previous && previous.width === rect.width && previous.height === rect.height) {
+    return false;
+  }
+  lastSettledSize.set(element, { width: rect.width, height: rect.height });
+  return true;
+}
+
+/**
  * @param {Signal<number>} signal
  */
 function bump(signal) {
@@ -381,9 +414,30 @@ export class DomMirror {
    */
   ingest(mutationList) {
     batch(() => {
-      this.#ingest(mutationList);
+      // One flush, one verdict per container. Collecting first means a
+      // flush of fifty records measures each enclosing container once
+      // rather than fifty times.
+      const pending = new Set();
+      this.#pendingLayout = pending;
+      try {
+        this.#ingest(mutationList);
+      } finally {
+        this.#pendingLayout = null;
+        if (pending.size) {
+          this.#settleLayout(pending);
+        }
+      }
     });
   }
+
+  /**
+   * Where layout changes gather while one observer flush is being ingested,
+   * so that how far each travels is worked out once at the end. Null
+   * outside a flush, where a change is settled as it arrives.
+   *
+   * @type {Set<Node> | null}
+   */
+  #pendingLayout = null;
 
   /**
    * @param {MutationRecord[]} mutationList
@@ -644,22 +698,74 @@ export class DomMirror {
    * @returns {void}
    */
   #layoutChangedAt(node) {
-    bump(this.layout);
-    for (
-      let current =
-        node.nodeType === Node.ELEMENT_NODE
-          ? /** @type {HTMLElement} */ (node)
-          : getParentElement(node);
-      current && !current.hasAttribute(PORTAL_ATTRIBUTE);
-      current = getParentElement(current)
-    ) {
-      if (clipsOverflow(getComputedStyleCached(current))) {
-        const record = recordOf(current);
-        if (record) {
-          bump(record.innerLayout);
+    if (this.#pendingLayout) {
+      this.#pendingLayout.add(node);
+      return;
+    }
+    this.#settleLayout([node]);
+  }
+
+  /**
+   * Work out how far each layout change travels, and announce it that far.
+   *
+   * Climbing from the node, every overflow container on the way has its
+   * inside told. What happens at each of those containers is the question
+   * this method exists to answer: a clipping box does not let its contents
+   * out — they are clipped, and they take no part in the layout beyond it —
+   * so the only mark the inside can leave on the outside is the container's
+   * own size. If that has not changed, the climb stops there and the panel
+   * around it is never told anything happened. A list that is a fixed
+   * height can have rows added to it all day without the panel it sits in
+   * re-measuring once.
+   *
+   * The size is read here rather than derived, because the answer is needed
+   * *while deciding what to invalidate* — before any of the reactive graph
+   * has run. It is one rect per enclosing container per flush, against the
+   * hundreds it can save, and it is not an extra layout: whatever re-reads
+   * next would have forced the same one moments later.
+   *
+   * A container whose size is not known yet, or whose stored size has
+   * drifted — a font arriving resizes it without coming through here —
+   * simply reads as changed, and the news travels as it used to. Wrong in
+   * the direction of doing too much, which is the only direction that is
+   * safe.
+   *
+   * @param {Iterable<Node>} nodes
+   * @returns {void}
+   */
+  #settleLayout(nodes) {
+    batch(() => {
+      let reachesTheOutside = false;
+      for (const node of nodes) {
+        let sealed = false;
+        for (
+          let current =
+            node.nodeType === Node.ELEMENT_NODE
+              ? /** @type {HTMLElement} */ (node)
+              : getParentElement(node);
+          current && !current.hasAttribute(PORTAL_ATTRIBUTE);
+          current = getParentElement(current)
+        ) {
+          if (!clipsOverflow(getComputedStyleCached(current))) {
+            continue;
+          }
+          const record = recordOf(current);
+          if (record) {
+            bump(record.innerLayout);
+          }
+          if (!resized(current)) {
+            sealed = true;
+            break;
+          }
+        }
+        if (!sealed) {
+          reachesTheOutside = true;
         }
       }
-    }
+      if (reachesTheOutside) {
+        bump(this.layout);
+      }
+    });
   }
 
   /**

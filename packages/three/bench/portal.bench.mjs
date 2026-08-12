@@ -341,6 +341,32 @@ async function main() {
     report("scroll x100 frames (100 mounted)", before, startedAt);
   });
 
+  // The other direction: churn *inside* a list of a fixed size, with a panel
+  // of substance around it. What the wall saves here is the outside, so the
+  // scenario puts most of the elements there.
+  await scenario(
+    "row text churn x100 INSIDE a list, 80 rows outside it",
+    100,
+    async ({ container, list }) => {
+      appendRows(list, 20);
+      const panel = /** @type {HTMLElement} */ (container.querySelector(".panel"));
+      appendRows(panel, 80, 1000);
+      await nextMacrotask();
+      const label = /** @type {Text} */ (list.querySelector(".label")?.firstChild);
+      // One change first, to record the list's size — with nothing to
+      // compare against, the first is always announced in full.
+      label.data = "warm";
+      await nextMacrotask();
+      const before = snapshot();
+      const startedAt = performance.now();
+      for (let frame = 0; frame < 100; frame++) {
+        label.data = `row ${frame}`;
+        await nextMacrotask();
+      }
+      report("row text churn x100 INSIDE a list, 80 rows outside it", before, startedAt);
+    },
+  );
+
   // The case the boundary optimization is about: a reading that changes
   // outside the scroller, with a long list inside it that cannot have moved.
   await scenario(

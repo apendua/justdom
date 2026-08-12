@@ -275,6 +275,72 @@ describe("getComputedStyleCached", () => {
     element.remove();
   });
 
+  test("press and checked are presentational too, and disabled is not", () => {
+    // Every attribute the portal observes, and which side of the contract it
+    // falls on. The three the portal writes itself to report what the ray is
+    // doing are presentational; the three that belong to the author — and
+    // `disabled` is one of them, a reflected DOM attribute an application
+    // sets — keep the right to have moved the layout.
+    const cases = [
+      { name: "data-xr-hover", measures: false },
+      { name: "data-xr-active", measures: false },
+      { name: "data-xr-checked", measures: false },
+      { name: "disabled", measures: true },
+      { name: "class", measures: true },
+      { name: "style", measures: true },
+    ];
+
+    for (const { name, measures } of cases) {
+      const element = document.createElement("div");
+      document.body.appendChild(element);
+      let rectReads = 0;
+      layout(element, () => [0, 0, 10, 10], { count: () => rectReads++ });
+
+      const mirror = createMirror();
+      mirror.adopt(element);
+
+      let styleReads = 0;
+      const style = new Derived(() => {
+        styleReads += 1;
+        return getComputedStyleCached(element).backgroundColor;
+      });
+      const geometry = new Derived(() => getContentPosition(element));
+      const subscriptions = [
+        style.subscribe({ next: () => style.get() }),
+        geometry.subscribe({ next: () => geometry.get() }),
+      ];
+      style.get();
+      geometry.get();
+
+      element.setAttribute(name, "on");
+      batch(() =>
+        mirror.ingest([
+          /** @type {MutationRecord} */ (
+            /** @type {unknown} */ ({
+              type: "attributes",
+              target: element,
+              attributeName: name,
+              oldValue: null,
+              addedNodes: [],
+              removedNodes: [],
+            })
+          ),
+        ]),
+      );
+
+      // Everything restyles — that half is never in question.
+      assert.equal(styleReads, 2, `${name} restyles`);
+      assert.equal(
+        rectReads,
+        measures ? 2 : 1,
+        measures ? `${name} may have moved the layout` : `${name} is presentational`,
+      );
+
+      subscriptions.forEach((subscription) => subscription.unsubscribe());
+      element.remove();
+    }
+  });
+
   test("one observer flush settles the graph once", () => {
     const first = document.createElement("div");
     const second = document.createElement("div");

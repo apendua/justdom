@@ -213,7 +213,9 @@ still worth writing for the page, and a disabled checkbox is not pointable
 however it is dressed. And the ticked state is written back onto the element as
 `data-xr-checked`: `:checked` is a pseudo-class, so it changes no attribute, and
 without something that does, nothing would tell the portal to re-read a style
-that follows it. Write the rule both ways, as above.
+that follows it. Write the rule both ways, as above — and, being one of the
+portal's own flags, it carries the same presentational contract `data-xr-hover`
+does: a ticked box may change colour, but may not change size.
 
 The DOM stays the thing that is true. A ray's click is a click, so the browser
 does the toggling and fires `change`, and an application reads `checked` and

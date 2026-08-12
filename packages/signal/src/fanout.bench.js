@@ -25,32 +25,7 @@
 import { it } from "node:test";
 import assert from "node:assert/strict";
 import { Signal, Derived } from "./Signal.js";
-
-/**
- * Minimal benchmark helper built on top of `node:test`'s `it` — same shape
- * as the one in Signal.bench.js.
- *
- * @param {string} name
- * @param {() => void} fn
- * @param {{ duration?: number, warmup?: number }} [options]
- */
-function bench(name, fn, { duration = 500, warmup = 200 } = {}) {
-  it(name, () => {
-    for (let i = 0; i < warmup; i++) fn();
-
-    const start = performance.now();
-    let iterations = 0;
-    while (performance.now() - start < duration) {
-      fn();
-      iterations++;
-    }
-    const elapsed = performance.now() - start;
-    const opsPerSec = Math.round((iterations / elapsed) * 1000);
-    console.log(
-      `    ${name}: ${opsPerSec.toLocaleString()} ops/sec  (${iterations.toLocaleString()} iterations / ${elapsed.toFixed(0)} ms)`,
-    );
-  });
-}
+import { bench } from "./testUtils/benchmark.js";
 
 const ROW_HEIGHT = 40;
 const WINDOW_HEIGHT = 600;
@@ -165,6 +140,9 @@ for (const rows of [100, 300]) {
       frame += 4;
       list.delta.set(frame);
     },
-    { duration: 2000, warmup: 10 },
+    // A frame here is milliseconds of work, so the warm-up is bounded by time
+    // rather than by the default iteration count, and the windows are long
+    // enough to hold a useful number of frames.
+    { sampleMs: 500, warmupMs: 300, warmupIterations: 50 },
   );
 }

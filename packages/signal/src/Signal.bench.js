@@ -11,34 +11,7 @@
 
 import { it } from "node:test";
 import assert from "node:assert/strict";
-
-/**
- * Minimal benchmark helper built on top of `node:test`'s `it`.
- * Runs the function for `duration` ms (after `warmup` warm-up iterations)
- * and reports ops/sec to stdout.
- *
- * @param {string} name
- * @param {() => void} fn
- * @param {{ duration?: number, warmup?: number }} [options]
- */
-function bench(name, fn, { duration = 500, warmup = 200 } = {}) {
-  it(name, () => {
-    for (let i = 0; i < warmup; i++) fn();
-
-    const start = performance.now();
-    let iterations = 0;
-    while (performance.now() - start < duration) {
-      fn();
-      iterations++;
-    }
-    const elapsed = performance.now() - start;
-    const opsPerSec = Math.round((iterations / elapsed) * 1000);
-    // eslint-disable-next-line no-console
-    console.log(
-      `    ${name}: ${opsPerSec.toLocaleString()} ops/sec  (${iterations.toLocaleString()} iterations / ${elapsed.toFixed(0)} ms)`,
-    );
-  });
-}
+import { bench } from "./testUtils/benchmark.js";
 
 import { Signal, Derived, batch } from "./Signal.js";
 
@@ -191,9 +164,7 @@ it("fan-out: each derived evaluates at most once per source update", () => {
 // 1. Baseline: reading a plain signal
 {
   const s = Signal.of(42);
-  bench("Signal#get", () => {
-    s.get();
-  });
+  bench("Signal#get", () => s.get());
 }
 
 // 2. Writing a signal with no subscribers
@@ -219,9 +190,7 @@ it("fan-out: each derived evaluates at most once per source update", () => {
 {
   const s = Signal.of(1);
   const d = new Derived(() => s.get() * 2);
-  bench("Derived#get (unsubscribed — re-evaluates)", () => {
-    d.get();
-  });
+  bench("Derived#get (unsubscribed — re-evaluates)", () => d.get());
 }
 
 // 5. Reading a subscribed Derived (memoized, no re-evaluation)
@@ -229,9 +198,7 @@ it("fan-out: each derived evaluates at most once per source update", () => {
   const s = Signal.of(1);
   const d = new Derived(() => s.get() * 2);
   d.subscribe({});
-  bench("Derived#get (subscribed — memoized)", () => {
-    d.get();
-  });
+  bench("Derived#get (subscribed — memoized)", () => d.get());
 }
 
 // 6. Propagation through a 10-level deep chain
@@ -247,7 +214,7 @@ it("fan-out: each derived evaluates at most once per source update", () => {
   let i = 0;
   bench("Signal update → 10-level deep chain", () => {
     root.set(i++);
-    leaf.get();
+    return leaf.get();
   });
 }
 
@@ -262,7 +229,9 @@ it("fan-out: each derived evaluates at most once per source update", () => {
   let i = 0;
   bench("Signal update → 100-way fan-out", () => {
     root.set(i++);
-    for (const leaf of leaves) leaf.get();
+    let total = 0;
+    for (const leaf of leaves) total += leaf.get();
+    return total;
   });
 }
 
@@ -276,7 +245,7 @@ it("fan-out: each derived evaluates at most once per source update", () => {
   let i = 0;
   bench("Diamond dependency update", () => {
     s.set(i++);
-    c.get();
+    return c.get();
   });
 }
 
@@ -285,12 +254,17 @@ it("fan-out: each derived evaluates at most once per source update", () => {
   const signals = Array.from({ length: 100 }, (_, i) => Signal.of(i));
   const sum = new Derived(() => signals.reduce((acc, sig) => acc + sig.get(), 0));
   sum.subscribe({});
+  let i = 0;
   bench("batch() — 100 signal writes", () => {
+    i++;
     batch(() => {
       for (let j = 0; j < signals.length; j++) {
-        signals[j].set(j);
+        // The value has to move on every iteration: writing the same value
+        // back short-circuits on isEqual, and the benchmark would measure a
+        // hundred early returns instead of a hundred writes.
+        signals[j].set(j + i);
       }
     });
-    sum.get();
+    return sum.get();
   });
 }

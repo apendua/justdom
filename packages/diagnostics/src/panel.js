@@ -18,21 +18,23 @@ import { bar, caption, chart, hudCard, reading, readingRow, unit, UI_SCALE } fro
 
 /**
  * Where the panel hangs, in the camera's own coordinates: up and to the left,
- * a metre out. Both angles come to a little over twenty degrees off centre —
- * clear of whatever the scene has put straight in front of the player, and
- * still inside the sweep of an eye that has decided to look at it.
+ * a metre out. Fourteen degrees across and ten up — off the middle of the view,
+ * where the game is, and inside the arc an eye covers on its own. Twenty-odd
+ * degrees, which is where this started, is past that: it is a glance the neck
+ * ends up helping with, which is not what a reading you take every few seconds
+ * should cost.
  *
  * A metre because a head-locked panel is read with both eyes and they have to
  * agree on where it is: much closer and it is a panel the player is going
  * cross-eyed at, much further and it is a panel behind the game.
  */
-const PLACEMENT = new THREE.Vector3(-0.38, 0.22, -0.95);
+const PLACEMENT = new THREE.Vector3(-0.24, 0.17, -0.95);
 
 /**
- * Turned to face the eye rather than left facing straight ahead, which at this
- * angle would show the player the panel's edge more than its face.
+ * Turned to face the eye rather than left facing straight ahead, which even at
+ * this angle would show the player more of the panel's edge than of its face.
  */
-const FACING = new THREE.Euler(0.21, 0.38, 0);
+const FACING = new THREE.Euler(0.17, 0.25, 0);
 
 /**
  * Where the panel is drawn in the frame's order: after everything a scene is

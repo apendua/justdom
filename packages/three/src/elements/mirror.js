@@ -260,6 +260,20 @@ class NodeRecord {
   character = Signal.of(0);
 
   /**
+   * Something inside this element changed the layout — and this element
+   * hides its overflow, so it is a wall the change cannot get out of and
+   * outside changes cannot get into.
+   *
+   * Only bumped for elements that clip; every other element's record
+   * carries an untouched signal nobody reads. What reads it is the reflow
+   * context of everything *inside* the element, which is how a long list
+   * stops paying for churn elsewhere in the panel. See `getReflowContext`.
+   *
+   * @type {Signal<number>}
+   */
+  innerLayout = Signal.of(0);
+
+  /**
    * Where the element is scrolled to. The one piece of geometry that a
    * scroll *does* change, and deliberately the only one: everything else
    * is stored relative to something that scrolls along with it.
@@ -328,6 +342,17 @@ export class DomMirror {
    * @type {Signal<number>}
    */
   restyle = Signal.of(0);
+
+  /**
+   * Layout that reaches everywhere, walls or no walls. Fonts arriving are
+   * the case this exists for: a face landing re-breaks the lines inside a
+   * scroller without changing the scroller's size by so much as a pixel, so
+   * it is the one layout event no boundary may hold back. Rare enough that
+   * making every measurement in the portal depend on it costs nothing.
+   *
+   * @type {Signal<number>}
+   */
+  globalLayout = Signal.of(0);
 
   /**
    * Bring a node under this mirror's management. Idempotent; the portal
@@ -485,7 +510,7 @@ export class DomMirror {
         bump(record.childList);
       }
       this.#restyleScope(element);
-      bump(this.layout);
+      this.#layoutChangedAt(element);
     });
   }
 
@@ -502,7 +527,7 @@ export class DomMirror {
       if (record) {
         bump(record.character);
       }
-      bump(this.layout);
+      this.#layoutChangedAt(text);
     });
   }
 
@@ -567,7 +592,8 @@ export class DomMirror {
 
   /**
    * Fonts arrived: everything restyles and everything re-measures, and
-   * there is no node to scope that to.
+   * there is no node to scope that to — nor any wall it may be held behind,
+   * since a face lands without moving any container's size.
    *
    * @returns {void}
    */
@@ -575,18 +601,65 @@ export class DomMirror {
     batch(() => {
       bump(this.restyle);
       bump(this.layout);
+      bump(this.globalLayout);
     });
   }
 
   /**
    * Images arrived: an `<img>` given no size of its own takes the one the
    * picture turned out to have, and everything after it in the flow moves.
-   * A layout event, not a style one.
+   * A layout event, not a style one — and one that starts at the pictures
+   * themselves, so it reaches out of them exactly as far as any other
+   * layout change does.
    *
+   * @param {Iterable<Node>} [elements] The images that landed. Omitted, the
+   *   announcement is portal-wide, which is what a caller that did not keep
+   *   track has to settle for.
    * @returns {void}
    */
-  contentLoaded() {
+  contentLoaded(elements) {
+    batch(() => {
+      if (!elements) {
+        bump(this.layout);
+        bump(this.globalLayout);
+        return;
+      }
+      for (const element of elements) {
+        this.#layoutChangedAt(element);
+      }
+    });
+  }
+
+  /**
+   * Layout moved, starting at `node`.
+   *
+   * Two announcements, because there are two audiences. The portal-wide
+   * epoch is for everything not sealed inside an overflow container — layout
+   * is non-local, and a row that grew moves elements nobody named. And the
+   * inner epoch of every overflow container the change happened *inside*,
+   * because those containers' contents do not listen to the portal-wide one:
+   * they hear about the outside world only through their container's size.
+   *
+   * @param {Node} node
+   * @returns {void}
+   */
+  #layoutChangedAt(node) {
     bump(this.layout);
+    for (
+      let current =
+        node.nodeType === Node.ELEMENT_NODE
+          ? /** @type {HTMLElement} */ (node)
+          : getParentElement(node);
+      current && !current.hasAttribute(PORTAL_ATTRIBUTE);
+      current = getParentElement(current)
+    ) {
+      if (clipsOverflow(getComputedStyleCached(current))) {
+        const record = recordOf(current);
+        if (record) {
+          bump(record.innerLayout);
+        }
+      }
+    }
   }
 
   /**
@@ -736,20 +809,98 @@ function getStyleContext(node) {
   return signal.get();
 }
 
+/** @type {WeakMap<Node, Derived<HTMLElement | null>>} */
+const layoutBoundaryCache = new WeakMap();
+
+/**
+ * The overflow container that seals this node off from the rest of the
+ * panel, if one does.
+ *
+ * An element that hides or scrolls its overflow establishes a block
+ * formatting context, and that is a stronger guarantee than it sounds:
+ * floats outside it cannot intrude, margins cannot collapse through it, and
+ * nothing beyond it participates in the layout within. Its contents are a
+ * function of the container's own content box, its own subtree, and the
+ * styles that reach in — so a sibling of the container, or anything else
+ * out in the panel, can only affect the inside by changing the container's
+ * size. That is what makes a wall out of it, and what lets a hundred rows
+ * ignore a reading ticking over somewhere above them.
+ *
+ * A positioned box is not sealed in, and neither is anything under one: an
+ * absolutely positioned element hangs off a containing block that may sit
+ * outside the container entirely — the dropdown anchored above a list is
+ * exactly that — so what happens out there moves it. Rather than work out
+ * which side of the wall each containing block falls on, any positioned box
+ * on the way up forfeits the optimization, which costs a rare element its
+ * savings and keeps the rule easy to state.
+ *
+ * @param {Node} node
+ * @returns {HTMLElement | null}
+ */
+function getLayoutBoundary(node) {
+  let signal = layoutBoundaryCache.get(node);
+  if (!signal) {
+    // Phrased as one step plus the answer for the parent, rather than as a
+    // walk: a walk would make every node depend on the computed style of
+    // every ancestor, which is O(depth) subscriptions per node and O(n·depth)
+    // for a panel — paid at mount, when a panel can least afford it. One
+    // step each means one shared answer per level, and siblings read the
+    // same one.
+    signal = new Derived(() => {
+      if (node.nodeType === Node.ELEMENT_NODE && isPositioned(/** @type {Element} */ (node))) {
+        return null;
+      }
+      const parent = getParentElement(node);
+      if (!parent || parent.hasAttribute(PORTAL_ATTRIBUTE)) {
+        return null;
+      }
+      if (clipsOverflow(getComputedStyleCached(parent))) {
+        return parent;
+      }
+      return getLayoutBoundary(parent);
+    });
+    layoutBoundaryCache.set(node, signal);
+  }
+  return signal.get();
+}
+
+/**
+ * Whether the element's box hangs off something other than its parent.
+ *
+ * @param {Element} element
+ * @returns {boolean}
+ */
+function isPositioned(element) {
+  const position = getPositionStyle(element);
+  return position === "absolute" || position === "fixed";
+}
+
 /** @type {WeakMap<Node, Derived<number>>} */
 const reflowContextCache = new WeakMap();
 
 /**
  * Everything that can move this node's measured geometry, folded into one
- * number: the portal-wide layout epoch (structure, text, fonts, images,
- * layout animations — non-local by nature), plus the targeted reflow signal
- * of every ancestor-or-self, which is how a toggled or settling transform
- * re-measures exactly the subtree it moved.
+ * number.
  *
- * A scroll is deliberately absent: every measurement that depends on this
- * is expressed relative to something that scrolls along with it, so a
- * scroll cannot change any of them. Flat for the reason `getStyleContext`
- * gives.
+ * Three parts. The targeted reflow signal of every ancestor-or-self, all
+ * the way to the portal — that is how an attribute that toggled a transform
+ * re-measures exactly the subtree it moved, and it deliberately climbs past
+ * any wall, because an inherited font size changing above a scroller does
+ * re-break the lines inside it. The global epoch, which fonts bump and
+ * nothing else, for the same reason in the one case no wall may hold back.
+ *
+ * And then, for the wider world: either the portal-wide layout epoch, or —
+ * for a node sealed inside an overflow container — that container's inner
+ * epoch plus its measured size. The size is the whole trick. It is a plain
+ * value behind an equality gate, so when a row is added or a reading ticks
+ * over somewhere else in the panel, the container re-measures itself, finds
+ * the same numbers, and stops: nothing inside it recomputes at all. When
+ * the container really does resize, the number changes and everything
+ * inside re-measures, which is exactly when it must.
+ *
+ * A scroll is absent from all of it: every measurement that depends on this
+ * is expressed relative to something that scrolls along with it. Flat for
+ * the reason `getStyleContext` gives.
  *
  * @param {Node} node
  * @returns {number}
@@ -761,7 +912,7 @@ function getReflowContext(node) {
       let sum = 0;
       const record = recordOf(node);
       if (record) {
-        sum += record.mirror.layout.get();
+        sum += record.mirror.globalLayout.get();
       }
       for (
         let current = /** @type {Node | null} */ (node);
@@ -779,7 +930,19 @@ function getReflowContext(node) {
           break;
         }
       }
-      return sum;
+      const boundary = getLayoutBoundary(node);
+      if (!boundary) {
+        if (record) {
+          sum += record.mirror.layout.get();
+        }
+        return sum;
+      }
+      const boundaryRecord = recordOf(boundary);
+      if (boundaryRecord) {
+        sum += boundaryRecord.innerLayout.get();
+      }
+      const size = getBorderBoxSize(boundary);
+      return sum + size.width + size.height;
     });
     reflowContextCache.set(node, signal);
   }

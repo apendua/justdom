@@ -405,6 +405,16 @@ export function createPortal(ctx, { opaqueToRays = true } = {}) {
   let loadFrame = null;
 
   /**
+   * The images waiting to be announced. Kept rather than counted, because
+   * where a picture landed decides how far the news travels: one inside a
+   * list moves that list's rows, and the panel around it only if the list
+   * resized.
+   *
+   * @type {Set<Node>}
+   */
+  const loaded = new Set();
+
+  /**
    * Say that images have arrived — once for however many of them did.
    *
    * The announcement is portal-wide, and has to be: an `<img>` the author gave
@@ -422,8 +432,10 @@ export function createPortal(ctx, { opaqueToRays = true } = {}) {
     // always in place by the time this reads it.
     loadFrame?.();
     loadFrame = null;
+    const arrived = [...loaded];
+    loaded.clear();
     batch(() => {
-      mirror.contentLoaded();
+      mirror.contentLoaded(arrived);
     });
     interactionManager.updateIntersections();
   };
@@ -443,6 +455,7 @@ export function createPortal(ctx, { opaqueToRays = true } = {}) {
     if (!(target instanceof Node) || target.nodeType !== Node.ELEMENT_NODE) {
       return;
     }
+    loaded.add(target);
     if (!loadFrame) {
       loadFrame = requestFrames(announceLoads);
     }

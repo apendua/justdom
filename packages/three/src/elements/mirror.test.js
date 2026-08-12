@@ -815,6 +815,202 @@ function setupScroller() {
   };
 }
 
+/**
+ * A panel shaped like every panel that has a list in it: a reading above,
+ * and a scroller below with a row inside it. Rect reads are counted per
+ * element, because the whole point of the boundary is which of them happen.
+ *
+ * @param {string} scrollerStyle
+ * @param {string} [rowStyle]
+ */
+function setupBoundedList(scrollerStyle = "overflow: hidden", rowStyle = "") {
+  const reads = { header: 0, scroller: 0, row: 0 };
+  let scrollerHeight = 100;
+
+  const container = document.createElement("div");
+  container.setAttribute(PORTAL_ATTRIBUTE, "");
+  const header = document.createElement("div");
+  const headerText = document.createTextNode("0 m/s");
+  const scroller = document.createElement("div");
+  scroller.style.cssText = scrollerStyle;
+  const row = document.createElement("div");
+  row.style.cssText = rowStyle;
+  const label = document.createTextNode("row one");
+
+  header.appendChild(headerText);
+  row.appendChild(label);
+  scroller.appendChild(row);
+  container.appendChild(header);
+  container.appendChild(scroller);
+  document.body.appendChild(container);
+
+  const mirror = createMirror();
+  for (const node of [container, header, headerText, scroller, row, label]) {
+    mirror.adopt(node);
+  }
+
+  layout(container, () => [0, 0, 200, 200]);
+  layout(header, () => [0, 0, 200, 20], { count: () => reads.header++ });
+  layout(scroller, () => [0, 20, 200, 20 + scrollerHeight], { count: () => reads.scroller++ });
+  layout(row, () => [0, 20, 200, 60], { count: () => reads.row++ });
+
+  return {
+    container,
+    mirror,
+    header,
+    headerText,
+    scroller,
+    row,
+    label,
+    reads,
+    /** The scroller's own size changing is the one thing the inside must hear. */
+    resizeScrollerTo: (/** @type {number} */ height) => {
+      scrollerHeight = height;
+    },
+  };
+}
+
+describe("layout boundaries", () => {
+  test("churn outside a scroller does not re-measure a single row inside it", () => {
+    // The optimization, and the reason for it: an element that hides its
+    // overflow establishes a block formatting context, so nothing out in the
+    // panel reaches inside except by changing the container's size. A
+    // reading ticking over above the list — the shape of every instrument
+    // panel — used to re-measure every row and re-run a Range measurement
+    // for every label. Now it re-measures the container, finds it the same
+    // size, and stops there.
+    const { container, mirror, headerText, row, reads } = setupBoundedList();
+    try {
+      const inside = new Derived(() => getContentPosition(row));
+      const subscription = inside.subscribe({ next: () => inside.get() });
+      inside.get();
+      const before = { ...reads };
+
+      headerText.data = "12 m/s";
+      mirror.characterDataChanged(headerText);
+
+      assert.equal(reads.row, before.row, "the row inside was not measured");
+      assert.ok(reads.scroller > before.scroller, "the scroller's own size was checked");
+
+      subscription.unsubscribe();
+    } finally {
+      container.remove();
+    }
+  });
+
+  test("a change inside the scroller still reaches the rest of the inside", () => {
+    // The wall is not a lid: a row that grew moves the rows after it, and
+    // that news travels within the container exactly as it always did.
+    const { container, mirror, label, row, reads } = setupBoundedList();
+    try {
+      const inside = new Derived(() => getContentPosition(row));
+      const subscription = inside.subscribe({ next: () => inside.get() });
+      inside.get();
+      const before = { ...reads };
+
+      label.data = "row one, now longer";
+      mirror.characterDataChanged(label);
+
+      assert.ok(reads.row > before.row, "the inside re-measures");
+
+      subscription.unsubscribe();
+    } finally {
+      container.remove();
+    }
+  });
+
+  test("the scroller resizing re-measures everything inside it", () => {
+    // The one channel the outside has, and it has to work: when the panel
+    // really does resize the container, its contents re-lay-out.
+    const { container, mirror, headerText, row, reads, resizeScrollerTo } = setupBoundedList();
+    try {
+      const inside = new Derived(() => getContentPosition(row));
+      const subscription = inside.subscribe({ next: () => inside.get() });
+      inside.get();
+      const before = { ...reads };
+
+      resizeScrollerTo(60);
+      headerText.data = "a change that also resized the list";
+      mirror.characterDataChanged(headerText);
+
+      assert.ok(reads.row > before.row, "a resized container re-measures its contents");
+
+      subscription.unsubscribe();
+    } finally {
+      container.remove();
+    }
+  });
+
+  test("fonts arriving reach inside every wall", () => {
+    // A face landing re-breaks the lines inside a scroller without moving
+    // the scroller by a pixel, so it is the one layout event no boundary is
+    // allowed to hold back.
+    const { container, mirror, row, reads } = setupBoundedList();
+    try {
+      const inside = new Derived(() => getContentPosition(row));
+      const subscription = inside.subscribe({ next: () => inside.get() });
+      inside.get();
+      const before = { ...reads };
+
+      mirror.fontsLoaded();
+
+      assert.ok(reads.row > before.row, "the inside re-measures for fonts");
+
+      subscription.unsubscribe();
+    } finally {
+      container.remove();
+    }
+  });
+
+  test("an ancestor restyled above the wall still re-measures inside it", () => {
+    // The other way in: a font size or a line height set on an ancestor is
+    // inherited through the container, and changes how its contents lay out
+    // without touching the container's size. Targeted reflow climbs past
+    // walls for exactly this reason.
+    const { container, mirror, row, reads } = setupBoundedList();
+    try {
+      const inside = new Derived(() => getContentPosition(row));
+      const subscription = inside.subscribe({ next: () => inside.get() });
+      inside.get();
+      const before = { ...reads };
+
+      mirror.attributeChanged(container);
+
+      assert.ok(reads.row > before.row, "an inherited restyle re-measures the inside");
+
+      subscription.unsubscribe();
+    } finally {
+      container.remove();
+    }
+  });
+
+  test("a positioned box inside a scroller is not sealed in by it", () => {
+    // An absolutely positioned element hangs off a containing block that may
+    // sit outside the container — the menu anchored above a list is exactly
+    // that — so what happens out there moves it, and it keeps listening to
+    // the panel at large.
+    const { container, mirror, headerText, row, reads } = setupBoundedList(
+      "overflow: hidden",
+      "position: absolute",
+    );
+    try {
+      const inside = new Derived(() => getContentPosition(row));
+      const subscription = inside.subscribe({ next: () => inside.get() });
+      inside.get();
+      const before = { ...reads };
+
+      headerText.data = "12 m/s";
+      mirror.characterDataChanged(headerText);
+
+      assert.ok(reads.row > before.row, "a positioned box still follows the outside");
+
+      subscription.unsubscribe();
+    } finally {
+      container.remove();
+    }
+  });
+});
+
 describe("clip boxes", () => {
   test("a scroller confines its descendants to its padding box", () => {
     const { container, scroller, row } = setupScroller();

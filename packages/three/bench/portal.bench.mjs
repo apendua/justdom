@@ -166,9 +166,14 @@ async function scenario(name, rows, run) {
 
   /** @type {import("@apendua/justdom").Mountable<Node> | undefined} */
   let mountable;
+  // A header outside the scroller, and the scroller: the shape of every
+  // panel that shows a live reading above a list.
   const tree = $("div", [
     attr("class", () => "panel"),
-    children($("div", [attr("class", () => "list"), attr("style", () => "overflow: hidden")])),
+    children(
+      $("div", [attr("class", () => "header"), children(text`0 m/s`)]),
+      $("div", [attr("class", () => "list"), attr("style", () => "overflow: hidden")]),
+    ),
   ]);
   const subscription = tree.subscribe((value) => {
     mountable = value;
@@ -335,6 +340,25 @@ async function main() {
     }
     report("scroll x100 frames (100 mounted)", before, startedAt);
   });
+
+  // The case the boundary optimization is about: a reading that changes
+  // outside the scroller, with a long list inside it that cannot have moved.
+  await scenario(
+    "header text churn x100 OUTSIDE a 100-row scroller",
+    100,
+    async ({ container, list }) => {
+      appendRows(list, 100);
+      await nextMacrotask();
+      const header = /** @type {Text} */ (container.querySelector(".header")?.firstChild);
+      const before = snapshot();
+      const startedAt = performance.now();
+      for (let frame = 0; frame < 100; frame++) {
+        header.data = `${frame} m/s`;
+        await nextMacrotask();
+      }
+      report("header text churn x100 OUTSIDE a 100-row scroller", before, startedAt);
+    },
+  );
 
   await scenario("characterData churn x100 (100 mounted)", 100, async ({ list }) => {
     appendRows(list, 100);

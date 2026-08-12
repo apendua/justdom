@@ -115,6 +115,34 @@ which is what a toggled `transform` moves (see below) — nothing outside it.
 So anything that changes _layout_ — a menu opening, a section expanding —
 has to be mounted and unmounted rather than hidden and shown.
 
+**Hover and press are presentational, by contract.** The three attributes
+the portal writes itself — `data-xr-hover`, `data-xr-active` and
+`data-xr-checked` — restyle the panel but are declared unable to move it.
+Colour, background, border colour, opacity and `transform` all work; a
+width, a padding or a font size that changes under the ray is not mirrored,
+and the boxes stay the size they were.
+
+This is the one place a stylesheet can be written that the scene will not
+follow, and it is worth the narrowness. These are the most frequent
+mutations a panel ever sees — one per element the ray crosses, three more
+on a press — and re-measuring on each costs a client rect for the element
+plus a text measurement for every label under it, under a hand that is
+moving, at frame rate. Declaring them presentational takes that to nothing.
+It also gives up very little: layout that moves under the pointer slides the
+target out from under the hand reaching for it, which is a thing interfaces
+avoid on a flat screen and more so at the end of a metre-long ray.
+
+`transform` is the one to reach for, exactly as on the web — it costs a
+matrix write, and it is mirrored on hover like anything else:
+
+```css
+.button[data-xr-hover] {
+  background: #1d4ed8; /* fine */
+  transform: translateZ(4px) scale(1.04); /* fine */
+  padding: 12px; /* ignored — this is layout */
+}
+```
+
 **The panel's background is clickable, and it is the panel you should listen
 to.** A ray that lands on the panel but on none of its buttons hits the blocker
 spanning the container, which dispatches a bubbling `click` on the portal's

@@ -77,6 +77,40 @@ import { clipBoxEqual, intersectClipBoxes, toLocalClipBox, UNCLIPPED } from "./c
 export const PORTAL_ATTRIBUTE = "data-xr-portal";
 
 /**
+ * The attributes the portal writes onto elements itself, to say what the ray
+ * is doing to them: hovering, pressing, and — for a checkbox, whose state no
+ * mutation would otherwise report — ticked.
+ *
+ * These carry a contract the author-facing attributes do not: **a rule that
+ * follows one of these may restyle, but may not re-lay-out.** Colour,
+ * background, border colour, opacity and `transform` are all fair game; a
+ * width, a padding or a font size that changes on hover is not mirrored, and
+ * the mirror will go on drawing the boxes at the size they had.
+ *
+ * The contract is worth the narrowness because of what it buys. These are by
+ * far the most frequent mutations a panel sees — the ray writes one on every
+ * element it crosses, twice per element on a press — and re-measuring on each
+ * costs a client rect per element and, far worse, a Range measurement per
+ * text node in the hovered subtree, which is the most expensive read in this
+ * file. Under a moving hand, at frame rate. Declaring hover presentational
+ * takes all of that to zero, and does it without giving anything up in
+ * practice: layout that moves under the cursor is a thing interfaces avoid
+ * anyway, because it slides the target out from under the pointer that was
+ * reaching for it.
+ *
+ * `transform` deliberately still works, and needs no re-measurement to do so:
+ * a transformed element carries the matrix on its object and takes its size
+ * and position from layout offsets, and *whether* it is transformed is a
+ * style-derived signal — so a hover that swaps a transform reaches the scene
+ * entirely through the restyle path. See `isTransformed` and `div.js`.
+ *
+ * `class` and `style` are pointedly not in this set: they are the author's
+ * own, and an inline width or a swapped class is exactly how a panel does
+ * move its layout on purpose.
+ */
+const PRESENTATIONAL_ATTRIBUTES = new Set(["data-xr-hover", "data-xr-active", "data-xr-checked"]);
+
+/**
  * Whether a computed `transform` value is one the mirror treats as a
  * transform at all. Browsers serialize every computed transform to a single
  * `matrix()`/`matrix3d()`, so under a real engine this is exactly "has a
@@ -381,14 +415,22 @@ export class DomMirror {
     for (const [node, names] of attributeBaselines) {
       const element = /** @type {Element} */ (node);
       let changed = false;
+      // Whether anything that changed is allowed to have moved the layout.
+      // The portal's own `data-xr-*` flags are not (see
+      // `PRESENTATIONAL_ATTRIBUTES`), so a flush that is nothing but a hover
+      // restyles and measures nothing at all.
+      let movesGeometry = false;
       for (const [name, oldValue] of names) {
-        if (element.getAttribute(name) !== oldValue) {
-          changed = true;
-          break;
+        if (element.getAttribute(name) === oldValue) {
+          continue;
+        }
+        changed = true;
+        if (!PRESENTATIONAL_ATTRIBUTES.has(name)) {
+          movesGeometry = true;
         }
       }
       if (changed) {
-        this.attributeChanged(element);
+        this.attributeChanged(element, { movesGeometry });
       }
     }
     for (const [node, oldValue] of characterBaselines) {
@@ -402,15 +444,24 @@ export class DomMirror {
    * An attribute on `element` actually changed value. Restyles the
    * parent-of-target subtree (descendants through the element's own
    * signal, siblings through the parent's member signal — `:has()` alone
-   * is not modelled), and re-measures the element's own subtree, which is
-   * what a toggled transform moves.
+   * is not modelled), and re-measures the element's own subtree.
    *
    * @param {Node} element
+   * @param {object} [options]
+   * @param {boolean} [options.movesGeometry] Whether the change is allowed
+   *   to have moved anything measurable. True by default, which is the
+   *   answer for every attribute an author writes. The portal's own
+   *   `data-xr-*` flags pass false — they are declared presentational, and
+   *   skipping the re-measure is what makes a hover cost styles alone. See
+   *   `PRESENTATIONAL_ATTRIBUTES`.
    * @returns {void}
    */
-  attributeChanged(element) {
+  attributeChanged(element, { movesGeometry = true } = {}) {
     batch(() => {
       this.#restyleScope(element);
+      if (!movesGeometry) {
+        return;
+      }
       const record = recordOf(element);
       if (record) {
         bump(record.reflow);

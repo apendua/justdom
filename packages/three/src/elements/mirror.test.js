@@ -202,6 +202,79 @@ describe("getComputedStyleCached", () => {
     element.remove();
   });
 
+  test("a hover flag restyles without measuring; an author's attribute does both", () => {
+    // The bargain hover is worth: the ray writes `data-xr-hover` onto every
+    // element it crosses, and twice more on a press, so anything a flag
+    // costs is paid at frame rate under a moving hand. The flags the portal
+    // writes are declared presentational — they may restyle, they may not
+    // move layout — and that turns the whole thing into style reads. `class`
+    // and `style` belong to the author and keep their full strength.
+    const element = document.createElement("div");
+    document.body.appendChild(element);
+    let rectReads = 0;
+    layout(element, () => [0, 0, 10, 10], { count: () => rectReads++ });
+
+    const mirror = createMirror();
+    mirror.adopt(element);
+
+    let styleReads = 0;
+    const style = new Derived(() => {
+      styleReads += 1;
+      return getComputedStyleCached(element).backgroundColor;
+    });
+    const geometry = new Derived(() => getContentPosition(element));
+    const subscriptions = [
+      style.subscribe({ next: () => style.get() }),
+      geometry.subscribe({ next: () => geometry.get() }),
+    ];
+    style.get();
+    geometry.get();
+    assert.deepEqual({ styleReads, rectReads }, { styleReads: 1, rectReads: 1 });
+
+    /**
+     * @param {string} name
+     * @param {string | null} oldValue
+     */
+    const record = (name, oldValue) =>
+      /** @type {MutationRecord} */ (
+        /** @type {unknown} */ ({
+          type: "attributes",
+          target: element,
+          attributeName: name,
+          oldValue,
+          addedNodes: [],
+          removedNodes: [],
+        })
+      );
+
+    element.setAttribute("data-xr-hover", "true");
+    batch(() => mirror.ingest([record("data-xr-hover", null)]));
+    assert.equal(styleReads, 2, "the hover restyles");
+    assert.equal(rectReads, 1, "and measures nothing");
+
+    element.removeAttribute("data-xr-hover");
+    batch(() => mirror.ingest([record("data-xr-hover", "true")]));
+    assert.equal(styleReads, 3);
+    assert.equal(rectReads, 1, "leaving costs no more than arriving");
+
+    // The author's own attributes are the ones that may move a layout, and
+    // they still re-measure.
+    element.setAttribute("class", "grown");
+    batch(() => mirror.ingest([record("class", null)]));
+    assert.equal(styleReads, 4);
+    assert.equal(rectReads, 2, "a class change is allowed to have moved things");
+
+    // A flush carrying both is worth a measurement, because the class in it
+    // is: the flags are only presentational on their own.
+    element.setAttribute("data-xr-hover", "true");
+    element.setAttribute("class", "grown again");
+    batch(() => mirror.ingest([record("data-xr-hover", null), record("class", "grown")]));
+    assert.equal(rectReads, 3, "the class in the flush still carries the day");
+
+    subscriptions.forEach((subscription) => subscription.unsubscribe());
+    element.remove();
+  });
+
   test("one observer flush settles the graph once", () => {
     const first = document.createElement("div");
     const second = document.createElement("div");

@@ -94,6 +94,15 @@ function setup(cursor, cssText = "") {
       element.style.cssText = cssText;
       mirror.attributeChanged(element);
     },
+    /**
+     * A restyle announced the way a *hover* is: presentational, so the
+     * mirror re-reads styles and measures nothing. What a rule following
+     * `[data-xr-hover]` is allowed to do goes through here.
+     */
+    hoverWith: (/** @type {string} */ cssText) => {
+      element.style.cssText = cssText;
+      mirror.attributeChanged(element, { movesGeometry: false });
+    },
     /** @param {"pointerenter" | "pointerleave"} type */
     dispatch: (type) => {
       object.dispatchEvent(/** @type {any} */ ({ type, target: object, originalTarget: object }));
@@ -222,6 +231,31 @@ describe("div transforms", () => {
     assert.equal(point.x, 2 * 1 + 10);
     assert.equal(point.y, 2 * 1 + 20);
     assert.equal(point.z, -2);
+
+    subscription.unsubscribe();
+  });
+
+  test("a transform put on by hover still reaches the matrix, unmeasured", () => {
+    // The boundary of the presentational contract, and the reason it is
+    // worth having rather than simply banning everything: `transform` is
+    // the cheap tier the flat web recommends for hover, and it goes on
+    // working with no re-measurement at all. A transformed element carries
+    // the matrix on its object and takes its size and position from layout
+    // offsets, and *whether* it is transformed is derived from the computed
+    // style — so the whole thing arrives through the restyle path.
+    const { object, hoverWith, subscription } = setup("pointer");
+    assert.equal(object.matrixAutoUpdate, true, "untransformed to begin with");
+
+    hoverWith("cursor: pointer; transform: matrix(1, 0, 0, 1, 4, 6)");
+
+    assert.equal(object.matrixAutoUpdate, false, "the hover transform took effect");
+    const point = new THREE.Vector3(0, 0, 0).applyMatrix4(object.matrix);
+    assert.equal(point.x, 4);
+    assert.equal(point.y, 6);
+
+    // And leaving hands it back, the same way.
+    hoverWith("cursor: pointer");
+    assert.equal(object.matrixAutoUpdate, true);
 
     subscription.unsubscribe();
   });

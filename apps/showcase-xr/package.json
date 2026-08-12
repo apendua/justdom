@@ -4,6 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "bench": "node bench/run.js",
+    "bench:against": "node bench/run.js --against origin/develop",
     "build": "tsc && vite build",
     "build:watch": "",
     "dev": "vite",

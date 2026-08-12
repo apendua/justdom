@@ -159,6 +159,71 @@ it("should batch updates", function () {
   subscription.unsubscribe();
 });
 
+it("notifies a direct subscriber once per write, even within a batch", function () {
+  // A signal notifies as it is written rather than being queued, so repeated
+  // writes inside one batch are no longer collapsed into a single
+  // notification. Every value a subscriber is told about is a value the
+  // signal really held.
+  const signal = Signal.of(0);
+  const spy = mock.fn();
+  const subscription = signal.subscribe({ next: () => spy(signal.get()) });
+
+  batch(() => {
+    signal.set(1);
+    signal.set(2);
+    signal.set(3);
+  });
+
+  assert.strictEqual(spy.mock.calls.length, 3);
+  assert.deepStrictEqual(
+    spy.mock.calls.map((call) => call.arguments[0]),
+    [1, 2, 3],
+  );
+  subscription.unsubscribe();
+});
+
+it("collapses repeated writes to a signal at the first derived level", function () {
+  // What makes the above acceptable: the extra notifications never become
+  // extra work. The queue dedups by membership, so the computation below the
+  // signal still recomputes exactly once for the whole batch.
+  const signal = Signal.of(0);
+  const derived = new Derived(() => signal.get() * 10);
+  const spy = mock.fn();
+  const subscription = derived.subscribe({ next: () => spy(derived.get()) });
+  const before = derived.getEvaluations();
+
+  batch(() => {
+    signal.set(1);
+    signal.set(2);
+    signal.set(3);
+  });
+
+  assert.strictEqual(spy.mock.calls.length, 1);
+  assert.deepStrictEqual(spy.mock.calls[0].arguments, [30]);
+  assert.strictEqual(derived.getEvaluations(), before + 1);
+  subscription.unsubscribe();
+});
+
+it("keeps a fan-out consistent when a signal is written outside a batch", function () {
+  // Notifying a dependent enqueues it, and an enqueue outside a batch drains
+  // the queue immediately — so a write has to hold the drain until it has
+  // told every dependent, or the first branch would recompute the join before
+  // the second branch had heard anything, and the join would see one update
+  // per branch instead of one in total.
+  const signal = Signal.of(0);
+  const left = new Derived(() => signal.get() + 1);
+  const right = new Derived(() => signal.get() * 2);
+  const join = new Derived(() => left.get() + right.get());
+  const spy = mock.fn();
+  const subscription = join.subscribe({ next: () => spy(join.get()) });
+
+  signal.set(5);
+
+  assert.strictEqual(spy.mock.calls.length, 1);
+  assert.deepStrictEqual(spy.mock.calls[0].arguments, [16]);
+  subscription.unsubscribe();
+});
+
 it("should not rerun if changes happen within no-reactive block", function () {
   const initial = Signal.of(1);
   const derived = new Derived(makeNonReactive(() => initial.get()));

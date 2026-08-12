@@ -271,7 +271,28 @@ export class Signal extends Computation {
   set(value) {
     if (!this.#current || !this.#isEqual(this.#current.value, value)) {
       this.#current = Object.freeze({ value });
-      updateQueue.invalidate(this);
+      // Notify directly rather than through the queue. A signal is a source:
+      // it has no dependencies to be ordered after, so the only thing a trip
+      // through the queue bought was collapsing repeated writes to the same
+      // signal within one batch into a single notification. What that saves
+      // is a notification, never a recomputation — every dependent is a
+      // computation, and the queue still dedups those by membership at the
+      // level below. It also puts signals on the same footing as the other
+      // sources in this library: `store()`'s per-key streams and
+      // `ReactiveMap`/`ReactiveSet` have always notified synchronously.
+      //
+      // The batch is what keeps this glitch-free. Notifying a dependent
+      // enqueues it, and an enqueue outside a batch drains the queue then and
+      // there — so an unbatched notification would let the first dependent
+      // recompute, and everything below it with it, before the second
+      // dependent had even been told. A diamond would see one update per
+      // branch instead of one in total. Batching holds the drain until every
+      // direct dependent is queued, which is precisely what the queue needs
+      // to order them by depth. Inside an outer `batch()` this nests away to
+      // nothing, and inside a flush the drain is already guarded.
+      updateQueue.batch(() => {
+        this.invalidate();
+      });
     }
   }
 

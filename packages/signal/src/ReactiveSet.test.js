@@ -89,4 +89,35 @@ describe("ReactiveSet", () => {
     set.add("a");
     assert.deepStrictEqual(values, [false, true]);
   });
+
+  it("reports one mutation as one update, not one per dependent", () => {
+    const set = new ReactiveSet();
+    set.add("a");
+    /** @type {string[]} */
+    const values = [];
+    observable(() => {
+      use(() => {
+        values.push(`${set.has("a")}/${set.size}`);
+      });
+    }).subscribe();
+
+    set.delete("a");
+    assert.deepStrictEqual(values, ["true/1", "false/0"]);
+  });
+
+  it("reports clear() as one update across every value", () => {
+    const set = new ReactiveSet();
+    set.add("a");
+    set.add("b");
+    /** @type {string[]} */
+    const values = [];
+    observable(() => {
+      use(() => {
+        values.push(`${set.has("a")}/${set.has("b")}`);
+      });
+    }).subscribe();
+
+    set.clear();
+    assert.deepStrictEqual(values, ["true/true", "false/false"]);
+  });
 });

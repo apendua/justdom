@@ -123,4 +123,40 @@ describe("ReactiveMap", () => {
     map.set("a", 10);
     assert.deepStrictEqual(values, [undefined, 10]);
   });
+
+  it("reports one mutation as one update, not one per dependent", () => {
+    // A computation reading two things that the same mutation changes must
+    // see it once, and must never see the map halfway through it. Announcing
+    // a change queues each dependent, and outside a batch a queued dependent
+    // drains immediately — so without batching the announcement, the first
+    // dependent would recompute before the second had been told.
+    const map = new ReactiveMap();
+    map.set("k", 1);
+    /** @type {string[]} */
+    const values = [];
+    observable(() => {
+      use(() => {
+        values.push(`${map.get("k")}/${map.size}`);
+      });
+    }).subscribe();
+
+    map.delete("k");
+    assert.deepStrictEqual(values, ["1/1", "undefined/0"]);
+  });
+
+  it("reports clear() as one update across every key", () => {
+    const map = new ReactiveMap();
+    map.set("a", 1);
+    map.set("b", 2);
+    /** @type {string[]} */
+    const values = [];
+    observable(() => {
+      use(() => {
+        values.push(`${map.get("a")}/${map.get("b")}`);
+      });
+    }).subscribe();
+
+    map.clear();
+    assert.deepStrictEqual(values, ["1/2", "undefined/undefined"]);
+  });
 });

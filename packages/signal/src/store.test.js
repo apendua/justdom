@@ -186,3 +186,23 @@ test("non-plain object", () => {
     store(new Date());
   }, /can only be created from a plain object/);
 });
+
+test("reports one write as one update, not one per dependent", () => {
+  // Writing a key announces the key and the key set separately. Announcing a
+  // change queues each dependent, and outside a batch a queued dependent
+  // drains immediately — so without batching the pair, a computation reading
+  // both would recompute twice and would see the store halfway through the
+  // write on the first of them.
+  /** @type {{ a?: number; b?: number }} */
+  const state = store({ a: 1, b: 2 });
+  /** @type {string[]} */
+  const values = [];
+  observable(() => {
+    use(() => {
+      values.push(`${state.a}/${Object.keys(state).join(",")}`);
+    });
+  }).subscribe();
+
+  delete state.a;
+  assert.deepStrictEqual(values, ["1/a,b", "undefined/b"]);
+});

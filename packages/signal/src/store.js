@@ -160,8 +160,16 @@ function store(data, operators = []) {
           return true;
         }
         state[key] = newValue;
-        changes.next({ key });
-        changes.next({ key: ownKeys });
+        // One write is one update. Announcing a change queues each dependent,
+        // and outside a batch a queued dependent drains immediately — so
+        // without this the `ownKeys` readers would not be told until the
+        // key's own readers had already recomputed, and a computation reading
+        // both would see the store halfway through the write. See
+        // `ReactiveMap#notify`.
+        batch(() => {
+          changes.next({ key });
+          changes.next({ key: ownKeys });
+        });
       }
       return true;
     },
@@ -171,8 +179,10 @@ function store(data, operators = []) {
     },
     deleteProperty(_, key) {
       delete state[key];
-      changes.next({ key });
-      changes.next({ key: ownKeys });
+      batch(() => {
+        changes.next({ key });
+        changes.next({ key: ownKeys });
+      });
       return true;
     },
     ownKeys() {

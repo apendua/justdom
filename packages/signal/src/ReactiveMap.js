@@ -1,4 +1,5 @@
 import { addDependency } from "./core.js";
+import { batch } from "./Signal.js";
 import { filter, Subject } from "rxjs";
 import LazyIterable from "./LazyIterable.js";
 import { memoizeDependency } from "./memoize.js";
@@ -63,11 +64,7 @@ export default class ReactiveMap {
   set(key, value) {
     const hasKey = this.#map.has(key);
     this.#map.set(key, value);
-    if (hasKey) {
-      this.#events.next({ type: "updated", key });
-    } else {
-      this.#events.next({ type: "added", key });
-    }
+    this.#notify({ type: hasKey ? "updated" : "added", key });
   }
 
   /**
@@ -76,13 +73,33 @@ export default class ReactiveMap {
   delete(key) {
     if (this.#map.has(key)) {
       this.#map.delete(key);
-      this.#events.next({ type: "deleted", key });
+      this.#notify({ type: "deleted", key });
     }
   }
 
   clear() {
     this.#map.clear();
-    this.#events.next({ type: "clear" });
+    this.#notify({ type: "clear" });
+  }
+
+  /**
+   * One mutation is one update.
+   *
+   * Announcing a change tells each dependent in turn, and telling a dependent
+   * queues it — which outside a batch drains the queue then and there. So an
+   * unbatched announcement lets the first dependent recompute, and everything
+   * below it with it, before the second dependent has heard anything: a
+   * computation reading two keys of this map, or a key and `size`, would
+   * recompute once per branch and would see the map halfway through the
+   * mutation on the first of them. Batching holds the drain until every
+   * dependent is queued, which is what lets the queue order them by depth.
+   *
+   * @param {ReactiveMapEvent<K>} event
+   */
+  #notify(event) {
+    batch(() => {
+      this.#events.next(event);
+    });
   }
 
   /**

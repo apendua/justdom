@@ -1,4 +1,5 @@
 import { addDependency } from "./core.js";
+import { batch } from "./Signal.js";
 import { filter, Subject } from "rxjs";
 import LazyIterable from "./LazyIterable.js";
 import { memoizeDependency } from "./memoize.js";
@@ -47,7 +48,7 @@ export default class ReactiveSet {
   add(value) {
     if (!this.#set.has(value)) {
       this.#set.add(value);
-      this.#events.next({ type: "added", value });
+      this.#notify({ type: "added", value });
     }
   }
 
@@ -57,13 +58,26 @@ export default class ReactiveSet {
   delete(value) {
     if (this.#set.has(value)) {
       this.#set.delete(value);
-      this.#events.next({ type: "deleted", value });
+      this.#notify({ type: "deleted", value });
     }
   }
 
   clear() {
     this.#set.clear();
-    this.#events.next({ type: "clear" });
+    this.#notify({ type: "clear" });
+  }
+
+  /**
+   * One mutation is one update — see `ReactiveMap#notify` for why the batch is
+   * what keeps a computation reading two values, or a value and `size`, from
+   * recomputing once per branch and seeing the set mid-mutation on the first.
+   *
+   * @param {ReactiveSetEvent<V>} event
+   */
+  #notify(event) {
+    batch(() => {
+      this.#events.next(event);
+    });
   }
 
   /**

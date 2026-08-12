@@ -423,6 +423,68 @@ describe("createPortal", () => {
     portal.disconnect();
   });
 
+  test("a panel that is closed lets go of the raycast set, even if its DOM went first", async () => {
+    // Closing a panel and opening it again is where this bites. The portal is
+    // told to disconnect by the component that owned the tree — and that
+    // component has usually already unmounted its nodes, so the container is
+    // empty by the time the portal walks it. Walking the DOM alone then
+    // reaches nothing, every object the panel made keeps its subscription,
+    // and each one stays registered as a ray target: detached from the scene
+    // and from the document, but still hit-tested, still sitting exactly
+    // where the panel was. The reopened panel draws underneath a full set of
+    // ghosts that swallow every hover and every click.
+    const manager = new InteractionManager();
+    /** @type {THREE.Object3D[]} */
+    const registered = [];
+    const originalAdd = manager.add.bind(manager);
+    const originalRemove = manager.remove.bind(manager);
+    manager.add = (object) => {
+      registered.push(object);
+      originalAdd(object);
+    };
+    manager.remove = (object) => {
+      const index = registered.indexOf(object);
+      if (index >= 0) {
+        registered.splice(index, 1);
+      }
+      originalRemove(object);
+    };
+    const ctx = InteractionContext.set({}, manager);
+
+    const portal = createPortal(ctx);
+    portal.addTo(new THREE.Group());
+
+    /** @type {import("@apendua/justdom").Mountable<Node> | undefined} */
+    let mountable;
+    const tree = $("div", [
+      children(
+        $("div", [attr("style", () => "cursor: pointer")]),
+        $("div", [attr("style", () => "cursor: pointer")]),
+      ),
+    ]);
+    const subscription = tree.subscribe((value) => {
+      mountable = value;
+    });
+    assert.ok(mountable);
+    portal.mount(mountable);
+
+    await nextMacrotask();
+    await nextMacrotask();
+
+    assert.equal(registered.length, 3, "the blocker and two buttons");
+
+    const containers = document.querySelectorAll("[data-xr-portal]");
+    const container = containers[containers.length - 1];
+    // What the component that owns the tree does on its way out, before the
+    // portal hears anything about it.
+    subscription.unsubscribe();
+    container.replaceChildren();
+
+    portal.disconnect();
+
+    assert.deepEqual(registered, [], "nothing the panel made is still a ray target");
+  });
+
   test("a scroll is one translation of the content group, and measures nothing", async () => {
     const manager = new InteractionManager();
     const ctx = InteractionContext.set({}, manager);

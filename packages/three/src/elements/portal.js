@@ -76,6 +76,28 @@ export function createPortal(ctx, { opaqueToRays = true } = {}) {
   const mirror = createMirror();
 
   /**
+   * Take down everything the portal made for a node and for everything under
+   * it: the subscription that keeps each object in step with its element,
+   * and with it the object's place in the raycast set.
+   *
+   * Descendants are looked for in two places, and both are needed. The DOM
+   * is the obvious one — but by the time a portal is told to disconnect, the
+   * component that owned the tree has usually unmounted its nodes already,
+   * so the container is empty and a walk of it reaches nothing. The object
+   * graph is the copy that outlives that: every element still has its
+   * object, hanging off its parent's content group, still subscribed and
+   * still registered as a ray target.
+   *
+   * Left uncleaned they are ghosts of the worst kind — detached from the
+   * scene so nothing draws them, detached from the document so nothing
+   * restyles them, but still hit-tested and still sitting exactly where the
+   * panel was. A panel closed and reopened would draw underneath its own
+   * ghosts, which take every hover and every click and dispatch them into a
+   * dead tree.
+   *
+   * Both walks are idempotent — the maps are cleared as they go — so a node
+   * reachable both ways is cleaned once.
+   *
    * @param {Node} node
    */
   function cleanup(node) {
@@ -88,6 +110,14 @@ export function createPortal(ctx, { opaqueToRays = true } = {}) {
       }
       nodeToObject.delete(node);
       objectToNode.delete(object);
+      // A snapshot: tearing an object down detaches it from its parent,
+      // which would mutate the array a live walk is reading.
+      for (const child of [...getContentGroup(object).children]) {
+        const childNode = objectToNode.get(child);
+        if (childNode) {
+          cleanup(childNode);
+        }
+      }
     }
     node.childNodes.forEach((childNode) => {
       cleanup(childNode);

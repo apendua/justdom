@@ -32,29 +32,17 @@
 import { it } from "node:test";
 import assert from "node:assert/strict";
 import { Signal, Derived, batch } from "./Signal.js";
-
-/**
- * @param {string} name
- * @param {() => void} fn
- * @param {{ duration?: number, warmup?: number, note?: string }} [options]
- */
-function bench(name, fn, { duration = 400, warmup = 100, note = "" } = {}) {
-  it(name, () => {
-    for (let i = 0; i < warmup; i++) fn();
-    const start = performance.now();
-    let iterations = 0;
-    while (performance.now() - start < duration) {
-      fn();
-      iterations++;
-    }
-    const elapsed = performance.now() - start;
-    console.log(
-      `    ${name}: ${Math.round((iterations / elapsed) * 1000).toLocaleString()} ops/sec${note}`,
-    );
-  });
-}
+import { bench } from "./testUtils/benchmark.js";
 
 const ROWS = 200;
+
+/**
+ * How far the offset travels before wrapping. A frame's worth of scrolling
+ * should keep the panel in the regime a real one is in — some rows in the
+ * window, most out — rather than letting the offset run away until every row
+ * is off-screen and the `shown` gate has nothing left to do.
+ */
+const SCROLL_RANGE = ROWS * 40;
 
 /**
  * A panel's worth of chains hanging off one hot signal: per row a rect that
@@ -146,20 +134,41 @@ for (const writes of [1, 2, 4, 8]) {
   });
 }
 
+// The panel is built once and scrolled, rather than built and thrown away
+// inside each timed iteration. Building 200 rows costs about 2.5 ms, which was
+// 37% of the "8 writes, eager" figure and 62% of the batched one — and because
+// it fell on the batched side hardest, it flattened the very ratio this file
+// exists to report, showing 1.68x where the writes alone are worth 2.80x. A
+// frame in a running app does not rebuild its panel, and neither does the
+// fan-out benchmark next door.
 for (const writes of [1, 8]) {
   const label = `${writes} write(s)/frame`;
-  bench(`${label}, eager`, () => {
-    const tally = { count: 0 };
-    const { offset, dispose } = panel(tally);
-    for (let w = 0; w < writes; w++) offset.set(offset.get() + 1);
-    dispose();
-  });
-  bench(`${label}, batched`, () => {
-    const tally = { count: 0 };
-    const { offset, dispose } = panel(tally);
-    batch(() => {
-      for (let w = 0; w < writes; w++) offset.set(offset.get() + 1);
-    });
-    dispose();
-  });
+  /** @type {{ count: number }} */
+  const tally = { count: 0 };
+  const { offset } = panel(tally);
+  let frame = 0;
+  // Each write has to land on a new value: writing the same one back
+  // short-circuits on isEqual, and the benchmark would time the early return.
+  const scroll = () => offset.set(frame++ % SCROLL_RANGE);
+  const options = { sampleMs: 400, warmupMs: 300, warmupIterations: 50 };
+
+  bench(
+    `${label}, eager`,
+    () => {
+      for (let w = 0; w < writes; w++) scroll();
+      return tally.count;
+    },
+    options,
+  );
+
+  bench(
+    `${label}, batched`,
+    () => {
+      batch(() => {
+        for (let w = 0; w < writes; w++) scroll();
+      });
+      return tally.count;
+    },
+    options,
+  );
 }

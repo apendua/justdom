@@ -165,6 +165,29 @@ export async function openShowcase({ freeze = true } = {}) {
  * @returns {Promise<void>}
  */
 export async function enterSession(page, { freeze = true } = {}) {
+  if (freeze) {
+    // The session's frames need pinning as well as the page's. Anything
+    // driven by `animate(ctx, …)` — which is the frame loop that survives a
+    // headset taking the display — is timed by the session rather than by
+    // the page, so the freeze above never reached it. Frames keep coming,
+    // because the scene still has to be drawn; only the clock they report
+    // stands still, exactly as it does for the page's own.
+    await page.evaluate((time) => {
+      const xr = navigator.xr;
+      if (!xr) {
+        return;
+      }
+      const request = xr.requestSession.bind(xr);
+      // @ts-expect-error -- narrowing the overloads is not worth it here.
+      xr.requestSession = async (...args) => {
+        const session = await request(...args);
+        const frames = session.requestAnimationFrame.bind(session);
+        session.requestAnimationFrame = (callback) => frames((_, frame) => callback(time, frame));
+        return session;
+      };
+    }, FROZEN_TIME);
+  }
+
   await page.click("#ARButton");
   await page.waitForFunction(() => document.querySelectorAll("canvas").length > 0, undefined, {
     timeout: 30_000,

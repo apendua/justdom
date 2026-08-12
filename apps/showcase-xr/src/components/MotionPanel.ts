@@ -1,14 +1,25 @@
 import { className, stylesheet, text, $, children, CLASS_NAME } from "@apendua/justdom";
 import { set } from "@apendua/justdom";
-import { component, effects, onCleanup } from "@apendua/signal";
+import { component, effects, onCleanup, use } from "@apendua/signal";
+import { animate } from "@apendua/freedom";
 import { cardStyle, captionStyle, classes, headingStyle, rowStyle } from "./panels.js";
 
 /**
  * Self-running motion, one specimen per mechanism the mirror can see: CSS
  * keyframes (transform, opacity, scale, text colour), a Web Animations API
  * animation (fires no CSS events — the clock's sweep finds it), and a plain
- * requestAnimationFrame loop writing inline styles (each write is an
- * ordinary observed mutation).
+ * frame loop writing inline styles (each write is an ordinary observed
+ * mutation).
+ *
+ * That last one draws its frames from `animate(ctx, …)` rather than from
+ * `requestAnimationFrame` directly, and the difference only shows on a
+ * headset. Once a session has the display the page stops being rendered, and
+ * the page's own animation frames stop with it — a `requestAnimationFrame`
+ * loop simply stops running, and the bar it was driving sits still. The
+ * session has a frame loop of its own that keeps going, which is the one
+ * `animate` hands out. Under an emulator the page is presenting *and* still
+ * rendering, so both work and the difference is invisible: this specimen
+ * animated on a desk and stopped dead in a headset.
  */
 
 const keyframesStyle = stylesheet`
@@ -115,7 +126,7 @@ const fillStyle = className`
   border-radius: 999px;
 `;
 
-const MotionPanel = component((_ctx: WeakKey) => {
+const MotionPanel = component((ctx: WeakKey) => {
   return $("div", [
     set("className", cardStyle),
     children(
@@ -168,15 +179,11 @@ const MotionPanel = component((_ctx: WeakKey) => {
             set("className", fillStyle),
             effects((el: HTMLDivElement) => {
               el.style.transformOrigin = "0px 50%";
-              let handle = 0;
-              const loop = (time: number) => {
-                el.style.transform = `scaleX(${0.55 + 0.45 * Math.sin(time / 700)})`;
-                handle = requestAnimationFrame(loop);
-              };
-              handle = requestAnimationFrame(loop);
-              onCleanup(() => {
-                cancelAnimationFrame(handle);
-              });
+              use(
+                animate(ctx, (time: number) => {
+                  el.style.transform = `scaleX(${0.55 + 0.45 * Math.sin(time / 700)})`;
+                }),
+              );
             }),
           ]),
         ),

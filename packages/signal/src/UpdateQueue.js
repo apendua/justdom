@@ -198,10 +198,21 @@ export default class UpdateQueue {
         this.#queued.delete(task);
         task.invalidate();
       }
-      if (this.#hasStale) {
+      if (this.#hasStale && this.#queued.size === 0) {
         // A re-prioritized task may have left an entry at a level the
         // cursor never reached, which would otherwise go on holding a
         // reference to a task that already ran.
+        //
+        // Only a drain that ran to completion may do this: the sweep cannot
+        // tell an abandoned entry from a live one — `#queued` is what does
+        // that, and it is only unambiguous once empty. Clearing the buckets
+        // with work still queued would strand it, since the tasks would keep
+        // their entries in `#queued` with no bucket entry left to reach them
+        // by, and `#push` refuses to re-enqueue a task already queued at the
+        // same priority. Today the loop above only exits when the queue is
+        // empty, so this is a precondition made explicit rather than a bug
+        // repaired; it is what lets a drain stop early — on a time budget,
+        // say — without wedging the queue.
         for (let i = 0; i < this.#buckets.length; i++) {
           const bucket = this.#buckets[i];
           if (bucket && bucket.length > 0) {

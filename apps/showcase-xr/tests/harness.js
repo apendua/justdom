@@ -112,6 +112,9 @@ export async function openShowcase({ freeze = true } = {}) {
     viewport: VIEWPORT,
     deviceScaleFactor: 1,
   });
+  if (process.env.DEBUG_PAGE === "1") {
+    page.on("console", (message) => console.log("[page]", message.text().slice(0, 160)));
+  }
 
   if (freeze) {
     await page.addInitScript((time) => {

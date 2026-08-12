@@ -115,6 +115,34 @@ which is what a toggled `transform` moves (see below) — nothing outside it.
 So anything that changes _layout_ — a menu opening, a section expanding —
 has to be mounted and unmounted rather than hidden and shown.
 
+**Hover and press are presentational, by contract.** The three attributes
+the portal writes itself — `data-xr-hover`, `data-xr-active` and
+`data-xr-checked` — restyle the panel but are declared unable to move it.
+Colour, background, border colour, opacity and `transform` all work; a
+width, a padding or a font size that changes under the ray is not mirrored,
+and the boxes stay the size they were.
+
+This is the one place a stylesheet can be written that the scene will not
+follow, and it is worth the narrowness. These are the most frequent
+mutations a panel ever sees — one per element the ray crosses, three more
+on a press — and re-measuring on each costs a client rect for the element
+plus a text measurement for every label under it, under a hand that is
+moving, at frame rate. Declaring them presentational takes that to nothing.
+It also gives up very little: layout that moves under the pointer slides the
+target out from under the hand reaching for it, which is a thing interfaces
+avoid on a flat screen and more so at the end of a metre-long ray.
+
+`transform` is the one to reach for, exactly as on the web — it costs a
+matrix write, and it is mirrored on hover like anything else:
+
+```css
+.button[data-xr-hover] {
+  background: #1d4ed8; /* fine */
+  transform: translateZ(4px) scale(1.04); /* fine */
+  padding: 12px; /* ignored — this is layout */
+}
+```
+
 **The panel's background is clickable, and it is the panel you should listen
 to.** A ray that lands on the panel but on none of its buttons hits the blocker
 spanning the container, which dispatches a bubbling `click` on the portal's
@@ -185,7 +213,9 @@ still worth writing for the page, and a disabled checkbox is not pointable
 however it is dressed. And the ticked state is written back onto the element as
 `data-xr-checked`: `:checked` is a pseudo-class, so it changes no attribute, and
 without something that does, nothing would tell the portal to re-read a style
-that follows it. Write the rule both ways, as above.
+that follows it. Write the rule both ways, as above — and, being one of the
+portal's own flags, it carries the same presentational contract `data-xr-hover`
+does: a ticked box may change colour, but may not change size.
 
 The DOM stays the thing that is true. A ray's click is a click, so the browser
 does the toggling and fires `change`, and an application reads `checked` and
@@ -432,12 +462,20 @@ scrollers below that block — which is how a dropdown anchored outside a list
 stays whole while its trigger row scrolls away — and a `position: fixed`
 element escapes every scroller there is.
 
-Scrolling is then the ordinary DOM thing: client rects move with `scrollTop`,
-and a scroll invalidates the panel's layout the way a mutation does.
+Scrolling is then the ordinary DOM thing to ask for:
 
 ```js
 element.scrollTop += 48;
 ```
+
+What it costs is not the ordinary re-layout, though. Everything inside a
+scroller is mirrored in coordinates a scroll cannot change — positions
+relative to the scroller's content, clip windows relative to the box that
+owns them — and the offset itself is applied as one translation of the
+group carrying the scrolled content. A frame of scrolling therefore
+re-measures nothing and re-rasterizes nothing, however long the list is:
+the clip boxes of the subtree shift by plain arithmetic, and rows crossing
+the window's edge enter and leave the raycast set as they go.
 
 **To scroll by hand, take hold of the list and pull.** Holding the trigger
 anywhere over an element that clips its overflow and has more inside than fits

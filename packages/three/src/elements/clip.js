@@ -8,9 +8,9 @@ import * as THREE from "three";
  * The region content is confined to by the ancestors that hide their
  * overflow: a rectangle with a corner radius each, in the same axis-aligned,
  * y-down pixel space everything else inside a portal is expressed in. Which
- * space a particular box is in depends on where it came from —
- * `getClipBoxCached` answers in client coordinates, `toLocalClipBox` moves one
- * into an element's own.
+ * space a particular box is in depends on where it came from — the mirror
+ * answers in the element's own frame (`getLocalClipBox`) or the clip owner's
+ * (`getInteriorClipBox`), and `toLocalClipBox` moves one between frames.
  *
  * @typedef {object} ClipBox
  * @property {number} left

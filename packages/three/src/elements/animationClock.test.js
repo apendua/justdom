@@ -4,7 +4,7 @@ import { createAnimationClock } from "./animationClock.js";
 import { resetRenderingUpdatesForTests } from "./renderingUpdates.js";
 
 /**
- * @import {MutationBatch} from './cache.js';
+ * @import {MutationBatch} from './animationClock.js';
  */
 
 /**

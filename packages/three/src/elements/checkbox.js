@@ -3,7 +3,7 @@ import { Derived, effects, observable, onCleanup, set } from "@apendua/signal";
 import { distinctUntilChanged, switchMap } from "rxjs";
 import { $, Nothing } from "../operators.js";
 import { box } from "./div.js";
-import { getCheckedCached, getComputedStyleCached } from "./cache.js";
+import { getCheckedCached, getComputedStyleCached } from "./mirror.js";
 import { applyClip } from "./clip.js";
 
 /**

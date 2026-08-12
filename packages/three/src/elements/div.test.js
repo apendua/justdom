@@ -1,9 +1,8 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
-import { Subject } from "rxjs";
 import { InteractionContext } from "../interactions.js";
-import { PORTAL_ATTRIBUTE, setSubject } from "./cache.js";
+import { createMirror, PORTAL_ATTRIBUTE } from "./mirror.js";
 import { div } from "./div.js";
 
 /**
@@ -27,8 +26,8 @@ Object.defineProperty(document, "fonts", {
 });
 
 /**
- * An element wired the way the portal wires one: a subject standing in for the
- * MutationObserver, so a style change can be announced the way a real one is.
+ * An element wired the way the portal wires one: a mirror standing in for the
+ * portal's own, so a style change can be announced the way a real one is.
  *
  * The manager is recorded rather than real — what is being tested is which
  * objects `div` hands it and when, not what it then does with them.
@@ -42,9 +41,8 @@ function setup(cursor, cssText = "") {
   element.style.cursor = cursor;
   document.body.appendChild(element);
 
-  /** @type {Subject<import('./cache.js').MutationBatch>} */
-  const mutations = new Subject();
-  setSubject(element, mutations);
+  const mirror = createMirror();
+  mirror.adopt(element);
 
   /** @type {string[]} */
   const registrations = [];
@@ -79,22 +77,31 @@ function setup(cursor, cssText = "") {
 
   return {
     element,
-    mutations,
+    mirror,
     registrations,
     registered,
     subscription,
     get object() {
       return object;
     },
-    /** Announce a style change the way the portal's MutationObserver would. */
+    /** Announce a style change the way the portal's observer would. */
     restyle: (/** @type {string} */ value) => {
       element.style.cursor = value;
-      mutations.next({ types: new Set(["attributes"]), targets: new Set([element]) });
+      mirror.attributeChanged(element);
     },
     /** The same, for anything that is not the cursor. */
     restyleWith: (/** @type {string} */ cssText) => {
       element.style.cssText = cssText;
-      mutations.next({ types: new Set(["attributes"]), targets: new Set([element]) });
+      mirror.attributeChanged(element);
+    },
+    /**
+     * A restyle announced the way a *hover* is: presentational, so the
+     * mirror re-reads styles and measures nothing. What a rule following
+     * `[data-xr-hover]` is allowed to do goes through here.
+     */
+    hoverWith: (/** @type {string} */ cssText) => {
+      element.style.cssText = cssText;
+      mirror.attributeChanged(element, { movesGeometry: false });
     },
     /** @param {"pointerenter" | "pointerleave"} type */
     dispatch: (type) => {
@@ -228,6 +235,31 @@ describe("div transforms", () => {
     subscription.unsubscribe();
   });
 
+  test("a transform put on by hover still reaches the matrix, unmeasured", () => {
+    // The boundary of the presentational contract, and the reason it is
+    // worth having rather than simply banning everything: `transform` is
+    // the cheap tier the flat web recommends for hover, and it goes on
+    // working with no re-measurement at all. A transformed element carries
+    // the matrix on its object and takes its size and position from layout
+    // offsets, and *whether* it is transformed is derived from the computed
+    // style — so the whole thing arrives through the restyle path.
+    const { object, hoverWith, subscription } = setup("pointer");
+    assert.equal(object.matrixAutoUpdate, true, "untransformed to begin with");
+
+    hoverWith("cursor: pointer; transform: matrix(1, 0, 0, 1, 4, 6)");
+
+    assert.equal(object.matrixAutoUpdate, false, "the hover transform took effect");
+    const point = new THREE.Vector3(0, 0, 0).applyMatrix4(object.matrix);
+    assert.equal(point.x, 4);
+    assert.equal(point.y, 6);
+
+    // And leaving hands it back, the same way.
+    hoverWith("cursor: pointer");
+    assert.equal(object.matrixAutoUpdate, true);
+
+    subscription.unsubscribe();
+  });
+
   test("removing the transform hands the object back to ordinary positioning", () => {
     const { object, restyleWith, subscription } = setup(
       "default",
@@ -338,10 +370,11 @@ function setupScrolledRow() {
   container.appendChild(scroller);
   document.body.appendChild(container);
 
-  /** @type {Subject<import('./cache.js').MutationBatch>} */
-  const mutations = new Subject();
+  Object.defineProperty(scroller, "scrollTop", { configurable: true, get: () => scrollTop });
+
+  const mirror = createMirror();
   for (const node of [container, scroller, row]) {
-    setSubject(node, mutations);
+    mirror.adopt(node);
   }
 
   /**
@@ -391,7 +424,7 @@ function setupScrolledRow() {
     /** @param {number} value */
     scrollTo: (value) => {
       scrollTop = value;
-      mutations.next({ types: new Set(["scroll"]), targets: new Set([scroller]) });
+      mirror.scrolled(scroller);
     },
   };
 }
@@ -401,7 +434,8 @@ describe("div clipping", () => {
     const { container, object, scrollTo, subscription } = setupScrolledRow();
     try {
       const material = /** @type {THREE.ShaderMaterial} */ (
-        /** @type {THREE.Mesh} */ (object.children[0]).material
+        /** @type {THREE.Mesh} */ (object.children.find((child) => child instanceof THREE.Mesh))
+          .material
       );
       // `overflow: hidden` hides it on both axes, so the window is the
       // scroller's whole padding box: the row starts 10px down it and may
@@ -472,7 +506,7 @@ function describeScroller(element, { client, scroll }) {
 
 describe("div drag-to-scroll", () => {
   test("a list with more in it than fits becomes something the ray can take hold of", () => {
-    const { element, mutations, registrations, registered, subscription } = setup(
+    const { element, mirror, registrations, registered, subscription } = setup(
       "default",
       "overflow: hidden",
     );
@@ -483,7 +517,7 @@ describe("div drag-to-scroll", () => {
     describeScroller(element, { client: 100, scroll: 400 });
     // A row arriving is a childList mutation, which is what a growing list
     // announces; nothing has to tell the projection that it now scrolls.
-    mutations.next({ types: new Set(["childList"]), targets: new Set([element]) });
+    mirror.childListChanged(element);
     assert.deepEqual(registrations, ["add"]);
 
     subscription.unsubscribe();
@@ -497,9 +531,7 @@ describe("div drag-to-scroll", () => {
     document.body.appendChild(element);
     describeScroller(element, { client: 100, scroll: 400 });
 
-    /** @type {Subject<import('./cache.js').MutationBatch>} */
-    const mutations = new Subject();
-    setSubject(element, mutations);
+    createMirror().adopt(element);
 
     /** @type {THREE.Object3D[]} */
     const registered = [];

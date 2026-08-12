@@ -1,7 +1,31 @@
 import { sampleRenderingUpdates } from "./renderingUpdates.js";
 
 /**
- * @import {AnimationClass, MutationBatch, MutationType} from './cache.js';
+ * The kinds of change the clock can announce, and the shape it announces
+ * them in. `animated` says the computed styles of the targets'
+ * neighbourhoods may have moved; `reflow` says client rects have — of the
+ * targets' subtrees, or of everything when layout itself is animating and
+ * no target can name what it displaced. The portal translates these into
+ * the mirror's targeted invalidations.
+ *
+ * @typedef {"animated" | "reflow"} MutationType
+ */
+
+/**
+ * One announcement from the clock: which kinds of change happened, and the
+ * nodes they happened at. `null` targets mean the whole portal is affected.
+ *
+ * @typedef {object} MutationBatch
+ * @property {Set<MutationType>} types
+ * @property {Set<Node> | null} targets
+ */
+
+/**
+ * How an animated property ranks for invalidation — this file is organized
+ * around it. Paint asks for style re-reads alone, transform adds a targeted
+ * reflow, layout a portal-wide one.
+ *
+ * @typedef {"paint" | "transform" | "layout"} AnimationClass
  */
 
 /**

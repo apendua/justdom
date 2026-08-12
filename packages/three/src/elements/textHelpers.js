@@ -85,15 +85,32 @@ function parsePixelValue(value, fontSize) {
 }
 
 /**
+ * What one colour string resolves to, remembered. The probe below is not a
+ * cheap thing to run between batched layout reads — appending and removing
+ * a body child dirties the layout that every rect read after it then has to
+ * recompute — and a panel asks about the same handful of colours over and
+ * over. The resolution of a computed colour string does not depend on any
+ * context the probe would pick up, so the string is the whole key.
+ *
+ * @type {Map<string, string>}
+ */
+const normalizedColors = new Map();
+
+/**
  * @param {string} color
  * @returns {string}
  */
 function normalizeColor(color) {
+  const cached = normalizedColors.get(color);
+  if (cached !== undefined) {
+    return cached;
+  }
   const probe = document.createElement("span");
   probe.style.color = color;
   document.body.appendChild(probe);
   const normalized = getComputedStyle(probe).color || color;
   document.body.removeChild(probe);
+  normalizedColors.set(color, normalized);
   return normalized;
 }
 

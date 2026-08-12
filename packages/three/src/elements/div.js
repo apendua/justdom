@@ -14,8 +14,14 @@ import {
 } from "./sdfRect.js";
 import { contentImage, isImageElement } from "./image.js";
 import { createBlocker, coverBox } from "./blocker.js";
-import { getBoundingClientRectCached, getClipBoxCached, getComputedStyleCached } from "./cache.js";
-import { clipBoxEqual, clipBoxShows, clipRaycast, toLocalClipBox, UNCLIPPED } from "./clip.js";
+import {
+  getBorderBoxSize,
+  getComputedStyleCached,
+  getLocalClipBox,
+  getObjectPosition,
+  getScrollOffset,
+} from "./mirror.js";
+import { clipBoxShows, clipRaycast, UNCLIPPED } from "./clip.js";
 import {
   composeTransform,
   getOwnTransform,
@@ -24,6 +30,31 @@ import {
 } from "./cssTransform.js";
 import { getContentRenderOrder, isOverlay } from "./elevation.js";
 import { isScrollable, scrollDrags } from "./scroll.js";
+
+/**
+ * The group that carries an element's projected DOM children, one per box.
+ *
+ * Its whole purpose is scrolling: children are positioned in their parent's
+ * *content* space — coordinates that a scroll does not change — and the
+ * group is translated by minus the scroll offset, so a scroll is one
+ * position write here instead of a re-measure of everything inside. The
+ * portal attaches child objects through `getContentGroup`.
+ *
+ * @type {WeakMap<THREE.Object3D, THREE.Object3D>}
+ */
+const contentGroups = new WeakMap();
+
+/**
+ * Where a node's projected children belong under its object: the content
+ * group for a box, the object itself for anything that has none (the
+ * portal's own container).
+ *
+ * @param {THREE.Object3D} object
+ * @returns {THREE.Object3D}
+ */
+export function getContentGroup(object) {
+  return contentGroups.get(object) ?? object;
+}
 
 /**
  * @import {Component, XREventMap} from '../core.js';
@@ -125,6 +156,12 @@ export function box(ctx, element, options = {}) {
   const object = new THREE.Object3D();
   const properties = new VisualProperties();
 
+  // The element's projected children live one group down, positioned in
+  // content space; scrolling translates the group. See `getContentGroup`.
+  const contentGroup = new THREE.Group();
+  object.add(contentGroup);
+  contentGroups.set(object, contentGroup);
+
   const { makeInteractive, stopPropagation } = interactions(ctx);
   const drags = scrollDrags(ctx);
 
@@ -167,30 +204,21 @@ export function box(ctx, element, options = {}) {
   const image = isImageElement(element) ? contentImage(element, properties) : null;
 
   /**
-   * What this element's overflow-hiding ancestors leave of it, in its own px —
-   * the space its quad is drawn in, so the same numbers serve the shader and
-   * the raycast filter.
+   * What this element's overflow-hiding ancestors leave of it, in its own
+   * px — the space its quad is drawn in, so the same numbers serve the
+   * shader and the raycast filter. The mirror keeps it: cached per level in
+   * the clip owner's own frame, where a scroll cannot move it, and shifted
+   * into this element's frame by arithmetic on the scroll offsets — so a
+   * frame of scrolling costs no measurement here, only the shift.
    *
-   * The origin comes from the client rect, which is exact for an untransformed
-   * element and for a translated one (its rect moves with it, and so does the
-   * box the shader draws). Under a rotation or a scale the rect is the
-   * transformed bounds, and the clip edge inherits that approximation.
-   */
-  const clipBox = new Derived(
-    () => {
-      const box = getClipBoxCached(element);
-      if (box === UNCLIPPED) {
-        return box;
-      }
-      const rect = getBoundingClientRectCached(element);
-      return toLocalClipBox(box, rect.left, rect.top);
-    },
-    { isEqual: clipBoxEqual },
-  );
-
-  /**
-   * The same box, in a variable, because the raycast filter is called from
-   * inside three's traversal — somewhere the reactive graph does not reach.
+   * The origin comes from the client rect, which is exact for an
+   * untransformed element and for a translated one. Under a rotation or a
+   * scale the rect is the transformed bounds, and the clip edge inherits
+   * that approximation.
+   *
+   * The snapshot in the variable is for the raycast filter, which is called
+   * from inside three's traversal — somewhere the reactive graph does not
+   * reach.
    *
    * @type {import('./clip.js').ClipBox}
    */
@@ -211,7 +239,7 @@ export function box(ctx, element, options = {}) {
    * registered, so dropping the registration takes the whole subtree with it.
    * Partly clipped elements stay registered and are trimmed by `clipRaycast`.
    *
-   * Taking the subtree is deliberate but not exact: `getClipBoxCached` lets an
+   * Taking the subtree is deliberate but not exact: `getLocalClipBox` lets an
    * absolutely positioned descendant escape the clip that hid this element, so
    * a menu whose containing block sits above the scroller would, on paper,
    * survive a row that scrolled away — and vanishes here with it. Accepted
@@ -219,18 +247,18 @@ export function box(ctx, element, options = {}) {
    * such a menu outside the scroller or dismiss it on scroll.
    */
   const shown = new Derived(() => {
-    const box = clipBox.get();
+    const box = getLocalClipBox(element);
     if (box === UNCLIPPED) {
       return true;
     }
-    const rect = getBoundingClientRectCached(element);
-    if (rect.width <= 0 || rect.height <= 0) {
+    const size = getBorderBoxSize(element);
+    if (size.width <= 0 || size.height <= 0) {
       // Nothing to cull, and nothing that could be hit either way. Culling on
       // a degenerate box would mean trusting a layout that may not have
       // happened yet.
       return true;
     }
-    return clipBoxShows(box, rect.width, rect.height);
+    return clipBoxShows(box, size.width, size.height);
   });
 
   /**
@@ -375,23 +403,32 @@ export function box(ctx, element, options = {}) {
         obj.matrixWorldNeedsUpdate = true;
       } else {
         obj.matrixAutoUpdate = true;
-        const elementRect = getBoundingClientRectCached(element);
-        const parentRect = element.parentElement
-          ? getBoundingClientRectCached(element.parentElement)
-          : null;
-        if (parentRect) {
-          obj.position.set(elementRect.left - parentRect.left, elementRect.top - parentRect.top, z);
-        } else {
-          obj.position.set(elementRect.left, elementRect.top, z);
-        }
+        // Content-space coordinates: relative to the parent's border box
+        // plus its scroll offset, which is what makes them constants of the
+        // layout — a scroll changes the content group's translation below,
+        // not this. A positioned element is anchored to its containing
+        // block instead, and holds still while scrollers between the two
+        // slide (see `getObjectPosition`).
+        const position = getObjectPosition(element);
+        obj.position.set(position.x, position.y, z);
       }
       properties.setFromElement(element);
     }),
-    // Kept apart from the layout effect above: a scroll moves content inside a
-    // window that has not moved, so positions change while the clip does not,
-    // and neither recomputes the other's dependencies.
+    // Everything a scroll can move, kept apart from the layout effect above:
+    // a scroll shifts the clip and slides this element's own content group,
+    // while positions and sizes hold still — so neither recomputes the
+    // other's dependencies. One effect for the three cheap writes rather
+    // than one each; every element pays for its computations up front, in
+    // allocation and subscription, and these always move together.
     effects((obj) => {
-      currentClipBox = clipBox.get();
+      // A scroll, applied where a scroll belongs: one translation of the
+      // group that carries the scrolled content. Nothing inside is
+      // re-measured or repositioned — their coordinates were chosen so the
+      // scroll could not change them. (`|| 0` turns the -0 an unscrolled
+      // axis would negate to back into 0.)
+      const scroll = getScrollOffset(element);
+      contentGroup.position.set(-scroll.left || 0, -scroll.top || 0, 0);
+      currentClipBox = getLocalClipBox(element);
       // Fragments outside the box are discarded, but an element with nothing
       // left to show is worth skipping wholesale — `visible` prunes it and
       // its descendants from the render traversal.
@@ -442,7 +479,10 @@ export function box(ctx, element, options = {}) {
         }),
         // Its own effect, so a scroll writes four numbers and nothing else.
         effects((obj) => {
-          writeClipUniforms(/** @type {THREE.ShaderMaterial} */ (obj.material), clipBox.get());
+          writeClipUniforms(
+            /** @type {THREE.ShaderMaterial} */ (obj.material),
+            getLocalClipBox(element),
+          );
         }),
         effects((obj) => {
           writeRectUniforms(/** @type {THREE.ShaderMaterial} */ (obj.material), properties);
@@ -471,7 +511,7 @@ export function box(ctx, element, options = {}) {
       ...content({
         properties,
         contentRenderOrder: () => getContentRenderOrder(element),
-        clipBox: () => clipBox.get(),
+        clipBox: () => getLocalClipBox(element),
         // The snapshot rather than the signal, and this element's frame rather
         // than the mesh's — the same two reasons the box's own quad is trimmed
         // this way: the filter runs inside three's traversal, and content is

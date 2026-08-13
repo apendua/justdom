@@ -1,3 +1,5 @@
+import * as THREE from "three";
+
 /**
  * @import {Object3D} from 'three';
  */
@@ -34,18 +36,8 @@
  * matrix is composed by hand — a CSS transform, in `div` — which sets its own
  * flag and its own `matrixWorldNeedsUpdate` for the same reason.
  *
- * Both halves are needed, which is why these are exported rather than kept
- * inside. Three propagates the recompute downwards: an object that composed
- * its own matrix forces every descendant to recompute its world matrix,
- * whatever those descendants decided for themselves. So a panel whose boxes
- * opt out still pays in full if the group it hangs off, or the scene above
- * that, did not — and a scene that opts out buys nothing while the boxes
- * beneath it recompose. Measured on 800 mirrored boxes, either half alone
- * left the matrix phase where it found it, at 2.8 ms a frame; the two
- * together took it to 1.0 ms.
- *
- * An app holding a group in front of a portal is therefore the other half of
- * this, and moving it through these functions is how it opts in.
+ * An opt-out is only worth what the scene above it allows, which is what
+ * `keepSubtreeMatrices` below is for.
  *
  * Rotation is not a parameter here, because almost nothing a portal draws is
  * rotated. Anything that is sets its Euler or quaternion first and then calls
@@ -88,4 +80,67 @@ export function placeAndScale(object, x, y, z, scaleX, scaleY, scaleZ) {
   object.position.set(x, y, z);
   object.scale.set(scaleX, scaleY, scaleZ);
   object.updateMatrix();
+}
+
+/**
+ * Let everything below this object keep the matrices it composed, whatever the
+ * scene above decides.
+ *
+ * `matrixAutoUpdate` is per object, but its consequences are not. Three walks
+ * the graph carrying a flag: an object that recomposed its own matrix marks
+ * its world matrix stale, and from there every descendant recomputes its own
+ * world matrix unconditionally — not because any of them moved, but because
+ * an ancestor might have. One group in front of a panel, left on three's
+ * default and never touched again after the effect that positioned it, is
+ * enough to hand four thousand objects back the work they had just opted out
+ * of; and the constraint is transitive, so it is every ancestor up to the
+ * scene root, not merely the nearest one.
+ *
+ * That is a fair bargain in a scene somebody wrote by hand, where the cost of
+ * an ancestor is visible from the ancestor. It is not one to pass on here.
+ * `dom()` hands an app a single object, nothing at that call site says how
+ * many descendants are inside it, and an app cannot opt out objects it never
+ * created. So the panel declines the flag at its own perimeter instead of
+ * asking the scene above to stop sending one.
+ *
+ * Declining it is not the same as ignoring it: an ancestor that genuinely
+ * moved has moved the panel, and everything inside then does need its world
+ * matrix again. So this recomputes its own world matrix every walk — one
+ * multiply — and passes the flag on only when that matrix actually came out
+ * different. A panel that is not moving costs a multiply and a comparison; a
+ * panel that is moving costs exactly what it did before.
+ *
+ * Three offers no flag for this. `matrixWorldAutoUpdate` looks like the one
+ * and is not: it stops the object computing its own world matrix while still
+ * marking the walk forced, so the subtree recomputes exactly as before and the
+ * object itself is left at whatever its matrix said last — which for a panel
+ * is the origin. Overriding the walk is what is left.
+ *
+ * @param {Object3D} object
+ * @returns {void}
+ */
+export function keepSubtreeMatrices(object) {
+  // Per object rather than shared: portals nest, and a shared scratch would be
+  // overwritten by the inner walk before the outer one had compared it.
+  const previous = new THREE.Matrix4();
+  object.updateMatrixWorld = function () {
+    if (this.matrixAutoUpdate) {
+      this.updateMatrix();
+    }
+    previous.copy(this.matrixWorld);
+    if (this.parent === null) {
+      this.matrixWorld.copy(this.matrix);
+    } else {
+      this.matrixWorld.multiplyMatrices(this.parent.matrixWorld, this.matrix);
+    }
+    this.matrixWorldNeedsUpdate = false;
+    // Exact, and safe to be exact: an unmoved parent and an unmoved local
+    // matrix are the same numbers through the same multiply, which is the
+    // same result to the bit.
+    const moved = !this.matrixWorld.equals(previous);
+    const children = this.children;
+    for (let i = 0, l = children.length; i < l; i++) {
+      children[i].updateMatrixWorld(moved);
+    }
+  };
 }

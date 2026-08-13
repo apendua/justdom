@@ -6,7 +6,7 @@ import { checkbox } from "./checkbox.js";
 import { createMirror, getBorderBoxSize, PORTAL_ATTRIBUTE } from "./mirror.js";
 import { createAnimationClock } from "./animationClock.js";
 import { createBlocker, coverBox } from "./blocker.js";
-import { placeAndScale } from "./place.js";
+import { keepSubtreeMatrices, placeAndScale } from "./place.js";
 import { createFrameRequester } from "./frameRequester.js";
 import { InteractionContext } from "../interactions.js";
 
@@ -196,6 +196,11 @@ export function createPortal(ctx, { opaqueToRays = true } = {}) {
   mirror.adopt(containerElement);
 
   const containerObject = new THREE.Group();
+
+  // The panel's perimeter. Everything the portal draws hangs off this, and
+  // everything it draws keeps its own matrices; this is what makes that hold
+  // whatever the scene above the panel does about its own.
+  keepSubtreeMatrices(containerObject);
 
   const interactionManager = InteractionContext.get(ctx);
 

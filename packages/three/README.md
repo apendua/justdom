@@ -526,34 +526,53 @@ placed it, rather than being recomposed every frame on the chance it moved —
 which is most of what makes an idle panel cheap, and is exactly the premise
 of the mirror restated in the scene graph.
 
-That only holds as far up as it goes. three propagates the recompute
-downwards: an object that recomposed its own matrix forces every descendant
-to recompute its world matrix, whatever those descendants decided for
-themselves. So the group you hang a portal off is the other half of it, and
-`place` / `placeAndScale` are how it opts in:
+You do not have to do anything to get that. Place the panel however you like:
+
+```js
+$(new THREE.Group(), [
+  effects((group) => {
+    group.position.set(0, 1, -2);
+    group.scale.setScalar(0.01);
+  }),
+  children(dom(ctx, App(ctx))),
+]);
+```
+
+It is worth knowing why that is worth saying. three propagates a recompute
+downwards: an object that recomposed its own matrix marks its world matrix
+stale, and every descendant then recomputes its own world matrix — not
+because any of them moved, but because an ancestor might have. A group left
+on three's defaults, positioned once and never touched again, is still
+recomposed on every frame, so a panel below it would be handed back all the
+work it had just opted out of, and the same is true of every ancestor up to
+the scene root. A portal declines that at its own perimeter instead: it
+recomputes its own world matrix each pass and passes the recompute on only
+when that matrix actually came out different. Panels that are not moving cost
+a matrix multiply; panels that are moving cost what they always did.
+
+`place` and `placeAndScale` are exported for scenes that want the same
+treatment for their own static objects:
 
 ```js
 import { place, placeAndScale } from "@apendua/freedom";
 
-$(new THREE.Group(), [
-  effects((group) => {
-    placeAndScale(group, 0, 1, -2, 0.01, 0.01, 0.01);
-  }),
-  children(dom(ctx, App(ctx))),
-]);
+placeAndScale(group, 0, 1, -2, 0.01, 0.01, 0.01);
 ```
 
 Both take the object first and commit its matrix for you; moving something
 and committing the move are deliberately one call rather than two, because a
 bare `position.set` on such an object would leave it wherever it last was.
 Set a rotation before the call if you need one — they compose from position,
-quaternion and scale, so an Euler written just beforehand is picked up. A
-scene root that never moves can simply say so, with
-`scene.matrixAutoUpdate = false`.
+quaternion and scale, so an Euler written just beforehand is picked up.
 
-One print of the measuring tape: on a static panel of 800 mirrored boxes,
-either half alone left the matrix phase exactly where it found it, at 2.9 ms
-a frame. The two together took it to 0.9 ms.
+One print of the measuring tape, on a static panel of 800 mirrored rows at
+8816 scene objects, timing only the world-matrix passes:
+
+| scene above the panel | perimeter | matrix phase |
+| --- | --- | --- |
+| three's defaults | none | 10.0 ms/frame |
+| every ancestor placed | none | 3.6 ms/frame |
+| three's defaults | declines the recompute | 3.6 ms/frame |
 
 ## Real examples
 

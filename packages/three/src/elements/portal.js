@@ -6,6 +6,7 @@ import { checkbox } from "./checkbox.js";
 import { createMirror, getBorderBoxSize, PORTAL_ATTRIBUTE } from "./mirror.js";
 import { createAnimationClock } from "./animationClock.js";
 import { createBlocker, coverBox } from "./blocker.js";
+import { keepSubtreeMatrices, placeAndScale } from "./place.js";
 import { createFrameRequester } from "./frameRequester.js";
 import { InteractionContext } from "../interactions.js";
 
@@ -196,6 +197,11 @@ export function createPortal(ctx, { opaqueToRays = true } = {}) {
 
   const containerObject = new THREE.Group();
 
+  // The panel's perimeter. Everything the portal draws hangs off this, and
+  // everything it draws keeps its own matrices; this is what makes that hold
+  // whatever the scene above the panel does about its own.
+  keepSubtreeMatrices(containerObject);
+
   const interactionManager = InteractionContext.get(ctx);
 
   // With only clickable elements as ray targets (see div.js), the portal
@@ -232,9 +238,17 @@ export function createPortal(ctx, { opaqueToRays = true } = {}) {
     const size = getBorderBoxSize(containerElement);
     const sizeX = scale * size.width;
     const sizeY = scale * size.height;
-    containerObject.scale.set(scale, scale, scale);
+    // The rotation is written first and committed by `placeAndScale` with
+    // everything else: setting an Euler keeps the quaternion in step, and the
+    // quaternion is what the matrix is composed from.
+    //
+    // This one object matters out of all proportion to its number. Three
+    // recomputes a world matrix for every descendant of anything that
+    // recomposed its own — an object that auto-updates sets the flag that
+    // forces the whole subtree beneath it — so a container left to itself
+    // would hand the entire panel the work its boxes just opted out of.
     containerObject.rotation.set(Math.PI, 0, 0);
-    containerObject.position.set(-sizeX / 2, sizeY / 2, 0);
+    placeAndScale(containerObject, -sizeX / 2, sizeY / 2, 0, scale, scale, scale);
     // Container-local px units, y down; content sits at negative local z
     // (toward the viewer after the flip above), so +1 puts the blocker just
     // behind everything the portal draws.

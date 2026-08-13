@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { placeAndScale } from "./place.js";
 
 /**
  * @import {XREventMap} from '../core.js';
@@ -51,8 +52,15 @@ export function createBlocker() {
  * @returns {void}
  */
 export function coverBox(blocker, width, height, z) {
-  blocker.position.set(width / 2, height / 2, z);
   // A plane scaled to nothing has no surface to hit, and a zero scale is not
   // invertible; either way an empty box is better described as very small.
-  blocker.scale.set(Math.max(width, 1e-6), Math.max(height, 1e-6), 1);
+  placeAndScale(
+    blocker,
+    width / 2,
+    height / 2,
+    z,
+    Math.max(width, 1e-6),
+    Math.max(height, 1e-6),
+    1,
+  );
 }

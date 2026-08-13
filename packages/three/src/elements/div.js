@@ -30,6 +30,7 @@ import {
 } from "./cssTransform.js";
 import { getContentRenderOrder, isOverlay } from "./elevation.js";
 import { isScrollable, scrollDrags } from "./scroll.js";
+import { place, placeAndScale } from "./place.js";
 
 /**
  * The group that carries an element's projected DOM children, one per box.
@@ -402,15 +403,19 @@ export function box(ctx, element, options = {}) {
         }
         obj.matrixWorldNeedsUpdate = true;
       } else {
-        obj.matrixAutoUpdate = true;
         // Content-space coordinates: relative to the parent's border box
         // plus its scroll offset, which is what makes them constants of the
         // layout — a scroll changes the content group's translation below,
         // not this. A positioned element is anchored to its containing
         // block instead, and holds still while scrollers between the two
         // slide (see `getObjectPosition`).
+        //
+        // `place` recomposes from position, quaternion and scale, which is
+        // what makes this the way back out of the transformed branch above:
+        // that branch writes `matrix` without ever disturbing the three, so
+        // they are still the identity a plain box wants.
         const position = getObjectPosition(element);
-        obj.position.set(position.x, position.y, z);
+        place(obj, position.x, position.y, z);
       }
       properties.setFromElement(element);
     }),
@@ -427,7 +432,7 @@ export function box(ctx, element, options = {}) {
       // scroll could not change them. (`|| 0` turns the -0 an unscrolled
       // axis would negate to back into 0.)
       const scroll = getScrollOffset(element);
-      contentGroup.position.set(-scroll.left || 0, -scroll.top || 0, 0);
+      place(contentGroup, -scroll.left || 0, -scroll.top || 0, 0);
       currentClipBox = getLocalClipBox(element);
       // Fragments outside the box are discarded, but an element with nothing
       // left to show is worth skipping wholesale — `visible` prunes it and
@@ -489,12 +494,15 @@ export function box(ctx, element, options = {}) {
           // A quad scaled to nothing has no surface to draw or hit, and a
           // zero scale is not invertible; an empty box is better described
           // as very small — same convention as the blocker.
-          obj.scale.set(
+          placeAndScale(
+            obj,
+            0,
+            0,
+            1,
             Math.max(properties.totalWidth, 1e-6),
             Math.max(properties.totalHeight, 1e-6),
             1,
           );
-          obj.position.set(0, 0, 1);
           obj.renderOrder = properties.renderOrder;
         }),
         // Its own effect, and only where there is a picture: a texture

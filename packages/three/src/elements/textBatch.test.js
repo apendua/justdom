@@ -179,3 +179,176 @@ describe("text batch draw order", () => {
     assert.equal(after.renderOrder, 0);
   });
 });
+
+/**
+ * The array texture a bucket is currently drawing from.
+ *
+ * @param {THREE.Object3D} container
+ */
+function boundTexture(container) {
+  const bucket = /** @type {THREE.InstancedMesh} */ (
+    container.children.find((c) => /** @type {THREE.InstancedMesh} */ (c).isInstancedMesh)
+  );
+  return bucket ? /** @type {THREE.ShaderMaterial} */ (bucket.material).uniforms.uRuns.value : null;
+}
+
+/**
+ * The runs a batch has declined, which are the ones drawing themselves.
+ *
+ * @param {THREE.Object3D} container
+ */
+function declined(container) {
+  return container.children.filter(
+    (c) =>
+      /** @type {THREE.Mesh} */ (c).isMesh &&
+      !(/** @type {THREE.InstancedMesh} */ (c).isInstancedMesh) &&
+      /** @type {THREE.Material} */ (/** @type {THREE.Mesh} */ (c).material).visible,
+  );
+}
+
+describe("text batch array limits", () => {
+  test("runs past the layer cap draw themselves instead of failing to allocate", () => {
+    // 256 is the cap; one more run of the same size than there are layers.
+    const p = panel(257);
+    p.batch.flush();
+
+    const bucket = /** @type {THREE.InstancedMesh} */ (
+      p.container.children.find((c) => /** @type {THREE.InstancedMesh} */ (c).isInstancedMesh)
+    );
+    assert.equal(bucket.count, 256, "expected the batch to take exactly a full array");
+    assert.equal(declined(p.container).length, 1, "expected the odd run to draw itself");
+
+    const odd = /** @type {THREE.Mesh} */ (declined(p.container)[0]);
+    assert.equal(odd.frustumCulled, true, "a run that draws itself is culled like any mesh");
+  });
+
+  test("a declined run joins the batch once a layer comes free", () => {
+    const p = panel(257);
+    p.batch.flush();
+    const odd = /** @type {THREE.Mesh} */ (declined(p.container)[0]);
+
+    // Any batched run leaving hands its layer back, and `remove` invalidates.
+    const batched = /** @type {THREE.Mesh} */ (
+      p.container.children.find(
+        (c) =>
+          /** @type {THREE.Mesh} */ (c).isMesh &&
+          !(/** @type {THREE.InstancedMesh} */ (c).isInstancedMesh) &&
+          !(/** @type {THREE.InstancedMesh} */ (c).isInstancedMesh) &&
+          c !== odd &&
+          !(/** @type {THREE.Material} */ (/** @type {THREE.Mesh} */ (c).material).visible),
+      )
+    );
+    p.batch.remove(batched);
+    p.container.remove(batched);
+    p.batch.flush();
+
+    assert.equal(
+      /** @type {THREE.Material} */ (odd.material).visible,
+      false,
+      "expected the declined run to have been taken into the batch",
+    );
+    assert.equal(declined(p.container).length, 0);
+  });
+
+  test("the cap is per size, so another size still batches", () => {
+    const p = panel(257);
+    // A different exact size is a different array with its own 256.
+    for (let i = 0; i < 4; i++) {
+      const mesh = run(30, 14);
+      p.container.add(mesh);
+      p.batch.add(mesh, { value: new THREE.Vector4(-1e6, -1e6, 1e6, 1e6) });
+    }
+    p.batch.flush();
+
+    const buckets = p.container.children.filter(
+      (c) => /** @type {THREE.InstancedMesh} */ (c).isInstancedMesh,
+    );
+    assert.equal(buckets.length, 2);
+    assert.deepEqual(
+      buckets.map((b) => /** @type {THREE.InstancedMesh} */ (b).count).sort((a, b) => a - b),
+      [4, 256],
+    );
+    assert.equal(declined(p.container).length, 1);
+  });
+});
+
+describe("text batch storage release", () => {
+  test("a size class nobody is in gives its array back", () => {
+    const p = panel(6);
+    p.batch.flush();
+
+    const texture = boundTexture(p.container);
+    assert.ok(texture, "expected the bucket to be bound to an array");
+    let disposed = false;
+    texture.addEventListener("dispose", () => {
+      disposed = true;
+    });
+
+    for (const child of [...p.container.children]) {
+      if (
+        /** @type {THREE.Mesh} */ (child).isMesh &&
+        !(/** @type {THREE.InstancedMesh} */ (child).isInstancedMesh)
+      ) {
+        p.batch.remove(/** @type {THREE.Mesh} */ (child));
+        p.container.remove(child);
+      }
+    }
+    p.batch.flush();
+
+    assert.equal(disposed, true, "expected the emptied class to have dropped its texture");
+  });
+
+  test("runs of that size afterwards get a fresh array, and the bucket rebinds to it", () => {
+    const p = panel(6);
+    p.batch.flush();
+    const first = boundTexture(p.container);
+
+    for (const child of [...p.container.children]) {
+      if (
+        /** @type {THREE.Mesh} */ (child).isMesh &&
+        !(/** @type {THREE.InstancedMesh} */ (child).isInstancedMesh)
+      ) {
+        p.batch.remove(/** @type {THREE.Mesh} */ (child));
+        p.container.remove(child);
+      }
+    }
+    p.batch.flush();
+
+    p.grow(6);
+    p.batch.flush();
+
+    const second = boundTexture(p.container);
+    assert.ok(second, "expected a bucket again");
+    assert.notEqual(second, first, "expected the bucket to have rebound to the new array");
+    assert.equal(second.image.depth, 8, "a fresh array starts at the minimum, not the old peak");
+    const bucket = /** @type {THREE.InstancedMesh} */ (
+      p.container.children.find((c) => /** @type {THREE.InstancedMesh} */ (c).isInstancedMesh)
+    );
+    assert.equal(bucket.count, 6);
+    assert.equal(declined(p.container).length, 0);
+  });
+
+  test("a class still holding runs keeps its array", () => {
+    const p = panel(6);
+    p.batch.flush();
+    const texture = boundTexture(p.container);
+    let disposed = false;
+    texture.addEventListener("dispose", () => {
+      disposed = true;
+    });
+
+    const one = /** @type {THREE.Mesh} */ (
+      p.container.children.find(
+        (c) =>
+          /** @type {THREE.Mesh} */ (c).isMesh &&
+          !(/** @type {THREE.InstancedMesh} */ (c).isInstancedMesh),
+      )
+    );
+    p.batch.remove(one);
+    p.container.remove(one);
+    p.batch.flush();
+
+    assert.equal(disposed, false);
+    assert.equal(boundTexture(p.container), texture);
+  });
+});

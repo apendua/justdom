@@ -112,6 +112,28 @@ void main() {
 const MINIMUM_LAYERS = 8;
 
 /**
+ * How deep an array is allowed to get.
+ *
+ * `MAX_ARRAY_TEXTURE_LAYERS` is the real limit and it is a device's to state:
+ * WebGL2 guarantees only 256, while the desktop and mobile parts this runs on
+ * report 2048. Asking for the real one would mean reaching a GL context from
+ * here, which this file has no business holding — a batch is given a container
+ * and nothing else — so it takes the guarantee instead. Past it a run is
+ * declined and draws itself, which costs a draw call and is what the whole
+ * panel did before there were batches at all; over the guarantee it would be
+ * a failed allocation and a size class that draws nothing.
+ *
+ * A panel would have to put 256 labels of one exact pixel size in front of the
+ * player to reach this. That is a long list, and a long list is exactly what
+ * batching is for — so the runs that go over do not fall off, they merely stop
+ * being cheap.
+ */
+const MAXIMUM_LAYERS = 256;
+
+/** What `acquire` returns when a size class has no layer left to give. */
+const NO_LAYER = -1;
+
+/**
  * The runs of one exact size, and the array texture holding them.
  *
  * Layers are handed out and taken back rather than repacked: a label whose
@@ -192,10 +214,24 @@ class SizeClass {
   }
 
   /**
+   * A layer to write a run's pixels into, or `NO_LAYER` if this class is full.
+   *
+   * Only the growth path can fail. A layer off the free list is one this array
+   * already has room for, whatever the cap says — which matters, because it is
+   * how a run declined earlier gets in once another leaves.
+   *
    * @returns {number}
    */
   acquire() {
-    const layer = this.free.length ? /** @type {number} */ (this.free.pop()) : this.next++;
+    if (this.free.length) {
+      const layer = /** @type {number} */ (this.free.pop());
+      this.#reserve(layer + 1);
+      return layer;
+    }
+    if (this.next >= MAXIMUM_LAYERS) {
+      return NO_LAYER;
+    }
+    const layer = this.next++;
     this.#reserve(layer + 1);
     return layer;
   }
@@ -205,7 +241,46 @@ class SizeClass {
    * @returns {void}
    */
   release(layer) {
+    if (layer === NO_LAYER) {
+      return;
+    }
     this.free.push(layer);
+  }
+
+  /** Whether every layer this class ever handed out has come back. */
+  get empty() {
+    return this.free.length === this.next;
+  }
+
+  /**
+   * Give back the storage of a class nobody is using.
+   *
+   * A size class outlives its runs, and until now so did everything it was
+   * holding: a panel whose labels are all re-rasterized at a new size — which
+   * is what a change of device pixel ratio does to every one of them at once —
+   * left the array behind it allocated at its high-water mark, on the device
+   * and again in the mirror of it kept here, for as long as the panel was
+   * open. At a layer per label and `width * height * 4` bytes a layer, twice,
+   * that is worth tens of megabytes on a panel that has since moved on.
+   *
+   * The instance stays in the map. Buckets hold their size class directly, so
+   * a class dropped and made again under the same key would leave a bucket
+   * pointing at a dead one; keeping it means identity holds still, `#reserve`
+   * builds a fresh array from `MINIMUM_LAYERS` the next time a run of this
+   * size appears, and the generation bump makes the buckets rebind to the new
+   * texture before anything draws with it. What is left behind is an object
+   * with two numbers in it.
+   *
+   * @returns {boolean} Whether there was anything to give back.
+   */
+  releaseStorageIfEmpty() {
+    if (!this.empty || (!this.texture && !this.data)) {
+      return false;
+    }
+    this.dispose();
+    this.free = [];
+    this.next = 0;
+    return true;
   }
 
   /**
@@ -217,12 +292,17 @@ class SizeClass {
    */
   write(layer, canvas) {
     const context = canvas.getContext("2d");
-    if (!context || !this.data || !this.texture) {
+    if (layer === NO_LAYER || !context || !this.data || !this.texture) {
       return;
     }
     const pixels = context.getImageData(0, 0, this.width, this.height).data;
     this.data.set(pixels, layer * this.layerBytes);
     this.texture.addLayerUpdate(layer);
+    // The layer update is the cheap half. `needsUpdate` also has three
+    // regenerate the mip chain, and it regenerates the array's — every layer
+    // of it, for the one that changed. Not addressed here, and worth knowing
+    // before deepening an array: what a write costs grows with capacity, which
+    // is a second reason not to let one grow without end.
     this.texture.needsUpdate = true;
   }
 
@@ -591,17 +671,32 @@ export class TextBatch {
       ? `${member.sizeClass.width}x${member.sizeClass.height}`
       : null;
     if (previousKey !== key) {
+      // The run is leaving its old class whatever happens next, so the layer
+      // goes back first. Everything after this either gives the member a layer
+      // of the new class or leaves it holding none of either — a member left
+      // pointing at a class it has no layer in would hand that class a
+      // borrowed index the next time it moved, and the free list would start
+      // giving one layer to two runs.
       if (member.sizeClass) {
         member.sizeClass.release(member.layer);
+        member.sizeClass = null;
+        member.layer = NO_LAYER;
       }
       let sizeClass = this.#classes.get(key);
       if (!sizeClass) {
         sizeClass = new SizeClass(canvas.width, canvas.height);
         this.#classes.set(key, sizeClass);
       }
-      member.sizeClass = sizeClass;
-      member.layer = sizeClass.acquire();
+      const layer = sizeClass.acquire();
       member.canvas = null;
+      if (layer === NO_LAYER) {
+        // Full. The run draws itself, exactly as one with baked colours does,
+        // and is asked again on the next rebuild — which is what lets it in
+        // when another run of its size goes away, since `remove` invalidates.
+        return false;
+      }
+      member.sizeClass = sizeClass;
+      member.layer = layer;
     }
     if (member.canvas !== canvas) {
       /** @type {SizeClass} */ (member.sizeClass).write(member.layer, canvas);
@@ -715,6 +810,12 @@ export class TextBatch {
     }
     for (const bucket of this.#buckets.values()) {
       bucket.finish(bucket.count);
+    }
+    // Everything has been settled and written by now, so a class whose every
+    // layer has come back is one no run in the panel is in. Give its array
+    // back rather than hold the panel's high-water mark until it closes.
+    for (const sizeClass of this.#classes.values()) {
+      sizeClass.releaseStorageIfEmpty();
     }
   }
 

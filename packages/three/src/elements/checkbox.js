@@ -5,6 +5,7 @@ import { $, Nothing } from "../operators.js";
 import { box } from "./div.js";
 import { getCheckedCached, getComputedStyleCached } from "./mirror.js";
 import { applyClip } from "./clip.js";
+import { place } from "./place.js";
 
 /**
  * @import {Observable} from 'rxjs';
@@ -203,7 +204,7 @@ function tick({ properties, contentRenderOrder, clipBox, clipMesh }) {
       clipUniform.value.set(box.left, box.top, box.right, box.bottom);
     }),
     effects((obj) => {
-      obj.position.set(0, 0, 1 - MARK_STEP);
+      place(obj, 0, 0, 1 - MARK_STEP);
       // The box's own draw order plus one: transparency is sorted rather than
       // depth-tested, so a mark that drew before the surface it sits on would
       // blend its edges with whatever is behind the panel.

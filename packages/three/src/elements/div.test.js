@@ -214,6 +214,23 @@ describe("div rendering", () => {
   });
 });
 
+/**
+ * That the object carries no CSS transform: its matrix moves every point by
+ * the content step alone, leaving x and y where they were. Read off the
+ * committed matrix rather than off `matrixAutoUpdate`, which is false for
+ * every box a portal draws — transformed or not, they all write their own.
+ *
+ * Layout offsets are all zero under jsdom, so the step in z is the whole of
+ * what an untransformed box does.
+ *
+ * @param {THREE.Object3D} object
+ * @param {string} message
+ */
+function assertPlainTranslation(object, message) {
+  const point = new THREE.Vector3(1, 1, 0).applyMatrix4(object.matrix);
+  assert.deepEqual([point.x, point.y, point.z], [1, 1, -2], message);
+}
+
 describe("div transforms", () => {
   test("a CSS transform lands on the object's matrix, about its origin", () => {
     const { object, subscription } = setup(
@@ -244,18 +261,20 @@ describe("div transforms", () => {
     // offsets, and *whether* it is transformed is derived from the computed
     // style — so the whole thing arrives through the restyle path.
     const { object, hoverWith, subscription } = setup("pointer");
-    assert.equal(object.matrixAutoUpdate, true, "untransformed to begin with");
+    // Every box commits its own matrix, transformed or not, so the flag no
+    // longer distinguishes the two. What does is the matrix: an untransformed
+    // box translates by the content step and nothing else.
+    assertPlainTranslation(object, "untransformed to begin with");
 
     hoverWith("cursor: pointer; transform: matrix(1, 0, 0, 1, 4, 6)");
 
-    assert.equal(object.matrixAutoUpdate, false, "the hover transform took effect");
     const point = new THREE.Vector3(0, 0, 0).applyMatrix4(object.matrix);
-    assert.equal(point.x, 4);
+    assert.equal(point.x, 4, "the hover transform took effect");
     assert.equal(point.y, 6);
 
     // And leaving hands it back, the same way.
     hoverWith("cursor: pointer");
-    assert.equal(object.matrixAutoUpdate, true);
+    assertPlainTranslation(object, "the transform is gone from the matrix again");
 
     subscription.unsubscribe();
   });
@@ -268,7 +287,7 @@ describe("div transforms", () => {
     assert.equal(object.matrixAutoUpdate, false);
 
     restyleWith("");
-    assert.equal(object.matrixAutoUpdate, true);
+    assertPlainTranslation(object, "back to ordinary positioning");
     assert.equal(object.position.z, -2);
 
     subscription.unsubscribe();

@@ -18,6 +18,7 @@ import {
 } from "./mirror.js";
 import { getContentRenderOrder } from "./elevation.js";
 import { applyClip, clipBoxEqual, toLocalClipBox, UNCLIPPED } from "./clip.js";
+import { place } from "./place.js";
 
 /**
  * @import { Observable } from "rxjs";
@@ -115,7 +116,7 @@ export function text(_, textNode) {
     // it move together — a scroll shifts the clip while the content-space
     // position holds still, and a re-layout can move both.
     effects((obj) => {
-      obj.position.set(layout.left, layout.top, -0.01);
+      place(obj, layout.left, layout.top, -0.01);
       const box = clipBox.get();
       clipUniform.value.set(box.left, box.top, box.right, box.bottom);
     }),
@@ -192,7 +193,7 @@ export function text(_, textNode) {
           }
         }),
         effects((obj) => {
-          obj.position.set(0, 0, 0.01);
+          place(obj, 0, 0, 0.01);
         }),
         // One step past the parent's own box in the draw order. Boxes carry
         // `elevation * 1000 + layer` and text meshes defaulted to 0, so every

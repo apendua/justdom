@@ -506,7 +506,8 @@ export class TextBatch {
   /**
    * Coalesced to one rebuild for the same reason the boxes' is: a single
    * mutation reaches a great many runs, and the rebuild is a walk of the panel
-   * either way.
+   * either way. Collected on the same two schedules, and for the same reason —
+   * `boxBatch`'s `invalidate` says why at length.
    *
    * @returns {void}
    */
@@ -516,11 +517,22 @@ export class TextBatch {
     }
     this.#dirty = true;
     queueMicrotask(() => {
-      this.#dirty = false;
-      if (!this.#disposed) {
-        this.rebuild();
-      }
+      this.flush();
     });
+  }
+
+  /**
+   * Pay off a pending rebuild now, if there is one. Whichever of the microtask
+   * and the late frame hook gets here first does the work.
+   *
+   * @returns {void}
+   */
+  flush() {
+    if (!this.#dirty || this.#disposed) {
+      return;
+    }
+    this.#dirty = false;
+    this.rebuild();
   }
 
   /**

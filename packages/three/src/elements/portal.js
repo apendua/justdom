@@ -10,6 +10,7 @@ import { BoxBatchContext, createBoxBatch } from "./boxBatch.js";
 import { TextBatchContext, createTextBatch } from "./textBatch.js";
 import { keepSubtreeMatrices, placeAndScale } from "./place.js";
 import { createFrameRequester } from "./frameRequester.js";
+import { animateLate } from "../render.js";
 import { InteractionContext } from "../interactions.js";
 
 /**
@@ -88,6 +89,27 @@ export function createPortal(ctx, { opaqueToRays = true } = {}) {
   // same `ctx` gets its own and neither can see the other's.
   ctx = BoxBatchContext.set(ctx, boxBatch);
   ctx = TextBatchContext.set(ctx, textBatch);
+
+  // What a batch owes gets paid at the end of the frame, before anything is
+  // drawn. Most of what invalidates a batch arrives as its own task and is
+  // settled by the microtask the batch queues for itself; what arrives from
+  // inside the frame callback — a sampled CSS animation, a scroll drag in an
+  // immersive session — is not, and would otherwise be drawn a frame late.
+  const flushBatches = () => {
+    boxBatch.flush();
+    textBatch.flush();
+  };
+  /** @type {() => void} */
+  let stopFlushing = () => {};
+  try {
+    const subscription = animateLate(ctx, flushBatches).subscribe();
+    stopFlushing = () => subscription.unsubscribe();
+  } catch {
+    // No renderer to take frames from — a portal on a plain page, or under a
+    // test runner. Nothing invalidates a batch from inside a frame there,
+    // because there are no frames, so the microtask is the whole mechanism
+    // and is enough on its own.
+  }
 
   /** @type {WeakMap<Node, Object3D>} */
   const nodeToObject = new WeakMap();
@@ -532,6 +554,7 @@ export function createPortal(ctx, { opaqueToRays = true } = {}) {
     mutationObserver.disconnect();
     animationClock.dispose();
     // After the observer, so nothing can ask for a rebuild on the way out.
+    stopFlushing();
     boxBatch.dispose();
     textBatch.dispose();
   });

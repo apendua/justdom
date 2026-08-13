@@ -421,14 +421,30 @@ export class BoxBatch {
    *
    * Coalesced to one rebuild, because a single mutation reaches a great many
    * of these — every box in a re-laid-out panel writes its uniforms — and the
-   * rebuild is a walk of the whole panel either way. A microtask is the right
-   * grain for it: signal effects run in batches, so this lands once after the
-   * graph has settled and before anything can be drawn.
+   * rebuild is a walk of the whole panel either way.
    *
-   * Deliberately not tied to a frame. What a rebuild reads are local matrices,
-   * which `place` keeps current at the moment of the write, and uniform values,
-   * which are written the same way — never anything the renderer computes — so
-   * it neither needs a frame nor has to hold one open to stay correct.
+   * Two things collect the debt, and a panel needs both. A microtask is the
+   * right grain for anything that arrives as its own task, which is what a
+   * mutation is: signal effects run in batches, so a microtask lands once
+   * after the graph has settled and before the next frame can draw. It is the
+   * wrong grain for anything that arrives from *inside* a frame callback,
+   * because a microtask queued there does not run until that callback — and
+   * the `renderer.render` at the end of it — has returned. Two sources do
+   * exactly that: the animation clock, which samples a running CSS animation
+   * at the top of each frame, and a scroll drag in an immersive session, whose
+   * synthetic `scroll` event is dispatched from the same tick. Left to the
+   * microtask, a batched box under an animation draws where it was last frame
+   * while its unbatched neighbours — an `<img>`, a checkbox tick — draw where
+   * it is now, which is the panel shearing along the line between them.
+   *
+   * So `flush` below runs late in the frame, and this stays as the backstop
+   * for portals that have no frames to run late in.
+   *
+   * Deliberately not tied to a frame beyond that. What a rebuild reads are
+   * local matrices, which `place` keeps current at the moment of the write,
+   * and uniform values, which are written the same way — never anything the
+   * renderer computes — so it is correct whenever it runs, and only its
+   * timing decides whether it is also current.
    *
    * @returns {void}
    */
@@ -438,11 +454,29 @@ export class BoxBatch {
     }
     this.#dirty = true;
     queueMicrotask(() => {
-      this.#dirty = false;
-      if (!this.#disposed) {
-        this.rebuild();
-      }
+      this.flush();
     });
+  }
+
+  /**
+   * Pay off a pending rebuild now, if there is one.
+   *
+   * Whichever of the two callers gets here first does the work and the other
+   * finds nothing to do, which is what keeps this to one rebuild per panel per
+   * frame however many times the panel was invalidated.
+   *
+   * Clearing the flag before the walk rather than after is also what keeps a
+   * rebuild out of its own way: an `invalidate()` raised from inside the walk
+   * queues a microtask for the next one rather than re-entering this one.
+   *
+   * @returns {void}
+   */
+  flush() {
+    if (!this.#dirty || this.#disposed) {
+      return;
+    }
+    this.#dirty = false;
+    this.rebuild();
   }
 
   /**

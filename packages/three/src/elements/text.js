@@ -129,6 +129,12 @@ export function text(_, textNode) {
         set("material", () => {
           const basic = new THREE.MeshBasicMaterial({
             side: THREE.DoubleSide,
+            // One pass, for the reason `sdfRect` gives at length: the back
+            // pass of a two-sided transparent material orders a closed
+            // shape's own surfaces, and a glyph quad has only the one. The
+            // pass three would add is a second draw and — the expensive
+            // half — a second program invalidation, per text node per frame.
+            forceSinglePass: true,
             transparent: true,
             alphaTest: 0.001,
             color: "white",

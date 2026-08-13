@@ -163,6 +163,10 @@ function tick({ properties, contentRenderOrder, clipBox, clipMesh }) {
         // from the viewer, and a mark that wrote depth would keep out
         // whatever the draw order puts in front of it.
         side: THREE.DoubleSide,
+        // One pass, as everywhere else in a portal: the tick is flat, so the
+        // back pass three adds for a two-sided transparent material redraws
+        // it at the same depth and invalidates its program to do so.
+        forceSinglePass: true,
         transparent: true,
         depthWrite: false,
       });

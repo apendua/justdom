@@ -198,6 +198,21 @@ export function createRectMaterial() {
     // Two-sided for the same reason every plane in a portal is: the
     // container's flip turns them away from the viewer.
     side: THREE.DoubleSide,
+    // And drawn in a single pass, which for a plane is the only pass that
+    // means anything. A two-sided transparent material is otherwise drawn
+    // twice — back faces, then front — so that a closed shape's far surface
+    // composites under its near one. A quad has no far surface: both faces
+    // are the same four vertices at the same depth, and the second pass
+    // redraws exactly what the first did.
+    //
+    // What it does not redraw for free is the setup. Three flips
+    // `material.needsUpdate` before each of the two passes, and that
+    // invalidates the material's program — so every box in the panel
+    // recomputes its program key and re-uploads its uniforms twice per
+    // frame. In a static panel of 800 boxes that setup, not the duplicate
+    // draw call, was the largest single cost in the frame: dropping both
+    // took the render from 86ms to 25ms, pixel for pixel identical.
+    forceSinglePass: true,
     uniforms: {
       uSize: { value: new THREE.Vector2(1, 1) },
       uRadii: { value: new THREE.Vector4(0, 0, 0, 0) },

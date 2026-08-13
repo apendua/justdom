@@ -6,6 +6,7 @@ import { checkbox } from "./checkbox.js";
 import { createMirror, getBorderBoxSize, PORTAL_ATTRIBUTE } from "./mirror.js";
 import { createAnimationClock } from "./animationClock.js";
 import { createBlocker, coverBox } from "./blocker.js";
+import { BoxBatchContext, createBoxBatch } from "./boxBatch.js";
 import { keepSubtreeMatrices, placeAndScale } from "./place.js";
 import { createFrameRequester } from "./frameRequester.js";
 import { InteractionContext } from "../interactions.js";
@@ -58,6 +59,26 @@ export function getPortalRoot(node) {
  * @param {PortalOptions} [options]
  */
 export function createPortal(ctx, { opaqueToRays = true } = {}) {
+  const containerObject = new THREE.Group();
+
+  // The panel's perimeter. Everything the portal draws hangs off this, and
+  // everything it draws keeps its own matrices; this is what makes that hold
+  // whatever the scene above the panel does about its own.
+  keepSubtreeMatrices(containerObject);
+
+  /**
+   * The boxes of this panel, drawn together rather than one at a time. Its
+   * own, not shared with other portals: the buckets hang off this container,
+   * so their instance matrices are in its frame, and a panel is the unit that
+   * comes and goes.
+   */
+  const boxBatch = createBoxBatch(containerObject);
+
+  // Everything this portal projects is built with the batch in scope. The
+  // context is derived rather than mutated, so a second portal built from the
+  // same `ctx` gets its own and neither can see the other's.
+  ctx = BoxBatchContext.set(ctx, boxBatch);
+
   /** @type {WeakMap<Node, Object3D>} */
   const nodeToObject = new WeakMap();
 
@@ -194,13 +215,6 @@ export function createPortal(ctx, { opaqueToRays = true } = {}) {
   containerElement.style.visibility = "hidden";
   document.body.appendChild(containerElement);
   mirror.adopt(containerElement);
-
-  const containerObject = new THREE.Group();
-
-  // The panel's perimeter. Everything the portal draws hangs off this, and
-  // everything it draws keeps its own matrices; this is what makes that hold
-  // whatever the scene above the panel does about its own.
-  keepSubtreeMatrices(containerObject);
 
   const interactionManager = InteractionContext.get(ctx);
 
@@ -507,6 +521,8 @@ export function createPortal(ctx, { opaqueToRays = true } = {}) {
     resizeSubscription.unsubscribe();
     mutationObserver.disconnect();
     animationClock.dispose();
+    // After the observer, so nothing can ask for a rebuild on the way out.
+    boxBatch.dispose();
   });
   nodeToObject.set(containerElement, containerObject);
   objectToNode.set(containerObject, containerElement);

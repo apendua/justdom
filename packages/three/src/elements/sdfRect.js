@@ -101,19 +101,26 @@ void main() {
 }
 `;
 
-const fragmentShader = /* glsl */ `
-varying vec2 vUnit;
-uniform vec2 uSize;
-uniform vec4 uRadii;
-uniform vec4 uBorder;
-uniform vec4 uFillColor;
-uniform vec4 uBorderColor;
-uniform vec4 uClip;
-uniform vec4 uClipRadii;
-uniform sampler2D uImage;
-uniform vec4 uImageRect;
-uniform vec4 uImageClip;
-uniform float uImageOpacity;
+/**
+ * The distance-field maths every box in a portal is drawn with.
+ *
+ * It lives in a string of its own because there are two materials that have
+ * to agree about it exactly: the per-element one below, whose numbers arrive
+ * as uniforms, and the batched one in `boxBatch.js`, whose numbers arrive as
+ * per-instance attributes. They differ in where the box's description comes
+ * from and in nothing else, and a panel draws some of its boxes through each
+ * — an `<img>` cannot join a batch, because a picture is a texture binding —
+ * so the two must be the same shader with a different front door. Sharing
+ * the source is what makes that true by construction rather than by
+ * vigilance.
+ *
+ * `sdfCoverages` is the whole of it: given a box's description it answers how
+ * much of this fragment is fill and how much is border ring, already clipped
+ * by what the element's overflow-hiding ancestors leave of it. What a caller
+ * does with those two numbers — an image composited into the fill, or not —
+ * is the part that differs.
+ */
+export const SDF_GLSL = /* glsl */ `
 float sdRoundedBox(vec2 p, vec2 halfSize, float radius) {
   vec2 q = abs(p) - halfSize + radius;
   return min(max(q.x, q.y), 0.0) + length(max(q, 0.0)) - radius;
@@ -127,33 +134,53 @@ float boxCoverage(vec2 q, vec4 box) {
   vec2 d = abs(q - 0.5 * (box.xy + box.zw)) - halfBox;
   return coverageOf(max(d.x, d.y));
 }
-void main() {
-  vec2 halfSize = 0.5 * uSize;
-  vec2 p = vUnit * uSize - halfSize;
+vec2 sdfCoverages(vec2 unit, vec2 size, vec4 radii, vec4 border, vec4 clip, vec4 clipRadii) {
+  vec2 halfSize = 0.5 * size;
+  vec2 p = unit * size - halfSize;
   float radius = p.x < 0.0
-    ? (p.y < 0.0 ? uRadii.x : uRadii.w)
-    : (p.y < 0.0 ? uRadii.y : uRadii.z);
+    ? (p.y < 0.0 ? radii.x : radii.w)
+    : (p.y < 0.0 ? radii.y : radii.z);
   radius = min(radius, min(halfSize.x, halfSize.y));
   float outer = sdRoundedBox(p, halfSize, radius);
-  vec2 innerHalf = halfSize - 0.5 * vec2(uBorder.w + uBorder.y, uBorder.x + uBorder.z);
-  vec2 innerCenter = 0.5 * vec2(uBorder.w - uBorder.y, uBorder.x - uBorder.z);
+  vec2 innerHalf = halfSize - 0.5 * vec2(border.w + border.y, border.x + border.z);
+  vec2 innerCenter = 0.5 * vec2(border.w - border.y, border.x - border.z);
   float innerRadius = max(radius - max(
-    p.x < 0.0 ? uBorder.w : uBorder.y,
-    p.y < 0.0 ? uBorder.x : uBorder.z
+    p.x < 0.0 ? border.w : border.y,
+    p.y < 0.0 ? border.x : border.z
   ), 0.0);
   float inner = sdRoundedBox(p - innerCenter, max(innerHalf, vec2(0.0)), innerRadius);
-  vec2 clipHalf = 0.5 * (uClip.zw - uClip.xy);
-  vec2 clipCenter = 0.5 * (uClip.xy + uClip.zw) - halfSize;
+  vec2 clipHalf = 0.5 * (clip.zw - clip.xy);
+  vec2 clipCenter = 0.5 * (clip.xy + clip.zw) - halfSize;
   float clipRadius = p.x < clipCenter.x
-    ? (p.y < clipCenter.y ? uClipRadii.x : uClipRadii.w)
-    : (p.y < clipCenter.y ? uClipRadii.y : uClipRadii.z);
+    ? (p.y < clipCenter.y ? clipRadii.x : clipRadii.w)
+    : (p.y < clipCenter.y ? clipRadii.y : clipRadii.z);
   clipRadius = min(clipRadius, min(clipHalf.x, clipHalf.y));
   float clipped = sdRoundedBox(p - clipCenter, max(clipHalf, vec2(0.0)), clipRadius);
   float clipCoverage = coverageOf(clipped);
   float coverage = coverageOf(outer) * clipCoverage;
   float fillness = coverageOf(inner) * clipCoverage;
-  float fillCoverage = min(fillness, coverage);
-  float borderCoverage = max(coverage - fillness, 0.0);
+  return vec2(min(fillness, coverage), max(coverage - fillness, 0.0));
+}
+`;
+
+const fragmentShader = /* glsl */ `
+varying vec2 vUnit;
+uniform vec2 uSize;
+uniform vec4 uRadii;
+uniform vec4 uBorder;
+uniform vec4 uFillColor;
+uniform vec4 uBorderColor;
+uniform vec4 uClip;
+uniform vec4 uClipRadii;
+uniform sampler2D uImage;
+uniform vec4 uImageRect;
+uniform vec4 uImageClip;
+uniform float uImageOpacity;
+${SDF_GLSL}
+void main() {
+  vec2 coverages = sdfCoverages(vUnit, uSize, uRadii, uBorder, uClip, uClipRadii);
+  float fillCoverage = coverages.x;
+  float borderCoverage = coverages.y;
   vec4 fill = uFillColor;
   if (uImageOpacity > 0.0) {
     vec2 q = vUnit * uSize;

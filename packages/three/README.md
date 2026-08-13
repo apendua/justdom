@@ -255,8 +255,15 @@ CSS transitions, keyframe animations and Web Animations play inside a
 portal: while anything is animating, the affected elements are sampled once
 per frame — through the same invalidation path a mutation takes — and the
 moment nothing is, the sampling stops. An idle panel costs nothing.
-Inline-style writes from a `requestAnimationFrame` loop work too; each one
-is an ordinary mutation scoped to the element it touched.
+Inline-style writes from a frame loop work too; each one is an ordinary
+mutation scoped to the element it touched. Drive that loop with
+`animate(ctx, fn)` rather than with `requestAnimationFrame`, though. Once a
+session has the display the page stops being rendered and the page's own
+animation frames stop with it, so a `requestAnimationFrame` loop simply
+stops running and whatever it was moving sits still. The session's frame
+loop keeps going, and `animate` is how to draw on it. Nothing warns you:
+under an emulator the page is presenting _and_ still rendering, so both work
+and the difference only appears on a headset.
 
 The cost per frame is the flat web's own hierarchy, and the guidance is the
 same one every web developer already knows. `transform` and `opacity` (and
@@ -522,7 +529,7 @@ combining lighting, keyed lists (`list`/`keyedList`), controller/hand input,
 and DOM panels projected into 3D space.
 [`apps/showcase-xr`](../../apps/showcase-xr) is the sampler: four panels in a
 grid demonstrating hover/press transitions, CSS keyframes, a Web Animations
-API animation, a `requestAnimationFrame` loop writing inline styles, animated
+API animation, an `animate(ctx, fn)` loop writing inline styles, animated
 text colour, static transforms, a layout-tier width transition, and every
 `object-fit` an image can be drawn with.
 

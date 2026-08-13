@@ -19,6 +19,7 @@ import {
 import { getContentRenderOrder } from "./elevation.js";
 import { applyClip, clipBoxEqual, toLocalClipBox, UNCLIPPED } from "./clip.js";
 import { place } from "./place.js";
+import { TextBatchContext } from "./textBatch.js";
 
 /**
  * @import { Observable } from "rxjs";
@@ -35,12 +36,29 @@ function getViewportDpr() {
 }
 
 /**
- * @param {WeakKey} _
+ * @param {WeakKey} ctx
  * @param {Text} textNode
  * @returns {Observable<THREE.Object3D>}
  */
-export function text(_, textNode) {
+export function text(ctx, textNode) {
   const object = new THREE.Object3D();
+
+  /**
+   * The batch this run is drawn by, if the portal keeps one.
+   *
+   * @type {import('./textBatch.js').TextBatch | null}
+   */
+  const batch = TextBatchContext.get(ctx);
+
+  /**
+   * Say that something the batch copied out of this run has changed. Cheap and
+   * coalesced, so the effects below can simply say so whenever they write.
+   *
+   * @returns {void}
+   */
+  const batchChanged = () => {
+    batch?.invalidate();
+  };
 
   // Measured with transforms neutralized, so both the line boxes and the
   // parent-relative position come back in layout space — the space the
@@ -111,6 +129,11 @@ export function text(_, textNode) {
 
   const clipUniform = { value: new THREE.Vector4(-1e6, -1e6, 1e6, 1e6) };
 
+  // Hoisted so the batch can be handed the mesh itself: registering from
+  // inside the operators below would mean reaching for whatever `$` happened
+  // to be dressing.
+  const mesh = new THREE.Mesh();
+
   return just(object, [
     // One effect for both cheap writes: where the text sits and what trims
     // it move together — a scroll shifts the clip while the content-space
@@ -119,9 +142,10 @@ export function text(_, textNode) {
       place(obj, layout.left, layout.top, -0.01);
       const box = clipBox.get();
       clipUniform.value.set(box.left, box.top, box.right, box.bottom);
+      batchChanged();
     }),
     children(
-      $(new THREE.Mesh(), [
+      $(mesh, [
         // The material is created once and never replaced — the texture swaps
         // through its map slots instead. Identity matters: the tint effect
         // below writes into whatever material the mesh carries, and a
@@ -171,6 +195,7 @@ export function text(_, textNode) {
           if (hadMap !== !!material.map || hadAlphaMap !== !!material.alphaMap) {
             material.needsUpdate = true;
           }
+          batchChanged();
         }),
         set("geometry", () => {
           const { width, height } = textureData;
@@ -191,9 +216,23 @@ export function text(_, textNode) {
             material.color.set("#ffffff");
             material.opacity = 1;
           }
+          batchChanged();
         }),
         effects((obj) => {
           place(obj, 0, 0, 0.01);
+          batchChanged();
+        }),
+        // After the material and the geometry, both of which the batch reads
+        // out of the mesh. A run whose colours are baked into its texture is
+        // declined by the batch and goes on drawing itself.
+        effects(() => {
+          if (!batch) {
+            return;
+          }
+          batch.add(mesh, clipUniform);
+          onCleanup(() => {
+            batch.remove(mesh);
+          });
         }),
         // One step past the parent's own box in the draw order. Boxes carry
         // `elevation * 1000 + layer` and text meshes defaulted to 0, so every
@@ -207,6 +246,7 @@ export function text(_, textNode) {
           if (parentElement) {
             obj.renderOrder = getContentRenderOrder(parentElement);
           }
+          batchChanged();
         }),
       ]),
     ),

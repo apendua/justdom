@@ -7,6 +7,7 @@ import { createMirror, getBorderBoxSize, PORTAL_ATTRIBUTE } from "./mirror.js";
 import { createAnimationClock } from "./animationClock.js";
 import { createBlocker, coverBox } from "./blocker.js";
 import { BoxBatchContext, createBoxBatch } from "./boxBatch.js";
+import { TextBatchContext, createTextBatch } from "./textBatch.js";
 import { keepSubtreeMatrices, placeAndScale } from "./place.js";
 import { createFrameRequester } from "./frameRequester.js";
 import { InteractionContext } from "../interactions.js";
@@ -74,10 +75,19 @@ export function createPortal(ctx, { opaqueToRays = true } = {}) {
    */
   const boxBatch = createBoxBatch(containerObject);
 
-  // Everything this portal projects is built with the batch in scope. The
+  /**
+   * And its text, drawn from arrays of exactly-sized runs rather than a
+   * texture apiece. Kept separate from the boxes' batch because what they
+   * batch by is different — a box is described by numbers, a run by pixels —
+   * even though both hang off this container and both follow the same walk.
+   */
+  const textBatch = createTextBatch(containerObject);
+
+  // Everything this portal projects is built with the batches in scope. The
   // context is derived rather than mutated, so a second portal built from the
   // same `ctx` gets its own and neither can see the other's.
   ctx = BoxBatchContext.set(ctx, boxBatch);
+  ctx = TextBatchContext.set(ctx, textBatch);
 
   /** @type {WeakMap<Node, Object3D>} */
   const nodeToObject = new WeakMap();
@@ -523,6 +533,7 @@ export function createPortal(ctx, { opaqueToRays = true } = {}) {
     animationClock.dispose();
     // After the observer, so nothing can ask for a rebuild on the way out.
     boxBatch.dispose();
+    textBatch.dispose();
   });
   nodeToObject.set(containerElement, containerObject);
   objectToNode.set(containerObject, containerElement);

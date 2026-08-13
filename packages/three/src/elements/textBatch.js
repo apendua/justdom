@@ -1,0 +1,683 @@
+import * as THREE from "three";
+import { createProperty } from "@apendua/signal";
+
+/**
+ * @import {Object3D} from 'three';
+ * @import {ClipBox} from './clip.js';
+ */
+
+/**
+ * Drawing a panel's text runs together instead of one at a time.
+ *
+ * A run is rasterized to a canvas of its own, and that is the whole problem: a
+ * texture is bound per draw, so a panel of eight hundred labels is eight
+ * hundred draws no matter how alike they are. Nothing here changes how a run
+ * is drawn — the same canvas, the same glyphs, the same kerning, decorations
+ * and shadows — only where those pixels live and how the quad is issued.
+ *
+ * They live in **texture arrays keyed by the exact size of the run**, which is
+ * the one arrangement that survives mipmapping. That is not a detail: text in
+ * a panel is drawn well under 1:1 at arm's length, and an unmipped sample
+ * there crawls as the head moves, which is why every run is mipmapped today.
+ *
+ * A shared atlas cannot keep that. Its mip chain is built across everything
+ * packed into it, so a reduced level samples whatever landed next door — and
+ * no amount of gutter fixes it, because the level is chosen from derivatives
+ * in atlas space and a deep enough level spans the neighbours whatever the
+ * spacing. Measured against the per-run drawing it replaces, an atlas came out
+ * visibly bolder across a whole panel; an array of exactly-sized layers came
+ * out indistinguishable. Padding a run into a rounder layer size brings the
+ * same fault back, in miniature, by averaging the run with its own padding —
+ * so the classes are exact, and runs of a size share an array.
+ *
+ * What that costs is a draw per size per render order rather than one for
+ * everything. It is the right trade by a wide margin: going from eight hundred
+ * draws to a few dozen is where the win is, and going from a few dozen to one
+ * is worth about a tenth of it.
+ *
+ * Two things stay out. A run whose colours are baked into its texture — text
+ * with a shadow or a decoration the mirror cannot tint — is sRGB where a mask
+ * is raw coverage, and one array cannot be both. And a run keeps its mesh, so
+ * a ray still finds the label it is pointing at; only `material.visible` goes
+ * false, exactly as a batched box's does.
+ */
+
+/**
+ * The batch a portal's text belongs to. Set by `createPortal` on the context
+ * it builds its elements with, so each portal batches its own, and text built
+ * without one — a test standing in for a portal — draws itself as it always
+ * did.
+ */
+export const TextBatchContext = createProperty(
+  /**
+   * @returns {TextBatch | null}
+   */
+  () => null,
+);
+
+const vertexShader = /* glsl */ `
+attribute vec2 aSize;
+attribute vec4 aColor;
+attribute float aLayer;
+attribute vec4 aClip;
+varying vec2 vUnit;
+varying vec2 vLocal;
+varying vec4 vColor;
+varying float vLayer;
+varying vec4 vClip;
+void main() {
+  vUnit = position.xy;
+  // The frame the clip box is given in: the run's own px, which is what the
+  // per-run material's patched shader compares against too.
+  vLocal = position.xy * aSize;
+  vColor = aColor;
+  vLayer = aLayer;
+  vClip = aClip;
+  gl_Position = projectionMatrix * modelViewMatrix * instanceMatrix * vec4(vLocal, 0.0, 1.0);
+}
+`;
+
+const fragmentShader = /* glsl */ `
+precision highp sampler2DArray;
+uniform sampler2DArray uRuns;
+varying vec2 vUnit;
+varying vec2 vLocal;
+varying vec4 vColor;
+varying float vLayer;
+varying vec4 vClip;
+void main() {
+  // A mask is coverage, not colour — the green channel, which is what three's
+  // own alphaMap path reads, so a batched run and a drawn one agree.
+  float coverage = texture(uRuns, vec3(vUnit, vLayer)).g;
+  float alpha = vColor.a * coverage;
+  if (alpha < 0.001) {
+    discard;
+  }
+  // The same trim applyClip patches into the per-run material, in the same
+  // frame and with the same falloff.
+  vec2 clipHalf = 0.5 * (vClip.zw - vClip.xy);
+  vec2 clipD = abs(vLocal - 0.5 * (vClip.xy + vClip.zw)) - clipHalf;
+  float clipDist = max(clipD.x, clipD.y);
+  alpha *= 1.0 - smoothstep(-fwidth(clipDist), fwidth(clipDist), clipDist);
+  if (alpha < 0.001) {
+    discard;
+  }
+  gl_FragColor = vec4(vColor.rgb, alpha);
+  #include <tonemapping_fragment>
+  #include <colorspace_fragment>
+}
+`;
+
+/** How many runs of a size an array has room for before it is grown. */
+const MINIMUM_LAYERS = 8;
+
+/**
+ * The runs of one exact size, and the array texture holding them.
+ *
+ * Layers are handed out and taken back rather than repacked: a label whose
+ * text changes rewrites its own layer and disturbs nobody else's, which is
+ * what `addLayerUpdate` buys — three uploads that one layer instead of the
+ * whole array.
+ */
+class SizeClass {
+  /** @type {THREE.DataArrayTexture | null} */
+  texture = null;
+  /** @type {Uint8Array | null} */
+  data = null;
+  capacity = 0;
+  /** @type {number[]} */
+  free = [];
+  next = 0;
+  /** Bumped when the texture object is replaced, so buckets rebind. */
+  generation = 0;
+
+  /**
+   * @param {number} width
+   * @param {number} height
+   */
+  constructor(width, height) {
+    this.width = width;
+    this.height = height;
+  }
+
+  /** @returns {number} */
+  get layerBytes() {
+    return this.width * this.height * 4;
+  }
+
+  /**
+   * @param {number} needed
+   * @returns {void}
+   */
+  #reserve(needed) {
+    if (needed <= this.capacity) {
+      return;
+    }
+    let capacity = Math.max(MINIMUM_LAYERS, this.capacity);
+    while (capacity < needed) {
+      capacity *= 2;
+    }
+    const data = new Uint8Array(this.layerBytes * capacity);
+    if (this.data) {
+      data.set(this.data);
+    }
+    if (this.texture) {
+      this.texture.dispose();
+    }
+    this.data = data;
+    this.capacity = capacity;
+    const texture = new THREE.DataArrayTexture(data, this.width, this.height, capacity);
+    texture.format = THREE.RGBAFormat;
+    texture.type = THREE.UnsignedByteType;
+    // Coverage, not colour: tagged sRGB the hardware would linearize every
+    // sample and the glyph edges would collapse to a thin rim — the same
+    // reason the per-run mask texture is untagged.
+    texture.colorSpace = THREE.NoColorSpace;
+    texture.minFilter = THREE.LinearMipmapLinearFilter;
+    texture.magFilter = THREE.LinearFilter;
+    texture.generateMipmaps = true;
+    texture.needsUpdate = true;
+    // Every layer already in hand has to be marked, and the reason is a trap
+    // worth naming. Three uploads a whole array only while nothing has asked
+    // for a single layer; the moment one has, it uploads exactly the layers
+    // asked for and no others. A grown array starts with all the old pixels
+    // copied into it but never yet uploaded, so one ordinary write afterwards
+    // — the run that prompted the growth — would be the only layer that ever
+    // reached the GPU, and every label written before it would vanish.
+    for (let layer = 0; layer < this.next; layer++) {
+      texture.addLayerUpdate(layer);
+    }
+    this.texture = texture;
+    this.generation += 1;
+  }
+
+  /**
+   * @returns {number}
+   */
+  acquire() {
+    const layer = this.free.length ? /** @type {number} */ (this.free.pop()) : this.next++;
+    this.#reserve(layer + 1);
+    return layer;
+  }
+
+  /**
+   * @param {number} layer
+   * @returns {void}
+   */
+  release(layer) {
+    this.free.push(layer);
+  }
+
+  /**
+   * Copy a run's pixels into its layer and ask for that layer alone to go up.
+   *
+   * @param {number} layer
+   * @param {HTMLCanvasElement} canvas
+   * @returns {void}
+   */
+  write(layer, canvas) {
+    const context = canvas.getContext("2d");
+    if (!context || !this.data || !this.texture) {
+      return;
+    }
+    const pixels = context.getImageData(0, 0, this.width, this.height).data;
+    this.data.set(pixels, layer * this.layerBytes);
+    this.texture.addLayerUpdate(layer);
+    this.texture.needsUpdate = true;
+  }
+
+  /** @returns {void} */
+  dispose() {
+    if (this.texture) {
+      this.texture.dispose();
+      this.texture = null;
+    }
+    this.data = null;
+    this.capacity = 0;
+  }
+}
+
+/**
+ * One instanced draw: the runs of a single size that share a single render
+ * order, which is what lets them take the place their meshes held among the
+ * boxes and the text of other depths.
+ */
+class Bucket {
+  /** @type {THREE.InstancedMesh | null} */
+  mesh = null;
+  capacity = 0;
+  count = 0;
+  generation = -1;
+  /** @type {Record<string, Float32Array>} */
+  data = {};
+
+  /**
+   * @param {SizeClass} sizeClass
+   * @param {number} renderOrder
+   * @param {Object3D} parent
+   */
+  constructor(sizeClass, renderOrder, parent) {
+    this.sizeClass = sizeClass;
+    this.renderOrder = renderOrder;
+    this.parent = parent;
+  }
+
+  /**
+   * @param {number} needed
+   * @returns {void}
+   */
+  reserve(needed) {
+    if (needed > this.capacity) {
+      let capacity = Math.max(MINIMUM_LAYERS, this.capacity);
+      while (capacity < needed) {
+        capacity *= 2;
+      }
+      this.#build(capacity);
+    }
+    if (this.mesh && this.generation !== this.sizeClass.generation) {
+      /** @type {THREE.ShaderMaterial} */ (this.mesh.material).uniforms.uRuns.value =
+        this.sizeClass.texture;
+      this.generation = this.sizeClass.generation;
+    }
+  }
+
+  /**
+   * @param {number} capacity
+   * @returns {void}
+   */
+  #build(capacity) {
+    this.dispose();
+    this.capacity = capacity;
+    const geometry = new THREE.InstancedBufferGeometry();
+    geometry.setAttribute(
+      "position",
+      new THREE.BufferAttribute(new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 1, 0]), 3),
+    );
+    geometry.setIndex([0, 1, 2, 2, 1, 3]);
+    /** @type {[string, number][]} */
+    const attributes = [
+      ["aSize", 2],
+      ["aColor", 4],
+      ["aLayer", 1],
+      ["aClip", 4],
+    ];
+    this.data = {};
+    for (const [name, size] of attributes) {
+      const array = new Float32Array(capacity * size);
+      this.data[name] = array;
+      geometry.setAttribute(name, new THREE.InstancedBufferAttribute(array, size));
+    }
+    const material = new THREE.ShaderMaterial({
+      vertexShader,
+      fragmentShader,
+      uniforms: { uRuns: { value: this.sizeClass.texture } },
+      transparent: true,
+      side: THREE.DoubleSide,
+      forceSinglePass: true,
+      // Text never occludes through the depth buffer, for the reason `text.js`
+      // gives: an antialiased edge that wrote depth would keep out whatever the
+      // draw order puts in front of it.
+      depthWrite: false,
+    });
+    const mesh = new THREE.InstancedMesh(geometry, material, capacity);
+    mesh.renderOrder = this.renderOrder;
+    mesh.frustumCulled = false;
+    mesh.matrixAutoUpdate = false;
+    mesh.matrix.identity();
+    this.mesh = mesh;
+    this.generation = this.sizeClass.generation;
+    this.parent.add(mesh);
+  }
+
+  /**
+   * @param {number} index
+   * @param {Member} member
+   * @param {THREE.Matrix4} matrix
+   * @returns {void}
+   */
+  write(index, member, matrix) {
+    const mesh = this.mesh;
+    if (!mesh) {
+      return;
+    }
+    mesh.setMatrixAt(index, matrix);
+    const material = /** @type {THREE.MeshBasicMaterial} */ (member.mesh.material);
+    this.data.aSize[index * 2] = member.width;
+    this.data.aSize[index * 2 + 1] = member.height;
+    this.data.aColor[index * 4] = material.color.r;
+    this.data.aColor[index * 4 + 1] = material.color.g;
+    this.data.aColor[index * 4 + 2] = material.color.b;
+    this.data.aColor[index * 4 + 3] = material.opacity;
+    this.data.aLayer[index] = member.layer;
+    const clip = member.clip.value;
+    this.data.aClip[index * 4] = clip.x;
+    this.data.aClip[index * 4 + 1] = clip.y;
+    this.data.aClip[index * 4 + 2] = clip.z;
+    this.data.aClip[index * 4 + 3] = clip.w;
+  }
+
+  /**
+   * @param {number} count
+   * @returns {void}
+   */
+  finish(count) {
+    this.count = count;
+    const mesh = this.mesh;
+    if (!mesh) {
+      return;
+    }
+    mesh.count = count;
+    mesh.visible = count > 0;
+    mesh.instanceMatrix.needsUpdate = true;
+    for (const name of Object.keys(this.data)) {
+      /** @type {THREE.InstancedBufferAttribute} */ (mesh.geometry.getAttribute(name)).needsUpdate =
+        true;
+    }
+  }
+
+  /** @returns {void} */
+  dispose() {
+    if (!this.mesh) {
+      return;
+    }
+    this.mesh.removeFromParent();
+    this.mesh.geometry.dispose();
+    /** @type {THREE.Material} */ (this.mesh.material).dispose();
+    this.mesh = null;
+    this.capacity = 0;
+  }
+}
+
+/**
+ * What the batch keeps about one run between rebuilds: which layer of which
+ * array holds its pixels, and the canvas those pixels came from — kept so that
+ * a re-rasterized run is noticed and re-uploaded, and only then.
+ *
+ * @typedef {object} Member
+ * @property {THREE.Mesh} mesh
+ * @property {{ value: THREE.Vector4 }} clip The uniform `text.js` maintains.
+ * @property {SizeClass | null} sizeClass
+ * @property {number} layer
+ * @property {HTMLCanvasElement | null} canvas
+ * @property {number} width
+ * @property {number} height
+ */
+
+const matrixStack = [new THREE.Matrix4()];
+
+/**
+ * @param {number} depth
+ * @returns {THREE.Matrix4}
+ */
+function stackAt(depth) {
+  while (matrixStack.length <= depth) {
+    matrixStack.push(new THREE.Matrix4());
+  }
+  return matrixStack[depth];
+}
+
+export class TextBatch {
+  /** @type {Map<THREE.Mesh, Member>} */
+  #members = new Map();
+  /** @type {Map<string, SizeClass>} */
+  #classes = new Map();
+  /** @type {Map<string, Bucket>} */
+  #buckets = new Map();
+  /** @type {Set<Object3D>} */
+  #bucketMeshes = new Set();
+  /** @type {Object3D} */
+  #container;
+  #dirty = false;
+  #disposed = false;
+  /** @type {Member[]} */
+  #found = [];
+  /** @type {THREE.Matrix4[]} */
+  #matrices = [];
+
+  /**
+   * @param {Object3D} container
+   */
+  constructor(container) {
+    this.#container = container;
+  }
+
+  /**
+   * Take this run into the batch. Idempotent.
+   *
+   * @param {THREE.Mesh} mesh
+   * @param {{ value: THREE.Vector4 }} clip The clip uniform `text.js` keeps,
+   *   which is the one piece of a run's description the mesh does not carry.
+   * @returns {void}
+   */
+  add(mesh, clip) {
+    if (this.#members.has(mesh)) {
+      return;
+    }
+    this.#members.set(mesh, {
+      mesh,
+      clip,
+      sizeClass: null,
+      layer: 0,
+      canvas: null,
+      width: 0,
+      height: 0,
+    });
+    // Deliberately not hidden here. Whether this run can be batched at all is
+    // not known until its texture is looked at — a run whose colours are baked
+    // in cannot be — and hiding it first would take a label out of the draw
+    // that nothing else was going to draw. The rebuild decides, and until it
+    // runs the run draws itself, which is the right answer either way.
+    this.invalidate();
+  }
+
+  /**
+   * @param {THREE.Mesh} mesh
+   * @returns {void}
+   */
+  remove(mesh) {
+    const member = this.#members.get(mesh);
+    if (!member) {
+      return;
+    }
+    if (member.sizeClass) {
+      member.sizeClass.release(member.layer);
+    }
+    this.#members.delete(mesh);
+    if (mesh.material) {
+      /** @type {THREE.Material} */ (mesh.material).visible = true;
+    }
+    mesh.frustumCulled = true;
+    this.invalidate();
+  }
+
+  /**
+   * Coalesced to one rebuild for the same reason the boxes' is: a single
+   * mutation reaches a great many runs, and the rebuild is a walk of the panel
+   * either way.
+   *
+   * @returns {void}
+   */
+  invalidate() {
+    if (this.#dirty || this.#disposed) {
+      return;
+    }
+    this.#dirty = true;
+    queueMicrotask(() => {
+      this.#dirty = false;
+      if (!this.#disposed) {
+        this.rebuild();
+      }
+    });
+  }
+
+  /**
+   * Make sure a run's pixels are in an array, moving it between arrays if it
+   * has been re-rasterized at a new size. Only a run whose canvas actually
+   * changed is uploaded, and then only its own layer.
+   *
+   * @param {Member} member
+   * @returns {boolean} Whether the run can be drawn from a batch at all.
+   */
+  #settle(member) {
+    const material = /** @type {THREE.MeshBasicMaterial} */ (member.mesh.material);
+    // A baked run carries its colours in its texture; a mask carries coverage.
+    // One array cannot be both, so only masks are batched.
+    const texture = material.alphaMap;
+    const canvas = texture ? /** @type {HTMLCanvasElement} */ (texture.image) : null;
+    if (!canvas || !canvas.width || !canvas.height) {
+      return false;
+    }
+    const positions = /** @type {THREE.BufferAttribute} */ (
+      member.mesh.geometry.getAttribute("position")
+    ).array;
+    member.width = positions[3];
+    member.height = positions[7];
+    const key = `${canvas.width}x${canvas.height}`;
+    const previousKey = member.sizeClass
+      ? `${member.sizeClass.width}x${member.sizeClass.height}`
+      : null;
+    if (previousKey !== key) {
+      if (member.sizeClass) {
+        member.sizeClass.release(member.layer);
+      }
+      let sizeClass = this.#classes.get(key);
+      if (!sizeClass) {
+        sizeClass = new SizeClass(canvas.width, canvas.height);
+        this.#classes.set(key, sizeClass);
+      }
+      member.sizeClass = sizeClass;
+      member.layer = sizeClass.acquire();
+      member.canvas = null;
+    }
+    if (member.canvas !== canvas) {
+      /** @type {SizeClass} */ (member.sizeClass).write(member.layer, canvas);
+      member.canvas = canvas;
+    }
+    return true;
+  }
+
+  /**
+   * Walk the panel and lay its runs into buckets — the same walk, over the
+   * same `visible` flag, that the renderer and the box batch make, so a
+   * batched panel agrees with an unbatched one about what is drawn and in
+   * what order.
+   *
+   * @returns {void}
+   */
+  rebuild() {
+    if (this.#disposed) {
+      return;
+    }
+    const found = this.#found;
+    const matrices = this.#matrices;
+    found.length = 0;
+    let count = 0;
+
+    /**
+     * @param {Object3D} object
+     * @param {THREE.Matrix4} parentMatrix
+     * @param {number} depth
+     */
+    const walk = (object, parentMatrix, depth) => {
+      if (!object.visible || this.#bucketMeshes.has(object)) {
+        return;
+      }
+      const matrix = stackAt(depth).multiplyMatrices(parentMatrix, object.matrix);
+      const member = this.#members.get(/** @type {THREE.Mesh} */ (object));
+      if (member) {
+        const batched = this.#settle(member);
+        // A run draws itself exactly when the batch cannot draw it, and this
+        // is the one place that decides — so a run that changes its mind, by
+        // gaining a decoration the mirror cannot tint, is handed back rather
+        // than lost.
+        /** @type {THREE.Material} */ (member.mesh.material).visible = !batched;
+        member.mesh.frustumCulled = !batched;
+        if (batched) {
+          found.push(member);
+          if (!matrices[count]) {
+            matrices[count] = new THREE.Matrix4();
+          }
+          matrices[count].copy(matrix);
+          count += 1;
+        }
+      }
+      const children = object.children;
+      for (let i = 0; i < children.length; i++) {
+        walk(children[i], matrix, depth + 1);
+      }
+    };
+
+    const root = stackAt(0).identity();
+    const children = this.#container.children;
+    for (let i = 0; i < children.length; i++) {
+      walk(children[i], root, 1);
+    }
+
+    /** @type {Map<string, number>} */
+    const wanted = new Map();
+    /** @type {string[]} */
+    const keys = [];
+    for (let i = 0; i < count; i++) {
+      const member = found[i];
+      const sizeClass = /** @type {SizeClass} */ (member.sizeClass);
+      const key = `${sizeClass.width}x${sizeClass.height}|${member.mesh.renderOrder}`;
+      keys.push(key);
+      wanted.set(key, (wanted.get(key) ?? 0) + 1);
+    }
+    for (const [key, needed] of wanted) {
+      let bucket = this.#buckets.get(key);
+      if (!bucket) {
+        const member = found[keys.indexOf(key)];
+        bucket = new Bucket(
+          /** @type {SizeClass} */ (member.sizeClass),
+          member.mesh.renderOrder,
+          this.#container,
+        );
+        this.#buckets.set(key, bucket);
+      }
+      bucket.reserve(needed);
+      if (bucket.mesh) {
+        this.#bucketMeshes.add(bucket.mesh);
+      }
+      bucket.count = 0;
+    }
+    for (const [key, bucket] of this.#buckets) {
+      if (!wanted.has(key)) {
+        bucket.count = 0;
+      }
+    }
+    for (let i = 0; i < count; i++) {
+      const bucket = this.#buckets.get(keys[i]);
+      if (bucket) {
+        bucket.write(bucket.count, found[i], matrices[i]);
+        bucket.count += 1;
+      }
+    }
+    for (const bucket of this.#buckets.values()) {
+      bucket.finish(bucket.count);
+    }
+  }
+
+  /** @returns {void} */
+  dispose() {
+    this.#disposed = true;
+    for (const bucket of this.#buckets.values()) {
+      bucket.dispose();
+    }
+    for (const sizeClass of this.#classes.values()) {
+      sizeClass.dispose();
+    }
+    this.#buckets.clear();
+    this.#classes.clear();
+    this.#members.clear();
+    this.#bucketMeshes.clear();
+  }
+}
+
+/**
+ * @param {Object3D} container
+ * @returns {TextBatch}
+ */
+export function createTextBatch(container) {
+  return new TextBatch(container);
+}

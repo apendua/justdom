@@ -519,6 +519,42 @@ One print of the measuring tape: the clip is placed from the element's client
 rect, which is exact for untransformed and translated content, and falls back
 to transformed bounds for anything rotated or scaled inside a scroller.
 
+## Placing a panel
+
+Everything a portal draws composes its local matrix once, in the effect that
+placed it, rather than being recomposed every frame on the chance it moved —
+which is most of what makes an idle panel cheap, and is exactly the premise
+of the mirror restated in the scene graph.
+
+That only holds as far up as it goes. three propagates the recompute
+downwards: an object that recomposed its own matrix forces every descendant
+to recompute its world matrix, whatever those descendants decided for
+themselves. So the group you hang a portal off is the other half of it, and
+`place` / `placeAndScale` are how it opts in:
+
+```js
+import { place, placeAndScale } from "@apendua/freedom";
+
+$(new THREE.Group(), [
+  effects((group) => {
+    placeAndScale(group, 0, 1, -2, 0.01, 0.01, 0.01);
+  }),
+  children(dom(ctx, App(ctx))),
+]);
+```
+
+Both take the object first and commit its matrix for you; moving something
+and committing the move are deliberately one call rather than two, because a
+bare `position.set` on such an object would leave it wherever it last was.
+Set a rotation before the call if you need one — they compose from position,
+quaternion and scale, so an Euler written just beforehand is picked up. A
+scene root that never moves can simply say so, with
+`scene.matrixAutoUpdate = false`.
+
+One print of the measuring tape: on a static panel of 800 mirrored boxes,
+either half alone left the matrix phase exactly where it found it, at 2.9 ms
+a frame. The two together took it to 0.9 ms.
+
 ## Real examples
 
 This package drives several full apps in this monorepo —

@@ -216,6 +216,19 @@ class Bucket {
     // Instance matrices are already expressed in the container's frame, which
     // is this mesh's frame too.
     mesh.matrix.identity();
+    // And the world matrix has to be asked for once, which is easy to miss and
+    // invisible when missed. Three recomputes a world matrix for an object
+    // that either recomposed its own or was told to; this one does neither,
+    // and a freshly built object starts out believing its world matrix is up
+    // to date when it is still the identity. A bucket built while the panel
+    // sat still — the size class that appears when a row scrolls into view —
+    // would draw its instances at panel coordinates in world space, which is
+    // to say somewhere off in the distance. The buckets built during the
+    // panel's first layout were spared only because the container's own
+    // placement forced an update through them, which is what made this show
+    // up as text that scrolls into view being missing rather than as nothing
+    // working at all.
+    mesh.matrixWorldNeedsUpdate = true;
     this.mesh = mesh;
     this.parent.add(mesh);
   }

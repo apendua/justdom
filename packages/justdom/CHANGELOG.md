@@ -1,6 +1,11 @@
 # Change Log - @apendua/justdom
 
-This log was last generated on Mon, 10 Aug 2026 22:34:42 GMT and should not be manually modified.
+This log was last generated on Thu, 13 Aug 2026 21:23:25 GMT and should not be manually modified.
+
+## 0.1.5
+Thu, 13 Aug 2026 21:23:25 GMT
+
+_Version update only_
 
 ## 0.1.4
 Mon, 10 Aug 2026 22:34:42 GMT

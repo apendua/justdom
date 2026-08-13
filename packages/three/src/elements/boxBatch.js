@@ -116,33 +116,35 @@ void main() {
 `;
 
 /**
- * Every bucket in every portal draws with this one. All of a box's numbers
- * are per-instance, so there is nothing left for a material to carry that
- * would make one bucket's differ from another's — which means one program,
- * compiled once, and no material state to change between buckets.
+ * All of a box's numbers are per-instance, so there is nothing left for a
+ * material to carry that would make one bucket's differ from another's — every
+ * bucket of a panel draws with the one made here, and there is no material
+ * state to change between them.
  *
- * @type {THREE.ShaderMaterial | null}
- */
-let sharedMaterial = null;
-
-/**
+ * One per panel rather than one for the whole app, though, and not as a
+ * nicety. A material is how a panel is dressed, and code outside this file
+ * dresses whole panels by walking them: the diagnostics HUD turns depth
+ * testing off across its own subtree so its reading stays legible whatever the
+ * scene puts in front of it. Reaching a material shared with every other panel,
+ * that walk would take depth testing away from the entire app — which is one
+ * HUD, and every panel in the scene drawing over the objects in front of it.
+ * The program is cached by shader source, so panels still compile this once
+ * between them; only the state a panel is allowed to own is per panel.
+ *
  * @returns {THREE.ShaderMaterial}
  */
 function batchMaterial() {
-  if (!sharedMaterial) {
-    sharedMaterial = new THREE.ShaderMaterial({
-      vertexShader: instancedVertex,
-      fragmentShader: instancedFragment,
-      transparent: true,
-      // Two-sided and single-pass for the reasons `sdfRect` gives at length:
-      // the container's flip turns every plane away from the viewer, and the
-      // back pass of a two-sided transparent material has nothing to order
-      // for a quad.
-      side: THREE.DoubleSide,
-      forceSinglePass: true,
-    });
-  }
-  return sharedMaterial;
+  return new THREE.ShaderMaterial({
+    vertexShader: instancedVertex,
+    fragmentShader: instancedFragment,
+    transparent: true,
+    // Two-sided and single-pass for the reasons `sdfRect` gives at length:
+    // the container's flip turns every plane away from the viewer, and the
+    // back pass of a two-sided transparent material has nothing to order
+    // for a quad.
+    side: THREE.DoubleSide,
+    forceSinglePass: true,
+  });
 }
 
 /** How many instances a freshly grown bucket has room for. */
@@ -164,10 +166,12 @@ class Bucket {
   /**
    * @param {number} renderOrder
    * @param {Object3D} parent
+   * @param {THREE.ShaderMaterial} material The panel's, shared by its buckets.
    */
-  constructor(renderOrder, parent) {
+  constructor(renderOrder, parent, material) {
     this.renderOrder = renderOrder;
     this.parent = parent;
+    this.material = material;
   }
 
   /**
@@ -205,7 +209,7 @@ class Bucket {
       this.data[name] = array;
       geometry.setAttribute(name, new THREE.InstancedBufferAttribute(array, size));
     }
-    const mesh = new THREE.InstancedMesh(geometry, batchMaterial(), capacity);
+    const mesh = new THREE.InstancedMesh(geometry, this.material, capacity);
     mesh.renderOrder = this.renderOrder;
     // The instances span the whole panel while the geometry is one unit quad,
     // so three's bounding sphere would describe none of it. A panel is a
@@ -338,6 +342,13 @@ export class BoxBatch {
 
   /** @type {Object3D} */
   #container;
+
+  /**
+   * This panel's, shared by its buckets. See `batchMaterial`.
+   *
+   * @type {THREE.ShaderMaterial}
+   */
+  #material = batchMaterial();
 
   #dirty = false;
   #disposed = false;
@@ -500,7 +511,7 @@ export class BoxBatch {
     for (const [order, needed] of wanted) {
       let bucket = this.#buckets.get(order);
       if (!bucket) {
-        bucket = new Bucket(order, this.#container);
+        bucket = new Bucket(order, this.#container, this.#material);
         this.#buckets.set(order, bucket);
       }
       bucket.reserve(needed);
@@ -549,6 +560,7 @@ export class BoxBatch {
     }
     this.#buckets.clear();
     this.#members.clear();
+    this.#material.dispose();
   }
 }
 

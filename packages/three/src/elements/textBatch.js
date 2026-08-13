@@ -320,6 +320,17 @@ class Bucket {
       depthWrite: false,
     });
     const mesh = new THREE.InstancedMesh(geometry, material, capacity);
+    // The integer itself, unbiased, which is the half of the arrangement
+    // `boxBatch`'s `BOX_BUCKET_BIAS` explains: a run of text and the box of
+    // anything nested inside the element it belongs to share a `renderOrder`,
+    // and text is the one that goes first. Two buckets kept apart by nothing
+    // but the ids of the meshes they happen to hold is not an order, and stops
+    // being the same non-order the moment one of them grows.
+    //
+    // Two text buckets of one order — two sizes of run in the same element —
+    // are still separated only by id. Overlapping runs of different pixel
+    // sizes at one depth is not a thing a panel does, and it is left alone
+    // rather than given a second epsilon to reason about.
     mesh.renderOrder = this.renderOrder;
     mesh.frustumCulled = false;
     mesh.matrixAutoUpdate = false;

@@ -142,3 +142,40 @@ describe("text batch teardown", () => {
     assert.equal(bucket.count, 12);
   });
 });
+
+describe("text batch draw order", () => {
+  test("a bucket draws on the integer, so the boxes nested inside its element composite over it", () => {
+    const container = new THREE.Group();
+    place(container, 0, 0, 0);
+    const batch = createTextBatch(container);
+
+    const mesh = run(24, 12);
+    mesh.renderOrder = 7;
+    container.add(mesh);
+    batch.add(mesh, { value: new THREE.Vector4(-1e6, -1e6, 1e6, 1e6) });
+    batch.flush();
+
+    const bucket = /** @type {THREE.InstancedMesh} */ (
+      container.children.find((c) => /** @type {THREE.InstancedMesh} */ (c).isInstancedMesh)
+    );
+    // The boxes of that same order draw at 7.5 — see `BOX_BUCKET_BIAS`.
+    assert.equal(bucket.renderOrder, 7);
+  });
+
+  test("growing a bucket does not change where it draws", () => {
+    const p = panel(6);
+    p.batch.flush();
+    const before = /** @type {THREE.InstancedMesh} */ (
+      p.container.children.find((c) => /** @type {THREE.InstancedMesh} */ (c).isInstancedMesh)
+    );
+    assert.equal(before.renderOrder, 0);
+
+    p.grow(6);
+    p.batch.flush();
+    const after = /** @type {THREE.InstancedMesh} */ (
+      p.container.children.find((c) => /** @type {THREE.InstancedMesh} */ (c).isInstancedMesh)
+    );
+    assert.notEqual(after.id, before.id, "expected the bucket to have been rebuilt");
+    assert.equal(after.renderOrder, 0);
+  });
+});

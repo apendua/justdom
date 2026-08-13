@@ -258,3 +258,76 @@ describe("box batch teardown", () => {
     assert.equal(materialDisposed, true);
   });
 });
+
+describe("box batch draw order", () => {
+  test("a bucket draws half a step behind the boxes it holds, so text of that order goes first", () => {
+    const container = new THREE.Group();
+    place(container, 0, 0, 0);
+    const batch = createBoxBatch(container);
+
+    const box = new THREE.Mesh(rectGeometry, createRectMaterial());
+    place(box, 0, 0, 0);
+    box.renderOrder = 7;
+    container.add(box);
+    batch.add(box);
+    batch.flush();
+
+    const bucket = /** @type {THREE.InstancedMesh} */ (
+      container.children.find((c) => /** @type {THREE.InstancedMesh} */ (c).isInstancedMesh)
+    );
+    assert.equal(bucket.renderOrder, 7.5);
+    // Strictly inside its own level: after text at 7, before anything at 8.
+    assert.ok(bucket.renderOrder > 7 && bucket.renderOrder < 8);
+  });
+
+  test("growing a bucket does not change where it draws", () => {
+    const p = crowdedPanel(4);
+    for (const box of p.boxes) {
+      box.renderOrder = 7;
+    }
+    p.batch.flush();
+    const before = /** @type {THREE.InstancedMesh} */ (
+      p.container.children.find((c) => /** @type {THREE.InstancedMesh} */ (c).isInstancedMesh)
+    );
+    assert.equal(before.renderOrder, 7.5);
+
+    // Past the initial capacity of 16, which throws the mesh away and builds a
+    // bigger one — the point at which sorting by object id used to reverse.
+    for (let i = 0; i < 40; i++) {
+      const box = new THREE.Mesh(rectGeometry, createRectMaterial());
+      place(box, i, 1, 0);
+      box.renderOrder = 7;
+      p.container.add(box);
+      p.batch.add(box);
+    }
+    p.batch.flush();
+
+    const after = /** @type {THREE.InstancedMesh} */ (
+      p.container.children.find((c) => /** @type {THREE.InstancedMesh} */ (c).isInstancedMesh)
+    );
+    assert.notEqual(after.id, before.id, "expected the bucket to have been rebuilt");
+    assert.equal(after.renderOrder, 7.5);
+  });
+
+  test("buckets of neighbouring orders never interleave", () => {
+    const container = new THREE.Group();
+    place(container, 0, 0, 0);
+    const batch = createBoxBatch(container);
+    for (const order of [7, 8]) {
+      const box = new THREE.Mesh(rectGeometry, createRectMaterial());
+      place(box, 0, 0, 0);
+      box.renderOrder = order;
+      container.add(box);
+      batch.add(box);
+    }
+    batch.flush();
+
+    const orders = container.children
+      .filter((c) => /** @type {THREE.InstancedMesh} */ (c).isInstancedMesh)
+      .map((c) => c.renderOrder)
+      .sort((a, b) => a - b);
+    // Text of order 8 draws at 8, between these two.
+    assert.deepEqual(orders, [7.5, 8.5]);
+    assert.ok(orders[0] < 8 && orders[1] > 8);
+  });
+});

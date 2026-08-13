@@ -147,6 +147,41 @@ function batchMaterial() {
   });
 }
 
+/**
+ * How far behind its integer a box bucket draws, so that text of the same
+ * `renderOrder` draws first and the boxes composite over it.
+ *
+ * The scheme makes that collision structural rather than unlucky. An element's
+ * box carries `elevation * 1000 + depth` and its text carries
+ * `getContentRenderOrder`, which is `elevation * 1000 + (depth + 1)` — the
+ * same integer as the box of anything nested one level inside it. Drawing a
+ * panel a mesh at a time, three broke the tie by view-space depth and got it
+ * right for nothing: a nested box sits `CONTENT_STEP` toward the viewer of
+ * its parent's content while a run of text sits level with it, so the text
+ * was farther, drew first, and the box composited over it.
+ *
+ * A bucket has no such depth to offer. Every bucket of a panel hangs off the
+ * container with an identity matrix, so box and text buckets of one order sort
+ * at exactly the same distance and three falls through to comparing object
+ * ids — which is creation order, and which changes under you: a bucket that
+ * fills is rebuilt with a fresh id, so a panel could reverse the two mid
+ * session, the first time a row arrived that made a bucket grow. With the box
+ * material writing depth, that decides whether text under a translucent box
+ * is there or not.
+ *
+ * So the order is written down instead. Half a step keeps a bucket strictly
+ * between its own integer and the next one, which is what makes this safe:
+ * text at R, boxes at R + 0.5, text at R + 1 — the levels never interleave.
+ *
+ * What this does not fix, and is not meant to: a mesh that draws itself among
+ * batched ones — an `<img>`'s box, a run of text whose colours are baked in —
+ * sorts on its own origin, which is nearer than the container's, so it
+ * composites over batched content of the same order. That one is at least
+ * stable, being a property of where the mesh is rather than of when it was
+ * made.
+ */
+const BOX_BUCKET_BIAS = 0.5;
+
 /** How many instances a freshly grown bucket has room for. */
 const MINIMUM_CAPACITY = 16;
 
@@ -210,7 +245,7 @@ class Bucket {
       geometry.setAttribute(name, new THREE.InstancedBufferAttribute(array, size));
     }
     const mesh = new THREE.InstancedMesh(geometry, this.material, capacity);
-    mesh.renderOrder = this.renderOrder;
+    mesh.renderOrder = this.renderOrder + BOX_BUCKET_BIAS;
     // The instances span the whole panel while the geometry is one unit quad,
     // so three's bounding sphere would describe none of it. A panel is a
     // single object to cull anyway, and its own container is what carries it

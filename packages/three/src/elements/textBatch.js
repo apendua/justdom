@@ -396,6 +396,11 @@ class Bucket {
     this.mesh.removeFromParent();
     this.mesh.geometry.dispose();
     /** @type {THREE.Material} */ (this.mesh.material).dispose();
+    // And the one buffer the geometry does not own — `boxBatch`'s bucket says
+    // why at length. Unlike the boxes', this material is the bucket's own: it
+    // carries the size class's array texture, so there is one per size per
+    // render order rather than one per panel.
+    this.mesh.dispose();
     this.mesh = null;
     this.capacity = 0;
   }
@@ -436,7 +441,20 @@ export class TextBatch {
   #classes = new Map();
   /** @type {Map<string, Bucket>} */
   #buckets = new Map();
-  /** @type {Set<Object3D>} */
+  /**
+   * The batch's own meshes, which its walk of the panel has to step over. A
+   * set rather than a lookup through the buckets because a bucket is keyed by
+   * size and render order and the walk has an object in hand — there can be
+   * dozens of buckets, and this is asked once per object per rebuild.
+   *
+   * Derived from the buckets at the top of every rebuild rather than added to
+   * as buckets are made. A bucket that fills is rebuilt at double capacity and
+   * its old mesh is discarded; a set that only ever grew would hold every mesh
+   * the panel had ever outgrown, and there is nothing left to notice them by.
+   * Rebuilding it is a walk of the buckets, which the rebuild does anyway.
+   *
+   * @type {Set<Object3D>}
+   */
   #bucketMeshes = new Set();
   /** @type {Object3D} */
   #container;
@@ -593,6 +611,15 @@ export class TextBatch {
     if (this.#disposed) {
       return;
     }
+    // Which of the container's children are the batch's own, as of now. Taken
+    // from the buckets rather than remembered, so a mesh a bucket has grown
+    // out of cannot linger here.
+    this.#bucketMeshes.clear();
+    for (const bucket of this.#buckets.values()) {
+      if (bucket.mesh) {
+        this.#bucketMeshes.add(bucket.mesh);
+      }
+    }
     const found = this.#found;
     const matrices = this.#matrices;
     found.length = 0;
@@ -661,9 +688,6 @@ export class TextBatch {
         this.#buckets.set(key, bucket);
       }
       bucket.reserve(needed);
-      if (bucket.mesh) {
-        this.#bucketMeshes.add(bucket.mesh);
-      }
       bucket.count = 0;
     }
     for (const [key, bucket] of this.#buckets) {

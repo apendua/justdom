@@ -289,6 +289,19 @@ class Bucket {
     }
     this.mesh.removeFromParent();
     this.mesh.geometry.dispose();
+    // An instanced mesh has one buffer that its geometry does not own.
+    // `instanceMatrix` is not a geometry attribute — the renderer uploads it
+    // separately and frees it only when the mesh says it is going, which is
+    // what this dispatches. Without it the buffer is left allocated on the
+    // device with nothing referring to it: the renderer's own record of it is
+    // weakly keyed, so collecting the attribute drops the key and the
+    // `deleteBuffer` that would have followed it. That is once per growth —
+    // a bucket is rebuilt at double capacity every time it fills — and once
+    // more per panel closed.
+    //
+    // The material is not disposed here. It belongs to the panel and is
+    // shared by every bucket in it, so it goes when the batch does.
+    this.mesh.dispose();
     this.mesh = null;
     this.capacity = 0;
   }

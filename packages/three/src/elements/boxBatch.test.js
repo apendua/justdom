@@ -37,6 +37,49 @@ function panel() {
   };
 }
 
+/**
+ * A panel of `count` boxes, all of one render order, so they share a bucket
+ * and the bucket has to grow to hold them.
+ *
+ * @param {number} count
+ */
+function crowdedPanel(count) {
+  const container = new THREE.Group();
+  place(container, 0, 0, 0);
+
+  const batch = createBoxBatch(container);
+  const boxes = [];
+  for (let i = 0; i < count; i++) {
+    const box = new THREE.Mesh(rectGeometry, createRectMaterial());
+    place(box, i, 0, 0);
+    container.add(box);
+    batch.add(box);
+    boxes.push(box);
+  }
+
+  /**
+   * Every instanced mesh the batch has ever made, and whether three was told
+   * it was going. The `dispose` event is what frees an instance buffer, so
+   * this is the thing worth asserting rather than any call in particular.
+   *
+   * @type {Map<THREE.InstancedMesh, boolean>}
+   */
+  const meshes = new Map();
+  const watch = () => {
+    for (const child of container.children) {
+      const mesh = /** @type {THREE.InstancedMesh} */ (child);
+      if (mesh.isInstancedMesh && !meshes.has(mesh)) {
+        meshes.set(mesh, false);
+        mesh.addEventListener("dispose", () => {
+          meshes.set(mesh, true);
+        });
+      }
+    }
+  };
+
+  return { container, batch, boxes, meshes, watch };
+}
+
 /** Let queued microtasks run. */
 const microtasks = () => Promise.resolve();
 
@@ -138,5 +181,80 @@ describe("box batch rebuild scheduling", () => {
     p.batch.flush();
     await microtasks();
     assert.equal(rebuilds, 0);
+  });
+});
+
+describe("box batch teardown", () => {
+  test("every mesh a growing bucket leaves behind is told it is going", () => {
+    // The bucket starts with room for 16 and doubles from there.
+    const p = crowdedPanel(40);
+    p.batch.flush();
+    p.watch();
+    assert.equal(p.meshes.size, 1);
+
+    for (let i = 0; i < 40; i++) {
+      const box = new THREE.Mesh(rectGeometry, createRectMaterial());
+      place(box, i, 1, 0);
+      p.container.add(box);
+      p.batch.add(box);
+    }
+    p.batch.flush();
+    p.watch();
+    assert.equal(p.meshes.size, 2, "expected the bucket to have been rebuilt bigger");
+
+    // The one it grew out of is gone, the one it is drawing with is not.
+    const [outgrown, current] = [...p.meshes.keys()];
+    assert.equal(p.meshes.get(outgrown), true);
+    assert.equal(p.meshes.get(current), false);
+    assert.equal(outgrown.parent, null);
+    assert.equal(current.parent, p.container);
+  });
+
+  test("disposing the batch tells three about the mesh it was still drawing with", () => {
+    const p = crowdedPanel(4);
+    p.batch.flush();
+    p.watch();
+    assert.equal(p.meshes.size, 1);
+
+    p.batch.dispose();
+    assert.deepEqual([...p.meshes.values()], [true]);
+    assert.equal(
+      p.container.children.filter((c) => /** @type {THREE.InstancedMesh} */ (c).isInstancedMesh)
+        .length,
+      0,
+    );
+  });
+
+  test("a bucket's geometry goes with it, and the panel's material only at the end", () => {
+    const p = crowdedPanel(4);
+    p.batch.flush();
+    const bucket = /** @type {THREE.InstancedMesh} */ (
+      p.container.children.find((c) => /** @type {THREE.InstancedMesh} */ (c).isInstancedMesh)
+    );
+    const material = /** @type {THREE.Material} */ (bucket.material);
+
+    let geometryDisposed = false;
+    let materialDisposed = false;
+    bucket.geometry.addEventListener("dispose", () => {
+      geometryDisposed = true;
+    });
+    material.addEventListener("dispose", () => {
+      materialDisposed = true;
+    });
+
+    // Grow it: the geometry is this mesh's, the material is the panel's and is
+    // shared with every other bucket in it.
+    for (let i = 0; i < 40; i++) {
+      const box = new THREE.Mesh(rectGeometry, createRectMaterial());
+      place(box, i, 1, 0);
+      p.container.add(box);
+      p.batch.add(box);
+    }
+    p.batch.flush();
+    assert.equal(geometryDisposed, true);
+    assert.equal(materialDisposed, false, "the panel is still drawing with this material");
+
+    p.batch.dispose();
+    assert.equal(materialDisposed, true);
   });
 });

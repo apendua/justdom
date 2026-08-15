@@ -195,6 +195,67 @@ export function setPriority(dependency, priority) {
 }
 
 /**
+ * Which update channel each dependency schedules in, by the channel's order.
+ * Kept beside the priorities because it is the other half of the same sort
+ * key — the queue drains by `(channel order, depth)` — and because a node
+ * needs to ask it of its dependencies, which are `Subscribable`s and may not
+ * be computations at all. Anything never registered is in the default
+ * channel, which is order 0: a plain signal, a `store()` change stream, a
+ * hand-rolled observable.
+ *
+ * @type {WeakMap<Dependency, number>}
+ */
+const channelOrderMap = new WeakMap();
+
+/**
+ * How many dependencies have been put in a channel other than the default.
+ *
+ * The check that keeps channels terminal has to walk a node's dependencies
+ * asking each which channel it is in, and that walk sits inside every
+ * recomputation. Almost no graph uses channels at all, and one that does not
+ * cannot violate the rule, so this is what lets the walk be skipped outright
+ * rather than performed and found to be fine.
+ *
+ * @type {number}
+ */
+let nonDefaultChannelCount = 0;
+
+/**
+ * Whether any dependency anywhere is outside the default channel.
+ *
+ * @returns {boolean}
+ */
+export function hasNonDefaultChannels() {
+  return nonDefaultChannelCount > 0;
+}
+
+/**
+ * @param {Dependency} dependency
+ * @returns {number}
+ */
+export function getChannelOrder(dependency) {
+  return channelOrderMap.get(dependency) ?? 0;
+}
+
+/**
+ * @param {Dependency} dependency
+ * @param {number} order
+ * @returns {void}
+ */
+export function setChannelOrder(dependency, order) {
+  if (order === 0) {
+    // The default, and what `getChannelOrder` answers for anything it has
+    // never been told about. Recording it would cost a write per computation
+    // built and buy nothing.
+    return;
+  }
+  if (!channelOrderMap.has(dependency)) {
+    nonDefaultChannelCount += 1;
+  }
+  channelOrderMap.set(dependency, order);
+}
+
+/**
  * @template T
  * @param {Dependency & { get: () => T }} signal
  * @return {Observable<T>}

@@ -1,4 +1,5 @@
-export { Derived, Signal, batch } from "./Signal.js";
+export { Derived, Signal, batch, defaultChannel } from "./Signal.js";
+export { default as UpdateChannel } from "./UpdateChannel.js";
 export { createProperty } from "./context.js";
 export {
   addDependency,
@@ -9,6 +10,7 @@ export {
   valueOf,
   setPriority,
   getPriority,
+  getChannelOrder,
   toObservable,
   NoValueError,
 } from "./core.js";

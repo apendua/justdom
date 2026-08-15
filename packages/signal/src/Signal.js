@@ -6,9 +6,16 @@ import {
   addDependency,
   setPriority,
   getPriority,
+  setChannelOrder,
+  getChannelOrder,
+  hasNonDefaultChannels,
   makeNonReactive,
 } from "./core.js";
 import Computation from "./Computation.js";
+
+/**
+ * @import UpdateChannel from "./UpdateChannel.js";
+ */
 
 /**
  * @import {Subscribable} from "rxjs";
@@ -36,11 +43,18 @@ export function batch(fn) {
 }
 
 /**
+ * The channel everything schedules in unless a `Derived` says otherwise.
+ */
+export const defaultChannel = updateQueue.defaultChannel;
+
+/**
  * @template T
  * @typedef {object} DerivedOptions
  * @property {(a: T, b: T) => boolean} [isEqual]
  * @property {boolean} [deferred]
  * @property {number} [cacheTTL]
+ * @property {UpdateChannel} [channel] which channel to schedule this node's
+ *   recomputation in. Fixed for the life of the node.
  */
 
 /**
@@ -66,6 +80,12 @@ export class Derived extends Computation {
   /** @type {boolean} */
   #recomputing = false;
 
+  /** @type {UpdateChannel} */
+  #channel;
+
+  /** @type {boolean} */
+  #warnedAboutChannelOrder = false;
+
   /**
    * @param {(ctx: EvaluationContext<T>) => T} evaluate
    * @param {((a: T, b: T) => boolean) | DerivedOptions<T>} [options]
@@ -76,17 +96,20 @@ export class Derived extends Computation {
         return this.#cacheTTL >= 0 ? interval(this.#cacheTTL) : of(null);
       },
       onInvalidateDependency: () => {
-        updateQueue.invalidate(this, getPriority(this));
+        updateQueue.invalidate(this, getPriority(this), this.#channel);
       },
     });
     this.#evaluate = evaluate;
     if (typeof options === "function") {
       this.#isEqual = options;
+      this.#channel = updateQueue.defaultChannel;
     } else {
-      const { isEqual = Object.is, cacheTTL = -1 } = options;
+      const { isEqual = Object.is, cacheTTL = -1, channel = updateQueue.defaultChannel } = options;
       this.#isEqual = isEqual;
       this.#cacheTTL = cacheTTL;
+      this.#channel = channel;
     }
+    setChannelOrder(this, this.#channel.order);
     this.addSideEffect(
       new Observable(() => {
         try {
@@ -184,8 +207,51 @@ export class Derived extends Computation {
           maxPriority = Math.max(maxPriority, getPriority(dependency) + 1);
         }
         setPriority(this, maxPriority);
+        // Skipped entirely by a graph that uses no channels, which cannot
+        // break the rule and should not pay to be asked about it.
+        if (hasNonDefaultChannels() && !this.#warnedAboutChannelOrder) {
+          this.#checkChannelOrder(dependencies);
+        }
       },
     });
+  }
+
+  /**
+   * Channels are drained in order, so a node must not read a dependency from
+   * a later channel than its own: it would be scheduled before the value it
+   * reads, on every pass, and would never catch up by more than one pass at a
+   * time. Channels are meant to be terminal — a presentation channel reads
+   * application state, never the other way round — and this is where a
+   * violation becomes visible, since the dependencies are already being
+   * walked here for the depth.
+   *
+   * Warned about once per node: the edge is created once, but the node may
+   * recompute thousands of times a second.
+   *
+   * @param {Dependency[]} dependencies
+   * @returns {void}
+   */
+  #checkChannelOrder(dependencies) {
+    let order = 0;
+    for (const dependency of dependencies) {
+      const dependencyOrder = getChannelOrder(dependency);
+      if (dependencyOrder > order) {
+        order = dependencyOrder;
+      }
+    }
+    if (order <= this.#channel.order) {
+      return;
+    }
+    this.#warnedAboutChannelOrder = true;
+    console.warn(
+      new Error(
+        `A computation in update channel "${this.#channel.name}" (order ` +
+          `${this.#channel.order}) reads a dependency from a channel of order ${order}. ` +
+          `Channels drain in order, so this node will be recomputed before the value it ` +
+          `reads and will always lag it by a pass. Channels are meant to be terminal: ` +
+          `move this node into the later channel, or move its dependency into an earlier one.`,
+      ),
+    );
   }
 
   /**

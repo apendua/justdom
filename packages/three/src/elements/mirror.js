@@ -81,11 +81,26 @@ export const PORTAL_ATTRIBUTE = "data-xr-portal";
  * is doing to them: hovering, pressing, and — for a checkbox, whose state no
  * mutation would otherwise report — ticked.
  *
- * These carry a contract the author-facing attributes do not: **a rule that
- * follows one of these may restyle, but may not re-lay-out.** Colour,
- * background, border colour, opacity and `transform` are all fair game; a
- * width, a padding or a font size that changes on hover is not mirrored, and
- * the mirror will go on drawing the boxes at the size they had.
+ * These carry a contract the author-facing attributes do not, in two parts.
+ *
+ * **A rule that follows one of these may restyle, but may not re-lay-out.**
+ * Colour, background, border colour, opacity and `transform` are all fair
+ * game; a width, a padding or a font size that changes on hover is not
+ * mirrored, and the mirror will go on drawing the boxes at the size they had.
+ *
+ * **A rule that follows one of these may only style the element it matches,
+ * and its subtree.** `[data-xr-hover] ~ .row` and `[data-xr-hover] + .row`
+ * are not mirrored: the sibling keeps the styling it had. Descendants are
+ * fine — `.button[data-xr-hover] .label` restyles, as does anything the
+ * hovered element's own subtree inherits from it.
+ *
+ * That second half is what keeps hover off the rest of the panel. A restyle
+ * scope is a claim about how far a selector's verdict could have moved, so
+ * the sibling half of the ordinary scope (see `#restyleScope`) puts every
+ * element sharing a parent — and every element under those — in the path of
+ * one hover. In a list, that is the entire list on every row the ray
+ * crosses, which is the whole panel's styles at frame rate. Declaring the
+ * sibling combinators out of scope makes hovering a row cost the row.
  *
  * The contract is worth the narrowness because of what it buys. These are by
  * far the most frequent mutations a panel sees — the ray writes one on every
@@ -494,22 +509,22 @@ export class DomMirror {
     for (const [node, names] of attributeBaselines) {
       const element = /** @type {Element} */ (node);
       let changed = false;
-      // Whether anything that changed is allowed to have moved the layout.
-      // The portal's own `data-xr-*` flags are not (see
-      // `PRESENTATIONAL_ATTRIBUTES`), so a flush that is nothing but a hover
-      // restyles and measures nothing at all.
-      let movesGeometry = false;
+      // Whether everything that changed is one of the portal's own
+      // `data-xr-*` flags (see `PRESENTATIONAL_ATTRIBUTES`). A flush that is
+      // nothing but a hover measures nothing at all, and restyles only the
+      // hovered element's own subtree.
+      let presentational = true;
       for (const [name, oldValue] of names) {
         if (element.getAttribute(name) === oldValue) {
           continue;
         }
         changed = true;
         if (!PRESENTATIONAL_ATTRIBUTES.has(name)) {
-          movesGeometry = true;
+          presentational = false;
         }
       }
       if (changed) {
-        this.attributeChanged(element, { movesGeometry });
+        this.attributeChanged(element, { presentational });
       }
     }
     for (const [node, oldValue] of characterBaselines) {
@@ -527,18 +542,18 @@ export class DomMirror {
    *
    * @param {Node} element
    * @param {object} [options]
-   * @param {boolean} [options.movesGeometry] Whether the change is allowed
-   *   to have moved anything measurable. True by default, which is the
-   *   answer for every attribute an author writes. The portal's own
-   *   `data-xr-*` flags pass false — they are declared presentational, and
-   *   skipping the re-measure is what makes a hover cost styles alone. See
-   *   `PRESENTATIONAL_ATTRIBUTES`.
+   * @param {boolean} [options.presentational] Whether the change is one of
+   *   the portal's own `data-xr-*` flags. False by default, which is the
+   *   answer for every attribute an author writes. Passing true narrows the
+   *   work to what those flags are declared able to do: no re-measure, and
+   *   a restyle that stops at the element's own subtree instead of reaching
+   *   its siblings. See `PRESENTATIONAL_ATTRIBUTES`.
    * @returns {void}
    */
-  attributeChanged(element, { movesGeometry = true } = {}) {
+  attributeChanged(element, { presentational = false } = {}) {
     batch(() => {
-      this.#restyleScope(element);
-      if (!movesGeometry) {
+      this.#restyleScope(element, { reachesSiblings: !presentational });
+      if (presentational) {
         return;
       }
       const record = recordOf(element);
@@ -607,8 +622,22 @@ export class DomMirror {
 
   /**
    * The animation clock sampled: the computed styles of these elements'
-   * neighbourhoods may have moved. Scoped exactly like an attribute
-   * mutation, because a transition is a style change stretched over time.
+   * subtrees may have moved.
+   *
+   * Narrower than an attribute mutation, and for a reason that does not
+   * hold there. What a sibling's scope models is a selector changing its
+   * verdict — `~`, `+` and the structural pseudo-classes all match on
+   * attributes, classes and position, and a mutation can move any of them.
+   * A transition or a keyframe moves none: it changes the resolved values
+   * on the element it runs on, and nothing about which rules match whom.
+   * So the subtree — where inherited properties carry the new values — is
+   * the whole of it, and a neighbour that is animating too is separately in
+   * `targets` anyway.
+   *
+   * This is load-bearing for hover. Hover styling is conventionally
+   * transitioned, so the clock re-reports the hovered element on every
+   * frame the transition runs; at the old scope each of those frames
+   * restyled every sibling in the list and everything under them.
    *
    * @param {Iterable<Node>} targets
    * @returns {void}
@@ -616,7 +645,7 @@ export class DomMirror {
   animatedStyles(targets) {
     batch(() => {
       for (const target of targets) {
-        this.#restyleScope(target);
+        this.#restyleScope(target, { reachesSiblings: false });
       }
     });
   }
@@ -770,12 +799,24 @@ export class DomMirror {
 
   /**
    * @param {Node} node
+   * @param {object} [options]
+   * @param {boolean} [options.reachesSiblings] Whether the change could
+   *   restyle `node`'s siblings as well as its own subtree. True by
+   *   default: an author's mutation can change which rules match across
+   *   `~`, `+` and the structural pseudo-classes, and those reach exactly
+   *   that far. False for the changes that provably cannot move a
+   *   selector's verdict on a sibling — see `attributeChanged` and
+   *   `animatedStyles` — which is what keeps hovering one row in a long
+   *   list off every other row in it.
    * @returns {void}
    */
-  #restyleScope(node) {
+  #restyleScope(node, { reachesSiblings = true } = {}) {
     const record = recordOf(node);
     if (record) {
       bump(record.self);
+    }
+    if (!reachesSiblings) {
+      return;
     }
     const parent = node.parentNode;
     const parentRecord = parent ? recordOf(parent) : undefined;
@@ -866,6 +907,10 @@ const styleContextCache = new WeakMap();
  * the parent-of-target subtree and nothing else. `:has()`, which lets a
  * mutation restyle its ancestors, is knowingly not modelled — the same
  * bargain the previous implementation struck.
+ *
+ * The two halves are bumped separately, so a change that provably cannot
+ * move a selector's verdict on a sibling can pay for the subtree alone: see
+ * `#restyleScope`, and its callers for which changes those are.
  *
  * The sum reads the ancestors' *signals* directly rather than chaining
  * through their memoized contexts, and the flatness is load-bearing, not a

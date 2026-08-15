@@ -143,12 +143,75 @@ describe("getComputedStyleCached", () => {
     mirror.characterDataChanged(leafA);
     assert.deepEqual(reads, { leafA: 4, leafB: 3 });
 
-    // The animation clock's per-frame sample scopes exactly like a mutation.
+    // The animation clock's per-frame sample reaches the target's subtree.
     mirror.animatedStyles([leafA]);
     assert.deepEqual(reads, { leafA: 5, leafB: 3 });
 
     subscriptions.forEach((subscription) => subscription.unsubscribe());
     root.remove();
+  });
+
+  test("a presentational change restyles its own subtree, not its siblings", () => {
+    // list
+    // ├── rowA ── labelA
+    // └── rowB ── labelB
+    //
+    // The shape that matters: hovering one row of a list must not cost the
+    // other rows. Under the ordinary scope it does — `~` and `+` can restyle
+    // a sibling, so a mutation on rowA reaches everything under `list` — and
+    // in a long list that is the whole panel, on every row the ray crosses.
+    const list = document.createElement("div");
+    const rowA = document.createElement("div");
+    const rowB = document.createElement("div");
+    const labelA = document.createElement("span");
+    const labelB = document.createElement("span");
+    rowA.appendChild(labelA);
+    rowB.appendChild(labelB);
+    list.appendChild(rowA);
+    list.appendChild(rowB);
+    document.body.appendChild(list);
+
+    const mirror = createMirror();
+    for (const node of [list, rowA, rowB, labelA, labelB]) {
+      mirror.adopt(node);
+    }
+
+    const reads = { labelA: 0, labelB: 0 };
+    const dependents = {
+      labelA: new Derived(() => {
+        reads.labelA += 1;
+        return getComputedStyleCached(labelA).color;
+      }),
+      labelB: new Derived(() => {
+        reads.labelB += 1;
+        return getComputedStyleCached(labelB).color;
+      }),
+    };
+    const subscriptions = Object.values(dependents).map((dependent) =>
+      dependent.subscribe({ next: () => dependent.get() }),
+    );
+    Object.values(dependents).forEach((dependent) => dependent.get());
+    assert.deepEqual(reads, { labelA: 1, labelB: 1 });
+
+    // An author's attribute on rowA can restyle rowB — that is what the
+    // sibling half of the scope is for.
+    mirror.attributeChanged(rowA);
+    assert.deepEqual(reads, { labelA: 2, labelB: 2 });
+
+    // The portal's own flags cannot: they are declared unable to style
+    // across a sibling combinator, so the hover stops at rowA's subtree.
+    // labelA still restyles — descendants inherit from what changed.
+    mirror.attributeChanged(rowA, { presentational: true });
+    assert.deepEqual(reads, { labelA: 3, labelB: 2 });
+
+    // Hover styling is conventionally transitioned, so the clock re-reports
+    // the hovered row on every frame the transition runs. Those frames are
+    // scoped the same way, or the narrowing above would buy nothing.
+    mirror.animatedStyles([rowA]);
+    assert.deepEqual(reads, { labelA: 4, labelB: 2 });
+
+    subscriptions.forEach((subscription) => subscription.unsubscribe());
+    list.remove();
   });
 
   test("a write that did not change the value invalidates nothing", () => {

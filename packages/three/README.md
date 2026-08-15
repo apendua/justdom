@@ -117,10 +117,23 @@ has to be mounted and unmounted rather than hidden and shown.
 
 **Hover and press are presentational, by contract.** The three attributes
 the portal writes itself — `data-xr-hover`, `data-xr-active` and
-`data-xr-checked` — restyle the panel but are declared unable to move it.
+`data-xr-checked` — restyle the panel but are declared unable to move it,
+and unable to style anything but the element they match and its subtree.
 Colour, background, border colour, opacity and `transform` all work; a
 width, a padding or a font size that changes under the ray is not mirrored,
 and the boxes stay the size they were.
+
+```css
+.row[data-xr-hover] {
+  background: #1d4ed8;
+} /* fine */
+.row[data-xr-hover] .label {
+  color: #fff;
+} /* fine — descendant */
+.row[data-xr-hover] ~ .row {
+  opacity: 0.5;
+} /* ignored — sibling */
+```
 
 This is the one place a stylesheet can be written that the scene will not
 follow, and it is worth the narrowness. These are the most frequent
@@ -131,6 +144,13 @@ moving, at frame rate. Declaring them presentational takes that to nothing.
 It also gives up very little: layout that moves under the pointer slides the
 target out from under the hand reaching for it, which is a thing interfaces
 avoid on a flat screen and more so at the end of a metre-long ray.
+
+Ruling out the sibling combinators buys the other half, and the reason is
+the same shape. How far a change is allowed to style is how far the portal
+must go looking: a rule that can restyle a sibling puts every element under
+the hovered element's parent in the path of one hover, which in a list is
+every row in it. A hover that can only reach its own subtree costs the row
+the ray is on, whatever the list around it is doing.
 
 `transform` is the one to reach for, exactly as on the web — it costs a
 matrix write, and it is mirrored on hover like anything else:

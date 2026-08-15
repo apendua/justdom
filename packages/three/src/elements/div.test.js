@@ -101,7 +101,7 @@ function setup(cursor, cssText = "") {
      */
     hoverWith: (/** @type {string} */ cssText) => {
       element.style.cssText = cssText;
-      mirror.attributeChanged(element, { movesGeometry: false });
+      mirror.attributeChanged(element, { presentational: true });
     },
     /** @param {"pointerenter" | "pointerleave"} type */
     dispatch: (type) => {

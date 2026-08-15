@@ -150,7 +150,9 @@ const listeners = new WeakMap();
  * settled and its world matrices have been brought up to date. Raycasting
  * lives here: a ray cast any earlier is cast against where things were on the
  * previous frame, which is exactly one frame of lag in whatever is drawn at
- * the hit.
+ * the hit. So does a panel's batch rebuild, for the same reason from the other
+ * end — a rebuild any earlier copies down a panel that the rest of this frame
+ * is still moving.
  *
  * @type {WeakMap<THREE.WebGLRenderer, Set<XRFrameRequestCallback>>}
  */
@@ -227,6 +229,28 @@ function frameSubjectFor(renderer) {
 export function animate(ctx, fn) {
   const renderer = RendererContext.get(ctx);
   return addListener(renderer, fn);
+}
+
+/**
+ * Like `animate`, but at the end of the frame: after everything that moves the
+ * scene has moved it and before any of it is drawn.
+ *
+ * Ordering is the whole reason to be here rather than in `animate`. What runs
+ * over `frames(ctx)` — an animation clock sampling a running CSS animation, a
+ * scroll drag following a hand — subscribes when it starts and unsubscribes
+ * when it stops, so anything that has to see the result of a tick cannot get
+ * there by subscribing to frames itself: it would be registered first, before
+ * the things whose work it is waiting on, and would run a frame behind them
+ * forever. This phase is defined by when it runs rather than by when it was
+ * asked for, which is what makes it safe to ask for early.
+ *
+ * @param {WeakKey} ctx
+ * @param {XRFrameRequestCallback} fn
+ * @return {Observable<never>}
+ */
+export function animateLate(ctx, fn) {
+  const renderer = RendererContext.get(ctx);
+  return addListener(renderer, fn, lateListeners);
 }
 
 /**

@@ -31,6 +31,8 @@ import {
 import { getContentRenderOrder, isOverlay } from "./elevation.js";
 import { isScrollable, scrollDrags } from "./scroll.js";
 import { place, placeAndScale } from "./place.js";
+import { BoxBatchContext } from "./boxBatch.js";
+import { TextBatchContext } from "./textBatch.js";
 
 /**
  * The group that carries an element's projected DOM children, one per box.
@@ -234,6 +236,50 @@ export function box(ctx, element, options = {}) {
   clipRaycast(boxMesh, () => currentClipBox, object);
 
   /**
+   * The batch this box is drawn by, if there is one and this box can join it.
+   *
+   * An `<img>` cannot: its picture is a texture binding, and a binding is per
+   * draw. Those boxes go on drawing themselves — the same carve-out `image`
+   * above already makes for every other cost a picture brings, decided once
+   * here rather than watched, because a tag never changes.
+   *
+   * @type {import('./boxBatch.js').BoxBatch | null}
+   */
+  const batch = image ? null : BoxBatchContext.get(ctx);
+
+  /**
+   * The text of this panel, which has to hear about this element moving even
+   * though it draws none of it.
+   *
+   * A box moving moves everything inside it, and a scroll is the case that
+   * makes the point: the content group slides, every descendant goes with it,
+   * and not one of those descendants re-runs an effect of its own — that
+   * invariance is what makes scrolling cheap. The batches recompute their
+   * instance matrices by walking the panel, so one of them being told is
+   * enough for its own contents and no use at all to the other's.
+   *
+   * Today the text inside a scroller would in fact notice, because its clip
+   * box is expressed against the scroll offset and so changes with it. That
+   * is a chain of reasoning three files long, and a silent desync — text left
+   * behind where the panel used to be — is what it costs when it breaks.
+   *
+   * @type {import('./textBatch.js').TextBatch | null}
+   */
+  const textBatch = TextBatchContext.get(ctx);
+
+  /**
+   * Say that something the batches copied out of this box has changed. Cheap
+   * and coalesced — each rebuilds once however many boxes call it — so the
+   * effects below can simply say so whenever they write anything.
+   *
+   * @returns {void}
+   */
+  const batchChanged = () => {
+    batch?.invalidate();
+    textBatch?.invalidate();
+  };
+
+  /**
    * Whether any part of this element survives that clipping. An element
    * scrolled entirely out of its scroller is not drawn and, more to the point,
    * is not a ray target: the raycaster walks the descendants of whatever is
@@ -418,6 +464,7 @@ export function box(ctx, element, options = {}) {
         place(obj, position.x, position.y, z);
       }
       properties.setFromElement(element);
+      batchChanged();
     }),
     // Everything a scroll can move, kept apart from the layout effect above:
     // a scroll shifts the clip and slides this element's own content group,
@@ -436,8 +483,10 @@ export function box(ctx, element, options = {}) {
       currentClipBox = getLocalClipBox(element);
       // Fragments outside the box are discarded, but an element with nothing
       // left to show is worth skipping wholesale — `visible` prunes it and
-      // its descendants from the render traversal.
+      // its descendants from the render traversal, and from the batch's walk,
+      // which follows the same flag for the same reason.
       obj.visible = shown.get();
+      batchChanged();
     }),
     children(
       // An overlay is opaque to rays in its own right. Without this the ray
@@ -482,12 +531,25 @@ export function box(ctx, element, options = {}) {
           });
           return material;
         }),
+        // After the material, which is what carries the flag that takes this
+        // mesh out of the draw — and which is built once, since its factory
+        // reads nothing reactive.
+        effects(() => {
+          if (!batch) {
+            return;
+          }
+          batch.add(boxMesh);
+          onCleanup(() => {
+            batch.remove(boxMesh);
+          });
+        }),
         // Its own effect, so a scroll writes four numbers and nothing else.
         effects((obj) => {
           writeClipUniforms(
             /** @type {THREE.ShaderMaterial} */ (obj.material),
             getLocalClipBox(element),
           );
+          batchChanged();
         }),
         effects((obj) => {
           writeRectUniforms(/** @type {THREE.ShaderMaterial} */ (obj.material), properties);
@@ -504,6 +566,7 @@ export function box(ctx, element, options = {}) {
             1,
           );
           obj.renderOrder = properties.renderOrder;
+          batchChanged();
         }),
         // Its own effect, and only where there is a picture: a texture
         // arriving late must not look like a reason to rewrite the box, and

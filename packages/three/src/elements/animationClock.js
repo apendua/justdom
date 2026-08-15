@@ -2,11 +2,11 @@ import { sampleRenderingUpdates } from "./renderingUpdates.js";
 
 /**
  * The kinds of change the clock can announce, and the shape it announces
- * them in. `animated` says the computed styles of the targets'
- * neighbourhoods may have moved; `reflow` says client rects have — of the
- * targets' subtrees, or of everything when layout itself is animating and
- * no target can name what it displaced. The portal translates these into
- * the mirror's targeted invalidations.
+ * them in. `animated` says the computed styles of the targets' subtrees may
+ * have moved; `reflow` says client rects have — of the targets' subtrees,
+ * or of everything when layout itself is animating and no target can name
+ * what it displaced. The portal translates these into the mirror's targeted
+ * invalidations.
  *
  * @typedef {"animated" | "reflow"} MutationType
  */

@@ -257,8 +257,9 @@ export function checkbox(ctx, element) {
     // so nothing would tell the portal to re-read a style that follows it, and
     // a box that turns blue when ticked would stay the colour it started.
     // Writing the state back as an attribute is what the hover and active
-    // states already do, and it invalidates the same neighbourhood any other
-    // attribute mutation on this element would. It doubles as
+    // states already do, and it is scoped the way they are: one of the
+    // portal's own flags, so it restyles this element's subtree and measures
+    // nothing. A rule that ticks a *sibling* is not mirrored. It doubles as
     // `[data-xr-checked]`, for a rule that should apply in a scene and not on
     // the page.
     effects(() => {

@@ -8,6 +8,56 @@ import { Observable } from "rxjs";
 export let activeComputation = null;
 
 /**
+ * The update channel computations are built into while this is set.
+ *
+ * A channel is a property of the reader, and a reader is usually built rather
+ * than configured: a region of a graph is constructed by code that knows
+ * which channel the region belongs to, node by node, through helpers that do
+ * not take a channel and should not have to. Threading one through every
+ * operator that happens to build a `Derived` — an effect, a mapped value, a
+ * memoized read — would mean every such helper growing a parameter for it,
+ * and would still miss whichever one was forgotten. The forgotten ones are
+ * the dangerous ones: a computation left in the default channel while the
+ * values it reads are deferred applies half of an update as soon as it can
+ * and the other half a frame later.
+ *
+ * So this works the way `activeComputation` does, and for the same reason.
+ *
+ * @type {UpdateChannelLike | null}
+ */
+export let activeChannel = null;
+
+/**
+ * What `core` needs to know about a channel, which is nothing: it only ever
+ * carries one around. `UpdateChannel` is the real thing.
+ *
+ * @typedef {object} UpdateChannelLike
+ * @property {number} order
+ */
+
+/**
+ * Build everything `fn` constructs into `channel`.
+ *
+ * Pass `null` for a computation that must stay in the default channel even
+ * though it is built inside a region — anything shared between regions, which
+ * belongs to none of them.
+ *
+ * @template T
+ * @param {UpdateChannelLike | null} channel
+ * @param {() => T} fn
+ * @returns {T}
+ */
+export function withChannel(channel, fn) {
+  const previous = activeChannel;
+  activeChannel = channel;
+  try {
+    return fn();
+  } finally {
+    activeChannel = previous;
+  }
+}
+
+/**
  * @typedef {object} ComputationLike
  * @property {(dependency: Dependency) => void} addDependency
  * @property {(fn: () => void) => void} onCleanup

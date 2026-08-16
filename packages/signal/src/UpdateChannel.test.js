@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { Subject } from "rxjs";
 
 import { Signal, Derived, batch, defaultChannel } from "./Signal.js";
+import { withChannel } from "./core.js";
 import UpdateChannel from "./UpdateChannel.js";
 
 /**
@@ -444,5 +445,76 @@ describe("UpdateChannel, lanes appearing mid-pass", () => {
 
     assert.equal(consumerRuns, 1, "the consumer runs in the same pass");
     assert.equal(consumer.get(), 3, "and reports the new value, not the old one");
+  });
+});
+
+describe("withChannel", () => {
+  it("builds computations into the channel a region is constructed in", () => {
+    const channel = new UpdateChannel({ name: "region", order: 1, manual: true });
+    const source = Signal.of(0);
+
+    // Built through a helper that knows nothing about channels — which is
+    // every operator that happens to construct a Derived.
+    const build = () => new Derived(() => source.get() * 2);
+    const inside = withChannel(channel, build);
+    const outside = build();
+    [inside, outside].forEach((node) => {
+      node.subscribe({});
+      node.get();
+    });
+
+    source.set(1);
+    assert.equal(channel.pendingCount, 1, "the one built inside waits for the channel");
+    assert.equal(outside.get(), 2, "the one built outside has already run");
+    assert.equal(inside.get(), 0);
+
+    channel.flush({ budget: Infinity });
+    assert.equal(inside.get(), 2);
+  });
+
+  it("applies a scroll and the clip it belongs with in the same pass", () => {
+    // The regression this exists for. A scroll offset is a signal, so it is
+    // never deferred; a clip box is derived, so in a panel it is. An effect
+    // built outside the channel is woken by the signal and applies the new
+    // scroll against the clip box's old value — content drawn where the
+    // scroller has moved it, clipped to where the scroller used to be.
+    const channel = new UpdateChannel({ name: "panel", order: 1, manual: true });
+    const scrollTop = Signal.of(0);
+    const clipBox = new Derived(() => scrollTop.get(), { channel });
+
+    /** @type {{ scrolledTo: number, clippedAt: number }[]} */
+    const applied = [];
+    withChannel(channel, () => {
+      const effect = new Derived(() => {
+        applied.push({ scrolledTo: scrollTop.get(), clippedAt: clipBox.get() });
+      });
+      effect.subscribe({});
+      effect.get();
+    });
+    applied.length = 0;
+
+    scrollTop.set(40);
+    assert.deepEqual(applied, [], "nothing is applied before the frame");
+    channel.flush({ budget: Infinity });
+    assert.deepEqual(
+      applied,
+      [{ scrolledTo: 40, clippedAt: 40 }],
+      "and when it is, the scroll and its clip agree",
+    );
+  });
+
+  it("leaves what is shared between regions in the default channel", () => {
+    const channel = new UpdateChannel({ name: "region", order: 1, manual: true });
+    const source = Signal.of(0);
+    const shared = withChannel(channel, () =>
+      // Something every region reads belongs to none of them.
+      withChannel(null, () => new Derived(() => source.get() + 1)),
+    );
+    shared.subscribe({});
+    shared.get();
+
+    source.set(1);
+    assert.equal(channel.pendingCount, 0);
+    assert.equal(shared.get(), 2, "not held by any one region's frame");
   });
 });

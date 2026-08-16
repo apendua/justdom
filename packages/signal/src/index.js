@@ -6,6 +6,7 @@ export {
   onCleanup,
   onInvalidate,
   withComputation,
+  withChannel,
   makeNonReactive,
   valueOf,
   setPriority,

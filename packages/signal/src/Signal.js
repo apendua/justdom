@@ -9,6 +9,7 @@ import {
   setChannelOrder,
   getChannelOrder,
   hasNonDefaultChannels,
+  activeChannel,
   makeNonReactive,
 } from "./core.js";
 import Computation from "./Computation.js";
@@ -100,14 +101,18 @@ export class Derived extends Computation {
       },
     });
     this.#evaluate = evaluate;
+    // An explicit channel wins; failing that, whichever region this is being
+    // built inside; failing that, the default. Which is what lets a region be
+    // built by helpers that know nothing about channels.
+    const ambient = /** @type {UpdateChannel | null} */ (activeChannel);
     if (typeof options === "function") {
       this.#isEqual = options;
-      this.#channel = updateQueue.defaultChannel;
+      this.#channel = ambient ?? updateQueue.defaultChannel;
     } else {
-      const { isEqual = Object.is, cacheTTL = -1, channel = updateQueue.defaultChannel } = options;
+      const { isEqual = Object.is, cacheTTL = -1, channel } = options;
       this.#isEqual = isEqual;
       this.#cacheTTL = cacheTTL;
-      this.#channel = channel;
+      this.#channel = channel ?? ambient ?? updateQueue.defaultChannel;
     }
     setChannelOrder(this, this.#channel.order);
     this.addSideEffect(

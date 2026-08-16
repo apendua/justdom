@@ -16,6 +16,11 @@ import UpdateChannel from "./UpdateChannel.js";
  * @property {Task} task
  * @property {Lane} lane
  * @property {number} priority
+ * @property {boolean} queued whether this task is waiting to run. Membership
+ *   lives here rather than in a map keyed by task: the entry is reached from
+ *   the bucket grid already, so asking a field is what a drain would
+ *   otherwise pay a hash lookup for, once per task and again per stale entry
+ *   it skips.
  */
 
 /**
@@ -143,10 +148,11 @@ class Lane {
  * paid per task, and per-task cost is what this representation minimizes.
  *
  * A task whose priority changes while queued is not moved: it is appended
- * to its new bucket and the old entry goes stale, to be recognized and
- * skipped at drain time by consulting `#queued` — the single source of truth
- * for membership. Stale entries cost one map lookup each, which is less than
- * eagerly deleting from the middle of an array.
+ * to its new bucket and the old slot goes stale, to be recognized and
+ * skipped at drain time by asking the entry whether it is still queued and
+ * whether the level being drained is the one it now belongs to. Stale slots
+ * cost two field reads each, which is less than eagerly deleting from the
+ * middle of an array.
  *
  * Priorities too large to index a bucket with — `Infinity`, most usefully,
  * which a hand-written priority function may pass to mean "after everything"
@@ -170,12 +176,30 @@ export default class UpdateQueue {
   #entries = new WeakMap();
 
   /**
-   * The entries that are queued right now. Membership and dedup both live
-   * here; the bucket grids are only an ordering over this.
+   * The last task looked up, and what was found. A one-slot cache in front of
+   * `#entries`, which is the only lookup left on the push path.
    *
-   * @type {Map<Task, Entry>}
+   * Sound without invalidation because an entry is made once per task and
+   * then reused forever: what the map holds for a task cannot change, so a
+   * remembered answer cannot go out of date. A task that has never been
+   * pushed is simply not the one remembered, and takes the map.
+   *
+   * @type {Task | null}
    */
-  #queued = new Map();
+  #lastTask = null;
+
+  /** @type {Entry | undefined} */
+  #lastEntry = undefined;
+
+  /**
+   * How many tasks are queued across every lane. Membership itself is the
+   * `queued` flag on each entry; this is only the count, kept so that the
+   * commonest question a drain asks — is there anything to do at all — is a
+   * field read.
+   *
+   * @type {number}
+   */
+  #size = 0;
 
   /**
    * Every channel's lane, for looking one up when something is queued.
@@ -240,7 +264,7 @@ export default class UpdateQueue {
   #isFlushing = false;
 
   get size() {
-    return this.#queued.size;
+    return this.#size;
   }
 
   /**
@@ -328,7 +352,7 @@ export default class UpdateQueue {
    * @returns {void}
    */
   #drain(target, budget) {
-    if (this.#queued.size === 0 && this.#requested.size === 0) {
+    if (this.#size === 0 && this.#requested.size === 0) {
       // By far the commonest call: a write whose dependents have all already
       // run, or none. Nothing below this has anything to do, and this path is
       // hot enough that finding that out twice is worth avoiding.
@@ -419,15 +443,70 @@ export default class UpdateQueue {
         this.#currentLane = lane;
         this.#restart = false;
         // Staying on one lane is the whole point: a graph with a single
-        // channel — which is most of them — then drains through the same
-        // tight loop it always did, with no per-task decision about where to
-        // look next.
+        // channel — which is most of them — then drains through one tight
+        // loop, with no per-task decision about where to look next.
+        //
+        // The grid is read through locals rather than through the lane on
+        // every turn. Safe because `#push` grows these arrays in place and
+        // never replaces them — only `#reset` does, and that unwinds out of
+        // this frame — and worth doing because a drain touches them three
+        // times per task.
+        const buckets = lane.buckets;
+        const next = lane.next;
         while (lane.size > 0 && !this.#restart) {
-          const stepped = this.#step(lane);
-          if (stepped < 0) {
-            break;
+          const cursor = lane.cursor;
+          if (cursor > lane.maxDense) {
+            // Every dense level is spent, so anything still queued is far. A
+            // far task may yet push shallow work, which moves the cursor back
+            // and returns the next turn of this loop to the branch below.
+            const index = this.#takeFar(lane);
+            if (index < 0) {
+              break;
+            }
+            const entry = lane.far[index];
+            lane.far.splice(index, 1);
+            entry.queued = false;
+            this.#size -= 1;
+            lane.size -= 1;
+            if (lane.size === 0) {
+              lane.channel.reportPending(this, 0);
+            }
+            entry.task.invalidate();
+            if (now && now() - startedAt >= budget) {
+              ranOut = true;
+              break outer;
+            }
+            continue;
           }
-          if (stepped > 0 && now && now() - startedAt >= budget) {
+          const bucket = buckets[cursor];
+          if (bucket === undefined || bucket.length === 0) {
+            lane.cursor = cursor + 1;
+            continue;
+          }
+          const at = next[cursor];
+          const entry = bucket[at];
+          if (at + 1 === bucket.length) {
+            // Taking the last entry empties the bucket then and there, so the
+            // common flush — one task, one bucket — leaves nothing to sweep.
+            bucket.length = 0;
+            next[cursor] = 0;
+          } else {
+            next[cursor] = at + 1;
+          }
+          // A stale slot: the task was re-prioritised after this one was
+          // written, or has already run from its newer position. Neither
+          // costs the caller any of its budget.
+          if (!entry.queued || entry.priority !== cursor) {
+            continue;
+          }
+          entry.queued = false;
+          this.#size -= 1;
+          lane.size -= 1;
+          if (lane.size === 0) {
+            lane.channel.reportPending(this, 0);
+          }
+          entry.task.invalidate();
+          if (now && now() - startedAt >= budget) {
             ranOut = true;
             break outer;
           }
@@ -479,54 +558,6 @@ export default class UpdateQueue {
   }
 
   /**
-   * Take one entry from a lane and run it. Returns 1 if a task ran, 0 if the
-   * turn went on a stale entry or an exhausted level — neither of which costs
-   * the caller any of its budget — and -1 if there is nothing left to reach.
-   *
-   * @param {Lane} lane
-   * @returns {number}
-   */
-  #step(lane) {
-    if (lane.cursor > lane.maxDense) {
-      // Every dense level is spent, so anything still queued is far. A far
-      // task may yet push shallow work, which moves the cursor back and
-      // returns the next turn of this loop to the branch below.
-      const index = this.#takeFar(lane);
-      if (index < 0) {
-        return -1;
-      }
-      const entry = lane.far[index];
-      lane.far.splice(index, 1);
-      this.#remove(entry);
-      entry.task.invalidate();
-      return 1;
-    }
-    const bucket = lane.buckets[lane.cursor];
-    if (!bucket || bucket.length === 0) {
-      lane.cursor += 1;
-      return 0;
-    }
-    const next = lane.next[lane.cursor];
-    const entry = bucket[next];
-    if (next + 1 === bucket.length) {
-      // Taking the last entry empties the bucket then and there, so the
-      // common flush — one task, one bucket — leaves nothing to sweep.
-      bucket.length = 0;
-      lane.next[lane.cursor] = 0;
-    } else {
-      lane.next[lane.cursor] = next + 1;
-    }
-    // A stale entry: the task was re-prioritized after this one was written,
-    // or has already run from its newer position.
-    if (this.#queued.get(entry.task) !== entry || entry.priority !== lane.cursor) {
-      return 0;
-    }
-    this.#remove(entry);
-    entry.task.invalidate();
-    return 1;
-  }
-
-  /**
    * Clear bucket entries left behind by re-prioritisation, for every lane a
    * pass ran dry.
    *
@@ -534,7 +565,7 @@ export default class UpdateQueue {
    * an abandoned entry from a live one — membership is what does that, and it
    * is only unambiguous once the lane is empty. Clearing the buckets with
    * work still queued would strand it, since the tasks would keep their
-   * entries in `#queued` with no bucket entry left to reach them by, and
+   * entries flagged as queued with no bucket slot left to reach them by, and
    * `#push` refuses to re-enqueue a task already queued at the same priority.
    * That is what lets a pass stop early on a budget without wedging the lane.
    *
@@ -610,19 +641,6 @@ export default class UpdateQueue {
   }
 
   /**
-   * @param {Entry} entry
-   * @returns {void}
-   */
-  #remove(entry) {
-    this.#queued.delete(entry.task);
-    const lane = entry.lane;
-    lane.size -= 1;
-    if (lane.size === 0) {
-      lane.channel.reportPending(this, 0);
-    }
-  }
-
-  /**
    * @param {Task} task
    * @param {number} priority
    * @param {UpdateChannel} channel
@@ -638,16 +656,39 @@ export default class UpdateQueue {
     } else if (!Number.isInteger(priority) || priority < 0) {
       priority = Math.max(0, Math.floor(priority));
     }
-    let entry = this.#entries.get(task);
-    const lane = entry && entry.lane.channel === channel ? entry.lane : this.#laneOf(channel);
-    if (!entry) {
-      entry = { task, lane, priority };
-      this.#entries.set(task, entry);
+    // One task pushed again and again is the shape of a fan-in: a node
+    // reading a dozen signals is told about each of them, and every push
+    // after the first is a duplicate. An entry is made once and kept for the
+    // life of the task, so remembering the last one turns those into an
+    // identity comparison instead of a hash lookup apiece.
+    let entry;
+    if (task === this.#lastTask) {
+      entry = this.#lastEntry;
+    } else {
+      entry = this.#entries.get(task);
+      if (entry !== undefined) {
+        this.#lastTask = task;
+        this.#lastEntry = entry;
+      }
     }
-    const queued = this.#queued.get(task) === entry;
-    if (queued && entry.priority === priority && entry.lane === lane) {
+    // Checked before anything else is worked out, because it is the answer
+    // most of the time and everything below it is wasted on that case.
+    if (
+      entry !== undefined &&
+      entry.queued &&
+      entry.priority === priority &&
+      entry.lane.channel === channel
+    ) {
       return;
     }
+    const lane = entry && entry.lane.channel === channel ? entry.lane : this.#laneOf(channel);
+    if (entry === undefined) {
+      entry = { task, lane, priority, queued: false };
+      this.#entries.set(task, entry);
+      this.#lastTask = task;
+      this.#lastEntry = entry;
+    }
+    const queued = entry.queued;
     if (queued) {
       entry.lane.hasStale = true;
       this.#anyStale = true;
@@ -660,7 +701,8 @@ export default class UpdateQueue {
       }
     } else {
       const wasEmpty = lane.size === 0;
-      this.#queued.set(task, entry);
+      entry.queued = true;
+      this.#size += 1;
       lane.size += 1;
       if (wasEmpty) {
         // An empty lane's cursor can be anywhere; starting it at the first
@@ -718,7 +760,7 @@ export default class UpdateQueue {
     let write = 0;
     for (let read = 0; read < lane.far.length; read++) {
       const entry = lane.far[read];
-      if (this.#queued.get(entry.task) !== entry || entry.priority < DENSE_LIMIT) {
+      if (!entry.queued || entry.priority < DENSE_LIMIT) {
         continue;
       }
       lane.far[write] = entry;
@@ -732,9 +774,25 @@ export default class UpdateQueue {
   }
 
   #reset() {
-    this.#queued.clear();
     this.#requested.clear();
+    this.#size = 0;
     for (const lane of this.#ordered) {
+      // Membership is a flag on the entry, and the entries are reached only
+      // through the grids being thrown away here — so they have to be told
+      // before the grids go, or a task dropped by this reset would refuse to
+      // be queued again for the rest of its life. A slot left behind by
+      // re-prioritisation names an entry that is queued elsewhere, and
+      // clearing its flag too is right: everything is being dropped.
+      for (const bucket of lane.buckets) {
+        if (bucket) {
+          for (const entry of bucket) {
+            entry.queued = false;
+          }
+        }
+      }
+      for (const entry of lane.far) {
+        entry.queued = false;
+      }
       lane.buckets = [];
       lane.next = [];
       lane.far = [];

@@ -13,6 +13,7 @@ export {
   getPriority,
   getChannelOrder,
   toObservable,
+  effect,
   NoValueError,
 } from "./core.js";
 export { default as Computation } from "./Computation.js";

@@ -202,6 +202,76 @@ export function skipSynchronousValues(source) {
   });
 }
 
+/**
+ * @typedef {() => (void | (() => void))} EffectStart
+ */
+
+/**
+ * Work with a teardown, and nothing else.
+ *
+ * Several things a computation wants to hang off its own lifetime are not
+ * streams of anything: they run when it activates and undo themselves when it
+ * lets go. A `Derived` recomputing and dropping its cached value is one; a
+ * memo putting itself in a cache and taking itself out again is three more.
+ * Each of those was an RxJS `Observable` whose subscribe function returned a
+ * teardown and never emitted a value — a fair way to spell it, and one that
+ * costs an Observable, a Subscriber, a Subscription and a
+ * `skipSynchronousValues` wrapper around it to establish that the thing which
+ * emits nothing did not emit anything during subscribe.
+ *
+ * This is that, spelled as what it is. Every `Derived` in a panel builds one,
+ * so a few hundred mirrored nodes build tens of thousands.
+ *
+ * The one piece of RxJS behaviour worth keeping is what happens when the work
+ * throws on the way in: the subscriber is told, rather than the exception
+ * coming back out of `subscribe`. Losing that would turn a failed first
+ * evaluation into an exception thrown at whoever happened to be subscribing.
+ */
+export class Effect {
+  /** @type {EffectStart} */
+  #start;
+
+  /**
+   * @param {EffectStart} start
+   */
+  constructor(start) {
+    this.#start = start;
+  }
+
+  /**
+   * @param {Partial<import("rxjs").Observer<never>>} [observer]
+   * @returns {import("rxjs").Unsubscribable}
+   */
+  subscribe(observer) {
+    /** @type {void | (() => void)} */
+    let teardown;
+    try {
+      teardown = this.#start();
+    } catch (err) {
+      observer?.error?.(err);
+      return { unsubscribe: () => {} };
+    }
+    let closed = false;
+    return {
+      unsubscribe: () => {
+        if (closed) {
+          return;
+        }
+        closed = true;
+        teardown?.();
+      },
+    };
+  }
+}
+
+/**
+ * @param {EffectStart} start
+ * @returns {Effect}
+ */
+export function effect(start) {
+  return new Effect(start);
+}
+
 export class CircularDependencyError extends Error {
   /**
    * @param {string} [message]

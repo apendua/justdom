@@ -1,7 +1,7 @@
 import { createRecursiveCache } from "./cache.js";
 import Computation from "./Computation.js";
 import { Derived } from "./Signal.js";
-import { Observable } from "rxjs";
+import { effect } from "./core.js";
 
 /**
  * @import { Dependency } from './core.js';
@@ -65,7 +65,7 @@ export function memoize(fn, options = {}) {
     }
     const newSignal = new Derived(() => fn(...args));
     newSignal.addSideEffect(
-      new Observable(() => {
+      effect(() => {
         cache.set(key, newSignal);
         return () => {
           cache.delete(key);
@@ -106,7 +106,7 @@ export function memoizeDerived(fn, options = {}) {
     }
     const newSignal = fn(...args);
     newSignal.addSideEffect(
-      new Observable(() => {
+      effect(() => {
         cache.set(key, newSignal);
         return () => {
           cache.delete(key);
@@ -151,7 +151,7 @@ export function memoizeDependency(fn, options = {}) {
     });
     newComputation.addSideEffect(fn(...args));
     newComputation.addSideEffect(
-      new Observable(() => {
+      effect(() => {
         cache.set(key, newComputation);
         return () => {
           cache.delete(key);

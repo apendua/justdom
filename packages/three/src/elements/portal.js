@@ -1,5 +1,13 @@
 import * as THREE from "three";
-import { batch, observable, Derived, Signal, UpdateChannel, withChannel } from "@apendua/signal";
+import {
+  batch,
+  makeNonReactive,
+  observable,
+  Derived,
+  Signal,
+  UpdateChannel,
+  withChannel,
+} from "@apendua/signal";
 import { div, getContentGroup, PortalReadyContext } from "./div.js";
 import { text } from "./text.js";
 import { checkbox } from "./checkbox.js";
@@ -369,8 +377,12 @@ export function createPortal(ctx, { opaqueToRays = true, budget = 5, onLoadingCh
       },
     });
     // Prime it: a Derived computes on first read, and the watcher must be
-    // watching before the first mutation arrives.
-    pendingWatch.get();
+    // watching before the first mutation arrives. Non-reactively, and that
+    // is load-bearing: `createPortal` is itself called inside a computation
+    // — `dom()` builds the portal in an effect — and a bare read here would
+    // make that computation depend on the never-equal watcher, tearing the
+    // portal down and rebuilding it on every toggle of its own channel.
+    makeNonReactive(() => pendingWatch.get())();
   }
 
   /**

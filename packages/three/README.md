@@ -211,6 +211,35 @@ landing on. What goes is the panel's own background, and only that — a
 `cursor: pointer` element inside is still a ray target, and a panel with one
 in it wanted to be opaque after all.
 
+**A panel mounts a budget per frame, behind a loading state.** Building a
+mirrored element costs real work — an object, its measurements, its place in
+the batches — and a list of hundreds arriving in one observer flush used to
+pay all of it before the next frame could draw. The portal instead queues
+what the observer reports and spends `budget` milliseconds of each frame on
+it (5 by default), so however large the mount, the frame keeps its rate.
+
+While that runs the panel is *loading*: invisible, and stopping no rays —
+nothing inside it registers as a ray target until it is actually there to
+press. Loading ends exactly once, when everything the initial content brought
+has been built and settled; the panel appears whole rather than assembling
+itself in front of the player. Later updates — rows arriving, a menu opening
+— go through the same budgeted pump, but a panel that is already visible
+absorbs them incrementally and never hides itself again.
+
+```js
+dom(ctx, panel, [set({ position })], {
+  budget: 8, // ms of each frame spent mounting
+  onLoadingChanged: (loading) => spinner.visible = loading, // fires once, with false
+});
+```
+
+The budget bounds when work stops being started, not how long a piece takes:
+at least one element is built and at least one update runs per frame, so a
+single expensive node overshoots the budget rather than stalling the mount.
+Where there are no frames to slice across — no renderer and no
+`requestAnimationFrame`, as under a test runner — the portal mounts
+synchronously, exactly as it always did.
+
 ## Checkboxes
 
 Most elements are a box with other elements in them, which is all a portal has

@@ -60,12 +60,30 @@ import { clipBoxEqual, intersectClipBoxes, toLocalClipBox, UNCLIPPED } from "./c
  *     subtree, and the culling that follows them — recomputes as plain
  *     arithmetic on cached values, without touching the DOM.
  *
- * Layout proper stays deliberately coarse, because CSS layout is non-local:
- * a sibling growing moves you, so structural mutations, text changes, fonts
- * and images arriving bump one portal-wide layout epoch and everything
- * re-measures. What the fine grain buys there is the equality gate — every
- * measurement is a plain value compared by value, so the re-measure stops
- * propagating at the first element that did not actually move.
+ *   - Layout is scoped by the geometry itself. CSS layout is non-local —
+ *     a sibling growing moves you — but it is not unbounded, and what
+ *     bounds it is the same parent-relative storage above: CSS lays a box
+ *     out from the space it was given, so a box that came out the size it
+ *     was has not moved anything inside it. `#settleLayout` climbs from
+ *     each change telling every level's children they moved, and stops at
+ *     the first level that kept its own size. Everything below an unchanged
+ *     box hears nothing at all, and what it is spared is mostly text: a
+ *     `Range` measurement is the most expensive read in this file, and on a
+ *     list there is one per row.
+ *
+ *     Two things reach past that. `readParentBox` is how a box that *did*
+ *     resize reaches its own contents, one level per settling and no
+ *     further than the sizes actually change. And a handful of signals stay
+ *     portal-wide for the changes no walk could find: fonts, which re-break
+ *     lines without moving a single box; an animating layout property,
+ *     which moves elements nobody named; and out-of-flow boxes, which are
+ *     not on the parent chain the walk follows.
+ *
+ * Under all of it is the equality gate — every measurement is a plain value
+ * compared by value, so a re-measure stops propagating at the first element
+ * that did not actually move, and the walk above is what keeps the count of
+ * elements asked to re-measure proportional to the change rather than to
+ * the panel.
  */
 
 /**
@@ -328,18 +346,20 @@ class NodeRecord {
   character = Signal.of(0);
 
   /**
-   * Something inside this element changed the layout — and this element
-   * hides its overflow, so it is a wall the change cannot get out of and
-   * outside changes cannot get into.
+   * This node's own box — where it sits in its parent, how big it is — may
+   * have moved.
    *
-   * Only bumped for elements that clip; every other element's record
-   * carries an untouched signal nobody reads. What reads it is the reflow
-   * context of everything *inside* the element, which is how a long list
-   * stops paying for churn elsewhere in the panel. See `getReflowContext`.
+   * The one signal a layout change is announced on, and the reason it is
+   * per node rather than per portal. `#settleLayout` bumps it on exactly
+   * the nodes whose boxes the change could have disturbed: the children of
+   * every container the change happened inside, climbing only as far as the
+   * first container that kept its own size. Everything *below* those nodes
+   * hears nothing, because a box's interior is a function of its own
+   * content box and its own subtree — see `readParentBox`.
    *
    * @type {Signal<number>}
    */
-  innerLayout = Signal.of(0);
+  moved = Signal.of(0);
 
   /**
    * Where the element is scrolled to. The one piece of geometry that a
@@ -394,14 +414,28 @@ function recordOf(node) {
  */
 export class DomMirror {
   /**
-   * Layout happened: something structural changed and anyone's rects may
-   * have moved. CSS layout is non-local — there is no sound way to scope
-   * "a sibling grew" — so this stays portal-wide, and the equality gates
-   * on the measurements keep the fan-out honest.
+   * Layout happened somewhere, and there is no node to blame it on. The
+   * escape hatch, not the ordinary path: an animating layout property moves
+   * elements nobody named, and a caller that lost track of which pictures
+   * landed has nothing better to say. Everything that *can* name where it
+   * happened goes through `#settleLayout` instead and reaches a bounded set
+   * of nodes.
    *
    * @type {Signal<number>}
    */
   layout = Signal.of(0);
+
+  /**
+   * Layout happened somewhere, for the benefit of the boxes that are not
+   * where they live: an absolutely positioned element hangs off a containing
+   * block that may be anywhere above it, so the walk from the mutation site
+   * — which follows the parent chain — can miss it entirely. Out-of-flow
+   * boxes are few, so they keep the portal-wide answer rather than a
+   * containing-block-indexed one.
+   *
+   * @type {Signal<number>}
+   */
+  outOfFlowLayout = Signal.of(0);
 
   /**
    * Everything restyled at once: fonts arriving are the one event with no
@@ -491,7 +525,7 @@ export class DomMirror {
     for (const mutation of mutationList) {
       switch (mutation.type) {
         case "childList": {
-          this.childListChanged(mutation.target);
+          this.childListChanged(/** @type {Element} */ (mutation.target));
           mutation.addedNodes.forEach((node) => {
             const record = recordOf(node);
             if (record) {
@@ -594,10 +628,10 @@ export class DomMirror {
   /**
    * `element`'s child list changed. Structural pseudo-classes and sibling
    * combinators can restyle anything in the parent-of-target subtree; and
-   * layout being non-local — the arriving row pushes neighbours nobody
-   * named — everyone's measurements go through the portal-wide epoch.
+   * the arriving row moves the rows after it, which is a change in this
+   * element's own layout and travels from here.
    *
-   * @param {Node} element
+   * @param {Element} element
    * @returns {void}
    */
   childListChanged(element) {
@@ -613,7 +647,7 @@ export class DomMirror {
 
   /**
    * A text node's data changed: its own layout, and — text takes part in
-   * layout — everyone's rects.
+   * layout — the layout of the element it sits in.
    *
    * @param {Node} text
    * @returns {void}
@@ -624,7 +658,9 @@ export class DomMirror {
       if (record) {
         bump(record.character);
       }
-      this.#layoutChangedAt(text);
+      if (text.parentElement) {
+        this.#layoutChangedAt(text.parentElement);
+      }
     });
   }
 
@@ -736,93 +772,127 @@ export class DomMirror {
         return;
       }
       for (const element of elements) {
-        this.#layoutChangedAt(element);
+        // What changed is the picture's own box, which is a change in the
+        // layout of the element it sits in — the same thing a row growing is
+        // to the list around it.
+        if (element.parentElement) {
+          this.#layoutChangedAt(element.parentElement);
+        }
       }
     });
   }
 
   /**
-   * Layout moved, starting at `node`.
+   * The layout inside `container` changed: a child arrived or left, a text
+   * node was rewritten, a picture turned out to have a size.
    *
-   * Two announcements, because there are two audiences. The portal-wide
-   * epoch is for everything not sealed inside an overflow container — layout
-   * is non-local, and a row that grew moves elements nobody named. And the
-   * inner epoch of every overflow container the change happened *inside*,
-   * because those containers' contents do not listen to the portal-wide one:
-   * they hear about the outside world only through their container's size.
-   *
-   * @param {Node} node
+   * @param {Element} container
    * @returns {void}
    */
-  #layoutChangedAt(node) {
+  #layoutChangedAt(container) {
     if (this.#pendingLayout) {
-      this.#pendingLayout.add(node);
+      this.#pendingLayout.add(container);
       return;
     }
-    this.#settleLayout([node]);
+    this.#settleLayout([container]);
   }
 
   /**
-   * Work out how far each layout change travels, and announce it that far.
+   * Work out whose boxes each change could have disturbed, and tell exactly
+   * those.
    *
-   * Climbing from the node, every overflow container on the way has its
-   * inside told. What happens at each of those containers is the question
-   * this method exists to answer: a clipping box does not let its contents
-   * out — they are clipped, and they take no part in the layout beyond it —
-   * so the only mark the inside can leave on the outside is the container's
-   * own size. If that has not changed, the climb stops there and the panel
-   * around it is never told anything happened. A list that is a fixed
-   * height can have rows added to it all day without the panel it sits in
-   * re-measuring once.
+   * The walk rests on one property, which the mirror gets from storing every
+   * measurement relative to its parent: **a box's interior is a function of
+   * its own content box and its own subtree.** CSS lays a box out from the
+   * space it was given; nothing outside reaches in except by changing that
+   * space. So a change inside a container can disturb the container's own
+   * children — they moved, or were given different room — and, if it changed
+   * the container's size, whatever the container sits among. Nothing else.
    *
-   * The size is read here rather than derived, because the answer is needed
+   * That is the same argument `overflow: hidden` used to be asked to supply,
+   * and it never needed the overflow: a block formatting context is not what
+   * makes a box's interior its own business. So the climb applies it at every
+   * level. From the container, each level has its children told and then is
+   * asked whether it kept its own size; the first one that did ends the
+   * climb, because a box that did not move cannot have moved anything it
+   * sits among. A list of a fixed height can have rows added to it all day
+   * without the panel around it hearing a word — and so can a list that
+   * merely happens not to have changed height, which is the case the
+   * overflow test could not see.
+   *
+   * What the children hear is `moved`, and what they do with it is the other
+   * half: they re-measure, and — being plain values behind equality gates —
+   * the ones that came out where they already were stop there, taking their
+   * whole subtrees with them. A row that did not move does not re-measure its
+   * label, and re-measuring a label is the most expensive read in this file.
+   *
+   * The sizes are read here rather than derived, because the answer is needed
    * *while deciding what to invalidate* — before any of the reactive graph
-   * has run. It is one rect per enclosing container per flush, against the
-   * hundreds it can save, and it is not an extra layout: whatever re-reads
-   * next would have forced the same one moments later.
+   * has run. It is one rect per level of the climb, and it is not an extra
+   * layout: whatever re-reads next would have forced the same one moments
+   * later.
    *
-   * A container whose size is not known yet, or whose stored size has
-   * drifted — a font arriving resizes it without coming through here —
-   * simply reads as changed, and the news travels as it used to. Wrong in
-   * the direction of doing too much, which is the only direction that is
-   * safe.
+   * An element whose size is not known yet, or whose stored size has drifted
+   * — a font arriving resizes it without coming through here — simply reads
+   * as changed and the news travels further. Wrong in the direction of doing
+   * too much, which is the only direction that is safe.
    *
-   * @param {Iterable<Node>} nodes
+   * @param {Iterable<Node>} containers
    * @returns {void}
    */
-  #settleLayout(nodes) {
+  #settleLayout(containers) {
     batch(() => {
-      let reachesTheOutside = false;
-      for (const node of nodes) {
-        let sealed = false;
+      // A flush that appended fifty rows names one container fifty times, and
+      // fifty climbs from the same place would ask the same questions and —
+      // `resized` keeping a ledger — get different answers after the first.
+      // One visit each, and a climb that reaches a level someone else has
+      // already settled stops there, its own answer having been decided.
+      const settled = new Set();
+      for (const container of containers) {
         for (
-          let current =
-            node.nodeType === Node.ELEMENT_NODE
-              ? /** @type {HTMLElement} */ (node)
-              : getParentElement(node);
-          current && !current.hasAttribute(PORTAL_ATTRIBUTE);
-          current = getParentElement(current)
+          let current = /** @type {Element | null} */ (container);
+          current && !settled.has(current);
+          current = current.parentElement
         ) {
-          if (!clipsOverflow(getComputedStyleCached(current))) {
-            continue;
-          }
-          const record = recordOf(current);
-          if (record) {
-            bump(record.innerLayout);
+          settled.add(current);
+          this.#childrenMoved(current);
+          if (current.hasAttribute(PORTAL_ATTRIBUTE)) {
+            // The top of what this portal mirrors. Nothing above is projected
+            // and there is nobody to tell, but the panel's own size follows
+            // its contents and the scene has to hear about that.
+            const record = recordOf(current);
+            if (record) {
+              bump(record.moved);
+            }
+            break;
           }
           if (!resized(current)) {
-            sealed = true;
             break;
           }
         }
-        if (!sealed) {
-          reachesTheOutside = true;
-        }
       }
-      if (reachesTheOutside) {
-        bump(this.layout);
-      }
+      // Boxes that hang off a containing block rather than off their parent
+      // are not on any of those chains. See `outOfFlowLayout`.
+      bump(this.outOfFlowLayout);
     });
+  }
+
+  /**
+   * Say that the children of `element` may have moved or been given a
+   * different amount of room. Read off the live DOM rather than through
+   * `getChildNodes`, because this runs while the invalidation is being
+   * routed, before the graph the cached reads belong to has run.
+   *
+   * @param {Element} element
+   * @returns {void}
+   */
+  #childrenMoved(element) {
+    for (let child = element.firstChild; child; child = child.nextSibling) {
+      const record = recordOf(child);
+      if (record) {
+        bump(record.moved);
+      }
+    }
   }
 
   /**
@@ -988,61 +1058,6 @@ function getStyleContext(node) {
   return signal.get();
 }
 
-/** @type {WeakMap<Node, Derived<HTMLElement | null>>} */
-const layoutBoundaryCache = new WeakMap();
-
-/**
- * The overflow container that seals this node off from the rest of the
- * panel, if one does.
- *
- * An element that hides or scrolls its overflow establishes a block
- * formatting context, and that is a stronger guarantee than it sounds:
- * floats outside it cannot intrude, margins cannot collapse through it, and
- * nothing beyond it participates in the layout within. Its contents are a
- * function of the container's own content box, its own subtree, and the
- * styles that reach in — so a sibling of the container, or anything else
- * out in the panel, can only affect the inside by changing the container's
- * size. That is what makes a wall out of it, and what lets a hundred rows
- * ignore a reading ticking over somewhere above them.
- *
- * A positioned box is not sealed in, and neither is anything under one: an
- * absolutely positioned element hangs off a containing block that may sit
- * outside the container entirely — the dropdown anchored above a list is
- * exactly that — so what happens out there moves it. Rather than work out
- * which side of the wall each containing block falls on, any positioned box
- * on the way up forfeits the optimization, which costs a rare element its
- * savings and keeps the rule easy to state.
- *
- * @param {Node} node
- * @returns {HTMLElement | null}
- */
-function getLayoutBoundary(node) {
-  let signal = layoutBoundaryCache.get(node);
-  if (!signal) {
-    // Phrased as one step plus the answer for the parent, rather than as a
-    // walk: a walk would make every node depend on the computed style of
-    // every ancestor, which is O(depth) subscriptions per node and O(n·depth)
-    // for a panel — paid at mount, when a panel can least afford it. One
-    // step each means one shared answer per level, and siblings read the
-    // same one.
-    signal = new Derived(() => {
-      if (node.nodeType === Node.ELEMENT_NODE && isPositioned(/** @type {Element} */ (node))) {
-        return null;
-      }
-      const parent = getParentElement(node);
-      if (!parent || parent.hasAttribute(PORTAL_ATTRIBUTE)) {
-        return null;
-      }
-      if (clipsOverflow(getComputedStyleCached(parent))) {
-        return parent;
-      }
-      return getLayoutBoundary(parent);
-    });
-    layoutBoundaryCache.set(node, signal);
-  }
-  return signal.get();
-}
-
 /**
  * Whether the element's box hangs off something other than its parent.
  *
@@ -1058,24 +1073,23 @@ function isPositioned(element) {
 const reflowContextCache = new WeakMap();
 
 /**
- * Everything that can move this node's measured geometry, folded into one
- * number.
+ * Everything that can move this node's measured geometry *from above*,
+ * folded into one number.
  *
- * Three parts. The targeted reflow signal of every ancestor-or-self, all
- * the way to the portal — that is how an attribute that toggled a transform
- * re-measures exactly the subtree it moved, and it deliberately climbs past
- * any wall, because an inherited font size changing above a scroller does
- * re-break the lines inside it. The global epoch, which fonts bump and
- * nothing else, for the same reason in the one case no wall may hold back.
+ * Three parts. The node's own `moved` signal, which is `#settleLayout`'s
+ * verdict on it: the one channel an ordinary structural change travels on,
+ * and the reason it reaches a handful of nodes rather than a panel. The
+ * targeted reflow signal of every ancestor-or-self, all the way to the
+ * portal — that is how an attribute that toggled a transform re-measures
+ * exactly the subtree it moved, and how an inherited font size changing
+ * above a list re-breaks the lines inside it, neither of which the walk from
+ * a mutation site would find. And the two portal-wide epochs, `globalLayout`
+ * for fonts and `layout` for the layout changes nothing can name.
  *
- * And then, for the wider world: either the portal-wide layout epoch, or —
- * for a node sealed inside an overflow container — that container's inner
- * epoch plus its measured size. The size is the whole trick. It is a plain
- * value behind an equality gate, so when a row is added or a reading ticks
- * over somewhere else in the panel, the container re-measures itself, finds
- * the same numbers, and stops: nothing inside it recomputes at all. When
- * the container really does resize, the number changes and everything
- * inside re-measures, which is exactly when it must.
+ * The fourth thing that moves a box — the space its parent gives it — is
+ * `readParentBox`, deliberately kept out of this number: it is a measured
+ * value with an equality gate of its own, and folding a size into a sum of
+ * counters would let a box 20 px wider and 20 px shorter read as unchanged.
  *
  * A scroll is absent from all of it: every measurement that depends on this
  * is expressed relative to something that scrolls along with it. Flat for
@@ -1091,7 +1105,19 @@ function getReflowContext(node) {
       let sum = 0;
       const record = recordOf(node);
       if (record) {
+        sum += record.moved.get();
         sum += record.mirror.globalLayout.get();
+        sum += record.mirror.layout.get();
+        // A box that hangs off a containing block is not laid out by its
+        // parent, so the walk that tells a parent's children they moved has
+        // nothing to say about it: what moved it may be anywhere above, on a
+        // chain the walk never touched. It keeps the portal-wide answer —
+        // the price of being out of flow, and cheap because so few boxes
+        // are. The gate is the position itself, so an in-flow element that
+        // is restyled without becoming positioned pays nothing.
+        if (node.nodeType === Node.ELEMENT_NODE && isPositioned(/** @type {Element} */ (node))) {
+          sum += record.mirror.outOfFlowLayout.get();
+        }
       }
       for (
         let current = /** @type {Node | null} */ (node);
@@ -1109,23 +1135,41 @@ function getReflowContext(node) {
           break;
         }
       }
-      const boundary = getLayoutBoundary(node);
-      if (!boundary) {
-        if (record) {
-          sum += record.mirror.layout.get();
-        }
-        return sum;
-      }
-      const boundaryRecord = recordOf(boundary);
-      if (boundaryRecord) {
-        sum += boundaryRecord.innerLayout.get();
-      }
-      const size = getBorderBoxSize(boundary);
-      return sum + size.width + size.height;
+      return sum;
     });
     reflowContextCache.set(node, signal);
   }
   return signal.get();
+}
+
+/**
+ * Depend on the size of the box this node is laid out inside.
+ *
+ * The other half of the bargain `#settleLayout` strikes. The walk tells a
+ * container's children that they moved and then stops climbing, which is
+ * sound only because a box's interior follows its own content box — so
+ * whenever that box *does* turn out to have changed, everything inside it
+ * has to hear about it, and the walk is long since over by then.
+ *
+ * This is that channel, and it is reactive rather than announced: the
+ * parent's size is a plain value behind an equality gate, so a parent that
+ * re-measured to the numbers it already had says nothing, and a parent that
+ * really did resize re-measures every child — which then re-measure theirs,
+ * one level per settling, exactly as far down as the sizes actually change.
+ *
+ * The value is deliberately discarded. What is wanted is the dependency; the
+ * callers' own equality gates decide what to do with it.
+ *
+ * @param {Node} node
+ * @returns {void}
+ */
+function readParentBox(node) {
+  const parent = getParentElement(node);
+  // A parent no portal adopted is the page around the scene, whose layout is
+  // none of a panel's business — and has no signal to hang a dependency on.
+  if (parent && recordOf(parent)) {
+    getBorderBoxSize(parent);
+  }
 }
 
 /** @type {WeakMap<Element | Text, Map<string | null, Derived<CSSStyleDeclaration>>>} */
@@ -1267,6 +1311,7 @@ export function getBorderBoxSize(element) {
     signal = new Derived(
       () => {
         getReflowContext(element);
+        readParentBox(element);
         if (isTransformed(element)) {
           return { width: element.offsetWidth, height: element.offsetHeight };
         }
@@ -1339,6 +1384,7 @@ export function getContentPosition(element) {
     signal = new Derived(
       () => {
         getReflowContext(element);
+        readParentBox(element);
         const parent = getParentElement(element);
         if (!parent) {
           return { x: 0, y: 0 };
@@ -2095,6 +2141,10 @@ export function getTextLayout(text) {
       // cost model of a long list. Style enters only through `getWhiteSpace`
       // inside the measurement, behind its own equality gate.
       getReflowContext(text);
+      // And the box the lines are broken into: the widest thing a label
+      // depends on, and the reason a row that did not resize does not pay
+      // for a Range measurement when the panel around it changes.
+      readParentBox(text);
       return measureTextLayout(text);
     });
     textLayoutCache.set(text, signal);

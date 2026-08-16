@@ -477,14 +477,14 @@ export function createPortal(ctx, { opaqueToRays = true } = {}) {
   /**
    * Say that images have arrived — once for however many of them did.
    *
-   * The announcement is portal-wide, and has to be: an `<img>` the author gave
-   * no size to has just been handed one by the picture, and everything after
-   * it in the flow has moved. That makes each one as expensive as a font
-   * arriving, and unlike fonts they arrive one at a time — a panel of nine
-   * icons announced nine reflows of everything, back to back, for a layout
-   * that settled once. Coalescing them costs a frame nobody was waiting on,
-   * because a picture that has just decoded cannot be on screen before the
-   * next one anyway.
+   * An `<img>` the author gave no size to has just been handed one by the
+   * picture, so its own box changed and everything after it in the flow has
+   * moved — which the mirror settles from the picture's own place in the
+   * tree, exactly as it settles a row that grew. What still wants coalescing
+   * is that they arrive one at a time: a panel of nine icons announced nine
+   * settlings, back to back, for a layout that settled once. Waiting a frame
+   * costs nothing anybody was waiting on, because a picture that has just
+   * decoded cannot be on screen before the next frame anyway.
    */
   const announceLoads = () => {
     // The frame sources this can draw on — the renderer's loop and

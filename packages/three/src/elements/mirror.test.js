@@ -836,8 +836,9 @@ describe("text layout as a dependency", () => {
     const loose = document.createTextNode("directly inside");
     scroller.appendChild(loose);
 
+    let rowHeight = 40;
     layout(scroller, () => [0, 0, 200, 100]);
-    layout(row, () => [0, 20 - scrollTop, 200, 60 - scrollTop]);
+    layout(row, () => [0, 20 - scrollTop, 200, 20 + rowHeight - scrollTop]);
     scrollable(scroller, () => scrollTop);
 
     const mirror = createMirror();
@@ -872,7 +873,19 @@ describe("text layout as a dependency", () => {
       mirror.reflowed(null);
       assert.deepEqual(measured, new Set([label, loose]));
 
+      // A row arriving in the list moves the text sitting directly in the
+      // list, and leaves the label alone: a label is measured in its own
+      // row's content space, and a row that came out the size it was cannot
+      // have re-broken anything inside it. This is the whole saving on a long
+      // list — the text is most of the panel and all of the expensive reads.
       measured.clear();
+      mirror.childListChanged(scroller);
+      assert.deepEqual(measured, new Set([loose]));
+
+      // Unless the row did change size, which is the one thing out in the
+      // list that can reach into it.
+      measured.clear();
+      rowHeight = 80;
       mirror.childListChanged(scroller);
       assert.deepEqual(measured, new Set([label, loose]));
     } finally {
@@ -955,7 +968,9 @@ function setupScroller() {
  */
 function setupBoundedList(scrollerStyle = "overflow: hidden", rowStyle = "") {
   const reads = { header: 0, scroller: 0, row: 0 };
+  let headerHeight = 20;
   let scrollerHeight = 100;
+  let rowHeight = 40;
 
   const container = document.createElement("div");
   container.setAttribute(PORTAL_ATTRIBUTE, "");
@@ -980,9 +995,13 @@ function setupBoundedList(scrollerStyle = "overflow: hidden", rowStyle = "") {
   }
 
   layout(container, () => [0, 0, 200, 200]);
-  layout(header, () => [0, 0, 200, 20], { count: () => reads.header++ });
-  layout(scroller, () => [0, 20, 200, 20 + scrollerHeight], { count: () => reads.scroller++ });
-  layout(row, () => [0, 20, 200, 60], { count: () => reads.row++ });
+  layout(header, () => [0, 0, 200, headerHeight], { count: () => reads.header++ });
+  layout(scroller, () => [0, headerHeight, 200, headerHeight + scrollerHeight], {
+    count: () => reads.scroller++,
+  });
+  layout(row, () => [0, headerHeight, 200, headerHeight + rowHeight], {
+    count: () => reads.row++,
+  });
 
   return {
     container,
@@ -993,14 +1012,131 @@ function setupBoundedList(scrollerStyle = "overflow: hidden", rowStyle = "") {
     row,
     label,
     reads,
-    /** The scroller's own size changing is the one thing the inside must hear. */
-    resizeScrollerTo: (/** @type {number} */ height) => {
-      scrollerHeight = height;
+    /**
+     * The list grows because its contents did — that being the only way a
+     * container sized by its contents can grow, and the mirror now consults
+     * the geometry rather than taking a mutation's word for how far it
+     * travels. A fixture where the list grew and the row did not describes a
+     * layout no browser would produce, and the walk would rightly stop at the
+     * row.
+     *
+     * @param {number} height
+     */
+    growTheListBy: (height) => {
+      rowHeight += height;
+      scrollerHeight += height;
+    },
+    /**
+     * And the other direction: the panel above the list changes size, which
+     * is what leaves the list a different amount of room. Same requirement —
+     * the header has to have actually changed for the news to be entitled to
+     * travel past it.
+     *
+     * @param {number} height
+     */
+    growTheHeaderBy: (height) => {
+      headerHeight += height;
+      scrollerHeight -= height;
     },
   };
 }
 
 describe("layout boundaries", () => {
+  test("a box that kept its size seals its interior, overflow or not", () => {
+    // The general rule the overflow cases below are instances of. A block
+    // formatting context is not what makes a box's interior its own
+    // business: CSS lays a box out from the space it was given, so *any*
+    // container that came out the size it was leaves everything inside it
+    // where it already was. A list that happens not to have changed height
+    // is sealed exactly as firmly as one that hides its overflow, and the
+    // overwhelming majority of panels contain no `overflow` at all.
+    const { container, mirror, headerText, row, reads } = setupBoundedList("");
+    try {
+      const inside = new Derived(() => getContentPosition(row));
+      const subscription = inside.subscribe({ next: () => inside.get() });
+      inside.get();
+      const before = { ...reads };
+
+      headerText.data = "12 m/s";
+      mirror.characterDataChanged(headerText);
+
+      assert.equal(reads.row, before.row, "the row inside a plain div was not measured");
+
+      subscription.unsubscribe();
+    } finally {
+      container.remove();
+    }
+  });
+
+  test("a change in one row leaves its neighbours' contents alone", () => {
+    // The saving, stated as the invariant it rests on. Geometry is stored
+    // relative to the parent, so a row whose own box came out unchanged has
+    // not moved anything inside it, whatever happened next door — and a row
+    // that did change size moves its neighbours without reaching into them,
+    // because their boxes did not change either. What that spares is the
+    // text: a label is the most expensive read in the mirror, and on a list
+    // it is most of what there is to read.
+    const reads = { rowA: 0, labelBox: 0, rowB: 0 };
+    let labelHeight = 16;
+    let rowAHeight = 40;
+
+    const container = document.createElement("div");
+    container.setAttribute(PORTAL_ATTRIBUTE, "");
+    const rowA = document.createElement("div");
+    const labelBox = document.createElement("span");
+    const labelText = document.createTextNode("first");
+    const rowB = document.createElement("div");
+    labelBox.appendChild(labelText);
+    rowA.appendChild(labelBox);
+    container.appendChild(rowA);
+    container.appendChild(rowB);
+    document.body.appendChild(container);
+
+    const mirror = createMirror();
+    for (const node of [container, rowA, labelBox, labelText, rowB]) {
+      mirror.adopt(node);
+    }
+
+    layout(container, () => [0, 0, 200, 200]);
+    layout(rowA, () => [0, 0, 200, rowAHeight], { count: () => reads.rowA++ });
+    layout(labelBox, () => [0, 0, 100, labelHeight], { count: () => reads.labelBox++ });
+    layout(rowB, () => [0, rowAHeight, 200, rowAHeight + 40], { count: () => reads.rowB++ });
+
+    try {
+      const watched = [
+        new Derived(() => getContentPosition(labelBox)),
+        new Derived(() => getContentPosition(rowB)),
+      ];
+      const subscriptions = watched.map((signal) => signal.subscribe({ next: () => signal.get() }));
+      watched.forEach((signal) => signal.get());
+
+      // A settle with nothing recorded yet reads as changed everywhere, so
+      // the ledger is primed before anything is asserted about it.
+      labelText.data = "second";
+      mirror.characterDataChanged(labelText);
+      let before = { ...reads };
+
+      // The label is rewritten and the row absorbs it. Nothing outside the
+      // row was disturbed, so nothing outside the row is measured.
+      labelText.data = "third";
+      mirror.characterDataChanged(labelText);
+      assert.equal(reads.rowB, before.rowB, "the next row was not measured");
+
+      // Now the row grows. Its neighbour moves and re-measures — and stops
+      // there, its own box being what it was.
+      before = { ...reads };
+      labelHeight = 32;
+      rowAHeight = 56;
+      labelText.data = "fourth, long enough to wrap";
+      mirror.characterDataChanged(labelText);
+      assert.ok(reads.rowB > before.rowB, "the next row followed the one that grew");
+
+      subscriptions.forEach((subscription) => subscription.unsubscribe());
+    } finally {
+      container.remove();
+    }
+  });
+
   test("churn outside a scroller does not re-measure a single row inside it", () => {
     // The optimization, and the reason for it: an element that hides its
     // overflow establishes a block formatting context, so nothing out in the
@@ -1086,7 +1222,7 @@ describe("layout boundaries", () => {
     // The channel out, and it has to work: a container that grows with its
     // contents — anything not given a size of its own — moves everything
     // after it, and the panel hears about it.
-    const { container, mirror, label, header, reads, resizeScrollerTo } = setupBoundedList();
+    const { container, mirror, label, header, reads, growTheListBy } = setupBoundedList();
     try {
       const outside = new Derived(() => getContentPosition(header));
       const subscription = outside.subscribe({ next: () => outside.get() });
@@ -1096,8 +1232,9 @@ describe("layout boundaries", () => {
       mirror.characterDataChanged(label);
       const before = { ...reads };
 
-      // A row arrives and the list grows with it.
-      resizeScrollerTo(140);
+      // The label wraps onto a second line, so the row grows and the list
+      // with it.
+      growTheListBy(40);
       label.data = "row one, changed again";
       mirror.characterDataChanged(label);
 
@@ -1112,15 +1249,17 @@ describe("layout boundaries", () => {
   test("the scroller resizing re-measures everything inside it", () => {
     // The one channel the outside has, and it has to work: when the panel
     // really does resize the container, its contents re-lay-out.
-    const { container, mirror, headerText, row, reads, resizeScrollerTo } = setupBoundedList();
+    const { container, mirror, headerText, row, reads, growTheHeaderBy } = setupBoundedList();
     try {
       const inside = new Derived(() => getContentPosition(row));
       const subscription = inside.subscribe({ next: () => inside.get() });
       inside.get();
       const before = { ...reads };
 
-      resizeScrollerTo(60);
-      headerText.data = "a change that also resized the list";
+      // The reading above the list takes a second line, and the list — which
+      // has the rest of a fixed-height panel — gets that much less room.
+      growTheHeaderBy(40);
+      headerText.data = "a reading long enough to wrap, which resizes the list";
       mirror.characterDataChanged(headerText);
 
       assert.ok(reads.row > before.row, "a resized container re-measures its contents");

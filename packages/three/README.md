@@ -117,11 +117,13 @@ has to be mounted and unmounted rather than hidden and shown.
 
 **Hover and press are presentational, by contract.** The three attributes
 the portal writes itself — `data-xr-hover`, `data-xr-active` and
-`data-xr-checked` — restyle the panel but are declared unable to move it,
-and unable to style anything but the element they match and its subtree.
+`data-xr-checked` — restyle the panel but are declared unable to move it.
 Colour, background, border colour, opacity and `transform` all work; a
 width, a padding or a font size that changes under the ray is not mirrored,
 and the boxes stay the size they were.
+
+Two of the three carry a second restriction: **`data-xr-hover` and
+`data-xr-active` may only style the element they match and its subtree.**
 
 ```css
 .row[data-xr-hover] {
@@ -133,6 +135,10 @@ and the boxes stay the size they were.
 .row[data-xr-hover] ~ .row {
   opacity: 0.5;
 } /* ignored — sibling */
+
+input[data-xr-checked] + .label {
+  text-decoration: line-through;
+} /* fine — checked is not restricted */
 ```
 
 This is the one place a stylesheet can be written that the scene will not
@@ -151,6 +157,14 @@ must go looking: a rule that can restyle a sibling puts every element under
 the hovered element's parent in the path of one hover, which in a list is
 every row in it. A hover that can only reach its own subtree costs the row
 the ray is on, whatever the list around it is doing.
+
+That argument is one from frequency, and it does not reach `data-xr-checked`,
+which is why the restriction stops at two. A box is ticked once, by a hand,
+where hover is written on every element a moving ray crosses; and the flag is
+written on the `<input>`, whose siblings are a label and a button rather than
+a hundred rows. Narrowing it would save two elements a click, and would cost
+`input:checked + label` — the idiom the flat web has always used to strike
+through a completed item, and the reason the flag exists at all.
 
 `transform` is the one to reach for, exactly as on the web — it costs a
 matrix write, and it is mirrored on hover like anything else:
@@ -235,7 +249,9 @@ however it is dressed. And the ticked state is written back onto the element as
 without something that does, nothing would tell the portal to re-read a style
 that follows it. Write the rule both ways, as above — and, being one of the
 portal's own flags, it carries the same presentational contract `data-xr-hover`
-does: a ticked box may change colour, but may not change size.
+does: a ticked box may change colour, but may not change size. It does _not_
+carry hover's other restriction: a tick may style the element beside it, so
+`input[data-xr-checked] + .label` works and is the form to reach for.
 
 The DOM stays the thing that is true. A ray's click is a click, so the browser
 does the toggling and fires `change`, and an application reads `checked` and

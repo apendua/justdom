@@ -198,10 +198,10 @@ describe("getComputedStyleCached", () => {
     mirror.attributeChanged(rowA);
     assert.deepEqual(reads, { labelA: 2, labelB: 2 });
 
-    // The portal's own flags cannot: they are declared unable to style
-    // across a sibling combinator, so the hover stops at rowA's subtree.
-    // labelA still restyles — descendants inherit from what changed.
-    mirror.attributeChanged(rowA, { presentational: true });
+    // Hover and press cannot: they are declared unable to style across a
+    // sibling combinator, so the hover stops at rowA's subtree. labelA still
+    // restyles — descendants inherit from what changed.
+    mirror.attributeChanged(rowA, { presentational: true, selfScoped: true });
     assert.deepEqual(reads, { labelA: 3, labelB: 2 });
 
     // Hover styling is conventionally transitioned, so the clock re-reports
@@ -210,7 +210,74 @@ describe("getComputedStyleCached", () => {
     mirror.animatedStyles([rowA]);
     assert.deepEqual(reads, { labelA: 4, labelB: 2 });
 
+    // A tick is presentational but not self-scoped, and the difference is
+    // deliberate: `input:checked + label` is how a checkbox has always
+    // struck through the thing it labels, and the flag exists to mirror
+    // `:checked`. So it measures nothing and still reaches its siblings.
+    mirror.attributeChanged(rowA, { presentational: true });
+    assert.deepEqual(reads, { labelA: 5, labelB: 3 });
+
     subscriptions.forEach((subscription) => subscription.unsubscribe());
+    list.remove();
+  });
+
+  test("which flag it is decides whether a sibling restyles", () => {
+    // The test above drives `attributeChanged` directly, so it proves what
+    // the two scopes do and nothing about which attribute gets which. This
+    // one goes in through `ingest`, where the attribute's *name* is what
+    // picks the scope — the difference between the two sets, which is the
+    // part a wrong entry would silently undo.
+    const list = document.createElement("div");
+    const rowA = document.createElement("div");
+    const rowB = document.createElement("div");
+    list.appendChild(rowA);
+    list.appendChild(rowB);
+    document.body.appendChild(list);
+
+    const mirror = createMirror();
+    for (const node of [list, rowA, rowB]) {
+      mirror.adopt(node);
+    }
+
+    let reads = 0;
+    const sibling = new Derived(() => {
+      reads += 1;
+      return getComputedStyleCached(rowB).color;
+    });
+    const subscription = sibling.subscribe({ next: () => sibling.get() });
+    sibling.get();
+    assert.equal(reads, 1);
+
+    /** @param {string} name */
+    const wrote = (name) => {
+      rowA.setAttribute(name, "true");
+      return /** @type {MutationRecord} */ (
+        /** @type {unknown} */ ({
+          type: "attributes",
+          target: rowA,
+          attributeName: name,
+          oldValue: null,
+          addedNodes: [],
+          removedNodes: [],
+        })
+      );
+    };
+
+    // Same element, same position in the tree, so the attribute's name is
+    // the only thing that differs between these two.
+    batch(() => mirror.ingest([wrote("data-xr-hover")]));
+    assert.equal(reads, 1, "a hover does not reach its sibling");
+
+    batch(() => mirror.ingest([wrote("data-xr-active")]));
+    assert.equal(reads, 1, "nor does a press");
+
+    batch(() => mirror.ingest([wrote("data-xr-checked")]));
+    assert.equal(reads, 2, "a tick does — `input:checked + label` is the point");
+
+    batch(() => mirror.ingest([wrote("class")]));
+    assert.equal(reads, 3, "and an author's attribute always has");
+
+    subscription.unsubscribe();
     list.remove();
   });
 

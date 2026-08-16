@@ -81,26 +81,14 @@ export const PORTAL_ATTRIBUTE = "data-xr-portal";
  * is doing to them: hovering, pressing, and — for a checkbox, whose state no
  * mutation would otherwise report — ticked.
  *
- * These carry a contract the author-facing attributes do not, in two parts.
- *
  * **A rule that follows one of these may restyle, but may not re-lay-out.**
  * Colour, background, border colour, opacity and `transform` are all fair
  * game; a width, a padding or a font size that changes on hover is not
  * mirrored, and the mirror will go on drawing the boxes at the size they had.
  *
- * **A rule that follows one of these may only style the element it matches,
- * and its subtree.** `[data-xr-hover] ~ .row` and `[data-xr-hover] + .row`
- * are not mirrored: the sibling keeps the styling it had. Descendants are
- * fine — `.button[data-xr-hover] .label` restyles, as does anything the
- * hovered element's own subtree inherits from it.
- *
- * That second half is what keeps hover off the rest of the panel. A restyle
- * scope is a claim about how far a selector's verdict could have moved, so
- * the sibling half of the ordinary scope (see `#restyleScope`) puts every
- * element sharing a parent — and every element under those — in the path of
- * one hover. In a list, that is the entire list on every row the ray
- * crosses, which is the whole panel's styles at frame rate. Declaring the
- * sibling combinators out of scope makes hovering a row cost the row.
+ * A second, narrower contract applies to some of them but not all — see
+ * `SELF_SCOPED_ATTRIBUTES` below, which is where the sibling combinators are
+ * decided.
  *
  * The contract is worth the narrowness because of what it buys. These are by
  * far the most frequent mutations a panel sees — the ray writes one on every
@@ -124,6 +112,38 @@ export const PORTAL_ATTRIBUTE = "data-xr-portal";
  * move its layout on purpose.
  */
 const PRESENTATIONAL_ATTRIBUTES = new Set(["data-xr-hover", "data-xr-active", "data-xr-checked"]);
+
+/**
+ * Of those, the ones that may only style the element they match and its
+ * subtree. `[data-xr-hover] ~ .row` and `[data-xr-active] + .row` are not
+ * mirrored: the sibling keeps the styling it had. Descendants are fine —
+ * `.button[data-xr-hover] .label` restyles, as does anything the hovered
+ * element's subtree inherits from it.
+ *
+ * This is what keeps hover off the rest of the panel. A restyle scope is a
+ * claim about how far a selector's verdict could have moved, so the sibling
+ * half of the ordinary scope (see `#restyleScope`) puts every element sharing
+ * a parent — and everything under those — in the path of one hover. Hover
+ * lands on whatever the ray hits, which in a list is a row, whose parent is
+ * the list: the entire list restyles on every row the ray crosses, at frame
+ * rate. Ruling out the sibling combinators makes hovering a row cost the row.
+ *
+ * **`data-xr-checked` is deliberately not here**, and the asymmetry is the
+ * point rather than an oversight. The case above is an argument from
+ * frequency, and a checkbox is not frequent: it toggles once, at the speed of
+ * a hand, where hover is written on every element a moving ray crosses. The
+ * blast radius is smaller too, and for the same reason read the other way —
+ * the flag is written on the `<input>`, whose parent is the row rather than
+ * the list, so its siblings are a label and a button rather than a hundred
+ * rows. Narrowing it would save two elements a click.
+ *
+ * Against that, the sibling combinator is *the* idiom for a checkbox:
+ * `input:checked + label` is how the flat web has always struck through a
+ * completed item, and mirroring `:checked` faithfully is the whole reason
+ * `data-xr-checked` exists. Charging it the same narrowness as hover would be
+ * cost without benefit.
+ */
+const SELF_SCOPED_ATTRIBUTES = new Set(["data-xr-hover", "data-xr-active"]);
 
 /**
  * Whether a computed `transform` value is one the mirror treats as a
@@ -509,11 +529,13 @@ export class DomMirror {
     for (const [node, names] of attributeBaselines) {
       const element = /** @type {Element} */ (node);
       let changed = false;
-      // Whether everything that changed is one of the portal's own
-      // `data-xr-*` flags (see `PRESENTATIONAL_ATTRIBUTES`). A flush that is
-      // nothing but a hover measures nothing at all, and restyles only the
-      // hovered element's own subtree.
+      // The two claims a flush can make about itself, each true only if every
+      // attribute that actually changed makes it. A flush that is nothing but
+      // a hover measures nothing and restyles only the hovered subtree; one
+      // that is nothing but a tick measures nothing but may still reach the
+      // input's siblings, which is where a checkbox's label lives.
       let presentational = true;
+      let selfScoped = true;
       for (const [name, oldValue] of names) {
         if (element.getAttribute(name) === oldValue) {
           continue;
@@ -522,9 +544,12 @@ export class DomMirror {
         if (!PRESENTATIONAL_ATTRIBUTES.has(name)) {
           presentational = false;
         }
+        if (!SELF_SCOPED_ATTRIBUTES.has(name)) {
+          selfScoped = false;
+        }
       }
       if (changed) {
-        this.attributeChanged(element, { presentational });
+        this.attributeChanged(element, { presentational, selfScoped });
       }
     }
     for (const [node, oldValue] of characterBaselines) {
@@ -543,16 +568,19 @@ export class DomMirror {
    * @param {Node} element
    * @param {object} [options]
    * @param {boolean} [options.presentational] Whether the change is one of
-   *   the portal's own `data-xr-*` flags. False by default, which is the
-   *   answer for every attribute an author writes. Passing true narrows the
-   *   work to what those flags are declared able to do: no re-measure, and
-   *   a restyle that stops at the element's own subtree instead of reaching
-   *   its siblings. See `PRESENTATIONAL_ATTRIBUTES`.
+   *   the portal's own `data-xr-*` flags, and so declared unable to have
+   *   moved anything measurable. False by default, which is the answer for
+   *   every attribute an author writes. See `PRESENTATIONAL_ATTRIBUTES`.
+   * @param {boolean} [options.selfScoped] Whether the change is declared
+   *   unable to restyle a sibling, so the restyle can stop at this element's
+   *   own subtree. False by default. Independent of `presentational` because
+   *   the two claims are: `data-xr-checked` moves no layout but may still
+   *   style the label beside it. See `SELF_SCOPED_ATTRIBUTES`.
    * @returns {void}
    */
-  attributeChanged(element, { presentational = false } = {}) {
+  attributeChanged(element, { presentational = false, selfScoped = false } = {}) {
     batch(() => {
-      this.#restyleScope(element, { reachesSiblings: !presentational });
+      this.#restyleScope(element, { reachesSiblings: !selfScoped });
       if (presentational) {
         return;
       }
@@ -805,7 +833,7 @@ export class DomMirror {
    *   default: an author's mutation can change which rules match across
    *   `~`, `+` and the structural pseudo-classes, and those reach exactly
    *   that far. False for the changes that provably cannot move a
-   *   selector's verdict on a sibling — see `attributeChanged` and
+   *   selector's verdict on a sibling — see `SELF_SCOPED_ATTRIBUTES` and
    *   `animatedStyles` — which is what keeps hovering one row in a long
    *   list off every other row in it.
    * @returns {void}

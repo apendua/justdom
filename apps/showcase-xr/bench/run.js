@@ -198,6 +198,14 @@ async function measure({ root, app, rounds, styleReads }, list) {
           await globalThis.__drive(run, 20);
           const before = globalThis.__bench.snapshot();
           const gaps = await globalThis.__drive(run, frames);
+          // Quiet frames before the coherence check, and only before that:
+          // the portal mounts and re-derives a budget per frame now, so at
+          // the instant the stimulus stops, the last of it is legitimately
+          // still queued. The check exists to catch a cache that *never*
+          // catches up — a genuinely stale rect is exactly as wrong after a
+          // settling period as it was before one, while in-flight work has
+          // long since drained.
+          await globalThis.__drive(() => {}, 60);
           return {
             gaps,
             counts: globalThis.__bench.since(before),

@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { onCleanup } from "@apendua/signal";
+import { createProperty, onCleanup } from "@apendua/signal";
 import { Derived, effects, just, on, set, observable, useEffects } from "@apendua/signal";
 import { distinctUntilChanged, switchMap } from "rxjs";
 import { $, children, Nothing } from "../operators.js";
@@ -58,6 +58,23 @@ const contentGroups = new WeakMap();
 export function getContentGroup(object) {
   return contentGroups.get(object) ?? object;
 }
+
+/**
+ * Whether the panel these elements belong to is ready to be interacted with,
+ * as a reactive getter. The portal sets it while a panel is still building
+ * its initial mount: the panel is hidden for those frames, and a hidden
+ * panel must not be a ray target either — the raycast set is a flat list of
+ * registered objects, so an ancestor's `visible` flag shields none of them,
+ * and an invisible button that still takes clicks is worse than a visible
+ * half-built one. Elements built outside any portal get the default and
+ * are pointable whenever they are shown, exactly as before.
+ */
+export const PortalReadyContext = createProperty(
+  /**
+   * @returns {() => boolean}
+   */
+  () => () => true,
+);
 
 /**
  * @import {Component, XREventMap} from '../core.js';
@@ -167,6 +184,7 @@ export function box(ctx, element, options = {}) {
 
   const { makeInteractive, stopPropagation } = interactions(ctx);
   const drags = scrollDrags(ctx);
+  const isPanelReady = PortalReadyContext.get(ctx);
 
   /**
    * Whether this element wants to be a ray target, as its own signal so that
@@ -319,7 +337,7 @@ export function box(ctx, element, options = {}) {
    * @type {MonoTypeOperatorFunction<THREE.Object3D<XREventMap>>[]}
    */
   const interactivity = [
-    makeInteractive(() => shown.get()),
+    makeInteractive(() => isPanelReady() && shown.get()),
     on("select", (e) => {
       // A press that turned into a drag was the player scrolling the list
       // this button sits in, not pressing the button — the same bargain a
@@ -387,7 +405,7 @@ export function box(ctx, element, options = {}) {
    * @type {MonoTypeOperatorFunction<THREE.Object3D<XREventMap>>[]}
    */
   const draggability = [
-    makeInteractive(() => shown.get()),
+    makeInteractive(() => isPanelReady() && shown.get()),
     on("selectstart", (e) => {
       drags.begin(e.controller, element, object);
       stopPropagation(e);
@@ -505,7 +523,7 @@ export function box(ctx, element, options = {}) {
           // px, so it names the element as the frame the box is read in.
           clipRaycast(blocker, () => currentClipBox, object);
           return $(blocker, [
-            makeInteractive(),
+            makeInteractive(isPanelReady),
             on("select", (e) => {
               element.dispatchEvent(new MouseEvent("click", { bubbles: true }));
               // Unlike the portal's own blocker, which lets the scene

@@ -1,7 +1,7 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
-import { Derived } from "@apendua/signal";
+import { Derived, UpdateChannel, withChannel } from "@apendua/signal";
 import { $, attr, children } from "@apendua/justdom";
 import { InteractionContext, InteractionManager } from "../interactions.js";
 import { getComputedStyleCached } from "./mirror.js";
@@ -52,6 +52,50 @@ function nextMacrotask() {
   });
 }
 
+/**
+ * Drive frames and microtasks until the portal has projected everything.
+ * Mounting is sliced across frames — the observer's flush queues work and
+ * the portal's pump spends a budget of each frame on it — so a test that
+ * mounts and then asserts must first stand in for the frame loop. Bounded,
+ * so a portal that never settles fails its test instead of hanging it.
+ *
+ * @param {{ isLoading: () => boolean }} portal
+ * @returns {Promise<void>}
+ */
+async function settle(portal) {
+  await nextMacrotask();
+  for (let index = 0; index < 500 && portal.isLoading(); index++) {
+    flushFrame();
+    await nextMacrotask();
+  }
+  // The load transition queues one more round of its own — ray-target
+  // registrations are gated on the panel being ready, and re-evaluate,
+  // through the same budgeted channel, the moment it becomes so — and a
+  // frame with work left queues its successor. Drain until a frame queues
+  // nothing, so a test starts from a genuinely quiet panel and no live pump
+  // entry leaks into its counting.
+  for (let index = 0; index < 20 && frameCallbacks.length > 0; index++) {
+    flushFrame();
+    await nextMacrotask();
+  }
+}
+
+/**
+ * Let a change made after the initial mount reach the scene: changes queue
+ * in the portal's channel and drain at the top of a frame, so the frame has
+ * to happen. Two rounds, because the first frame's work can queue a second's
+ * — a restyle that flips what is registered, say.
+ *
+ * @returns {Promise<void>}
+ */
+async function pump() {
+  await nextMacrotask();
+  for (let index = 0; index < 20 && frameCallbacks.length > 0; index++) {
+    flushFrame();
+    await nextMacrotask();
+  }
+}
+
 describe("createPortal", () => {
   test("only clickable elements become ray targets, plus one blocker plane", async () => {
     const manager = new InteractionManager();
@@ -83,18 +127,28 @@ describe("createPortal", () => {
     assert.ok(mountable);
     portal.mount(mountable);
 
-    // The portal mirrors DOM through a MutationObserver; give it a beat.
-    await nextMacrotask();
-    await nextMacrotask();
+    // The portal mirrors DOM through a MutationObserver, and projects what
+    // the observer reports a budget per frame; drive the frames.
+    await settle(portal);
 
     assert.equal(added.length, 2, "one blocker and one clickable div");
-    // The blocker is registered first, while the portal is being created.
-    const blocker = added[0];
-    assert.ok(blocker instanceof THREE.Mesh, "the blocker plane is registered");
-    assert.ok(blocker.geometry instanceof THREE.PlaneGeometry, "the blocker is a plane");
+    // The blocker is registered when the panel finishes loading — a loading
+    // panel is hidden, and the raycast set is a flat list an ancestor's
+    // `visible` cannot shield, so registering it earlier would leave an
+    // invisible plate for rays to land on.
+    const blocker = /** @type {THREE.Mesh | undefined} */ (
+      added.find(
+        (object) => object instanceof THREE.Mesh && object.geometry instanceof THREE.PlaneGeometry,
+      )
+    );
+    assert.ok(blocker);
     // The container is flipped half a turn about x, so the plane faces away
     // from the viewer and a one-sided mesh would never be raycast at all.
-    assert.equal(blocker.material.side, THREE.DoubleSide, "the blocker is two-sided");
+    assert.equal(
+      /** @type {THREE.Material} */ (blocker.material).side,
+      THREE.DoubleSide,
+      "the blocker is two-sided",
+    );
 
     subscription.unsubscribe();
     portal.disconnect();
@@ -123,8 +177,7 @@ describe("createPortal", () => {
     assert.ok(mountable);
     portal.mount(mountable);
 
-    await nextMacrotask();
-    await nextMacrotask();
+    await settle(portal);
 
     /** @type {Event[]} */
     const clicks = [];
@@ -134,7 +187,11 @@ describe("createPortal", () => {
 
     // Aiming at the panel but at none of its buttons. Nothing else can tell a
     // menu that the player looked away from it and clicked.
-    added[0].dispatchEvent(/** @type {any} */ ({ type: "select" }));
+    const blocker = added.find(
+      (object) => object instanceof THREE.Mesh && object.geometry instanceof THREE.PlaneGeometry,
+    );
+    assert.ok(blocker);
+    blocker.dispatchEvent(/** @type {any} */ ({ type: "select" }));
 
     assert.equal(clicks.length, 1, "the background click reaches the document");
     assert.ok(clicks[0].target instanceof HTMLElement);
@@ -168,8 +225,7 @@ describe("createPortal", () => {
     assert.ok(mountable);
     portal.mount(mountable);
 
-    await nextMacrotask();
-    await nextMacrotask();
+    await settle(portal);
 
     assert.equal(added.length, 0, "a readout nobody presses is nothing for a ray to find");
     // Not merely unregistered: there is no plane in the scene either, so the
@@ -247,8 +303,7 @@ describe("createPortal", () => {
     assert.ok(mountable);
     portal.mount(mountable);
 
-    await nextMacrotask();
-    await nextMacrotask();
+    await settle(portal);
 
     assert.equal(added.length, 2, "the blocker, and the checkbox itself");
     const input = /** @type {HTMLInputElement | null} */ (
@@ -257,11 +312,18 @@ describe("createPortal", () => {
     assert.ok(input);
     assert.equal(input.checked, false);
 
-    added[1].dispatchEvent(/** @type {any} */ ({ type: "select", target: added[1] }));
+    const control = added.find(
+      (object) => !(object instanceof THREE.Mesh && object.geometry instanceof THREE.PlaneGeometry),
+    );
+    assert.ok(control);
+    control.dispatchEvent(/** @type {any} */ ({ type: "select", target: control }));
 
     // The click the ray sends is a click, so the DOM does the toggling and the
-    // scene follows the DOM — the same order of events the page sees.
+    // scene follows the DOM — the same order of events the page sees. The DOM
+    // is true immediately; the scene's write-back of the flag rides the
+    // panel's channel and lands at the top of the next frame.
     assert.equal(input.checked, true);
+    await pump();
     assert.equal(input.dataset.xrChecked, "true");
 
     subscription.unsubscribe();
@@ -299,8 +361,7 @@ describe("createPortal", () => {
     assert.ok(mountable);
     portal.mount(mountable);
 
-    await nextMacrotask();
-    await nextMacrotask();
+    await settle(portal);
 
     assert.equal(registered.length, 2, "the blocker, and the checkbox itself");
 
@@ -313,15 +374,13 @@ describe("createPortal", () => {
     // changes here: the point is that this alone has to carry the news.
     input.disabled = true;
 
-    await nextMacrotask();
-    await nextMacrotask();
+    await pump();
 
     assert.equal(registered.length, 1, "only the blocker is left");
 
     input.disabled = false;
 
-    await nextMacrotask();
-    await nextMacrotask();
+    await pump();
 
     assert.equal(registered.length, 2, "and re-enabling brings it back");
 
@@ -351,8 +410,7 @@ describe("createPortal", () => {
     assert.ok(mountable);
     portal.mount(mountable);
 
-    await nextMacrotask();
-    await nextMacrotask();
+    await settle(portal);
 
     // A hand pointing at the button that opened a menu is not moving, and the
     // hit is only recomputed when it does — so a menu appearing underneath it
@@ -377,7 +435,10 @@ describe("createPortal", () => {
     };
     const ctx = InteractionContext.set({}, manager);
 
-    const portal = createPortal(ctx);
+    // An unlimited budget keeps the slicing frame-deferred but never
+    // budget-cut, so how many frames the settling takes stops depending on
+    // the wall clock and the counting below is exact.
+    const portal = createPortal(ctx, { budget: Infinity });
     portal.addTo(new THREE.Group());
 
     /** @type {import("@apendua/justdom").Mountable<Node> | undefined} */
@@ -395,9 +456,7 @@ describe("createPortal", () => {
     assert.ok(mountable);
     portal.mount(mountable);
 
-    await nextMacrotask();
-    await nextMacrotask();
-    flushFrame();
+    await settle(portal);
 
     const containers = document.querySelectorAll(`[${"data-xr-portal"}]`);
     const images = containers[containers.length - 1].querySelectorAll("img");
@@ -412,12 +471,19 @@ describe("createPortal", () => {
     // next one anyway.
     assert.equal(updates, before, "the loads were not announced synchronously");
 
+    // Two recasts however many pictures landed: the announcement's own, and
+    // one for the frame in which the panel's channel settles what the
+    // announcement invalidated. Announced one at a time, each load would
+    // have cost its own announcement and its own settling frame.
     flushFrame();
-    assert.equal(updates, before + 1, "three pictures, one announcement");
+    await pump();
+    assert.equal(updates, before + 2, "three pictures, one announcement, one settling pass");
 
-    // And the frame is given back rather than left ticking.
+    // And the frames are given back rather than left ticking: a settled
+    // panel must not keep a loop alive.
     flushFrame();
-    assert.equal(updates, before + 1, "nothing keeps asking for frames");
+    await nextMacrotask();
+    assert.equal(updates, before + 2, "nothing keeps asking for frames");
 
     subscription.unsubscribe();
     portal.disconnect();
@@ -468,8 +534,7 @@ describe("createPortal", () => {
     assert.ok(mountable);
     portal.mount(mountable);
 
-    await nextMacrotask();
-    await nextMacrotask();
+    await settle(portal);
 
     assert.equal(registered.length, 3, "the blocker and two buttons");
 
@@ -509,8 +574,7 @@ describe("createPortal", () => {
     assert.ok(mountable);
     portal.mount(mountable);
 
-    await nextMacrotask();
-    await nextMacrotask();
+    await settle(portal);
 
     const containers = document.querySelectorAll("[data-xr-portal]");
     const container = containers[containers.length - 1];
@@ -551,6 +615,10 @@ describe("createPortal", () => {
     try {
       scrollTop = 40;
       scroller.dispatchEvent(new Event("scroll"));
+      // The offset lands in the panel's channel and the content group moves
+      // at the top of the next frame — and even that frame reads nothing
+      // back from the DOM, which is the stronger form of the old claim.
+      flushFrame();
 
       assert.deepEqual(
         [contentGroup.position.x, contentGroup.position.y],
@@ -563,6 +631,135 @@ describe("createPortal", () => {
       window.Element.prototype.getBoundingClientRect = originalGetRect;
       document.createRange = originalCreateRange;
     }
+
+    subscription.unsubscribe();
+    portal.disconnect();
+  });
+
+  test("a large mount is sliced across frames, behind a loading state", async () => {
+    // The case this exists for: a hundred rows arriving in one observer
+    // flush used to be built in one task, which is one very long frame. Now
+    // the flush queues them, the pump builds a budget's worth per frame —
+    // at least one root per frame, however small the budget, which is what
+    // a budget of zero pins down — and the panel is hidden and out of the
+    // raycast set until everything the mount asked for exists.
+    const manager = new InteractionManager();
+    /** @type {THREE.Object3D[]} */
+    const registered = [];
+    const originalAdd = manager.add.bind(manager);
+    manager.add = (object) => {
+      registered.push(object);
+      originalAdd(object);
+    };
+    const ctx = InteractionContext.set({}, manager);
+
+    /** @type {boolean[]} */
+    const transitions = [];
+    const portal = createPortal(ctx, {
+      budget: 0,
+      onLoadingChanged: (value) => transitions.push(value),
+    });
+    const parent = new THREE.Group();
+    portal.addTo(parent);
+    const containerObject = parent.children[0];
+
+    /** @type {import("@apendua/justdom").Mountable<Node> | undefined} */
+    let mountable;
+    const tree = $("div", [
+      children(
+        ...Array.from({ length: 8 }, () => $("div", [attr("style", () => "cursor: pointer")])),
+      ),
+    ]);
+    const subscription = tree.subscribe((value) => {
+      mountable = value;
+    });
+    assert.ok(mountable);
+    portal.mount(mountable);
+    await nextMacrotask();
+
+    assert.equal(portal.isLoading(), true, "a mounting panel is loading");
+    assert.equal(containerObject.visible, false, "and hidden while it is");
+    assert.equal(registered.length, 0, "and nothing in it is a ray target yet");
+
+    const rootObject = () =>
+      containerObject.children.find((child) => !(child instanceof THREE.Mesh));
+
+    await settle(portal);
+
+    assert.equal(portal.isLoading(), false, "loaded once everything exists");
+    assert.equal(containerObject.visible, true, "and shown");
+    assert.equal(rootObject()?.children[0]?.children.length, 8, "with every row built");
+    assert.equal(registered.length, 9, "the blocker and eight buttons, registered on load");
+    assert.deepEqual(transitions, [false], "one transition, announced once");
+
+    // Later arrivals go through the same budgeted pump but are not a loading
+    // state. Each appended row is its own queue entry — the slicing grain is
+    // the added root — so a zero budget builds exactly one per frame, which
+    // is the climb that proves the batch is genuinely spread across frames
+    // rather than deferred whole to the first one.
+    const container = document.querySelectorAll("[data-xr-portal]");
+    const list = /** @type {HTMLElement} */ (container[container.length - 1].firstElementChild);
+    for (let index = 0; index < 4; index++) {
+      list.appendChild(document.createElement("div"));
+    }
+    await nextMacrotask();
+    assert.equal(portal.isLoading(), false, "a mounted panel does not load again");
+
+    const rows = () => rootObject()?.children[0]?.children.length ?? 0;
+    flushFrame();
+    await nextMacrotask();
+    const afterOne = rows();
+    flushFrame();
+    await nextMacrotask();
+    const afterTwo = rows();
+    assert.equal(afterOne, 9, "one appended row is built in the first frame");
+    assert.equal(afterTwo, afterOne + 1, "and exactly one more in the next");
+
+    await settle(portal);
+    assert.equal(rows(), 12, "until the whole batch has arrived");
+    assert.deepEqual(transitions, [false], "with no second announcement");
+
+    subscription.unsubscribe();
+    portal.disconnect();
+  });
+
+  test("a node that leaves the tree before its frame is never built", async () => {
+    // A row added and filtered out in the same breath: the queue entry
+    // outlives the node's place in the tree, and building it anyway would
+    // make an object for DOM nobody can see — the ghost problem, one frame
+    // early. The containment check drops it instead.
+    const manager = new InteractionManager();
+    const ctx = InteractionContext.set({}, manager);
+    const portal = createPortal(ctx, { budget: 0 });
+    const parent = new THREE.Group();
+    portal.addTo(parent);
+    const containerObject = parent.children[0];
+
+    /** @type {import("@apendua/justdom").Mountable<Node> | undefined} */
+    let mountable;
+    const tree = $("div");
+    const subscription = tree.subscribe((value) => {
+      mountable = value;
+    });
+    assert.ok(mountable);
+    portal.mount(mountable);
+    await nextMacrotask();
+
+    // Two rows arrive — appended directly, so each is queued as its own
+    // root — and one of them leaves again before any frame has happened.
+    const containers = document.querySelectorAll("[data-xr-portal]");
+    const list = /** @type {HTMLElement} */ (containers[containers.length - 1].firstElementChild);
+    list.appendChild(document.createElement("div"));
+    list.appendChild(document.createElement("div"));
+    await nextMacrotask();
+    assert.equal(portal.isLoading(), true, "no frame yet, so still loading");
+    list.removeChild(/** @type {ChildNode} */ (list.lastElementChild));
+    await nextMacrotask();
+
+    await settle(portal);
+
+    const rootObject = containerObject.children.find((child) => !(child instanceof THREE.Mesh));
+    assert.equal(rootObject?.children[0]?.children.length, 1, "only the row that stayed was built");
 
     subscription.unsubscribe();
     portal.disconnect();
@@ -587,27 +784,35 @@ describe("createPortal", () => {
     assert.ok(mountable);
     portal.mount(mountable);
 
-    await nextMacrotask();
-    await nextMacrotask();
+    await settle(portal);
 
     const element = /** @type {HTMLElement} */ (document.getElementById("hovered"));
     assert.ok(element);
 
     let reads = 0;
-    const dependent = new Derived(() => {
-      reads += 1;
-      return getComputedStyleCached(element).cursor;
-    });
+    // In a channel of the same order as the portal's, because the style
+    // cache it reads belongs to the panel's channel — a default-channel
+    // reader of panel state is a backwards edge, and `Derived` would
+    // rightly warn about it.
+    const observing = new UpdateChannel({ name: "observing", order: 1 });
+    const dependent = withChannel(
+      observing,
+      () =>
+        new Derived(() => {
+          reads += 1;
+          return getComputedStyleCached(element).cursor;
+        }),
+    );
     const dependentSubscription = dependent.subscribe({ next: () => dependent.get() });
     dependent.get();
     assert.equal(reads, 1);
 
     element.dataset.xrHover = "true";
-    await nextMacrotask();
+    await pump();
     assert.equal(reads, 2, "the first write is a change");
 
     element.dataset.xrHover = "true";
-    await nextMacrotask();
+    await pump();
     assert.equal(reads, 2, "the second is not");
 
     dependentSubscription.unsubscribe();

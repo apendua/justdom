@@ -486,7 +486,8 @@ export class DomMirror {
       // One flush, one verdict per container. Collecting first means a
       // flush of fifty records measures each enclosing container once
       // rather than fifty times.
-      const pending = new Set();
+      /** @type {Map<Element, Node | null>} */
+      const pending = new Map();
       this.#pendingLayout = pending;
       try {
         this.#ingest(mutationList);
@@ -501,10 +502,15 @@ export class DomMirror {
 
   /**
    * Where layout changes gather while one observer flush is being ingested,
-   * so that how far each travels is worked out once at the end. Null
-   * outside a flush, where a change is settled as it arrives.
+   * so that how far each travels is worked out once at the end. Null outside
+   * a flush, where a change is settled as it arrives.
    *
-   * @type {Set<Node> | null}
+   * Each container maps to the earliest of its children the flush could have
+   * disturbed — `null` meaning "no idea, assume the first". Two records
+   * naming one container keep the earlier of the two, so fifty rows arriving
+   * at fifty places settle from the topmost of them.
+   *
+   * @type {Map<Element, Node | null> | null}
    */
   #pendingLayout = null;
 
@@ -525,7 +531,10 @@ export class DomMirror {
     for (const mutation of mutationList) {
       switch (mutation.type) {
         case "childList": {
-          this.childListChanged(/** @type {Element} */ (mutation.target));
+          this.childListChanged(
+            /** @type {Element} */ (mutation.target),
+            firstDisturbedChild(mutation),
+          );
           mutation.addedNodes.forEach((node) => {
             const record = recordOf(node);
             if (record) {
@@ -632,16 +641,20 @@ export class DomMirror {
    * element's own layout and travels from here.
    *
    * @param {Element} element
+   * @param {Node | null} [from] The earliest child the change could have
+   *   disturbed — the arriving row, or whatever took a departing one's
+   *   place. Omitted, the whole child list is assumed disturbed, which is
+   *   the answer for a caller holding no mutation record.
    * @returns {void}
    */
-  childListChanged(element) {
+  childListChanged(element, from = null) {
     batch(() => {
       const record = recordOf(element);
       if (record) {
         bump(record.childList);
       }
       this.#restyleScope(element);
-      this.#layoutChangedAt(element);
+      this.#layoutChangedAt(element, from);
     });
   }
 
@@ -658,8 +671,10 @@ export class DomMirror {
       if (record) {
         bump(record.character);
       }
+      // The text's own box changed, so everything after it in its parent
+      // moved and everything before it did not.
       if (text.parentElement) {
-        this.#layoutChangedAt(text.parentElement);
+        this.#layoutChangedAt(text.parentElement, text);
       }
     });
   }
@@ -774,9 +789,9 @@ export class DomMirror {
       for (const element of elements) {
         // What changed is the picture's own box, which is a change in the
         // layout of the element it sits in — the same thing a row growing is
-        // to the list around it.
+        // to the list around it, and it moves the same neighbours.
         if (element.parentElement) {
-          this.#layoutChangedAt(element.parentElement);
+          this.#layoutChangedAt(element.parentElement, element);
         }
       }
     });
@@ -787,14 +802,21 @@ export class DomMirror {
    * node was rewritten, a picture turned out to have a size.
    *
    * @param {Element} container
+   * @param {Node | null} from The earliest child the change could have
+   *   disturbed, or null for "assume the first".
    * @returns {void}
    */
-  #layoutChangedAt(container) {
+  #layoutChangedAt(container, from) {
     if (this.#pendingLayout) {
-      this.#pendingLayout.add(container);
+      const pending = this.#pendingLayout;
+      if (!pending.has(container)) {
+        pending.set(container, from);
+      } else {
+        pending.set(container, earlierOf(pending.get(container) ?? null, from));
+      }
       return;
     }
-    this.#settleLayout([container]);
+    this.#settleLayout(new Map([[container, from]]));
   }
 
   /**
@@ -837,7 +859,16 @@ export class DomMirror {
    * as changed and the news travels further. Wrong in the direction of doing
    * too much, which is the only direction that is safe.
    *
-   * @param {Iterable<Node>} containers
+   * The second saving is *which* children hear it. Where the container lays
+   * its children out in document order from a fixed start edge — see
+   * `laysOutChildrenInOrder` — a change at one child cannot have moved the
+   * children before it, so the news starts there and runs to the end. That is
+   * what makes appending to a list cost the same whether the list has ten
+   * rows or a thousand: the arriving row is the last child, and there is
+   * nothing after it to tell. Prepending still costs the whole list, which is
+   * right — everything in it moved.
+   *
+   * @param {Map<Element, Node | null>} containers
    * @returns {void}
    */
   #settleLayout(containers) {
@@ -848,14 +879,15 @@ export class DomMirror {
       // One visit each, and a climb that reaches a level someone else has
       // already settled stops there, its own answer having been decided.
       const settled = new Set();
-      for (const container of containers) {
+      for (const [container, disturbed] of containers) {
+        let from = disturbed;
         for (
           let current = /** @type {Element | null} */ (container);
           current && !settled.has(current);
           current = current.parentElement
         ) {
           settled.add(current);
-          this.#childrenMoved(current);
+          this.#childrenMoved(current, from);
           if (current.hasAttribute(PORTAL_ATTRIBUTE)) {
             // The top of what this portal mirrors. Nothing above is projected
             // and there is nobody to tell, but the panel's own size follows
@@ -869,6 +901,9 @@ export class DomMirror {
           if (!resized(current)) {
             break;
           }
+          // Climbing one level, the box that changed is the one we came from,
+          // and it is that box's neighbours who are next to hear.
+          from = current;
         }
       }
       // Boxes that hang off a containing block rather than off their parent
@@ -878,16 +913,30 @@ export class DomMirror {
   }
 
   /**
-   * Say that the children of `element` may have moved or been given a
-   * different amount of room. Read off the live DOM rather than through
-   * `getChildNodes`, because this runs while the invalidation is being
-   * routed, before the graph the cached reads belong to has run.
+   * Say that the children of `element` from `from` onward may have moved or
+   * been given a different amount of room.
+   *
+   * Everything is read off the live DOM rather than through `getChildNodes`,
+   * because this runs while the invalidation is being routed, before the
+   * graph the cached reads belong to has run.
+   *
+   * `from` is a hint the container has to be able to honour: it is only obeyed
+   * where the children are laid out in document order from a fixed start
+   * edge, and a `from` that is no longer a child of the element — the node
+   * that named it having been removed by a later record in the same flush —
+   * is no hint at all. Either way the fallback is the whole list, which is
+   * what this always did.
    *
    * @param {Element} element
+   * @param {Node | null} from
    * @returns {void}
    */
-  #childrenMoved(element) {
-    for (let child = element.firstChild; child; child = child.nextSibling) {
+  #childrenMoved(element, from) {
+    const start =
+      from && from.parentNode === element && getFlowMode(element) !== "none"
+        ? from
+        : element.firstChild;
+    for (let child = start; child; child = child.nextSibling) {
       const record = recordOf(child);
       if (record) {
         bump(record.moved);
@@ -923,6 +972,143 @@ export class DomMirror {
     }
   }
 }
+
+/**
+ * The earliest child of a childList record's target that the record could
+ * have disturbed, or null when there is no telling.
+ *
+ * A record names the sibling the change happened *after*, which survives the
+ * change and is exactly what is wanted: whatever now follows it is the first
+ * box that could have moved. Nodes added or removed at the very start have no
+ * such sibling, and then the first child is the answer — which is to say the
+ * whole list.
+ *
+ * The one case with no answer is a previous sibling that has itself left the
+ * tree, a later record in the same flush having removed it. Its old position
+ * is unrecoverable, so the whole list it is.
+ *
+ * @param {MutationRecord} mutation
+ * @returns {Node | null}
+ */
+function firstDisturbedChild(mutation) {
+  const previous = mutation.previousSibling;
+  if (!previous) {
+    return mutation.target.firstChild;
+  }
+  return previous.parentNode === mutation.target ? previous.nextSibling : null;
+}
+
+/**
+ * Whichever of two disturbed-child hints is the earlier, `null` — "no idea,
+ * assume the first" — beating both.
+ *
+ * @param {Node | null} a
+ * @param {Node | null} b
+ * @returns {Node | null}
+ */
+function earlierOf(a, b) {
+  if (!a || !b) {
+    return null;
+  }
+  if (a === b) {
+    return a;
+  }
+  return a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_PRECEDING ? b : a;
+}
+
+/**
+ * How an element arranges its children, to the two questions the mirror asks
+ * about it.
+ *
+ * - `"none"` — no promises. Grid, tables, wrapping or reversed or centred
+ *   flex, anything in a writing mode or direction that moves the start edge.
+ * - `"flex"` — children are placed one after another in document order from a
+ *   fixed start edge, but the cross axis is the container's to hand out:
+ *   `stretch` and `align-items` mean a container that changed height changed
+ *   its children with it.
+ * - `"block"` — the same order, and the block axis is nobody's business but
+ *   each child's own. A block container that got taller got taller *because*
+ *   of its children, and stacking them from the top is all it ever does.
+ *
+ * @typedef {"none" | "flex" | "block"} FlowMode
+ */
+
+/** @type {WeakMap<Element, Derived<FlowMode>>} */
+const flowModeCache = new WeakMap();
+
+/**
+ * How this element arranges its children.
+ *
+ * Two claims rest on this, and the distinction between them is what the three
+ * answers are for. The first is that a change at one child cannot move the
+ * children *before* it — a narrower claim than it sounds, since plenty of
+ * ordinary containers place their children from the far end, or from the
+ * middle, or in an order of their own: adding a row to a `justify-content:
+ * center` list moves every row already in it, and adding one to a
+ * `column-reverse` list moves all of them and puts the new one first. The
+ * second is that a container growing along the block axis leaves its children
+ * where they are, which is true of block flow and emphatically not of flex,
+ * where the cross axis is handed out by the container.
+ *
+ * So the whitelist is written as a whitelist, and everything not on it falls
+ * back to telling every child — which costs what this did before the
+ * distinction existed.
+ *
+ * Two things are deliberately not modelled, both the same kind of bargain
+ * `:has()` gets in `getStyleContext`. A child's own `order` can reorder a flex
+ * container, but reading it is a walk of the children, which is the cost this
+ * exists to avoid; and a nested inline formatting context could be re-centred
+ * by `text-align` inherited from an ancestor rather than set on the container
+ * itself. Neither has appeared in a panel; both would show as a box left where
+ * it was.
+ *
+ * @param {Element} element
+ * @returns {FlowMode}
+ */
+function getFlowMode(element) {
+  let signal = flowModeCache.get(element);
+  if (!signal) {
+    signal = new Derived(() => {
+      const style = getComputedStyleCached(element);
+      // A different writing mode or direction moves the start edge, and
+      // "before in the document" stops meaning "before on screen". Read
+      // defensively: an engine that reports nothing is reporting the initial
+      // value, which is the one this wants.
+      if (style.writingMode && style.writingMode !== "horizontal-tb") {
+        return "none";
+      }
+      if (style.direction && style.direction !== "ltr") {
+        return "none";
+      }
+      const display = style.display;
+      if (display === "flex" || display === "inline-flex") {
+        const direction = style.flexDirection || "row";
+        if (direction !== "row" && direction !== "column") {
+          return "none";
+        }
+        if ((style.flexWrap || "nowrap") !== "nowrap") {
+          return "none";
+        }
+        return START_PACKED.has(style.justifyContent || "normal") ? "flex" : "none";
+      }
+      if (display === "block" || display === "flow-root" || display === "list-item") {
+        // Inline children inside a block are laid out into line boxes, and a
+        // line box that is centred or justified re-flows around anything
+        // added to it — including the words already on it.
+        return START_ALIGNED.has(style.textAlign || "start") ? "block" : "none";
+      }
+      return "none";
+    });
+    flowModeCache.set(element, signal);
+  }
+  return signal.get();
+}
+
+/** The `justify-content` values that pack children against the start edge. */
+const START_PACKED = new Set(["normal", "flex-start", "start", "left", "stretch"]);
+
+/** And the `text-align` values that do the same for a line box. */
+const START_ALIGNED = new Set(["start", "left", ""]);
 
 /**
  * @returns {DomMirror}
@@ -1142,20 +1328,50 @@ function getReflowContext(node) {
   return signal.get();
 }
 
+/** @type {WeakMap<HTMLElement, Derived<number>>} */
+const inlineSizeCache = new WeakMap();
+
 /**
- * Depend on the size of the box this node is laid out inside.
+ * The element's border box across the inline axis alone, behind a gate of its
+ * own — so that a box which only got taller says nothing to anyone reading
+ * this.
+ *
+ * @param {HTMLElement} element
+ * @returns {number}
+ */
+function getBorderBoxInlineSize(element) {
+  let signal = inlineSizeCache.get(element);
+  if (!signal) {
+    signal = new Derived(() => getBorderBoxSize(element).width);
+    inlineSizeCache.set(element, signal);
+  }
+  return signal.get();
+}
+
+/**
+ * Depend on the space the box this node sits in has to give it.
  *
  * The other half of the bargain `#settleLayout` strikes. The walk tells a
  * container's children that they moved and then stops climbing, which is
- * sound only because a box's interior follows its own content box — so
- * whenever that box *does* turn out to have changed, everything inside it
- * has to hear about it, and the walk is long since over by then.
+ * sound only because a box's interior follows the space it was given — so
+ * whenever that space *does* turn out to have changed, everything inside has
+ * to hear about it, and the walk is long since over by then.
  *
  * This is that channel, and it is reactive rather than announced: the
  * parent's size is a plain value behind an equality gate, so a parent that
  * re-measured to the numbers it already had says nothing, and a parent that
  * really did resize re-measures every child — which then re-measure theirs,
  * one level per settling, exactly as far down as the sizes actually change.
+ *
+ * Which axes count is the whole difference between a long list costing
+ * nothing and costing everything, because the one thing that always happens
+ * when a row is appended is that the list gets taller. In block flow that
+ * moves nobody: the container got taller *because* of its children, and
+ * stacking them from the top is all it was ever doing — so a block container
+ * in document order is followed across the inline axis only, and its rows
+ * ignore its height. Anywhere else — flex, where the cross axis is handed out
+ * by the container and `stretch` is the default, and everything that made no
+ * promises at all — both axes count.
  *
  * The value is deliberately discarded. What is wanted is the dependency; the
  * callers' own equality gates decide what to do with it.
@@ -1167,9 +1383,14 @@ function readParentBox(node) {
   const parent = getParentElement(node);
   // A parent no portal adopted is the page around the scene, whose layout is
   // none of a panel's business — and has no signal to hang a dependency on.
-  if (parent && recordOf(parent)) {
-    getBorderBoxSize(parent);
+  if (!parent || !recordOf(parent)) {
+    return;
   }
+  if (getFlowMode(parent) === "block") {
+    getBorderBoxInlineSize(parent);
+    return;
+  }
+  getBorderBoxSize(parent);
 }
 
 /** @type {WeakMap<Element | Text, Map<string | null, Derived<CSSStyleDeclaration>>>} */

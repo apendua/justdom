@@ -836,9 +836,10 @@ describe("text layout as a dependency", () => {
     const loose = document.createTextNode("directly inside");
     scroller.appendChild(loose);
 
+    let rowWidth = 200;
     let rowHeight = 40;
     layout(scroller, () => [0, 0, 200, 100]);
-    layout(row, () => [0, 20 - scrollTop, 200, 20 + rowHeight - scrollTop]);
+    layout(row, () => [0, 20 - scrollTop, rowWidth, 20 + rowHeight - scrollTop]);
     scrollable(scroller, () => scrollTop);
 
     const mirror = createMirror();
@@ -882,9 +883,11 @@ describe("text layout as a dependency", () => {
       mirror.childListChanged(scroller);
       assert.deepEqual(measured, new Set([loose]));
 
-      // Unless the row did change size, which is the one thing out in the
-      // list that can reach into it.
+      // Unless the row got narrower, which is the one thing out in the list
+      // that can reach into it. Taller would not do: a row grows taller
+      // *because* its text re-broke, and text wraps to a width.
       measured.clear();
+      rowWidth = 120;
       rowHeight = 80;
       mirror.childListChanged(scroller);
       assert.deepEqual(measured, new Set([label, loose]));
@@ -967,7 +970,8 @@ function setupScroller() {
  * @param {string} [rowStyle]
  */
 function setupBoundedList(scrollerStyle = "overflow: hidden", rowStyle = "") {
-  const reads = { header: 0, scroller: 0, row: 0 };
+  const reads = { header: 0, scroller: 0, row: 0, footer: 0 };
+  let panelWidth = 200;
   let headerHeight = 20;
   let scrollerHeight = 100;
   let rowHeight = 40;
@@ -981,27 +985,37 @@ function setupBoundedList(scrollerStyle = "overflow: hidden", rowStyle = "") {
   const row = document.createElement("div");
   row.style.cssText = rowStyle;
   const label = document.createTextNode("row one");
+  // Something below the list, because that is who a list growing actually
+  // moves. The reading above it is the control: it is before the list in the
+  // flow, and nothing the list does can reach back up to it.
+  const footer = document.createElement("div");
 
   header.appendChild(headerText);
   row.appendChild(label);
   scroller.appendChild(row);
   container.appendChild(header);
   container.appendChild(scroller);
+  container.appendChild(footer);
   document.body.appendChild(container);
 
   const mirror = createMirror();
-  for (const node of [container, header, headerText, scroller, row, label]) {
+  for (const node of [container, header, headerText, scroller, row, label, footer]) {
     mirror.adopt(node);
   }
 
-  layout(container, () => [0, 0, 200, 200]);
-  layout(header, () => [0, 0, 200, headerHeight], { count: () => reads.header++ });
-  layout(scroller, () => [0, headerHeight, 200, headerHeight + scrollerHeight], {
+  layout(container, () => [0, 0, panelWidth, 200]);
+  layout(header, () => [0, 0, panelWidth, headerHeight], { count: () => reads.header++ });
+  layout(scroller, () => [0, headerHeight, panelWidth, headerHeight + scrollerHeight], {
     count: () => reads.scroller++,
   });
-  layout(row, () => [0, headerHeight, 200, headerHeight + rowHeight], {
+  layout(row, () => [0, headerHeight, panelWidth, headerHeight + rowHeight], {
     count: () => reads.row++,
   });
+  layout(
+    footer,
+    () => [0, headerHeight + scrollerHeight, panelWidth, headerHeight + scrollerHeight + 20],
+    { count: () => reads.footer++ },
+  );
 
   return {
     container,
@@ -1011,6 +1025,7 @@ function setupBoundedList(scrollerStyle = "overflow: hidden", rowStyle = "") {
     scroller,
     row,
     label,
+    footer,
     reads,
     /**
      * The list grows because its contents did — that being the only way a
@@ -1038,8 +1053,275 @@ function setupBoundedList(scrollerStyle = "overflow: hidden", rowStyle = "") {
       headerHeight += height;
       scrollerHeight -= height;
     },
+    /**
+     * And the change that actually re-lays-out what is inside the list: the
+     * panel gets narrower, so the list does, so its rows re-break. A list
+     * that only got shorter moves nothing inside it — its rows are stacked
+     * from the top and stay there; it simply clips more of them.
+     *
+     * @param {number} width
+     */
+    narrowThePanelBy: (width) => {
+      panelWidth -= width;
+    },
   };
 }
+
+/**
+ * A list of rows that lays itself out honestly: each row 20px tall, stacked in
+ * document order, the list as tall as it has rows. Everything asked here is
+ * about *which* rows a change moved, so a fixture handing out fixed boxes
+ * would answer a different question.
+ *
+ * @param {string} [listStyle]
+ */
+function setupRowList(listStyle = "") {
+  /** @type {Map<Element, number>} */
+  const reads = new Map();
+
+  const container = document.createElement("div");
+  container.setAttribute(PORTAL_ATTRIBUTE, "");
+  const list = document.createElement("div");
+  list.style.cssText = listStyle;
+  container.appendChild(list);
+  document.body.appendChild(container);
+
+  const mirror = createMirror();
+  mirror.adopt(container);
+  mirror.adopt(list);
+
+  const indexOf = (/** @type {Element} */ row) => Array.prototype.indexOf.call(list.children, row);
+
+  /** @param {Element} row */
+  const track = (row) => {
+    reads.set(row, 0);
+    layout(row, () => [0, indexOf(row) * 20, 200, indexOf(row) * 20 + 20], {
+      count: () => reads.set(row, (reads.get(row) ?? 0) + 1),
+    });
+  };
+
+  layout(container, () => [0, 0, 200, list.children.length * 20]);
+  layout(list, () => [0, 0, 200, list.children.length * 20]);
+
+  /** @type {Element[]} */
+  const rows = [];
+  for (let index = 0; index < 4; index++) {
+    const row = document.createElement("div");
+    list.appendChild(row);
+    mirror.adopt(row);
+    track(row);
+    rows.push(row);
+  }
+
+  /**
+   * A row put in at `before`, adopted, tracked and announced exactly as the
+   * observer would have announced it — `previousSibling` and all, since that
+   * is what says where the change happened.
+   *
+   * @param {Node | null} before
+   * @returns {Element}
+   */
+  const insertRow = (before) => {
+    const row = document.createElement("div");
+    const previousSibling = before ? before.previousSibling : list.lastChild;
+    list.insertBefore(row, before);
+    mirror.adopt(row);
+    track(row);
+    batch(() => mirror.ingest([childListRecord(list, previousSibling, [row], [])]));
+    return row;
+  };
+
+  /**
+   * @param {Element} row
+   * @returns {void}
+   */
+  const removeRow = (row) => {
+    const previousSibling = row.previousSibling;
+    row.remove();
+    batch(() => mirror.ingest([childListRecord(list, previousSibling, [], [row])]));
+  };
+
+  /** @param {Element} row */
+  const readsOf = (row) => reads.get(row) ?? 0;
+
+  return { container, mirror, list, rows, insertRow, removeRow, readsOf, track };
+}
+
+/**
+ * The shape a MutationObserver hands over for a childList change. Written out
+ * rather than driven through a real observer because `previousSibling` is the
+ * whole point here, and a hand-built record is the only way to be sure which
+ * one the mirror is being given.
+ *
+ * @param {Node} target
+ * @param {Node | null} previousSibling
+ * @param {Node[]} addedNodes
+ * @param {Node[]} removedNodes
+ * @returns {MutationRecord}
+ */
+function childListRecord(target, previousSibling, addedNodes, removedNodes) {
+  return /** @type {MutationRecord} */ (
+    /** @type {unknown} */ ({
+      type: "childList",
+      target,
+      previousSibling,
+      nextSibling: null,
+      addedNodes,
+      removedNodes,
+      attributeName: null,
+      oldValue: null,
+    })
+  );
+}
+
+describe("which siblings a change moves", () => {
+  test("appending a row does not re-measure the rows already there", () => {
+    // The whole of stage two in one assertion. A row added at the end of a
+    // list is placed after everything in it, so nothing in it moved — and the
+    // cost of adding it is the same whether the list has four rows or eight
+    // hundred, which is what stops a list that streams in from being
+    // quadratic in its own length.
+    const { container, rows, insertRow, readsOf } = setupRowList();
+    try {
+      const watched = rows.map((row) => new Derived(() => getContentPosition(row)));
+      const subscriptions = watched.map((signal) => signal.subscribe({ next: () => signal.get() }));
+      watched.forEach((signal) => signal.get());
+      const before = rows.map(readsOf);
+
+      insertRow(null);
+
+      assert.deepEqual(
+        rows.map(readsOf),
+        before,
+        "not one row already in the list was measured again",
+      );
+
+      subscriptions.forEach((subscription) => subscription.unsubscribe());
+    } finally {
+      container.remove();
+    }
+  });
+
+  test("inserting in the middle re-measures what is after it, and only after", () => {
+    const { container, rows, insertRow, readsOf } = setupRowList();
+    try {
+      const watched = rows.map((row) => new Derived(() => getContentPosition(row)));
+      const subscriptions = watched.map((signal) => signal.subscribe({ next: () => signal.get() }));
+      watched.forEach((signal) => signal.get());
+      const before = rows.map(readsOf);
+
+      insertRow(rows[2]);
+
+      assert.equal(readsOf(rows[0]), before[0], "the first row held still");
+      assert.equal(readsOf(rows[1]), before[1], "and so did the second");
+      assert.ok(readsOf(rows[2]) > before[2], "the row it went in front of moved down");
+      assert.ok(readsOf(rows[3]) > before[3], "and everything after it");
+
+      subscriptions.forEach((subscription) => subscription.unsubscribe());
+    } finally {
+      container.remove();
+    }
+  });
+
+  test("removing a row re-measures what was below it", () => {
+    const { container, rows, removeRow, readsOf } = setupRowList();
+    try {
+      const watched = rows.map((row) => new Derived(() => getContentPosition(row)));
+      const subscriptions = watched.map((signal) => signal.subscribe({ next: () => signal.get() }));
+      watched.forEach((signal) => signal.get());
+      const before = rows.map(readsOf);
+
+      removeRow(rows[1]);
+
+      assert.equal(readsOf(rows[0]), before[0], "the row above the gap held still");
+      assert.ok(readsOf(rows[2]) > before[2], "the rows below it came up");
+      assert.ok(readsOf(rows[3]) > before[3]);
+
+      subscriptions.forEach((subscription) => subscription.unsubscribe());
+    } finally {
+      container.remove();
+    }
+  });
+
+  test("a container that places its children from the far end tells all of them", () => {
+    // `column-reverse` stacks from the bottom, so a row appended in the
+    // document goes *first* on screen and everything already there moves. The
+    // whitelist exists for exactly this: a container that made no promise
+    // about document order falls back to telling every child, which is what
+    // the mirror did before it could tell the difference.
+    const { container, rows, insertRow, readsOf } = setupRowList(
+      "display: flex; flex-direction: column-reverse",
+    );
+    try {
+      const watched = rows.map((row) => new Derived(() => getContentPosition(row)));
+      const subscriptions = watched.map((signal) => signal.subscribe({ next: () => signal.get() }));
+      watched.forEach((signal) => signal.get());
+      const before = rows.map(readsOf);
+
+      insertRow(null);
+
+      assert.ok(readsOf(rows[0]) > before[0], "the first row was measured again");
+
+      subscriptions.forEach((subscription) => subscription.unsubscribe());
+    } finally {
+      container.remove();
+    }
+  });
+
+  test("and so does one that centres them", () => {
+    // Same reason, the other common way to break document order: everything
+    // in a centred list shifts when anything joins it.
+    const { container, rows, insertRow, readsOf } = setupRowList(
+      "display: flex; flex-direction: column; justify-content: center",
+    );
+    try {
+      const watched = rows.map((row) => new Derived(() => getContentPosition(row)));
+      const subscriptions = watched.map((signal) => signal.subscribe({ next: () => signal.get() }));
+      watched.forEach((signal) => signal.get());
+      const before = rows.map(readsOf);
+
+      insertRow(null);
+
+      assert.ok(readsOf(rows[0]) > before[0], "the first row was measured again");
+
+      subscriptions.forEach((subscription) => subscription.unsubscribe());
+    } finally {
+      container.remove();
+    }
+  });
+
+  test("a list that only got taller does not re-lay-out the rows in it", () => {
+    // The other half of appending cheaply, and the one that decides whether
+    // any of it is worth having: a list grows by exactly the row that joined
+    // it, every time. If that height reached its rows through the parent-box
+    // channel, every append would re-measure the whole list anyway. In block
+    // flow it does not — rows are stacked from the top and a taller box
+    // leaves them there — so only the inline extent is followed.
+    const { container, mirror, rows, insertRow } = setupRowList();
+    try {
+      // A row's *contents* are what would pay: watch a box one level further
+      // down than the rows the walk talks to.
+      const inner = document.createElement("div");
+      rows[0].appendChild(inner);
+      mirror.adopt(inner);
+      let innerReads = 0;
+      layout(inner, () => [0, 0, 200, 20], { count: () => innerReads++ });
+
+      const watched = new Derived(() => getContentPosition(inner));
+      const subscription = watched.subscribe({ next: () => watched.get() });
+      watched.get();
+      const before = innerReads;
+
+      insertRow(null);
+
+      assert.equal(innerReads, before, "the list getting taller reached nothing inside a row");
+
+      subscription.unsubscribe();
+    } finally {
+      container.remove();
+    }
+  });
+});
 
 describe("layout boundaries", () => {
   test("a box that kept its size seals its interior, overflow or not", () => {
@@ -1218,15 +1500,20 @@ describe("layout boundaries", () => {
     }
   });
 
-  test("a list that changes size does tell the panel around it", () => {
+  test("a list that changes size does tell the panel below it, and only below", () => {
     // The channel out, and it has to work: a container that grows with its
     // contents — anything not given a size of its own — moves everything
-    // after it, and the panel hears about it.
-    const { container, mirror, label, header, reads, growTheListBy } = setupBoundedList();
+    // after it. And *only* what is after it, which is the other half of the
+    // same fact: the reading above the list is earlier in the flow, so no
+    // amount of growing downward can reach it.
+    const { container, mirror, label, header, footer, reads, growTheListBy } = setupBoundedList();
     try {
-      const outside = new Derived(() => getContentPosition(header));
-      const subscription = outside.subscribe({ next: () => outside.get() });
-      outside.get();
+      const watched = [
+        new Derived(() => getContentPosition(header)),
+        new Derived(() => getContentPosition(footer)),
+      ];
+      const subscriptions = watched.map((signal) => signal.subscribe({ next: () => signal.get() }));
+      watched.forEach((signal) => signal.get());
 
       label.data = "row one, changed";
       mirror.characterDataChanged(label);
@@ -1238,9 +1525,10 @@ describe("layout boundaries", () => {
       label.data = "row one, changed again";
       mirror.characterDataChanged(label);
 
-      assert.ok(reads.header > before.header, "a list that grew re-measures the panel");
+      assert.ok(reads.footer > before.footer, "a list that grew moved what sits below it");
+      assert.equal(reads.header, before.header, "and nothing above it");
 
-      subscription.unsubscribe();
+      subscriptions.forEach((subscription) => subscription.unsubscribe());
     } finally {
       container.remove();
     }
@@ -1249,17 +1537,16 @@ describe("layout boundaries", () => {
   test("the scroller resizing re-measures everything inside it", () => {
     // The one channel the outside has, and it has to work: when the panel
     // really does resize the container, its contents re-lay-out.
-    const { container, mirror, headerText, row, reads, growTheHeaderBy } = setupBoundedList();
+    const { container, mirror, headerText, row, reads, narrowThePanelBy } = setupBoundedList();
     try {
       const inside = new Derived(() => getContentPosition(row));
       const subscription = inside.subscribe({ next: () => inside.get() });
       inside.get();
       const before = { ...reads };
 
-      // The reading above the list takes a second line, and the list — which
-      // has the rest of a fixed-height panel — gets that much less room.
-      growTheHeaderBy(40);
-      headerText.data = "a reading long enough to wrap, which resizes the list";
+      // The panel is narrower, so the list is, so everything in it re-breaks.
+      narrowThePanelBy(40);
+      headerText.data = "a reading in a narrower panel";
       mirror.characterDataChanged(headerText);
 
       assert.ok(reads.row > before.row, "a resized container re-measures its contents");

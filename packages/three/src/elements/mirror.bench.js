@@ -58,23 +58,72 @@ window.Range.prototype.getClientRects = function () {
 };
 
 /**
- * A stand-in layout engine: every element keeps a stable, non-degenerate box,
- * so `resized()` and the equality gates behave the way they would against a
- * real one — and every read is counted.
+ * A stand-in layout engine, and it has to be a real one: every interesting
+ * question here is about which boxes a change actually moved, so a fixture
+ * that hands out fixed boxes answers the wrong question. Appending a row must
+ * make the list taller and push down whatever sits below it, exactly as a
+ * browser would, or the mirror is being measured against a layout no browser
+ * would produce.
+ *
+ * Block flow, top to bottom: a leaf is 20px tall, a container is as tall as
+ * its children, everything is 200px wide. Recomputed by `relayout` after each
+ * mutation — outside the counters, since a browser does this work in its own
+ * layout pass rather than in the reads the mirror is charged for.
  *
  * @type {WeakMap<Element, { left: number, top: number, width: number, height: number }>}
  */
 const layoutOf = new WeakMap();
 let rectReads = 0;
-let nextTop = 0;
+
+const LEAF_HEIGHT = 20;
+const BOX_WIDTH = 200;
+
+/**
+ * @param {Element} element
+ * @returns {number}
+ */
+function measureSubtree(element) {
+  let height = 0;
+  for (let child = element.firstElementChild; child; child = child.nextElementSibling) {
+    height += measureSubtree(child);
+  }
+  const box = layoutOf.get(element) ?? { left: 0, top: 0, width: BOX_WIDTH, height: 0 };
+  box.height = height || LEAF_HEIGHT;
+  box.width = BOX_WIDTH;
+  layoutOf.set(element, box);
+  return box.height;
+}
+
+/**
+ * @param {Element} element
+ * @param {number} top
+ * @returns {void}
+ */
+function placeSubtree(element, top) {
+  const box = /** @type {{ left: number, top: number, width: number, height: number }} */ (
+    layoutOf.get(element)
+  );
+  box.left = 0;
+  box.top = top;
+  let offset = top;
+  for (let child = element.firstElementChild; child; child = child.nextElementSibling) {
+    placeSubtree(child, offset);
+    offset += /** @type {{ height: number }} */ (layoutOf.get(child)).height;
+  }
+}
+
+/**
+ * @param {Element} root
+ * @returns {void}
+ */
+function relayout(root) {
+  measureSubtree(root);
+  placeSubtree(root, 0);
+}
+
 window.Element.prototype.getBoundingClientRect = function () {
   rectReads += 1;
-  let box = layoutOf.get(this);
-  if (!box) {
-    box = { left: 0, top: nextTop, width: 200, height: 20 };
-    nextTop += 20;
-    layoutOf.set(this, box);
-  }
+  const box = layoutOf.get(this) ?? { left: 0, top: 0, width: BOX_WIDTH, height: LEAF_HEIGHT };
   return /** @type {DOMRect} */ ({
     left: box.left,
     top: box.top,
@@ -187,11 +236,24 @@ async function measure({ rows, clipped = false, perFlush = false }) {
   } else {
     containerElement.appendChild(list);
   }
+  relayout(containerElement);
   await nextMacrotask();
+
+  /**
+   * @param {number} index
+   * @returns {void}
+   */
+  const appendRow = (index) => {
+    list.appendChild(makeRow(index));
+    // The browser would have re-laid-out before anyone could read a rect;
+    // the fixture has to do the same, or the list never gets taller and the
+    // measurement is of a layout that could not happen.
+    relayout(containerElement);
+  };
 
   const mount = await sample(async () => {
     for (let i = 0; i < rows; i++) {
-      list.appendChild(makeRow(i));
+      appendRow(i);
       if (perFlush) {
         await nextMacrotask();
       }
@@ -200,7 +262,7 @@ async function measure({ rows, clipped = false, perFlush = false }) {
 
   // One more row, on a panel that already has `rows` of them.
   const one = await sample(() => {
-    list.appendChild(makeRow(rows));
+    appendRow(rows);
   });
 
   // And one hover flag, which the portal declares presentational: no

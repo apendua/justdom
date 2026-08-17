@@ -240,17 +240,35 @@ The grain is the element, not the inserted subtree — a whole panel usually
 arrives as exactly one root, and a slicer that only sliced between roots
 would build it whole.
 
-The budget may also be a getter, read at the top of every pump frame, which
-makes the time-versus-smoothness trade a live one — the same value-or-getter
-contract as `makeInteractive`:
+**The budget is the scene's, not the panel's.** The budget guards the frame,
+and the frame is shared: three panels each honouring a private five
+milliseconds would cost it fifteen, and several panels mounting at once is
+scene startup, not an edge case. `render()` installs one scheduler per
+rendering context, and every portal under it draws frame time from the same
+pool — set with `portalBudget`, a number or a getter read at the top of every
+frame, so the mount-time-versus-fps trade stays a live one:
 
 ```js
-dom(ctx, panel, [set({ position })], {
+render(Scene, {
   // A sliver while a hand is busy, generous otherwise; `Infinity` would
-  // finish the current mount within the next frame.
-  budget: () => (interacting.get() ? 1 : 8),
+  // finish every mount in flight within the next frame.
+  portalBudget: () => (interacting.get() ? 1 : 8),
 });
-``` Where there are no frames to slice across — no
+```
+
+What a single panel says about itself is `priority`, not milliseconds:
+
+```js
+dom(ctx, panel, [set({ position })], { priority: 1 });
+```
+
+Pumps of higher priority are offered each frame's pool before lower ones, so
+a panel the player is waiting on can be told to finish first — and starving
+the others meanwhile is the point, not a hazard. Within a priority the offer
+rotates frame by frame, so equals share the pool and none waits forever on a
+peer. A portal built outside a rendering context — a test runner, a plain
+page — paces itself instead, and only there does its own `budget` option
+govern. Where there are no frames to slice across — no
 renderer and no `requestAnimationFrame`, as under a test runner — the portal
 mounts synchronously, exactly as it always did.
 

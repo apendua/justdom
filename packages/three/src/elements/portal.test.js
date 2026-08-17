@@ -6,6 +6,7 @@ import { $, attr, children } from "@apendua/justdom";
 import { InteractionContext, InteractionManager } from "../interactions.js";
 import { getComputedStyleCached } from "./mirror.js";
 import { createPortal, getPortalRoot } from "./portal.js";
+import { createPortalScheduler, PortalSchedulerContext } from "./portalScheduler.js";
 
 // jsdom-env exposes the common DOM globals, but not MutationObserver, which
 // the portal uses to mirror the tree.
@@ -817,6 +818,87 @@ describe("createPortal", () => {
     await settle(portal);
     subscription.unsubscribe();
     portal.disconnect();
+  });
+
+  test("portals under one scheduler share one budget instead of spending one each", async () => {
+    // The frame is shared, so the budget has to be: two panels mounting at
+    // once — which is scene startup, not an edge case — must cost the frame
+    // one budget between them, not one apiece. At a budget of zero that is
+    // one node per frame *total*, the rotation deciding whose, where two
+    // self-paced portals would build two.
+    const manager = new InteractionManager();
+    let ctx = InteractionContext.set({}, manager);
+    const scheduler = createPortalScheduler({
+      budget: 0,
+      requestFrames: (tick) => {
+        let active = true;
+        const loop = () => {
+          if (active) {
+            tick();
+            requestAnimationFrame(loop);
+          }
+        };
+        requestAnimationFrame(loop);
+        return () => {
+          active = false;
+        };
+      },
+    });
+    ctx = PortalSchedulerContext.set(ctx, scheduler);
+
+    const mountPanel = () => {
+      const portal = createPortal(ctx);
+      const parent = new THREE.Group();
+      portal.addTo(parent);
+      /** @type {import("@apendua/justdom").Mountable<Node> | undefined} */
+      let mountable;
+      const tree = $("div", [children(...Array.from({ length: 4 }, () => $("div")))]);
+      const subscription = tree.subscribe((value) => {
+        mountable = value;
+      });
+      assert.ok(mountable);
+      portal.mount(mountable);
+      const containerObject = parent.children[0];
+      return {
+        portal,
+        subscription,
+        built: () => {
+          const root = containerObject.children.find((child) => !(child instanceof THREE.Mesh));
+          if (!root) {
+            return 0;
+          }
+          return 1 + root.children[0].children.length;
+        },
+      };
+    };
+
+    const a = mountPanel();
+    const b = mountPanel();
+    await nextMacrotask();
+
+    for (let frame = 0; frame < 4; frame += 1) {
+      flushFrame();
+      await nextMacrotask();
+    }
+    assert.equal(
+      a.built() + b.built(),
+      4,
+      "four frames, four nodes between the two panels — one budget, not two",
+    );
+    assert.equal(a.built(), 2, "split evenly by the rotation");
+    assert.equal(b.built(), 2);
+
+    await settle(a.portal);
+    await settle(b.portal);
+    assert.equal(a.portal.isLoading(), false);
+    assert.equal(b.portal.isLoading(), false);
+    assert.equal(a.built(), 5);
+    assert.equal(b.built(), 5);
+
+    a.subscription.unsubscribe();
+    a.portal.disconnect();
+    b.subscription.unsubscribe();
+    b.portal.disconnect();
   });
 
   test("re-writing an attribute with the value it already has invalidates nothing", async () => {

@@ -6,6 +6,7 @@ export { place, placeAndScale } from "./elements/place.js";
 export { cursors, pointers } from "./pointers.js";
 export { dom } from "./dom.js";
 export { getPortalRoot } from "./elements/portal.js";
+export { createPortalScheduler, PortalSchedulerContext } from "./elements/portalScheduler.js";
 export { dropdown } from "./elements/dropdown.js";
 export { keyboard, LAPTOP_LAYOUT } from "./elements/keyboard.js";
 export { scrollable } from "./elements/scrollable.js";

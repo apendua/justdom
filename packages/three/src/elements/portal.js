@@ -18,6 +18,7 @@ import { BoxBatchContext, createBoxBatch } from "./boxBatch.js";
 import { TextBatchContext, createTextBatch } from "./textBatch.js";
 import { keepSubtreeMatrices, placeAndScale } from "./place.js";
 import { createFrameRequester } from "./frameRequester.js";
+import { createPortalScheduler, PortalSchedulerContext } from "./portalScheduler.js";
 import { animateLate, frames } from "../render.js";
 import { InteractionContext } from "../interactions.js";
 
@@ -26,6 +27,7 @@ import { InteractionContext } from "../interactions.js";
  * @import {Mountable} from "@apendua/justdom";
  * @import {Object3D} from 'three';
  * @import {MutationBatch} from './animationClock.js';
+ * @import {PortalPump, PortalScheduler} from './portalScheduler.js';
  */
 
 /**
@@ -63,19 +65,24 @@ export function getPortalRoot(node) {
  *   the eye and everything else and would otherwise be in the way of every
  *   ray that crossed it.
  * @property {number | (() => number)} [budget] Milliseconds of each frame the
- *   portal may spend mounting and settling content. It bounds when work stops
- *   being *started*, not how long a piece takes: at least one node is built
- *   and at least one update runs per frame, so a single expensive node
- *   overshoots the budget rather than stalling forever. 5 by default — a
- *   third of a 60 Hz frame, leaving room for the app and the renderer.
- *
- *   A getter is read at the top of every pump frame, which makes the
- *   time-versus-smoothness trade a live one: an app can spend generously
- *   while the player is looking at a loading panel, drop to a sliver the
- *   moment a hand is interacting, or say `Infinity` and have the current
- *   mount finish within the next frame. The same contract as
- *   `makeInteractive` — a value for a decision made once, a getter for one
- *   the app keeps making.
+ *   portal may spend mounting and settling content, **when it paces
+ *   itself** — a portal built outside a rendering context, with no shared
+ *   scheduler to answer to. Under `render()` the budget is the scene's, not
+ *   the panel's: one pool per frame divided across every portal (see
+ *   `RenderOptions.portalBudget`), because three panels each honouring a
+ *   private five milliseconds would cost the shared frame fifteen — and this
+ *   option is ignored. It bounds when work stops being *started*, not how
+ *   long a piece takes: at least one node is built and at least one update
+ *   runs per frame, so a single expensive node overshoots the budget rather
+ *   than stalling forever. 5 by default. A getter is read at the top of
+ *   every pump frame, which keeps the time-versus-smoothness trade a live
+ *   one — the same contract as `makeInteractive`.
+ * @property {number} [priority] This portal's say in the shared pool: pumps
+ *   of higher priority are offered each frame's budget before lower ones,
+ *   so a panel the player is waiting on can be told to finish first — and
+ *   starving the others meanwhile is then the point, not a hazard. Within a
+ *   priority the offer rotates frame by frame, so equals share the pool and
+ *   none waits forever on a peer. 0 by default.
  * @property {(loading: boolean) => void} [onLoadingChanged] Told when the
  *   panel finishes mounting its initial content. Fires once, with `false`:
  *   the loading state starts true and never comes back, because a panel that
@@ -88,7 +95,10 @@ export function getPortalRoot(node) {
  * @param {WeakKey} ctx
  * @param {PortalOptions} [options]
  */
-export function createPortal(ctx, { opaqueToRays = true, budget = 5, onLoadingChanged } = {}) {
+export function createPortal(
+  ctx,
+  { opaqueToRays = true, budget = 5, priority = 0, onLoadingChanged } = {},
+) {
   const containerObject = new THREE.Group();
 
   // Nothing to see until the initial content has fully mounted: the panel
@@ -227,14 +237,25 @@ export function createPortal(ctx, { opaqueToRays = true, budget = 5, onLoadingCh
     : null;
 
   /**
-   * The frame budget, asked for fresh at the top of every pump frame — that
-   * is what lets a getter trade mounting speed against frame rate while a
-   * mount is in flight. The channel above carries no budget of its own:
-   * every flush the portal performs passes one explicitly.
+   * Who paces this portal. The scheduler `render()` installed, whenever
+   * there is one — that is what makes the budget global, one pool of frame
+   * time divided across every panel in the scene, because the frame the
+   * budget guards is shared and three panels each honouring a private five
+   * milliseconds would cost it fifteen. A portal built outside a rendering
+   * context — a test runner, a plain page — paces itself with a private
+   * scheduler instead, and only there does this portal's own `budget`
+   * option govern; under a shared scheduler the pool is the scheduler's,
+   * and this portal's say in it is `priority`.
    *
-   * @type {() => number}
+   * @type {PortalScheduler | null}
    */
-  const budgetOf = typeof budget === "function" ? budget : () => budget;
+  const scheduler = !hasFrames
+    ? null
+    : (PortalSchedulerContext.get(ctx) ??
+      createPortalScheduler({
+        budget,
+        requestFrames,
+      }));
 
   /**
    * Whether any content has arrived at all. `markLoaded` waits for it: a
@@ -257,14 +278,6 @@ export function createPortal(ctx, { opaqueToRays = true, budget = 5, onLoadingCh
   /** @type {Set<Node>} */
   const pendingSet = new Set();
 
-  /** @type {(() => void) | null} */
-  let stopPumpTicks = null;
-
-  const stopPump = () => {
-    stopPumpTicks?.();
-    stopPumpTicks = null;
-  };
-
   /**
    * Build one queued node, if it is still worth building, and queue its
    * children. One node, deliberately — this is what the budget meters, so it
@@ -286,10 +299,20 @@ export function createPortal(ctx, { opaqueToRays = true, budget = 5, onLoadingCh
    */
   const buildPendingNode = (node) => {
     if (!containerElement.contains(node)) {
-      return;
+      // A stale entry — the node left the tree between being queued and its
+      // turn. Skipped, and reported as no work done: the pump must not count
+      // it against the at-least-one-per-frame guarantee, or a queue headed
+      // by departed nodes would spend whole frames building nothing.
+      return false;
     }
     const object = nodeToObject.get(node) ?? createObjectForNode(node);
-    if (object && !object.parent) {
+    if (!object) {
+      // In the tree but nothing to draw — a comment, and in particular the
+      // markers `children()` fences its segments with. Free for the same
+      // reason a stale entry is: no object came into being.
+      return false;
+    }
+    if (!object.parent) {
       const parentObject = node.parentNode ? nodeToObject.get(node.parentNode) : undefined;
       if (parentObject) {
         getContentGroup(parentObject).add(object);
@@ -301,6 +324,7 @@ export function createPortal(ctx, { opaqueToRays = true, budget = 5, onLoadingCh
         pendingNodes.push(childNode);
       }
     });
+    return true;
   };
 
   /**
@@ -325,56 +349,67 @@ export function createPortal(ctx, { opaqueToRays = true, budget = 5, onLoadingCh
   };
 
   /**
-   * One frame's worth of mounting: build queued roots until the budget is
-   * spent, hand what is left of it to the channel, and when both are empty,
-   * declare the panel loaded. At least one root and at least one update per
-   * frame regardless of the budget, so progress cannot stall however small
-   * the number.
+   * This portal's slice of a frame: build queued nodes until the deadline,
+   * hand what is left to the channel, and when both are empty, declare the
+   * panel loaded. At least one node and at least one update per call
+   * regardless of the clock — the scheduler's contract asks it of whichever
+   * pump it offers a frame to first, and giving the guarantee always is
+   * what keeps a zero budget moving instead of stalling.
+   *
+   * Returns whether the pump is finished, which is how it leaves the
+   * scheduler's queue: not by being stopped, but by having nothing left —
+   * checked *after* `markLoaded`, because the loading flip is itself a
+   * change the graph answers, the gated ray targets re-evaluating their
+   * conditions right back into this channel, and a notification collapsed
+   * by the queue's own bookkeeping must not strand that work.
+   *
+   * @type {PortalPump}
    */
-  const pumpTick = () => {
-    if (!channel) {
-      return;
-    }
-    const now = channel.now;
-    const deadline = now() + budgetOf();
-    if (pendingNodes.length > 0) {
-      batch(() => {
-        withChannel(channel, () => {
-          do {
-            const node = pendingNodes.shift();
-            if (node) {
-              pendingSet.delete(node);
-              buildPendingNode(node);
-            }
-          } while (pendingNodes.length > 0 && now() < deadline);
-        });
-      });
-    }
-    // In the channel, because draining can build: a node re-deriving its
-    // layout constructs computations of its own, and those belong to the
-    // panel's region like everything else here.
-    withChannel(channel, () => {
-      channel.flush({ budget: Math.max(deadline - now(), 0) });
-    });
-    // Content appeared or moved under whatever rays are resting on the panel.
-    interactionManager.updateIntersections();
-    if (pendingNodes.length === 0 && channel.pendingCount === 0) {
-      stopPump();
-      markLoaded();
-      // Loading flipping to false is itself a change the graph answers —
-      // the gated ray targets re-evaluate their conditions — and the answer
-      // lands right back in this channel. Check directly rather than trust
-      // the watcher below: the flip happened mid-tick, and a notification
-      // collapsed by the queue's own bookkeeping must not strand the work.
-      if (channel.pendingCount > 0) {
-        schedulePump();
+  const pump = {
+    priority,
+    tick: (deadline) => {
+      if (!channel) {
+        return true;
       }
-    }
+      const now = channel.now;
+      if (pendingNodes.length > 0) {
+        batch(() => {
+          withChannel(channel, () => {
+            // Until the deadline — but at least one node genuinely *built*,
+            // not merely one entry shifted: entries for nodes that left the
+            // tree are skipped for free, or a queue headed by them would
+            // spend whole frames building nothing.
+            let progressed = false;
+            while (pendingNodes.length > 0 && (!progressed || now() < deadline)) {
+              const node = /** @type {Node} */ (pendingNodes.shift());
+              pendingSet.delete(node);
+              if (buildPendingNode(node)) {
+                progressed = true;
+              }
+            }
+          });
+        });
+      }
+      // In the channel, because draining can build: a node re-deriving its
+      // layout constructs computations of its own, and those belong to the
+      // panel's region like everything else here.
+      withChannel(channel, () => {
+        channel.flush({ budget: Math.max(deadline - now(), 0) });
+      });
+      // Content appeared or moved under whatever rays are resting on the
+      // panel.
+      interactionManager.updateIntersections();
+      if (pendingNodes.length > 0 || channel.pendingCount > 0) {
+        return false;
+      }
+      markLoaded();
+      return pendingNodes.length === 0 && channel.pendingCount === 0;
+    },
   };
 
   const schedulePump = () => {
-    if (channel && !stopPumpTicks) {
-      stopPumpTicks = requestFrames(pumpTick);
+    if (channel && scheduler) {
+      scheduler.schedule(pump);
     }
   };
 
@@ -891,7 +926,7 @@ export function createPortal(ctx, { opaqueToRays = true, budget = 5, onLoadingCh
   }
 
   objectToCleanup.set(containerObject, () => {
-    stopPump();
+    scheduler?.remove(pump);
     pendingWatchSubscription?.unsubscribe();
     pendingNodes.length = 0;
     pendingSet.clear();

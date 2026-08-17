@@ -1,4 +1,4 @@
-import { Observable, tap } from "rxjs";
+import { tap } from "rxjs";
 import UpdateQueue from "./UpdateQueue.js";
 import {
   NoValueError,
@@ -11,6 +11,7 @@ import {
   hasNonDefaultChannels,
   activeChannel,
   makeNonReactive,
+  effect,
 } from "./core.js";
 import Computation from "./Computation.js";
 
@@ -19,7 +20,7 @@ import Computation from "./Computation.js";
  */
 
 /**
- * @import {Subscribable} from "rxjs";
+ * @import {Observable, Subscribable} from "rxjs";
  */
 
 /**
@@ -114,7 +115,7 @@ export class Derived extends Computation {
     }
     setChannelOrder(this, this.#channel.order);
     this.addSideEffect(
-      new Observable(() => {
+      effect(() => {
         try {
           this.#recompute();
         } catch (err) {

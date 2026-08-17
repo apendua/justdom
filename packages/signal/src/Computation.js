@@ -1,4 +1,4 @@
-import { withComputation, makeNonReactive, skipSynchronousValues } from "./core.js";
+import { Effect, withComputation, makeNonReactive, skipSynchronousValues } from "./core.js";
 
 /**
  * @import {Observer, Unsubscribable, ObservableInput} from "rxjs";
@@ -372,14 +372,15 @@ class Computation {
           this.#fail(err);
         },
       };
-      // One computation depending on another is nearly all of them, and such
-      // a source says nothing during `subscribe` — it speaks only when
-      // invalidated — so there is nothing for `skipSynchronousValues` to skip
+      // Two kinds of source say nothing during `subscribe`, and between them
+      // they are nearly every dependency there is: another computation, which
+      // speaks only when invalidated, and an `Effect`, which never speaks at
+      // all. For those there is nothing for `skipSynchronousValues` to skip
       // and no reason to build an Observable and a Subscriber to find that
-      // out. An error is the one thing it can deliver on the way in, and
-      // `subscribe` hands that straight to the observer either way.
+      // out. An error is the one thing either can deliver on the way in, and
+      // both hand that straight to the observer.
       const subscription =
-        observable instanceof Computation
+        observable instanceof Computation || observable instanceof Effect
           ? observable.subscribe(observer)
           : skipSynchronousValues(observable).subscribe(observer);
       this.#subscriptions.set(observable, subscription);

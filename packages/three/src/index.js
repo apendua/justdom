@@ -7,7 +7,7 @@ export { cursors, pointers } from "./pointers.js";
 export { dom } from "./dom.js";
 export { getPortalRoot } from "./elements/portal.js";
 export { dropdown } from "./elements/dropdown.js";
-export { keyboard, LAPTOP_LAYOUT } from "./elements/keyboard.js";
+export { keyboard, MOBILE_LAYOUT } from "./elements/keyboard.js";
 export { scrollable } from "./elements/scrollable.js";
 export { createXRButton } from "./xr.js";
 

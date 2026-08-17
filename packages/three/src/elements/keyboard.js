@@ -26,12 +26,30 @@ const withModifier = (base, modifier, active) =>
   );
 
 /**
- * The modifiers this keyboard can hold down. `fn` is not a `KeyboardEvent`
- * property — no browser reports it — but a laptop has the key, and a widget
- * claiming that layout is better off saying what was pressed than pretending
- * the key is not there.
+ * The modifiers this keyboard can hold down.
  *
- * @typedef {"shift" | "caps" | "ctrl" | "alt" | "meta" | "fn"} KeyboardModifier
+ * `symbols` is the one a hardware board does not have: it is the phone
+ * keyboard's `?123`, engaging the alternate faces of every key that carries
+ * them. `fn` is not a `KeyboardEvent` property — no browser reports it — but
+ * a custom layout may have the key, and a widget claiming that layout is
+ * better off saying what was pressed than pretending the key is not there.
+ *
+ * @typedef {"shift" | "caps" | "ctrl" | "alt" | "meta" | "fn" | "symbols"} KeyboardModifier
+ */
+
+/**
+ * One face of a key: what it shows and what it types. A key's base fields are
+ * its letters-view face; `symbols` on the key is this shape again, for the
+ * face it turns when the symbols view is engaged.
+ *
+ * @typedef {object} KeyboardKeyFace
+ * @property {string} label What is printed on it, unshifted.
+ * @property {string} [shiftLabel] What is printed on it with shift down.
+ * @property {string} [key] What it types, as `KeyboardEvent.key` names it.
+ * @property {string} [shiftKey] What it types with shift down. Defaults to
+ *   `key`.
+ * @property {string} [name] Read out to assistive technology when the label
+ *   is a glyph or blank.
  */
 
 /**
@@ -40,25 +58,33 @@ const withModifier = (base, modifier, active) =>
  *
  * @typedef {object} KeyboardKey
  * @property {string} code The physical key, as `KeyboardEvent.code` names it:
- *   `"KeyA"`, `"Digit1"`, `"ShiftLeft"`. Unique within a layout, which is what
- *   makes it the handle callers and tests reach for.
+ *   `"KeyA"`, `"Space"`, `"ShiftLeft"`. Unique within a layout, which is what
+ *   makes it the handle callers and tests reach for. It names the position
+ *   rather than the face: a key showing its symbols face still reports the
+ *   code it was built with, exactly as a hardware key reports where it is and
+ *   not what the layout painted on it.
  * @property {string} label What is printed on it, unshifted. Empty for the
  *   space bar, which on a real keyboard is blank too.
  * @property {string} [shiftLabel] What is printed on it with shift down.
  *   Absent means the key looks the same either way.
  * @property {string} [key] What it types, as `KeyboardEvent.key` names it:
- *   `"a"`, `"1"`, `"Enter"`, `"ArrowLeft"`. Absent on modifiers, which type
- *   nothing.
+ *   `"a"`, `"1"`, `"Enter"`. Absent on modifiers, which type nothing.
  * @property {string} [shiftKey] What it types with shift down. Defaults to
  *   `key`.
  * @property {boolean} [cased] Whether caps lock applies — true for letters,
  *   false for everything else, which is the whole of what caps lock means.
+ * @property {KeyboardKeyFace} [symbols] The key's face while the symbols view
+ *   is engaged. Absent means the key looks and types the same in both views —
+ *   space, enter, backspace.
  * @property {KeyboardModifier} [modifier] Which modifier this key holds, if it
  *   is one.
  * @property {string} [name] Read out to assistive technology, and to anyone
  *   reading the DOM, when the printed label is a glyph or blank.
+ * @property {boolean} [spacer] Not a key at all: empty space holding its
+ *   `width` in the row, the way a phone board centres its middle row. Renders
+ *   with no class, no role and no click, so it is not a ray target either.
  * @property {number} [width] How wide, in key units — 1 is a letter key, and
- *   every row of a standard layout adds up to 15. Defaults to 1.
+ *   every row of the default layout adds up to 10. Defaults to 1.
  */
 
 /**
@@ -66,7 +92,7 @@ const withModifier = (base, modifier, active) =>
  *
  * @typedef {object} KeyPress
  * @property {string} key What the key types: `"a"`, `"A"`, `"!"`, `"Enter"`,
- *   `"ArrowLeft"`, `" "`.
+ *   `" "`.
  * @property {string} code The physical key, `"KeyA"` and such.
  * @property {boolean} shiftKey
  * @property {boolean} ctrlKey
@@ -74,7 +100,7 @@ const withModifier = (base, modifier, active) =>
  * @property {boolean} metaKey
  * @property {boolean} capsLock Whether caps lock was on. `KeyboardEvent`
  *   reports this through `getModifierState`, which a plain object cannot have.
- * @property {boolean} fnKey Whether the laptop `fn` key was held.
+ * @property {boolean} fnKey Whether a layout's `fn` key was held.
  */
 
 /**
@@ -108,7 +134,7 @@ const withModifier = (base, modifier, active) =>
  *   something. Modifiers are not reported through it — they arrive as flags on
  *   the press that follows.
  * @property {KeyboardClasses} classes
- * @property {KeyboardLayout} [layout] Defaults to {@link LAPTOP_LAYOUT}.
+ * @property {KeyboardLayout} [layout] Defaults to {@link MOBILE_LAYOUT}.
  */
 
 /** @type {Record<KeyboardModifier, boolean>} */
@@ -119,47 +145,56 @@ const NO_MODIFIERS = {
   alt: false,
   meta: false,
   fn: false,
+  symbols: false,
 };
 
 /**
- * A letter. The label follows the case that would be typed, the way a phone's
- * keyboard does rather than the way an engraved one does: on a board you click
- * at, the case you are about to get is worth more than the case the key was
- * manufactured with.
+ * The modifiers that stay engaged until they are clicked off, where every
+ * other one lets go after the key it modified. A lock that let go by itself
+ * would not be one, and a symbols view that snapped back after one character
+ * would have the player re-engaging it for every digit of a number.
+ *
+ * @type {ReadonlySet<KeyboardModifier>}
+ */
+const STICKY = new Set(/** @type {KeyboardModifier[]} */ (["caps", "symbols"]));
+
+/**
+ * A symbols-view face. `upper` is what shift turns it into, for the faces
+ * that pair the way an engraved keyboard pairs them.
  *
  * @param {string} lower
+ * @param {string} [upper]
+ * @returns {KeyboardKeyFace}
+ */
+const sym = (lower, upper) => ({
+  label: lower,
+  key: lower,
+  ...(upper === undefined ? {} : { shiftLabel: upper, shiftKey: upper }),
+});
+
+/**
+ * A letter, carrying its symbols-view face. The label follows the case that
+ * would be typed, the way a phone's keyboard does rather than the way an
+ * engraved one does: on a board you click at, the case you are about to get
+ * is worth more than the case the key was manufactured with.
+ *
+ * @param {string} lower
+ * @param {KeyboardKeyFace} symbols
  * @returns {KeyboardKey}
  */
-const letter = (lower) => ({
+const letter = (lower, symbols) => ({
   code: `Key${lower.toUpperCase()}`,
   label: lower,
   shiftLabel: lower.toUpperCase(),
   key: lower,
   shiftKey: lower.toUpperCase(),
   cased: true,
-});
-
-/**
- * A key with two characters printed on it: digits and punctuation.
- *
- * @param {string} code
- * @param {string} lower
- * @param {string} upper
- * @param {number} [width]
- * @returns {KeyboardKey}
- */
-const pair = (code, lower, upper, width) => ({
-  code,
-  label: lower,
-  shiftLabel: upper,
-  key: lower,
-  shiftKey: upper,
-  ...(width === undefined ? {} : { width }),
+  symbols,
 });
 
 /**
  * Everything that does not type a character of its own: the wide keys down the
- * edges, the function row, the arrows, the modifiers.
+ * edges and the modifiers.
  *
  * @param {string} code
  * @param {string} label
@@ -169,77 +204,78 @@ const pair = (code, lower, upper, width) => ({
 const special = (code, label, rest) => ({ code, label, ...rest });
 
 /**
- * @param {number} n
+ * @param {string} code
+ * @param {number} width
  * @returns {KeyboardKey}
  */
-const fnKey = (n) => special(`F${n}`, `F${n}`, { key: `F${n}` });
+const spacer = (code, width) => ({ code, label: "", spacer: true, width });
 
 /**
- * The layout of an ordinary US laptop: a function row, no numeric pad, and the
- * arrows crammed into the bottom row where a full-size board would have a
- * cursor block.
+ * The layout of a phone's keyboard, which is the right one for a board you
+ * point at: four rows, no function row, no arrows, no chording modifiers —
+ * every key either types or changes what the board types next. What a laptop
+ * spreads over six rows of engraved pairs, this folds into two views: letters
+ * under the fingers, and behind the `?123` key a symbols view where the same
+ * positions turn digits and punctuation — with shift flipping each view's
+ * faces, so the full character set is never more than two clicks away.
  *
- * The widths are the standard ones — 1.5 for tab, 1.75 for caps, 2.25 for the
- * left shift — so every row adds up to the same 15 units and the rows line up
- * under each other without anything measuring anything.
+ * The two views are the same keys wearing different faces, not two boards:
+ * switching moves labels and nothing else, which on a panel is a restyle
+ * rather than the re-measure a swapped subtree would cost.
+ *
+ * Every row adds up to 10 units — the middle row's nine letters are centred
+ * by half-unit spacers, the way a phone centres them.
  *
  * @type {KeyboardLayout}
  */
-export const LAPTOP_LAYOUT = [
+export const MOBILE_LAYOUT = [
   [
-    special("Escape", "esc", { key: "Escape", name: "Escape", width: 1.5 }),
-    ...[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(fnKey),
-    special("Delete", "del", { key: "Delete", name: "Delete", width: 1.5 }),
+    letter("q", sym("1", "!")),
+    letter("w", sym("2", "@")),
+    letter("e", sym("3", "#")),
+    letter("r", sym("4", "$")),
+    letter("t", sym("5", "%")),
+    letter("y", sym("6", "^")),
+    letter("u", sym("7", "&")),
+    letter("i", sym("8", "*")),
+    letter("o", sym("9", "(")),
+    letter("p", sym("0", ")")),
   ],
   [
-    pair("Backquote", "`", "~"),
-    pair("Digit1", "1", "!"),
-    pair("Digit2", "2", "@"),
-    pair("Digit3", "3", "#"),
-    pair("Digit4", "4", "$"),
-    pair("Digit5", "5", "%"),
-    pair("Digit6", "6", "^"),
-    pair("Digit7", "7", "&"),
-    pair("Digit8", "8", "*"),
-    pair("Digit9", "9", "("),
-    pair("Digit0", "0", ")"),
-    pair("Minus", "-", "_"),
-    pair("Equal", "=", "+"),
-    special("Backspace", "⌫", { key: "Backspace", name: "Backspace", width: 2 }),
+    spacer("SpacerLeft", 0.5),
+    letter("a", sym("-", "_")),
+    letter("s", sym("=", "+")),
+    letter("d", sym("[", "{")),
+    letter("f", sym("]", "}")),
+    letter("g", sym("\\", "|")),
+    letter("h", sym(";", ":")),
+    letter("j", sym("'", '"')),
+    letter("k", sym("`", "~")),
+    letter("l", sym("/", "?")),
+    spacer("SpacerRight", 0.5),
   ],
   [
-    special("Tab", "tab", { key: "Tab", name: "Tab", width: 1.5 }),
-    ...["q", "w", "e", "r", "t", "y", "u", "i", "o", "p"].map(letter),
-    pair("BracketLeft", "[", "{"),
-    pair("BracketRight", "]", "}"),
-    pair("Backslash", "\\", "|", 1.5),
+    special("ShiftLeft", "⇧", { modifier: "shift", name: "Shift", width: 1.5 }),
+    letter("z", sym(",", "<")),
+    letter("x", sym(".", ">")),
+    letter("c", sym("?")),
+    letter("v", sym("!")),
+    letter("b", sym("'")),
+    letter("n", sym('"')),
+    letter("m", sym("@")),
+    special("Backspace", "⌫", { key: "Backspace", name: "Backspace", width: 1.5 }),
   ],
   [
-    special("CapsLock", "caps", { modifier: "caps", name: "Caps Lock", width: 1.75 }),
-    ...["a", "s", "d", "f", "g", "h", "j", "k", "l"].map(letter),
-    pair("Semicolon", ";", ":"),
-    pair("Quote", "'", '"'),
-    special("Enter", "enter", { key: "Enter", name: "Enter", width: 2.25 }),
-  ],
-  [
-    special("ShiftLeft", "shift", { modifier: "shift", name: "Shift", width: 2.25 }),
-    ...["z", "x", "c", "v", "b", "n", "m"].map(letter),
-    pair("Comma", ",", "<"),
-    pair("Period", ".", ">"),
-    pair("Slash", "/", "?"),
-    special("ShiftRight", "shift", { modifier: "shift", name: "Shift", width: 2.75 }),
-  ],
-  [
-    special("ControlLeft", "ctrl", { modifier: "ctrl", name: "Control" }),
-    special("Fn", "fn", { modifier: "fn", name: "Fn" }),
-    special("MetaLeft", "meta", { modifier: "meta", name: "Meta" }),
-    special("AltLeft", "alt", { modifier: "alt", name: "Alt" }),
-    special("Space", "", { key: " ", name: "Space", width: 6 }),
-    special("AltRight", "alt", { modifier: "alt", name: "Alt" }),
-    special("ArrowLeft", "←", { key: "ArrowLeft", name: "Left arrow" }),
-    special("ArrowUp", "↑", { key: "ArrowUp", name: "Up arrow" }),
-    special("ArrowDown", "↓", { key: "ArrowDown", name: "Down arrow" }),
-    special("ArrowRight", "→", { key: "ArrowRight", name: "Right arrow" }),
+    special("Symbols", "?123", {
+      modifier: "symbols",
+      name: "Symbols",
+      width: 1.5,
+      symbols: { label: "ABC", name: "Letters" },
+    }),
+    special("Escape", "esc", { key: "Escape", name: "Escape" }),
+    special("Space", "", { key: " ", name: "Space", width: 5 }),
+    special("Period", ".", { key: "." }),
+    special("Enter", "enter", { key: "Enter", name: "Enter", width: 1.5 }),
   ],
 ];
 
@@ -255,20 +291,22 @@ export const LAPTOP_LAYOUT = [
  * The tree is built once and never changes shape: a state change moves a class
  * name and the text inside a key, and nothing is mounted or unmounted. That is
  * deliberate for the 3D side, where a changed tree costs a re-measure of every
- * box in the panel — seventy-odd of them here — and a changed class costs a
- * restyle. Shift is the state that moves most, and it must not be the state
- * that rebuilds the board.
+ * box in the panel, and a changed class or label costs a restyle. It holds for
+ * the symbols view exactly as it holds for shift: flipping the whole board to
+ * digits is the same keys wearing different faces, not a different board.
  *
  * Shift, ctrl, alt, meta and fn are one-shot: engaged by a click, reported on
  * the next key that types, and released. Nobody chords on a board they have to
- * point at. Caps lock is the exception, because a lock that let go by itself
- * would not be one.
+ * point at. Caps lock and the symbols view are the exceptions — sticky until
+ * clicked off — because a lock that let go by itself would not be one, and a
+ * symbols view that snapped back after one character would be re-engaged for
+ * every digit of a number.
  *
  * @param {KeyboardProps} props
  * @returns {Observable<Mountable<Node>>}
  */
 export function keyboard(props) {
-  const { onKey, classes, layout = LAPTOP_LAYOUT } = props;
+  const { onKey, classes, layout = MOBILE_LAYOUT } = props;
 
   /** @type {Record<KeyboardModifier, Signal<boolean>>} */
   const held = {
@@ -278,30 +316,58 @@ export function keyboard(props) {
     alt: Signal.of(false),
     meta: Signal.of(false),
     fn: Signal.of(false),
+    symbols: Signal.of(false),
   };
+
+  /**
+   * The face the key is currently wearing: its symbols face while the view is
+   * engaged and the key has one, its base fields otherwise.
+   *
+   * @param {KeyboardKey} entry
+   * @returns {KeyboardKeyFace}
+   */
+  const faceOf = (entry) => (held.symbols.get() && entry.symbols ? entry.symbols : entry);
 
   /**
    * Whether the key would type its shifted face. Caps lock only reaches
    * letters, and it flips with shift rather than winning over it: shift on a
-   * locked board types lowercase, on every keyboard ever made.
+   * locked board types lowercase, on every keyboard ever made. A symbols face
+   * is never cased — caps lock has nothing to say about a digit — so there
+   * shift alone decides.
    *
    * @param {KeyboardKey} entry
    * @returns {boolean}
    */
-  const isShifted = (entry) =>
-    entry.cased ? held.shift.get() !== held.caps.get() : held.shift.get();
+  const isShifted = (entry) => {
+    if (held.symbols.get() && entry.symbols) {
+      return held.shift.get();
+    }
+    return entry.cased ? held.shift.get() !== held.caps.get() : held.shift.get();
+  };
 
   /**
    * @param {KeyboardKey} entry
    * @returns {string}
    */
-  const labelOf = (entry) => (isShifted(entry) ? (entry.shiftLabel ?? entry.label) : entry.label);
+  const labelOf = (entry) => {
+    const face = faceOf(entry);
+    return isShifted(entry) ? (face.shiftLabel ?? face.label) : face.label;
+  };
+
+  /**
+   * @param {KeyboardKey} entry
+   * @returns {string | undefined}
+   */
+  const keyOf = (entry) => {
+    const face = faceOf(entry);
+    return isShifted(entry) ? (face.shiftKey ?? face.key) : face.key;
+  };
 
   /**
    * @param {KeyboardKey} entry
    * @returns {string}
    */
-  const nameOf = (entry) => entry.name ?? labelOf(entry);
+  const nameOf = (entry) => faceOf(entry).name ?? entry.name ?? labelOf(entry);
 
   /** @param {KeyboardKey} entry */
   const press = (entry) => {
@@ -310,11 +376,12 @@ export function keyboard(props) {
       signal.set(!signal.get());
       return;
     }
-    if (entry.key === undefined) {
+    const key = keyOf(entry);
+    if (key === undefined) {
       return;
     }
     onKey({
-      key: isShifted(entry) ? (entry.shiftKey ?? entry.key) : entry.key,
+      key,
       code: entry.code,
       shiftKey: held.shift.get(),
       ctrlKey: held.ctrl.get(),
@@ -323,10 +390,10 @@ export function keyboard(props) {
       capsLock: held.caps.get(),
       fnKey: held.fn.get(),
     });
-    // Released after the key they modified, and only those: a lock that let go
-    // would not be a lock.
+    // Released after the key they modified, and only those: the sticky ones
+    // hold until they are clicked off.
     for (const name of /** @type {KeyboardModifier[]} */ (Object.keys(NO_MODIFIERS))) {
-      if (name !== "caps") {
+      if (!STICKY.has(name)) {
         held[name].set(false);
       }
     }
@@ -337,6 +404,17 @@ export function keyboard(props) {
    * @returns {Observable<Mountable<Node>>}
    */
   const key = (entry) => {
+    // Zero basis and a share of the row proportional to the key's width: the
+    // one number that has to come from in here, because it is the layout the
+    // caller asked for by name.
+    /** @type {MonoTypeOperatorFunction<HTMLDivElement>} */
+    const flex = style({ flexGrow: `${entry.width ?? 1}`, flexBasis: "0" });
+    if (entry.spacer) {
+      // Space, not a key: undressed, unnamed, unclickable — and therefore not
+      // a ray target, since it is the `cursor` a class supplies that makes
+      // one.
+      return $("div", [flex]);
+    }
     const { modifier } = entry;
     /** @type {MonoTypeOperatorFunction<HTMLDivElement>[]} */
     const operators = [
@@ -346,10 +424,7 @@ export function keyboard(props) {
           ? withModifier(classes.key, classes.keyActive, () => held[modifier].get())
           : classes.key,
       ),
-      // Zero basis and a share of the row proportional to the key's width: the
-      // one number that has to come from in here, because it is the layout the
-      // caller asked for by name.
-      style({ flexGrow: `${entry.width ?? 1}`, flexBasis: "0" }),
+      flex,
       attr("role", () => "button"),
       attr("data-code", () => entry.code),
       attr("aria-label", () => nameOf(entry)),

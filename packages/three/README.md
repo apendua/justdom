@@ -238,7 +238,19 @@ at least one element is built and at least one update runs per frame, so a
 single expensive node overshoots the budget rather than stalling the mount.
 The grain is the element, not the inserted subtree — a whole panel usually
 arrives as exactly one root, and a slicer that only sliced between roots
-would build it whole. Where there are no frames to slice across — no
+would build it whole.
+
+The budget may also be a getter, read at the top of every pump frame, which
+makes the time-versus-smoothness trade a live one — the same value-or-getter
+contract as `makeInteractive`:
+
+```js
+dom(ctx, panel, [set({ position })], {
+  // A sliver while a hand is busy, generous otherwise; `Infinity` would
+  // finish the current mount within the next frame.
+  budget: () => (interacting.get() ? 1 : 8),
+});
+``` Where there are no frames to slice across — no
 renderer and no `requestAnimationFrame`, as under a test runner — the portal
 mounts synchronously, exactly as it always did.
 

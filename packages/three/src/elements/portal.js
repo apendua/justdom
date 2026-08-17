@@ -62,12 +62,20 @@ export function getPortalRoot(node) {
  *   only looks at — a head-locked overlay in particular, which sits between
  *   the eye and everything else and would otherwise be in the way of every
  *   ray that crossed it.
- * @property {number} [budget] Milliseconds of each frame the portal may spend
- *   mounting and settling content. It bounds when work stops being *started*,
- *   not how long a piece takes: at least one node is built and at least one
- *   update runs per frame, so a single expensive node overshoots the budget
- *   rather than stalling forever. 5 by default — a third of a 60 Hz frame,
- *   leaving room for the app and the renderer.
+ * @property {number | (() => number)} [budget] Milliseconds of each frame the
+ *   portal may spend mounting and settling content. It bounds when work stops
+ *   being *started*, not how long a piece takes: at least one node is built
+ *   and at least one update runs per frame, so a single expensive node
+ *   overshoots the budget rather than stalling forever. 5 by default — a
+ *   third of a 60 Hz frame, leaving room for the app and the renderer.
+ *
+ *   A getter is read at the top of every pump frame, which makes the
+ *   time-versus-smoothness trade a live one: an app can spend generously
+ *   while the player is looking at a loading panel, drop to a sliver the
+ *   moment a hand is interacting, or say `Infinity` and have the current
+ *   mount finish within the next frame. The same contract as
+ *   `makeInteractive` — a value for a decision made once, a getter for one
+ *   the app keeps making.
  * @property {(loading: boolean) => void} [onLoadingChanged] Told when the
  *   panel finishes mounting its initial content. Fires once, with `false`:
  *   the loading state starts true and never comes back, because a panel that
@@ -214,10 +222,19 @@ export function createPortal(ctx, { opaqueToRays = true, budget = 5, onLoadingCh
         name: "portal",
         order: 1,
         manual: true,
-        budget,
         maxStalePasses: Infinity,
       })
     : null;
+
+  /**
+   * The frame budget, asked for fresh at the top of every pump frame — that
+   * is what lets a getter trade mounting speed against frame rate while a
+   * mount is in flight. The channel above carries no budget of its own:
+   * every flush the portal performs passes one explicitly.
+   *
+   * @type {() => number}
+   */
+  const budgetOf = typeof budget === "function" ? budget : () => budget;
 
   /**
    * Whether any content has arrived at all. `markLoaded` waits for it: a
@@ -319,7 +336,7 @@ export function createPortal(ctx, { opaqueToRays = true, budget = 5, onLoadingCh
       return;
     }
     const now = channel.now;
-    const deadline = now() + budget;
+    const deadline = now() + budgetOf();
     if (pendingNodes.length > 0) {
       batch(() => {
         withChannel(channel, () => {

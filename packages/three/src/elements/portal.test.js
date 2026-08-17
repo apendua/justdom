@@ -781,6 +781,44 @@ describe("createPortal", () => {
     portal.disconnect();
   });
 
+  test("the budget is read every frame, so the trade is adjustable mid-mount", async () => {
+    // A number is a decision made once; a getter is one the app keeps
+    // making — the same contract `makeInteractive` uses. What it buys is a
+    // live trade between mount time and frame rate: spend generously while
+    // the player watches a loading panel, drop to a sliver when a hand is
+    // busy, or say Infinity and have the mount finish within a frame.
+    const manager = new InteractionManager();
+    const ctx = InteractionContext.set({}, manager);
+    let budget = 0;
+    const portal = createPortal(ctx, { budget: () => budget });
+    portal.addTo(new THREE.Group());
+
+    /** @type {import("@apendua/justdom").Mountable<Node> | undefined} */
+    let mountable;
+    const tree = $("div", [children(...Array.from({ length: 8 }, () => $("div")))]);
+    const subscription = tree.subscribe((value) => {
+      mountable = value;
+    });
+    assert.ok(mountable);
+    portal.mount(mountable);
+    await nextMacrotask();
+
+    flushFrame();
+    await nextMacrotask();
+    flushFrame();
+    await nextMacrotask();
+    assert.equal(portal.isLoading(), true, "at a zero budget, a nine-node mount takes nine frames");
+
+    budget = Infinity;
+    flushFrame();
+    await nextMacrotask();
+    assert.equal(portal.isLoading(), false, "raised to Infinity, the next frame finishes it");
+
+    await settle(portal);
+    subscription.unsubscribe();
+    portal.disconnect();
+  });
+
   test("re-writing an attribute with the value it already has invalidates nothing", async () => {
     // The hover handlers write `data-xr-*` back on every pointer event, and
     // the observer reports every write. The mirror compares against the

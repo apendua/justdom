@@ -1,4 +1,4 @@
-import { interval, Observable, of, tap } from "rxjs";
+import { Observable, tap } from "rxjs";
 import UpdateQueue from "./UpdateQueue.js";
 import {
   NoValueError,
@@ -93,9 +93,7 @@ export class Derived extends Computation {
    */
   constructor(evaluate, options = Object.is) {
     super({
-      resetOnRefCountZero: () => {
-        return this.#cacheTTL >= 0 ? interval(this.#cacheTTL) : of(null);
-      },
+      resetDelay: () => this.#cacheTTL,
       onInvalidateDependency: () => {
         updateQueue.invalidate(this, getPriority(this), this.#channel);
       },

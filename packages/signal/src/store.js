@@ -1,10 +1,8 @@
-import { filter, Subject } from "rxjs";
 import { addDependency, withComputation } from "./core.js";
-import { batch, Derived } from "./Signal.js";
+import { batch, Derived, Signal } from "./Signal.js";
 import Emitter from "./Emitter.js";
 import { useEffects } from "./operators.js";
 import { isPlainObject } from "./util.js";
-import { memoizeDependency } from "./memoize.js";
 
 /**
  * @import {MonoTypeOperatorFunction} from "rxjs"
@@ -88,8 +86,6 @@ function store(data, operators = []) {
     }
     return newData;
   });
-  /** @type {Subject<{ key: PropertyKey }>} */
-  const changes = new Subject();
   const ownKeys = Symbol("ownKeys");
 
   /** @type {Map<PropertyKey, Derived<unknown>>} */
@@ -110,11 +106,58 @@ function store(data, operators = []) {
   }
 
   /**
-   * @param {PropertyKey} key
+   * What a reader of one key depends on: a counter per key, bumped when that
+   * key is written.
+   *
+   * This used to be one `Subject` for the whole store and a
+   * `pipe(filter(...))` per key on top of it, held behind a memoized
+   * computation. The filtering was the point — a reader of `width` must not
+   * wake for a write to `height` — and a signal per key does the same thing
+   * by construction, without the stream.
+   *
+   * What that is worth is a matter of what a store is used for here. Every
+   * mirrored element owns one (see `VisualProperties`), a panel owns a few
+   * hundred elements, and each of those reads a dozen keys — so the old shape
+   * cost a computation, a piped observable and a `skipSynchronousValues`
+   * wrapper around it, per key per element, where this costs one signal. A
+   * signal is also something `Computation` recognizes, so subscribing to it
+   * touches no RxJS at all.
+   *
+   * Created on first read rather than up front: a key nobody reads reactively
+   * needs nothing, and a write to one has nobody to tell.
+   *
+   * @type {Map<PropertyKey, Signal<number>>}
    */
-  const getChangesAtKey = memoizeDependency((/** @type {PropertyKey} */ key) =>
-    changes.pipe(filter((change) => change.key === key)),
-  );
+  const versions = new Map();
+
+  /**
+   * @param {PropertyKey} key
+   * @returns {Signal<number>}
+   */
+  const getChangesAtKey = (key) => {
+    let version = versions.get(key);
+    if (!version) {
+      version = Signal.of(0);
+      versions.set(key, version);
+    }
+    return version;
+  };
+
+  /**
+   * @param {PropertyKey} key
+   * @returns {void}
+   */
+  const announce = (key) => {
+    const version = versions.get(key);
+    if (version) {
+      // `setFn` reads the old value non-reactively, so bumping a counter from
+      // inside a computation does not make that computation depend on it.
+      version.setFn(
+        (value) => value + 1,
+        () => 1,
+      );
+    }
+  };
 
   /** @type {Emitter<Record<PropertyKey, unknown>>} */
   const eventListener = new Emitter();
@@ -167,8 +210,8 @@ function store(data, operators = []) {
         // both would see the store halfway through the write. See
         // `ReactiveMap#notify`.
         batch(() => {
-          changes.next({ key });
-          changes.next({ key: ownKeys });
+          announce(key);
+          announce(ownKeys);
         });
       }
       return true;
@@ -180,8 +223,8 @@ function store(data, operators = []) {
     deleteProperty(_, key) {
       delete state[key];
       batch(() => {
-        changes.next({ key });
-        changes.next({ key: ownKeys });
+        announce(key);
+        announce(ownKeys);
       });
       return true;
     },

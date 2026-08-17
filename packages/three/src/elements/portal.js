@@ -249,15 +249,21 @@ export function createPortal(ctx, { opaqueToRays = true, budget = 5, onLoadingCh
   };
 
   /**
-   * Build one queued root, if it is still worth building. A node can leave
-   * the tree between being queued and its frame arriving — a spinner replaced
-   * by the content it stood for — and building it then would make an object
-   * for a ghost.
+   * Build one queued node, if it is still worth building, and queue its
+   * children. One node, deliberately — this is what the budget meters, so it
+   * is what the slicing grain has to be. The first version built a queued
+   * node's whole subtree in one go, which sliced a burst of sibling rows
+   * beautifully and a panel mounted as a single tree not at all: one root,
+   * one frame, every cost this exists to spread.
    *
-   * Attachment is the builder's job on this path: the parent's object may not
-   * have existed when the observer saw the insertion, so whoever gets built
-   * second — parent through its own subtree walk, or child through the queue —
-   * finds the other and connects.
+   * A node can leave the tree between being queued and its turn arriving —
+   * a spinner replaced by the content it stood for — and building it then
+   * would make an object for a ghost; the containment check drops it, and
+   * with it the subtree it would have queued.
+   *
+   * Attachment is the builder's job on this path: children are queued after
+   * their parent, so by a child's turn the parent's object exists and the
+   * content group — the group a scroll translates — is there to attach to.
    *
    * @param {Node} node
    */
@@ -265,13 +271,19 @@ export function createPortal(ctx, { opaqueToRays = true, budget = 5, onLoadingCh
     if (!containerElement.contains(node)) {
       return;
     }
-    const object = getOrCreateObjectForNode(node);
+    const object = nodeToObject.get(node) ?? createObjectForNode(node);
     if (object && !object.parent) {
       const parentObject = node.parentNode ? nodeToObject.get(node.parentNode) : undefined;
       if (parentObject) {
         getContentGroup(parentObject).add(object);
       }
     }
+    node.childNodes.forEach((childNode) => {
+      if (!nodeToObject.has(childNode) && !pendingSet.has(childNode)) {
+        pendingSet.add(childNode);
+        pendingNodes.push(childNode);
+      }
+    });
   };
 
   /**
@@ -438,10 +450,16 @@ export function createPortal(ctx, { opaqueToRays = true, budget = 5, onLoadingCh
    * @param {Node} node
    * @returns {THREE.Object3D | undefined}
    */
-  function getOrCreateObjectForNode(node) {
-    if (nodeToObject.has(node)) {
-      return nodeToObject.get(node);
-    }
+  /**
+   * Build the object for this one node and nothing below it. The recursion
+   * over children is the caller's business, because the two callers want it
+   * done differently: the synchronous path walks the subtree here and now,
+   * and the pump queues the children to be built a budget per frame.
+   *
+   * @param {Node} node
+   * @returns {THREE.Object3D | undefined}
+   */
+  function createObjectForNode(node) {
     mirror.adopt(node);
     /** @type {Observable<THREE.Object3D> | undefined} */
     let object$;
@@ -481,6 +499,21 @@ export function createPortal(ctx, { opaqueToRays = true, budget = 5, onLoadingCh
     objectToCleanup.set(object, () => {
       subscription.unsubscribe();
     });
+    return object;
+  }
+
+  /**
+   * @param {Node} node
+   * @returns {THREE.Object3D | undefined}
+   */
+  function getOrCreateObjectForNode(node) {
+    if (nodeToObject.has(node)) {
+      return nodeToObject.get(node);
+    }
+    const object = createObjectForNode(node);
+    if (!object) {
+      return undefined;
+    }
     // A box carries its DOM children inside a content group — the group a
     // scroll translates — so that is where they attach.
     const content = getContentGroup(object);
@@ -738,6 +771,20 @@ export function createPortal(ctx, { opaqueToRays = true, budget = 5, onLoadingCh
         mirror.scrolled(target);
       });
     });
+    // A scroll settles synchronously, budget or no budget. Everything the
+    // offset moves — the content group's translation, the clip boxes of the
+    // scrolled subtree, the culling at the window's edges — is arithmetic on
+    // cached values, cheap by the mirror's own design; what a budget would
+    // buy here is not a smoother frame but a torn one, the content sliding
+    // in this frame and its clipping catching up over the next several,
+    // because the translation is one shallow task and the clipping is one
+    // per row. An interaction has to land whole in the frame that carries
+    // it; deferral is for content changes, which nobody's hand is resting
+    // on. The flush drains whatever else the channel holds along with it —
+    // the queue cannot take one signal's consequences and leave another's —
+    // which is the accepted cost of a hand on the panel, and no more than
+    // every scroll cost before the panel learned to defer at all.
+    channel?.flush({ budget: Infinity });
     // Content has moved out from under a ray that did not move with it. The
     // manager only recasts when a hand moves or when it is told the scene
     // changed, and this is the second case.

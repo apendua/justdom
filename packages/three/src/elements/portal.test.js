@@ -615,15 +615,16 @@ describe("createPortal", () => {
     try {
       scrollTop = 40;
       scroller.dispatchEvent(new Event("scroll"));
-      // The offset lands in the panel's channel and the content group moves
-      // at the top of the next frame — and even that frame reads nothing
-      // back from the DOM, which is the stronger form of the old claim.
-      flushFrame();
-
+      // The scroll settles in the event that carried it: the content group
+      // has moved before the handler returns, and so has everything else the
+      // offset decides — clipping, culling — because a scroll flushes the
+      // panel's channel rather than waiting for the pump. Content that slid
+      // this frame with clipping catching up over the next several is the
+      // tear that makes a scroller unusable, and no budget is worth it.
       assert.deepEqual(
         [contentGroup.position.x, contentGroup.position.y],
         [0, -40],
-        "the content slides by exactly the offset",
+        "the content slides by exactly the offset, synchronously",
       );
       assert.equal(rectReads, 0, "no rects are read back");
       assert.equal(rangeMeasurements, 0, "no text is re-measured");
@@ -637,12 +638,15 @@ describe("createPortal", () => {
   });
 
   test("a large mount is sliced across frames, behind a loading state", async () => {
-    // The case this exists for: a hundred rows arriving in one observer
-    // flush used to be built in one task, which is one very long frame. Now
-    // the flush queues them, the pump builds a budget's worth per frame —
-    // at least one root per frame, however small the budget, which is what
-    // a budget of zero pins down — and the panel is hidden and out of the
-    // raycast set until everything the mount asked for exists.
+    // The case this exists for: a panel's worth of content arriving in one
+    // observer flush used to be built in one task, which is one very long
+    // frame. Now the flush queues it, the pump builds a budget's worth of
+    // nodes per frame — at least one per frame, however small the budget,
+    // which is what a budget of zero pins down — and the panel is hidden
+    // and out of the raycast set until everything the mount asked for
+    // exists. The grain is the node, not the inserted root: a whole panel
+    // usually arrives as exactly one root, and a slicer that only sliced
+    // between roots would build it whole.
     const manager = new InteractionManager();
     /** @type {THREE.Object3D[]} */
     const registered = [];
@@ -684,6 +688,19 @@ describe("createPortal", () => {
     const rootObject = () =>
       containerObject.children.find((child) => !(child instanceof THREE.Mesh));
 
+    // The mount arrived as ONE root carrying eight rows — nine nodes. At a
+    // budget of zero the pump builds exactly one per frame, so frames in the
+    // tree is still incomplete, and all of that is behind the loading state.
+    flushFrame();
+    await nextMacrotask();
+    flushFrame();
+    await nextMacrotask();
+    assert.equal(portal.isLoading(), true, "two frames into a nine-node mount, still loading");
+    assert.ok(
+      (rootObject()?.children[0]?.children.length ?? 0) < 8,
+      "because the single root's subtree is being built a node at a time",
+    );
+
     await settle(portal);
 
     assert.equal(portal.isLoading(), false, "loaded once everything exists");
@@ -693,10 +710,9 @@ describe("createPortal", () => {
     assert.deepEqual(transitions, [false], "one transition, announced once");
 
     // Later arrivals go through the same budgeted pump but are not a loading
-    // state. Each appended row is its own queue entry — the slicing grain is
-    // the added root — so a zero budget builds exactly one per frame, which
-    // is the climb that proves the batch is genuinely spread across frames
-    // rather than deferred whole to the first one.
+    // state. Each appended row is one node, so a zero budget builds exactly
+    // one per frame — the climb that proves the batch is genuinely spread
+    // across frames rather than deferred whole to the first one.
     const container = document.querySelectorAll("[data-xr-portal]");
     const list = /** @type {HTMLElement} */ (container[container.length - 1].firstElementChild);
     for (let index = 0; index < 4; index++) {

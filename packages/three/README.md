@@ -236,9 +236,20 @@ dom(ctx, panel, [set({ position })], {
 The budget bounds when work stops being started, not how long a piece takes:
 at least one element is built and at least one update runs per frame, so a
 single expensive node overshoots the budget rather than stalling the mount.
-Where there are no frames to slice across — no renderer and no
-`requestAnimationFrame`, as under a test runner — the portal mounts
-synchronously, exactly as it always did.
+The grain is the element, not the inserted subtree — a whole panel usually
+arrives as exactly one root, and a slicer that only sliced between roots
+would build it whole. Where there are no frames to slice across — no
+renderer and no `requestAnimationFrame`, as under a test runner — the portal
+mounts synchronously, exactly as it always did.
+
+**A scroll is never deferred.** Everything the offset moves — the content
+group's translation, the clip boxes of the scrolled subtree, the culling at
+the window's edges — is arithmetic on cached values, and all of it settles
+synchronously in the event that carried the scroll, whatever the budget.
+Spread over frames it would tear: the content sliding this frame, its
+clipping catching up over the next several, under a hand that is still
+dragging. An interaction lands whole in the frame that carries it; deferral
+is for content changes, which nobody's hand is resting on.
 
 ## Checkboxes
 

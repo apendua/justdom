@@ -28,6 +28,21 @@
  *   `idle`    nothing at all, and the answer must be nothing at all. A
  *             scheduler that wakes every frame to check whether it has work
  *             is a battery bug that no other scenario would catch.
+ *
+ * `mount` is the odd one, and it is graded by something else entirely.
+ *
+ *   `mount`   a hundred rows arriving in a single frame. Everything above
+ *             holds a panel at a fixed size and asks what a frame costs;
+ *             this asks what *building* one costs, which is the complaint
+ *             that mounting a lot at once drops frames.
+ *
+ * Its numbers are read differently, and the difference is the point. The
+ * median frame gap of a scenario that acts on five frames in a hundred and
+ * twenty is the gap of the hundred and fifteen that did nothing — a real
+ * number, worth glancing at to confirm the panel goes quiet again, and
+ * completely blind to the thing under test. **The spike is the measurement**,
+ * so read `worst` and `worst above idle`; the counts are reported per burst
+ * rather than per frame for the same reason.
  */
 
 /**
@@ -39,6 +54,13 @@
  *   before measuring. Serialized, so it may not close over anything.
  * @property {string} step Source of a page-side `(index) => void`, run once
  *   per frame.
+ * @property {number[]} [burstAt] The frames on which the stimulus actually
+ *   happens, for a scenario that acts on some and not others. Two things
+ *   follow from it. Counts are reported per burst rather than per frame — a
+ *   rect read divided by a hundred and twenty frames, five of which did
+ *   anything, is a number about nothing. And each burst's own frame gap is
+ *   reported next to the others, which is how a burst that costs more than
+ *   the one before it becomes visible rather than being averaged away.
  */
 
 /**
@@ -105,12 +127,87 @@ const SETUP_LONG_LIST = `
 `;
 
 /**
+ * A list long enough to have a scroller and short enough that what happens
+ * next is what is being measured. The `mount` scenario grows it itself;
+ * starting it long would price the panel it grew into rather than the growing.
+ */
+const SETUP_SHORT_LIST = `
+  ${PRELUDE}
+  await frames(30);
+  const bulk = byText("Add 10 items");
+  const add = byText("Add");
+  const adder = bulk ?? add;
+  if (!adder) {
+    throw new Error("no way to add items: expected an \\"Add 10 items\\" or \\"Add\\" control");
+  }
+  globalThis.__perPress = bulk ? 10 : 1;
+  for (let added = 0; added < 20; added += globalThis.__perPress) {
+    adder.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  }
+  await frames(30);
+  globalThis.__scroller = scroller();
+  if (!globalThis.__scroller) throw new Error("nothing to scroll");
+  globalThis.__adder = adder;
+  globalThis.__rows = globalThis.__scroller.querySelectorAll("*").length;
+`;
+
+/**
+ * When the first burst lands, and how far apart they are.
+ *
+ * The offset is not decoration. `summarize` throws away the first ten frames
+ * of a run as warm-up, and the runner drives twenty frames of the stimulus
+ * before it starts the clock at all — so a burst on frame zero would be
+ * discarded from the measurement and would also have already happened, twice,
+ * before it. Landing the first one at fifteen puts every burst inside the
+ * window that is kept, and gives the burst path one warm-up pass through the
+ * JIT before it is timed.
+ *
+ * The spacing is for the frames in between, which is where the panel settles:
+ * a mount that spilled into the following frames would otherwise be billed to
+ * whichever burst it landed on.
+ */
+const BURST_FIRST = 15;
+const BURST_EVERY = 25;
+
+/**
  * @param {number} rounds How many times to press "Add 10 items".
+ * @param {number} burst How many items each `mount` burst adds at once.
  * @returns {Scenario[]}
  */
-export function scenarios(rounds = 20) {
+export function scenarios(rounds = 20, burst = 100) {
   const setup = SETUP_LONG_LIST.replace("ROUNDS", String(rounds));
+  const mountFrames = 120;
+  /** @type {number[]} */
+  const burstAt = [];
+  for (let frame = BURST_FIRST; frame < mountFrames; frame += BURST_EVERY) {
+    burstAt.push(frame);
+  }
   return [
+    {
+      name: "mount",
+      what: `${burst} items arriving in one frame — the spike, not the steady state`,
+      frames: mountFrames,
+      burstAt,
+      setup: SETUP_SHORT_LIST,
+      // Every press is its own signal write and its own round of DOM
+      // insertion, but they all happen inside one task — so the observer
+      // delivers them as a single flush, and the portal mounts the lot in one
+      // go. That is the case being reported as dropped frames, reproduced
+      // rather than approximated: a list that streams in does exactly this.
+      //
+      // The list keeps whatever each burst gave it, so the bursts land on a
+      // panel that grows all run. Should a later burst cost more than an
+      // earlier one, the cost of mounting still depends on what is already
+      // mounted, and this is where that would show.
+      step: `${PRELUDE} return (i) => {
+        if (i < ${BURST_FIRST} || (i - ${BURST_FIRST}) % ${BURST_EVERY} !== 0) return;
+        const adder = globalThis.__adder;
+        const presses = Math.max(1, Math.round(${burst} / globalThis.__perPress));
+        for (let k = 0; k < presses; k++) {
+          adder.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        }
+      }`,
+    },
     {
       name: "scroll",
       what: "one scroll per frame — nothing to coalesce, the honest floor",

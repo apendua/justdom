@@ -47,6 +47,7 @@ function parse(args) {
     repeat: Number(flags.repeat ?? 3),
     app: flags.app ?? "todo-xr",
     rounds: Number(flags.rounds ?? 20),
+    burst: Number(flags.burst ?? 100),
     only: flags.scenario ? flags.scenario.split(",") : null,
     styleReads: flags["style-reads"] === "true",
   };
@@ -206,13 +207,23 @@ async function measure({ root, app, rounds, styleReads }, list) {
         { step: scenario.step, frames: scenario.frames },
       );
 
-      const per = Math.max(scenario.frames, 1);
+      // A scenario that acts every frame is priced per frame; one that acts in
+      // bursts is priced per burst, or the divisor is mostly frames in which
+      // nothing happened.
+      const per = Math.max(scenario.burstAt?.length ?? scenario.frames, 1);
       results[scenario.name] = {
         rows,
         counts: Object.fromEntries(
           Object.entries(measurement.counts).map(([k, v]) => [k, Math.round((v / per) * 10) / 10]),
         ),
         timing: summarize(measurement.gaps),
+        // The driver records the gap *before* each frame and runs `step` after
+        // recording, so the work `step(i)` sets off lands in the gap in front
+        // of frame i + 1. Off by one here would report the quiet frame before
+        // each burst and call mounting free.
+        burstGaps: (scenario.burstAt ?? []).map(
+          (frame) => Math.round((measurement.gaps[frame + 1] ?? 0) * 10) / 10,
+        ),
         coherence: measurement.coherence,
       };
       await page.close();
@@ -231,7 +242,7 @@ function median(values) {
 }
 
 const options = parse(process.argv.slice(2));
-const list = scenarios(options.rounds).filter(
+const list = scenarios(options.rounds, options.burst).filter(
   (scenario) => !options.only || options.only.includes(scenario.name),
 );
 
@@ -319,7 +330,9 @@ for (const scenario of list) {
     console.log(`  (${rows} elements in the scroller)`);
   }
   const keys = ["getBoundingClientRect", "thrash", "fillText", "canvasCreated", "styleProperty"];
-  console.log("  per frame:");
+  console.log(
+    scenario.burstAt ? `  per burst (${scenario.burstAt.length} of them):` : "  per frame:",
+  );
   for (const key of keys) {
     const line = sides
       .map((side) => {
@@ -346,16 +359,37 @@ for (const scenario of list) {
   // frames over 16.7ms therefore says "yes" to everything and discriminates
   // nothing; subtracting the idle scenario's own median leaves what the
   // stimulus actually cost, which is the part under test.
+  //
+  // Both the typical frame and the worst one are worth that subtraction, and
+  // which of the two a scenario is *about* differs. A steady stimulus is read
+  // off the median, and its worst frame is a garbage collection. A burst
+  // scenario is the other way round: the median is the frames between bursts,
+  // and the whole question is how long the panel stopped for.
   if (idleFloor !== null && scenario.name !== "idle") {
-    const line = sides
-      .map((side) => {
-        const runs = collected.get(side.label) ?? [];
-        const values = runs.map((run) => run[scenario.name]?.timing.median ?? 0);
-        const floor = idleFloor.get(side.label) ?? 0;
-        return `${side.label} ${Math.round((median(values) - floor) * 10) / 10}`;
-      })
-      .join("   vs   ");
-    console.log(`    ${"above idle".padEnd(22)} ${line}`);
+    for (const key of /** @type {const} */ (["median", "worst"])) {
+      const line = sides
+        .map((side) => {
+          const runs = collected.get(side.label) ?? [];
+          const values = runs.map((run) => run[scenario.name]?.timing[key] ?? 0);
+          const floor = idleFloor.get(side.label) ?? 0;
+          return `${side.label} ${Math.round((median(values) - floor) * 10) / 10}`;
+        })
+        .join("   vs   ");
+      console.log(`    ${`${key} above idle`.padEnd(22)} ${line}`);
+    }
+  }
+  // Each burst on its own, in the order they happened. The list grows all
+  // run, so this is the shape of the answer to "does mounting cost depend on
+  // what is already mounted?" — a flat row means it does not, and a climbing
+  // one means the panel is still paying for its own size.
+  if (scenario.burstAt) {
+    for (const side of sides) {
+      const runs = collected.get(side.label) ?? [];
+      const perBurst = scenario.burstAt.map((_, index) =>
+        median(runs.map((run) => run[scenario.name]?.burstGaps?.[index] ?? 0)),
+      );
+      console.log(`    ${"each burst".padEnd(22)} ${side.label} ${perBurst.join("  ")}`);
+    }
   }
   for (const side of sides) {
     const runs = collected.get(side.label) ?? [];

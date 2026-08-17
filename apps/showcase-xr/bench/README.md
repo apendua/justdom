@@ -21,6 +21,7 @@ node bench/run.js --against origin/develop --repeat 4 --scenario scroll,burst
 node bench/run.js --scenario burst          # one scenario
 node bench/run.js --app showcase-xr         # a different app
 node bench/run.js --rounds 40               # a longer list (20 → ~825 elements)
+node bench/run.js --burst 300               # bigger mount bursts
 node bench/run.js --style-reads             # + computed-style property reads
 ```
 
@@ -28,13 +29,53 @@ node bench/run.js --style-reads             # + computed-style property reads
 | ----------------- | --------- | ---------------------------------------------------------------------------- |
 | `--against <rev>` | none      | any git revision — branch, tag, SHA. Omit to measure the working tree alone. |
 | `--repeat <n>`    | 3         | rounds, interleaved A-B-A-B. Medians reported.                               |
-| `--scenario a,b`  | all five  | `scroll`, `mixed`, `burst`, `mutate`, `idle`.                                |
+| `--scenario a,b`  | all six   | `mount`, `scroll`, `mixed`, `burst`, `mutate`, `idle`.                       |
 | `--app <name>`    | `todo-xr` | any project under `apps/`.                                                   |
 | `--rounds <n>`    | 20        | presses of "Add 10 items" during setup.                                      |
+| `--burst <n>`     | 100       | items each `mount` burst adds at once.                                       |
 | `--style-reads`   | off       | wrap computed styles to count property reads.                                |
 
-A full five-scenario A/B at `--repeat 3` is around 20 minutes; one scenario
+A full six-scenario A/B at `--repeat 3` is around 25 minutes; one scenario
 at `--repeat 1` is about three.
+
+## Reading `mount`
+
+Five of the six scenarios hold a panel at a fixed size and ask what a frame
+costs. `mount` asks what _building_ one costs — a hundred items arriving in a
+single frame, five times over, on a list that keeps everything each burst gave
+it.
+
+It is read off different numbers, and reading it off the usual ones will tell
+you nothing is wrong. Only five frames in a hundred and twenty do anything, so
+the **median is the hundred and fifteen that did not** — worth a glance to
+confirm the panel goes quiet again, and blind to the thing under test. The
+spike is the measurement:
+
+```
+  frame gap (ms):
+    median                 working tree 49.7      <- the quiet frames
+    worst                  working tree 4975.2    <- one burst of 100 items
+    worst above idle       working tree 4927.1
+    each burst             working tree 2987.6  3124.8  4975.2  3171.9  3122.2
+```
+
+`each burst` is the line to read first. The list grows all run — 20 items
+before the first burst, some 520 by the last — so a **flat** row says the cost
+of mounting does not depend on what is already mounted, and a **climbing** one
+says the panel is still paying for its own size. That distinction is what two
+rounds of work on the mirror's invalidation scope were for, and it is the
+thing most likely to silently regress.
+
+Counts are reported per burst rather than per frame here, for the same reason
+the median is useless: a rect read divided by a hundred and twenty frames,
+five of which did anything, is a number about nothing.
+
+One caveat on `above idle`. `mount` starts from a short list where `idle`
+holds a long one, so the two floors are not measured on the same panel. They
+come out within a millisecond or two of each other — an idle panel costs the
+renderer, not the mirror — which is far below what `worst above idle` is
+reporting and comparable to what `median above idle` is. Trust the first,
+treat the second as a rounding error with a sign.
 
 ### Changing the freedom package
 

@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { addDependency, Derived, fromEvent, onCleanup, Signal } from "@apendua/signal";
+import { addDependency, Derived, fromEvent, onCleanup, Signal, withChannel } from "@apendua/signal";
 import { getComputedStyleCached } from "./mirror.js";
 import { fitImage } from "./objectFit.js";
 
@@ -114,8 +114,16 @@ function entryFor(url) {
   if (existing) {
     return existing;
   }
+  // The entry is shared by every panel that names this URL, so it belongs to
+  // none of them — and it is built lazily, during whichever panel's flush
+  // asked first, with that panel's channel ambient. A plain `Signal` happens
+  // not to capture the ambient channel today, so this wrap changes nothing
+  // yet; it is here because the rule for shared state is not conditional on
+  // that: anything panels share is constructed in the default channel, so
+  // that no future reactive machinery in an entry can end up owned by a
+  // panel that may be disposed while the load is still in flight.
   /** @type {ImageEntry} */
-  const entry = { state: Signal.of(PENDING), users: 0, texture: null };
+  const entry = withChannel(null, () => ({ state: Signal.of(PENDING), users: 0, texture: null }));
   entries.set(url, entry);
   loader.load(
     url,

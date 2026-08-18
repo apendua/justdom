@@ -388,8 +388,10 @@ coming and going, a document being edited — and the open menu follows it.
 
 The system keyboard cannot reach a panel either, and for a stronger version of
 the same reason: it is not even the browser's, it is the compositor's.
-`keyboard(props)` is a clickable one with a standard laptop layout — a function
-row, no numeric pad, the arrows crammed into the bottom row:
+`keyboard(props)` is a clickable one with a phone's layout, which is the right
+one for a board you point at — four rows, no function row, no arrows, no
+chording modifiers, every key either typing or changing what the board types
+next:
 
 ```js
 keyboard({
@@ -404,33 +406,44 @@ keyboard({
 });
 ```
 
+Digits and punctuation live behind the `?123` key, exactly as they do on a
+phone: pressing it turns every key's symbols face — `q` shows `1`, `a` shows
+`-` — and `ABC` on the same key reads the way back. The view is sticky, unlike
+shift: a view that snapped back after one character would be re-engaged for
+every digit of a number. Shift flips each view's faces — `A` over `a`, `!`
+over `1` — and stays one-shot, released by the key it modified, because
+nobody chords on a board they have to point at. Between the two views and
+shift, the whole printable ASCII set is never more than two clicks away, and
+a test pins that.
+
 A press is shaped like the `KeyboardEvent` it stands in for — `key`, `code`,
 `shiftKey`, `ctrlKey`, `altKey`, `metaKey` — plus `capsLock` and `fnKey`, which
 have nowhere to live on a plain object otherwise. `code` is the physical key
 (`"KeyA"`, `"Space"`), and it is also on each element as `data-code`, which is
-what to reach for from a test or from an app that wants to light a key up.
-
-Shift, ctrl, alt, meta and fn are one-shot: engaged by a click, reported on the
-next key that types, released after it. Nobody chords on a board they have to
-point at. Caps lock is the exception, because a lock that let go by itself
-would not be one. Letter keys print the case they will type, the way a phone's
-keyboard does rather than the way an engraved one does.
+what to reach for from a test or from an app that wants to light a key up. It
+names the position rather than the face: a key showing its symbols face still
+reports the code it was built with, exactly as a hardware key reports where it
+is and not what the layout painted on it — what it typed is in `key`.
 
 Two things are set from the inside, because they are the layout the caller
 asked for by name rather than the dressing: the root and its rows are flex
 boxes, and each key gets the `flex-grow` its width unit calls for — 1 for a
-letter, 2.25 for the left shift, 6 for the space bar, every row adding up to 15. Gaps, corners, colours and type are yours; `key` needs a `cursor: pointer`
-like any other control, or rays pass straight through the board.
+letter, 1.5 for shift, 5 for the space bar, every row adding up to 10. Gaps,
+corners, colours and type are yours; `key` needs a `cursor: pointer` like any
+other control, or rays pass straight through the board.
 
 The tree is built once and never changes shape — a state change moves a class
 name and the text inside a key. That matters more here than anywhere else in
 this README: a changed tree costs a re-measure of every box in the panel, and
-there are seventy-seven of them on a board. Shift is the state that moves most,
-and it must not be the state that rebuilds it.
+the promise holds for the symbols view exactly as it holds for shift —
+flipping the whole board to digits is the same keys wearing different faces,
+not a different board.
 
-`LAPTOP_LAYOUT` is exported, and `layout` takes any array of rows of
+`MOBILE_LAYOUT` is exported, and `layout` takes any array of rows of
 `KeyboardKey`, for a numeric pad, a game's own control strip, or a board with
-one key on it.
+one key on it. A custom layout may also use the modifiers the default one
+deliberately leaves out — caps lock, ctrl, alt, meta, fn — the machinery is
+all still there.
 
 ## Images
 

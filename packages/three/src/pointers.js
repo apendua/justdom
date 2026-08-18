@@ -49,14 +49,75 @@ const ballMaterial = memoize(
    */
   (color) => {
     // Unlit on purpose: the mark should read the same wherever it lands, and
-    // it is not part of the scene being lit.
-    const material = new THREE.MeshBasicMaterial({ color });
+    // it is not part of the scene being lit. The chrome flags are what keep
+    // it visible — see `adoptAsChrome` for why a cursor is drawn over
+    // everything rather than depth-tested into it.
+    const material = new THREE.MeshBasicMaterial({
+      color,
+      transparent: true,
+      depthTest: false,
+      depthWrite: false,
+    });
     onCleanup(() => {
       material.dispose();
     });
     return material;
   },
 );
+
+/**
+ * Above every figure a panel gives its quads. Panels draw at
+ * `elevation * 1000 + depth` (see elevation.js), so anything past a few
+ * thousand already clears them; the margin is for a scene that orders
+ * something of its own.
+ */
+const CURSOR_RENDER_ORDER = 1e9;
+
+/**
+ * Dress a widget as pointer chrome: drawn over everything, the way a desktop
+ * draws the mouse cursor. A cursor depth-tested into the scene is buried by
+ * what it lands on — it sits exactly on the hit surface, so half of it is
+ * always inside, and a hit reported by a panel's blocker plane sits *behind*
+ * the panel's own quads, which then cover the mark completely. Chrome is not
+ * part of the scene: it renders after everything (`transparent` puts it in
+ * the pass that follows the opaque scene, the render order puts it last
+ * within that pass) and ignores depth entirely.
+ *
+ * The materials are cloned before they are touched — `Object3D.clone()`
+ * shares materials with the template, and the template belongs to the
+ * caller. The clones are this widget's own; the caller must dispose them
+ * when the widget goes.
+ *
+ * @param {THREE.Object3D} root
+ * @returns {THREE.Material[]} the materials this created, to dispose
+ */
+function adoptAsChrome(root) {
+  /** @type {THREE.Material[]} */
+  const owned = [];
+  /**
+   * @param {THREE.Material} material
+   * @returns {THREE.Material}
+   */
+  const chrome = (material) => {
+    const own = material.clone();
+    own.transparent = true;
+    own.depthTest = false;
+    own.depthWrite = false;
+    owned.push(own);
+    return own;
+  };
+  root.traverse((child) => {
+    child.renderOrder = CURSOR_RENDER_ORDER;
+    if (!("material" in child)) {
+      return;
+    }
+    const bearer = /** @type {THREE.Mesh} */ (child);
+    bearer.material = Array.isArray(bearer.material)
+      ? bearer.material.map(chrome)
+      : chrome(bearer.material);
+  });
+  return owned;
+}
 
 /**
  * Keeps a widget sitting on the point the ray hit. The intersection is in
@@ -137,9 +198,12 @@ export function fitRayToHit(ray, controller, all, fallback = DEFAULT_RAY_LENGTH)
 /**
  * @typedef {object} CursorOptions
  * @property {THREE.Object3D} [object] Drawn instead of the default ball, one
- *   clone per active pointer. Cloning shares geometries and materials with the
- *   original, so the original is a template and is never added to the scene
- *   itself.
+ *   clone per active pointer. Cloning shares geometries with the original, so
+ *   the original is a template and is never added to the scene itself. The
+ *   materials, though, are cloned per widget and dressed as pointer chrome —
+ *   drawn over everything, ignoring depth — because a cursor depth-tested
+ *   into what it points at is buried by it; the template's own materials are
+ *   never touched.
  * @property {number} [scale] Uniform multiplier on the widget, default 1. It
  *   multiplies whatever scale `object` already carries, so a model authored at
  *   its natural size can be shrunk to cursor size here.
@@ -171,10 +235,23 @@ export function cursors(ctx, options = {}) {
     if (object) {
       const widget = object.clone();
       widget.scale.multiplyScalar(scale);
-      return $(widget, [effects(follow(pointer))]);
+      const materials = adoptAsChrome(widget);
+      return $(widget, [
+        effects(() => {
+          onCleanup(() => {
+            for (const material of materials) {
+              material.dispose();
+            }
+          });
+        }),
+        effects(follow(pointer)),
+      ]);
     }
     const widget = new THREE.Mesh();
     widget.scale.setScalar(scale);
+    // The ball's material carries the chrome flags itself — it is shared by
+    // every default cursor, so there is nothing to clone or to own here.
+    widget.renderOrder = CURSOR_RENDER_ORDER;
     return $(widget, [
       set({
         get geometry() {

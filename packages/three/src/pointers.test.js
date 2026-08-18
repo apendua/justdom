@@ -275,11 +275,76 @@ describe("cursors", () => {
     const [widget] = parent.children;
     assert.notEqual(widget, object);
     assert.ok(widget instanceof THREE.Mesh);
-    // Cloning shares the geometry, so nothing is rebuilt per hand.
+    // Cloning shares the geometry, so nothing is rebuilt per hand. The
+    // material is the widget's own — see the chrome test below.
     assert.equal(widget.geometry, object.geometry);
-    assert.equal(widget.material, object.material);
     assert.deepEqual(widget.scale.toArray(), [0.01, 0.01, 0.01]);
     assert.deepEqual(widget.position.toArray(), [0, 0, -1.5]);
+  });
+
+  test("the default ball is pointer chrome: drawn over everything, ignoring depth", () => {
+    const parent = mount(cursors(ctx));
+    loop.run();
+
+    const [widget] = parent.children;
+    assert.ok(widget instanceof THREE.Mesh);
+    const material = /** @type {THREE.Material} */ (widget.material);
+    // A hit reported by a panel's blocker plane sits behind the panel's own
+    // quads; a depth-tested ball there is completely covered. Chrome renders
+    // in the pass after the opaque scene, last within it, and ignores depth.
+    assert.equal(material.depthTest, false);
+    assert.equal(material.depthWrite, false);
+    assert.equal(material.transparent, true);
+    // Panels order their quads at elevation * 1000 + depth; the cursor must
+    // sort after every figure a panel can produce.
+    assert.ok(widget.renderOrder > 1_000_000);
+  });
+
+  test("dresses a custom widget as chrome on its own materials, not the template's", () => {
+    const material = new THREE.MeshBasicMaterial();
+    const object = new THREE.Mesh(new THREE.ConeGeometry(1, 2), material);
+
+    const parent = mount(cursors(ctx, { object }));
+    loop.run();
+
+    const [widget] = parent.children;
+    assert.ok(widget instanceof THREE.Mesh);
+    const own = /** @type {THREE.Material} */ (widget.material);
+    assert.notEqual(own, material);
+    assert.equal(own.depthTest, false);
+    assert.equal(own.depthWrite, false);
+    assert.equal(own.transparent, true);
+    assert.ok(widget.renderOrder > 1_000_000);
+    // The template still belongs to the caller, exactly as handed over.
+    assert.equal(material.depthTest, true);
+    assert.equal(material.depthWrite, true);
+    assert.equal(material.transparent, false);
+  });
+
+  test("disposes the materials it cloned when the widget goes away", () => {
+    const object = new THREE.Mesh(new THREE.ConeGeometry(1, 2), new THREE.MeshBasicMaterial());
+    let templateDisposed = false;
+    object.material.addEventListener("dispose", () => {
+      templateDisposed = true;
+    });
+
+    const parent = mount(cursors(ctx, { object }));
+    loop.run();
+
+    const [widget] = parent.children;
+    assert.ok(widget instanceof THREE.Mesh);
+    let disposed = false;
+    /** @type {THREE.Material} */ (widget.material).addEventListener("dispose", () => {
+      disposed = true;
+    });
+
+    aimAway(controller);
+    move(controller);
+    loop.run();
+    assert.equal(parent.children.length, 0);
+    assert.equal(disposed, true);
+    // And only its own: the template was never the widget's to dispose.
+    assert.equal(templateDisposed, false);
   });
 
   test("lands on the hit even when mounted under a transformed parent", () => {

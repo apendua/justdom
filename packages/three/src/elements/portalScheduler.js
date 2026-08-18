@@ -78,6 +78,15 @@ export function createPortalScheduler({
   /** Advances every frame; what makes the within-bucket offer rotate. */
   let rotation = 0;
 
+  /** Let go of the frame loop the moment no pump has work. */
+  const stopIfIdle = () => {
+    if (waiting.size === 0 && stopFrames) {
+      const stop = stopFrames;
+      stopFrames = null;
+      stop();
+    }
+  };
+
   const tick = () => {
     const deadline = now() + budgetOf();
     // Buckets by priority, highest first, in one pass; insertion order
@@ -113,11 +122,7 @@ export function createPortalScheduler({
       }
     }
     rotation += 1;
-    if (waiting.size === 0 && stopFrames) {
-      const stop = stopFrames;
-      stopFrames = null;
-      stop();
-    }
+    stopIfIdle();
   };
 
   return {
@@ -129,11 +134,7 @@ export function createPortalScheduler({
     },
     remove(pump) {
       waiting.delete(pump);
-      if (waiting.size === 0 && stopFrames) {
-        const stop = stopFrames;
-        stopFrames = null;
-        stop();
-      }
+      stopIfIdle();
     },
   };
 }

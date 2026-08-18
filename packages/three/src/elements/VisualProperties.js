@@ -1,5 +1,13 @@
 import * as THREE from "three";
-import { addDependency, batch, Derived, NoValueError, memo, decorate } from "@apendua/signal";
+import {
+  addDependency,
+  batch,
+  Derived,
+  NoValueError,
+  memo,
+  decorate,
+  withChannel,
+} from "@apendua/signal";
 import { fromEvent, store } from "@apendua/signal";
 import { filter, Subject } from "rxjs";
 import { getBorderBoxSize, getComputedStyleCached } from "./mirror.js";
@@ -152,30 +160,38 @@ function getRelativeXHeightShared(fontFamily, fontWeight) {
   const key = `${fontFamily}\u0000${fontWeight}`;
   let signal = relativeXHeights.get(key);
   if (!signal) {
-    signal = new Derived(() => {
-      // Measured with whatever fonts are at hand, never refused: a face
-      // still on the wire measures as its fallback and is measured again
-      // when `loadingdone` says the loading period closed. Waiting by
-      // throwing was the old behaviour, and per instance it was survivable;
-      // shared, it parked every box that asked during a loading window on
-      // an invalidation that a *second* loading window could leave swallowed
-      // — panels whose quads never drew. A briefly-fallback `ex` metric
-      // corrects itself; an absent box does not.
-      addDependency(fromEvent(document.fonts, "loadingdone"));
-      const element = document.createElement("span");
-      element.style.fontFamily = fontFamily;
-      element.style.fontWeight = fontWeight;
-      element.style.fontSize = "100px";
-      element.style.position = "absolute";
-      element.style.top = "-9999px";
-      element.style.left = "-9999px";
-      element.style.lineHeight = "normal";
-      element.textContent = "x";
-      document.body.appendChild(element);
-      const rect = element.getBoundingClientRect();
-      document.body.removeChild(element);
-      return rect.height / 100;
-    });
+    // Shared by every panel that uses this face, so it belongs to none of
+    // them: built lazily, it would otherwise be captured by whichever panel
+    // happened to ask first and be deferred to that panel's frames for
+    // everyone.
+    signal = withChannel(
+      null,
+      () =>
+        new Derived(() => {
+          // Measured with whatever fonts are at hand, never refused: a face
+          // still on the wire measures as its fallback and is measured again
+          // when `loadingdone` says the loading period closed. Waiting by
+          // throwing was the old behaviour, and per instance it was survivable;
+          // shared, it parked every box that asked during a loading window on
+          // an invalidation that a *second* loading window could leave swallowed
+          // — panels whose quads never drew. A briefly-fallback `ex` metric
+          // corrects itself; an absent box does not.
+          addDependency(fromEvent(document.fonts, "loadingdone"));
+          const element = document.createElement("span");
+          element.style.fontFamily = fontFamily;
+          element.style.fontWeight = fontWeight;
+          element.style.fontSize = "100px";
+          element.style.position = "absolute";
+          element.style.top = "-9999px";
+          element.style.left = "-9999px";
+          element.style.lineHeight = "normal";
+          element.textContent = "x";
+          document.body.appendChild(element);
+          const rect = element.getBoundingClientRect();
+          document.body.removeChild(element);
+          return rect.height / 100;
+        }),
+    );
     relativeXHeights.set(key, signal);
   }
   return signal.get();

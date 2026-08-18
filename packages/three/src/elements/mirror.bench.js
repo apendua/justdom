@@ -38,8 +38,12 @@ if (!document.fonts) {
     },
   });
 }
-globalThis.requestAnimationFrame = () => 0;
-globalThis.cancelAnimationFrame = () => {};
+// No frame source at all, deliberately: a `requestAnimationFrame` that exists
+// but never fires would put the portal on its sliced mounting path and leave
+// it waiting for frames forever. Absent, the portal mounts synchronously,
+// which is the path this benchmark measures.
+globalThis.requestAnimationFrame = /** @type {never} */ (undefined);
+globalThis.cancelAnimationFrame = /** @type {never} */ (undefined);
 
 // jsdom lays nothing out, so a Range measures nothing either: one line box
 // per text node, the size a label would have had.

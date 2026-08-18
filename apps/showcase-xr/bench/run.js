@@ -198,6 +198,28 @@ async function measure({ root, app, rounds, styleReads }, list) {
           await globalThis.__drive(run, 20);
           const before = globalThis.__bench.snapshot();
           const gaps = await globalThis.__drive(run, frames);
+          // Let the panel finish before the coherence check, and only before
+          // that: the portal mounts and re-derives a budget per frame now, so
+          // at the instant the stimulus stops, the tail of the work is
+          // legitimately still queued — hundreds of frames of it after a
+          // large mount on a software renderer. Quiet is detected rather than
+          // assumed: a window of frames in which the mirror performed no
+          // layout read is a mirror with nothing left to do, while a fixed
+          // pause would only move the finish line. The check exists to catch
+          // a cache that *never* catches up — a genuinely stale rect is
+          // exactly as wrong after the panel goes quiet as before, while
+          // in-flight work has drained by construction. Capped, so a run
+          // against a build that never settles still terminates and reports
+          // whatever it finds.
+          let settledReads = -1;
+          for (let round = 0; round < 30; round += 1) {
+            const reads = globalThis.__bench.counters.getBoundingClientRect;
+            if (reads === settledReads) {
+              break;
+            }
+            settledReads = reads;
+            await globalThis.__drive(() => {}, 60);
+          }
           return {
             gaps,
             counts: globalThis.__bench.since(before),

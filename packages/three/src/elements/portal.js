@@ -1,6 +1,14 @@
 import * as THREE from "three";
-import { batch, observable } from "@apendua/signal";
-import { div, getContentGroup } from "./div.js";
+import {
+  batch,
+  makeNonReactive,
+  observable,
+  Derived,
+  Signal,
+  UpdateChannel,
+  withChannel,
+} from "@apendua/signal";
+import { div, getContentGroup, PortalReadyContext } from "./div.js";
 import { text } from "./text.js";
 import { checkbox } from "./checkbox.js";
 import { createMirror, getBorderBoxSize, PORTAL_ATTRIBUTE } from "./mirror.js";
@@ -10,14 +18,16 @@ import { BoxBatchContext, createBoxBatch } from "./boxBatch.js";
 import { TextBatchContext, createTextBatch } from "./textBatch.js";
 import { keepSubtreeMatrices, placeAndScale } from "./place.js";
 import { createFrameRequester } from "./frameRequester.js";
-import { animateLate } from "../render.js";
+import { createPortalScheduler, PortalSchedulerContext } from "./portalScheduler.js";
+import { animateLate, frames } from "../render.js";
 import { InteractionContext } from "../interactions.js";
 
 /**
- * @import {Observable} from 'rxjs';
+ * @import {Observable, Unsubscribable} from 'rxjs';
  * @import {Mountable} from "@apendua/justdom";
  * @import {Object3D} from 'three';
  * @import {MutationBatch} from './animationClock.js';
+ * @import {PortalPump, PortalScheduler} from './portalScheduler.js';
  */
 
 /**
@@ -54,14 +64,47 @@ export function getPortalRoot(node) {
  *   only looks at — a head-locked overlay in particular, which sits between
  *   the eye and everything else and would otherwise be in the way of every
  *   ray that crossed it.
+ * @property {number | (() => number)} [budget] Milliseconds of each frame the
+ *   portal may spend mounting and settling content, **when it paces
+ *   itself** — a portal built outside a rendering context, with no shared
+ *   scheduler to answer to. Under `render()` the budget is the scene's, not
+ *   the panel's: one pool per frame divided across every portal (see
+ *   `RenderOptions.portalBudget`), because three panels each honouring a
+ *   private five milliseconds would cost the shared frame fifteen — and this
+ *   option is ignored. It bounds when work stops being *started*, not how
+ *   long a piece takes: at least one node is built and at least one update
+ *   runs per frame, so a single expensive node overshoots the budget rather
+ *   than stalling forever. 5 by default. A getter is read at the top of
+ *   every pump frame, which keeps the time-versus-smoothness trade a live
+ *   one — the same contract as `makeInteractive`.
+ * @property {number} [priority] This portal's say in the shared pool: pumps
+ *   of higher priority are offered each frame's budget before lower ones,
+ *   so a panel the player is waiting on can be told to finish first — and
+ *   starving the others meanwhile is then the point, not a hazard. Within a
+ *   priority the offer rotates frame by frame, so equals share the pool and
+ *   none waits forever on a peer. 0 by default.
+ * @property {(loading: boolean) => void} [onLoadingChanged] Told when the
+ *   panel finishes mounting its initial content. Fires once, with `false`:
+ *   the loading state starts true and never comes back, because a panel that
+ *   is already visible absorbs later updates incrementally instead of hiding
+ *   itself again. For showing a spinner somewhere; `isLoading()` on the
+ *   handle is the reactive way to ask.
  */
 
 /**
  * @param {WeakKey} ctx
  * @param {PortalOptions} [options]
  */
-export function createPortal(ctx, { opaqueToRays = true } = {}) {
+export function createPortal(
+  ctx,
+  { opaqueToRays = true, budget = 5, priority = 0, onLoadingChanged } = {},
+) {
   const containerObject = new THREE.Group();
+
+  // Nothing to see until the initial content has fully mounted: the panel
+  // would otherwise assemble itself in front of the player, boxes first, text
+  // a few frames later. `markLoaded` below is what shows it.
+  containerObject.visible = false;
 
   // The panel's perimeter. Everything the portal draws hangs off this, and
   // everything it draws keeps its own matrices; this is what makes that hold
@@ -89,6 +132,22 @@ export function createPortal(ctx, { opaqueToRays = true } = {}) {
   // same `ctx` gets its own and neither can see the other's.
   ctx = BoxBatchContext.set(ctx, boxBatch);
   ctx = TextBatchContext.set(ctx, textBatch);
+
+  /**
+   * Whether the panel is still mounting its initial content. True from the
+   * start; flipped exactly once, by `markLoaded`, when everything the first
+   * mount brought has been built and the reactive graph over it has settled.
+   *
+   * @type {Signal<boolean>}
+   */
+  const loading = Signal.of(true);
+
+  // Interactive elements ask this before registering as ray targets. The
+  // raycast set is flat — an ancestor's `visible` shields nothing that
+  // registered itself — so hiding the container above is only half of the
+  // loading state; the other half is the buttons holding off until the panel
+  // is actually there to press.
+  ctx = PortalReadyContext.set(ctx, () => !loading.get());
 
   // What a batch owes gets paid at the end of the frame, before anything is
   // drawn. Most of what invalidates a batch arrives as its own task and is
@@ -128,6 +187,267 @@ export function createPortal(ctx, { opaqueToRays = true } = {}) {
    * back out of it.
    */
   const mirror = createMirror();
+
+  // Shared by everything here that has to wait for a frame rather than be
+  // told about something: the pump below, the animation clock, which samples
+  // styles while they move, and the images further down, which have arrived
+  // and want announcing once rather than each.
+  const requestFrames = createFrameRequester(ctx);
+
+  // Whether this environment can hand out frames at all. Slicing work across
+  // frames only makes sense where frames exist; under a test runner with
+  // neither a renderer nor `requestAnimationFrame`, the sliced path would
+  // wait forever on a frame that never comes, so the portal falls back to
+  // mounting synchronously, exactly as it did before it learned to slice.
+  let hasFrames = false;
+  try {
+    frames(ctx);
+    hasFrames = true;
+  } catch {
+    hasFrames = typeof requestAnimationFrame === "function";
+  }
+
+  /**
+   * The panel's own update channel. Everything the portal derives — layout,
+   * geometry, text runs — is built into it, which is what lets a big mount be
+   * spread over frames: invalidations pile up here instead of running at the
+   * end of every batch, and the pump below drains them a budget's worth at a
+   * time.
+   *
+   * Manual rather than triggered, because the pump divides one frame budget
+   * between two jobs — building queued nodes and draining this channel — and
+   * a channel that flushed itself on its own trigger would spend the whole
+   * budget without asking. `maxStalePasses: Infinity` for the same reason: a
+   * large mount legitimately overruns the budget many frames in a row, and
+   * the catch-up drain the default would force is precisely the stall this
+   * exists to avoid.
+   *
+   * Null where there are no frames — see above — and every `withChannel`
+   * below degrades to the default channel, which is synchronous mounting.
+   *
+   * @type {UpdateChannel | null}
+   */
+  const channel = hasFrames
+    ? new UpdateChannel({
+        name: "portal",
+        order: 1,
+        manual: true,
+        maxStalePasses: Infinity,
+      })
+    : null;
+
+  /**
+   * Who paces this portal. The scheduler `render()` installed, whenever
+   * there is one — that is what makes the budget global, one pool of frame
+   * time divided across every panel in the scene, because the frame the
+   * budget guards is shared and three panels each honouring a private five
+   * milliseconds would cost it fifteen. A portal built outside a rendering
+   * context — a test runner, a plain page — paces itself with a private
+   * scheduler instead, and only there does this portal's own `budget`
+   * option govern; under a shared scheduler the pool is the scheduler's,
+   * and this portal's say in it is `priority`.
+   *
+   * @type {PortalScheduler | null}
+   */
+  const scheduler = !hasFrames
+    ? null
+    : (PortalSchedulerContext.get(ctx) ??
+      createPortalScheduler({
+        budget,
+        requestFrames,
+      }));
+
+  /**
+   * Whether any content has arrived at all. `markLoaded` waits for it: a
+   * portal created and left empty has mounted nothing, and declaring it
+   * loaded would show a blank panel and register its blocker over whatever
+   * is behind it.
+   */
+  let sawContent = false;
+
+  /**
+   * DOM roots waiting to be built, in arrival order. Roots rather than
+   * nodes: the observer reports what was inserted, and one insertion may
+   * carry a whole subtree, which is built as one piece when its turn comes.
+   * The set is the same membership, kept so a node cannot be queued twice.
+   *
+   * @type {Node[]}
+   */
+  const pendingNodes = [];
+
+  /** @type {Set<Node>} */
+  const pendingSet = new Set();
+
+  /**
+   * Build one queued node, if it is still worth building, and queue its
+   * children. One node, deliberately — this is what the budget meters, so it
+   * is what the slicing grain has to be. The first version built a queued
+   * node's whole subtree in one go, which sliced a burst of sibling rows
+   * beautifully and a panel mounted as a single tree not at all: one root,
+   * one frame, every cost this exists to spread.
+   *
+   * A node can leave the tree between being queued and its turn arriving —
+   * a spinner replaced by the content it stood for — and building it then
+   * would make an object for a ghost; the containment check drops it, and
+   * with it the subtree it would have queued.
+   *
+   * Attachment is the builder's job on this path: children are queued after
+   * their parent, so by a child's turn the parent's object exists and the
+   * content group — the group a scroll translates — is there to attach to.
+   *
+   * @param {Node} node
+   */
+  const buildPendingNode = (node) => {
+    if (!containerElement.contains(node)) {
+      // A stale entry — the node left the tree between being queued and its
+      // turn. Skipped, and reported as no work done: the pump must not count
+      // it against the at-least-one-per-frame guarantee, or a queue headed
+      // by departed nodes would spend whole frames building nothing.
+      return false;
+    }
+    const object = nodeToObject.get(node) ?? createObjectForNode(node);
+    if (!object) {
+      // In the tree but nothing to draw — a comment, and in particular the
+      // markers `children()` fences its segments with. Free for the same
+      // reason a stale entry is: no object came into being.
+      return false;
+    }
+    if (!object.parent) {
+      const parentObject = node.parentNode ? nodeToObject.get(node.parentNode) : undefined;
+      if (parentObject) {
+        getContentGroup(parentObject).add(object);
+      }
+    }
+    node.childNodes.forEach((childNode) => {
+      if (!nodeToObject.has(childNode) && !pendingSet.has(childNode)) {
+        pendingSet.add(childNode);
+        pendingNodes.push(childNode);
+      }
+    });
+    return true;
+  };
+
+  /**
+   * The initial mount is done: show the panel, let its buttons register, and
+   * tell whoever wanted telling. Once, ever — a panel that is already visible
+   * absorbs later updates incrementally, and taking it off screen for them
+   * would be worse than any frame they cost.
+   */
+  const markLoaded = () => {
+    if (!sawContent || !loading.get()) {
+      return;
+    }
+    // The blocker before the flip: flipping `loading` is what lets the
+    // panel's own controls register, and the background should be in the
+    // raycast set before the things drawn in front of it.
+    containerObject.visible = true;
+    if (blocker) {
+      interactionManager.add(blocker);
+    }
+    loading.set(false);
+    onLoadingChanged?.(false);
+  };
+
+  /**
+   * This portal's slice of a frame: build queued nodes until the deadline,
+   * hand what is left to the channel, and when both are empty, declare the
+   * panel loaded. At least one node and at least one update per call
+   * regardless of the clock — the scheduler's contract asks it of whichever
+   * pump it offers a frame to first, and giving the guarantee always is
+   * what keeps a zero budget moving instead of stalling.
+   *
+   * Returns whether the pump is finished, which is how it leaves the
+   * scheduler's queue: not by being stopped, but by having nothing left —
+   * checked *after* `markLoaded`, because the loading flip is itself a
+   * change the graph answers, the gated ray targets re-evaluating their
+   * conditions right back into this channel, and a notification collapsed
+   * by the queue's own bookkeeping must not strand that work.
+   *
+   * @type {PortalPump}
+   */
+  const pump = {
+    priority,
+    tick: (deadline) => {
+      if (!channel) {
+        return true;
+      }
+      const now = channel.now;
+      if (pendingNodes.length > 0) {
+        batch(() => {
+          withChannel(channel, () => {
+            // Until the deadline — but at least one node genuinely *built*,
+            // not merely one entry shifted: entries for nodes that left the
+            // tree are skipped for free, or a queue headed by them would
+            // spend whole frames building nothing.
+            let progressed = false;
+            while (pendingNodes.length > 0 && (!progressed || now() < deadline)) {
+              const node = /** @type {Node} */ (pendingNodes.shift());
+              pendingSet.delete(node);
+              if (buildPendingNode(node)) {
+                progressed = true;
+              }
+            }
+          });
+        });
+      }
+      // In the channel, because draining can build: a node re-deriving its
+      // layout constructs computations of its own, and those belong to the
+      // panel's region like everything else here.
+      withChannel(channel, () => {
+        channel.flush({ budget: Math.max(deadline - now(), 0) });
+      });
+      // Content appeared or moved under whatever rays are resting on the
+      // panel.
+      interactionManager.updateIntersections();
+      if (pendingNodes.length > 0 || channel.pendingCount > 0) {
+        return false;
+      }
+      markLoaded();
+      return pendingNodes.length === 0 && channel.pendingCount === 0;
+    },
+  };
+
+  const schedulePump = () => {
+    if (channel && scheduler) {
+      scheduler.schedule(pump);
+    }
+  };
+
+  /** @type {Unsubscribable | null} */
+  let pendingWatchSubscription = null;
+  if (channel) {
+    // Work landing in the channel while no pump is running — a scroll, an
+    // attribute flip, anything after the initial mount — must start one. The
+    // watcher lives in the *default* channel, necessarily: a computation
+    // inside the channel saying "the channel has work" would itself be the
+    // work, waiting for the pump it exists to start.
+    //
+    // Never-equal, deliberately. The flag can go true and back mid-flush,
+    // and the two announcements can collapse into one evaluation that finds
+    // the cached value again; an equality gate would swallow exactly the
+    // notification that carries "there is work now".
+    const pendingWatch = withChannel(
+      null,
+      () =>
+        new Derived(() => channel.hasPendingUpdates, {
+          isEqual: () => false,
+        }),
+    );
+    pendingWatchSubscription = pendingWatch.subscribe({
+      next: () => {
+        if (pendingWatch.get()) {
+          schedulePump();
+        }
+      },
+    });
+    // Prime it: a Derived computes on first read, and the watcher must be
+    // watching before the first mutation arrives. Non-reactively, and that
+    // is load-bearing: `createPortal` is itself called inside a computation
+    // — `dom()` builds the portal in an effect — and a bare read here would
+    // make that computation depend on the never-equal watcher, tearing the
+    // portal down and rebuilding it on every toggle of its own channel.
+    makeNonReactive(() => pendingWatch.get())();
+  }
 
   /**
    * Take down everything the portal made for a node and for everything under
@@ -182,10 +502,16 @@ export function createPortal(ctx, { opaqueToRays = true } = {}) {
    * @param {Node} node
    * @returns {THREE.Object3D | undefined}
    */
-  function getOrCreateObjectForNode(node) {
-    if (nodeToObject.has(node)) {
-      return nodeToObject.get(node);
-    }
+  /**
+   * Build the object for this one node and nothing below it. The recursion
+   * over children is the caller's business, because the two callers want it
+   * done differently: the synchronous path walks the subtree here and now,
+   * and the pump queues the children to be built a budget per frame.
+   *
+   * @param {Node} node
+   * @returns {THREE.Object3D | undefined}
+   */
+  function createObjectForNode(node) {
     mirror.adopt(node);
     /** @type {Observable<THREE.Object3D> | undefined} */
     let object$;
@@ -225,6 +551,21 @@ export function createPortal(ctx, { opaqueToRays = true } = {}) {
     objectToCleanup.set(object, () => {
       subscription.unsubscribe();
     });
+    return object;
+  }
+
+  /**
+   * @param {Node} node
+   * @returns {THREE.Object3D | undefined}
+   */
+  function getOrCreateObjectForNode(node) {
+    if (nodeToObject.has(node)) {
+      return nodeToObject.get(node);
+    }
+    const object = createObjectForNode(node);
+    if (!object) {
+      return undefined;
+    }
     // A box carries its DOM children inside a content group — the group a
     // scroll translates — so that is where they attach.
     const content = getContentGroup(object);
@@ -263,7 +604,10 @@ export function createPortal(ctx, { opaqueToRays = true } = {}) {
   const blocker = opaqueToRays ? createBlocker() : null;
   if (blocker) {
     containerObject.add(blocker);
-    interactionManager.add(blocker);
+    // Not a ray target yet: the raycast set is flat, so the container being
+    // invisible would not shield the plane, and a loading panel would block
+    // rays before there was anything visible to block them for. `markLoaded`
+    // registers it with everything else.
 
     // Hitting the background is a fact the DOM inside the portal is entitled
     // to hear about: it is what "clicked outside" means to a menu that wants
@@ -303,7 +647,7 @@ export function createPortal(ctx, { opaqueToRays = true } = {}) {
     }
   }
 
-  const resizeSubscription = observable(resizeCallback).subscribe();
+  const resizeSubscription = withChannel(channel, () => observable(resizeCallback).subscribe());
 
   /**
    * One observer flush, applied as one transaction. The mirror routes each
@@ -316,37 +660,59 @@ export function createPortal(ctx, { opaqueToRays = true } = {}) {
    * @param {MutationRecord[]} mutationList
    */
   const mutationCallback = (mutationList) => {
-    batch(() => {
-      mirror.ingest(mutationList);
-      /** @type {Set<Node>} */
-      const alreadySeen = new Set();
-      for (const mutation of mutationList) {
-        if (mutation.type !== "childList") {
-          continue;
-        }
-        const parentObject = nodeToObject.get(mutation.target);
-        mutation.addedNodes.forEach((node) => {
-          alreadySeen.add(node);
-          const childObject = getOrCreateObjectForNode(node);
-          if (childObject && parentObject) {
-            getContentGroup(parentObject).add(childObject);
+    // In the channel: the mirror's ingest reads and writes signals whose
+    // dependents are the panel's own computations, and those must queue in
+    // the channel rather than run at the end of this batch.
+    withChannel(channel, () => {
+      batch(() => {
+        mirror.ingest(mutationList);
+        /** @type {Set<Node>} */
+        const alreadySeen = new Set();
+        for (const mutation of mutationList) {
+          if (mutation.type !== "childList") {
+            continue;
           }
-        });
-      }
-      for (const mutation of mutationList) {
-        if (mutation.type !== "childList") {
-          continue;
+          sawContent = true;
+          const parentObject = nodeToObject.get(mutation.target);
+          mutation.addedNodes.forEach((node) => {
+            alreadySeen.add(node);
+            // A node the portal has never seen goes to the queue and gets
+            // built when the pump reaches it — that is the slicing. One it
+            // has seen — a reinsertion, a move — already paid its cost and
+            // reattaches on the spot.
+            if (channel && !nodeToObject.has(node)) {
+              if (!pendingSet.has(node)) {
+                pendingSet.add(node);
+                pendingNodes.push(node);
+              }
+              return;
+            }
+            const childObject = getOrCreateObjectForNode(node);
+            if (childObject && parentObject) {
+              getContentGroup(parentObject).add(childObject);
+            }
+          });
         }
-        mutation.removedNodes.forEach((node) => {
-          // If this node was added somewhere else it does not make sense to
-          // clean it up, so if we detect that it was already seen, we skip it.
-          if (!alreadySeen.has(node)) {
-            const childObject = nodeToObject.get(node);
-            childObject?.removeFromParent();
-            cleanup(node);
+        for (const mutation of mutationList) {
+          if (mutation.type !== "childList") {
+            continue;
           }
-        });
-      }
+          mutation.removedNodes.forEach((node) => {
+            // If this node was added somewhere else it does not make sense to
+            // clean it up, so if we detect that it was already seen, we skip it.
+            if (!alreadySeen.has(node)) {
+              // Un-queue it rather than build a ghost. The array keeps its
+              // entry — `buildPendingNode` skips what left the tree — but the
+              // membership must go, or a node removed and re-added would be
+              // refused the queue the second time.
+              pendingSet.delete(node);
+              const childObject = nodeToObject.get(node);
+              childObject?.removeFromParent();
+              cleanup(node);
+            }
+          });
+        }
+      });
     });
     // A class swap is how most transitions begin, and inside an immersive
     // session the mutation is the only trace of one that reaches us: the
@@ -359,6 +725,16 @@ export function createPortal(ctx, { opaqueToRays = true } = {}) {
     // reporting the button as hovered until the player twitched. The scene
     // changed under them; ask for the rays to be cast again.
     interactionManager.updateIntersections();
+    if (channel) {
+      if (pendingNodes.length > 0 || channel.pendingCount > 0) {
+        schedulePump();
+      }
+    } else {
+      // No frames to slice across: everything above was built synchronously,
+      // so the first flush that carried content is also the moment the panel
+      // is done mounting.
+      markLoaded();
+    }
   };
 
   const mutationObserver = new MutationObserver(mutationCallback);
@@ -388,12 +764,6 @@ export function createPortal(ctx, { opaqueToRays = true } = {}) {
     characterData: true,
   });
 
-  // Shared by everything here that has to wait for a frame rather than be
-  // told about something: the animation clock, which samples styles while
-  // they move, and the images below, which have arrived and want announcing
-  // once rather than each.
-  const requestFrames = createFrameRequester(ctx);
-
   /**
    * What the animation clock's batches mean in the mirror's vocabulary:
    * `animated` is a style change stretched over time, `reflow` is rects
@@ -403,15 +773,17 @@ export function createPortal(ctx, { opaqueToRays = true } = {}) {
    * @param {MutationBatch[]} batches
    */
   const applyAnimationBatches = (batches) => {
-    batch(() => {
-      for (const animationBatch of batches) {
-        if (animationBatch.types.has("animated") && animationBatch.targets) {
-          mirror.animatedStyles(animationBatch.targets);
+    withChannel(channel, () => {
+      batch(() => {
+        for (const animationBatch of batches) {
+          if (animationBatch.types.has("animated") && animationBatch.targets) {
+            mirror.animatedStyles(animationBatch.targets);
+          }
+          if (animationBatch.types.has("reflow")) {
+            mirror.reflowed(animationBatch.targets);
+          }
         }
-        if (animationBatch.types.has("reflow")) {
-          mirror.reflowed(animationBatch.targets);
-        }
-      }
+      });
     });
   };
 
@@ -446,9 +818,25 @@ export function createPortal(ctx, { opaqueToRays = true } = {}) {
     if (!(target instanceof Node)) {
       return;
     }
-    batch(() => {
-      mirror.scrolled(target);
+    withChannel(channel, () => {
+      batch(() => {
+        mirror.scrolled(target);
+      });
     });
+    // A scroll settles synchronously, budget or no budget. Everything the
+    // offset moves — the content group's translation, the clip boxes of the
+    // scrolled subtree, the culling at the window's edges — is arithmetic on
+    // cached values, cheap by the mirror's own design; what a budget would
+    // buy here is not a smoother frame but a torn one, the content sliding
+    // in this frame and its clipping catching up over the next several,
+    // because the translation is one shallow task and the clipping is one
+    // per row. An interaction has to land whole in the frame that carries
+    // it; deferral is for content changes, which nobody's hand is resting
+    // on. The flush drains whatever else the channel holds along with it —
+    // the queue cannot take one signal's consequences and leave another's —
+    // which is the accepted cost of a hand on the panel, and no more than
+    // every scroll cost before the panel learned to defer at all.
+    channel?.flush({ budget: Infinity });
     // Content has moved out from under a ray that did not move with it. The
     // manager only recasts when a hand moves or when it is told the scene
     // changed, and this is the second case.
@@ -494,8 +882,10 @@ export function createPortal(ctx, { opaqueToRays = true } = {}) {
     loadFrame = null;
     const arrived = [...loaded];
     loaded.clear();
-    batch(() => {
-      mirror.contentLoaded(arrived);
+    withChannel(channel, () => {
+      batch(() => {
+        mirror.contentLoaded(arrived);
+      });
     });
     interactionManager.updateIntersections();
   };
@@ -525,8 +915,10 @@ export function createPortal(ctx, { opaqueToRays = true } = {}) {
   function fontLoadingCallback() {
     // Fonts arriving restyle and re-measure everything at once; there is no
     // node to scope that to.
-    batch(() => {
-      mirror.fontsLoaded();
+    withChannel(channel, () => {
+      batch(() => {
+        mirror.fontsLoaded();
+      });
     });
   }
   if (document.fonts) {
@@ -534,7 +926,12 @@ export function createPortal(ctx, { opaqueToRays = true } = {}) {
   }
 
   objectToCleanup.set(containerObject, () => {
+    scheduler?.remove(pump);
+    pendingWatchSubscription?.unsubscribe();
+    pendingNodes.length = 0;
+    pendingSet.clear();
     if (blocker) {
+      // Removing is safe whether `markLoaded` ever added it.
       interactionManager.remove(blocker);
     }
     if (containerElement.parentNode) {
@@ -582,6 +979,14 @@ export function createPortal(ctx, { opaqueToRays = true } = {}) {
     },
     disconnect() {
       cleanup(containerElement);
+    },
+    /**
+     * Whether the panel is still mounting its initial content. Reactive: a
+     * computation that reads it re-runs when the answer changes, which it
+     * does exactly once, true to false.
+     */
+    isLoading() {
+      return loading.get();
     },
   };
 }

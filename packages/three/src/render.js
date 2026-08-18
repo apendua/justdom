@@ -2,6 +2,7 @@ import * as THREE from "three";
 import { BehaviorSubject, tap, Subject, Observable, combineLatest, map } from "rxjs";
 import { Computation, createProperty, Signal } from "@apendua/signal";
 import { InteractionManager, InteractionContext } from "./interactions.js";
+import { createPortalScheduler, PortalSchedulerContext } from "./elements/portalScheduler.js";
 import { fitRayToHit } from "./pointers.js";
 
 export const RendererContext = createProperty(
@@ -268,6 +269,14 @@ export function frames(ctx) {
  * @property {(renderer: THREE.WebGLRenderer) => void} [onBeforeRender]
  * @property {(renderer: THREE.WebGLRenderer) => void} [onAfterRender]
  * @property {boolean} [antialias]
+ * @property {number | (() => number)} [portalBudget] Milliseconds of each
+ *   frame the scene's portals may spend mounting and settling content,
+ *   between them: one pool, divided across every panel by priority and
+ *   rotation, because the frame it guards is shared and several panels
+ *   mounting at once is scene startup, not an edge case. A getter is read
+ *   at the top of every frame, so an app can trade mount time for frame
+ *   rate on the fly. 5 by default — a third of a 60 Hz frame, leaving room
+ *   for the app and the renderer.
  */
 
 /**
@@ -314,6 +323,21 @@ export function render(fn, options = {}) {
       width: width.asObservable(),
       height: height.asObservable(),
     });
+    // One scheduler per rendering context is what makes the portal budget
+    // global: every panel in this scene draws frame time from the same pool,
+    // however many are mounting at once. The closure reads `ctx` when the
+    // first portal schedules work, by which point the contexts above are all
+    // in place.
+    ctx = PortalSchedulerContext.set(
+      ctx,
+      createPortalScheduler({
+        budget: options.portalBudget ?? 5,
+        requestFrames: (tick) => {
+          const subscription = frames(ctx).subscribe(() => tick());
+          return () => subscription.unsubscribe();
+        },
+      }),
+    );
 
     const controller0 = renderer.xr.getController(0);
     const controllerGrip0 = renderer.xr.getControllerGrip(0);

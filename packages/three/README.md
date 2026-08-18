@@ -211,6 +211,76 @@ landing on. What goes is the panel's own background, and only that — a
 `cursor: pointer` element inside is still a ray target, and a panel with one
 in it wanted to be opaque after all.
 
+**A panel mounts a budget per frame, behind a loading state.** Building a
+mirrored element costs real work — an object, its measurements, its place in
+the batches — and a list of hundreds arriving in one observer flush used to
+pay all of it before the next frame could draw. The portal instead queues
+what the observer reports and spends `budget` milliseconds of each frame on
+it (5 by default), so however large the mount, the frame keeps its rate.
+
+While that runs the panel is *loading*: invisible, and stopping no rays —
+nothing inside it registers as a ray target until it is actually there to
+press. Loading ends exactly once, when everything the initial content brought
+has been built and settled; the panel appears whole rather than assembling
+itself in front of the player. Later updates — rows arriving, a menu opening
+— go through the same budgeted pump, but a panel that is already visible
+absorbs them incrementally and never hides itself again.
+
+```js
+dom(ctx, panel, [set({ position })], {
+  budget: 8, // ms of each frame spent mounting
+  onLoadingChanged: (loading) => spinner.visible = loading, // fires once, with false
+});
+```
+
+The budget bounds when work stops being started, not how long a piece takes:
+at least one element is built and at least one update runs per frame, so a
+single expensive node overshoots the budget rather than stalling the mount.
+The grain is the element, not the inserted subtree — a whole panel usually
+arrives as exactly one root, and a slicer that only sliced between roots
+would build it whole.
+
+**The budget is the scene's, not the panel's.** The budget guards the frame,
+and the frame is shared: three panels each honouring a private five
+milliseconds would cost it fifteen, and several panels mounting at once is
+scene startup, not an edge case. `render()` installs one scheduler per
+rendering context, and every portal under it draws frame time from the same
+pool — set with `portalBudget`, a number or a getter read at the top of every
+frame, so the mount-time-versus-fps trade stays a live one:
+
+```js
+render(Scene, {
+  // A sliver while a hand is busy, generous otherwise; `Infinity` would
+  // finish every mount in flight within the next frame.
+  portalBudget: () => (interacting.get() ? 1 : 8),
+});
+```
+
+What a single panel says about itself is `priority`, not milliseconds:
+
+```js
+dom(ctx, panel, [set({ position })], { priority: 1 });
+```
+
+Pumps of higher priority are offered each frame's pool before lower ones, so
+a panel the player is waiting on can be told to finish first — and starving
+the others meanwhile is the point, not a hazard. Within a priority the offer
+rotates frame by frame, so equals share the pool and none waits forever on a
+peer. A portal built outside a rendering context — a test runner, a plain
+page — paces itself instead, and only there does its own `budget` option
+govern. Where there are no frames to slice across — no
+renderer and no `requestAnimationFrame`, as under a test runner — the portal
+mounts synchronously, exactly as it always did.
+
+**A scroll is never deferred.** Everything the offset moves — the content
+group's translation, the clip boxes of the scrolled subtree, the culling at
+the window's edges — is arithmetic on cached values, and all of it settles
+synchronously in the event that carried the scroll, whatever the budget.
+Spread over frames it would tear: the content sliding this frame, its
+clipping catching up over the next several, under a hand that is still
+dragging. An interaction lands whole in the frame that carries it; deferral
+is for content changes, which nobody's hand is resting on.
+
 ## Checkboxes
 
 Most elements are a box with other elements in them, which is all a portal has

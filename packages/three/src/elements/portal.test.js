@@ -5,6 +5,7 @@ import { Derived, UpdateChannel, withChannel } from "@apendua/signal";
 import { $, attr, children } from "@apendua/justdom";
 import { InteractionContext, InteractionManager } from "../interactions.js";
 import { getComputedStyleCached } from "./mirror.js";
+import { acquireImage, releaseImage } from "./image.js";
 import { createPortal, getPortalRoot } from "./portal.js";
 
 // jsdom-env exposes the common DOM globals, but not MutationObserver, which
@@ -13,16 +14,49 @@ if (typeof globalThis.MutationObserver === "undefined") {
   globalThis.MutationObserver = window.MutationObserver;
 }
 
-// jsdom has no FontFaceSet; VisualProperties consults it for x-height.
+// jsdom has no FontFaceSet; VisualProperties consults it for x-height, and
+// one test below closes a loading period by hand, so the stub keeps real
+// listeners rather than swallowing them.
+/** @type {Map<string, Set<(event: unknown) => void>>} */
+const fontListeners = new Map();
 if (!document.fonts) {
   Object.defineProperty(document, "fonts", {
     value: {
       status: "loaded",
       ready: Promise.resolve(),
-      addEventListener() {},
-      removeEventListener() {},
+      /**
+       * @param {string} event
+       * @param {(event: unknown) => void} handler
+       */
+      addEventListener(event, handler) {
+        let handlers = fontListeners.get(event);
+        if (!handlers) {
+          handlers = new Set();
+          fontListeners.set(event, handlers);
+        }
+        handlers.add(handler);
+      },
+      /**
+       * @param {string} event
+       * @param {(event: unknown) => void} handler
+       */
+      removeEventListener(event, handler) {
+        fontListeners.get(event)?.delete(handler);
+      },
     },
   });
+}
+
+/**
+ * Stand in for the browser closing a font-loading period.
+ *
+ * @param {string} event
+ * @returns {void}
+ */
+function dispatchFontsEvent(event) {
+  for (const handler of [...(fontListeners.get(event) ?? [])]) {
+    handler({ type: event });
+  }
 }
 
 // jsdom runs no animation frames, and the portal borrows them for the parts
@@ -872,5 +906,158 @@ describe("createPortal", () => {
     dependentSubscription.unsubscribe();
     subscription.unsubscribe();
     portal.disconnect();
+  });
+
+  test("a font loading period closing reaches surviving panels after the first asker is gone", async () => {
+    // The x-height metric is one Derived per (family, weight), shared by
+    // every panel and built lazily — under whichever panel first asked. It
+    // must live in the default channel: captured into that panel's private
+    // channel instead, `loadingdone` would queue its re-measure in a channel
+    // that stops being pumped when the panel is disposed, and no surviving
+    // panel would ever re-measure its text.
+    const manager = new InteractionManager();
+    const ctx = InteractionContext.set({}, manager);
+
+    // The probe span measures 0 in jsdom, so a re-measure would be both
+    // invisible and value-equal — and a value that never changes stops the
+    // invalidation from travelling. Give it a height that moves.
+    const originalRect = window.Element.prototype.getBoundingClientRect;
+    let probeHeight = 50;
+    let probeReads = 0;
+    window.Element.prototype.getBoundingClientRect = function () {
+      const element = /** @type {HTMLElement} */ (this);
+      if (
+        element.tagName === "SPAN" &&
+        element.textContent === "x" &&
+        element.style.top === "-9999px"
+      ) {
+        probeReads += 1;
+        return /** @type {DOMRect} */ (
+          /** @type {unknown} */ ({
+            x: 0,
+            y: 0,
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: probeHeight,
+            width: 0,
+            height: probeHeight,
+          })
+        );
+      }
+      return originalRect.call(this);
+    };
+    try {
+      /**
+       * @returns {{ portal: ReturnType<typeof createPortal>, subscription: { unsubscribe: () => void } }}
+       */
+      const mountPanel = () => {
+        const portal = createPortal(ctx);
+        portal.addTo(new THREE.Group());
+        /** @type {import("@apendua/justdom").Mountable<Node> | undefined} */
+        let mountable;
+        const tree = $("div", [children($("div", []))]);
+        const subscription = tree.subscribe((value) => {
+          mountable = value;
+        });
+        assert.ok(mountable);
+        portal.mount(mountable);
+        return { portal, subscription };
+      };
+
+      const first = mountPanel();
+      await settle(first.portal);
+      const second = mountPanel();
+      await settle(second.portal);
+
+      first.subscription.unsubscribe();
+      first.portal.disconnect();
+
+      const readsBefore = probeReads;
+      probeHeight = 60;
+      dispatchFontsEvent("loadingdone");
+      await pump();
+
+      assert.ok(probeReads > readsBefore, "the metric re-measured after the loading period closed");
+      assert.equal(frameCallbacks.length, 0, "the surviving panel drained back to quiet");
+
+      second.subscription.unsubscribe();
+      second.portal.disconnect();
+    } finally {
+      window.Element.prototype.getBoundingClientRect = originalRect;
+    }
+  });
+
+  test("an image landing after the first asking panel is gone still reaches the others", async () => {
+    // One texture entry per URL, shared across panels and built lazily —
+    // during whichever panel's flush asked first. Like the font metric
+    // above, it must never end up owned by that panel's private channel:
+    // the panel that triggered the load is free to die before the load
+    // resolves, and the panels still standing must hear about the texture
+    // anyway. This pins the whole journey — one load per URL however many
+    // panels ask, and a completion that lands after the first asker is gone
+    // still reaching the rest.
+    const manager = new InteractionManager();
+    const ctx = InteractionContext.set({}, manager);
+
+    /** @type {Array<{ url: string, onLoad: ((texture: THREE.Texture) => void) | undefined }>} */
+    const pendingLoads = [];
+    const originalLoad = THREE.TextureLoader.prototype.load;
+    THREE.TextureLoader.prototype.load = /** @type {typeof originalLoad} */ (
+      function (/** @type {string} */ url, /** @type {(texture: THREE.Texture) => void} */ onLoad) {
+        pendingLoads.push({ url, onLoad });
+        return new THREE.Texture();
+      }
+    );
+    try {
+      /**
+       * @returns {{ portal: ReturnType<typeof createPortal>, subscription: { unsubscribe: () => void } }}
+       */
+      const mountImage = () => {
+        const portal = createPortal(ctx);
+        portal.addTo(new THREE.Group());
+        /** @type {import("@apendua/justdom").Mountable<Node> | undefined} */
+        let mountable;
+        const tree = $("div", [children($("img", [attr("src", () => "/shared-icon.png")]))]);
+        const subscription = tree.subscribe((value) => {
+          mountable = value;
+        });
+        assert.ok(mountable);
+        portal.mount(mountable);
+        return { portal, subscription };
+      };
+
+      const first = mountImage();
+      await settle(first.portal);
+      const second = mountImage();
+      await settle(second.portal);
+
+      assert.equal(pendingLoads.length, 1, "one URL, one load, however many panels show it");
+      const { url, onLoad } = pendingLoads[0];
+      assert.ok(onLoad);
+
+      // Watch the shared entry the way a panel does: from a channel of the
+      // panel's own order.
+      const entry = acquireImage(url);
+      const observing = new UpdateChannel({ name: "observing", order: 1 });
+      const status = withChannel(observing, () => new Derived(() => entry.state.get().status));
+      const statusSubscription = status.subscribe({ next: () => status.get() });
+      assert.equal(status.get(), "loading");
+
+      first.subscription.unsubscribe();
+      first.portal.disconnect();
+
+      onLoad(new THREE.Texture());
+      await pump();
+
+      assert.equal(status.get(), "loaded", "the surviving panel's image arrived");
+
+      statusSubscription.unsubscribe();
+      releaseImage(url);
+      second.subscription.unsubscribe();
+      second.portal.disconnect();
+    } finally {
+      THREE.TextureLoader.prototype.load = originalLoad;
+    }
   });
 });

@@ -1,7 +1,7 @@
 import * as THREE from "three";
-import { Observable, switchMap, takeUntil } from "rxjs";
+import { Observable, Subject, switchMap, takeUntil } from "rxjs";
 import { effects, just } from "@apendua/signal";
-import { onInvalidate } from "@apendua/signal";
+import { onCleanup } from "@apendua/signal";
 import { createPortal } from "./elements/portal.js";
 
 /**
@@ -24,6 +24,8 @@ export function dom(ctx, mountable$, operators = [], options = {}) {
   return just(group, operators).pipe(
     switchMap((obj) => {
       return new Observable((subscriber) => {
+        /** @type {Subject<void>} */
+        const done = new Subject();
         subscriber.next({
           /** @param {THREE.Object3D} parent */
           addTo(parent) {
@@ -32,26 +34,24 @@ export function dom(ctx, mountable$, operators = [], options = {}) {
                 const portal = createPortal(ctx, options);
                 portal.addTo(obj);
                 portal.mount(mountable);
-                onInvalidate(() => {
+                parent.add(obj);
+                onCleanup(() => {
+                  if (obj.parent == parent) {
+                    obj.parent.remove(obj);
+                  }
                   portal.disconnect();
                 });
               }),
-              takeUntil(
-                new Observable(() => {
-                  parent.add(obj);
-                  return () => {
-                    if (obj.parent) {
-                      obj.parent.remove(obj);
-                    }
-                  };
-                }),
-              ),
+              takeUntil(done),
             );
             return observable.subscribe({
               error: (err) => subscriber.error(err),
             });
           },
         });
+        return () => {
+          done.next();
+        };
       });
     }),
   );

@@ -123,6 +123,9 @@ export function keepSubtreeMatrices(object) {
   // Per object rather than shared: portals nest, and a shared scratch would be
   // overwritten by the inner walk before the outer one had compared it.
   const previous = new THREE.Matrix4();
+  /**
+   * @this {Object3D}
+   */
   object.updateMatrixWorld = function () {
     if (this.matrixAutoUpdate) {
       this.updateMatrix();

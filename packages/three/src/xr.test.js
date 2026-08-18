@@ -15,18 +15,28 @@ import { createXRButton } from "./xr.js";
  */
 
 /**
- * @returns {WebGLRenderer & { calls: string[] }}
+ * @returns {WebGLRenderer & { calls: string[]; listeners: string[] }}
  */
 function fakeRenderer() {
   /** @type {string[]} */
   const calls = [];
-  return /** @type {WebGLRenderer & { calls: string[] }} */ (
+  /** @type {string[]} */
+  const listeners = [];
+  return /** @type {WebGLRenderer & { calls: string[]; listeners: string[] }} */ (
     /** @type {unknown} */ ({
       calls,
+      listeners,
       xr: {
         setReferenceSpaceType(/** @type {string} */ value) {
           calls.push(value);
         },
+        // What the viewer anchor hangs itself on when it is installed.
+        addEventListener(/** @type {string} */ type) {
+          listeners.push(type);
+        },
+        removeEventListener() {},
+        getSession: () => null,
+        getReferenceSpace: () => null,
       },
     })
   );
@@ -149,6 +159,23 @@ describe("createXRButton", () => {
     await createXRButton(fakeRenderer());
 
     assert.equal(vr.mock.callCount(), 1);
+  });
+
+  test("installs the viewer anchor by default, and not when opted out", async (t) => {
+    t.mock.method(ARButton, "createButton", () => ({}));
+    navigator.xr = /** @type {XRSystem} */ (
+      /** @type {unknown} */ ({ isSessionSupported: async () => false })
+    );
+
+    const anchored = fakeRenderer();
+    await createXRButton(anchored);
+    // The anchor waits for sessions on the renderer; the subscription is how
+    // it is installed at all.
+    assert.deepEqual(anchored.listeners, ["sessionstart", "sessionend"]);
+
+    const unanchored = fakeRenderer();
+    await createXRButton(unanchored, { anchor: false });
+    assert.deepEqual(unanchored.listeners, []);
   });
 
   test("passes the ar/vr session init through to whichever button is used", async (t) => {

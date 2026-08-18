@@ -11,6 +11,7 @@ export { dropdown } from "./elements/dropdown.js";
 export { keyboard, MOBILE_LAYOUT } from "./elements/keyboard.js";
 export { scrollable } from "./elements/scrollable.js";
 export { createXRButton } from "./xr.js";
+export { anchorToViewer } from "./anchor.js";
 
 /**
  * @template {object} T

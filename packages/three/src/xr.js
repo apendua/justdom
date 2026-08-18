@@ -1,5 +1,6 @@
 import { ARButton } from "three/examples/jsm/webxr/ARButton.js";
 import { VRButton } from "three/examples/jsm/webxr/VRButton.js";
+import { anchorToViewer } from "./anchor.js";
 
 /**
  * @typedef {import('three').WebGLRenderer} WebGLRenderer
@@ -25,12 +26,27 @@ import { VRButton } from "three/examples/jsm/webxr/VRButton.js";
  * missing. Setting the reference space explicitly keeps both paths
  * consistent, matching what ARButton already does internally.
  *
+ * A `local` origin is also only a promise that the runtime keeps as well as
+ * its tracking allowed at the instant the session was created — entered on
+ * stale tracking, the origin lands somewhere arbitrary and the scene with it.
+ * So the viewer anchor is installed alongside the button: every session's
+ * origin is re-derived from the first trustworthy viewer pose instead of
+ * being trusted blindly (see `anchorToViewer`). `anchor: false` opts out,
+ * for an app that wants to manage the reference space itself.
+ *
  * @param {WebGLRenderer} renderer
- * @param {{ ar?: Partial<ARButtonSessionInit>; vr?: XRSessionInit }} [sessionInit]
+ * @param {{
+ *   ar?: Partial<ARButtonSessionInit>;
+ *   vr?: XRSessionInit;
+ *   anchor?: boolean;
+ * }} [sessionInit]
  * @returns {Promise<HTMLElement>}
  */
 export async function createXRButton(renderer, sessionInit = {}) {
   renderer.xr.setReferenceSpaceType("local");
+  if (sessionInit.anchor !== false) {
+    anchorToViewer(renderer);
+  }
   const xr = navigator.xr;
   if (xr) {
     if (await xr.isSessionSupported("immersive-ar").catch(() => false)) {

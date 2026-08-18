@@ -35,14 +35,7 @@ import { brickShape, BrickType } from "./types.js";
 import { CastleContext, ListenerContext, SessionContext } from "../elements/context.js";
 import { createClicks } from "@apendua.dev/sound";
 import { runSimulation, useAsWorldOrigin } from "../elements/rapier.js";
-import {
-  align,
-  alignUpright,
-  QUARTER_TURN,
-  snapToHorizontalAxis,
-  turn,
-  upAxis,
-} from "../utils/rotations.js";
+import { align, QUARTER_TURN, snapToHorizontalAxis, turn, upAxis } from "../utils/rotations.js";
 import { neutralLatch, readStick, StickLatch, stepStick } from "../utils/thumbstick.js";
 import { boxesOverlap, brickBox, lowestPoint, rotatedSize, snapToGrid } from "../utils/grid.js";
 import { BrickState } from "../store/CastleStore.js";
@@ -205,8 +198,12 @@ const Game = component((ctx: WeakKey) => {
         placement.offset.copy(turn(placement.offset, tumbleAxis(), steps.y * QUARTER_TURN));
       }
 
+      // The full set of twenty four grid orientations, not just the upright
+      // ones: a wrist can tip a brick over as well as turn it, and the grid
+      // only asks that the result is axis-aligned. The thumbstick stays for
+      // the turns a wrist cannot comfortably reach.
       const quaternion = align(
-        new THREE.Quaternion().copy(placement.offset).multiply(alignUpright(held.quaternion)),
+        new THREE.Quaternion().copy(placement.offset).multiply(held.quaternion),
       );
       const extent = rotatedSize(brickShape(type).size, quaternion);
       const position = snapToGrid(held.position, extent);

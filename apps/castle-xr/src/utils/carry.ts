@@ -8,9 +8,13 @@
  * standing on it. So a carry keeps only what a level thing can have: where it
  * is, and which way round it faces.
  *
- * The offset from hand to object is kept, and turned with the hand, so the
- * board swings around the hand rather than snapping to it — a board grabbed by
- * its far edge stays gripped by its far edge.
+ * The point the ray landed on when the hand closed — the grab point — is the
+ * reference for everything that follows. It stays pinned to the ray, the same
+ * distance out along it, and the board turns *about it* rather than about the
+ * hand or its own centre. A board grabbed by its far corner is steered by that
+ * corner, and the corner never slides out from under the cursor: tipping the
+ * wrist moves the board where the ray now points, while the board itself stays
+ * level throughout.
  */
 import * as THREE from "three";
 import { setWorldMatrix } from "@apendua/freedom";
@@ -24,10 +28,13 @@ export interface LevelPose {
 
 /** What has to be remembered from the moment a thing was taken hold of. */
 export interface Carry {
-  handPosition: THREE.Vector3;
   handYaw: number;
-  /** Where the carried thing was when the hand closed on it. */
-  pose: LevelPose;
+  /** How far out along the ray the grab point was when the hand closed. */
+  distance: number;
+  /** From the grab point to where the carried thing stood, at that moment. */
+  offset: THREE.Vector3;
+  /** Which way round the carried thing faced when the hand closed on it. */
+  yaw: number;
 }
 
 /**
@@ -62,28 +69,49 @@ export function levelPose(matrix: THREE.Matrix4): LevelPose {
   return { position, yaw: yawOf(quaternion) };
 }
 
-/** Takes hold: the hand and the thing carried, as they are at this moment. */
-export function beginCarry(hand: THREE.Matrix4, pose: LevelPose): Carry {
-  const held = levelPose(hand);
+/** The hand as a pointing device: where it is, and where it is aiming. */
+function rayOf(hand: THREE.Matrix4) {
+  const position = new THREE.Vector3();
+  const quaternion = new THREE.Quaternion();
+  const scale = new THREE.Vector3();
+  hand.decompose(position, quaternion, scale);
+  // A target ray space points down its own -z; the same convention
+  // three.js's Raycaster.setFromXRController casts along.
+  const direction = new THREE.Vector3(0, 0, -1).applyQuaternion(quaternion);
+  return { position, quaternion, direction };
+}
+
+/**
+ * Takes hold: the hand, the point its ray landed on, and where the carried
+ * thing stood, all as they are at this moment.
+ */
+export function beginCarry(hand: THREE.Matrix4, grabPoint: THREE.Vector3, pose: LevelPose): Carry {
+  const ray = rayOf(hand);
   return {
-    handPosition: held.position,
-    handYaw: held.yaw,
-    pose: { position: pose.position.clone(), yaw: pose.yaw },
+    handYaw: yawOf(ray.quaternion),
+    distance: grabPoint.clone().sub(ray.position).length(),
+    offset: pose.position.clone().sub(grabPoint),
+    yaw: pose.yaw,
   };
 }
 
 /**
- * Where the carried thing belongs now the hand has moved on. It travels with
- * the hand and turns with it about the up axis; the wrist's roll and pitch are
- * dropped, which is what keeps the board level however it is being reached for.
+ * Where the carried thing belongs now the hand has moved on. The grab point is
+ * put back on the ray, as far out as it was taken hold of, and the thing hangs
+ * off it by the offset it was grabbed with — turned about the grab point as the
+ * hand turns about the vertical, so a twist of the wrist pivots the board on
+ * the spot the cursor is holding rather than sweeping it sideways. The wrist's
+ * roll and pitch never tilt it: they only steer where the ray, and with it the
+ * grab point, goes.
  */
 export function carriedPose(carry: Carry, hand: THREE.Matrix4): LevelPose {
-  const held = levelPose(hand);
-  const turned = held.yaw - carry.handYaw;
-  const offset = carry.pose.position.clone().sub(carry.handPosition).applyAxisAngle(upAxis, turned);
+  const ray = rayOf(hand);
+  const turned = yawOf(ray.quaternion) - carry.handYaw;
+  const grabPoint = ray.position.clone().addScaledVector(ray.direction, carry.distance);
+  const offset = carry.offset.clone().applyAxisAngle(upAxis, turned);
   return {
-    position: held.position.add(offset),
-    yaw: carry.pose.yaw + turned,
+    position: grabPoint.add(offset),
+    yaw: carry.yaw + turned,
   };
 }
 

@@ -56,15 +56,21 @@ panels and lighting together — and carries it with the hand, so it can be put
 down on the real table in front of you, or off to one side, or wherever the room
 actually has space. Letting go leaves it there.
 
-**It stays level while it is carried** (`utils/carry.ts`). Only where the hand is
-and which way round it is held are taken from the wrist; its roll and pitch are
-dropped. This is the same lesson `alignUpright` teaches about bricks, one size
-up: a hand reaching out across a board rolls and pitches far more than it feels
-like it does, and a board handed the wrist's whole pose arrives on its side with
-the castle sliding off it. What is kept is the turn about the vertical, so the
-board can still be swung round to build at from another side — and it swings
-around the hand rather than jumping to it, so the spot it was grabbed by stays
-under the hand.
+**It stays level while it is carried** (`utils/carry.ts`). A hand reaching out
+across a board rolls and pitches far more than it feels like it does, and a
+board handed the wrist's whole pose arrives on its side with the castle sliding
+off it. So the wrist never tilts the board — but everything else it does is
+followed, and the reference for all of it is the **grab point**: the spot the
+ray landed on when the trigger closed. That spot stays pinned to the ray, as
+far out along it as it was taken hold of, so tipping the wrist tows the board
+where the ray now points instead of leaving the cursor to slide across it; and
+the turn about the vertical pivots the board *about the grab point*, so the
+spot being held is the one spot that never moves.
+
+**A carry can change hands without being put down.** A press from the other
+hand while the board is being carried takes the grip over from wherever its own
+ray lands; the first hand's release then changes nothing. The same handover
+works for a brick being dragged.
 
 The presses are taken by the floor rather than by the scene as a whole, so that
 only the floor can start a carry. A press that bubbled up from anywhere else — a
@@ -74,11 +80,13 @@ pressed a button. Carrying is also building-only: during the siege the triggers
 belong to the slingshot.
 
 Every colour in the game comes from `elements/palette.ts`, panels included, so
-the interface and the world it sits in cannot drift apart. It is built around
-the teal and cyan the panels already use: the board is the darkest end of that
-family, which leaves the bricks free to be the one warm thing in the scene, and
-cyan is kept for what the player is *about* to do — the ghost of a brick, the
-edge of a panel — so it never competes with anything already built.
+the interface and the world it sits in cannot drift apart. The board is deep
+teal and the bricks are the one warm thing standing on it; the panels take the
+bricks' side of that split — parchment in a bronze frame, Cinzel capitals for
+titles, Quicksand for everything else, pill-shaped oak-and-gilt buttons — so
+the interface belongs with the castle rather than with the table. Cyan is kept
+for what the player is *about* to do — the ghost of a brick, the pointer — so
+it never competes with anything already built.
 
 ## Bricks and the half grid
 
@@ -102,8 +110,15 @@ grid.
 
 The roof is the one brick that is not a box: it fills its cell up to a ridge
 running along x. It is still treated as its box everywhere placement is decided,
-and its collider is the convex hull of the same six corners the mesh is built
-from, so what is drawn and what is hit are the same solid.
+and its collider is the convex hull of the same six sharp corners.
+
+**Every brick is drawn with a small chamfer** (`bevelledBoxGeometry`,
+`bevelledWedgeGeometry`): each face is pulled in within its own plane and the
+convex hull of what is left grows the bevel faces along every edge by itself.
+The bevels catch the light along the seams, which is what lets one brick be
+told from the next when they sit flush. It is drawing only — the colliders
+keep the sharp corners, so bricks still stack with no slivers of gap in the
+simulation, and the overlap test still reasons about exact boxes.
 
 **A brick may not be dropped inside another one.** Bricks are boxes on axis
 aligned rotations, so the overlap test is exact, and the preview turns red where
@@ -117,16 +132,18 @@ Straight out of marblerun, minus the port snapping, which a stacked castle has
 no use for:
 
 - The tray shows the whole catalogue at once, each brick in the orientation it
-  will land in. Pulling one off hands over a copy and leaves the tray as it was.
+  will land in, at half size so the row stays within reach. **Picking a brick
+  up brings it to full size** — what is in the hand is the brick, not the
+  miniature. Pulling one off hands over a copy and leaves the tray as it was.
   The tray moves by its **side rails** only, so a ray that misses a brick never
   carries the whole thing off.
 - **The preview is the brick** — the real brick in a ghost material, at the pose
   it will land in, drawn inside the board's own coordinate space.
-- **The wrist only picks which way the brick faces**, and only among the four
-  upright yaws (`alignUpright`); reaching across a board rolls the wrist further
-  than it feels like it does. Turning a brick over is asked for deliberately,
-  with the **thumbstick**, in 90° steps that compose on top of the orientation
-  the hand is holding.
+- **The wrist picks the brick's orientation freely**, snapped to the nearest of
+  the cube's 24 rotations (`align`): turning a brick over in the hand is enough
+  to lay it on its side or its face. The **thumbstick** still composes 90°
+  steps on top of what the hand is holding, for the turns a wrist cannot
+  comfortably reach.
 - **Grip pulls out a copy** of a brick already placed.
 - **Dragging a brick off the board deletes it.**
 - Placing, moving and removing are recorded as what the brick looked like before
@@ -202,8 +219,12 @@ rubble left it: the layout is remembered the moment Ready is pressed.
 
 ## Physics
 
-Rapier, with gravity `9.81` in board units — the same convention marblerun uses,
-so the whole board behaves like a miniature filmed at scale. The ground is
+Rapier, with gravity `98.1` in board units: a board unit is ten centimetres of
+room, so Earth's `9.81 m/s²` is ten units per second squared for every one of
+the metre's. Handing Rapier the raw `9.81` — which this app once did — really
+means a tenth of gravity, and the castle comes down in the gentle slow motion
+of a miniature filmed at scale; scaling it up makes the rubble fall like
+rubble. The ground is
 placed so its *surface* is the origin's `y = 0`, which is the same arithmetic
 the half grid uses: a brick standing on the grid is standing on the floor of the
 simulation, with no fudge factor between the two.
@@ -221,7 +242,7 @@ honest: a castle that was not going to stand up does not stand up.
 | `utils/carry.ts`         | Carrying the board about the room without letting it tip over.                 |
 | `utils/grid.ts`          | The half grid: rotated extents, corner snapping, and the overlap test.         |
 | `utils/launch.ts`        | What a slingshot does when it is let go. Two points in, a shot out.            |
-| `utils/rotations.ts`     | The 24 orientations of a cube, upright-only alignment, stick-driven turns.     |
+| `utils/rotations.ts`     | The 24 orientations of a cube, alignment to them, stick-driven turns.          |
 | `utils/paletteLayout.ts` | Where each brick sits on the tray. A pure function, tested on its own.         |
 | `utils/thumbstick.ts`    | Reading a stick as discrete latched steps rather than a continuous value.      |
 | `store/CastleStore.ts`   | The castle, its history, and its persistence.                                  |
@@ -230,7 +251,7 @@ honest: a castle that was not going to stand up does not stand up.
 | `components/Brick.ts`    | One brick — mesh, collider, ghost and refused styles, the drag.                |
 | `components/Slingshot.ts`| The frame, the bands, the pouch, and the two-handed draw.                      |
 | `elements/rapier.ts`     | Rapier bindings: world, colliders, rigid bodies, the fixed-step loop.          |
-| `views/`                 | The two panels, projected into the scene.                                      |
+| `views/`                 | The one panel, projected into the scene; the phase picks which rows it shows.  |
 
 ## Things worth picking up next
 

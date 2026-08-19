@@ -29,6 +29,15 @@ plain VR instead of refusing to work.
 The emulator is a dynamic import in its own chunk and replaces `navigator.xr`,
 so do not use it on a real headset.
 
+The website's demo screenshots are taken through that same bare emulator, by
+`tests/demo-screenshots.mjs`: it seeds a castle into `localStorage`, drives
+the head and the panel buttons, fires the slingshot with the space bar for
+the siege shot, and writes straight into
+`apps/website/public/images/demos/`. Run it as
+`node tests/demo-screenshots.mjs build` and `… siege` from this directory;
+the header comment has the details, including the caption numbers to check
+afterwards.
+
 The castle is saved to `localStorage` (key `castle-xr:castle`) a moment after
 the last change. The soundtrack is the house one, `glass_desk_habits.mp3` out of
 `@apendua.dev/media`, started with the session and stopped with it — played by

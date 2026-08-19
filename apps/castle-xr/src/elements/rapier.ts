@@ -23,8 +23,24 @@ export interface RapierWorkspace {
 /** Half the thickness of the slab that stands in for the ground. */
 const GROUND_HALF_THICKNESS = 5;
 
+/**
+ * The simulation runs in board units, and a board unit is ten centimetres of
+ * room (see the scale in `App.ts`), so a metre-per-second-squared is ten
+ * units-per-second-squared here.
+ */
+const BOARD_UNITS_PER_METRE = 10;
+
+/**
+ * Earth's own, in board units. Handing Rapier the familiar 9.81 would really
+ * be handing it a tenth of that, and the castle would come down in the gentle
+ * slow motion of things falling on a world one tenth the gravity — everything
+ * in the simulation is a tenth of its apparent size, so it has ten times as
+ * far to fall, in board units, as the raw number suggests.
+ */
+const GRAVITY = -9.81 * BOARD_UNITS_PER_METRE;
+
 export function createRapierContext(): RapierWorkspace {
-  const gravity = new RAPIER.Vector3(0, -9.81, 0);
+  const gravity = new RAPIER.Vector3(0, GRAVITY, 0);
   const world = new RAPIER.World(gravity);
 
   const ground = RAPIER.ColliderDesc.cuboid(200, GROUND_HALF_THICKNESS, 200)

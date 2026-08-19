@@ -2,46 +2,63 @@
  * The panels. Every colour comes from `elements/palette.ts`, the same place the
  * board and the bricks take theirs from, so the interface and the world it sits
  * in cannot drift apart.
+ *
+ * The dress is parchment and bronze: plaque-like cards with squared corners,
+ * titles set in Cinzel's carved capitals over a ruled line, and readings in
+ * Quicksand's round hand. The buttons are the one deliberately different
+ * shape — full pills, dark oak with a gilt rim — so the things that can be
+ * pressed are told from the things that can only be read at a glance.
+ *
+ * Everything here is drawn by the portal's mirror, which speaks solid colours,
+ * borders, corner radii and text — no gradients and no shadows — so the whole
+ * design is carried by colour, line and type.
  */
 import { fontFace, stylesheet, CLASS_NAME } from "@apendua/justdom";
-import fontFile from "@apendua.dev/media/fonts/ZenDots-Regular.ttf";
+import titleFontFile from "@apendua.dev/media/fonts/Cinzel-wght.ttf";
+import bodyFontFile from "@apendua.dev/media/fonts/Quicksand-wght.ttf";
 import { combineLatest, map, Observable } from "rxjs";
 import { palette } from "../elements/palette.js";
 import type { DropdownClasses } from "@apendua/freedom";
 
-export const fontName = fontFace(fontFile);
+/** Carved Roman capitals, for what a panel is called. */
+export const titleFont = fontFace(titleFontFile, { fontWeight: "400 900" });
+
+/** A round, legible hand, for everything a panel says. */
+export const bodyFont = fontFace(bodyFontFile, { fontWeight: "300 700" });
 
 export const panelStack = stylesheet`
   .${CLASS_NAME} {
     display: flex;
     flex-direction: column;
-    gap: 16px;
+    gap: 14px;
     width: 360px;
   }
 `;
 
 export const panelCard = stylesheet`
   .${CLASS_NAME} {
-    font-family: '${fontName}';
+    font-family: '${bodyFont}';
+    font-weight: 500;
     background: ${palette.panel};
-    border: 4px solid ${palette.panelEdge};
-    border-radius: 14px;
-    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.35);
-    padding: 10px;
+    border: 3px solid ${palette.panelEdge};
+    border-radius: 6px;
+    padding: 12px;
     color: ${palette.panelText};
   }
 `;
 
 export const panelTitle = stylesheet`
   .${CLASS_NAME} {
+    font-family: '${titleFont}';
+    font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.1em;
-    font-size: 0.78rem;
-    background: ${palette.panelWash};
-    border: 2px solid ${palette.panelWashEdge};
-    border-radius: 10px;
-    padding: 8px 12px;
-    margin-bottom: 8px;
+    letter-spacing: 0.16em;
+    text-align: center;
+    font-size: 0.9rem;
+    color: ${palette.panelText};
+    border-bottom: 2px solid ${palette.panelWashEdge};
+    padding: 2px 0 8px;
+    margin-bottom: 10px;
   }
 `;
 
@@ -49,11 +66,13 @@ export const actionButton = stylesheet`
   .${CLASS_NAME} {
     background: ${palette.button};
     border: 2px solid ${palette.buttonEdge};
+    border-radius: 999px;
     text-align: center;
-    padding: 12px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    padding: 11px 12px;
     margin: 6px 0;
-    border-radius: 12px;
-    color: ${palette.panelText};
+    color: ${palette.buttonText};
     cursor: pointer;
     user-select: none;
   }
@@ -61,7 +80,6 @@ export const actionButton = stylesheet`
   .${CLASS_NAME}:hover, .${CLASS_NAME}[data-xr-hover] {
     background: ${palette.buttonHover};
   }
-
 `;
 
 /**
@@ -99,13 +117,14 @@ export const musicRow = stylesheet`
  */
 export const stepButton = stylesheet`
   .${CLASS_NAME} {
-    flex: 0 0 64px;
+    flex: 0 0 60px;
     background: ${palette.button};
     border: 2px solid ${palette.buttonEdge};
+    border-radius: 999px;
     text-align: center;
-    padding: 12px 0;
-    border-radius: 12px;
-    color: ${palette.panelText};
+    font-weight: 600;
+    padding: 11px 0;
+    color: ${palette.buttonText};
     cursor: pointer;
     user-select: none;
   }
@@ -119,10 +138,10 @@ export const stepValue = stylesheet`
   .${CLASS_NAME} {
     flex: 1 1 auto;
     text-align: center;
-    background: rgba(255, 255, 255, 0.07);
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    border-radius: 10px;
-    padding: 12px 8px;
+    background: ${palette.panelWash};
+    border: 1px solid ${palette.panelWashEdge};
+    border-radius: 8px;
+    padding: 11px 8px;
   }
 `;
 
@@ -142,10 +161,11 @@ const dropdownTrigger = stylesheet`
     gap: 6px;
     background: ${palette.button};
     border: 2px solid ${palette.buttonEdge};
-    border-radius: 12px;
-    padding: 12px;
+    border-radius: 999px;
+    padding: 11px 16px;
     font-size: 1rem;
-    color: ${palette.panelText};
+    font-weight: 600;
+    color: ${palette.buttonText};
     cursor: pointer;
     user-select: none;
   }
@@ -159,7 +179,7 @@ const dropdownCaret = stylesheet`
   .${CLASS_NAME} {
     font-size: 0.7rem;
     line-height: 1;
-    color: ${palette.panelLabel};
+    color: ${palette.buttonEdge};
   }
 `;
 
@@ -193,8 +213,8 @@ const dropdownOption = stylesheet`
     /* A ray is a blunter instrument than a mouse; this is about three degrees
        of arc at the distance the panel is mounted at. */
     min-height: 38px;
-    padding: 0 8px;
-    border-radius: 8px;
+    padding: 0 10px;
+    border-radius: 999px;
     font-size: 1rem;
     color: ${palette.panelText};
     cursor: pointer;
@@ -202,14 +222,14 @@ const dropdownOption = stylesheet`
   }
 
   .${CLASS_NAME}:hover, .${CLASS_NAME}[data-xr-hover] {
-    background: ${palette.buttonHover};
+    background: ${palette.panelWash};
   }
 `;
 
 const dropdownOptionSelected = stylesheet`
   .${CLASS_NAME}.${CLASS_NAME} {
     background: ${palette.button};
-    color: #ffffff;
+    color: ${palette.buttonText};
   }
 `;
 
@@ -231,26 +251,29 @@ export const outputClasses: DropdownClasses = {
  */
 export const paletteLabel = stylesheet`
   .${CLASS_NAME} {
-    font-family: '${fontName}';
+    font-family: '${bodyFont}';
+    font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.08em;
     font-size: 13px;
     text-align: center;
     width: 96px;
-    color: ${palette.panelLabel};
+    color: ${palette.trayLabel};
   }
 `;
 
 /** Shown once the last brick is on the ground. */
 export const victoryBanner = stylesheet`
   .${CLASS_NAME} {
+    font-family: '${titleFont}';
+    font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.12em;
     text-align: center;
     font-size: 0.9rem;
     background: ${palette.banner};
     border: 2px solid ${palette.bannerEdge};
-    border-radius: 12px;
+    border-radius: 8px;
     color: ${palette.bannerText};
     padding: 12px;
     margin-bottom: 8px;
@@ -262,9 +285,9 @@ export const debugValue = stylesheet`
     display: flex;
     justify-content: space-between;
     gap: 8px;
-    background: rgba(255, 255, 255, 0.07);
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    border-radius: 10px;
+    background: ${palette.panelWash};
+    border: 1px solid ${palette.panelWashEdge};
+    border-radius: 8px;
     padding: 8px 10px;
     margin-top: 6px;
   }
@@ -276,9 +299,8 @@ export const hintValue = stylesheet`
     display: flex;
     justify-content: space-between;
     gap: 8px;
-    background: rgba(255, 255, 255, 0.04);
-    border: 1px dashed rgba(255, 255, 255, 0.25);
-    border-radius: 10px;
+    border: 1px dashed ${palette.panelWashEdge};
+    border-radius: 8px;
     padding: 8px 10px;
     margin-top: 6px;
     color: ${palette.panelLabel};

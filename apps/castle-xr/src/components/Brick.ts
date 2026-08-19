@@ -25,7 +25,12 @@ import {
 import { NEVER } from "rxjs";
 import * as RAPIER from "@dimforge/rapier3d";
 import { BrickStyle, brickShape, BrickType } from "./types.js";
-import { boxGeometry, wedgeCorners, wedgeGeometry } from "../elements/geometry.js";
+import {
+  bevelledBoxGeometry,
+  bevelledWedgeGeometry,
+  boxGeometry,
+  wedgeCorners,
+} from "../elements/geometry.js";
 import { brickMaterial, ghostMaterial, invisibleMaterial } from "../elements/material.js";
 import { collider, rigidBody } from "../elements/rapier.js";
 import { palette } from "../elements/palette.js";
@@ -37,6 +42,15 @@ const BRICK_RESTITUTION = 0.02;
 
 const GHOST_COLOUR = palette.ghost;
 const BLOCKED_COLOUR = palette.refused;
+
+/**
+ * How much of an edge each brick gives up to its chamfer, in board units. Just
+ * enough for a seam of shaded bevel between two stacked bricks — it is what
+ * lets one brick be told from the next when they sit flush. Drawing only: the
+ * colliders keep the sharp corners, so bricks still stack without slivers of
+ * gap in the simulation.
+ */
+const BRICK_BEVEL = 0.04;
 
 interface Props {
   bodyType: RAPIER.RigidBodyType | null;
@@ -74,19 +88,26 @@ interface Events {
  */
 interface DragState {
   inputSource: XRInputSource;
+  /**
+   * Which button the hand currently holding the brick is holding it with.
+   * A drag can be handed from one hand to the other, and only the release of
+   * *this* button by *this* hand ends it — the first hand letting go of a
+   * brick that has since been taken over changes nothing.
+   */
+  button: "select" | "squeeze";
   clone: boolean;
 }
 
-interface DragStartEvent extends DragState {
+interface DragStartEvent extends Omit<DragState, "button"> {
   matrixWorld: THREE.Matrix4;
 }
 
-interface DragEndEvent extends DragState {
+interface DragEndEvent extends Omit<DragState, "button"> {
   reset: () => void;
   matrixWorld: THREE.Matrix4;
 }
 
-interface DragMoveEvent extends DragState {
+interface DragMoveEvent extends Omit<DragState, "button"> {
   matrixWorld: THREE.Matrix4;
 }
 
@@ -103,7 +124,9 @@ interface DragTrigger {
 function brickGeometry(type: BrickType): THREE.BufferGeometry {
   const { size, profile } = brickShape(type);
   const [x, y, z] = size;
-  return profile === "wedge" ? wedgeGeometry(x, y, z) : boxGeometry(x, y, z);
+  return profile === "wedge"
+    ? bevelledWedgeGeometry(x, y, z, BRICK_BEVEL)
+    : bevelledBoxGeometry(x, y, z, BRICK_BEVEL);
 }
 
 function brickColliderDesc(type: BrickType): RAPIER.ColliderDesc | null {
@@ -151,9 +174,18 @@ const Brick = component((ctx: WeakKey, operators: Op<Props, Events>) => {
     o.scale.set(props.scale, props.scale, props.scale);
   };
 
-  const startDrag = (event: DragTrigger, clone: boolean) => {
-    if (dragState.get()) {
-      // Already being dragged with the other button.
+  const startDrag = (event: DragTrigger, button: "select" | "squeeze", clone: boolean) => {
+    const drag = dragState.get();
+    if (drag) {
+      if (drag.inputSource === event.inputSource) {
+        // Already being dragged by this hand, with the other button.
+        return;
+      }
+      // The other hand taking hold is a handover: the brick moves to the new
+      // hand mid-drag, keeping whatever the drag was — a move stays a move
+      // and a copy stays a copy, whichever button the new hand grabbed with.
+      dragState.set({ inputSource: event.inputSource, button, clone: drag.clone });
+      event.controller.attach(event.target);
       return;
     }
     event.target.userData.oldParent = event.target.parent;
@@ -163,14 +195,21 @@ const Brick = component((ctx: WeakKey, operators: Op<Props, Events>) => {
       inputSource: event.inputSource,
       clone,
     });
-    dragState.set({ inputSource: event.inputSource, clone });
+    dragState.set({ inputSource: event.inputSource, button, clone });
     event.controller.attach(event.target);
+    // A brick on the tray is shown small to keep the row within reach, but
+    // what the player has taken hold of is the brick, not the miniature: it
+    // comes up to the size it will actually be on the board the moment it is
+    // picked, so the hand is aiming with the real thing.
+    if (props.scale !== 1) {
+      event.target.scale.multiplyScalar(1 / props.scale);
+    }
   };
 
-  const endDrag = (event: DragTrigger, clone: boolean) => {
+  const endDrag = (event: DragTrigger, button: "select" | "squeeze") => {
     const drag = dragState.get();
-    if (!drag || drag.clone !== clone) {
-      // Released a button that did not start this drag.
+    if (!drag || drag.inputSource !== event.inputSource || drag.button !== button) {
+      // Released a button, or a hand, that is not the one holding the brick.
       return;
     }
     if (event.target.userData.oldParent && event.target.parent === event.controller) {
@@ -253,28 +292,28 @@ const Brick = component((ctx: WeakKey, operators: Op<Props, Events>) => {
         return;
       }
       stopPropagation(event);
-      startDrag(event, false);
+      startDrag(event, "select", false);
     }),
     on("selectend", (event) => {
       if (!dragState.get() && !props.draggable) {
         return;
       }
       stopPropagation(event);
-      endDrag(event, false);
+      endDrag(event, "select");
     }),
     on("squeezestart", (event) => {
       if (!props.draggable) {
         return;
       }
       stopPropagation(event);
-      startDrag(event, true);
+      startDrag(event, "squeeze", true);
     }),
     on("squeezeend", (event) => {
       if (!dragState.get() && !props.draggable) {
         return;
       }
       stopPropagation(event);
-      endDrag(event, true);
+      endDrag(event, "squeeze");
     }),
     children(
       component(() => {

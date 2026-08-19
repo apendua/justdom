@@ -2,29 +2,32 @@
  * One palette for the whole game — the panels, the board and the bricks all
  * draw from here, so nothing has to be matched by eye twice.
  *
- * It is built around the teal and cyan the panels already use. The board is the
- * darkest end of that same family, which leaves the bricks free to be the one
- * warm thing in the scene: sandstone against deep teal, with terracotta for the
- * roofs and a single amber for winning. Cyan is reserved for what the player is
- * *about* to do — the ghost of a brick, the edges of a panel — so it never has
- * to compete with anything already built.
+ * The board is deep teal and the bricks are the one warm thing standing on it:
+ * sandstone, with terracotta for the roofs and a single amber for winning.
+ * The panels take the bricks' side of that split rather than the board's — a
+ * sheet of parchment in a bronze frame, walnut ink to read, oak-and-gilt
+ * buttons to press — so the interface belongs with the castle being built,
+ * not with the table it stands on. Cyan is reserved for what the player is
+ * *about* to do — the ghost of a brick, the pointer — so it never has to
+ * compete with anything already built.
  */
 export const palette = {
-  // Panels
-  panel: "#124553",
-  panelEdge: "#4bd3ff",
-  panelWash: "rgba(75, 211, 255, 0.2)",
-  panelWashEdge: "rgba(75, 211, 255, 0.7)",
-  panelText: "#f6fcff",
-  panelLabel: "#cdeffd",
-  button: "#1c5f86",
-  buttonEdge: "#6fc6e8",
-  buttonHover: "#2a7fae",
-  buttonMuted: "#173c4b",
-  buttonMutedEdge: "#345d6d",
-  buttonMutedText: "#6d8ea3",
+  // Panels: parchment in a bronze frame
+  panel: "#f5ead0",
+  panelEdge: "#9a7440",
+  panelWash: "rgba(62, 44, 20, 0.08)",
+  panelWashEdge: "rgba(62, 44, 20, 0.28)",
+  panelText: "#3d2c15",
+  panelLabel: "#87703f",
+  button: "#6f4f26",
+  buttonEdge: "#c8a45e",
+  buttonHover: "#8a6532",
+  buttonText: "#faf1da",
+  buttonMuted: "#e9decb",
+  buttonMutedEdge: "#cfc2a4",
+  buttonMutedText: "#a1926e",
   banner: "#e8a93c",
-  bannerEdge: "#ffe3ac",
+  bannerEdge: "#8a6a44",
   bannerText: "#3a2505",
 
   // The board
@@ -32,6 +35,8 @@ export const palette = {
   gridLine: "#3f93a8",
   trayPlate: "#123039",
   trayRail: "#2f7f9c",
+  /** The bricks' names, written on the dark tray rather than on parchment. */
+  trayLabel: "#cdeffd",
 
   // Bricks: warm stone, the one warm thing on a cold board
   brick: {

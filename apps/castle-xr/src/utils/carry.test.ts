@@ -41,6 +41,17 @@ function hand(position: THREE.Vector3, yaw = 0, tilt: Tilt = {}): THREE.Matrix4 
   return new THREE.Matrix4().compose(position, turned(yaw, tilt), new THREE.Vector3(1, 1, 1));
 }
 
+/** Where a hand's ray reaches, this far out along it. */
+function reach(matrix: THREE.Matrix4, distance: number): THREE.Vector3 {
+  const position = new THREE.Vector3();
+  const quaternion = new THREE.Quaternion();
+  matrix.decompose(position, quaternion, new THREE.Vector3());
+  return position.addScaledVector(
+    new THREE.Vector3(0, 0, -1).applyQuaternion(quaternion),
+    distance,
+  );
+}
+
 function rounded(vector: THREE.Vector3): number[] {
   return vector.toArray().map((value) => Math.round(value * 1000) / 1000);
 }
@@ -79,9 +90,14 @@ describe("levelPose", () => {
 describe("carriedPose", () => {
   const board = { position: new THREE.Vector3(0, -0.4, -1.1), yaw: 0.2 };
 
+  /** A grab: the hand aims somewhere and takes hold of what its ray hits. */
+  function grab(grabbed: THREE.Matrix4, distance: number) {
+    return beginCarry(grabbed, reach(grabbed, distance), board);
+  }
+
   it("leaves the board where it was until the hand moves", () => {
     const grabbed = hand(new THREE.Vector3(0.1, 0, -0.9), 0.3, { angle: -0.7 });
-    const pose = carriedPose(beginCarry(grabbed, board), grabbed);
+    const pose = carriedPose(grab(grabbed, 0.6), grabbed);
     expect(pose.position.distanceTo(board.position)).toBeCloseTo(0);
     expect(pose.yaw).toBeCloseTo(board.yaw);
   });
@@ -89,47 +105,70 @@ describe("carriedPose", () => {
   it("carries the board along with the hand", () => {
     const from = new THREE.Vector3(0.1, 0, -0.9);
     const to = new THREE.Vector3(0.6, 0.3, -1.4);
-    const pose = carriedPose(beginCarry(hand(from), board), hand(to));
+    const pose = carriedPose(grab(hand(from), 0.5), hand(to));
     expect(rounded(pose.position)).toEqual(
       rounded(board.position.clone().add(to.clone().sub(from))),
     );
     expect(pose.yaw).toBeCloseTo(board.yaw);
   });
 
-  it("takes no notice of the wrist tipping over", () => {
+  it("keeps the grab point pinned to the ray, however the wrist tips", () => {
     const place = new THREE.Vector3(0.1, 0.2, -0.9);
-    const carry = beginCarry(hand(place, 0.3), board);
+    const grabbed = hand(place, 0.3, { angle: -0.5 });
+    const distance = 0.8;
+    const carry = grab(grabbed, distance);
+    const offset = board.position.clone().sub(reach(grabbed, distance));
     for (const axis of levelAxes) {
-      for (const angle of [-1.2, -QUARTER, 0.9]) {
-        const pose = carriedPose(carry, hand(place, 0.3, { axis, angle }));
-        expect(pose.position.distanceTo(board.position)).toBeCloseTo(0);
+      for (const angle of [-1.2, -QUARTER, -0.2, 0.4]) {
+        const tipped = hand(place, 0.3, { axis, angle });
+        const pose = carriedPose(carry, tipped);
+        // The board is not tilted by the wrist — only towed: it still hangs
+        // off the grab point by the same offset, and still faces the same way.
+        expect(rounded(pose.position)).toEqual(
+          rounded(reach(tipped, distance).clone().add(offset)),
+        );
         expect(pose.yaw).toBeCloseTo(board.yaw);
       }
     }
   });
 
-  it("turns the board with the hand, and swings it round the hand", () => {
-    const place = new THREE.Vector3();
-    const carry = beginCarry(hand(place), board);
-    const pose = carriedPose(carry, hand(place, QUARTER));
-    expect(pose.yaw).toBeCloseTo(board.yaw + QUARTER);
-    // Taken hold of at the origin and turned a quarter turn about it, so the
-    // board comes round with the hand rather than staying put.
-    expect(rounded(pose.position)).toEqual(
-      rounded(board.position.clone().applyAxisAngle(upAxis, QUARTER)),
+  it("pivots the board about the grab point when the hand turns", () => {
+    const grabbed = hand(new THREE.Vector3(0.2, 0.1, -0.3), 0, { angle: -0.6 });
+    const distance = 0.7;
+    const carry = grab(grabbed, distance);
+    const grabPoint = reach(grabbed, distance);
+    const pose = carriedPose(
+      carry,
+      hand(new THREE.Vector3(0.2, 0.1, -0.3), QUARTER, { angle: -0.6 }),
     );
+    expect(pose.yaw).toBeCloseTo(board.yaw + QUARTER);
+    // The whole grip turned a quarter turn about the vertical through the
+    // hand, and the board hangs off the grab point turned the same way.
+    const turnedGrabPoint = reach(
+      hand(new THREE.Vector3(0.2, 0.1, -0.3), QUARTER, { angle: -0.6 }),
+      distance,
+    );
+    const expected = board.position
+      .clone()
+      .sub(grabPoint)
+      .applyAxisAngle(upAxis, QUARTER)
+      .add(turnedGrabPoint);
+    expect(rounded(pose.position)).toEqual(rounded(expected));
   });
 
   it("keeps hold of the spot it was grabbed by, wherever the hand goes", () => {
-    const grabbedAt = new THREE.Vector3(0.4, 0.1, -0.8);
-    const carry = beginCarry(hand(grabbedAt, 0.2), board);
-    const moved = new THREE.Vector3(-0.7, 0.5, 0.3);
-    const pose = carriedPose(carry, hand(moved, 1.9, { axis: levelAxes[1], angle: -1.1 }));
-    const reach = board.position.clone().sub(grabbedAt);
-    // The board is still the same distance from the hand, and still the same
+    const grabbed = hand(new THREE.Vector3(0.4, 0.1, -0.8), 0.2, { angle: -0.4 });
+    const distance = 1.1;
+    const carry = grab(grabbed, distance);
+    const offset = board.position.clone().sub(reach(grabbed, distance));
+    const moved = hand(new THREE.Vector3(-0.7, 0.5, 0.3), 1.9, { axis: levelAxes[1], angle: -1.1 });
+    const pose = carriedPose(carry, moved);
+    // The grab point is still as far out along the ray as it was taken hold
+    // of, and the board is still the same distance from it, and the same
     // amount above it: the grip does not slide, and the turn stays level.
-    expect(pose.position.distanceTo(moved)).toBeCloseTo(reach.length());
-    expect(pose.position.y - moved.y).toBeCloseTo(reach.y);
+    const grabPoint = reach(moved, distance);
+    expect(pose.position.distanceTo(grabPoint)).toBeCloseTo(offset.length());
+    expect(pose.position.y - grabPoint.y).toBeCloseTo(offset.y);
   });
 });
 

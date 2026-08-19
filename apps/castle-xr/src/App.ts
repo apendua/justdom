@@ -11,8 +11,7 @@ import Game from "./components/Game.js";
 import { createMusicControls, Music } from "@apendua.dev/sound/xr";
 import { createDiagnostics, Diagnostics } from "@apendua.dev/diagnostics";
 import glass_desk_habits from "@apendua.dev/media/glass_desk_habits.mp3";
-import BuildUI from "./views/BuildUI.js";
-import SiegeUI from "./views/SiegeUI.js";
+import GameUI from "./views/GameUI.js";
 import CastleStore from "./store/CastleStore.js";
 import Session from "./store/Session.js";
 import { applyLevelPose, beginCarry, Carry, carriedPose, levelPose } from "./utils/carry.js";
@@ -36,7 +35,7 @@ const BOARD_HOME = new THREE.Vector3(0, -0.4, -1.1);
 
 /** Taking hold of the board, and letting go of it again. */
 interface Grip {
-  take: (controller: THREE.Object3D) => void;
+  take: (controller: THREE.Object3D, grabPoint: THREE.Vector3) => void;
   drop: (controller: THREE.Object3D) => void;
 }
 
@@ -67,7 +66,7 @@ const Floor = component((ctx: WeakKey, grip: Grip) => {
     makeInteractive(),
     on("selectstart", (event) => {
       stopPropagation(event);
-      grip.take(event.controller);
+      grip.take(event.controller, event.intersection.point.clone());
     }),
     on("selectend", (event) => {
       stopPropagation(event);
@@ -103,23 +102,29 @@ const App = component((ctx: WeakKey) => {
    * It stays level while it is carried. A hand reaching out across a board
    * rolls and pitches far more than it feels like it does, and a board handed
    * the wrist's whole pose arrives tipped on its side with the castle sliding
-   * off it. Only where the hand is and which way round it is held are taken;
-   * see `utils/carry.ts`.
+   * off it. Only where the hand is and which way round it is held are taken,
+   * and the spot the ray landed on is the one the board is steered by; see
+   * `utils/carry.ts`.
+   *
+   * A press from the other hand while the board is already being carried is a
+   * handover, not a mistake: the new hand takes the grip from wherever its own
+   * ray lands, and the first hand's release then changes nothing. That is how
+   * a board is passed from hand to hand without ever being put down.
    */
   let board: THREE.Object3D | undefined;
   const carried = Signal.of<{ controller: THREE.Object3D; carry: Carry } | null>(null);
 
-  const takeHold = makeNonReactive((controller: THREE.Object3D) => {
+  const takeHold = makeNonReactive((controller: THREE.Object3D, grabPoint: THREE.Vector3) => {
     // Building only. During the siege the triggers belong to the slingshot, and
     // a shot lined up across the board would otherwise carry the board off.
-    if (!board || carried.get() || gameSession.phase.get() !== "build") {
+    if (!board || gameSession.phase.get() !== "build") {
       return;
     }
     controller.updateWorldMatrix(true, false);
     board.updateWorldMatrix(true, false);
     carried.set({
       controller,
-      carry: beginCarry(controller.matrixWorld, levelPose(board.matrixWorld)),
+      carry: beginCarry(controller.matrixWorld, grabPoint, levelPose(board.matrixWorld)),
     });
   });
 
@@ -185,75 +190,60 @@ const App = component((ctx: WeakKey) => {
             children(
               Floor(ctx, { take: takeHold, drop: letGo }),
               Game(ctx),
-              // One panel at a time: the phase decides which, so nothing has to
-              // be hidden and the player only ever sees what applies.
-              component(() => {
-                const panel = {
+              // One panel through both phases: the phase only decides which
+              // rows it shows, so pressing Ready re-dresses the panel that is
+              // already there instead of building a new one.
+              GameUI(ctx, music.output, diagnostics, [
+                set({
                   position: new THREE.Vector3(-5.5, 3.5, 1.5),
                   rotation: new THREE.Euler(0, Math.PI / 8, 0),
-                };
-                if (gameSession.phase.get() === "build") {
-                  return BuildUI(ctx, music.output, diagnostics, [
-                    set(panel),
-                    effects((ui) => {
-                      ui.bricks = castle.bricks.size;
-                      ui.canUndo = castle.history.canUndoSignal.get();
-                      ui.canRedo = castle.history.canRedoSignal.get();
-                      ui.volume = music.volume.get();
-                    }),
-                    on("ready", () => {
-                      if (castle.size === 0) {
-                        return;
-                      }
-                      castle.rememberStanding();
-                      gameSession.beginSiege();
-                    }),
-                    on("undo", () => {
-                      castle.history.undo();
-                    }),
-                    on("redo", () => {
-                      castle.history.redo();
-                    }),
-                    on("clear", () => {
-                      castle.clear();
-                    }),
-                    on("quieter", () => {
-                      music.step(-1);
-                    }),
-                    on("louder", () => {
-                      music.step(1);
-                    }),
-                  ]);
-                }
-                return SiegeUI(ctx, music.output, diagnostics, [
-                  set(panel),
-                  effects((ui) => {
-                    ui.standing = gameSession.standing.get();
-                    ui.total = gameSession.total.get();
-                    ui.shots = gameSession.shots.get();
-                    ui.won = gameSession.won.get();
-                    ui.forkHand = gameSession.forkHand.get();
-                    ui.gazeAim = gameSession.gazeAim.get();
-                    ui.volume = music.volume.get();
-                  }),
-                  on("rebuild", () => {
-                    gameSession.beginBuilding();
-                    castle.restoreStanding();
-                  }),
-                  on("swapHands", () => {
-                    gameSession.swapHands();
-                  }),
-                  on("toggleGazeAim", () => {
-                    gameSession.toggleGazeAim();
-                  }),
-                  on("quieter", () => {
-                    music.step(-1);
-                  }),
-                  on("louder", () => {
-                    music.step(1);
-                  }),
-                ]);
-              })(),
+                }),
+                effects((ui) => {
+                  ui.phase = gameSession.phase.get();
+                  ui.bricks = castle.bricks.size;
+                  ui.canUndo = castle.history.canUndoSignal.get();
+                  ui.canRedo = castle.history.canRedoSignal.get();
+                  ui.standing = gameSession.standing.get();
+                  ui.total = gameSession.total.get();
+                  ui.shots = gameSession.shots.get();
+                  ui.won = gameSession.won.get();
+                  ui.forkHand = gameSession.forkHand.get();
+                  ui.gazeAim = gameSession.gazeAim.get();
+                  ui.volume = music.volume.get();
+                }),
+                on("ready", () => {
+                  if (castle.size === 0) {
+                    return;
+                  }
+                  castle.rememberStanding();
+                  gameSession.beginSiege();
+                }),
+                on("undo", () => {
+                  castle.history.undo();
+                }),
+                on("redo", () => {
+                  castle.history.redo();
+                }),
+                on("clear", () => {
+                  castle.clear();
+                }),
+                on("rebuild", () => {
+                  gameSession.beginBuilding();
+                  castle.restoreStanding();
+                }),
+                on("swapHands", () => {
+                  gameSession.swapHands();
+                }),
+                on("toggleGazeAim", () => {
+                  gameSession.toggleGazeAim();
+                }),
+                on("quieter", () => {
+                  music.step(-1);
+                }),
+                on("louder", () => {
+                  music.step(1);
+                }),
+              ]),
             ),
           ]),
         ),

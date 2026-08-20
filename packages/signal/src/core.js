@@ -294,15 +294,19 @@ export class NoValueError extends Error {
  * @typedef {Subscribable<unknown>} Dependency
  */
 
-/** @type {WeakMap<Dependency, number>} */
-const priorityMap = new WeakMap();
-
 /**
+ * A dependency's priority lives as a data property on the dependency itself
+ * rather than in a `WeakMap`. The priority of every dependency is read on
+ * every recomputation of every `Derived` — the depth calculation — and a
+ * property read is what that question is worth; `Computation` declares the
+ * field up front so the shape is stable.
+ *
  * @param {Dependency} dependency
  * @returns {number}
  */
 export function getPriority(dependency) {
-  return priorityMap.get(dependency) ?? 0;
+  const priority = /** @type {{ priority?: number }} */ (dependency).priority;
+  return typeof priority === "number" ? priority : 0;
 }
 
 /**
@@ -311,7 +315,7 @@ export function getPriority(dependency) {
  * @returns {void}
  */
 export function setPriority(dependency, priority) {
-  priorityMap.set(dependency, priority);
+  /** @type {{ priority?: number }} */ (dependency).priority = priority;
 }
 
 /**

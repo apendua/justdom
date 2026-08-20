@@ -3,6 +3,10 @@ import UpdateChannel from "./UpdateChannel.js";
 /**
  * @typedef {object} Task
  * @property {() => void} invalidate
+ * @property {Entry} [queueEntry] the queue's slot on the task, written the
+ *   first time the task is ever queued and reused for its life. On the task
+ *   rather than in a map because a fan-in asks for it once per notifying
+ *   dependency, and a property read is what that costs.
  */
 
 /**
@@ -168,30 +172,6 @@ class Lane {
  */
 export default class UpdateQueue {
   /**
-   * What the queue remembers about every task it has ever seen, including the
-   * priority to re-queue it at when `invalidate` is called without one.
-   *
-   * @type {WeakMap<Task, Entry>}
-   */
-  #entries = new WeakMap();
-
-  /**
-   * The last task looked up, and what was found. A one-slot cache in front of
-   * `#entries`, which is the only lookup left on the push path.
-   *
-   * Sound without invalidation because an entry is made once per task and
-   * then reused forever: what the map holds for a task cannot change, so a
-   * remembered answer cannot go out of date. A task that has never been
-   * pushed is simply not the one remembered, and takes the map.
-   *
-   * @type {Task | null}
-   */
-  #lastTask = null;
-
-  /** @type {Entry | undefined} */
-  #lastEntry = undefined;
-
-  /**
    * How many tasks are queued across every lane. Membership itself is the
    * `queued` flag on each entry; this is only the count, kept so that the
    * commonest question a drain asks — is there anything to do at all — is a
@@ -305,7 +285,7 @@ export default class UpdateQueue {
    */
   invalidate(task, priority, channel) {
     if (priority === undefined || channel === undefined) {
-      const entry = this.#entries.get(task);
+      const entry = task.queueEntry;
       priority ??= entry?.priority ?? 0;
       channel ??= entry?.lane.channel ?? this.#defaultChannel;
     }
@@ -658,19 +638,10 @@ export default class UpdateQueue {
     }
     // One task pushed again and again is the shape of a fan-in: a node
     // reading a dozen signals is told about each of them, and every push
-    // after the first is a duplicate. An entry is made once and kept for the
-    // life of the task, so remembering the last one turns those into an
-    // identity comparison instead of a hash lookup apiece.
-    let entry;
-    if (task === this.#lastTask) {
-      entry = this.#lastEntry;
-    } else {
-      entry = this.#entries.get(task);
-      if (entry !== undefined) {
-        this.#lastTask = task;
-        this.#lastEntry = entry;
-      }
-    }
+    // after the first is a duplicate. An entry is made once and kept on the
+    // task for its life, so those pushes cost a property read and a flag
+    // check apiece.
+    let entry = task.queueEntry;
     // Checked before anything else is worked out, because it is the answer
     // most of the time and everything below it is wasted on that case.
     if (
@@ -684,9 +655,7 @@ export default class UpdateQueue {
     const lane = entry && entry.lane.channel === channel ? entry.lane : this.#laneOf(channel);
     if (entry === undefined) {
       entry = { task, lane, priority, queued: false };
-      this.#entries.set(task, entry);
-      this.#lastTask = task;
-      this.#lastEntry = entry;
+      task.queueEntry = entry;
     }
     const queued = entry.queued;
     if (queued) {

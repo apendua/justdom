@@ -89,6 +89,15 @@ export class Derived extends Computation {
   #warnedAboutChannelOrder = false;
 
   /**
+   * The update queue's slot on this node, written on the first enqueue and
+   * reused for life. Declared here so every node carries the field from
+   * birth rather than growing it mid-flight.
+   *
+   * @type {import("./UpdateQueue.js").Entry | undefined}
+   */
+  queueEntry = undefined;
+
+  /**
    * @param {(ctx: EvaluationContext<T>) => T} evaluate
    * @param {((a: T, b: T) => boolean) | DerivedOptions<T>} [options]
    */
@@ -232,7 +241,7 @@ export class Derived extends Computation {
    * Warned about once per node: the edge is created once, but the node may
    * recompute thousands of times a second.
    *
-   * @param {Dependency[]} dependencies
+   * @param {Iterable<Dependency>} dependencies
    * @returns {void}
    */
   #checkChannelOrder(dependencies) {

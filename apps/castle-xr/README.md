@@ -73,7 +73,7 @@ followed, and the reference for all of it is the **grab point**: the spot the
 ray landed on when the trigger closed. That spot stays pinned to the ray, as
 far out along it as it was taken hold of, so tipping the wrist tows the board
 where the ray now points instead of leaving the cursor to slide across it; and
-the turn about the vertical pivots the board *about the grab point*, so the
+the turn about the vertical pivots the board _about the grab point_, so the
 spot being held is the one spot that never moves.
 
 **A carry can change hands without being put down.** A press from the other
@@ -94,7 +94,7 @@ teal and the bricks are the one warm thing standing on it; the panels take the
 bricks' side of that split — parchment in a bronze frame, Cinzel capitals for
 titles, Quicksand for everything else, pill-shaped oak-and-gilt buttons — so
 the interface belongs with the castle rather than with the table. Cyan is kept
-for what the player is *about* to do — the ghost of a brick, the pointer — so
+for what the player is _about_ to do — the ghost of a brick, the pointer — so
 it never competes with anything already built.
 
 ## Bricks and the half grid
@@ -153,7 +153,16 @@ no use for:
   to lay it on its side or its face. The **thumbstick** still composes 90°
   steps on top of what the hand is holding, for the turns a wrist cannot
   comfortably reach.
-- **Grip pulls out a copy** of a brick already placed.
+- **Grip pulls out a copy** of a brick already placed, and a **stand-in is
+  drawn where the gripped brick was** for the length of the drag: what the hand
+  carries away is the brick's own object, so without it the spot sat empty and
+  the gesture read as _moving_ the brick until the copy appeared on the drop.
+  Because the original is not going anywhere, it also still blocks — a copy
+  cannot be dropped inside the brick it was gripped off, which would otherwise
+  put two bricks in one cell and blow the castle apart on the first frame of
+  the siege.
+- The tray keeps a **stand-in** in a slot whose brick is away in somebody's
+  hand, for the same reason and in the same way.
 - **Dragging a brick off the board deletes it.**
 - Placing, moving and removing are recorded as what the brick looked like before
   and after, so both directions can be walked (`store/History.ts`). The two near
@@ -213,7 +222,7 @@ cheek.
 A brick is **down** when it is touching the ground — its lowest point, taken
 from the axis aligned extent of however it has ended up rotated, is at the
 floor. Sitting on top of another brick does not count, whatever height that
-happens to be. The castle is beaten when every brick is down *and* the rubble
+happens to be. The castle is beaten when every brick is down _and_ the rubble
 has stopped moving, so a wall caught mid-collapse does not declare victory a
 moment early. The panel counts what is still standing while the siege runs.
 
@@ -234,7 +243,7 @@ the metre's. Handing Rapier the raw `9.81` — which this app once did — reall
 means a tenth of gravity, and the castle comes down in the gentle slow motion
 of a miniature filmed at scale; scaling it up makes the rubble fall like
 rubble. The ground is
-placed so its *surface* is the origin's `y = 0`, which is the same arithmetic
+placed so its _surface_ is the origin's `y = 0`, which is the same arithmetic
 the half grid uses: a brick standing on the grid is standing on the floor of the
 simulation, with no fudge factor between the two.
 
@@ -245,22 +254,22 @@ honest: a castle that was not going to stand up does not stand up.
 
 ## Layout of the code
 
-| Path                     | What it is                                                                     |
-| ------------------------ | ------------------------------------------------------------------------------ |
-| `elements/palette.ts`    | Every colour in the game, panels and world alike.                              |
-| `utils/carry.ts`         | Carrying the board about the room without letting it tip over.                 |
-| `utils/grid.ts`          | The half grid: rotated extents, corner snapping, and the overlap test.         |
-| `utils/launch.ts`        | What a slingshot does when it is let go. Two points in, a shot out.            |
-| `utils/rotations.ts`     | The 24 orientations of a cube, alignment to them, stick-driven turns.          |
-| `utils/paletteLayout.ts` | Where each brick sits on the tray. A pure function, tested on its own.         |
-| `utils/thumbstick.ts`    | Reading a stick as discrete latched steps rather than a continuous value.      |
-| `store/CastleStore.ts`   | The castle, its history, and its persistence.                                  |
-| `store/Session.ts`       | Which phase the game is in, and the numbers the panel shows.                   |
-| `components/Game.ts`     | The board: the drag, the preview, the siege, the count of what is standing.    |
-| `components/Brick.ts`    | One brick — mesh, collider, ghost and refused styles, the drag.                |
-| `components/Slingshot.ts`| The frame, the bands, the pouch, and the two-handed draw.                      |
-| `elements/rapier.ts`     | Rapier bindings: world, colliders, rigid bodies, the fixed-step loop.          |
-| `views/`                 | The one panel, projected into the scene; the phase picks which rows it shows.  |
+| Path                      | What it is                                                                    |
+| ------------------------- | ----------------------------------------------------------------------------- |
+| `elements/palette.ts`     | Every colour in the game, panels and world alike.                             |
+| `utils/carry.ts`          | Carrying the board about the room without letting it tip over.                |
+| `utils/grid.ts`           | The half grid: rotated extents, corner snapping, and the overlap test.        |
+| `utils/launch.ts`         | What a slingshot does when it is let go. Two points in, a shot out.           |
+| `utils/rotations.ts`      | The 24 orientations of a cube, alignment to them, stick-driven turns.         |
+| `utils/paletteLayout.ts`  | Where each brick sits on the tray. A pure function, tested on its own.        |
+| `utils/thumbstick.ts`     | Reading a stick as discrete latched steps rather than a continuous value.     |
+| `store/CastleStore.ts`    | The castle, its history, and its persistence.                                 |
+| `store/Session.ts`        | Which phase the game is in, and the numbers the panel shows.                  |
+| `components/Game.ts`      | The board: the drag, the preview, the siege, the count of what is standing.   |
+| `components/Brick.ts`     | One brick — mesh, collider, ghost and refused styles, the drag.               |
+| `components/Slingshot.ts` | The frame, the bands, the pouch, and the two-handed draw.                     |
+| `elements/rapier.ts`      | Rapier bindings: world, colliders, rigid bodies, the fixed-step loop.         |
+| `views/`                  | The one panel, projected into the scene; the phase picks which rows it shows. |
 
 ## Things worth picking up next
 

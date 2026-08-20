@@ -505,8 +505,12 @@ const Game = component((ctx: WeakKey) => {
               }
             }),
             on("dragmove", (event) => {
-              // A brick being moved must not be counted as blocking itself.
-              updatePreview(event, brick.type, brick);
+              // A brick being *moved* must not be counted as blocking itself:
+              // it is leaving the cell it is in. A brick being *copied* is not
+              // going anywhere, so it does block — otherwise a copy could be
+              // dropped inside the brick it was gripped off, and two bricks
+              // sharing a cell is exactly what the siege cannot have.
+              updatePreview(event, brick.type, event.clone ? undefined : brick);
             }),
             on("dragend", (event) => {
               // Whatever becomes of the drop, the brick itself is back where

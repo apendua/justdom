@@ -1,6 +1,13 @@
 # Change Log - @apendua/signal
 
-This log was last generated on Tue, 18 Aug 2026 21:22:37 GMT and should not be manually modified.
+This log was last generated on Thu, 20 Aug 2026 20:52:32 GMT and should not be manually modified.
+
+## 0.4.1
+Thu, 20 Aug 2026 20:52:32 GMT
+
+### Patches
+
+- Performance: invalidate dependent computations through direct method calls, store queue entries and priorities on the nodes instead of WeakMaps, and avoid a per-recomputation array copy.
 
 ## 0.4.0
 Tue, 18 Aug 2026 21:22:37 GMT

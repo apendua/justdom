@@ -2,6 +2,18 @@
   "name": "@apendua/signal",
   "entries": [
     {
+      "version": "0.4.1",
+      "tag": "@apendua/signal_v0.4.1",
+      "date": "Thu, 20 Aug 2026 20:52:32 GMT",
+      "comments": {
+        "patch": [
+          {
+            "comment": "Performance: invalidate dependent computations through direct method calls, store queue entries and priorities on the nodes instead of WeakMaps, and avoid a per-recomputation array copy."
+          }
+        ]
+      }
+    },
+    {
       "version": "0.4.0",
       "tag": "@apendua/signal_v0.4.0",
       "date": "Tue, 18 Aug 2026 21:22:37 GMT",

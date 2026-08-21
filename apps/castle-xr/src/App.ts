@@ -9,7 +9,7 @@ import { basicMaterial } from "./elements/material.js";
 import { palette } from "./elements/palette.js";
 import Game from "./components/Game.js";
 import { createMusicControls, Music } from "@apendua.dev/sound/xr";
-import { createDiagnostics, Diagnostics } from "@apendua.dev/diagnostics";
+import { createDiagnostics, Diagnostics } from "@apendua/justui";
 import glass_desk_habits from "@apendua.dev/media/glass_desk_habits.mp3";
 import GameUI from "./views/GameUI.js";
 import CastleStore from "./store/CastleStore.js";

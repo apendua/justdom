@@ -2,7 +2,7 @@ import * as THREE from "three";
 import { component, effects, set, emit, observable, on, Op, store } from "@apendua/signal";
 import { dom } from "@apendua/freedom";
 import type { AudioOutputSelection } from "@apendua.dev/sound";
-import { diagnosticsButton, type DiagnosticsControls } from "@apendua.dev/diagnostics";
+import { diagnosticsButton, type DiagnosticsControls } from "@apendua/justui";
 import { children, list, $, text } from "@apendua/justdom";
 import {
   actionButton,

@@ -1,7 +1,7 @@
 import { distinctUntilChanged, switchMap } from "rxjs";
 import { $, attr, children, list, on, renderText, set, text } from "@apendua/justdom";
 import { effects, observable, onCleanup, Signal } from "@apendua/signal";
-import { getPortalRoot } from "./portal.js";
+import { getPortalRoot } from "@apendua/freedom";
 
 /**
  * @import {Observable} from "rxjs";

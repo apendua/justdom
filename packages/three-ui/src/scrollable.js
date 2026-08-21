@@ -1,7 +1,6 @@
 import { $, children, list, set, style, text } from "@apendua/justdom";
 import { Derived, effects, onCleanup, Signal } from "@apendua/signal";
-import { getPortalRoot } from "./portal.js";
-import { scrollElementBy } from "./renderingUpdates.js";
+import { getPortalRoot, scrollElementBy } from "@apendua/freedom";
 
 /**
  * @import {Observable} from "rxjs";

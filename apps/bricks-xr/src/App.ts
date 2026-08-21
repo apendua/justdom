@@ -10,7 +10,7 @@
 import * as THREE from "three";
 import { children, $ } from "@apendua/freedom";
 import { component, effects, just, use } from "@apendua/signal";
-import { createDiagnostics, Diagnostics } from "@apendua.dev/diagnostics";
+import { createDiagnostics, Diagnostics } from "@apendua/justui";
 import Game from "./Game.js";
 import { CELL, SIZE } from "./grid.js";
 import { palette } from "./palette.js";

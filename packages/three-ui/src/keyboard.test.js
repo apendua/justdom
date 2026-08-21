@@ -4,8 +4,7 @@ import { children } from "@apendua/justdom";
 import { just } from "@apendua/signal";
 import * as THREE from "three";
 import { keyboard, MOBILE_LAYOUT } from "./keyboard.js";
-import { InteractionContext, InteractionManager } from "../interactions.js";
-import { createPortal } from "./portal.js";
+import { createPortal, InteractionContext, InteractionManager } from "@apendua/freedom";
 
 // jsdom-env exposes the common DOM globals, but not MutationObserver, which
 // the portal uses to mirror the tree.

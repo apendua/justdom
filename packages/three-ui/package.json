@@ -1,14 +1,22 @@
 {
-  "name": "@apendua.dev/diagnostics",
-  "version": "1.0.0",
-  "private": true,
-  "description": "The frame rate readout every headset app wears: a small head-locked panel and the meter behind it",
+  "name": "@apendua/justui",
+  "version": "0.1.0",
+  "description": "The widgets a panel is made of -- dropdown, keyboard, scrollable and a frame rate readout -- built out of ordinary DOM so they work on a page and inside a @apendua/freedom portal alike",
   "keywords": [
-    "diagnostics",
-    "performance",
+    "ui",
+    "widgets",
+    "dropdown",
+    "keyboard",
+    "scrollbar",
+    "webxr",
     "three",
-    "webxr"
+    "signals"
   ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/apendua/apendua.dev.git",
+    "directory": "packages/justui"
+  },
   "license": "MIT",
   "author": "apendua",
   "type": "module",
@@ -54,5 +62,9 @@
     "@apendua/justdom": "workspace:*",
     "@apendua/signal": "workspace:*",
     "three": "~0.180.0"
+  },
+  "publishConfig": {
+    "access": "restricted",
+    "registry": "https://npm.pkg.github.com"
   }
 }

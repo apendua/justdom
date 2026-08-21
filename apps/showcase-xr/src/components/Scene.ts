@@ -2,7 +2,7 @@ import * as THREE from "three";
 import { children, cursors, $, dom } from "@apendua/freedom";
 import { effects, just, component, use } from "@apendua/signal";
 
-import { createDiagnostics, Diagnostics, type DiagnosticsControls } from "@apendua.dev/diagnostics";
+import { createDiagnostics, Diagnostics, type DiagnosticsControls } from "@apendua/justui";
 import ButtonsPanel from "./ButtonsPanel.js";
 import MotionPanel from "./MotionPanel.js";
 import BoxesPanel from "./BoxesPanel.js";

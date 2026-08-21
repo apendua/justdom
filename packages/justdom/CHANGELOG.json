@@ -2,6 +2,18 @@
   "name": "@apendua/justdom",
   "entries": [
     {
+      "version": "0.1.7",
+      "tag": "@apendua/justdom_v0.1.7",
+      "date": "Thu, 20 Aug 2026 20:52:32 GMT",
+      "comments": {
+        "dependency": [
+          {
+            "comment": "Updating dependency \"@apendua/signal\" to `0.4.1`"
+          }
+        ]
+      }
+    },
+    {
       "version": "0.1.6",
       "tag": "@apendua/justdom_v0.1.6",
       "date": "Tue, 18 Aug 2026 21:22:37 GMT",

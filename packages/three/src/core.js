@@ -139,11 +139,11 @@ import { addDependency, batch, Derived } from "@apendua/signal";
  * without depending on `justdom` at all. Pass a justdom tree to `dom()`
  * exactly as before.
  *
- * `justdom`'s version is generic over the node type, because a tree it builds
- * need not be rendered to a document — `apps/signal-ssr` renders one to a
- * string. A portal's cannot be: it mirrors real elements through a
- * `MutationObserver` and measures them with `getBoundingClientRect`. So the
- * node here is the DOM's own `Node` and there is nothing to be generic over.
+ * `justdom`'s version is generic over the node type, and keeps its list
+ * rendering and its node walking free of `document` so that it can be. A
+ * portal cannot be: it mirrors real elements through a `MutationObserver` and
+ * measures them with `getBoundingClientRect`. So the node here is the DOM's
+ * own `Node` and there is nothing to be generic over.
  *
  * @typedef {object} Mountable
  * @property {(segment: [first: Node, last: Node]) => [first: Node, last: Node]} replace

@@ -243,6 +243,7 @@ function normalize(value) {
  * @template T
  * @param {Observable<Iterable<T>> | (() => Iterable<T>)} items
  * @param {(item: T, getIndex: () => number) => Observable<Mountable>} renderItem
+ * @returns {Observable<Mountable>}
  */
 export function list(items, renderItem) {
   items = normalize(items);
@@ -254,6 +255,7 @@ export function list(items, renderItem) {
  * @template T
  * @param {Observable<Iterable<[K, T]>> | (() => Iterable<[K, T]>) } items
  * @param {(item: T, key: K, index: () => number) => Observable<Mountable>} renderItem
+ * @returns {Observable<Mountable>}
  */
 export function keyedList(items, renderItem) {
   items = normalize(items);

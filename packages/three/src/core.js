@@ -126,6 +126,30 @@ import { addDependency, batch, Derived } from "@apendua/signal";
  */
 
 /**
+ * A DOM tree that has not been put anywhere yet: what `@apendua/justdom`
+ * builds and what a portal mounts.
+ *
+ * A *segment* is the pair of sibling nodes a tree spans — its first and its
+ * last, which may be the same node — and `replace` swaps whatever currently
+ * occupies that span for this tree's own nodes, handing back the span they
+ * now occupy. That one method is the entire protocol between the two
+ * packages, which is why it is written out here rather than imported: this
+ * is `justdom`'s `Mountable<Node>` to the letter, TypeScript compares the
+ * two structurally, and `freedom` therefore describes its own signatures
+ * without depending on `justdom` at all. Pass a justdom tree to `dom()`
+ * exactly as before.
+ *
+ * `justdom`'s version is generic over the node type, because a tree it builds
+ * need not be rendered to a document — `apps/signal-ssr` renders one to a
+ * string. A portal's cannot be: it mirrors real elements through a
+ * `MutationObserver` and measures them with `getBoundingClientRect`. So the
+ * node here is the DOM's own `Node` and there is nothing to be generic over.
+ *
+ * @typedef {object} Mountable
+ * @property {(segment: [first: Node, last: Node]) => [first: Node, last: Node]} replace
+ */
+
+/**
  * @template T
  * @template K
  * @param {Object3D} parent

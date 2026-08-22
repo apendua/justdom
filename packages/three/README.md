@@ -104,6 +104,14 @@ portal, so ordinary DOM-based UI (menus, HUDs, forms) can be composited
 directly into a 3D or WebXR scene and still receive pointer events routed
 through `interactions(ctx)`.
 
+It does that without depending on `justdom`. What `dom()` takes is a
+`Mountable` — a tree that has not been put anywhere yet, exposing one method
+that swaps it into a span of sibling nodes — and that type is declared here
+rather than imported, so `justdom` is not a peer dependency of this package.
+A justdom tree satisfies it, because the two declarations are the same shape
+and TypeScript compares them structurally; so does anything else that builds
+real DOM nodes and knows how to hand them over.
+
 Two things about a portal are worth knowing before writing UI for one.
 
 **Sizes are re-measured when the tree changes, not when an attribute does.**

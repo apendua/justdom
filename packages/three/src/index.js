@@ -40,6 +40,10 @@ export { anchorToViewer } from "./anchor.js";
  */
 
 /**
+ * @typedef {import('./core.js').Mountable} Mountable
+ */
+
+/**
  * @typedef {import('./render.js').ControllerHandle} ControllerHandle
  */
 

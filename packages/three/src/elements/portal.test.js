@@ -1,8 +1,8 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
-import { Derived, UpdateChannel, withChannel } from "@apendua/signal";
-import { $, attr, children } from "@apendua/justdom";
+import { Derived, Signal, toObservable, UpdateChannel, withChannel } from "@apendua/signal";
+import { $, attr, children, className, stylesheet } from "@apendua/justdom";
 import { InteractionContext, InteractionManager } from "../interactions.js";
 import { getComputedStyleCached } from "./mirror.js";
 import { acquireImage, releaseImage } from "./image.js";
@@ -1141,5 +1141,167 @@ describe("createPortal", () => {
     } finally {
       THREE.TextureLoader.prototype.load = originalLoad;
     }
+  });
+
+  test("a rule rewritten behind a stable class name restyles the panel", async () => {
+    // What a styling library that hands out class names does when the value
+    // inside one of its templates changes: it rewrites the rule in the head
+    // and leaves the `class` attribute exactly as it was. That is the whole
+    // point of the stable name — one attribute across a lifetime of style
+    // updates — and it means the panel's own subtree, which is all the
+    // observer watches, does not move by so much as a character.
+    const manager = new InteractionManager();
+    const ctx = InteractionContext.set({}, manager);
+    const portal = createPortal(ctx);
+    portal.addTo(new THREE.Group());
+
+    const color = Signal.of("rgb(1, 2, 3)");
+    const card = className`
+      background-color: ${toObservable(color)};
+    `;
+
+    /** @type {import("@apendua/justdom").Mountable<Node> | undefined} */
+    let mountable;
+    const tree = $("div", [children($("div", [attr("id", () => "card"), attr("class", card)]))]);
+    const subscription = tree.subscribe((value) => {
+      mountable = value;
+    });
+    assert.ok(mountable);
+    portal.mount(mountable);
+
+    await settle(portal);
+
+    const element = /** @type {HTMLElement} */ (document.getElementById("card"));
+    assert.ok(element);
+    const classBefore = element.getAttribute("class");
+
+    let reads = 0;
+    const observing = new UpdateChannel({ name: "observing", order: 1 });
+    const dependent = withChannel(
+      observing,
+      () =>
+        new Derived(() => {
+          reads += 1;
+          return getComputedStyleCached(element).backgroundColor;
+        }),
+    );
+    const dependentSubscription = dependent.subscribe({ next: () => dependent.get() });
+    assert.equal(dependent.get(), "rgb(1, 2, 3)");
+    assert.equal(reads, 1);
+
+    color.set("rgb(4, 5, 6)");
+    await pump();
+
+    assert.equal(
+      element.getAttribute("class"),
+      classBefore,
+      "the class attribute is not what changed",
+    );
+    assert.equal(dependent.get(), "rgb(4, 5, 6)", "the panel wears the colour the rule now says");
+    assert.equal(reads, 2, "and read it once more, not once per element in the head");
+
+    dependentSubscription.unsubscribe();
+    subscription.unsubscribe();
+    portal.disconnect();
+  });
+
+  test("a head mutation that is not a stylesheet restyles nothing", async () => {
+    // The head is a busy place — a title, a meta tag, a preload hint — and a
+    // whole-panel restyle is far too expensive to spend on any of them.
+    const manager = new InteractionManager();
+    const ctx = InteractionContext.set({}, manager);
+    const portal = createPortal(ctx);
+    portal.addTo(new THREE.Group());
+
+    /** @type {import("@apendua/justdom").Mountable<Node> | undefined} */
+    let mountable;
+    const tree = $("div", [children($("div", [attr("id", () => "plain")]))]);
+    const subscription = tree.subscribe((value) => {
+      mountable = value;
+    });
+    assert.ok(mountable);
+    portal.mount(mountable);
+
+    await settle(portal);
+
+    const element = /** @type {HTMLElement} */ (document.getElementById("plain"));
+    assert.ok(element);
+
+    let reads = 0;
+    const observing = new UpdateChannel({ name: "observing", order: 1 });
+    const dependent = withChannel(
+      observing,
+      () =>
+        new Derived(() => {
+          reads += 1;
+          return getComputedStyleCached(element).backgroundColor;
+        }),
+    );
+    const dependentSubscription = dependent.subscribe({ next: () => dependent.get() });
+    dependent.get();
+    assert.equal(reads, 1);
+
+    const meta = document.createElement("meta");
+    meta.setAttribute("name", "description");
+    document.head.appendChild(meta);
+    await pump();
+    assert.equal(reads, 1, "a meta tag says nothing about how the panel looks");
+
+    meta.remove();
+    dependentSubscription.unsubscribe();
+    subscription.unsubscribe();
+    portal.disconnect();
+  });
+
+  test("a stylesheet arriving after the panel, and leaving again, both reach it", async () => {
+    // The other half of the same event, and the other tag: `stylesheet`
+    // writes whole rules rather than the body of one, and a sheet of them
+    // can be mounted and unmounted while the panel it dresses stands still.
+    // A component whose styles are subscribed alongside it is exactly that.
+    const manager = new InteractionManager();
+    const ctx = InteractionContext.set({}, manager);
+    const portal = createPortal(ctx);
+    portal.addTo(new THREE.Group());
+
+    /** @type {import("@apendua/justdom").Mountable<Node> | undefined} */
+    let mountable;
+    const tree = $("div", [
+      children($("div", [attr("id", () => "late"), attr("class", () => "late")])),
+    ]);
+    const subscription = tree.subscribe((value) => {
+      mountable = value;
+    });
+    assert.ok(mountable);
+    portal.mount(mountable);
+
+    await settle(portal);
+
+    const element = /** @type {HTMLElement} */ (document.getElementById("late"));
+    assert.ok(element);
+
+    const observing = new UpdateChannel({ name: "observing", order: 1 });
+    const dependent = withChannel(
+      observing,
+      () => new Derived(() => getComputedStyleCached(element).backgroundColor),
+    );
+    const dependentSubscription = dependent.subscribe({ next: () => dependent.get() });
+    assert.equal(dependent.get(), "rgba(0, 0, 0, 0)", "nothing dresses it yet");
+
+    const sheet = stylesheet`
+      .late {
+        background-color: rgb(7, 8, 9);
+      }
+    `;
+    const sheetSubscription = sheet.subscribe(() => {});
+    await pump();
+    assert.equal(dependent.get(), "rgb(7, 8, 9)", "the sheet landed on a panel already standing");
+
+    sheetSubscription.unsubscribe();
+    await pump();
+    assert.equal(dependent.get(), "rgba(0, 0, 0, 0)", "and the rule left with it");
+
+    dependentSubscription.unsubscribe();
+    subscription.unsubscribe();
+    portal.disconnect();
   });
 });

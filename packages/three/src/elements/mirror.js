@@ -75,9 +75,10 @@ import { clipBoxEqual, intersectClipBoxes, toLocalClipBox, UNCLIPPED } from "./c
  *     resize reaches its own contents, one level per settling and no
  *     further than the sizes actually change. And a handful of signals stay
  *     portal-wide for the changes no walk could find: fonts, which re-break
- *     lines without moving a single box; an animating layout property,
- *     which moves elements nobody named; and out-of-flow boxes, which are
- *     not on the parent chain the walk follows.
+ *     lines without moving a single box; a rule rewritten in the document's
+ *     stylesheets, which is not in the tree at all; an animating layout
+ *     property, which moves elements nobody named; and out-of-flow boxes,
+ *     which are not on the parent chain the walk follows.
  *
  * Under all of it is the equality gate — every measurement is a plain value
  * compared by value, so a re-measure stops propagating at the first element
@@ -438,8 +439,8 @@ export class DomMirror {
   outOfFlowLayout = Signal.of(0);
 
   /**
-   * Everything restyled at once: fonts arriving are the one event with no
-   * node to blame.
+   * Everything restyled at once: fonts arriving and the document's
+   * stylesheets changing are the events with no node to blame.
    *
    * @type {Signal<number>}
    */
@@ -449,8 +450,10 @@ export class DomMirror {
    * Layout that reaches everywhere, walls or no walls. Fonts arriving are
    * the case this exists for: a face landing re-breaks the lines inside a
    * scroller without changing the scroller's size by so much as a pixel, so
-   * it is the one layout event no boundary may hold back. Rare enough that
-   * making every measurement in the portal depend on it costs nothing.
+   * it is a layout event no boundary may hold back. A rule rewritten under
+   * the panel is the same: nothing bounds what a stylesheet may have said.
+   * Rare enough that making every measurement in the portal depend on it
+   * costs nothing.
    *
    * @type {Signal<number>}
    */
@@ -760,6 +763,39 @@ export class DomMirror {
    * @returns {void}
    */
   fontsLoaded() {
+    this.#everythingChanged();
+  }
+
+  /**
+   * The document's stylesheets changed: a rule was rewritten, or a sheet
+   * arrived or went away. The same shape of event as fonts arriving, and for
+   * the same reason — the rules are not in the tree, so no node can be
+   * blamed for what they did, and a rule may equally well have restyled one
+   * element or re-laid-out the panel.
+   *
+   * This is what a styling library that keeps a class name stable and
+   * rewrites the rule behind it looks like from in here: the `class`
+   * attribute the panel wears never changes, so nothing else in this file
+   * ever hears about the change. See `documentStyles.js`.
+   *
+   * **It costs a whole-panel restyle and re-measure**, which is the honest
+   * price of an event that names nothing. Fine for a theme swap or a
+   * state-driven rule; expensive for a value animated at frame rate. Animate
+   * through an inline `style` instead — that is a mutation on the element
+   * that moved, and it is scoped to it.
+   *
+   * @returns {void}
+   */
+  documentStylesChanged() {
+    this.#everythingChanged();
+  }
+
+  /**
+   * Everything restyles and everything re-measures, walls or no walls.
+   *
+   * @returns {void}
+   */
+  #everythingChanged() {
     batch(() => {
       bump(this.restyle);
       bump(this.layout);

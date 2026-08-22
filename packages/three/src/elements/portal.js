@@ -5,6 +5,7 @@ import { text } from "./text.js";
 import { checkbox } from "./checkbox.js";
 import { createMirror, getBorderBoxSize, PORTAL_ATTRIBUTE } from "./mirror.js";
 import { createAnimationClock } from "./animationClock.js";
+import { watchDocumentStyles } from "./documentStyles.js";
 import { createBlocker, coverBox } from "./blocker.js";
 import { BoxBatchContext, createBoxBatch } from "./boxBatch.js";
 import { TextBatchContext, createTextBatch } from "./textBatch.js";
@@ -811,6 +812,16 @@ export function createPortal(
     document.fonts.addEventListener("loadingdone", fontLoadingCallback);
   }
 
+  // The other event with no node to blame: the rules themselves changing. A
+  // stylesheet lives in the head, which is nowhere near the subtree the
+  // observer above watches, so a library that rewrites a rule while keeping
+  // the class name it is behind mutates nothing this panel can see.
+  const stopWatchingStyles = watchDocumentStyles(() => {
+    projectChanges(() => {
+      mirror.documentStylesChanged();
+    });
+  });
+
   objectToCleanup.set(containerObject, () => {
     pump?.dispose();
     if (blocker) {
@@ -826,6 +837,7 @@ export function createPortal(
     if (document.fonts) {
       document.fonts.removeEventListener("loadingdone", fontLoadingCallback);
     }
+    stopWatchingStyles();
     containerElement.removeEventListener("scroll", scrollCallback, true);
     containerElement.removeEventListener("load", loadCallback, true);
     // A frame asked for by an image that landed just as the portal came down.

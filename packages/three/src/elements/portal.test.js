@@ -1305,3 +1305,99 @@ describe("createPortal", () => {
     portal.disconnect();
   });
 });
+
+/**
+ * The mirror reads the DOM, not the library that wrote it. `mount()` takes a
+ * `Mountable` — one method, declared in this package rather than imported from
+ * `justdom` — so anything able to put real elements into a span of siblings can
+ * be projected: another framework's renderer, a server-rendered fragment
+ * adopted in place, or the dozen lines below.
+ *
+ * What this guards is narrower than it looks, and worth stating exactly. It is
+ * not tree shape: a justdom tree and the raw one below leave the portal's
+ * container in the same state — one element, no envelope, nothing to tell them
+ * apart — so there is no justdom-shaped structure for an assumption to attach
+ * itself to in the first place.
+ *
+ * It is the *contract*. Every other test in this file builds its tree with
+ * `@apendua/justdom`, so all of them would keep passing if `mount` quietly grew
+ * a second requirement and justdom grew the method to satisfy it — and every
+ * integration written against the one method in the README would break. That is
+ * the regression this catches, and the only test here that can: it is the sole
+ * caller whose mountable was not written by the package on the other side of
+ * the seam.
+ */
+describe("mounting a tree justdom did not build", () => {
+  /**
+   * The whole `Mountable` contract, over a single element: put the node where
+   * the span is, take the span's own nodes out, and report the span the node
+   * now occupies.
+   *
+   * @param {Node} node
+   * @returns {import('../core.js').Mountable}
+   */
+  function mountableFor(node) {
+    return {
+      replace([first, last]) {
+        const parent = first.parentNode;
+        if (!parent) {
+          throw new Error("Cannot replace a segment that is not in a tree.");
+        }
+        parent.insertBefore(node, first);
+        for (let current = /** @type {Node | null} */ (first); current; ) {
+          const next = current.nextSibling;
+          parent.removeChild(current);
+          current = current === last ? null : next;
+        }
+        return [node, node];
+      },
+    };
+  }
+
+  test("projects it exactly as it projects a justdom one", async () => {
+    const manager = new InteractionManager();
+    /** @type {THREE.Object3D[]} */
+    const added = [];
+    const originalAdd = manager.add.bind(manager);
+    manager.add = (object) => {
+      added.push(object);
+      originalAdd(object);
+    };
+    const ctx = InteractionContext.set({}, manager);
+
+    const portal = createPortal(ctx);
+    portal.addTo(new THREE.Group());
+
+    // The same card the first test in this file builds with `$` and
+    // `children`: one button and one plain wrapper, in plain DOM calls.
+    const root = document.createElement("div");
+    const button = document.createElement("div");
+    button.setAttribute("style", "cursor: pointer");
+    const label = document.createElement("div");
+    label.setAttribute("style", "padding: 4px");
+    root.appendChild(button);
+    root.appendChild(label);
+
+    portal.mount(mountableFor(root));
+    await settle(portal);
+
+    assert.equal(
+      getPortalRoot(button)?.contains(root),
+      true,
+      "the tree went into the portal's own container",
+    );
+    assert.equal(
+      added.length,
+      2,
+      "one blocker and one clickable div, the same as for a justdom tree",
+    );
+    assert.ok(
+      added.some(
+        (object) => object instanceof THREE.Mesh && object.geometry instanceof THREE.PlaneGeometry,
+      ),
+      "the blocker plane is among them",
+    );
+
+    portal.disconnect();
+  });
+});

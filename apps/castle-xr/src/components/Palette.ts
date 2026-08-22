@@ -1,6 +1,6 @@
 import * as THREE from "three";
-import { $, children, dom, interactions, XREventMap } from "@apendua/freedom";
-import { component, effects, emit, on, Op, set, store } from "@apendua/signal";
+import { $, children, dom, interactions, Nothing, XREventMap } from "@apendua/freedom";
+import { component, effects, emit, on, Op, set, Signal, store } from "@apendua/signal";
 import { children as domChildren, $ as $dom, text } from "@apendua/justdom";
 import Brick from "./Brick.js";
 import { BrickType } from "./types.js";
@@ -107,39 +107,60 @@ export const Palette = component((ctx: WeakKey, operators: Op<PaletteProps, Pale
           ],
         );
       }),
-      ...layout.slots.map(({ type, x, y, z }) => {
-        return Brick(ctx, [
-          set({
-            type,
-            draggable: true,
-            hitbox: true,
-            scale: PALETTE_BRICK_SCALE,
-            position: new THREE.Vector3(x, y, z),
-          }),
-          on("dragstart", (e) => {
-            emit(props, "dragstart", {
-              brickType: type,
-              matrixWorld: e.matrixWorld,
-              inputSource: e.inputSource,
-            });
-          }),
-          on("dragmove", (e) => {
-            emit(props, "dragmove", {
-              brickType: type,
-              matrixWorld: e.matrixWorld,
-              inputSource: e.inputSource,
-            });
-          }),
-          on("dragend", (e) => {
-            // The tray always keeps its brick; only the copy is placed.
-            e.reset();
-            emit(props, "dragend", {
-              brickType: type,
-              matrixWorld: e.matrixWorld,
-              inputSource: e.inputSource,
-            });
-          }),
-        ]);
+      ...layout.slots.flatMap(({ type, x, y, z }) => {
+        const position = new THREE.Vector3(x, y, z);
+        /** Whether this slot's brick is currently away in somebody's hand. */
+        const taken = Signal.of(false);
+        return [
+          // What comes off the tray is a copy — the tray always keeps its
+          // brick — but what the hand actually carries away is the tray
+          // brick's own object, so the slot sat empty for the length of the
+          // drag and the tray looked raided. A stand-in holds the slot
+          // instead, and goes when the brick itself comes back to it.
+          component(() => {
+            if (!taken.get()) {
+              return Nothing();
+            }
+            return Brick(ctx, [
+              set({ type, scale: PALETTE_BRICK_SCALE, position, interactive: false }),
+            ]);
+          })(),
+          Brick(ctx, [
+            set({
+              type,
+              draggable: true,
+              hitbox: true,
+              scale: PALETTE_BRICK_SCALE,
+              position,
+            }),
+            on("dragstart", (e) => {
+              taken.set(true);
+              emit(props, "dragstart", {
+                brickType: type,
+                matrixWorld: e.matrixWorld,
+                inputSource: e.inputSource,
+              });
+            }),
+            on("dragmove", (e) => {
+              emit(props, "dragmove", {
+                brickType: type,
+                matrixWorld: e.matrixWorld,
+                inputSource: e.inputSource,
+              });
+            }),
+            on("dragend", (e) => {
+              // The tray always keeps its brick; only the copy is placed. The
+              // stand-in steps aside now that the brick itself is back.
+              taken.set(false);
+              e.reset();
+              emit(props, "dragend", {
+                brickType: type,
+                matrixWorld: e.matrixWorld,
+                inputSource: e.inputSource,
+              });
+            }),
+          ]),
+        ];
       }),
     ),
   ]);

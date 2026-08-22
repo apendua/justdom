@@ -111,6 +111,26 @@ const Game = component((ctx: WeakKey) => {
     blocked: false,
   });
 
+  /**
+   * The brick standing where a gripped one was picked up from.
+   *
+   * Gripping a brick copies it, but what the hand takes away is the brick's
+   * own object — so the spot it came from sat empty for the whole drag, and
+   * the copy appeared only once it was dropped. That reads as *moving* a brick
+   * right up until the moment it turns out to have been copied. So a stand-in
+   * is drawn where the gripped brick was, and it does not move: the gesture
+   * looks like what it is from the first frame. On the drop it goes away
+   * again, because by then the brick it stood in for has been put back.
+   */
+  const gripped = store<{
+    type?: BrickType;
+    position: THREE.Vector3;
+    rotation: THREE.Euler;
+  }>({
+    position: new THREE.Vector3(),
+    rotation: new THREE.Euler(),
+  });
+
   const projectiles = new ReactiveMap<string, ProjectileState>();
   const bodies = new Map<string, RAPIER.RigidBody>();
 
@@ -420,6 +440,30 @@ const Game = component((ctx: WeakKey) => {
           }),
         ]);
       })(),
+      // The brick a gripped copy was pulled off, standing still where it was
+      // while the copy travels with the hand.
+      component(() => {
+        const type = gripped.type;
+        if (!type) {
+          return Nothing();
+        }
+        return Brick(ctx, [
+          set({
+            type,
+            // Scenery for the length of a drag: it must not swallow the ray
+            // placing the copy, and it is only standing in for a brick that
+            // has not gone anywhere.
+            interactive: false,
+            bodyType: null,
+            get position() {
+              return gripped.position;
+            },
+            get rotation() {
+              return gripped.rotation;
+            },
+          }),
+        ]);
+      })(),
       keyedList(
         observeFn(castle.bricks).entries(),
         component((brick: BrickState, brickId: string) => {
@@ -447,14 +491,31 @@ const Game = component((ctx: WeakKey) => {
             on("bodyremoved", () => {
               bodies.delete(brickId);
             }),
-            on("dragstart", () => {
+            on("dragstart", (event) => {
               beginPlacement();
+              if (event.clone) {
+                // Gripped, so a copy is what comes away in the hand. Leave
+                // something behind to say so, from this frame rather than
+                // from the drop.
+                batch(() => {
+                  gripped.type = brick.type;
+                  gripped.position = brick.position.clone();
+                  gripped.rotation = brick.rotation.clone();
+                });
+              }
             }),
             on("dragmove", (event) => {
-              // A brick being moved must not be counted as blocking itself.
-              updatePreview(event, brick.type, brick);
+              // A brick being *moved* must not be counted as blocking itself:
+              // it is leaving the cell it is in. A brick being *copied* is not
+              // going anywhere, so it does block — otherwise a copy could be
+              // dropped inside the brick it was gripped off, and two bricks
+              // sharing a cell is exactly what the siege cannot have.
+              updatePreview(event, brick.type, event.clone ? undefined : brick);
             }),
             on("dragend", (event) => {
+              // Whatever becomes of the drop, the brick itself is back where
+              // it was by now and can speak for itself again.
+              delete gripped.type;
               const drop = dropPose();
               const outside = Boolean(preview.type && !BOARD.containsPoint(preview.position));
               delete preview.type;

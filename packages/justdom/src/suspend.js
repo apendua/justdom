@@ -5,13 +5,13 @@ import { withoutHydration } from "./hydrate.js";
 
 /**
  * @import { Property } from "@apendua/signal";
- * @import { INode, Mountable } from "./types.js";
+ * @import { INode, MountableOf } from "./nodes.js";
  */
 
 /**
  * @template {INode<T>} T
  * @typedef {object} SuspendOptions
- * @property {() => Observable<Mountable<T>>} fallback
+ * @property {() => Observable<MountableOf<T>>} fallback
  */
 
 /**
@@ -53,8 +53,8 @@ class Manager {
   }
 
   /**
-   * @param {Observable<Mountable<T>>} content
-   * @returns {Observable<Mountable<T>>}
+   * @param {Observable<MountableOf<T>>} content
+   * @returns {Observable<MountableOf<T>>}
    */
   render(content) {
     return new Observable((subscriber) => {
@@ -123,8 +123,8 @@ export function suspend(ctx, fallbackOrOptions) {
 /**
  * @template {INode<T>} T
  * @param {WeakKey} ctx
- * @param {Observable<Mountable<T>>} content
- * @returns {Observable<Mountable<T>>}
+ * @param {Observable<MountableOf<T>>} content
+ * @returns {Observable<MountableOf<T>>}
  */
 export function withFallback(ctx, content) {
   const manager = Context.get(ctx);

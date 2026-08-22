@@ -134,16 +134,10 @@ import { addDependency, batch, Derived } from "@apendua/signal";
  * occupies that span for this tree's own nodes, handing back the span they
  * now occupy. That one method is the entire protocol between the two
  * packages, which is why it is written out here rather than imported: this
- * is `justdom`'s `Mountable<Node>` to the letter, TypeScript compares the
- * two structurally, and `freedom` therefore describes its own signatures
- * without depending on `justdom` at all. Pass a justdom tree to `dom()`
- * exactly as before.
- *
- * `justdom`'s version is generic over the node type, and keeps its list
- * rendering and its node walking free of `document` so that it can be. A
- * portal cannot be: it mirrors real elements through a `MutationObserver` and
- * measures them with `getBoundingClientRect`. So the node here is the DOM's
- * own `Node` and there is nothing to be generic over.
+ * is `justdom`'s `Mountable` to the letter, TypeScript compares the two
+ * structurally, and `freedom` therefore describes its own signatures without
+ * depending on `justdom` at all. Pass a justdom tree to `dom()` exactly as
+ * before.
  *
  * @typedef {object} Mountable
  * @property {(segment: [first: Node, last: Node]) => [first: Node, last: Node]} replace

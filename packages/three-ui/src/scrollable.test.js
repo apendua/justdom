@@ -48,7 +48,7 @@ function mount({ window: shown, content: total, props = {} }) {
     classes,
     content: [$("div", [children(text`content`)])],
     ...props,
-  }).subscribe((/** @type {Mountable<Node>} */ mountable) => {
+  }).subscribe((/** @type {Mountable} */ mountable) => {
     const start = document.createComment("");
     const end = document.createComment("");
     host.append(start, end);

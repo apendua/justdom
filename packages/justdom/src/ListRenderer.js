@@ -4,7 +4,7 @@ import { addDependency, batch, Derived } from "@apendua/signal";
 
 /**
  * @import { Subscription } from "rxjs";
- * @import { Segment, INode, Mountable, Container } from "./types.js"
+ * @import { ContainerOf, INode, MountableOf, SegmentOf } from "./nodes.js"
  */
 
 /**
@@ -33,15 +33,15 @@ function teardown(fn) {
  * @template {INode<T>} T
  * @typedef {object} ListRendererHydration
  * @property {() => boolean} isActive Whether the next render should adopt.
- * @property {() => Container<T>} claimContainer Adopts the container envelope.
- * @property {(subscribe: () => void) => Segment<T>} claimItem
+ * @property {() => ContainerOf<T>} claimContainer Adopts the container envelope.
+ * @property {(subscribe: () => void) => SegmentOf<T>} claimItem
  *   Runs `subscribe` and reports which nodes the item adopted.
  */
 
 /**
  * @template {INode<T>} T
  * @typedef {object} ListRendererOptions
- * @property {() => Container<T>} createContainer
+ * @property {() => ContainerOf<T>} createContainer
  * @property {() => T} createPlaceholder
  * @property {ListRendererHydration<T>} [hydration]
  */
@@ -50,7 +50,7 @@ function teardown(fn) {
  * @template {INode<T>} T
  */
 export default class ListRenderer {
-  /** @type {() => Container<T>} */
+  /** @type {() => ContainerOf<T>} */
   #createContainer;
   /** @type {() => T} */
   #createPlaceholder;
@@ -68,12 +68,12 @@ export default class ListRenderer {
 
   /**
    * Creates a document fragment observable from child observables.
-   * @param {Array<Observable<Mountable<T>>>} children
-   * @returns {Observable<Mountable<T>>}
+   * @param {Array<Observable<MountableOf<T>>>} children
+   * @returns {Observable<MountableOf<T>>}
    */
   renderFragment(children) {
     return new Observable((subscriber) => {
-      /** @type {Map<number, Segment<T>>} */
+      /** @type {Map<number, SegmentOf<T>>} */
       const segments = new Map();
       const container = this.#createContainer();
 
@@ -119,8 +119,8 @@ export default class ListRenderer {
    * @template K
    * @param {Observable<Iterable<U>>} items
    * @param {(item: U) => K} getKey
-   * @param {(item: U, getIndex: () => number) => Observable<Mountable<T>>} render
-   * @returns {Observable<Mountable<T>>}
+   * @param {(item: U, getIndex: () => number) => Observable<MountableOf<T>>} render
+   * @returns {Observable<MountableOf<T>>}
    */
   renderList(items, getKey, render) {
     return new Observable((subscriber) => {
@@ -128,7 +128,7 @@ export default class ListRenderer {
       const hydrating = hydration ? hydration.isActive() : false;
       const container =
         hydrating && hydration ? hydration.claimContainer() : this.#createContainer();
-      /** @type {Map<K, Segment<T>>} */
+      /** @type {Map<K, SegmentOf<T>>} */
       const childSegments = new Map();
       /** @type {Map<K, Subscription>} */
       const childSubscriptions = new Map();

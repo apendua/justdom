@@ -36,7 +36,7 @@ import { getPortalRoot, scrollElementBy } from "@apendua/freedom";
 /**
  * @typedef {object} ScrollableProps
  * @property {ScrollableClasses} classes
- * @property {Observable<Mountable<Node>>[]} content What is being scrolled.
+ * @property {Observable<Mountable>[]} content What is being scrolled.
  * @property {number} [step] How far one press of an arrow moves the content,
  *   in px. A row's height is the number to reach for.
  * @property {readonly [up: string, down: string]} [marks] What the arrows say.
@@ -67,7 +67,7 @@ const DEFAULT_MARKS = /** @type {const} */ (["▲", "▼"]);
  * the width of a real one is a hard thing to point at.
  *
  * @param {ScrollableProps} props
- * @returns {Observable<Mountable<Node>>}
+ * @returns {Observable<Mountable>}
  */
 export function scrollable(props) {
   const {

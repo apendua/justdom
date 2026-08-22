@@ -71,7 +71,7 @@ const classes = {
 };
 
 /**
- * @param {Observable<Mountable<Node>>} tree
+ * @param {Observable<Mountable>} tree
  */
 function mount(tree) {
   const host = document.createElement("div");
@@ -498,7 +498,7 @@ describe("projecting a keyboard", () => {
 
     /** @type {KeyPress[]} */
     const pressed = [];
-    /** @type {Mountable<Node> | undefined} */
+    /** @type {Mountable | undefined} */
     let mountable;
     const subscription = keyboard({
       classes,

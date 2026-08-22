@@ -78,7 +78,7 @@ const DEFAULT_CARET_MARKS = /** @type {const} */ (["▲", "▼"]);
  *
  * @template T
  * @param {DropdownProps<T>} props
- * @returns {Observable<Mountable<Node>>}
+ * @returns {Observable<Mountable>}
  */
 export function dropdown(props) {
   const {

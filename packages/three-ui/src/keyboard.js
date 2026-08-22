@@ -303,7 +303,7 @@ export const MOBILE_LAYOUT = [
  * every digit of a number.
  *
  * @param {KeyboardProps} props
- * @returns {Observable<Mountable<Node>>}
+ * @returns {Observable<Mountable>}
  */
 export function keyboard(props) {
   const { onKey, classes, layout = MOBILE_LAYOUT } = props;
@@ -401,7 +401,7 @@ export function keyboard(props) {
 
   /**
    * @param {KeyboardKey} entry
-   * @returns {Observable<Mountable<Node>>}
+   * @returns {Observable<Mountable>}
    */
   const key = (entry) => {
     // Zero basis and a share of the row proportional to the key's width: the
@@ -439,7 +439,7 @@ export function keyboard(props) {
 
   /**
    * @param {readonly KeyboardKey[]} keys
-   * @returns {Observable<Mountable<Node>>}
+   * @returns {Observable<Mountable>}
    */
   const row = (keys) =>
     $("div", [

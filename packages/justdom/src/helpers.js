@@ -1,10 +1,10 @@
 /**
- * @import { INode, NodeWithParent, Segment } from './types.js';
+ * @import { INode, NodeWithParent, SegmentOf } from './nodes.js';
  */
 
 /**
  * @template {INode<T>} T
- * @param {Segment<T>} segment
+ * @param {SegmentOf<T>} segment
  * @returns {asserts segment is [NodeWithParent<T>, NodeWithParent<T>]}
  */
 function assertValidSegment(segment) {
@@ -18,9 +18,9 @@ function assertValidSegment(segment) {
 
 /**
  * @template {INode<T>} T
- * @param {Segment<T>} newSegment
- * @param {Segment<T>} oldSegment
- * @returns {Segment<T>}
+ * @param {SegmentOf<T>} newSegment
+ * @param {SegmentOf<T>} oldSegment
+ * @returns {SegmentOf<T>}
  */
 export function replaceSegment(newSegment, oldSegment) {
   assertValidSegment(oldSegment);
@@ -46,7 +46,7 @@ export function replaceSegment(newSegment, oldSegment) {
 
 /**
  * @template {INode<T>} T
- * @param {Segment<T>} segment
+ * @param {SegmentOf<T>} segment
  */
 export function removeSegment(segment) {
   assertValidSegment(segment);
@@ -67,7 +67,7 @@ export function removeSegment(segment) {
 /**
  * @template {INode<T>} T
  * @param {T} node
- * @returns {Segment<T>}
+ * @returns {SegmentOf<T>}
  */
 export function toSegment(node) {
   return [node, node];

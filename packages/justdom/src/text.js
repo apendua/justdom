@@ -79,7 +79,7 @@ export function renderText(strings, ...values) {
  * Creates a text node observable from template strings and values.
  * @param {TemplateStringsArray} strings - The template strings.
  * @param {...Renderable} values - The values to interpolate.
- * @returns {Observable<Mountable<Node>>} An observable that emits a Text node.
+ * @returns {Observable<Mountable>} An observable that emits a Text node.
  */
 export function text(strings, ...values) {
   return textNode(renderText(strings, ...values)).pipe(map(toMountable));

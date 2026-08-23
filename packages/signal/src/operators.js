@@ -1,12 +1,14 @@
-import { NEVER, tap } from "rxjs";
+import { Observable, tap } from "rxjs";
 import { Derived } from "./Derived.js";
 import { onEachValue, subscribeTo, subscribeAndEmit } from "./util.js";
 import { observable, component, just } from "./factories.js";
-import { addDependency } from "./core.js";
+import { activeChannel, addDependency } from "./core.js";
+import { Effect } from "./Effect.js";
 import { toObservable, toEffect } from "./interop.js";
 
 /**
- * @import { Observable, MonoTypeOperatorFunction } from 'rxjs';
+ * @import { MonoTypeOperatorFunction } from 'rxjs';
+ * @import UpdateChannel from './UpdateChannel.js';
  * @import { WritableProps } from './types.js';
  */
 
@@ -118,16 +120,52 @@ export function useEffects(value, operators) {
 }
 
 /**
+ * Run `fn` for as long as the surrounding computation stands, re-running it
+ * when anything it read changes, and keeping whatever observable it hands
+ * back subscribed in between.
+ *
+ * An `Effect`, because that is what it always was. It used to be a `Derived`
+ * whose evaluation had side effects — `component(() => fn() ?? NEVER)` — and
+ * that shape has a specific way of going wrong now. `fn` typically returns
+ * nothing, so the node's value was the `NEVER` singleton on every evaluation;
+ * `Object.is` therefore called every recomputation "unchanged", and the
+ * equality cutoff kept the previous value and undid the run that had just
+ * happened. Anything `fn` had set up with `onCleanup` — an interval, a
+ * listener, a subscription — was torn down the instant it was established.
+ *
+ * The channel is captured here rather than left to be picked up when the
+ * pipeline is subscribed. `use` is called while the surrounding region is
+ * being built, which is where `withChannel` is in scope; subscription happens
+ * later, from inside a `connect`, where it is not.
+ *
  * @param {(() => void) | (() => Observable<unknown>) | Observable<unknown>} observable
  */
 export function use(observable) {
   if (typeof observable === "function") {
     const fn = observable;
-    // Calling component immediately is safe, because it wil just return an observable,
-    // and the inner function won't be executed until the observable is subscribed to.
-    observable = component(() => {
-      return fn() ?? NEVER;
-    })();
+    const channel = /** @type {UpdateChannel | undefined} */ (activeChannel ?? undefined);
+    observable = new Observable((subscriber) => {
+      const effect = new Effect(
+        () => {
+          const inner = fn();
+          if (!inner) {
+            return undefined;
+          }
+          const subscription = inner.subscribe({
+            error: (err) => subscriber.error(err),
+          });
+          return () => subscription.unsubscribe();
+        },
+        {
+          name: "use",
+          channel,
+          onError: (err) => subscriber.error(err),
+        },
+      );
+      return () => {
+        effect.dispose();
+      };
+    });
   }
   addDependency(observable.pipe(takeNothing()));
 }

@@ -7,7 +7,9 @@ import { decorate, memoFn } from "./decorators.js";
 import { Signal, batch } from "./index.js";
 import Emitter, { on } from "./Emitter.js";
 import { just } from "./factories.js";
-import { effects, map, takeNothing, observe, observeFn } from "./operators.js";
+import { effects, map, takeNothing, observe, observeFn, use } from "./operators.js";
+import { Derived, Effect, onCleanup } from "./index.js";
+import { Observable } from "rxjs";
 
 describe("effects()", () => {
   it("applies effects until the source completes", () => {
@@ -77,6 +79,72 @@ describe("effects()", () => {
 
     source.complete();
     subscription.unsubscribe();
+  });
+});
+
+describe("use()", () => {
+  it("keeps what its callback set up", () => {
+    // The shape that broke marblerun's marble emitter: a callback that starts
+    // something and registers `onCleanup` to stop it again, gated on a flag.
+    //
+    // `use` used to build a `Derived` whose evaluation had the side effects
+    // and whose value was the `NEVER` singleton — the same value every time,
+    // so the equality cutoff called each recomputation "unchanged", kept the
+    // previous value and undid the run that had just happened. Whatever the
+    // callback had just set up was torn down before it could do anything.
+    const active = Signal.of(false);
+    let started = 0;
+    let stopped = 0;
+
+    const host = new Derived(() => {
+      use(() => {
+        if (!active.get()) {
+          return;
+        }
+        started += 1;
+        onCleanup(() => {
+          stopped += 1;
+        });
+      });
+      return "host";
+    });
+    const holder = new Effect(() => host.get());
+
+    assert.deepEqual({ started, stopped }, { started: 0, stopped: 0 });
+
+    active.set(true);
+    assert.deepEqual({ started, stopped }, { started: 1, stopped: 0 }, "set up, and left alone");
+
+    active.set(false);
+    assert.deepEqual({ started, stopped }, { started: 1, stopped: 1 }, "torn down exactly once");
+
+    active.set(true);
+    assert.deepEqual({ started, stopped }, { started: 2, stopped: 1 });
+
+    holder.dispose();
+    assert.deepEqual({ started, stopped }, { started: 2, stopped: 2 }, "and with the host");
+  });
+
+  it("switches the observable its callback hands back", () => {
+    const which = Signal.of("a");
+    /** @type {string[]} */
+    const log = [];
+    /** @param {string} name */
+    const stream = (name) =>
+      new Observable(() => {
+        log.push(`sub:${name}`);
+        return () => log.push(`unsub:${name}`);
+      });
+
+    const host = new Derived(() => {
+      use(() => stream(which.get()));
+      return 1;
+    });
+    const holder = new Effect(() => host.get());
+
+    which.set("b");
+    holder.dispose();
+    assert.deepEqual(log, ["sub:a", "unsub:a", "sub:b", "unsub:b"]);
   });
 });
 

@@ -198,9 +198,7 @@ ordering. The queue notices and throws rather than spinning.
 The public API is largely unchanged. Four things are not.
 
 **Side effects inside a `Derived` no longer run.** A `Derived` must be pure:
-it evaluates when somebody reads it, which may be never. Across this whole
-repository exactly one site did this, and it is the migration that bites,
-because it fails quietly — the work simply never happens. The idiom
+it evaluates when somebody reads it, which may be never. The idiom
 
 ```js
 const d = new Derived(() => {
@@ -217,8 +215,15 @@ const effect = new Effect(() => {
 });
 ```
 
-This is the migration that bites, because it fails quietly — the work simply
-never happens.
+This is the migration that bites, and it bites twice. The obvious way is that
+the work simply never happens. The second is worse, and caught this library
+itself: a `Derived` that sets something up and registers an `onCleanup` to
+tear it down again, and whose value comes back `isEqual` to the last one, has
+that setup **undone**. The equality cutoff keeps the previous value and
+releases whatever the run that just happened had claimed — correct for a node
+that rebuilt a texture it already had, ruinous for one that had just started
+an interval. `use()` used to be built that way, returning the same `NEVER`
+every time; it is an `Effect` now.
 
 **`subscribe()` is an invalidation channel, not a value stream.** It fires
 eagerly when a node goes from clean to stale, and it does not evaluate

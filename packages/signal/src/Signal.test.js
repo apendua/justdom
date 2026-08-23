@@ -345,3 +345,190 @@ describe("Derived", () => {
     });
   });
 });
+
+describe("Derived, as a cache for expensive resources", () => {
+  /**
+   * A stand-in for a texture or a compiled shader: expensive to build, and
+   * wrong to use after it has been disposed.
+   */
+  function resources() {
+    let nextId = 1;
+    /** @type {Set<{ id: number, key: string, disposed: boolean }>} */
+    const live = new Set();
+    return {
+      live,
+      ids: () => [...live].map((r) => r.id),
+      /** @param {string} key */
+      make: (key) => {
+        const resource = { id: nextId++, key, disposed: false };
+        live.add(resource);
+        return resource;
+      },
+      /** @param {{ id: number, disposed: boolean }} resource */
+      dispose: (resource) => {
+        assert.equal(resource.disposed, false, `resource ${resource.id} disposed twice`);
+        resource.disposed = true;
+        live.delete(/** @type {never} */ (resource));
+      },
+    };
+  }
+
+  it("disposes what it was holding and keeps what it just built", () => {
+    const pool = resources();
+    const key = Signal.of("a");
+    const texture = new Derived(() => {
+      const made = pool.make(key.get());
+      onCleanup(() => pool.dispose(made));
+      return made;
+    });
+    const holder = new Effect(() => texture.get());
+
+    const first = texture.get();
+    key.set("b");
+    const second = texture.get();
+
+    assert.equal(first.disposed, true);
+    assert.equal(second.disposed, false);
+    assert.deepEqual(pool.ids(), [second.id]);
+
+    holder.dispose();
+    assert.equal(second.disposed, true, "and lets go when the last reader leaves");
+  });
+
+  it("keeps the resource it has when isEqual says nothing changed", () => {
+    // The point of the whole arrangement. `isEqual` is the author saying the
+    // rebuild is interchangeable with what is already held — so the held one
+    // stays, every reference to it stays valid, and the rebuild is the thing
+    // that gets torn down.
+    const pool = resources();
+    const key = Signal.of("a");
+    const unrelated = Signal.of(0);
+    const texture = new Derived(
+      () => {
+        unrelated.get();
+        const made = pool.make(key.get());
+        onCleanup(() => pool.dispose(made));
+        return made;
+      },
+      { isEqual: (a, b) => a.key === b.key },
+    );
+    const holder = new Effect(() => texture.get());
+    const held = texture.get();
+
+    unrelated.set(1);
+
+    assert.strictEqual(texture.get(), held, "the same object comes back");
+    assert.equal(held.disposed, false, "and it is still usable");
+    assert.deepEqual(pool.ids(), [held.id], "the rebuild was thrown away, not the original");
+
+    holder.dispose();
+  });
+
+  it("never hands back a resource it has already disposed", () => {
+    const pool = resources();
+    const unrelated = Signal.of(0);
+    const texture = new Derived(
+      () => {
+        unrelated.get();
+        const made = pool.make("constant");
+        onCleanup(() => pool.dispose(made));
+        return made;
+      },
+      { isEqual: (a, b) => a.key === b.key },
+    );
+    const holder = new Effect(() => texture.get());
+
+    for (let i = 1; i <= 5; i += 1) {
+      unrelated.set(i);
+      assert.equal(texture.get().disposed, false, `still live after ${i} re-evaluations`);
+      assert.equal(pool.live.size, 1, "and exactly one is held at a time");
+    }
+
+    holder.dispose();
+    assert.equal(pool.live.size, 0);
+  });
+
+  it("holds a resource open across a gap in readers, with cacheTTL", async () => {
+    const pool = resources();
+    const texture = new Derived(
+      () => {
+        const made = pool.make("a");
+        onCleanup(() => pool.dispose(made));
+        return made;
+      },
+      { cacheTTL: 0 },
+    );
+
+    const first = new Effect(() => texture.get());
+    const held = texture.get();
+    first.dispose();
+    assert.equal(held.disposed, false, "kept warm for now");
+
+    const second = new Effect(() => texture.get());
+    assert.strictEqual(texture.get(), held, "the same resource, not a rebuild");
+    assert.equal(texture.getEvaluations(), 1);
+    second.dispose();
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assert.equal(held.disposed, true, "and released once nobody came back for it");
+  });
+
+  it("rebuilds on every read while nothing holds it open", () => {
+    // Worth knowing before putting a texture in one. The cache is a property
+    // of being *held*, not of being a `Derived`: with no reader there are no
+    // subscriptions keeping a cached value coherent, so there is nothing to
+    // cache, and each read builds afresh and releases the read before it. The
+    // last one is released by nobody — an unheld node is never disconnected,
+    // because it was never connected.
+    //
+    // A node that owns something expensive therefore wants an `Effect` (or
+    // another live node) reading it, which is what gives it a lifetime.
+    const pool = resources();
+    const texture = new Derived(() => {
+      const made = pool.make("a");
+      onCleanup(() => pool.dispose(made));
+      return made;
+    });
+
+    const first = texture.get();
+    const second = texture.get();
+    assert.notStrictEqual(first, second, "no cache without a reader");
+    assert.equal(first.disposed, true, "but each read does release the one before it");
+    assert.equal(pool.live.size, 1);
+
+    const holder = new Effect(() => texture.get());
+    const held = texture.get();
+    texture.get();
+    assert.strictEqual(texture.get(), held, "held, and now cached");
+    holder.dispose();
+  });
+
+  it("releases both sides when an evaluation throws", () => {
+    const pool = resources();
+    const broken = Signal.of(false);
+    const texture = new Derived(() => {
+      const made = pool.make("a");
+      onCleanup(() => pool.dispose(made));
+      if (broken.get()) {
+        throw new Error("could not build");
+      }
+      return made;
+    });
+    const holder = new Effect(
+      () => {
+        try {
+          texture.get();
+        } catch {
+          // the failure is the point
+        }
+      },
+      { name: "resource-holder" },
+    );
+    assert.equal(pool.live.size, 1);
+
+    broken.set(true);
+    assert.equal(pool.live.size, 0, "the old value's resource and the failed run's both go");
+
+    holder.dispose();
+  });
+});

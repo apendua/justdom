@@ -1,4 +1,4 @@
-import ReactiveNode from "./Node.js";
+import ReactiveNode, { runCleanups } from "./Node.js";
 import { Signal } from "./Signal.js";
 import {
   CLEAN,
@@ -199,32 +199,72 @@ export class Derived extends ReactiveNode {
    */
   #recompute() {
     const previous = this.#current;
-    /** @type {T} */
-    let value;
+    // Set aside rather than run. Which set of teardowns is owed depends on
+    // which *value* ends up being the node's, and that is not known until the
+    // new one has been built and compared — see below.
+    const previousCleanups = this.detachCleanups();
+    /** @type {{ value: T } | null} */
+    let computed = null;
+    /** @type {{ error: unknown } | null} */
+    let failure = null;
     this.#evaluating = true;
     this.#evaluations += 1;
     try {
-      value = this.track(() => this.#evaluate(this.#getContext()));
+      computed = { value: this.track(() => this.#evaluate(this.#getContext()), true) };
     } catch (err) {
+      failure = { error: err };
+    } finally {
+      this.#evaluating = false;
+    }
+
+    if (failure) {
+      // Nothing survives: there is no new value and the old one is no longer
+      // this node's. Both sets are owed — whatever the failed run managed to
+      // register on its way down, and whatever the value it was replacing
+      // was holding open.
+      const abandoned = this.detachCleanups();
       this.#current = null;
       // A value turning into an error is a change like any other: whoever
       // reads this node needs to hear about it.
       if (!this.#error || previous) {
         this.version += 1;
       }
-      this.#error = { error: err };
+      this.#error = failure;
+      runCleanups(abandoned);
+      runCleanups(previousCleanups);
       return;
-    } finally {
-      this.#evaluating = false;
     }
+
     this.#error = null;
-    if (previous && this.#isEqual(previous.value, value)) {
+    const result = /** @type {{ value: T }} */ (computed);
+    if (previous && this.#isEqual(previous.value, result.value)) {
       // The cutoff. Nothing downstream is told, and every `CHECK` below
       // resolves back to `CLEAN` without running.
+      //
+      // The value that survives it is the one already held, not the one just
+      // built: `isEqual` is the author saying the two are interchangeable,
+      // and the held one is what every dependent is already holding a
+      // reference to, so it is the one that has to stay valid. Which makes
+      // the *new* run the one to undo.
+      //
+      // That is what lets a `Derived` memoize an expensive resource. A node
+      // that builds a texture and disposes it through `onCleanup`, with an
+      // `isEqual` that compares whatever the texture is built from, keeps the
+      // texture it has and throws away the rebuild — rather than swapping a
+      // live handle for a dead one behind its readers' backs.
+      const rebuild = this.detachCleanups();
+      this.restoreCleanups(previousCleanups);
+      runCleanups(rebuild);
       return;
     }
-    this.#current = { value };
+
+    this.#current = result;
     this.version += 1;
+    // The old value is out of the graph now, so what it was holding open can
+    // go. After the new one exists rather than before: an evaluation that
+    // throws then leaves the old resource intact instead of having destroyed
+    // it on the way to failing.
+    runCleanups(previousCleanups);
   }
 
   /**

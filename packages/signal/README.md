@@ -86,6 +86,40 @@ direct dependents `DIRTY` and everything below them `CHECK`. Resolving a
 a node that recomputes to the value it already had stops the change dead, and
 nothing below it runs.
 
+## Owning expensive resources
+
+A `Derived` that builds something costly — a texture, a compiled shader, a
+worker — and releases it through `onCleanup` is a first-class use of the
+library, and the rules are worth stating exactly.
+
+```js
+const texture = new Derived(
+  () => {
+    const built = gl.createTexture(spec.get());
+    onCleanup(() => built.dispose());
+    return built;
+  },
+  { isEqual: (a, b) => a.key === b.key },
+);
+const holder = new Effect(() => texture.get()); // gives it a lifetime
+```
+
+- **A re-evaluation releases what the node was holding, and keeps what it just
+  built** — in that order. The teardown runs _after_ the new value exists, so
+  an evaluation that throws leaves the old resource intact rather than having
+  destroyed it on the way to failing.
+- **`isEqual` decides which one survives.** Saying the rebuild is
+  interchangeable with what is already held means the _held_ one stays and the
+  rebuild is torn down instead. Every reference already handed out stays
+  valid; the node never swaps a live handle for a dead one behind its readers'
+  backs.
+- **The last reader leaving releases everything**, deferred by `cacheTTL` if
+  one is set — which is what keeps a resource warm across a gap rather than
+  rebuilding it for the next reader.
+- **A node nothing holds open has no cache**, so it rebuilds on every read and
+  releases the read before it. That is the one thing to watch: give a node
+  that owns a resource an `Effect` (or another live node) reading it.
+
 ## Update channels
 
 An effect belongs to an `UpdateChannel`, which decides when its queue drains

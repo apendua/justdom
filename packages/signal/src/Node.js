@@ -17,6 +17,17 @@ import {
 const CLOSED = { unsubscribe: () => {} };
 
 /**
+ * Handed back by `detachCleanups` when there was nothing to detach, so that
+ * the commonest recomputation — a node with no teardowns at all — allocates
+ * nothing. Frozen because the whole point is that it is shared: anything that
+ * tried to push onto it would be pushing onto every caller's list at once,
+ * and would throw here instead.
+ *
+ * @type {Array<() => void>}
+ */
+const NO_CLEANUPS = /** @type {Array<() => void>} */ (/** @type {unknown} */ (Object.freeze([])));
+
+/**
  * One dependency edge, and everything this node remembers about it.
  *
  * `version` is the crux. It is the version of the dependency as of this
@@ -259,16 +270,57 @@ export default class ReactiveNode {
   }
 
   /**
+   * Take the teardowns registered so far off this node, without running them.
+   *
+   * For a caller that cannot yet say whether they are owed. A `Derived`
+   * comparing a fresh value against the one it holds is the case: which set
+   * of teardowns survives depends on which *value* survives, and that is not
+   * known until the new one has been built.
+   *
+   * @returns {Array<() => void>}
+   */
+  detachCleanups() {
+    const cleanups = this.#cleanups;
+    if (cleanups.length === 0) {
+      // Nothing to detach, and nothing to allocate. Deliberately *not* the
+      // live array: handing that back and leaving it in place would alias the
+      // two, and everything the next run registered would arrive in the list
+      // the caller is holding as "what the previous run left behind".
+      return NO_CLEANUPS;
+    }
+    this.#cleanups = [];
+    return cleanups;
+  }
+
+  /**
+   * Put a detached list back, ahead of anything registered since.
+   *
+   * @param {Array<() => void>} cleanups
+   * @returns {void}
+   */
+  restoreCleanups(cleanups) {
+    if (cleanups.length === 0) {
+      return;
+    }
+    this.#cleanups = this.#cleanups.length === 0 ? cleanups : cleanups.concat(this.#cleanups);
+  }
+
+  /**
    * Run `fn` as this node's evaluation: reads inside it become this node's
    * dependencies, and anything it stopped reading is let go of on the way
    * out.
    *
    * @template T
    * @param {() => T} fn
+   * @param {boolean} [keepCleanups] leave the previous run's teardowns
+   *   registered rather than running them on the way in — for a caller that
+   *   will decide afterwards, through `detachCleanups`, which set is owed.
    * @returns {T}
    */
-  track(fn) {
-    this.cleanup();
+  track(fn, keepCleanups = false) {
+    if (!keepCleanups) {
+      this.cleanup();
+    }
     const edges = this.#edges;
     for (const edge of edges.values()) {
       edge.seen = edge.pinned;
@@ -644,6 +696,18 @@ export default class ReactiveNode {
         this.disconnect();
       }
     }, delay);
+  }
+}
+
+/**
+ * Run a detached list of teardowns, in the order they were registered.
+ *
+ * @param {Array<() => void>} cleanups
+ * @returns {void}
+ */
+export function runCleanups(cleanups) {
+  for (let index = 0; index < cleanups.length; index += 1) {
+    cleanups[index]();
   }
 }
 

@@ -22,6 +22,53 @@ import {
  */
 
 /**
+ * Options a `Derived` used to take, and what to do instead.
+ *
+ * Both were about *scheduling*, and a `Derived` no longer has a schedule: it
+ * produces a value when somebody asks and there is nothing to defer. Ignoring
+ * them in silence would leave a caller with a node that computes on demand
+ * where they asked for one that waits for a frame — a difference nothing
+ * would report.
+ *
+ * @type {Record<string, string>}
+ */
+const REMOVED_OPTIONS = {
+  channel:
+    "a `Derived` has no schedule to put in a channel. Move the work that has to " +
+    "wait for the channel into an `Effect`, which takes `channel`.",
+  deferred:
+    "a `Derived` is already deferred — it computes when it is read, and never " +
+    "before. `Effect` takes `deferred` if a first run should wait for its channel.",
+};
+
+/**
+ * Complained about once per option for the life of the program: the mistake
+ * is made at a call site, and a call site inside a list builds thousands of
+ * nodes.
+ *
+ * @type {Set<string>}
+ */
+const warnedAboutOptions = new Set();
+
+/**
+ * @param {object} options
+ * @returns {void}
+ */
+function warnAboutRemovedOptions(options) {
+  for (const name of Object.keys(REMOVED_OPTIONS)) {
+    if (!(name in options) || warnedAboutOptions.has(name)) {
+      continue;
+    }
+    warnedAboutOptions.add(name);
+    console.warn(
+      new Error(
+        `\`new Derived(fn, { ${name} })\` no longer does anything: ${REMOVED_OPTIONS[name]}`,
+      ),
+    );
+  }
+}
+
+/**
  * @template T
  * @typedef {object} DerivedOptions
  * @property {(a: T, b: T) => boolean} [isEqual]
@@ -94,6 +141,7 @@ export class Derived extends ReactiveNode {
       const { isEqual = Object.is, cacheTTL = -1 } = options;
       this.#isEqual = isEqual;
       this.#cacheTTL = cacheTTL;
+      warnAboutRemovedOptions(options);
     }
     // Nothing has been computed yet, so there is nothing to be clean about.
     this.state = DIRTY;
@@ -234,9 +282,14 @@ export class Derived extends ReactiveNode {
       // was holding open.
       const abandoned = this.detachCleanups();
       this.#current = null;
-      // A value turning into an error is a change like any other: whoever
-      // reads this node needs to hear about it.
-      if (!this.#error || previous) {
+      // A value turning into an error is a change like any other, and so is
+      // one error turning into a different one: whoever reads this node needs
+      // to hear about it. Only failing again with the error already held is
+      // no change — and that one has to be checked rather than assumed, or a
+      // node that keeps failing differently would leave its dependents
+      // resolving a `CHECK` against an unmoved version and re-throwing the
+      // first error for ever.
+      if (!this.#error || previous || !Object.is(this.#error.error, failure.error)) {
         this.version += 1;
       }
       this.#error = failure;

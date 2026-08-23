@@ -86,6 +86,30 @@ direct dependents `DIRTY` and everything below them `CHECK`. Resolving a
 a node that recomputes to the value it already had stops the change dead, and
 nothing below it runs.
 
+## Crossing the RxJS boundary
+
+Three functions, and deliberately only three. Values come in as a **source**,
+values go out through an **effect**, work goes out through an **effect**.
+Nothing crosses in the middle, which is what makes the depth problem of the
+old core impossible to reintroduce.
+
+```js
+import { fromObservable, toObservable, toEffect } from "@apendua/signal";
+
+const incoming = fromObservable(subject); // a Derived fed by a source
+const outgoing = toObservable(derived); // an Effect per subscriber, pushing values
+const work = toEffect(() => sync(el, x.get())); // an Effect per subscriber, pushing nothing
+```
+
+`toEffect` is the one to reach for when there is no value to carry — work that
+reads reactive state and touches the world, wrapped as something an RxJS
+pipeline can subscribe to and unsubscribe from. It is what `effects()` is
+built on, and what a `Derived` used to be misused as.
+
+Any `Subscribable` can still be depended on directly, and is treated as a
+source: it has no value to pull and nothing upstream this library can see, so
+there is nothing to order it against.
+
 ## Owning expensive resources
 
 A `Derived` that builds something costly — a texture, a compiled shader, a
@@ -213,6 +237,11 @@ new Effect(() => node.get()); // runs once per batch
 
 **`getPriority` / `setPriority` / `getChannelOrder` are gone.** There is no
 depth to read or set. Nothing in this repository used them.
+
+**`Derived` no longer takes `channel` or `deferred`.** Both were about
+scheduling, and a `Derived` has no schedule — it computes when it is read.
+Passing either is not an error, but it does nothing, so the constructor says
+so once and points at `Effect`, which takes both.
 
 **`effect()` now builds an `Effect`.** The old teardown-only helper of that
 name is `resource()`, and `Computation#addSideEffect` is `addResource`.

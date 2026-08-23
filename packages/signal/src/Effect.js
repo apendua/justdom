@@ -248,6 +248,13 @@ export class Effect extends ReactiveNode {
    * Run now, whatever the channel would have said. For a caller that needs
    * this effect's output before the channel's next pass.
    *
+   * Not charged to any pass: the queue's per-pass run cap — the backstop that
+   * turns a cycle between two effects into a `CircularDependencyError` rather
+   * than a hang — counts what a drain runs, and this is not a drain. Calling
+   * it in a loop is therefore the caller's own loop to bound. What it cannot
+   * do is re-enter a run that is already on the stack; that is refused, the
+   * same way a queued run is.
+   *
    * @returns {void}
    */
   flush() {

@@ -312,6 +312,72 @@ describe("Derived", () => {
     });
   });
 
+  it("tells dependents apart when it fails differently each time", () => {
+    // An error is a change like any other, and one error becoming a different
+    // one is a change too. Treating "already failing" as "nothing moved" left
+    // dependents resolving a CHECK against an unmoved version and re-throwing
+    // the first error for ever.
+    const which = Signal.of(1);
+    const broken = new Derived(() => {
+      throw new Error(`failure ${which.get()}`);
+    });
+    /** @type {string[]} */
+    const seen = [];
+    const holder = new Effect(() => {
+      try {
+        broken.get();
+      } catch (err) {
+        seen.push(/** @type {Error} */ (err).message);
+      }
+    });
+
+    which.set(2);
+    which.set(3);
+    assert.deepEqual(seen, ["failure 1", "failure 2", "failure 3"]);
+    holder.dispose();
+  });
+
+  it("still says nothing when it fails the same way twice", () => {
+    const same = new Error("always this one");
+    const trigger = Signal.of(0);
+    const broken = new Derived(() => {
+      trigger.get();
+      throw same;
+    });
+    let runs = 0;
+    const holder = new Effect(() => {
+      runs += 1;
+      try {
+        broken.get();
+      } catch {
+        // held
+      }
+    });
+
+    const before = runs;
+    trigger.set(1);
+    assert.equal(runs, before, "the same error is not a change");
+    holder.dispose();
+  });
+
+  describe("removed options", () => {
+    it("says so rather than quietly scheduling differently", () => {
+      // Both were about scheduling, and a `Derived` no longer has one.
+      // Ignoring them in silence would leave a caller with a node that
+      // computes on demand where they asked for one that waits for a frame.
+      const warn = mock.method(console, "warn", () => {});
+      new Derived(() => 1, /** @type {never} */ ({ channel: {} }));
+      new Derived(() => 1, /** @type {never} */ ({ deferred: true }));
+      const messages = warn.mock.calls.map((call) => String(call.arguments[0]));
+      warn.mock.restore();
+
+      assert.equal(messages.length, 2);
+      assert.match(messages[0], /channel/);
+      assert.match(messages[0], /`Effect`/);
+      assert.match(messages[1], /deferred/);
+    });
+  });
+
   describe("circular dependencies", () => {
     it("are detected between two derived nodes", () => {
       /** @type {Derived<number>} */

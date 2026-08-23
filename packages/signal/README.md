@@ -63,7 +63,7 @@ scheduled as though it sat directly above a source. A diamond with one side
 through such a wrapper computed against values several levels out of date and
 emitted numbers the graph never held.
 
-Under a pull model there is no number to lose. The call stack of a read *is*
+Under a pull model there is no number to lose. The call stack of a read _is_
 the topological order, and it sees through anything, because it is built out
 of the reads that actually happened. `src/pull.test.js` keeps the case that
 motivated this honest.
@@ -77,7 +77,7 @@ What follows from that:
   re-prioritisation, no stale slots.
 - **Unread work is not done.** A `Derived` nobody reads never evaluates.
 - **Unbatched writes cost one evaluation, not one each.** `batch()` is still
-  what keeps an *effect* from running twice; it is no longer what keeps a
+  what keeps an _effect_ from running twice; it is no longer what keeps a
   value from being computed twice.
 
 Two colours of staleness make the equality cutoff work. A write marks its
@@ -102,7 +102,7 @@ const frame = new UpdateChannel({
 });
 
 withChannel(frame, () => {
-  new Effect(() => element.style.top = `${top.get()}px`);
+  new Effect(() => (element.style.top = `${top.get()}px`));
 });
 ```
 
@@ -137,17 +137,23 @@ ordering. The queue notices and throws rather than spinning.
 The public API is largely unchanged. Four things are not.
 
 **Side effects inside a `Derived` no longer run.** A `Derived` must be pure:
-it evaluates when somebody reads it, which may be never. The idiom
+it evaluates when somebody reads it, which may be never. Across this whole
+repository exactly one site did this, and it is the migration that bites,
+because it fails quietly — the work simply never happens. The idiom
 
 ```js
-const d = new Derived(() => { element.style.top = `${top.get()}px`; });
-const sub = d.subscribe({});          // used to force it to run
+const d = new Derived(() => {
+  element.style.top = `${top.get()}px`;
+});
+const sub = d.subscribe({}); // used to force it to run
 ```
 
 becomes
 
 ```js
-const effect = new Effect(() => { element.style.top = `${top.get()}px`; });
+const effect = new Effect(() => {
+  element.style.top = `${top.get()}px`;
+});
 ```
 
 This is the migration that bites, because it fails quietly — the work simply
@@ -156,8 +162,17 @@ never happens.
 **`subscribe()` is an invalidation channel, not a value stream.** It fires
 eagerly when a node goes from clean to stale, and it does not evaluate
 anything. A subscriber that wants the value must pull it (`node.get()` inside
-the handler), which also re-arms the notification. For values on a schedule,
-use `Effect` or `toObservable`.
+the handler), which also re-arms the notification.
+
+That still works, but it **does not batch**. Observers are notified inside the
+write, so a handler that pulls does its work halfway through a `batch()` and
+is notified again on the next write — two mutations in one flush, two
+recomputations. An `Effect` goes on the queue, which dedups it:
+
+```js
+node.subscribe({ next: () => node.get() }); // runs once per write
+new Effect(() => node.get()); // runs once per batch
+```
 
 **`getPriority` / `setPriority` / `getChannelOrder` are gone.** There is no
 depth to read or set. Nothing in this repository used them.

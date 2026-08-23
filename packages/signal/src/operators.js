@@ -2,7 +2,7 @@ import { Observable, tap } from "rxjs";
 import { Derived } from "./Derived.js";
 import { onEachValue, subscribeTo, subscribeAndEmit } from "./util.js";
 import { observable, component, just } from "./factories.js";
-import { activeChannel, addDependency } from "./core.js";
+import { activeChannel, addDependency, withComputation } from "./core.js";
 import { Effect } from "./Effect.js";
 import { toObservable, toEffect } from "./interop.js";
 
@@ -151,9 +151,18 @@ export function use(observable) {
           if (!inner) {
             return undefined;
           }
-          const subscription = inner.subscribe({
-            error: (err) => subscriber.error(err),
-          });
+          // Subscribing is not reading. A foreign observable's `subscribe`
+          // may itself read reactive things — a `component(...)` builds its
+          // entities in there — and those belong to whatever that observable
+          // is, not to this effect. Tracking them would re-run `fn` and tear
+          // the whole inner subscription down and back up on a write `fn`
+          // never looked at. `Node#attach` and `toObservable` hold the same
+          // line, for the same reason.
+          const subscription = withComputation(null, () =>
+            inner.subscribe({
+              error: (err) => subscriber.error(err),
+            }),
+          );
           return () => subscription.unsubscribe();
         },
         {

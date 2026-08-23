@@ -125,6 +125,59 @@ describe("use()", () => {
     assert.deepEqual({ started, stopped }, { started: 2, stopped: 2 }, "and with the host");
   });
 
+  it("does not adopt what the inner observable reads while subscribing", () => {
+    // Subscribing is not reading. A foreign observable's `subscribe` may read
+    // reactive things — a `component(...)` builds its entities in there — and
+    // those belong to it, not to the effect that subscribed it. Tracking them
+    // would tear the whole inner subscription down and back up on a write the
+    // callback never looked at, which in freedom means rebuilding a subtree.
+    const unrelated = Signal.of("a");
+    let callbackRuns = 0;
+    let innerSubscribes = 0;
+    const inner = new Observable(() => {
+      innerSubscribes += 1;
+      unrelated.get();
+      return () => {};
+    });
+
+    const host = new Computation();
+    const subscription = host.subscribe({});
+    host.track(() => {
+      use(() => {
+        callbackRuns += 1;
+        return inner;
+      });
+    });
+    assert.deepEqual({ callbackRuns, innerSubscribes }, { callbackRuns: 1, innerSubscribes: 1 });
+
+    unrelated.set("b");
+    assert.deepEqual(
+      { callbackRuns, innerSubscribes },
+      { callbackRuns: 1, innerSubscribes: 1 },
+      "the callback never read it, so nothing should have moved",
+    );
+
+    subscription.unsubscribe();
+  });
+
+  it("still re-runs for what the callback itself reads", () => {
+    const source = Signal.of(1);
+    let callbackRuns = 0;
+    const host = new Computation();
+    const subscription = host.subscribe({});
+    host.track(() => {
+      use(() => {
+        callbackRuns += 1;
+        source.get();
+      });
+    });
+
+    const before = callbackRuns;
+    source.set(2);
+    assert.equal(callbackRuns, before + 1);
+    subscription.unsubscribe();
+  });
+
   it("switches the observable its callback hands back", () => {
     const which = Signal.of("a");
     /** @type {string[]} */

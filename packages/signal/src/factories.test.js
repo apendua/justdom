@@ -1,11 +1,11 @@
 import { describe, it, mock } from "node:test";
 import assert from "node:assert/strict";
-import { makeNonReactive } from "./core.js";
+import { makeNonReactive } from "./index.js";
 import { on } from "./Emitter.js";
 import store, { emit } from "./store.js";
 import { set, use } from "./operators.js";
 import { observable, component, just } from "./factories.js";
-import { Signal } from "./Signal.js";
+import { Signal } from "./index.js";
 
 /**
  * @import { Observable, MonoTypeOperatorFunction } from 'rxjs';

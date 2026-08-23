@@ -1,5 +1,5 @@
 import { addDependency } from "./core.js";
-import { batch } from "./Signal.js";
+import { batch } from "./scheduler.js";
 import { filter, Subject } from "rxjs";
 import LazyIterable from "./LazyIterable.js";
 import { memoizeDependency } from "./memoize.js";

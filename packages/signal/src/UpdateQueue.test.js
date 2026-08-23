@@ -1,331 +1,229 @@
-import { describe, test } from "node:test";
+import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+
+import { Signal, Derived, Effect, batch, defaultChannel } from "./index.js";
+import UpdateChannel from "./UpdateChannel.js";
 import UpdateQueue from "./UpdateQueue.js";
 
 /**
- * A task that records the order it ran in, with room to misbehave on demand.
+ * A task the queue can run, without an `Effect` around it.
  *
  * @param {string} name
+ * @param {UpdateChannel} channel
  * @param {string[]} log
- * @param {() => void} [onRun]
+ * @param {() => void} [extra]
  */
-function makeTask(name, log, onRun) {
-  return {
+function makeTask(name, channel, log, extra) {
+  /** @type {import("./UpdateQueue.js").Task} */
+  const task = {
     name,
-    invalidate: () => {
+    channel,
+    queued: false,
+    passId: -1,
+    runsInPass: 0,
+    runFromQueue: () => {
       log.push(name);
-      onRun?.();
+      extra?.();
     },
   };
+  return task;
 }
 
 describe("UpdateQueue", () => {
-  test("drains in ascending priority, first-in-first-out within a level", () => {
-    const queue = new UpdateQueue();
+  it("drains one channel in the order work arrived", () => {
+    // No depth, no buckets, no comparisons. Under a pull model an effect
+    // resolves its own dependencies on the way to running, so the order
+    // effects are taken in does not decide what they see.
+    const channel = new UpdateChannel({ name: "fifo", order: 0, manual: true });
+    const queue = new UpdateQueue(channel);
     /** @type {string[]} */
     const log = [];
-    queue.batch(() => {
-      queue.invalidate(makeTask("b1", log), 2);
-      queue.invalidate(makeTask("a1", log), 1);
-      queue.invalidate(makeTask("b2", log), 2);
-      queue.invalidate(makeTask("root", log), 0);
-      queue.invalidate(makeTask("a2", log), 1);
-    });
-    assert.deepEqual(log, ["root", "a1", "a2", "b1", "b2"]);
+    for (const name of ["a", "b", "c"]) {
+      queue.enqueue(makeTask(name, channel, log));
+    }
+    channel.flush({ budget: Infinity });
+    assert.deepStrictEqual(log, ["a", "b", "c"]);
   });
 
-  test("a task queued twice runs once", () => {
-    const queue = new UpdateQueue();
+  it("runs a task once however many times it was queued", () => {
+    const channel = new UpdateChannel({ name: "dedup", order: 0, manual: true });
+    const queue = new UpdateQueue(channel);
     /** @type {string[]} */
     const log = [];
-    const task = makeTask("t", log);
-    queue.batch(() => {
-      queue.invalidate(task, 1);
-      queue.invalidate(task, 1);
-    });
-    assert.deepEqual(log, ["t"]);
+    const task = makeTask("a", channel, log);
+    queue.enqueue(task);
+    queue.enqueue(task);
+    queue.enqueue(task);
+    assert.strictEqual(queue.size, 1);
+    channel.flush({ budget: Infinity });
+    assert.deepStrictEqual(log, ["a"]);
   });
 
-  test("re-prioritizing a queued task moves it, not duplicates it", () => {
-    const queue = new UpdateQueue();
+  it("lets a task queue itself again for the same pass", () => {
+    const channel = new UpdateChannel({ name: "requeue", order: 0, manual: true });
+    const queue = new UpdateQueue(channel);
     /** @type {string[]} */
     const log = [];
-    const task = makeTask("moved", log);
-    queue.batch(() => {
-      queue.invalidate(makeTask("first", log), 1);
-      queue.invalidate(task, 1);
-      queue.invalidate(makeTask("deep", log), 3);
-      // The graph learned this task sits deeper than first thought.
-      queue.invalidate(task, 2);
-    });
-    assert.deepEqual(log, ["first", "moved", "deep"]);
-  });
-
-  test("a task invalidated while flushing runs in the same flush", () => {
-    const queue = new UpdateQueue();
-    /** @type {string[]} */
-    const log = [];
-    const dependent = makeTask("dependent", log);
-    const source = makeTask("source", log, () => {
-      queue.invalidate(dependent, 2);
-    });
-    queue.invalidate(source, 0);
-    assert.deepEqual(log, ["source", "dependent"]);
-  });
-
-  test("a mid-flush push below the cursor still runs", () => {
-    const queue = new UpdateQueue();
-    /** @type {string[]} */
-    const log = [];
-    const shallow = makeTask("shallow", log);
-    const deep = makeTask("deep", log, () => {
-      // Running at priority 5 discovers work at priority 1 — a task whose
-      // recomputed priority dropped. The cursor has to walk back for it.
-      queue.invalidate(shallow, 1);
-    });
-    queue.invalidate(deep, 5);
-    assert.deepEqual(log, ["deep", "shallow"]);
-  });
-
-  test("without a priority, a task re-enqueues at the one it last had", () => {
-    const queue = new UpdateQueue();
-    /** @type {string[]} */
-    const log = [];
-    const remembered = makeTask("remembered", log);
-    queue.invalidate(remembered, 3);
-    log.length = 0;
-    queue.batch(() => {
-      queue.invalidate(makeTask("later", log), 4);
-      queue.invalidate(remembered);
-      queue.invalidate(makeTask("earlier", log), 2);
-    });
-    assert.deepEqual(log, ["earlier", "remembered", "later"]);
-  });
-
-  test("size counts queued tasks, and batching defers the drain", () => {
-    const queue = new UpdateQueue();
-    /** @type {string[]} */
-    const log = [];
-    queue.batch(() => {
-      queue.invalidate(makeTask("a", log), 0);
-      queue.invalidate(makeTask("b", log), 1);
-      assert.equal(queue.size, 2, "nothing drains inside a batch");
-      assert.deepEqual(log, []);
-    });
-    assert.equal(queue.size, 0);
-    assert.deepEqual(log, ["a", "b"]);
-  });
-
-  test("a throwing task clears the queue, and the queue keeps working after", () => {
-    const queue = new UpdateQueue();
-    /** @type {string[]} */
-    const log = [];
-    const bomb = {
-      invalidate: () => {
-        throw new Error("boom");
-      },
-    };
-    assert.throws(() => {
-      queue.batch(() => {
-        queue.invalidate(bomb, 0);
-        queue.invalidate(makeTask("casualty", log), 1);
-      });
-    }, /boom/);
-    assert.equal(queue.size, 0, "the failed flush leaves nothing behind");
-    assert.deepEqual(log, [], "tasks after the failure do not run");
-
-    queue.invalidate(makeTask("afterwards", log), 1);
-    assert.deepEqual(log, ["afterwards"], "the queue is usable after a failure");
-  });
-
-  test("fractional and negative priorities coerce onto the grid instead of corrupting it", () => {
-    const queue = new UpdateQueue();
-    /** @type {string[]} */
-    const log = [];
-    queue.batch(() => {
-      queue.invalidate(makeTask("half", log), 1.5);
-      queue.invalidate(makeTask("negative", log), -3);
-      queue.invalidate(makeTask("whole", log), 1);
-    });
-    assert.deepEqual(log, ["negative", "half", "whole"]);
-  });
-
-  test("an infinite priority runs last instead of running forever", () => {
-    const queue = new UpdateQueue();
-    /** @type {string[]} */
-    const log = [];
-    queue.batch(() => {
-      // The cursor walks levels one at a time, so an infinite priority used
-      // as an index would leave it climbing with nothing left to find.
-      queue.invalidate(makeTask("infinite", log), Infinity);
-      queue.invalidate(makeTask("nonsense", log), NaN);
-      queue.invalidate(makeTask("ordinary", log), 1);
-    });
-    assert.deepEqual(log, ["nonsense", "ordinary", "infinite"]);
-  });
-
-  test("priorities past the grid still order among themselves, infinity last", () => {
-    const queue = new UpdateQueue();
-    /** @type {string[]} */
-    const log = [];
-    queue.batch(() => {
-      queue.invalidate(makeTask("infinite", log), Infinity);
-      queue.invalidate(makeTask("huge", log), 2 ** 40);
-      queue.invalidate(makeTask("large", log), 100_000);
-      queue.invalidate(makeTask("dense", log), 3);
-    });
-    // "after everything" has to mean after the other out-of-range tasks too,
-    // not merely after the ones that fit on the grid.
-    assert.deepEqual(log, ["dense", "large", "huge", "infinite"]);
-  });
-
-  test("equal out-of-range priorities keep insertion order", () => {
-    const queue = new UpdateQueue();
-    /** @type {string[]} */
-    const log = [];
-    queue.batch(() => {
-      queue.invalidate(makeTask("first", log), Infinity);
-      queue.invalidate(makeTask("second", log), Infinity);
-      queue.invalidate(makeTask("third", log), Infinity);
-    });
-    assert.deepEqual(log, ["first", "second", "third"]);
-  });
-
-  test("a task past the grid can discover shallow work, which runs first", () => {
-    const queue = new UpdateQueue();
-    /** @type {string[]} */
-    const log = [];
-    const shallow = makeTask("shallow", log);
-    const last = makeTask("last", log, () => {
-      queue.invalidate(shallow, 0);
-    });
-    queue.batch(() => {
-      queue.invalidate(last, Infinity);
-      queue.invalidate(makeTask("ordinary", log), 1);
-    });
-    assert.deepEqual(log, ["ordinary", "last", "shallow"]);
-  });
-
-  test("a task re-prioritized off the grid and back runs once, where it landed", () => {
-    const queue = new UpdateQueue();
-    /** @type {string[]} */
-    const log = [];
-    const wanderer = makeTask("wanderer", log);
-    queue.batch(() => {
-      queue.invalidate(wanderer, 1);
-      queue.invalidate(wanderer, Infinity);
-      queue.invalidate(makeTask("middle", log), 2);
-      queue.invalidate(wanderer, 0);
-    });
-    assert.deepEqual(log, ["wanderer", "middle"]);
-
-    // Neither abandoned entry — the dense one at 1 nor the far one — may
-    // resurface on a later flush.
-    log.length = 0;
-    queue.invalidate(makeTask("later", log), 0);
-    assert.deepEqual(log, ["later"]);
-  });
-
-  test("re-prioritizing deeper leaves no entry behind at the old level", () => {
-    const queue = new UpdateQueue();
-    /** @type {string[]} */
-    const log = [];
-    const moved = makeTask("moved", log);
-    queue.batch(() => {
-      queue.invalidate(moved, 5);
-      queue.invalidate(moved, 1);
-    });
-    assert.deepEqual(log, ["moved"], "the task runs once, from its new level");
-
-    // Level 5 still holds the entry the move abandoned, at a level this
-    // flush's cursor never reached. A later flush must not resurrect it.
-    log.length = 0;
-    queue.invalidate(makeTask("later", log), 0);
-    assert.deepEqual(log, ["later"], "the abandoned entry does not run again");
-  });
-
-  test("a stale entry between two live ones is skipped, not run", () => {
-    const queue = new UpdateQueue();
-    /** @type {string[]} */
-    const log = [];
-    const middle = makeTask("middle", log);
-    queue.batch(() => {
-      queue.invalidate(makeTask("before", log), 1);
-      queue.invalidate(middle, 1);
-      queue.invalidate(makeTask("after", log), 1);
-      // `middle` now has a stale entry sitting between two tasks that still
-      // have to run out of the same bucket.
-      queue.invalidate(middle, 2);
-    });
-    assert.deepEqual(log, ["before", "after", "middle"]);
-  });
-
-  test("a task pushed deeper mid-flush runs once, at its new level", () => {
-    const queue = new UpdateQueue();
-    /** @type {string[]} */
-    const log = [];
-    const bumped = makeTask("bumped", log);
-    const driver = makeTask("driver", log, () => {
-      // The graph learned mid-flush that this sits deeper than it was queued
-      // at — and the cursor has already been given the shallower level.
-      queue.invalidate(bumped, 3);
-    });
-    queue.batch(() => {
-      queue.invalidate(driver, 0);
-      queue.invalidate(bumped, 1);
-    });
-    assert.deepEqual(log, ["driver", "bumped"]);
-  });
-
-  test("a nested batch defers to the outer one", () => {
-    const queue = new UpdateQueue();
-    /** @type {string[]} */
-    const log = [];
-    queue.batch(() => {
-      queue.invalidate(makeTask("outer", log), 0);
-      queue.batch(() => {
-        queue.invalidate(makeTask("inner", log), 1);
-      });
-      assert.deepEqual(log, [], "the inner batch must not drain on its own");
-    });
-    assert.deepEqual(log, ["outer", "inner"]);
-  });
-
-  test("a task that re-invalidates itself runs again in the same flush", () => {
-    const queue = new UpdateQueue();
-    /** @type {string[]} */
-    const log = [];
-    let runs = 0;
-    /** @type {{ invalidate: () => void }} */
-    const self = makeTask("self", log, () => {
-      if (++runs < 3) {
-        queue.invalidate(self, 0);
+    let again = true;
+    const task = makeTask("a", channel, log, () => {
+      if (again) {
+        again = false;
+        queue.enqueue(task);
       }
     });
-    queue.invalidate(self, 0);
-    assert.deepEqual(log, ["self", "self", "self"]);
+    queue.enqueue(task);
+    channel.flush({ budget: Infinity });
+    assert.deepStrictEqual(log, ["a", "a"]);
   });
 
-  test("a batch body that throws does not wedge the queue", () => {
-    const queue = new UpdateQueue();
+  it("skips a task taken back out before its turn", () => {
+    const channel = new UpdateChannel({ name: "cancel", order: 0, manual: true });
+    const queue = new UpdateQueue(channel);
     /** @type {string[]} */
     const log = [];
-    assert.throws(() => {
-      queue.batch(() => {
-        queue.invalidate(makeTask("queued before the throw", log), 0);
-        throw new Error("boom");
-      });
-    }, /boom/);
-    assert.deepEqual(
-      log,
-      ["queued before the throw"],
-      "work queued before the failure is still real, and still drains",
-    );
+    const first = makeTask("a", channel, log);
+    const second = makeTask("b", channel, log);
+    queue.enqueue(first);
+    queue.enqueue(second);
+    queue.dequeue(first);
+    assert.strictEqual(queue.size, 1);
+    channel.flush({ budget: Infinity });
+    assert.deepStrictEqual(log, ["b"]);
+  });
 
-    // The batching flag has to survive the failure: if it stayed set, nothing
-    // would drain the queue again and every later invalidation would vanish.
-    log.length = 0;
-    queue.invalidate(makeTask("afterwards", log), 0);
-    assert.deepEqual(log, ["afterwards"], "the queue still flushes afterwards");
+  it("reuses the array once a lane drains", () => {
+    const channel = new UpdateChannel({ name: "reuse", order: 0, manual: true });
+    const queue = new UpdateQueue(channel);
+    /** @type {string[]} */
+    const log = [];
+    for (let round = 0; round < 3; round += 1) {
+      queue.enqueue(makeTask(`r${round}`, channel, log));
+      channel.flush({ budget: Infinity });
+      assert.strictEqual(queue.size, 0);
+    }
+    assert.deepStrictEqual(log, ["r0", "r1", "r2"]);
+  });
+
+  it("takes channels in order, and goes back for one that gains work mid-pass", () => {
+    const early = new UpdateChannel({ name: "early", order: 1, manual: true });
+    const late = new UpdateChannel({ name: "late", order: 2, manual: true });
+    const queue = new UpdateQueue(early);
+    /** @type {string[]} */
+    const log = [];
+    // Draining `early` also drains anything queued in `late`, because the
+    // pass walks every channel that drains of its own accord... except that
+    // both of these are manual, so only the target does. Queue into both and
+    // flush each in turn.
+    queue.enqueue(makeTask("late", late, log));
+    queue.enqueue(makeTask("early", early, log));
+    early.flush({ budget: Infinity });
+    assert.deepStrictEqual(log, ["early"]);
+    late.flush({ budget: Infinity });
+    assert.deepStrictEqual(log, ["early", "late"]);
+  });
+
+  it("clears every lane when a pass throws", () => {
+    const channel = new UpdateChannel({ name: "boom", order: 0, manual: true });
+    const other = new UpdateChannel({ name: "boom-other", order: 1, manual: true });
+    const queue = new UpdateQueue(channel);
+    /** @type {string[]} */
+    const log = [];
+    const exploding = makeTask("boom", channel, log, () => {
+      throw new Error("boom");
+    });
+    queue.enqueue(exploding);
+    const bystander = makeTask("bystander", other, log);
+    queue.enqueue(bystander);
+
+    assert.throws(() => channel.flush({ budget: Infinity }), /boom/);
+    assert.strictEqual(queue.size, 0, "a half-drained queue is worse than an empty one");
+    assert.strictEqual(exploding.queued, false);
+    assert.strictEqual(bystander.queued, false, "and nothing is left stranded as queued");
+
+    // Still usable afterwards.
+    queue.enqueue(makeTask("after", channel, log));
+    channel.flush({ budget: Infinity });
+    assert.deepStrictEqual(log, ["boom", "after"]);
+  });
+});
+
+describe("UpdateQueue, through effects", () => {
+  it("holds the drain until a batch returns", () => {
+    const a = Signal.of(0);
+    const b = Signal.of(0);
+    /** @type {string[]} */
+    const seen = [];
+    const effect = new Effect(() => seen.push(`${a.get()}/${b.get()}`));
+
+    seen.length = 0;
+    batch(() => {
+      a.set(1);
+      assert.deepStrictEqual(seen, [], "not while the model is half written");
+      b.set(1);
+    });
+    assert.deepStrictEqual(seen, ["1/1"]);
+    effect.dispose();
+  });
+
+  it("nests batches away to nothing", () => {
+    const source = Signal.of(0);
+    const effect = new Effect(() => source.get());
+    const before = effect.getRuns();
+    batch(() => {
+      batch(() => source.set(1));
+      assert.strictEqual(effect.getRuns(), before, "the inner batch does not drain");
+      source.set(2);
+    });
+    assert.strictEqual(effect.getRuns(), before + 1);
+    effect.dispose();
+  });
+
+  it("drains even when a batch body throws", () => {
+    const source = Signal.of(0);
+    const effect = new Effect(() => source.get());
+    const before = effect.getRuns();
+    assert.throws(() => {
+      batch(() => {
+        source.set(1);
+        throw new Error("half way");
+      });
+    }, /half way/);
+    assert.strictEqual(effect.getRuns(), before + 1, "the write it managed to make is real");
+    effect.dispose();
+  });
+
+  it("returns what the batch body returned", () => {
+    assert.strictEqual(
+      batch(() => 42),
+      42,
+    );
+  });
+
+  it("runs each effect once for a fan-out, not once per branch", () => {
+    const source = Signal.of(0);
+    /** @type {Derived<number>[]} */
+    const branches = [];
+    for (let i = 0; i < 5; i += 1) {
+      branches.push(new Derived(() => source.get() + i));
+    }
+    const join = new Derived(() => branches.reduce((sum, b) => sum + b.get(), 0));
+    const effect = new Effect(() => join.get());
+
+    const before = effect.getRuns();
+    const evaluations = join.getEvaluations();
+    source.set(1);
+
+    assert.strictEqual(effect.getRuns(), before + 1);
+    assert.strictEqual(join.getEvaluations(), evaluations + 1);
+    effect.dispose();
+  });
+
+  it("puts an effect in the default channel on the default queue", () => {
+    const source = Signal.of(0);
+    const effect = new Effect(() => source.get());
+    assert.strictEqual(effect.channel, defaultChannel);
+    source.set(1);
+    assert.strictEqual(defaultChannel.pendingCount, 0, "drained on the spot");
+    effect.dispose();
   });
 });

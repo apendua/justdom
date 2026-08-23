@@ -13,7 +13,7 @@ import { it } from "node:test";
 import assert from "node:assert/strict";
 import { bench } from "./testUtils/benchmark.js";
 
-import { Signal, Derived, batch } from "./Signal.js";
+import { Signal, Derived, batch } from "./index.js";
 
 // ─── Efficiency / correctness assertions ─────────────────────────────────────
 
@@ -95,7 +95,13 @@ it("batch() reduces Derived evaluations to one when multiple signals change", ()
   sub.unsubscribe();
 });
 
-it("without batch(), Derived evaluates once per individual signal change", () => {
+it("without batch(), unread writes still cost only one evaluation", () => {
+  // What laziness gives away for nothing. Two unbatched writes used to mean
+  // two recomputations, because each one pushed the work through
+  // immediately; now they mean two markings, and the single read that
+  // follows pays for one evaluation. `batch()` is still worth reaching for —
+  // it is what keeps an *effect* from running twice — but it is no longer
+  // what keeps a derived value from being computed twice.
   const s1 = Signal.of(0);
   const s2 = Signal.of(0);
   const sum = new Derived(() => s1.get() + s2.get());
@@ -103,13 +109,13 @@ it("without batch(), Derived evaluates once per individual signal change", () =>
   sum.get(); // initial evaluation
 
   const before = sum.getEvaluations();
-  s1.set(1); // triggers one recompute
-  s2.set(2); // triggers a second recompute
+  s1.set(1);
+  s2.set(2);
   sum.get();
   assert.strictEqual(
     sum.getEvaluations(),
-    before + 2,
-    "unbatched updates must each trigger their own re-evaluation",
+    before + 1,
+    "one read, one evaluation, however many writes preceded it",
   );
   sub.unsubscribe();
 });

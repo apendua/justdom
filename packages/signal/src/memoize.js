@@ -1,7 +1,7 @@
 import { createRecursiveCache } from "./cache.js";
 import Computation from "./Computation.js";
-import { Derived } from "./Signal.js";
-import { effect } from "./core.js";
+import { Derived } from "./Derived.js";
+import { resource } from "./core.js";
 
 /**
  * @import { Dependency } from './core.js';
@@ -31,8 +31,8 @@ import { effect } from "./core.js";
  */
 
 /**
- * @typedef {object} HasSideEffects
- * @property {(observable: Dependency) => void} addSideEffect
+ * @typedef {object} HasResources
+ * @property {(observable: Dependency) => void} addResource
  */
 
 /**
@@ -64,8 +64,8 @@ export function memoize(fn, options = {}) {
       return signal.get();
     }
     const newSignal = new Derived(() => fn(...args));
-    newSignal.addSideEffect(
-      effect(() => {
+    newSignal.addResource(
+      resource(() => {
         cache.set(key, newSignal);
         return () => {
           cache.delete(key);
@@ -105,8 +105,8 @@ export function memoizeDerived(fn, options = {}) {
       return signal.get();
     }
     const newSignal = fn(...args);
-    newSignal.addSideEffect(
-      effect(() => {
+    newSignal.addResource(
+      resource(() => {
         cache.set(key, newSignal);
         return () => {
           cache.delete(key);
@@ -144,14 +144,12 @@ export function memoizeDependency(fn, options = {}) {
     if (computation) {
       return computation;
     }
-    const newComputation = new Computation({
-      onInvalidateDependency() {
-        this.invalidate();
-      },
-    });
-    newComputation.addSideEffect(fn(...args));
-    newComputation.addSideEffect(
-      effect(() => {
+    // A relay: it has no value of its own, so every invalidation of anything
+    // it holds is passed straight on.
+    const newComputation = new Computation();
+    newComputation.addResource(fn(...args));
+    newComputation.addResource(
+      resource(() => {
         cache.set(key, newComputation);
         return () => {
           cache.delete(key);

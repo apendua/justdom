@@ -1,6 +1,6 @@
 import { share, Observable, ReplaySubject } from "rxjs";
-import { Derived } from "./Signal.js";
-import { toObservable } from "./core.js";
+import { Derived } from "./Derived.js";
+import { toObservable } from "./interop.js";
 import { onEachValue, subscribeTo, all } from "./util.js";
 
 /**
@@ -8,6 +8,12 @@ import { onEachValue, subscribeTo, all } from "./util.js";
  */
 
 /**
+ * A pure computation, as an observable of its values.
+ *
+ * A `Derived` for the value and an effect per subscriber to push it — see
+ * `toObservable`. `fn` must be pure: it is a derivation, and it runs whenever
+ * somebody looks.
+ *
  * @template T
  * @param {() => T} fn
  * @return {Observable<T>}

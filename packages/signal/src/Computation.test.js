@@ -1,193 +1,191 @@
-import assert from "node:assert/strict";
 import { describe, it, mock } from "node:test";
-
+import assert from "node:assert/strict";
 import { BehaviorSubject, Subject } from "rxjs";
-import Computation from "./Computation.js";
 
-describe("Computation", function () {
-  it("subscribes to dependencies added before activation", function () {
+import { Computation, Derived, Effect, Signal, addDependency } from "./index.js";
+
+describe("Computation", () => {
+  it("subscribes to dependencies added before anything is watching", () => {
     const notify = mock.fn();
     const dependency = new Subject();
-    const computation = new Computation({ onInvalidateDependency: notify });
+    const computation = new Computation();
 
     computation.addDependency(dependency);
     dependency.next(undefined);
+    assert.strictEqual(notify.mock.calls.length, 0, "not yet holding anything open");
+
+    const subscription = computation.subscribe({ next: notify });
+    dependency.next(undefined);
+    assert.strictEqual(notify.mock.calls.length, 1);
+
+    subscription.unsubscribe();
+  });
+
+  it("subscribes immediately to a dependency added while watched", () => {
+    const notify = mock.fn();
+    const dependency = new Subject();
+    const computation = new Computation();
+    const subscription = computation.subscribe({ next: notify });
+
+    computation.addDependency(dependency);
+    dependency.next(undefined);
+    assert.strictEqual(notify.mock.calls.length, 1);
+
+    subscription.unsubscribe();
+  });
+
+  it("does not subscribe twice to the same dependency", () => {
+    const notify = mock.fn();
+    const dependency = new Subject();
+    const computation = new Computation();
+    const subscription = computation.subscribe({ next: notify });
+
+    computation.addDependency(dependency);
+    computation.addDependency(dependency);
+    dependency.next(undefined);
+    assert.strictEqual(notify.mock.calls.length, 1);
+
+    subscription.unsubscribe();
+  });
+
+  it("skips the value a replaying dependency hands over on subscribe", () => {
+    // A value delivered during `subscribe` is the value the reader is about
+    // to compute with anyway. Passing it on would mark the reader stale the
+    // instant it read anything.
+    const notify = mock.fn();
+    const dependency = new BehaviorSubject(1);
+    const computation = new Computation();
+    const subscription = computation.subscribe({ next: notify });
+
+    computation.addDependency(dependency);
     assert.strictEqual(notify.mock.calls.length, 0);
 
-    const subscription = computation.subscribe({});
-    dependency.next(undefined);
-
-    assert.strictEqual(notify.mock.calls.length, 1);
-    assert.strictEqual(notify.mock.calls[0].arguments[0], dependency);
-
-    subscription.unsubscribe();
-  });
-
-  it("subscribes immediately when dependency is added while active", function () {
-    const notify = mock.fn();
-    const dependency = new Subject();
-    const computation = new Computation({ onInvalidateDependency: notify });
-    const subscription = computation.subscribe({});
-
-    computation.addDependency(dependency);
-    dependency.next(undefined);
-
-    assert.strictEqual(notify.mock.calls.length, 1);
-    assert.strictEqual(notify.mock.calls[0].arguments[0], dependency);
-
-    subscription.unsubscribe();
-  });
-
-  it("does not create duplicate subscriptions for the same dependency", function () {
-    const notify = mock.fn();
-    const dependency = new Subject();
-    const computation = new Computation({ onInvalidateDependency: notify });
-    const subscription = computation.subscribe({});
-
-    computation.addDependency(dependency);
-    computation.addDependency(dependency);
-    dependency.next(undefined);
-
+    dependency.next(2);
     assert.strictEqual(notify.mock.calls.length, 1);
 
     subscription.unsubscribe();
   });
 
-  it("skips synchronous emissions when subscribing to a dependency", function () {
-    const notify = mock.fn();
-    const dependency = new BehaviorSubject(0);
-    const computation = new Computation({ onInvalidateDependency: notify });
-
-    computation.addDependency(dependency);
-    const subscription = computation.subscribe({});
-
-    assert.strictEqual(notify.mock.calls.length, 0);
-
-    dependency.next(1);
-    assert.strictEqual(notify.mock.calls.length, 1);
-
-    subscription.unsubscribe();
-  });
-
-  it("shares a single dependency subscription across multiple observers", function () {
-    const notify = mock.fn();
-    const dependency = new Subject();
-    const computation = new Computation({ onInvalidateDependency: notify });
-
-    const subscription1 = computation.subscribe({});
-    const subscription2 = computation.subscribe({});
-
-    computation.addDependency(dependency);
-    dependency.next(undefined);
-
-    assert.strictEqual(notify.mock.calls.length, 1);
-
-    subscription1.unsubscribe();
-    dependency.next(undefined);
-
-    assert.strictEqual(notify.mock.calls.length, 2);
-
-    subscription2.unsubscribe();
-    dependency.next(undefined);
-
-    assert.strictEqual(notify.mock.calls.length, 2);
-  });
-
-  it("emits invalidation notifications to subscribers", function () {
-    const next = mock.fn();
+  it("holds one subscription however many observers there are", () => {
+    let subscriptions = 0;
+    const dependency = {
+      subscribe: () => {
+        subscriptions += 1;
+        return {
+          unsubscribe: () => {
+            subscriptions -= 1;
+          },
+        };
+      },
+    };
     const computation = new Computation();
-    const subscription = computation.subscribe({ next });
+    computation.addDependency(dependency);
 
-    computation.invalidate();
+    const first = computation.subscribe({});
+    const second = computation.subscribe({});
+    assert.strictEqual(subscriptions, 1);
 
-    assert.strictEqual(next.mock.calls.length, 1);
-    assert.deepStrictEqual(next.mock.calls[0].arguments, [undefined]);
-
-    subscription.unsubscribe();
+    first.unsubscribe();
+    assert.strictEqual(subscriptions, 1);
+    second.unsubscribe();
+    assert.strictEqual(subscriptions, 0);
   });
 
-  it("runs cleanup before each run", function () {
-    const cleanup = mock.fn();
-    const computation = new Computation();
-
-    computation.onCleanup(cleanup);
-    assert.strictEqual(cleanup.mock.calls.length, 0);
-
-    computation.run(() => {});
-    assert.strictEqual(cleanup.mock.calls.length, 1);
-
-    computation.run(() => {});
-    assert.strictEqual(cleanup.mock.calls.length, 1);
-  });
-
-  it("runs cleanup when the last observer unsubscribes", function () {
-    const cleanup = mock.fn();
-    const computation = new Computation();
-    const subscription = computation.subscribe({});
-
-    computation.onCleanup(cleanup);
-    subscription.unsubscribe();
-    assert.strictEqual(cleanup.mock.calls.length, 1);
-  });
-
-  it("runs cleanup when explicitly requested", function () {
-    const cleanup = mock.fn();
-    const computation = new Computation();
-    const subscription = computation.subscribe({});
-
-    computation.onCleanup(cleanup);
-    computation.cleanup();
-
-    assert.strictEqual(cleanup.mock.calls.length, 1);
-
-    // Cleanup should not run again when unsubscribing after explicit cleanup.
-    subscription.unsubscribe();
-    assert.strictEqual(cleanup.mock.calls.length, 1);
-  });
-
-  it("drops subscriptions for dependencies no longer used after run", function () {
+  it("tracks what a bound function read, and drops what it stopped reading", () => {
+    const first = new Subject();
+    const second = new Subject();
     const notify = mock.fn();
-    const dependency1 = new Subject();
-    const dependency2 = new Subject();
-    const computation = new Computation({ onInvalidateDependency: notify });
-    const subscription = computation.subscribe({});
+    const computation = new Computation();
+    const subscription = computation.subscribe({ next: notify });
 
-    computation.run(() => {
-      computation.addDependency(dependency1);
-      computation.addDependency(dependency2);
+    let which = first;
+    const run = computation.bind(() => {
+      computation.addDependency(which);
     });
 
-    dependency1.next(undefined);
-    dependency2.next(undefined);
+    run();
+    first.next(undefined);
+    assert.strictEqual(notify.mock.calls.length, 1);
+
+    which = second;
+    run();
+    first.next(undefined);
+    assert.strictEqual(notify.mock.calls.length, 1, "no longer reads the first");
+    second.next(undefined);
     assert.strictEqual(notify.mock.calls.length, 2);
-
-    computation.run(() => {
-      computation.addDependency(dependency1);
-    });
-
-    dependency2.next(undefined);
-    dependency1.next(undefined);
-
-    assert.strictEqual(notify.mock.calls.length, 3);
-    assert.strictEqual(notify.mock.calls[2].arguments[0], dependency1);
 
     subscription.unsubscribe();
   });
 
-  it("forwards dependency errors to subscribers", function () {
-    const dependency = new Subject();
-    const error = mock.fn();
+  it("keeps an event handler's reads out of whatever was evaluating", () => {
+    // What `Emitter.on` and the renderer's frame listeners use it for: an
+    // event arrives while some unrelated computation is on the stack, and
+    // what the handler reads belongs to the handler.
+    const source = Signal.of(1);
     const computation = new Computation();
-    const subscription = computation.subscribe({ error });
+    const subscription = computation.subscribe({});
+    const handler = computation.bind(() => source.get());
 
-    computation.addDependency(dependency);
+    const outer = new Derived(() => {
+      handler();
+      return "unrelated";
+    });
+    const effect = new Effect(() => outer.get());
 
-    const err = new Error("boom");
-    dependency.error(err);
+    const before = outer.getEvaluations();
+    source.set(2);
+    assert.strictEqual(outer.getEvaluations(), before, "the outer node never read it");
 
-    assert.strictEqual(error.mock.calls.length, 1);
-    assert.strictEqual(error.mock.calls[0].arguments[0], err);
-
+    effect.dispose();
     subscription.unsubscribe();
+  });
+
+  describe("as a relay", () => {
+    it("announces every invalidation, not just the first", () => {
+      // It has no value for a dependent to compare against, so silence would
+      // read as "nothing changed". Its version moves every time.
+      const dependency = new Subject();
+      const relay = new Computation();
+      relay.addDependency(dependency);
+
+      let reads = 0;
+      const reader = new Derived(() => {
+        addDependency(relay);
+        reads += 1;
+        return reads;
+      });
+      let runs = 0;
+      const effect = new Effect(() => {
+        reader.get();
+        runs += 1;
+      });
+
+      runs = 0;
+      dependency.next(undefined);
+      dependency.next(undefined);
+      assert.strictEqual(runs, 2);
+
+      effect.dispose();
+    });
+
+    it("wakes a derived node that depends on it", () => {
+      const dependency = new Subject();
+      const relay = new Computation();
+      relay.addDependency(dependency);
+
+      let evaluations = 0;
+      const derived = new Derived(() => {
+        addDependency(relay);
+        evaluations += 1;
+        return evaluations;
+      });
+      const effect = new Effect(() => derived.get());
+
+      const before = evaluations;
+      dependency.next(undefined);
+      assert.strictEqual(evaluations, before + 1);
+
+      effect.dispose();
+    });
   });
 });

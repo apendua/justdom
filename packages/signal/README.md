@@ -1,14 +1,22 @@
 # @apendua/signal
 
-A dependency-tracked reactive signals library, built directly on top of RxJS
-instead of a bespoke pub-sub implementation.
+A dependency-tracked reactive library with a **pull-based core** and an
+explicit split between the three things a reactive graph actually does.
 
-Unlike most signal libraries, every reactive primitive here — `Signal`,
-`Derived`, `store()`'s per-key change streams, `ReactiveMap`/`ReactiveSet` —
-is backed by an RxJS `Subscribable`/`Observable`. That means signals compose
-with ordinary RxJS operators (`switchMap`, `combineLatest`,
-`distinctUntilChanged`, ...) instead of needing a separate adapter layer to
-bridge "reactive state" and "async streams".
+- **`Signal`** — an input. Somebody writes it; it is where a change enters.
+- **`Derived`** — a transformation. Pure, lazy, cached, computed on demand.
+- **`Effect`** — an output. Work that reads reactive values and touches the
+  world, scheduled on an update channel.
+
+A write does not compute anything. It marks what might now be wrong and
+stops. Values are produced when somebody asks for them, and the asking is
+what establishes the order: a `Derived` resolves its dependencies before
+returning, so a dependency is always current before the thing that reads it —
+by construction rather than by scheduling.
+
+RxJS remains the interop layer: any `Subscribable` can be depended on, and
+`toObservable` / `fromObservable` carry values across the boundary in either
+direction.
 
 ## Installation
 
@@ -21,25 +29,94 @@ npm install @apendua/signal
 ## Usage
 
 ```js
-import { Signal, Derived, batch } from "@apendua/signal";
+import { Signal, Derived, Effect, batch } from "@apendua/signal";
 
 const count = Signal.of(0);
 const doubled = new Derived(() => count.get() * 2);
 
-doubled.subscribe(() => console.log("doubled is now", doubled.get()));
+// Nothing has been computed yet — nobody has asked.
+const effect = new Effect(() => console.log("doubled is now", doubled.get()));
+// → "doubled is now 0"
 
 batch(() => {
   count.set(1);
   count.set(2);
-}); // doubled recomputes once, not twice — logs "doubled is now 4"
+});
+// → "doubled is now 4"   (one run, one evaluation)
+
+effect.dispose();
 ```
 
-Signals are lazy and uncached until something subscribes to them:
-`doubled.get()` re-evaluates on every call until you (directly, or
-indirectly by mounting into `@apendua/justdom`) subscribe to it. Once
-subscribed, updates propagate push-style through a priority-ordered
-scheduler that guarantees glitch-free, exactly-once recomputation — even
-across diamond-shaped dependency graphs.
+`Derived` is lazy and uncached until something holds it open — an `Effect`
+reading it, another `Derived` reading it, or a direct `subscribe`. Until
+then `doubled.get()` re-evaluates on every call. Once held open it caches,
+and it recomputes only when something it read actually moved.
+
+## Why pull
+
+Ordering used to be a number. Every node carried its depth in the graph, and
+an update queue drained shallowest-first so that a dependency always ran
+before its dependents. That works only while the queue can see the shape of
+the graph — and it could not: a `Derived` wrapped in an ordinary `Observable`
+is opaque, so the wrapper reported depth 0, and anything reading it was
+scheduled as though it sat directly above a source. A diamond with one side
+through such a wrapper computed against values several levels out of date and
+emitted numbers the graph never held.
+
+Under a pull model there is no number to lose. The call stack of a read *is*
+the topological order, and it sees through anything, because it is built out
+of the reads that actually happened. `src/pull.test.js` keeps the case that
+motivated this honest.
+
+What follows from that:
+
+- **No priority on any node.** Nothing to compute per evaluation, nothing to
+  keep in step with a graph that changes shape, nothing for a wrapper to drop.
+- **The queue is off the value path.** Only effects are scheduled, so the
+  queue is a FIFO per channel with a dedup flag — no depth buckets, no
+  re-prioritisation, no stale slots.
+- **Unread work is not done.** A `Derived` nobody reads never evaluates.
+- **Unbatched writes cost one evaluation, not one each.** `batch()` is still
+  what keeps an *effect* from running twice; it is no longer what keeps a
+  value from being computed twice.
+
+Two colours of staleness make the equality cutoff work. A write marks its
+direct dependents `DIRTY` and everything below them `CHECK`. Resolving a
+`CHECK` compares each dependency's version against the version last seen, so
+a node that recomputes to the value it already had stops the change dead, and
+nothing below it runs.
+
+## Update channels
+
+An effect belongs to an `UpdateChannel`, which decides when its queue drains
+and how long a pass may spend:
+
+```js
+import { Effect, UpdateChannel, withChannel } from "@apendua/signal";
+
+const frame = new UpdateChannel({
+  name: "presentation",
+  order: 1,
+  trigger: animationFrames,
+  budget: 8, // ms
+});
+
+withChannel(frame, () => {
+  new Effect(() => element.style.top = `${top.get()}px`);
+});
+```
+
+Channels drain in `order`, and an effect may only invalidate an effect in a
+**later** channel — application state settling before presentation reads it
+is what the arrangement is for. The other direction is a mistake, and rather
+than warn and carry on, the queue fixes it: the channel that was written into
+is moved above the one that wrote, and re-sorted into place, so a
+mis-declared order corrects itself on the first pass that exposes it and
+stays corrected. Pass `fixedOrder` to keep a declared order and get a warning
+instead; the default channel is fixed at 0 for that reason.
+
+Two effects that each write what the other reads cannot be fixed by any
+ordering. The queue notices and throws rather than spinning.
 
 ## Also included
 
@@ -50,15 +127,53 @@ across diamond-shaped dependency graphs.
   collections.
 - `createProperty()` — a `WeakKey`-chained context mechanism (dependency
   injection without a compiler).
-- `@memo` / `@memoFn` / `@mutate` — stage-3 decorators for memoized getters,
-  memoized methods, and non-reactive mutations.
+- `@memo` / `@memoFn` / `@mutate` — decorators for memoized getters, memoized
+  methods, and non-reactive mutations.
+- `observable()`, `component()`, `effects()`, `set()`, `use()`, `on()` — the
+  RxJS-facing operator layer, now built on `Effect`.
+
+## Migrating from the push core
+
+The public API is largely unchanged. Four things are not.
+
+**Side effects inside a `Derived` no longer run.** A `Derived` must be pure:
+it evaluates when somebody reads it, which may be never. The idiom
+
+```js
+const d = new Derived(() => { element.style.top = `${top.get()}px`; });
+const sub = d.subscribe({});          // used to force it to run
+```
+
+becomes
+
+```js
+const effect = new Effect(() => { element.style.top = `${top.get()}px`; });
+```
+
+This is the migration that bites, because it fails quietly — the work simply
+never happens.
+
+**`subscribe()` is an invalidation channel, not a value stream.** It fires
+eagerly when a node goes from clean to stale, and it does not evaluate
+anything. A subscriber that wants the value must pull it (`node.get()` inside
+the handler), which also re-arms the notification. For values on a schedule,
+use `Effect` or `toObservable`.
+
+**`getPriority` / `setPriority` / `getChannelOrder` are gone.** There is no
+depth to read or set. Nothing in this repository used them.
+
+**`effect()` now builds an `Effect`.** The old teardown-only helper of that
+name is `resource()`, and `Computation#addSideEffect` is `addResource`.
+
+`getEvaluations()` counts legitimately drop: work that used to be done
+eagerly and discarded is now not done at all.
 
 ## Learn more
 
-[`docs/signal-user-guide.md`](../../docs/signal-user-guide.md) is a full
-guide to the reactive core, written from the source and test suite,
-including a section-by-section walkthrough of every primitive and an honest
-comparison to Solid, Preact, and Angular signals.
+- [`docs/signal-pull-model.md`](../../docs/signal-pull-model.md) — the design,
+  the measurements, and what changed from the push core.
+- [`docs/signal-user-guide.md`](../../docs/signal-user-guide.md) — the fuller
+  guide (written against the push core; see the note at its top).
 
 ## License
 

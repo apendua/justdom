@@ -1,4 +1,4 @@
-import { Derived } from "./Signal.js";
+import { Derived } from "./Derived.js";
 import { NoValueError } from "./core.js";
 import { isPlainObject, shallowEqual } from "./util.js";
 import { memoize, memoizeDerived } from "./memoize.js";

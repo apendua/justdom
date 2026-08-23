@@ -31,7 +31,7 @@
 
 import { it } from "node:test";
 import assert from "node:assert/strict";
-import { Signal, Derived, batch } from "./Signal.js";
+import { Signal, Derived, Effect, batch } from "./index.js";
 import { bench } from "./testUtils/benchmark.js";
 
 const ROWS = 200;
@@ -77,8 +77,11 @@ function panel(tally) {
       },
       { isEqual: (a, b) => a === b },
     );
-    const subscription = shown.subscribe({ next: () => shown.get() });
-    unsubscribes.push(() => subscription.unsubscribe());
+    // An effect, because only an output pulls: a bare subscription hears
+    // that the chain may have moved and never asks what it is, so the tally
+    // below would count nothing.
+    const effect = new Effect(() => shown.get());
+    unsubscribes.push(() => effect.dispose());
   }
   return { offset, dispose: () => unsubscribes.forEach((fn) => fn()) };
 }

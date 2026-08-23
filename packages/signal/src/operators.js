@@ -1,8 +1,9 @@
 import { NEVER, tap } from "rxjs";
-import { Derived } from "./Signal.js";
+import { Derived } from "./Derived.js";
 import { onEachValue, subscribeTo, subscribeAndEmit } from "./util.js";
 import { observable, component, just } from "./factories.js";
-import { addDependency, toObservable } from "./core.js";
+import { addDependency } from "./core.js";
+import { toObservable, toEffect } from "./interop.js";
 
 /**
  * @import { Observable, MonoTypeOperatorFunction } from 'rxjs';
@@ -10,12 +11,21 @@ import { addDependency, toObservable } from "./core.js";
  */
 
 /**
+ * Run `fn` against each value the source emits, and keep re-running it
+ * whenever anything it read changes.
+ *
+ * An `Effect`, because that is what this has always been. It used to be a
+ * `Derived` whose evaluation had side effects, which worked only because the
+ * old core recomputed eagerly; a lazy core would run it at unpredictable
+ * times, or never. Saying `Effect` makes the schedule explicit and puts the
+ * work in a channel.
+ *
  * @template T
  * @param {(value: T) => void} fn
  * @returns {(source: Observable<T>) => Observable<T>}
  */
 export function effects(fn) {
-  return onEachValue(subscribeAndEmit((value) => toObservable(new Derived(() => fn(value)))));
+  return onEachValue(subscribeAndEmit((value) => toEffect(() => fn(value), { name: "effects" })));
 }
 
 /**

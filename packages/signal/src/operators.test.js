@@ -2,9 +2,9 @@ import { describe, it, beforeEach, mock } from "node:test";
 import assert from "node:assert/strict";
 import { merge, Subject } from "rxjs";
 import store from "./store.js";
-import Computation from "./Computation.js";
+import { Computation } from "./index.js";
 import { decorate, memoFn } from "./decorators.js";
-import { Signal, batch } from "./Signal.js";
+import { Signal, batch } from "./index.js";
 import Emitter, { on } from "./Emitter.js";
 import { just } from "./factories.js";
 import { effects, map, takeNothing, observe, observeFn } from "./operators.js";
@@ -467,7 +467,7 @@ describe("Counting method re-runs", () => {
   function inComputation(fn) {
     const computation = new Computation();
     const sub = computation.subscribe({});
-    computation.run(() => {
+    computation.track(() => {
       fn();
     });
     sub.unsubscribe();

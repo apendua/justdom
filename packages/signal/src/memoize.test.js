@@ -3,11 +3,11 @@ import assert from "node:assert/strict";
 
 import { memoize, memoizeDependency } from "./memoize.js";
 import { Subject, tap } from "rxjs";
-import { addDependency } from "./core.js";
-import Computation from "./Computation.js";
+import { addDependency } from "./index.js";
+import { Computation } from "./index.js";
 
 /**
- * @import {Derived} from './Signal.js';
+ * @import {Derived} from './Derived.js';
  */
 
 /**
@@ -16,7 +16,7 @@ import Computation from "./Computation.js";
 function inComputation(fn) {
   const computation = new Computation();
   const sub = computation.subscribe({});
-  computation.run(() => {
+  computation.track(() => {
     fn();
   });
   sub.unsubscribe();

@@ -1,6 +1,14 @@
-export { Derived, Signal, batch, defaultChannel } from "./Signal.js";
+// The three kinds of node. Everything else in this package is built out of
+// them: a `Signal` is where a change enters the graph, a `Derived` is how it
+// is transformed, an `Effect` is where it leaves.
+export { Signal } from "./Signal.js";
+export { Derived } from "./Derived.js";
+export { Effect, effect } from "./Effect.js";
+export { default as Computation } from "./Computation.js";
+export { batch, defaultChannel } from "./scheduler.js";
 export { default as UpdateChannel } from "./UpdateChannel.js";
 export { createProperty } from "./context.js";
+
 export {
   addDependency,
   onCleanup,
@@ -9,15 +17,17 @@ export {
   withChannel,
   makeNonReactive,
   valueOf,
-  setPriority,
-  getPriority,
-  getChannelOrder,
-  toObservable,
-  effect,
+  resource,
+  Resource,
+  skipSynchronousValues,
   NoValueError,
+  CircularDependencyError,
 } from "./core.js";
-export { default as Computation } from "./Computation.js";
-export * from "./types.js";
+
+// The boundary with RxJS, which is deliberately only these three: values come
+// in as a source, values go out through an effect, work goes out through an
+// effect. Nothing crosses in the middle.
+export { toObservable, toEffect, fromObservable } from "./interop.js";
 
 // reactive
 export { default as Emitter, on, fromEvent } from "./Emitter.js";
@@ -38,11 +48,13 @@ export { observable, component, just } from "./factories.js";
 export { all } from "./util.js";
 export { default as store, emit } from "./store.js";
 export { default as selector, arraySelector } from "./selector.js";
-export { memoize, memoizeDerived, weakMemoize } from "./memoize.js";
+export { memoize, memoizeDerived, memoizeDependency, weakMemoize } from "./memoize.js";
 
 // reactive-data-structures
 export { default as ReactiveMap } from "./ReactiveMap.js";
 export { default as ReactiveSet } from "./ReactiveSet.js";
+
+export * from "./types.js";
 
 /**
  * @import {MonoTypeOperatorFunction} from 'rxjs';

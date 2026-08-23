@@ -1,276 +1,347 @@
-import { it, mock } from "node:test";
+import { describe, it, mock } from "node:test";
 import assert from "node:assert/strict";
 
-import { Signal, Derived, batch } from "./Signal.js";
-import { makeNonReactive, addDependency, onCleanup, CircularDependencyError } from "./core.js";
+import { Signal, Derived, Effect, batch } from "./index.js";
+import { makeNonReactive, addDependency, onCleanup, CircularDependencyError } from "./index.js";
 
-it("should not memoize value if not subscribed", function () {
-  let computeCount = 0;
-  const derived = new Derived(() => {
-    computeCount++;
-    return 42;
-  });
-  assert.strictEqual(derived.get(), 42);
-  assert.strictEqual(computeCount, 1);
-  assert.strictEqual(derived.get(), 42);
-  assert.strictEqual(computeCount, 2);
-});
-
-it("should memoize value when subscribed", function () {
-  let computeCount = 0;
-  const derived = new Derived(() => {
-    computeCount++;
-    return 42;
-  });
-  const subscription = derived.subscribe({});
-  assert.strictEqual(derived.get(), 42);
-  assert.strictEqual(computeCount, 1);
-  assert.strictEqual(derived.get(), 42);
-  assert.strictEqual(computeCount, 1);
-  subscription.unsubscribe();
-});
-
-it("invokes cleanup after last subscriber unsubscribes", function () {
-  const cleanup = mock.fn();
-  const derived = new Derived(() => {
-    onCleanup(cleanup);
-  });
-  const subscription1 = derived.subscribe({});
-  const subscription2 = derived.subscribe({});
-  subscription1.unsubscribe();
-  subscription2.unsubscribe();
-  assert.strictEqual(cleanup.mock.calls.length, 1);
-});
-
-it("invokes cleanup in a deferred manner", async function () {
-  const cleanup = mock.fn();
-  const derived = new Derived(
-    () => {
-      onCleanup(cleanup);
-    },
-    {
-      cacheTTL: 0,
-    },
-  );
-  const subscription1 = derived.subscribe({});
-  const subscription2 = derived.subscribe({});
-  subscription1.unsubscribe();
-  subscription2.unsubscribe();
-  assert.strictEqual(cleanup.mock.calls.length, 0);
-  await new Promise((resolve) => setTimeout(resolve, 0));
-  assert.strictEqual(cleanup.mock.calls.length, 1);
-});
-
-it("invokes cleanup after any relevant change in dependency", function () {
-  const cleanup = mock.fn();
-  const source = Signal.of(1);
-  const derived = new Derived(() => {
-    addDependency(source);
-    onCleanup(cleanup);
-    return source.get() * 2;
-  });
-  const subscription1 = derived.subscribe({});
-  const subscription2 = derived.subscribe({});
-  assert.strictEqual(derived.get(), 2);
-  assert.strictEqual(derived.getEvaluations(), 1);
-  assert.strictEqual(cleanup.mock.calls.length, 0);
-  subscription1.unsubscribe();
-  assert.strictEqual(derived.getEvaluations(), 1);
-  assert.strictEqual(cleanup.mock.calls.length, 0);
-  subscription2.unsubscribe();
-  assert.strictEqual(derived.getEvaluations(), 1);
-  assert.strictEqual(cleanup.mock.calls.length, 1);
-  source.set(2);
-  assert.strictEqual(derived.get(), 4);
-  assert.strictEqual(derived.getEvaluations(), 2);
-  assert.strictEqual(cleanup.mock.calls.length, 1);
-  const subscription3 = derived.subscribe({});
-  assert.strictEqual(derived.get(), 4);
-  assert.strictEqual(derived.getEvaluations(), 3);
-  assert.strictEqual(cleanup.mock.calls.length, 2);
-  subscription3.unsubscribe();
-  assert.strictEqual(derived.getEvaluations(), 3);
-  assert.strictEqual(cleanup.mock.calls.length, 3);
-});
-
-it("should only emit if value changes", function () {
-  const initial = Signal.of(1);
-  const spy = mock.fn();
-  const subscription = initial.subscribe({ next: spy });
-  assert.strictEqual(initial.get(), 1);
-  initial.set(1);
-  assert.strictEqual(initial.get(), 1);
-  initial.set(2);
-  assert.strictEqual(initial.get(), 2);
-  subscription.unsubscribe();
-  assert.strictEqual(spy.mock.calls.length, 1);
-});
-
-it("should update value when input changes", function () {
-  const initial = Signal.of(1);
-  const derived = new Derived(() => initial.get() + 1);
-  const spy = mock.fn();
-  const subscription = derived.subscribe({ next: spy });
-  assert.strictEqual(derived.get(), 2);
-  initial.set(2);
-  assert.strictEqual(derived.get(), 3);
-  initial.set(3);
-  assert.strictEqual(derived.get(), 4);
-  subscription.unsubscribe();
-  assert.strictEqual(spy.mock.calls.length, 2);
-});
-
-it("should only emit if derived value changes", function () {
-  const initial = Signal.of(1);
-  const derived = new Derived(() => initial.get() % 2);
-  const spy = mock.fn();
-  const subscription = derived.subscribe({ next: spy });
-  assert.strictEqual(derived.get(), 1);
-  initial.set(3);
-  assert.strictEqual(derived.get(), 1);
-  initial.set(2);
-  assert.strictEqual(derived.get(), 0);
-  initial.set(3);
-  assert.strictEqual(derived.get(), 1);
-  subscription.unsubscribe();
-  assert.strictEqual(spy.mock.calls.length, 2);
-});
-
-it("should batch updates", function () {
-  const s1 = Signal.of(0);
-  const s2 = Signal.of(0);
-  const s3 = new Derived(() => s1.get() + s2.get());
-
-  const spy = mock.fn();
-  const subscription = s3.subscribe({
-    next: () => {
-      spy(s3.get());
-    },
-  });
-
-  batch(() => {
-    s1.set(3);
-    s2.set(5);
-  });
-
-  assert.strictEqual(spy.mock.calls.length, 1);
-  assert.deepStrictEqual(spy.mock.calls[1 - 1].arguments, [8]);
-
-  subscription.unsubscribe();
-});
-
-it("notifies a direct subscriber once per write, even within a batch", function () {
-  // A signal notifies as it is written rather than being queued, so repeated
-  // writes inside one batch are no longer collapsed into a single
-  // notification. Every value a subscriber is told about is a value the
-  // signal really held.
-  const signal = Signal.of(0);
-  const spy = mock.fn();
-  const subscription = signal.subscribe({ next: () => spy(signal.get()) });
-
-  batch(() => {
+describe("Signal", () => {
+  it("only announces a write that changed something", () => {
+    const signal = Signal.of(1);
+    const spy = mock.fn();
+    const subscription = signal.subscribe({ next: spy });
+    assert.strictEqual(signal.get(), 1);
     signal.set(1);
+    assert.strictEqual(spy.mock.calls.length, 0);
     signal.set(2);
-    signal.set(3);
+    assert.strictEqual(signal.get(), 2);
+    assert.strictEqual(spy.mock.calls.length, 1);
+    subscription.unsubscribe();
   });
 
-  assert.strictEqual(spy.mock.calls.length, 3);
-  assert.deepStrictEqual(
-    spy.mock.calls.map((call) => call.arguments[0]),
-    [1, 2, 3],
-  );
-  subscription.unsubscribe();
-});
+  it("notifies a direct subscriber once per write, even within a batch", () => {
+    // A signal notifies as it is written rather than being queued, so
+    // repeated writes inside one batch are not collapsed into a single
+    // notification. Every value a subscriber is told about is a value the
+    // signal really held; what a batch collapses is the *work* below it.
+    const signal = Signal.of(0);
+    const spy = mock.fn();
+    const subscription = signal.subscribe({ next: () => spy(signal.get()) });
 
-it("collapses repeated writes to a signal at the first derived level", function () {
-  // What makes the above acceptable: the extra notifications never become
-  // extra work. The queue dedups by membership, so the computation below the
-  // signal still recomputes exactly once for the whole batch.
-  const signal = Signal.of(0);
-  const derived = new Derived(() => signal.get() * 10);
-  const spy = mock.fn();
-  const subscription = derived.subscribe({ next: () => spy(derived.get()) });
-  const before = derived.getEvaluations();
+    batch(() => {
+      signal.set(1);
+      signal.set(2);
+      signal.set(3);
+    });
 
-  batch(() => {
+    assert.deepStrictEqual(
+      spy.mock.calls.map((call) => call.arguments[0]),
+      [1, 2, 3],
+    );
+    subscription.unsubscribe();
+  });
+
+  it("reads without depending, through peek()", () => {
+    const signal = Signal.of(1);
+    const derived = new Derived(() => signal.peek() * 2);
+    const effect = new Effect(() => derived.get());
+    const before = derived.getEvaluations();
+    signal.set(5);
+    assert.strictEqual(derived.getEvaluations(), before);
+    effect.dispose();
+  });
+
+  it("throws until it has a value", () => {
+    const signal = new Signal();
+    assert.strictEqual(signal.hasValue(), false);
+    assert.throws(() => signal.get(), /No value available/);
     signal.set(1);
-    signal.set(2);
-    signal.set(3);
+    assert.strictEqual(signal.get(), 1);
   });
-
-  assert.strictEqual(spy.mock.calls.length, 1);
-  assert.deepStrictEqual(spy.mock.calls[0].arguments, [30]);
-  assert.strictEqual(derived.getEvaluations(), before + 1);
-  subscription.unsubscribe();
 });
 
-it("keeps a fan-out consistent when a signal is written outside a batch", function () {
-  // Notifying a dependent enqueues it, and an enqueue outside a batch drains
-  // the queue immediately — so a write has to hold the drain until it has
-  // told every dependent, or the first branch would recompute the join before
-  // the second branch had heard anything, and the join would see one update
-  // per branch instead of one in total.
-  const signal = Signal.of(0);
-  const left = new Derived(() => signal.get() + 1);
-  const right = new Derived(() => signal.get() * 2);
-  const join = new Derived(() => left.get() + right.get());
-  const spy = mock.fn();
-  const subscription = join.subscribe({ next: () => spy(join.get()) });
-
-  signal.set(5);
-
-  assert.strictEqual(spy.mock.calls.length, 1);
-  assert.deepStrictEqual(spy.mock.calls[0].arguments, [16]);
-  subscription.unsubscribe();
-});
-
-it("should not rerun if changes happen within no-reactive block", function () {
-  const initial = Signal.of(1);
-  const derived = new Derived(makeNonReactive(() => initial.get()));
-  const spy = mock.fn();
-  const subscription = derived.subscribe({ next: spy });
-  assert.strictEqual(derived.get(), 1);
-  initial.set(2);
-  assert.strictEqual(derived.get(), 1);
-  assert.strictEqual(spy.mock.calls.length, 0);
-  subscription.unsubscribe();
-});
-
-it("should detect circular dependencies on initial subscribe", function () {
-  const onError = mock.fn();
-  const s1 = Signal.of(0);
-  const s2 = new Derived(() => {
-    s1.set(s1.get() + 1);
+describe("Derived", () => {
+  it("does not evaluate until somebody reads it", () => {
+    // The whole point of the pull model: a write marks, it does not compute.
+    const source = Signal.of(1);
+    const derived = new Derived(() => source.get() * 2);
+    source.set(2);
+    source.set(3);
+    assert.strictEqual(derived.getEvaluations(), 0);
+    assert.strictEqual(derived.get(), 6);
+    assert.strictEqual(derived.getEvaluations(), 1);
   });
-  s2.subscribe({
-    error: onError,
-  });
-  assert.equal(onError.mock.calls.length, 1);
-  assert.equal(onError.mock.calls[0].arguments[0] instanceof CircularDependencyError, true);
-});
 
-it("should gracefully handle circular dependencies which converge to a stable state", function () {
-  const onError = mock.fn();
-  const s1 = Signal.of(0);
-  const s2 = new Derived(() => {
-    // This looks like a circular dependency, but upon the second iteration the set
-    // operation becomes a no-op, so it is actually safe to allow this.
-    // This may be useful in certain scenarios.
-    s1.set(Math.abs(s1.get()));
+  it("does not memoize while nothing is holding it open", () => {
+    let computeCount = 0;
+    const derived = new Derived(() => {
+      computeCount++;
+      return 42;
+    });
+    assert.strictEqual(derived.get(), 42);
+    assert.strictEqual(computeCount, 1);
+    assert.strictEqual(derived.get(), 42);
+    assert.strictEqual(computeCount, 2);
   });
-  s2.subscribe({
-    error: onError,
-  });
-  s1.set(-1);
-  assert.equal(s1.get(), 1);
-  assert.equal(onError.mock.calls.length, 0);
-});
 
-it("should detect circular dependencies in derived computations", function () {
-  /** @type {Derived<number>} */
-  const a = new Derived(() => b.get() + 1);
-  /** @type {Derived<number>} */
-  const b = new Derived(() => a.get() + 1);
-  assert.throws(() => a.get(), CircularDependencyError);
-  assert.throws(() => b.get(), CircularDependencyError);
+  it("memoizes once something is holding it open", () => {
+    let computeCount = 0;
+    const derived = new Derived(() => {
+      computeCount++;
+      return 42;
+    });
+    const subscription = derived.subscribe({});
+    assert.strictEqual(derived.get(), 42);
+    assert.strictEqual(computeCount, 1);
+    assert.strictEqual(derived.get(), 42);
+    assert.strictEqual(computeCount, 1);
+    subscription.unsubscribe();
+  });
+
+  it("recomputes only when a dependency really moved", () => {
+    const source = Signal.of(1);
+    const derived = new Derived(() => source.get() + 1);
+    const effect = new Effect(() => derived.get());
+    assert.strictEqual(derived.get(), 2);
+    assert.strictEqual(derived.getEvaluations(), 1);
+    source.set(2);
+    assert.strictEqual(derived.get(), 3);
+    assert.strictEqual(derived.getEvaluations(), 2);
+    source.set(2);
+    assert.strictEqual(derived.get(), 3);
+    assert.strictEqual(derived.getEvaluations(), 2);
+    effect.dispose();
+  });
+
+  it("stops a change at the node that swallows it", () => {
+    // The two-colour marking earning its keep: `parity` is marked and
+    // recomputes, settles on the value it already had, and `label` — marked
+    // CHECK — resolves back to clean without running.
+    const source = Signal.of(1);
+    const parity = new Derived(() => source.get() % 2);
+    const label = new Derived(() => (parity.get() ? "odd" : "even"));
+    const effect = new Effect(() => label.get());
+
+    const parityBefore = parity.getEvaluations();
+    const labelBefore = label.getEvaluations();
+    const runsBefore = effect.getRuns();
+
+    source.set(3);
+    assert.strictEqual(parity.getEvaluations(), parityBefore + 1, "parity has to look");
+    assert.strictEqual(label.getEvaluations(), labelBefore, "label does not");
+    assert.strictEqual(effect.getRuns(), runsBefore, "and neither does the effect");
+
+    source.set(4);
+    assert.strictEqual(label.getEvaluations(), labelBefore + 1);
+    assert.strictEqual(effect.getRuns(), runsBefore + 1);
+    effect.dispose();
+  });
+
+  it("evaluates a diamond's join exactly once per write", () => {
+    const source = Signal.of(1);
+    const left = new Derived(() => source.get() + 1);
+    const right = new Derived(() => source.get() * 2);
+    const join = new Derived(() => left.get() + right.get());
+    /** @type {unknown[]} */
+    const seen = [];
+    const effect = new Effect(() => seen.push(join.get()));
+
+    seen.length = 0;
+    const before = join.getEvaluations();
+    source.set(5);
+
+    assert.strictEqual(join.getEvaluations(), before + 1);
+    assert.deepStrictEqual(seen, [16]);
+    effect.dispose();
+  });
+
+  it("collapses a batch into one evaluation", () => {
+    const a = Signal.of(0);
+    const b = Signal.of(0);
+    const sum = new Derived(() => a.get() + b.get());
+    /** @type {unknown[]} */
+    const seen = [];
+    const effect = new Effect(() => seen.push(sum.get()));
+
+    seen.length = 0;
+    const before = sum.getEvaluations();
+    batch(() => {
+      a.set(3);
+      b.set(5);
+    });
+
+    assert.strictEqual(sum.getEvaluations(), before + 1);
+    assert.deepStrictEqual(seen, [8]);
+    effect.dispose();
+  });
+
+  it("collapses repeated writes to one signal", () => {
+    const signal = Signal.of(0);
+    const derived = new Derived(() => signal.get() * 10);
+    /** @type {unknown[]} */
+    const seen = [];
+    const effect = new Effect(() => seen.push(derived.get()));
+
+    seen.length = 0;
+    const before = derived.getEvaluations();
+    batch(() => {
+      signal.set(1);
+      signal.set(2);
+      signal.set(3);
+    });
+
+    assert.strictEqual(derived.getEvaluations(), before + 1);
+    assert.deepStrictEqual(seen, [30]);
+    effect.dispose();
+  });
+
+  it("keeps a fan-out consistent when a signal is written outside a batch", () => {
+    const signal = Signal.of(0);
+    const left = new Derived(() => signal.get() + 1);
+    const right = new Derived(() => signal.get() * 2);
+    const join = new Derived(() => left.get() + right.get());
+    /** @type {unknown[]} */
+    const seen = [];
+    const effect = new Effect(() => seen.push(join.get()));
+
+    seen.length = 0;
+    signal.set(5);
+
+    assert.deepStrictEqual(seen, [16], "one update, not one per branch");
+    effect.dispose();
+  });
+
+  it("does not depend on what a non-reactive block read", () => {
+    const source = Signal.of(1);
+    const derived = new Derived(makeNonReactive(() => source.get()));
+    const effect = new Effect(() => derived.get());
+    assert.strictEqual(derived.get(), 1);
+    source.set(2);
+    assert.strictEqual(derived.get(), 1);
+    effect.dispose();
+  });
+
+  it("drops a dependency it stopped reading", () => {
+    const which = Signal.of(true);
+    const a = Signal.of("a");
+    const b = Signal.of("b");
+    const derived = new Derived(() => (which.get() ? a.get() : b.get()));
+    const effect = new Effect(() => derived.get());
+
+    assert.strictEqual(derived.get(), "a");
+    which.set(false);
+    assert.strictEqual(derived.get(), "b");
+
+    const before = derived.getEvaluations();
+    a.set("A");
+    assert.strictEqual(derived.getEvaluations(), before, "no longer reads a");
+    b.set("B");
+    assert.strictEqual(derived.get(), "B");
+    effect.dispose();
+  });
+
+  it("uses a custom isEqual to decide what counts as a change", () => {
+    const source = Signal.of({ n: 1 });
+    const derived = new Derived(() => source.get(), {
+      isEqual: (x, y) => x.n === y.n,
+    });
+    const downstream = new Derived(() => derived.get().n * 2);
+    const effect = new Effect(() => downstream.get());
+
+    const before = downstream.getEvaluations();
+    source.set({ n: 1 });
+    assert.strictEqual(downstream.getEvaluations(), before, "same n, no change");
+    source.set({ n: 2 });
+    assert.strictEqual(downstream.get(), 4);
+    effect.dispose();
+  });
+
+  describe("cleanup", () => {
+    it("runs when the last reader leaves", () => {
+      const cleanup = mock.fn();
+      const derived = new Derived(() => {
+        onCleanup(cleanup);
+        return 1;
+      });
+      const first = derived.subscribe({});
+      const second = derived.subscribe({});
+      derived.get();
+      first.unsubscribe();
+      assert.strictEqual(cleanup.mock.calls.length, 0);
+      second.unsubscribe();
+      assert.strictEqual(cleanup.mock.calls.length, 1);
+    });
+
+    it("is deferred by cacheTTL", async () => {
+      const cleanup = mock.fn();
+      const derived = new Derived(
+        () => {
+          onCleanup(cleanup);
+          return 1;
+        },
+        { cacheTTL: 0 },
+      );
+      const subscription = derived.subscribe({});
+      derived.get();
+      subscription.unsubscribe();
+      assert.strictEqual(cleanup.mock.calls.length, 0);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      assert.strictEqual(cleanup.mock.calls.length, 1);
+    });
+
+    it("runs before each re-evaluation", () => {
+      const cleanup = mock.fn();
+      const source = Signal.of(1);
+      const derived = new Derived(() => {
+        addDependency(source);
+        onCleanup(cleanup);
+        return source.get() * 2;
+      });
+      const effect = new Effect(() => derived.get());
+
+      assert.strictEqual(derived.get(), 2);
+      assert.strictEqual(derived.getEvaluations(), 1);
+      assert.strictEqual(cleanup.mock.calls.length, 0);
+
+      source.set(2);
+      assert.strictEqual(derived.get(), 4);
+      assert.strictEqual(derived.getEvaluations(), 2);
+      assert.strictEqual(cleanup.mock.calls.length, 1);
+
+      effect.dispose();
+      assert.strictEqual(cleanup.mock.calls.length, 2);
+    });
+  });
+
+  describe("circular dependencies", () => {
+    it("are detected between two derived nodes", () => {
+      /** @type {Derived<number>} */
+      const a = new Derived(() => b.get() + 1);
+      /** @type {Derived<number>} */
+      const b = new Derived(() => a.get() + 1);
+      assert.throws(() => a.get(), CircularDependencyError);
+      assert.throws(() => b.get(), CircularDependencyError);
+    });
+
+    it("are detected when an effect writes what it reads", () => {
+      const signal = Signal.of(0);
+      assert.throws(() => {
+        const effect = new Effect(() => {
+          signal.set(signal.get() + 1);
+        });
+        effect.dispose();
+      }, CircularDependencyError);
+    });
+
+    it("are allowed when the write converges", () => {
+      // The write is a no-op the second time round, so nothing is ever
+      // invalidated while running and there is no loop to detect.
+      const signal = Signal.of(0);
+      const effect = new Effect(() => {
+        signal.set(Math.abs(signal.get()));
+      });
+      signal.set(-1);
+      assert.strictEqual(signal.get(), 1);
+      effect.dispose();
+    });
+  });
 });

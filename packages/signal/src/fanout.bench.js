@@ -24,7 +24,7 @@
 
 import { it } from "node:test";
 import assert from "node:assert/strict";
-import { Signal, Derived } from "./Signal.js";
+import { Signal, Derived, Effect } from "./index.js";
 import { bench } from "./testUtils/benchmark.js";
 
 const ROW_HEIGHT = 40;
@@ -39,7 +39,7 @@ const ELEMENTS_PER_ROW = 3;
  */
 function buildList(rows) {
   const delta = Signal.of(0);
-  /** @type {{ unsubscribe: () => void }[]} */
+  /** @type {import('./Effect.js').Effect[]} */
   const subscriptions = [];
   /** @type {Derived<{ top: number, bottom: number }>[]} */
   const rects = [];
@@ -72,8 +72,12 @@ function buildList(rows) {
         const r = rect.get();
         return r.bottom > 0 && r.top < WINDOW_HEIGHT;
       });
-      subscriptions.push(clip.subscribe({ next: () => clip.get() }));
-      subscriptions.push(shown.subscribe({ next: () => shown.get() }));
+      // Effects rather than bare subscriptions: what a mirror actually holds
+      // is an output, and only an output pulls. A subscription on its own
+      // hears that the value may have moved and never asks what it is, so a
+      // list built out of those would measure the marking and nothing else.
+      subscriptions.push(new Effect(() => clip.get()));
+      subscriptions.push(new Effect(() => shown.get()));
       rects.push(rect);
       clips.push(clip);
       showns.push(shown);
@@ -85,7 +89,7 @@ function buildList(rows) {
     rects,
     clips,
     showns,
-    dispose: () => subscriptions.forEach((subscription) => subscription.unsubscribe()),
+    dispose: () => subscriptions.forEach((effect) => effect.dispose()),
   };
 }
 
@@ -113,9 +117,14 @@ it("the boolean gate stops propagation for rows that did not cross an edge", () 
   try {
     /** @type {number[]} */
     const flips = list.showns.map(() => 0);
-    const subscriptions = list.showns.map((shown, i) =>
-      shown.subscribe({ next: () => flips[i]++ }),
+    const subscriptions = list.showns.map(
+      (shown, i) =>
+        new Effect(() => {
+          shown.get();
+          flips[i] += 1;
+        }),
     );
+    flips.fill(0);
     // Four px is less than a row, so at most one row enters and one leaves.
     list.delta.set(4);
     const flipped = flips.filter((count) => count > 0).length;
@@ -123,7 +132,7 @@ it("the boolean gate stops propagation for rows that did not cross an edge", () 
       flipped <= 2 * ELEMENTS_PER_ROW,
       `a small scroll must not notify rows that stayed where they were (notified ${flipped})`,
     );
-    subscriptions.forEach((subscription) => subscription.unsubscribe());
+    subscriptions.forEach((effect) => effect.dispose());
   } finally {
     list.dispose();
   }

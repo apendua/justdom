@@ -116,9 +116,12 @@ const holder = new Effect(() => texture.get()); // gives it a lifetime
 - **The last reader leaving releases everything**, deferred by `cacheTTL` if
   one is set — which is what keeps a resource warm across a gap rather than
   rebuilding it for the next reader.
-- **A node nothing holds open has no cache**, so it rebuilds on every read and
-  releases the read before it. That is the one thing to watch: give a node
-  that owns a resource an `Effect` (or another live node) reading it.
+- **A node that holds none of its dependencies open has no cache**, so it
+  rebuilds on every read and releases the read before it. That is the one
+  thing to watch: give a node that owns a resource an `Effect` (or another
+  live node) reading it. A `cacheTTL` window does not count — there the node
+  is still subscribed and still holding its value, and a read during one is an
+  ordinary cached read.
 
 ## Update channels
 

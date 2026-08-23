@@ -104,23 +104,33 @@ export class Derived extends ReactiveNode {
    */
   get() {
     // Registered before anything else so that a reader arriving now is on the
-    // list before `isLive()` is asked — the answer decides whether this node
-    // keeps what it is about to compute. Several invariants depend on the
-    // order of these two steps; think before changing it.
+    // list before the node is asked whether it is holding anything open — the
+    // answer decides whether it keeps what it is about to compute. Several
+    // invariants depend on the order of these two steps; think before
+    // changing it.
     addDependency(this);
     const current = this.#current;
     if (current !== null && this.state === CLEAN) {
       // The hot path, and worth spelling out rather than reaching it through
-      // `isLive()` and `updateIfNecessary()`: a cached value only exists on a
-      // node that is being held open, and `CLEAN` only holds while it is
-      // current, so these two fields answer the question between them. A
-      // panel reads tens of thousands of already-computed values a frame.
+      // `isConnected()` and `updateIfNecessary()`: a cached value only exists
+      // on a node that is holding its dependencies open, and `CLEAN` only
+      // holds while it is current, so these two fields answer the question
+      // between them. A panel reads tens of thousands of already-computed
+      // values a frame.
       return current.value;
     }
-    if (!this.isLive()) {
-      // Nothing is holding this node open, so nothing is keeping a cached
-      // value coherent: no subscriptions to its sources, no marking when they
-      // move. Computing afresh is the only honest answer.
+    if (!this.isConnected()) {
+      // Not connected: no subscriptions to its sources, nothing marking it
+      // when they move, and therefore nothing that could keep a cached value
+      // coherent. Computing afresh is the only honest answer.
+      //
+      // Connected-but-not-live is a different state and must not come here.
+      // A `cacheTTL` window is exactly that — the last reader has gone but
+      // the node is still subscribed and still holding its value — so a read
+      // during one takes the ordinary cached path below. Sending it here
+      // instead would run the held value's teardowns on the way in and
+      // refresh the edge versions on the way out, leaving a cache whose
+      // resource is disposed and whose bookkeeping claims it is current.
       return this.#evaluateUncached();
     }
     this.updateIfNecessary();

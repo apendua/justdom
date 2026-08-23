@@ -183,6 +183,103 @@ describe("Effect", () => {
     effect.dispose();
   });
 
+  describe("a run that invalidates itself", () => {
+    it("is never re-entered while it is still on the stack", () => {
+      // The first run happens during construction, outside the queue's
+      // execution discipline. A write inside it enqueues this effect, and the
+      // write's own batch drains the queue on the way out — which used to
+      // call back into a run that had not finished, so teardowns paired with
+      // the wrong runs and two "exclusive" resources were live at once.
+      const source = Signal.of(0);
+      let installed = 0;
+      let removed = 0;
+      let active = 0;
+      let peak = 0;
+      const effect = new Effect(() => {
+        const value = source.get();
+        if (value < 3) {
+          source.set(value + 1);
+        }
+        installed += 1;
+        active += 1;
+        peak = Math.max(peak, active);
+        return () => {
+          removed += 1;
+          active -= 1;
+        };
+      });
+
+      assert.equal(peak, 1, "never more than one resource live at a time");
+      assert.equal(active, 1, "and exactly one once it settles");
+      assert.equal(removed, installed - 1, "every run but the last was torn down");
+      assert.equal(source.get(), 3, "and it converged");
+
+      effect.dispose();
+      assert.equal(active, 0);
+    });
+
+    it("keeps the mark when the first run happens inside a batch", () => {
+      // Same self-writing first run, but the enqueue is deferred by the
+      // batch. The constructor used to write CLEAN after the run, erasing the
+      // mark the run had just earned, so the queued re-run found nothing to
+      // do and the effect never settled.
+      const source = Signal.of(5);
+      let runs = 0;
+      /** @type {Effect | undefined} */
+      let effect;
+      batch(() => {
+        effect = new Effect(() => {
+          runs += 1;
+          const value = source.get();
+          if (value < 10) {
+            source.set(value + 1);
+          }
+        });
+      });
+
+      assert.equal(source.get(), 10, "settled");
+      assert.equal(runs, 6, "one run per step, and no more");
+      effect?.dispose();
+    });
+
+    it("settles the same way whether the clamp happens on the first run or a later one", () => {
+      // The same convergence reached two ways: a value already out of range
+      // when the effect is built, and one that goes out of range afterwards.
+      // The first goes through the constructor's run, the second through the
+      // queue, and they used to disagree.
+      /**
+       * @param {number} initial
+       * @param {(source: Signal<number>) => void} push
+       */
+      const clamp = (initial, push) => {
+        const source = Signal.of(initial);
+        let runs = 0;
+        const effect = new Effect(() => {
+          const value = source.get();
+          runs += 1;
+          if (value > 3) {
+            source.set(3);
+          }
+        });
+        runs = 0;
+        push(source);
+        const settled = { value: source.get(), runs };
+        effect.dispose();
+        return settled;
+      };
+
+      // Built already out of range: the clamp happens during construction, so
+      // the run counter is reset after it and both cases are measured from
+      // the same point — one run that clamps, one that confirms.
+      const onFirstRun = clamp(9, () => {});
+      const later = clamp(0, (source) => source.set(9));
+
+      assert.equal(onFirstRun.value, 3);
+      assert.equal(later.value, 3);
+      assert.equal(later.runs, 2, "one run to clamp, one to confirm");
+    });
+  });
+
   it("lands in the default channel when nothing says otherwise", () => {
     const effect = new Effect(() => {});
     assert.strictEqual(effect.channel, defaultChannel);

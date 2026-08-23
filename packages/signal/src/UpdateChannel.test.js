@@ -507,6 +507,80 @@ describe("UpdateChannel, order correction", () => {
     effect.dispose();
   });
 
+  it("does not skip a channel when a correction jumps over other lanes", () => {
+    // Three victims, so that a correction has to move a lane past lanes that
+    // still hold work. Re-inserting a lane renumbered only from the insertion
+    // point, leaving every lane it had jumped over claiming its neighbour's
+    // index — and a pass resumes scanning at `index + 1`, so those channels
+    // were skipped. The staleness outlived the pass: their effects stayed
+    // queued through every later write. Two channels cannot expose this,
+    // which is why the other tests here did not.
+    const first = new UpdateChannel({ name: "skip-1", order: 1 });
+    const second = new UpdateChannel({ name: "skip-2", order: 2 });
+    const third = new UpdateChannel({ name: "skip-3", order: 3 });
+    const source = new UpdateChannel({ name: "skip-source", order: 5 });
+
+    const toFirst = Signal.of(0);
+    const toSecond = Signal.of(0);
+    const toThird = Signal.of(0);
+    const pulse = Signal.of(0);
+    const seen = { first: -1, second: -1, third: -1 };
+    const warn = mock.method(console, "warn", () => {});
+
+    const effects = [
+      new Effect(
+        () => {
+          seen.first = toFirst.get();
+        },
+        { channel: first },
+      ),
+      new Effect(
+        () => {
+          seen.second = toSecond.get();
+        },
+        { channel: second },
+      ),
+      new Effect(
+        () => {
+          seen.third = toThird.get();
+        },
+        { channel: third },
+      ),
+      new Effect(
+        () => {
+          const value = pulse.get();
+          if (value > 0) {
+            toFirst.set(value);
+            toSecond.set(value);
+            toThird.set(value);
+          }
+        },
+        { channel: source },
+      ),
+    ];
+
+    // Give every channel a lane, so the indexes exist to go stale.
+    batch(() => {
+      toFirst.set(1);
+      toSecond.set(1);
+      toThird.set(1);
+      pulse.set(0.5);
+    });
+
+    pulse.set(7);
+    assert.deepEqual(seen, { first: 7, second: 7, third: 7 }, "all three corrected and run");
+    assert.equal(first.pendingCount, 0);
+    assert.equal(second.pendingCount, 0);
+    assert.equal(third.pendingCount, 0);
+
+    // And it stays fixed, rather than the skipped lanes starving from here on.
+    pulse.set(8);
+    assert.deepEqual(seen, { first: 8, second: 8, third: 8 });
+
+    warn.mock.restore();
+    effects.forEach((effect) => effect.dispose());
+  });
+
   it("refuses to spin when two effects write what the other reads", () => {
     // No ordering of the channels can fix this: reordering only decides which
     // of them goes round first. The queue notices and says so, rather than
@@ -541,7 +615,12 @@ describe("UpdateChannel, order correction", () => {
       },
       {
         name: "CircularDependencyError",
-        message: /has run 200 times in one pass/,
+        // The effect-level guard, not the queue's per-pass one: b's write
+        // sets a going, a's write comes back to b — and b's run is still on
+        // the stack when it does, because construction happens outside a
+        // flush. `UpdateQueue`'s cap is the backstop for the hops that do not
+        // nest.
+        message: /consecutive runs without settling/,
       },
     );
 

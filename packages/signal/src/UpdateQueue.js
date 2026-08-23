@@ -659,7 +659,18 @@ export default class UpdateQueue {
       at -= 1;
     }
     this.#ordered.splice(at, 0, lane);
-    for (let i = at; i < this.#ordered.length; i++) {
+    // Every index, not just the ones from the insertion point on. A lane
+    // being *re*-inserted after an order correction was spliced out of an
+    // earlier position, which shifted everything between the two points down
+    // by one — and those lanes sit before the insertion point, so renumbering
+    // from there leaves them each claiming the index of their neighbour.
+    //
+    // A pass resumes scanning at `lane.index + 1`, so one stale index is one
+    // channel silently skipped, and the staleness outlives the pass: its
+    // effects sit queued through every later write until some unrelated lane
+    // happens to be created and renumbers the tail. There are only ever a
+    // handful of lanes, so there is nothing to save by being clever here.
+    for (let i = 0; i < this.#ordered.length; i++) {
       this.#ordered[i].index = i;
     }
   }

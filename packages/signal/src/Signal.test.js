@@ -503,6 +503,63 @@ describe("Derived, as a cache for expensive resources", () => {
     holder.dispose();
   });
 
+  it("does not release the held resource for a read during the cacheTTL window", () => {
+    // A `cacheTTL` window is connected-but-not-live: the last reader has
+    // gone, but the node is still subscribed to its sources and still holding
+    // its value. A read during one used to be treated as a read of a node
+    // that owns nothing — running the held value's teardowns on the way in,
+    // and leaving the cache to serve a disposed handle afterwards.
+    const pool = resources();
+    const key = Signal.of("a");
+    const texture = new Derived(
+      () => {
+        const made = pool.make(key.get());
+        onCleanup(() => pool.dispose(made));
+        return made;
+      },
+      { isEqual: (a, b) => a.key === b.key, cacheTTL: 60_000 },
+    );
+
+    const first = new Effect(() => texture.get());
+    const held = texture.get();
+    first.dispose();
+
+    key.set("b");
+    key.set("a"); // out and back: no net change, but the node is stale now
+    texture.get(); // a read while nobody is holding it
+
+    const second = new Effect(() => texture.get());
+    assert.equal(texture.get().disposed, false, "the served resource is usable");
+    assert.equal(held.disposed, false, "and it is the one that was held");
+
+    second.dispose();
+    texture.disconnect();
+  });
+
+  it("does not serve a stale value for a read during the cacheTTL window", () => {
+    // The same cause, one layer up. The throwaway read also re-recorded the
+    // node's dependency versions, so a node marked CHECK resolved against
+    // versions that had just been refreshed, concluded nothing had moved, and
+    // kept a value that was two writes out of date.
+    const source = Signal.of(1);
+    const middle = new Derived(() => source.get() * 10);
+    const leaf = new Derived(() => middle.get() + 1, { cacheTTL: 60_000 });
+
+    const first = new Effect(() => leaf.get());
+    assert.equal(leaf.get(), 11);
+    first.dispose();
+
+    source.set(2);
+    leaf.get(); // the read that used to poison the bookkeeping
+
+    const second = new Effect(() => leaf.get());
+    assert.equal(leaf.get(), 21);
+
+    second.dispose();
+    leaf.disconnect();
+    middle.disconnect();
+  });
+
   it("releases both sides when an evaluation throws", () => {
     const pool = resources();
     const broken = Signal.of(false);

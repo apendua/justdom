@@ -25,9 +25,9 @@ import { updateQueue, defaultChannel } from "./scheduler.js";
  */
 
 /**
- * How many runs in a row an effect may invalidate itself on before the loop
- * is called a loop. Generous, because a converging one settles on the second
- * run and anything that has not settled in a hundred never will.
+ * How many runs in a row an effect may end still owing itself another before
+ * the loop is called a loop. Generous, because a converging one settles on
+ * the second run and anything that has not settled in a hundred never will.
  */
 const MAX_SELF_INVALIDATIONS = 100;
 
@@ -84,7 +84,14 @@ export class Effect extends ReactiveNode {
   /** @type {number} */
   #runs = 0;
 
-  /** Whether the run in progress invalidated something it reads itself. */
+  /**
+   * Whether something this effect reads was invalidated while it was running.
+   *
+   * Usually its own write — the clamp-or-normalise pattern — but it can also
+   * come back around through another effect that the write set going. Both
+   * are the same question from here: did this run leave itself with work to
+   * redo, and does that keep happening.
+   */
   #selfInvalidated = false;
 
   /** @type {number} */
@@ -132,6 +139,12 @@ export class Effect extends ReactiveNode {
       updateQueue.enqueue(this);
       return;
     }
+    // Settled *before* the run, exactly as `runFromQueue` does it. A first
+    // run that writes something it reads marks this effect mid-run; writing
+    // `CLEAN` afterwards would erase that mark, and the queued re-run would
+    // then find nothing to do and skip — leaving the effect out of step with
+    // the value it just moved.
+    this.state = CLEAN;
     try {
       this.#execute();
     } catch (err) {
@@ -140,7 +153,6 @@ export class Effect extends ReactiveNode {
       this.dispose();
       throw err;
     }
-    this.state = CLEAN;
   }
 
   get name() {
@@ -184,11 +196,11 @@ export class Effect extends ReactiveNode {
       return;
     }
     if (this.#running) {
-      // The effect wrote something it reads itself. Not an error on its own:
-      // an effect that clamps or normalises what it reads settles on the
-      // second pass, and that is a useful thing to be able to write. It is
-      // only an error if it never settles, which `#execute` decides by
-      // counting.
+      // Something this effect reads moved while it was running — its own
+      // write, most of the time. Not an error on its own: an effect that
+      // clamps or normalises what it reads settles on the second run, and
+      // that is a useful thing to be able to write. It is only an error if it
+      // never settles, which `#settleOrGiveUp` decides by counting.
       this.#selfInvalidated = true;
     }
     if (this.state < state) {
@@ -205,6 +217,20 @@ export class Effect extends ReactiveNode {
    */
   runFromQueue() {
     if (this.#disposed || this.state === CLEAN) {
+      return;
+    }
+    if (this.#running) {
+      // A run of this effect is still on the stack. It got here because the
+      // run wrote something it reads, which queued this effect, and the
+      // write's own `batch` drained the queue on its way out — with the run
+      // that caused it half finished underneath.
+      //
+      // Re-entering would be worse than useless: the outer `track` settles
+      // the dependency bookkeeping in its `finally`, using `seen` flags the
+      // inner run has already reset, and the outer run's teardown would
+      // register after the inner one's, pairing every teardown with the
+      // wrong run. So this declines, and `#execute` — which is still down
+      // there and can see the mark — does the re-run itself once it unwinds.
       return;
     }
     if (this.state === CHECK && !this.hasStaleDependencies()) {
@@ -251,41 +277,76 @@ export class Effect extends ReactiveNode {
    * @returns {void}
    */
   #execute() {
-    this.#running = true;
-    this.#selfInvalidated = false;
-    this.#runs += 1;
-    /** @type {unknown} */
-    let teardown;
-    try {
-      teardown = this.track(this.#run);
-    } catch (err) {
+    // A loop, because an effect that writes what it reads has to be re-run,
+    // and the queue cannot do it: the queue would have to re-enter a run that
+    // is still on the stack. So the re-run happens here, after each run has
+    // fully unwound — teardowns paired with their own runs, dependency
+    // bookkeeping settled once per run — and `#settleOrGiveUp` bounds it, as
+    // it always did.
+    for (;;) {
+      this.#running = true;
+      this.#selfInvalidated = false;
+      this.#runs += 1;
+      /** @type {unknown} */
+      let teardown;
+      try {
+        teardown = this.track(this.#run);
+      } catch (err) {
+        this.#running = false;
+        if (err instanceof NoValueError) {
+          // Not an error so much as "not yet". The effect stays subscribed to
+          // whatever it did manage to read, and will be told when that moves.
+          this.#requeueIfStale();
+          return;
+        }
+        if (this.#onError) {
+          this.#onError(err);
+          this.#settleOrGiveUp();
+          this.#requeueIfStale();
+          return;
+        }
+        throw err;
+      }
       this.#running = false;
-      if (err instanceof NoValueError) {
-        // Not an error so much as "not yet". The effect stays subscribed to
-        // whatever it did manage to read, and will be told when that moves.
+      if (typeof teardown === "function") {
+        // Registered after the run, because `track` clears the previous run's
+        // cleanups on the way in.
+        this.onCleanup(/** @type {() => void} */ (teardown));
+      }
+      this.#settleOrGiveUp();
+      if (this.#disposed || this.state === CLEAN) {
         return;
       }
-      if (this.#onError) {
-        this.#onError(err);
-        this.#settleOrGiveUp();
-        return;
-      }
-      throw err;
+      // Something invalidated this effect while it was running — its own
+      // write, most likely. Go round again.
+      this.state = CLEAN;
     }
-    this.#running = false;
-    if (typeof teardown === "function") {
-      // Registered after the run, because `track` clears the previous run's
-      // cleanups on the way in.
-      this.onCleanup(/** @type {() => void} */ (teardown));
-    }
-    this.#settleOrGiveUp();
   }
 
   /**
-   * An effect that invalidates itself gets to try again — but not forever.
-   * A run that does not invalidate itself has settled, and the count starts
-   * over; a run that does, on top of a long enough streak of them, is a loop
-   * that is not going to converge.
+   * Hand a still-stale effect back to the queue.
+   *
+   * For the paths that give up on a run rather than finishing it: the mark is
+   * real and nothing else is going to act on it, but retrying immediately
+   * would just fail again, so the queue gets to decide when.
+   *
+   * @returns {void}
+   */
+  #requeueIfStale() {
+    if (!this.#disposed && this.state !== CLEAN) {
+      updateQueue.enqueue(this);
+    }
+  }
+
+  /**
+   * An effect that leaves itself work to redo gets to try again — but not
+   * forever. A run that settles clears the count; a run that does not, on top
+   * of a long enough streak of them, is a loop that is not going to converge.
+   *
+   * This catches the transitive case too — two effects that write what the
+   * other reads, where the second one's write lands while the first is still
+   * running. `UpdateQueue`'s per-pass cap is the backstop for a cycle whose
+   * hops never nest.
    *
    * @returns {void}
    */
@@ -298,8 +359,10 @@ export class Effect extends ReactiveNode {
     if (this.#consecutiveSelfInvalidations > MAX_SELF_INVALIDATIONS) {
       this.#consecutiveSelfInvalidations = 0;
       throw new CircularDependencyError(
-        `Effect "${this.#name}" invalidated one of its own dependencies on ` +
-          `${MAX_SELF_INVALIDATIONS} consecutive runs without settling`,
+        `Effect "${this.#name}" was invalidated by its own run on ` +
+          `${MAX_SELF_INVALIDATIONS} consecutive runs without settling. Something it ` +
+          `writes is read by something that writes what it reads; no channel order can ` +
+          `resolve that, so the cycle itself has to be broken.`,
       );
     }
   }

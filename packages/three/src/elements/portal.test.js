@@ -1160,7 +1160,7 @@ describe("createPortal", () => {
       background-color: ${toObservable(color)};
     `;
 
-    /** @type {import("@apendua/justdom").Mountable<Node> | undefined} */
+    /** @type {import("@apendua/justdom").Mountable | undefined} */
     let mountable;
     const tree = $("div", [children($("div", [attr("id", () => "card"), attr("class", card)]))]);
     const subscription = tree.subscribe((value) => {
@@ -1213,7 +1213,7 @@ describe("createPortal", () => {
     const portal = createPortal(ctx);
     portal.addTo(new THREE.Group());
 
-    /** @type {import("@apendua/justdom").Mountable<Node> | undefined} */
+    /** @type {import("@apendua/justdom").Mountable | undefined} */
     let mountable;
     const tree = $("div", [children($("div", [attr("id", () => "plain")]))]);
     const subscription = tree.subscribe((value) => {
@@ -1263,7 +1263,7 @@ describe("createPortal", () => {
     const portal = createPortal(ctx);
     portal.addTo(new THREE.Group());
 
-    /** @type {import("@apendua/justdom").Mountable<Node> | undefined} */
+    /** @type {import("@apendua/justdom").Mountable | undefined} */
     let mountable;
     const tree = $("div", [
       children($("div", [attr("id", () => "late"), attr("class", () => "late")])),

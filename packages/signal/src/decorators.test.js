@@ -1,7 +1,7 @@
 import { describe, it, mock } from "node:test";
 import assert from "node:assert/strict";
 import { memo, memoFn, decorate } from "./decorators.js";
-import { Derived, Signal } from "./Signal.js";
+import { Derived, Effect, Signal } from "./index.js";
 
 describe("memo", () => {
   it("throws when applied to a non-getter", () => {
@@ -28,7 +28,7 @@ describe("memo", () => {
 
     const foo = new Foo();
     const derived = new Derived(() => foo.bar);
-    const sub = derived.subscribe({});
+    const sub = new Effect(() => derived.get());
 
     // Accessing derived.get() multiple times should return the same cached
     // reference without triggering additional compute calls.
@@ -38,7 +38,7 @@ describe("memo", () => {
     assert.strictEqual(first, second);
     assert.strictEqual(compute.mock.calls.length, 1);
 
-    sub.unsubscribe();
+    sub.dispose();
   });
 
   it("returns independent values for different instances", () => {
@@ -59,8 +59,8 @@ describe("memo", () => {
 
     const derivedA = new Derived(() => a.bar);
     const derivedB = new Derived(() => b.bar);
-    const subA = derivedA.subscribe({});
-    const subB = derivedB.subscribe({});
+    const subA = new Effect(() => derivedA.get());
+    const subB = new Effect(() => derivedB.get());
 
     trigger.set(1);
 
@@ -71,8 +71,8 @@ describe("memo", () => {
     assert.strictEqual(derivedA.get(), aResult);
     assert.strictEqual(derivedB.get(), bResult);
 
-    subA.unsubscribe();
-    subB.unsubscribe();
+    subA.dispose();
+    subB.dispose();
   });
 
   it("uses custom isEqual to suppress downstream re-evaluation", () => {
@@ -93,17 +93,20 @@ describe("memo", () => {
       outerCallCount++;
       return foo.bar;
     });
-    const sub = derived.subscribe({});
+    const sub = new Effect(() => derived.get());
 
-    // Changing the signal would normally propagate through the inner Derived.
-    // But since isEqual always returns true, the outer Derived must not
-    // re-evaluate.
+    assert.strictEqual(outerCallCount, 1, "one read, one evaluation");
+
+    // Changing the signal marks the inner Derived, which recomputes and
+    // decides — through isEqual — that it did not change. The outer node was
+    // marked CHECK, asks, and is told nothing moved.
     trigger.set(1);
+    derived.get();
 
     assert.strictEqual(outerCallCount, 1);
     assert.strictEqual(isEqual.mock.calls.length, 1);
 
-    sub.unsubscribe();
+    sub.dispose();
   });
 });
 
@@ -136,15 +139,16 @@ describe("memoFn", () => {
 
     const foo = new Foo();
     const derived = new Derived(() => foo.add(1, 2));
-    const sub = derived.subscribe({});
+    const sub = new Effect(() => derived.get());
 
+    assert.strictEqual(compute.mock.calls.length, 1);
     trigger.set(1);
 
     assert.strictEqual(derived.get(), 3);
     assert.strictEqual(derived.get(), 3);
-    assert.strictEqual(compute.mock.calls.length, 2);
+    assert.strictEqual(compute.mock.calls.length, 2, "once per real change, not once per read");
 
-    sub.unsubscribe();
+    sub.dispose();
   });
 
   it("caches separately for different argument combinations", () => {
@@ -163,8 +167,8 @@ describe("memoFn", () => {
     const foo = new Foo();
     const derivedA = new Derived(() => foo.add(1, 2));
     const derivedB = new Derived(() => foo.add(2, 3));
-    const subA = derivedA.subscribe({});
-    const subB = derivedB.subscribe({});
+    const subA = new Effect(() => derivedA.get());
+    const subB = new Effect(() => derivedB.get());
 
     trigger.set(1);
 
@@ -177,8 +181,8 @@ describe("memoFn", () => {
     assert.strictEqual(derivedB.get(), 5);
     assert.strictEqual(compute.mock.calls.length, 4);
 
-    subA.unsubscribe();
-    subB.unsubscribe();
+    subA.dispose();
+    subB.dispose();
   });
 
   it("provides independent caches per instance", () => {
@@ -203,8 +207,8 @@ describe("memoFn", () => {
 
     const derivedA = new Derived(() => a.add(5));
     const derivedB = new Derived(() => b.add(5));
-    const subA = derivedA.subscribe({});
-    const subB = derivedB.subscribe({});
+    const subA = new Effect(() => derivedA.get());
+    const subB = new Effect(() => derivedB.get());
 
     trigger.set(1);
 
@@ -212,8 +216,8 @@ describe("memoFn", () => {
     assert.strictEqual(derivedB.get(), 25);
     assert.strictEqual(callCount, 4);
 
-    subA.unsubscribe();
-    subB.unsubscribe();
+    subA.dispose();
+    subB.dispose();
   });
 
   it("supports a custom getKey function", () => {
@@ -233,8 +237,8 @@ describe("memoFn", () => {
     const foo = new Foo();
     const derivedA = new Derived(() => foo.double(1));
     const derivedB = new Derived(() => foo.double(99));
-    const subA = derivedA.subscribe({});
-    const subB = derivedB.subscribe({});
+    const subA = new Effect(() => derivedA.get());
+    const subB = new Effect(() => derivedB.get());
 
     trigger.set(1);
 
@@ -246,7 +250,7 @@ describe("memoFn", () => {
     assert.strictEqual(first, second);
     assert.strictEqual(compute.mock.calls.length, 2);
 
-    subA.unsubscribe();
-    subB.unsubscribe();
+    subA.dispose();
+    subB.dispose();
   });
 });

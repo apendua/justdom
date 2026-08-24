@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { Signal } from "./Signal.js";
-import { NoValueError } from "./core.js";
+import { Signal } from "./index.js";
+import { NoValueError } from "./index.js";
 import { observable } from "./factories.js";
 import selector, { arraySelector } from "./selector.js";
 import { use } from "./operators.js";

@@ -1,5 +1,7 @@
 import { addDependency, withComputation } from "./core.js";
-import { batch, Derived, Signal } from "./Signal.js";
+import { Derived } from "./Derived.js";
+import { Signal } from "./Signal.js";
+import { batch } from "./scheduler.js";
 import Emitter from "./Emitter.js";
 import { useEffects } from "./operators.js";
 import { isPlainObject } from "./util.js";

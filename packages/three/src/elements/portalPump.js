@@ -1,7 +1,6 @@
-import { batch, Derived, makeNonReactive, withChannel } from "@apendua/signal";
+import { batch, Effect, withChannel } from "@apendua/signal";
 
 /**
- * @import {Unsubscribable} from 'rxjs';
  * @import {UpdateChannel} from "@apendua/signal";
  * @import {PortalScheduler} from './portalScheduler.js';
  */
@@ -125,38 +124,29 @@ export function createPortalPump({
 
   // Work landing in the channel while no pump is running — a scroll, an
   // attribute flip, anything after the initial mount — must start one. The
-  // watcher lives in the *default* channel, necessarily: a computation
-  // inside the channel saying "the channel has work" would itself be the
-  // work, waiting for the pump it exists to start.
+  // watcher lives in the *default* channel, necessarily: work inside the
+  // channel saying "the channel has work" would itself be the work, waiting
+  // for the pump it exists to start.
   //
-  // Never-equal, deliberately. The flag can go true and back mid-flush,
-  // and the two announcements can collapse into one evaluation that finds
-  // the cached value again; an equality gate would swallow exactly the
-  // notification that carries "there is work now".
+  // An `Effect`, which is what this always was: it reads a flag and does
+  // something about it, and nobody wants its value. Three things it used to
+  // need go with the change — the never-equal gate (an effect re-runs on the
+  // announcement, not on the value, so there is nothing for an equality gate
+  // to swallow), the manual subscription, and the priming read. An effect
+  // runs once when it is built, which is the priming, and it tracks its own
+  // reads, so `createPortal`'s surrounding computation never sees this one.
   const pendingWatch = withChannel(
     null,
     () =>
-      new Derived(() => channel.hasPendingUpdates, {
-        isEqual: () => false,
-      }),
+      new Effect(
+        () => {
+          if (channel.hasPendingUpdates) {
+            schedule();
+          }
+        },
+        { name: "portal-pending-watch" },
+      ),
   );
-
-  /** @type {Unsubscribable} */
-  const pendingWatchSubscription = pendingWatch.subscribe({
-    next: () => {
-      if (pendingWatch.get()) {
-        schedule();
-      }
-    },
-  });
-
-  // Prime it: a Derived computes on first read, and the watcher must be
-  // watching before the first mutation arrives. Non-reactively, and that
-  // is load-bearing: `createPortal` is itself called inside a computation
-  // — `dom()` builds the portal in an effect — and a bare read here would
-  // make that computation depend on the never-equal watcher, tearing the
-  // portal down and rebuilding it on every toggle of its own channel.
-  makeNonReactive(() => pendingWatch.get())();
 
   return {
     /**
@@ -191,7 +181,7 @@ export function createPortalPump({
     /** A closed panel must not go on being offered frames. */
     dispose() {
       scheduler.remove(pump);
-      pendingWatchSubscription.unsubscribe();
+      pendingWatch.dispose();
       pendingNodes.length = 0;
       pendingSet.clear();
     },

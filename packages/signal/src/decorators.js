@@ -1,6 +1,7 @@
-import { withComputation } from "./index.js";
+import { withComputation } from "./core.js";
 import { memoizeDerived, weakMemoize } from "./memoize.js";
-import { batch, Derived } from "./Signal.js";
+import { Derived } from "./Derived.js";
+import { batch } from "./scheduler.js";
 
 /**
  * @template {object} T

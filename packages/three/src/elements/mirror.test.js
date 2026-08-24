@@ -1,6 +1,6 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
-import { batch, Derived, selector, toObservable } from "@apendua/signal";
+import { batch, Derived, Effect, selector, toObservable } from "@apendua/signal";
 import {
   createMirror,
   getBorderBoxSize,
@@ -70,10 +70,8 @@ describe("getComputedStyleCached", () => {
       const dependent = new Derived(() => {
         return getComputedStyleCached(element).backgroundColor;
       });
-      const subscription = dependent.subscribe({
-        next: () => {
-          seen.push(dependent.get());
-        },
+      const holder = new Effect(() => {
+        seen.push(dependent.get());
       });
       assert.equal(dependent.get(), "rgb(1, 2, 3)");
 
@@ -81,7 +79,7 @@ describe("getComputedStyleCached", () => {
       mirror.attributeChanged(element);
 
       assert.equal(dependent.get(), "rgb(4, 5, 6)");
-      subscription.unsubscribe();
+      holder.dispose();
     } finally {
       window.getComputedStyle = original;
       element.remove();
@@ -119,10 +117,12 @@ describe("getComputedStyleCached", () => {
         return getComputedStyleCached(leafB).cursor;
       }),
     };
-    const subscriptions = Object.values(dependents).map((dependent) =>
-      dependent.subscribe({ next: () => dependent.get() }),
-    );
-    Object.values(dependents).forEach((dependent) => dependent.get());
+    // An `Effect` holds each dependent open *and* pulls it. A bare
+    // subscription does neither any more: it hears that the value may have
+    // moved and never asks what it is, so nothing would be counted. What
+    // these tests measure — which mutations reach which elements — is
+    // exactly what re-runs an effect.
+    const holders = Object.values(dependents).map((dependent) => new Effect(() => dependent.get()));
     assert.deepEqual(reads, { leafA: 1, leafB: 1 });
 
     // An attribute change on leafA can restyle at most leafA's siblings;
@@ -147,7 +147,7 @@ describe("getComputedStyleCached", () => {
     mirror.animatedStyles([leafA]);
     assert.deepEqual(reads, { leafA: 5, leafB: 3 });
 
-    subscriptions.forEach((subscription) => subscription.unsubscribe());
+    holders.forEach((effect) => effect.dispose());
     root.remove();
   });
 
@@ -187,10 +187,12 @@ describe("getComputedStyleCached", () => {
         return getComputedStyleCached(labelB).color;
       }),
     };
-    const subscriptions = Object.values(dependents).map((dependent) =>
-      dependent.subscribe({ next: () => dependent.get() }),
-    );
-    Object.values(dependents).forEach((dependent) => dependent.get());
+    // An `Effect` holds each dependent open *and* pulls it. A bare
+    // subscription does neither any more: it hears that the value may have
+    // moved and never asks what it is, so nothing would be counted. What
+    // these tests measure — which mutations reach which elements — is
+    // exactly what re-runs an effect.
+    const holders = Object.values(dependents).map((dependent) => new Effect(() => dependent.get()));
     assert.deepEqual(reads, { labelA: 1, labelB: 1 });
 
     // An author's attribute on rowA can restyle rowB — that is what the
@@ -217,7 +219,7 @@ describe("getComputedStyleCached", () => {
     mirror.attributeChanged(rowA, { presentational: true });
     assert.deepEqual(reads, { labelA: 5, labelB: 3 });
 
-    subscriptions.forEach((subscription) => subscription.unsubscribe());
+    holders.forEach((effect) => effect.dispose());
     list.remove();
   });
 
@@ -299,8 +301,10 @@ describe("getComputedStyleCached", () => {
       reads += 1;
       return getComputedStyleCached(element).cursor;
     });
-    const subscription = dependent.subscribe({ next: () => dependent.get() });
-    dependent.get();
+    // An effect, not a subscription: what makes two records one recompute is
+    // the queue collapsing the effect's two invalidations into one run, and
+    // a bare subscription does not go near the queue.
+    const holder = new Effect(() => dependent.get());
     assert.equal(reads, 1);
 
     /** @param {string | null} oldValue */
@@ -328,7 +332,7 @@ describe("getComputedStyleCached", () => {
     batch(() => mirror.ingest([record("false")]));
     assert.equal(reads, 2);
 
-    subscription.unsubscribe();
+    holder.dispose();
     element.remove();
   });
 
@@ -486,8 +490,10 @@ describe("getComputedStyleCached", () => {
       reads += 1;
       return `${getComputedStyleCached(first).cursor}/${getComputedStyleCached(second).cursor}`;
     });
-    const subscription = dependent.subscribe({ next: () => dependent.get() });
-    dependent.get();
+    // An effect, not a subscription: what makes two records one recompute is
+    // the queue collapsing the effect's two invalidations into one run, and
+    // a bare subscription does not go near the queue.
+    const holder = new Effect(() => dependent.get());
     assert.equal(reads, 1);
 
     /** @param {Element} target */
@@ -509,7 +515,7 @@ describe("getComputedStyleCached", () => {
     batch(() => mirror.ingest([record(first), record(second)]));
     assert.equal(reads, 2, "two records, one recompute");
 
-    subscription.unsubscribe();
+    holder.dispose();
     first.remove();
     second.remove();
   });
@@ -543,10 +549,12 @@ describe("measured geometry", () => {
       child: new Derived(() => getContentPosition(child)),
       sibling: new Derived(() => getContentPosition(sibling)),
     };
-    const subscriptions = Object.values(dependents).map((dependent) =>
-      dependent.subscribe({ next: () => dependent.get() }),
-    );
-    Object.values(dependents).forEach((dependent) => dependent.get());
+    // An `Effect` holds each dependent open *and* pulls it. A bare
+    // subscription does neither any more: it hears that the value may have
+    // moved and never asks what it is, so nothing would be counted. What
+    // these tests measure — which mutations reach which elements — is
+    // exactly what re-runs an effect.
+    const holders = Object.values(dependents).map((dependent) => new Effect(() => dependent.get()));
     assert.deepEqual(reads, { child: 1, sibling: 1 });
 
     // A transform toggled on parent moves child's rect; sibling's is
@@ -576,7 +584,7 @@ describe("measured geometry", () => {
     mirror.contentLoaded();
     assert.deepEqual(reads, { child: 6, sibling: 4 });
 
-    subscriptions.forEach((subscription) => subscription.unsubscribe());
+    holders.forEach((effect) => effect.dispose());
     parent.remove();
     sibling.remove();
   });
@@ -851,9 +859,7 @@ describe("text layout as a dependency", () => {
       new Derived(() => getTextLayout(label)),
       new Derived(() => getTextLayout(loose)),
     ];
-    const subscriptions = layouts.map((textLayout) =>
-      textLayout.subscribe({ next: () => textLayout.get() }),
-    );
+    const holders = layouts.map((textLayout) => new Effect(() => textLayout.get()));
 
     try {
       assert.deepEqual(measured, new Set([label, loose]), "both measured to begin with");
@@ -892,7 +898,7 @@ describe("text layout as a dependency", () => {
       mirror.childListChanged(scroller);
       assert.deepEqual(measured, new Set([label, loose]));
     } finally {
-      subscriptions.forEach((subscription) => subscription.unsubscribe());
+      holders.forEach((effect) => effect.dispose());
       scroller.remove();
       document.createRange = originalCreateRange;
     }

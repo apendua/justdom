@@ -1,27 +1,32 @@
-import { describe, it } from "node:test";
+import { describe, it, mock } from "node:test";
 import assert from "node:assert/strict";
 import { Subject } from "rxjs";
 
-import { Signal, Derived, batch, defaultChannel } from "./Signal.js";
-import { withChannel } from "./core.js";
+import { Signal, Derived, Effect, batch, defaultChannel, withChannel } from "./index.js";
 import UpdateChannel from "./UpdateChannel.js";
 
 /**
- * A channel driven by hand: `trigger.next()` is the frame boundary, and
- * `clock` is the only time it can see, so a budget test measures exactly what
- * the test says it does.
+ * A channel driven by hand: `frame()` is the frame boundary, and `advance()`
+ * is the only time it can see, so a budget test measures exactly what it says
+ * it does.
  *
  * @param {object} [options]
+ * @param {string} [options.name]
  * @param {number} [options.order]
  * @param {number} [options.budget]
  * @param {number} [options.maxStalePasses]
  */
-function makeChannel({ order = 1, budget = Infinity, maxStalePasses = 3 } = {}) {
+function makeChannel({
+  name = "presentation",
+  order = 1,
+  budget = Infinity,
+  maxStalePasses = 3,
+} = {}) {
   /** @type {Subject<void>} */
   const trigger = new Subject();
   let time = 0;
   const channel = new UpdateChannel({
-    name: "presentation",
+    name,
     order,
     trigger,
     budget,
@@ -38,294 +43,266 @@ function makeChannel({ order = 1, budget = Infinity, maxStalePasses = 3 } = {}) 
 }
 
 describe("UpdateChannel", () => {
-  it("holds a channelled computation until its trigger fires", () => {
+  it("holds a channelled effect until its trigger fires", () => {
     const { channel, frame } = makeChannel();
     const source = Signal.of(1);
-    const mirrored = new Derived(() => source.get() * 10, { channel });
     /** @type {number[]} */
-    const seen = [];
-    mirrored.subscribe({ next: () => seen.push(mirrored.get()) });
-    mirrored.get();
+    const applied = [];
+    const effect = new Effect(() => applied.push(source.get() * 10), { channel });
 
+    applied.length = 0;
     source.set(2);
-    assert.deepEqual(seen, [], "nothing runs before the frame");
-    assert.equal(mirrored.get(), 10, "the held value is the one from before the write");
-
+    assert.deepStrictEqual(applied, [], "held");
     frame();
-    assert.deepEqual(seen, [20]);
-    assert.equal(mirrored.get(), 20);
+    assert.deepStrictEqual(applied, [20]);
+    effect.dispose();
   });
 
-  it("freezes everything downstream of the held node", () => {
+  it("leaves the output behind while the value itself is already current", () => {
+    // The division of labour the whole design rests on. Values are pulled and
+    // are therefore never stale; only the *output* waits for the frame.
     const { channel, frame } = makeChannel();
     const source = Signal.of(1);
-    const held = new Derived(() => source.get() + 1, { channel });
-    // The whole region goes in the channel, not just its boundary. Leaving
-    // this one out would still defer it — it is never told anything changed
-    // until `held` runs — but it would be scheduled in the default channel,
-    // so a pass cut short by the budget would leave it to be drained by the
-    // next unrelated write, outside the budget it was supposed to respect.
-    const below = new Derived(() => held.get() * 100, { channel });
+    const derived = new Derived(() => source.get() * 10);
     /** @type {number[]} */
-    const seen = [];
-    below.subscribe({ next: () => seen.push(below.get()) });
-    below.get();
+    const applied = [];
+    const effect = new Effect(() => applied.push(derived.get()), { channel });
 
-    source.set(5);
-    assert.deepEqual(seen, []);
-    assert.equal(below.get(), 200);
-
+    applied.length = 0;
+    source.set(2);
+    assert.strictEqual(derived.get(), 20, "the value is current on demand");
+    assert.deepStrictEqual(applied, [], "the output is not");
     frame();
-    assert.deepEqual(seen, [600]);
+    assert.deepStrictEqual(applied, [20]);
+    effect.dispose();
+  });
+
+  it("collapses several writes between frames into one run", () => {
+    const { channel, frame } = makeChannel();
+    const source = Signal.of(0);
+    const effect = new Effect(() => source.get(), { channel });
+    const before = effect.getRuns();
+
+    source.set(1);
+    source.set(2);
+    source.set(3);
+    frame();
+
+    assert.strictEqual(effect.getRuns(), before + 1);
+    effect.dispose();
   });
 
   it("reports pending work reactively, and only on the transition", () => {
     const { channel, frame } = makeChannel();
     const source = Signal.of(1);
-    const mirrored = new Derived(() => source.get() * 2, { channel });
-    mirrored.subscribe({});
-    mirrored.get();
-
+    const effect = new Effect(() => source.get(), { channel });
     /** @type {boolean[]} */
-    const flags = [];
-    const watcher = new Derived(() => channel.hasPendingUpdates);
-    watcher.subscribe({ next: () => flags.push(watcher.get()) });
-    assert.equal(watcher.get(), false);
-    flags.length = 0;
+    const pending = [];
+    const watcher = new Effect(() => pending.push(channel.hasPendingUpdates));
 
+    pending.length = 0;
     source.set(2);
-    assert.deepEqual(flags, [true], "queueing work makes the channel pending");
-    assert.equal(channel.pendingCount, 1);
-
+    assert.deepStrictEqual(pending, [true]);
     frame();
-    assert.deepEqual(flags, [true, false], "draining it clears the flag");
-    assert.equal(channel.pendingCount, 0);
+    assert.deepStrictEqual(pending, [true, false]);
+
+    watcher.dispose();
+    effect.dispose();
   });
 
-  it("does not wake pending observers once per queued task", () => {
+  it("does not wake pending observers once per queued effect", () => {
     const { channel, frame } = makeChannel();
-    const source = Signal.of(0);
-    const nodes = Array.from(
-      { length: 20 },
-      (_, i) => new Derived(() => source.get() + i, { channel }),
-    );
-    nodes.forEach((node) => {
-      node.subscribe({});
-      node.get();
-    });
+    const source = Signal.of(1);
+    const effects = [];
+    for (let i = 0; i < 10; i += 1) {
+      effects.push(new Effect(() => source.get(), { channel }));
+    }
     let wakes = 0;
-    const watcher = new Derived(() => channel.hasPendingUpdates);
-    watcher.subscribe({ next: () => (wakes += 1) });
-    watcher.get();
+    const watcher = new Effect(() => {
+      channel.hasPendingUpdates;
+      wakes += 1;
+    });
 
-    source.set(1);
-    assert.equal(channel.pendingCount, 20, "all twenty are queued");
-    assert.equal(wakes, 1, "but the flag changed once, not twenty times");
+    wakes = 0;
+    source.set(2);
+    assert.strictEqual(wakes, 1, "one transition, one wake");
+    assert.strictEqual(channel.pendingCount, 10);
     frame();
-    assert.equal(wakes, 2);
+    assert.strictEqual(wakes, 2);
+
+    watcher.dispose();
+    effects.forEach((e) => e.dispose());
   });
 
-  it("drains channels in order, and depth within a channel", () => {
-    const later = makeChannel({ order: 2 });
+  it("drains channels in order", () => {
+    const early = makeChannel({ name: "early", order: 1 });
+    const late = makeChannel({ name: "late", order: 2 });
     const source = Signal.of(0);
     /** @type {string[]} */
     const order = [];
 
-    // Two chains of two, one in each channel, subscribed so they recompute.
-    const defaultShallow = new Derived(() => {
-      order.push("default:shallow");
-      return source.get();
-    });
-    const defaultDeep = new Derived(() => {
-      order.push("default:deep");
-      return defaultShallow.get() + 1;
-    });
-    const lateShallow = new Derived(
+    const a = new Effect(
       () => {
-        order.push("late:shallow");
-        return source.get();
+        source.get();
+        order.push("early");
       },
-      { channel: later.channel },
+      { channel: early.channel },
     );
-    const lateDeep = new Derived(
+    const b = new Effect(
       () => {
-        order.push("late:deep");
-        return lateShallow.get() + 1;
+        source.get();
+        order.push("late");
       },
-      { channel: later.channel },
+      { channel: late.channel },
     );
-    [defaultDeep, lateDeep].forEach((node) => {
-      node.subscribe({});
-      node.get();
-    });
 
     order.length = 0;
     source.set(1);
-    later.frame();
+    // Both channels are triggered, so a frame on either drains both — the
+    // pass takes every channel that drains of its own accord plus the target.
+    early.frame();
+    late.frame();
+    assert.deepStrictEqual(order, ["early", "late"]);
 
-    assert.deepEqual(order, ["default:shallow", "default:deep", "late:shallow", "late:deep"]);
+    a.dispose();
+    b.dispose();
   });
 
   it("stops a pass when the budget runs out and resumes on the next", () => {
     const { channel, frame, advance } = makeChannel({ budget: 10 });
     const source = Signal.of(0);
-    /** @type {string[]} */
+    /** @type {number[]} */
     const ran = [];
-    const nodes = Array.from({ length: 4 }, (_, i) => {
-      const node = new Derived(
-        () => {
-          ran.push(`node${i}`);
-          // Each recomputation costs six milliseconds of this channel's clock,
-          // so two of them overrun a ten millisecond budget.
-          advance(6);
-          return source.get() + i;
-        },
-        { channel },
+    const effects = [];
+    for (let i = 0; i < 4; i += 1) {
+      effects.push(
+        new Effect(
+          () => {
+            source.get();
+            ran.push(i);
+            advance(4);
+          },
+          { channel },
+        ),
       );
-      node.subscribe({});
-      node.get();
-      return node;
-    });
-    assert.equal(nodes.length, 4);
+    }
 
     ran.length = 0;
     source.set(1);
-    assert.equal(channel.pendingCount, 4);
+    frame();
+    assert.deepStrictEqual(ran, [0, 1, 2], "three fit in ten milliseconds");
+    assert.strictEqual(channel.pendingCount, 1);
 
     frame();
-    assert.equal(ran.length, 2, "the budget stops the pass after two");
-    assert.equal(channel.pendingCount, 2, "the rest stay queued");
+    assert.deepStrictEqual(ran, [0, 1, 2, 3]);
+    assert.strictEqual(channel.pendingCount, 0);
 
-    frame();
-    assert.equal(ran.length, 4, "and run on the next frame");
-    assert.equal(channel.pendingCount, 0);
+    effects.forEach((e) => e.dispose());
   });
 
   it("ignores the budget after too many passes cut short in a row", () => {
-    // A source that changes every frame keeps re-queueing the shallow work,
-    // which depth ordering keeps preferring, so without a catch-up pass the
-    // deep node would never run at all.
-    const { channel, frame, advance } = makeChannel({ budget: 10, maxStalePasses: 2 });
+    const { channel, frame, advance } = makeChannel({ budget: 1, maxStalePasses: 2 });
     const source = Signal.of(0);
-    let deepRuns = 0;
-    const shallow = new Derived(
-      () => {
-        advance(20);
-        return source.get();
-      },
-      { channel },
-    );
-    const deep = new Derived(
-      () => {
-        deepRuns += 1;
-        return shallow.get() + 1;
-      },
-      { channel },
-    );
-    deep.subscribe({});
-    deep.get();
-    deepRuns = 0;
+    /** @type {number[]} */
+    const ran = [];
+    const effects = [];
+    for (let i = 0; i < 6; i += 1) {
+      effects.push(
+        new Effect(
+          () => {
+            source.get();
+            ran.push(i);
+            advance(5);
+          },
+          { channel },
+        ),
+      );
+    }
 
+    ran.length = 0;
     source.set(1);
     frame();
-    assert.equal(deepRuns, 0, "the shallow node alone spent the budget");
-
-    source.set(2);
+    assert.strictEqual(ran.length, 1);
     frame();
-    assert.equal(deepRuns, 0, "and again");
-
-    source.set(3);
+    assert.strictEqual(ran.length, 2);
     frame();
-    assert.ok(deepRuns > 0, "the catch-up pass ignores the budget and drains it");
+    assert.strictEqual(ran.length, 6, "one unbounded pass rather than a permanent backlog");
+
+    effects.forEach((e) => e.dispose());
   });
 
   it("flush({ budget: Infinity }) settles the channel without a trigger", () => {
     const { channel } = makeChannel({ budget: 0 });
-    const source = Signal.of(1);
-    const mirrored = new Derived(() => source.get() * 3, { channel });
-    mirrored.subscribe({});
-    mirrored.get();
+    const source = Signal.of(0);
+    const effect = new Effect(() => source.get(), { channel });
+    const before = effect.getRuns();
 
-    source.set(2);
-    assert.equal(channel.pendingCount, 1);
+    source.set(1);
     channel.flush({ budget: Infinity });
-    assert.equal(channel.pendingCount, 0);
-    assert.equal(mirrored.get(), 6);
+    assert.strictEqual(effect.getRuns(), before + 1);
+    effect.dispose();
   });
 
   it("defers a flush requested inside a batch to the end of it", () => {
     const { channel } = makeChannel();
-    const a = Signal.of(1);
-    const b = Signal.of(1);
+    const a = Signal.of(0);
+    const b = Signal.of(0);
     /** @type {string[]} */
     const seen = [];
-    const mirrored = new Derived(() => `${a.get()}/${b.get()}`, { channel });
-    mirrored.subscribe({ next: () => seen.push(mirrored.get()) });
-    mirrored.get();
+    const effect = new Effect(() => seen.push(`${a.get()}:${b.get()}`), { channel });
 
+    seen.length = 0;
     batch(() => {
-      a.set(2);
+      a.set(1);
       channel.flush({ budget: Infinity });
-      // Draining here would have shown the half-written model, 2/1.
-      assert.deepEqual(seen, []);
-      b.set(2);
+      assert.deepStrictEqual(seen, [], "not halfway through the batch");
+      b.set(1);
     });
-    assert.deepEqual(seen, ["2/2"]);
+    assert.deepStrictEqual(seen, ["1:1"]);
+    effect.dispose();
   });
 
   it("a paused channel lets its trigger fire and does nothing", () => {
     const { channel, frame } = makeChannel();
-    const source = Signal.of(1);
-    const mirrored = new Derived(() => source.get() + 1, { channel });
-    mirrored.subscribe({});
-    mirrored.get();
+    const source = Signal.of(0);
+    const effect = new Effect(() => source.get(), { channel });
+    const before = effect.getRuns();
 
     channel.pause();
-    source.set(5);
+    source.set(1);
     frame();
-    assert.equal(channel.pendingCount, 1, "the frame passed it by");
+    assert.strictEqual(effect.getRuns(), before);
 
     channel.resume();
     frame();
-    assert.equal(channel.pendingCount, 0);
-    assert.equal(mirrored.get(), 6);
+    assert.strictEqual(effect.getRuns(), before + 1);
+    effect.dispose();
   });
 
   it("keeps the default channel free of triggers and budgets", () => {
-    assert.equal(defaultChannel.order, 0);
-    assert.equal(defaultChannel.isTriggered, false);
-    assert.equal(defaultChannel.budget, Infinity);
+    assert.strictEqual(defaultChannel.isTriggered, false);
+    assert.strictEqual(defaultChannel.drainsOnDemand, false);
+    assert.strictEqual(defaultChannel.budget, Infinity);
+    assert.strictEqual(defaultChannel.order, 0);
   });
 
   it("allows two independent channels to share an order", () => {
-    // Two regions with no reason to be ordered relative to each other should
-    // not have to invent a reason.
-    /** @type {Subject<void>} */
-    const firstTrigger = new Subject();
-    /** @type {Subject<void>} */
-    const secondTrigger = new Subject();
-    const first = new UpdateChannel({ name: "first", order: 7, trigger: firstTrigger });
-    const second = new UpdateChannel({ name: "second", order: 7, trigger: secondTrigger });
+    const left = makeChannel({ name: "left", order: 1 });
+    const right = makeChannel({ name: "right", order: 1 });
     const source = Signal.of(0);
-    const one = new Derived(() => source.get() + 1, { channel: first });
-    const two = new Derived(() => source.get() + 2, { channel: second });
-    [one, two].forEach((node) => {
-      node.subscribe({});
-      node.get();
-    });
+    const a = new Effect(() => source.get(), { channel: left.channel });
+    const b = new Effect(() => source.get(), { channel: right.channel });
 
-    source.set(10);
-    assert.equal(first.pendingCount, 1);
-    assert.equal(second.pendingCount, 1);
+    const beforeA = a.getRuns();
+    const beforeB = b.getRuns();
+    source.set(1);
+    left.frame();
+    assert.strictEqual(a.getRuns(), beforeA + 1);
+    right.frame();
+    assert.strictEqual(b.getRuns(), beforeB + 1);
 
-    firstTrigger.next();
-    assert.equal(first.pendingCount, 0, "one channel drains");
-    assert.equal(second.pendingCount, 1, "without draining the other");
-
-    secondTrigger.next();
-    assert.equal(second.pendingCount, 0);
-    assert.equal(one.get(), 11);
-    assert.equal(two.get(), 12);
+    a.dispose();
+    b.dispose();
   });
 
   it("rejects a negative or fractional order outright", () => {
@@ -336,185 +313,359 @@ describe("UpdateChannel", () => {
 
 describe("UpdateChannel, manual", () => {
   it("waits to be asked, with no trigger of its own", () => {
-    const channel = new UpdateChannel({ name: "panel", order: 1, manual: true });
-    const source = Signal.of(1);
-    const mirrored = new Derived(() => source.get() * 2, { channel });
-    mirrored.subscribe({});
-    mirrored.get();
+    const channel = new UpdateChannel({ name: "manual", order: 1, manual: true });
+    const source = Signal.of(0);
+    const effect = new Effect(() => source.get(), { channel });
+    const before = effect.getRuns();
 
-    source.set(2);
-    assert.equal(channel.pendingCount, 1, "nothing drains it on its own");
-    assert.equal(mirrored.get(), 2, "and it goes on serving the value it had");
-
-    // Even an unrelated write elsewhere must not drain it: that is exactly the
-    // leak a budget-carrying channel cannot afford.
-    Signal.of(0).set(1);
-    assert.equal(channel.pendingCount, 1);
-
+    source.set(1);
+    assert.strictEqual(effect.getRuns(), before, "nothing is going to drain it on its own");
     channel.flush({ budget: Infinity });
-    assert.equal(channel.pendingCount, 0);
-    assert.equal(mirrored.get(), 4);
+    assert.strictEqual(effect.getRuns(), before + 1);
+    effect.dispose();
   });
 
   it("lets one budget be divided between several channels", () => {
-    // What a render loop does with a frame: give each panel what is left of
-    // the frame's allowance, in turn, and stop when it is gone.
     let time = 0;
     const now = () => time;
-    const channels = Array.from(
-      { length: 3 },
-      (_, i) => new UpdateChannel({ name: `panel${i}`, order: 1, manual: true, now }),
-    );
+    const first = new UpdateChannel({ name: "first", order: 1, manual: true, now });
+    const second = new UpdateChannel({ name: "second", order: 2, manual: true, now });
     const source = Signal.of(0);
-    // Two nodes apiece, four milliseconds a node.
-    const nodes = channels.flatMap((channel) =>
-      [0, 1].map((k) => {
-        const node = new Derived(
+    /** @type {string[]} */
+    const ran = [];
+    const effects = [];
+    for (let i = 0; i < 3; i += 1) {
+      effects.push(
+        new Effect(
           () => {
+            source.get();
+            ran.push(`first:${i}`);
             time += 4;
-            return source.get() + k;
           },
-          { channel },
-        );
-        node.subscribe({});
-        node.get();
-        return node;
-      }),
-    );
-    assert.equal(nodes.length, 6);
-
-    source.set(1);
-    assert.deepEqual(
-      channels.map((channel) => channel.pendingCount),
-      [2, 2, 2],
-    );
-
-    // A ten millisecond frame, spent across the three in order.
-    const start = time;
-    for (const channel of channels) {
-      const remaining = 10 - (now() - start);
-      if (remaining <= 0) {
-        break;
-      }
-      channel.flush({ budget: remaining });
+          { channel: first },
+        ),
+        new Effect(
+          () => {
+            source.get();
+            ran.push(`second:${i}`);
+            time += 4;
+          },
+          { channel: second },
+        ),
+      );
     }
-    assert.deepEqual(
-      channels.map((channel) => channel.pendingCount),
-      [0, 1, 2],
-      "the first panel fits, the second is cut off mid-way, the third never starts",
-    );
-    assert.equal(now() - start, 12, "and the frame overran by one task, as it must");
+
+    ran.length = 0;
+    source.set(1);
+    first.flush({ budget: 8 });
+    second.flush({ budget: 8 });
+
+    assert.deepStrictEqual(ran, ["first:0", "first:1", "second:0", "second:1"]);
+    effects.forEach((e) => e.dispose());
   });
 });
 
-describe("UpdateChannel, lanes appearing mid-pass", () => {
-  it("goes back for a channel whose lane is created during the pass", () => {
-    // Lanes are numbered by drain order, so a lane created part way through a
-    // pass renumbers the ones after it — including the one being drained. A
-    // pass that remembered which lane it was on by number would then be
-    // pointing at the wrong one, would not notice the earlier channel needing
-    // its turn, and would leave that work queued until some unrelated write
-    // happened to drain it.
-    //
-    // Which is not a contrived order: a panel's channel is used before
-    // anything lands in the default one, so in a fresh process the panel's is
-    // the first lane the queue ever makes and the first ordinary write
-    // renumbers it.
-    const later = new UpdateChannel({ name: "later", order: 5, manual: true });
-    // Ordered before `later`, and — this is the point — first used while
-    // `later` is being drained, since nothing queues in it until the node
-    // above it runs.
-    const earlier = new UpdateChannel({ name: "earlier", order: 4 });
-    const source = Signal.of(0);
-    let consumerRuns = 0;
+describe("UpdateChannel, order correction", () => {
+  it("moves a channel written into from a later one above it", () => {
+    // "early" was declared below "late", which is the wrong way round: late
+    // writes what early reads, so early has to come after it.
+    const early = new UpdateChannel({ name: "early-1", order: 1 });
+    const late = new UpdateChannel({ name: "late-1", order: 2 });
+    const pulse = Signal.of(0);
+    const written = Signal.of(0);
+    const warn = mock.method(console, "warn", () => {});
 
-    const held = new Derived(() => source.get() * 2, { channel: later });
-    const consumer = new Derived(
+    const lateEffect = new Effect(
       () => {
-        consumerRuns += 1;
-        return held.get() + 1;
+        pulse.get();
+        written.set(written.peek() + 1);
       },
-      { channel: earlier },
+      { channel: late },
     );
-    consumer.subscribe({ next: () => {} });
-    consumer.get();
-    consumerRuns = 0;
+    const earlyEffect = new Effect(() => written.get(), { channel: early });
+
+    assert.strictEqual(early.order, 1);
+    pulse.set(1);
+
+    assert.ok(early.order > late.order, `early (${early.order}) now above late (${late.order})`);
+    assert.ok(warn.mock.calls.length >= 1, "and said so");
+    assert.match(String(warn.mock.calls[0].arguments[0]), /Channels drain in order/);
+
+    warn.mock.restore();
+    lateEffect.dispose();
+    earlyEffect.dispose();
+  });
+
+  it("still runs the corrected channel in the same pass", () => {
+    const early = new UpdateChannel({ name: "early-2", order: 1 });
+    const late = new UpdateChannel({ name: "late-2", order: 2 });
+    const pulse = Signal.of(0);
+    const written = Signal.of(0);
+    /** @type {string[]} */
+    const ran = [];
+    const warn = mock.method(console, "warn", () => {});
+
+    const lateEffect = new Effect(
+      () => {
+        pulse.get();
+        ran.push("late");
+        written.set(written.peek() + 1);
+      },
+      { channel: late },
+    );
+    const earlyEffect = new Effect(
+      () => {
+        written.get();
+        ran.push("early");
+      },
+      { channel: early },
+    );
+
+    ran.length = 0;
+    pulse.set(1);
+
+    assert.deepStrictEqual(ran, ["late", "early"], "one pass, the right way round");
+    warn.mock.restore();
+    lateEffect.dispose();
+    earlyEffect.dispose();
+  });
+
+  it("stays corrected for later passes", () => {
+    const early = new UpdateChannel({ name: "early-3", order: 1 });
+    const late = new UpdateChannel({ name: "late-3", order: 2 });
+    const pulse = Signal.of(0);
+    const written = Signal.of(0);
+    const warn = mock.method(console, "warn", () => {});
+
+    const lateEffect = new Effect(
+      () => {
+        pulse.get();
+        written.set(written.peek() + 1);
+      },
+      { channel: late },
+    );
+    const earlyEffect = new Effect(() => written.get(), { channel: early });
+
+    pulse.set(1);
+    const corrected = early.order;
+    const warnings = warn.mock.calls.length;
+
+    pulse.set(2);
+    assert.strictEqual(early.order, corrected, "no further correction needed");
+    assert.strictEqual(warn.mock.calls.length, warnings, "and no further complaint");
+
+    warn.mock.restore();
+    lateEffect.dispose();
+    earlyEffect.dispose();
+  });
+
+  it("warns instead of correcting a channel whose order is fixed", () => {
+    const fixed = new UpdateChannel({ name: "fixed-1", order: 1, fixedOrder: true });
+    const late = new UpdateChannel({ name: "late-4", order: 2 });
+    const pulse = Signal.of(0);
+    const written = Signal.of(0);
+    const warn = mock.method(console, "warn", () => {});
+
+    const lateEffect = new Effect(
+      () => {
+        pulse.get();
+        written.set(written.peek() + 1);
+      },
+      { channel: late },
+    );
+    const fixedEffect = new Effect(() => written.get(), { channel: fixed });
+
+    pulse.set(1);
+
+    assert.strictEqual(fixed.order, 1, "left where it was declared");
+    assert.ok(warn.mock.calls.length >= 1);
+    assert.match(String(warn.mock.calls[0].arguments[0]), /will not be corrected/);
+
+    warn.mock.restore();
+    lateEffect.dispose();
+    fixedEffect.dispose();
+  });
+
+  it("does not mistake the queue's own pending-work announcements for a violation", () => {
+    // `hasPendingUpdates` is reactive, so a channel emptying wakes whatever
+    // was watching it — usually something in the default channel. That is the
+    // library reporting on itself, not application state flowing backwards.
+    const { channel, frame } = makeChannel({ name: "watched", order: 1 });
+    const source = Signal.of(0);
+    const warn = mock.method(console, "warn", () => {});
+    const effect = new Effect(() => source.get(), { channel });
+    const watcher = new Effect(() => channel.hasPendingUpdates);
 
     source.set(1);
-    later.flush({ budget: Infinity });
+    frame();
 
-    assert.equal(consumerRuns, 1, "the consumer runs in the same pass");
-    assert.equal(consumer.get(), 3, "and reports the new value, not the old one");
+    assert.strictEqual(warn.mock.calls.length, 0);
+    assert.strictEqual(defaultChannel.order, 0, "the default channel stays where it is");
+
+    warn.mock.restore();
+    watcher.dispose();
+    effect.dispose();
+  });
+
+  it("does not skip a channel when a correction jumps over other lanes", () => {
+    // Three victims, so that a correction has to move a lane past lanes that
+    // still hold work. Re-inserting a lane renumbered only from the insertion
+    // point, leaving every lane it had jumped over claiming its neighbour's
+    // index — and a pass resumes scanning at `index + 1`, so those channels
+    // were skipped. The staleness outlived the pass: their effects stayed
+    // queued through every later write. Two channels cannot expose this,
+    // which is why the other tests here did not.
+    const first = new UpdateChannel({ name: "skip-1", order: 1 });
+    const second = new UpdateChannel({ name: "skip-2", order: 2 });
+    const third = new UpdateChannel({ name: "skip-3", order: 3 });
+    const source = new UpdateChannel({ name: "skip-source", order: 5 });
+
+    const toFirst = Signal.of(0);
+    const toSecond = Signal.of(0);
+    const toThird = Signal.of(0);
+    const pulse = Signal.of(0);
+    const seen = { first: -1, second: -1, third: -1 };
+    const warn = mock.method(console, "warn", () => {});
+
+    const effects = [
+      new Effect(
+        () => {
+          seen.first = toFirst.get();
+        },
+        { channel: first },
+      ),
+      new Effect(
+        () => {
+          seen.second = toSecond.get();
+        },
+        { channel: second },
+      ),
+      new Effect(
+        () => {
+          seen.third = toThird.get();
+        },
+        { channel: third },
+      ),
+      new Effect(
+        () => {
+          const value = pulse.get();
+          if (value > 0) {
+            toFirst.set(value);
+            toSecond.set(value);
+            toThird.set(value);
+          }
+        },
+        { channel: source },
+      ),
+    ];
+
+    // Give every channel a lane, so the indexes exist to go stale.
+    batch(() => {
+      toFirst.set(1);
+      toSecond.set(1);
+      toThird.set(1);
+      pulse.set(0.5);
+    });
+
+    pulse.set(7);
+    assert.deepEqual(seen, { first: 7, second: 7, third: 7 }, "all three corrected and run");
+    assert.equal(first.pendingCount, 0);
+    assert.equal(second.pendingCount, 0);
+    assert.equal(third.pendingCount, 0);
+
+    // And it stays fixed, rather than the skipped lanes starving from here on.
+    pulse.set(8);
+    assert.deepEqual(seen, { first: 8, second: 8, third: 8 });
+
+    warn.mock.restore();
+    effects.forEach((effect) => effect.dispose());
+  });
+
+  it("refuses to spin when two effects write what the other reads", () => {
+    // No ordering of the channels can fix this: reordering only decides which
+    // of them goes round first. The queue notices and says so, rather than
+    // hanging.
+    const first = new UpdateChannel({ name: "cycle-a", order: 1 });
+    const second = new UpdateChannel({ name: "cycle-b", order: 2 });
+    const pulse = Signal.of(0);
+    const toB = Signal.of(0);
+    const toA = Signal.of(0);
+    const warn = mock.method(console, "warn", () => {});
+
+    /** @type {Effect | undefined} */
+    let a;
+    assert.throws(
+      () => {
+        a = new Effect(
+          () => {
+            pulse.get();
+            toA.get();
+            toB.set(toB.peek() + 1);
+          },
+          { channel: first, name: "a" },
+        );
+        // Closing the loop is what sets it going.
+        new Effect(
+          () => {
+            toB.get();
+            toA.set(toA.peek() + 1);
+          },
+          { channel: second, name: "b" },
+        );
+      },
+      {
+        name: "CircularDependencyError",
+        // The effect-level guard, not the queue's per-pass one: b's write
+        // sets a going, a's write comes back to b — and b's run is still on
+        // the stack when it does, because construction happens outside a
+        // flush. `UpdateQueue`'s cap is the backstop for the hops that do not
+        // nest.
+        message: /consecutive runs without settling/,
+      },
+    );
+
+    warn.mock.restore();
+    a?.dispose();
   });
 });
 
 describe("withChannel", () => {
-  it("builds computations into the channel a region is constructed in", () => {
-    const channel = new UpdateChannel({ name: "region", order: 1, manual: true });
+  it("builds effects into the channel a region is constructed in", () => {
+    const { channel, frame } = makeChannel();
     const source = Signal.of(0);
+    const effect = withChannel(channel, () => new Effect(() => source.get()));
 
-    // Built through a helper that knows nothing about channels — which is
-    // every operator that happens to construct a Derived.
-    const build = () => new Derived(() => source.get() * 2);
-    const inside = withChannel(channel, build);
-    const outside = build();
-    [inside, outside].forEach((node) => {
-      node.subscribe({});
-      node.get();
-    });
-
+    assert.strictEqual(effect.channel, channel);
+    const before = effect.getRuns();
     source.set(1);
-    assert.equal(channel.pendingCount, 1, "the one built inside waits for the channel");
-    assert.equal(outside.get(), 2, "the one built outside has already run");
-    assert.equal(inside.get(), 0);
-
-    channel.flush({ budget: Infinity });
-    assert.equal(inside.get(), 2);
+    assert.strictEqual(effect.getRuns(), before, "held by the region's channel");
+    frame();
+    assert.strictEqual(effect.getRuns(), before + 1);
+    effect.dispose();
   });
 
-  it("applies a scroll and the clip it belongs with in the same pass", () => {
-    // The regression this exists for. A scroll offset is a signal, so it is
-    // never deferred; a clip box is derived, so in a panel it is. An effect
-    // built outside the channel is woken by the signal and applies the new
-    // scroll against the clip box's old value — content drawn where the
-    // scroller has moved it, clipped to where the scroller used to be.
-    const channel = new UpdateChannel({ name: "panel", order: 1, manual: true });
-    const scrollTop = Signal.of(0);
-    const clipBox = new Derived(() => scrollTop.get(), { channel });
-
-    /** @type {{ scrolledTo: number, clippedAt: number }[]} */
+  it("applies everything a region owns in the same pass", () => {
+    const { channel, frame } = makeChannel();
+    const scroll = Signal.of(0);
+    /** @type {string[]} */
     const applied = [];
-    withChannel(channel, () => {
-      const effect = new Derived(() => {
-        applied.push({ scrolledTo: scrollTop.get(), clippedAt: clipBox.get() });
-      });
-      effect.subscribe({});
-      effect.get();
-    });
-    applied.length = 0;
+    const effects = withChannel(channel, () => [
+      new Effect(() => applied.push(`offset:${scroll.get()}`)),
+      new Effect(() => applied.push(`clip:${scroll.get() + 100}`)),
+    ]);
 
-    scrollTop.set(40);
-    assert.deepEqual(applied, [], "nothing is applied before the frame");
-    channel.flush({ budget: Infinity });
-    assert.deepEqual(
-      applied,
-      [{ scrolledTo: 40, clippedAt: 40 }],
-      "and when it is, the scroll and its clip agree",
-    );
+    applied.length = 0;
+    scroll.set(50);
+    assert.deepStrictEqual(applied, [], "neither half applied early");
+    frame();
+    assert.deepStrictEqual(applied, ["offset:50", "clip:150"], "both in one pass");
+    effects.forEach((e) => e.dispose());
   });
 
   it("leaves what is shared between regions in the default channel", () => {
-    const channel = new UpdateChannel({ name: "region", order: 1, manual: true });
-    const source = Signal.of(0);
-    const shared = withChannel(channel, () =>
-      // Something every region reads belongs to none of them.
-      withChannel(null, () => new Derived(() => source.get() + 1)),
-    );
-    shared.subscribe({});
-    shared.get();
-
-    source.set(1);
-    assert.equal(channel.pendingCount, 0);
-    assert.equal(shared.get(), 2, "not held by any one region's frame");
+    const { channel } = makeChannel();
+    const effect = withChannel(channel, () => withChannel(null, () => new Effect(() => {})));
+    assert.strictEqual(effect.channel, defaultChannel);
+    effect.dispose();
   });
 });

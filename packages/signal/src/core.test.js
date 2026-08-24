@@ -2,14 +2,14 @@ import assert from "node:assert/strict";
 import { describe, it, mock } from "node:test";
 
 import { BehaviorSubject, Subject } from "rxjs";
-import { batch, Derived, Signal } from "./Signal.js";
+import { batch, Derived, Signal } from "./index.js";
 import {
   withComputation,
   makeNonReactive,
   toObservable,
   addDependency,
   onCleanup,
-} from "./core.js";
+} from "./index.js";
 
 const fakeComputation = {
   addDependency: () => {},

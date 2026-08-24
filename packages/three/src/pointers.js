@@ -1,14 +1,13 @@
 import * as THREE from "three";
-import { Observable } from "rxjs";
 import {
   addDependency,
-  Derived,
   effects,
   fromEvent,
   memoize,
   onCleanup,
   observeFn,
   set,
+  toEffect,
 } from "@apendua/signal";
 import { list } from "./core.js";
 import { $ } from "./operators.js";
@@ -17,6 +16,7 @@ import { InteractionContext } from "./interactions.js";
 /**
  * @import { Signal } from '@apendua/signal';
  * @import { Component, XREventMap } from './core.js';
+ * @import { Observable } from 'rxjs';
  * @import { Pointers } from './interactions.js';
  */
 
@@ -182,16 +182,12 @@ export const DEFAULT_RAY_LENGTH = 5;
  * @returns {Observable<never>}
  */
 export function fitRayToHit(ray, controller, all, fallback = DEFAULT_RAY_LENGTH) {
-  return new Observable((subscriber) => {
-    const length = new Derived(() => {
-      const pointer = all.get(controller);
-      ray.scale.z = pointer ? pointer.get().distance : fallback;
-    });
-    subscriber.add(
-      length.subscribe({
-        error: (err) => subscriber.error(err),
-      }),
-    );
+  // An `Effect` rather than a `Derived`: this writes to the scene graph and
+  // has no value, and a `Derived` is only ever run because somebody asked for
+  // its value. Nobody would.
+  return toEffect(() => {
+    const pointer = all.get(controller);
+    ray.scale.z = pointer ? pointer.get().distance : fallback;
   });
 }
 

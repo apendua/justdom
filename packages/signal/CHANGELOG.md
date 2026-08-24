@@ -1,6 +1,13 @@
 # Change Log - @apendua/signal
 
-This log was last generated on Thu, 20 Aug 2026 20:52:32 GMT and should not be manually modified.
+This log was last generated on Mon, 24 Aug 2026 21:52:07 GMT and should not be manually modified.
+
+## 0.5.0
+Mon, 24 Aug 2026 21:52:07 GMT
+
+### Minor changes
+
+- Rewritten around a pull model, with a third node kind. Ordering used to be a number: every node carried its depth in the graph and an update queue drained shallowest-first, which works only while the queue can see the shape of the graph -- and it could not. `toObservable(derived)` returned a plain Observable, which carries no depth, so anything reading one was scheduled as though it sat directly above a source; a diamond with one side through such a wrapper computed against values several levels out of date and published numbers the graph never held. There is now no number to lose. A write marks and stops, values are produced when somebody asks, and `Derived#get` resolves its dependencies before returning -- so the call stack of a read is the topological order, exact rather than approximate, and able to see through anything. BREAKING: a `Derived` must be pure, and side effects inside one no longer run -- they belong in the new `Effect`, which is the only kind of node that is scheduled and the only one that belongs to an `UpdateChannel`. `subscribe()` is now an invalidation channel rather than a value stream: it fires when a node goes from clean to stale, evaluates nothing, and does not batch, so anything that wants a value on a schedule wants an `Effect`. `getPriority`, `setPriority` and `getChannelOrder` are gone. `effect()` now builds an `Effect`; the old teardown-only helper of that name is `resource()`, and `Computation#addSideEffect` is `addResource`. Channel order is no longer a promise the author has to keep -- an effect invalidating an earlier channel moves that channel above it, permanently, instead of being warned about. Also: teardowns registered with `onCleanup` now follow whichever value survives an evaluation, so a `Derived` that owns an expensive resource and has an `isEqual` that calls a rebuild interchangeable keeps the resource it holds and releases the rebuild, rather than swapping a live handle for a dead one.
 
 ## 0.4.1
 Thu, 20 Aug 2026 20:52:32 GMT

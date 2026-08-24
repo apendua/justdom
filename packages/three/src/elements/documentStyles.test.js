@@ -116,9 +116,20 @@ describe("watchDocumentStyles", () => {
       document.head.appendChild(title);
       await flush();
 
+      // A `<link>` that carries no rules: a preload is a link, and it even
+      // fires `load` when it lands, but only `rel="stylesheet"` dresses
+      // anything.
+      const preload = document.createElement("link");
+      preload.setAttribute("rel", "preload");
+      preload.setAttribute("href", "/font.woff2");
+      document.head.appendChild(preload);
+      await flush();
+      preload.dispatchEvent(new window.Event("load"));
+
       assert.equal(watcher.count(), 0);
       meta.remove();
       title.remove();
+      preload.remove();
     } finally {
       watcher.stop();
     }

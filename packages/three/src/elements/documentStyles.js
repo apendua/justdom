@@ -37,13 +37,31 @@ const listeners = new Set();
 let observer = null;
 
 /**
+ * Whether a `<link>` is the kind that brings rules. A preload hint and an
+ * icon are also links, and a preload even fires `load` when it lands, so the
+ * name alone is not enough — the `rel` is what says stylesheet. Matched as a
+ * token, case-insensitively, because `rel` is a space-separated list and an
+ * alternate stylesheet spells it `alternate stylesheet`.
+ *
+ * @param {Node} node
+ * @returns {boolean}
+ */
+function isStylesheetLink(node) {
+  if (node.nodeName !== "LINK") {
+    return false;
+  }
+  const rel = /** @type {Element} */ (node).getAttribute("rel") ?? "";
+  return /(^|\s)stylesheet(\s|$)/i.test(rel);
+}
+
+/**
  * Whether a node is one of the elements that can bring rules to the document.
  *
  * @param {Node} node
  * @returns {boolean}
  */
 function isStyleElement(node) {
-  return node.nodeName === "STYLE" || node.nodeName === "LINK";
+  return node.nodeName === "STYLE" || isStylesheetLink(node);
 }
 
 /**
@@ -110,7 +128,7 @@ function announce() {
  */
 function loadCallback(event) {
   const target = event.target;
-  if (target instanceof Node && target.nodeName === "LINK") {
+  if (target instanceof Node && isStylesheetLink(target)) {
     announce();
   }
 }

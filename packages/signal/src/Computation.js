@@ -38,14 +38,16 @@ export class Computation extends ReactiveNode {
   }
 
   /**
-   * @param {number} _state
+   * Announce every invalidation, whatever colour it arrived in.
+   *
+   * The base class takes a state because it has a value to protect: a second
+   * invalidation can pass in silence, since the value is what dependents will
+   * compare against. This has nothing for them to compare, so silence would
+   * read as "nothing changed" — hence no parameter, and `DIRTY` every time.
+   *
    * @returns {void}
    */
-  markStale(_state) {
-    // Every time, not just on the way out of `CLEAN`. A node with a value can
-    // let a second invalidation pass in silence, because the value is what
-    // dependents will compare; this has nothing for them to compare, so
-    // silence would read as "nothing changed".
+  markStale() {
     this.version += 1;
     this.state = DIRTY;
     this.invalidateDependents(DIRTY);
@@ -57,7 +59,7 @@ export class Computation extends ReactiveNode {
    * @returns {void}
    */
   invalidate() {
-    this.markStale(DIRTY);
+    this.markStale();
   }
 }
 

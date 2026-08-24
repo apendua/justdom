@@ -2,6 +2,37 @@
   "name": "@apendua/freedom",
   "entries": [
     {
+      "version": "0.14.0",
+      "tag": "@apendua/freedom_v0.14.0",
+      "date": "Mon, 24 Aug 2026 21:52:07 GMT",
+      "comments": {
+        "patch": [
+          {
+            "comment": "A panel reacts to the document's stylesheets changing. A portal mirrors its container's subtree, which is where every mutation an author makes shows up -- except a rule. A styling library that keeps a class name stable and rewrites the rule behind it -- `@apendua/justdom`'s `className` and `stylesheet` tags are exactly that, and the stable name is the point of them, since it is what lets one `class` attribute survive a lifetime of style updates -- changes what a panel looks like without touching a single node the portal observes: the `<style>` lives in the head, the attribute never changes, and the panel went on wearing the colours it read once. Not permanently, which was the worst of it -- the next unrelated mutation, a hover most likely, invalidated the style cache and flushed the change in late, so a style driven by an observable appeared the next time the ray happened to cross the element. It is treated now as the same shape of event as fonts arriving: no node to blame, so everything restyles and everything re-measures. The head is watched for the mutations that carry rules -- a style element's text rewritten, either way it can be written; a sheet added or removed; a `<link>` landing, which is the one thing a `<link>` says and the difference between a panel that mounted before its own stylesheet arrived being briefly wrong and being wrong forever -- through one observer for the page rather than one per portal, refcounted so the last panel out takes it down. Everything else in the head is filtered out, because the answer is a whole-panel restyle and re-measure and that is far too expensive to spend on a title or a meta tag. It is also why a value animated at frame rate belongs in an inline `style`, which is a mutation on the element that moved and is scoped to it. Rules changed through the CSSOM and `adoptedStyleSheets` remain invisible, mutating no DOM at all."
+          }
+        ],
+        "minor": [
+          {
+            "comment": "Migrated to the pull-based `@apendua/signal` core. Two idioms a lazy core will not run: `fitRayToHit` built a `Derived` whose body assigned `ray.scale.z` and kept it alive with a subscription -- nothing was ever going to ask for its value, so it is now an effect; and the portal pump watched its channel's queue depth through a never-equal `Derived`, a manual subscription that pulled it, and a priming read, all three of which collapse into one effect that runs when it is built and re-runs on the announcement rather than on the value. No public API changed. Sixteen tests covering scrollable, dropdown and keyboard behaviour that had been failing against the push core now pass: all three are built out of `component()` and `observable()`, which is to say out of `toObservable`, the wrapper that used to drop a node's depth in the graph."
+          }
+        ],
+        "dependency": [
+          {
+            "comment": "Updating dependency \"@apendua/justdom\" to `0.1.8`"
+          },
+          {
+            "comment": "Updating dependency \"@apendua/signal\" to `0.5.0`"
+          },
+          {
+            "comment": "Updating dependency \"@apendua/justdom\" to `0.1.8`"
+          },
+          {
+            "comment": "Updating dependency \"@apendua/signal\" to `0.5.0`"
+          }
+        ]
+      }
+    },
+    {
       "version": "0.13.1",
       "tag": "@apendua/freedom_v0.13.1",
       "date": "Thu, 20 Aug 2026 20:52:32 GMT",

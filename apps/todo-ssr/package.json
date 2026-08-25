@@ -1,0 +1,33 @@
+{
+  "name": "@justdom/todo-ssr",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Server side rendering example based on jsdom, express and justdom",
+  "license": "MIT",
+  "author": "apendua",
+  "type": "module",
+  "scripts": {
+    "build": "npm run compile && npm run test",
+    "build:watch": "",
+    "compile": "vite build",
+    "dev": "npm run compile && node --watch src/server.js",
+    "start": "node src/server.js",
+    "test": "npm run test:typecheck && node --test \"src/**/*.test.js\"",
+    "test:typecheck": "tsc --project tsconfig.json --noEmit",
+    "test:watch": "node --test --watch \"src/**/*.test.js\""
+  },
+  "dependencies": {
+    "@justdom/jsdom-env": "workspace:*",
+    "express": "^5.2.1",
+    "justdom": "workspace:*",
+    "justdom-signal": "workspace:*",
+    "rxjs": "^7.8.2"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "^24.7.0",
+    "eslint": "^9.37.0",
+    "typescript": "^7.0.2",
+    "vite": "^7.1.9"
+  }
+}

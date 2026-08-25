@@ -539,7 +539,7 @@ as a self-contained task, including how to reproduce the numbers above.
 ## Note: the emulator smoke test, now written
 
 The end-to-end check that caught what jsdom structurally cannot (see the
-P1–P5 PR) lives in `apps/showcase-xr/tests` — `npm run test:visual`. It
+P1–P5 PR) lives in `apps/showcase/tests` — `npm run test:visual`. It
 serves the showcase with Vite, opens it in headless Playwright Chromium
 (SwiftShader WebGL, the pre-installed browser), enters the emulated
 immersive session through IWER, and photographs the scene. The three

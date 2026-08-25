@@ -23,6 +23,7 @@ dependency of the packages above and is not published.
 | [`showcase`](apps/showcase) | Every element in the Three.js renderer, in one scene, viewable in an emulated headset |
 | [`todo`](apps/todo) | The smallest useful `justdom` app, as a PWA |
 | [`todo-xr`](apps/todo-xr) | The same list, rendered into a WebXR scene with a keyboard you can point at |
+| [`todo-ssr`](apps/todo-ssr) | The same list again, rendered by express inside jsdom and hydrated in the browser |
 
 ## Getting started
 

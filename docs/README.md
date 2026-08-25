@@ -6,9 +6,12 @@ pull-based signal graph, the DOM-to-Three.js projection, and a user guide for
 
 They were written while these packages lived in a larger monorepo, under their
 older names, and they are kept as they were written. Package paths have been
-brought up to date, but some of the example apps they point at — `signal-ssr`,
-`rubik`, `minesweeper-vanilla`, `kanban-webrtc` — stayed behind in that
-repository and are not here to be read. Where a document argues from one of
+brought up to date, and the apps they lean on hardest came along — the
+server-rendering example as `todo-ssr`, the sampler as `showcase` — but the
+headset and site apps they reach for in passing (`rubik`, `marblerun`,
+`castle-xr`, `blockout-xr`, `laser-xr`, `minesweeper-vanilla`,
+`kanban-webrtc`, `website`) stayed behind in that repository and are not here
+to be read. Where a document argues from one of
 them, take the argument and not the path.
 
 | Document | About |

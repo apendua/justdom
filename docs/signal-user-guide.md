@@ -32,10 +32,10 @@
 This guide documents `packages/signal` (a hand-rolled reactivity/signals library
 built on top of RxJS) and `packages/justdom` (a non-VDOM DOM renderer that consumes
 those signals). It is based entirely on reading the source, the test suites,
-and the apps in this monorepo that use both packages (`apps/todo-vanilla`,
-`apps/minesweeper-vanilla`, `apps/kanban-webrtc`, `apps/signal-ssr`). Neither
+and the apps in this monorepo that use both packages (`apps/todo`,
+`apps/minesweeper-vanilla`, `apps/kanban-webrtc`, `apps/todo-ssr`). Neither
 package has a README or design doc of its own — the one exception is
-`apps/signal-ssr/README.md`, which documents the server-rendering and
+`apps/todo-ssr/README.md`, which documents the server-rendering and
 hydration path (§3.7) — and the git history available in this clone is
 shallow (50 commits), so anything about _intent_ beyond what the code and
 commit messages show is explicitly flagged as inference, not fact.
@@ -651,7 +651,7 @@ management, extended uniformly to DOM lifecycle.
 Both exist, and neither required changes to the reactive core.
 
 **Rendering on the server** is a synchronous _mount → serialize → unmount_
-cycle, implemented in `apps/signal-ssr/src/renderToString.js`. Because
+cycle, implemented in `apps/todo-ssr/src/renderToString.js`. Because
 `packages/justdom` builds real nodes through the ambient `document` rather than a
 virtual tree, all SSR needs is a `document` outside a browser:
 `setupJsdom({ html })` from `packages/jsdom-env` installs one on `globalThis`,
@@ -671,7 +671,7 @@ Two consequences worth knowing:
   `type`, `href`, …) appear in serialized markup. `input.value` and
   `input.checked` are not reflected, so `set("value", …)` serializes an
   `<input>` with no `value` attribute at all. Pinned down by a test in
-  `apps/signal-ssr/src/renderToString.test.js`.
+  `apps/todo-ssr/src/renderToString.test.js`.
 - **`suspend` boundaries serialize as their fallback.** `renderToString` is
   synchronous and a boundary only settles a tick after mount, so the real
   content never reaches the markup. The intended pattern is to resolve data
@@ -693,7 +693,7 @@ render and logs it.
 
 The precondition is that the client must render the _same_ tree the server
 did, which means the state has to travel with the page —
-`apps/signal-ssr/src/server.js` serializes it into a
+`apps/todo-ssr/src/server.js` serializes it into a
 `<script type="application/json">` and `src/client/main.js` seeds the same
 signals from it before mounting. Measured in Chromium against that app, the
 client creates **zero** DOM nodes and every server-rendered `<li>` survives.
@@ -704,7 +704,7 @@ both a `<form>` submission and an `on("click")` that intercepts it.
 
 ## 4. Worked examples from the repo
 
-### 4.1 A todo item (`apps/todo-vanilla/src/components/TodoItem.ts`)
+### 4.1 A todo item (`apps/todo/src/components/TodoItem.ts`)
 
 ```ts
 const TodoItem = component((_: WeakKey, id: string, operators: Op<TodoProps, TodoEvents>) => {
@@ -760,7 +760,7 @@ This is a compact illustration of most of the vocabulary above:
   as a dependency of some enclosing computation.
 - `text\`${() => props.text}\`` is the template-literal text-binding form.
 
-### 4.2 The parent component (`apps/todo-vanilla/src/components/TodoApp.ts`)
+### 4.2 The parent component (`apps/todo/src/components/TodoApp.ts`)
 
 ```ts
 const TodoApp = component((ctx: WeakKey) => {
@@ -828,7 +828,7 @@ interpolated directly into a text template; no separate named`Derived`
   (`TodoItem(ctx, ...)`) — there is no implicit/ambient context propagation;
   you carry the (possibly `Object.create`-extended) `ctx` value by hand.
 
-### 4.3 Mounting (`apps/todo-vanilla/src/main.ts`)
+### 4.3 Mounting (`apps/todo/src/main.ts`)
 
 ```ts
 just(root, [children(TodoApp({}))]).subscribe({
@@ -1088,7 +1088,7 @@ what the graph is built out of, and what surrounds it.
 _Previously flagged and since resolved:_
 
 - Whether an SSR/hydration story exists. It does —
-  `packages/justdom/src/hydrate.js` plus `apps/signal-ssr`, documented in §3.7.
+  `packages/justdom/src/hydrate.js` plus `apps/todo-ssr`, documented in §3.7.
   That item was written before either landed.
 - What the predecessor concept named in the old package descriptions was.
   Confirmed by the author as a superseded naming convention, now removed

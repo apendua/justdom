@@ -19,8 +19,9 @@ npm run test:visual:update    # re-record the baselines
 There are no baselines in the repository yet. The ones this suite grew up with
 were photographs of a scene set in Zen Dots, and the examples now use whichever
 sans-serif the browser already has — so every one of them was a picture of
-something that no longer exists. Record the first set with the command above,
-on the machine whose profile you want on record.
+something that no longer exists. The first recording is the one described under
+[In CI](#in-ci): dispatch **Visual regression** with `record: true` and the
+runner draws the set that will gate every pull request afterwards.
 
 Both modes are switched by environment variable — `UPDATE_BASELINES=1` to
 record, `VISUAL_STRICT=1` to refuse to record — and deliberately not by a

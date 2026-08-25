@@ -1,0 +1,276 @@
+name: Visual regression
+
+# Photographing the showcase in an emulated headset, and holding the picture
+# against the one on record. Kept apart from ci.yml because it needs a browser
+# the other job has no use for, and because a failure here means something
+# quite specific — the scene changed — which is worth reading on its own.
+on:
+  workflow_dispatch:
+    inputs:
+      record:
+        description: "Redraw the baselines on the runner and commit them"
+        type: boolean
+        default: false
+  pull_request:
+    branches: ["develop", "claude/**"]
+  push:
+    branches: ["develop"]
+
+jobs:
+  check:
+    if: github.event_name != 'workflow_dispatch' || !inputs.record
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      # To say on the pull request what it saw. Nothing else here writes.
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - name: Cache common/temp
+        uses: actions/cache@v6
+        with:
+          path: common/temp
+          key: rush-common-temp-${{ runner.os }}-${{
+            hashFiles('./common/config/rush/pnpm-lock.yaml') }}
+          restore-keys: |
+            rush-common-temp-${{ runner.os }}-
+      - name: Rush Install
+        run: node common/scripts/install-run-rush.js install
+      # Keyed on the lockfile because that is what pins playwright, and
+      # playwright is what pins the browser build — which is half of what a
+      # baseline is a photograph of.
+      - name: Cache the browser
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{
+            hashFiles('./common/config/rush/pnpm-lock.yaml') }}
+      - name: Install Chromium
+        run: node apps/showcase/node_modules/playwright-core/cli.js install --with-deps chromium
+      - name: Photograph the scene
+        id: photograph
+        working-directory: apps/showcase
+        # Strict: a machine with no baseline of its own fails here rather than
+        # recording one and reporting success. A green check that quietly
+        # declined to check is the one outcome this job must not produce.
+        env:
+          VISUAL_STRICT: "1"
+        # Kept as well as printed, and kept inside the artifact, so the comment
+        # below can quote the suite's own words rather than paraphrase them
+        # and so the numbers travel with the pictures they describe.
+        run: |
+          mkdir -p tests/output
+          set -o pipefail
+          npm run test:visual 2>&1 | tee tests/output/report.txt
+      - name: Upload what it saw
+        id: artifact
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: scene
+          path: apps/showcase/tests/output
+          if-no-files-found: warn
+          retention-days: 14
+      # A failing pixel comparison is the one CI result you cannot read from
+      # the log: the log says how many pixels moved, and the only useful
+      # question is which ones. So the job says so on the pull request, with
+      # the photograph one click away.
+      #
+      # One click, and not none: an artifact link is an authenticated zip
+      # rather than an image, and a private repository's own files cannot be
+      # fetched by the proxy that renders images in comments either, so there
+      # is no URL this could put inside a Markdown image that would resolve
+      # for a reader. Linking is as close as a repository's own credentials
+      # reach.
+      #
+      # One comment per pull request, edited in place rather than added to:
+      # it is created only when something is wrong, and a later green run
+      # rewrites it to say so instead of leaving a stale complaint behind.
+      - name: Say on the pull request what it saw
+        if: always() && github.event_name == 'pull_request'
+        # The comment is a courtesy, not the check. A pull request from a fork
+        # carries a read-only token and this step cannot succeed there; failing
+        # the job over it would turn a scene that matched its baseline red for
+        # a reason that has nothing to do with the scene.
+        continue-on-error: true
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const fs = require("node:fs");
+
+            const MARKER = "<!-- visual-regression -->";
+            const REPORT = "apps/showcase/tests/output/report.txt";
+            const report = fs.existsSync(REPORT) ? fs.readFileSync(REPORT, "utf8") : "";
+
+            const failed = ${{ steps.photograph.outcome == 'failure' }};
+            const artifact = ${{ toJSON(steps.artifact.outputs['artifact-url']) }};
+            const home = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}`;
+            const run = `${home}/actions/runs/${context.runId}`;
+
+            // Where the Run workflow button lives. The name in `context` is
+            // the human one — "Visual regression" — and the page is addressed
+            // by file, which only GITHUB_WORKFLOW_REF carries:
+            // owner/repo/.github/workflows/visual.yml@refs/pull/1/merge.
+            //
+            // The branch filter is there so the page opens on this branch's
+            // history rather than the default branch's; the dispatch dropdown
+            // still has to be pointed at the branch by hand, because GitHub
+            // takes no dispatch parameters through the URL.
+            const branch = context.payload.pull_request.head.ref;
+            const file = (process.env.GITHUB_WORKFLOW_REF || "visual.yml").split("@")[0]
+              .split("/")
+              .pop();
+            const record =
+              `${home}/actions/workflows/${file}?query=${encodeURIComponent(`branch:${branch}`)}`;
+
+            // The suite's own words, so the comment cannot drift from what
+            // the assertion actually said.
+            const differs = report.match(/differs from its baseline: (\d+) pixels \(([\d.]+)%\)/);
+            const missing = report.includes("no baseline recorded for this machine");
+            const stamp = report.match(/fingerprint: (\{.*\})/);
+            const tally = report.match(/# pass (\d+)[\s\S]*?# fail (\d+)/);
+
+            let headline;
+            let verdict;
+            // What to do about it, which for two of these four outcomes is
+            // the same button in the same place — so the comment carries the
+            // way there rather than the name of it.
+            let advice = "";
+            if (!failed) {
+              headline = "the scene is as it was";
+              verdict = "Every frame matches the picture on record.";
+            } else if (differs) {
+              const pixels = Number(differs[1]).toLocaleString("en-US");
+              headline = "the picture changed";
+              verdict =
+                `The scene differs from its baseline by **${pixels} pixels (${differs[2]}%)**. ` +
+                `That is either a regression or a change you meant; the photograph is how you tell.`;
+              advice =
+                `**To look at it in a browser, [redraw the baselines](${record})** — run this ` +
+                "workflow with `record: true`, pointing the dropdown at this branch. What the " +
+                "runner draws it commits, and the recording lands in *Files changed* as an image " +
+                "diff GitHub renders side by side, swipeable, against the picture it replaced. " +
+                "That is the comparison you actually want, and it is the same push that makes " +
+                "this check green — so do it once you are satisfied, not to find out whether " +
+                "you should be.";
+            } else if (missing) {
+              headline = "no baseline for this runner";
+              verdict =
+                "Nothing on record was drawn by a machine like this one" +
+                (stamp ? ` — it wants \`${stamp[1]}\`` : "") +
+                ", and under `VISUAL_STRICT` this job will not quietly record one and pass.";
+              advice =
+                `**[Draw one](${record})** — run this workflow with \`record: true\`, pointing ` +
+                "the dropdown at this branch, and the runner photographs the scene and commits " +
+                "the result. The push then runs this check against what it just recorded, which " +
+                "is the only thing that proves a recording is one a later run can reproduce.";
+            } else {
+              headline = "it did not get as far as comparing";
+              verdict = "Something failed before the pixel comparison. The log is the place to start.";
+            }
+
+            const checks = tally
+              ? `\`${tally[1]}\` of \`${Number(tally[1]) + Number(tally[2])}\` checks passed. ` +
+                `The ones that need no baseline — that the panels are drawn, that they wear ` +
+                `their stylesheet's colours, that animation plays — are in that count.`
+              : "";
+
+            // Paragraphs, filtered and then joined, rather than a fixed shape
+            // with blanks in it: a green run drops two of these, and an
+            // outcome-dependent gap in the middle of a comment reads as
+            // something having gone missing.
+            const body = [
+              `${MARKER}\n### Visual regression — ${headline}`,
+              verdict,
+              checks,
+              advice,
+              artifact
+                ? `The frames themselves: **[download the artifact](${artifact})**, or ` +
+                  `\`gh run download ${context.runId} -n scene\`. It holds \`scene.png\`, what ` +
+                  `this run drew; \`scene.diff.png\`, magenta wherever it disagrees with the ` +
+                  `baseline; and \`report.txt\`, the log. It arrives as a zip, because an ` +
+                  `artifact always does, whatever is in it.`
+                : "_No artifact was uploaded for this run._",
+              `<sub>[Run](${run}) · the runner has to be the machine that draws the baselines, ` +
+                `which is why recording happens here and not on a laptop.</sub>`,
+            ]
+              .filter(Boolean)
+              .join("\n\n");
+
+            const { owner, repo } = context.repo;
+            const issue_number = context.payload.pull_request.number;
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner,
+              repo,
+              issue_number,
+              per_page: 100,
+            });
+            const existing = comments.find((comment) => comment.body?.includes(MARKER));
+
+            if (existing) {
+              await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
+            } else if (failed) {
+              await github.rest.issues.createComment({ owner, repo, issue_number, body });
+            }
+
+  record:
+    if: github.event_name == 'workflow_dispatch' && inputs.record
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      # The point of this job: the baselines have to be drawn by the machine
+      # that will be comparing against them, so it is the one that commits
+      # them. Nothing else here needs to write.
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - name: Cache common/temp
+        uses: actions/cache@v6
+        with:
+          path: common/temp
+          key: rush-common-temp-${{ runner.os }}-${{
+            hashFiles('./common/config/rush/pnpm-lock.yaml') }}
+          restore-keys: |
+            rush-common-temp-${{ runner.os }}-
+      - name: Rush Install
+        run: node common/scripts/install-run-rush.js install
+      - name: Cache the browser
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{
+            hashFiles('./common/config/rush/pnpm-lock.yaml') }}
+      - name: Install Chromium
+        run: node apps/showcase/node_modules/playwright-core/cli.js install --with-deps chromium
+      - name: Redraw the baselines
+        working-directory: apps/showcase
+        # Named here as well as in the npm script, deliberately. Recording is
+        # also what happens when there is no baseline to compare against, so a
+        # switch that quietly stops working does not announce itself — it
+        # records once, on a runner that had nothing, and then reports the
+        # difference it was asked to overwrite. This job says what it wants
+        # rather than trusting a script to still be asking for it.
+        env:
+          UPDATE_BASELINES: "1"
+        run: npm run test:visual:update
+      - name: Commit them
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/showcase/tests/baselines
+          if git diff --cached --quiet; then
+            echo "The baselines on record already match what this runner draws."
+            exit 0
+          fi
+          # Deliberately without [skip ci]: the push runs the check job against
+          # what was just recorded, which is the only thing that proves a
+          # recording is one a later run can reproduce.
+          git commit -m "test(showcase): record visual baselines on the runner"
+          git push origin HEAD:${{ github.ref_name }}

@@ -414,6 +414,10 @@
     {
       "packageName": "@justdom/todo-xr",
       "projectFolder": "apps/todo-xr"
+    },
+    {
+      "packageName": "@justdom/todo-ssr",
+      "projectFolder": "apps/todo-ssr"
     }
   ]
 }

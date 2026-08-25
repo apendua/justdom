@@ -249,7 +249,7 @@ against this branch. Totals over every `.js` file each app emits:
 | `todo-xr`             |    373,646 |   374,736 | +0.29 % |
 | `kanban-webrtc`       |     34,687 |    35,706 |  +2.9 % |
 | `minesweeper-vanilla` |     29,372 |    30,444 |  +3.6 % |
-| `signal-ssr`          |     16,508 |    17,567 |  +6.4 % |
+| `todo-ssr`          |     16,508 |    17,567 |  +6.4 % |
 
 The absolute cost is the same everywhere — **+3.4 to 3.6 KB raw, about +1 KB
 gzipped** — because it is the library, not anything the apps do with it. What

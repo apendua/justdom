@@ -48,7 +48,7 @@ reasons that are specific enough to be worth writing down.
 ## 2. What was built
 
 A complete, working pull core — all 160 signal tests and all 331 freedom
-tests pass against it, the whole monorepo builds, and `showcase-xr`'s visual
+tests pass against it, the whole monorepo builds, and `showcase`'s visual
 baselines are unchanged. The public API survived intact: **no changes to
 `justdom-three` or to any app were needed.**
 
@@ -186,7 +186,7 @@ and on memoized reads (−12%), and inside the noise elsewhere.
 
 ### 3.3 In a real browser
 
-`apps/showcase-xr/bench` driving `todo-xr` (825 mirrored elements) under
+`apps/showcase/bench` driving `todo-xr` (825 mirrored elements) under
 Playwright/SwiftShader, three interleaved rounds, **push + opts versus pull**,
 medians:
 

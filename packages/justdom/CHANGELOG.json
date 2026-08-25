@@ -2,6 +2,18 @@
   "name": "@apendua/justdom",
   "entries": [
     {
+      "version": "0.2.0",
+      "tag": "@apendua/justdom_v0.2.0",
+      "date": "Tue, 25 Aug 2026 07:15:20 GMT",
+      "comments": {
+        "minor": [
+          {
+            "comment": "Breaking: Mountable, Segment and Container are no longer generic -- write Mountable rather than Mountable<Node>. The node type parameter and its INode constraint move to an internal module, where they go on holding the list renderer, the node walking and the suspense helpers away from the DOM; they are no longer part of the public API. ListRenderer is no longer exported either -- it was the last export carrying the constraint in its signature, and nothing consumed it -- and suspend, waitFor and withFallback are no longer generic, since they pass a mountable along without ever touching a node."
+          }
+        ]
+      }
+    },
+    {
       "version": "0.1.8",
       "tag": "@apendua/justdom_v0.1.8",
       "date": "Mon, 24 Aug 2026 21:52:07 GMT",

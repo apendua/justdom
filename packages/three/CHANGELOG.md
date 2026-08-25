@@ -1,6 +1,13 @@
 # Change Log - @apendua/freedom
 
-This log was last generated on Mon, 24 Aug 2026 21:52:07 GMT and should not be manually modified.
+This log was last generated on Tue, 25 Aug 2026 07:15:20 GMT and should not be manually modified.
+
+## 0.15.0
+Tue, 25 Aug 2026 07:15:20 GMT
+
+### Minor changes
+
+- Breaking: the dropdown, keyboard and scrollable widgets have moved to @apendua/justui, and are no longer exported from here. Their seams are now public instead: createPortal, InteractionContext, InteractionManager, isRenderingSuspended, sampleRenderingUpdates and scrollElementBy. @apendua/justdom is no longer a peer dependency either: the one type it was needed for, Mountable, is now declared here and exported, and is structurally what justdom's Mountable always was.
 
 ## 0.14.0
 Mon, 24 Aug 2026 21:52:07 GMT

@@ -1,0 +1,10 @@
+{
+  "changes": [
+    {
+      "packageName": "justdom-signal",
+      "comment": "First release under the justdom name.",
+      "type": "minor"
+    }
+  ],
+  "packageName": "justdom-signal"
+}

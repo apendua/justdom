@@ -1,0 +1,10 @@
+{
+  "changes": [
+    {
+      "packageName": "justdom-three",
+      "comment": "First release under the justdom name.",
+      "type": "minor"
+    }
+  ],
+  "packageName": "justdom-three"
+}

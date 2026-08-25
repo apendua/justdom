@@ -1,0 +1,31 @@
+{
+  "name": "@apendua/justui",
+  "entries": [
+    {
+      "version": "0.1.1",
+      "tag": "@apendua/justui_v0.1.1",
+      "date": "Tue, 25 Aug 2026 07:15:20 GMT",
+      "comments": {
+        "none": [
+          {
+            "comment": "First release: the dropdown, keyboard and scrollable widgets out of @apendua/freedom, and the head-locked frame rate readout out of the private diagnostics package, gathered into one publishable package."
+          }
+        ],
+        "dependency": [
+          {
+            "comment": "Updating dependency \"@apendua/freedom\" to `0.15.0`"
+          },
+          {
+            "comment": "Updating dependency \"@apendua/justdom\" to `0.2.0`"
+          },
+          {
+            "comment": "Updating dependency \"@apendua/freedom\" to `0.15.0`"
+          },
+          {
+            "comment": "Updating dependency \"@apendua/justdom\" to `0.2.0`"
+          }
+        ]
+      }
+    }
+  ]
+}

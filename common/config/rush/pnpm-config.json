@@ -197,7 +197,16 @@
   "globalOverrides": {
     // "example1": "^1.0.0",
     // "example2": "npm:@company/example2@^1.0.0"
-    "three": "~0.180.0"
+
+    // Everything that touches the scene has to be looking at one copy of
+    // three: its own instanceof checks are how a Material or a Texture is
+    // recognised, and two copies in the tree make those quietly say no.
+    // @iwer/devui in particular asks for a much older range (^0.165.0) and
+    // would otherwise get a second one to itself.
+    //
+    // This wins over every package.json in the repo, so an upgrade has to
+    // change this line as well or nothing moves.
+    "three": "~0.185.0"
   },
 
   /**

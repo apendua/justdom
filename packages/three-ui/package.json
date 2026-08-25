@@ -48,20 +48,20 @@
   "devDependencies": {
     "@justdom/jsdom-env": "workspace:*",
     "@types/node": "^24.7.0",
-    "@types/three": "~0.180.0",
+    "@types/three": "~0.185.0",
     "eslint": "^9.37.0",
     "justdom": "workspace:*",
     "justdom-signal": "workspace:*",
     "justdom-three": "workspace:*",
     "justdom-vite-hmr": "workspace:*",
-    "three": "~0.180.0",
+    "three": "~0.185.0",
     "typescript": "^7.0.2"
   },
   "peerDependencies": {
     "justdom": "workspace:*",
     "justdom-signal": "workspace:*",
     "justdom-three": "workspace:*",
-    "three": "~0.180.0"
+    "three": "~0.185.0"
   },
   "publishConfig": {
     "access": "public"

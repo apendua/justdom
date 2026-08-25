@@ -5,7 +5,7 @@ settings:
   excludeLinksFromLockfile: false
 
 overrides:
-  three: ~0.180.0
+  three: ~0.185.0
 
 pnpmfileChecksum: sha256-E1T7OJ3DLTjpDqf4RdJzK9VDtAxgm4gDEQCLYdHD8nI=
 
@@ -16,8 +16,8 @@ importers:
   ../../apps/showcase:
     dependencies:
       '@iwer/devui':
-        specifier: ^1.1.2
-        version: 1.1.2(iwer@2.3.0)
+        specifier: ^2.3.0
+        version: 2.3.0(iwer@2.3.0)(use-sync-external-store@1.6.0(react@19.2.8))
       '@types/node':
         specifier: ^24.7.0
         version: 24.13.3
@@ -25,8 +25,8 @@ importers:
         specifier: ^6.0.5
         version: 6.0.5
       '@types/three':
-        specifier: ~0.180.0
-        version: 0.180.0
+        specifier: ~0.185.0
+        version: 0.185.4
       '@vitejs/plugin-basic-ssl':
         specifier: ^2.1.0
         version: 2.3.0(vite@7.3.6(@types/node@24.13.3)(jiti@2.7.0)(terser@5.50.0))
@@ -37,7 +37,7 @@ importers:
         specifier: ^9.37.0
         version: 9.39.5(jiti@2.7.0)
       iwer:
-        specifier: ^2.1.1
+        specifier: ^2.3.0
         version: 2.3.0
       justdom:
         specifier: workspace:*
@@ -64,8 +64,8 @@ importers:
         specifier: ^7.8.2
         version: 7.8.2
       three:
-        specifier: ~0.180.0
-        version: 0.180.0
+        specifier: ~0.185.0
+        version: 0.185.1
       typescript:
         specifier: ^7.0.2
         version: 7.0.2
@@ -152,8 +152,8 @@ importers:
   ../../apps/todo-xr:
     dependencies:
       '@iwer/devui':
-        specifier: ^1.1.2
-        version: 1.1.2(iwer@2.3.0)
+        specifier: ^2.3.0
+        version: 2.3.0(iwer@2.3.0)(use-sync-external-store@1.6.0(react@19.2.8))
       '@testing-library/jest-dom':
         specifier: ^6.9.1
         version: 6.10.0(@testing-library/dom@10.4.1)
@@ -176,8 +176,8 @@ importers:
         specifier: ^0.17.4
         version: 0.17.4
       '@types/three':
-        specifier: ~0.180.0
-        version: 0.180.0
+        specifier: ~0.185.0
+        version: 0.185.4
       '@vite-pwa/assets-generator':
         specifier: ^1.0.1
         version: 1.0.2
@@ -197,7 +197,7 @@ importers:
         specifier: ^4.3.0
         version: 4.9.0
       iwer:
-        specifier: ^2.1.1
+        specifier: ^2.3.0
         version: 2.3.0
       justdom:
         specifier: workspace:*
@@ -224,8 +224,8 @@ importers:
         specifier: ^0.17.0
         version: 0.17.0
       three:
-        specifier: ~0.180.0
-        version: 0.180.0
+        specifier: ~0.185.0
+        version: 0.185.1
       typescript:
         specifier: ^7.0.2
         version: 7.0.2
@@ -324,8 +324,8 @@ importers:
         specifier: ^24.7.0
         version: 24.13.3
       '@types/three':
-        specifier: ~0.180.0
-        version: 0.180.0
+        specifier: ~0.185.0
+        version: 0.185.4
       '@webgpu/types':
         specifier: ^0.1.65
         version: 0.1.72
@@ -345,8 +345,8 @@ importers:
         specifier: workspace:*
         version: link:../vite-hmr
       three:
-        specifier: ~0.180.0
-        version: 0.180.0
+        specifier: ~0.185.0
+        version: 0.185.1
       typescript:
         specifier: ^7.0.2
         version: 7.0.2
@@ -364,8 +364,8 @@ importers:
         specifier: ^24.7.0
         version: 24.13.3
       '@types/three':
-        specifier: ~0.180.0
-        version: 0.180.0
+        specifier: ~0.185.0
+        version: 0.185.4
       eslint:
         specifier: ^9.37.0
         version: 9.39.5(jiti@2.7.0)
@@ -382,8 +382,8 @@ importers:
         specifier: workspace:*
         version: link:../vite-hmr
       three:
-        specifier: ~0.180.0
-        version: 0.180.0
+        specifier: ~0.185.0
+        version: 0.185.1
       typescript:
         specifier: ^7.0.2
         version: 7.0.2
@@ -1162,25 +1162,6 @@ packages:
     resolution: {integrity: sha512-43/qtrDUokr7LJqoF2c3+RInu/t4zfrpYdoSDfYyhg52rwLV6TnOvdG4fXm7IkSB3wErkcmJS9iEhjVtOSEjjA==}
     engines: {node: ^18.18.0 || ^20.9.0 || >=21.1.0}
 
-  '@fortawesome/fontawesome-common-types@6.6.0':
-    resolution: {integrity: sha512-xyX0X9mc0kyz9plIyryrRbl7ngsA9jz77mCZJsUkLl+ZKs0KWObgaEBoSgQiYWAsSmjz/yjl0F++Got0Mdp4Rw==}
-    engines: {node: '>=6'}
-
-  '@fortawesome/fontawesome-svg-core@6.6.0':
-    resolution: {integrity: sha512-KHwPkCk6oRT4HADE7smhfsKudt9N/9lm6EJ5BVg0tD1yPA5hht837fB87F8pn15D8JfTqQOjhKTktwmLMiD7Kg==}
-    engines: {node: '>=6'}
-
-  '@fortawesome/free-solid-svg-icons@6.6.0':
-    resolution: {integrity: sha512-IYv/2skhEDFc2WGUcqvFJkeK39Q+HyPf5GHUrT/l2pKbtgEIv1al1TKd6qStR5OIwQdN1GZP54ci3y4mroJWjA==}
-    engines: {node: '>=6'}
-
-  '@fortawesome/react-fontawesome@0.2.2':
-    resolution: {integrity: sha512-EnkrprPNqI6SXJl//m29hpaNzOp1bruISWaOiRtkMi/xSvHJlzc2j2JAYS7egxt/EbjSNV/k6Xy0AQI6vB2+1g==}
-    deprecated: v0.2.x is no longer supported. Unless you are still using FontAwesome 5, please update to v3.1.1 or greater.
-    peerDependencies:
-      '@fortawesome/fontawesome-svg-core': ~1 || ~6
-      react: '>=16.3'
-
   '@humanfs/core@0.19.2':
     resolution: {integrity: sha512-UhXNm+CFMWcbChXywFwkmhqjs3PRCmcSa/hfBgLIb7oQ5HNb1wS0icWsGtSAUNgefHeI+eBrA8I1fxmbHsGdvA==}
     engines: {node: '>=18.18.0'}
@@ -1322,10 +1303,10 @@ packages:
     resolution: {integrity: sha512-AokJm4tuBHillT+FpMtxQ60n8ObyXBatq7jD2/JA9dxbDDokKQm8KMht5ibGzLVU9IJDIKK4TPKgMHEYMn3lMg==}
     engines: {node: '>=18'}
 
-  '@iwer/devui@1.1.2':
-    resolution: {integrity: sha512-ggF1lXSX14BTYP0QzB4xaurySr2PC+3+rtK/dpCR++giWquzFv2mBw3LW/PaCtdl5mqkZMrQ2GSwfUNg9ZoO+w==}
+  '@iwer/devui@2.3.0':
+    resolution: {integrity: sha512-UfBFR3qOYt/DUsLik20uF7Jn0NrNN2L0+uiDGJzuKXpXa/2btNOjOj1iSaTthz95MK5/O2HqqC+ymjkRMHi5UQ==}
     peerDependencies:
-      iwer: ^2.0.1
+      iwer: ^2.3.0
 
   '@jest/diff-sequences@30.4.0':
     resolution: {integrity: sha512-zOpzlfUs45l6u7jm39qr87JCHUDsaeCtvL+kQe/Vn9jSnRB4/5IPXISm0h9I1vZW/o00Kn4UTJ2MOlhnUGwv3g==}
@@ -1690,8 +1671,8 @@ packages:
   '@types/stats.js@0.17.4':
     resolution: {integrity: sha512-jIBvWWShCvlBqBNIZt0KAshWpvSjhkwkEu4ZUcASoAvhmrgAUI2t1dXrjSL4xXVLB4FznPrIsX3nKXFl/Dt4vA==}
 
-  '@types/three@0.180.0':
-    resolution: {integrity: sha512-ykFtgCqNnY0IPvDro7h+9ZeLY+qjgUWv+qEvUt84grhenO60Hqd4hScHE7VTB9nOQ/3QM8lkbNE+4vKjEpUxKg==}
+  '@types/three@0.185.4':
+    resolution: {integrity: sha512-gAsBIC07NIFrxjbf7tH2t71c38uulFfk/RFoC7FNBSjMRAQ8J1x/RBvusX0N5PJouaYFJawXQqfCQ0RKUx/1nA==}
 
   '@types/tough-cookie@4.0.5':
     resolution: {integrity: sha512-/Ad8+nIOV7Rl++6f1BdKxFSMgmoqEoYbHRpPcx3JEfv8VRsQe9Z4mCXeJBzxs7mbHY/XOZZuXlRNfhpVPbs6ZA==}
@@ -2234,8 +2215,8 @@ packages:
     engines: {node: '>=0.10.0'}
     hasBin: true
 
-  electron-to-chromium@1.5.414:
-    resolution: {integrity: sha512-aYlviXiaXBbzvKgyALpcMmqa3Np3sDr0XnZbEG62n2UpZFbEcjQ4EEMOLGzVPhwVnwTz0lvKY+GcARbunuHekw==}
+  electron-to-chromium@1.5.415:
+    resolution: {integrity: sha512-958V+Kbhtgz+SxXeEVKBjrlKRBIDAYvUJfwhjxMZ5S6ut9jAl7l9ZKBkBrvjyjZE36PabLUo2L8kEeV5O4vgJg==}
 
   encodeurl@2.0.0:
     resolution: {integrity: sha512-Q0n9HRi4m6JuGIV1eFlmvJB7ZEVxu93IrMyiMsGC0lrMJMWzRgx6WGquyfQgZVb31vhGgXnfmPNNXmxnOkRBrg==}
@@ -2846,10 +2827,6 @@ packages:
   lodash@4.18.1:
     resolution: {integrity: sha512-dMInicTPVE8d1e5otfwmmjlxkZoUpiVLwyeTdUsi/Caj/gfzzblBcCE5sRHV/AsjuCmxWrte2TNGSYuCeCq+0Q==}
 
-  loose-envify@1.4.0:
-    resolution: {integrity: sha512-lyuxPGr/Wfhrlem2CL/UcnUc1zcqKAImBDzukY7Y5F/yQiNdko6+fRLevlw1HgMySw7f611UIY408EtxRSoK3Q==}
-    hasBin: true
-
   loupe@3.2.1:
     resolution: {integrity: sha512-CdzqowRJCeLU72bHvWqwRBBlLcMEtIvGrlvef74kMnV2AolS9Y8xUv1I0U/MNAWMhBlKIoyuEgoJ0t/bbwHbLQ==}
 
@@ -2862,6 +2839,11 @@ packages:
 
   lru-cache@5.1.1:
     resolution: {integrity: sha512-KpNARQA3Iwv+jTA0utUVVbrh+Jlrr1Fv0e56GGzAFOXN7dk/FviaDW8LHmK52DlcH4WP2n6gI8vN1aesBFgo9w==}
+
+  lucide-react@1.34.0:
+    resolution: {integrity: sha512-vnjGJNI7Htk5+oWW8gXGuaLgwgAb0T6/iZbBrp9JCfRFwdNWZ0YTm3eyxjOLgwN6r8iyAf3UA70zNmBRBNv7yg==}
+    peerDependencies:
+      react: ^16.5.1 || ^17.0.0 || ^18.0.0 || ^19.0.0
 
   lz-string@1.5.0:
     resolution: {integrity: sha512-h5bgJWpxJNswbU7qCrV0tIKQCaS3blPDrqKWx+QxzuzL1zGUzij9XCWLrSLsJPu5t+eWA/ycetzYAO5IOMcWAQ==}
@@ -2882,8 +2864,8 @@ packages:
     resolution: {integrity: sha512-Snk314V5ayFLhp3fkUREub6WtjBfPdCPY1Ln8/8munuLuiYhsABgBVWsozAG+MWMbVEvcdcpbi9R7ww22l9Q3g==}
     engines: {node: '>=18'}
 
-  meshoptimizer@0.22.0:
-    resolution: {integrity: sha512-IebiK79sqIy+E4EgOr+CAw+Ke8hAspXKzBd0JdgEmPHiAwmvEj2S4h1rfvo+o/BnfEYd/jAOg5IeeIjzlzSnDg==}
+  meshoptimizer@1.1.1:
+    resolution: {integrity: sha512-oRFNWJRDA/WTrVj7NWvqa5HqE1t9MYDj2VaWirQCzCCrAd2GHrqR/sQezCxiWATPNlKTcRaPRHPJwIRoPBAp5g==}
 
   mime-db@1.54.0:
     resolution: {integrity: sha512-aU5EJuIN2WDemCcAp2vFBfp/m4EAhWJnUNSSw0ixs7/kXbd6Pg64EmwJkNdFhB8aWt1sH2CTXrLxo/iAGV3oPQ==}
@@ -2953,10 +2935,6 @@ packages:
 
   nwsapi@2.2.24:
     resolution: {integrity: sha512-7YRhZ3jS45LwmSCT4b2sVFHt/WuovaktDU07QrtOBY2PXskss5a9jfmR9jptyumwXST+rFjrmppMY1KT/yn35A==}
-
-  object-assign@4.1.1:
-    resolution: {integrity: sha512-rJgTQnkUnH1sFw8yT6VSU3zD3sWmu6sZhIseY8VX+GRu3P6F7Fu+JNDoXfklElbLJSnc3FUQHVe4cU5hj+BcUg==}
-    engines: {node: '>=0.10.0'}
 
   object-inspect@1.13.4:
     resolution: {integrity: sha512-W67iLl4J2EXEGTbfeHCffrjDfitvLANg0UlX3wFUUSTx92KXRFegMHUVgSqE+wvhAbi4WqjGg9czysTV2Epbew==}
@@ -3085,9 +3063,6 @@ packages:
     resolution: {integrity: sha512-K6KiKMHTL4jjX4u3Kir2EW07nRfcqVTXIImx50wbjHQTcZPgg+gjVeNTIT3l3L1Rd4UefxfogquC9J37SoFyyw==}
     engines: {node: ^18.14.0 || ^20.0.0 || ^22.0.0 || >=24.0.0}
 
-  prop-types@15.8.1:
-    resolution: {integrity: sha512-oj87CgZICdulUohogVAR7AjlC0327U4el4L6eAvOqCeudMDVU0NThNaV+b9Df4dXgSP1gXMTnPdhfe/2qDH5cg==}
-
   proxy-addr@2.0.7:
     resolution: {integrity: sha512-llQsMLSUDUPT44jdrU/O37qlnifitDP+ZwrmmZcoSKyLKvtZxpyV0n2/bD/N4tBAAZ/gJEdZU7KMraoK1+XYAg==}
     engines: {node: '>= 0.10'}
@@ -3125,9 +3100,6 @@ packages:
     resolution: {integrity: sha512-rVprimfGBG3DR+Tq0IQG2DT5PxKth1WIGDmj5yPmlzr4YBe7uyE+Du4oVqTDXZSHGGGXRtTJEGSSePyQCMBglQ==}
     peerDependencies:
       react: ^19.2.8
-
-  react-is@16.13.1:
-    resolution: {integrity: sha512-24e6ynE2H+OKt4kqsOvNd8kBpV65zoxbA4BVsEOB3ARVWQki/DHzaUoC5KuON/BiccDaCCTZBuOcfZs70kR8bQ==}
 
   react-is@17.0.2:
     resolution: {integrity: sha512-w2GsyukL62IJnlaff/nRegPQR94C/XXamvMWmSHRJ4y7Ts/4ocGRmTHvOs8PSE6pB3dWOrD/nueuU5sduBsQ4w==}
@@ -3445,8 +3417,8 @@ packages:
     engines: {node: '>=10'}
     hasBin: true
 
-  three@0.180.0:
-    resolution: {integrity: sha512-o+qycAMZrh+TsE01GqWUxUIKR1AL0S8pq7zDkYOQw8GqfX8b8VoCKYUoHbhiX5j+7hr8XsuHDVU6+gkQJQKg9w==}
+  three@0.185.1:
+    resolution: {integrity: sha512-5aojFCXKwnjBRZvUnt3WFfEcvUJgkN5LlijRFN95hMy8WVkG4I0QNcJE+OuWvuJ0bOdStrbfXn0pkd6/QyiAlg==}
 
   tinybench@2.9.0:
     resolution: {integrity: sha512-0+DUvqWMValLmha6lr4kD8iAMK1HzV0/aKnCtWb9v9641TnP/MFb7Pc2bxoxQjTXAErryXVgUOfv2YqNllqGeg==}
@@ -3825,6 +3797,24 @@ packages:
       immer:
         optional: true
       react:
+        optional: true
+
+  zustand@5.0.15:
+    resolution: {integrity: sha512-MpSEjRiBkA9crSYeOUH32rJC7SVqAbm0Fqcqge/bUi2PPoLcBWKOsG+C8mevmpr8TwXHBVkChbbJiyvkE+i/3A==}
+    engines: {node: '>=12.20.0'}
+    peerDependencies:
+      '@types/react': '>=18.0.0'
+      immer: '>=9.0.6'
+      react: '>=18.0.0'
+      use-sync-external-store: '>=1.2.0'
+    peerDependenciesMeta:
+      '@types/react':
+        optional: true
+      immer:
+        optional: true
+      react:
+        optional: true
+      use-sync-external-store:
         optional: true
 
 snapshots:
@@ -4667,22 +4657,6 @@ snapshots:
       '@eslint/core': 0.17.0
       levn: 0.4.1
 
-  '@fortawesome/fontawesome-common-types@6.6.0': {}
-
-  '@fortawesome/fontawesome-svg-core@6.6.0':
-    dependencies:
-      '@fortawesome/fontawesome-common-types': 6.6.0
-
-  '@fortawesome/free-solid-svg-icons@6.6.0':
-    dependencies:
-      '@fortawesome/fontawesome-common-types': 6.6.0
-
-  '@fortawesome/react-fontawesome@0.2.2(@fortawesome/fontawesome-svg-core@6.6.0)(react@19.2.8)':
-    dependencies:
-      '@fortawesome/fontawesome-svg-core': 6.6.0
-      prop-types: 15.8.1
-      react: 19.2.8
-
   '@humanfs/core@0.19.2':
     dependencies:
       '@humanfs/types': 0.15.0
@@ -4776,22 +4750,22 @@ snapshots:
 
   '@isaacs/cliui@9.0.0': {}
 
-  '@iwer/devui@1.1.2(iwer@2.3.0)':
+  '@iwer/devui@2.3.0(iwer@2.3.0)(use-sync-external-store@1.6.0(react@19.2.8))':
     dependencies:
-      '@fortawesome/fontawesome-svg-core': 6.6.0
-      '@fortawesome/free-solid-svg-icons': 6.6.0
-      '@fortawesome/react-fontawesome': 0.2.2(@fortawesome/fontawesome-svg-core@6.6.0)(react@19.2.8)
       '@pmndrs/handle': 6.6.30(react@19.2.8)
       '@pmndrs/pointer-events': 6.6.30
       iwer: 2.3.0
+      lucide-react: 1.34.0(react@19.2.8)
       react: 19.2.8
       react-dom: 19.2.8(react@19.2.8)
       styled-components: 6.5.3(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
-      three: 0.180.0
+      three: 0.185.1
+      zustand: 5.0.15(react@19.2.8)(use-sync-external-store@1.6.0(react@19.2.8))
     transitivePeerDependencies:
       - '@types/react'
       - immer
       - react-native
+      - use-sync-external-store
 
   '@jest/diff-sequences@30.4.0': {}
 
@@ -5110,15 +5084,14 @@ snapshots:
 
   '@types/stats.js@0.17.4': {}
 
-  '@types/three@0.180.0':
+  '@types/three@0.185.4':
     dependencies:
       '@dimforge/rapier3d-compat': 0.12.0
       '@tweenjs/tween.js': 23.1.3
       '@types/stats.js': 0.17.4
       '@types/webxr': 0.5.24
-      '@webgpu/types': 0.1.72
       fflate: 0.8.3
-      meshoptimizer: 0.22.0
+      meshoptimizer: 1.1.1
 
   '@types/tough-cookie@4.0.5': {}
 
@@ -5388,7 +5361,7 @@ snapshots:
     dependencies:
       baseline-browser-mapping: 2.11.19
       caniuse-lite: 1.0.30001810
-      electron-to-chromium: 1.5.414
+      electron-to-chromium: 1.5.415
       node-releases: 2.0.53
       update-browserslist-db: 1.3.1(browserslist@4.28.8)
 
@@ -5605,7 +5578,7 @@ snapshots:
     dependencies:
       jake: 10.9.4
 
-  electron-to-chromium@1.5.414: {}
+  electron-to-chromium@1.5.415: {}
 
   encodeurl@2.0.0: {}
 
@@ -6366,10 +6339,6 @@ snapshots:
 
   lodash@4.18.1: {}
 
-  loose-envify@1.4.0:
-    dependencies:
-      js-tokens: 4.0.0
-
   loupe@3.2.1: {}
 
   lru-cache@10.4.3: {}
@@ -6379,6 +6348,10 @@ snapshots:
   lru-cache@5.1.1:
     dependencies:
       yallist: 3.1.1
+
+  lucide-react@1.34.0(react@19.2.8):
+    dependencies:
+      react: 19.2.8
 
   lz-string@1.5.0: {}
 
@@ -6392,7 +6365,7 @@ snapshots:
 
   merge-descriptors@2.0.0: {}
 
-  meshoptimizer@0.22.0: {}
+  meshoptimizer@1.1.1: {}
 
   mime-db@1.54.0: {}
 
@@ -6443,8 +6416,6 @@ snapshots:
   node-releases@2.0.53: {}
 
   nwsapi@2.2.24: {}
-
-  object-assign@4.1.1: {}
 
   object-inspect@1.13.4: {}
 
@@ -6572,12 +6543,6 @@ snapshots:
       react-is-18: react-is@18.3.1
       react-is-19: react-is@19.2.8
 
-  prop-types@15.8.1:
-    dependencies:
-      loose-envify: 1.4.0
-      object-assign: 4.1.1
-      react-is: 16.13.1
-
   proxy-addr@2.0.7:
     dependencies:
       forwarded: 0.2.0
@@ -6619,8 +6584,6 @@ snapshots:
     dependencies:
       react: 19.2.8
       scheduler: 0.27.0
-
-  react-is@16.13.1: {}
 
   react-is@17.0.2: {}
 
@@ -7054,7 +7017,7 @@ snapshots:
       commander: 2.20.3
       source-map-support: 0.5.21
 
-  three@0.180.0: {}
+  three@0.185.1: {}
 
   tinybench@2.9.0: {}
 
@@ -7518,3 +7481,8 @@ snapshots:
       use-sync-external-store: 1.6.0(react@19.2.8)
     optionalDependencies:
       react: 19.2.8
+
+  zustand@5.0.15(react@19.2.8)(use-sync-external-store@1.6.0(react@19.2.8)):
+    optionalDependencies:
+      react: 19.2.8
+      use-sync-external-store: 1.6.0(react@19.2.8)

@@ -12,7 +12,7 @@ grows with the length of the list rather than with how much of it is on
 screen.
 
 A scroll invalidates client rects for the scroller's **whole subtree** —
-`affectsRect` in `packages/freedom/src/elements/cache.js` asks
+`affectsRect` in `packages/three/src/elements/cache.js` asks
 `target.contains(node)` — and the culling in `div.js` (`obj.visible` plus
 the reactive gate on `makeInteractive`) only prunes the render traversal
 and the raycast set. The reactive graph goes on measuring rows nobody can
@@ -98,7 +98,7 @@ mutations.next({ types: new Set(["scroll"]), targets: new Set([scroller]) });
 ```
 
 Run it at several values of N. Today the counts are linear in N; the
-exit criterion is that they are not. `packages/freedom/src/elements/cache.test.js`
+exit criterion is that they are not. `packages/three/src/elements/cache.test.js`
 has the setup idioms (`setSubject`, stubbed `getBoundingClientRect`, the
 `selectNodeContents` recorder used by "a scroll re-measures no text").
 
@@ -111,7 +111,7 @@ has the setup idioms (`setSubject`, stubbed `getBoundingClientRect`, the
 - The existing clipping, culling, gesture and text-measurement tests pass
   **unchanged** — if one needs editing, that is a signal to re-read the
   constraint it encodes, not to edit it.
-- `cd packages/freedom && npm test` green (runs `tsc --noEmit` first),
+- `cd packages/three && npm test` green (runs `tsc --noEmit` first),
   `npx prettier --check` and `npx eslint` clean on changed files, and a
   change file added under `common/changes/justdom-three/` with a type
   of `patch`, since this is an optimization — or CI's

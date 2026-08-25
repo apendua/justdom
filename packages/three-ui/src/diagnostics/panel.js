@@ -39,7 +39,7 @@ const FACING = new THREE.Euler(0.17, 0.25, 0);
 /**
  * Where the panel is drawn in the frame's order: after everything a scene is
  * likely to have asked for, and far enough clear of it that the panel's own
- * ordering — which `freedom` writes as small numbers, one per layer of nesting
+ * ordering — which `justdom-three` writes as small numbers, one per layer of nesting
  * — survives being shifted up by this.
  */
 const HUD_RENDER_ORDER = 100000;

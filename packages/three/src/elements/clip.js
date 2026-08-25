@@ -203,7 +203,7 @@ export function applyClip(material, uniform) {
   // Programs are cached by material type and defines, neither of which the
   // patch above changes. Without a distinct key a clipped material can be
   // handed the unpatched program compiled for an identical unclipped one.
-  material.customProgramCacheKey = () => "freedom-clip";
+  material.customProgramCacheKey = () => "justdom-three-clip";
 }
 
 const localPoint = new THREE.Vector3();

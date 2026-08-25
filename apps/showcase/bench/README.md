@@ -4,13 +4,13 @@ A suite for answering one question honestly: **did that change make a panel
 cheaper to mirror, or did it just move the cost somewhere the stopwatch
 wasn't looking?**
 
-It lives in `showcase-xr` because that is the project with the Playwright
+It lives in `showcase` because that is the project with the Playwright
 dependency, but it drives whichever app you point it at — `todo-xr` by
 default, because that is the one with a list long enough to hurt.
 
 ## Running it
 
-From `apps/showcase-xr`:
+From `apps/showcase`:
 
 ```bash
 npm run bench                    # working tree, all five scenarios
@@ -19,7 +19,7 @@ npm run bench:against            # A/B against origin/develop
 # or directly, for the flags:
 node bench/run.js --against origin/develop --repeat 4 --scenario scroll,burst
 node bench/run.js --scenario burst          # one scenario
-node bench/run.js --app showcase-xr         # a different app
+node bench/run.js --app showcase         # a different app
 node bench/run.js --rounds 40               # a longer list (20 → ~825 elements)
 node bench/run.js --burst 300               # bigger mount bursts
 node bench/run.js --style-reads             # + computed-style property reads
@@ -77,10 +77,10 @@ renderer, not the mirror — which is far below what `worst above idle` is
 reporting and comparable to what `median above idle` is. Trust the first,
 treat the second as a rounding error with a sign.
 
-### Changing the freedom package
+### Changing the justdom-three package
 
 **Uncommitted edits work, and only affect the side you expect.** The working
-tree is served as-is — vite serves `packages/freedom/src` through the
+tree is served as-is — vite serves `packages/three/src` through the
 workspace symlink, so there is nothing to build and no step to remember.
 Edit, run, read.
 
@@ -93,7 +93,7 @@ Two consequences worth knowing:
 - The `--against` side sees only _committed_ work. Comparing two branches of
   your own is fine; comparing against uncommitted changes is not a thing the
   worktree can do.
-- Adding a _new_ dependency to `packages/freedom` needs a `rush install`
+- Adding a _new_ dependency to `packages/three` needs a `rush install`
   before the benchmark can serve either side, since the worktree borrows this
   checkout's installed store. Editing existing code needs nothing.
 
@@ -186,7 +186,7 @@ It works without touching the package: the harness wraps
 and in a steady state the mirror is the only caller. That is the mirror's
 belief, and it is compared against a fresh read through the unwrapped method.
 
-Run `apps/showcase-xr` visual tests alongside — they catch what a rect
+Run `apps/showcase` visual tests alongside — they catch what a rect
 comparison cannot.
 
 ## Was the suite itself checked?

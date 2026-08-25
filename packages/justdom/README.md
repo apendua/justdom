@@ -44,9 +44,6 @@ exported from the `justdom/hydrate` subpath, mounts against markup
 that's already in the page by *claiming* existing nodes instead of creating
 new ones.
 
-See [`apps/signal-ssr`](../../apps/signal-ssr) for a complete
-server-rendering + hydration example.
-
 ## Learn more
 
 [`docs/signal-user-guide.md`](../../docs/signal-user-guide.md) covers the DOM

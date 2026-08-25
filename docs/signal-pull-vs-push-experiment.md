@@ -212,7 +212,7 @@ remembering the next time a counter is treated as noise-free evidence.
 
 ### 3.4 The jsdom mirror benchmark
 
-`packages/freedom/src/elements/mirror.bench.js`, wall-clock ms. These numbers
+`packages/three/src/elements/mirror.bench.js`, wall-clock ms. These numbers
 compare *baseline push* against *pull*, so they carry the same confound as
 §3.1 and should be read only for shape:
 

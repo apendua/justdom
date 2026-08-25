@@ -30,7 +30,7 @@ Three things must be configurable:
 2. a time budget per drain pass;
 3. a trigger that decides when the next pass happens.
 
-_(No changes to `freedom` at this stage — recorded here only as the API
+_(No changes to `justdom-three` at this stage — recorded here only as the API
 requirement.)_
 
 ## 2. Naming
@@ -174,7 +174,7 @@ precisely the channels that need covering, and the writer never learns which
 channel its dependents live in.
 
 That is worth stating as a property rather than an accident: **channel
-membership is a property of the reader, not the writer.** `freedom`'s mirror
+membership is a property of the reader, not the writer.** `justdom-three`'s mirror
 declares itself presentation; application code writing a signal that the
 mirror happens to read stays oblivious, and stays correct. If a source had to
 name channels, every writer would need to know its whole downstream, which is

@@ -363,7 +363,7 @@ it is current.
 - **`getEvaluations()` counts drop.** Work that used to be done eagerly and
   discarded is not done at all.
 
-## 5. What the migration of `freedom` and `justdom` cost
+## 5. What the migration of `justdom-three` and `justdom` cost
 
 `justdom` needed **no source changes at all**: 62/62 before and
 after. Nothing in it depends on when a `Derived` runs.

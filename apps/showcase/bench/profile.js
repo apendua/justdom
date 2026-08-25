@@ -230,11 +230,11 @@ function inclusiveFor(profile, matchers) {
 /**
  * What we came to price, by name. Kept as predicates over the call frame
  * because minification is not in play here but bundling is: the raycast and
- * the mirror live in `packages/freedom/src`, three.js arrives as a vite dep
+ * the mirror live in `packages/three/src`, three.js arrives as a vite dep
  * chunk, and only the function name distinguishes them.
  */
 const SUSPECTS = {
-  "raycast (freedom)": (f) =>
+  "raycast (justdom-three)": (f) =>
     f.functionName === "intersectVisible" || f.functionName === "getIntersection",
   "raycast (three)": (f) => f.functionName === "raycast" || f.functionName === "intersectObject",
   "animation sweep": (f) => f.functionName === "sweep" || f.functionName === "buildBatches",

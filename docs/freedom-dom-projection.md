@@ -1,6 +1,6 @@
 # `justdom-three`: the DOM→3D projection, its tradeoffs, and how far it can go
 
-An analysis of how `packages/freedom` maps DOM elements to Three.js objects,
+An analysis of how `packages/three` maps DOM elements to Three.js objects,
 what the current invalidation model deliberately gives up, and what it would
 take to lift those limits — in particular, whether animated DOM elements
 (CSS transitions/animations, JS-driven animation) can be rendered without

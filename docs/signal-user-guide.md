@@ -951,7 +951,7 @@ single package`, and the `dom`/`three` package descriptions until recently
   should not be reintroduced — if you meet it in old commits or branches,
   it refers to this package's ancestor.
 - `packages/justdom` (a from-scratch non-VDOM renderer, which also covers SSR and
-  hydration — §3.7) and `packages/freedom` (a reactive layer over Three.js,
+  hydration — §3.7) and `packages/three` (a reactive layer over Three.js,
   using the same `component`/`operators` vocabulary) are two genuinely
   different render targets sharing one core, and `apps/kanban-webrtc`
   composes that same core with a Raft consensus implementation
@@ -1065,7 +1065,7 @@ what the graph is built out of, and what surrounds it.
   at all.
 - **Render-target agnosticism.** The same `Signal`/`Derived`/`store()`
   primitives back a from-scratch DOM renderer (browser, server and hydration
-  alike) and a Three.js integration (`packages/freedom`) in this monorepo —
+  alike) and a Three.js integration (`packages/three`) in this monorepo —
   something none of Solid/Preact/Angular signals set out to do (they are
   each tied to one framework's rendering path). Two render targets is
   evidence rather than proof, but nothing in the core refers to a node, an

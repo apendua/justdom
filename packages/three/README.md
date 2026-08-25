@@ -441,7 +441,7 @@ to mirror, and the list the browser pops up is chrome rather than DOM, so none
 of it reaches the scene. Nor can the system keyboard, for a stronger version of
 the same reason — it is not even the browser's, it is the compositor's.
 
-Both are in [`justdom-three-ui`](../justui), built out of ordinary elements so
+Both are in [`justdom-three-ui`](../three-ui), built out of ordinary elements so
 that a portal can carry them: `dropdown(props)` is the one the two requirements
 above are written for — its `root` is the positioning context, its `menu` is the
 layer — and `keyboard(props)` is a phone's board you point at rather than type
@@ -548,7 +548,7 @@ an ordinary click. There is nothing to opt into: a list becomes draggable the
 moment it overflows, and stops being so when it no longer does.
 
 For a scrollbar's kind of control — visible, precise, resting — there is
-`scrollable(props)` in [`justdom-three-ui`](../justui): arrows, a track and a
+`scrollable(props)` in [`justdom-three-ui`](../three-ui): arrows, a track and a
 thumb, built out of ordinary elements like the dropdown, over a viewport that
 hides its overflow. It scrolls through `scrollElementBy`, which is exported here
 and is the write above plus the `scroll` event the browser will not dispatch
@@ -615,13 +615,10 @@ One print of the measuring tape, on a static panel of 800 mirrored rows at
 
 ## Real examples
 
-This package drives several full apps in this monorepo —
-[`apps/rubik`](../../apps/rubik), [`apps/blockout-xr`](../../apps/blockout-xr),
-[`apps/marblerun`](../../apps/marblerun),
-[`apps/todo-xr`](../../apps/todo-xr) — worth reading for realistic scenes
-combining lighting, keyed lists (`list`/`keyedList`), controller/hand input,
-and DOM panels projected into 3D space.
-[`apps/showcase-xr`](../../apps/showcase-xr) is the sampler: four panels in a
+[`apps/todo-xr`](../../apps/todo-xr) is the worked example: a realistic scene
+combining lighting, a keyed list (`list`/`keyedList`), controller and hand
+input, and DOM panels projected into 3D space.
+[`apps/showcase`](../../apps/showcase) is the sampler: four panels in a
 grid demonstrating hover/press transitions, CSS keyframes, a Web Animations
 API animation, an `animate(ctx, fn)` loop writing inline styles, animated
 text colour, static transforms, a layout-tier width transition, and every

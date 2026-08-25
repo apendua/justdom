@@ -44,5 +44,4 @@ export default defineConfig({
     target: "esnext",
     sourcemap: true,
   },
-  base: "/apps/todo-vanilla/",
 });

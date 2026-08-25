@@ -135,7 +135,7 @@ import { addDependency, batch, Derived } from "justdom-signal";
  * now occupy. That one method is the entire protocol between the two
  * packages, which is why it is written out here rather than imported: this
  * is `justdom`'s `Mountable` to the letter, TypeScript compares the two
- * structurally, and `freedom` therefore describes its own signatures without
+ * structurally, and `justdom-three` therefore describes its own signatures without
  * depending on `justdom` at all. Pass a justdom tree to `dom()` exactly as
  * before.
  *

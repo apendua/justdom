@@ -1,37 +1,40 @@
 /**
- * @template T
- * @typedef {object} INode
- * @property {T | null} nextSibling
- * @property {T | null} previousSibling
- * @property {T | null} parentNode
- * @property {T | null} firstChild
- * @property {T | null} lastChild
- * @property {(node: T) => T} removeChild
- * @property {(node: T, before: T | null) => T} insertBefore
- * @property {(newNode: T, oldNode: T) => T} replaceChild
+ * What this package hands out and takes back.
+ *
+ * These are `nodes.js`'s generic vocabulary pinned to the DOM's `Node`, which
+ * is the only thing this package ever renders to: `document` appears in
+ * `dom.js`, `text.js`, `stylesheet.js` and `hydrate.js`, and every node any of
+ * them makes is a real one. So a caller writes `Mountable`, not
+ * `Mountable<Node>`, and never meets the type parameter or the `INode`
+ * constraint behind it.
+ *
+ * The parameter is still there underneath, holding the node-moving code away
+ * from the DOM — see `nodes.js` for what it buys and why it is not exported.
  */
 
 /**
- * @template {INode<T>} T
- * @typedef {T & { parentNode: T }} NodeWithParent
+ * @import { ContainerOf, MountableOf, SegmentOf } from "./nodes.js";
  */
 
 /**
- * @template {INode<T>} T
- * @typedef {[T, T]} Segment
+ * The span of siblings a tree occupies: its first node and its last, which
+ * may be the same node.
+ *
+ * @typedef {SegmentOf<Node>} Segment
  */
 
 /**
- * @template {INode<T>} T
- * @typedef {object} Mountable
- * @property {(segment: Segment<T>) => Segment<T>} replace
+ * A tree that has not been put anywhere yet. `replace` swaps whatever
+ * currently occupies a span for this tree's own nodes, and reports the span
+ * they occupy afterwards.
+ *
+ * @typedef {MountableOf<Node>} Mountable
  */
 
 /**
- * @template {INode<T>} T
- * @typedef {object} Container
- * @property {(child: T) => T} appendChild
- * @property {() => Mountable<T>} toMountable
+ * Somewhere to build a tree before it is mounted.
+ *
+ * @typedef {ContainerOf<Node>} Container
  */
 
 export {};

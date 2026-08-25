@@ -14,11 +14,11 @@
  * design is carried by colour, line and type.
  */
 import { fontFace, stylesheet, CLASS_NAME } from "@apendua/justdom";
+import type { DropdownClasses } from "@apendua/justui";
 import titleFontFile from "@apendua.dev/media/fonts/Cinzel-wght.ttf";
 import bodyFontFile from "@apendua.dev/media/fonts/Quicksand-wght.ttf";
 import { combineLatest, map, Observable } from "rxjs";
 import { palette } from "../elements/palette.js";
-import type { DropdownClasses } from "@apendua/freedom";
 
 /** Carved Roman capitals, for what a panel is called. */
 export const titleFont = fontFace(titleFontFile, { fontWeight: "400 900" });

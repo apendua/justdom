@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { just } from "@apendua/signal";
 import { $, children, text } from "@apendua/justdom";
 import { scrollable } from "./scrollable.js";
-import { resetRenderingUpdatesForTests, sampleRenderingUpdates } from "./renderingUpdates.js";
+import { sampleRenderingUpdates } from "@apendua/freedom";
 
 /**
  * @import {Mountable} from "@apendua/justdom";
@@ -48,7 +48,7 @@ function mount({ window: shown, content: total, props = {} }) {
     classes,
     content: [$("div", [children(text`content`)])],
     ...props,
-  }).subscribe((/** @type {Mountable<Node>} */ mountable) => {
+  }).subscribe((/** @type {Mountable} */ mountable) => {
     const start = document.createComment("");
     const end = document.createComment("");
     host.append(start, end);
@@ -226,7 +226,14 @@ describe("scrollable", () => {
       assert.equal(view.scrollTop, 40);
       assert.equal(announced, 1);
     } finally {
-      resetRenderingUpdatesForTests();
+      // Hand the module back a document that is being drawn, the way a page
+      // coming out of a session does, so the tests below are not left inside
+      // a suspended one.
+      Object.defineProperty(document, "timeline", {
+        configurable: true,
+        value: { currentTime: 2000 },
+      });
+      sampleRenderingUpdates(now + 16);
       view.subscription.unsubscribe();
       view.host.remove();
     }

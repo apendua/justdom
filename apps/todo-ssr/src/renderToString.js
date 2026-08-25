@@ -8,7 +8,7 @@ import { just } from "@apendua/signal";
  */
 
 /**
- * @typedef {(context: WeakKey) => Observable<Mountable<Node>>} Component
+ * @typedef {(context: WeakKey) => Observable<Mountable>} Component
  */
 
 const DEFAULT_TEMPLATE = `<!doctype html>

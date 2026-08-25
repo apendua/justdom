@@ -1,11 +1,11 @@
 import * as THREE from "three";
 import { distinctUntilChanged, switchMap, type Observable } from "rxjs";
-import { dom, dropdown, XREventMap } from "@apendua/freedom";
+import { dom, XREventMap } from "@apendua/freedom";
 import { $, children, on, renderText, text } from "@apendua/justdom";
 import { component, effects, observable, set } from "@apendua/signal";
 import { EXAMPLES } from "@apendua.dev/euclid-lang";
 import type { MusicControls } from "@apendua.dev/sound/xr";
-import { diagnosticsButton, type DiagnosticsControls } from "@apendua.dev/diagnostics";
+import { diagnosticsButton, type DiagnosticsControls, dropdown } from "@apendua/justui";
 import {
   buttonActive,
   buttonGlyph,

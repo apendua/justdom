@@ -5,28 +5,25 @@ import { withoutHydration } from "./hydrate.js";
 
 /**
  * @import { Property } from "@apendua/signal";
- * @import { INode, Mountable } from "./types.js";
+ * @import { Mountable } from "./types.js";
  */
 
 /**
- * @template {INode<T>} T
  * @typedef {object} SuspendOptions
- * @property {() => Observable<Mountable<T>>} fallback
+ * @property {() => Observable<Mountable>} fallback
  */
 
-/**
- * @template {INode<T>} T
- */
+/** Tracks what a subtree is still waiting for, and what to show meanwhile. */
 class Manager {
   /** @type {Set<Promise<unknown>>} */
   #promises = new Set();
   /** @type {ReplaySubject<boolean>} */
   #subject = new ReplaySubject(1);
-  /** @type {SuspendOptions<T>} */
+  /** @type {SuspendOptions} */
   #options;
 
   /**
-   * @param {SuspendOptions<T>} options
+   * @param {SuspendOptions} options
    */
   constructor(options) {
     this.#options = { ...options };
@@ -53,8 +50,8 @@ class Manager {
   }
 
   /**
-   * @param {Observable<Mountable<T>>} content
-   * @returns {Observable<Mountable<T>>}
+   * @param {Observable<Mountable>} content
+   * @returns {Observable<Mountable>}
    */
   render(content) {
     return new Observable((subscriber) => {
@@ -80,7 +77,7 @@ class Manager {
   }
 }
 
-/** @type {Property<Manager<any>>} */
+/** @type {Property<Manager>} */
 const Context = createProperty(() => {
   return new Manager({
     // This effectively renders nothing while suspended.
@@ -99,13 +96,12 @@ export function waitFor(ctx, promise) {
 }
 
 /**
- * @template {INode<T>} T
  * @param {WeakKey} ctx
- * @param {SuspendOptions<T> | SuspendOptions<T>['fallback']} [fallbackOrOptions]
+ * @param {SuspendOptions | SuspendOptions['fallback']} [fallbackOrOptions]
  * @returns {WeakKey}
  */
 export function suspend(ctx, fallbackOrOptions) {
-  /** @type {SuspendOptions<T>} */
+  /** @type {SuspendOptions} */
   // Same default the Context manager uses: render nothing while suspended.
   // Calling suspend() without a fallback previously left this empty, so
   // render() called this.#options.fallback() on undefined.
@@ -121,10 +117,9 @@ export function suspend(ctx, fallbackOrOptions) {
 }
 
 /**
- * @template {INode<T>} T
  * @param {WeakKey} ctx
- * @param {Observable<Mountable<T>>} content
- * @returns {Observable<Mountable<T>>}
+ * @param {Observable<Mountable>} content
+ * @returns {Observable<Mountable>}
  */
 export function withFallback(ctx, content) {
   const manager = Context.get(ctx);

@@ -6,14 +6,13 @@ import { createPortal } from "./elements/portal.js";
 
 /**
  * @import {MonoTypeOperatorFunction} from 'rxjs';
- * @import {Mountable} from "@apendua/justdom";
- * @import {Component,XREventMap} from './core.js';
+ * @import {Component,Mountable,XREventMap} from './core.js';
  * @import {PortalOptions} from './elements/portal.js';
  */
 
 /**
  * @param {WeakKey} ctx
- * @param {Observable<Mountable<Node>>} mountable$
+ * @param {Observable<Mountable>} mountable$
  * @param {MonoTypeOperatorFunction<THREE.Object3D<XREventMap>>[]} [operators]
  * @param {PortalOptions} [options]
  * @returns {Observable<Component>}

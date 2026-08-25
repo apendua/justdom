@@ -180,7 +180,7 @@ export function withCursor(parent, fn) {
  *
  * @template T
  * @param {() => T} fn
- * @returns {{ result: T, segment: Segment<Node> }}
+ * @returns {{ result: T, segment: Segment }}
  */
 export function claimSegment(fn) {
   const cursor = activeCursor;
@@ -212,7 +212,7 @@ export function claimSegment(fn) {
  * scratch, so a mismatch costs performance rather than correctness.
  *
  * @param {Element} root
- * @param {...Observable<Mountable<Node>>} content
+ * @param {...Observable<Mountable>} content
  * @returns {Observable<unknown>}
  */
 export function hydrate(root, ...content) {

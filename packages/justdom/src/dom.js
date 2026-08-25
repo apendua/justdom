@@ -28,7 +28,7 @@ const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
  * @template {keyof HTMLElementTagNameMap} Tag
  * @param {Tag} tag
  * @param {MonoTypeOperatorFunction<HTMLElementTagNameMap[Tag]>[]} operators
- * @returns {Observable<Mountable<Node>>}
+ * @returns {Observable<Mountable>}
  */
 export function $(tag, operators = []) {
   return defer(() => {
@@ -43,7 +43,7 @@ export function $(tag, operators = []) {
  * @template {keyof SVGElementTagNameMap} Tag
  * @param {Tag} tag
  * @param {MonoTypeOperatorFunction<SVGElementTagNameMap[Tag]>[]} operators
- * @returns {Observable<Mountable<Node>>}
+ * @returns {Observable<Mountable>}
  */
 export function $$(tag, operators = []) {
   return defer(() => {
@@ -55,7 +55,7 @@ export function $$(tag, operators = []) {
 }
 
 /**
- * @returns {Container<Node>}
+ * @returns {Container}
  */
 function createContainer() {
   /** @type {Node} */
@@ -100,7 +100,7 @@ function createPlaceholder() {
  * markup. The trailing one can only be claimed once the items have taken
  * theirs, so it is claimed on demand rather than up front.
  *
- * @returns {Container<Node>}
+ * @returns {Container}
  */
 function claimContainer() {
   const start = claimComment();
@@ -153,7 +153,7 @@ const renderer = new ListRenderer({
 
 /**
  * @template {Node} T
- * @param {Array<Observable<Mountable<Node>>>} children
+ * @param {Array<Observable<Mountable>>} children
  * @returns {MonoTypeOperatorFunction<T>}
  */
 export function children(...children) {
@@ -184,7 +184,7 @@ export function children(...children) {
  * through the usual replace, against the segment that was claimed.
  *
  * @param {Node} node
- * @param {Array<Observable<Mountable<Node>>>} children
+ * @param {Array<Observable<Mountable>>} children
  * @returns {Observable<unknown>}
  */
 function hydrateFragment(node, children) {
@@ -242,7 +242,8 @@ function normalize(value) {
 /**
  * @template T
  * @param {Observable<Iterable<T>> | (() => Iterable<T>)} items
- * @param {(item: T, getIndex: () => number) => Observable<Mountable<Node>>} renderItem
+ * @param {(item: T, getIndex: () => number) => Observable<Mountable>} renderItem
+ * @returns {Observable<Mountable>}
  */
 export function list(items, renderItem) {
   items = normalize(items);
@@ -253,7 +254,8 @@ export function list(items, renderItem) {
  * @template K
  * @template T
  * @param {Observable<Iterable<[K, T]>> | (() => Iterable<[K, T]>) } items
- * @param {(item: T, key: K, index: () => number) => Observable<Mountable<Node>>} renderItem
+ * @param {(item: T, key: K, index: () => number) => Observable<Mountable>} renderItem
+ * @returns {Observable<Mountable>}
  */
 export function keyedList(items, renderItem) {
   items = normalize(items);
@@ -266,7 +268,7 @@ export function keyedList(items, renderItem) {
 
 /**
  * @param {Node} node
- * @returns {Mountable<Node>}
+ * @returns {Mountable}
  */
 export function toMountable(node) {
   return {

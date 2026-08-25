@@ -11,7 +11,7 @@ import type { Observable } from "rxjs";
  */
 export default function branch<T extends string>(
   select: () => T,
-  render: (key: T) => Observable<Mountable<Node>>,
-): Observable<Mountable<Node>> {
+  render: (key: T) => Observable<Mountable>,
+): Observable<Mountable> {
   return list(() => [select()], render);
 }

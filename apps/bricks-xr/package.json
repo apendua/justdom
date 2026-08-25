@@ -13,9 +13,9 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@apendua.dev/diagnostics": "workspace:*",
     "@apendua/freedom": "workspace:*",
     "@apendua/justdom": "workspace:*",
+    "@apendua/justui": "workspace:*",
     "@apendua/signal": "workspace:*",
     "@apendua/vite-hmr": "workspace:*",
     "@iwer/devui": "^1.1.2",

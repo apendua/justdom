@@ -1,7 +1,7 @@
 import { distinctUntilChanged, switchMap } from "rxjs";
 import { $, attr, children, list, on, renderText, set, text } from "@apendua/justdom";
 import { effects, observable, onCleanup, Signal } from "@apendua/signal";
-import { getPortalRoot } from "./portal.js";
+import { getPortalRoot } from "@apendua/freedom";
 
 /**
  * @import {Observable} from "rxjs";
@@ -78,7 +78,7 @@ const DEFAULT_CARET_MARKS = /** @type {const} */ (["▲", "▼"]);
  *
  * @template T
  * @param {DropdownProps<T>} props
- * @returns {Observable<Mountable<Node>>}
+ * @returns {Observable<Mountable>}
  */
 export function dropdown(props) {
   const {

@@ -4,8 +4,7 @@ import { children } from "@apendua/justdom";
 import { just } from "@apendua/signal";
 import * as THREE from "three";
 import { keyboard, MOBILE_LAYOUT } from "./keyboard.js";
-import { InteractionContext, InteractionManager } from "../interactions.js";
-import { createPortal } from "./portal.js";
+import { createPortal, InteractionContext, InteractionManager } from "@apendua/freedom";
 
 // jsdom-env exposes the common DOM globals, but not MutationObserver, which
 // the portal uses to mirror the tree.
@@ -72,7 +71,7 @@ const classes = {
 };
 
 /**
- * @param {Observable<Mountable<Node>>} tree
+ * @param {Observable<Mountable>} tree
  */
 function mount(tree) {
   const host = document.createElement("div");
@@ -499,7 +498,7 @@ describe("projecting a keyboard", () => {
 
     /** @type {KeyPress[]} */
     const pressed = [];
-    /** @type {Mountable<Node> | undefined} */
+    /** @type {Mountable | undefined} */
     let mountable;
     const subscription = keyboard({
       classes,

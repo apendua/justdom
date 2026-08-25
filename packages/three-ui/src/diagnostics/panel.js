@@ -133,7 +133,7 @@ export function sampleAt(history, index) {
 /**
  * @param {DiagnosticsControls} controls
  * @param {number} index
- * @returns {Observable<Mountable<Node>>}
+ * @returns {Observable<Mountable>}
  */
 function chartBar(controls, index) {
   /** @returns {number | null} */

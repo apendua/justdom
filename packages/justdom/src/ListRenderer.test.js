@@ -138,7 +138,7 @@ describe("renders a simple DOM tree", () => {
 });
 
 /**
- * @returns {Container<Node>}
+ * @returns {Container}
  */
 function createContainer() {
   /** @type {Node} */
@@ -185,7 +185,7 @@ const renderer = new ListRenderer({
 
 /**
  * @template {Node} T
- * @param {Array<Observable<Mountable<Node>>>} children
+ * @param {Array<Observable<Mountable>>} children
  * @returns {MonoTypeOperatorFunction<T>}
  */
 function children(...children) {
@@ -206,7 +206,7 @@ function children(...children) {
 /**
  * @template T
  * @param {Observable<Array<T>>} items
- * @param {(item: T) => Observable<Mountable<Node>>} renderItem
+ * @param {(item: T) => Observable<Mountable>} renderItem
  */
 function list(items, renderItem) {
   return renderer.renderList(items, (item) => item, renderItem);
@@ -214,7 +214,7 @@ function list(items, renderItem) {
 
 /**
  * @param {Node} node
- * @returns {Mountable<Node>}
+ * @returns {Mountable}
  */
 function toMountable(node) {
   return {
@@ -243,7 +243,7 @@ function cloneNode(node) {
  * @template {keyof HTMLElementTagNameMap} Tag
  * @param {Tag} tag
  * @param {MonoTypeOperatorFunction<HTMLElementTagNameMap[Tag]>[]} operators
- * @returns {Observable<Mountable<Node>>}
+ * @returns {Observable<Mountable>}
  */
 function $(tag, operators = []) {
   return operators
@@ -257,7 +257,7 @@ function $(tag, operators = []) {
 }
 
 /**
- * @param {Observable<Mountable<Node>>} component
+ * @param {Observable<Mountable>} component
  */
 function inspectHTML(component) {
   const container = document.createElement("body");

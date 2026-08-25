@@ -2,7 +2,7 @@ import * as THREE from "three";
 import { $, camera, children, cursors } from "@apendua/freedom";
 import { component, effects, just, makeNonReactive, use } from "@apendua/signal";
 import { createMusicControls, Music } from "@apendua.dev/sound/xr";
-import { createDiagnostics, Diagnostics } from "@apendua.dev/diagnostics";
+import { createDiagnostics, Diagnostics } from "@apendua/justui";
 import paper_and_running_water from "@apendua.dev/media/paper_and_running_water.mp3";
 import Board from "./components/Board.js";
 import CodePanel from "./components/CodePanel.js";

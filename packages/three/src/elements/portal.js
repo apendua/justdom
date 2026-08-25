@@ -18,7 +18,7 @@ import { InteractionContext } from "../interactions.js";
 
 /**
  * @import {Observable, Unsubscribable} from 'rxjs';
- * @import {Mountable} from "@apendua/justdom";
+ * @import {Mountable} from '../core.js';
  * @import {Object3D} from 'three';
  * @import {MutationBatch} from './animationClock.js';
  * @import {PortalScheduler} from './portalScheduler.js';
@@ -859,7 +859,7 @@ export function createPortal(
       parent.add(containerObject);
     },
     /**
-     * @param {Mountable<Node>} mountable
+     * @param {Mountable} mountable
      */
     mount(mountable) {
       if (containerElement.firstChild && containerElement.lastChild) {

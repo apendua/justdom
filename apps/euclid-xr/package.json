@@ -13,13 +13,13 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@apendua.dev/diagnostics": "workspace:*",
     "@apendua.dev/euclid-core": "workspace:*",
     "@apendua.dev/euclid-lang": "workspace:*",
     "@apendua.dev/media": "workspace:*",
     "@apendua.dev/sound": "workspace:*",
     "@apendua/freedom": "workspace:*",
     "@apendua/justdom": "workspace:*",
+    "@apendua/justui": "workspace:*",
     "@apendua/signal": "workspace:*",
     "@apendua/vite-hmr": "workspace:*",
     "@iwer/devui": "^1.1.2",

@@ -1,5 +1,5 @@
 import { renderText, stylesheet, CLASS_NAME } from "@apendua/justdom";
-import type { DropdownClasses } from "@apendua/freedom";
+import type { DropdownClasses } from "@apendua/justui";
 import { palette } from "./palette.js";
 
 export const panelStack = stylesheet`

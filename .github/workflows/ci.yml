@@ -1,0 +1,51 @@
+name: CI
+on:
+  workflow_dispatch:
+  push:
+    branches: ["develop"]
+  pull_request:
+    # claude/** covers stacked pull requests -- ones based on another working
+    # branch rather than on develop -- which otherwise get no CI at all.
+    branches: ["develop", "claude/**"]
+jobs:
+  build:
+    # The release branch only carries version bumps and changelogs, which
+    # "rush change --verify" would reject for lack of change files. The commit
+    # is also marked "[skip ci]"; this guard makes the skip independent of how
+    # GitHub happens to parse that marker.
+    if: github.head_ref != 'release/version-bump'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # Full history, because "rush change --verify" needs a merge base
+          # with origin/develop. A shallow clone only ever works for runs whose
+          # checkout happens to contain develop's tip, which a stacked pull
+          # request and a manual dispatch both fail to.
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - name: Cache common/temp
+        uses: actions/cache@v6
+        with:
+          path: common/temp
+          key: rush-common-temp-${{ runner.os }}-${{
+            hashFiles('./common/config/rush/pnpm-lock.yaml') }}
+          restore-keys: |
+            rush-common-temp-${{ runner.os }}-
+      - name: Cache Rush build cache
+        uses: actions/cache@v6
+        with:
+          path: common/temp/build-cache
+          key: rush-build-cache-${{ runner.os }}-${{ github.sha }}
+          restore-keys: |
+            rush-build-cache-${{ runner.os }}-
+      - name: Verify Change Logs
+        run: node common/scripts/install-run-rush.js change --verify
+      - name: Rush Install
+        run: node common/scripts/install-run-rush.js install
+      - name: Rush build
+        run: node common/scripts/install-run-rush.js build --verbose

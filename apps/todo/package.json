@@ -1,0 +1,30 @@
+{
+  "name": "@justdom/todo",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "build": "npm run test && npm run compile && vite build",
+    "build:watch": "",
+    "compile": "tsc",
+    "dev": "vite",
+    "generate:pwa-assets": "pwa-assets-generator",
+    "preview": "vite preview",
+    "test": "if find src -type f \\( -name '*.test.ts' -o -name '*.test.tsx' -o -name '*.test.js' -o -name '*.test.jsx' \\) | grep -q .; then vitest run --environment jsdom; else echo 'No tests found, skipping'; fi",
+    "test:watch": "vitest --environment jsdom"
+  },
+  "dependencies": {
+    "@testing-library/user-event": "^14.6.1",
+    "@types/node": "^24.7.0",
+    "@vite-pwa/assets-generator": "^1.0.1",
+    "eslint": "^9.37.0",
+    "justdom": "workspace:*",
+    "justdom-signal": "workspace:*",
+    "justdom-vite-hmr": "workspace:*",
+    "lodash": "^4.17.21",
+    "rxjs": "^7.8.2",
+    "typescript": "^7.0.2",
+    "vite": "^7.1.9",
+    "vite-plugin-pwa": "^1.0.3",
+    "vitest": "^3.2.4"
+  }
+}

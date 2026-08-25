@@ -1,0 +1,48 @@
+{
+  "name": "@justdom/jsdom-env",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Installs a JSDOM window on globalThis, for running DOM code under node:test",
+  "keywords": [
+    "jsdom",
+    "dom",
+    "testing",
+    "node-test",
+    "test-environment",
+    "ssr"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/apendua/justdom.git",
+    "directory": "packages/jsdom-env"
+  },
+  "license": "MIT",
+  "author": "apendua",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./lib-types/index.d.ts",
+      "import": "./src/index.js"
+    }
+  },
+  "main": "./src/index.js",
+  "module": "./src/index.js",
+  "files": [
+    "src",
+    "lib-types"
+  ],
+  "scripts": {
+    "build": "npm run test:typecheck && npm run compile",
+    "build:types": "tsc --project tsconfig.types.json",
+    "compile": "npm run build:types",
+    "test:typecheck": "tsc --project tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "jsdom": "^26.1.0"
+  },
+  "devDependencies": {
+    "@types/jsdom": "^21.1.7",
+    "@types/node": "^24.7.0",
+    "typescript": "^7.0.2"
+  }
+}

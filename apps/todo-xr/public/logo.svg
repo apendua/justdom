@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="TODO XR">
+  <defs>
+    <linearGradient id="todo-xr-bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#262a55" />
+      <stop offset="1" stop-color="#101227" />
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="14" fill="url(#todo-xr-bg)" />
+  <g transform="translate(32 32) rotate(-8) scale(1 0.94) translate(-32 -32)">
+    <rect
+      x="8"
+      y="10"
+      width="48"
+      height="44"
+      rx="7"
+      fill="#e6e4ff"
+      fill-opacity="0.09"
+      stroke="#c9c5ff"
+      stroke-opacity="0.28"
+      stroke-width="2"
+    />
+    <g fill="#9d8cff">
+      <rect x="14" y="17" width="11" height="11" rx="3.2" />
+      <rect x="14" y="30" width="11" height="11" rx="3.2" />
+    </g>
+    <g
+      fill="none"
+      stroke="#141634"
+      stroke-width="2.5"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+    >
+      <path d="M16.8 23 19.2 25.4 22.6 20.6" />
+      <path d="M16.8 36 19.2 38.4 22.6 33.6" />
+    </g>
+    <rect
+      x="15.1"
+      y="44.1"
+      width="8.8"
+      height="8.8"
+      rx="2.6"
+      fill="none"
+      stroke="#e6e4ff"
+      stroke-opacity="0.5"
+      stroke-width="2.2"
+    />
+    <g fill="#e6e4ff">
+      <rect x="30" y="20.5" width="20" height="4" rx="2" fill-opacity="0.34" />
+      <rect x="30" y="33.5" width="17" height="4" rx="2" fill-opacity="0.34" />
+      <rect x="30" y="46.5" width="20" height="4" rx="2" fill-opacity="0.52" />
+    </g>
+  </g>
+</svg>

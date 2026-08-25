@@ -1,0 +1,457 @@
+import * as THREE from "three";
+import { BehaviorSubject, tap, Subject, Observable, combineLatest, map } from "rxjs";
+import { Computation, createProperty, Signal } from "justdom-signal";
+import { InteractionManager, InteractionContext } from "./interactions.js";
+import { createPortalScheduler, PortalSchedulerContext } from "./elements/portalScheduler.js";
+import { fitRayToHit } from "./pointers.js";
+
+export const RendererContext = createProperty(
+  /**
+   * @returns {THREE.WebGLRenderer}
+   */
+  () => {
+    throw new Error("RendererContext not set");
+  },
+);
+
+export const RendererSizeContext = createProperty(
+  /**
+   * @returns {{
+   *   width: Observable<number>;
+   *   height: Observable<number>;
+   * }}
+   */
+  () => {
+    throw new Error("RendererSizeContext not set");
+  },
+);
+
+/**
+ * @param {WeakKey} ctx
+ * @returns {Observable<{ width: number; height: number }>}
+ */
+export function size(ctx) {
+  const { width, height } = RendererSizeContext.get(ctx);
+  return combineLatest([width, height]).pipe(map(([width, height]) => ({ width, height })));
+}
+
+export const CameraContext = createProperty(
+  /**
+   * @returns {THREE.Camera}
+   */
+  () => {
+    throw new Error("CameraContext not set");
+  },
+);
+
+/**
+ * @param {WeakKey} ctx
+ * @returns {Observable<THREE.Camera>}
+ */
+export function camera(ctx) {
+  return new Observable((subscriber) => {
+    const camera = CameraContext.get(ctx);
+    subscriber.next(camera);
+    return () => {};
+  });
+}
+
+/**
+ * @param {WeakKey} ctx
+ * @returns {Observable<Observable<XRSession>>}
+ */
+export function session(ctx) {
+  return new Observable((subscriber) => {
+    const renderer = RendererContext.get(ctx);
+    const onSessionStart = () => {
+      const session = renderer.xr.getSession();
+      if (session) {
+        console.log("Session started", session);
+        subscriber.next(
+          new Observable((innerSubscriber) => {
+            const onSessionEnd = () => {
+              console.log("Session ended");
+              innerSubscriber.complete();
+            };
+            innerSubscriber.next(session);
+            renderer.xr.addEventListener("sessionend", onSessionEnd);
+            return () => {
+              renderer.xr.removeEventListener("sessionend", onSessionEnd);
+            };
+          }),
+        );
+      }
+    };
+    onSessionStart();
+    renderer.xr.addEventListener("sessionstart", onSessionStart);
+    return () => {
+      renderer.xr.removeEventListener("sessionstart", onSessionStart);
+    };
+  });
+}
+
+/**
+ * One of the player's hands, as three.js models it: where it points, where it
+ * holds, and which input source is currently driving it.
+ *
+ * @typedef {object} ControllerHandle
+ * @property {number} index Position in the renderer's controller list.
+ * @property {THREE.XRTargetRaySpace} controller Target ray space: origin at the
+ *   controller, -Z pointing where it aims.
+ * @property {THREE.XRGripSpace} grip Grip space: where a held object sits.
+ * @property {Signal<XRInputSource | null>} inputSource The connected input
+ *   source, or null while the hand is not being tracked. Carries the gamepad
+ *   and the handedness.
+ */
+
+export const ControllersContext = createProperty(
+  /**
+   * @returns {ControllerHandle[]}
+   */
+  () => {
+    throw new Error("ControllersContext not set");
+  },
+);
+
+/**
+ * The player's hands. Interaction events already say which controller they came
+ * from, so this is for the things that cannot wait to be pointed at: anything
+ * driven by where a hand *is* — held objects, two-handed gestures, proximity.
+ *
+ * @param {WeakKey} ctx
+ * @returns {ControllerHandle[]}
+ */
+export function controllers(ctx) {
+  return ControllersContext.get(ctx);
+}
+
+/**
+ * @param {number} index
+ * @param {THREE.XRTargetRaySpace} controller
+ * @param {THREE.XRGripSpace} grip
+ * @returns {ControllerHandle}
+ */
+function createControllerHandle(index, controller, grip) {
+  /** @type {Signal<XRInputSource | null>} */
+  const inputSource = Signal.of(/** @type {XRInputSource | null} */ (null));
+  controller.addEventListener("connected", (event) => {
+    inputSource.set(event.data);
+  });
+  controller.addEventListener("disconnected", () => {
+    inputSource.set(null);
+  });
+  return { index, controller, grip, inputSource };
+}
+
+/** @type {WeakMap<THREE.WebGLRenderer, Set<XRFrameRequestCallback>>} */
+const listeners = new WeakMap();
+
+/**
+ * Callbacks that run after every ordinary frame callback, once the scene has
+ * settled and its world matrices have been brought up to date. Raycasting
+ * lives here: a ray cast any earlier is cast against where things were on the
+ * previous frame, which is exactly one frame of lag in whatever is drawn at
+ * the hit. So does a panel's batch rebuild, for the same reason from the other
+ * end — a rebuild any earlier copies down a panel that the rest of this frame
+ * is still moving.
+ *
+ * @type {WeakMap<THREE.WebGLRenderer, Set<XRFrameRequestCallback>>}
+ */
+const lateListeners = new WeakMap();
+
+/**
+ * @param {THREE.WebGLRenderer} renderer
+ * @param {XRFrameRequestCallback} fn
+ * @param {WeakMap<THREE.WebGLRenderer, Set<XRFrameRequestCallback>>} [registry]
+ * @return {Observable<never>}
+ */
+function addListener(renderer, fn, registry = listeners) {
+  return new Observable((subscriber) => {
+    // We wrap fn with manual signal to ensure that potential dependencies are keep tracked of and properly cached (if needed).
+    const compoutation = new Computation();
+    const listener = compoutation.bind(fn);
+    let set = registry.get(renderer);
+    if (!set) {
+      set = new Set();
+      registry.set(renderer, set);
+    }
+    subscriber.add(
+      compoutation.subscribe({
+        error: (err) => subscriber.error(err),
+      }),
+    );
+    set.add(listener);
+    return () => {
+      set.delete(listener);
+      if (set.size === 0) {
+        registry.delete(renderer);
+      }
+    };
+  });
+}
+
+/** @type {WeakMap<THREE.WebGLRenderer, Subject<{ time: number, frame: XRFrame }>>} */
+const frameSubject = new WeakMap();
+
+/**
+ * A renderer's frames, whether or not its loop has been installed yet.
+ *
+ * Created on demand rather than when the loop is set up, because the order
+ * those two things happen in is not one a caller can see and not one worth
+ * asking them to know. A scene is *built* before the loop is installed — the
+ * tree has to exist for there to be anything to draw — so everything the
+ * scene constructs, portals included, asks for frames strictly before the
+ * loop that will emit them exists. Handing out the subject early and filling
+ * it in later makes that a non-question.
+ *
+ * It was a question once, and an expensive one: a portal that asked too
+ * early was told there were no frames here, fell back to the browser's own,
+ * and worked perfectly everywhere except inside an immersive session — where
+ * the page is not being rendered, `requestAnimationFrame` never fires, and a
+ * mirror waiting on one stops updating entirely.
+ *
+ * @param {THREE.WebGLRenderer} renderer
+ * @returns {Subject<{ time: number, frame: XRFrame }>}
+ */
+function frameSubjectFor(renderer) {
+  let subject = frameSubject.get(renderer);
+  if (!subject) {
+    subject = new Subject();
+    frameSubject.set(renderer, subject);
+  }
+  return subject;
+}
+
+/**
+ * @param {WeakKey} ctx
+ * @param {XRFrameRequestCallback} fn
+ * @return {Observable<never>}
+ */
+export function animate(ctx, fn) {
+  const renderer = RendererContext.get(ctx);
+  return addListener(renderer, fn);
+}
+
+/**
+ * Like `animate`, but at the end of the frame: after everything that moves the
+ * scene has moved it and before any of it is drawn.
+ *
+ * Ordering is the whole reason to be here rather than in `animate`. What runs
+ * over `frames(ctx)` — an animation clock sampling a running CSS animation, a
+ * scroll drag following a hand — subscribes when it starts and unsubscribes
+ * when it stops, so anything that has to see the result of a tick cannot get
+ * there by subscribing to frames itself: it would be registered first, before
+ * the things whose work it is waiting on, and would run a frame behind them
+ * forever. This phase is defined by when it runs rather than by when it was
+ * asked for, which is what makes it safe to ask for early.
+ *
+ * @param {WeakKey} ctx
+ * @param {XRFrameRequestCallback} fn
+ * @return {Observable<never>}
+ */
+export function animateLate(ctx, fn) {
+  const renderer = RendererContext.get(ctx);
+  return addListener(renderer, fn, lateListeners);
+}
+
+/**
+ * @param {WeakKey} ctx
+ * @returns {Observable<{ time: number, frame: XRFrame }>}
+ */
+export function frames(ctx) {
+  return frameSubjectFor(RendererContext.get(ctx)).asObservable();
+}
+
+/**
+ * @typedef {object} RenderOptions
+ * @property {(grip: THREE.XRGripSpace) => THREE.Object3D} [createControllerModel]
+ * @property {(grip: THREE.XRHandSpace) => THREE.Object3D} [createHandModel]
+ * @property {(renderer: THREE.WebGLRenderer) => void} [onBeforeRender]
+ * @property {(renderer: THREE.WebGLRenderer) => void} [onAfterRender]
+ * @property {boolean} [antialias]
+ * @property {number | (() => number)} [portalBudget] Milliseconds of each
+ *   frame the scene's portals may spend mounting and settling content,
+ *   between them: one pool, divided across every panel by priority and
+ *   rotation, because the frame it guards is shared and several panels
+ *   mounting at once is scene startup, not an edge case. A getter is read
+ *   at the top of every frame, so an app can trade mount time for frame
+ *   rate on the fly. 5 by default — a third of a 60 Hz frame, leaving room
+ *   for the app and the renderer.
+ */
+
+/**
+ * @param {(ctx: WeakKey) => Observable<THREE.Scene>} fn
+ * @param {RenderOptions} [options]
+ * @returns {Observable<THREE.WebGLRenderer>}
+ */
+export function render(fn, options = {}) {
+  return new Observable((subscriber) => {
+    const renderer = new THREE.WebGLRenderer({
+      antialias: options.antialias,
+    });
+    const width = new BehaviorSubject(window.innerWidth);
+    const height = new BehaviorSubject(window.innerHeight);
+
+    renderer.setPixelRatio(window.devicePixelRatio);
+    renderer.setSize(width.getValue(), height.getValue());
+
+    const camera = new THREE.PerspectiveCamera(70, width.getValue() / height.getValue(), 0.1, 20);
+
+    function onResize() {
+      width.next(window.innerWidth);
+      height.next(window.innerHeight);
+      camera.aspect = width.getValue() / height.getValue();
+      camera.updateProjectionMatrix();
+      renderer.setSize(width.getValue(), height.getValue());
+    }
+
+    window.addEventListener("resize", onResize);
+    subscriber.add(() => {
+      window.removeEventListener("resize", onResize);
+    });
+
+    renderer.xr.enabled = true;
+    const scene = new BehaviorSubject(new THREE.Scene());
+    const interactionManager = new InteractionManager();
+
+    let ctx = {};
+
+    ctx = RendererContext.set(ctx, renderer);
+    ctx = CameraContext.set(ctx, camera);
+    ctx = InteractionContext.set(ctx, interactionManager);
+    ctx = RendererSizeContext.set(ctx, {
+      width: width.asObservable(),
+      height: height.asObservable(),
+    });
+    // One scheduler per rendering context is what makes the portal budget
+    // global: every panel in this scene draws frame time from the same pool,
+    // however many are mounting at once. The closure reads `ctx` when the
+    // first portal schedules work, by which point the contexts above are all
+    // in place.
+    ctx = PortalSchedulerContext.set(
+      ctx,
+      createPortalScheduler({
+        budget: options.portalBudget ?? 5,
+        requestFrames: (tick) => {
+          const subscription = frames(ctx).subscribe(() => tick());
+          return () => subscription.unsubscribe();
+        },
+      }),
+    );
+
+    const controller0 = renderer.xr.getController(0);
+    const controllerGrip0 = renderer.xr.getControllerGrip(0);
+    if (options.createControllerModel) {
+      controllerGrip0.add(options.createControllerModel(controllerGrip0));
+    }
+    // const hand0 = renderer.xr.getHand(0);
+    // if (options.createHandModel) {
+    //   hand0.add(options.createHandModel(hand0));
+    //   controllerGrip0.add(options.createHandModel(hand0));
+    // }
+    subscriber.add(
+      interactionManager
+        .addController(controller0, (fn) => addListener(renderer, fn, lateListeners))
+        .subscribe(),
+    );
+    const controller1 = renderer.xr.getController(1);
+    const controllerGrip1 = renderer.xr.getControllerGrip(1);
+    // const hand1 = renderer.xr.getHand(1);
+    // if (options.createHandModel) {
+    //   hand1.add(options.createHandModel(hand1));
+    // }
+    if (options.createControllerModel) {
+      controllerGrip1.add(options.createControllerModel(controllerGrip1));
+    }
+    subscriber.add(
+      interactionManager
+        .addController(controller1, (fn) => addListener(renderer, fn, lateListeners))
+        .subscribe(),
+    );
+
+    ctx = ControllersContext.set(ctx, [
+      createControllerHandle(0, controller0, controllerGrip0),
+      createControllerHandle(1, controller1, controllerGrip1),
+    ]);
+
+    // Add simple rays to controllers. This will need to be revisited.
+    const lineGeometry = new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(0, 0, 0),
+      new THREE.Vector3(0, 0, -1),
+    ]);
+
+    const lineMaterial = new THREE.LineBasicMaterial({
+      color: 0xdddddd,
+    });
+    const line = new THREE.Line(lineGeometry, lineMaterial);
+    line.name = "line";
+
+    // The length is not fixed: each ray is cut at whatever it is pointing at,
+    // so it stops at the surface rather than disappearing into it. Both clones
+    // share the geometry, which is why the length lives in the scale.
+    for (const controller of [controller0, controller1]) {
+      const ray = line.clone();
+      controller.add(ray);
+      subscriber.add(fitRayToHit(ray, controller, interactionManager.pointers).subscribe());
+    }
+
+    subscriber.add(
+      fn(ctx)
+        .pipe(
+          tap((scene) => {
+            scene.add(camera);
+            // scene.add(hand0);
+            scene.add(controller0);
+            scene.add(controllerGrip0);
+            // scene.add(hand1);
+            scene.add(controller1);
+            scene.add(controllerGrip1);
+          }),
+        )
+        .subscribe(scene),
+    );
+
+    // The same subject anything built above already holds: the scene was
+    // constructed before this line, and whatever asked it for frames is
+    // waiting on this one.
+    const subject = frameSubjectFor(renderer);
+
+    renderer.setAnimationLoop((time, frame) => {
+      options.onBeforeRender?.(renderer);
+      subject.next({ time, frame });
+      const currentScene = scene.getValue();
+      const set = listeners.get(renderer);
+      if (set) {
+        for (const fn of set) {
+          fn(time, frame);
+        }
+      }
+      const lateSet = lateListeners.get(renderer);
+      if (lateSet) {
+        // Everything that moves this frame has now moved — three.js has written
+        // the controllers' new poses and the callbacks above have had their
+        // say — but all of it is still sitting in local matrices. Flushing them
+        // here means the late callbacks, which is where rays are cast, see the
+        // scene as it is about to be drawn rather than as it was last frame.
+        // What those callbacks move in turn (a cursor following its hit) is
+        // picked up by the renderer's own flush, a few lines down.
+        if (currentScene.matrixWorldAutoUpdate === true) {
+          currentScene.updateMatrixWorld();
+        }
+        for (const fn of lateSet) {
+          fn(time, frame);
+        }
+      }
+      renderer.render(currentScene, camera);
+      options.onAfterRender?.(renderer);
+    });
+
+    subscriber.next(renderer);
+
+    return () => {
+      renderer.setAnimationLoop(null);
+      renderer.dispose();
+      interactionManager.cleanup();
+    };
+  });
+}

@@ -1,0 +1,202 @@
+name: Release
+on:
+  workflow_dispatch:
+  push:
+    branches: ["develop"]
+
+# Two release runs must never interleave: the second one would bump versions on
+# top of a develop whose previous bump has not been published yet.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    # workflow_dispatch can be started from any branch, but both halves of this
+    # job only make sense against develop.
+    if: github.ref == 'refs/heads/develop'
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      contents: write
+      pull-requests: write
+    env:
+      RELEASE_BRANCH: release/version-bump
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # GitHub rejects a branch pushed out of a shallow clone
+          # ("shallow update not allowed"), and this job pushes one.
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - name: Configure the Git identity
+        # "rush version" reads user.email before it does anything else, and both
+        # the release commit and the annotated Git tags are authored here.
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+      - name: Cache common/temp
+        uses: actions/cache@v6
+        with:
+          path: common/temp
+          key: rush-common-temp-${{ runner.os }}-${{
+            hashFiles('./common/config/rush/pnpm-lock.yaml') }}
+          restore-keys: |
+            rush-common-temp-${{ runner.os }}-
+      - name: Cache Rush build cache
+        uses: actions/cache@v6
+        with:
+          path: common/temp/build-cache
+          key: rush-build-cache-${{ runner.os }}-${{ github.sha }}
+          restore-keys: |
+            rush-build-cache-${{ runner.os }}-
+      - name: Rush install
+        run: node common/scripts/install-run-rush.js install
+      - name: Build the publishable packages
+        # The tarballs ship "lib" and "lib-types", so the packages have to be
+        # built before "rush publish" packs them. The "version-policy:" selector
+        # resolves the set from rush.json, so this never has to name them, and
+        # "--to" pulls in the dependencies they need and nothing else.
+        run: |
+          node common/scripts/install-run-rush.js build \
+            --to version-policy:publishable
+      - name: Publish packages to npm
+        # Publishes every "shouldPublish" package whose version is not on the
+        # registry yet, and is a no-op otherwise. It runs *before* the bump
+        # below so that nothing reaches the registry that has not been reviewed
+        # and merged into develop first.
+        #
+        # "--target-branch" is what enables the annotated "<package>_v<version>"
+        # Git tags -- without it "rush publish" skips every Git operation. HEAD
+        # is develop at this point, so the push it does afterwards only carries
+        # the new tags.
+        #
+        # "--version-policy" narrows this to the same set the build step used.
+        # A package added with a bare "shouldPublish": true would then be left
+        # alone by both steps, rather than being published without having been
+        # built.
+        #
+        # The publishable packages are unscoped, so they go to the public
+        # registry and there is no access level to argue about -- npm has no
+        # other kind of unscoped package. NPM_AUTH_TOKEN is an npm automation
+        # token; common/config/rush/.npmrc-publish is what reads it.
+        run: |
+          node common/scripts/install-run-rush.js publish \
+            --publish \
+            --include-all \
+            --version-policy publishable \
+            --set-access-level public \
+            --target-branch develop
+        env:
+          NPM_AUTH_TOKEN: ${{ secrets.NPM_AUTH_TOKEN }}
+      - name: Apply the pending change files
+        id: bump
+        # Deliberately no "--target-branch" here: "rush version" then only
+        # rewrites package.json and the changelogs on disk and skips every Git
+        # operation, which leaves the result for the pull request below instead
+        # of pushing it straight to develop.
+        run: |
+          node common/scripts/install-run-rush.js version --bump
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "No pending change files, so there is nothing to bump." >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Open the version bump pull request
+        if: steps.bump.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Summarise the version changes. Change files of bump type "none" only
+          # produce changelog entries, so this table is legitimately empty
+          # sometimes.
+          node -e '
+            const fs = require("node:fs");
+            const { execFileSync } = require("node:child_process");
+            const files = execFileSync("git", ["diff", "--name-only"], { encoding: "utf8" })
+              .split("\n")
+              .filter((file) => file.endsWith("/package.json"));
+            const rows = [];
+            for (const file of files) {
+              const after = JSON.parse(fs.readFileSync(file, "utf8"));
+              const before = JSON.parse(
+                execFileSync("git", ["show", "HEAD:" + file], { encoding: "utf8" })
+              );
+              if (before.version !== after.version) {
+                rows.push("| `" + after.name + "` | " + before.version + " | " + after.version + " |");
+              }
+            }
+            if (rows.length) {
+              console.log("| Package | From | To |");
+              console.log("| --- | --- | --- |");
+              console.log(rows.join("\n"));
+            } else {
+              console.log("No version changes -- every pending change file is of bump type `none`, so this only regenerates the changelogs.");
+            }
+          ' > "$RUNNER_TEMP/versions.md"
+
+          {
+            echo "Applies the change files that accumulated under \`common/changes/\` and"
+            echo "regenerates the changelogs. Opened automatically by the Release workflow."
+            echo
+            cat "$RUNNER_TEMP/versions.md"
+            echo
+            echo "**Merge this with a merge commit, not a squash or a rebase.** The commit is"
+            echo "marked \`[skip ci]\` so this pull request does not spend a full build and"
+            echo "Cloudflare preview deploy on a version bump; a merge commit keeps that marker"
+            echo "out of develop's head commit, so Release runs again on the merge and publishes"
+            echo "the versions bumped here. A squash or rebase would carry the marker onto"
+            echo "develop and the packages would not go out until the next push."
+          } > "$RUNNER_TEMP/pr-body.md"
+
+          git checkout -B "$RELEASE_BRANCH"
+          git add --all
+          git commit -m "Bump package versions and update changelogs [skip ci]"
+          # Force, because the branch is regenerated from develop on every run
+          # rather than accumulating commits.
+          git push --force -u origin "$RELEASE_BRANCH"
+
+          pr="$(gh pr list --head "$RELEASE_BRANCH" --base develop --state open \
+            --json number --jq '.[0].number')"
+          if [ -n "$pr" ]; then
+            gh pr edit "$pr" --body-file "$RUNNER_TEMP/pr-body.md"
+            url="$(gh pr view "$pr" --json url --jq .url)"
+          elif ! url="$(gh pr create --base develop --head "$RELEASE_BRANCH" \
+            --title "Release: apply change files and bump versions" \
+            --body-file "$RUNNER_TEMP/pr-body.md")"; then
+            # GITHUB_TOKEN may not open pull requests unless "Allow GitHub
+            # Actions to create and approve pull requests" is enabled, and that
+            # setting is off by default. Everything up to this point has already
+            # happened -- the packages are published and the branch is pushed --
+            # so say which one step is missing and how to finish it by hand,
+            # rather than leaving a bare API error at the end of a green run.
+            compare="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/compare/develop...${RELEASE_BRANCH}?expand=1"
+            echo "::error::Could not open the version bump pull request. Enable" \
+              "'Allow GitHub Actions to create and approve pull requests' under" \
+              "Settings > Actions > General > Workflow permissions and re-run" \
+              "this workflow, or open it by hand: ${compare}"
+            {
+              echo "### Version bump pull request could not be opened"
+              echo
+              echo "Publishing and the version bump both succeeded, and \`$RELEASE_BRANCH\` is"
+              echo "pushed and ready. Only the API call that opens the pull request was refused."
+              echo
+              echo "Enable **Allow GitHub Actions to create and approve pull requests** under"
+              echo "**Settings → Actions → General → Workflow permissions**, then re-run this"
+              echo "workflow. Or open it by hand:"
+              echo
+              echo "$compare"
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+
+          {
+            echo "### Version bump pull request"
+            echo
+            echo "$url"
+            echo
+            cat "$RUNNER_TEMP/versions.md"
+          } >> "$GITHUB_STEP_SUMMARY"

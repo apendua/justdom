@@ -1,0 +1,68 @@
+{
+  "name": "justdom-three",
+  "version": "0.0.0",
+  "description": "Reactive Three.js scene graph built on justdom-signal, with WebXR helpers and a DOM-in-scene bridge",
+  "keywords": [
+    "three",
+    "threejs",
+    "reactive",
+    "renderer",
+    "signals",
+    "webxr",
+    "webgl",
+    "3d"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/apendua/justdom.git",
+    "directory": "packages/three"
+  },
+  "license": "MIT",
+  "author": "apendua",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./lib-types/index.d.ts",
+      "import": "./src/index.js"
+    }
+  },
+  "main": "./lib/index.js",
+  "module": "./src/index.js",
+  "files": [
+    "lib",
+    "src",
+    "lib-types"
+  ],
+  "scripts": {
+    "build": "npm run test && npm run compile && npm run build:types",
+    "build:types": "tsc --project tsconfig.types.json",
+    "compile": "tsc --project tsconfig.build.json",
+    "test": "npm run test:typecheck && node --import ./src/test/setup-jsdom.js --test \"src/**/*.test.js\"",
+    "test:coverage": "npm run test:typecheck && node --import ./src/test/setup-jsdom.js --test --experimental-test-coverage \"src/**/*.test.js\"",
+    "test:typecheck": "tsc --project tsconfig.json --noEmit",
+    "test:watch": "node --import ./src/test/setup-jsdom.js --test --watch \"src/**/*.test.js\""
+  },
+  "dependencies": {
+    "rxjs": "^7.8.2"
+  },
+  "devDependencies": {
+    "@justdom/jsdom-env": "workspace:*",
+    "@types/node": "^24.7.0",
+    "@types/three": "~0.180.0",
+    "@webgpu/types": "^0.1.65",
+    "eslint": "^9.37.0",
+    "fast-check": "^4.3.0",
+    "justdom": "workspace:*",
+    "justdom-signal": "workspace:*",
+    "justdom-vite-hmr": "workspace:*",
+    "three": "~0.180.0",
+    "typescript": "^7.0.2"
+  },
+  "peerDependencies": {
+    "justdom-signal": "workspace:*",
+    "three": "~0.180.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

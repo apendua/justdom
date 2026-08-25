@@ -1,0 +1,65 @@
+{
+  "name": "justdom",
+  "version": "0.0.0",
+  "description": "Reactive, non-VDOM DOM renderer built on justdom-signal, with SSR and hydration support",
+  "keywords": [
+    "dom",
+    "reactive",
+    "renderer",
+    "signals",
+    "vdom-free",
+    "ssr",
+    "hydration"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/apendua/justdom.git",
+    "directory": "packages/justdom"
+  },
+  "license": "MIT",
+  "author": "apendua",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./lib-types/index.d.ts",
+      "import": "./src/index.js"
+    },
+    "./hydrate": {
+      "types": "./lib-types/hydrate.d.ts",
+      "import": "./src/hydrate.js"
+    }
+  },
+  "main": "./lib/index.js",
+  "module": "./src/index.js",
+  "files": [
+    "lib",
+    "src",
+    "lib-types"
+  ],
+  "scripts": {
+    "build": "npm run test && npm run compile && npm run build:types",
+    "build:types": "tsc --project tsconfig.types.json",
+    "compile": "tsc --project tsconfig.build.json",
+    "test": "npm run test:typecheck && node --import ./src/test/setup-jsdom.js --test \"src/**/*.test.js\"",
+    "test:coverage": "npm run test:typecheck && node --import ./src/test/setup-jsdom.js --test --experimental-test-coverage \"src/**/*.test.js\"",
+    "test:typecheck": "tsc --project tsconfig.json --noEmit",
+    "test:watch": "node --import ./src/test/setup-jsdom.js --test --watch \"src/**/*.test.js\""
+  },
+  "dependencies": {
+    "justdom-signal": "workspace:*",
+    "rxjs": "^7.8.2"
+  },
+  "devDependencies": {
+    "@justdom/jsdom-env": "workspace:*",
+    "@testing-library/dom": "^10.4.0",
+    "@testing-library/user-event": "^14.6.1",
+    "@types/node": "^24.7.0",
+    "eslint": "^9.37.0",
+    "fast-check": "^4.3.0",
+    "justdom-vite-hmr": "workspace:*",
+    "typescript": "^7.0.2"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

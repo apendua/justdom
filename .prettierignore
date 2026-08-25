@@ -1,0 +1,4 @@
+/common
+# Written by the dev server when a level is saved out of a headset, in a shape
+# that is stable across saves. See apps/laser-xr/vite/levels.js.
+/apps/laser-xr/src/levels

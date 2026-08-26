@@ -135,10 +135,10 @@ function worktree(revision) {
  * One measured session: a browser in an emulated headset, driving one
  * scenario, reporting its counts and its frame gaps.
  *
- * @param {{ root: string, app: string, rounds: number, styleReads: boolean }} options
+ * @param {{ root: string, app: string, styleReads: boolean }} options
  * @param {import('./scenarios.js').Scenario[]} list
  */
-async function measure({ root, app, rounds, styleReads }, list) {
+async function measure({ root, app, styleReads }, list) {
   const appRoot = join(root, "apps", app);
   const server = await createServer({
     root: appRoot,
@@ -302,7 +302,6 @@ try {
           {
             root: side.root,
             app: options.app,
-            rounds: options.rounds,
             styleReads: options.styleReads,
           },
           list,

@@ -189,6 +189,105 @@ describe("createPortal", () => {
     portal.disconnect();
   });
 
+  test("content mounted mid-build is not lost to an orphaned object", async () => {
+    // The race: a node the observer reports directly — content mounted while
+    // the initial build is still being sliced across frames — can reach the
+    // pump's queue ahead of the parent it belongs under. Built first, it finds
+    // no object to attach to; when its parent's turn comes, the parent must
+    // adopt it, or it hangs outside the scene forever, mirrored but never
+    // drawn. This is exactly how `scrollable`'s bar vanished: its
+    // ResizeObserver fires on first layout, mid-mount, and the bar's subtree
+    // was queued ahead of the un-built widget root it belonged under.
+    //
+    // A budget of 0 pins the interleaving: the pump builds exactly one node
+    // per frame (the at-least-one guarantee), so each `flushFrame` below is
+    // one build, and the insertion lands between two known turns.
+    const manager = new InteractionManager();
+    const ctx = InteractionContext.set({}, manager);
+    const portal = createPortal(ctx, { budget: 0 });
+    const parent = new THREE.Group();
+    portal.addTo(parent);
+
+    // root > a > b, mounted; x arrives under b later, mid-build.
+    const root = document.createElement("div");
+    const a = document.createElement("div");
+    const b = document.createElement("div");
+    root.appendChild(a);
+    a.appendChild(b);
+
+    /** @type {import("@apendua/justdom").Mountable} */
+    const mountable = {
+      replace([first, last]) {
+        const container = first.parentNode;
+        assert.ok(container);
+        container.insertBefore(root, first);
+        container.removeChild(first);
+        if (last !== first) {
+          container.removeChild(last);
+        }
+        return [root, root];
+      },
+    };
+    portal.mount(mountable);
+
+    // The observer reports the mounted tree and queues its root.
+    await nextMacrotask();
+    // One frame: `root` builds, queueing [a].
+    flushFrame();
+    await nextMacrotask();
+
+    // Mid-build, content appears under `b` — which is not even queued yet.
+    // The observer queues `x` directly: the queue is now [a, x], and `b`
+    // only joins it behind `x` when `a`'s turn walks its children. So `x`
+    // builds before its parent exists — the race, made deterministic.
+    const x = document.createElement("div");
+    b.appendChild(x);
+    await nextMacrotask();
+
+    await settle(portal);
+
+    // Every element must be reachable from the portal's container: an equal
+    // tree mounted whole is the yardstick for what the sliced, raced mount
+    // should have produced.
+    const control = createPortal(InteractionContext.set({}, new InteractionManager()));
+    const controlParent = new THREE.Group();
+    control.addTo(controlParent);
+    const controlRoot = /** @type {HTMLElement} */ (root.cloneNode(true));
+    /** @type {import("@apendua/justdom").Mountable} */
+    const controlMountable = {
+      replace([first, last]) {
+        const container = first.parentNode;
+        assert.ok(container);
+        container.insertBefore(controlRoot, first);
+        container.removeChild(first);
+        if (last !== first) {
+          container.removeChild(last);
+        }
+        return [controlRoot, controlRoot];
+      },
+    };
+    control.mount(controlMountable);
+    await settle(control);
+
+    /** @param {THREE.Object3D} object */
+    const countDescendants = (object) => {
+      let count = 0;
+      object.traverse(() => {
+        count += 1;
+      });
+      return count;
+    };
+
+    assert.equal(
+      countDescendants(parent),
+      countDescendants(controlParent),
+      "the raced mount reaches the scene in full, exactly as the same tree mounted whole",
+    );
+
+    portal.disconnect();
+    control.disconnect();
+  });
+
   test("a click on the panel background is reported to the DOM", async () => {
     const manager = new InteractionManager();
     /** @type {THREE.Object3D[]} */

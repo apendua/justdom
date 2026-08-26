@@ -9,9 +9,9 @@ export default defineConfig({
     VitePWA({
       registerType: "autoUpdate",
       manifest: {
-        name: "Vanilla Minesweeper",
-        short_name: "Minesweeper",
-        description: "A simple Minesweeper game built with Vanilla JS",
+        name: "Todo App",
+        short_name: "Todo",
+        description: "Example todo app created with justdom",
         theme_color: "#ffffff",
         icons: [
           {

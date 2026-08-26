@@ -11,9 +11,9 @@ export default defineConfig({
     VitePWA({
       registerType: "autoUpdate",
       manifest: {
-        name: "TODO XR",
-        short_name: "TODO",
-        description: "A simple TODO app implemented with FreeDOM",
+        name: "Todo XR",
+        short_name: "Todo",
+        description: "Example todo app created with justdom-three",
         theme_color: "#ffffff",
         icons: [
           {

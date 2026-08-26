@@ -27,17 +27,23 @@ if (query.has("emulator")) {
   document.body.appendChild(stats.dom);
 }
 
-// Available in production builds too, so the deployed game can be exercised
-// from an ordinary browser. The import is dynamic, so the emulator and its dev
-// UI stay in a separate chunk that is only fetched when it is asked for. If
-// that fetch fails there is no reason to withhold the game, so mounting
+// Development builds only. The emulator pulls in iwer and its React dev UI --
+// half a megabyte the scene itself never needs -- and `import.meta.env.DEV` is
+// substituted before rollup runs, so the branch dies and the whole thing leaves
+// the production bundle instead of merely sitting in a chunk nobody fetches.
+// That also takes lucide-react's "use client" directives out of the build with
+// it, which is what rollup was warning about once per icon module.
+//
+// The visual suite and the benchmarks both serve the app through Vite's dev
+// server, so `?emulator` still answers for them.
+// If that fetch fails there is no reason to withhold the game, so mounting
 // carries on regardless.
 //
 // `?emulator=bare` installs the runtime without the dev UI: everything that
 // makes the demo drivable by hand is also something that would be in the
 // frame of a photograph of the scene, which is what the visual test takes.
 Promise.resolve(
-  query.has("emulator")
+  import.meta.env.DEV && query.has("emulator")
     ? import("./emulator.js").then(({ install }) =>
         install({ devUI: query.get("emulator") !== "bare" }),
       )

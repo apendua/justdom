@@ -9,18 +9,5 @@ export default defineConfig({
     target: "esnext",
     sourcemap: true,
     chunkSizeWarningLimit: 1024,
-    rollupOptions: {
-      // @iwer/devui is a React app, and the icon set it draws from ships
-      // "use client" at the top of every module. Nothing here is server
-      // rendered, so the directive means nothing to this bundle -- but rollup
-      // says so once per file, and "rush build" treats any warning as a
-      // finding worth failing over. Everything else still comes through.
-      onwarn(warning, warn) {
-        if (warning.code === "MODULE_LEVEL_DIRECTIVE") {
-          return;
-        }
-        warn(warning);
-      },
-    },
   },
 });

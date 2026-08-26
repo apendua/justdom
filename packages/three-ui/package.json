@@ -61,7 +61,7 @@
     "justdom": "workspace:*",
     "justdom-signal": "workspace:*",
     "justdom-three": "workspace:*",
-    "three": "~0.185.0"
+    "three": ">=0.180.0"
   },
   "publishConfig": {
     "access": "public"

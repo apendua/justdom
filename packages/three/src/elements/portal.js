@@ -480,9 +480,18 @@ export function createPortal(
    * would make an object for a ghost; the containment check drops it, and
    * with it the subtree it would have queued.
    *
-   * Attachment is the builder's job on this path: children are queued after
-   * their parent, so by a child's turn the parent's object exists and the
-   * content group — the group a scroll translates — is there to attach to.
+   * Attachment is the builder's job on this path, and it has to work from
+   * both ends: whoever of parent and child is built second finds the other
+   * and connects. Children discovered by walking their parent are queued
+   * after it, and attach themselves on their own turn. But a node the
+   * observer reports directly — content mounted mid-build, a scrollbar
+   * appearing the moment layout gives its widget a size — can reach the
+   * queue *ahead* of the parent it belongs under, build first, and find no
+   * object to attach to. It hangs unparented until the parent's own turn
+   * walks its children and adopts any object already built and loose. A
+   * first cut assumed queue order alone made the child always second, and
+   * every panel whose content arrived while the mount was being sliced lost
+   * that content to orphaned objects — built, mirrored, and in no scene.
    *
    * @param {Node} node
    * @returns {boolean} whether anything was genuinely built
@@ -506,8 +515,17 @@ export function createPortal(
       }
     }
     node.childNodes.forEach((childNode) => {
-      if (!nodeToObject.has(childNode)) {
+      const childObject = nodeToObject.get(childNode);
+      if (!childObject) {
+        // Never built (or a comment, which builds to nothing either way):
+        // queue it, and its own turn will attach it — its parent exists now.
         pump?.enqueue(childNode);
+      } else if (!childObject.parent) {
+        // Built before this parent was — the observer reported it directly,
+        // out of tree order — and left loose. Adopt it, subtree and all: its
+        // own children attached to *it* on their turns, so the whole branch
+        // arrives with it.
+        getContentGroup(object).add(childObject);
       }
     });
     return true;

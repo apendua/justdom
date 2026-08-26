@@ -130,7 +130,7 @@ describe("use()", () => {
     // reactive things — a `component(...)` builds its entities in there — and
     // those belong to it, not to the effect that subscribed it. Tracking them
     // would tear the whole inner subscription down and back up on a write the
-    // callback never looked at, which in freedom means rebuilding a subtree.
+    // callback never looked at, which in justdom-three means rebuilding a subtree.
     const unrelated = Signal.of("a");
     let callbackRuns = 0;
     let innerSubscribes = 0;

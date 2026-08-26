@@ -20,7 +20,7 @@ const textStyle = className`
   user-select: none;
 `;
 
-// freedom draws a checkbox in a portal itself — the box from these
+// justdom-three draws a checkbox in a portal itself — the box from these
 // declarations, the tick in whatever `color` says — so the native look is of no
 // use to it, and `appearance: none` is what the flat build needs anyway to be
 // dressed the same way. The XR panel is what this app is, so the ticked state
@@ -47,10 +47,10 @@ const checkboxStyle = stylesheet`
   .${CLASS_NAME}:checked, .${CLASS_NAME}[data-xr-checked] {
     background-color: #007bff;
     border-color: #007bff;
-    /* The tick, for the flat build. In a scene freedom draws its own vector
+    /* The tick, for the flat build. In a scene justdom-three draws its own vector
        tick and never reads background-image, so this shows on a page and only
        there. A background rather than ::after because generated content on a
-       replaced element is Chrome-only; the polyline is the same one freedom
+       replaced element is Chrome-only; the polyline is the same one justdom-three
        draws, so the two builds show the same mark. */
     background-image: url('data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"%3E%3Cpolyline points="0.16,0.5 0.4,0.74 0.84,0.24" fill="none" stroke="white" stroke-width="0.16"/%3E%3C/svg%3E');
   }

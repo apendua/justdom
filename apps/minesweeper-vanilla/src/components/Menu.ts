@@ -1,6 +1,6 @@
 import { $, attr, children, className, on, style, text } from "@apendua/justdom";
-import { Fields } from "@apendua.dev/minesweeper";
 import { component } from "@apendua/signal";
+import { Fields } from "../store/Fields";
 
 export interface SizePreset {
   id: string;

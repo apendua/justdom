@@ -1,7 +1,7 @@
 import { $$, attr, children, text } from "@apendua/justdom";
-import { Field } from "@apendua.dev/minesweeper";
 import { component, observable } from "@apendua/signal";
 import { switchMap } from "rxjs";
+import { Field } from "../store/Fields";
 import { ViewportContext } from "../store/Viewport";
 
 type FieldKind = "empty" | "flag" | "mine" | number;

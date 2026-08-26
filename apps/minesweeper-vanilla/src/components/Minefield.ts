@@ -1,6 +1,6 @@
 import { list, $$, children, attr, on, className } from "@apendua/justdom";
-import { Field, Fields, getKey } from "@apendua.dev/minesweeper";
 import { observe } from "@apendua/signal";
+import { Field, Fields, getKey } from "../store/Fields";
 import { RootContext } from "../store/Root";
 import { ViewportContext } from "../store/Viewport";
 import { tap } from "rxjs";

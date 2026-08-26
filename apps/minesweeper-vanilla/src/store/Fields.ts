@@ -1,9 +1,8 @@
-import { batch, createProperty } from "@apendua/signal";
-import { store, memo } from "@apendua/signal";
+import { batch, createProperty, memo, store } from "@apendua/signal";
 import { BBox, VectorLike, createRect, getFieldSetBBox, getNeighbors } from "@apendua.dev/geometry";
-import type { FieldData, FieldState, FieldSetup } from "./types.js";
+import type { FieldData, FieldState, FieldSetup } from "./types";
 
-export * from "./types.js";
+export * from "./types";
 
 interface GenerateFieldsOptions {
   nRows?: number;

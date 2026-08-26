@@ -1,5 +1,3 @@
-import { Observable } from "rxjs";
-
 /**
  * The tracking layer: who is reading, which channel they are being built
  * into, and the errors everything below agrees on.
@@ -19,7 +17,7 @@ import { Observable } from "rxjs";
  * *is* the topological order, and it sees through anything, because it is
  * built out of the reads that actually happened.
  *
- * @import {Subscribable} from "rxjs";
+ * @import {Observer, Subscribable, Unsubscribable} from "./subscribable.js";
  */
 
 /**
@@ -74,7 +72,7 @@ export const DIRTY = 2;
  *
  * @typedef {object} ReactiveNodeLike
  * @property {number} version
- * @property {(observer: Partial<import("rxjs").Observer<void>>) => import("rxjs").Unsubscribable} subscribe
+ * @property {(observer: Partial<Observer<void>>) => Unsubscribable} subscribe
  */
 
 /**
@@ -267,8 +265,8 @@ export class Resource {
   }
 
   /**
-   * @param {Partial<import("rxjs").Observer<never>>} [observer]
-   * @returns {import("rxjs").Unsubscribable}
+   * @param {Partial<Observer<never>>} [observer]
+   * @returns {Unsubscribable}
    */
   subscribe(observer) {
     /** @type {void | (() => void)} */
@@ -310,28 +308,41 @@ export function resource(start) {
  *
  * @template T
  * @param {Subscribable<T>} source
- * @returns {import("rxjs").Observable<T>}
+ * @returns {Subscribable<T>}
  */
 export function skipSynchronousValues(source) {
-  return new Observable((subscriber) => {
-    let initialized = false;
-    subscriber.add(
-      source.subscribe({
+  return {
+    subscribe: (observer) => {
+      let initialized = false;
+      let closed = false;
+      const subscription = source.subscribe({
         next: (value) => {
-          if (initialized) {
-            subscriber.next(value);
+          if (initialized && !closed) {
+            observer.next?.(value);
           }
         },
         error: (err) => {
-          subscriber.error(err);
+          if (!closed) {
+            closed = true;
+            observer.error?.(err);
+          }
         },
         complete: () => {
-          subscriber.complete();
+          if (!closed) {
+            closed = true;
+            observer.complete?.();
+          }
         },
-      }),
-    );
-    initialized = true;
-  });
+      });
+      initialized = true;
+      return {
+        unsubscribe: () => {
+          closed = true;
+          subscription.unsubscribe();
+        },
+      };
+    },
+  };
 }
 
 /**
@@ -352,25 +363,30 @@ export function valueOf(dependency, getDefaultValue) {
   /** @type {{ value: T } | undefined} */
   let observed;
   let initialized = false;
-  const proxy = new Observable((subscriber) => {
-    const subscription = dependency.subscribe({
-      next: (value) => {
-        if (!initialized) {
-          observed = { value };
-        }
-        subscriber.next(value);
-      },
-      error: (err) => {
-        subscriber.error(err);
-      },
-      complete: () => {
-        subscriber.complete();
-      },
-    });
-    return () => {
-      subscription.unsubscribe();
-    };
-  });
+  /** @type {Subscribable<T>} */
+  const proxy = {
+    subscribe: (observer) => {
+      const subscription = dependency.subscribe({
+        next: (value) => {
+          if (!initialized) {
+            observed = { value };
+          }
+          observer.next?.(value);
+        },
+        error: (err) => {
+          observer.error?.(err);
+        },
+        complete: () => {
+          observer.complete?.();
+        },
+      });
+      return {
+        unsubscribe: () => {
+          subscription.unsubscribe();
+        },
+      };
+    },
+  };
   // Adding the proxy as a dependency subscribes it, which is what captures
   // the replayed value.
   addDependency(proxy);

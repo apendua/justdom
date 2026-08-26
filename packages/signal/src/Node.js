@@ -9,7 +9,7 @@ import {
 } from "./core.js";
 
 /**
- * @import {Observer, Unsubscribable} from "rxjs";
+ * @import {Observer, Unsubscribable} from "./subscribable.js";
  * @import {Dependency} from "./core.js";
  */
 

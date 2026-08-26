@@ -1,8 +1,8 @@
-import { Subject } from "rxjs";
 import { addDependency, withComputation } from "./core.js";
+import { Subject } from "./subscribable.js";
 
 /**
- * @import { Unsubscribable, Subscribable } from "rxjs";
+ * @import { Unsubscribable, Subscribable } from "./subscribable.js";
  * @import UpdateQueue from "./UpdateQueue.js";
  */
 

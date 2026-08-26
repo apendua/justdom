@@ -1,6 +1,6 @@
 import { addDependency } from "./core.js";
 import { batch } from "./scheduler.js";
-import { filter, Subject } from "rxjs";
+import { filtered, Subject } from "./subscribable.js";
 import LazyIterable from "./LazyIterable.js";
 import { memoizeDependency } from "./memoize.js";
 
@@ -25,13 +25,14 @@ export default class ReactiveMap {
   #events = new Subject();
 
   // Stream that only fires when the set of keys changes (add/delete/clear).
-  #structureEvents = this.#events.pipe(
-    filter((event) => event.type === "added" || event.type === "deleted" || event.type === "clear"),
+  #structureEvents = filtered(
+    this.#events,
+    (event) => event.type === "added" || event.type === "deleted" || event.type === "clear",
   );
 
   /** @type {(key: K) => Dependency} */
   #getKeyEvents = memoizeDependency((key) => {
-    return this.#events.pipe(filter((event) => event.type === "clear" || event.key === key));
+    return filtered(this.#events, (event) => event.type === "clear" || event.key === key);
   });
 
   get size() {

@@ -1,6 +1,6 @@
 import { addDependency } from "./core.js";
 import { batch } from "./scheduler.js";
-import { filter, Subject } from "rxjs";
+import { filtered, Subject } from "./subscribable.js";
 import LazyIterable from "./LazyIterable.js";
 import { memoizeDependency } from "./memoize.js";
 
@@ -25,7 +25,7 @@ export default class ReactiveSet {
 
   /** @type {(value: V) => Dependency} */
   #getValueEvents = memoizeDependency((value) => {
-    return this.#events.pipe(filter((event) => event.type === "clear" || event.value === value));
+    return filtered(this.#events, (event) => event.type === "clear" || event.value === value);
   });
 
   get size() {

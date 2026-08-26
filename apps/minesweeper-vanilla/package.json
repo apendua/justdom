@@ -14,7 +14,6 @@
   },
   "dependencies": {
     "@apendua.dev/geometry": "workspace:*",
-    "@apendua.dev/minesweeper": "workspace:*",
     "@apendua/justdom": "workspace:*",
     "@apendua/signal": "workspace:*",
     "@apendua/vite-hmr": "workspace:*",

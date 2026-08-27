@@ -237,7 +237,14 @@ function store(data, operators = []) {
   });
 
   emitters.set(proxy, eventListener);
-  useEffects(proxy, operators);
+  if (operators.length > 0) {
+    // Skipped when there is nothing to apply, which is the common case: a
+    // store is the ordinary way to hold state here and most hold it without
+    // piping the entity through anything. `useEffects([])` is not free -- it
+    // builds an `Observable`, a `ReplaySubject` and a `share`, subscribes
+    // them, and registers a dependency that can never fire, once per store.
+    useEffects(proxy, operators);
+  }
   return proxy;
 }
 

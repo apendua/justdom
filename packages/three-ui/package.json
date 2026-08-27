@@ -61,7 +61,7 @@
     "@apendua/freedom": "workspace:*",
     "@apendua/justdom": "workspace:*",
     "@apendua/signal": "workspace:*",
-    "three": "~0.185.0"
+    "three": ">=0.180.0"
   },
   "publishConfig": {
     "access": "restricted",

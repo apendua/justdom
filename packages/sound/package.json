@@ -54,7 +54,7 @@
   "peerDependencies": {
     "@apendua/freedom": "workspace:*",
     "@apendua/signal": "workspace:*",
-    "three": "~0.185.0"
+    "three": ">=0.180.0"
   },
   "peerDependenciesMeta": {
     "@apendua/freedom": {

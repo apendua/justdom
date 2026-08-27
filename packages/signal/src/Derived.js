@@ -12,6 +12,7 @@ import {
 
 /**
  * @import {Subscribable} from "./subscribable.js";
+ * @import {Observable} from "rxjs";
  */
 
 /**
@@ -383,8 +384,20 @@ export class Derived extends ReactiveNode {
    * and never a node in the middle whose place in the graph has to be
    * guessed at.
    *
+   * The parameter says `Subscribable` *or* `Observable`, and the second half
+   * is there for type inference rather than for the runtime, which only ever
+   * calls `subscribe`. Inferring `TValue` out of an RxJS `Observable<T>`
+   * against a `Subscribable<T>` parameter does not work -- `Observable`
+   * declares `subscribe` as an overload set, TypeScript infers from the last
+   * overload, and the last one is the deprecated
+   * `(next, error, complete)` form, so `TValue` silently lands on `unknown`.
+   * RxJS's own `Subscribable` fails the same way, so this is not something a
+   * better local typedef can fix. Naming `Observable` in the union gives
+   * inference a member that matches directly, and callers handing over a
+   * plain `Subscribable` still match the other one.
+   *
    * @template TValue
-   * @param {Subscribable<TValue>} observable
+   * @param {Subscribable<TValue> | Observable<TValue>} observable
    * @param {object} [options]
    * @param {number} [options.cacheTTL]
    * @returns {Derived<TValue>}

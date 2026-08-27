@@ -11,7 +11,7 @@ import {
 } from "./core.js";
 
 /**
- * @import {Observable} from "rxjs";
+ * @import {Subscribable} from "./subscribable.js";
  */
 
 /**
@@ -384,7 +384,7 @@ export class Derived extends ReactiveNode {
    * guessed at.
    *
    * @template TValue
-   * @param {Observable<TValue>} observable
+   * @param {Subscribable<TValue>} observable
    * @param {object} [options]
    * @param {number} [options.cacheTTL]
    * @returns {Derived<TValue>}

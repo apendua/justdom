@@ -87,5 +87,5 @@ export function toEffect(fn, options = {}) {
  * @returns {import("./Derived.js").Derived<T>}
  */
 export function fromObservable(observable, options) {
-  return Derived.from(/** @type {Observable<T>} */ (observable), options);
+  return Derived.from(observable, options);
 }

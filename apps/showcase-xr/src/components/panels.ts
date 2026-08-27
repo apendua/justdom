@@ -1,8 +1,14 @@
 import { combineLatest, map, type Observable } from "rxjs";
-import { fontFace, stylesheet, className, CLASS_NAME } from "@apendua/justdom";
-import fontFile from "@apendua.dev/media/fonts/ZenDots-Regular.ttf";
+import { stylesheet, className, CLASS_NAME } from "@apendua/justdom";
 
-export const fontName = fontFace(fontFile);
+/**
+ * Whatever the machine already has. The panels used to be set in Zen Dots,
+ * mounted as a `@font-face` from `@apendua.dev/media` — which still ships it,
+ * for the apps whose dress is built on it. This one's is not: a web font is
+ * one more thing the measuring has to wait for before a panel can be built,
+ * and nothing here asks for anything a system sans does not do.
+ */
+export const fontFamily = 'system-ui, "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
 
 /**
  * Class names are observables (they register their stylesheet on first
@@ -21,7 +27,7 @@ export function classes(...names: Observable<string>[]): Observable<string> {
 export const cardStyle = stylesheet`
   .${CLASS_NAME} {
     box-sizing: border-box;
-    font-family: '${fontName}';
+    font-family: ${fontFamily};
     width: 22rem;
     padding: 1.25rem 1.5rem 1.5rem;
     background-color: rgb(250, 250, 253);

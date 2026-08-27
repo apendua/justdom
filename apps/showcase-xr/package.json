@@ -15,7 +15,6 @@
     "test:visual:update": "UPDATE_BASELINES=1 node --test tests/*.test.js"
   },
   "dependencies": {
-    "@apendua.dev/media": "workspace:*",
     "@apendua/freedom": "workspace:*",
     "@apendua/justdom": "workspace:*",
     "@apendua/justui": "workspace:*",

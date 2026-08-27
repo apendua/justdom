@@ -52,16 +52,16 @@
     "@apendua/signal": "workspace:*",
     "@apendua/vite-hmr": "workspace:*",
     "@types/node": "^24.7.0",
-    "@types/three": "~0.180.0",
+    "@types/three": "~0.185.0",
     "eslint": "^9.37.0",
-    "three": "~0.180.0",
+    "three": "~0.185.0",
     "typescript": "^7.0.2"
   },
   "peerDependencies": {
     "@apendua/freedom": "workspace:*",
     "@apendua/justdom": "workspace:*",
     "@apendua/signal": "workspace:*",
-    "three": "~0.180.0"
+    "three": "~0.185.0"
   },
   "publishConfig": {
     "access": "restricted",

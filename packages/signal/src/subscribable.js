@@ -21,9 +21,21 @@
  */
 
 /**
+ * The `forEach` member deserves an explanation, because nothing here calls
+ * it: it is how `T` survives type inference. An RxJS `Observable` declares
+ * `subscribe` as an overload set, TypeScript infers from the last overload,
+ * and the last one is the deprecated `(next, error, complete)` form — so a
+ * call like `Derived.from(new Observable<GLTF>(...))` inferred `unknown`,
+ * silently, at every call site. RxJS's own `Subscribable` fails the same
+ * way, so no shape of `subscribe` fixes it. `forEach` is the member RxJS
+ * observables carry whose type is plain enough to infer from, and optional
+ * here so that anything with only a `subscribe` still qualifies, exactly as
+ * before.
+ *
  * @template T
  * @typedef {object} Subscribable
  * @property {(observer: Partial<Observer<T>>) => Unsubscribable} subscribe
+ * @property {(next: (value: T) => void) => Promise<void>} [forEach]
  */
 
 /**

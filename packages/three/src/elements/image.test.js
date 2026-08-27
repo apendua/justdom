@@ -37,6 +37,22 @@ const RED_DOT =
   "data:image/gif;base64,R0lGODlhAQABAIAAAP8AAAAAACH5BAAAAAAALAAAAAABAAEAAAICRAEAOw==";
 
 /**
+ * The picture a stubbed loader hands back.
+ *
+ * `@types/three` 0.185 made `Texture` generic over its image and declared
+ * `TextureLoader` to produce a `Texture<HTMLImageElement>`, so a stand-in has
+ * to claim to be an element to be handed to one. This is that claim, made
+ * once and in the open: the fitting maths reads a width and a height and
+ * nothing else, which is all there is here.
+ *
+ * @param {number} width
+ * @param {number} height
+ */
+function fakeTexture(width, height) {
+  return new THREE.Texture(/** @type {HTMLImageElement} */ ({ width, height }));
+}
+
+/**
  * @param {string} tag
  * @param {Partial<CSSStyleDeclaration>} [style]
  */
@@ -219,8 +235,7 @@ describe("contentImage", () => {
     image.getBoundingClientRect = () =>
       /** @type {DOMRect} */ ({ left: 0, top: 0, width: 110, height: 60 });
 
-    const texture = new THREE.Texture();
-    texture.image = { width: 200, height: 50 };
+    const texture = fakeTexture(200, 50);
     const original = THREE.TextureLoader.prototype.load;
     THREE.TextureLoader.prototype.load = function (_url, onLoad) {
       onLoad?.(texture);
@@ -310,8 +325,7 @@ describe("an image projected through the element path", () => {
     image.getBoundingClientRect = () =>
       /** @type {DOMRect} */ ({ left: 0, top: 0, width: 100, height: 50 });
 
-    const texture = new THREE.Texture();
-    texture.image = { width: 200, height: 50 };
+    const texture = fakeTexture(200, 50);
     const original = THREE.TextureLoader.prototype.load;
     THREE.TextureLoader.prototype.load = function (_url, onLoad) {
       onLoad?.(texture);

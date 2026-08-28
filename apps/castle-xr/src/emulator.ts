@@ -22,6 +22,7 @@ export function install(options: { devui?: boolean } = {}) {
   // the option (hence the cast); the day the dependency moves, this line is
   // the difference between the screenshot scripts working and a session that
   // silently never starts.
+  // TODO: Remove the type casting as soon as we actually migrate to IWER 2.2
   xrDevice.installRuntime({ forceInstall: true } as unknown as Parameters<
     typeof xrDevice.installRuntime
   >[0]);

@@ -16,7 +16,15 @@ export function install(options: { devui?: boolean } = {}) {
   console.log("Installing emulator");
   const { devui = true } = options;
   const xrDevice = new XRDevice(metaQuest3);
-  xrDevice.installRuntime();
+  // From 2.2 on, IWER politely defers to a native `navigator.xr` unless
+  // forced — and headless Chromium has a native one that supports nothing,
+  // which is exactly where this emulator gets used. The installed 2.1 ignores
+  // the option (hence the cast); the day the dependency moves, this line is
+  // the difference between the screenshot scripts working and a session that
+  // silently never starts.
+  xrDevice.installRuntime({ forceInstall: true } as unknown as Parameters<
+    typeof xrDevice.installRuntime
+  >[0]);
   if (devui) {
     // The DevUI drives the headset and controller poses from its own panels,
     // so it is skipped when a script wants to set the poses itself.

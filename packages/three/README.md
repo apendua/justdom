@@ -43,7 +43,7 @@ render(Scene).subscribe((renderer) => {
 
 `render(fn, options)` owns the `WebGLRenderer`, camera, resize handling, and
 — when the device supports it — the WebXR session lifecycle. `camera(ctx)`,
-`session(ctx)`, and `useFrame(ctx, fn)` read from that same context, using the
+`getXRSession(ctx)`, and `useFrame(ctx, fn)` read from that same context, using the
 `createProperty`-based context mechanism shared with the rest of this
 monorepo's stack.
 

@@ -11,8 +11,7 @@
  * player's hands. The game is won when every brick is lying on the ground.
  */
 import * as THREE from "three";
-import { animate, camera, children, keyedList, Nothing, session, $ } from "@apendua/freedom";
-import { switchMap } from "rxjs";
+import { camera, children, keyedList, Nothing, $, getXRSession, useFrame } from "@apendua/freedom";
 import {
   batch,
   component,
@@ -376,16 +375,13 @@ const Game = component((ctx: WeakKey) => {
       );
     }),
     effects(() => {
-      use(
-        session(ctx).pipe(
-          switchMap((current) => current),
-          switchMap((xrSession) =>
-            animate(ctx, () => {
-              pollButtons(xrSession);
-            }),
-          ),
-        ),
-      );
+      const xrSession = getXRSession(ctx);
+      if (!xrSession) {
+        return;
+      }
+      useFrame(ctx, () => {
+        pollButtons(xrSession);
+      });
     }),
     children(
       Grid(ctx, [set({ size: 12, cellWidth: 0.5 })]),

@@ -15,8 +15,8 @@ import {
   onCleanup,
   Signal,
 } from "@apendua/signal";
-import { $, session } from "@apendua/freedom";
-import { Observable, switchMap } from "rxjs";
+import { $, getXRSession } from "@apendua/freedom";
+import { Observable } from "rxjs";
 import { audioOutputSelection, setAudioOutput } from "../audioOutputs.js";
 
 /**
@@ -133,21 +133,16 @@ export const Music = component(
           void setAudioOutput(listener.context, deviceId);
         }
       }),
-      effectMap((audio) => {
-        return session(ctx).pipe(
-          switchMap((xrSession$) => {
-            return xrSession$.pipe(
-              effects(() => {
-                audio.setBuffer(loadSound(controls.track));
-                audio.setLoop(true);
-                audio.play();
-                onCleanup(() => {
-                  audio.stop();
-                });
-              }),
-            );
-          }),
-        );
+      effects((audio) => {
+        if (!getXRSession(ctx)) {
+          return;
+        }
+        audio.setBuffer(loadSound(controls.track));
+        audio.setLoop(true);
+        audio.play();
+        onCleanup(() => {
+          audio.stop();
+        });
       }),
     ]);
   },

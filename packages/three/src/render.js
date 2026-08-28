@@ -1,6 +1,13 @@
 import * as THREE from "three";
 import { BehaviorSubject, tap, Subject, Observable, combineLatest, map } from "rxjs";
-import { Computation, createProperty, Signal, useEffect } from "@apendua/signal";
+import {
+  addDependency,
+  Computation,
+  createProperty,
+  fromEvent,
+  Signal,
+  useEffect,
+} from "@apendua/signal";
 import { InteractionManager, InteractionContext } from "./interactions.js";
 import { createPortalScheduler, PortalSchedulerContext } from "./elements/portalScheduler.js";
 import { fitRayToHit } from "./pointers.js";
@@ -88,6 +95,37 @@ export function session(ctx) {
       renderer.xr.removeEventListener("sessionstart", onSessionStart);
     };
   });
+}
+
+/**
+ * The session the renderer is presenting to, or `null` while it is presenting
+ * to the page.
+ *
+ * A reactive getter, which is what this question always wanted to be. There is
+ * one session at a time and every reader asks the same thing of it — am I in a
+ * session, and which one — so the answer is a value to read, and the two events
+ * that can change it are what the reader depends on. Read it from an `effects`
+ * and the block re-runs when a session starts and again when it ends; guard on
+ * `null` and the guarded half is the part that only holds inside one, with its
+ * `onCleanup` running as the session goes.
+ *
+ * The stream this replaces said the same thing in three layers — an outer
+ * observable of inner observables, the inner one completing on `sessionend` —
+ * so every caller opened with the same pair of `switchMap`s before reaching
+ * what it actually wanted to do. Nothing was ever done with the nesting except
+ * flatten it.
+ *
+ * @param {WeakKey} ctx
+ * @returns {XRSession | null}
+ */
+export function getXRSession(ctx) {
+  const { xr } = RendererContext.get(ctx);
+  // Both, always: one says a session has begun and the other that it has
+  // ended, and which of them is the interesting one depends on the answer
+  // this read is about to give.
+  addDependency(fromEvent(xr, "sessionstart"));
+  addDependency(fromEvent(xr, "sessionend"));
+  return xr.getSession();
 }
 
 /**

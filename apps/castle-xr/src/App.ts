@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { animate, camera, children, cursors, $, XREventMap, interactions } from "@apendua/freedom";
+import { camera, children, cursors, $, XREventMap, interactions, useFrame } from "@apendua/freedom";
 import { makeNonReactive, Signal } from "@apendua/signal";
 import { on, set, effects, just, use, component } from "@apendua/signal";
 
@@ -160,14 +160,12 @@ const App = component((ctx: WeakKey) => {
           if (!held || gameSession.phase.get() !== "build") {
             return;
           }
-          use(
-            animate(ctx, () => {
-              // three.js has written the hand's new pose by now, but only into
-              // its local matrix; the world one is still last frame's.
-              held.controller.updateWorldMatrix(true, false);
-              applyLevelPose(o, carriedPose(held.carry, held.controller.matrixWorld));
-            }),
-          );
+          useFrame(ctx, () => {
+            // three.js has written the hand's new pose by now, but only into
+            // its local matrix; the world one is still last frame's.
+            held.controller.updateWorldMatrix(true, false);
+            applyLevelPose(o, carriedPose(held.carry, held.controller.matrixWorld));
+          });
         }),
         children(
           // Enough fill to read the shaded sides, and one clear key light so

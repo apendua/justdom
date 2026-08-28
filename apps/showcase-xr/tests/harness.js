@@ -167,7 +167,7 @@ export async function openShowcase({ freeze = true } = {}) {
 export async function enterSession(page, { freeze = true } = {}) {
   if (freeze) {
     // The session's frames need pinning as well as the page's. Anything
-    // driven by `animate(ctx, …)` — which is the frame loop that survives a
+    // driven by `useFrame(ctx, …)` — which is the frame loop that survives a
     // headset taking the display — is timed by the session rather than by
     // the page, so the freeze above never reached it. Frames keep coming,
     // because the scene still has to be drawn; only the clock they report

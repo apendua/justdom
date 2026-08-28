@@ -2,7 +2,7 @@ import { describe, it, mock } from "node:test";
 import assert from "node:assert/strict";
 import { Subject } from "rxjs";
 
-import { Signal, Derived, Effect, batch, onCleanup, defaultChannel } from "./index.js";
+import { Signal, Derived, Effect, batch, onCleanup, defaultChannel, useEffect } from "./index.js";
 import UpdateChannel from "./UpdateChannel.js";
 
 describe("Effect", () => {
@@ -284,5 +284,62 @@ describe("Effect", () => {
     const effect = new Effect(() => {});
     assert.strictEqual(effect.channel, defaultChannel);
     effect.dispose();
+  });
+
+  describe("useEffect", () => {
+    it("runs like any other effect while the computation stands", () => {
+      const source = Signal.of(1);
+      /** @type {unknown[]} */
+      const seen = [];
+      /** @type {Effect | undefined} */
+      let inner;
+      const outer = new Effect(() => {
+        inner = useEffect(() => seen.push(source.get()));
+      });
+      assert.deepStrictEqual(seen, [1]);
+      source.set(2);
+      assert.deepStrictEqual(seen, [1, 2]);
+      assert.strictEqual(inner?.isDisposed, false);
+      outer.dispose();
+    });
+
+    it("is disposed when the computation that built it is cleaned up", () => {
+      const source = Signal.of(1);
+      /** @type {unknown[]} */
+      const seen = [];
+      /** @type {Effect | undefined} */
+      let inner;
+      const outer = new Effect(() => {
+        inner = useEffect(() => seen.push(source.get()));
+      });
+      outer.dispose();
+      assert.strictEqual(inner?.isDisposed, true);
+      source.set(2);
+      assert.deepStrictEqual(seen, [1], "nothing after the owner went away");
+    });
+
+    it("lets go of what the effect was reading, so a held value stops being cached", () => {
+      const source = Signal.of(1);
+      const derived = new Derived(() => source.get() * 2);
+      const outer = new Effect(() => {
+        useEffect(() => derived.get());
+      });
+      assert.strictEqual(derived.isLive(), true);
+      outer.dispose();
+      assert.strictEqual(derived.isLive(), false);
+    });
+
+    it("disposes on the spot when there is no computation to belong to", () => {
+      const source = Signal.of(1);
+      const warn = mock.method(console, "warn", () => {});
+      /** @type {unknown[]} */
+      const seen = [];
+      const effect = useEffect(() => seen.push(source.get()));
+      warn.mock.restore();
+      assert.strictEqual(warn.mock.calls.length, 1, "and says so");
+      assert.strictEqual(effect.isDisposed, true);
+      source.set(2);
+      assert.deepStrictEqual(seen, [1], "the one run it made on the way in");
+    });
   });
 });

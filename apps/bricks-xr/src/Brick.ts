@@ -7,8 +7,8 @@
  * hand, and the ghost of where it would land.
  */
 import * as THREE from "three";
-import { component, effects, emit, on, Op, set, Signal, store, use } from "@apendua/signal";
-import { $, animate, interactions, XREventMap } from "@apendua/freedom";
+import { component, effects, emit, on, Op, set, Signal, store } from "@apendua/signal";
+import { $, interactions, useFrame, XREventMap } from "@apendua/freedom";
 import { CELL } from "./grid.js";
 import { palette } from "./palette.js";
 
@@ -74,7 +74,7 @@ const Brick = component((ctx: WeakKey, operators: Op<Props, Events>) => {
     // whatever the hand is doing. The board is told once a frame.
     effects((o) => {
       if (held.get()) {
-        use(animate(ctx, () => emit(props, "dragmove", { matrixWorld: o.matrixWorld })));
+        useFrame(ctx, () => emit(props, "dragmove", { matrixWorld: o.matrixWorld }));
       }
     }),
     on("selectstart", (event) => {

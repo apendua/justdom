@@ -18,8 +18,8 @@ npm install @apendua/freedom @apendua/signal three
 
 ```js
 import * as THREE from "three";
-import { render, $, children, animate } from "@apendua/freedom";
-import { component, just, effects, use } from "@apendua/signal";
+import { render, $, children, useFrame } from "@apendua/freedom";
+import { component, just, effects } from "@apendua/signal";
 
 const Scene = component((ctx) => {
   return just(new THREE.Scene()).pipe(
@@ -27,11 +27,9 @@ const Scene = component((ctx) => {
       $(new THREE.AmbientLight(0xffffff, 1)),
       $(new THREE.Mesh(new THREE.BoxGeometry(), new THREE.MeshStandardMaterial()), [
         effects((cube) => {
-          use(
-            animate(ctx, () => {
-              cube.rotation.y += 0.01;
-            }),
-          );
+          useFrame(ctx, () => {
+            cube.rotation.y += 0.01;
+          });
         }),
       ]),
     ),
@@ -45,7 +43,7 @@ render(Scene).subscribe((renderer) => {
 
 `render(fn, options)` owns the `WebGLRenderer`, camera, resize handling, and
 — when the device supports it — the WebXR session lifecycle. `camera(ctx)`,
-`session(ctx)`, and `animate(ctx, fn)` read from that same context, using the
+`session(ctx)`, and `useFrame(ctx, fn)` read from that same context, using the
 `createProperty`-based context mechanism shared with the rest of this
 monorepo's stack.
 
@@ -86,7 +84,7 @@ The ray each controller draws is cut at the same hit, so it stops at the
 surface instead of disappearing into it, and stretches back out to a fixed
 reach when the hand is pointing at nothing.
 
-Hits are worked out once per frame, after every `animate(ctx, fn)` callback has
+Hits are worked out once per frame, after every `useFrame(ctx, fn)` callback has
 run and with world matrices already refreshed — the last thing before the frame
 is drawn. That is what keeps the widget on the ray: cast any earlier and it
 lands where the hand was pointing, and what it was pointing at, one frame ago.
@@ -371,11 +369,11 @@ per frame — through the same invalidation path a mutation takes — and the
 moment nothing is, the sampling stops. An idle panel costs nothing.
 Inline-style writes from a frame loop work too; each one is an ordinary
 mutation scoped to the element it touched. Drive that loop with
-`animate(ctx, fn)` rather than with `requestAnimationFrame`, though. Once a
+`useFrame(ctx, fn)` rather than with `requestAnimationFrame`, though. Once a
 session has the display the page stops being rendered and the page's own
 animation frames stop with it, so a `requestAnimationFrame` loop simply
 stops running and whatever it was moving sits still. The session's frame
-loop keeps going, and `animate` is how to draw on it. Nothing warns you:
+loop keeps going, and `useFrame` is how to draw on it. Nothing warns you:
 under an emulator the page is presenting _and_ still rendering, so both work
 and the difference only appears on a headset.
 
@@ -623,7 +621,7 @@ combining lighting, keyed lists (`list`/`keyedList`), controller/hand input,
 and DOM panels projected into 3D space.
 [`apps/showcase-xr`](../../apps/showcase-xr) is the sampler: four panels in a
 grid demonstrating hover/press transitions, CSS keyframes, a Web Animations
-API animation, an `animate(ctx, fn)` loop writing inline styles, animated
+API animation, a `useFrame(ctx, fn)` loop writing inline styles, animated
 text colour, static transforms, a layout-tier width transition, and every
 `object-fit` an image can be drawn with.
 

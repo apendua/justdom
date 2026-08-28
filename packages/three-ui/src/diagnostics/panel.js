@@ -3,9 +3,9 @@
  * little else as the thing can be made of.
  */
 import * as THREE from "three";
-import { component, effects, use } from "@apendua/signal";
+import { component, effects } from "@apendua/signal";
 import { $, children, set, style, text } from "@apendua/justdom";
-import { animate, dom } from "@apendua/freedom";
+import { dom, useFrame } from "@apendua/freedom";
 import { SAMPLE_COUNT, SAMPLE_MS } from "./frameMeter.js";
 import { bar, caption, chart, hudCard, reading, readingRow, unit, UI_SCALE } from "./styles.js";
 
@@ -216,7 +216,7 @@ export const Panel = component(
           obj.scale.setScalar(UI_SCALE);
         }),
         effects((obj) => {
-          use(animate(ctx, drawOnTop(obj)));
+          useFrame(ctx, drawOnTop(obj));
         }),
       ],
       { opaqueToRays: false },

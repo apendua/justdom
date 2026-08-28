@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { BehaviorSubject, tap, Subject, Observable, combineLatest, map } from "rxjs";
-import { Computation, createProperty, Signal } from "@apendua/signal";
+import { Computation, createProperty, Signal, useEffect } from "@apendua/signal";
 import { InteractionManager, InteractionContext } from "./interactions.js";
 import { createPortalScheduler, PortalSchedulerContext } from "./elements/portalScheduler.js";
 import { fitRayToHit } from "./pointers.js";
@@ -160,34 +160,50 @@ const listeners = new WeakMap();
 const lateListeners = new WeakMap();
 
 /**
+ * Put `fn` on a renderer's frame callbacks and hand back the way off again.
+ *
+ * The one piece both shapes of this share — the observable `animate` and the
+ * effect-based `useFrame` — so that what it means to be a frame callback is
+ * written once, and the two differ only in who owns the lifetime.
+ *
+ * @param {THREE.WebGLRenderer} renderer
+ * @param {XRFrameRequestCallback} fn
+ * @param {WeakMap<THREE.WebGLRenderer, Set<XRFrameRequestCallback>>} registry
+ * @param {(err: unknown) => void} onError
+ * @return {() => void}
+ */
+function registerListener(renderer, fn, registry, onError) {
+  // We wrap fn with manual signal to ensure that potential dependencies are keep tracked of and properly cached (if needed).
+  const compoutation = new Computation();
+  const listener = compoutation.bind(fn);
+  let set = registry.get(renderer);
+  if (!set) {
+    set = new Set();
+    registry.set(renderer, set);
+  }
+  const subscription = compoutation.subscribe({
+    error: onError,
+  });
+  set.add(listener);
+  return () => {
+    subscription.unsubscribe();
+    set.delete(listener);
+    if (set.size === 0) {
+      registry.delete(renderer);
+    }
+  };
+}
+
+/**
  * @param {THREE.WebGLRenderer} renderer
  * @param {XRFrameRequestCallback} fn
  * @param {WeakMap<THREE.WebGLRenderer, Set<XRFrameRequestCallback>>} [registry]
  * @return {Observable<never>}
  */
 function addListener(renderer, fn, registry = listeners) {
-  return new Observable((subscriber) => {
-    // We wrap fn with manual signal to ensure that potential dependencies are keep tracked of and properly cached (if needed).
-    const compoutation = new Computation();
-    const listener = compoutation.bind(fn);
-    let set = registry.get(renderer);
-    if (!set) {
-      set = new Set();
-      registry.set(renderer, set);
-    }
-    subscriber.add(
-      compoutation.subscribe({
-        error: (err) => subscriber.error(err),
-      }),
-    );
-    set.add(listener);
-    return () => {
-      set.delete(listener);
-      if (set.size === 0) {
-        registry.delete(renderer);
-      }
-    };
-  });
+  return new Observable((subscriber) =>
+    registerListener(renderer, fn, registry, (err) => subscriber.error(err)),
+  );
 }
 
 /** @type {WeakMap<THREE.WebGLRenderer, Subject<{ time: number, frame: XRFrame }>>} */
@@ -223,6 +239,15 @@ function frameSubjectFor(renderer) {
 }
 
 /**
+ * Frames as an observable: subscribing registers `fn`, unsubscribing takes it
+ * off again.
+ *
+ * `useFrame` is the one to reach for. This is for the callers that need the
+ * registration to *be* a value — something to hand to `switchMap` so the loop
+ * starts and stops with whatever it is switched on, an XR session most of the
+ * time. Reaching for it to get a lifetime is the long way round to what
+ * `useFrame` does directly.
+ *
  * @param {WeakKey} ctx
  * @param {XRFrameRequestCallback} fn
  * @return {Observable<never>}
@@ -230,6 +255,45 @@ function frameSubjectFor(renderer) {
 export function animate(ctx, fn) {
   const renderer = RendererContext.get(ctx);
   return addListener(renderer, fn);
+}
+
+/**
+ * Run `fn` on every frame, for as long as the surrounding computation stands.
+ *
+ * What `use(animate(ctx, fn))` was, without the observable in the middle. That
+ * pair only ever had one thing to say — start on the way in, stop on the way
+ * out — and it said it by wrapping the registration in an `Observable` so that
+ * `use` had something to subscribe an `Effect` to. Nothing was ever emitted
+ * through that observable and nothing ever subscribed to it twice, so the
+ * effect is the whole of it: it registers the callback, its teardown takes the
+ * callback off again, and `useEffect` ties its life to the computation that
+ * asked for it. `animate` is still there for the callers that need the
+ * registration as a value to compose with.
+ *
+ * A frame callback is not the effect's body, so a value it reads while drawing
+ * does not re-run any of this. Those reads are tracked by a `Computation` of
+ * their own — as they always were — which keeps whatever the callback pulls
+ * out of the graph awake and cached between frames without turning a moving
+ * value into a re-registration.
+ *
+ * @param {WeakKey} ctx
+ * @param {XRFrameRequestCallback} fn
+ * @returns {void}
+ */
+export function useFrame(ctx, fn) {
+  const renderer = RendererContext.get(ctx);
+  const effect = useEffect(
+    () =>
+      registerListener(renderer, fn, listeners, (err) => {
+        // Something the callback reads has failed, which is terminal: there is
+        // no value left to draw with. Failing the effect takes the callback off
+        // the frame loop through its own teardown and passes the error on to
+        // anything watching this effect — the same end the observable form came
+        // to when its subscriber was told.
+        effect.fail(err);
+      }),
+    { name: "frame" },
+  );
 }
 
 /**

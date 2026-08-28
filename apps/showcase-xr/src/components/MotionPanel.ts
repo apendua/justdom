@@ -1,7 +1,7 @@
 import { className, stylesheet, text, $, children, CLASS_NAME } from "@apendua/justdom";
 import { set } from "@apendua/justdom";
-import { component, effects, onCleanup, use } from "@apendua/signal";
-import { animate } from "@apendua/freedom";
+import { component, effects, onCleanup } from "@apendua/signal";
+import { useFrame } from "@apendua/freedom";
 import { cardStyle, captionStyle, classes, headingStyle, rowStyle } from "./panels.js";
 
 /**
@@ -11,13 +11,13 @@ import { cardStyle, captionStyle, classes, headingStyle, rowStyle } from "./pane
  * frame loop writing inline styles (each write is an ordinary observed
  * mutation).
  *
- * That last one draws its frames from `animate(ctx, …)` rather than from
+ * That last one draws its frames from `useFrame(ctx, …)` rather than from
  * `requestAnimationFrame` directly, and the difference only shows on a
  * headset. Once a session has the display the page stops being rendered, and
  * the page's own animation frames stop with it — a `requestAnimationFrame`
  * loop simply stops running, and the bar it was driving sits still. The
  * session has a frame loop of its own that keeps going, which is the one
- * `animate` hands out. Under an emulator the page is presenting *and* still
+ * `useFrame` hands out. Under an emulator the page is presenting *and* still
  * rendering, so both work and the difference is invisible: this specimen
  * animated on a desk and stopped dead in a headset.
  */
@@ -179,11 +179,9 @@ const MotionPanel = component((ctx: WeakKey) => {
             set("className", fillStyle),
             effects((el: HTMLDivElement) => {
               el.style.transformOrigin = "0px 50%";
-              use(
-                animate(ctx, (time: number) => {
-                  el.style.transform = `scaleX(${0.55 + 0.45 * Math.sin(time / 700)})`;
-                }),
-              );
+              useFrame(ctx, (time: number) => {
+                el.style.transform = `scaleX(${0.55 + 0.45 * Math.sin(time / 700)})`;
+              });
             }),
           ]),
         ),

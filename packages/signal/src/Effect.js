@@ -6,6 +6,7 @@ import {
   CircularDependencyError,
   NoValueError,
   activeChannel,
+  onCleanup,
 } from "./core.js";
 import { updateQueue, defaultChannel } from "./scheduler.js";
 
@@ -382,6 +383,32 @@ export class Effect extends ReactiveNode {
  */
 export function effect(run, options) {
   return new Effect(run, options);
+}
+
+/**
+ * An effect that lives exactly as long as the computation it is built in.
+ *
+ * An effect is a root of demand: nothing reads it, so nothing lets go of it,
+ * and it keeps everything it reads awake until somebody disposes it. Which
+ * makes "somebody" the only real question, and the surrounding computation is
+ * almost always the answer — the effect was built to serve a region of the
+ * graph and has no business outliving that region. Pairing the two here means
+ * the caller never holds the handle only to dispose it later, and never
+ * forgets to.
+ *
+ * Called with no computation active there is nothing to pair with, so
+ * `onCleanup` says so and disposes on the spot rather than leaving an effect
+ * nobody can reach. Use `new Effect` where the lifetime really is the
+ * caller's.
+ *
+ * @param {EffectRun} run
+ * @param {EffectOptions} [options]
+ * @returns {Effect}
+ */
+export function useEffect(run, options) {
+  const instance = new Effect(run, options);
+  onCleanup(() => instance.dispose());
+  return instance;
 }
 
 export default Effect;

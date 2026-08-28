@@ -16,10 +16,10 @@ import {
 import {
   $,
   children,
-  animate,
   interactions,
   Nothing,
   setLocalMatrix,
+  useFrame,
   XREventMap,
 } from "@apendua/freedom";
 import { NEVER } from "rxjs";
@@ -270,15 +270,13 @@ const Brick = component((ctx: WeakKey, operators: Op<Props, Events>) => {
     effects((o) => {
       const drag = dragState.get();
       if (drag) {
-        use(
-          animate(ctx, () => {
-            emit(props, "dragmove", {
-              matrixWorld: o.matrixWorld,
-              inputSource: drag.inputSource,
-              clone: drag.clone,
-            });
-          }),
-        );
+        useFrame(ctx, () => {
+          emit(props, "dragmove", {
+            matrixWorld: o.matrixWorld,
+            inputSource: drag.inputSource,
+            clone: drag.clone,
+          });
+        });
       }
     }),
     effectMap((o) => {

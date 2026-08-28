@@ -27,12 +27,12 @@ import {
 } from "@apendua/signal";
 import {
   $,
-  animate,
   camera,
   children,
   controllers,
   setWorldMatrix,
   ControllerHandle,
+  useFrame,
 } from "@apendua/freedom";
 import { cylinderGeometry, sphereGeometry } from "../elements/geometry.js";
 import { basicMaterial, stoneMaterial } from "../elements/material.js";
@@ -325,11 +325,9 @@ const Slingshot = component((ctx: WeakKey, operators: Op<Props, Events>) => {
         window.removeEventListener("keydown", onKeyDown);
         window.removeEventListener("keyup", onKeyUp);
       });
-      use(
-        animate(ctx, () => {
-          update(group);
-        }),
-      );
+      useFrame(ctx, () => {
+        update(group);
+      });
     }),
     children(
       strut(HANDLE_BOTTOM, YOKE, FRAME_RADIUS, FRAME_COLOUR),

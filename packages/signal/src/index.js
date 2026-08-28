@@ -3,7 +3,7 @@
 // is transformed, an `Effect` is where it leaves.
 export { Signal } from "./Signal.js";
 export { Derived } from "./Derived.js";
-export { Effect, effect } from "./Effect.js";
+export { Effect, effect, useEffect } from "./Effect.js";
 export { default as Computation } from "./Computation.js";
 export { batch, defaultChannel } from "./scheduler.js";
 export { default as UpdateChannel } from "./UpdateChannel.js";

@@ -13,8 +13,8 @@ import { createProperty, onCleanup } from "@apendua/signal";
 import * as THREE from "three";
 import * as RAPIER from "@dimforge/rapier3d";
 import { MonoTypeOperatorFunction, Observable } from "rxjs";
-import { effects, observable, use, useEffects } from "@apendua/signal";
-import { animate, layoutEffects, setWorldMatrix } from "@apendua/freedom";
+import { effects, observable, useEffects } from "@apendua/signal";
+import { layoutEffects, setWorldMatrix, useFrame } from "@apendua/freedom";
 
 export interface RapierWorkspace {
   world: RAPIER.World;
@@ -130,19 +130,17 @@ export function rigidBody<T extends THREE.Object3D>(
     );
 
     useEffects(body, operators);
-    use(
-      animate(ctx, () => {
-        const translation = body.translation();
-        const rotation = body.rotation();
-        const newOriginOffset = new THREE.Matrix4().compose(
-          new THREE.Vector3(translation.x, translation.y, translation.z),
-          new THREE.Quaternion(rotation.x, rotation.y, rotation.z, rotation.w),
-          scale,
-        );
-        origin.updateWorldMatrix(true, false);
-        setWorldMatrix(obj, origin.matrixWorld.clone().multiply(newOriginOffset));
-      }),
-    );
+    useFrame(ctx, () => {
+      const translation = body.translation();
+      const rotation = body.rotation();
+      const newOriginOffset = new THREE.Matrix4().compose(
+        new THREE.Vector3(translation.x, translation.y, translation.z),
+        new THREE.Quaternion(rotation.x, rotation.y, rotation.z, rotation.w),
+        scale,
+      );
+      origin.updateWorldMatrix(true, false);
+      setWorldMatrix(obj, origin.matrixWorld.clone().multiply(newOriginOffset));
+    });
     onCleanup(() => {
       world.removeRigidBody(body);
     });
@@ -163,19 +161,17 @@ export function runSimulation(
     // once, or a castle spends its first frame after the phase change being
     // shoved through the floor.
     const maxCatchUp = fixedTimeStep * 5;
-    use(
-      animate(ctx, () => {
-        const currentTime = performance.now();
-        const deltaTime = (currentTime - lastTime) / 1000;
-        lastTime = currentTime;
+    useFrame(ctx, () => {
+      const currentTime = performance.now();
+      const deltaTime = (currentTime - lastTime) / 1000;
+      lastTime = currentTime;
 
-        accumulator = Math.min(accumulator + deltaTime, maxCatchUp);
-        while (accumulator >= fixedTimeStep) {
-          world.step();
-          accumulator -= fixedTimeStep;
-        }
-        onAfterStep?.();
-      }),
-    );
+      accumulator = Math.min(accumulator + deltaTime, maxCatchUp);
+      while (accumulator >= fixedTimeStep) {
+        world.step();
+        accumulator -= fixedTimeStep;
+      }
+      onAfterStep?.();
+    });
   });
 }

@@ -64,40 +64,6 @@ export function camera(ctx) {
 }
 
 /**
- * @param {WeakKey} ctx
- * @returns {Observable<Observable<XRSession>>}
- */
-export function session(ctx) {
-  return new Observable((subscriber) => {
-    const renderer = RendererContext.get(ctx);
-    const onSessionStart = () => {
-      const session = renderer.xr.getSession();
-      if (session) {
-        console.log("Session started", session);
-        subscriber.next(
-          new Observable((innerSubscriber) => {
-            const onSessionEnd = () => {
-              console.log("Session ended");
-              innerSubscriber.complete();
-            };
-            innerSubscriber.next(session);
-            renderer.xr.addEventListener("sessionend", onSessionEnd);
-            return () => {
-              renderer.xr.removeEventListener("sessionend", onSessionEnd);
-            };
-          }),
-        );
-      }
-    };
-    onSessionStart();
-    renderer.xr.addEventListener("sessionstart", onSessionStart);
-    return () => {
-      renderer.xr.removeEventListener("sessionstart", onSessionStart);
-    };
-  });
-}
-
-/**
  * The session the renderer is presenting to, or `null` while it is presenting
  * to the page.
  *
@@ -200,9 +166,9 @@ const lateListeners = new WeakMap();
 /**
  * Put `fn` on a renderer's frame callbacks and hand back the way off again.
  *
- * The one piece both shapes of this share — the observable `animate` and the
- * effect-based `useFrame` — so that what it means to be a frame callback is
- * written once, and the two differ only in who owns the lifetime.
+ * What it means to be a frame callback, written once: `useFrame` owns one of
+ * these through an effect, `addListener` wraps one in an observable for the
+ * late phase, and the two differ in nothing but who holds the lifetime.
  *
  * @param {THREE.WebGLRenderer} renderer
  * @param {XRFrameRequestCallback} fn
@@ -277,36 +243,14 @@ function frameSubjectFor(renderer) {
 }
 
 /**
- * Frames as an observable: subscribing registers `fn`, unsubscribing takes it
- * off again.
- *
- * `useFrame` is the one to reach for. This is for the callers that need the
- * registration to *be* a value — something to hand to `switchMap` so the loop
- * starts and stops with whatever it is switched on, an XR session most of the
- * time. Reaching for it to get a lifetime is the long way round to what
- * `useFrame` does directly.
- *
- * @param {WeakKey} ctx
- * @param {XRFrameRequestCallback} fn
- * @return {Observable<never>}
- */
-export function animate(ctx, fn) {
-  const renderer = RendererContext.get(ctx);
-  return addListener(renderer, fn);
-}
-
-/**
  * Run `fn` on every frame, for as long as the surrounding computation stands.
  *
- * What `use(animate(ctx, fn))` was, without the observable in the middle. That
- * pair only ever had one thing to say — start on the way in, stop on the way
- * out — and it said it by wrapping the registration in an `Observable` so that
- * `use` had something to subscribe an `Effect` to. Nothing was ever emitted
- * through that observable and nothing ever subscribed to it twice, so the
- * effect is the whole of it: it registers the callback, its teardown takes the
- * callback off again, and `useEffect` ties its life to the computation that
- * asked for it. `animate` is still there for the callers that need the
- * registration as a value to compose with.
+ * This used to be a pair — an `animate(ctx, fn)` observable handed to `use`,
+ * which subscribed an `Effect` to it — and between them they only ever had one
+ * thing to say: start on the way in, stop on the way out. Nothing was emitted
+ * through that observable and nothing subscribed to it twice, so the effect is
+ * the whole of it. It registers the callback, its teardown takes the callback
+ * off again, and `useEffect` ties its life to the computation that asked.
  *
  * A frame callback is not the effect's body, so a value it reads while drawing
  * does not re-run any of this. Those reads are tracked by a `Computation` of
@@ -335,10 +279,11 @@ export function useFrame(ctx, fn) {
 }
 
 /**
- * Like `animate`, but at the end of the frame: after everything that moves the
- * scene has moved it and before any of it is drawn.
+ * Like `useFrame`, but at the end of the frame: after everything that moves the
+ * scene has moved it and before any of it is drawn. An observable rather than
+ * an effect, because the two callers it has hold its lifetime themselves.
  *
- * Ordering is the whole reason to be here rather than in `animate`. What runs
+ * Ordering is the whole reason to be here rather than in `useFrame`. What runs
  * over `frames(ctx)` — an animation clock sampling a running CSS animation, a
  * scroll drag following a hand — subscribes when it starts and unsubscribes
  * when it stops, so anything that has to see the result of a tick cannot get

@@ -1,14 +1,12 @@
-import { Observable, tap } from "rxjs";
+import { tap } from "rxjs";
 import { Derived } from "./Derived.js";
 import { onEachValue, subscribeTo, subscribeAndEmit } from "./util.js";
 import { observable, component, just } from "./factories.js";
-import { activeChannel, addDependency, withComputation } from "./core.js";
-import { Effect } from "./Effect.js";
+import { addDependency } from "./core.js";
 import { toObservable, toEffect } from "./interop.js";
 
 /**
- * @import { MonoTypeOperatorFunction } from 'rxjs';
- * @import UpdateChannel from './UpdateChannel.js';
+ * @import { MonoTypeOperatorFunction, Observable } from 'rxjs';
  * @import { WritableProps } from './types.js';
  */
 
@@ -120,61 +118,32 @@ export function useEffects(value, operators) {
 }
 
 /**
- * Run `fn` for as long as the surrounding computation stands, re-running it
- * when anything it read changes, and keeping whatever observable it hands
- * back subscribed in between.
+ * Hold an observable open for as long as the surrounding computation stands,
+ * for its side effects alone — whatever it emits is dropped.
  *
- * An `Effect`, because that is what it always was. It used to be a `Derived`
- * whose evaluation had side effects — `component(() => fn() ?? NEVER)` — and
- * that shape has a specific way of going wrong now. `fn` typically returns
- * nothing, so the node's value was the `NEVER` singleton on every evaluation;
- * `Object.is` therefore called every recomputation "unchanged", and the
- * equality cutoff kept the previous value and undid the run that had just
- * happened. Anything `fn` had set up with `onCleanup` — an interval, a
- * listener, a subscription — was torn down the instant it was established.
+ * A dependency edge and nothing more: the computation attaches it on connect
+ * and lets go of it when it goes dormant, which is the lifetime the caller
+ * wanted. `takeNothing()` is what says the values are not the point.
  *
- * The channel is captured here rather than left to be picked up when the
- * pipeline is subscribed. `use` is called while the surrounding region is
- * being built, which is where `withChannel` is in scope; subscription happens
- * later, from inside a `connect`, where it is not.
+ * This used to take a callback too, running it as an effect and keeping
+ * whatever observable it handed back subscribed until the next run. The
+ * callers who had an observable to switch between runs never materialised;
+ * the ones with only side effects all did, and every one of them is better
+ * served by `useEffect` — the same `Effect`, disposed by the same
+ * computation, without an observable in the middle for it to be subscribed
+ * through, and reading a returned function as a teardown rather than as
+ * something to subscribe. A function arriving here is now a mistake with a
+ * name on it, rather than a `TypeError` from inside the first run that
+ * happens to return one.
  *
- * @param {(() => void) | (() => Observable<unknown>) | Observable<unknown>} observable
+ * @param {Observable<unknown>} observable
  */
 export function use(observable) {
   if (typeof observable === "function") {
-    const fn = observable;
-    const channel = /** @type {UpdateChannel | undefined} */ (activeChannel ?? undefined);
-    observable = new Observable((subscriber) => {
-      const effect = new Effect(
-        () => {
-          const inner = fn();
-          if (!inner) {
-            return undefined;
-          }
-          // Subscribing is not reading. A foreign observable's `subscribe`
-          // may itself read reactive things — a `component(...)` builds its
-          // entities in there — and those belong to whatever that observable
-          // is, not to this effect. Tracking them would re-run `fn` and tear
-          // the whole inner subscription down and back up on a write `fn`
-          // never looked at. `Node#attach` and `toObservable` hold the same
-          // line, for the same reason.
-          const subscription = withComputation(null, () =>
-            inner.subscribe({
-              error: (err) => subscriber.error(err),
-            }),
-          );
-          return () => subscription.unsubscribe();
-        },
-        {
-          name: "use",
-          channel,
-          onError: (err) => subscriber.error(err),
-        },
-      );
-      return () => {
-        effect.dispose();
-      };
-    });
+    throw new TypeError(
+      "use() takes an observable. A callback that only has side effects wants " +
+        "useEffect(fn): the same effect, disposed by the same computation.",
+    );
   }
   addDependency(observable.pipe(takeNothing()));
 }

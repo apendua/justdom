@@ -1,18 +1,15 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { observable } from "./factories.js";
+import { Effect } from "./index.js";
 import store, { replace } from "./store.js";
-import { use } from "./operators.js";
 
 test("observes value", () => {
   const state = store({ value: 1 });
   /** @type {number[]} */
   const values = [];
-  observable(() => {
-    use(() => {
-      values.push(state.value);
-    });
-  }).subscribe();
+  new Effect(() => {
+    values.push(state.value);
+  });
   state.value = 2;
   state.value = 2;
   state.value = 3;
@@ -28,11 +25,9 @@ test("observes derived value", () => {
   };
   /** @type {number[]} */
   const values = [];
-  observable(() => {
-    use(() => {
-      values.push(derived.double);
-    });
-  }).subscribe();
+  new Effect(() => {
+    values.push(derived.double);
+  });
   state.value = 2;
   state.value = 2;
   state.value = 3;
@@ -49,11 +44,9 @@ test("nested store", () => {
   });
   /** @type {(number | undefined)[]} */
   const values = [];
-  observable(() => {
-    use(() => {
-      values.push((state.nested.x1 ?? 0) + (state.nested.x2 ?? 0));
-    });
-  }).subscribe();
+  new Effect(() => {
+    values.push((state.nested.x1 ?? 0) + (state.nested.x2 ?? 0));
+  });
   state.nested.x1 = 2;
   state.nested.x1 = 2;
   state.nested.x1 = 3;
@@ -72,11 +65,9 @@ test("nested store replacement", () => {
   });
   /** @type {number[]} */
   const values = [];
-  observable(() => {
-    use(() => {
-      values.push(state.nested.value);
-    });
-  }).subscribe();
+  new Effect(() => {
+    values.push(state.nested.value);
+  });
   state.nested = { value: 2 };
   state.nested = { value: 2 };
   state.nested = { value: 3 };
@@ -90,11 +81,9 @@ test("deleting property", () => {
   });
   /** @type {Array<number | undefined>} */
   const values = [];
-  observable(() => {
-    use(() => {
-      values.push(state.value);
-    });
-  }).subscribe();
+  new Effect(() => {
+    values.push(state.value);
+  });
   delete state.value;
   state.value = 2;
   assert.deepStrictEqual(values, [1, undefined, 2]);
@@ -107,11 +96,9 @@ test("has property", () => {
   });
   /** @type {boolean[]} */
   const values = [];
-  observable(() => {
-    use(() => {
-      values.push("value" in state);
-    });
-  }).subscribe();
+  new Effect(() => {
+    values.push("value" in state);
+  });
   delete state.value;
   state.value = 2;
   assert.deepStrictEqual(values, [true, false, true]);
@@ -125,11 +112,9 @@ test("ownKeys", () => {
   });
   /** @type {Array<Array<string | symbol>>} */
   const values = [];
-  observable(() => {
-    use(() => {
-      values.push(Reflect.ownKeys(state));
-    });
-  }).subscribe();
+  new Effect(() => {
+    values.push(Reflect.ownKeys(state));
+  });
   state.c = 3;
   delete state.a;
   replace(state, { a: 1 });
@@ -145,11 +130,9 @@ test("custom getters", () => {
   });
   /** @type {number[]} */
   const values = [];
-  observable(() => {
-    use(() => {
-      values.push(state.absValue);
-    });
-  }).subscribe();
+  new Effect(() => {
+    values.push(state.absValue);
+  });
   state.value = -1;
   state.value = 2;
   state.value = -2;
@@ -170,11 +153,9 @@ test("custom setters", () => {
   });
   /** @type {number[]} */
   const values = [];
-  observable(() => {
-    use(() => {
-      values.push(state.value);
-    });
-  }).subscribe();
+  new Effect(() => {
+    values.push(state.value);
+  });
   state.doubleValue = 4;
   state.doubleValue = 4;
   state.doubleValue = 6;
@@ -197,11 +178,9 @@ test("reports one write as one update, not one per dependent", () => {
   const state = store({ a: 1, b: 2 });
   /** @type {string[]} */
   const values = [];
-  observable(() => {
-    use(() => {
-      values.push(`${state.a}/${Object.keys(state).join(",")}`);
-    });
-  }).subscribe();
+  new Effect(() => {
+    values.push(`${state.a}/${Object.keys(state).join(",")}`);
+  });
 
   delete state.a;
   assert.deepStrictEqual(values, ["1/a,b", "undefined/b"]);

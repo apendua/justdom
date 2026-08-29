@@ -7,6 +7,7 @@ import {
   NoValueError,
   activeChannel,
   onCleanup,
+  withChannel,
 } from "./core.js";
 import { updateQueue, defaultChannel } from "./scheduler.js";
 
@@ -83,7 +84,8 @@ const MAX_SELF_INVALIDATIONS = 100;
 /**
  * @typedef {object} EffectOptions
  * @property {UpdateChannel} [channel] which channel to schedule this effect's
- *   re-runs in. Fixed for the life of the effect.
+ *   re-runs in, and which channel its runs build into. Fixed for the life of
+ *   the effect.
  * @property {(err: unknown) => void} [onError] what to do when the effect
  *   throws, or when its run reports a failure through `context.fail`. Without
  *   one, a thrown exception comes back out of whatever was draining the queue
@@ -177,11 +179,23 @@ export class Effect extends ReactiveNode {
 
   /**
    * `track` calls what it is given with no arguments, so this is what it is
-   * given: one wrapper, built once, that hands the run its context.
+   * given: one wrapper, built once, that hands the run its context and puts
+   * the run in this effect's own channel.
+   *
+   * The channel matters because a run *builds* things — a nested effect, a
+   * region, anything reached through a helper that takes no channel — and
+   * those belong to the region this effect belongs to. On the first run that
+   * happens anyway: construction is inside whatever `withChannel` the caller
+   * was in, and `activeChannel` still points at it. A re-run comes off a
+   * queue with no such caller on the stack, so without this the same
+   * `useEffect(...)` line yields the region's channel the first time and the
+   * default channel every time after — half an update applied as soon as it
+   * can be and the other half a frame later, which is the exact failure
+   * `activeChannel` exists to prevent.
    *
    * @type {() => unknown}
    */
-  #invoke = () => this.#run(this.#context);
+  #invoke = () => withChannel(this.#channel, () => this.#run(this.#context));
 
   /**
    * @param {EffectRun} run

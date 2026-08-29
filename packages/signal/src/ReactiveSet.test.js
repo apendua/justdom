@@ -1,7 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { observable } from "./factories.js";
-import { use } from "./operators.js";
+import { Effect } from "./index.js";
 import ReactiveSet from "./ReactiveSet.js";
 
 describe("ReactiveSet", () => {
@@ -9,11 +8,9 @@ describe("ReactiveSet", () => {
     const set = new ReactiveSet();
     /** @type {boolean[]} */
     const values = [];
-    observable(() => {
-      use(() => {
-        values.push(set.has("x"));
-      });
-    }).subscribe();
+    new Effect(() => {
+      values.push(set.has("x"));
+    });
 
     set.add("x");
     set.add("x"); // duplicate — should not retrigger
@@ -26,11 +23,9 @@ describe("ReactiveSet", () => {
     const set = new ReactiveSet();
     /** @type {number[]} */
     const sizes = [];
-    observable(() => {
-      use(() => {
-        sizes.push(set.size);
-      });
-    }).subscribe();
+    new Effect(() => {
+      sizes.push(set.size);
+    });
 
     set.add("a");
     set.add("b");
@@ -43,11 +38,9 @@ describe("ReactiveSet", () => {
     const set = new ReactiveSet();
     /** @type {string[][]} */
     const snapshots = [];
-    observable(() => {
-      use(() => {
-        snapshots.push([...set.values()]);
-      });
-    }).subscribe();
+    new Effect(() => {
+      snapshots.push([...set.values()]);
+    });
 
     set.add("a");
     set.add("b");
@@ -65,11 +58,9 @@ describe("ReactiveSet", () => {
     // Re-add and observe — should work normally (fresh observable created)
     /** @type {boolean[]} */
     const values = [];
-    observable(() => {
-      use(() => {
-        values.push(set.has("x"));
-      });
-    }).subscribe();
+    new Effect(() => {
+      values.push(set.has("x"));
+    });
     set.add("x");
     assert.deepStrictEqual(values, [false, true]);
   });
@@ -81,11 +72,9 @@ describe("ReactiveSet", () => {
     set.clear();
     /** @type {boolean[]} */
     const values = [];
-    observable(() => {
-      use(() => {
-        values.push(set.has("a"));
-      });
-    }).subscribe();
+    new Effect(() => {
+      values.push(set.has("a"));
+    });
     set.add("a");
     assert.deepStrictEqual(values, [false, true]);
   });
@@ -95,11 +84,9 @@ describe("ReactiveSet", () => {
     set.add("a");
     /** @type {string[]} */
     const values = [];
-    observable(() => {
-      use(() => {
-        values.push(`${set.has("a")}/${set.size}`);
-      });
-    }).subscribe();
+    new Effect(() => {
+      values.push(`${set.has("a")}/${set.size}`);
+    });
 
     set.delete("a");
     assert.deepStrictEqual(values, ["true/1", "false/0"]);
@@ -111,11 +98,9 @@ describe("ReactiveSet", () => {
     set.add("b");
     /** @type {string[]} */
     const values = [];
-    observable(() => {
-      use(() => {
-        values.push(`${set.has("a")}/${set.has("b")}`);
-      });
-    }).subscribe();
+    new Effect(() => {
+      values.push(`${set.has("a")}/${set.has("b")}`);
+    });
 
     set.clear();
     assert.deepStrictEqual(values, ["true/true", "false/false"]);

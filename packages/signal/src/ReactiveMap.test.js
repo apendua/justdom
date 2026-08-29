@@ -1,7 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { observable } from "./factories.js";
-import { use } from "./operators.js";
+import { Effect } from "./index.js";
 import ReactiveMap from "./ReactiveMap.js";
 
 describe("ReactiveMap", () => {
@@ -9,11 +8,9 @@ describe("ReactiveMap", () => {
     const map = new ReactiveMap();
     /** @type {(number | undefined)[]} */
     const values = [];
-    observable(() => {
-      use(() => {
-        values.push(map.get("x"));
-      });
-    }).subscribe();
+    new Effect(() => {
+      values.push(map.get("x"));
+    });
 
     map.set("x", 1);
     map.set("x", 2);
@@ -26,11 +23,9 @@ describe("ReactiveMap", () => {
     const map = new ReactiveMap();
     /** @type {boolean[]} */
     const values = [];
-    observable(() => {
-      use(() => {
-        values.push(map.has("x"));
-      });
-    }).subscribe();
+    new Effect(() => {
+      values.push(map.has("x"));
+    });
 
     map.set("x", 1);
     map.set("y", 99); // unrelated key — should not trigger
@@ -42,11 +37,9 @@ describe("ReactiveMap", () => {
     const map = new ReactiveMap();
     /** @type {number[]} */
     const sizes = [];
-    observable(() => {
-      use(() => {
-        sizes.push(map.size);
-      });
-    }).subscribe();
+    new Effect(() => {
+      sizes.push(map.size);
+    });
 
     map.set("a", 1);
     map.set("b", 2);
@@ -59,11 +52,9 @@ describe("ReactiveMap", () => {
     const map = new ReactiveMap();
     /** @type {string[][]} */
     const snapshots = [];
-    observable(() => {
-      use(() => {
-        snapshots.push([...map.keys()]);
-      });
-    }).subscribe();
+    new Effect(() => {
+      snapshots.push([...map.keys()]);
+    });
 
     map.set("a", 1);
     map.set("a", 2); // update — should NOT retrigger keys()
@@ -76,11 +67,9 @@ describe("ReactiveMap", () => {
     const map = new ReactiveMap();
     /** @type {(number | undefined)[]} */
     const values = [];
-    observable(() => {
-      use(() => {
-        values.push(map.get("x"));
-      });
-    }).subscribe();
+    new Effect(() => {
+      values.push(map.get("x"));
+    });
 
     map.set("x", 1);
     map.delete("x");
@@ -99,11 +88,9 @@ describe("ReactiveMap", () => {
     // Re-add and access — should work normally (fresh observable created)
     /** @type {(number | undefined)[]} */
     const values = [];
-    observable(() => {
-      use(() => {
-        values.push(map.get("x"));
-      });
-    }).subscribe();
+    new Effect(() => {
+      values.push(map.get("x"));
+    });
     map.set("x", 2);
     assert.deepStrictEqual(values, [undefined, 2]);
   });
@@ -115,11 +102,9 @@ describe("ReactiveMap", () => {
     map.clear();
     /** @type {(number | undefined)[]} */
     const values = [];
-    observable(() => {
-      use(() => {
-        values.push(map.get("a"));
-      });
-    }).subscribe();
+    new Effect(() => {
+      values.push(map.get("a"));
+    });
     map.set("a", 10);
     assert.deepStrictEqual(values, [undefined, 10]);
   });
@@ -134,11 +119,9 @@ describe("ReactiveMap", () => {
     map.set("k", 1);
     /** @type {string[]} */
     const values = [];
-    observable(() => {
-      use(() => {
-        values.push(`${map.get("k")}/${map.size}`);
-      });
-    }).subscribe();
+    new Effect(() => {
+      values.push(`${map.get("k")}/${map.size}`);
+    });
 
     map.delete("k");
     assert.deepStrictEqual(values, ["1/1", "undefined/0"]);
@@ -150,11 +133,9 @@ describe("ReactiveMap", () => {
     map.set("b", 2);
     /** @type {string[]} */
     const values = [];
-    observable(() => {
-      use(() => {
-        values.push(`${map.get("a")}/${map.get("b")}`);
-      });
-    }).subscribe();
+    new Effect(() => {
+      values.push(`${map.get("a")}/${map.get("b")}`);
+    });
 
     map.clear();
     assert.deepStrictEqual(values, ["1/2", "undefined/undefined"]);

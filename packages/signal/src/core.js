@@ -107,6 +107,12 @@ export let activeComputation = null;
  *
  * So this works the way `activeComputation` does, and for the same reason.
  *
+ * An effect's run reinstates the effect's own channel, which is what makes
+ * this survive a trip through the queue: construction happens inside the
+ * caller's `withChannel` and reads it from there, but a re-run has no such
+ * caller on the stack, and a nested `useEffect` built by both should not land
+ * in two different channels depending on which run built it.
+ *
  * @type {UpdateChannelLike | null}
  */
 export let activeChannel = null;

@@ -8,8 +8,8 @@
  * Start.
  */
 import * as THREE from "three";
-import { children, $, getScene, Nothing } from "@apendua/freedom";
-import { component, effects, use, useEffects } from "@apendua/signal";
+import { children, $, getScene } from "@apendua/freedom";
+import { effects, use, useEffects } from "@apendua/signal";
 import { createDiagnostics, Diagnostics } from "@apendua/justui";
 import Game from "./Game.js";
 import { CELL, SIZE } from "./grid.js";
@@ -23,7 +23,7 @@ const floor = new THREE.Mesh(
 // The top of the slab is y = 0, which is where the grid and the bricks sit.
 floor.position.y = -THICKNESS / 2;
 
-const App = component((ctx: WeakKey) => {
+const App = (ctx: WeakKey) => {
   // The frame rate readout, head-locked and up to the left. There is no panel
   // in this scene to hang a switch off, so it is simply always on.
   const diagnostics = createDiagnostics();
@@ -54,8 +54,6 @@ const App = component((ctx: WeakKey) => {
       ]),
     ),
   ]);
-
-  return Nothing();
-});
+};
 
 export default App;

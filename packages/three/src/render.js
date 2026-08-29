@@ -4,6 +4,7 @@ import {
   addDependency,
   Computation,
   createProperty,
+  Effect,
   fromEvent,
   Signal,
   useEffect,
@@ -358,8 +359,8 @@ export function frames(ctx) {
  */
 
 /**
- * @param {(ctx: WeakKey) => Observable<unknown>} fn Mounted, not read: the
- *   scene is `render`'s, and the tree is what decorates it.
+ * @param {(ctx: WeakKey) => void} fn Builds the tree. It is handed the context
+ *   and returns nothing: the scene is `render`'s, and this decorates it.
  * @param {RenderOptions} [options]
  * @returns {Observable<THREE.WebGLRenderer>}
  */
@@ -483,10 +484,15 @@ export function render(fn, options = {}) {
     scene.add(controller1);
     scene.add(controllerGrip1);
 
-    // Subscribing is mounting: the tree decorates the scene above rather than
-    // producing one, so nothing is read off this — it is held open for as long
-    // as there is something to draw.
-    subscriber.add(fn(ctx).subscribe());
+    // An effect, because a tree is work that reads reactive values and does
+    // something with them, and because something has to hold what it reads
+    // open. `fn` hands nothing back — everything it builds it mounts on the way
+    // through, `use` and `useEffects` registering against whatever is
+    // evaluating, which is this — so an effect is both what runs it and what
+    // keeps it standing. Disposed with the renderer, which tears the tree down
+    // in the order it was built.
+    const tree = new Effect(() => fn(ctx), { name: "render" });
+    subscriber.add(() => tree.dispose());
 
     // The same subject anything built above already holds: the scene was
     // constructed before this line, and whatever asked it for frames is

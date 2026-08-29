@@ -2,7 +2,15 @@ import { describe, it, mock } from "node:test";
 import assert from "node:assert/strict";
 import { Subject } from "rxjs";
 
-import { Signal, Derived, Effect, batch, useEffect, UpdateChannel } from "./index.js";
+import {
+  Signal,
+  Derived,
+  Effect,
+  batch,
+  useEffect,
+  CircularDependencyError,
+  UpdateChannel,
+} from "./index.js";
 
 /**
  * Where a failure goes.
@@ -252,20 +260,19 @@ describe("an error thrown inside a Derived", () => {
   it("throws rather than hangs when the node reads itself round a cycle", () => {
     // A cycle is a failure of the graph rather than of a body, and the read
     // that closed it is what has to be told. `Signal.test.js` covers the
-    // unconnected read, where `#evaluating` catches it and the answer is a
-    // `CircularDependencyError`; held open, the recursion instead reaches a
-    // node whose state was settled before its evaluation began and whose value
-    // does not exist yet, so what comes back is a `TypeError` about a null. The
-    // guarantee this locks down is that the read fails at all — the *kind* of
-    // error is worth improving, and the guard in `updateIfNecessary` is
-    // unreachable on this path as things stand.
+    // unconnected read, where `#evaluating` catches it. Held open, the
+    // recursion instead reaches a node whose state was settled to `CLEAN`
+    // before its evaluation began — so the guard's own `updateIfNecessary`
+    // returns early and never sees it — and whose value does not exist yet.
+    // `get` is where that is caught, because `get` is where the missing value
+    // turns up; it used to be a `TypeError` about a property of null.
     /** @type {Derived<number>} */
     const a = new Derived(() => b.get() + 1);
     /** @type {Derived<number>} */
     const b = new Derived(() => a.get() + 1);
     const subscription = a.subscribe({});
 
-    assert.throws(() => a.get());
+    assert.throws(() => a.get(), CircularDependencyError);
     subscription.unsubscribe();
   });
 
@@ -738,35 +745,54 @@ describe("a node failure, which is the other kind", () => {
     const seen = [];
     /** @type {Effect | undefined} */
     let latecomer;
+    /** @type {string[]} */
+    const read = [];
     captureConsoleError(() => {
       latecomer = new Effect(() => {
         try {
           source.get();
-        } catch {
-          // the value is gone with the source
+        } catch (err) {
+          read.push(/** @type {Error} */ (err).message);
         }
       });
       latecomer.subscribe({ error: (err) => seen.push(/** @type {Error} */ (err).message) });
     });
 
     assert.notEqual(latecomer?.failure, null, "reading a dead node kills the reader");
+    assert.equal(latecomer?.isDisposed, true);
+    assert.deepEqual(read, ["already dead"], "and the read itself is told why");
     early.unsubscribe();
   });
 
-  it("does not stop a read of the node that died", () => {
-    // A gap rather than a rule, and the one asymmetry between the two paths:
-    // `fail()` walks the push side and tells every dependent and observer, but
-    // `get()` never consults `failure`, so a direct read of a dead node
-    // computes as though nothing had happened. Change that and this test is
-    // what says so.
+  it("stops a read of the node that died, rather than answering it", () => {
+    // The two paths meeting. `fail` walks the push side; a read arrives from
+    // the other direction and has to be told the same thing, or a dead node
+    // goes on handing out values computed from a source that will never speak
+    // again.
     const source = Signal.of(1);
     const derived = new Derived(() => source.get() * 2);
     const holder = derived.subscribe({ error: () => {} });
     assert.equal(derived.get(), 2);
 
     derived.fail(new Error("killed"));
-    assert.notEqual(derived.failure, null);
-    assert.equal(derived.get(), 2, "documented, not endorsed: the read is answered anyway");
+    assert.throws(() => derived.get(), /killed/);
+    assert.throws(() => derived.peek(), /killed/, "and peek says the same");
+    holder.unsubscribe();
+  });
+
+  it("is what a read gets instead of a NoValueError about the value it lost", () => {
+    // The shape this takes in an application. The observable behind a
+    // `Derived.from` errors, so the signal it was writing into never gets a
+    // value — and a read used to be answered by the evaluation, which failed
+    // for having nothing to read. "No value available" is a poor account of a
+    // source that died.
+    /** @type {Subject<number>} */
+    const subject = new Subject();
+    const source = Derived.from(subject);
+    const holder = source.subscribe({ error: () => {} });
+
+    subject.error(new Error("the source died"));
+    assert.throws(() => source.get(), /the source died/);
     holder.unsubscribe();
   });
 
@@ -788,13 +814,13 @@ describe("a node failure, which is the other kind", () => {
     assert.deepEqual(logged, [], "the second one is not news either");
   });
 
-  it("leaves a failed effect disconnected but not disposed", () => {
-    // Also documented rather than endorsed. `#reportFailure` disposes after
-    // failing, precisely so an effect does not sit "disconnected and still
-    // queueable"; a failure arriving from upstream takes the other path and
-    // leaves `isDisposed` false. Harmless as things stand — the effect has let
-    // go of every edge, so nothing will ever mark it again — but the two paths
-    // do not agree.
+  it("disposes an effect it reaches, whichever direction it came from", () => {
+    // An effect is not read, so letting go of its edges is not the whole of
+    // stopping it the way it is for a `Derived`: it is a root of demand with a
+    // slot in a queue. A failure its own run reports disposes it, and one
+    // propagating down from something it reads has to do the same — or the
+    // effect answers `isDisposed` with `false` for ever while nothing will
+    // ever run it again.
     const source = Signal.of(1);
     const derived = new Derived(() => source.get());
     const effect = new Effect(() => derived.get());
@@ -805,7 +831,7 @@ describe("a node failure, which is the other kind", () => {
     source.set(2);
 
     assert.equal(effect.getRuns(), runs, "it will not run again");
-    assert.equal(effect.isDisposed, false, "but it does not say so");
-    effect.dispose();
+    assert.equal(effect.isDisposed, true, "and it says so");
+    assert.equal(effect.isLive(), false);
   });
 });

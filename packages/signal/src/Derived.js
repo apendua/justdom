@@ -179,13 +179,52 @@ export class Derived extends ReactiveNode {
       // instead would run the held value's teardowns on the way in and
       // refresh the edge versions on the way out, leaving a cache whose
       // resource is disposed and whose bookkeeping claims it is current.
+      const failure = this.failure;
+      if (failure) {
+        throw failure.value;
+      }
       return this.#evaluateUncached();
     }
+    return this.#resolveConnected();
+  }
+
+  /**
+   * The tail of a read that has to resolve the node first: bring it up to
+   * date, and answer with whatever that produced.
+   *
+   * A method rather than the rest of `get` because `get` is small enough for
+   * the engine to inline and this is the part with no claim on being: it
+   * ends in two throws, one of which allocates. Folded back in, the memoized
+   * read — the one a panel does tens of thousands of times a frame — measures
+   * about 4% slower.
+   *
+   * @returns {T}
+   */
+  #resolveConnected() {
     this.updateIfNecessary();
     if (this.#error) {
       throw this.#error.error;
     }
-    return /** @type {{ value: T }} */ (this.#current).value;
+    const computed = this.#current;
+    if (computed === null) {
+      // Connected, up to date as far as the state says, and holding nothing.
+      // The only way to be all three is to be *inside* this node's own
+      // evaluation: `updateIfNecessary` settles the state to `CLEAN` before
+      // running the function, so a read that comes back round from within it
+      // finds a node claiming to be current that has not produced a value
+      // yet. Which is a cycle, and saying so beats the `TypeError` about a
+      // property of `null` that reading the value used to raise.
+      //
+      // Caught here rather than by moving `updateIfNecessary`'s `#evaluating`
+      // guard above its own `CLEAN` return, which would look like the fix and
+      // is not: resolving a `CHECK` walks edges a *previous* evaluation left
+      // behind, and two nodes that read each other only under opposite
+      // conditions leave exactly such an edge pointing back. That is a cycle
+      // the graph had, not one it has. Only a read happening now is one it
+      // still does.
+      throw new CircularDependencyError();
+    }
+    return computed.value;
   }
 
   /**
@@ -195,6 +234,10 @@ export class Derived extends ReactiveNode {
    * @returns {T}
    */
   peek() {
+    const failure = this.failure;
+    if (failure) {
+      throw failure.value;
+    }
     if (this.#error) {
       throw this.#error.error;
     }

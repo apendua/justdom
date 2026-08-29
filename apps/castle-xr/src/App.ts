@@ -1,6 +1,14 @@
 import * as THREE from "three";
-import { camera, children, cursors, $, XREventMap, interactions, useFrame } from "@apendua/freedom";
-import { makeNonReactive, Signal } from "@apendua/signal";
+import {
+  children,
+  cursors,
+  $,
+  XREventMap,
+  interactions,
+  useFrame,
+  getCamera,
+} from "@apendua/freedom";
+import { makeNonReactive, Signal, useEffects } from "@apendua/signal";
 import { on, set, effects, just, use, component } from "@apendua/signal";
 
 import { CastleContext, ListenerContext, SessionContext } from "./elements/context.js";
@@ -136,7 +144,7 @@ const App = component((ctx: WeakKey) => {
 
   return just(new THREE.Scene()).pipe(
     effects(() => {
-      use(camera(ctx).pipe(children($(listener))));
+      useEffects(getCamera(ctx), [children($(listener))]);
     }),
     // Head-locked, like the ears above and for the same reason: a reading you
     // have to go and look for is a reading nobody takes while playing.

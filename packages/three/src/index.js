@@ -1,6 +1,14 @@
 export { children, fragment, copy, Nothing, $, layoutEffects } from "./operators.js";
 export { list, keyedList } from "./core.js";
-export { render, useFrame, size, camera, getXRSession, controllers } from "./render.js";
+export {
+  render,
+  useFrame,
+  size,
+  getCamera,
+  getScene,
+  getXRSession,
+  controllers,
+} from "./render.js";
 export {
   InteractionContext,
   InteractionManager,

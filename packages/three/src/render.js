@@ -52,15 +52,53 @@ export const CameraContext = createProperty(
 );
 
 /**
+ * The camera this context renders through.
+ *
+ * The one of these getters with nothing to depend on. `render` builds a camera
+ * and keeps it for the life of the renderer — a resize adjusts the one that is
+ * there rather than replacing it — so there is no event that could change this
+ * answer and nothing a reader could usefully be told about. It is still a
+ * getter rather than a bare `CameraContext.get` so that it reads like the
+ * others, and so that giving it something to depend on later would not change
+ * how a single caller asks.
+ *
  * @param {WeakKey} ctx
- * @returns {Observable<THREE.Camera>}
+ * @returns {THREE.Camera}
  */
-export function camera(ctx) {
-  return new Observable((subscriber) => {
-    const camera = CameraContext.get(ctx);
-    subscriber.next(camera);
-    return () => {};
-  });
+export function getCamera(ctx) {
+  return CameraContext.get(ctx);
+}
+
+export const SceneContext = createProperty(
+  /**
+   * @returns {BehaviorSubject<THREE.Scene>}
+   */
+  () => {
+    throw new Error("SceneContext not set");
+  },
+);
+
+/**
+ * The scene this context is drawing.
+ *
+ * Unlike the camera, this one does move: `render` holds the scene its tree
+ * emits, and a tree whose root is a `component` may emit another. So the
+ * subject that holds it is the dependency, and a reader is told when it is
+ * replaced.
+ *
+ * Asked while the tree is still being built — which is when most of the tree
+ * is built — this answers with the empty scene `render` starts from, because
+ * the real one is what the tree is in the middle of producing. The read is a
+ * dependency, so a reader that asked early is re-run against the scene that
+ * actually arrives rather than being left holding the placeholder.
+ *
+ * @param {WeakKey} ctx
+ * @returns {THREE.Scene}
+ */
+export function getScene(ctx) {
+  const scene = SceneContext.get(ctx);
+  addDependency(scene);
+  return scene.getValue();
 }
 
 /**
@@ -359,6 +397,7 @@ export function render(fn, options = {}) {
 
     ctx = RendererContext.set(ctx, renderer);
     ctx = CameraContext.set(ctx, camera);
+    ctx = SceneContext.set(ctx, scene);
     ctx = InteractionContext.set(ctx, interactionManager);
     ctx = RendererSizeContext.set(ctx, {
       width: width.asObservable(),

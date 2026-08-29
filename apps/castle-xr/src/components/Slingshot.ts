@@ -15,24 +15,15 @@
  * where the stone has to fly.
  */
 import * as THREE from "three";
-import {
-  component,
-  effects,
-  emit,
-  makeNonReactive,
-  onCleanup,
-  Op,
-  store,
-  use,
-} from "@apendua/signal";
+import { component, effects, emit, makeNonReactive, onCleanup, Op, store } from "@apendua/signal";
 import {
   $,
-  camera,
   children,
   controllers,
   setWorldMatrix,
   ControllerHandle,
   useFrame,
+  getCamera,
 } from "@apendua/freedom";
 import { cylinderGeometry, sphereGeometry } from "../elements/geometry.js";
 import { basicMaterial, stoneMaterial } from "../elements/material.js";
@@ -309,13 +300,7 @@ const Slingshot = component((ctx: WeakKey, operators: Op<Props, Events>) => {
 
   return $(new THREE.Group(), [
     effects(() => {
-      use(
-        camera(ctx).pipe(
-          effects((value) => {
-            view = value;
-          }),
-        ),
-      );
+      view = getCamera(ctx);
     }),
     effects((group) => {
       group.matrixAutoUpdate = true;

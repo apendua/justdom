@@ -7,8 +7,8 @@
  * what the frame rate is *in the session* — is the one nobody can see. This is
  * the same reading, in the room, where it can be read while playing.
  */
-import { component, effects, Signal } from "@apendua/signal";
-import { camera, children, Nothing, useFrame } from "@apendua/freedom";
+import { component, effects, just, Signal } from "@apendua/signal";
+import { children, getCamera, Nothing, useFrame } from "@apendua/freedom";
 import { chartCeiling, createFrameMeter } from "./frameMeter.js";
 import { Panel } from "./panel.js";
 
@@ -85,7 +85,7 @@ export const Diagnostics = component(
    * @param {DiagnosticsControls} controls
    */
   (ctx, controls) => {
-    return camera(ctx).pipe(
+    return just(getCamera(ctx), [
       effects(() => {
         const meter = createFrameMeter({
           onReadout: (fps) => {
@@ -102,6 +102,6 @@ export const Diagnostics = component(
         useFrame(ctx, (time) => meter.frame(time));
       }),
       children(component(() => (controls.visible.get() ? Panel(ctx, controls) : Nothing()))()),
-    );
+    ]);
   },
 );

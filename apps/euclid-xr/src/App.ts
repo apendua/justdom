@@ -1,6 +1,6 @@
 import * as THREE from "three";
-import { $, camera, children, cursors } from "@apendua/freedom";
-import { component, effects, just, makeNonReactive, use } from "@apendua/signal";
+import { $, children, cursors, getCamera } from "@apendua/freedom";
+import { component, effects, just, makeNonReactive, use, useEffects } from "@apendua/signal";
 import { createMusicControls, Music } from "@apendua.dev/sound/xr";
 import { createDiagnostics, Diagnostics } from "@apendua/justui";
 import paper_and_running_water from "@apendua.dev/media/paper_and_running_water.mp3";
@@ -44,7 +44,7 @@ const App = component((ctx: WeakKey) => {
       scene.background = new THREE.Color("#141210");
     }),
     effects(() => {
-      use(camera(ctx).pipe(children($(listener))));
+      useEffects(getCamera(ctx), [children($(listener))]);
     }),
     // The frame rate readout rides the head as well: a panel parked in the room
     // is one the player has to go and find.

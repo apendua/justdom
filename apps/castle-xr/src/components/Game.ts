@@ -23,6 +23,7 @@ import {
   set,
   store,
   use,
+  useEffect,
 } from "@apendua/signal";
 import * as RAPIER from "@dimforge/rapier3d";
 import Grid from "./Grid.js";
@@ -33,7 +34,7 @@ import Slingshot from "./Slingshot.js";
 import { brickShape, BrickType } from "./types.js";
 import { CastleContext, ListenerContext, SessionContext } from "../elements/context.js";
 import { createClicks } from "@apendua.dev/sound";
-import { runSimulation, useAsWorldOrigin } from "../elements/rapier.js";
+import { useAsWorldOrigin, useSimulation } from "../elements/rapier.js";
 import { align, QUARTER_TURN, snapToHorizontalAxis, turn, upAxis } from "../utils/rotations.js";
 import { neutralLatch, readStick, StickLatch, stepStick } from "../utils/thumbstick.js";
 import { boxesOverlap, brickBox, lowestPoint, rotatedSize, snapToGrid } from "../utils/grid.js";
@@ -345,13 +346,13 @@ const Game = component((ctx: WeakKey) => {
 
   // The simulation only runs during the siege; while the castle is being built
   // the bricks have no bodies at all, so nothing can nudge them.
-  use(() => {
+  useEffect(() => {
     if (gameSession.phase.get() !== "siege") {
       projectiles.clear();
       settled = 0;
       return;
     }
-    return runSimulation(ctx, PHYSICS_FPS, () => {
+    useSimulation(ctx, PHYSICS_FPS, () => {
       frame += 1;
       if (frame % COUNT_EVERY === 0) {
         countStanding();

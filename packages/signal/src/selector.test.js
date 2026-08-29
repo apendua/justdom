@@ -1,21 +1,17 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { Signal } from "./index.js";
+import { Effect, Signal } from "./index.js";
 import { NoValueError } from "./index.js";
-import { observable } from "./factories.js";
 import selector, { arraySelector } from "./selector.js";
-import { use } from "./operators.js";
 
 test("only triggers on relevant changes", () => {
   const source = new Signal({ value: { x: 1, y: 1 } });
   const sourceS = selector(() => source.get());
   /** @type {number[]} */
   const values = [];
-  observable(() => {
-    use(() => {
-      values.push(sourceS.x);
-    });
-  }).subscribe();
+  new Effect(() => {
+    values.push(sourceS.x);
+  });
   source.set({ x: 1, y: 2 });
   source.set({ x: 2, y: 2 });
   source.set({ x: 2, y: 3 });
@@ -28,11 +24,9 @@ test("supports nested fields", () => {
   const sourceS = selector(() => source.get());
   /** @type {number[]} */
   const values = [];
-  observable(() => {
-    use(() => {
-      values.push(sourceS.x.a);
-    });
-  }).subscribe();
+  new Effect(() => {
+    values.push(sourceS.x.a);
+  });
   source.set({ x: { a: 1 }, y: 2 });
   source.set({ x: { a: 2 }, y: 2 });
   source.set({ x: { a: 2 }, y: 3 });
@@ -48,11 +42,9 @@ test("shallow copy of object properties", () => {
   /** @type {TestObject[]} */
   const history = [];
 
-  observable(() => {
-    use(() => {
-      history.push({ ...sourceS });
-    });
-  }).subscribe();
+  new Effect(() => {
+    history.push({ ...sourceS });
+  });
 
   source.set({ x: 1, y: 2 });
   source.set({ x: 2, y: 2 });
@@ -75,11 +67,9 @@ test("supports Object.entries iterator", () => {
   const sourceS = selector(() => source.get());
   /** @type {Array<Array<[string, number]>>} */
   const entries = [];
-  observable(() => {
-    use(() => {
-      entries.push(Array.from(Object.entries(sourceS)));
-    });
-  }).subscribe();
+  new Effect(() => {
+    entries.push(Array.from(Object.entries(sourceS)));
+  });
   source.set({ x: 1, y: 2, z: 3 });
   source.set({ x: 2, y: 2, z: 3 });
   source.set({ x: 2, y: 3 });
@@ -110,15 +100,13 @@ test("enumerates object keys with for ... in", () => {
   const sourceS = selector(() => source.get());
   /** @type {string[][]} */
   const keys = [];
-  observable(() => {
-    use(() => {
-      const ownKeys = [];
-      for (const key in sourceS) {
-        ownKeys.push(key);
-      }
-      keys.push(ownKeys);
-    });
-  }).subscribe();
+  new Effect(() => {
+    const ownKeys = [];
+    for (const key in sourceS) {
+      ownKeys.push(key);
+    }
+    keys.push(ownKeys);
+  });
   source.set({ x: 1, y: 2, z: 3 });
   source.set({ x: 2, y: 2, z: 3 });
   source.set({ x: 2, y: 3 });
@@ -132,11 +120,9 @@ test("supports Object.keys", () => {
   const sourceS = selector(() => source.get());
   /** @type {PropertyKey[][]} */
   const keys = [];
-  observable(() => {
-    use(() => {
-      keys.push(Object.keys(sourceS));
-    });
-  }).subscribe();
+  new Effect(() => {
+    keys.push(Object.keys(sourceS));
+  });
   source.set({ x: 1, y: 2, z: 3 });
   source.set({ x: 2, y: 2, z: 3 });
   source.set({ x: 2, y: 3 });
@@ -164,11 +150,9 @@ test("shallow copy of array elements", () => {
   /** @type {number[][]} */
   const history = [];
 
-  observable(() => {
-    use(() => {
-      history.push([...sourceS]);
-    });
-  }).subscribe();
+  new Effect(() => {
+    history.push([...sourceS]);
+  });
 
   source.set([1, 2, 3]);
   source.set([1, 2, 3]);
@@ -186,14 +170,12 @@ test("supports array index lookup", () => {
   const sourceS = arraySelector(() => source.get());
   /** @type {number[]} */
   const values = [];
-  observable(() => {
-    use(() => {
-      if (sourceS[0] === undefined) {
-        throw new NoValueError("Array is empty");
-      }
-      values.push(sourceS[0]);
-    });
-  }).subscribe();
+  new Effect(() => {
+    if (sourceS[0] === undefined) {
+      throw new NoValueError("Array is empty");
+    }
+    values.push(sourceS[0]);
+  });
   source.set([1, 2, 3]);
   source.set([1, 2, 3]);
   source.set([2, 2, 3]);
@@ -209,11 +191,9 @@ test("supports Object.keys on array", () => {
   const sourceS = arraySelector(() => source.get());
   /** @type {PropertyKey[][]} */
   const keys = [];
-  observable(() => {
-    use(() => {
-      keys.push(Object.keys(sourceS));
-    });
-  }).subscribe();
+  new Effect(() => {
+    keys.push(Object.keys(sourceS));
+  });
   source.set([1, 2, 3]);
   source.set([1, 2, 3]);
   source.set([2, 2, 3]);
@@ -229,16 +209,14 @@ test("supports array for ... of iteration", () => {
   const sourceS = arraySelector(() => source.get());
   /** @type {number[][]} */
   const history = [];
-  observable(() => {
-    use(() => {
-      /** @type {number[]} */
-      const numbers = [];
-      for (const x of sourceS) {
-        numbers.push(x);
-      }
-      history.push(numbers);
-    });
-  }).subscribe();
+  new Effect(() => {
+    /** @type {number[]} */
+    const numbers = [];
+    for (const x of sourceS) {
+      numbers.push(x);
+    }
+    history.push(numbers);
+  });
   source.set([1, 2, 3]);
   source.set([1, 2, 3]);
   source.set([2, 2, 3]);
@@ -254,16 +232,14 @@ test("supports array for ... in iteration", () => {
   const sourceS = arraySelector(() => source.get());
   /** @type {number[][]} */
   const history = [];
-  observable(() => {
-    use(() => {
-      /** @type {number[]} */
-      const values = [];
-      for (const i in sourceS) {
-        values.push(sourceS[i]);
-      }
-      history.push(values);
-    });
-  }).subscribe();
+  new Effect(() => {
+    /** @type {number[]} */
+    const values = [];
+    for (const i in sourceS) {
+      values.push(sourceS[i]);
+    }
+    history.push(values);
+  });
   source.set([1, 2, 3]);
   source.set([1, 2, 3]);
   source.set([2, 2, 3]);
@@ -279,16 +255,14 @@ test("supports Array.forEach", () => {
   const sourceS = arraySelector(() => source.get());
   /** @type {number[][]} */
   const history = [];
-  observable(() => {
-    use(() => {
-      /** @type {number[]} */
-      const numbers = [];
-      sourceS.forEach((x) => {
-        numbers.push(x);
-      });
-      history.push(numbers);
+  new Effect(() => {
+    /** @type {number[]} */
+    const numbers = [];
+    sourceS.forEach((x) => {
+      numbers.push(x);
     });
-  }).subscribe();
+    history.push(numbers);
+  });
   source.set([1, 2, 3]);
   source.set([1, 2, 3]);
   source.set([2, 2, 3]);
@@ -304,11 +278,9 @@ test("supports array length property", () => {
   const sourceS = arraySelector(() => source.get());
   /** @type {number[]} */
   const lengths = [];
-  observable(() => {
-    use(() => {
-      lengths.push(sourceS.length);
-    });
-  }).subscribe();
+  new Effect(() => {
+    lengths.push(sourceS.length);
+  });
   source.set([1, 2, 3]);
   source.set([1, 2, 3]);
   source.set([2, 2, 3]);

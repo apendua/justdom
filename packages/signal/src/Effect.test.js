@@ -11,6 +11,8 @@ import {
   onCleanup,
   defaultChannel,
   useEffect,
+  component,
+  observable,
 } from "./index.js";
 import UpdateChannel from "./UpdateChannel.js";
 
@@ -492,6 +494,73 @@ describe("Effect", () => {
       assert.strictEqual(derived.isLive(), true);
       outer.dispose();
       assert.strictEqual(derived.isLive(), false);
+    });
+
+    it("keeps what its run set up, when a component is what built it", () => {
+      // The shape `use(fn)` was carrying for the callers that only ever had
+      // side effects: something started under a flag, stopped again through
+      // `onCleanup`, built at the top of a `component` body rather than
+      // inside an effect. The host here is a `Derived`, so the effect is
+      // created while it evaluates and disposed when it lets go — which is
+      // the same pair of moments the `use` dependency edge used to mark.
+      const active = Signal.of(false);
+      let started = 0;
+      let stopped = 0;
+
+      const Widget = component(() => {
+        useEffect(() => {
+          if (!active.get()) {
+            return;
+          }
+          started += 1;
+          onCleanup(() => {
+            stopped += 1;
+          });
+        });
+        return observable(() => "widget");
+      });
+
+      const subscription = Widget().subscribe();
+      assert.deepStrictEqual({ started, stopped }, { started: 0, stopped: 0 });
+
+      active.set(true);
+      assert.deepStrictEqual({ started, stopped }, { started: 1, stopped: 0 }, "set up, and left");
+
+      active.set(false);
+      assert.deepStrictEqual({ started, stopped }, { started: 1, stopped: 1 }, "torn down once");
+
+      active.set(true);
+      assert.deepStrictEqual({ started, stopped }, { started: 2, stopped: 1 });
+
+      subscription.unsubscribe();
+      assert.deepStrictEqual(
+        { started, stopped },
+        { started: 2, stopped: 2 },
+        "and with the component",
+      );
+    });
+
+    it("takes a returned function as its teardown, where `use` would subscribe it", () => {
+      // `use`'s callback hands back an *observable* to keep subscribed, so a
+      // teardown returned to it is a `TypeError` waiting for the first run
+      // that produces one. An effect's is a teardown, which is what a caller
+      // with nothing to compose meant all along.
+      const active = Signal.of(true);
+      let stopped = 0;
+      const outer = new Effect(() => {
+        useEffect(() => {
+          if (!active.get()) {
+            return;
+          }
+          return () => {
+            stopped += 1;
+          };
+        });
+      });
+
+      active.set(false);
+      assert.strictEqual(stopped, 1);
+      outer.dispose();
     });
 
     it("disposes on the spot when there is no computation to belong to", () => {

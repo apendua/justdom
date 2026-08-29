@@ -183,7 +183,10 @@ ordering. The queue notices and throws rather than spinning.
 
 - `useEffect()` — the same `Effect`, with its lifetime handed to the
   computation that built it: whatever cleans that computation up disposes the
-  effect, so nobody has to hold the handle just to dispose it later.
+  effect, so nobody has to hold the handle just to dispose it later. This is
+  what a `use(() => ...)` with nothing to compose wants; `use`'s callback form
+  is for the one that hands an observable back to keep subscribed until the
+  next run.
 - `store()` — a reactive `Proxy` over plain objects/arrays, with per-key
   dependency tracking.
 - `selector()` / `arraySelector()` — structural, read-only reactive views.

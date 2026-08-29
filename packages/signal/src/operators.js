@@ -120,9 +120,17 @@ export function useEffects(value, operators) {
 }
 
 /**
- * Run `fn` for as long as the surrounding computation stands, re-running it
- * when anything it read changes, and keeping whatever observable it hands
- * back subscribed in between.
+ * Hold an observable open for as long as the surrounding computation stands,
+ * for its side effects alone — whatever it emits is dropped.
+ *
+ * Given a callback instead, run it for as long as the computation stands,
+ * re-running it when anything it read changes, and keeping whatever observable
+ * it hands back subscribed in between. That last clause is the whole of why
+ * the callback form is here: a callback that only has side effects wants
+ * `useEffect`, which is the same `Effect` without an observable in the middle
+ * for it to be subscribed through. Reach for this one when the callback
+ * *switches* — when each run picks a different observable and the previous
+ * one should go with it.
  *
  * An `Effect`, because that is what it always was. It used to be a `Derived`
  * whose evaluation had side effects — `component(() => fn() ?? NEVER)` — and

@@ -3,9 +3,9 @@ import assert from "node:assert/strict";
 import { makeNonReactive } from "./index.js";
 import { on } from "./Emitter.js";
 import store, { emit } from "./store.js";
-import { set, use } from "./operators.js";
+import { set } from "./operators.js";
 import { observable, component, just } from "./factories.js";
-import { Signal } from "./index.js";
+import { Signal, useEffect } from "./index.js";
 
 /**
  * @import { Observable, MonoTypeOperatorFunction } from 'rxjs';
@@ -125,7 +125,7 @@ describe("component()", () => {
       const handle = new Signal();
       const text = Signal.of("");
 
-      use(() => {
+      useEffect(() => {
         handle.get().reset("Hello!");
       });
 

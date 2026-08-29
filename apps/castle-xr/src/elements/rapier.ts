@@ -12,8 +12,8 @@
 import { createProperty, onCleanup } from "@apendua/signal";
 import * as THREE from "three";
 import * as RAPIER from "@dimforge/rapier3d";
-import { MonoTypeOperatorFunction, Observable } from "rxjs";
-import { effects, observable, useEffects } from "@apendua/signal";
+import { MonoTypeOperatorFunction } from "rxjs";
+import { effects, useEffects } from "@apendua/signal";
 import { layoutEffects, setWorldMatrix, useFrame } from "@apendua/freedom";
 
 export interface RapierWorkspace {
@@ -147,31 +147,34 @@ export function rigidBody<T extends THREE.Object3D>(
   });
 }
 
-export function runSimulation(
-  ctx: WeakKey,
-  fps: number = 60,
-  onAfterStep?: () => void,
-): Observable<void> {
+/**
+ * Step the world for as long as the computation that asked for it stands.
+ *
+ * A fixed-step loop hung off the render loop, and nothing else — there is no
+ * value here for anybody to consume, and never was. It used to hand back an
+ * `Observable` only so that `use` had something to subscribe an effect to;
+ * `useFrame` already ties the registration to the surrounding computation, so
+ * the observable in between was a subscription nobody read.
+ */
+export function useSimulation(ctx: WeakKey, fps: number = 60, onAfterStep?: () => void): void {
   const { world } = RapierContext.get(ctx);
-  return observable(() => {
-    let lastTime = performance.now();
-    let accumulator = 0;
-    const fixedTimeStep = 1 / fps;
-    // A frame that arrives after a long stall must not be paid back all at
-    // once, or a castle spends its first frame after the phase change being
-    // shoved through the floor.
-    const maxCatchUp = fixedTimeStep * 5;
-    useFrame(ctx, () => {
-      const currentTime = performance.now();
-      const deltaTime = (currentTime - lastTime) / 1000;
-      lastTime = currentTime;
+  let lastTime = performance.now();
+  let accumulator = 0;
+  const fixedTimeStep = 1 / fps;
+  // A frame that arrives after a long stall must not be paid back all at
+  // once, or a castle spends its first frame after the phase change being
+  // shoved through the floor.
+  const maxCatchUp = fixedTimeStep * 5;
+  useFrame(ctx, () => {
+    const currentTime = performance.now();
+    const deltaTime = (currentTime - lastTime) / 1000;
+    lastTime = currentTime;
 
-      accumulator = Math.min(accumulator + deltaTime, maxCatchUp);
-      while (accumulator >= fixedTimeStep) {
-        world.step();
-        accumulator -= fixedTimeStep;
-      }
-      onAfterStep?.();
-    });
+    accumulator = Math.min(accumulator + deltaTime, maxCatchUp);
+    while (accumulator >= fixedTimeStep) {
+      world.step();
+      accumulator -= fixedTimeStep;
+    }
+    onAfterStep?.();
   });
 }

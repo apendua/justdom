@@ -83,57 +83,57 @@ describe("effects()", () => {
 });
 
 describe("use()", () => {
-  it("keeps what its callback set up", () => {
-    // The shape that broke marblerun's marble emitter: a callback that starts
-    // something and registers `onCleanup` to stop it again, gated on a flag.
-    //
-    // `use` used to build a `Derived` whose evaluation had the side effects
-    // and whose value was the `NEVER` singleton — the same value every time,
-    // so the equality cutoff called each recomputation "unchanged", kept the
-    // previous value and undid the run that had just happened. Whatever the
-    // callback had just set up was torn down before it could do anything.
-    const active = Signal.of(false);
-    let started = 0;
-    let stopped = 0;
+  it("holds the observable open for as long as the host stands", () => {
+    /** @type {string[]} */
+    const log = [];
+    const inner = new Observable(() => {
+      log.push("sub");
+      return () => log.push("unsub");
+    });
 
     const host = new Derived(() => {
-      use(() => {
-        if (!active.get()) {
-          return;
-        }
-        started += 1;
-        onCleanup(() => {
-          stopped += 1;
-        });
-      });
+      use(inner);
       return "host";
     });
     const holder = new Effect(() => host.get());
 
-    assert.deepEqual({ started, stopped }, { started: 0, stopped: 0 });
-
-    active.set(true);
-    assert.deepEqual({ started, stopped }, { started: 1, stopped: 0 }, "set up, and left alone");
-
-    active.set(false);
-    assert.deepEqual({ started, stopped }, { started: 1, stopped: 1 }, "torn down exactly once");
-
-    active.set(true);
-    assert.deepEqual({ started, stopped }, { started: 2, stopped: 1 });
+    assert.deepEqual(log, ["sub"], "subscribed once the host had a reader");
 
     holder.dispose();
-    assert.deepEqual({ started, stopped }, { started: 2, stopped: 2 }, "and with the host");
+    assert.deepEqual(log, ["sub", "unsub"], "and let go when the host did");
   });
 
-  it("does not adopt what the inner observable reads while subscribing", () => {
+  it("drops what the observable emits", () => {
+    // The whole of `takeNothing()`: an edge that emits marks its host stale,
+    // and a side effect nobody consumes has no business doing that.
+    const source = new Subject();
+    let hostRuns = 0;
+
+    const host = new Derived(() => {
+      hostRuns += 1;
+      use(source);
+      return "host";
+    });
+    const holder = new Effect(() => host.get());
+    assert.equal(hostRuns, 1);
+
+    source.next("ignored");
+    host.get();
+    assert.equal(hostRuns, 1, "a value is not an invalidation");
+
+    holder.dispose();
+  });
+
+  it("does not adopt what the observable reads while subscribing", () => {
     // Subscribing is not reading. A foreign observable's `subscribe` may read
     // reactive things — a `component(...)` builds its entities in there — and
-    // those belong to it, not to the effect that subscribed it. Tracking them
-    // would tear the whole inner subscription down and back up on a write the
-    // callback never looked at, which in freedom means rebuilding a subtree.
+    // those belong to it, not to whichever computation happened to be
+    // evaluating when the edge attached. Tracking them would tear the whole
+    // subscription down and back up on a write the host never looked at,
+    // which in freedom means rebuilding a subtree.
     const unrelated = Signal.of("a");
-    let callbackRuns = 0;
     let innerSubscribes = 0;
+    let invalidations = 0;
     const inner = new Observable(() => {
       innerSubscribes += 1;
       unrelated.get();
@@ -141,63 +141,41 @@ describe("use()", () => {
     });
 
     const host = new Computation();
-    const subscription = host.subscribe({});
-    host.track(() => {
-      use(() => {
-        callbackRuns += 1;
-        return inner;
-      });
+    const subscription = host.subscribe({
+      next: () => {
+        invalidations += 1;
+      },
     });
-    assert.deepEqual({ callbackRuns, innerSubscribes }, { callbackRuns: 1, innerSubscribes: 1 });
+    host.track(() => {
+      use(inner);
+    });
+    assert.deepEqual({ innerSubscribes, invalidations }, { innerSubscribes: 1, invalidations: 0 });
 
     unrelated.set("b");
     assert.deepEqual(
-      { callbackRuns, innerSubscribes },
-      { callbackRuns: 1, innerSubscribes: 1 },
-      "the callback never read it, so nothing should have moved",
+      { innerSubscribes, invalidations },
+      { innerSubscribes: 1, invalidations: 0 },
+      "the host never read it, so nothing should have moved",
     );
 
     subscription.unsubscribe();
   });
 
-  it("still re-runs for what the callback itself reads", () => {
-    const source = Signal.of(1);
-    let callbackRuns = 0;
+  it("refuses a callback, and names the helper that takes one", () => {
+    // The callback form is gone: everything that reached for it only ever had
+    // side effects, and `useEffect` is that without an observable in between.
+    // Callers who are not looking at types get told which one they wanted.
     const host = new Computation();
     const subscription = host.subscribe({});
-    host.track(() => {
-      use(() => {
-        callbackRuns += 1;
-        source.get();
-      });
-    });
-
-    const before = callbackRuns;
-    source.set(2);
-    assert.equal(callbackRuns, before + 1);
+    assert.throws(
+      () =>
+        host.track(() => {
+          // @ts-expect-error -- the runtime guard is the point of this test
+          use(() => {});
+        }),
+      /useEffect/,
+    );
     subscription.unsubscribe();
-  });
-
-  it("switches the observable its callback hands back", () => {
-    const which = Signal.of("a");
-    /** @type {string[]} */
-    const log = [];
-    /** @param {string} name */
-    const stream = (name) =>
-      new Observable(() => {
-        log.push(`sub:${name}`);
-        return () => log.push(`unsub:${name}`);
-      });
-
-    const host = new Derived(() => {
-      use(() => stream(which.get()));
-      return 1;
-    });
-    const holder = new Effect(() => host.get());
-
-    which.set("b");
-    holder.dispose();
-    assert.deepEqual(log, ["sub:a", "unsub:a", "sub:b", "unsub:b"]);
   });
 });
 

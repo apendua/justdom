@@ -184,9 +184,8 @@ ordering. The queue notices and throws rather than spinning.
 - `useEffect()` — the same `Effect`, with its lifetime handed to the
   computation that built it: whatever cleans that computation up disposes the
   effect, so nobody has to hold the handle just to dispose it later. This is
-  what a `use(() => ...)` with nothing to compose wants; `use`'s callback form
-  is for the one that hands an observable back to keep subscribed until the
-  next run.
+  what every `use(() => ...)` in this repo turned out to want, and `use()` no
+  longer takes a callback at all.
 - `store()` — a reactive `Proxy` over plain objects/arrays, with per-key
   dependency tracking.
 - `selector()` / `arraySelector()` — structural, read-only reactive views.
@@ -229,7 +228,9 @@ that setup **undone**. The equality cutoff keeps the previous value and
 releases whatever the run that just happened had claimed — correct for a node
 that rebuilt a texture it already had, ruinous for one that had just started
 an interval. `use()` used to be built that way, returning the same `NEVER`
-every time; it is an `Effect` now.
+every time. What its callers wanted from it is `useEffect()`, which is an
+`Effect`; `use()` itself is now nothing but the dependency edge that holds an
+observable open.
 
 **`subscribe()` is an invalidation channel, not a value stream.** It fires
 eagerly when a node goes from clean to stale, and it does not evaluate

@@ -780,6 +780,49 @@ describe("a node failure, which is the other kind", () => {
     holder.unsubscribe();
   });
 
+  it("stops a read of a Signal that died, and takes its value with it", () => {
+    // A signal holds its value, so unlike a `Derived` it is still sitting on
+    // one when it dies — and answering with it would be handing out a reading
+    // from an instrument that has stopped.
+    const source = Signal.of(1);
+    const holder = source.subscribe({ error: () => {} });
+    assert.equal(source.get(), 1);
+
+    source.fail(new Error("the sensor died"));
+    assert.throws(() => source.get(), /the sensor died/);
+    assert.throws(() => source.peek(), /the sensor died/, "and peek says the same");
+    assert.equal(source.hasValue(), false, "there is no value to have any more");
+    holder.unsubscribe();
+  });
+
+  it("tells a reader of a dead Signal apart from one that is merely waiting", () => {
+    // The distinction the two answers carry. A `NoValueError` is a "not yet"
+    // the graph waits on — the effect stays subscribed and runs again when
+    // the value arrives. A failure is news that it never will, and an effect
+    // handed one has to stop rather than wait for something that cannot come.
+    /** @type {Signal<number>} */
+    const pending = new Signal();
+    /** @type {string[]} */
+    const seen = [];
+    const waiting = new Effect(() => seen.push(`value ${pending.get()}`));
+    // Counted rather than compared against `[]`: `deepEqual` asserts `actual
+    // is T`, so matching an empty literal here would narrow `seen` to
+    // `never[]` for the rest of the test and fail the pushes below.
+    assert.equal(seen.length, 0, "waiting, not failed");
+
+    pending.set(1);
+    assert.deepEqual(seen, ["value 1"], "and it was still listening");
+
+    const dying = Signal.of(1);
+    const reader = new Effect(() => dying.get(), {
+      onError: (err) => seen.push(/** @type {Error} */ (err).message),
+    });
+    captureConsoleError(() => dying.fail(new Error("gone for good")));
+
+    assert.equal(reader.isDisposed, true, "the reader stops rather than waiting");
+    waiting.dispose();
+  });
+
   it("is what a read gets instead of a NoValueError about the value it lost", () => {
     // The shape this takes in an application. The observable behind a
     // `Derived.from` errors, so the signal it was writing into never gets a

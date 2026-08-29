@@ -6,6 +6,7 @@ import {
   frames,
   getCamera,
   getScene,
+  onLateFrame,
   RendererContext,
   SceneContext,
 } from "./render.js";
@@ -43,6 +44,36 @@ describe("frames", () => {
     // and that is right where there is genuinely no renderer — a test runner,
     // a portal mounted on a plain page.
     assert.throws(() => frames({}), /RendererContext not set/);
+  });
+});
+
+describe("onLateFrame", () => {
+  test("hands back the way off again, rather than something to subscribe to", () => {
+    // The late phase used to be an observable, and both of its callers did the
+    // same thing with it: subscribed on the line that built it and kept the
+    // subscription only to unsubscribe later. Nothing was ever emitted through
+    // it, so the teardown is the whole of what it had to say — and neither
+    // caller has a surrounding computation to hand the lifetime to, which is
+    // what keeps this from being a `useLateFrame`.
+    const renderer = /** @type {any} */ ({});
+    const ctx = RendererContext.set({}, renderer);
+
+    const stop = onLateFrame(ctx, () => {});
+    assert.equal(typeof stop, "function");
+    // Called more than once, because a failure takes the callback off the loop
+    // by itself and the caller's own teardown still runs afterwards.
+    assert.doesNotThrow(() => {
+      stop();
+      stop();
+    });
+  });
+
+  test("without a renderer there is no late phase, which the portal relies on", () => {
+    // A portal on a plain page or under a test runner catches this and settles
+    // its batches from the microtask alone. Nothing invalidates a batch from
+    // inside a frame where there are no frames, so that is the whole mechanism
+    // there — but only because this says so rather than quietly doing nothing.
+    assert.throws(() => onLateFrame({}, () => {}), /RendererContext not set/);
   });
 });
 

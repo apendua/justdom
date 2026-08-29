@@ -1,7 +1,7 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
-import { BehaviorSubject, Observable, Subject } from "rxjs";
+import { BehaviorSubject, Subject } from "rxjs";
 import { Signal, just } from "@apendua/signal";
 import {
   InteractionContext,
@@ -82,7 +82,7 @@ function moveAside(/** @type {THREE.Object3D} */ object) {
  * @param {THREE.XRTargetRaySpace} controller
  */
 function connect(manager, controller) {
-  return manager.addController(controller, () => new Observable(() => () => {})).subscribe();
+  return manager.addController(controller, () => () => {}).subscribe();
 }
 
 describe("select", () => {

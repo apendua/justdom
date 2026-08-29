@@ -174,10 +174,10 @@ export class InteractionManager {
 
   /**
    * @param {THREE.XRTargetRaySpace} controller
-   * @param {(fn: XRFrameRequestCallback) => Observable<never>} onAnimationFrame
-   *   Runs the callback once per frame. It must run late — after everything
-   *   that moves the scene, with world matrices already up to date — because
-   *   that is when the ray is worked out.
+   * @param {(fn: XRFrameRequestCallback) => () => void} onAnimationFrame
+   *   Puts the callback on the frame loop and hands back the way off again. It
+   *   must run late — after everything that moves the scene, with world
+   *   matrices already up to date — because that is when the ray is worked out.
    * @returns {Observable<void>}
    */
   addController(controller, onAnimationFrame) {
@@ -392,9 +392,9 @@ export class InteractionManager {
       // So only note that the ray is stale, and cast it from the frame hook.
       const onMove = invalidate;
 
-      const subscription = onAnimationFrame(() => {
+      const stopAnimating = onAnimationFrame(() => {
         maybeUpdateIntersections();
-      }).subscribe();
+      });
 
       this.#controllers.add(controller);
       this.#invalidate.add(invalidate);
@@ -416,9 +416,7 @@ export class InteractionManager {
         this.#invalidate.delete(invalidate);
         this.#pointers.delete(controller);
 
-        if (subscription) {
-          subscription.unsubscribe();
-        }
+        stopAnimating();
       };
     });
   }

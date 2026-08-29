@@ -204,8 +204,8 @@ const lateListeners = new WeakMap();
  * Put `fn` on a renderer's frame callbacks and hand back the way off again.
  *
  * What it means to be a frame callback, written once: `useFrame` owns one of
- * these through an effect, `addListener` wraps one in an observable for the
- * late phase, and the two differ in nothing but who holds the lifetime.
+ * these through an effect, `onLateFrame` hands one straight back to the caller,
+ * and the two differ in nothing but who holds the lifetime.
  *
  * @param {THREE.WebGLRenderer} renderer
  * @param {XRFrameRequestCallback} fn
@@ -236,15 +236,18 @@ function registerListener(renderer, fn, registry, onError) {
 }
 
 /**
- * @param {THREE.WebGLRenderer} renderer
- * @param {XRFrameRequestCallback} fn
- * @param {WeakMap<THREE.WebGLRenderer, Set<XRFrameRequestCallback>>} [registry]
- * @return {Observable<never>}
+ * Where a frame callback's failure goes when the caller has not said. Rethrown
+ * from a fresh task, which is where an unhandled observable error landed back
+ * when the late phase was an observable: the global handler stays the last
+ * word, and a failure nobody is watching is still loud.
+ *
+ * @param {unknown} err
+ * @returns {void}
  */
-function addListener(renderer, fn, registry = listeners) {
-  return new Observable((subscriber) =>
-    registerListener(renderer, fn, registry, (err) => subscriber.error(err)),
-  );
+function reportListenerError(err) {
+  setTimeout(() => {
+    throw err;
+  });
 }
 
 /** @type {WeakMap<THREE.WebGLRenderer, Subject<{ time: number, frame: XRFrame }>>} */
@@ -311,8 +314,17 @@ export function useFrame(ctx, fn) {
 
 /**
  * Like `useFrame`, but at the end of the frame: after everything that moves the
- * scene has moved it and before any of it is drawn. An observable rather than
- * an effect, because the two callers it has hold its lifetime themselves.
+ * scene has moved it and before any of it is drawn. Hands the teardown back
+ * rather than tying it to the surrounding computation, because none of the
+ * callers here has one to tie it to — a portal disposes what it built from its
+ * own teardown, and the interaction manager is handed this as a function
+ * because it holds no context to ask for frames with.
+ *
+ * That is also why this is not `useLateFrame`. `useFrame` could drop its
+ * lifetime on the computation that asked because every one of its callers is a
+ * component being built inside one; the late phase's callers own themselves,
+ * and an effect they had to dispose by hand would be the long way round to
+ * this.
  *
  * Ordering is the whole reason to be here rather than in `useFrame`. What runs
  * over `frames(ctx)` — an animation clock sampling a running CSS animation, a
@@ -325,11 +337,29 @@ export function useFrame(ctx, fn) {
  *
  * @param {WeakKey} ctx
  * @param {XRFrameRequestCallback} fn
- * @return {Observable<never>}
+ * @param {(err: unknown) => void} [onError] What to do when something the
+ *   callback reads fails, which is terminal: there is no value left to draw
+ *   with, so the callback comes off the loop either way and this only says
+ *   where the failure is reported. `reportListenerError` by default.
+ * @return {() => void} Takes the callback off the loop again. Safe to call
+ *   more than once, and after a failure has already taken it off.
  */
-export function animateLate(ctx, fn) {
+export function onLateFrame(ctx, fn, onError = reportListenerError) {
   const renderer = RendererContext.get(ctx);
-  return addListener(renderer, fn, lateListeners);
+  // Declared before it is assigned so the handler below can close over it. A
+  // callback cannot fail before it has run and cannot run before this has
+  // returned, so by the time the handler wants it, it is there.
+  /** @type {(() => void) | undefined} */
+  let stop;
+  stop = registerListener(renderer, fn, lateListeners, (err) => {
+    // A failure is terminal — there is no value left to draw with — so the
+    // callback comes off the loop, which is where the observable form ended up
+    // too once its subscriber was told. The teardown is idempotent, so the
+    // caller's own `stop()` later is still fine.
+    stop?.();
+    onError(err);
+  });
+  return stop;
 }
 
 /**
@@ -431,9 +461,7 @@ export function render(fn, options = {}) {
     //   controllerGrip0.add(options.createHandModel(hand0));
     // }
     subscriber.add(
-      interactionManager
-        .addController(controller0, (fn) => addListener(renderer, fn, lateListeners))
-        .subscribe(),
+      interactionManager.addController(controller0, (fn) => onLateFrame(ctx, fn)).subscribe(),
     );
     const controller1 = renderer.xr.getController(1);
     const controllerGrip1 = renderer.xr.getControllerGrip(1);
@@ -445,9 +473,7 @@ export function render(fn, options = {}) {
       controllerGrip1.add(options.createControllerModel(controllerGrip1));
     }
     subscriber.add(
-      interactionManager
-        .addController(controller1, (fn) => addListener(renderer, fn, lateListeners))
-        .subscribe(),
+      interactionManager.addController(controller1, (fn) => onLateFrame(ctx, fn)).subscribe(),
     );
 
     ctx = ControllersContext.set(ctx, [

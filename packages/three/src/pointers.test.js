@@ -1,7 +1,6 @@
 import { describe, test, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
-import { Observable } from "rxjs";
 import { InteractionContext, InteractionManager } from "./interactions.js";
 import { cursors, DEFAULT_RAY_LENGTH, fitRayToHit, pointers } from "./pointers.js";
 
@@ -20,15 +19,13 @@ function fakeFrameLoop() {
   return {
     /**
      * @param {XRFrameRequestCallback} fn
-     * @returns {Observable<never>}
+     * @returns {() => void}
      */
     onAnimationFrame(fn) {
-      return new Observable(() => {
-        callbacks.add(fn);
-        return () => {
-          callbacks.delete(fn);
-        };
-      });
+      callbacks.add(fn);
+      return () => {
+        callbacks.delete(fn);
+      };
     },
     run() {
       for (const fn of callbacks) {

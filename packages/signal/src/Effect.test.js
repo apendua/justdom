@@ -13,6 +13,7 @@ import {
   useEffect,
   component,
   observable,
+  withChannel,
 } from "./index.js";
 import UpdateChannel from "./UpdateChannel.js";
 
@@ -574,6 +575,193 @@ describe("Effect", () => {
       assert.strictEqual(effect.isDisposed, true);
       source.set(2);
       assert.deepStrictEqual(seen, [1], "the one run it made on the way in");
+    });
+  });
+
+  describe("nested useEffect", () => {
+    it("gives each run of the outer effect its own inner effect", () => {
+      // The composition the whole helper rests on: a run builds an effect,
+      // and the run that replaces it takes that effect away with it. The
+      // outer's `track` clears its cleanups on the way in, so the inner is
+      // disposed *before* the run that would build its replacement — never
+      // two of them alive at once, reacting to the same write.
+      const outerSource = Signal.of("a");
+      const innerSource = Signal.of(1);
+      /** @type {string[]} */
+      const log = [];
+
+      const outer = new Effect(() => {
+        const which = outerSource.get();
+        log.push(`outer:${which}`);
+        useEffect(() => {
+          log.push(`inner(${which}):${innerSource.get()}`);
+        });
+      });
+
+      innerSource.set(2);
+      outerSource.set("b");
+      innerSource.set(3);
+
+      assert.deepStrictEqual(log, [
+        "outer:a",
+        "inner(a):1",
+        "inner(a):2",
+        "outer:b",
+        "inner(b):2",
+        "inner(b):3",
+      ]);
+
+      outer.dispose();
+      innerSource.set(4);
+      assert.deepStrictEqual(
+        log.at(-1),
+        "inner(b):3",
+        "and the last one went with the effect that built it",
+      );
+    });
+
+    it("does not re-run the outer effect for what an inner one reads", () => {
+      // `useEffect` registers an `onCleanup`, not a dependency. The outer
+      // owns the inner's *lifetime* and nothing else, so a write the inner
+      // read and the outer did not re-runs the inner alone — otherwise every
+      // nested read would rebuild the whole nest.
+      const outerSource = Signal.of(1);
+      const innerSource = Signal.of(1);
+      let outerRuns = 0;
+      let innerRuns = 0;
+
+      const outer = new Effect(() => {
+        outerRuns += 1;
+        outerSource.get();
+        useEffect(() => {
+          innerRuns += 1;
+          innerSource.get();
+        });
+      });
+      assert.deepStrictEqual({ outerRuns, innerRuns }, { outerRuns: 1, innerRuns: 1 });
+
+      innerSource.set(2);
+      assert.deepStrictEqual(
+        { outerRuns, innerRuns },
+        { outerRuns: 1, innerRuns: 2 },
+        "the inner one alone",
+      );
+
+      outerSource.set(2);
+      assert.deepStrictEqual(
+        { outerRuns, innerRuns },
+        { outerRuns: 2, innerRuns: 3 },
+        "and the outer takes the inner with it",
+      );
+
+      outer.dispose();
+    });
+
+    it("disposes a whole nest, however deep, with its root", () => {
+      const source = Signal.of(1);
+      /** @type {Effect[]} */
+      const built = [];
+      const root = new Effect(() => {
+        source.get();
+        built.push(
+          useEffect(() => {
+            built.push(
+              useEffect(() => {
+                built.push(useEffect(() => {}));
+              }),
+            );
+          }),
+        );
+      });
+      assert.strictEqual(built.length, 3);
+      assert.deepStrictEqual(
+        built.map((e) => e.isDisposed),
+        [false, false, false],
+      );
+
+      root.dispose();
+      assert.deepStrictEqual(
+        built.map((e) => e.isDisposed),
+        [true, true, true],
+        "all the way down",
+      );
+    });
+
+    it("builds inner effects into the outer's channel, first run and every one after", () => {
+      // A run builds things, and what it builds belongs to the region the
+      // effect belongs to. The first run gets that for free — it happens
+      // inside whatever `withChannel` the caller was in — but a re-run comes
+      // off a queue with no such caller on the stack. Without the effect
+      // putting its own channel back, the same line yields the region's
+      // channel once and the default channel forever after, which is half an
+      // update applied now and half a frame later.
+      const region = new UpdateChannel({ name: "region" });
+      const source = Signal.of(1);
+      /** @type {string[]} */
+      const channels = [];
+
+      const outer = withChannel(
+        region,
+        () =>
+          new Effect(() => {
+            source.get();
+            channels.push(useEffect(() => {}).channel.name);
+          }),
+      );
+      assert.deepStrictEqual(channels, ["region"]);
+
+      source.set(2);
+      assert.deepStrictEqual(channels, ["region", "region"], "the re-run agrees with the first");
+
+      outer.dispose();
+    });
+
+    it("still lets an inner effect be parked in the default channel on purpose", () => {
+      // Inheriting the channel is a default, not a rule: `withChannel(null)`
+      // is how something shared between regions says it belongs to none.
+      const region = new UpdateChannel({ name: "region" });
+      const outer = withChannel(
+        region,
+        () =>
+          new Effect(() => {
+            const inherited = useEffect(() => {});
+            const parked = withChannel(null, () => useEffect(() => {}));
+            assert.strictEqual(inherited.channel, region);
+            assert.strictEqual(parked.channel, defaultChannel);
+          }),
+      );
+      outer.dispose();
+    });
+
+    it("keeps an inner effect built by a run that then failed", () => {
+      // The run got as far as building it and then threw. The effect is
+      // already registered on the outer's cleanups, so it is disposed by the
+      // next run or by the outer going away — not left running with nobody
+      // holding it.
+      const source = Signal.of(1);
+      /** @type {Effect | undefined} */
+      let inner;
+      /** @type {unknown[]} */
+      const errors = [];
+
+      const outer = new Effect(
+        () => {
+          source.get();
+          inner = useEffect(() => {});
+          throw new Error("after building it");
+        },
+        { onError: (err) => errors.push(err) },
+      );
+
+      assert.strictEqual(errors.length, 1);
+      assert.strictEqual(inner?.isDisposed, false, "still standing, and still owned");
+
+      const first = inner;
+      source.set(2);
+      assert.strictEqual(first?.isDisposed, true, "the next run took it");
+
+      outer.dispose();
+      assert.strictEqual(inner?.isDisposed, true);
     });
   });
 });

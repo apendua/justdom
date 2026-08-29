@@ -1,9 +1,10 @@
 import * as THREE from "three";
 import { $, children, interactions, keyedList, XREventMap } from "@apendua/freedom";
-import { component, effects, observable, on, onCleanup } from "@apendua/signal";
+import { component, effects, observable, on } from "@apendua/signal";
 import { Circle, Line, Point } from "@apendua.dev/euclid-core";
 import type { SceneItem } from "@apendua.dev/euclid-lang";
 import { labelSprite, unitCircleGeometry, unitDiscGeometry } from "../elements/three.js";
+import { lineMaterial, meshMaterial } from "../elements/material.js";
 import { palette } from "../elements/palette.js";
 import type Studio from "../store/Studio.js";
 
@@ -41,27 +42,6 @@ function realCoords(point: Point): { x: number; y: number } | null {
  */
 const Board = component((ctx: WeakKey, studio: Studio) => {
   const { makeInteractive } = interactions(ctx);
-
-  const lineMaterial = (color: string) => {
-    const material = new THREE.LineBasicMaterial({ color });
-    onCleanup(() => {
-      material.dispose();
-    });
-    return material;
-  };
-
-  const meshMaterial = (color: string, opacity = 1) => {
-    const material = new THREE.MeshBasicMaterial({
-      color,
-      side: THREE.DoubleSide,
-      transparent: opacity < 1,
-      opacity,
-    });
-    onCleanup(() => {
-      material.dispose();
-    });
-    return material;
-  };
 
   const strokeColorOf = (item: SceneItem): string => {
     if (studio.selection.get() === item.id) {
@@ -368,18 +348,11 @@ const Board = component((ctx: WeakKey, studio: Studio) => {
               return;
             }
             const selected = studio.selection.get() === item.id;
-            const { texture, aspect } = labelSprite(
+            const { material, aspect } = labelSprite(
               item.name,
               selected ? palette.highlight : palette.label,
             );
-            mesh.material = new THREE.MeshBasicMaterial({
-              map: texture,
-              transparent: true,
-              side: THREE.DoubleSide,
-            });
-            onCleanup(() => {
-              (mesh.material as THREE.Material).dispose();
-            });
+            mesh.material = material;
             const { scale } = studio.viewport.get();
             const height = 0.028 / scale;
             const width = height * aspect;

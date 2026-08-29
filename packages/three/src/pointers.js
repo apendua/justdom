@@ -1,9 +1,10 @@
 import * as THREE from "three";
 import {
+  MINUTE,
+  memoizeWithTTL,
   addDependency,
   effects,
   fromEvent,
-  memoize,
   onCleanup,
   observeFn,
   set,
@@ -28,7 +29,8 @@ const DEFAULT_RADIUS = 0.005;
 
 const DEFAULT_COLOR = "#ffffff";
 
-const ballGeometry = memoize(
+const ballGeometry = memoizeWithTTL(
+  MINUTE,
   /**
    * @param {number} radius
    * @returns {THREE.BufferGeometry}
@@ -42,16 +44,17 @@ const ballGeometry = memoize(
   },
 );
 
-const ballMaterial = memoize(
+const ballMaterial = memoizeWithTTL(
+  MINUTE,
   /**
    * @param {THREE.ColorRepresentation} color
    * @returns {THREE.Material}
    */
   (color) => {
     // Unlit on purpose: the mark should read the same wherever it lands, and
-    // it is not part of the scene being lit. The chrome flags are what keep
-    // it visible — see `adoptAsChrome` for why a cursor is drawn over
-    // everything rather than depth-tested into it.
+    // it is not part of the scene being lit. The chrome flags are what keep it
+    // visible — see `wearChrome` for why a cursor is drawn over everything
+    // rather than depth-tested into it.
     const material = new THREE.MeshBasicMaterial({
       color,
       transparent: true,
@@ -74,49 +77,88 @@ const ballMaterial = memoize(
 const CURSOR_RENDER_ORDER = 1e9;
 
 /**
- * Dress a widget as pointer chrome: drawn over everything, the way a desktop
- * draws the mouse cursor. A cursor depth-tested into the scene is buried by
- * what it lands on — it sits exactly on the hit surface, so half of it is
- * always inside, and a hit reported by a panel's blocker plane sits *behind*
- * the panel's own quads, which then cover the mark completely. Chrome is not
- * part of the scene: it renders after everything (`transparent` puts it in
- * the pass that follows the opaque scene, the render order puts it last
- * within that pass) and ignores depth entirely.
+ * The chrome a template's widgets wear: one set of materials per template,
+ * dressed once and shared by every cursor cloned from it.
  *
- * The materials are cloned before they are touched — `Object3D.clone()`
- * shares materials with the template, and the template belongs to the
- * caller. The clones are this widget's own; the caller must dispose them
- * when the widget goes.
+ * Chrome is drawn over everything, the way a desktop draws the mouse cursor.
+ * A cursor depth-tested into the scene is buried by what it lands on — it sits
+ * exactly on the hit surface, so half of it is always inside, and a hit
+ * reported by a panel's blocker plane sits *behind* the panel's own quads,
+ * which then cover the mark completely. Chrome is not part of the scene: it
+ * renders after everything (`transparent` puts it in the pass that follows the
+ * opaque scene, the render order puts it last within that pass) and ignores
+ * depth entirely.
+ *
+ * The materials are cloned before they are touched — `Object3D.clone()` shares
+ * materials with the template, and the template belongs to the caller. These
+ * clones belong to this node, which disposes them once no cursor has worn them
+ * for a minute.
+ *
+ * Returned in traversal order, one entry per mesh, so `wearChrome` can hand
+ * them to a clone of the same template by walking it the same way.
+ */
+const chromeMaterials = memoizeWithTTL(
+  MINUTE,
+  /**
+   * @param {THREE.Object3D} template
+   * @returns {(THREE.Material | THREE.Material[])[]}
+   */
+  (template) => {
+    /** @type {THREE.Material[]} */
+    const owned = [];
+    /**
+     * @param {THREE.Material} material
+     * @returns {THREE.Material}
+     */
+    const chrome = (material) => {
+      const own = material.clone();
+      own.transparent = true;
+      own.depthTest = false;
+      own.depthWrite = false;
+      owned.push(own);
+      return own;
+    };
+    /** @type {(THREE.Material | THREE.Material[])[]} */
+    const worn = [];
+    template.traverse((child) => {
+      if (!("material" in child)) {
+        return;
+      }
+      const bearer = /** @type {THREE.Mesh} */ (child);
+      worn.push(
+        Array.isArray(bearer.material) ? bearer.material.map(chrome) : chrome(bearer.material),
+      );
+    });
+    onCleanup(() => {
+      for (const material of owned) {
+        material.dispose();
+      }
+    });
+    return worn;
+  },
+);
+
+/**
+ * Put the chrome on a widget: the shared materials in place of the ones it
+ * inherited from the template, and the render order that carries it over
+ * everything else.
+ *
+ * `worn` was built by traversing the template, and a clone traverses the same
+ * way, so the nth mesh here is the nth mesh there.
  *
  * @param {THREE.Object3D} root
- * @returns {THREE.Material[]} the materials this created, to dispose
+ * @param {(THREE.Material | THREE.Material[])[]} worn
+ * @returns {void}
  */
-function adoptAsChrome(root) {
-  /** @type {THREE.Material[]} */
-  const owned = [];
-  /**
-   * @param {THREE.Material} material
-   * @returns {THREE.Material}
-   */
-  const chrome = (material) => {
-    const own = material.clone();
-    own.transparent = true;
-    own.depthTest = false;
-    own.depthWrite = false;
-    owned.push(own);
-    return own;
-  };
+function wearChrome(root, worn) {
+  let next = 0;
   root.traverse((child) => {
     child.renderOrder = CURSOR_RENDER_ORDER;
     if (!("material" in child)) {
       return;
     }
-    const bearer = /** @type {THREE.Mesh} */ (child);
-    bearer.material = Array.isArray(bearer.material)
-      ? bearer.material.map(chrome)
-      : chrome(bearer.material);
+    /** @type {THREE.Mesh} */ (child).material = worn[next++];
   });
-  return owned;
 }
 
 /**
@@ -195,11 +237,12 @@ export function fitRayToHit(ray, controller, all, fallback = DEFAULT_RAY_LENGTH)
  * @typedef {object} CursorOptions
  * @property {THREE.Object3D} [object] Drawn instead of the default ball, one
  *   clone per active pointer. Cloning shares geometries with the original, so
- *   the original is a template and is never added to the scene itself. The
- *   materials, though, are cloned per widget and dressed as pointer chrome —
- *   drawn over everything, ignoring depth — because a cursor depth-tested
- *   into what it points at is buried by it; the template's own materials are
- *   never touched.
+ *   the original is a template and is never added to the scene itself. Its
+ *   materials are cloned once and dressed as pointer chrome — drawn over
+ *   everything, ignoring depth — because a cursor depth-tested into what it
+ *   points at is buried by it; the template's own materials are never touched.
+ *   That one set is then shared by every widget drawn from the template, and
+ *   outlives them, so a ray crossing an edge does not rebuild it.
  * @property {number} [scale] Uniform multiplier on the widget, default 1. It
  *   multiplies whatever scale `object` already carries, so a model authored at
  *   its natural size can be shrunk to cursor size here.
@@ -231,14 +274,12 @@ export function cursors(ctx, options = {}) {
     if (object) {
       const widget = object.clone();
       widget.scale.multiplyScalar(scale);
-      const materials = adoptAsChrome(widget);
       return $(widget, [
-        effects(() => {
-          onCleanup(() => {
-            for (const material of materials) {
-              material.dispose();
-            }
-          });
+        // Read from inside an effect rather than up here, so that the chrome
+        // is held open for exactly as long as this widget is in the scene —
+        // and released, after its window, when the last one goes.
+        effects((o) => {
+          wearChrome(o, chromeMaterials(object));
         }),
         effects(follow(pointer)),
       ]);

@@ -1,14 +1,17 @@
 import * as THREE from "three";
 import { ConvexGeometry } from "three/examples/jsm/geometries/ConvexGeometry.js";
-import { onCleanup, memoize } from "@apendua/signal";
+import { MINUTE, memoizeWithTTL, memoize, onCleanup } from "@apendua/signal";
 
-export const boxGeometry = memoize((width: number, height: number, depth: number) => {
-  const geometry = new THREE.BoxGeometry(width, height, depth);
-  onCleanup(() => {
-    geometry.dispose();
-  });
-  return geometry;
-});
+export const boxGeometry = memoizeWithTTL(
+  MINUTE,
+  (width: number, height: number, depth: number) => {
+    const geometry = new THREE.BoxGeometry(width, height, depth);
+    onCleanup(() => {
+      geometry.dispose();
+    });
+    return geometry;
+  },
+);
 
 /**
  * A face of a convex solid pulled in a little way within its own plane. Every
@@ -132,23 +135,30 @@ export function wedgeCorners(width: number, height: number, depth: number): numb
   ];
 }
 
-export const cylinderGeometry = memoize((radius: number, height: number, segments: number = 12) => {
-  const geometry = new THREE.CylinderGeometry(radius, radius, height, segments);
-  onCleanup(() => {
-    geometry.dispose();
-  });
-  return geometry;
-});
+export const cylinderGeometry = memoizeWithTTL(
+  MINUTE,
+  (radius: number, height: number, segments: number = 12) => {
+    const geometry = new THREE.CylinderGeometry(radius, radius, height, segments);
+    onCleanup(() => {
+      geometry.dispose();
+    });
+    return geometry;
+  },
+);
 
-export const coneGeometry = memoize((radius: number, height: number, segments: number = 12) => {
-  const geometry = new THREE.ConeGeometry(radius, height, segments);
-  onCleanup(() => {
-    geometry.dispose();
-  });
-  return geometry;
-});
+export const coneGeometry = memoizeWithTTL(
+  MINUTE,
+  (radius: number, height: number, segments: number = 12) => {
+    const geometry = new THREE.ConeGeometry(radius, height, segments);
+    onCleanup(() => {
+      geometry.dispose();
+    });
+    return geometry;
+  },
+);
 
-export const sphereGeometry = memoize(
+export const sphereGeometry = memoizeWithTTL(
+  MINUTE,
   (radius: number, widthSegments: number = 24, heightSegments: number = 16) => {
     const geometry = new THREE.SphereGeometry(radius, widthSegments, heightSegments);
     onCleanup(() => {

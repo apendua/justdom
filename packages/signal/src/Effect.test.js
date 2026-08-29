@@ -2,7 +2,16 @@ import { describe, it, mock } from "node:test";
 import assert from "node:assert/strict";
 import { Subject } from "rxjs";
 
-import { Signal, Derived, Effect, batch, onCleanup, defaultChannel, useEffect } from "./index.js";
+import {
+  Signal,
+  Derived,
+  Effect,
+  batch,
+  effect as makeEffect,
+  onCleanup,
+  defaultChannel,
+  useEffect,
+} from "./index.js";
 import UpdateChannel from "./UpdateChannel.js";
 
 describe("Effect", () => {
@@ -347,6 +356,44 @@ describe("Effect", () => {
       error.mock.restore();
       assert.strictEqual(effect.isDisposed, true);
       assert.strictEqual(teardown.mock.calls.length, 1, "called rather than registered");
+    });
+  });
+
+  describe("a teardown that takes arguments", () => {
+    it("is refused at runtime, which is all `new Effect` can do", () => {
+      // A constructor takes no type parameter of its own, so the rule cannot
+      // ride along with it. This is the reason the runtime check exists.
+      assert.throws(
+        () => new Effect(() => (/** @type {string} */ y) => void y, { name: "careless" }),
+        /Effect "careless" returned a teardown taking 1 argument\(s\)/,
+      );
+    });
+
+    it("is refused by the types wherever a type parameter can carry the rule", () => {
+      assert.throws(
+        () =>
+          makeEffect(
+            // @ts-expect-error -- `Teardown` rejects a teardown that needs an
+            // argument. Remove the constraint and this directive goes unused,
+            // which is itself a typecheck failure.
+            () => (/** @type {string} */ y) => void y,
+            { name: "careless" },
+          ),
+        /returned a teardown taking 1 argument/,
+      );
+    });
+
+    it("still allows one that can be called with nothing", () => {
+      // `length` counts required parameters, and both of these can be called
+      // with none — so neither is the mistake this is looking for.
+      const rest = mock.fn((/** @type {unknown[]} */ ...args) => args.length);
+      const defaulted = mock.fn((/** @type {number} */ n = 1) => n);
+      const a = new Effect(() => rest);
+      const b = new Effect(() => defaulted);
+      a.dispose();
+      b.dispose();
+      assert.strictEqual(rest.mock.calls.length, 1);
+      assert.strictEqual(defaulted.mock.calls.length, 1);
     });
   });
 

@@ -49,6 +49,31 @@ import { updateQueue, defaultChannel } from "./scheduler.js";
  */
 
 /**
+ * The rule `EffectRun`'s `unknown` cannot state on its own: a run may evaluate
+ * to anything at all, but if that anything is a *function* it is going to be
+ * called as a teardown, with no arguments, so it had better not need any.
+ *
+ * Written as a conditional rather than as `void | (() => void)` because that
+ * union costs the one-liner the `unknown` was chosen for — `() => list.push(x)`
+ * evaluates to a number, and a number is not a `void`. This leaves every
+ * non-function return exactly as permissive as it was and narrows only the
+ * branch that has a contract to break. Intersected with `T` at the call site,
+ * which is what keeps `T` inferrable: a bad teardown is then asked to be both
+ * itself and the sentence below, and the failure prints the rule.
+ *
+ * `Effect` itself cannot carry this — a constructor takes no type parameter of
+ * its own — so `#execute` checks the same thing at runtime, for `new Effect`
+ * and for callers who are not looking at types at all.
+ *
+ * @template T
+ * @typedef {T extends (...args: infer A) => unknown
+ *   ? A extends readonly []
+ *     ? T
+ *     : "an effect's teardown is called with no arguments, so it must take none"
+ *   : T} Teardown
+ */
+
+/**
  * How many runs in a row an effect may end still owing itself another before
  * the loop is called a loop. Generous, because a converging one settles on
  * the second run and anything that has not settled in a hundred never will.
@@ -358,6 +383,17 @@ export class Effect extends ReactiveNode {
       }
       this.#running = false;
       if (typeof teardown === "function") {
+        if (teardown.length > 0) {
+          // `length` counts what a function *requires*: a rest parameter or a
+          // default makes it zero, and both of those can be called with
+          // nothing, so this fires on exactly the functions that cannot. Which
+          // in practice means one returned by accident — a method reference, a
+          // callback meant for somebody else — rather than a teardown.
+          throw new Error(
+            `Effect "${this.#name}" returned a teardown taking ${teardown.length} argument(s). ` +
+              `A teardown is called with none, so this one can never be given what it asks for.`,
+          );
+        }
         if (this.#disposed) {
           // The run failed itself on the way through — `context.fail`, called
           // before it returned — so the sweep that would have run this teardown
@@ -453,7 +489,8 @@ export class Effect extends ReactiveNode {
 }
 
 /**
- * @param {EffectRun} run
+ * @template T
+ * @param {(context: EffectContext) => T & Teardown<T>} run
  * @param {EffectOptions} [options]
  * @returns {Effect}
  */
@@ -477,7 +514,8 @@ export function effect(run, options) {
  * nobody can reach. Use `new Effect` where the lifetime really is the
  * caller's.
  *
- * @param {EffectRun} run
+ * @template T
+ * @param {(context: EffectContext) => T & Teardown<T>} run
  * @param {EffectOptions} [options]
  * @returns {Effect}
  */

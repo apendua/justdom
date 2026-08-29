@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { $ } from "@apendua/freedom";
-import { onCleanup, memoize } from "@apendua/signal";
+import { MINUTE, memoizeWithTTL, onCleanup } from "@apendua/signal";
 import { component, effects, Op, set, store } from "@apendua/signal";
 import { palette } from "../elements/palette.js";
 
@@ -20,7 +20,7 @@ const defaults: GridProps = {
   rotation: new THREE.Euler(),
 };
 
-const gridMaterial = memoize((colour: string) => {
+const gridMaterial = memoizeWithTTL(MINUTE, (colour: string) => {
   const material = new THREE.LineBasicMaterial({ color: colour });
   onCleanup(() => {
     material.dispose();
@@ -28,7 +28,7 @@ const gridMaterial = memoize((colour: string) => {
   return material;
 });
 
-const createGridGeometry = memoize((size: number, cellWidth: number) => {
+const createGridGeometry = memoizeWithTTL(MINUTE, (size: number, cellWidth: number) => {
   const positions = [];
   for (let i = 0; i <= size; i++) {
     positions.push(

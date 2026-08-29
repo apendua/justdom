@@ -71,6 +71,16 @@ function aimAway(controller) {
 }
 
 /**
+ * Turning a hand back onto the target it was aimed away from.
+ *
+ * @param {THREE.XRTargetRaySpace} controller
+ */
+function aimAt(controller) {
+  controller.rotation.y = 0;
+  controller.updateMatrixWorld();
+}
+
+/**
  * A hand's pose changing. three.js fires this from its own frame handling,
  * before anything else has moved and before world matrices are refreshed, so
  * it only means "look again", never "look now".
@@ -321,7 +331,7 @@ describe("cursors", () => {
     assert.equal(material.transparent, false);
   });
 
-  test("disposes the materials it cloned when the widget goes away", () => {
+  test("keeps the chrome it cloned warm when the widget goes away", () => {
     const object = new THREE.Mesh(new THREE.ConeGeometry(1, 2), new THREE.MeshBasicMaterial());
     let templateDisposed = false;
     object.material.addEventListener("dispose", () => {
@@ -333,8 +343,9 @@ describe("cursors", () => {
 
     const [widget] = parent.children;
     assert.ok(widget instanceof THREE.Mesh);
+    const chrome = /** @type {THREE.Material} */ (widget.material);
     let disposed = false;
-    /** @type {THREE.Material} */ (widget.material).addEventListener("dispose", () => {
+    chrome.addEventListener("dispose", () => {
       disposed = true;
     });
 
@@ -342,9 +353,37 @@ describe("cursors", () => {
     move(controller);
     loop.run();
     assert.equal(parent.children.length, 0);
-    assert.equal(disposed, true);
-    // And only its own: the template was never the widget's to dispose.
+    // A ray leaving what it was on is a thing that happens constantly, and
+    // disposing here would have three drop the compiled program and recompile
+    // it on the way back in. The chrome is held for a while instead, and goes
+    // only if nothing wears it for that long.
+    assert.equal(disposed, false);
+
+    aimAt(controller);
+    move(controller);
+    loop.run();
+    const [again] = parent.children;
+    assert.ok(again instanceof THREE.Mesh);
+    // The same instance, so the return trip costs nothing.
+    assert.equal(again.material, chrome);
+    // And the template was never the widget's to dispose, warm or not.
     assert.equal(templateDisposed, false);
+  });
+
+  test("shares one set of chrome between the widgets of a template", () => {
+    const object = new THREE.Mesh(new THREE.ConeGeometry(1, 2), new THREE.MeshBasicMaterial());
+    const other = fakeController();
+    manager.addController(other, loop.onAnimationFrame).subscribe();
+
+    const parent = mount(cursors(ctx, { object }));
+    loop.run();
+
+    assert.equal(parent.children.length, 2);
+    const [first, second] = parent.children;
+    assert.ok(first instanceof THREE.Mesh);
+    assert.ok(second instanceof THREE.Mesh);
+    assert.notEqual(first, second);
+    assert.equal(first.material, second.material);
   });
 
   test("lands on the hit even when mounted under a transformed parent", () => {

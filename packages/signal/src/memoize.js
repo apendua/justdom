@@ -28,6 +28,12 @@ import { resource } from "./core.js";
  * @typedef {object} MemoizeOptions
  * @property {(...args: TArgs) => TKey} [getKey]
  * @property {Cache<TKey, TValue>} [cache]
+ * @property {number} [cacheTTL] How long an entry survives its last reader
+ *   leaving, in ms. Negative — the default — evicts it there and then, which
+ *   is right for a value that costs nothing to rebuild and wrong for one that
+ *   owns something: a factory whose key follows a piece of interaction state
+ *   loses every reader of the old key the moment the state moves, so with no
+ *   window the resource behind it is torn down and rebuilt on each flip.
  */
 
 /**
@@ -56,14 +62,14 @@ import { resource } from "./core.js";
  * @returns {(...args: unknown[]) => unknown}
  */
 export function memoize(fn, options = {}) {
-  const { cache = createRecursiveCache(), getKey = (...args) => args } = options;
+  const { cache = createRecursiveCache(), getKey = (...args) => args, cacheTTL } = options;
   return (...args) => {
     const key = getKey(...args);
     const signal = cache.get(key);
     if (signal) {
       return signal.get();
     }
-    const newSignal = new Derived(() => fn(...args));
+    const newSignal = new Derived(() => fn(...args), { cacheTTL });
     newSignal.addResource(
       resource(() => {
         cache.set(key, newSignal);
@@ -74,6 +80,48 @@ export function memoize(fn, options = {}) {
     );
     return newSignal.get();
   };
+}
+
+/** A minute in ms, which is the window a resource is usually worth holding. */
+export const MINUTE = 60_000;
+
+/**
+ * `memoize` with the window in front, where it is the point rather than a
+ * setting: `memoizeWithTTL(MINUTE, (color) => …)`.
+ *
+ * Reach for this over `memoize` whenever the value owns something a rebuild
+ * would have to pay for — a three.js material or geometry, a decoded texture,
+ * anything with a `dispose()`. A memoized entry is released the instant its
+ * last reader leaves, and a key that follows a piece of interaction state is
+ * stranded on every flip of that state: pointing at a thing swaps its material
+ * for the highlighted one and leaves the plain one with nobody, and pointing
+ * away swaps back. With no window that is a teardown and a rebuild per flip,
+ * arriving while the hand is moving.
+ *
+ * @template TKey
+ * @template TValue
+ * @template {unknown[]} TArgs
+ * @overload
+ * @param {number} ttl
+ * @param {(...args: TArgs) => TValue} fn
+ * @param {RequiredKeys<Omit<MemoizeOptions<TKey, Derived<TValue>, TArgs>, "cacheTTL">, "getKey" | "cache">} [options]
+ * @returns {(...args: TArgs) => TValue}
+ *//**
+ * @template {unknown[]} TArgs
+ * @template TValue
+ * @overload
+ * @param {number} ttl
+ * @param {(...args: TArgs) => TValue} fn
+ * @param {Omit<MemoizeOptions<unknown[], Derived<TValue>, TArgs>, "cacheTTL">} [options]
+ * @returns {(...args: TArgs) => TValue}
+ *//**
+ * @param {number} ttl How long an entry survives its last reader leaving, in ms.
+ * @param {(...args: unknown[]) => unknown} fn
+ * @param {Omit<MemoizeOptions<unknown[], Derived<unknown>, unknown[]>, "cacheTTL">} [options]
+ * @returns {(...args: unknown[]) => unknown}
+ */
+export function memoizeWithTTL(ttl, fn, options = {}) {
+  return memoize(fn, { ...options, cacheTTL: ttl });
 }
 
 /**

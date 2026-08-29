@@ -1,7 +1,7 @@
 import * as THREE from "three";
-import { memoize, onCleanup } from "@apendua/signal";
+import { MINUTE, memoizeWithTTL, onCleanup } from "@apendua/signal";
 
-export const basicMaterial = memoize((color: string) => {
+export const basicMaterial = memoizeWithTTL(MINUTE, (color: string) => {
   const material = new THREE.MeshBasicMaterial({
     color,
     side: THREE.DoubleSide,
@@ -13,7 +13,7 @@ export const basicMaterial = memoize((color: string) => {
 });
 
 /** For meshes that exist only to be pointed at. */
-export const invisibleMaterial = memoize(() => {
+export const invisibleMaterial = memoizeWithTTL(MINUTE, () => {
   const material = new THREE.MeshBasicMaterial({
     visible: false,
   });
@@ -23,7 +23,7 @@ export const invisibleMaterial = memoize(() => {
   return material;
 });
 
-export const stoneMaterial = memoize((color: string) => {
+export const stoneMaterial = memoizeWithTTL(MINUTE, (color: string) => {
   const material = new THREE.MeshPhongMaterial({
     color,
     shininess: 80,
@@ -39,7 +39,7 @@ export const stoneMaterial = memoize((color: string) => {
  * A brick as it looks on the board. Flat shading, because a castle reads better
  * when every face of every brick catches the light differently.
  */
-export const brickMaterial = memoize((color: string) => {
+export const brickMaterial = memoizeWithTTL(MINUTE, (color: string) => {
   const material = new THREE.MeshPhongMaterial({
     color,
     flatShading: true,
@@ -53,7 +53,7 @@ export const brickMaterial = memoize((color: string) => {
 });
 
 /** The brick in the hand, at the pose it would land in. */
-export const ghostMaterial = memoize((color: string) => {
+export const ghostMaterial = memoizeWithTTL(MINUTE, (color: string) => {
   const material = new THREE.MeshPhongMaterial({
     color,
     flatShading: true,

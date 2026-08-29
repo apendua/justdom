@@ -48,7 +48,14 @@ export { observable, component, just } from "./factories.js";
 export { all } from "./util.js";
 export { default as store, emit } from "./store.js";
 export { default as selector, arraySelector } from "./selector.js";
-export { memoize, memoizeDerived, memoizeDependency, weakMemoize } from "./memoize.js";
+export {
+  MINUTE,
+  memoize,
+  memoizeWithTTL,
+  memoizeDerived,
+  memoizeDependency,
+  weakMemoize,
+} from "./memoize.js";
 
 // reactive-data-structures
 export { default as ReactiveMap } from "./ReactiveMap.js";

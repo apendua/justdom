@@ -15,6 +15,29 @@ import { updateQueue, defaultChannel } from "./scheduler.js";
  */
 
 /**
+ * What a run is handed: the effect's own failure channel, and nothing else.
+ *
+ * An effect reports a *synchronous* failure by throwing — the run is on the
+ * stack, so an exception finds its way out. Work the run merely *starts* has
+ * no such stack to fail into: a subscription that errors later, a listener
+ * whose source dies, a request that comes back a rejection. `fail` is where
+ * those go, and it lands them exactly where a thrown one lands.
+ *
+ * It is passed in rather than reached for because the alternative is reaching
+ * for the effect itself, and the run is the one place the effect is not yet
+ * available: `const effect = useEffect(() => ... effect.fail(err) ...)` closes
+ * over a binding its own initialiser is still evaluating. That works only for
+ * as long as nothing calls it during the run, which is a fact about the code
+ * inside rather than a guarantee this side can make.
+ *
+ * @typedef {object} EffectContext
+ * @property {(err: unknown) => void} fail Report a failure that happened after
+ *   this run returned. Handled exactly as a thrown one: `onError` if the
+ *   effect has one, and otherwise the effect fails — its cleanups run, whatever
+ *   is watching it is told, and it stops.
+ */
+
+/**
  * The work an effect does.
  *
  * Typed as returning `unknown` rather than `void | (() => void)` so that the
@@ -22,7 +45,7 @@ import { updateQueue, defaultChannel } from "./scheduler.js";
  * `() => list.push(value.get())` — is not a type error. If what comes back is
  * a function it is kept as the teardown; anything else is ignored.
  *
- * @typedef {() => unknown} EffectRun
+ * @typedef {(context: EffectContext) => unknown} EffectRun
  */
 
 /**
@@ -37,8 +60,9 @@ const MAX_SELF_INVALIDATIONS = 100;
  * @property {UpdateChannel} [channel] which channel to schedule this effect's
  *   re-runs in. Fixed for the life of the effect.
  * @property {(err: unknown) => void} [onError] what to do when the effect
- *   throws. Without one, the exception comes back out of whatever was
- *   draining the queue.
+ *   throws, or when its run reports a failure through `context.fail`. Without
+ *   one, a thrown exception comes back out of whatever was draining the queue
+ *   and a reported one fails the effect outright.
  * @property {boolean} [deferred] schedule the first run instead of performing
  *   it during construction.
  * @property {string} [name] shown in diagnostics
@@ -116,6 +140,23 @@ export class Effect extends ReactiveNode {
 
   /** @type {number} */
   runsInPass = 0;
+
+  /**
+   * Handed to every run, and the same object each time — there is nothing in
+   * it that varies by run, and a run that holds on to it past its own turn is
+   * holding the right thing anyway.
+   *
+   * @type {EffectContext}
+   */
+  #context = { fail: (err) => this.#reportFailure(err) };
+
+  /**
+   * `track` calls what it is given with no arguments, so this is what it is
+   * given: one wrapper, built once, that hands the run its context.
+   *
+   * @type {() => unknown}
+   */
+  #invoke = () => this.#run(this.#context);
 
   /**
    * @param {EffectRun} run
@@ -298,7 +339,7 @@ export class Effect extends ReactiveNode {
       /** @type {unknown} */
       let teardown;
       try {
-        teardown = this.track(this.#run);
+        teardown = this.track(this.#invoke);
       } catch (err) {
         this.#running = false;
         if (err instanceof NoValueError) {
@@ -317,9 +358,18 @@ export class Effect extends ReactiveNode {
       }
       this.#running = false;
       if (typeof teardown === "function") {
-        // Registered after the run, because `track` clears the previous run's
-        // cleanups on the way in.
-        this.onCleanup(/** @type {() => void} */ (teardown));
+        if (this.#disposed) {
+          // The run failed itself on the way through — `context.fail`, called
+          // before it returned — so the sweep that would have run this teardown
+          // has already been and gone. Registering it now would park it on a
+          // list nothing reads again, which for a run that took a subscription
+          // means the subscription stays.
+          /** @type {() => void} */ (teardown)();
+        } else {
+          // Registered after the run, because `track` clears the previous run's
+          // cleanups on the way in.
+          this.onCleanup(/** @type {() => void} */ (teardown));
+        }
       }
       this.#settleOrGiveUp();
       if (this.#disposed || this.state === CLEAN) {
@@ -329,6 +379,31 @@ export class Effect extends ReactiveNode {
       // write, most likely. Go round again.
       this.state = CLEAN;
     }
+  }
+
+  /**
+   * Take a failure the run reported after the fact, and land it where a thrown
+   * one lands.
+   *
+   * `onError` first, and then the effect carries on — the same bargain the
+   * synchronous path strikes, where a handled exception does not stop the
+   * effect. Without one there is no stack left to throw into, so the effect
+   * fails instead: cleanups run, whatever reads or watches it is told, and it
+   * stops for good rather than sitting disconnected and still queueable.
+   *
+   * @param {unknown} err
+   * @returns {void}
+   */
+  #reportFailure(err) {
+    if (this.#disposed) {
+      return;
+    }
+    if (this.#onError) {
+      this.#onError(err);
+      return;
+    }
+    this.fail(err);
+    this.dispose();
   }
 
   /**

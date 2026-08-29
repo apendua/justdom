@@ -264,18 +264,12 @@ function frameSubjectFor(renderer) {
  */
 export function useFrame(ctx, fn) {
   const renderer = RendererContext.get(ctx);
-  const effect = useEffect(
-    () =>
-      registerListener(renderer, fn, listeners, (err) => {
-        // Something the callback reads has failed, which is terminal: there is
-        // no value left to draw with. Failing the effect takes the callback off
-        // the frame loop through its own teardown and passes the error on to
-        // anything watching this effect — the same end the observable form came
-        // to when its subscriber was told.
-        effect.fail(err);
-      }),
-    { name: "frame" },
-  );
+  // Something the callback reads can fail long after this run has returned,
+  // and there is no value left to draw with when it does. `fail` is the
+  // effect's own channel for exactly that: it fails the effect, which runs the
+  // teardown `registerListener` handed back and so takes the callback off the
+  // frame loop.
+  useEffect(({ fail }) => registerListener(renderer, fn, listeners, fail), { name: "frame" });
 }
 
 /**

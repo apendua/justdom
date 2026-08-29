@@ -286,6 +286,68 @@ describe("Effect", () => {
     effect.dispose();
   });
 
+  describe("a failure reported after the run", () => {
+    it("goes to onError, and the effect carries on", () => {
+      const source = Signal.of(1);
+      const onError = mock.fn();
+      /** @type {(err: unknown) => void} */
+      let report = () => {};
+      const effect = new Effect(
+        ({ fail }) => {
+          source.get();
+          report = fail;
+        },
+        { onError },
+      );
+      const runs = effect.getRuns();
+      report(new Error("later"));
+      assert.strictEqual(onError.mock.calls.length, 1);
+      assert.strictEqual(effect.isDisposed, false, "handled, so still going");
+      source.set(2);
+      assert.strictEqual(effect.getRuns(), runs + 1, "and still listening");
+      effect.dispose();
+    });
+
+    it("fails the effect outright when nothing is handling it", () => {
+      const source = Signal.of(1);
+      const teardown = mock.fn();
+      /** @type {(err: unknown) => void} */
+      let report = () => {};
+      const effect = new Effect(({ fail }) => {
+        source.get();
+        report = fail;
+        return teardown;
+      });
+      /** @type {unknown} */
+      let seen;
+      effect.subscribe({ error: (err) => (seen = err) });
+
+      const failure = new Error("the source this was reading died");
+      report(failure);
+
+      assert.strictEqual(seen, failure, "whatever is watching is told");
+      assert.strictEqual(teardown.mock.calls.length, 1, "and the run's teardown runs");
+      assert.strictEqual(effect.isDisposed, true, "and it stops for good");
+      const runs = effect.getRuns();
+      source.set(2);
+      assert.strictEqual(effect.getRuns(), runs, "even when what it read moves");
+    });
+
+    it("runs the teardown of a run that failed itself on the way through", () => {
+      // The case the context exists for: work started during the run fails
+      // before the run has returned, so the effect is already disposed by the
+      // time its teardown is handed over. Registering it then would park it on
+      // a list nothing reads again — for a real run, a subscription that stays.
+      const teardown = mock.fn();
+      const effect = new Effect(({ fail }) => {
+        fail(new Error("failed on the way through"));
+        return teardown;
+      });
+      assert.strictEqual(effect.isDisposed, true);
+      assert.strictEqual(teardown.mock.calls.length, 1, "called rather than registered");
+    });
+  });
+
   describe("useEffect", () => {
     it("runs like any other effect while the computation stands", () => {
       const source = Signal.of(1);

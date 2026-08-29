@@ -27,7 +27,7 @@ nothing else, and work on a page with no scene anywhere near them.
 | `dropdown(props)`          | A `<select>` built out of elements, because a real one cannot be mirrored. |
 | `keyboard(props)`          | A phone's board, clickable, for typing at a panel you point at. |
 | `scrollable(props)`        | A window with arrows, a track and a thumb.               |
-| `createDiagnostics()`, `Diagnostics(ctx, controls)`, `diagnosticsButton(controls, className)` | The frame rate readout, head-locked. |
+| `createDiagnostics()`, `useDiagnostics(ctx, controls)`, `diagnosticsButton(controls, className)` | The frame rate readout, head-locked. |
 
 ## Nothing here ships colours
 
@@ -181,27 +181,30 @@ physics and the soundtrack all running — is the reading nobody can see. The
 page's panel measures the desktop preview.
 
 This is the same reading, in the room. Two pieces: an object holding what the
-readout knows and whether it is shown, made wherever the scene is built, and a
-component that measures and draws it.
+readout knows and whether it is shown, made wherever the scene is built, and an
+effect that measures and draws it.
 
 ```js
-import { createDiagnostics, Diagnostics } from "@apendua/justui";
+import { createDiagnostics, useDiagnostics } from "@apendua/justui";
 
 const App = effectsOnly((ctx) => {
   const diagnostics = createDiagnostics();
 
   useEffects(getScene(ctx), [
     effects(() => {
-      use(Diagnostics(ctx, diagnostics));
+      useDiagnostics(ctx, diagnostics);
     }),
     children(/* the game */),
   ]);
 });
 ```
 
-`use` rather than `children`, because the panel adds itself to the camera — it
-is a HUD, and the camera is already in the scene. What comes back from
-`Diagnostics` is that camera.
+An effect rather than something to mount, because the panel adds itself to the
+camera — it is a HUD, and the camera is already in the scene. So there was
+never anything for the caller to put anywhere: this used to be a component
+whose value was that camera, handed to `use()` so the value could be dropped
+again. Call it from any effect, the way `useFrame` is called, and the
+surrounding computation owns the meter and the panel both.
 
 `createDiagnostics()` returns the controls:
 
@@ -214,7 +217,7 @@ is a HUD, and the camera is already in the scene. What comes back from
 | `ceiling`  | What full height on the chart means, in fps.                                                       |
 
 The last three are there to be read — by a test, by an app that wants the
-number somewhere of its own — and are written by the component.
+number somewhere of its own — and are written by the effect.
 `diagnosticsButton(controls, className)` is the switch, for an app's own panel
 to carry:
 

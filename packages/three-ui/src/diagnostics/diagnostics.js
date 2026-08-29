@@ -7,15 +7,10 @@
  * what the frame rate is *in the session* — is the one nobody can see. This is
  * the same reading, in the room, where it can be read while playing.
  */
-import { component, effects, just, Signal } from "@apendua/signal";
-import { children, getCamera, Nothing, useFrame } from "@apendua/freedom";
+import { Signal, useEffect, useEffects } from "@apendua/signal";
+import { children, getCamera, useFrame } from "@apendua/freedom";
 import { chartCeiling, createFrameMeter } from "./frameMeter.js";
 import { Panel } from "./panel.js";
-
-/**
- * @import * as THREE from 'three';
- * @import {Observable} from 'rxjs';
- */
 
 /**
  * How the panel is switched and what it is reading, held apart from the
@@ -63,45 +58,64 @@ export function createDiagnostics({ visible: initial = true } = {}) {
 }
 
 /**
- * The readout, as something to put in a scene.
+ * The readout, as something a scene switches on.
  *
- * It adds itself to the camera rather than to wherever it was used, which is
+ * An effect rather than a component, because none of what it does is a thing
+ * to hand back. It counts frames on the renderer's own loop, and it hangs the
+ * panel off the *camera* rather than off wherever it was called — which is
  * what makes it a HUD: the panel keeps its place in the corner of the view
  * however the player turns, and the coordinates it is placed at are the ones
- * measured from the eye. Use it the way the soundtrack's ears are used —
- * `use(Diagnostics(ctx, diagnostics))` from an effect on the scene — because
- * what comes back is the camera, and the camera is already in the scene.
+ * measured from the eye. The camera is already in the scene, so there has
+ * never been anything for a caller to mount.
  *
- * The meter runs for as long as the scene does, whether or not the panel is
- * being drawn. Counting frames is a `+= 1` in a callback the renderer was
- * making anyway; it is drawing the panel that costs anything, and that is what
- * the switch turns off.
+ * It used to say that by being a component whose value was the camera, handed
+ * to `use()` so the value could be dropped again. Call it from any effect
+ * instead, the way `useFrame` is called, and the surrounding computation owns
+ * everything below:
  *
- * @type {(ctx: WeakKey, controls: DiagnosticsControls) => Observable<THREE.Camera>}
+ * ```js
+ * effects(() => {
+ *   useDiagnostics(ctx, diagnostics);
+ * });
+ * ```
+ *
+ * The meter runs for as long as that computation does, whether or not the
+ * panel is being drawn. Counting frames is a `+= 1` in a callback the renderer
+ * was making anyway; it is drawing the panel that costs anything, and that is
+ * what the switch turns off.
+ *
+ * @param {WeakKey} ctx
+ * @param {DiagnosticsControls} controls
+ * @returns {void}
  */
-export const Diagnostics = component(
-  /**
-   * @param {WeakKey} ctx
-   * @param {DiagnosticsControls} controls
-   */
-  (ctx, controls) => {
-    return just(getCamera(ctx), [
-      effects(() => {
-        const meter = createFrameMeter({
-          onReadout: (fps) => {
-            controls.fps.set(fps);
-            // Only ever upwards. The scale a chart is read against has to hold
-            // still, and a display that has once managed 90 is a 90 Hz display
-            // for the rest of the session however badly the next minute goes.
-            controls.ceiling.setFn((current) => Math.max(current, chartCeiling(fps)));
-          },
-          onSample: (history) => {
-            controls.history.set(history);
-          },
-        });
-        useFrame(ctx, (time) => meter.frame(time));
-      }),
-      children(component(() => (controls.visible.get() ? Panel(ctx, controls) : Nothing()))()),
-    ]);
-  },
-);
+export function useDiagnostics(ctx, controls) {
+  const meter = createFrameMeter({
+    onReadout: (fps) => {
+      controls.fps.set(fps);
+      // Only ever upwards. The scale a chart is read against has to hold
+      // still, and a display that has once managed 90 is a 90 Hz display for
+      // the rest of the session however badly the next minute goes.
+      controls.ceiling.setFn((current) => Math.max(current, chartCeiling(fps)));
+    },
+    onSample: (history) => {
+      controls.history.set(history);
+    },
+  });
+  useFrame(ctx, (time) => meter.frame(time));
+
+  // The switch, as the guard on an effect of its own: the panel is built by a
+  // run that read `visible` as true and taken down by the run that reads it
+  // false, which is the whole of what the old `Nothing()` branch was for. Its
+  // own effect rather than the caller's, so that hiding the panel rebuilds
+  // nothing else — the meter above included, which would otherwise lose the
+  // minute of history a panel switched back on is there to show.
+  useEffect(
+    () => {
+      if (!controls.visible.get()) {
+        return;
+      }
+      useEffects(getCamera(ctx), [children(Panel(ctx, controls))]);
+    },
+    { name: "diagnostics" },
+  );
+}

@@ -9,8 +9,8 @@
  */
 import * as THREE from "three";
 import { children, $, getScene } from "@apendua/freedom";
-import { effects, effectsOnly, use, useEffects } from "@apendua/signal";
-import { createDiagnostics, Diagnostics } from "@apendua/justui";
+import { effects, effectsOnly, useEffects } from "@apendua/signal";
+import { createDiagnostics, useDiagnostics } from "@apendua/justui";
 import Game from "./Game.js";
 import { CELL, SIZE } from "./grid.js";
 import { palette } from "./palette.js";
@@ -30,7 +30,7 @@ const App = effectsOnly((ctx: WeakKey) => {
 
   useEffects(getScene(ctx), [
     effects(() => {
-      use(Diagnostics(ctx, diagnostics));
+      useDiagnostics(ctx, diagnostics);
     }),
     children(
       $(new THREE.Group(), [

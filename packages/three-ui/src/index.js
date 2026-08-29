@@ -5,11 +5,11 @@ export {
   chartCeiling,
   createDiagnostics,
   createFrameMeter,
-  Diagnostics,
   diagnosticsButton,
   READOUT_MS,
   SAMPLE_COUNT,
   SAMPLE_MS,
+  useDiagnostics,
 } from "./diagnostics/index.js";
 
 /**

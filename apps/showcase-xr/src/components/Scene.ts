@@ -1,6 +1,6 @@
 import * as THREE from "three";
-import { children, cursors, $, dom } from "@apendua/freedom";
-import { effects, just, component, use } from "@apendua/signal";
+import { children, cursors, $, dom, getScene, Nothing } from "@apendua/freedom";
+import { effects, component, use, useEffects } from "@apendua/signal";
 
 import { createDiagnostics, Diagnostics, type DiagnosticsControls } from "@apendua/justui";
 import ButtonsPanel from "./ButtonsPanel.js";
@@ -49,7 +49,7 @@ const Scene = component((ctx: WeakKey) => {
   /** How far forward the turn brings them, so the grid curves rather than shears. */
   const depth = 1.2;
 
-  return just(new THREE.Scene()).pipe(
+  useEffects(getScene(ctx), [
     effects(() => {
       use(Diagnostics(ctx, diagnostics));
     }),
@@ -96,7 +96,9 @@ const Scene = component((ctx: WeakKey) => {
       ]),
       cursors(ctx, { color: "#ff0000" }),
     ),
-  );
+  ]);
+
+  return Nothing();
 });
 
 export default Scene;

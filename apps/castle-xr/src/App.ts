@@ -7,9 +7,11 @@ import {
   interactions,
   useFrame,
   getCamera,
+  getScene,
+  Nothing,
 } from "@apendua/freedom";
 import { makeNonReactive, Signal, useEffects } from "@apendua/signal";
-import { on, set, effects, just, use, component } from "@apendua/signal";
+import { on, set, effects, use, component } from "@apendua/signal";
 
 import { CastleContext, ListenerContext, SessionContext } from "./elements/context.js";
 import { boxGeometry } from "./elements/geometry.js";
@@ -142,7 +144,7 @@ const App = component((ctx: WeakKey) => {
     }
   });
 
-  return just(new THREE.Scene()).pipe(
+  useEffects(getScene(ctx), [
     effects(() => {
       useEffects(getCamera(ctx), [children($(listener))]);
     }),
@@ -255,7 +257,9 @@ const App = component((ctx: WeakKey) => {
         ),
       ]),
     ),
-  );
+  ]);
+
+  return Nothing();
 });
 
 export default App;

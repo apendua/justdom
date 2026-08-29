@@ -1,6 +1,6 @@
 import * as THREE from "three";
-import { $, children, cursors, getCamera } from "@apendua/freedom";
-import { component, effects, just, makeNonReactive, use, useEffects } from "@apendua/signal";
+import { $, children, cursors, getCamera, getScene, Nothing } from "@apendua/freedom";
+import { component, effects, makeNonReactive, use, useEffects } from "@apendua/signal";
 import { createMusicControls, Music } from "@apendua.dev/sound/xr";
 import { createDiagnostics, Diagnostics } from "@apendua/justui";
 import paper_and_running_water from "@apendua.dev/media/paper_and_running_water.mp3";
@@ -39,7 +39,7 @@ const App = component((ctx: WeakKey) => {
   const music = createMusicControls({ track: paper_and_running_water, volume: 0.4 });
   const diagnostics = createDiagnostics();
 
-  return just(new THREE.Scene()).pipe(
+  useEffects(getScene(ctx), [
     effects((scene) => {
       scene.background = new THREE.Color("#141210");
     }),
@@ -76,7 +76,9 @@ const App = component((ctx: WeakKey) => {
       // and the mark aiming at one should not be the same size as it.
       cursors(ctx, { color: palette.preview, scale: 0.5 }),
     ),
-  );
+  ]);
+
+  return Nothing();
 });
 
 export default App;

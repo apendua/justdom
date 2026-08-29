@@ -8,8 +8,8 @@
  * Start.
  */
 import * as THREE from "three";
-import { children, $ } from "@apendua/freedom";
-import { component, effects, just, use } from "@apendua/signal";
+import { children, $, getScene, Nothing } from "@apendua/freedom";
+import { component, effects, use, useEffects } from "@apendua/signal";
 import { createDiagnostics, Diagnostics } from "@apendua/justui";
 import Game from "./Game.js";
 import { CELL, SIZE } from "./grid.js";
@@ -28,7 +28,7 @@ const App = component((ctx: WeakKey) => {
   // in this scene to hang a switch off, so it is simply always on.
   const diagnostics = createDiagnostics();
 
-  return just(new THREE.Scene()).pipe(
+  useEffects(getScene(ctx), [
     effects(() => {
       use(Diagnostics(ctx, diagnostics));
     }),
@@ -53,7 +53,9 @@ const App = component((ctx: WeakKey) => {
         ),
       ]),
     ),
-  );
+  ]);
+
+  return Nothing();
 });
 
 export default App;

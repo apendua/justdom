@@ -1,8 +1,6 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
-import { BehaviorSubject } from "rxjs";
 import * as THREE from "three";
-import { Effect } from "@apendua/signal";
 import {
   CameraContext,
   frames,
@@ -60,34 +58,18 @@ describe("getCamera", () => {
 });
 
 describe("getScene", () => {
-  test("hands back the scene being drawn", () => {
+  test("hands back the scene the renderer is drawing", () => {
     const scene = new THREE.Scene();
-    const ctx = SceneContext.set({}, new BehaviorSubject(scene));
-    assert.strictEqual(getScene(ctx), scene);
+    assert.strictEqual(getScene(SceneContext.set({}, scene)), scene);
   });
 
-  test("re-runs a reader when the tree emits a different scene", () => {
-    // The reason this one is a dependency and `getCamera` is not: `render`
-    // holds whatever scene its tree emits, and a tree rooted in a `component`
-    // may emit another.
-    const first = new THREE.Scene();
-    const second = new THREE.Scene();
-    const held = new BehaviorSubject(first);
-    const ctx = SceneContext.set({}, held);
-
-    /** @type {THREE.Scene[]} */
-    const seen = [];
-    const effect = new Effect(() => {
-      seen.push(getScene(ctx));
-    });
-    assert.deepStrictEqual(seen, [first]);
-
-    held.next(second);
-    assert.deepStrictEqual(seen, [first, second], "the reader is told, and reads the new one");
-
-    effect.dispose();
-    held.next(first);
-    assert.strictEqual(seen.length, 2, "and stops being told once it is gone");
+  test("is the same scene every time, since `render` owns it", () => {
+    // It did not use to be: the tree handed a scene back, so the answer was
+    // whatever it had most recently emitted. `render` builds one now, before
+    // anything can ask, and keeps it — which is what lets this be a plain read
+    // rather than a dependency.
+    const ctx = SceneContext.set({}, new THREE.Scene());
+    assert.strictEqual(getScene(ctx), getScene(ctx));
   });
 
   test("says so when there is no scene", () => {

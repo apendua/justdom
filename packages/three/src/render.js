@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { BehaviorSubject, tap, Subject, Observable, combineLatest, map } from "rxjs";
+import { BehaviorSubject, Subject, Observable, combineLatest, map } from "rxjs";
 import {
   addDependency,
   Computation,
@@ -71,7 +71,7 @@ export function getCamera(ctx) {
 
 export const SceneContext = createProperty(
   /**
-   * @returns {BehaviorSubject<THREE.Scene>}
+   * @returns {THREE.Scene}
    */
   () => {
     throw new Error("SceneContext not set");
@@ -81,24 +81,23 @@ export const SceneContext = createProperty(
 /**
  * The scene this context is drawing.
  *
- * Unlike the camera, this one does move: `render` holds the scene its tree
- * emits, and a tree whose root is a `component` may emit another. So the
- * subject that holds it is the dependency, and a reader is told when it is
- * replaced.
+ * `render` owns it, the same way it owns the renderer and the camera: it is
+ * built before anything that could ask for it and kept for the life of the
+ * renderer, so this needs no more invalidation than `getCamera` does.
  *
- * Asked while the tree is still being built — which is when most of the tree
- * is built — this answers with the empty scene `render` starts from, because
- * the real one is what the tree is in the middle of producing. The read is a
- * dependency, so a reader that asked early is re-run against the scene that
- * actually arrives rather than being left holding the placeholder.
+ * It did not used to. The tree handed a scene *back* — `render(fn)` subscribed
+ * to whatever `fn(ctx)` emitted and drew that — which made the scene the one
+ * piece of the rendering context assembled in the wrong direction: everything
+ * else was threaded down through `ctx`, and this one came up. Nothing wanted
+ * the freedom that bought. Every app built exactly one scene, immediately,
+ * and then spent its root component decorating it, which is what the root
+ * still does — it just no longer has to make one first.
  *
  * @param {WeakKey} ctx
  * @returns {THREE.Scene}
  */
 export function getScene(ctx) {
-  const scene = SceneContext.get(ctx);
-  addDependency(scene);
-  return scene.getValue();
+  return SceneContext.get(ctx);
 }
 
 /**
@@ -359,7 +358,8 @@ export function frames(ctx) {
  */
 
 /**
- * @param {(ctx: WeakKey) => Observable<THREE.Scene>} fn
+ * @param {(ctx: WeakKey) => Observable<unknown>} fn Mounted, not read: the
+ *   scene is `render`'s, and the tree is what decorates it.
  * @param {RenderOptions} [options]
  * @returns {Observable<THREE.WebGLRenderer>}
  */
@@ -390,7 +390,7 @@ export function render(fn, options = {}) {
     });
 
     renderer.xr.enabled = true;
-    const scene = new BehaviorSubject(new THREE.Scene());
+    const scene = new THREE.Scene();
     const interactionManager = new InteractionManager();
 
     let ctx = {};
@@ -475,21 +475,18 @@ export function render(fn, options = {}) {
       subscriber.add(fitRayToHit(ray, controller, interactionManager.pointers).subscribe());
     }
 
-    subscriber.add(
-      fn(ctx)
-        .pipe(
-          tap((scene) => {
-            scene.add(camera);
-            // scene.add(hand0);
-            scene.add(controller0);
-            scene.add(controllerGrip0);
-            // scene.add(hand1);
-            scene.add(controller1);
-            scene.add(controllerGrip1);
-          }),
-        )
-        .subscribe(scene),
-    );
+    scene.add(camera);
+    // scene.add(hand0);
+    scene.add(controller0);
+    scene.add(controllerGrip0);
+    // scene.add(hand1);
+    scene.add(controller1);
+    scene.add(controllerGrip1);
+
+    // Subscribing is mounting: the tree decorates the scene above rather than
+    // producing one, so nothing is read off this — it is held open for as long
+    // as there is something to draw.
+    subscriber.add(fn(ctx).subscribe());
 
     // The same subject anything built above already holds: the scene was
     // constructed before this line, and whatever asked it for frames is
@@ -499,7 +496,6 @@ export function render(fn, options = {}) {
     renderer.setAnimationLoop((time, frame) => {
       options.onBeforeRender?.(renderer);
       subject.next({ time, frame });
-      const currentScene = scene.getValue();
       const set = listeners.get(renderer);
       if (set) {
         for (const fn of set) {
@@ -515,14 +511,14 @@ export function render(fn, options = {}) {
         // scene as it is about to be drawn rather than as it was last frame.
         // What those callbacks move in turn (a cursor following its hit) is
         // picked up by the renderer's own flush, a few lines down.
-        if (currentScene.matrixWorldAutoUpdate === true) {
-          currentScene.updateMatrixWorld();
+        if (scene.matrixWorldAutoUpdate === true) {
+          scene.updateMatrixWorld();
         }
         for (const fn of lateSet) {
           fn(time, frame);
         }
       }
-      renderer.render(currentScene, camera);
+      renderer.render(scene, camera);
       options.onAfterRender?.(renderer);
     });
 

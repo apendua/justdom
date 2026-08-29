@@ -18,11 +18,11 @@ npm install @apendua/freedom @apendua/signal three
 
 ```js
 import * as THREE from "three";
-import { render, $, children, useFrame } from "@apendua/freedom";
-import { component, just, effects } from "@apendua/signal";
+import { render, $, children, getScene, Nothing, useFrame } from "@apendua/freedom";
+import { component, effects, useEffects } from "@apendua/signal";
 
 const Scene = component((ctx) => {
-  return just(new THREE.Scene()).pipe(
+  useEffects(getScene(ctx), [
     children(
       $(new THREE.AmbientLight(0xffffff, 1)),
       $(new THREE.Mesh(new THREE.BoxGeometry(), new THREE.MeshStandardMaterial()), [
@@ -33,7 +33,9 @@ const Scene = component((ctx) => {
         }),
       ]),
     ),
-  );
+  ]);
+
+  return Nothing();
 });
 
 render(Scene).subscribe((renderer) => {
@@ -41,8 +43,9 @@ render(Scene).subscribe((renderer) => {
 });
 ```
 
-`render(fn, options)` owns the `WebGLRenderer`, camera, resize handling, and
-— when the device supports it — the WebXR session lifecycle. `getCamera(ctx)`,
+`render(fn, options)` owns the `WebGLRenderer`, the scene, the camera, resize
+handling, and — when the device supports it — the WebXR session lifecycle. The
+tree it is given decorates that scene rather than producing one. `getCamera(ctx)`,
 `getXRSession(ctx)`, and `useFrame(ctx, fn)` read from that same context, using the
 `createProperty`-based context mechanism shared with the rest of this
 monorepo's stack.

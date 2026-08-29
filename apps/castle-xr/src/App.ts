@@ -10,7 +10,7 @@ import {
   getScene,
 } from "@apendua/freedom";
 import { effectsOnly, makeNonReactive, Signal, useEffects } from "@apendua/signal";
-import { on, set, effects, use, component } from "@apendua/signal";
+import { on, set, effects, component } from "@apendua/signal";
 
 import { CastleContext, ListenerContext, SessionContext } from "./elements/context.js";
 import { boxGeometry } from "./elements/geometry.js";
@@ -18,7 +18,7 @@ import { basicMaterial } from "./elements/material.js";
 import { palette } from "./elements/palette.js";
 import Game from "./components/Game.js";
 import { createMusicControls, Music } from "@apendua.dev/sound/xr";
-import { createDiagnostics, Diagnostics } from "@apendua/justui";
+import { createDiagnostics, useDiagnostics } from "@apendua/justui";
 import glass_desk_habits from "@apendua.dev/media/glass_desk_habits.mp3";
 import GameUI from "./views/GameUI.js";
 import CastleStore from "./store/CastleStore.js";
@@ -150,7 +150,7 @@ const App = effectsOnly((ctx: WeakKey) => {
     // Head-locked, like the ears above and for the same reason: a reading you
     // have to go and look for is a reading nobody takes while playing.
     effects(() => {
-      use(Diagnostics(ctx, diagnostics));
+      useDiagnostics(ctx, diagnostics);
     }),
     children(
       Music(ctx, listener, music),

@@ -1,4 +1,4 @@
-export { createDiagnostics, Diagnostics } from "./diagnostics.js";
+export { createDiagnostics, useDiagnostics } from "./diagnostics.js";
 export { diagnosticsButton } from "./button.js";
 export {
   chartCeiling,

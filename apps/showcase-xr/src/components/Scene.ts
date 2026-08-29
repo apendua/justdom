@@ -1,8 +1,8 @@
 import * as THREE from "three";
 import { children, cursors, $, dom, getScene } from "@apendua/freedom";
-import { effects, effectsOnly, use, useEffects } from "@apendua/signal";
+import { effects, effectsOnly, useEffects } from "@apendua/signal";
 
-import { createDiagnostics, Diagnostics, type DiagnosticsControls } from "@apendua/justui";
+import { createDiagnostics, useDiagnostics, type DiagnosticsControls } from "@apendua/justui";
 import ButtonsPanel from "./ButtonsPanel.js";
 import MotionPanel from "./MotionPanel.js";
 import BoxesPanel from "./BoxesPanel.js";
@@ -51,7 +51,7 @@ const Scene = effectsOnly((ctx: WeakKey) => {
 
   useEffects(getScene(ctx), [
     effects(() => {
-      use(Diagnostics(ctx, diagnostics));
+      useDiagnostics(ctx, diagnostics);
     }),
     children(
       $(new THREE.AmbientLight(0xffffff, 2)),

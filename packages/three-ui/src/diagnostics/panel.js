@@ -156,7 +156,7 @@ function chartBar(controls, index) {
 
 /**
  * The panel, as a component to be added to whatever should carry it — which is
- * the camera; see `Diagnostics`.
+ * the camera; see `useDiagnostics`.
  *
  * It is projected through a portal that lets rays through. Nothing on it can be
  * pressed, and it sits between the player and the whole scene: a panel that

@@ -1,8 +1,8 @@
 import * as THREE from "three";
 import { $, children, cursors, getCamera, getScene } from "@apendua/freedom";
-import { effects, effectsOnly, makeNonReactive, use, useEffects } from "@apendua/signal";
+import { effects, effectsOnly, makeNonReactive, useEffects } from "@apendua/signal";
 import { createMusicControls, Music } from "@apendua.dev/sound/xr";
-import { createDiagnostics, Diagnostics } from "@apendua/justui";
+import { createDiagnostics, useDiagnostics } from "@apendua/justui";
 import paper_and_running_water from "@apendua.dev/media/paper_and_running_water.mp3";
 import Board from "./components/Board.js";
 import CodePanel from "./components/CodePanel.js";
@@ -49,7 +49,7 @@ const App = effectsOnly((ctx: WeakKey) => {
     // The frame rate readout rides the head as well: a panel parked in the room
     // is one the player has to go and find.
     effects(() => {
-      use(Diagnostics(ctx, diagnostics));
+      useDiagnostics(ctx, diagnostics);
     }),
     children(
       Music(ctx, listener, music),

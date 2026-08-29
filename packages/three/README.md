@@ -19,9 +19,9 @@ npm install @apendua/freedom @apendua/signal three
 ```js
 import * as THREE from "three";
 import { render, $, children, getScene, useFrame } from "@apendua/freedom";
-import { effects, useEffects } from "@apendua/signal";
+import { effects, effectsOnly, useEffects } from "@apendua/signal";
 
-const Scene = (ctx) => {
+const Scene = effectsOnly((ctx) => {
   useEffects(getScene(ctx), [
     children(
       $(new THREE.AmbientLight(0xffffff, 1)),
@@ -34,7 +34,7 @@ const Scene = (ctx) => {
       ]),
     ),
   ]);
-};
+});
 
 render(Scene).subscribe((renderer) => {
   document.body.appendChild(renderer.domElement);

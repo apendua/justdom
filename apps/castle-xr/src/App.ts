@@ -9,7 +9,7 @@ import {
   getCamera,
   getScene,
 } from "@apendua/freedom";
-import { makeNonReactive, Signal, useEffects } from "@apendua/signal";
+import { effectsOnly, makeNonReactive, Signal, useEffects } from "@apendua/signal";
 import { on, set, effects, use, component } from "@apendua/signal";
 
 import { CastleContext, ListenerContext, SessionContext } from "./elements/context.js";
@@ -84,7 +84,7 @@ const Floor = component((ctx: WeakKey, grip: Grip) => {
   ]);
 });
 
-const App = (ctx: WeakKey) => {
+const App = effectsOnly((ctx: WeakKey) => {
   // One board unit is one cell, and a cell is ten centimetres in the room.
   const scale = 0.1;
   // The ears go where the head is, so the soundtrack rides the camera and a
@@ -257,6 +257,6 @@ const App = (ctx: WeakKey) => {
       ]),
     ),
   ]);
-};
+});
 
 export default App;

@@ -187,7 +187,7 @@ component that measures and draws it.
 ```js
 import { createDiagnostics, Diagnostics } from "@apendua/justui";
 
-const App = (ctx) => {
+const App = effectsOnly((ctx) => {
   const diagnostics = createDiagnostics();
 
   useEffects(getScene(ctx), [
@@ -196,7 +196,7 @@ const App = (ctx) => {
     }),
     children(/* the game */),
   ]);
-};
+});
 ```
 
 `use` rather than `children`, because the panel adds itself to the camera — it

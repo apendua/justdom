@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { $, children, cursors, getCamera, getScene } from "@apendua/freedom";
-import { effects, makeNonReactive, use, useEffects } from "@apendua/signal";
+import { effects, effectsOnly, makeNonReactive, use, useEffects } from "@apendua/signal";
 import { createMusicControls, Music } from "@apendua.dev/sound/xr";
 import { createDiagnostics, Diagnostics } from "@apendua/justui";
 import paper_and_running_water from "@apendua.dev/media/paper_and_running_water.mp3";
@@ -23,7 +23,7 @@ declare global {
  * on the left, the tools on the right. The session runs in a `local`
  * reference space, so the origin is wherever the head was at start.
  */
-const App = (ctx: WeakKey) => {
+const App = effectsOnly((ctx: WeakKey) => {
   const studio = new Studio();
   // Framing the example reads the scene — carefully outside this component's
   // computation, or the whole app would rebuild (with a fresh studio!) on
@@ -77,6 +77,6 @@ const App = (ctx: WeakKey) => {
       cursors(ctx, { color: palette.preview, scale: 0.5 }),
     ),
   ]);
-};
+});
 
 export default App;

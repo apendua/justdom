@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { BehaviorSubject, tap, Subject, Observable, combineLatest, map } from "rxjs";
+import { BehaviorSubject, Subject, Observable, combineLatest, map } from "rxjs";
 import {
   addDependency,
   Computation,
@@ -52,15 +52,52 @@ export const CameraContext = createProperty(
 );
 
 /**
+ * The camera this context renders through.
+ *
+ * The one of these getters with nothing to depend on. `render` builds a camera
+ * and keeps it for the life of the renderer — a resize adjusts the one that is
+ * there rather than replacing it — so there is no event that could change this
+ * answer and nothing a reader could usefully be told about. It is still a
+ * getter rather than a bare `CameraContext.get` so that it reads like the
+ * others, and so that giving it something to depend on later would not change
+ * how a single caller asks.
+ *
  * @param {WeakKey} ctx
- * @returns {Observable<THREE.Camera>}
+ * @returns {THREE.Camera}
  */
-export function camera(ctx) {
-  return new Observable((subscriber) => {
-    const camera = CameraContext.get(ctx);
-    subscriber.next(camera);
-    return () => {};
-  });
+export function getCamera(ctx) {
+  return CameraContext.get(ctx);
+}
+
+export const SceneContext = createProperty(
+  /**
+   * @returns {THREE.Scene}
+   */
+  () => {
+    throw new Error("SceneContext not set");
+  },
+);
+
+/**
+ * The scene this context is drawing.
+ *
+ * `render` owns it, the same way it owns the renderer and the camera: it is
+ * built before anything that could ask for it and kept for the life of the
+ * renderer, so this needs no more invalidation than `getCamera` does.
+ *
+ * It did not used to. The tree handed a scene *back* — `render(fn)` subscribed
+ * to whatever `fn(ctx)` emitted and drew that — which made the scene the one
+ * piece of the rendering context assembled in the wrong direction: everything
+ * else was threaded down through `ctx`, and this one came up. Nothing wanted
+ * the freedom that bought. Every app built exactly one scene, immediately,
+ * and then spent its root component decorating it, which is what the root
+ * still does — it just no longer has to make one first.
+ *
+ * @param {WeakKey} ctx
+ * @returns {THREE.Scene}
+ */
+export function getScene(ctx) {
+  return SceneContext.get(ctx);
 }
 
 /**
@@ -321,7 +358,9 @@ export function frames(ctx) {
  */
 
 /**
- * @param {(ctx: WeakKey) => Observable<THREE.Scene>} fn
+ * @param {(ctx: WeakKey) => Observable<unknown>} fn Builds the tree, which is
+ *   mounted rather than read: the scene is `render`'s, and this decorates it.
+ *   `effectsOnly` is what a root that produces nothing is wrapped in.
  * @param {RenderOptions} [options]
  * @returns {Observable<THREE.WebGLRenderer>}
  */
@@ -352,13 +391,14 @@ export function render(fn, options = {}) {
     });
 
     renderer.xr.enabled = true;
-    const scene = new BehaviorSubject(new THREE.Scene());
+    const scene = new THREE.Scene();
     const interactionManager = new InteractionManager();
 
     let ctx = {};
 
     ctx = RendererContext.set(ctx, renderer);
     ctx = CameraContext.set(ctx, camera);
+    ctx = SceneContext.set(ctx, scene);
     ctx = InteractionContext.set(ctx, interactionManager);
     ctx = RendererSizeContext.set(ctx, {
       width: width.asObservable(),
@@ -436,21 +476,19 @@ export function render(fn, options = {}) {
       subscriber.add(fitRayToHit(ray, controller, interactionManager.pointers).subscribe());
     }
 
-    subscriber.add(
-      fn(ctx)
-        .pipe(
-          tap((scene) => {
-            scene.add(camera);
-            // scene.add(hand0);
-            scene.add(controller0);
-            scene.add(controllerGrip0);
-            // scene.add(hand1);
-            scene.add(controller1);
-            scene.add(controllerGrip1);
-          }),
-        )
-        .subscribe(scene),
-    );
+    scene.add(camera);
+    // scene.add(hand0);
+    scene.add(controller0);
+    scene.add(controllerGrip0);
+    // scene.add(hand1);
+    scene.add(controller1);
+    scene.add(controllerGrip1);
+
+    // Subscribing is mounting. A root produces nothing — everything it builds
+    // it mounts on the way through — so nothing is read off this; the
+    // subscription is what holds the tree up, and dropping it takes the tree
+    // down with the renderer.
+    subscriber.add(fn(ctx).subscribe());
 
     // The same subject anything built above already holds: the scene was
     // constructed before this line, and whatever asked it for frames is
@@ -460,7 +498,6 @@ export function render(fn, options = {}) {
     renderer.setAnimationLoop((time, frame) => {
       options.onBeforeRender?.(renderer);
       subject.next({ time, frame });
-      const currentScene = scene.getValue();
       const set = listeners.get(renderer);
       if (set) {
         for (const fn of set) {
@@ -476,14 +513,14 @@ export function render(fn, options = {}) {
         // scene as it is about to be drawn rather than as it was last frame.
         // What those callbacks move in turn (a cursor following its hit) is
         // picked up by the renderer's own flush, a few lines down.
-        if (currentScene.matrixWorldAutoUpdate === true) {
-          currentScene.updateMatrixWorld();
+        if (scene.matrixWorldAutoUpdate === true) {
+          scene.updateMatrixWorld();
         }
         for (const fn of lateSet) {
           fn(time, frame);
         }
       }
-      renderer.render(currentScene, camera);
+      renderer.render(scene, camera);
       options.onAfterRender?.(renderer);
     });
 

@@ -2,7 +2,7 @@ import { Signal } from "@apendua/signal";
 import * as THREE from "three";
 import {
   effects,
-  use,
+  useEffects,
   on,
   set,
   just,
@@ -232,7 +232,7 @@ const Brick = component((ctx: WeakKey, operators: Op<Props, Events>) => {
 
   return $(new THREE.Group<XREventMap>(), [
     effects(() => {
-      use(just(props, operators));
+      useEffects(props, operators);
     }),
     // While a brick is held it belongs to the hand, and the hand's own movement
     // is what places it. Every other frame its pose comes from the props —

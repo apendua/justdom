@@ -1,6 +1,6 @@
 import * as THREE from "three";
-import { children, cursors, $, dom } from "@apendua/freedom";
-import { effects, just, component, use } from "@apendua/signal";
+import { children, cursors, $, dom, getScene } from "@apendua/freedom";
+import { effects, effectsOnly, use, useEffects } from "@apendua/signal";
 
 import { createDiagnostics, Diagnostics, type DiagnosticsControls } from "@apendua/justui";
 import ButtonsPanel from "./ButtonsPanel.js";
@@ -32,7 +32,7 @@ declare global {
  * plus half of the one below it, and the columns by rather more than a panel
  * is wide, which is where these numbers come from.
  */
-const Scene = component((ctx: WeakKey) => {
+const Scene = effectsOnly((ctx: WeakKey) => {
   const scale = 0.1;
   // The frame rate readout, head-locked and up to the left. There is no music
   // card here to hang a switch off, so it is simply always on — and on a page
@@ -49,7 +49,7 @@ const Scene = component((ctx: WeakKey) => {
   /** How far forward the turn brings them, so the grid curves rather than shears. */
   const depth = 1.2;
 
-  return just(new THREE.Scene()).pipe(
+  useEffects(getScene(ctx), [
     effects(() => {
       use(Diagnostics(ctx, diagnostics));
     }),
@@ -96,7 +96,7 @@ const Scene = component((ctx: WeakKey) => {
       ]),
       cursors(ctx, { color: "#ff0000" }),
     ),
-  );
+  ]);
 });
 
 export default Scene;

@@ -1,6 +1,14 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
-import { frames, RendererContext } from "./render.js";
+import * as THREE from "three";
+import {
+  CameraContext,
+  frames,
+  getCamera,
+  getScene,
+  RendererContext,
+  SceneContext,
+} from "./render.js";
 
 describe("frames", () => {
   test("a renderer has frames before the loop that emits them is installed", () => {
@@ -35,5 +43,36 @@ describe("frames", () => {
     // and that is right where there is genuinely no renderer — a test runner,
     // a portal mounted on a plain page.
     assert.throws(() => frames({}), /RendererContext not set/);
+  });
+});
+
+describe("getCamera", () => {
+  test("hands back the camera this context renders through", () => {
+    const camera = new THREE.PerspectiveCamera();
+    assert.strictEqual(getCamera(CameraContext.set({}, camera)), camera);
+  });
+
+  test("says so when there is no camera, rather than handing back nothing", () => {
+    assert.throws(() => getCamera({}), /CameraContext not set/);
+  });
+});
+
+describe("getScene", () => {
+  test("hands back the scene the renderer is drawing", () => {
+    const scene = new THREE.Scene();
+    assert.strictEqual(getScene(SceneContext.set({}, scene)), scene);
+  });
+
+  test("is the same scene every time, since `render` owns it", () => {
+    // It did not use to be: the tree handed a scene back, so the answer was
+    // whatever it had most recently emitted. `render` builds one now, before
+    // anything can ask, and keeps it — which is what lets this be a plain read
+    // rather than a dependency.
+    const ctx = SceneContext.set({}, new THREE.Scene());
+    assert.strictEqual(getScene(ctx), getScene(ctx));
+  });
+
+  test("says so when there is no scene", () => {
+    assert.throws(() => getScene({}), /SceneContext not set/);
   });
 });

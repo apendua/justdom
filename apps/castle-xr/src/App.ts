@@ -1,7 +1,16 @@
 import * as THREE from "three";
-import { camera, children, cursors, $, XREventMap, interactions, useFrame } from "@apendua/freedom";
-import { makeNonReactive, Signal } from "@apendua/signal";
-import { on, set, effects, just, use, component } from "@apendua/signal";
+import {
+  children,
+  cursors,
+  $,
+  XREventMap,
+  interactions,
+  useFrame,
+  getCamera,
+  getScene,
+} from "@apendua/freedom";
+import { effectsOnly, makeNonReactive, Signal, useEffects } from "@apendua/signal";
+import { on, set, effects, use, component } from "@apendua/signal";
 
 import { CastleContext, ListenerContext, SessionContext } from "./elements/context.js";
 import { boxGeometry } from "./elements/geometry.js";
@@ -75,7 +84,7 @@ const Floor = component((ctx: WeakKey, grip: Grip) => {
   ]);
 });
 
-const App = component((ctx: WeakKey) => {
+const App = effectsOnly((ctx: WeakKey) => {
   // One board unit is one cell, and a cell is ten centimetres in the room.
   const scale = 0.1;
   // The ears go where the head is, so the soundtrack rides the camera and a
@@ -134,9 +143,9 @@ const App = component((ctx: WeakKey) => {
     }
   });
 
-  return just(new THREE.Scene()).pipe(
+  useEffects(getScene(ctx), [
     effects(() => {
-      use(camera(ctx).pipe(children($(listener))));
+      useEffects(getCamera(ctx), [children($(listener))]);
     }),
     // Head-locked, like the ears above and for the same reason: a reading you
     // have to go and look for is a reading nobody takes while playing.
@@ -247,7 +256,7 @@ const App = component((ctx: WeakKey) => {
         ),
       ]),
     ),
-  );
+  ]);
 });
 
 export default App;

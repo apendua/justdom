@@ -8,7 +8,7 @@
  */
 const configuration = {
   "@apendua/signal": {
-    reloadable: ["component"],
+    reloadable: ["component", "effectsOnly"],
   },
   "@apendua/justdom": {
     reloadable: ["stylesheet", "className", "fontFace"],

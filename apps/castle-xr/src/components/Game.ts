@@ -11,7 +11,15 @@
  * player's hands. The game is won when every brick is lying on the ground.
  */
 import * as THREE from "three";
-import { camera, children, keyedList, Nothing, $, getXRSession, useFrame } from "@apendua/freedom";
+import {
+  children,
+  keyedList,
+  Nothing,
+  $,
+  getXRSession,
+  useFrame,
+  getCamera,
+} from "@apendua/freedom";
 import {
   batch,
   component,
@@ -22,7 +30,6 @@ import {
   ReactiveMap,
   set,
   store,
-  use,
   useEffect,
 } from "@apendua/signal";
 import * as RAPIER from "@dimforge/rapier3d";
@@ -367,13 +374,7 @@ const Game = component((ctx: WeakKey) => {
       object.current = o;
     }),
     effects(() => {
-      use(
-        camera(ctx).pipe(
-          effects((value) => {
-            view = value;
-          }),
-        ),
-      );
+      view = getCamera(ctx);
     }),
     effects(() => {
       const xrSession = getXRSession(ctx);

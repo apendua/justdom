@@ -187,15 +187,15 @@ component that measures and draws it.
 ```js
 import { createDiagnostics, Diagnostics } from "@apendua/justui";
 
-const App = component((ctx) => {
+const App = effectsOnly((ctx) => {
   const diagnostics = createDiagnostics();
 
-  return just(new THREE.Scene()).pipe(
+  useEffects(getScene(ctx), [
     effects(() => {
       use(Diagnostics(ctx, diagnostics));
     }),
     children(/* the game */),
-  );
+  ]);
 });
 ```
 

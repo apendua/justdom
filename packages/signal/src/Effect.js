@@ -389,7 +389,8 @@ export class Effect extends ReactiveNode {
    * synchronous path strikes, where a handled exception does not stop the
    * effect. Without one there is no stack left to throw into, so the effect
    * fails instead: cleanups run, whatever reads or watches it is told, and it
-   * stops for good rather than sitting disconnected and still queueable.
+   * stops for good rather than sitting disconnected and still queueable. An
+   * effect usually has nobody watching, which is what `fail` logs about.
    *
    * @param {unknown} err
    * @returns {void}

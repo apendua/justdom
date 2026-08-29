@@ -17,6 +17,38 @@ import {
 const CLOSED = { unsubscribe: () => {} };
 
 /**
+ * Say, as loudly as this library gets to, that a failure reached the end of
+ * the graph with nobody listening.
+ *
+ * `console.error` rather than a colour code, because "red" is a different
+ * string in each of the two places this runs: devtools already renders
+ * `console.error` red and gives it a stack to expand, and Node puts it on
+ * stderr, where a terminal that colours anything is colouring stderr. An ANSI
+ * escape would be literal junk in the browser and a `%c` directive literal
+ * junk in Node, so the level *is* the colour.
+ *
+ * Not a throw, which was the other candidate: there is no stack left to throw
+ * into, so it would have to be re-thrown from a microtask, and an uncaught
+ * exception from a graph that is otherwise still running is a heavier claim
+ * than this can support — one dead node is not a dead program.
+ *
+ * @param {ReactiveNode} node
+ * @param {unknown} err
+ * @returns {void}
+ */
+function reportUnhandledFailure(node, err) {
+  const name = /** @type {{ name?: unknown }} */ (node).name;
+  const label =
+    typeof name === "string" ? `${node.constructor.name} "${name}"` : node.constructor.name;
+  console.error(
+    `Unhandled failure in ${label}: nothing reads it and nothing subscribed to it with an ` +
+      `\`error\`, so this had nowhere to go. It has stopped, and its cleanups have run. ` +
+      `Give it an \`onError\`, or subscribe with one, if this should be handled.`,
+    err,
+  );
+}
+
+/**
  * Handed back by `detachCleanups` when there was nothing to detach, so that
  * the commonest recomputation — a node with no teardowns at all — allocates
  * nothing. Frozen because the whole point is that it is shared: anything that
@@ -564,6 +596,21 @@ export default class ReactiveNode {
    * Tell everyone, then die. Nothing is left subscribed and nothing more will
    * be said; a reader arriving afterwards is handed the same error.
    *
+   * If there was no one to tell, the error is logged rather than dropped. This
+   * is the only place in the library that can know that: an error thrown where
+   * something is reading travels up the stack until somebody catches it, but a
+   * failure that arrives here has already left every stack it could have
+   * travelled, and this is the last frame that will ever hold it. A node with
+   * no dependents and no error-handling observer is the end of the line — an
+   * `Effect` nothing subscribes to, most often, which is what an effect
+   * usually is — so the alternative to logging is losing it, and a frame loop
+   * that stops for a reason nobody can see is the worst kind of bug to be
+   * handed.
+   *
+   * Propagation counts as being told: the dependent this hands off to asks the
+   * same question of itself, so a chain logs once, at the end that nobody was
+   * listening to, rather than at every link along it.
+   *
    * @param {unknown} err
    * @returns {void}
    */
@@ -579,6 +626,7 @@ export default class ReactiveNode {
     this.#observers.clear();
     this.#observersSnapshot = null;
     this.disconnect();
+    let heard = dependents.length > 0;
     for (let index = 0; index < dependents.length; index += 1) {
       dependents[index].fail(err);
     }
@@ -586,8 +634,16 @@ export default class ReactiveNode {
       const entry = observers[index];
       if (!entry.closed) {
         entry.closed = true;
-        entry.observer.error?.(err);
+        // An observer with no `error` is not a handler. Subscribing says "tell
+        // me when this moves"; only an `error` says "and tell me when it dies".
+        if (entry.observer.error) {
+          entry.observer.error(err);
+          heard = true;
+        }
       }
+    }
+    if (!heard) {
+      reportUnhandledFailure(this, err);
     }
   }
 

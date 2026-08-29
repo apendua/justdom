@@ -339,12 +339,68 @@ describe("Effect", () => {
       // time its teardown is handed over. Registering it then would park it on
       // a list nothing reads again — for a real run, a subscription that stays.
       const teardown = mock.fn();
+      const error = mock.method(console, "error", () => {});
       const effect = new Effect(({ fail }) => {
         fail(new Error("failed on the way through"));
         return teardown;
       });
+      error.mock.restore();
       assert.strictEqual(effect.isDisposed, true);
       assert.strictEqual(teardown.mock.calls.length, 1, "called rather than registered");
+    });
+  });
+
+  describe("a failure nobody is listening to", () => {
+    it("is logged rather than dropped", () => {
+      const effect = new Effect(() => {}, { name: "orphan" });
+      const error = mock.method(console, "error", () => {});
+      const failure = new Error("nowhere to go");
+      effect.fail(failure);
+      error.mock.restore();
+
+      assert.strictEqual(error.mock.calls.length, 1);
+      const [message, reported] = error.mock.calls[0].arguments;
+      assert.match(String(message), /Unhandled failure in Effect "orphan"/);
+      assert.strictEqual(reported, failure, "and the error itself, so a stack survives");
+    });
+
+    it("is not logged when something subscribed to hear it", () => {
+      const effect = new Effect(() => {});
+      /** @type {unknown} */
+      let seen;
+      effect.subscribe({ error: (err) => (seen = err) });
+      const error = mock.method(console, "error", () => {});
+      const failure = new Error("handled");
+      effect.fail(failure);
+      error.mock.restore();
+
+      assert.strictEqual(seen, failure);
+      assert.strictEqual(error.mock.calls.length, 0);
+    });
+
+    it("counts a subscriber with no error handler as nobody", () => {
+      // Subscribing says "tell me when this moves". Only an `error` says "and
+      // tell me when it dies", and this had nobody to tell.
+      const effect = new Effect(() => {});
+      effect.subscribe({});
+      const error = mock.method(console, "error", () => {});
+      effect.fail(new Error("unhandled after all"));
+      error.mock.restore();
+
+      assert.strictEqual(error.mock.calls.length, 1);
+    });
+
+    it("is logged once at the end of a chain, not at every link", () => {
+      const source = Signal.of(1);
+      const derived = new Derived(() => source.get());
+      const effect = new Effect(() => derived.get(), { name: "the end of the line" });
+      const error = mock.method(console, "error", () => {});
+      derived.fail(new Error("upstream"));
+      error.mock.restore();
+
+      assert.strictEqual(error.mock.calls.length, 1, "the link that propagated stays quiet");
+      assert.match(String(error.mock.calls[0].arguments[0]), /Effect "the end of the line"/);
+      effect.dispose();
     });
   });
 

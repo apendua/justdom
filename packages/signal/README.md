@@ -201,9 +201,9 @@ ordering. The queue notices and throws rather than spinning.
 - `@memo` / `@memoFn` / `@mutate` — decorators for memoized getters, memoized
   methods, and non-reactive mutations.
 - `just()`, `useEffects()` — mount a list of entity effects on a value:
-  `just` behind a shared node (one mounting however many subscribers, torn
-  down with the last, the value or a factory for it evaluated inside),
-  `useEffects` directly on the surrounding computation.
+  `just` cold, a mounting per subscriber with a factory first argument run at
+  mount time; `useEffects` directly on the surrounding computation. Sharing a
+  mounting among subscribers is `memoize`'s job, not `just`'s.
 - `observable()`, `component()`, `effects()`, `set()`, `use()`, `on()` — the
   factory layer, built on `Effect`; `set`, `on`, `effectMap` and friends are
   entity-effect factories now rather than stream operators.

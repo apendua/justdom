@@ -1,6 +1,6 @@
 import { map, Observable } from "rxjs";
 import { renderText } from "./text.js";
-import { just, onCleanup, use } from "@apendua/signal";
+import { Derived, just, onCleanup, toObservable } from "@apendua/signal";
 import { isHydrating } from "./hydrate.js";
 
 const STYLE_KEY_ATTRIBUTE = "data-style-key";
@@ -127,19 +127,36 @@ function stableName(prefix, strings, isStatic) {
  * @returns {Observable<string>}
  */
 export function className(strings, ...values) {
-  // One style element however many subscribers, the name replayed to a late
-  // one, everything down with the last — which is a mounting, so it is spelled
-  // as one.
-  return just(stableName("class_", strings, values.length === 0), [
-    (key) => {
-      use(
-        styleElement(
-          renderText(strings, ...values).pipe(map((value) => `.${key} {${value}}`)),
-          key,
-        ),
-      );
-    },
-  ]);
+  const key = stableName("class_", strings, values.length === 0);
+  return shared(key, renderText(strings, ...values).pipe(map((value) => `.${key} {${value}}`)));
+}
+
+/**
+ * One mounted style element however many subscribers, the name replayed to a
+ * late one, everything down with the last.
+ *
+ * This is the one place in the package that *wants* sharing — a class name is
+ * used by every element that wears it, and each of them holding its own copy
+ * of the rule would fill `document.head` with duplicates — so the sharing is
+ * explicit and local: a `Derived` whose evaluation mounts the element and
+ * whose refcount is the subscribers. `just` is deliberately cold and no help
+ * here; if cross-call-site sharing is ever wanted, `memoizeDerived` is the
+ * tool to reach for.
+ *
+ * @param {string} key
+ * @param {Observable<string>} content
+ * @returns {Observable<string>}
+ */
+function shared(key, content) {
+  /** @type {Derived<string>} */
+  const node = new Derived(() => {
+    const subscription = styleElement(content, key).subscribe({
+      error: (err) => node.fail(err),
+    });
+    onCleanup(() => subscription.unsubscribe());
+    return key;
+  });
+  return toObservable(node);
 }
 
 /**
@@ -150,24 +167,18 @@ export function className(strings, ...values) {
  */
 export function stylesheet(strings, ...values) {
   const name = stableName("class_", strings, values.length === 0);
-  return just(name, [
-    (key) => {
-      use(
-        styleElement(
-          renderText(
-            strings,
-            ...values.map((value) => {
-              if (value === CLASS_NAME) {
-                return just(name);
-              }
-              return value;
-            }),
-          ),
-          key,
-        ),
-      );
-    },
-  ]);
+  return shared(
+    name,
+    renderText(
+      strings,
+      ...values.map((value) => {
+        if (value === CLASS_NAME) {
+          return just(name);
+        }
+        return value;
+      }),
+    ),
+  );
 }
 
 /**
@@ -183,21 +194,21 @@ export function fontFace(fontUrl, options = {}) {
   // Every input to the rule is known up front, so the name can be derived from
   // them and stays the same across a server render and a client hydration.
   const fontName = `font_${hash([fontUrl, format, fontWeight, fontStyle].join(" "))}`;
-  return just(fontName, [
-    () => {
-      const styleElement = document.createElement("style");
-      styleElement.innerHTML = `
-        @font-face {
-          font-family: ${fontName};
-          src: url('${fontUrl}') format('${format}');
-          font-weight: ${fontWeight};
-          font-style: ${fontStyle};
-        }
-      `;
-      document.head.appendChild(styleElement);
-      onCleanup(() => {
-        document.head.removeChild(styleElement);
-      });
-    },
-  ]);
+  const node = new Derived(() => {
+    const styleElement = document.createElement("style");
+    styleElement.innerHTML = `
+      @font-face {
+        font-family: ${fontName};
+        src: url('${fontUrl}') format('${format}');
+        font-weight: ${fontWeight};
+        font-style: ${fontStyle};
+      }
+    `;
+    document.head.appendChild(styleElement);
+    onCleanup(() => {
+      document.head.removeChild(styleElement);
+    });
+    return fontName;
+  });
+  return toObservable(node);
 }

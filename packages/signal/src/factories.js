@@ -1,7 +1,6 @@
 import { Observable } from "rxjs";
 import { Derived } from "./Derived.js";
-import { useEffect } from "./Effect.js";
-import { onCleanup } from "./core.js";
+import { Effect } from "./Effect.js";
 import { toEffect, toObservable } from "./interop.js";
 import { onEachValue, subscribeTo } from "./util.js";
 
@@ -62,32 +61,37 @@ export function effectsOnly(fn) {
 }
 
 /**
- * An entity with `effects` mounted on it, shared among its subscribers for as
- * long as any of them stays.
+ * An entity with `effects` mounted on it, for as long as the subscriber
+ * stays.
  *
- * This used to be spelled with RxJS — a cold source piped through operators
- * into `share({ connector: () => new ReplaySubject(1), resetOnRefCountZero:
- * true })`. Every piece of that machinery is a description of a node's
- * lifetime: connect lazily when the first reader arrives, multicast, replay
- * the value to a late one, tear down and start afresh when the last one
- * leaves. So the sharing is a `Derived` now, and the effects mount *inside its
- * evaluation*: the node's cleanups take them down on disconnect, and — by the
- * node's own equality cutoff — a re-evaluation that lands on the same entity
- * keeps the standing mounting rather than rebuilding it.
+ * **Cold, deliberately.** This used to be shared — `share({ connector: () =>
+ * new ReplaySubject(1), resetOnRefCountZero: true })` — which made the
+ * observable idempotent to subscription count: however many times a pipeline
+ * subscribed it, the entity was decorated once. That guard mattered when
+ * elements were created eagerly and a stray second subscription attached
+ * every event handler twice; it has been vestigial since creation moved
+ * inside the subscription, and it cost the semantics everything RxJS-shaped
+ * that was left — multicast, replay, refcount. Now a subscription *is* a
+ * mounting: each subscriber gets the factory run and the effects mounted for
+ * itself, and takes them down on unsubscribe. A caller who really wants one
+ * mounting served to many subscribers wants a node, and `memoize` /
+ * `memoizeDerived` are the explicit tools for that.
  *
  * The first argument is the entity, or a **factory** for one. A factory runs
- * inside the evaluation, so the entity is created per mounting cycle rather
- * than when `just` is called — which is what a DOM tree needs: an element
- * claimed or created at mount time, a fresh one for the next mounting, and
- * hydration's cursor walked in subscription order. An instance is for entities
- * whose identity precedes the mounting — a `THREE.Mesh` built with its own
- * constructor arguments. Anything callable is treated as a factory.
+ * per subscription, so the entity is created at mount time — which is what a
+ * DOM tree needs: an element claimed or created when the mounting is built, a
+ * fresh one for every mounting, and hydration's cursor walked in subscription
+ * order. An instance is for entities whose identity precedes the mounting — a
+ * `THREE.Mesh` built with its own constructor arguments. Anything callable is
+ * treated as a factory.
  *
- * A mounted effect that fails on the way in fails the evaluation — the pull
- * path, retryable, handed to whoever is reading. One that fails *later* fails
- * the node — the push path, terminal for the node — and the next subscriber
- * is handed a fresh mounting rather than a replay of the failure, which is
- * what `share`'s reset used to do.
+ * Each entry of `effects` is its own `Effect`, so one re-runs without the
+ * others. A failure while the mounting is being built — the factory or a
+ * first run throwing, a subscription erroring on the way in — reaches the
+ * subscriber synchronously, with everything already mounted taken down
+ * again; later news arrives on the error channel and ends the mounting. A
+ * subscriber arriving after another's failure simply builds its own
+ * mounting, which is the retry `share`'s reset used to provide.
  *
  * @template T
  * @overload
@@ -112,83 +116,71 @@ export function effectsOnly(fn) {
  */
 export function just(valueOrFactory, effects = []) {
   if (effects.length === 0 && typeof valueOrFactory !== "function") {
-    // Nothing to mount and nothing to share: a constant needs no node.
+    // Nothing to mount: a constant needs no machinery at all.
     return new Observable((/** @type {Subscriber<T>} */ subscriber) => {
       subscriber.next(/** @type {T} */ (valueOrFactory));
     });
   }
-  /** @type {Derived<T> | null} */
-  let node = null;
   return new Observable((/** @type {Subscriber<T>} */ subscriber) => {
-    if (!node || node.failure) {
-      // A node's failure is terminal — a reader arriving afterwards is handed
-      // the same error — where `share` reset and let the next subscriber try
-      // again. The node is the sharing here, so matching that means a new
-      // node; everything it mounts is built afresh by its first evaluation.
-      node = justNode(valueOrFactory, effects);
-    }
-    return toObservable(node).subscribe(subscriber);
-  });
-}
-
-/**
- * The node behind `just`: entity and mounting in one evaluation.
- *
- * @template T
- * @param {T | (() => T)} valueOrFactory
- * @param {EntityEffect<T>[]} effects
- * @returns {Derived<T>}
- */
-function justNode(valueOrFactory, effects) {
-  /** @type {Derived<T>} */
-  const node = new Derived(() => {
-    const entity =
-      typeof valueOrFactory === "function"
-        ? /** @type {() => T} */ (valueOrFactory)()
-        : valueOrFactory;
-    for (const fn of effects) {
-      // Each entry is its own `Effect`, so one re-runs without the others.
-      // `useEffect` ties its disposal to this evaluation's cleanups, which is
-      // the mounting's lifetime: run again on reconnect, undone on disconnect.
-      let standing = false;
-      /** @type {{ value: unknown } | null} */
-      let pending = null;
-      const effect = useEffect((context) => fn(entity, context), {
-        name: "just",
-        onError: (err) => {
-          if (!standing) {
-            // Still on this evaluation's stack: the throw fails the
-            // evaluation, which is retryable and lands on whoever is reading.
-            throw err;
-          }
-          // News from a mounting that was already up — a re-run throwing, or
-          // a failure reported after the fact. There is no read on the stack
-          // to hand it to; it travels the push path and takes the node with
-          // it.
-          node.fail(err);
-        },
-      });
-      // A dependency of the mounted effect erroring fails the effect down the
-      // push path, which never consults `onError` — so the mounting keeps an
-      // ear on the observer channel. A failure from the first run replays
-      // synchronously on subscribe, and lands in `pending` so it can fail
-      // this evaluation the way a thrown one does.
-      const failures = effect.subscribe({
-        error: (err) => {
-          if (standing) {
-            node.fail(err);
-          } else {
-            pending = pending ?? { value: err };
-          }
-        },
-      });
-      onCleanup(() => failures.unsubscribe());
-      standing = true;
-      if (pending) {
-        throw /** @type {{ value: unknown }} */ (pending).value;
+    /** @type {Array<{ dispose: () => void } | { unsubscribe: () => void }>} */
+    const mounted = [];
+    const dispose = () => {
+      for (const held of mounted) {
+        if ("dispose" in held) {
+          held.dispose();
+        } else {
+          held.unsubscribe();
+        }
       }
+    };
+    try {
+      const entity =
+        typeof valueOrFactory === "function"
+          ? /** @type {() => T} */ (valueOrFactory)()
+          : valueOrFactory;
+      for (const fn of effects) {
+        let standing = false;
+        /** @type {{ value: unknown } | null} */
+        let pending = null;
+        const effect = new Effect((context) => fn(entity, context), {
+          name: "just",
+          onError: (err) => {
+            if (!standing) {
+              // Still on this mounting's stack: the throw lands below, takes
+              // down whatever was already mounted, and reaches the subscriber
+              // synchronously.
+              throw err;
+            }
+            subscriber.error(err);
+          },
+        });
+        mounted.push(effect);
+        // A dependency of the mounted effect erroring fails the effect down
+        // the push path, which never consults `onError` — so the mounting
+        // keeps an ear on the observer channel. A failure from the first run
+        // replays synchronously on subscribe, and lands in `pending` so it is
+        // handled the way a thrown one is.
+        mounted.push(
+          effect.subscribe({
+            error: (err) => {
+              if (standing) {
+                subscriber.error(err);
+              } else {
+                pending = pending ?? { value: err };
+              }
+            },
+          }),
+        );
+        standing = true;
+        if (pending) {
+          throw /** @type {{ value: unknown }} */ (pending).value;
+        }
+      }
+      subscriber.next(entity);
+    } catch (err) {
+      dispose();
+      subscriber.error(err);
     }
-    return entity;
+    return dispose;
   });
-  return node;
 }

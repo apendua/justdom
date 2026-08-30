@@ -2,7 +2,7 @@ import { effectMap, just, observable } from "@apendua/signal";
 import ListRenderer from "./ListRenderer.js";
 import { removeSegment, replaceSegment, toSegment } from "./helpers.js";
 import { claimComment, claimElement, claimSegment, isHydrating, withCursor } from "./hydrate.js";
-import { defer, distinctUntilChanged, map, Observable, tap } from "rxjs";
+import { distinctUntilChanged, map, Observable, tap } from "rxjs";
 
 const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
 
@@ -14,19 +14,17 @@ const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
 /**
  * Creates an element observable.
  *
- * The element is created by a factory `just` runs *inside its node*, not when
- * `$()` is called. That matters for two reasons:
+ * The element is created by the factory `just` runs per subscription, not
+ * when `$()` is called. That matters for two reasons:
  *
- * - Creating on demand means elements are acquired top-down, in document
+ * - Creating at mount time means elements are acquired top-down, in document
  *   order, matching the order the mountings are built — argument evaluation
  *   alone would give the reverse. Hydration's cursor depends on that order.
  * - The same element observable can be mounted in more than one place. Eager
  *   creation gave every subscriber the *same* node, so the second mount stole
- *   it from the first and only one copy was rendered.
- *
- * The `defer` is what keeps the second property: a `just` node is shared
- * among its concurrent subscribers, and an element must not be, so each
- * subscriber gets a node of its own with the factory run afresh inside it.
+ *   it from the first and only one copy was rendered. A cold `just` runs the
+ *   factory afresh for each subscriber, so every mount gets an element of its
+ *   own.
  *
  * @template {keyof HTMLElementTagNameMap} Tag
  * @param {Tag} tag
@@ -34,14 +32,10 @@ const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
  * @returns {Observable<Mountable>}
  */
 export function $(tag, effects = []) {
-  return defer(() =>
-    just(
-      () =>
-        /** @type {HTMLElementTagNameMap[Tag]} */ (
-          claimElement(tag) ?? document.createElement(tag)
-        ),
-      effects,
-    ),
+  return just(
+    () =>
+      /** @type {HTMLElementTagNameMap[Tag]} */ (claimElement(tag) ?? document.createElement(tag)),
+    effects,
   ).pipe(map(toMountable));
 }
 
@@ -52,14 +46,12 @@ export function $(tag, effects = []) {
  * @returns {Observable<Mountable>}
  */
 export function $$(tag, effects = []) {
-  return defer(() =>
-    just(
-      () =>
-        /** @type {SVGElementTagNameMap[Tag]} */ (
-          claimElement(tag, SVG_NAMESPACE) ?? document.createElementNS(SVG_NAMESPACE, tag)
-        ),
-      effects,
-    ),
+  return just(
+    () =>
+      /** @type {SVGElementTagNameMap[Tag]} */ (
+        claimElement(tag, SVG_NAMESPACE) ?? document.createElementNS(SVG_NAMESPACE, tag)
+      ),
+    effects,
   ).pipe(map(toMountable));
 }
 

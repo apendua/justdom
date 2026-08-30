@@ -193,53 +193,71 @@ describe("effectsOnly()", () => {
 });
 
 describe("just()", () => {
-  it("mounts its operators once, however many subscribers there are", () => {
+  it("mounts its effects for every subscriber — a subscription is a mounting", () => {
+    // Cold, deliberately: the sharing this used to do (`share` +
+    // `ReplaySubject(1)`) made the observable idempotent to subscription
+    // count, and nothing wants that any more. A caller who wants one
+    // mounting served to many subscribers wants `memoize`.
     const entity = { value: 0 };
     const runs = mock.fn();
-    const shared = just(entity, [effects(() => runs())]);
+    const source = just(entity, [effects(() => runs())]);
 
     const first = mock.fn();
-    const a = shared.subscribe({ next: first });
+    const a = source.subscribe({ next: first });
     assert.strictEqual(runs.mock.calls.length, 1);
     assertNthCallArgumentEqual(first, 0, 0, entity);
 
-    // The second subscriber joins the mounting that is already standing, and
-    // is handed the value it missed — what `share` with a `ReplaySubject(1)`
-    // was buying.
     const second = mock.fn();
-    const b = shared.subscribe({ next: second });
-    assert.strictEqual(runs.mock.calls.length, 1, "no second mounting");
+    const b = source.subscribe({ next: second });
+    assert.strictEqual(runs.mock.calls.length, 2, "a mounting of its own");
     assertNthCallArgumentEqual(second, 0, 0, entity);
 
     a.unsubscribe();
     b.unsubscribe();
   });
 
-  it("takes the mounting down with the last subscriber, and builds it again for the next", () => {
+  it("takes each mounting down with its own subscriber", () => {
     const entity = { value: 0 };
     const runs = mock.fn();
     const cleanup = mock.fn();
-    const shared = just(entity, [
+    const source = just(entity, [
       effects(() => {
         runs();
         onCleanup(() => cleanup());
       }),
     ]);
 
-    const a = shared.subscribe({ next: () => {} });
-    const b = shared.subscribe({ next: () => {} });
-    a.unsubscribe();
-    assert.strictEqual(cleanup.mock.calls.length, 0, "one subscriber left, nothing torn down");
-    b.unsubscribe();
-    assert.strictEqual(cleanup.mock.calls.length, 1, "and the last one takes it down");
-
-    // `resetOnRefCountZero`: subscribing again is a fresh mounting rather than
-    // a dead one.
-    const next = mock.fn();
-    const c = shared.subscribe({ next });
+    const a = source.subscribe({ next: () => {} });
+    const b = source.subscribe({ next: () => {} });
     assert.strictEqual(runs.mock.calls.length, 2);
+    a.unsubscribe();
+    assert.strictEqual(cleanup.mock.calls.length, 1, "the first mounting is down");
+    b.unsubscribe();
+    assert.strictEqual(cleanup.mock.calls.length, 2, "and the second with its subscriber");
+
+    // Subscribing again is a fresh mounting rather than a dead one.
+    const next = mock.fn();
+    const c = source.subscribe({ next });
+    assert.strictEqual(runs.mock.calls.length, 3);
     assertNthCallArgumentEqual(next, 0, 0, entity);
     c.unsubscribe();
+  });
+
+  it("runs a factory per subscriber, at mount time", () => {
+    const made = mock.fn();
+    /** @type {Array<{ id: number }>} */
+    const seen = [];
+    const source = just(() => {
+      made();
+      return { id: made.mock.calls.length };
+    }, [effects(() => {})]);
+    assert.strictEqual(made.mock.calls.length, 0, "nothing is created before somebody subscribes");
+
+    const a = source.subscribe((/** @type {{ id: number }} */ entity) => seen.push(entity));
+    const b = source.subscribe((/** @type {{ id: number }} */ entity) => seen.push(entity));
+    assert.deepStrictEqual(seen, [{ id: 1 }, { id: 2 }], "an entity of its own for each");
+    a.unsubscribe();
+    b.unsubscribe();
   });
 
   it("emits the value once, and does not emit again when a mounted effect re-runs", () => {

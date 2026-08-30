@@ -1,4 +1,4 @@
-import { Observable } from "rxjs";
+import { Stream } from "./Stream.js";
 
 /**
  * @import { Observer, Subscribable, Source, Unsubscribable } from './subscribable.js';
@@ -31,7 +31,7 @@ import { Observable } from "rxjs";
  */
 export function onEachValue(subscribe) {
   return (source) => {
-    return new Observable((subscriber) => {
+    return new Stream((subscriber) => {
       /** @type {Unsubscribable | undefined} */
       let innerSubscription;
       const subscription = source.subscribe({
@@ -111,7 +111,7 @@ export function all(...operators) {
  * @returns {Source<T>}
  */
 export function each(source, fn) {
-  return new Observable((subscriber) => {
+  return new Stream((subscriber) => {
     const subscription = source.subscribe({
       next: (value) => {
         try {

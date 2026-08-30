@@ -1,4 +1,4 @@
-import { Observable } from "rxjs";
+import { Stream } from "./Stream.js";
 import { Effect } from "./Effect.js";
 import { withComputation } from "./core.js";
 import { Derived } from "./Derived.js";
@@ -52,7 +52,7 @@ export function nodeOf(observable) {
  * @returns {Source<T>}
  */
 export function toObservable(node) {
-  const observable = new Observable((/** @type {import("rxjs").Subscriber<T>} */ subscriber) => {
+  const observable = new Stream((subscriber) => {
     // The effect below hears the node's *values*; it cannot hear the node
     // *fail*. Failure makes a node part ways with its dependents, and what
     // the orphaned effect sees afterwards is a `NoValueError` — "not yet" —
@@ -104,7 +104,7 @@ export function toObservable(node) {
  * @returns {Source<never>}
  */
 export function toEffect(fn, options = {}) {
-  return new Observable((subscriber) => {
+  return new Stream((subscriber) => {
     const effect = new Effect(fn, {
       name: options.name ?? "toEffect",
       onError: (err) => subscriber.error(err),

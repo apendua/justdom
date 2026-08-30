@@ -1,6 +1,6 @@
 import Computation from "./Computation.js";
 import { withComputation, addDependency, onCleanup } from "./core.js";
-import { Observable } from "rxjs";
+import { Stream } from "./Stream.js";
 import { failuresOf } from "./operators.js";
 
 /**
@@ -113,7 +113,7 @@ export function on(event, handler) {
  * @returns {Source<TEventMap[TEvent]>}
  */
 export function fromEvent(emitter, event) {
-  return new Observable((subscriber) => {
+  return new Stream((subscriber) => {
     /** @type {Handler<TEventMap[TEvent]>} */
     const handler = (e) => subscriber.next(e);
     emitter.addEventListener(event, handler);

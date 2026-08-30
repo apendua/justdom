@@ -1,4 +1,4 @@
-import { Observable } from "rxjs";
+import { Stream } from "./Stream.js";
 import { Derived } from "./Derived.js";
 import { Effect } from "./Effect.js";
 import { withComputation } from "./core.js";
@@ -120,11 +120,11 @@ export function effectsOnly(fn) {
 export function just(valueOrFactory, effects = []) {
   if (effects.length === 0 && typeof valueOrFactory !== "function") {
     // Nothing to mount: a constant needs no machinery at all.
-    return new Observable((/** @type {import("rxjs").Subscriber<T>} */ subscriber) => {
+    return new Stream((/** @type {import("./Stream.js").Subscriber<T>} */ subscriber) => {
       subscriber.next(/** @type {T} */ (valueOrFactory));
     });
   }
-  return new Observable((/** @type {import("rxjs").Subscriber<T>} */ subscriber) => {
+  return new Stream((/** @type {import("./Stream.js").Subscriber<T>} */ subscriber) => {
     /** @type {Array<{ dispose: () => void } | { unsubscribe: () => void }>} */
     const mounted = [];
     const dispose = () => {

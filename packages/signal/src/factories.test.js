@@ -5,7 +5,7 @@ import { on } from "./Emitter.js";
 import store, { emit } from "./store.js";
 import { effects, set } from "./operators.js";
 import { observable, component, effectsOnly, just } from "./factories.js";
-import { Signal, useEffect } from "./index.js";
+import { Effect, Signal, useEffect } from "./index.js";
 
 /**
  * @import { Observable } from 'rxjs';
@@ -241,6 +241,27 @@ describe("just()", () => {
     assert.strictEqual(runs.mock.calls.length, 3);
     assertNthCallArgumentEqual(next, 0, 0, entity);
     c.unsubscribe();
+  });
+
+  it("does not let the surrounding computation adopt what the factory read", () => {
+    // Subscribing is not reading — the same rule attaching a foreign source
+    // follows. A factory may read reactive state to build its entity, and
+    // whoever happened to be evaluating when the subscription was taken must
+    // not be marked stale by a write it never looked at.
+    const unrelated = Signal.of("a");
+    let hostRuns = 0;
+    const host = new Effect(() => {
+      hostRuns += 1;
+      const subscription = just(() => ({ label: unrelated.get() }), [effects(() => {})]).subscribe(
+        () => {},
+      );
+      onCleanup(() => subscription.unsubscribe());
+    });
+    assert.strictEqual(hostRuns, 1);
+
+    unrelated.set("b");
+    assert.strictEqual(hostRuns, 1, "the host never read it, so nothing should have moved");
+    host.dispose();
   });
 
   it("runs a factory per subscriber, at mount time", () => {

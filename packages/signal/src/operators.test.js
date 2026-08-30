@@ -7,7 +7,7 @@ import { decorate, memoFn } from "./decorators.js";
 import { Signal, batch } from "./index.js";
 import Emitter, { on } from "./Emitter.js";
 import { just } from "./factories.js";
-import { effects, map, takeNothing, observe, observeFn, use } from "./operators.js";
+import { effectMap, effects, map, takeNothing, observe, observeFn, use } from "./operators.js";
 import { Derived, Effect, onCleanup } from "./index.js";
 import { Observable } from "rxjs";
 
@@ -53,6 +53,31 @@ describe("effects()", () => {
 
     signal.set(3);
     assert.deepStrictEqual(result, [1, 2, 3, 6], "and re-run in the same order");
+
+    subscription.unsubscribe();
+  });
+});
+
+describe("effectMap()", () => {
+  it("does not adopt what the observable reads while subscribing", () => {
+    // The same rule `use()` follows, and for the same reason: subscribing is
+    // not reading. A foreign observable's `subscribe` may read reactive
+    // things — a `component(...)` builds its entities in there — and tracking
+    // them would tear the subscription down and back up on a write the
+    // mounting never looked at.
+    const unrelated = Signal.of("a");
+    let innerSubscribes = 0;
+    const inner = new Observable(() => {
+      innerSubscribes += 1;
+      unrelated.get();
+      return () => {};
+    });
+
+    const subscription = just({}, [effectMap(() => inner)]).subscribe(() => {});
+    assert.strictEqual(innerSubscribes, 1);
+
+    unrelated.set("b");
+    assert.strictEqual(innerSubscribes, 1, "the mounting never read it, so nothing should move");
 
     subscription.unsubscribe();
   });

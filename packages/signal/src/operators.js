@@ -2,7 +2,7 @@ import { Derived } from "./Derived.js";
 import { useEffect } from "./Effect.js";
 import { onEachValue, subscribeTo, each } from "./util.js";
 import { observable, component } from "./factories.js";
-import { addDependency, onCleanup } from "./core.js";
+import { addDependency, onCleanup, withComputation } from "./core.js";
 import { toObservable, nodeOf } from "./interop.js";
 
 /**
@@ -74,15 +74,24 @@ export function effectMap(fn) {
     let sync = true;
     /** @type {{ value: unknown } | null} */
     let failure = null;
-    const subscription = fn(entity).subscribe({
-      error: (err) => {
-        if (sync) {
-          failure = failure ?? { value: err };
-        } else {
-          fail(err);
-        }
-      },
-    });
+    // Non-reactive, because subscribing is not reading: a foreign observable's
+    // `subscribe` may read reactive things — a `component(...)` builds its
+    // entities in there — and those belong to it, not to this mounting.
+    // Tracking them would tear the subscription down and back up on a write
+    // the mounting never looked at, which in freedom means rebuilding a
+    // subtree. `toObservable` keeps the same rule around its `next`, which is
+    // what made this safe while the pipeline still ran through one.
+    const subscription = withComputation(null, () =>
+      fn(entity).subscribe({
+        error: (err) => {
+          if (sync) {
+            failure = failure ?? { value: err };
+          } else {
+            fail(err);
+          }
+        },
+      }),
+    );
     sync = false;
     onCleanup(() => subscription.unsubscribe());
     if (failure) {

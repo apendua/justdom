@@ -1,6 +1,7 @@
 import { Observable } from "rxjs";
 import { Derived } from "./Derived.js";
 import { Effect } from "./Effect.js";
+import { withComputation } from "./core.js";
 import { toEffect, toObservable } from "./interop.js";
 import { onEachValue, subscribeTo } from "./util.js";
 
@@ -136,7 +137,13 @@ export function just(valueOrFactory, effects = []) {
     try {
       const entity =
         typeof valueOrFactory === "function"
-          ? /** @type {() => T} */ (valueOrFactory)()
+          ? // Non-reactive, for the same reason attaching a foreign source is:
+            // subscribing is not reading. A factory may read reactive state to
+            // build its entity, and whichever computation happened to be
+            // evaluating when somebody subscribed has no business depending on
+            // what it read — it would be marked stale by a write it never
+            // looked at, and in freedom that means rebuilding a subtree.
+            withComputation(null, /** @type {() => T} */ (valueOrFactory))
           : valueOrFactory;
       for (const fn of effects) {
         let standing = false;

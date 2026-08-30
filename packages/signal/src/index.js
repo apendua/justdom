@@ -33,6 +33,7 @@ export { toObservable, toEffect, fromObservable } from "./interop.js";
 export { default as Emitter, on, fromEvent } from "./Emitter.js";
 export {
   effects,
+  rxEffects,
   use,
   set,
   useEffects,

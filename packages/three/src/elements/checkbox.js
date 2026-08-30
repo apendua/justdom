@@ -1,6 +1,6 @@
 import * as THREE from "three";
-import { Derived, effects, observable, onCleanup, set, toEffect } from "@apendua/signal";
-import { distinctUntilChanged, merge, of, switchMap } from "rxjs";
+import { Derived, effects, observable, onCleanup, rxEffects, set } from "@apendua/signal";
+import { distinctUntilChanged, switchMap } from "rxjs";
 import { $, Nothing } from "../operators.js";
 import { box } from "./div.js";
 import { getCheckedCached, getComputedStyleCached } from "./mirror.js";
@@ -263,25 +263,14 @@ export function checkbox(ctx, element) {
     // labels, and that form is the reason this attribute exists. See
     // `SELF_SCOPED_ATTRIBUTES`. It doubles as `[data-xr-checked]`, for a rule
     // that should apply in a scene and not on the page.
-    // The effect is subscribed before the component is passed on, which is the
-    // order `effects()` established here: the attribute is written on the way
-    // through, not after whoever is downstream has already seen the component.
-    switchMap((component) =>
-      merge(
-        toEffect(
-          () => {
-            if (!checked.get()) {
-              return;
-            }
-            element.dataset.xrChecked = "true";
-            onCleanup(() => {
-              delete element.dataset.xrChecked;
-            });
-          },
-          { name: "checkbox" },
-        ),
-        of(component),
-      ),
-    ),
+    rxEffects(() => {
+      if (!checked.get()) {
+        return;
+      }
+      element.dataset.xrChecked = "true";
+      onCleanup(() => {
+        delete element.dataset.xrChecked;
+      });
+    }),
   );
 }

@@ -108,7 +108,7 @@ const work = toEffect(() => sync(el, x.get())); // an Effect per subscriber, pus
 
 `toEffect` is the one to reach for when there is no value to carry — work that
 reads reactive state and touches the world, wrapped as something an RxJS
-pipeline can subscribe to and unsubscribe from. It is what `effects()` is
+pipeline can subscribe to and unsubscribe from. It is what `rxEffects()` is
 built on, and what a `Derived` used to be misused as.
 
 Any `Subscribable` can still be depended on directly, and is treated as a
@@ -206,7 +206,10 @@ ordering. The queue notices and throws rather than spinning.
   mounting among subscribers is `memoize`'s job, not `just`'s.
 - `observable()`, `component()`, `effects()`, `set()`, `use()`, `on()` — the
   factory layer, built on `Effect`; `set`, `on`, `effectMap` and friends are
-  entity-effect factories now rather than stream operators.
+  entity-effect factories now rather than stream operators. `rxEffects(fn)`
+  is the one that stayed an operator: the same entity effect lifted over a
+  stream of entities, mounted per value, for a pipeline that receives them
+  rather than holding one.
 
 ## Migrating from the push core
 

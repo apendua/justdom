@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { Observable, Subject, switchMap, takeUntil } from "rxjs";
-import { just, toEffect } from "@apendua/signal";
+import { just, rxEffects } from "@apendua/signal";
 import { onCleanup } from "@apendua/signal";
 import { createPortal } from "./elements/portal.js";
 
@@ -28,26 +28,20 @@ export function dom(ctx, mountable$, effects = [], options = {}) {
         subscriber.next({
           /** @param {THREE.Object3D} parent */
           addTo(parent) {
-            // An effect per mountable, switched as the tree re-renders: the
-            // same shape the `effects` operator used to give this pipeline.
+            // An effect per mountable, switched as the tree re-renders.
             const observable = mountable$.pipe(
-              switchMap((mountable) =>
-                toEffect(
-                  () => {
-                    const portal = createPortal(ctx, options);
-                    portal.addTo(obj);
-                    portal.mount(mountable);
-                    parent.add(obj);
-                    onCleanup(() => {
-                      if (obj.parent == parent) {
-                        obj.parent.remove(obj);
-                      }
-                      portal.disconnect();
-                    });
-                  },
-                  { name: "dom" },
-                ),
-              ),
+              rxEffects((mountable) => {
+                const portal = createPortal(ctx, options);
+                portal.addTo(obj);
+                portal.mount(mountable);
+                parent.add(obj);
+                onCleanup(() => {
+                  if (obj.parent == parent) {
+                    obj.parent.remove(obj);
+                  }
+                  portal.disconnect();
+                });
+              }),
               takeUntil(done),
             );
             return observable.subscribe({

@@ -1,9 +1,9 @@
 import { Derived } from "./Derived.js";
 import { useEffect } from "./Effect.js";
-import { onEachValue, subscribeTo, each } from "./util.js";
+import { onEachValue, subscribeTo, subscribeAndEmit, each } from "./util.js";
 import { observable, component } from "./factories.js";
 import { addDependency, onCleanup, withComputation } from "./core.js";
-import { toObservable, nodeOf } from "./interop.js";
+import { toObservable, toEffect, nodeOf } from "./interop.js";
 
 /**
  * @import { Observable } from 'rxjs';
@@ -26,6 +26,29 @@ import { toObservable, nodeOf } from "./interop.js";
  */
 export function effects(fn) {
   return fn;
+}
+
+/**
+ * The same entity effect, lifted over a stream of entities: an operator that
+ * mounts `fn` on each value the source produces and passes the value on with
+ * the mounting already standing, takes that mounting down when the next value
+ * arrives, and takes the last one down on unsubscribe.
+ *
+ * A mounting's array needs none of this — every entry there is the body of
+ * its own `Effect` already, which is why `effects` is the identity — but a
+ * pipeline that receives entities rather than holding one does, and rewriting
+ * such a pipeline as `switchMap` into `toEffect` says the same thing with
+ * more machinery. Named apart from `effects` so that the two positions cannot
+ * be confused, and so that the RxJS-shaped one is greppable while it lasts.
+ *
+ * @template T
+ * @param {EntityEffect<T>} fn
+ * @returns {(source: Observable<T>) => Observable<T>}
+ */
+export function rxEffects(fn) {
+  return onEachValue(
+    subscribeAndEmit((value) => toEffect((context) => fn(value, context), { name: "rxEffects" })),
+  );
 }
 
 /**

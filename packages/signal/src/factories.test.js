@@ -8,7 +8,8 @@ import { observable, component, effectsOnly, just } from "./factories.js";
 import { Signal, useEffect } from "./index.js";
 
 /**
- * @import { Observable, MonoTypeOperatorFunction } from 'rxjs';
+ * @import { Observable } from 'rxjs';
+ * @import { EntityEffect } from './types.js';
  * @import { IEmitter } from './Emitter.js';
  */
 
@@ -75,7 +76,7 @@ describe("component()", () => {
   /**
    * @template {object} T
    * @template {object} [TEventMap={}]
-   * @typedef {MonoTypeOperatorFunction<T & IEmitter<TEventMap>>[]} Op
+   * @typedef {EntityEffect<T & IEmitter<TEventMap>>[]} Op
    */
 
   /**

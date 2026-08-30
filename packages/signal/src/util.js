@@ -82,6 +82,38 @@ export function all(...operators) {
 }
 
 /**
+ * Run `fn` for every value `source` produces, and pass the value on.
+ *
+ * The one thing `tap` was being imported for. Not reactive — an
+ * `EntityEffect` is the reactive one — this is a plain pass-through with a
+ * side effect on it, for the inner value pipelines an effect subscribes
+ * through `use`.
+ *
+ * @template T
+ * @param {Observable<T>} source
+ * @param {(value: T) => void} fn
+ * @returns {Observable<T>}
+ */
+export function each(source, fn) {
+  return new Observable((subscriber) => {
+    const subscription = source.subscribe({
+      next: (value) => {
+        try {
+          fn(value);
+        } catch (err) {
+          subscriber.error(err);
+          return;
+        }
+        subscriber.next(value);
+      },
+      error: (err) => subscriber.error(err),
+      complete: () => subscriber.complete(),
+    });
+    return () => subscription.unsubscribe();
+  });
+}
+
+/**
  * @param {unknown} value
  * @return {value is Record<PropertyKey, unknown>}
  */

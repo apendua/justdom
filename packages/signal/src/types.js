@@ -34,4 +34,21 @@
  * }} WritableProps
  */
 
+/**
+ * Work mounted on an entity for as long as its holder stands.
+ *
+ * This is what `just`, `useEffects` and `store` take where they used to take
+ * a `MonoTypeOperatorFunction`: not a stream transformer, but the body of an
+ * `Effect` with the entity in scope. It runs when the mounting is built,
+ * re-runs when anything it read changes, may register teardowns through
+ * `onCleanup` or by returning a function, and never substitutes the entity —
+ * the one value a mounting carries is the entity itself.
+ *
+ * A plain lambda is a valid effect: `(el) => { ref = el; }` reads nothing, so
+ * it runs exactly once per mounting.
+ *
+ * @template T
+ * @typedef {(entity: T) => unknown} EntityEffect
+ */
+
 export {};

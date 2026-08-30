@@ -12,72 +12,48 @@ import { Derived, Effect, onCleanup } from "./index.js";
 import { Observable } from "rxjs";
 
 describe("effects()", () => {
-  it("applies effects until the source completes", () => {
-    /** @type {Subject<{ value: number }>} */
-    const source = new Subject();
+  it("re-runs while mounted, and stops when the mounting comes down", () => {
     const signal = Signal.of(0);
-    const complete = mock.fn();
     const entity = { value: 0 };
-    const entity2 = { value: 0 };
 
-    const subscription = source
-      .pipe(
-        effects((obj) => {
-          obj.value = signal.get();
-        }),
-      )
-      .subscribe({
-        complete,
-      });
+    const subscription = just(entity, [
+      effects((obj) => {
+        obj.value = signal.get();
+      }),
+    ]).subscribe();
 
     assert.strictEqual(entity.value, 0);
 
     signal.set(1);
-    source.next(entity);
     assert.strictEqual(entity.value, 1);
 
     signal.set(2);
     assert.strictEqual(entity.value, 2);
 
-    source.next(entity2);
-    assert.strictEqual(entity2.value, 2);
-
-    signal.set(3);
-    assert.strictEqual(entity.value, 2);
-    assert.strictEqual(entity2.value, 3);
-
-    source.complete();
-    assert.ok(complete.mock.calls.length > 0);
-
     subscription.unsubscribe();
+    signal.set(3);
+    assert.strictEqual(entity.value, 2, "unmounted, so nothing runs it any more");
   });
 
-  it("applies effects in order", () => {
-    /** @type {Subject<number[]>} */
-    const source = new Subject();
-    const signal = Signal.of(0);
+  it("runs each entry in order, and each re-runs on its own", () => {
+    const signal = Signal.of(1);
     /** @type {number[]} */
     const result = [];
 
-    const subscription = source
-      .pipe(
-        effects((arr) => {
-          arr.push(1 * signal.get());
-        }),
-        effects((arr) => {
-          arr.push(2 * signal.get());
-        }),
-      )
-      .subscribe();
+    const subscription = just(result, [
+      effects((arr) => {
+        arr.push(1 * signal.get());
+      }),
+      effects((arr) => {
+        arr.push(2 * signal.get());
+      }),
+    ]).subscribe();
 
-    signal.set(1);
-    source.next(result);
-    assert.deepStrictEqual(result, [1, 2]);
+    assert.deepStrictEqual(result, [1, 2], "mounted in array order");
 
     signal.set(3);
-    assert.deepStrictEqual(result, [1, 2, 3, 6]);
+    assert.deepStrictEqual(result, [1, 2, 3, 6], "and re-run in the same order");
 
-    source.complete();
     subscription.unsubscribe();
   });
 });

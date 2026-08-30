@@ -1,31 +1,31 @@
-import { tap } from "rxjs";
 import { Derived } from "./Derived.js";
-import { onEachValue, subscribeTo, subscribeAndEmit } from "./util.js";
-import { observable, component, just } from "./factories.js";
+import { useEffect } from "./Effect.js";
+import { onEachValue, subscribeTo, each } from "./util.js";
+import { observable, component } from "./factories.js";
 import { addDependency } from "./core.js";
-import { toObservable, toEffect } from "./interop.js";
+import { toObservable, nodeOf } from "./interop.js";
 
 /**
- * @import { MonoTypeOperatorFunction, Observable } from 'rxjs';
- * @import { WritableProps } from './types.js';
+ * @import { Observable } from 'rxjs';
+ * @import ReactiveNode from './Node.js';
+ * @import { WritableProps, EntityEffect } from './types.js';
  */
 
 /**
- * Run `fn` against each value the source emits, and keep re-running it
- * whenever anything it read changes.
+ * Run `fn` against the entity, and keep re-running it whenever anything it
+ * read changes.
  *
- * An `Effect`, because that is what this has always been. It used to be a
- * `Derived` whose evaluation had side effects, which worked only because the
- * old core recomputed eagerly; a lazy core would run it at unpredictable
- * times, or never. Saying `Effect` makes the schedule explicit and puts the
- * work in a channel.
+ * An `EntityEffect` *is* that already — every entry of a mounting is the body
+ * of its own `Effect` — so this is the identity, kept because a call site
+ * that says `effects(fn)` says what the function is for. A plain lambda in
+ * the same position means exactly the same thing.
  *
  * @template T
  * @param {(value: T) => void} fn
- * @returns {(source: Observable<T>) => Observable<T>}
+ * @returns {EntityEffect<T>}
  */
 export function effects(fn) {
-  return onEachValue(subscribeAndEmit((value) => toEffect(() => fn(value), { name: "effects" })));
+  return fn;
 }
 
 /**
@@ -55,12 +55,22 @@ export function flatMap(fn) {
 }
 
 /**
+ * Keep whatever observable `fn` hands back subscribed for as long as the
+ * entity stays mounted.
+ *
+ * The effect runs once — nothing here reads reactive state — and `use` hangs
+ * the subscription off it: attached when the mounting is built, let go when
+ * it comes down, its failure failing the mounting exactly as a pipeline error
+ * did.
+ *
  * @template T
  * @param {(value: T) => Observable<unknown>} fn
- * @returns {(source: Observable<T>) => Observable<T>}
+ * @returns {EntityEffect<T>}
  */
 export function effectMap(fn) {
-  return onEachValue(subscribeAndEmit(component(fn)));
+  return (entity) => {
+    use(fn(entity));
+  };
 }
 
 /**
@@ -69,14 +79,14 @@ export function effectMap(fn) {
  * @overload
  * @param {K} key
  * @param {Observable<TEntity[K]> | (() => TEntity[K])} value
- * @returns {(source: Observable<TEntity>) => Observable<TEntity>}
+ * @returns {EntityEffect<TEntity>}
  */
 
 /**
  * @template {object} TEntity
  * @overload
  * @param {Partial<WritableProps<TEntity>>} values
- * @returns {(source: Observable<TEntity>) => Observable<TEntity>}
+ * @returns {EntityEffect<TEntity>}
  */
 
 /**
@@ -84,37 +94,99 @@ export function effectMap(fn) {
  * @template {keyof WritableProps<TEntity>} K
  * @param {K|Partial<WritableProps<Record<string, unknown>>>} keyOrValues
  * @param {Observable<unknown> | (() => unknown)} [value]
- * @returns {(source: Observable<Record<string, unknown>>) => Observable<Record<string, unknown>>}
+ * @returns {EntityEffect<Record<string, unknown>>}
  */
 export function set(keyOrValues, value) {
   if (typeof keyOrValues === "object") {
-    return effects((entity) => {
+    return (entity) => {
       Object.assign(entity, keyOrValues);
-    });
+    };
   }
   if (!value) {
     throw new Error("Value observable is required when key is provided.");
   }
   if (typeof value === "function") {
-    value = observable(value);
+    const valueFn = value;
+    return (entity) => {
+      // A `Derived` in front of the assignment for its equality cutoff, which
+      // is what the observable this used to route through was providing: a
+      // recomputation that lands on the value already written writes nothing.
+      const source = new Derived(() => valueFn());
+      useEffect(() => {
+        entity[keyOrValues] = source.get();
+      });
+    };
   }
-  return effectMap((entity) => {
-    return value.pipe(
-      tap((v) => {
+  const source = value;
+  return (entity) => {
+    use(
+      each(source, (v) => {
         entity[keyOrValues] = v;
       }),
     );
-  });
+  };
+}
+
+/**
+ * Mount `effects` on `value` for as long as the surrounding computation
+ * stands.
+ *
+ * This is `just(value, effects)` minus the sharing: the computation is the
+ * one holder, so there is no node, no observable, and nothing per subscriber
+ * — each entry becomes an `Effect` owned by the computation, and a failure
+ * edge is all that connects them back. A store built without operators pays
+ * for nothing at all.
+ *
+ * @template T
+ * @param {T} value
+ * @param  {EntityEffect<T>[]} effects
+ * @returns {void}
+ */
+export function useEffects(value, effects) {
+  for (const fn of effects) {
+    mountEffect(value, fn);
+  }
 }
 
 /**
  * @template T
  * @param {T} value
+ * @param {EntityEffect<T>} fn
  * @returns {void}
- * @param  {MonoTypeOperatorFunction<T>[]} operators
  */
-export function useEffects(value, operators) {
-  return use(just(value, operators));
+function mountEffect(value, fn) {
+  let standing = false;
+  const effect = useEffect(() => fn(value), {
+    name: "useEffects",
+    onError: (err) => {
+      if (!standing) {
+        // Still on the builder's stack — the throw fails whatever is
+        // mounting, exactly where a synchronous failure belongs.
+        throw err;
+      }
+      // Later news fails the effect, whose failure the dependency edge below
+      // carries to the computation — where a pipeline error used to land.
+      effect.fail(err);
+    },
+  });
+  standing = true;
+  addDependency(failuresOf(effect));
+}
+
+/**
+ * A dependency that never marks the computation stale: it forwards only the
+ * failure of what it watches. Liveness without listening.
+ *
+ * @param {{ subscribe: ReactiveNode['subscribe'] }} subscribable
+ * @returns {{ subscribe: ReactiveNode['subscribe'] }}
+ */
+export function failuresOf(subscribable) {
+  return {
+    subscribe: (observer) =>
+      subscribable.subscribe({
+        error: (err) => observer.error?.(err),
+      }),
+  };
 }
 
 /**
@@ -144,6 +216,14 @@ export function use(observable) {
       "use() takes an observable. A callback that only has side effects wants " +
         "useEffect(fn): the same effect, disposed by the same computation.",
     );
+  }
+  const node = nodeOf(observable);
+  if (node) {
+    // A node-backed observable does not need its values pushed through an
+    // effect just to be thrown away here. Keeping it subscribed means keeping
+    // the node live and its failure heard, and a bare subscription does both.
+    addDependency(failuresOf(node));
+    return;
   }
   addDependency(observable.pipe(takeNothing()));
 }

@@ -9,6 +9,29 @@ import { Derived } from "./Derived.js";
  */
 
 /**
+ * The node behind each observable `toObservable` has handed out.
+ *
+ * For consumers that hold the observable but want the node — `use` being the
+ * one that matters: keeping a node-backed observable subscribed does not need
+ * values pushed through an effect just to be thrown away, it needs the node
+ * held live and its failure heard. A WeakMap rather than a property so the
+ * observable stays exactly what it claims to be.
+ *
+ * @type {WeakMap<Observable<unknown>, ReactiveNode>}
+ */
+const backingNodes = new WeakMap();
+
+/**
+ * The node `observable` is a view of, if `toObservable` made it.
+ *
+ * @param {Observable<unknown>} observable
+ * @returns {ReactiveNode | undefined}
+ */
+export function nodeOf(observable) {
+  return backingNodes.get(observable);
+}
+
+/**
  * A node, as an observable of its values.
  *
  * This is a **sink**: an `Effect` per subscriber, reading the node and
@@ -29,7 +52,7 @@ import { Derived } from "./Derived.js";
  * @returns {Observable<T>}
  */
 export function toObservable(node) {
-  return new Observable((subscriber) => {
+  const observable = new Observable((/** @type {import("rxjs").Subscriber<T>} */ subscriber) => {
     const effect = new Effect(
       () => {
         const value = node.get();
@@ -44,10 +67,21 @@ export function toObservable(node) {
         onError: (err) => subscriber.error(err),
       },
     );
+    // The effect hears the node's *values*; it cannot hear the node *fail*.
+    // Failure makes a node part ways with its dependents, and what the
+    // orphaned effect sees afterwards is a `NoValueError` — "not yet" — so
+    // it would wait forever for news that cannot come. Failure travels the
+    // observer channel, so the subscriber keeps an ear there.
+    const failures = node.subscribe({
+      error: (err) => subscriber.error(err),
+    });
     return () => {
+      failures.unsubscribe();
       effect.dispose();
     };
   });
+  backingNodes.set(observable, node);
+  return observable;
 }
 
 /**

@@ -1,4 +1,4 @@
-import { sampleRenderingUpdates } from "./renderingUpdates.js";
+import { documentTime, sampleRenderingUpdates } from "./renderingUpdates.js";
 
 /**
  * The kinds of change the clock can announce, and the shape it announces
@@ -179,6 +179,20 @@ export function createAnimationClock(container, emit, requestFrames) {
    * @type {number | null}
    */
   let lastDrivenAt = null;
+  /**
+   * The document time read at that same moment, so the next reading can say
+   * how much of the elapsed time the browser's own timeline covered. Null
+   * alongside `lastDrivenAt`, and for the same reason.
+   *
+   * @type {number | null}
+   */
+  let lastDocumentTime = null;
+  /**
+   * Whether the next tick should sweep whether or not one is otherwise due.
+   * Set by a mutation that started nothing the platform would admit to yet;
+   * see the exported `sweep` below.
+   */
+  let recheck = false;
 
   function start() {
     if (!stopFrames) {
@@ -296,28 +310,59 @@ export function createAnimationClock(container, emit, requestFrames) {
    * is why the portal calls it on every mutation, the one signal that still
    * arrives (observer callbacks are microtasks, owing nothing to frames).
    *
-   * @param {number} [advanceBy] Milliseconds to move every running animation
-   *   on by first. Nonzero only while the document is suspended, where the
-   *   timeline that would ordinarily do this has stopped.
+   * @param {number} [advanceBy] Milliseconds of real time to move every
+   *   running animation on by first. Nonzero only while the document is
+   *   suspended, where the rendering step that would ordinarily do this has
+   *   stopped.
+   * @param {number} [browserAdvance] How much of that the document's own
+   *   timeline covered — what the browser has already carried its animations
+   *   through, and so must not be charged for twice.
    */
-  function sweep(advanceBy = 0) {
+  function sweep(advanceBy = 0, browserAdvance = 0) {
     if (typeof container.getAnimations !== "function") {
       return;
     }
     const animations = container.getAnimations({ subtree: true });
     if (advanceBy > 0) {
+      // What is left for us to do. A timeline that has stopped with the
+      // frames leaves the whole of it; one that keeps running while the page
+      // is not being drawn — which some browsers do, and which is not a thing
+      // to infer from the page having stopped being rendered — has already
+      // moved every animation it holds, and adding to that would play them at
+      // double speed. Anything in between, a page rendering at a fraction of
+      // the session's rate, is topped up by exactly its shortfall.
+      const shortfall = Math.max(0, advanceBy - browserAdvance);
       for (const animation of animations) {
         if (animation.playState !== "running") {
           continue;
         }
+        // An animation with no start time is not being carried by the
+        // timeline at all, however briskly that timeline is running: what
+        // would have given it one is the pending play task, which belongs to
+        // the same rendering step everything else here is missing. That is
+        // every animation *started* inside a session — the meter that moves
+        // on a click, the button that lights under the ray — as against the
+        // ones that were already running when the headset went on, which
+        // have their start time and are moving if anything is. It is also
+        // why a panel can look dead while the panel beside it looks alive.
+        const anchored = typeof animation.startTime === "number";
+        const delta = anchored ? shortfall : advanceBy;
+        if (delta <= 0) {
+          continue;
+        }
         const current = animation.currentTime;
         if (typeof current === "number") {
-          // Writing `currentTime` re-anchors the animation against its frozen
-          // timeline, and the style recalc that any subsequent read forces
-          // applies the value that lands on. The classification below re-reads
-          // `playState`, so anything this pushes past its end is retired in
-          // the same pass.
-          animation.currentTime = current + advanceBy;
+          // Writing `currentTime` re-anchors the animation against its
+          // stalled timeline, and the style recalc that any subsequent read
+          // forces applies the value that lands on. The classification below
+          // re-reads `playState`, so anything this pushes past its end is
+          // retired in the same pass.
+          animation.currentTime = current + delta;
+        } else if (!anchored) {
+          // Neither a start time nor a hold time: nothing has been in a
+          // position to give it a place on the timeline. Start it where the
+          // rendering step would have.
+          animation.currentTime = delta;
         }
       }
     }
@@ -395,18 +440,28 @@ export function createAnimationClock(container, emit, requestFrames) {
       }
     }
     if (sampleRenderingUpdates()) {
-      // Nothing is advancing these animations but us, and no event will say
-      // when one starts or stops, so every frame is a sweep: move them on by
-      // the real time that passed, then read back what is still running.
+      // No event will say when an animation starts or stops, so every frame
+      // is a sweep: make up whatever of the elapsed time the document's own
+      // timeline did not cover, then read back what is still running.
       const now = performance.now();
+      const documentNow = documentTime();
       const elapsed = lastDrivenAt === null ? 0 : now - lastDrivenAt;
+      const browserAdvance =
+        lastDrivenAt === null || lastDocumentTime === null || documentNow === null
+          ? 0
+          : Math.max(0, documentNow - lastDocumentTime);
       lastDrivenAt = now;
-      sweep(elapsed);
+      lastDocumentTime = documentNow;
+      recheck = false;
+      sweep(elapsed, browserAdvance);
     } else {
       // The browser is driving; the events keep membership honest and the
       // sweep is only there to catch what they miss.
       lastDrivenAt = null;
-      if (ticks % SWEEP_INTERVAL === 0) {
+      lastDocumentTime = null;
+      const wanted = recheck;
+      recheck = false;
+      if (wanted || ticks % SWEEP_INTERVAL === 0) {
         sweep();
       }
     }
@@ -479,6 +534,18 @@ export function createAnimationClock(container, emit, requestFrames) {
      */
     sweep() {
       sweep();
+      if (!animating.size) {
+        // Nothing is animating *yet*. A transition begins with the style
+        // change this mutation carried, and whether the browser has created
+        // it by the time a microtask asks `getAnimations()` is a question of
+        // when the style recalc lands — which, in a document nobody is
+        // rendering, is not a question with a settled answer. With no event
+        // coming to announce it and no other sweep due, one missed here
+        // would be missed for good, so take one more look next frame. It
+        // costs a single frame of a loop that is otherwise not running.
+        recheck = true;
+        start();
+      }
     },
     dispose() {
       container.removeEventListener("transitionrun", onTransitionAdd);

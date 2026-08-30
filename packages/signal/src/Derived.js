@@ -196,7 +196,11 @@ export class Derived extends ReactiveNode {
    * the engine to inline and this is the part with no claim on being: it
    * ends in two throws, one of which allocates. Folded back in, the memoized
    * read — the one a panel does tens of thousands of times a frame — measures
-   * about 4% slower.
+   * about 3.5% slower; split out it is within 1% of the code before any of
+   * this, which is the noise floor. Twelve rounds with the order of the
+   * variants rotated, trimmed means: the harness favours whichever runs
+   * first in a round by about 1%, so an A-then-B comparison invents a
+   * difference of roughly the size being looked for.
    *
    * @returns {T}
    */

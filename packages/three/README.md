@@ -392,20 +392,32 @@ save it for moments, not idle loops.
 
 All of that holds inside an immersive session too, which takes some doing:
 once the headset has the display, the page behind it stops being rendered,
-and everything the browser does in its rendering step stops with it. The
-document timeline no longer advances, so animations would sit frozen at the
-value they had reached; the `transitionrun`/`animationstart`/`transitionend`
+and everything the browser does in its rendering step stops with it. An
+animation already running may or may not be carried forward, depending on
+what the browser does with the document timeline behind a session — but one
+*started* in there is anchored to that timeline by a task belonging to the
+same rendering step, so it never moves off its first value at all, which is
+what a meter that will not fill and a button that will not light under the
+ray have in common. The `transitionrun`/`animationstart`/`transitionend`
 events are never dispatched, so nothing would say one had begun; and
 `scroll` never fires either, so a dragged list would slide while its
-mirrored rows stayed put. A portal notices when the document has stopped
-keeping up with the frames and takes over: it finds animations by looking
-rather than by being told — mutation observers are microtasks and keep
-arriving, so a class swap is still a signal — advances each one by the real
-time that passed, and has every scroll it performs itself — the drag gesture
-and the `scrollable` widget's arrows and track alike — announce that scroll,
-which the portal's listener cannot tell from the real thing. Nothing here is
-switched on by asking whether a session is presenting, which is why it
-behaves under an emulator, where the page is presenting and rendering both.
+mirrored rows stayed put.
+
+A portal notices and takes over. What it watches is a frame request of its
+own: a `requestAnimationFrame` callback runs in the rendering step and
+nowhere else, so one that goes unanswered for longer than any frame could
+take is that step having stopped, and one that arrives is it having run. It
+then finds animations by looking rather than by being told — mutation
+observers are microtasks and keep arriving, so a class swap is still a
+signal — advances each one by however much of the elapsed time the browser
+did not, which is all of it for an animation that has not been given a start
+time and none of it for one the timeline is still carrying, and has every
+scroll it performs itself — the drag gesture and the `scrollable` widget's
+arrows and track alike — announce that scroll, which the portal's listener
+cannot tell from the real thing. Nothing here is switched on by asking
+whether a session is presenting, which is why it behaves under an emulator,
+where the page is presenting and rendering both: the page is being rendered,
+the frames come back, and the browser is left to its own animations.
 
 ## Layers
 

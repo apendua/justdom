@@ -205,13 +205,17 @@ describe("scrollable", () => {
     // style is a mutation the observer sees; the content would not, and an
     // arrow that slides the thumb down a list that stays put is exactly what
     // this looked like on a headset.
+    // What tells the page it has stopped being rendered is a frame request
+    // that is never answered — a rendering step that has stopped is the only
+    // thing that can withhold one — so a queue nobody drains is the whole of
+    // the immersive session, as far as this is concerned.
     const now = performance.now();
-    Object.defineProperty(document, "timeline", {
+    Object.defineProperty(globalThis, "requestAnimationFrame", {
       configurable: true,
-      value: { currentTime: 1000 },
+      value: () => 1,
     });
-    sampleRenderingUpdates(now - 16);
-    assert.equal(sampleRenderingUpdates(now), true, "the document time stood still");
+    sampleRenderingUpdates(now - 1000);
+    assert.equal(sampleRenderingUpdates(now), true, "no frame ever came back");
 
     const view = mount({ window: 100, content: 400, props: { step: 40 } });
     try {
@@ -229,11 +233,16 @@ describe("scrollable", () => {
       // Hand the module back a document that is being drawn, the way a page
       // coming out of a session does, so the tests below are not left inside
       // a suspended one.
-      Object.defineProperty(document, "timeline", {
+      Object.defineProperty(globalThis, "requestAnimationFrame", {
         configurable: true,
-        value: { currentTime: 2000 },
+        /** @param {FrameRequestCallback} callback */
+        value: (callback) => {
+          callback(0);
+          return 1;
+        },
       });
       sampleRenderingUpdates(now + 16);
+      Reflect.deleteProperty(globalThis, "requestAnimationFrame");
       view.subscription.unsubscribe();
       view.host.remove();
     }

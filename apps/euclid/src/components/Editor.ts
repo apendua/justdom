@@ -1,7 +1,5 @@
-import { tap } from "rxjs";
-import { rx } from "@apendua/signal/rxjs";
 import { $, children, className, on, set } from "@apendua/justdom";
-import { component, effectMap, toObservable } from "@apendua/signal";
+import { component, effects } from "@apendua/signal";
 import { tokenize, KEYWORDS, BUILTINS } from "@apendua.dev/euclid-lang";
 import type AppStore from "../store/App";
 
@@ -243,20 +241,17 @@ const Editor = component((store: AppStore) => {
             on("scroll", (e) => syncScroll(e.target as HTMLTextAreaElement)),
             // Applies "select this statement" requests coming from clicks on
             // the drawing.
-            effectMap((textarea: HTMLTextAreaElement) =>
-              rx(toObservable(store.editorSelection)).pipe(
-                tap((request) => {
-                  if (request) {
-                    // An unfocused textarea does not keep a programmatic
-                    // selection, and focusing also lets the user edit the
-                    // highlighted statement right away.
-                    textarea.focus();
-                    textarea.setSelectionRange(request.start, request.end);
-                    store.cursorOffset.set(request.start);
-                  }
-                }),
-              ),
-            ),
+            effects((textarea: HTMLTextAreaElement) => {
+              const request = store.editorSelection.get();
+              if (request) {
+                // An unfocused textarea does not keep a programmatic
+                // selection, and focusing also lets the user edit the
+                // highlighted statement right away.
+                textarea.focus();
+                textarea.setSelectionRange(request.start, request.end);
+                store.cursorOffset.set(request.start);
+              }
+            }),
           ]),
         ),
       ]),

@@ -64,8 +64,11 @@ export function rxEffects(fn) {
   const operator = onEachValue(
     subscribeAndEmit((value) => toEffect((context) => fn(value, context), { name: "rxEffects" })),
   );
-  // A genuine `Observable` at runtime — `onEachValue` builds one — which is
-  // what an RxJS pipeline needs and what the core's `Source` deliberately
-  // does not promise.
-  return (source) => /** @type {Observable<T>} */ (operator(source));
+  // Through `rx()`, not a cast. What the core's operators build is a `Stream`,
+  // and the next operator in an RxJS `.pipe()` will try to *lift* whatever
+  // this hands back — `takeUntil(rxEffects(…)(source))` is a real call site —
+  // which only an RxJS `Observable` survives. A cast here would compile and
+  // then throw "Unable to lift unknown Observable type" at runtime, which is
+  // exactly what it did.
+  return (source) => rx(operator(source));
 }

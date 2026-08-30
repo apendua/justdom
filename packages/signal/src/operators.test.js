@@ -1,6 +1,6 @@
 import { describe, it, beforeEach, mock } from "node:test";
 import assert from "node:assert/strict";
-import { merge, NEVER, Subject } from "rxjs";
+import { merge, NEVER, Subject, takeUntil } from "rxjs";
 import store from "./store.js";
 import { Computation } from "./index.js";
 import { decorate, memoFn } from "./decorators.js";
@@ -60,6 +60,36 @@ describe("effects()", () => {
 });
 
 describe("rxEffects()", () => {
+  it("hands back something the next RxJS operator can lift", () => {
+    // The whole point of living on the `./rxjs` subpath: what this returns is
+    // an RxJS operator, so `source.pipe(rxEffects(fn), someRxjsOperator())`
+    // has to work. It is built on the core's `onEachValue`, which builds a
+    // `Stream` — and RxJS cannot lift one of those. Asserting the *type* is
+    // not enough; a cast satisfied the compiler here once and threw "Unable
+    // to lift unknown Observable type" in a browser.
+    /** @type {Subject<{ value: number }>} */
+    const source = new Subject();
+    /** @type {Subject<void>} */
+    const done = new Subject();
+    /** @type {string[]} */
+    const mounted = [];
+
+    const subscription = source
+      .pipe(
+        rxEffects(() => {
+          mounted.push("mounted");
+        }),
+        takeUntil(done),
+      )
+      .subscribe();
+
+    source.next({ value: 1 });
+    assert.deepStrictEqual(mounted, ["mounted"]);
+
+    done.next();
+    subscription.unsubscribe();
+  });
+
   it("mounts on each value, and switches the mounting as values arrive", () => {
     /** @type {Subject<{ value: number }>} */
     const source = new Subject();

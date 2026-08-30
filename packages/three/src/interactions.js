@@ -11,6 +11,7 @@ import {
 } from "@apendua/signal";
 
 /**
+ * @import { Subscribable } from "@apendua/signal";
  * @import { XREventMap, InteractionEvent, InteractionEventType, InteractionEventMap } from "./core.js";
  */
 
@@ -30,7 +31,7 @@ import {
  * `observable()` can track — or as an observable that is subscribed to directly.
  *
  * @template T
- * @typedef {T | (() => T) | Observable<T>} Reactive
+ * @typedef {T | (() => T) | Subscribable<T>} Reactive
  */
 
 export class InteractionManager {
@@ -487,6 +488,26 @@ export const InteractionContext = createProperty(
 );
 
 /**
+ * Whether a value is a source rather than a value.
+ *
+ * Structural on purpose: `instanceof Observable` was the test until the
+ * package's own sources stopped being RxJS observables, and it would have gone
+ * on compiling while quietly reclassifying every one of them as a constant.
+ * What the caller is allowed to pass is a `Subscribable` — something with a
+ * `subscribe` — so that is what gets asked.
+ *
+ * @param {unknown} value
+ * @returns {value is Subscribable<any>}
+ */
+function isSubscribable(value) {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (/** @type {{ subscribe?: unknown }} */ (value).subscribe) === "function"
+  );
+}
+
+/**
  * Normalizes the three accepted shapes of a reactive value into a tracked
  * reader. A `Derived` in front of the function form for its equality cutoff —
  * the `distinctUntilChanged` this used to route through — and `fromObservable`
@@ -498,7 +519,7 @@ export const InteractionContext = createProperty(
  * @returns {() => T}
  */
 function asReader(value) {
-  if (value instanceof Observable) {
+  if (isSubscribable(value)) {
     const source = fromObservable(value);
     return () => source.get();
   }

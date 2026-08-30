@@ -24,10 +24,16 @@ export {
   CircularDependencyError,
 } from "./core.js";
 
-// The boundary with RxJS, which is deliberately only these three: values come
-// in as a source, values go out through an effect, work goes out through an
-// effect. Nothing crosses in the middle.
+// The boundary with a foreign stream, which is deliberately only these three:
+// values come in as a source, values go out through an effect, work goes out
+// through an effect. Nothing crosses in the middle.
 export { toObservable, toEffect, fromObservable } from "./interop.js";
+
+// The two source shapes the package builds everything else out of: `Stream`
+// for a cold source — a subscribe function run once per subscriber — and
+// `Subject` for the push side. Both are this package's own; neither is RxJS.
+export { Stream } from "./Stream.js";
+export { Subject } from "./subscribable.js";
 
 // reactive
 export { default as Emitter, on, fromEvent } from "./Emitter.js";

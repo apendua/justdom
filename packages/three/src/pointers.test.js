@@ -95,7 +95,7 @@ describe("InteractionManager pointers", () => {
   let controller;
   /** @type {ReturnType<typeof fakeFrameLoop>} */
   let loop;
-  /** @type {import('rxjs').Subscription} */
+  /** @type {import('@apendua/signal').Unsubscribable} */
   let subscription;
 
   beforeEach(() => {

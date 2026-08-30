@@ -1,4 +1,5 @@
 import { from, map, switchMap } from "rxjs";
+import { rx } from "@apendua/signal/rxjs";
 import { render, createXRButton } from "@apendua/freedom";
 import Scene from "./components/Scene";
 import "./index.css";
@@ -28,7 +29,7 @@ Promise.resolve(
     console.error("Could not install the XR emulator:", err);
   })
   .then(() => {
-    render(Scene, { antialias: true })
+    rx(render(Scene, { antialias: true }))
       .pipe(
         switchMap((renderer) =>
           from(

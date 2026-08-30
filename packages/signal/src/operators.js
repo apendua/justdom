@@ -1,13 +1,13 @@
 import { Derived } from "./Derived.js";
 import { useEffect } from "./Effect.js";
-import { onEachValue, subscribeTo, each } from "./util.js";
+import { onEachValue, subscribeTo, subscribeAndEmit, each } from "./util.js";
 import { observable, component } from "./factories.js";
 import { addDependency, onCleanup, withComputation } from "./core.js";
-import { toObservable, nodeOf } from "./interop.js";
+import { toObservable, toEffect, nodeOf } from "./interop.js";
 
 /**
  * @import { Subscribable, Source } from './subscribable.js';
- * @import { Operator } from './util.js';
+ * @import { Operator, MonoTypeOperator } from './util.js';
  * @import ReactiveNode from './Node.js';
  * @import { WritableProps, EntityEffect } from './types.js';
  */
@@ -27,6 +27,31 @@ import { toObservable, nodeOf } from "./interop.js";
  */
 export function effects(fn) {
   return fn;
+}
+
+/**
+ * An entity effect, lifted over a source of entities: mount `fn` on each value
+ * the source produces, pass the value on with the mounting already standing,
+ * take that mounting down when the next value arrives, and take the last one
+ * down on unsubscribe.
+ *
+ * A mounting's array needs none of this — every entry there is the body of its
+ * own `Effect` already, which is why `effects` above is the identity — but a
+ * pipeline that *receives* entities rather than holding one does, and saying
+ * the same thing as `flatMap` into an effect loses the value on the way
+ * through.
+ *
+ * `rxEffects` in `@apendua/signal/rxjs` is this, carried into RxJS: same
+ * mounting, an `Observable` to `.pipe()` on the way out.
+ *
+ * @template T
+ * @param {EntityEffect<T>} fn
+ * @returns {MonoTypeOperator<T>}
+ */
+export function mountEach(fn) {
+  return onEachValue(
+    subscribeAndEmit((value) => toEffect((context) => fn(value, context), { name: "mountEach" })),
+  );
 }
 
 /**

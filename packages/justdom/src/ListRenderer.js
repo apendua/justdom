@@ -1,25 +1,24 @@
-import { distinctUntilChanged, filter, Observable, Subject, tap } from "rxjs";
-import { rx } from "@apendua/signal/rxjs";
 import { removeSegment, toSegment } from "./helpers.js";
-import { addDependency, batch, Derived } from "@apendua/signal";
+import { addDependency, batch, Derived, each, filtered, Stream, Subject } from "@apendua/signal";
 
 /**
- * @import { Subscribable, Source, Unsubscribable } from "@apendua/signal";
+ * @import { MonoTypeOperator, Subscribable, Source, Unsubscribable } from "@apendua/signal";
  * @import { ContainerOf, INode, MountableOf, SegmentOf } from "./nodes.js"
  */
 
 /**
  * @template T
- * @param {() => void} [fn]
- * @returns {(source: Observable<T>) => Observable<T>}
+ * @param {() => void} fn
+ * @returns {MonoTypeOperator<T>}
  */
 function teardown(fn) {
   return (source) => {
-    if (!fn) {
-      return source;
-    }
-    return new Observable((subscriber) => {
-      source.subscribe(subscriber);
+    return new Stream((subscriber) => {
+      // The subscription goes on the teardown list first, so it is undone
+      // before `fn` — which is the order RxJS put them in, and the order the
+      // callers below assume: the child is unsubscribed, then its nodes come
+      // out of the document.
+      subscriber.add(source.subscribe(subscriber));
       return fn;
     });
   };
@@ -73,7 +72,7 @@ export default class ListRenderer {
    * @returns {Source<MountableOf<T>>}
    */
   renderFragment(children) {
-    return new Observable((subscriber) => {
+    return new Stream((subscriber) => {
       /** @type {Map<number, SegmentOf<T>>} */
       const segments = new Map();
       const container = this.#createContainer();
@@ -85,29 +84,25 @@ export default class ListRenderer {
 
       children.forEach((child, i) => {
         subscriber.add(
-          rx(child)
-            .pipe(
-              distinctUntilChanged(),
-              tap((newMountable) => {
-                const oldSegment = segments.get(i);
-                if (oldSegment) {
-                  segments.set(i, newMountable.replace(oldSegment));
-                }
-              }),
-              teardown(() => {
-                const oldSegment = segments.get(i);
-                if (oldSegment) {
-                  removeSegment(oldSegment);
-                  segments.delete(i);
-                }
-              }),
-            )
-            .subscribe({
-              error: (error) => {
-                // TODO: Render error message instead of failing the whole fragment.
-                subscriber.error(error);
-              },
+          teardown(() => {
+            const oldSegment = segments.get(i);
+            if (oldSegment) {
+              removeSegment(oldSegment);
+              segments.delete(i);
+            }
+          })(
+            each(child, (newMountable) => {
+              const oldSegment = segments.get(i);
+              if (oldSegment) {
+                segments.set(i, newMountable.replace(oldSegment));
+              }
             }),
+          ).subscribe({
+            error: (error) => {
+              // TODO: Render error message instead of failing the whole fragment.
+              subscriber.error(error);
+            },
+          }),
         );
       });
       subscriber.next(container.toMountable());
@@ -124,7 +119,7 @@ export default class ListRenderer {
    * @returns {Source<MountableOf<T>>}
    */
   renderList(items, getKey, render) {
-    return new Observable((subscriber) => {
+    return new Stream((subscriber) => {
       const hydration = this.#hydration;
       const hydrating = hydration ? hydration.isActive() : false;
       const container =
@@ -143,7 +138,7 @@ export default class ListRenderer {
        */
       const createGetIndex = (item) => {
         const key = getKey(item);
-        const changes = childIndexesSubject.pipe(filter((changedKey) => changedKey === key));
+        const changes = filtered(childIndexesSubject, (changedKey) => changedKey === key);
         const index = new Derived(() => {
           addDependency(changes);
           return childIndexes.get(key) ?? -1;
@@ -172,34 +167,29 @@ export default class ListRenderer {
           const segment = hydration.claimItem(() => {
             childSubscriptions.set(
               key,
-              rx(render(item, createGetIndex(item)))
-                .pipe(
-                  distinctUntilChanged(),
-                  teardown(() => {
-                    const oldSegment = childSegments.get(key);
-                    if (oldSegment) {
-                      removeSegment(oldSegment);
-                      childSegments.delete(key);
-                    }
-                    childSubscriptions.delete(key);
-                  }),
-                )
-                .subscribe({
-                  next: (newMountable) => {
-                    if (!adopted) {
-                      // The markup this item adopted is already in place.
-                      adopted = true;
-                      return;
-                    }
-                    const oldSegment = childSegments.get(key);
-                    if (oldSegment) {
-                      childSegments.set(key, newMountable.replace(oldSegment));
-                    }
-                  },
-                  error: (error) => {
-                    subscriber.error(error);
-                  },
-                }),
+              teardown(() => {
+                const oldSegment = childSegments.get(key);
+                if (oldSegment) {
+                  removeSegment(oldSegment);
+                  childSegments.delete(key);
+                }
+                childSubscriptions.delete(key);
+              })(render(item, createGetIndex(item))).subscribe({
+                next: (newMountable) => {
+                  if (!adopted) {
+                    // The markup this item adopted is already in place.
+                    adopted = true;
+                    return;
+                  }
+                  const oldSegment = childSegments.get(key);
+                  if (oldSegment) {
+                    childSegments.set(key, newMountable.replace(oldSegment));
+                  }
+                },
+                error: (error) => {
+                  subscriber.error(error);
+                },
+              }),
             );
           });
           childSegments.set(key, segment);
@@ -220,159 +210,154 @@ export default class ListRenderer {
        * @type {K | undefined}
        */
       let previousLastKey;
-      const subscription = rx(items)
-        .pipe(
-          tap((newItems) => {
-            const newItemsSet = new Set();
-            const newItemsArray = Array.from(newItems);
-            const lastKey = newItemsArray.length
-              ? getKey(newItemsArray[newItemsArray.length - 1])
-              : undefined;
-            if (adopting) {
-              adopting = false;
-              adopt(newItemsArray);
-              previousLastKey = lastKey;
-              return;
+      const subscription = each(
+        items,
+        /** @param {Iterable<U>} newItems */
+        (newItems) => {
+          const newItemsSet = new Set();
+          const newItemsArray = Array.from(newItems);
+          const lastKey = newItemsArray.length
+            ? getKey(newItemsArray[newItemsArray.length - 1])
+            : undefined;
+          if (adopting) {
+            adopting = false;
+            adopt(newItemsArray);
+            previousLastKey = lastKey;
+            return;
+          }
+          for (let index = newItemsArray.length - 1; index >= 0; index -= 1) {
+            const item = newItemsArray[index];
+            const key = getKey(item);
+            if (!childIndexes.has(key)) {
+              childIndexes.set(key, index);
             }
-            for (let index = newItemsArray.length - 1; index >= 0; index -= 1) {
-              const item = newItemsArray[index];
-              const key = getKey(item);
-              if (!childIndexes.has(key)) {
-                childIndexes.set(key, index);
-              }
-              newItemsSet.add(key);
-              let nextSegment;
-              let i = index + 1;
-              while (!nextSegment && i < newItemsArray.length) {
-                const k = getKey(newItemsArray[i]);
-                nextSegment = childSegments.get(k);
-                i += 1;
-              }
-              if (!childSegments.has(key)) {
-                // NOTE: Only put placeholder where the new item should be inserted. The actual element
-                //       will be inserted by the subscription.
-                if (!nextSegment) {
-                  const newPlaceholder = container.appendChild(this.#createPlaceholder());
+            newItemsSet.add(key);
+            let nextSegment;
+            let i = index + 1;
+            while (!nextSegment && i < newItemsArray.length) {
+              const k = getKey(newItemsArray[i]);
+              nextSegment = childSegments.get(k);
+              i += 1;
+            }
+            if (!childSegments.has(key)) {
+              // NOTE: Only put placeholder where the new item should be inserted. The actual element
+              //       will be inserted by the subscription.
+              if (!nextSegment) {
+                const newPlaceholder = container.appendChild(this.#createPlaceholder());
+                childSegments.set(key, toSegment(newPlaceholder));
+              } else {
+                const nextNode = nextSegment[0];
+                const { parentNode } = nextNode;
+                if (parentNode) {
+                  const newPlaceholder = parentNode.insertBefore(
+                    this.#createPlaceholder(),
+                    nextNode,
+                  );
                   childSegments.set(key, toSegment(newPlaceholder));
-                } else {
-                  const nextNode = nextSegment[0];
-                  const { parentNode } = nextNode;
-                  if (parentNode) {
-                    const newPlaceholder = parentNode.insertBefore(
-                      this.#createPlaceholder(),
-                      nextNode,
-                    );
-                    childSegments.set(key, toSegment(newPlaceholder));
-                  }
                 }
               }
-              if (!childSubscriptions.has(key)) {
-                childSubscriptions.set(
-                  key,
-                  rx(render(item, createGetIndex(item)))
-                    .pipe(
-                      distinctUntilChanged(),
-                      teardown(() => {
-                        const oldSegment = childSegments.get(key);
-                        if (oldSegment) {
-                          removeSegment(oldSegment);
-                          childSegments.delete(key);
-                        }
-                        childSubscriptions.delete(key);
-                      }),
-                    )
-                    .subscribe({
-                      next: (newMountable) => {
-                        const oldSegment = childSegments.get(key);
-                        if (oldSegment) {
-                          childSegments.set(key, newMountable.replace(oldSegment));
-                        }
-                      },
-                      error: (error) => {
-                        subscriber.error(error);
-                      },
-                    }),
-                );
-              } else {
-                const childSegment = childSegments.get(key);
-                if (childSegment) {
-                  if (nextSegment) {
-                    const { parentNode } = nextSegment[0];
-                    if (
-                      parentNode &&
-                      childSegment &&
-                      childSegment[1].nextSibling !== nextSegment[0]
-                    ) {
-                      /** @type {T | null} */
-                      let node = childSegment[1];
-                      while (node) {
-                        /** @type {T | null} */
-                        const previousSibling = node.previousSibling;
-                        parentNode.insertBefore(node, nextSegment[0]);
-                        if (node === childSegment[0]) {
-                          break;
-                        }
-                        node = previousSibling;
-                      }
+            }
+            if (!childSubscriptions.has(key)) {
+              childSubscriptions.set(
+                key,
+                teardown(() => {
+                  const oldSegment = childSegments.get(key);
+                  if (oldSegment) {
+                    removeSegment(oldSegment);
+                    childSegments.delete(key);
+                  }
+                  childSubscriptions.delete(key);
+                })(render(item, createGetIndex(item))).subscribe({
+                  next: (newMountable) => {
+                    const oldSegment = childSegments.get(key);
+                    if (oldSegment) {
+                      childSegments.set(key, newMountable.replace(oldSegment));
                     }
-                  } else if (key !== previousLastKey) {
-                    // No successor to sit in front of, so the item belongs at
-                    // the end — where it already is, if it also ended the
-                    // previous emission, in which case moving it would be a
-                    // pair of mutation records saying nothing.
+                  },
+                  error: (error) => {
+                    subscriber.error(error);
+                  },
+                }),
+              );
+            } else {
+              const childSegment = childSegments.get(key);
+              if (childSegment) {
+                if (nextSegment) {
+                  const { parentNode } = nextSegment[0];
+                  if (
+                    parentNode &&
+                    childSegment &&
+                    childSegment[1].nextSibling !== nextSegment[0]
+                  ) {
                     /** @type {T | null} */
                     let node = childSegment[1];
                     while (node) {
                       /** @type {T | null} */
                       const previousSibling = node.previousSibling;
-                      container.appendChild(node);
+                      parentNode.insertBefore(node, nextSegment[0]);
                       if (node === childSegment[0]) {
                         break;
                       }
                       node = previousSibling;
                     }
                   }
+                } else if (key !== previousLastKey) {
+                  // No successor to sit in front of, so the item belongs at
+                  // the end — where it already is, if it also ended the
+                  // previous emission, in which case moving it would be a
+                  // pair of mutation records saying nothing.
+                  /** @type {T | null} */
+                  let node = childSegment[1];
+                  while (node) {
+                    /** @type {T | null} */
+                    const previousSibling = node.previousSibling;
+                    container.appendChild(node);
+                    if (node === childSegment[0]) {
+                      break;
+                    }
+                    node = previousSibling;
+                  }
                 }
               }
             }
-            // Update/ remove indexes in a batch.
-            batch(() => {
-              for (let i = 0; i < newItemsArray.length; i++) {
-                const item = newItemsArray[i];
-                const key = getKey(item);
-                if (childIndexes.get(key) !== i) {
-                  childIndexes.set(key, i);
-                  childIndexesSubject.next(key);
-                }
+          }
+          // Update/ remove indexes in a batch.
+          batch(() => {
+            for (let i = 0; i < newItemsArray.length; i++) {
+              const item = newItemsArray[i];
+              const key = getKey(item);
+              if (childIndexes.get(key) !== i) {
+                childIndexes.set(key, i);
+                childIndexesSubject.next(key);
               }
-              for (const key of childSubscriptions.keys()) {
-                if (!newItemsSet.has(key)) {
-                  childIndexes.delete(key);
-                  childIndexesSubject.next(key);
-                }
-              }
-            });
-            for (const [key, childSegment] of childSegments.entries()) {
+            }
+            for (const key of childSubscriptions.keys()) {
               if (!newItemsSet.has(key)) {
-                removeSegment(childSegment);
-                childSegments.delete(key);
+                childIndexes.delete(key);
+                childIndexesSubject.next(key);
               }
             }
-            for (const [key, childSubscription] of childSubscriptions.entries()) {
-              if (!newItemsSet.has(key)) {
-                childSubscription.unsubscribe();
-                childSubscriptions.delete(key);
-              }
+          });
+          for (const [key, childSegment] of childSegments.entries()) {
+            if (!newItemsSet.has(key)) {
+              removeSegment(childSegment);
+              childSegments.delete(key);
             }
-            previousLastKey = lastKey;
-          }),
-        )
-        .subscribe({
-          error: (error) => {
-            // TODO: Render error message instead of failing the whole fragment.
-            subscriber.error(error);
-          },
-        });
+          }
+          for (const [key, childSubscription] of childSubscriptions.entries()) {
+            if (!newItemsSet.has(key)) {
+              childSubscription.unsubscribe();
+              childSubscriptions.delete(key);
+            }
+          }
+          previousLastKey = lastKey;
+        },
+      ).subscribe({
+        error: (error) => {
+          // TODO: Render error message instead of failing the whole fragment.
+          subscriber.error(error);
+        },
+      });
       subscriber.next(container.toMountable());
       return () => {
         subscription.unsubscribe();

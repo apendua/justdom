@@ -1,9 +1,7 @@
-import { effectMap, just, observable } from "@apendua/signal";
-import { rx } from "@apendua/signal/rxjs";
+import { each, effectMap, just, map, observable, Stream } from "@apendua/signal";
 import ListRenderer from "./ListRenderer.js";
 import { removeSegment, replaceSegment, toSegment } from "./helpers.js";
 import { claimComment, claimElement, claimSegment, isHydrating, withCursor } from "./hydrate.js";
-import { distinctUntilChanged, map, Observable, tap } from "rxjs";
 
 const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
 
@@ -33,7 +31,7 @@ const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
  * @returns {Source<Mountable>}
  */
 export function $(tag, effects = []) {
-  return rx(
+  return map(toMountable)(
     just(
       () =>
         /** @type {HTMLElementTagNameMap[Tag]} */ (
@@ -41,7 +39,7 @@ export function $(tag, effects = []) {
         ),
       effects,
     ),
-  ).pipe(map(toMountable));
+  );
 }
 
 /**
@@ -51,7 +49,7 @@ export function $(tag, effects = []) {
  * @returns {Source<Mountable>}
  */
 export function $$(tag, effects = []) {
-  return rx(
+  return map(toMountable)(
     just(
       () =>
         /** @type {SVGElementTagNameMap[Tag]} */ (
@@ -59,7 +57,7 @@ export function $$(tag, effects = []) {
         ),
       effects,
     ),
-  ).pipe(map(toMountable));
+  );
 }
 
 /**
@@ -169,16 +167,14 @@ export function children(...children) {
     if (isHydrating()) {
       return hydrateFragment(node, children);
     }
-    return rx(renderer.renderFragment(children)).pipe(
-      tap((mountable) => {
-        if (!node.firstChild || !node.lastChild) {
-          const placeholder = node.appendChild(document.createComment(""));
-          mountable.replace([placeholder, placeholder]);
-        } else {
-          mountable.replace([node.firstChild, node.lastChild]);
-        }
-      }),
-    );
+    return each(renderer.renderFragment(children), (mountable) => {
+      if (!node.firstChild || !node.lastChild) {
+        const placeholder = node.appendChild(document.createComment(""));
+        mountable.replace([placeholder, placeholder]);
+      } else {
+        mountable.replace([node.firstChild, node.lastChild]);
+      }
+    });
   });
 }
 
@@ -193,10 +189,10 @@ export function children(...children) {
  *
  * @param {Node} node
  * @param {Array<Subscribable<Mountable>>} children
- * @returns {Observable<unknown>}
+ * @returns {Source<unknown>}
  */
 function hydrateFragment(node, children) {
-  return new Observable((subscriber) => {
+  return new Stream((subscriber) => {
     withCursor(node, () => {
       // Every rendered fragment is bracketed by a pair of comments.
       claimComment();
@@ -205,22 +201,25 @@ function hydrateFragment(node, children) {
         let segment;
         let adopted = false;
         const claimed = claimSegment(() => {
+          // No `distinctUntilChanged` in front of this any more. A node-backed
+          // child already has the equality cutoff — a recomputation landing on
+          // the value it held notifies nobody — and every other child hands
+          // back a freshly built mountable per emission, which no comparison
+          // was ever going to collapse.
           subscriber.add(
-            rx(child)
-              .pipe(distinctUntilChanged())
-              .subscribe({
-                next: (mountable) => {
-                  if (!adopted) {
-                    // Already in the document -- this is the markup we adopted.
-                    adopted = true;
-                    return;
-                  }
-                  if (segment) {
-                    segment = mountable.replace(segment);
-                  }
-                },
-                error: (error) => subscriber.error(error),
-              }),
+            child.subscribe({
+              next: (mountable) => {
+                if (!adopted) {
+                  // Already in the document -- this is the markup we adopted.
+                  adopted = true;
+                  return;
+                }
+                if (segment) {
+                  segment = mountable.replace(segment);
+                }
+              },
+              error: (error) => subscriber.error(error),
+            }),
           );
         });
         segment = claimed.segment;

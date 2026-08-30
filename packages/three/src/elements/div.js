@@ -1,8 +1,6 @@
 import * as THREE from "three";
 import { createProperty, onCleanup } from "@apendua/signal";
-import { Derived, effects, just, on, set, observable, useEffects } from "@apendua/signal";
-import { distinctUntilChanged, switchMap } from "rxjs";
-import { rx } from "@apendua/signal/rxjs";
+import { Derived, effects, flatMap, just, on, set, observable, useEffects } from "@apendua/signal";
 import { $, children, Nothing } from "../operators.js";
 import { interactions } from "../interactions.js";
 import VisualProperties from "./VisualProperties.js";
@@ -80,8 +78,7 @@ export const PortalReadyContext = createProperty(
 /**
  * @import {Component, XREventMap} from '../core.js';
  * @import {ClipBox} from './clip.js';
- * @import {Observable} from 'rxjs';
- * @import {EntityEffect} from '@apendua/signal';
+ * @import {EntityEffect, Subscribable} from '@apendua/signal';
  */
 
 /**
@@ -152,7 +149,7 @@ function isClickable(element) {
  *   is a ray target, read reactively. Defaults to the `cursor: pointer` rule
  *   every ordinary box follows, which is there to tell a button from the card
  *   it sits on; a control needs no such telling and can answer for itself.
- * @property {(surface: BoxSurface) => Observable<Component>[]} [content] What
+ * @property {(surface: BoxSurface) => Subscribable<Component>[]} [content] What
  *   else belongs inside the box, on top of its background — the tick in a
  *   checkbox, and nothing at all for an element whose contents are its own
  *   child nodes.
@@ -512,34 +509,32 @@ export function box(ctx, element, options = {}) {
       // that lands between two menu rows carries on through the menu and hits
       // a panel button behind it — which is not merely a miss, it is a click
       // on something the menu is covering.
-      rx(observable(() => overlay.get())).pipe(
-        distinctUntilChanged(),
-        switchMap((/** @type {boolean} */ isElevated) => {
-          if (!isElevated) {
-            return rx(Nothing());
-          }
-          const blocker = createBlocker();
-          // Opaque only where the overlay is actually showing. The blocker is
-          // a unit plane covering the element rather than a mesh in element
-          // px, so it names the element as the frame the box is read in.
-          clipRaycast(blocker, () => currentClipBox, object);
-          return rx(
-            $(blocker, [
-              makeInteractive(isPanelReady),
-              on("select", (e) => {
-                element.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-                // Unlike the portal's own blocker, which lets the scene
-                // behind a panel see the click as well, an overlay is a
-                // layer: what happens on it does not reach what it covers.
-                stopPropagation(e);
-              }),
-              effects((obj) => {
-                coverBox(obj, properties.totalWidth, properties.totalHeight, BLOCKER_OFFSET);
-              }),
-            ]),
-          );
-        }),
-      ),
+      // No `distinctUntilChanged` between the two: `overlay` is a `Derived`,
+      // and a recomputation that lands on the value it already held stops
+      // there and tells nobody.
+      flatMap((/** @type {boolean} */ isElevated) => {
+        if (!isElevated) {
+          return Nothing();
+        }
+        const blocker = createBlocker();
+        // Opaque only where the overlay is actually showing. The blocker is
+        // a unit plane covering the element rather than a mesh in element
+        // px, so it names the element as the frame the box is read in.
+        clipRaycast(blocker, () => currentClipBox, object);
+        return $(blocker, [
+          makeInteractive(isPanelReady),
+          on("select", (e) => {
+            element.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+            // Unlike the portal's own blocker, which lets the scene
+            // behind a panel see the click as well, an overlay is a
+            // layer: what happens on it does not reach what it covers.
+            stopPropagation(e);
+          }),
+          effects((obj) => {
+            coverBox(obj, properties.totalWidth, properties.totalHeight, BLOCKER_OFFSET);
+          }),
+        ]);
+      })(observable(() => overlay.get())),
       // The whole box — background and border ring both — is one quad and a
       // distance field. Geometry is shared and never rebuilt: a resize is a
       // scale write, everything else a uniform write, which is what makes a

@@ -1,9 +1,8 @@
-import { distinctUntilChanged, filter, Observable, Subject } from "rxjs";
-import { rx } from "@apendua/signal/rxjs";
-import { just, observable } from "@apendua/signal";
+import { filtered, just, observable, Stream, Subject } from "@apendua/signal";
 import { addDependency, batch, Derived } from "@apendua/signal";
 
 /**
+ * @import { Source, Subscribable, Unsubscribable } from "@apendua/signal";
  * @import { Object3D, XRTargetRaySpace, Intersection, Object3DEventMap } from 'three';
  */
 
@@ -148,16 +147,16 @@ import { addDependency, batch, Derived } from "@apendua/signal";
  * @template T
  * @template K
  * @param {Object3D} parent
- * @param {import("@apendua/signal").Subscribable<Iterable<T>>} items
+ * @param {Subscribable<Iterable<T>>} items
  * @param {(item: T) => K} getKey
- * @param {(item: T, index: () => number) => import("@apendua/signal").Subscribable<Component>} renderItem
- * @returns {Observable<never>}
+ * @param {(item: T, index: () => number) => Subscribable<Component>} renderItem
+ * @returns {Source<never>}
  */
 export function addDynamicToParent(parent, items, getKey, renderItem) {
-  return new Observable((subscriber) => {
+  return new Stream((subscriber) => {
     /** @type {Map<K, () => void>} */
     const mountedChildEntities = new Map();
-    /** @type {Map<K, import("@apendua/signal").Unsubscribable>} */
+    /** @type {Map<K, Unsubscribable>} */
     const childSubscriptions = new Map();
     /** @type {Map<K, number>} */
     const childIndexes = new Map();
@@ -169,7 +168,7 @@ export function addDynamicToParent(parent, items, getKey, renderItem) {
      */
     const createGetIndex = (item) => {
       const key = getKey(item);
-      const changes = childIndexesSubject.pipe(filter((changedKey) => changedKey === key));
+      const changes = filtered(childIndexesSubject, (changedKey) => changedKey === key);
       const index = new Derived(() => {
         addDependency(changes);
         return childIndexes.get(key) ?? -1;
@@ -177,62 +176,67 @@ export function addDynamicToParent(parent, items, getKey, renderItem) {
       return () => index.get();
     };
     subscriber.add(
-      rx(items).subscribe((newItems) => {
-        /** @type {Set<K>} */
-        const newItemsSet = new Set();
-        const newItemsArray = Array.from(newItems);
-        for (let i = 0; i < newItemsArray.length; i++) {
-          const item = newItemsArray[i];
-          const key = getKey(item);
-          if (!childIndexes.has(key)) {
-            childIndexes.set(key, i);
-          }
-          newItemsSet.add(key);
-          if (!childSubscriptions.has(key)) {
-            childSubscriptions.set(
-              key,
-              rx(renderItem(item, createGetIndex(item)))
-                .pipe(distinctUntilChanged())
-                .subscribe((newChildEntity) => {
-                  const unmount = mountedChildEntities.get(key);
-                  if (unmount) {
-                    unmount();
-                  }
-                  if (newChildEntity) {
-                    mountedChildEntities.set(key, newChildEntity.addTo(parent));
-                  }
-                }),
-            );
-          }
-        }
-        // Update/ remove indexes in a batch.
-        batch(() => {
+      items.subscribe({
+        next: (newItems) => {
+          /** @type {Set<K>} */
+          const newItemsSet = new Set();
+          const newItemsArray = Array.from(newItems);
           for (let i = 0; i < newItemsArray.length; i++) {
             const item = newItemsArray[i];
             const key = getKey(item);
-            if (childIndexes.get(key) !== i) {
+            if (!childIndexes.has(key)) {
               childIndexes.set(key, i);
-              childIndexesSubject.next(key);
+            }
+            newItemsSet.add(key);
+            if (!childSubscriptions.has(key)) {
+              childSubscriptions.set(
+                key,
+                // No `distinctUntilChanged`: a node-backed child already stops
+                // at the value it was holding, and every other one hands back a
+                // freshly built component per emission.
+                renderItem(item, createGetIndex(item)).subscribe({
+                  next: (newChildEntity) => {
+                    const unmount = mountedChildEntities.get(key);
+                    if (unmount) {
+                      unmount();
+                    }
+                    if (newChildEntity) {
+                      mountedChildEntities.set(key, newChildEntity.addTo(parent));
+                    }
+                  },
+                }),
+              );
             }
           }
-          for (const key of childSubscriptions.keys()) {
+          // Update/ remove indexes in a batch.
+          batch(() => {
+            for (let i = 0; i < newItemsArray.length; i++) {
+              const item = newItemsArray[i];
+              const key = getKey(item);
+              if (childIndexes.get(key) !== i) {
+                childIndexes.set(key, i);
+                childIndexesSubject.next(key);
+              }
+            }
+            for (const key of childSubscriptions.keys()) {
+              if (!newItemsSet.has(key)) {
+                childIndexes.delete(key);
+                childIndexesSubject.next(key);
+              }
+            }
+          });
+          for (const [key, childSubscription] of childSubscriptions.entries()) {
             if (!newItemsSet.has(key)) {
-              childIndexes.delete(key);
-              childIndexesSubject.next(key);
+              const unmount = mountedChildEntities.get(key);
+              if (unmount) {
+                unmount();
+                mountedChildEntities.delete(key);
+              }
+              childSubscription.unsubscribe();
+              childSubscriptions.delete(key);
             }
           }
-        });
-        for (const [key, childSubscription] of childSubscriptions.entries()) {
-          if (!newItemsSet.has(key)) {
-            const unmount = mountedChildEntities.get(key);
-            if (unmount) {
-              unmount();
-              mountedChildEntities.delete(key);
-            }
-            childSubscription.unsubscribe();
-            childSubscriptions.delete(key);
-          }
-        }
+        },
       }),
     );
     return () => {
@@ -248,7 +252,7 @@ export function addDynamicToParent(parent, items, getKey, renderItem) {
 
 /**
  * @template T
- * @param {import("@apendua/signal").Subscribable<T> | (() => T)} value
+ * @param {Subscribable<T> | (() => T)} value
  */
 function normalize(value) {
   if (typeof value === "function") {
@@ -259,9 +263,9 @@ function normalize(value) {
 
 /**
  * @template T
- * @param {import("@apendua/signal").Subscribable<Iterable<T>> | (() => Iterable<T>)} items
- * @param {(item: T, index: () => number) => import("@apendua/signal").Subscribable<Component>} renderItem
- * @returns {import("@apendua/signal").Source<Component>}
+ * @param {Subscribable<Iterable<T>> | (() => Iterable<T>)} items
+ * @param {(item: T, index: () => number) => Subscribable<Component>} renderItem
+ * @returns {Source<Component>}
  */
 export function list(items, renderItem) {
   items = normalize(items);
@@ -283,9 +287,9 @@ export function list(items, renderItem) {
 /**
  * @template K
  * @template T
- * @param {import("@apendua/signal").Subscribable<Iterable<[K, T]>> | (() => Iterable<[K, T]>)} items
- * @param {(item: T, key: K, index: () => number) => import("@apendua/signal").Subscribable<Component>} renderItem
- * @returns {import("@apendua/signal").Source<Component>}
+ * @param {Subscribable<Iterable<[K, T]>> | (() => Iterable<[K, T]>)} items
+ * @param {(item: T, key: K, index: () => number) => Subscribable<Component>} renderItem
+ * @returns {Source<Component>}
  */
 export function keyedList(items, renderItem) {
   items = normalize(items);

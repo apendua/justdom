@@ -22,10 +22,6 @@ import { place } from "./place.js";
 import { TextBatchContext } from "./textBatch.js";
 
 /**
- * @import { Observable } from "rxjs";
- */
-
-/**
  * @returns {number}
  */
 function getViewportDpr() {

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { makeNonReactive, onCleanup } from "./index.js";
 import { on } from "./Emitter.js";
 import store, { emit } from "./store.js";
-import { set } from "./operators.js";
+import { effects, set } from "./operators.js";
 import { observable, component, effectsOnly, just } from "./factories.js";
 import { Signal, useEffect } from "./index.js";
 
@@ -188,5 +188,121 @@ describe("effectsOnly()", () => {
     const first = Behaviour();
     const second = Behaviour();
     assert.notStrictEqual(first, second, "a fresh observable per call, like `component`");
+  });
+});
+
+describe("just()", () => {
+  it("mounts its operators once, however many subscribers there are", () => {
+    const entity = { value: 0 };
+    const runs = mock.fn();
+    const shared = just(entity, [effects(() => runs())]);
+
+    const first = mock.fn();
+    const a = shared.subscribe({ next: first });
+    assert.strictEqual(runs.mock.calls.length, 1);
+    assertNthCallArgumentEqual(first, 0, 0, entity);
+
+    // The second subscriber joins the mounting that is already standing, and
+    // is handed the value it missed — what `share` with a `ReplaySubject(1)`
+    // was buying.
+    const second = mock.fn();
+    const b = shared.subscribe({ next: second });
+    assert.strictEqual(runs.mock.calls.length, 1, "no second mounting");
+    assertNthCallArgumentEqual(second, 0, 0, entity);
+
+    a.unsubscribe();
+    b.unsubscribe();
+  });
+
+  it("takes the mounting down with the last subscriber, and builds it again for the next", () => {
+    const entity = { value: 0 };
+    const runs = mock.fn();
+    const cleanup = mock.fn();
+    const shared = just(entity, [
+      effects(() => {
+        runs();
+        onCleanup(() => cleanup());
+      }),
+    ]);
+
+    const a = shared.subscribe({ next: () => {} });
+    const b = shared.subscribe({ next: () => {} });
+    a.unsubscribe();
+    assert.strictEqual(cleanup.mock.calls.length, 0, "one subscriber left, nothing torn down");
+    b.unsubscribe();
+    assert.strictEqual(cleanup.mock.calls.length, 1, "and the last one takes it down");
+
+    // `resetOnRefCountZero`: subscribing again is a fresh mounting rather than
+    // a dead one.
+    const next = mock.fn();
+    const c = shared.subscribe({ next });
+    assert.strictEqual(runs.mock.calls.length, 2);
+    assertNthCallArgumentEqual(next, 0, 0, entity);
+    c.unsubscribe();
+  });
+
+  it("emits the value once, and does not emit again when a mounted effect re-runs", () => {
+    const entity = { value: 0 };
+    const signal = Signal.of(0);
+    const next = mock.fn();
+    const subscription = just(entity, [
+      effects((e) => {
+        e.value = signal.get();
+      }),
+    ]).subscribe({ next });
+
+    assert.strictEqual(next.mock.calls.length, 1);
+    signal.set(1);
+    assert.strictEqual(entity.value, 1, "the effect re-ran");
+    assert.strictEqual(next.mock.calls.length, 1, "and the entity is still the same entity");
+
+    subscription.unsubscribe();
+  });
+
+  it("reports a failure from the mounting to whoever is subscribed", () => {
+    const error = mock.fn();
+    just({}, [
+      effects(() => {
+        throw new Error("boom");
+      }),
+    ]).subscribe({ next: () => {}, error });
+
+    assert.strictEqual(error.mock.calls.length, 1);
+    assert.strictEqual(/** @type {Error} */ (error.mock.calls[0].arguments[0]).message, "boom");
+  });
+
+  it("lets the next subscriber try again after a failure, as `share` does", () => {
+    let broken = true;
+    const entity = { value: 0 };
+    const shared = just(entity, [
+      effects(() => {
+        if (broken) {
+          throw new Error("boom");
+        }
+      }),
+    ]);
+
+    const error = mock.fn();
+    shared.subscribe({ next: () => {}, error });
+    assert.strictEqual(error.mock.calls.length, 1);
+
+    // A failed mounting is gone with its subscribers, so the next subscriber
+    // is handed a fresh one rather than a replay of the failure.
+    broken = false;
+    const next = mock.fn();
+    const again = mock.fn();
+    const subscription = shared.subscribe({ next, error: again });
+    assert.strictEqual(again.mock.calls.length, 0);
+    assertNthCallArgumentEqual(next, 0, 0, entity);
+    subscription.unsubscribe();
+  });
+
+  it("takes a plain function as its observer, as an observable does", () => {
+    const entity = { value: 0 };
+    /** @type {unknown[]} */
+    const seen = [];
+    const subscription = just(entity, [effects(() => {})]).subscribe((value) => seen.push(value));
+    assert.deepStrictEqual(seen, [entity]);
+    subscription.unsubscribe();
   });
 });

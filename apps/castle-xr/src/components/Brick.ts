@@ -5,12 +5,10 @@ import {
   useEffects,
   on,
   set,
-  just,
   store,
   Op,
   emit,
   component,
-  effectMap,
   onCleanup,
 } from "@apendua/signal";
 import {
@@ -22,7 +20,6 @@ import {
   useFrame,
   XREventMap,
 } from "@apendua/freedom";
-import { NEVER } from "rxjs";
 import * as RAPIER from "@dimforge/rapier3d";
 import { BrickStyle, brickShape, BrickType } from "./types.js";
 import {
@@ -245,9 +242,9 @@ const Brick = component((ctx: WeakKey, operators: Op<Props, Events>) => {
       }
       placeAt(o);
     }),
-    effectMap((o) => {
+    effects((o) => {
       if (dragState.get() || props.bodyType === null) {
-        return NEVER;
+        return;
       }
       // The body takes its pose from the object when it is built and then
       // drives the object every frame, so a brick that is moved by anything
@@ -255,7 +252,7 @@ const Brick = component((ctx: WeakKey, operators: Op<Props, Events>) => {
       // sitting in the right place first, whichever effect runs before which.
       placeAt(o);
       const type = props.type;
-      return just(o, [
+      useEffects(o, [
         rigidBody(ctx, props.bodyType, [
           collider(ctx, () => brickColliderDesc(type)),
           effects((body) => {
@@ -279,11 +276,10 @@ const Brick = component((ctx: WeakKey, operators: Op<Props, Events>) => {
         });
       }
     }),
-    effectMap((o) => {
-      if (!props.interactive) {
-        return NEVER;
+    effects((o) => {
+      if (props.interactive) {
+        useEffects(o, [makeInteractive()]);
       }
-      return just(o, [makeInteractive()]);
     }),
     on("selectstart", (event) => {
       if (!props.draggable) {

@@ -1,7 +1,11 @@
 import { Observable, from } from "rxjs";
+import { toEffect } from "./interop.js";
+import { onEachValue, subscribeAndEmit } from "./util.js";
 
 /**
+ * @import { MonoTypeOperatorFunction } from "rxjs";
  * @import { Subscribable } from "./subscribable.js";
+ * @import { EntityEffect } from "./types.js";
  */
 
 /**
@@ -32,4 +36,36 @@ export function rx(source) {
     return source;
   }
   return /** @type {Observable<T>} */ (from(/** @type {any} */ (source)));
+}
+
+/**
+ * An entity effect, lifted over a stream of entities: mount `fn` on each
+ * value the source produces, pass the value on with the mounting already
+ * standing, take that mounting down when the next value arrives, and take the
+ * last one down on unsubscribe.
+ *
+ * A mounting's array needs none of this — every entry there is the body of
+ * its own `Effect` already, which is why `effects` in the core is the
+ * identity — but a pipeline that *receives* entities rather than holding one
+ * does, and saying the same thing as `switchMap` into `toEffect` is more
+ * machinery than the idea deserves.
+ *
+ * It lives here rather than in the core because what it produces is an RxJS
+ * operator: `MonoTypeOperatorFunction` is an RxJS type, and a call site that
+ * pipes with it is an RxJS pipeline. The core's `effects` names no RxJS type,
+ * and the two are named apart so that a mounting entry and a pipeline stage
+ * cannot be mistaken for one another.
+ *
+ * @template T
+ * @param {EntityEffect<T>} fn
+ * @returns {MonoTypeOperatorFunction<T>}
+ */
+export function rxEffects(fn) {
+  const operator = onEachValue(
+    subscribeAndEmit((value) => toEffect((context) => fn(value, context), { name: "rxEffects" })),
+  );
+  // A genuine `Observable` at runtime — `onEachValue` builds one — which is
+  // what an RxJS pipeline needs and what the core's `Source` deliberately
+  // does not promise.
+  return (source) => /** @type {Observable<T>} */ (operator(source));
 }

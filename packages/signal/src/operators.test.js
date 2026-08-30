@@ -8,7 +8,7 @@ import { Signal, batch } from "./index.js";
 import Emitter, { on } from "./Emitter.js";
 import { just } from "./factories.js";
 import { effectMap, effects, map, takeNothing, observe, observeFn, use } from "./operators.js";
-import { rx } from "./rxjs.js";
+import { rx, rxEffects } from "./rxjs.js";
 import { Derived, Effect, onCleanup } from "./index.js";
 import { Observable } from "rxjs";
 
@@ -56,6 +56,93 @@ describe("effects()", () => {
     assert.deepStrictEqual(result, [1, 2, 3, 6], "and re-run in the same order");
 
     subscription.unsubscribe();
+  });
+});
+
+describe("rxEffects()", () => {
+  it("mounts on each value, and switches the mounting as values arrive", () => {
+    /** @type {Subject<{ value: number }>} */
+    const source = new Subject();
+    const signal = Signal.of(0);
+    const complete = mock.fn();
+    const entity = { value: 0 };
+    const entity2 = { value: 0 };
+
+    const subscription = source
+      .pipe(
+        rxEffects((obj) => {
+          obj.value = signal.get();
+        }),
+      )
+      .subscribe({ complete });
+
+    assert.strictEqual(entity.value, 0, "nothing is mounted until a value arrives");
+
+    signal.set(1);
+    source.next(entity);
+    assert.strictEqual(entity.value, 1);
+
+    signal.set(2);
+    assert.strictEqual(entity.value, 2, "and it re-runs while that value is the current one");
+
+    source.next(entity2);
+    assert.strictEqual(entity2.value, 2);
+
+    signal.set(3);
+    assert.strictEqual(entity.value, 2, "the previous value's mounting came down");
+    assert.strictEqual(entity2.value, 3);
+
+    source.complete();
+    assert.ok(complete.mock.calls.length > 0, "and completion is passed on");
+
+    subscription.unsubscribe();
+  });
+
+  it("passes each value on with its mounting already standing", () => {
+    /** @type {Subject<string[]>} */
+    const source = new Subject();
+    /** @type {string[]} */
+    const seen = [];
+
+    const subscription = source
+      .pipe(
+        rxEffects((arr) => {
+          arr.push("mounted");
+        }),
+      )
+      .subscribe({
+        next: (arr) => {
+          seen.push(...arr);
+        },
+      });
+
+    source.next([]);
+    assert.deepStrictEqual(seen, ["mounted"], "the effect ran before the value was passed on");
+
+    subscription.unsubscribe();
+  });
+
+  it("takes the last mounting down when the subscriber leaves", () => {
+    /** @type {Subject<{ value: number }>} */
+    const source = new Subject();
+    const signal = Signal.of(0);
+    const entity = { value: 0 };
+
+    const subscription = source
+      .pipe(
+        rxEffects((obj) => {
+          obj.value = signal.get();
+        }),
+      )
+      .subscribe();
+
+    source.next(entity);
+    signal.set(1);
+    assert.strictEqual(entity.value, 1);
+
+    subscription.unsubscribe();
+    signal.set(2);
+    assert.strictEqual(entity.value, 1, "unsubscribed, so nothing runs it any more");
   });
 });
 

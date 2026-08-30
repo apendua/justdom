@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { Observable, Subject, switchMap, takeUntil } from "rxjs";
-import { just, toEffect } from "@apendua/signal";
-import { rx } from "@apendua/signal/rxjs";
+import { just } from "@apendua/signal";
+import { rx, rxEffects } from "@apendua/signal/rxjs";
 import { onCleanup } from "@apendua/signal";
 import { createPortal } from "./elements/portal.js";
 
@@ -29,28 +29,20 @@ export function dom(ctx, mountable$, effects = [], options = {}) {
         subscriber.next({
           /** @param {THREE.Object3D} parent */
           addTo(parent) {
-            // An effect per mountable, switched as the tree re-renders: the
-            // same shape the `effects` operator used to give this pipeline.
+            // An effect per mountable, switched as the tree re-renders.
             const observable = rx(mountable$).pipe(
-              switchMap((mountable) =>
-                rx(
-                  toEffect(
-                    () => {
-                      const portal = createPortal(ctx, options);
-                      portal.addTo(obj);
-                      portal.mount(mountable);
-                      parent.add(obj);
-                      onCleanup(() => {
-                        if (obj.parent == parent) {
-                          obj.parent.remove(obj);
-                        }
-                        portal.disconnect();
-                      });
-                    },
-                    { name: "dom" },
-                  ),
-                ),
-              ),
+              rxEffects((mountable) => {
+                const portal = createPortal(ctx, options);
+                portal.addTo(obj);
+                portal.mount(mountable);
+                parent.add(obj);
+                onCleanup(() => {
+                  if (obj.parent == parent) {
+                    obj.parent.remove(obj);
+                  }
+                  portal.disconnect();
+                });
+              }),
               takeUntil(done),
             );
             return observable.subscribe({

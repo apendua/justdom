@@ -22,11 +22,18 @@ export const interopSymbol =
  * that is to ask — `toObservable` does exactly this before it builds an
  * effect that would have nothing to read.
  *
+ * `add` is the other thing a source reaches for: a subscribe function that
+ * acquires several things wants to hand back several teardowns, and saying so
+ * as it goes is clearer than accumulating a list to return at the end. What
+ * is added after the subscription has closed is undone at once, because the
+ * alternative is a leak.
+ *
  * @template T
  * @typedef {object} Subscriber
  * @property {(value: T) => void} next
  * @property {(err: unknown) => void} error
  * @property {() => void} complete
+ * @property {(teardown: Teardown) => void} add
  * @property {boolean} closed
  */
 
@@ -66,8 +73,14 @@ class StreamSubscription {
   /** @type {Partial<Observer<T>>} */
   #observer;
 
-  /** @type {Teardown} */
-  #teardown = undefined;
+  /**
+   * Everything owed, in the order it was taken on. The teardown the subscribe
+   * function returns goes on the end, which is where RxJS puts it too: what a
+   * source acquired first is undone first.
+   *
+   * @type {Teardown[]}
+   */
+  #teardowns = [];
 
   #closed = false;
 
@@ -134,6 +147,21 @@ class StreamSubscription {
   }
 
   /**
+   * @param {Teardown} teardown
+   * @returns {void}
+   */
+  add(teardown) {
+    if (!teardown) {
+      return;
+    }
+    if (this.#closed) {
+      undo(teardown);
+      return;
+    }
+    this.#teardowns.push(teardown);
+  }
+
+  /**
    * Run the source, and hold on to whatever it wants undone.
    *
    * A source may terminate before it returns — a node replaying a stored
@@ -155,29 +183,52 @@ class StreamSubscription {
       this.error(err);
       return;
     }
-    this.#teardown = teardown;
+    this.add(teardown);
     if (this.#closed) {
       this.#undo();
     }
   }
 
   /**
-   * Exactly once, and cleared before it runs, so that a teardown which
-   * unsubscribes something that unsubscribes this cannot come back round.
+   * Exactly once each, and taken off the list before they run, so that a
+   * teardown which unsubscribes something that unsubscribes this cannot come
+   * back round.
+   *
+   * One that throws does not strand the rest: they all run, and the first
+   * failure is raised once they have.
    *
    * @returns {void}
    */
   #undo() {
-    const teardown = this.#teardown;
-    this.#teardown = undefined;
-    if (!teardown) {
-      return;
+    const teardowns = this.#teardowns;
+    this.#teardowns = [];
+    /** @type {{ value: unknown } | null} */
+    let failure = null;
+    for (const teardown of teardowns) {
+      try {
+        undo(teardown);
+      } catch (err) {
+        failure = failure ?? { value: err };
+      }
     }
-    if (typeof teardown === "function") {
-      teardown();
-    } else {
-      teardown.unsubscribe();
+    if (failure) {
+      throw failure.value;
     }
+  }
+}
+
+/**
+ * @param {Teardown} teardown
+ * @returns {void}
+ */
+function undo(teardown) {
+  if (!teardown) {
+    return;
+  }
+  if (typeof teardown === "function") {
+    teardown();
+  } else {
+    teardown.unsubscribe();
   }
 }
 

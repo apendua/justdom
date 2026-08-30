@@ -179,6 +179,52 @@ describe("Stream", () => {
     assert.deepStrictEqual(seen, [1]);
   });
 
+  it("undoes everything the source added, in the order it was taken on", () => {
+    /** @type {string[]} */
+    const undone = [];
+    const stream = new Stream((subscriber) => {
+      subscriber.add(() => undone.push("first"));
+      subscriber.add({ unsubscribe: () => undone.push("second") });
+      return () => undone.push("returned last");
+    });
+
+    const subscription = stream.subscribe();
+    assert.deepStrictEqual(undone, []);
+
+    subscription.unsubscribe();
+    assert.deepStrictEqual(undone, ["first", "second", "returned last"]);
+
+    subscription.unsubscribe();
+    assert.deepStrictEqual(undone, ["first", "second", "returned last"], "and only once");
+  });
+
+  it("undoes at once anything added after it closed", () => {
+    /** @type {string[]} */
+    const undone = [];
+    const stream = new Stream((subscriber) => {
+      subscriber.complete();
+      subscriber.add(() => undone.push("late"));
+    });
+
+    stream.subscribe();
+    assert.deepStrictEqual(undone, ["late"], "a leak is the only other option");
+  });
+
+  it("runs every teardown even when one of them throws", () => {
+    /** @type {string[]} */
+    const undone = [];
+    const stream = new Stream((subscriber) => {
+      subscriber.add(() => {
+        throw new Error("bad teardown");
+      });
+      subscriber.add(() => undone.push("still ran"));
+    });
+
+    const subscription = stream.subscribe();
+    assert.throws(() => subscription.unsubscribe(), /bad teardown/);
+    assert.deepStrictEqual(undone, ["still ran"]);
+  });
+
   it("lifts into RxJS through rx(), which is what the seam is for", async () => {
     const stream = new Stream((subscriber) => {
       subscriber.next("carried across");

@@ -1,36 +1,37 @@
-import { tap } from "rxjs";
 import { Derived } from "./Derived.js";
-import { onEachValue, subscribeTo, subscribeAndEmit } from "./util.js";
-import { observable, component, just } from "./factories.js";
-import { addDependency } from "./core.js";
-import { toObservable, toEffect } from "./interop.js";
+import { useEffect } from "./Effect.js";
+import { onEachValue, subscribeTo, each } from "./util.js";
+import { observable, component } from "./factories.js";
+import { addDependency, onCleanup, withComputation } from "./core.js";
+import { toObservable, nodeOf } from "./interop.js";
 
 /**
- * @import { MonoTypeOperatorFunction, Observable } from 'rxjs';
- * @import { WritableProps } from './types.js';
+ * @import { Subscribable, Source } from './subscribable.js';
+ * @import { Operator } from './util.js';
+ * @import ReactiveNode from './Node.js';
+ * @import { WritableProps, EntityEffect } from './types.js';
  */
 
 /**
- * Run `fn` against each value the source emits, and keep re-running it
- * whenever anything it read changes.
+ * Run `fn` against the entity, and keep re-running it whenever anything it
+ * read changes.
  *
- * An `Effect`, because that is what this has always been. It used to be a
- * `Derived` whose evaluation had side effects, which worked only because the
- * old core recomputed eagerly; a lazy core would run it at unpredictable
- * times, or never. Saying `Effect` makes the schedule explicit and puts the
- * work in a channel.
+ * An `EntityEffect` *is* that already — every entry of a mounting is the body
+ * of its own `Effect` — so this is the identity, kept because a call site
+ * that says `effects(fn)` says what the function is for. A plain lambda in
+ * the same position means exactly the same thing.
  *
  * @template T
  * @param {(value: T) => void} fn
- * @returns {(source: Observable<T>) => Observable<T>}
+ * @returns {EntityEffect<T>}
  */
 export function effects(fn) {
-  return onEachValue(subscribeAndEmit((value) => toEffect(() => fn(value), { name: "effects" })));
+  return fn;
 }
 
 /**
  * @template T
- * @returns {(source: Observable<T>) => Observable<never>}
+ * @returns {Operator<T, never>}
  */
 export function takeNothing() {
   return onEachValue(null);
@@ -39,7 +40,7 @@ export function takeNothing() {
 /**
  * @template T, U
  * @param {(value: T) => U} fn
- * @returns {(source: Observable<T>) => Observable<U>}
+ * @returns {Operator<T, U>}
  */
 export function map(fn) {
   return onEachValue(subscribeTo((value) => observable(() => fn(value))));
@@ -47,20 +48,79 @@ export function map(fn) {
 
 /**
  * @template T, U
- * @param {(value: T) => Observable<U>} fn
- * @returns {(source: Observable<T>) => Observable<U>}
+ * @param {(value: T) => Subscribable<U>} fn
+ * @returns {Operator<T, U>}
  */
 export function flatMap(fn) {
   return onEachValue(subscribeTo(component(fn)));
 }
 
 /**
+ * Keep whatever observable `fn` hands back subscribed for as long as the
+ * entity stays mounted.
+ *
+ * The subscription is taken directly rather than through `use`, for the sake
+ * of where its errors go. One that arrives while the subscribe is still on
+ * this run's stack is *thrown* — it fails the mounting synchronously, which
+ * is what lets a hydration mismatch be caught before `subscribe` returns.
+ * One that arrives later goes through `context.fail`, and lands where a
+ * failed mounting lands.
+ *
  * @template T
- * @param {(value: T) => Observable<unknown>} fn
- * @returns {(source: Observable<T>) => Observable<T>}
+ * @param {(value: T) => Subscribable<unknown>} fn
+ * @returns {EntityEffect<T>}
  */
 export function effectMap(fn) {
-  return onEachValue(subscribeAndEmit(component(fn)));
+  return (entity, { fail }) => {
+    // Two questions that look like one, and they get opposite answers.
+    //
+    // *Choosing* the observable is a read. A callback that branches on
+    // reactive state — `if (dragState.get() || props.bodyType === null) return
+    // NEVER` — has to run again when that state moves, and switch to whatever
+    // it hands back; that is how a brick acquires its rigid body when the
+    // board is made ready, and loses it while it is being carried. So the
+    // callback lives in a `Derived`, which is what `component(fn)` gave it
+    // when this was a stream operator.
+    //
+    // *Subscribing* to what it chose is not a read. Whatever the observable
+    // touches on the way in belongs to it, not to this mounting, and tracking
+    // it would tear the subscription down on a write the mounting never
+    // looked at — which in freedom means rebuilding a subtree.
+    const chosen = new Derived(() => fn(entity));
+    let firstRun = true;
+    useEffect(
+      () => {
+        const source = chosen.get();
+        let sync = true;
+        /** @type {{ value: unknown } | null} */
+        let failure = null;
+        const subscription = withComputation(null, () =>
+          source.subscribe({
+            error: (err) => {
+              if (sync) {
+                failure = failure ?? { value: err };
+              } else {
+                fail(err);
+              }
+            },
+          }),
+        );
+        sync = false;
+        onCleanup(() => subscription.unsubscribe());
+        if (failure) {
+          if (firstRun) {
+            // Still on the mounting's stack, so this reaches whoever is
+            // subscribing — which is what lets a hydration mismatch be caught
+            // before `subscribe` returns.
+            throw /** @type {{ value: unknown }} */ (failure).value;
+          }
+          fail(/** @type {{ value: unknown }} */ (failure).value);
+        }
+      },
+      { name: "effectMap" },
+    );
+    firstRun = false;
+  };
 }
 
 /**
@@ -68,53 +128,113 @@ export function effectMap(fn) {
  * @template {keyof WritableProps<TEntity>} K
  * @overload
  * @param {K} key
- * @param {Observable<TEntity[K]> | (() => TEntity[K])} value
- * @returns {(source: Observable<TEntity>) => Observable<TEntity>}
+ * @param {Subscribable<TEntity[K]> | (() => TEntity[K])} value
+ * @returns {EntityEffect<TEntity>}
  */
 
 /**
  * @template {object} TEntity
  * @overload
  * @param {Partial<WritableProps<TEntity>>} values
- * @returns {(source: Observable<TEntity>) => Observable<TEntity>}
+ * @returns {EntityEffect<TEntity>}
  */
 
 /**
  * @template {object} TEntity
  * @template {keyof WritableProps<TEntity>} K
  * @param {K|Partial<WritableProps<Record<string, unknown>>>} keyOrValues
- * @param {Observable<unknown> | (() => unknown)} [value]
- * @returns {(source: Observable<Record<string, unknown>>) => Observable<Record<string, unknown>>}
+ * @param {Subscribable<unknown> | (() => unknown)} [value]
+ * @returns {EntityEffect<Record<string, unknown>>}
  */
 export function set(keyOrValues, value) {
   if (typeof keyOrValues === "object") {
-    return effects((entity) => {
+    return (entity) => {
       Object.assign(entity, keyOrValues);
-    });
+    };
   }
   if (!value) {
     throw new Error("Value observable is required when key is provided.");
   }
   if (typeof value === "function") {
-    value = observable(value);
+    const valueFn = value;
+    return (entity) => {
+      // A `Derived` in front of the assignment for its equality cutoff, which
+      // is what the observable this used to route through was providing: a
+      // recomputation that lands on the value already written writes nothing.
+      const source = new Derived(() => valueFn());
+      useEffect(() => {
+        entity[keyOrValues] = source.get();
+      });
+    };
   }
-  return effectMap((entity) => {
-    return value.pipe(
-      tap((v) => {
-        entity[keyOrValues] = v;
-      }),
-    );
-  });
+  const source = value;
+  return effectMap((entity) =>
+    each(source, (v) => {
+      entity[keyOrValues] = v;
+    }),
+  );
+}
+
+/**
+ * Mount `effects` on `value` for as long as the surrounding computation
+ * stands.
+ *
+ * This is `just(value, effects)` minus the sharing: the computation is the
+ * one holder, so there is no node, no observable, and nothing per subscriber
+ * — each entry becomes an `Effect` owned by the computation, and a failure
+ * edge is all that connects them back. A store built without operators pays
+ * for nothing at all.
+ *
+ * @template T
+ * @param {T} value
+ * @param  {EntityEffect<T>[]} effects
+ * @returns {void}
+ */
+export function useEffects(value, effects) {
+  for (const fn of effects) {
+    mountEffect(value, fn);
+  }
 }
 
 /**
  * @template T
  * @param {T} value
+ * @param {EntityEffect<T>} fn
  * @returns {void}
- * @param  {MonoTypeOperatorFunction<T>[]} operators
  */
-export function useEffects(value, operators) {
-  return use(just(value, operators));
+function mountEffect(value, fn) {
+  let standing = false;
+  const effect = useEffect((context) => fn(value, context), {
+    name: "useEffects",
+    onError: (err) => {
+      if (!standing) {
+        // Still on the builder's stack — the throw fails whatever is
+        // mounting, exactly where a synchronous failure belongs.
+        throw err;
+      }
+      // Later news fails the effect, whose failure the dependency edge below
+      // carries to the computation — where a pipeline error used to land.
+      effect.fail(err);
+    },
+  });
+  standing = true;
+  addDependency(failuresOf(effect));
+}
+
+/**
+ * A dependency that never marks the computation stale: it forwards only the
+ * failure of what it watches. Liveness without listening.
+ *
+ * @param {{ subscribe: ReactiveNode['subscribe'] }} subscribable
+ * @returns {{ subscribe: ReactiveNode['subscribe'] }}
+ */
+export function failuresOf(subscribable) {
+  return {
+    subscribe: (observer) =>
+      subscribable.subscribe({
+        error: (err) => observer.error?.(err),
+      }),
+  };
 }
 
 /**
@@ -136,7 +256,7 @@ export function useEffects(value, operators) {
  * name on it, rather than a `TypeError` from inside the first run that
  * happens to return one.
  *
- * @param {Observable<unknown>} observable
+ * @param {Subscribable<unknown>} observable
  */
 export function use(observable) {
   if (typeof observable === "function") {
@@ -145,14 +265,22 @@ export function use(observable) {
         "useEffect(fn): the same effect, disposed by the same computation.",
     );
   }
-  addDependency(observable.pipe(takeNothing()));
+  const node = nodeOf(observable);
+  if (node) {
+    // A node-backed observable does not need its values pushed through an
+    // effect just to be thrown away here. Keeping it subscribed means keeping
+    // the node live and its failure heard, and a bare subscription does both.
+    addDependency(failuresOf(node));
+    return;
+  }
+  addDependency(takeNothing()(observable));
 }
 
 /**
  * @template {object} T
  * @typedef {{
  *   readonly [K in keyof T as T[K] extends (...args: any[]) => any ? never : K]-?:
- *     Observable<T[K]>
+ *     Source<T[K]>
  * }} Observe
  */
 
@@ -184,7 +312,7 @@ export function observe(target) {
  *     : never
  *   ]-?:
  *     T[K] extends (...args: infer U) => any
- *       ? (...args: U) => Observable<ReturnType<T[K]>>
+ *       ? (...args: U) => Source<ReturnType<T[K]>>
  *       : never
  * }} ObserveFn
  */

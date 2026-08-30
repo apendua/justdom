@@ -1,57 +1,65 @@
 import { effectMap, just, observable } from "@apendua/signal";
+import { rx } from "@apendua/signal/rxjs";
 import ListRenderer from "./ListRenderer.js";
 import { removeSegment, replaceSegment, toSegment } from "./helpers.js";
 import { claimComment, claimElement, claimSegment, isHydrating, withCursor } from "./hydrate.js";
-import { defer, distinctUntilChanged, map, Observable, tap } from "rxjs";
+import { distinctUntilChanged, map, Observable, tap } from "rxjs";
 
 const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
 
 /**
- * @import {MonoTypeOperatorFunction} from 'rxjs';
+ * @import {EntityEffect, Subscribable, Source} from '@apendua/signal';
  * @import {Mountable, Container} from "./types.js";
  */
 
 /**
  * Creates an element observable.
  *
- * The element itself is created on *subscribe*, not when `$()` is called. That
- * matters for two reasons:
+ * The element is created by the factory `just` runs per subscription, not
+ * when `$()` is called. That matters for two reasons:
  *
- * - Without `defer`, the argument evaluation order makes children get created
- *   before their parents, which is the reverse of document order. Creating on
- *   subscribe means elements are acquired top-down instead, matching the order
- *   the operator chain runs in.
+ * - Creating at mount time means elements are acquired top-down, in document
+ *   order, matching the order the mountings are built — argument evaluation
+ *   alone would give the reverse. Hydration's cursor depends on that order.
  * - The same element observable can be mounted in more than one place. Eager
  *   creation gave every subscriber the *same* node, so the second mount stole
- *   it from the first and only one copy was rendered.
+ *   it from the first and only one copy was rendered. A cold `just` runs the
+ *   factory afresh for each subscriber, so every mount gets an element of its
+ *   own.
  *
  * @template {keyof HTMLElementTagNameMap} Tag
  * @param {Tag} tag
- * @param {MonoTypeOperatorFunction<HTMLElementTagNameMap[Tag]>[]} operators
- * @returns {Observable<Mountable>}
+ * @param {EntityEffect<HTMLElementTagNameMap[Tag]>[]} effects
+ * @returns {Source<Mountable>}
  */
-export function $(tag, operators = []) {
-  return defer(() => {
-    const element = /** @type {HTMLElementTagNameMap[Tag]} */ (
-      claimElement(tag) ?? document.createElement(tag)
-    );
-    return just(element, operators);
-  }).pipe(map(toMountable));
+export function $(tag, effects = []) {
+  return rx(
+    just(
+      () =>
+        /** @type {HTMLElementTagNameMap[Tag]} */ (
+          claimElement(tag) ?? document.createElement(tag)
+        ),
+      effects,
+    ),
+  ).pipe(map(toMountable));
 }
 
 /**
  * @template {keyof SVGElementTagNameMap} Tag
  * @param {Tag} tag
- * @param {MonoTypeOperatorFunction<SVGElementTagNameMap[Tag]>[]} operators
- * @returns {Observable<Mountable>}
+ * @param {EntityEffect<SVGElementTagNameMap[Tag]>[]} effects
+ * @returns {Source<Mountable>}
  */
-export function $$(tag, operators = []) {
-  return defer(() => {
-    const element = /** @type {SVGElementTagNameMap[Tag]} */ (
-      claimElement(tag, SVG_NAMESPACE) ?? document.createElementNS(SVG_NAMESPACE, tag)
-    );
-    return just(element, operators);
-  }).pipe(map(toMountable));
+export function $$(tag, effects = []) {
+  return rx(
+    just(
+      () =>
+        /** @type {SVGElementTagNameMap[Tag]} */ (
+          claimElement(tag, SVG_NAMESPACE) ?? document.createElementNS(SVG_NAMESPACE, tag)
+        ),
+      effects,
+    ),
+  ).pipe(map(toMountable));
 }
 
 /**
@@ -153,15 +161,15 @@ const renderer = new ListRenderer({
 
 /**
  * @template {Node} T
- * @param {Array<Observable<Mountable>>} children
- * @returns {MonoTypeOperatorFunction<T>}
+ * @param {Array<Subscribable<Mountable>>} children
+ * @returns {EntityEffect<T>}
  */
 export function children(...children) {
   return effectMap((node) => {
     if (isHydrating()) {
       return hydrateFragment(node, children);
     }
-    return renderer.renderFragment(children).pipe(
+    return rx(renderer.renderFragment(children)).pipe(
       tap((mountable) => {
         if (!node.firstChild || !node.lastChild) {
           const placeholder = node.appendChild(document.createComment(""));
@@ -184,7 +192,7 @@ export function children(...children) {
  * through the usual replace, against the segment that was claimed.
  *
  * @param {Node} node
- * @param {Array<Observable<Mountable>>} children
+ * @param {Array<Subscribable<Mountable>>} children
  * @returns {Observable<unknown>}
  */
 function hydrateFragment(node, children) {
@@ -198,19 +206,21 @@ function hydrateFragment(node, children) {
         let adopted = false;
         const claimed = claimSegment(() => {
           subscriber.add(
-            child.pipe(distinctUntilChanged()).subscribe({
-              next: (mountable) => {
-                if (!adopted) {
-                  // Already in the document -- this is the markup we adopted.
-                  adopted = true;
-                  return;
-                }
-                if (segment) {
-                  segment = mountable.replace(segment);
-                }
-              },
-              error: (error) => subscriber.error(error),
-            }),
+            rx(child)
+              .pipe(distinctUntilChanged())
+              .subscribe({
+                next: (mountable) => {
+                  if (!adopted) {
+                    // Already in the document -- this is the markup we adopted.
+                    adopted = true;
+                    return;
+                  }
+                  if (segment) {
+                    segment = mountable.replace(segment);
+                  }
+                },
+                error: (error) => subscriber.error(error),
+              }),
           );
         });
         segment = claimed.segment;
@@ -230,7 +240,8 @@ function hydrateFragment(node, children) {
 
 /**
  * @template T
- * @param {Observable<T> | (() => T)} value
+ * @param {Subscribable<T> | (() => T)} value
+ * @returns {Subscribable<T>}
  */
 function normalize(value) {
   if (typeof value === "function") {
@@ -241,9 +252,9 @@ function normalize(value) {
 
 /**
  * @template T
- * @param {Observable<Iterable<T>> | (() => Iterable<T>)} items
- * @param {(item: T, getIndex: () => number) => Observable<Mountable>} renderItem
- * @returns {Observable<Mountable>}
+ * @param {Subscribable<Iterable<T>> | (() => Iterable<T>)} items
+ * @param {(item: T, getIndex: () => number) => Subscribable<Mountable>} renderItem
+ * @returns {Source<Mountable>}
  */
 export function list(items, renderItem) {
   items = normalize(items);
@@ -253,9 +264,9 @@ export function list(items, renderItem) {
 /**
  * @template K
  * @template T
- * @param {Observable<Iterable<[K, T]>> | (() => Iterable<[K, T]>) } items
- * @param {(item: T, key: K, index: () => number) => Observable<Mountable>} renderItem
- * @returns {Observable<Mountable>}
+ * @param {Subscribable<Iterable<[K, T]>> | (() => Iterable<[K, T]>) } items
+ * @param {(item: T, key: K, index: () => number) => Subscribable<Mountable>} renderItem
+ * @returns {Source<Mountable>}
  */
 export function keyedList(items, renderItem) {
   items = normalize(items);

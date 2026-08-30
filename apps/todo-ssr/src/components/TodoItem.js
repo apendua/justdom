@@ -43,6 +43,7 @@ const buttonStyle = className`
  * renders -- it simply never fires there -- so the form remains the behaviour
  * for a browser that has not run, or cannot run, the script.
  */
+/** @type {(todo: Todo, getIndex: () => number, filter: Filter) => import("@apendua/signal").Source<import("@apendua/justdom").Mountable>} */
 const TodoItem = component(
   /**
    * @param {Todo} todo

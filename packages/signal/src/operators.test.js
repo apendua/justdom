@@ -1,18 +1,66 @@
 import { describe, it, beforeEach, mock } from "node:test";
 import assert from "node:assert/strict";
-import { merge, Subject } from "rxjs";
+import { merge, NEVER, Subject } from "rxjs";
 import store from "./store.js";
 import { Computation } from "./index.js";
 import { decorate, memoFn } from "./decorators.js";
 import { Signal, batch } from "./index.js";
 import Emitter, { on } from "./Emitter.js";
 import { just } from "./factories.js";
-import { effects, map, takeNothing, observe, observeFn, use } from "./operators.js";
+import { effectMap, effects, map, takeNothing, observe, observeFn, use } from "./operators.js";
+import { rx, rxEffects } from "./rxjs.js";
 import { Derived, Effect, onCleanup } from "./index.js";
 import { Observable } from "rxjs";
 
 describe("effects()", () => {
-  it("applies effects until the source completes", () => {
+  it("re-runs while mounted, and stops when the mounting comes down", () => {
+    const signal = Signal.of(0);
+    const entity = { value: 0 };
+
+    const subscription = just(entity, [
+      effects((obj) => {
+        obj.value = signal.get();
+      }),
+    ]).subscribe();
+
+    assert.strictEqual(entity.value, 0);
+
+    signal.set(1);
+    assert.strictEqual(entity.value, 1);
+
+    signal.set(2);
+    assert.strictEqual(entity.value, 2);
+
+    subscription.unsubscribe();
+    signal.set(3);
+    assert.strictEqual(entity.value, 2, "unmounted, so nothing runs it any more");
+  });
+
+  it("runs each entry in order, and each re-runs on its own", () => {
+    const signal = Signal.of(1);
+    /** @type {number[]} */
+    const result = [];
+
+    const subscription = just(result, [
+      effects((arr) => {
+        arr.push(1 * signal.get());
+      }),
+      effects((arr) => {
+        arr.push(2 * signal.get());
+      }),
+    ]).subscribe();
+
+    assert.deepStrictEqual(result, [1, 2], "mounted in array order");
+
+    signal.set(3);
+    assert.deepStrictEqual(result, [1, 2, 3, 6], "and re-run in the same order");
+
+    subscription.unsubscribe();
+  });
+});
+
+describe("rxEffects()", () => {
+  it("mounts on each value, and switches the mounting as values arrive", () => {
     /** @type {Subject<{ value: number }>} */
     const source = new Subject();
     const signal = Signal.of(0);
@@ -22,62 +70,136 @@ describe("effects()", () => {
 
     const subscription = source
       .pipe(
-        effects((obj) => {
+        rxEffects((obj) => {
           obj.value = signal.get();
         }),
       )
-      .subscribe({
-        complete,
-      });
+      .subscribe({ complete });
 
-    assert.strictEqual(entity.value, 0);
+    assert.strictEqual(entity.value, 0, "nothing is mounted until a value arrives");
 
     signal.set(1);
     source.next(entity);
     assert.strictEqual(entity.value, 1);
 
     signal.set(2);
-    assert.strictEqual(entity.value, 2);
+    assert.strictEqual(entity.value, 2, "and it re-runs while that value is the current one");
 
     source.next(entity2);
     assert.strictEqual(entity2.value, 2);
 
     signal.set(3);
-    assert.strictEqual(entity.value, 2);
+    assert.strictEqual(entity.value, 2, "the previous value's mounting came down");
     assert.strictEqual(entity2.value, 3);
 
     source.complete();
-    assert.ok(complete.mock.calls.length > 0);
+    assert.ok(complete.mock.calls.length > 0, "and completion is passed on");
 
     subscription.unsubscribe();
   });
 
-  it("applies effects in order", () => {
-    /** @type {Subject<number[]>} */
+  it("passes each value on with its mounting already standing", () => {
+    /** @type {Subject<string[]>} */
     const source = new Subject();
-    const signal = Signal.of(0);
-    /** @type {number[]} */
-    const result = [];
+    /** @type {string[]} */
+    const seen = [];
 
     const subscription = source
       .pipe(
-        effects((arr) => {
-          arr.push(1 * signal.get());
+        rxEffects((arr) => {
+          arr.push("mounted");
         }),
-        effects((arr) => {
-          arr.push(2 * signal.get());
+      )
+      .subscribe({
+        next: (arr) => {
+          seen.push(...arr);
+        },
+      });
+
+    source.next([]);
+    assert.deepStrictEqual(seen, ["mounted"], "the effect ran before the value was passed on");
+
+    subscription.unsubscribe();
+  });
+
+  it("takes the last mounting down when the subscriber leaves", () => {
+    /** @type {Subject<{ value: number }>} */
+    const source = new Subject();
+    const signal = Signal.of(0);
+    const entity = { value: 0 };
+
+    const subscription = source
+      .pipe(
+        rxEffects((obj) => {
+          obj.value = signal.get();
         }),
       )
       .subscribe();
 
+    source.next(entity);
     signal.set(1);
-    source.next(result);
-    assert.deepStrictEqual(result, [1, 2]);
+    assert.strictEqual(entity.value, 1);
 
-    signal.set(3);
-    assert.deepStrictEqual(result, [1, 2, 3, 6]);
+    subscription.unsubscribe();
+    signal.set(2);
+    assert.strictEqual(entity.value, 1, "unsubscribed, so nothing runs it any more");
+  });
+});
 
-    source.complete();
+describe("effectMap()", () => {
+  it("re-runs its callback when what the callback read changes", () => {
+    // The callback chooses *which* observable to keep subscribed, and choosing
+    // is a read: freedom's bricks branch on reactive state — `if
+    // (dragState.get() || props.bodyType === null) return NEVER` — so a brick
+    // acquires its rigid body when the board is made ready, and loses it while
+    // it is carried. Without this the body is chosen once, at mount, and never
+    // again.
+    const bodyType = Signal.of(/** @type {string | null} */ (null));
+    /** @type {string[]} */
+    const log = [];
+    const subscription = just({}, [
+      effectMap(() => {
+        if (bodyType.get() === null) {
+          return NEVER;
+        }
+        return new Observable(() => {
+          log.push("body created");
+          return () => log.push("body removed");
+        });
+      }),
+    ]).subscribe(() => {});
+
+    assert.deepEqual(log, [], "nothing while there is no body to build");
+
+    bodyType.set("dynamic");
+    assert.deepEqual(log, ["body created"], "the callback ran again and its choice was subscribed");
+
+    bodyType.set(null);
+    assert.deepEqual(log, ["body created", "body removed"], "and switching away undoes it");
+
+    subscription.unsubscribe();
+  });
+
+  it("does not adopt what the observable reads while subscribing", () => {
+    // The same rule `use()` follows, and for the same reason: subscribing is
+    // not reading. A foreign observable's `subscribe` may read reactive
+    // things — a `component(...)` builds its entities in there — and tracking
+    // them would tear the subscription down and back up on a write the
+    // mounting never looked at.
+    const unrelated = Signal.of("a");
+    let innerSubscribes = 0;
+    const inner = new Observable(() => {
+      innerSubscribes += 1;
+      unrelated.get();
+      return () => {};
+    });
+
+    const subscription = just({}, [effectMap(() => inner)]).subscribe(() => {});
+    assert.strictEqual(innerSubscribes, 1);
+
+    unrelated.set("b");
+    assert.strictEqual(innerSubscribes, 1, "the mounting never read it, so nothing should move");
+
     subscription.unsubscribe();
   });
 });
@@ -185,7 +307,7 @@ describe("takeNothing()", () => {
     const source = new Subject();
     const complete = mock.fn();
 
-    const subscription = source.pipe(takeNothing()).subscribe({
+    const subscription = takeNothing()(source).subscribe({
       complete,
     });
 
@@ -210,16 +332,12 @@ describe("map()", () => {
     const next = mock.fn();
     const complete = mock.fn();
 
-    const subscription = source
-      .pipe(
-        map((x) => {
-          return x + signal.get();
-        }),
-      )
-      .subscribe({
-        next,
-        complete,
-      });
+    const subscription = map((/** @type {number} */ x) => {
+      return x + signal.get();
+    })(source).subscribe({
+      next,
+      complete,
+    });
 
     assert.strictEqual(next.mock.calls.length, 0);
 
@@ -498,7 +616,7 @@ describe("Counting method re-runs", () => {
 
   it("only re-runs when value changes with (two observables)", () => {
     const store = new MyStore(0);
-    const values = merge(observeFn(store).multiplyBy(2), observeFn(store).multiplyBy(3));
+    const values = merge(rx(observeFn(store).multiplyBy(2)), rx(observeFn(store).multiplyBy(3)));
     /** @type {number[]} */
     const result = [];
     const subscription = values.subscribe((value) => {

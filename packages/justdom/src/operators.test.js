@@ -2,7 +2,8 @@ import { describe, it, mock } from "node:test";
 import assert from "node:assert/strict";
 import { userEvent } from "@testing-library/user-event";
 import { just } from "@apendua/signal";
-import { map, Observable, Subject } from "rxjs";
+import { rx } from "@apendua/signal/rxjs";
+import { map, Subject } from "rxjs";
 import { on, set, attr, data, style } from "./operators.js";
 import { children, toMountable } from "./dom.js";
 
@@ -11,9 +12,7 @@ describe("DOM Operators", () => {
     it("should handle click events", async () => {
       const handleClick = mock.fn();
       const button = document.createElement("button");
-      const source$ = just(button);
-
-      const subscription = source$.pipe(on("click", handleClick)).subscribe();
+      const subscription = just(button, [on("click", handleClick)]).subscribe();
 
       await userEvent.click(button);
       assert.strictEqual(handleClick.mock.calls.length, 1);
@@ -29,9 +28,7 @@ describe("DOM Operators", () => {
       const input = document.createElement("input");
       /** @type {Subject<string>} */
       const value$ = new Subject();
-      const source$ = just(input);
-
-      const subscription = source$.pipe(set("value", value$)).subscribe();
+      const subscription = just(input, [set("value", value$)]).subscribe();
 
       value$.next("test value");
       assert.strictEqual(input.value, "test value");
@@ -46,9 +43,7 @@ describe("DOM Operators", () => {
       const div = document.createElement("div");
       /** @type {Subject<string>} */
       const value$ = new Subject();
-      const source$ = just(div);
-
-      const subscription = source$.pipe(attr("data-test", value$)).subscribe();
+      const subscription = just(div, [attr("data-test", value$)]).subscribe();
 
       value$.next("test value");
       assert.strictEqual(div.getAttribute("data-test"), "test value");
@@ -60,9 +55,7 @@ describe("DOM Operators", () => {
       const div = document.createElement("div");
       /** @type {Subject<string | undefined>} */
       const value$ = new Subject();
-      const source$ = just(div);
-
-      const subscription = source$.pipe(attr("data-test", value$)).subscribe();
+      const subscription = just(div, [attr("data-test", value$)]).subscribe();
 
       value$.next("test value");
       assert.strictEqual(div.getAttribute("data-test"), "test value");
@@ -77,9 +70,7 @@ describe("DOM Operators", () => {
       const div = document.createElement("div");
       /** @type {Subject<string>} */
       const value$ = new Subject();
-      const source$ = just(div);
-
-      const subscription = source$.pipe(attr("data-test", value$)).subscribe();
+      const subscription = just(div, [attr("data-test", value$)]).subscribe();
 
       value$.next("test value");
       assert.strictEqual(div.getAttribute("data-test"), "test value");
@@ -92,9 +83,7 @@ describe("DOM Operators", () => {
       const div = document.createElement("div");
       /** @type {Subject<string>} */
       const value$ = new Subject();
-      const source$ = just(div);
-
-      const subscription = source$.pipe(attr("data-test-key", value$)).subscribe();
+      const subscription = just(div, [attr("data-test-key", value$)]).subscribe();
 
       value$.next("test value");
       assert.strictEqual(div.dataset.testKey, "test value");
@@ -106,9 +95,7 @@ describe("DOM Operators", () => {
       const div = document.createElement("div");
       /** @type {Subject<string | undefined>} */
       const value$ = new Subject();
-      const source$ = just(div);
-
-      const subscription = source$.pipe(attr("data-test-key", value$)).subscribe();
+      const subscription = just(div, [attr("data-test-key", value$)]).subscribe();
 
       value$.next("test value");
       assert.strictEqual(div.dataset.testKey, "test value");
@@ -125,9 +112,7 @@ describe("DOM Operators", () => {
       const div = document.createElement("div");
       /** @type {Subject<string>} */
       const value$ = new Subject();
-      const source$ = just(div);
-
-      const subscription = source$.pipe(data("testKey", value$)).subscribe();
+      const subscription = just(div, [data("testKey", value$)]).subscribe();
 
       value$.next("test value");
       assert.strictEqual(div.dataset.testKey, "test value");
@@ -139,9 +124,7 @@ describe("DOM Operators", () => {
       const div = document.createElement("div");
       /** @type {Subject<string | undefined>} */
       const value$ = new Subject();
-      const source$ = just(div);
-
-      const subscription = source$.pipe(data("testKey", value$)).subscribe();
+      const subscription = just(div, [data("testKey", value$)]).subscribe();
 
       value$.next("test value");
       assert.strictEqual(div.dataset.testKey, "test value");
@@ -156,9 +139,7 @@ describe("DOM Operators", () => {
       const div = document.createElement("div");
       /** @type {Subject<string>} */
       const value$ = new Subject();
-      const source$ = new Observable((subscriber) => subscriber.next(div));
-
-      const subscription = source$.pipe(data("testKey", value$)).subscribe();
+      const subscription = just(div, [data("testKey", value$)]).subscribe();
 
       value$.next("test value");
       assert.strictEqual(div.getAttribute("data-test-key"), "test value");
@@ -171,9 +152,7 @@ describe("DOM Operators", () => {
       const div = document.createElement("div");
       /** @type {Subject<string | undefined>} */
       const value$ = new Subject();
-      const source$ = new Observable((subscriber) => subscriber.next(div));
-
-      const subscription = source$.pipe(data("testKey", value$)).subscribe();
+      const subscription = just(div, [data("testKey", value$)]).subscribe();
 
       value$.next("test value");
       assert.strictEqual(div.getAttribute("data-test-key"), "test value");
@@ -190,9 +169,7 @@ describe("DOM Operators", () => {
       const div = document.createElement("div");
       /** @type {Subject<string>} */
       const value$ = new Subject();
-      const source$ = new Observable((subscriber) => subscriber.next(div));
-
-      const subscription = source$.pipe(style("backgroundColor", value$)).subscribe();
+      const subscription = just(div, [style("backgroundColor", value$)]).subscribe();
 
       value$.next("red");
       assert.strictEqual(div.style.backgroundColor, "red");
@@ -205,9 +182,7 @@ describe("DOM Operators", () => {
       const div = document.createElement("div");
       /** @type {Subject<string>} */
       const value$ = new Subject();
-      const source$ = new Observable((subscriber) => subscriber.next(div));
-
-      const subscription = source$.pipe(style("--accent", value$)).subscribe();
+      const subscription = just(div, [style("--accent", value$)]).subscribe();
 
       value$.next("red");
       assert.strictEqual(div.style.getPropertyValue("--accent"), "red");
@@ -220,9 +195,7 @@ describe("DOM Operators", () => {
 
     it("should serialize a custom property into the style attribute", () => {
       const div = document.createElement("div");
-      const source$ = new Observable((subscriber) => subscriber.next(div));
-
-      const subscription = source$.pipe(style("--accent", () => "rebeccapurple")).subscribe();
+      const subscription = just(div, [style("--accent", () => "rebeccapurple")]).subscribe();
 
       assert.strictEqual(div.getAttribute("style"), "--accent: rebeccapurple;");
 
@@ -233,9 +206,7 @@ describe("DOM Operators", () => {
       const div = document.createElement("div");
       /** @type {Subject<string | undefined>} */
       const value$ = new Subject();
-      const source$ = new Observable((subscriber) => subscriber.next(div));
-
-      const subscription = source$.pipe(style("--accent", value$)).subscribe();
+      const subscription = just(div, [style("--accent", value$)]).subscribe();
 
       value$.next("red");
       assert.strictEqual(div.style.getPropertyValue("--accent"), "red");
@@ -248,9 +219,7 @@ describe("DOM Operators", () => {
 
     it("should accept custom properties alongside regular ones in the object form", () => {
       const div = document.createElement("div");
-      const source$ = new Observable((subscriber) => subscriber.next(div));
-
-      const subscription = source$.pipe(style({ color: "red", "--accent": "blue" })).subscribe();
+      const subscription = just(div, [style({ color: "red", "--accent": "blue" })]).subscribe();
 
       assert.strictEqual(div.style.color, "red");
       assert.strictEqual(div.style.getPropertyValue("--accent"), "blue");
@@ -260,9 +229,7 @@ describe("DOM Operators", () => {
 
     it("should coerce non-string custom property values", () => {
       const div = document.createElement("div");
-      const source$ = new Observable((subscriber) => subscriber.next(div));
-
-      const subscription = source$.pipe(style("--count", () => 3)).subscribe();
+      const subscription = just(div, [style("--count", () => 3)]).subscribe();
 
       assert.strictEqual(div.style.getPropertyValue("--count"), "3");
 
@@ -275,10 +242,9 @@ describe("DOM Operators", () => {
       const parent = document.createElement("div");
       const child = document.createElement("span");
 
-      const source$ = just(parent);
-      const child$ = just(child).pipe(map(toMountable));
+      const child$ = rx(just(child)).pipe(map(toMountable));
 
-      const subscription = source$.pipe(children(child$)).subscribe();
+      const subscription = just(parent, [children(child$)]).subscribe();
 
       assert.strictEqual(parent.contains(child), true);
 

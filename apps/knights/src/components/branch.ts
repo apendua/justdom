@@ -1,5 +1,5 @@
 import { list, type Mountable } from "@apendua/justdom";
-import type { Observable } from "rxjs";
+import type { Source, Subscribable } from "@apendua/signal";
 
 /**
  * Renders one of several alternatives, chosen by a key.
@@ -11,7 +11,7 @@ import type { Observable } from "rxjs";
  */
 export default function branch<T extends string>(
   select: () => T,
-  render: (key: T) => Observable<Mountable>,
-): Observable<Mountable> {
+  render: (key: T) => Subscribable<Mountable>,
+): Source<Mountable> {
   return list(() => [select()], render);
 }

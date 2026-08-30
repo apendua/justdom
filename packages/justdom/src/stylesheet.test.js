@@ -7,14 +7,16 @@ import { className, fontFace, stylesheet } from "./stylesheet.js";
  * Subscribes to a name observable and reports the emitted name together with
  * the css that was injected into the document head while it was subscribed.
  *
- * @param {import("rxjs").Observable<string>} name$
+ * @param {import("@apendua/signal").Subscribable<string>} name$
  * @returns {{ name: string, css: string, unsubscribe: () => void }}
  */
 function mount(name$) {
   /** @type {string} */
   let name = "";
-  const subscription = name$.subscribe((value) => {
-    name = value;
+  const subscription = name$.subscribe({
+    next: (value) => {
+      name = value;
+    },
   });
   return {
     get name() {

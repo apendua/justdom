@@ -1,4 +1,5 @@
 import { addDependency, batch, Derived, fromEvent, NoValueError, Signal } from "@apendua/signal";
+import { rx } from "@apendua/signal/rxjs";
 import { merge, Subject } from "rxjs";
 import {
   collapseWhitespace,
@@ -2134,7 +2135,7 @@ export function getCheckedCached(element) {
         },
       });
     }
-    const dependency = merge(fromEvent(element, "change"), assigned);
+    const dependency = merge(rx(fromEvent(element, "change")), assigned);
     signal = new Derived(() => {
       addDependency(dependency);
       return element.checked;

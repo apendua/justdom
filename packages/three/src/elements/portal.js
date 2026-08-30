@@ -370,7 +370,7 @@ export function createPortal(
    */
   function createObjectForNode(node) {
     mirror.adopt(node);
-    /** @type {Observable<THREE.Object3D> | undefined} */
+    /** @type {import("@apendua/signal").Subscribable<THREE.Object3D> | undefined} */
     let object$;
     if (node.nodeType === Node.ELEMENT_NODE) {
       const element = /** @type {HTMLElement} */ (node);

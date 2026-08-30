@@ -1,5 +1,6 @@
 import { observable } from "@apendua/signal";
 import { EMPTY, switchMap, timer, type Subscription } from "rxjs";
+import { rx } from "@apendua/signal/rxjs";
 import { TIMING_BOT_THINKS } from "../constants";
 import chooseMove from "./bot";
 import type Game from "./Game";
@@ -17,7 +18,7 @@ export default class BotPlayer {
   #subscription: Subscription;
 
   public constructor(game: Game, thinkingTime = TIMING_BOT_THINKS) {
-    this.#subscription = observable(() => game.isWaitingForBot)
+    this.#subscription = rx(observable(() => game.isWaitingForBot))
       .pipe(switchMap((isWaiting) => (isWaiting ? timer(thinkingTime) : EMPTY)))
       .subscribe(() => {
         const actor = game.currentActor;

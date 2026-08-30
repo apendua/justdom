@@ -24,7 +24,7 @@ const classes = {
  * teardown. Nothing here is portal-specific: a dropdown is ordinary DOM, which
  * is the whole reason it can be projected into a scene at all.
  *
- * @param {Observable<Mountable>} tree
+ * @param {import("@apendua/signal").Subscribable<Mountable>} tree
  */
 function mount(tree) {
   const host = document.createElement("div");

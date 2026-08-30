@@ -388,7 +388,7 @@ export function frames(ctx) {
  */
 
 /**
- * @param {(ctx: WeakKey) => Observable<unknown>} fn Builds the tree, which is
+ * @param {(ctx: WeakKey) => import("@apendua/signal").Subscribable<unknown>} fn Builds the tree, which is
  *   mounted rather than read: the scene is `render`'s, and this decorates it.
  *   `effectsOnly` is what a root that produces nothing is wrapped in.
  * @param {RenderOptions} [options]
@@ -514,7 +514,7 @@ export function render(fn, options = {}) {
     // it mounts on the way through — so nothing is read off this; the
     // subscription is what holds the tree up, and dropping it takes the tree
     // down with the renderer.
-    subscriber.add(fn(ctx).subscribe());
+    subscriber.add(fn(ctx).subscribe({}));
 
     // The same subject anything built above already holds: the scene was
     // constructed before this line, and whatever asked it for frames is

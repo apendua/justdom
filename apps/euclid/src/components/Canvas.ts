@@ -2,7 +2,6 @@ import { $, $$, attr, children, className, keyedList, on } from "@apendua/justdo
 import { Signal, component, observable, set } from "@apendua/signal";
 import { Circle, Line, Point } from "@apendua.dev/euclid-core";
 import type { SceneItem } from "@apendua.dev/euclid-lang";
-import { tap } from "rxjs";
 import type AppStore from "../store/App";
 
 const INK = "#1f1d1a";
@@ -472,7 +471,7 @@ const Canvas = component((store: AppStore) => {
           keyedList(orderedItems, (item) => renderItem(item.kind, item.id)),
           previewLayer(),
         ),
-        tap((svg) => {
+        (svg: SVGSVGElement) => {
           if (svgRef !== svg) {
             svgRef = svg;
             svg.addEventListener(
@@ -494,7 +493,7 @@ const Canvas = component((store: AppStore) => {
             });
             observer.observe(svg);
           }
-        }),
+        },
       ]),
     ),
   ]);

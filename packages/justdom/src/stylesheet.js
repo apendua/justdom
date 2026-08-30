@@ -1,6 +1,7 @@
-import { map, Observable, ReplaySubject, share } from "rxjs";
+import { map, Observable } from "rxjs";
+import { rx } from "@apendua/signal/rxjs";
 import { renderText } from "./text.js";
-import { effectMap } from "@apendua/signal";
+import { Derived, just, onCleanup, toObservable } from "@apendua/signal";
 import { isHydrating } from "./hydrate.js";
 
 const STYLE_KEY_ATTRIBUTE = "data-style-key";
@@ -17,7 +18,7 @@ export const CLASS_NAME = new Observable();
  * derived from the source and therefore agree, but a duplicate of each
  * stylesheet in the document.
  *
- * @param {Observable<string>} value - An observable of CSS class content.
+ * @param {import("@apendua/signal").Subscribable<string>} value - An observable of CSS class content.
  * @param {string} key - The generated name this stylesheet defines.
  * @returns {Observable<string>}
  */
@@ -31,8 +32,10 @@ function styleElement(value, key) {
       styleElement.setAttribute(STYLE_KEY_ATTRIBUTE, key);
     }
     subscriber.add(
-      value.subscribe((newValue) => {
-        styleElement.innerHTML = newValue;
+      value.subscribe({
+        next: (newValue) => {
+          styleElement.innerHTML = newValue;
+        },
       }),
     );
     if (!adopted) {
@@ -121,68 +124,63 @@ function stableName(prefix, strings, isStatic) {
 }
 
 /**
- * @param {string} value
- * @returns {Observable<string>}
- */
-function constant(value) {
-  return new Observable((subscriber) => {
-    subscriber.next(value);
-  }).pipe(
-    share({
-      connector: () => new ReplaySubject(1),
-      resetOnRefCountZero: true,
-    }),
-  );
-}
-
-/**
  * Creates a CSS class name observable from template strings and values.
  * @param {TemplateStringsArray} strings - The template strings.
  * @param {...import("./text.js").Renderable} values - The values to interpolate.
- * @returns {Observable<string>}
+ * @returns {import("@apendua/signal").Source<string>}
  */
 export function className(strings, ...values) {
-  return constant(stableName("class_", strings, values.length === 0)).pipe(
-    effectMap((key) => {
-      return styleElement(
-        renderText(strings, ...values).pipe(map((value) => `.${key} {${value}}`)),
-        key,
-      );
-    }),
-    share({
-      connector: () => new ReplaySubject(1),
-      resetOnRefCountZero: true,
-    }),
-  );
+  const key = stableName("class_", strings, values.length === 0);
+  return shared(key, rx(renderText(strings, ...values)).pipe(map((value) => `.${key} {${value}}`)));
+}
+
+/**
+ * One mounted style element however many subscribers, the name replayed to a
+ * late one, everything down with the last.
+ *
+ * This is the one place in the package that *wants* sharing — a class name is
+ * used by every element that wears it, and each of them holding its own copy
+ * of the rule would fill `document.head` with duplicates — so the sharing is
+ * explicit and local: a `Derived` whose evaluation mounts the element and
+ * whose refcount is the subscribers. `just` is deliberately cold and no help
+ * here; if cross-call-site sharing is ever wanted, `memoizeDerived` is the
+ * tool to reach for.
+ *
+ * @param {string} key
+ * @param {import("@apendua/signal").Subscribable<string>} content
+ * @returns {import("@apendua/signal").Source<string>}
+ */
+function shared(key, content) {
+  /** @type {Derived<string>} */
+  const node = new Derived(() => {
+    const subscription = styleElement(content, key).subscribe({
+      error: (err) => node.fail(err),
+    });
+    onCleanup(() => subscription.unsubscribe());
+    return key;
+  });
+  return toObservable(node);
 }
 
 /**
  * Creates a CSS class name observable from template strings and values.
  * @param {TemplateStringsArray} strings - The template strings.
  * @param {...import("./text.js").Renderable} values - The values to interpolate.
- * @returns {Observable<string>}
+ * @returns {import("@apendua/signal").Source<string>}
  */
 export function stylesheet(strings, ...values) {
-  const className$ = constant(stableName("class_", strings, values.length === 0));
-  return className$.pipe(
-    effectMap((key) => {
-      return styleElement(
-        renderText(
-          strings,
-          ...values.map((value) => {
-            if (value === CLASS_NAME) {
-              return className$;
-            }
-            return value;
-          }),
-        ),
-        key,
-      );
-    }),
-    share({
-      connector: () => new ReplaySubject(1),
-      resetOnRefCountZero: true,
-    }),
+  const name = stableName("class_", strings, values.length === 0);
+  return shared(
+    name,
+    renderText(
+      strings,
+      ...values.map((value) => {
+        if (value === CLASS_NAME) {
+          return just(name);
+        }
+        return value;
+      }),
+    ),
   );
 }
 
@@ -192,14 +190,14 @@ export function stylesheet(strings, ...values) {
  * @param {string} [options.format]
  * @param {string} [options.fontWeight]
  * @param {string} [options.fontStyle]
- * @returns {Observable<string>}
+ * @returns {import("@apendua/signal").Source<string>}
  */
 export function fontFace(fontUrl, options = {}) {
   const { format = "truetype", fontWeight = "normal", fontStyle = "normal" } = options;
   // Every input to the rule is known up front, so the name can be derived from
   // them and stays the same across a server render and a client hydration.
   const fontName = `font_${hash([fontUrl, format, fontWeight, fontStyle].join(" "))}`;
-  return new Observable((subscriber) => {
+  const node = new Derived(() => {
     const styleElement = document.createElement("style");
     styleElement.innerHTML = `
       @font-face {
@@ -210,14 +208,10 @@ export function fontFace(fontUrl, options = {}) {
       }
     `;
     document.head.appendChild(styleElement);
-    subscriber.next(fontName);
-    return () => {
+    onCleanup(() => {
       document.head.removeChild(styleElement);
-    };
-  }).pipe(
-    share({
-      connector: () => new ReplaySubject(1),
-      resetOnRefCountZero: true,
-    }),
-  );
+    });
+    return fontName;
+  });
+  return toObservable(node);
 }

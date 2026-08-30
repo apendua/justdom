@@ -1,4 +1,5 @@
 import { set, children, $, className } from "@apendua/justdom";
+import { rx } from "@apendua/signal/rxjs";
 import { store, observe } from "@apendua/signal";
 import { Fields, FieldsContext } from "../store/Fields";
 import { RootContext } from "../store/Root";
@@ -50,26 +51,28 @@ const Game = (ctx: WeakKey) => {
 
   ctx = ViewportContext.set(ctx, viewport);
 
-  return observe(state).game.pipe(
-    switchMap((game) => {
+  return rx(observe(state).game).pipe(
+    switchMap((game: Fields) => {
       const newContext = FieldsContext.set(ctx, game);
       const selectedId = state.sizeId;
-      return $("div", [
-        set("className", fullscreen),
-        children(
-          Minefield(newContext, game),
-          Menu(newContext, {
-            presets: SIZE_PRESETS,
-            selectedId,
-            game,
-            onSelect: startGame,
-            onRestart: () => {
-              const preset = SIZE_PRESETS.find((p) => p.id === selectedId) ?? SIZE_PRESETS[0];
-              startGame(preset);
-            },
-          }),
-        ),
-      ]);
+      return rx(
+        $("div", [
+          set("className", fullscreen),
+          children(
+            Minefield(newContext, game),
+            Menu(newContext, {
+              presets: SIZE_PRESETS,
+              selectedId,
+              game,
+              onSelect: startGame,
+              onRestart: () => {
+                const preset = SIZE_PRESETS.find((p) => p.id === selectedId) ?? SIZE_PRESETS[0];
+                startGame(preset);
+              },
+            }),
+          ),
+        ]),
+      );
     }),
   );
 };

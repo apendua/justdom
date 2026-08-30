@@ -1,10 +1,11 @@
 import * as THREE from "three";
-import { effects, just, fromEvent, observable, use } from "@apendua/signal";
-import { distinctUntilChanged, Observable, switchMap } from "rxjs";
+import { Derived, each, effectMap, fromEvent, just, useEffect } from "@apendua/signal";
+import { distinctUntilChanged, merge, Observable, switchMap } from "rxjs";
+import { rx } from "@apendua/signal/rxjs";
 import { addDependency } from "@apendua/signal";
 
 /**
- * @import { MonoTypeOperatorFunction, Subscriber } from 'rxjs';
+ * @import { EntityEffect, Subscribable, Source } from '@apendua/signal';
  * @import { Object3D } from 'three';
  * @import { CopyableProps, Component } from './core.js';
  */
@@ -13,26 +14,15 @@ import { addDependency } from "@apendua/signal";
  * @template {object} TEntity
  * @template {keyof CopyableProps<TEntity>} K
  * @param {K} key
- * @param {Observable<TEntity[K]>} value
- * @returns {(source: Observable<TEntity>) => Observable<TEntity>}
+ * @param {Subscribable<TEntity[K]>} value
+ * @returns {EntityEffect<TEntity>}
  */
 export function copy(key, value) {
-  return (source) => {
-    return source.pipe(
-      switchMap((entity) => {
-        return new Observable((subscriber) => {
-          subscriber.add(
-            value.subscribe({
-              next: (v) => {
-                /** @type {Record<K, { copy: (v: TEntity[K]) => void }>} */ (entity)[key].copy(v);
-              },
-            }),
-          );
-          subscriber.next(entity);
-        });
-      }),
-    );
-  };
+  return effectMap((entity) =>
+    each(value, (v) => {
+      /** @type {Record<K, { copy: (v: TEntity[K]) => void }>} */ (entity)[key].copy(v);
+    }),
+  );
 }
 
 /**
@@ -45,11 +35,11 @@ function teardown(fn) {
 
 /**
  * @param {Object3D<any>} parent
- * @param {Observable<Component>} child
+ * @param {Subscribable<Component>} child
  * @return {Observable<never>}
  */
 function addToParent(parent, child) {
-  return child.pipe(
+  return rx(child).pipe(
     distinctUntilChanged(),
     switchMap((component) => {
       return teardown(() => component.addTo(parent));
@@ -59,23 +49,18 @@ function addToParent(parent, child) {
 
 /**
  * @template {Object3D<any>} TEntity
- * @param {Observable<Component>[]} observables
- * @returns {(source: Observable<TEntity>) => Observable<TEntity>}
+ * @param {Subscribable<Component>[]} observables
+ * @returns {EntityEffect<TEntity>}
  */
 export function children(...observables) {
-  return switchMap((entity) => {
-    return new Observable((/** @type {Subscriber<TEntity>} */ subscriber) => {
-      observables.forEach((observable) => {
-        subscriber.add(addToParent(entity, observable).subscribe());
-      });
-      subscriber.next(entity);
-    });
-  });
+  return effectMap((entity) =>
+    merge(...observables.map((observable) => addToParent(entity, observable))),
+  );
 }
 
 /**
- * @param {Observable<Component>[]} observables
- * @returns {Observable<Component>}
+ * @param {Subscribable<Component>[]} observables
+ * @returns {Source<Component>}
  */
 export function fragment(...observables) {
   return just({
@@ -89,7 +74,7 @@ export function fragment(...observables) {
 }
 
 /**
- * @returns {(source: Observable<Object3D | null>) => Observable<Component>}
+ * @returns {(source: Subscribable<Object3D | null>) => Source<Component>}
  */
 function toComponent() {
   return (source) => {
@@ -119,17 +104,17 @@ function toComponent() {
 }
 
 export function Nothing() {
-  return just(null).pipe(toComponent());
+  return toComponent()(just(null));
 }
 
 /**
  * @template {Object3D<any>} T
  * @param {T} object
- * @param {Array<(source: Observable<T>) => Observable<T>>} [operators]
- * @returns {Observable<Component>}
+ * @param {Array<EntityEffect<T>>} [effects]
+ * @returns {Source<Component>}
  */
-export function $(object, operators = []) {
-  return just(object, operators).pipe(toComponent());
+export function $(object, effects = []) {
+  return toComponent()(just(object, effects));
 }
 
 /**
@@ -147,7 +132,7 @@ export function $(object, operators = []) {
  *
  * @template {Object3D<any>} T
  * @param {(obj: T) => void} fn
- * @returns {MonoTypeOperatorFunction<T>}
+ * @returns {EntityEffect<T>}
  */
 export function layoutEffects(fn) {
   /**
@@ -166,22 +151,23 @@ export function layoutEffects(fn) {
     return isInScene(obj.parent);
   }
 
-  return effects((obj) => {
-    // Latched rather than filtered: once it has read true the getter stops
+  return (obj) => {
+    // Latched rather than filtered: once it has read true the derivation stops
     // looking at the graph at all, which drops the listeners on every ancestor
-    // along with it.
+    // along with it. The `Derived` is also the cutoff that used to be a
+    // `distinctUntilChanged`. State lives here, in the mounting, so the inner
+    // effect can re-run without resetting it.
     let attached = false;
-    use(
-      observable(() => attached || isInScene(obj)).pipe(
-        distinctUntilChanged(),
-        effects((inScene) => {
-          if (!inScene) {
-            return;
-          }
-          attached = true;
-          fn(obj);
-        }),
-      ),
+    const inScene = new Derived(() => attached || isInScene(obj));
+    useEffect(
+      () => {
+        if (!inScene.get()) {
+          return;
+        }
+        attached = true;
+        fn(obj);
+      },
+      { name: "layoutEffects" },
     );
-  });
+  };
 }

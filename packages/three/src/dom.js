@@ -1,26 +1,27 @@
 import * as THREE from "three";
 import { Observable, Subject, switchMap, takeUntil } from "rxjs";
-import { effects, just } from "@apendua/signal";
+import { just } from "@apendua/signal";
+import { rx, rxEffects } from "@apendua/signal/rxjs";
 import { onCleanup } from "@apendua/signal";
 import { createPortal } from "./elements/portal.js";
 
 /**
- * @import {MonoTypeOperatorFunction} from 'rxjs';
+ * @import {EntityEffect} from '@apendua/signal';
  * @import {Component,Mountable,XREventMap} from './core.js';
  * @import {PortalOptions} from './elements/portal.js';
  */
 
 /**
  * @param {WeakKey} ctx
- * @param {Observable<Mountable>} mountable$
- * @param {MonoTypeOperatorFunction<THREE.Object3D<XREventMap>>[]} [operators]
+ * @param {import("@apendua/signal").Subscribable<Mountable>} mountable$
+ * @param {EntityEffect<THREE.Object3D<XREventMap>>[]} [effects]
  * @param {PortalOptions} [options]
  * @returns {Observable<Component>}
  */
-export function dom(ctx, mountable$, operators = [], options = {}) {
+export function dom(ctx, mountable$, effects = [], options = {}) {
   /** @type {THREE.Group<XREventMap>} */
   const group = new THREE.Group();
-  return just(group, operators).pipe(
+  return rx(just(group, effects)).pipe(
     switchMap((obj) => {
       return new Observable((subscriber) => {
         /** @type {Subject<void>} */
@@ -28,8 +29,9 @@ export function dom(ctx, mountable$, operators = [], options = {}) {
         subscriber.next({
           /** @param {THREE.Object3D} parent */
           addTo(parent) {
-            const observable = mountable$.pipe(
-              effects((mountable) => {
+            // An effect per mountable, switched as the tree re-renders.
+            const observable = rx(mountable$).pipe(
+              rxEffects((mountable) => {
                 const portal = createPortal(ctx, options);
                 portal.addTo(obj);
                 portal.mount(mountable);

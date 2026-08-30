@@ -1,4 +1,5 @@
 import { createProperty } from "@apendua/signal";
+import { rx } from "@apendua/signal/rxjs";
 import { NEVER, Observable, ReplaySubject, shareReplay, switchMap, takeUntil } from "rxjs";
 import { takeNothing } from "@apendua/signal";
 import { withoutHydration } from "./hydrate.js";
@@ -10,7 +11,7 @@ import { withoutHydration } from "./hydrate.js";
 
 /**
  * @typedef {object} SuspendOptions
- * @property {() => Observable<Mountable>} fallback
+ * @property {() => import("@apendua/signal").Subscribable<Mountable>} fallback
  */
 
 /** Tracks what a subtree is still waiting for, and what to show meanwhile. */
@@ -50,12 +51,12 @@ class Manager {
   }
 
   /**
-   * @param {Observable<Mountable>} content
+   * @param {import("@apendua/signal").Subscribable<Mountable>} content
    * @returns {Observable<Mountable>}
    */
   render(content) {
     return new Observable((subscriber) => {
-      const shared = content.pipe(shareReplay({ bufferSize: 1, refCount: true }));
+      const shared = rx(content).pipe(shareReplay({ bufferSize: 1, refCount: true }));
       // Ensure that both content and fallback are always subscribed to,
       // so that their effects are applied and cleanup works correctly.
       //
@@ -65,11 +66,11 @@ class Manager {
       // holds, and the content has to build its own nodes and wait to be
       // swapped in.
       const keepAlive = new Observable((observer) =>
-        withoutHydration(() => shared.pipe(takeNothing()).subscribe(observer)),
+        withoutHydration(() => takeNothing()(shared).subscribe(observer)),
       );
       this.#subject
         .pipe(
-          switchMap((value) => (value ? shared : this.#options.fallback())),
+          switchMap((value) => (value ? shared : rx(this.#options.fallback()))),
           takeUntil(keepAlive),
         )
         .subscribe(subscriber);
@@ -118,7 +119,7 @@ export function suspend(ctx, fallbackOrOptions) {
 
 /**
  * @param {WeakKey} ctx
- * @param {Observable<Mountable>} content
+ * @param {import("@apendua/signal").Subscribable<Mountable>} content
  * @returns {Observable<Mountable>}
  */
 export function withFallback(ctx, content) {

@@ -1,6 +1,5 @@
 import { $$, children, list, on } from "@apendua/justdom";
 import { component } from "@apendua/signal";
-import { tap } from "rxjs";
 import { ANIMATION_IDLE, KNIGHT } from "../constants";
 import { areTheSameField } from "../helpers/map";
 import { createInverseMapping } from "../helpers/mappings";
@@ -224,9 +223,9 @@ const Board = component((ctx: WeakKey, props: BoardProps) => {
           }),
       ),
     ),
-    tap((node) => {
+    (node: SVGGElement) => {
       rootRef = node;
-    }),
+    },
   ]);
 });
 

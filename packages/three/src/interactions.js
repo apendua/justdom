@@ -1,11 +1,9 @@
 import * as THREE from "three";
-import { distinctUntilChanged, Observable } from "rxjs";
+import { Observable } from "rxjs";
 import {
   createProperty,
-  effectMap,
-  effects,
-  just,
-  observable,
+  Derived,
+  fromObservable,
   onCleanup,
   ReactiveMap,
   Signal,
@@ -489,26 +487,32 @@ export const InteractionContext = createProperty(
 );
 
 /**
- * Normalizes the three accepted shapes of a reactive value into an observable.
+ * Normalizes the three accepted shapes of a reactive value into a tracked
+ * reader. A `Derived` in front of the function form for its equality cutoff —
+ * the `distinctUntilChanged` this used to route through — and `fromObservable`
+ * for the observable form, whose "no value yet" reads as `NoValueError` and
+ * makes a reading effect wait, exactly as a source that has not emitted did.
  *
  * @template T
  * @param {Reactive<T>} value
- * @returns {Observable<T>}
+ * @returns {() => T}
  */
-function asObservable(value) {
+function asReader(value) {
   if (value instanceof Observable) {
-    return value;
+    const source = fromObservable(value);
+    return () => source.get();
   }
   if (typeof value === "function") {
-    return observable(/** @type {() => T} */ (value));
+    const source = new Derived(/** @type {() => T} */ (value));
+    return () => source.get();
   }
-  return just(value);
+  return () => value;
 }
 
 /**
  * @typedef {object} Interactions
  * @property {(event: InteractionEvent) => void} stopPropagation
- * @property {<TEntity extends THREE.Object3D<XREventMap>>(enabled?: Reactive<boolean>) => (source: Observable<TEntity>) => Observable<TEntity>} makeInteractive
+ * @property {<TEntity extends THREE.Object3D<XREventMap>>(enabled?: Reactive<boolean>) => import("@apendua/signal").EntityEffect<TEntity>} makeInteractive
  */
 
 /**
@@ -531,23 +535,16 @@ export function interactions(ctx) {
      * can hit it, not whether it exists.
      */
     makeInteractive: (enabled = true) => {
-      const isEnabled = asObservable(enabled).pipe(distinctUntilChanged());
-      // effectMap rather than switchMap: the registration observable has no
-      // reason to ever complete, and switchMap waits for its inner observable
-      // before passing a completion on, so a source that ended would leave the
-      // entity registered and the stream hanging.
-      return effectMap((entity) =>
-        isEnabled.pipe(
-          effects((value) => {
-            if (value) {
-              manager.add(entity);
-              onCleanup(() => {
-                manager.remove(entity);
-              });
-            }
-          }),
-        ),
-      );
+      const isEnabled = asReader(enabled);
+      return (entity) => {
+        if (!isEnabled()) {
+          return;
+        }
+        manager.add(entity);
+        onCleanup(() => {
+          manager.remove(entity);
+        });
+      };
     },
   };
 }

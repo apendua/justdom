@@ -34,4 +34,49 @@
  * }} WritableProps
  */
 
+/**
+ * The subscription contract, re-exported so that a package built on this one
+ * can spell its types in this package's vocabulary — `Source` for what the
+ * factories hand out, `Subscribable` for what the graph accepts — without
+ * naming RxJS. See `subscribable.js` for the contract itself.
+ *
+ * @template T
+ * @typedef {import("./subscribable.js").Observer<T>} Observer
+ */
+
+/**
+ * @typedef {import("./subscribable.js").Unsubscribable} Unsubscribable
+ */
+
+/**
+ * @template T
+ * @typedef {import("./subscribable.js").Subscribable<T>} Subscribable
+ */
+
+/**
+ * @template T
+ * @typedef {import("./subscribable.js").Source<T>} Source
+ */
+
+/**
+ * Work mounted on an entity for as long as its holder stands.
+ *
+ * This is what `just`, `useEffects` and `store` take where they used to take
+ * a `MonoTypeOperatorFunction`: not a stream transformer, but the body of an
+ * `Effect` with the entity in scope. It runs when the mounting is built,
+ * re-runs when anything it read changes, may register teardowns through
+ * `onCleanup` or by returning a function, and never substitutes the entity —
+ * the one value a mounting carries is the entity itself.
+ *
+ * A plain lambda is a valid effect: `(el) => { ref = el; }` reads nothing, so
+ * it runs exactly once per mounting.
+ *
+ * The second argument is the run's `EffectContext` — `fail` is how work the
+ * run merely started reports a failure that arrives after the run returned,
+ * such as a subscription erroring later. Most effects never need it.
+ *
+ * @template T
+ * @typedef {(entity: T, context: import("./Effect.js").EffectContext) => unknown} EntityEffect
+ */
+
 export {};

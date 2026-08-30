@@ -71,7 +71,7 @@ const classes = {
 };
 
 /**
- * @param {Observable<Mountable>} tree
+ * @param {import("@apendua/signal").Subscribable<Mountable>} tree
  */
 function mount(tree) {
   const host = document.createElement("div");

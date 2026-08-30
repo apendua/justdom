@@ -7,7 +7,7 @@ import { useEffects } from "./operators.js";
 import { isPlainObject } from "./util.js";
 
 /**
- * @import {MonoTypeOperatorFunction} from "rxjs"
+ * @import {EntityEffect} from "./types.js"
  * @import {IEmitter} from "./Emitter.js";
  */
 
@@ -64,13 +64,13 @@ export function replace(oldValue, newValue) {
  * @template {object} [TEventMap={}]
  * @overload
  * @param {T} data
- * @param {Array<MonoTypeOperatorFunction<T & IEmitter<TEventMap>>>} [operators]
+ * @param {Array<EntityEffect<T & IEmitter<TEventMap>>>} [operators]
  * @return {T & IEmitter<TEventMap>}
  */
 
 /**
  * @param {object} data
- * @param {Array<MonoTypeOperatorFunction<unknown>>} [operators]
+ * @param {Array<EntityEffect<unknown>>} [operators]
  * @return {object}
  */
 function store(data, operators = []) {

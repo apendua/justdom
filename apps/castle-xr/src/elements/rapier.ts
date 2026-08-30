@@ -9,10 +9,9 @@
  * is the same arithmetic the half grid uses, so a brick placed on the floor of
  * the board is already sitting on the floor of the simulation.
  */
-import { createProperty, onCleanup } from "@apendua/signal";
+import { createProperty, onCleanup, type EntityEffect } from "@apendua/signal";
 import * as THREE from "three";
 import * as RAPIER from "@dimforge/rapier3d";
-import { MonoTypeOperatorFunction } from "rxjs";
 import { effects, useEffects } from "@apendua/signal";
 import { layoutEffects, setWorldMatrix, useFrame } from "@apendua/freedom";
 
@@ -62,7 +61,7 @@ const origins = new WeakMap<RAPIER.World, THREE.Object3D>();
  * built from, and written back to, poses relative to it, so the whole board can
  * be moved and scaled in the room without the physics noticing.
  */
-export function useAsWorldOrigin(ctx: WeakKey): MonoTypeOperatorFunction<THREE.Object3D> {
+export function useAsWorldOrigin(ctx: WeakKey): EntityEffect<THREE.Object3D> {
   const { world } = RapierContext.get(ctx);
   return effects((o) => {
     origins.set(world, o);
@@ -89,7 +88,7 @@ export function collider(
   ctx: WeakKey,
   describe: () => RAPIER.ColliderDesc | null,
   onCreated?: (collider: RAPIER.Collider) => void,
-): MonoTypeOperatorFunction<RAPIER.RigidBody> {
+): EntityEffect<RAPIER.RigidBody> {
   const { world } = RapierContext.get(ctx);
   return effects((body) => {
     const desc = describe();
@@ -107,8 +106,8 @@ export function collider(
 export function rigidBody<T extends THREE.Object3D>(
   ctx: WeakKey,
   type: RAPIER.RigidBodyType,
-  operators: MonoTypeOperatorFunction<RAPIER.RigidBody>[],
-): MonoTypeOperatorFunction<T> {
+  operators: EntityEffect<RAPIER.RigidBody>[],
+): EntityEffect<T> {
   const { world } = RapierContext.get(ctx);
   return layoutEffects((obj) => {
     const origin = origins.get(world) ?? new THREE.Object3D();

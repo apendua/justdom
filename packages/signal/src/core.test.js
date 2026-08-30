@@ -61,7 +61,7 @@ describe("makeNonReactive", function () {
 /**
  * @template T
  * @param {() => T} fn
- * @return {Observable<T>}
+ * @return {import("./subscribable.js").Source<T>}
  */
 function observable(fn) {
   return toObservable(new Derived(fn));

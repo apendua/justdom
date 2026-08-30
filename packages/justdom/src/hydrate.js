@@ -212,8 +212,8 @@ export function claimSegment(fn) {
  * scratch, so a mismatch costs performance rather than correctness.
  *
  * @param {Element} root
- * @param {...Observable<Mountable>} content
- * @returns {Observable<unknown>}
+ * @param {...import("@apendua/signal").Subscribable<Mountable>} content
+ * @returns {import("@apendua/signal").Source<unknown>}
  */
 export function hydrate(root, ...content) {
   return new Observable((subscriber) => {

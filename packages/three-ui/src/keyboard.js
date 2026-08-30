@@ -1,9 +1,11 @@
 import { distinctUntilChanged, switchMap } from "rxjs";
+import { rx } from "@apendua/signal/rxjs";
 import { $, attr, children, on, renderText, set, style, text } from "@apendua/justdom";
 import { observable, Signal } from "@apendua/signal";
 
 /**
- * @import {MonoTypeOperatorFunction, Observable} from "rxjs";
+ * @import {Observable} from "rxjs";
+ * @import {EntityEffect} from "@apendua/signal";
  * @import {Mountable} from "@apendua/justdom";
  */
 
@@ -14,15 +16,15 @@ import { observable, Signal } from "@apendua/signal";
  * subtree, because a portal re-measures on a tree change and only restyles on
  * an attribute one.
  *
- * @param {Observable<string>} base
- * @param {Observable<string>} modifier
+ * @param {import("@apendua/signal").Subscribable<string>} base
+ * @param {import("@apendua/signal").Subscribable<string>} modifier
  * @param {() => boolean} active
- * @returns {Observable<string>}
+ * @returns {import("@apendua/signal").Source<string>}
  */
 const withModifier = (base, modifier, active) =>
-  observable(active).pipe(
+  rx(observable(active)).pipe(
     distinctUntilChanged(),
-    switchMap((isActive) => (isActive ? renderText`${base} ${modifier}` : base)),
+    switchMap((isActive) => rx(isActive ? renderText`${base} ${modifier}` : base)),
   );
 
 /**
@@ -116,11 +118,11 @@ const withModifier = (base, modifier, active) =>
  * class names.
  *
  * @typedef {object} KeyboardClasses
- * @property {Observable<string>} root The whole board.
- * @property {Observable<string>} row One row of keys.
- * @property {Observable<string>} key One key. Needs `cursor: pointer` to be a
+ * @property {import("@apendua/signal").Subscribable<string>} root The whole board.
+ * @property {import("@apendua/signal").Subscribable<string>} row One row of keys.
+ * @property {import("@apendua/signal").Subscribable<string>} key One key. Needs `cursor: pointer` to be a
  *   ray target in a scene, the same as any other control projected into one.
- * @property {Observable<string>} [keyActive] Added to a modifier key while it
+ * @property {import("@apendua/signal").Subscribable<string>} [keyActive] Added to a modifier key while it
  *   is engaged. Omit and a held shift looks like a loose one.
  */
 
@@ -303,7 +305,7 @@ export const MOBILE_LAYOUT = [
  * every digit of a number.
  *
  * @param {KeyboardProps} props
- * @returns {Observable<Mountable>}
+ * @returns {import("@apendua/signal").Source<Mountable>}
  */
 export function keyboard(props) {
   const { onKey, classes, layout = MOBILE_LAYOUT } = props;
@@ -401,13 +403,13 @@ export function keyboard(props) {
 
   /**
    * @param {KeyboardKey} entry
-   * @returns {Observable<Mountable>}
+   * @returns {import("@apendua/signal").Source<Mountable>}
    */
   const key = (entry) => {
     // Zero basis and a share of the row proportional to the key's width: the
     // one number that has to come from in here, because it is the layout the
     // caller asked for by name.
-    /** @type {MonoTypeOperatorFunction<HTMLDivElement>} */
+    /** @type {EntityEffect<HTMLDivElement>} */
     const flex = style({ flexGrow: `${entry.width ?? 1}`, flexBasis: "0" });
     if (entry.spacer) {
       // Space, not a key: undressed, unnamed, unclickable — and therefore not
@@ -416,7 +418,7 @@ export function keyboard(props) {
       return $("div", [flex]);
     }
     const { modifier } = entry;
-    /** @type {MonoTypeOperatorFunction<HTMLDivElement>[]} */
+    /** @type {EntityEffect<HTMLDivElement>[]} */
     const operators = [
       set(
         "className",
@@ -439,7 +441,7 @@ export function keyboard(props) {
 
   /**
    * @param {readonly KeyboardKey[]} keys
-   * @returns {Observable<Mountable>}
+   * @returns {import("@apendua/signal").Source<Mountable>}
    */
   const row = (keys) =>
     $("div", [

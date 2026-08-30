@@ -1,10 +1,11 @@
 import Computation from "./Computation.js";
-import { withComputation } from "./core.js";
+import { withComputation, addDependency, onCleanup } from "./core.js";
 import { Observable } from "rxjs";
-import { effectMap } from "./operators.js";
+import { failuresOf } from "./operators.js";
 
 /**
- * @import { Subscriber } from 'rxjs';
+ * @import { Source } from './subscribable.js';
+ * @import { EntityEffect } from './types.js';
  */
 
 /**
@@ -80,29 +81,28 @@ class Emitter {
 }
 
 /**
+ * Listen to `event` on the entity for as long as it stays mounted.
+ *
+ * The listener runs the handler inside a `Computation`, exactly as before,
+ * and the computation's failure — a handler throwing — fails the mounting the
+ * way a pipeline error used to.
+ *
  * @template {keyof TEntity["__EVENT_MAP__"]} TEvent
  * @template {IEmitter<Record<any, any>>} TEntity
  * @param {TEvent} event
  * @param {(e: TEntity["__EVENT_MAP__"][TEvent]) => void} handler
- * @returns {(source: Observable<TEntity>) => Observable<TEntity>}
+ * @returns {EntityEffect<TEntity>}
  */
 export function on(event, handler) {
-  return effectMap((entity) => {
-    return new Observable((/** @type {Subscriber<TEntity>} */ subscriber) => {
-      const computation = new Computation();
-      const listener = computation.bind(handler);
-      entity.addEventListener(event, listener);
-      subscriber.add(
-        computation.subscribe({
-          error: (err) => subscriber.error(err),
-        }),
-      );
-      subscriber.next(entity);
-      return () => {
-        entity.removeEventListener(event, listener);
-      };
+  return (entity) => {
+    const computation = new Computation();
+    const listener = computation.bind(handler);
+    entity.addEventListener(event, listener);
+    addDependency(failuresOf(computation));
+    onCleanup(() => {
+      entity.removeEventListener(event, listener);
     });
-  });
+  };
 }
 
 /**
@@ -110,7 +110,7 @@ export function on(event, handler) {
  * @template {keyof TEventMap} TEvent
  * @param {IEmitter<TEventMap>} emitter
  * @param {TEvent} event
- * @returns {Observable<TEventMap[TEvent]>}
+ * @returns {Source<TEventMap[TEvent]>}
  */
 export function fromEvent(emitter, event) {
   return new Observable((subscriber) => {

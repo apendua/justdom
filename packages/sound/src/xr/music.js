@@ -108,7 +108,7 @@ export function createMusicControls({ track, volume: initial = DEFAULT_MUSIC_VOL
  * autoplay policy, and means the browser tab stays silent until the headset
  * goes on.
  *
- * @type {(ctx: WeakKey, listener: THREE.AudioListener, controls: MusicControls) => Observable<Component>}
+ * @type {(ctx: WeakKey, listener: THREE.AudioListener, controls: MusicControls) => import("@apendua/signal").Source<Component>}
  */
 export const Music = component(
   /**

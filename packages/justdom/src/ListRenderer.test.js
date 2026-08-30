@@ -2,11 +2,13 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { BehaviorSubject, map, tap } from "rxjs";
 import { effectMap, just } from "@apendua/signal";
+import { rx } from "@apendua/signal/rxjs";
 import { replaceSegment, toSegment } from "./helpers.js";
 import ListRenderer from "./ListRenderer.js";
 
 /**
- * @import {Observable, MonoTypeOperatorFunction} from "rxjs"
+ * @import {Observable} from "rxjs"
+ * @import {EntityEffect} from "@apendua/signal"
  * @import {Mountable, Container} from "./types.js"
  */
 
@@ -16,14 +18,14 @@ describe("renders a simple DOM tree", () => {
       $("div", [
         children(
           $("span", [
-            tap((span) => {
+            (span) => {
               span.textContent = "Hello,";
-            }),
+            },
           ]),
           $("span", [
-            tap((span) => {
+            (span) => {
               span.textContent = "World!";
-            }),
+            },
           ]),
         ),
       ]),
@@ -40,9 +42,9 @@ describe("renders a simple DOM tree", () => {
         children(
           list(items$, (item) => {
             return $("li", [
-              tap((li) => {
+              (li) => {
                 li.textContent = item;
-              }),
+              },
             ]);
           }),
         ),
@@ -60,9 +62,9 @@ describe("renders a simple DOM tree", () => {
         children(
           list(items$, (item) => {
             return $("li", [
-              tap((li) => {
+              (li) => {
                 li.textContent = item;
-              }),
+              },
             ]);
           }),
         ),
@@ -88,9 +90,9 @@ describe("renders a simple DOM tree", () => {
         children(
           list(items$, (item) => {
             return $("li", [
-              tap((li) => {
+              (li) => {
                 li.textContent = item;
-              }),
+              },
             ]);
           }),
         ),
@@ -121,9 +123,9 @@ describe("renders a simple DOM tree", () => {
         children(
           list(items$, (item) => {
             return $("li", [
-              tap((li) => {
+              (li) => {
                 li.textContent = item;
-              }),
+              },
             ]);
           }),
         ),
@@ -185,12 +187,12 @@ const renderer = new ListRenderer({
 
 /**
  * @template {Node} T
- * @param {Array<Observable<Mountable>>} children
- * @returns {MonoTypeOperatorFunction<T>}
+ * @param {Array<import("@apendua/signal").Subscribable<Mountable>>} children
+ * @returns {EntityEffect<T>}
  */
 function children(...children) {
   return effectMap((node) => {
-    return renderer.renderFragment(children).pipe(
+    return rx(renderer.renderFragment(children)).pipe(
       tap((mountable) => {
         if (!node.firstChild || !node.lastChild) {
           const placeholder = node.appendChild(document.createComment(""));
@@ -205,7 +207,8 @@ function children(...children) {
 
 /**
  * @template T
- * @param {Observable<Array<T>>} items
+ * @param {import("@apendua/signal").Subscribable<Array<T>>} items
+ * @param {(item: T) => import("@apendua/signal").Subscribable<Mountable>} renderItem
  * @param {(item: T) => Observable<Mountable>} renderItem
  */
 function list(items, renderItem) {
@@ -242,22 +245,15 @@ function cloneNode(node) {
 /**
  * @template {keyof HTMLElementTagNameMap} Tag
  * @param {Tag} tag
- * @param {MonoTypeOperatorFunction<HTMLElementTagNameMap[Tag]>[]} operators
- * @returns {Observable<Mountable>}
+ * @param {EntityEffect<HTMLElementTagNameMap[Tag]>[]} effects
+ * @returns {import("@apendua/signal").Source<Mountable>}
  */
-function $(tag, operators = []) {
-  return operators
-    .reduce(
-      (source, operator) => {
-        return operator(source);
-      },
-      just(document.createElement(tag)),
-    )
-    .pipe(map((node) => toMountable(node)));
+function $(tag, effects = []) {
+  return rx(just(document.createElement(tag), effects)).pipe(map((node) => toMountable(node)));
 }
 
 /**
- * @param {Observable<Mountable>} component
+ * @param {import("@apendua/signal").Subscribable<Mountable>} component
  */
 function inspectHTML(component) {
   const container = document.createElement("body");
@@ -266,8 +262,8 @@ function inspectHTML(component) {
     next: (mountable) => {
       mountable.replace([placeholder, placeholder]);
     },
-    error: (err) => {
-      Promise.reject(new Error(err.toString()));
+    error: (/** @type {unknown} */ err) => {
+      Promise.reject(new Error(String(err)));
     },
   });
   return {

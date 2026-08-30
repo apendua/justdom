@@ -133,7 +133,7 @@ export function sampleAt(history, index) {
 /**
  * @param {DiagnosticsControls} controls
  * @param {number} index
- * @returns {Observable<Mountable>}
+ * @returns {import("@apendua/signal").Source<Mountable>}
  */
 function chartBar(controls, index) {
   /** @returns {number | null} */
@@ -163,7 +163,7 @@ function chartBar(controls, index) {
  * stopped rays here would be a pane of glass the player's own pointer kept
  * landing on, a foot in front of the game.
  *
- * @type {(ctx: WeakKey, controls: DiagnosticsControls) => Observable<Component>}
+ * @type {(ctx: WeakKey, controls: DiagnosticsControls) => import("@apendua/signal").Source<Component>}
  */
 export const Panel = component(
   /**

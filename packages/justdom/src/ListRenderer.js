@@ -1,9 +1,10 @@
 import { distinctUntilChanged, filter, Observable, Subject, tap } from "rxjs";
+import { rx } from "@apendua/signal/rxjs";
 import { removeSegment, toSegment } from "./helpers.js";
 import { addDependency, batch, Derived } from "@apendua/signal";
 
 /**
- * @import { Subscription } from "rxjs";
+ * @import { Subscribable, Source, Unsubscribable } from "@apendua/signal";
  * @import { ContainerOf, INode, MountableOf, SegmentOf } from "./nodes.js"
  */
 
@@ -68,8 +69,8 @@ export default class ListRenderer {
 
   /**
    * Creates a document fragment observable from child observables.
-   * @param {Array<Observable<MountableOf<T>>>} children
-   * @returns {Observable<MountableOf<T>>}
+   * @param {Array<Subscribable<MountableOf<T>>>} children
+   * @returns {Source<MountableOf<T>>}
    */
   renderFragment(children) {
     return new Observable((subscriber) => {
@@ -84,7 +85,7 @@ export default class ListRenderer {
 
       children.forEach((child, i) => {
         subscriber.add(
-          child
+          rx(child)
             .pipe(
               distinctUntilChanged(),
               tap((newMountable) => {
@@ -117,10 +118,10 @@ export default class ListRenderer {
    * Creates a list observable from an array of items and a render function.
    * @template U
    * @template K
-   * @param {Observable<Iterable<U>>} items
+   * @param {Subscribable<Iterable<U>>} items
    * @param {(item: U) => K} getKey
-   * @param {(item: U, getIndex: () => number) => Observable<MountableOf<T>>} render
-   * @returns {Observable<MountableOf<T>>}
+   * @param {(item: U, getIndex: () => number) => Subscribable<MountableOf<T>>} render
+   * @returns {Source<MountableOf<T>>}
    */
   renderList(items, getKey, render) {
     return new Observable((subscriber) => {
@@ -130,7 +131,7 @@ export default class ListRenderer {
         hydrating && hydration ? hydration.claimContainer() : this.#createContainer();
       /** @type {Map<K, SegmentOf<T>>} */
       const childSegments = new Map();
-      /** @type {Map<K, Subscription>} */
+      /** @type {Map<K, Unsubscribable>} */
       const childSubscriptions = new Map();
       /** @type {Map<K, number>} */
       const childIndexes = new Map();
@@ -171,7 +172,7 @@ export default class ListRenderer {
           const segment = hydration.claimItem(() => {
             childSubscriptions.set(
               key,
-              render(item, createGetIndex(item))
+              rx(render(item, createGetIndex(item)))
                 .pipe(
                   distinctUntilChanged(),
                   teardown(() => {
@@ -219,7 +220,7 @@ export default class ListRenderer {
        * @type {K | undefined}
        */
       let previousLastKey;
-      const subscription = items
+      const subscription = rx(items)
         .pipe(
           tap((newItems) => {
             const newItemsSet = new Set();
@@ -268,7 +269,7 @@ export default class ListRenderer {
               if (!childSubscriptions.has(key)) {
                 childSubscriptions.set(
                   key,
-                  render(item, createGetIndex(item))
+                  rx(render(item, createGetIndex(item)))
                     .pipe(
                       distinctUntilChanged(),
                       teardown(() => {

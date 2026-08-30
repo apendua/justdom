@@ -220,7 +220,7 @@ describe("cursors", () => {
   });
 
   /**
-   * @param {import('rxjs').Observable<Component>} component$
+   * @param {import("@apendua/signal").Source<Component>} component$
    * @returns {THREE.Object3D}
    */
   function mount(component$) {

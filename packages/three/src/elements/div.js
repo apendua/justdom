@@ -2,6 +2,7 @@ import * as THREE from "three";
 import { createProperty, onCleanup } from "@apendua/signal";
 import { Derived, effects, just, on, set, observable, useEffects } from "@apendua/signal";
 import { distinctUntilChanged, switchMap } from "rxjs";
+import { rx } from "@apendua/signal/rxjs";
 import { $, children, Nothing } from "../operators.js";
 import { interactions } from "../interactions.js";
 import VisualProperties from "./VisualProperties.js";
@@ -168,7 +169,7 @@ function isClickable(element) {
  * @param {WeakKey} ctx
  * @param {HTMLElement} element
  * @param {BoxOptions} [options]
- * @returns {Observable<THREE.Object3D>}
+ * @returns {import("@apendua/signal").Source<THREE.Object3D>}
  */
 export function box(ctx, element, options = {}) {
   const { clickable: isRayTarget = isClickable, content = () => [] } = options;
@@ -511,30 +512,32 @@ export function box(ctx, element, options = {}) {
       // that lands between two menu rows carries on through the menu and hits
       // a panel button behind it — which is not merely a miss, it is a click
       // on something the menu is covering.
-      observable(() => overlay.get()).pipe(
+      rx(observable(() => overlay.get())).pipe(
         distinctUntilChanged(),
-        switchMap((isElevated) => {
+        switchMap((/** @type {boolean} */ isElevated) => {
           if (!isElevated) {
-            return Nothing();
+            return rx(Nothing());
           }
           const blocker = createBlocker();
           // Opaque only where the overlay is actually showing. The blocker is
           // a unit plane covering the element rather than a mesh in element
           // px, so it names the element as the frame the box is read in.
           clipRaycast(blocker, () => currentClipBox, object);
-          return $(blocker, [
-            makeInteractive(isPanelReady),
-            on("select", (e) => {
-              element.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-              // Unlike the portal's own blocker, which lets the scene
-              // behind a panel see the click as well, an overlay is a
-              // layer: what happens on it does not reach what it covers.
-              stopPropagation(e);
-            }),
-            effects((obj) => {
-              coverBox(obj, properties.totalWidth, properties.totalHeight, BLOCKER_OFFSET);
-            }),
-          ]);
+          return rx(
+            $(blocker, [
+              makeInteractive(isPanelReady),
+              on("select", (e) => {
+                element.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+                // Unlike the portal's own blocker, which lets the scene
+                // behind a panel see the click as well, an overlay is a
+                // layer: what happens on it does not reach what it covers.
+                stopPropagation(e);
+              }),
+              effects((obj) => {
+                coverBox(obj, properties.totalWidth, properties.totalHeight, BLOCKER_OFFSET);
+              }),
+            ]),
+          );
         }),
       ),
       // The whole box — background and border ring both — is one quad and a
@@ -616,7 +619,7 @@ export function box(ctx, element, options = {}) {
 /**
  * @param {WeakKey} ctx
  * @param {HTMLElement} element
- * @returns {Observable<THREE.Object3D>}
+ * @returns {import("@apendua/signal").Source<THREE.Object3D>}
  */
 export function div(ctx, element) {
   return box(ctx, element);

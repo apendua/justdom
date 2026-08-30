@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { Derived, effects, observable, onCleanup, set, toEffect } from "@apendua/signal";
+import { rx } from "@apendua/signal/rxjs";
 import { distinctUntilChanged, merge, of, switchMap } from "rxjs";
 import { $, Nothing } from "../operators.js";
 import { box } from "./div.js";
@@ -143,7 +144,7 @@ function makeTickGeometry(width, height, originX, originY) {
  * there. `applyClip` handles the drawing, `clipMesh` the hit region.
  *
  * @param {BoxSurface} surface
- * @returns {Observable<Component>}
+ * @returns {import("@apendua/signal").Source<Component>}
  */
 function tick({ properties, contentRenderOrder, clipBox, clipMesh }) {
   // Created here rather than inline, because `clipMesh` wraps `raycast` and
@@ -229,12 +230,12 @@ function tick({ properties, contentRenderOrder, clipBox, clipMesh }) {
  *
  * @param {WeakKey} ctx
  * @param {HTMLInputElement} element
- * @returns {Observable<THREE.Object3D>}
+ * @returns {import("@apendua/signal").Source<THREE.Object3D>}
  */
 export function checkbox(ctx, element) {
   const checked = new Derived(() => getCheckedCached(element));
 
-  return box(ctx, element, {
+  const surface$ = box(ctx, element, {
     // A control is there to be operated. An ordinary box has to say it is
     // clickable through `cursor: pointer`, because nothing else tells a button
     // apart from the card it sits on; a checkbox needs no such declaration,
@@ -247,12 +248,13 @@ export function checkbox(ctx, element) {
       return !(/** @type {HTMLInputElement} */ (el).disabled);
     },
     content: (surface) => [
-      observable(() => checked.get()).pipe(
+      rx(observable(() => checked.get())).pipe(
         distinctUntilChanged(),
-        switchMap((isChecked) => (isChecked ? tick(surface) : Nothing())),
+        switchMap((isChecked) => rx(isChecked ? tick(surface) : Nothing())),
       ),
     ],
-  }).pipe(
+  });
+  return rx(surface$).pipe(
     // `:checked` is a pseudo-class, and a pseudo-class changes no attribute —
     // so nothing would tell the portal to re-read a style that follows it, and
     // a box that turns blue when ticked would stay the colour it started.
@@ -268,17 +270,19 @@ export function checkbox(ctx, element) {
     // through, not after whoever is downstream has already seen the component.
     switchMap((component) =>
       merge(
-        toEffect(
-          () => {
-            if (!checked.get()) {
-              return;
-            }
-            element.dataset.xrChecked = "true";
-            onCleanup(() => {
-              delete element.dataset.xrChecked;
-            });
-          },
-          { name: "checkbox" },
+        rx(
+          toEffect(
+            () => {
+              if (!checked.get()) {
+                return;
+              }
+              element.dataset.xrChecked = "true";
+              onCleanup(() => {
+                delete element.dataset.xrChecked;
+              });
+            },
+            { name: "checkbox" },
+          ),
         ),
         of(component),
       ),

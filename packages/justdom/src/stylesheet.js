@@ -1,4 +1,5 @@
 import { map, Observable } from "rxjs";
+import { rx } from "@apendua/signal/rxjs";
 import { renderText } from "./text.js";
 import { Derived, just, onCleanup, toObservable } from "@apendua/signal";
 import { isHydrating } from "./hydrate.js";
@@ -17,7 +18,7 @@ export const CLASS_NAME = new Observable();
  * derived from the source and therefore agree, but a duplicate of each
  * stylesheet in the document.
  *
- * @param {Observable<string>} value - An observable of CSS class content.
+ * @param {import("@apendua/signal").Subscribable<string>} value - An observable of CSS class content.
  * @param {string} key - The generated name this stylesheet defines.
  * @returns {Observable<string>}
  */
@@ -31,8 +32,10 @@ function styleElement(value, key) {
       styleElement.setAttribute(STYLE_KEY_ATTRIBUTE, key);
     }
     subscriber.add(
-      value.subscribe((newValue) => {
-        styleElement.innerHTML = newValue;
+      value.subscribe({
+        next: (newValue) => {
+          styleElement.innerHTML = newValue;
+        },
       }),
     );
     if (!adopted) {
@@ -124,11 +127,11 @@ function stableName(prefix, strings, isStatic) {
  * Creates a CSS class name observable from template strings and values.
  * @param {TemplateStringsArray} strings - The template strings.
  * @param {...import("./text.js").Renderable} values - The values to interpolate.
- * @returns {Observable<string>}
+ * @returns {import("@apendua/signal").Source<string>}
  */
 export function className(strings, ...values) {
   const key = stableName("class_", strings, values.length === 0);
-  return shared(key, renderText(strings, ...values).pipe(map((value) => `.${key} {${value}}`)));
+  return shared(key, rx(renderText(strings, ...values)).pipe(map((value) => `.${key} {${value}}`)));
 }
 
 /**
@@ -144,8 +147,8 @@ export function className(strings, ...values) {
  * tool to reach for.
  *
  * @param {string} key
- * @param {Observable<string>} content
- * @returns {Observable<string>}
+ * @param {import("@apendua/signal").Subscribable<string>} content
+ * @returns {import("@apendua/signal").Source<string>}
  */
 function shared(key, content) {
   /** @type {Derived<string>} */
@@ -163,7 +166,7 @@ function shared(key, content) {
  * Creates a CSS class name observable from template strings and values.
  * @param {TemplateStringsArray} strings - The template strings.
  * @param {...import("./text.js").Renderable} values - The values to interpolate.
- * @returns {Observable<string>}
+ * @returns {import("@apendua/signal").Source<string>}
  */
 export function stylesheet(strings, ...values) {
   const name = stableName("class_", strings, values.length === 0);
@@ -187,7 +190,7 @@ export function stylesheet(strings, ...values) {
  * @param {string} [options.format]
  * @param {string} [options.fontWeight]
  * @param {string} [options.fontStyle]
- * @returns {Observable<string>}
+ * @returns {import("@apendua/signal").Source<string>}
  */
 export function fontFace(fontUrl, options = {}) {
   const { format = "truetype", fontWeight = "normal", fontStyle = "normal" } = options;

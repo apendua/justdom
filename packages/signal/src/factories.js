@@ -6,7 +6,7 @@ import { toEffect, toObservable } from "./interop.js";
 import { onEachValue, subscribeTo } from "./util.js";
 
 /**
- * @import { Subscriber } from 'rxjs';
+ * @import { Subscribable, Source } from './subscribable.js';
  * @import { EntityEffect } from './types.js';
  */
 
@@ -19,7 +19,7 @@ import { onEachValue, subscribeTo } from "./util.js";
  *
  * @template T
  * @param {() => T} fn
- * @return {Observable<T>}
+ * @return {Source<T>}
  */
 export function observable(fn) {
   return toObservable(new Derived(() => fn()));
@@ -28,12 +28,14 @@ export function observable(fn) {
 /**
  * @template {unknown[]} TArgs
  * @template TValue
- * @param {(...args: TArgs) => Observable<TValue>} fn
- * @returns {(...args: TArgs) => Observable<TValue>}
+ * @param {(...args: TArgs) => Subscribable<TValue>} fn
+ * @returns {(...args: TArgs) => Source<TValue>}
  */
 export function component(fn) {
   return (...args) => {
-    return observable(() => fn(...args)).pipe(onEachValue(subscribeTo((value) => value)));
+    return onEachValue(subscribeTo((/** @type {Subscribable<TValue>} */ value) => value))(
+      observable(() => fn(...args)),
+    );
   };
 }
 
@@ -55,7 +57,7 @@ export function component(fn) {
  *
  * @template {unknown[]} TArgs
  * @param {(...args: TArgs) => void} fn
- * @returns {(...args: TArgs) => Observable<never>}
+ * @returns {(...args: TArgs) => Source<never>}
  */
 export function effectsOnly(fn) {
   return (...args) => toEffect(() => fn(...args), { name: "effectsOnly" });
@@ -98,7 +100,7 @@ export function effectsOnly(fn) {
  * @overload
  * @param {() => T} factory
  * @param {EntityEffect<T>[]} [effects]
- * @returns {Observable<T>}
+ * @returns {Source<T>}
  */
 
 /**
@@ -106,23 +108,23 @@ export function effectsOnly(fn) {
  * @overload
  * @param {T} value
  * @param {EntityEffect<T>[]} [effects]
- * @returns {Observable<T>}
+ * @returns {Source<T>}
  */
 
 /**
  * @template T
  * @param {T | (() => T)} valueOrFactory
  * @param {EntityEffect<T>[]} [effects]
- * @returns {Observable<T>}
+ * @returns {Source<T>}
  */
 export function just(valueOrFactory, effects = []) {
   if (effects.length === 0 && typeof valueOrFactory !== "function") {
     // Nothing to mount: a constant needs no machinery at all.
-    return new Observable((/** @type {Subscriber<T>} */ subscriber) => {
+    return new Observable((/** @type {import("rxjs").Subscriber<T>} */ subscriber) => {
       subscriber.next(/** @type {T} */ (valueOrFactory));
     });
   }
-  return new Observable((/** @type {Subscriber<T>} */ subscriber) => {
+  return new Observable((/** @type {import("rxjs").Subscriber<T>} */ subscriber) => {
     /** @type {Array<{ dispose: () => void } | { unsubscribe: () => void }>} */
     const mounted = [];
     const dispose = () => {

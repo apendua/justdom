@@ -22,6 +22,10 @@
     ".": {
       "types": "./lib-types/index.d.ts",
       "import": "./src/index.js"
+    },
+    "./rxjs": {
+      "types": "./lib-types/rxjs.d.ts",
+      "import": "./src/rxjs.js"
     }
   },
   "main": "./lib/index.js",

@@ -38,7 +38,7 @@ function getViewportDpr() {
 /**
  * @param {WeakKey} ctx
  * @param {Text} textNode
- * @returns {Observable<THREE.Object3D>}
+ * @returns {import("@apendua/signal").Source<THREE.Object3D>}
  */
 export function text(ctx, textNode) {
   const object = new THREE.Object3D();

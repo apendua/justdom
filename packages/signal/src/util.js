@@ -1,7 +1,23 @@
 import { Observable } from "rxjs";
 
 /**
- * @import { MonoTypeOperatorFunction, Subscription, Subscriber } from 'rxjs';
+ * @import { Observer, Subscribable, Source, Unsubscribable } from './subscribable.js';
+ */
+
+/**
+ * An operator over this package's own contract: a source in, a source out.
+ * What `MonoTypeOperatorFunction` and `OperatorFunction` were being imported
+ * for, spelled so that neither side of a pipeline has to be an RxJS
+ * observable. An RxJS operator still applies to what these produce — through
+ * `rx()` from `@apendua/signal/rxjs`, which names the crossing.
+ *
+ * @template T, U
+ * @typedef {(source: Subscribable<T>) => Source<U>} Operator
+ */
+
+/**
+ * @template T
+ * @typedef {Operator<T, T>} MonoTypeOperator
  */
 
 /**
@@ -10,13 +26,13 @@ import { Observable } from "rxjs";
  *
  * @template T
  * @template U
- * @param {null | ((subscriber: Subscriber<U>, value: T) => Subscription)} subscribe
- * @returns {(source: Observable<T>) => Observable<U>}
+ * @param {null | ((subscriber: { next: (value: U) => void, error: (err: unknown) => void }, value: T) => Unsubscribable)} subscribe
+ * @returns {Operator<T, U>}
  */
 export function onEachValue(subscribe) {
   return (source) => {
     return new Observable((subscriber) => {
-      /** @type {Subscription | undefined} */
+      /** @type {Unsubscribable | undefined} */
       let innerSubscription;
       const subscription = source.subscribe({
         complete: () => subscriber.complete(),
@@ -43,8 +59,8 @@ export function onEachValue(subscribe) {
 
 /**
  * @template T, U
- * @param {(value: T) => Observable<U>} fn
- * @returns {(subscriber: Subscriber<U>, value: T) => Subscription}
+ * @param {(value: T) => Subscribable<U>} fn
+ * @returns {(subscriber: { next: (value: U) => void, error: (err: unknown) => void }, value: T) => Unsubscribable}
  */
 export function subscribeTo(fn) {
   return (subscriber, value) => {
@@ -56,9 +72,9 @@ export function subscribeTo(fn) {
 }
 
 /**
- * @template T, U
- * @param {(value: T) => Observable<unknown>} fn
- * @returns {(subscriber: Subscriber<T>, value: T) => Subscription}
+ * @template T
+ * @param {(value: T) => Subscribable<unknown>} fn
+ * @returns {(subscriber: { next: (value: T) => void, error: (err: unknown) => void }, value: T) => Unsubscribable}
  */
 export function subscribeAndEmit(fn) {
   return (subscriber, value) => {
@@ -72,8 +88,8 @@ export function subscribeAndEmit(fn) {
 
 /**
  * @template T
- * @param  {...MonoTypeOperatorFunction<T>} operators
- * @returns {MonoTypeOperatorFunction<T>}
+ * @param  {...MonoTypeOperator<T>} operators
+ * @returns {(source: Subscribable<T>) => Subscribable<T>}
  */
 export function all(...operators) {
   return (source) => {
@@ -90,9 +106,9 @@ export function all(...operators) {
  * through `use`.
  *
  * @template T
- * @param {Observable<T>} source
+ * @param {Subscribable<T>} source
  * @param {(value: T) => void} fn
- * @returns {Observable<T>}
+ * @returns {Source<T>}
  */
 export function each(source, fn) {
   return new Observable((subscriber) => {

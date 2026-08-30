@@ -6,7 +6,8 @@ import { addDependency, onCleanup, withComputation } from "./core.js";
 import { toObservable, nodeOf } from "./interop.js";
 
 /**
- * @import { Observable } from 'rxjs';
+ * @import { Subscribable, Source } from './subscribable.js';
+ * @import { Operator } from './util.js';
  * @import ReactiveNode from './Node.js';
  * @import { WritableProps, EntityEffect } from './types.js';
  */
@@ -30,7 +31,7 @@ export function effects(fn) {
 
 /**
  * @template T
- * @returns {(source: Observable<T>) => Observable<never>}
+ * @returns {Operator<T, never>}
  */
 export function takeNothing() {
   return onEachValue(null);
@@ -39,7 +40,7 @@ export function takeNothing() {
 /**
  * @template T, U
  * @param {(value: T) => U} fn
- * @returns {(source: Observable<T>) => Observable<U>}
+ * @returns {Operator<T, U>}
  */
 export function map(fn) {
   return onEachValue(subscribeTo((value) => observable(() => fn(value))));
@@ -47,8 +48,8 @@ export function map(fn) {
 
 /**
  * @template T, U
- * @param {(value: T) => Observable<U>} fn
- * @returns {(source: Observable<T>) => Observable<U>}
+ * @param {(value: T) => Subscribable<U>} fn
+ * @returns {Operator<T, U>}
  */
 export function flatMap(fn) {
   return onEachValue(subscribeTo(component(fn)));
@@ -66,7 +67,7 @@ export function flatMap(fn) {
  * failed mounting lands.
  *
  * @template T
- * @param {(value: T) => Observable<unknown>} fn
+ * @param {(value: T) => Subscribable<unknown>} fn
  * @returns {EntityEffect<T>}
  */
 export function effectMap(fn) {
@@ -127,7 +128,7 @@ export function effectMap(fn) {
  * @template {keyof WritableProps<TEntity>} K
  * @overload
  * @param {K} key
- * @param {Observable<TEntity[K]> | (() => TEntity[K])} value
+ * @param {Subscribable<TEntity[K]> | (() => TEntity[K])} value
  * @returns {EntityEffect<TEntity>}
  */
 
@@ -142,7 +143,7 @@ export function effectMap(fn) {
  * @template {object} TEntity
  * @template {keyof WritableProps<TEntity>} K
  * @param {K|Partial<WritableProps<Record<string, unknown>>>} keyOrValues
- * @param {Observable<unknown> | (() => unknown)} [value]
+ * @param {Subscribable<unknown> | (() => unknown)} [value]
  * @returns {EntityEffect<Record<string, unknown>>}
  */
 export function set(keyOrValues, value) {
@@ -255,7 +256,7 @@ export function failuresOf(subscribable) {
  * name on it, rather than a `TypeError` from inside the first run that
  * happens to return one.
  *
- * @param {Observable<unknown>} observable
+ * @param {Subscribable<unknown>} observable
  */
 export function use(observable) {
   if (typeof observable === "function") {
@@ -272,14 +273,14 @@ export function use(observable) {
     addDependency(failuresOf(node));
     return;
   }
-  addDependency(observable.pipe(takeNothing()));
+  addDependency(takeNothing()(observable));
 }
 
 /**
  * @template {object} T
  * @typedef {{
  *   readonly [K in keyof T as T[K] extends (...args: any[]) => any ? never : K]-?:
- *     Observable<T[K]>
+ *     Source<T[K]>
  * }} Observe
  */
 
@@ -311,7 +312,7 @@ export function observe(target) {
  *     : never
  *   ]-?:
  *     T[K] extends (...args: infer U) => any
- *       ? (...args: U) => Observable<ReturnType<T[K]>>
+ *       ? (...args: U) => Source<ReturnType<T[K]>>
  *       : never
  * }} ObserveFn
  */

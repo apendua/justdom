@@ -2,6 +2,7 @@ import { describe, it, mock } from "node:test";
 import assert from "node:assert/strict";
 import { userEvent } from "@testing-library/user-event";
 import { just } from "@apendua/signal";
+import { rx } from "@apendua/signal/rxjs";
 import { map, Subject } from "rxjs";
 import { on, set, attr, data, style } from "./operators.js";
 import { children, toMountable } from "./dom.js";
@@ -241,7 +242,7 @@ describe("DOM Operators", () => {
       const parent = document.createElement("div");
       const child = document.createElement("span");
 
-      const child$ = just(child).pipe(map(toMountable));
+      const child$ = rx(just(child)).pipe(map(toMountable));
 
       const subscription = just(parent, [children(child$)]).subscribe();
 

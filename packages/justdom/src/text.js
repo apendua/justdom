@@ -1,4 +1,5 @@
 import { combineLatest, map, Observable } from "rxjs";
+import { rx } from "@apendua/signal/rxjs";
 import { observable, just } from "@apendua/signal";
 import { claimText } from "./hydrate.js";
 import { toMountable } from "./dom.js";
@@ -10,7 +11,7 @@ import { toMountable } from "./dom.js";
 
 /**
  * Creates a text node observable.
- * @param {string | Observable<string>} value - The text content or an observable of text content.
+ * @param {string | import("@apendua/signal").Subscribable<string>} value - The text content or an observable of text content.
  * @returns {Observable<Text>} An observable that emits a Text node.
  */
 export function textNode(value) {
@@ -28,8 +29,10 @@ export function textNode(value) {
     } else {
       const myTextNode = claimed ?? document.createTextNode("");
       subscriber.add(
-        value.subscribe((newValue) => {
-          myTextNode.textContent = newValue;
+        value.subscribe({
+          next: (newValue) => {
+            myTextNode.textContent = newValue;
+          },
         }),
       );
       subscriber.next(myTextNode);
@@ -38,14 +41,14 @@ export function textNode(value) {
 }
 
 /**
- * @typedef {Primitive | Observable<Primitive> | (() => Primitive)} Renderable
+ * @typedef {Primitive | import("@apendua/signal").Subscribable<Primitive> | (() => Primitive)} Renderable
  */
 
 /**
  * Renders text from template strings and values.
  * @param {TemplateStringsArray} strings - The template strings.
  * @param {...Renderable} values - The values to interpolate.
- * @returns {Observable<string>} An observable that emits the rendered text.
+ * @returns {import("@apendua/signal").Source<string>} An observable that emits the rendered text.
  */
 export function renderText(strings, ...values) {
   if (values.length === 0) {
@@ -54,15 +57,19 @@ export function renderText(strings, ...values) {
   return combineLatest(
     values.map((value) => {
       if (value instanceof Observable) {
-        return value.pipe(map((v) => v?.toString() ?? ""));
+        return value.pipe(map((/** @type {Primitive} */ v) => v?.toString() ?? ""));
       }
       if (typeof value === "function") {
-        return observable(() => value() ?? "");
+        return rx(observable(() => value() ?? ""));
       }
       if (!value) {
-        return just("");
+        return rx(just(""));
       }
-      return just(value.toString());
+      if (typeof value === "object") {
+        // A `Subscribable` that is not an RxJS observable — carried across.
+        return rx(value).pipe(map((v) => v?.toString() ?? ""));
+      }
+      return rx(just(value.toString()));
     }),
   ).pipe(
     map((observedValues) => {
@@ -79,7 +86,7 @@ export function renderText(strings, ...values) {
  * Creates a text node observable from template strings and values.
  * @param {TemplateStringsArray} strings - The template strings.
  * @param {...Renderable} values - The values to interpolate.
- * @returns {Observable<Mountable>} An observable that emits a Text node.
+ * @returns {import("@apendua/signal").Source<Mountable>} An observable that emits a Text node.
  */
 export function text(strings, ...values) {
   return textNode(renderText(strings, ...values)).pipe(map(toMountable));

@@ -8,6 +8,7 @@ import { Signal, batch } from "./index.js";
 import Emitter, { on } from "./Emitter.js";
 import { just } from "./factories.js";
 import { effectMap, effects, map, takeNothing, observe, observeFn, use } from "./operators.js";
+import { rx } from "./rxjs.js";
 import { Derived, Effect, onCleanup } from "./index.js";
 import { Observable } from "rxjs";
 
@@ -219,7 +220,7 @@ describe("takeNothing()", () => {
     const source = new Subject();
     const complete = mock.fn();
 
-    const subscription = source.pipe(takeNothing()).subscribe({
+    const subscription = takeNothing()(source).subscribe({
       complete,
     });
 
@@ -244,16 +245,12 @@ describe("map()", () => {
     const next = mock.fn();
     const complete = mock.fn();
 
-    const subscription = source
-      .pipe(
-        map((x) => {
-          return x + signal.get();
-        }),
-      )
-      .subscribe({
-        next,
-        complete,
-      });
+    const subscription = map((/** @type {number} */ x) => {
+      return x + signal.get();
+    })(source).subscribe({
+      next,
+      complete,
+    });
 
     assert.strictEqual(next.mock.calls.length, 0);
 
@@ -532,7 +529,7 @@ describe("Counting method re-runs", () => {
 
   it("only re-runs when value changes with (two observables)", () => {
     const store = new MyStore(0);
-    const values = merge(observeFn(store).multiplyBy(2), observeFn(store).multiplyBy(3));
+    const values = merge(rx(observeFn(store).multiplyBy(2)), rx(observeFn(store).multiplyBy(3)));
     /** @type {number[]} */
     const result = [];
     const subscription = values.subscribe((value) => {

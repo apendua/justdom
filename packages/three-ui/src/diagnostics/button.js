@@ -17,7 +17,7 @@ import { $, children, on, set, text } from "@apendua/justdom";
 /**
  * @param {DiagnosticsControls} controls The scene's own, which the button both
  *   shows and sets.
- * @param {Observable<string>} className The app's button dressing. Needs
+ * @param {import("@apendua/signal").Subscribable<string>} className The app's button dressing. Needs
  *   `cursor: pointer`, or rays pass straight through it.
  */
 export function diagnosticsButton(controls, className) {

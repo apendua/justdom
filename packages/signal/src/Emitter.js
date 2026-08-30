@@ -4,6 +4,7 @@ import { Observable } from "rxjs";
 import { failuresOf } from "./operators.js";
 
 /**
+ * @import { Source } from './subscribable.js';
  * @import { EntityEffect } from './types.js';
  */
 
@@ -109,7 +110,7 @@ export function on(event, handler) {
  * @template {keyof TEventMap} TEvent
  * @param {IEmitter<TEventMap>} emitter
  * @param {TEvent} event
- * @returns {Observable<TEventMap[TEvent]>}
+ * @returns {Source<TEventMap[TEvent]>}
  */
 export function fromEvent(emitter, event) {
   return new Observable((subscriber) => {

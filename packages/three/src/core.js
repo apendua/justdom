@@ -1,4 +1,5 @@
 import { distinctUntilChanged, filter, Observable, Subject } from "rxjs";
+import { rx } from "@apendua/signal/rxjs";
 import { just, observable } from "@apendua/signal";
 import { addDependency, batch, Derived } from "@apendua/signal";
 
@@ -147,16 +148,16 @@ import { addDependency, batch, Derived } from "@apendua/signal";
  * @template T
  * @template K
  * @param {Object3D} parent
- * @param {Observable<Iterable<T>>} items
+ * @param {import("@apendua/signal").Subscribable<Iterable<T>>} items
  * @param {(item: T) => K} getKey
- * @param {(item: T, index: () => number) => Observable<Component>} renderItem
+ * @param {(item: T, index: () => number) => import("@apendua/signal").Subscribable<Component>} renderItem
  * @returns {Observable<never>}
  */
 export function addDynamicToParent(parent, items, getKey, renderItem) {
   return new Observable((subscriber) => {
     /** @type {Map<K, () => void>} */
     const mountedChildEntities = new Map();
-    /** @type {Map<K, import('rxjs').Subscription>} */
+    /** @type {Map<K, import("@apendua/signal").Unsubscribable>} */
     const childSubscriptions = new Map();
     /** @type {Map<K, number>} */
     const childIndexes = new Map();
@@ -176,7 +177,7 @@ export function addDynamicToParent(parent, items, getKey, renderItem) {
       return () => index.get();
     };
     subscriber.add(
-      items.subscribe((newItems) => {
+      rx(items).subscribe((newItems) => {
         /** @type {Set<K>} */
         const newItemsSet = new Set();
         const newItemsArray = Array.from(newItems);
@@ -190,7 +191,7 @@ export function addDynamicToParent(parent, items, getKey, renderItem) {
           if (!childSubscriptions.has(key)) {
             childSubscriptions.set(
               key,
-              renderItem(item, createGetIndex(item))
+              rx(renderItem(item, createGetIndex(item)))
                 .pipe(distinctUntilChanged())
                 .subscribe((newChildEntity) => {
                   const unmount = mountedChildEntities.get(key);
@@ -247,7 +248,7 @@ export function addDynamicToParent(parent, items, getKey, renderItem) {
 
 /**
  * @template T
- * @param {Observable<T> | (() => T)} value
+ * @param {import("@apendua/signal").Subscribable<T> | (() => T)} value
  */
 function normalize(value) {
   if (typeof value === "function") {
@@ -258,9 +259,9 @@ function normalize(value) {
 
 /**
  * @template T
- * @param {Observable<Iterable<T>> | (() => Iterable<T>)} items
- * @param {(item: T, index: () => number) => Observable<Component>} renderItem
- * @returns {Observable<Component>}
+ * @param {import("@apendua/signal").Subscribable<Iterable<T>> | (() => Iterable<T>)} items
+ * @param {(item: T, index: () => number) => import("@apendua/signal").Subscribable<Component>} renderItem
+ * @returns {import("@apendua/signal").Source<Component>}
  */
 export function list(items, renderItem) {
   items = normalize(items);
@@ -282,9 +283,9 @@ export function list(items, renderItem) {
 /**
  * @template K
  * @template T
- * @param {Observable<Iterable<[K, T]>> | (() => Iterable<[K, T]>)} items
- * @param {(item: T, key: K, index: () => number) => Observable<Component>} renderItem
- * @returns {Observable<Component>}
+ * @param {import("@apendua/signal").Subscribable<Iterable<[K, T]>> | (() => Iterable<[K, T]>)} items
+ * @param {(item: T, key: K, index: () => number) => import("@apendua/signal").Subscribable<Component>} renderItem
+ * @returns {import("@apendua/signal").Source<Component>}
  */
 export function keyedList(items, renderItem) {
   items = normalize(items);

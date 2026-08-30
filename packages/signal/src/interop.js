@@ -4,7 +4,7 @@ import { withComputation } from "./core.js";
 import { Derived } from "./Derived.js";
 
 /**
- * @import {Subscribable} from "rxjs";
+ * @import {Subscribable, Source} from "./subscribable.js";
  * @import ReactiveNode from "./Node.js";
  */
 
@@ -17,14 +17,14 @@ import { Derived } from "./Derived.js";
  * held live and its failure heard. A WeakMap rather than a property so the
  * observable stays exactly what it claims to be.
  *
- * @type {WeakMap<Observable<unknown>, ReactiveNode>}
+ * @type {WeakMap<object, ReactiveNode>}
  */
 const backingNodes = new WeakMap();
 
 /**
  * The node `observable` is a view of, if `toObservable` made it.
  *
- * @param {Observable<unknown>} observable
+ * @param {Subscribable<unknown> | Source<unknown>} observable
  * @returns {ReactiveNode | undefined}
  */
 export function nodeOf(observable) {
@@ -49,7 +49,7 @@ export function nodeOf(observable) {
  *
  * @template T
  * @param {ReactiveNode & { get: () => T }} node
- * @returns {Observable<T>}
+ * @returns {Source<T>}
  */
 export function toObservable(node) {
   const observable = new Observable((/** @type {import("rxjs").Subscriber<T>} */ subscriber) => {
@@ -101,7 +101,7 @@ export function toObservable(node) {
  *
  * @param {import("./Effect.js").EffectRun} fn
  * @param {{ name?: string }} [options]
- * @returns {Observable<never>}
+ * @returns {Source<never>}
  */
 export function toEffect(fn, options = {}) {
   return new Observable((subscriber) => {

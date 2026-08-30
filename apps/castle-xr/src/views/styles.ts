@@ -14,10 +14,12 @@
  * design is carried by colour, line and type.
  */
 import { fontFace, stylesheet, CLASS_NAME } from "@apendua/justdom";
+import { rx } from "@apendua/signal/rxjs";
 import type { DropdownClasses } from "@apendua/justui";
 import titleFontFile from "@apendua.dev/media/fonts/Cinzel-wght.ttf";
 import bodyFontFile from "@apendua.dev/media/fonts/Quicksand-wght.ttf";
-import { combineLatest, map, Observable } from "rxjs";
+import { combineLatest, map } from "rxjs";
+import type { Subscribable } from "@apendua/signal";
 import { palette } from "../elements/palette.js";
 
 /** Carved Roman capitals, for what a panel is called. */
@@ -87,8 +89,8 @@ export const actionButton = stylesheet`
  * The class names are observables — each one keeps its own stylesheet mounted —
  * so the two are combined as streams rather than as strings.
  */
-export function actionButtonClass(enabled: Observable<boolean>) {
-  return combineLatest([actionButton, mutedButton, enabled]).pipe(
+export function actionButtonClass(enabled: Subscribable<boolean>) {
+  return combineLatest([rx(actionButton), rx(mutedButton), rx(enabled)]).pipe(
     map(([action, muted, isEnabled]) => (isEnabled ? action : `${action} ${muted}`)),
   );
 }

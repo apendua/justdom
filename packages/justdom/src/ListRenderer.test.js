@@ -2,6 +2,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { BehaviorSubject, map, tap } from "rxjs";
 import { effectMap, just } from "@apendua/signal";
+import { rx } from "@apendua/signal/rxjs";
 import { replaceSegment, toSegment } from "./helpers.js";
 import ListRenderer from "./ListRenderer.js";
 
@@ -186,12 +187,12 @@ const renderer = new ListRenderer({
 
 /**
  * @template {Node} T
- * @param {Array<Observable<Mountable>>} children
+ * @param {Array<import("@apendua/signal").Subscribable<Mountable>>} children
  * @returns {EntityEffect<T>}
  */
 function children(...children) {
   return effectMap((node) => {
-    return renderer.renderFragment(children).pipe(
+    return rx(renderer.renderFragment(children)).pipe(
       tap((mountable) => {
         if (!node.firstChild || !node.lastChild) {
           const placeholder = node.appendChild(document.createComment(""));
@@ -206,7 +207,8 @@ function children(...children) {
 
 /**
  * @template T
- * @param {Observable<Array<T>>} items
+ * @param {import("@apendua/signal").Subscribable<Array<T>>} items
+ * @param {(item: T) => import("@apendua/signal").Subscribable<Mountable>} renderItem
  * @param {(item: T) => Observable<Mountable>} renderItem
  */
 function list(items, renderItem) {
@@ -244,14 +246,14 @@ function cloneNode(node) {
  * @template {keyof HTMLElementTagNameMap} Tag
  * @param {Tag} tag
  * @param {EntityEffect<HTMLElementTagNameMap[Tag]>[]} effects
- * @returns {Observable<Mountable>}
+ * @returns {import("@apendua/signal").Source<Mountable>}
  */
 function $(tag, effects = []) {
-  return just(document.createElement(tag), effects).pipe(map((node) => toMountable(node)));
+  return rx(just(document.createElement(tag), effects)).pipe(map((node) => toMountable(node)));
 }
 
 /**
- * @param {Observable<Mountable>} component
+ * @param {import("@apendua/signal").Subscribable<Mountable>} component
  */
 function inspectHTML(component) {
   const container = document.createElement("body");
@@ -260,8 +262,8 @@ function inspectHTML(component) {
     next: (mountable) => {
       mountable.replace([placeholder, placeholder]);
     },
-    error: (err) => {
-      Promise.reject(new Error(err.toString()));
+    error: (/** @type {unknown} */ err) => {
+      Promise.reject(new Error(String(err)));
     },
   });
   return {

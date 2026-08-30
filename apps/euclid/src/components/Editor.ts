@@ -1,4 +1,5 @@
 import { tap } from "rxjs";
+import { rx } from "@apendua/signal/rxjs";
 import { $, children, className, on, set } from "@apendua/justdom";
 import { component, effectMap, toObservable } from "@apendua/signal";
 import { tokenize, KEYWORDS, BUILTINS } from "@apendua.dev/euclid-lang";
@@ -243,7 +244,7 @@ const Editor = component((store: AppStore) => {
             // Applies "select this statement" requests coming from clicks on
             // the drawing.
             effectMap((textarea: HTMLTextAreaElement) =>
-              toObservable(store.editorSelection).pipe(
+              rx(toObservable(store.editorSelection)).pipe(
                 tap((request) => {
                   if (request) {
                     // An unfocused textarea does not keep a programmatic

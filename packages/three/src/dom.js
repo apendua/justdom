@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { Observable, Subject, switchMap, takeUntil } from "rxjs";
 import { just, toEffect } from "@apendua/signal";
+import { rx } from "@apendua/signal/rxjs";
 import { onCleanup } from "@apendua/signal";
 import { createPortal } from "./elements/portal.js";
 
@@ -12,7 +13,7 @@ import { createPortal } from "./elements/portal.js";
 
 /**
  * @param {WeakKey} ctx
- * @param {Observable<Mountable>} mountable$
+ * @param {import("@apendua/signal").Subscribable<Mountable>} mountable$
  * @param {EntityEffect<THREE.Object3D<XREventMap>>[]} [effects]
  * @param {PortalOptions} [options]
  * @returns {Observable<Component>}
@@ -20,7 +21,7 @@ import { createPortal } from "./elements/portal.js";
 export function dom(ctx, mountable$, effects = [], options = {}) {
   /** @type {THREE.Group<XREventMap>} */
   const group = new THREE.Group();
-  return just(group, effects).pipe(
+  return rx(just(group, effects)).pipe(
     switchMap((obj) => {
       return new Observable((subscriber) => {
         /** @type {Subject<void>} */
@@ -30,22 +31,24 @@ export function dom(ctx, mountable$, effects = [], options = {}) {
           addTo(parent) {
             // An effect per mountable, switched as the tree re-renders: the
             // same shape the `effects` operator used to give this pipeline.
-            const observable = mountable$.pipe(
+            const observable = rx(mountable$).pipe(
               switchMap((mountable) =>
-                toEffect(
-                  () => {
-                    const portal = createPortal(ctx, options);
-                    portal.addTo(obj);
-                    portal.mount(mountable);
-                    parent.add(obj);
-                    onCleanup(() => {
-                      if (obj.parent == parent) {
-                        obj.parent.remove(obj);
-                      }
-                      portal.disconnect();
-                    });
-                  },
-                  { name: "dom" },
+                rx(
+                  toEffect(
+                    () => {
+                      const portal = createPortal(ctx, options);
+                      portal.addTo(obj);
+                      portal.mount(mountable);
+                      parent.add(obj);
+                      onCleanup(() => {
+                        if (obj.parent == parent) {
+                          obj.parent.remove(obj);
+                        }
+                        portal.disconnect();
+                      });
+                    },
+                    { name: "dom" },
+                  ),
                 ),
               ),
               takeUntil(done),

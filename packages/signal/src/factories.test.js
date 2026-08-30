@@ -8,7 +8,7 @@ import { observable, component, effectsOnly, just } from "./factories.js";
 import { Effect, Signal, useEffect } from "./index.js";
 
 /**
- * @import { Observable } from 'rxjs';
+ * @import { Source } from './subscribable.js';
  * @import { EntityEffect } from './types.js';
  * @import { IEmitter } from './Emitter.js';
  */
@@ -101,7 +101,7 @@ describe("component()", () => {
   };
 
   /**
-   * @type {(operators: Op<InputProps, InputEvents>) => Observable<string>} operators
+   * @type {(operators: Op<InputProps, InputEvents>) => Source<string>} operators
    */
   const Input = component((operators) => {
     const props = store(defaults, operators);

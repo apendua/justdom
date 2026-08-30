@@ -35,6 +35,30 @@
  */
 
 /**
+ * The subscription contract, re-exported so that a package built on this one
+ * can spell its types in this package's vocabulary — `Source` for what the
+ * factories hand out, `Subscribable` for what the graph accepts — without
+ * naming RxJS. See `subscribable.js` for the contract itself.
+ *
+ * @template T
+ * @typedef {import("./subscribable.js").Observer<T>} Observer
+ */
+
+/**
+ * @typedef {import("./subscribable.js").Unsubscribable} Unsubscribable
+ */
+
+/**
+ * @template T
+ * @typedef {import("./subscribable.js").Subscribable<T>} Subscribable
+ */
+
+/**
+ * @template T
+ * @typedef {import("./subscribable.js").Source<T>} Source
+ */
+
+/**
  * Work mounted on an entity for as long as its holder stands.
  *
  * This is what `just`, `useEffects` and `store` take where they used to take

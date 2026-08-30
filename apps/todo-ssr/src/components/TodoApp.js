@@ -90,6 +90,7 @@ function FilterLink(filter, current) {
 /**
  * The whole page, rendered from the server side state in `../todos.js`.
  */
+/** @type {(filter: Filter) => import("@apendua/signal").Source<import("@apendua/justdom").Mountable>} */
 const TodoApp = component(
   /**
    * @param {Filter} filter

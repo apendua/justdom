@@ -1,4 +1,5 @@
 import { distinctUntilChanged, switchMap } from "rxjs";
+import { rx } from "@apendua/signal/rxjs";
 import { $, attr, children, list, on, renderText, set, text } from "@apendua/justdom";
 import { effects, observable, onCleanup, Signal } from "@apendua/signal";
 import { getPortalRoot } from "@apendua/freedom";
@@ -26,18 +27,18 @@ import { getPortalRoot } from "@apendua/freedom";
  * keeps the menu over itself rather than hanging into the room.
  *
  * @typedef {object} DropdownClasses
- * @property {Observable<string>} root The positioning context the menu is
+ * @property {import("@apendua/signal").Subscribable<string>} root The positioning context the menu is
  *   placed against: `position: relative`.
- * @property {Observable<string>} trigger The closed control, naming whatever is
+ * @property {import("@apendua/signal").Subscribable<string>} trigger The closed control, naming whatever is
  *   currently chosen. Needs `cursor: pointer` to be a ray target.
- * @property {Observable<string>} [caret] The open/closed mark. Omit to leave
+ * @property {import("@apendua/signal").Subscribable<string>} [caret] The open/closed mark. Omit to leave
  *   the trigger with nothing but its label.
- * @property {Observable<string>} menu The list. Must be positioned and stacked
+ * @property {import("@apendua/signal").Subscribable<string>} menu The list. Must be positioned and stacked
  *   above (`position: absolute; z-index: 1`) — see the layers section of the
  *   README for what that buys in a scene — and out of the flow, or opening it
  *   resizes the panel it hangs off.
- * @property {Observable<string>} option One row.
- * @property {Observable<string>} [optionSelected] Added to the row that is
+ * @property {import("@apendua/signal").Subscribable<string>} option One row.
+ * @property {import("@apendua/signal").Subscribable<string>} [optionSelected] Added to the row that is
  *   currently chosen.
  */
 
@@ -78,7 +79,7 @@ const DEFAULT_CARET_MARKS = /** @type {const} */ (["▲", "▼"]);
  *
  * @template T
  * @param {DropdownProps<T>} props
- * @returns {Observable<Mountable>}
+ * @returns {import("@apendua/signal").Source<Mountable>}
  */
 export function dropdown(props) {
   const {
@@ -103,15 +104,15 @@ export function dropdown(props) {
    * the same trick the panels use to keep a state change down to one class
    * attribute rather than a rebuilt subtree.
    *
-   * @param {Observable<string>} base
-   * @param {Observable<string>} modifier
+   * @param {import("@apendua/signal").Subscribable<string>} base
+   * @param {import("@apendua/signal").Subscribable<string>} modifier
    * @param {() => boolean} active
-   * @returns {Observable<string>}
+   * @returns {import("@apendua/signal").Source<string>}
    */
   const withModifier = (base, modifier, active) =>
-    observable(active).pipe(
+    rx(observable(active)).pipe(
       distinctUntilChanged(),
-      switchMap((isActive) => (isActive ? renderText`${base} ${modifier}` : base)),
+      switchMap((isActive) => rx(isActive ? renderText`${base} ${modifier}` : base)),
     );
 
   /** @param {DropdownOption<T>} entry */

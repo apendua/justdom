@@ -1,10 +1,11 @@
 import * as THREE from "three";
 import { Derived, each, effectMap, fromEvent, just, useEffect } from "@apendua/signal";
 import { distinctUntilChanged, merge, Observable, switchMap } from "rxjs";
+import { rx } from "@apendua/signal/rxjs";
 import { addDependency } from "@apendua/signal";
 
 /**
- * @import { EntityEffect } from '@apendua/signal';
+ * @import { EntityEffect, Subscribable, Source } from '@apendua/signal';
  * @import { Object3D } from 'three';
  * @import { CopyableProps, Component } from './core.js';
  */
@@ -13,7 +14,7 @@ import { addDependency } from "@apendua/signal";
  * @template {object} TEntity
  * @template {keyof CopyableProps<TEntity>} K
  * @param {K} key
- * @param {Observable<TEntity[K]>} value
+ * @param {Subscribable<TEntity[K]>} value
  * @returns {EntityEffect<TEntity>}
  */
 export function copy(key, value) {
@@ -34,11 +35,11 @@ function teardown(fn) {
 
 /**
  * @param {Object3D<any>} parent
- * @param {Observable<Component>} child
+ * @param {Subscribable<Component>} child
  * @return {Observable<never>}
  */
 function addToParent(parent, child) {
-  return child.pipe(
+  return rx(child).pipe(
     distinctUntilChanged(),
     switchMap((component) => {
       return teardown(() => component.addTo(parent));
@@ -48,7 +49,7 @@ function addToParent(parent, child) {
 
 /**
  * @template {Object3D<any>} TEntity
- * @param {Observable<Component>[]} observables
+ * @param {Subscribable<Component>[]} observables
  * @returns {EntityEffect<TEntity>}
  */
 export function children(...observables) {
@@ -58,8 +59,8 @@ export function children(...observables) {
 }
 
 /**
- * @param {Observable<Component>[]} observables
- * @returns {Observable<Component>}
+ * @param {Subscribable<Component>[]} observables
+ * @returns {Source<Component>}
  */
 export function fragment(...observables) {
   return just({
@@ -73,7 +74,7 @@ export function fragment(...observables) {
 }
 
 /**
- * @returns {(source: Observable<Object3D | null>) => Observable<Component>}
+ * @returns {(source: Subscribable<Object3D | null>) => Source<Component>}
  */
 function toComponent() {
   return (source) => {
@@ -103,17 +104,17 @@ function toComponent() {
 }
 
 export function Nothing() {
-  return just(null).pipe(toComponent());
+  return toComponent()(just(null));
 }
 
 /**
  * @template {Object3D<any>} T
  * @param {T} object
  * @param {Array<EntityEffect<T>>} [effects]
- * @returns {Observable<Component>}
+ * @returns {Source<Component>}
  */
 export function $(object, effects = []) {
-  return just(object, effects).pipe(toComponent());
+  return toComponent()(just(object, effects));
 }
 
 /**

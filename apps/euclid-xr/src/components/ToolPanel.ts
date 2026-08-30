@@ -1,5 +1,7 @@
 import * as THREE from "three";
+import { rx } from "@apendua/signal/rxjs";
 import { distinctUntilChanged, switchMap, type Observable } from "rxjs";
+import type { Subscribable } from "@apendua/signal";
 import { dom, XREventMap } from "@apendua/freedom";
 import { $, children, on, renderText, text } from "@apendua/justdom";
 import { component, effects, observable, set } from "@apendua/signal";
@@ -52,10 +54,10 @@ const SHORT_NAMES: Record<string, string> = {
  * portal repaints the one element whose class changed instead of the panel
  * being torn down and mirrored again.
  */
-const activeClass = (base: Observable<string>, isActive: () => boolean): Observable<string> =>
-  observable(isActive).pipe(
+const activeClass = (base: Subscribable<string>, isActive: () => boolean): Observable<string> =>
+  rx(observable(isActive)).pipe(
     distinctUntilChanged(),
-    switchMap((active) => (active ? renderText`${base} ${buttonActive}` : base)),
+    switchMap((active) => rx(active ? renderText`${base} ${buttonActive}` : base)),
   );
 
 /**

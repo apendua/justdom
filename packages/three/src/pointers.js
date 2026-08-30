@@ -221,7 +221,7 @@ export const DEFAULT_RAY_LENGTH = 5;
  * @param {THREE.XRTargetRaySpace} controller
  * @param {Pointers} all
  * @param {number} [fallback]
- * @returns {Observable<never>}
+ * @returns {import("@apendua/signal").Source<never>}
  */
 export function fitRayToHit(ray, controller, all, fallback = DEFAULT_RAY_LENGTH) {
   // An `Effect` rather than a `Derived`: this writes to the scene graph and
@@ -265,7 +265,7 @@ export function fitRayToHit(ray, controller, all, fallback = DEFAULT_RAY_LENGTH)
  *
  * @param {WeakKey} ctx
  * @param {CursorOptions} [options]
- * @returns {Observable<Component>}
+ * @returns {import("@apendua/signal").Source<Component>}
  */
 export function cursors(ctx, options = {}) {
   const { object, scale = 1, color = DEFAULT_COLOR } = options;

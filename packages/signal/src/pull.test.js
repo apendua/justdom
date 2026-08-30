@@ -1,6 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { map, ReplaySubject, shareReplay } from "rxjs";
+import { rx } from "./rxjs.js";
 
 import {
   Signal,
@@ -91,7 +92,7 @@ describe("a diamond whose two sides are different lengths", () => {
 
   it("survives an arbitrary rxjs pipeline in the middle", () => {
     const { seen } = measure((deep) => {
-      const source$ = toObservable(deep).pipe(
+      const source$ = rx(toObservable(deep)).pipe(
         map((v) => v * 3),
         map((v) => v / 3),
         shareReplay({ bufferSize: 1, refCount: true }),

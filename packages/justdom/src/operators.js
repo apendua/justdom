@@ -1,23 +1,11 @@
-import { tap } from "rxjs";
-import { effectMap, effects, observable, set, on } from "@apendua/signal";
+import { each, effectMap, effects, observable, set, on } from "@apendua/signal";
 
 /**
- * @import { Observable } from 'rxjs';
- * @import { EntityEffect } from '@apendua/signal';
+ * @import { EntityEffect, Subscribable } from '@apendua/signal';
  * @import { WritableProps, Primitive } from './core.js';
  */
 
 export { set, on };
-
-/**
- * @template T
- * @param {Observable<T>} value
- * @param {(value: T) => void} fn
- * @returns {Observable<T>}
- */
-function each(value, fn) {
-  return value.pipe(tap(fn));
-}
 
 /**
  * @typedef {object} ObjectWithAttributes
@@ -29,7 +17,7 @@ function each(value, fn) {
  * @template {ObjectWithAttributes} TEntity
  * @overload
  * @param {string} key
- * @param {Observable<Primitive> | (() => Primitive)} value
+ * @param {Subscribable<Primitive> | (() => Primitive)} value
  * @returns {EntityEffect<TEntity>}
  */
 
@@ -43,7 +31,7 @@ function each(value, fn) {
 /**
  * @template {ObjectWithAttributes} TEntity
  * @param {string|Record<string, Primitive>} keyOrValues
- * @param {Observable<Primitive> | (() => Primitive)} [value]
+ * @param {Subscribable<Primitive> | (() => Primitive)} [value]
  * @returns {EntityEffect<TEntity>}
  */
 export function attr(keyOrValues, value) {
@@ -64,17 +52,16 @@ export function attr(keyOrValues, value) {
   if (typeof value === "function") {
     value = observable(value);
   }
-  return effectMap((entity) => {
-    return value.pipe(
-      tap((v) => {
-        if (v === undefined) {
-          entity.removeAttribute(keyOrValues);
-        } else {
-          entity.setAttribute(keyOrValues, v === null ? "null" : v.toString());
-        }
-      }),
-    );
-  });
+  const source = value;
+  return effectMap((entity) =>
+    each(source, (v) => {
+      if (v === undefined) {
+        entity.removeAttribute(keyOrValues);
+      } else {
+        entity.setAttribute(keyOrValues, v === null ? "null" : v.toString());
+      }
+    }),
+  );
 }
 
 /**
@@ -85,7 +72,7 @@ export function attr(keyOrValues, value) {
 /**
  * @template {ObjectWithData} TEntity
  * @param {string} key
- * @param {Observable<Primitive>} value
+ * @param {Subscribable<Primitive>} value
  * @returns {EntityEffect<TEntity>}
  */
 export function data(key, value) {
@@ -148,7 +135,7 @@ function applyStyle(style, key, value) {
  * @template {keyof WritableProps<CSSStyleDeclaration>} K
  * @overload
  * @param {K} key
- * @param {Observable<CSSStyleDeclaration[K]> | (() => CSSStyleDeclaration[K])} value
+ * @param {Subscribable<CSSStyleDeclaration[K]> | (() => CSSStyleDeclaration[K])} value
  * @returns {EntityEffect<TEntity>}
  */
 
@@ -156,7 +143,7 @@ function applyStyle(style, key, value) {
  * @template {ObjectWithStyle} TEntity
  * @overload
  * @param {CustomProperty} key
- * @param {Observable<Primitive> | (() => Primitive)} value
+ * @param {Subscribable<Primitive> | (() => Primitive)} value
  * @returns {EntityEffect<TEntity>}
  */
 
@@ -171,7 +158,7 @@ function applyStyle(style, key, value) {
  * @template {ObjectWithStyle} TEntity
  * @template {keyof WritableProps<CSSStyleDeclaration>} K
  * @param {K|CustomProperty|StyleValues} keyOrValues
- * @param {Observable<any> | (() => any)} [value]
+ * @param {Subscribable<any> | (() => any)} [value]
  * @returns {EntityEffect<TEntity>}
  */
 export function style(keyOrValues, value) {
@@ -188,12 +175,11 @@ export function style(keyOrValues, value) {
   if (typeof value === "function") {
     value = observable(value);
   }
-  return effectMap((entity) => {
-    return value.pipe(
-      tap((v) => {
-        // `keyof CSSStyleDeclaration` includes its numeric index signature.
-        applyStyle(entity.style, String(keyOrValues), v);
-      }),
-    );
-  });
+  const source = value;
+  return effectMap((entity) =>
+    each(source, (v) => {
+      // `keyof CSSStyleDeclaration` includes its numeric index signature.
+      applyStyle(entity.style, String(keyOrValues), v);
+    }),
+  );
 }

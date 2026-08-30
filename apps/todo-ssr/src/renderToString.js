@@ -8,7 +8,7 @@ import { just } from "@apendua/signal";
  */
 
 /**
- * @typedef {(context: WeakKey) => Observable<Mountable>} Component
+ * @typedef {(context: WeakKey) => import("@apendua/signal").Subscribable<Mountable>} Component
  */
 
 const DEFAULT_TEMPLATE = `<!doctype html>

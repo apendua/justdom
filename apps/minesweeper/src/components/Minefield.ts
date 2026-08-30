@@ -3,7 +3,6 @@ import { observe } from "@apendua/signal";
 import { Field, Fields, getKey } from "../store/Fields";
 import { RootContext } from "../store/Root";
 import { ViewportContext } from "../store/Viewport";
-import { tap } from "rxjs";
 import FieldSet from "./FieldSet";
 import FieldStatus from "./FieldStatus";
 import { component } from "@apendua/signal";
@@ -180,9 +179,9 @@ const Minefield = component((ctx: WeakKey, game: Fields) => {
       }),
       list(observe(game).allFields, (field) => FieldStatus(ctx, field)),
     ),
-    tap((svg) => {
+    (svg: SVGSVGElement) => {
       svgRef = svg;
-    }),
+    },
   ]);
 });
 

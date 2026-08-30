@@ -3,7 +3,8 @@ import { $, attr, children, on, renderText, set, style, text } from "@apendua/ju
 import { observable, Signal } from "@apendua/signal";
 
 /**
- * @import {MonoTypeOperatorFunction, Observable} from "rxjs";
+ * @import {Observable} from "rxjs";
+ * @import {EntityEffect} from "@apendua/signal";
  * @import {Mountable} from "@apendua/justdom";
  */
 
@@ -407,7 +408,7 @@ export function keyboard(props) {
     // Zero basis and a share of the row proportional to the key's width: the
     // one number that has to come from in here, because it is the layout the
     // caller asked for by name.
-    /** @type {MonoTypeOperatorFunction<HTMLDivElement>} */
+    /** @type {EntityEffect<HTMLDivElement>} */
     const flex = style({ flexGrow: `${entry.width ?? 1}`, flexBasis: "0" });
     if (entry.spacer) {
       // Space, not a key: undressed, unnamed, unclickable — and therefore not
@@ -416,7 +417,7 @@ export function keyboard(props) {
       return $("div", [flex]);
     }
     const { modifier } = entry;
-    /** @type {MonoTypeOperatorFunction<HTMLDivElement>[]} */
+    /** @type {EntityEffect<HTMLDivElement>[]} */
     const operators = [
       set(
         "className",

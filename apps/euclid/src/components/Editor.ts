@@ -1,7 +1,7 @@
+import { tap } from "rxjs";
 import { $, children, className, on, set } from "@apendua/justdom";
 import { component, effectMap, toObservable } from "@apendua/signal";
 import { tokenize, KEYWORDS, BUILTINS } from "@apendua.dev/euclid-lang";
-import { tap } from "rxjs";
 import type AppStore from "../store/App";
 
 const editorStyle = className`
@@ -207,9 +207,9 @@ const Editor = component((store: AppStore) => {
       $("pre", [
         set("className", gutterStyle),
         set("textContent", () => lineNumbers(store.code.get())),
-        tap((el) => {
+        (el: HTMLPreElement) => {
           gutterRef = el;
-        }),
+        },
       ]),
       $("div", [
         set("className", codeAreaStyle),
@@ -217,9 +217,9 @@ const Editor = component((store: AppStore) => {
           $("pre", [
             set("className", highlightStyle),
             set("innerHTML", () => renderHighlight(store.code.get(), errorSpan())),
-            tap((el) => {
+            (el: HTMLPreElement) => {
               highlightRef = el;
-            }),
+            },
           ]),
           $("textarea", [
             set("className", inputStyle),

@@ -13,7 +13,7 @@ import { keepSubtreeMatrices, placeAndScale } from "./place.js";
 import { createFrameRequester } from "./frameRequester.js";
 import { createPortalPump } from "./portalPump.js";
 import { createPortalScheduler, PortalSchedulerContext } from "./portalScheduler.js";
-import { animateLate, frames } from "../render.js";
+import { frames, onLateFrame } from "../render.js";
 import { InteractionContext } from "../interactions.js";
 
 /**
@@ -155,8 +155,7 @@ export function createPortal(
   /** @type {() => void} */
   let stopFlushing = () => {};
   try {
-    const subscription = animateLate(ctx, flushBatches).subscribe();
-    stopFlushing = () => subscription.unsubscribe();
+    stopFlushing = onLateFrame(ctx, flushBatches);
   } catch {
     // No renderer to take frames from — a portal on a plain page, or under a
     // test runner. Nothing invalidates a batch from inside a frame there,

@@ -648,7 +648,10 @@ export default class ReactiveNode {
   }
 
   /**
-   * @returns {unknown}
+   * What this node died of, wrapped so that `null` means "still alive" and a
+   * failure whose value is `undefined` is still a failure.
+   *
+   * @returns {{ value: unknown } | null}
    */
   get failure() {
     return this.#failure;

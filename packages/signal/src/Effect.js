@@ -432,6 +432,26 @@ export class Effect extends ReactiveNode {
   }
 
   /**
+   * Failing an effect stops it. `fail` itself only lets go of the edges —
+   * which is the whole of it for a node that something *reads*, since a
+   * `Derived` nobody reads is already inert. An effect is not read: it is a
+   * root of demand with a slot in a queue, so an effect that had let go of
+   * everything and still answered `isDisposed` with `false` was one nothing
+   * would ever run and nothing would ever say had stopped.
+   *
+   * Here rather than in `#reportFailure` because a failure arrives from two
+   * directions — the run reporting one, and one propagating down from
+   * something the effect reads — and both of them end the effect.
+   *
+   * @param {unknown} err
+   * @returns {void}
+   */
+  fail(err) {
+    super.fail(err);
+    this.dispose();
+  }
+
+  /**
    * Take a failure the run reported after the fact, and land it where a thrown
    * one lands.
    *
@@ -454,7 +474,6 @@ export class Effect extends ReactiveNode {
       return;
     }
     this.fail(err);
-    this.dispose();
   }
 
   /**

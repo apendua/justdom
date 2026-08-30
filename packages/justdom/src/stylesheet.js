@@ -1,6 +1,6 @@
-import { map, Observable, ReplaySubject, share } from "rxjs";
+import { map, Observable } from "rxjs";
 import { renderText } from "./text.js";
-import { effectMap } from "@apendua/signal";
+import { just, onCleanup, use } from "@apendua/signal";
 import { isHydrating } from "./hydrate.js";
 
 const STYLE_KEY_ATTRIBUTE = "data-style-key";
@@ -121,39 +121,25 @@ function stableName(prefix, strings, isStatic) {
 }
 
 /**
- * @param {string} value
- * @returns {Observable<string>}
- */
-function constant(value) {
-  return new Observable((subscriber) => {
-    subscriber.next(value);
-  }).pipe(
-    share({
-      connector: () => new ReplaySubject(1),
-      resetOnRefCountZero: true,
-    }),
-  );
-}
-
-/**
  * Creates a CSS class name observable from template strings and values.
  * @param {TemplateStringsArray} strings - The template strings.
  * @param {...import("./text.js").Renderable} values - The values to interpolate.
  * @returns {Observable<string>}
  */
 export function className(strings, ...values) {
-  return constant(stableName("class_", strings, values.length === 0)).pipe(
-    effectMap((key) => {
-      return styleElement(
-        renderText(strings, ...values).pipe(map((value) => `.${key} {${value}}`)),
-        key,
+  // One style element however many subscribers, the name replayed to a late
+  // one, everything down with the last — which is a mounting, so it is spelled
+  // as one.
+  return just(stableName("class_", strings, values.length === 0), [
+    (key) => {
+      use(
+        styleElement(
+          renderText(strings, ...values).pipe(map((value) => `.${key} {${value}}`)),
+          key,
+        ),
       );
-    }),
-    share({
-      connector: () => new ReplaySubject(1),
-      resetOnRefCountZero: true,
-    }),
-  );
+    },
+  ]);
 }
 
 /**
@@ -163,27 +149,25 @@ export function className(strings, ...values) {
  * @returns {Observable<string>}
  */
 export function stylesheet(strings, ...values) {
-  const className$ = constant(stableName("class_", strings, values.length === 0));
-  return className$.pipe(
-    effectMap((key) => {
-      return styleElement(
-        renderText(
-          strings,
-          ...values.map((value) => {
-            if (value === CLASS_NAME) {
-              return className$;
-            }
-            return value;
-          }),
+  const name = stableName("class_", strings, values.length === 0);
+  return just(name, [
+    (key) => {
+      use(
+        styleElement(
+          renderText(
+            strings,
+            ...values.map((value) => {
+              if (value === CLASS_NAME) {
+                return just(name);
+              }
+              return value;
+            }),
+          ),
+          key,
         ),
-        key,
       );
-    }),
-    share({
-      connector: () => new ReplaySubject(1),
-      resetOnRefCountZero: true,
-    }),
-  );
+    },
+  ]);
 }
 
 /**
@@ -199,25 +183,21 @@ export function fontFace(fontUrl, options = {}) {
   // Every input to the rule is known up front, so the name can be derived from
   // them and stays the same across a server render and a client hydration.
   const fontName = `font_${hash([fontUrl, format, fontWeight, fontStyle].join(" "))}`;
-  return new Observable((subscriber) => {
-    const styleElement = document.createElement("style");
-    styleElement.innerHTML = `
-      @font-face {
-        font-family: ${fontName};
-        src: url('${fontUrl}') format('${format}');
-        font-weight: ${fontWeight};
-        font-style: ${fontStyle};
-      }
-    `;
-    document.head.appendChild(styleElement);
-    subscriber.next(fontName);
-    return () => {
-      document.head.removeChild(styleElement);
-    };
-  }).pipe(
-    share({
-      connector: () => new ReplaySubject(1),
-      resetOnRefCountZero: true,
-    }),
-  );
+  return just(fontName, [
+    () => {
+      const styleElement = document.createElement("style");
+      styleElement.innerHTML = `
+        @font-face {
+          font-family: ${fontName};
+          src: url('${fontUrl}') format('${format}');
+          font-weight: ${fontWeight};
+          font-style: ${fontStyle};
+        }
+      `;
+      document.head.appendChild(styleElement);
+      onCleanup(() => {
+        document.head.removeChild(styleElement);
+      });
+    },
+  ]);
 }

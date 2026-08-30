@@ -47,8 +47,12 @@
  * A plain lambda is a valid effect: `(el) => { ref = el; }` reads nothing, so
  * it runs exactly once per mounting.
  *
+ * The second argument is the run's `EffectContext` — `fail` is how work the
+ * run merely started reports a failure that arrives after the run returned,
+ * such as a subscription erroring later. Most effects never need it.
+ *
  * @template T
- * @typedef {(entity: T) => unknown} EntityEffect
+ * @typedef {(entity: T, context: import("./Effect.js").EffectContext) => unknown} EntityEffect
  */
 
 export {};

@@ -1,6 +1,7 @@
 import { Observable } from "rxjs";
 import { Derived } from "./Derived.js";
 import { useEffect } from "./Effect.js";
+import { onCleanup } from "./core.js";
 import { toEffect, toObservable } from "./interop.js";
 import { onEachValue, subscribeTo } from "./util.js";
 
@@ -150,7 +151,9 @@ function justNode(valueOrFactory, effects) {
       // `useEffect` ties its disposal to this evaluation's cleanups, which is
       // the mounting's lifetime: run again on reconnect, undone on disconnect.
       let standing = false;
-      useEffect(() => fn(entity), {
+      /** @type {{ value: unknown } | null} */
+      let pending = null;
+      const effect = useEffect((context) => fn(entity, context), {
         name: "just",
         onError: (err) => {
           if (!standing) {
@@ -165,7 +168,25 @@ function justNode(valueOrFactory, effects) {
           node.fail(err);
         },
       });
+      // A dependency of the mounted effect erroring fails the effect down the
+      // push path, which never consults `onError` — so the mounting keeps an
+      // ear on the observer channel. A failure from the first run replays
+      // synchronously on subscribe, and lands in `pending` so it can fail
+      // this evaluation the way a thrown one does.
+      const failures = effect.subscribe({
+        error: (err) => {
+          if (standing) {
+            node.fail(err);
+          } else {
+            pending = pending ?? { value: err };
+          }
+        },
+      });
+      onCleanup(() => failures.unsubscribe());
       standing = true;
+      if (pending) {
+        throw /** @type {{ value: unknown }} */ (pending).value;
+      }
     }
     return entity;
   });

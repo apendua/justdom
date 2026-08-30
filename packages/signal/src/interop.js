@@ -53,6 +53,22 @@ export function nodeOf(observable) {
  */
 export function toObservable(node) {
   const observable = new Observable((/** @type {import("rxjs").Subscriber<T>} */ subscriber) => {
+    // The effect below hears the node's *values*; it cannot hear the node
+    // *fail*. Failure makes a node part ways with its dependents, and what
+    // the orphaned effect sees afterwards is a `NoValueError` — "not yet" —
+    // so it would wait forever for news that cannot come. Failure travels
+    // the observer channel, so the subscriber keeps an ear there — taken
+    // *first*, so a node that fails during the very evaluation the effect
+    // triggers is heard rather than reported as unhandled.
+    const failures = node.subscribe({
+      error: (err) => subscriber.error(err),
+    });
+    if (subscriber.closed) {
+      // Subscribing replayed a stored failure; there is nothing to read.
+      return () => {
+        failures.unsubscribe();
+      };
+    }
     const effect = new Effect(
       () => {
         const value = node.get();
@@ -67,14 +83,6 @@ export function toObservable(node) {
         onError: (err) => subscriber.error(err),
       },
     );
-    // The effect hears the node's *values*; it cannot hear the node *fail*.
-    // Failure makes a node part ways with its dependents, and what the
-    // orphaned effect sees afterwards is a `NoValueError` — "not yet" — so
-    // it would wait forever for news that cannot come. Failure travels the
-    // observer channel, so the subscriber keeps an ear there.
-    const failures = node.subscribe({
-      error: (err) => subscriber.error(err),
-    });
     return () => {
       failures.unsubscribe();
       effect.dispose();

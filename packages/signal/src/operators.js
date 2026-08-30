@@ -2,7 +2,7 @@ import { Derived } from "./Derived.js";
 import { useEffect } from "./Effect.js";
 import { onEachValue, subscribeTo, each } from "./util.js";
 import { observable, component } from "./factories.js";
-import { addDependency } from "./core.js";
+import { addDependency, onCleanup } from "./core.js";
 import { toObservable, nodeOf } from "./interop.js";
 
 /**
@@ -58,18 +58,36 @@ export function flatMap(fn) {
  * Keep whatever observable `fn` hands back subscribed for as long as the
  * entity stays mounted.
  *
- * The effect runs once — nothing here reads reactive state — and `use` hangs
- * the subscription off it: attached when the mounting is built, let go when
- * it comes down, its failure failing the mounting exactly as a pipeline error
- * did.
+ * The subscription is taken directly rather than through `use`, for the sake
+ * of where its errors go. One that arrives while the subscribe is still on
+ * this run's stack is *thrown* — it fails the mounting synchronously, which
+ * is what lets a hydration mismatch be caught before `subscribe` returns.
+ * One that arrives later goes through `context.fail`, and lands where a
+ * failed mounting lands.
  *
  * @template T
  * @param {(value: T) => Observable<unknown>} fn
  * @returns {EntityEffect<T>}
  */
 export function effectMap(fn) {
-  return (entity) => {
-    use(fn(entity));
+  return (entity, { fail }) => {
+    let sync = true;
+    /** @type {{ value: unknown } | null} */
+    let failure = null;
+    const subscription = fn(entity).subscribe({
+      error: (err) => {
+        if (sync) {
+          failure = failure ?? { value: err };
+        } else {
+          fail(err);
+        }
+      },
+    });
+    sync = false;
+    onCleanup(() => subscription.unsubscribe());
+    if (failure) {
+      throw /** @type {{ value: unknown }} */ (failure).value;
+    }
   };
 }
 
@@ -118,13 +136,11 @@ export function set(keyOrValues, value) {
     };
   }
   const source = value;
-  return (entity) => {
-    use(
-      each(source, (v) => {
-        entity[keyOrValues] = v;
-      }),
-    );
-  };
+  return effectMap((entity) =>
+    each(source, (v) => {
+      entity[keyOrValues] = v;
+    }),
+  );
 }
 
 /**
@@ -156,7 +172,7 @@ export function useEffects(value, effects) {
  */
 function mountEffect(value, fn) {
   let standing = false;
-  const effect = useEffect(() => fn(value), {
+  const effect = useEffect((context) => fn(value, context), {
     name: "useEffects",
     onError: (err) => {
       if (!standing) {

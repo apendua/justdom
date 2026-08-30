@@ -6,7 +6,8 @@ import { replaceSegment, toSegment } from "./helpers.js";
 import ListRenderer from "./ListRenderer.js";
 
 /**
- * @import {Observable, MonoTypeOperatorFunction} from "rxjs"
+ * @import {Observable} from "rxjs"
+ * @import {EntityEffect} from "@apendua/signal"
  * @import {Mountable, Container} from "./types.js"
  */
 
@@ -16,14 +17,14 @@ describe("renders a simple DOM tree", () => {
       $("div", [
         children(
           $("span", [
-            tap((span) => {
+            (span) => {
               span.textContent = "Hello,";
-            }),
+            },
           ]),
           $("span", [
-            tap((span) => {
+            (span) => {
               span.textContent = "World!";
-            }),
+            },
           ]),
         ),
       ]),
@@ -40,9 +41,9 @@ describe("renders a simple DOM tree", () => {
         children(
           list(items$, (item) => {
             return $("li", [
-              tap((li) => {
+              (li) => {
                 li.textContent = item;
-              }),
+              },
             ]);
           }),
         ),
@@ -60,9 +61,9 @@ describe("renders a simple DOM tree", () => {
         children(
           list(items$, (item) => {
             return $("li", [
-              tap((li) => {
+              (li) => {
                 li.textContent = item;
-              }),
+              },
             ]);
           }),
         ),
@@ -88,9 +89,9 @@ describe("renders a simple DOM tree", () => {
         children(
           list(items$, (item) => {
             return $("li", [
-              tap((li) => {
+              (li) => {
                 li.textContent = item;
-              }),
+              },
             ]);
           }),
         ),
@@ -121,9 +122,9 @@ describe("renders a simple DOM tree", () => {
         children(
           list(items$, (item) => {
             return $("li", [
-              tap((li) => {
+              (li) => {
                 li.textContent = item;
-              }),
+              },
             ]);
           }),
         ),
@@ -186,7 +187,7 @@ const renderer = new ListRenderer({
 /**
  * @template {Node} T
  * @param {Array<Observable<Mountable>>} children
- * @returns {MonoTypeOperatorFunction<T>}
+ * @returns {EntityEffect<T>}
  */
 function children(...children) {
   return effectMap((node) => {
@@ -242,18 +243,11 @@ function cloneNode(node) {
 /**
  * @template {keyof HTMLElementTagNameMap} Tag
  * @param {Tag} tag
- * @param {MonoTypeOperatorFunction<HTMLElementTagNameMap[Tag]>[]} operators
+ * @param {EntityEffect<HTMLElementTagNameMap[Tag]>[]} effects
  * @returns {Observable<Mountable>}
  */
-function $(tag, operators = []) {
-  return operators
-    .reduce(
-      (source, operator) => {
-        return operator(source);
-      },
-      just(document.createElement(tag)),
-    )
-    .pipe(map((node) => toMountable(node)));
+function $(tag, effects = []) {
+  return just(document.createElement(tag), effects).pipe(map((node) => toMountable(node)));
 }
 
 /**

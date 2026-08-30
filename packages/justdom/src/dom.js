@@ -7,51 +7,60 @@ import { defer, distinctUntilChanged, map, Observable, tap } from "rxjs";
 const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
 
 /**
- * @import {MonoTypeOperatorFunction} from 'rxjs';
+ * @import {EntityEffect} from '@apendua/signal';
  * @import {Mountable, Container} from "./types.js";
  */
 
 /**
  * Creates an element observable.
  *
- * The element itself is created on *subscribe*, not when `$()` is called. That
- * matters for two reasons:
+ * The element is created by a factory `just` runs *inside its node*, not when
+ * `$()` is called. That matters for two reasons:
  *
- * - Without `defer`, the argument evaluation order makes children get created
- *   before their parents, which is the reverse of document order. Creating on
- *   subscribe means elements are acquired top-down instead, matching the order
- *   the operator chain runs in.
+ * - Creating on demand means elements are acquired top-down, in document
+ *   order, matching the order the mountings are built — argument evaluation
+ *   alone would give the reverse. Hydration's cursor depends on that order.
  * - The same element observable can be mounted in more than one place. Eager
  *   creation gave every subscriber the *same* node, so the second mount stole
  *   it from the first and only one copy was rendered.
  *
+ * The `defer` is what keeps the second property: a `just` node is shared
+ * among its concurrent subscribers, and an element must not be, so each
+ * subscriber gets a node of its own with the factory run afresh inside it.
+ *
  * @template {keyof HTMLElementTagNameMap} Tag
  * @param {Tag} tag
- * @param {MonoTypeOperatorFunction<HTMLElementTagNameMap[Tag]>[]} operators
+ * @param {EntityEffect<HTMLElementTagNameMap[Tag]>[]} effects
  * @returns {Observable<Mountable>}
  */
-export function $(tag, operators = []) {
-  return defer(() => {
-    const element = /** @type {HTMLElementTagNameMap[Tag]} */ (
-      claimElement(tag) ?? document.createElement(tag)
-    );
-    return just(element, operators);
-  }).pipe(map(toMountable));
+export function $(tag, effects = []) {
+  return defer(() =>
+    just(
+      () =>
+        /** @type {HTMLElementTagNameMap[Tag]} */ (
+          claimElement(tag) ?? document.createElement(tag)
+        ),
+      effects,
+    ),
+  ).pipe(map(toMountable));
 }
 
 /**
  * @template {keyof SVGElementTagNameMap} Tag
  * @param {Tag} tag
- * @param {MonoTypeOperatorFunction<SVGElementTagNameMap[Tag]>[]} operators
+ * @param {EntityEffect<SVGElementTagNameMap[Tag]>[]} effects
  * @returns {Observable<Mountable>}
  */
-export function $$(tag, operators = []) {
-  return defer(() => {
-    const element = /** @type {SVGElementTagNameMap[Tag]} */ (
-      claimElement(tag, SVG_NAMESPACE) ?? document.createElementNS(SVG_NAMESPACE, tag)
-    );
-    return just(element, operators);
-  }).pipe(map(toMountable));
+export function $$(tag, effects = []) {
+  return defer(() =>
+    just(
+      () =>
+        /** @type {SVGElementTagNameMap[Tag]} */ (
+          claimElement(tag, SVG_NAMESPACE) ?? document.createElementNS(SVG_NAMESPACE, tag)
+        ),
+      effects,
+    ),
+  ).pipe(map(toMountable));
 }
 
 /**
@@ -154,7 +163,7 @@ const renderer = new ListRenderer({
 /**
  * @template {Node} T
  * @param {Array<Observable<Mountable>>} children
- * @returns {MonoTypeOperatorFunction<T>}
+ * @returns {EntityEffect<T>}
  */
 export function children(...children) {
   return effectMap((node) => {

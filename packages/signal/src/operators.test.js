@@ -1,6 +1,6 @@
 import { describe, it, beforeEach, mock } from "node:test";
 import assert from "node:assert/strict";
-import { merge, Subject } from "rxjs";
+import { merge, NEVER, Subject } from "rxjs";
 import store from "./store.js";
 import { Computation } from "./index.js";
 import { decorate, memoFn } from "./decorators.js";
@@ -59,6 +59,39 @@ describe("effects()", () => {
 });
 
 describe("effectMap()", () => {
+  it("re-runs its callback when what the callback read changes", () => {
+    // The callback chooses *which* observable to keep subscribed, and choosing
+    // is a read: freedom's bricks branch on reactive state — `if
+    // (dragState.get() || props.bodyType === null) return NEVER` — so a brick
+    // acquires its rigid body when the board is made ready, and loses it while
+    // it is carried. Without this the body is chosen once, at mount, and never
+    // again.
+    const bodyType = Signal.of(/** @type {string | null} */ (null));
+    /** @type {string[]} */
+    const log = [];
+    const subscription = just({}, [
+      effectMap(() => {
+        if (bodyType.get() === null) {
+          return NEVER;
+        }
+        return new Observable(() => {
+          log.push("body created");
+          return () => log.push("body removed");
+        });
+      }),
+    ]).subscribe(() => {});
+
+    assert.deepEqual(log, [], "nothing while there is no body to build");
+
+    bodyType.set("dynamic");
+    assert.deepEqual(log, ["body created"], "the callback ran again and its choice was subscribed");
+
+    bodyType.set(null);
+    assert.deepEqual(log, ["body created", "body removed"], "and switching away undoes it");
+
+    subscription.unsubscribe();
+  });
+
   it("does not adopt what the observable reads while subscribing", () => {
     // The same rule `use()` follows, and for the same reason: subscribing is
     // not reading. A foreign observable's `subscribe` may read reactive

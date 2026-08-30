@@ -71,32 +71,54 @@ export function flatMap(fn) {
  */
 export function effectMap(fn) {
   return (entity, { fail }) => {
-    let sync = true;
-    /** @type {{ value: unknown } | null} */
-    let failure = null;
-    // Non-reactive, because subscribing is not reading: a foreign observable's
-    // `subscribe` may read reactive things — a `component(...)` builds its
-    // entities in there — and those belong to it, not to this mounting.
-    // Tracking them would tear the subscription down and back up on a write
-    // the mounting never looked at, which in freedom means rebuilding a
-    // subtree. `toObservable` keeps the same rule around its `next`, which is
-    // what made this safe while the pipeline still ran through one.
-    const subscription = withComputation(null, () =>
-      fn(entity).subscribe({
-        error: (err) => {
-          if (sync) {
-            failure = failure ?? { value: err };
-          } else {
-            fail(err);
+    // Two questions that look like one, and they get opposite answers.
+    //
+    // *Choosing* the observable is a read. A callback that branches on
+    // reactive state — `if (dragState.get() || props.bodyType === null) return
+    // NEVER` — has to run again when that state moves, and switch to whatever
+    // it hands back; that is how a brick acquires its rigid body when the
+    // board is made ready, and loses it while it is being carried. So the
+    // callback lives in a `Derived`, which is what `component(fn)` gave it
+    // when this was a stream operator.
+    //
+    // *Subscribing* to what it chose is not a read. Whatever the observable
+    // touches on the way in belongs to it, not to this mounting, and tracking
+    // it would tear the subscription down on a write the mounting never
+    // looked at — which in freedom means rebuilding a subtree.
+    const chosen = new Derived(() => fn(entity));
+    let firstRun = true;
+    useEffect(
+      () => {
+        const source = chosen.get();
+        let sync = true;
+        /** @type {{ value: unknown } | null} */
+        let failure = null;
+        const subscription = withComputation(null, () =>
+          source.subscribe({
+            error: (err) => {
+              if (sync) {
+                failure = failure ?? { value: err };
+              } else {
+                fail(err);
+              }
+            },
+          }),
+        );
+        sync = false;
+        onCleanup(() => subscription.unsubscribe());
+        if (failure) {
+          if (firstRun) {
+            // Still on the mounting's stack, so this reaches whoever is
+            // subscribing — which is what lets a hydration mismatch be caught
+            // before `subscribe` returns.
+            throw /** @type {{ value: unknown }} */ (failure).value;
           }
-        },
-      }),
+          fail(/** @type {{ value: unknown }} */ (failure).value);
+        }
+      },
+      { name: "effectMap" },
     );
-    sync = false;
-    onCleanup(() => subscription.unsubscribe());
-    if (failure) {
-      throw /** @type {{ value: unknown }} */ (failure).value;
-    }
+    firstRun = false;
   };
 }
 

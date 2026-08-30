@@ -234,7 +234,7 @@ describe("makeInteractive", () => {
     assert.strictEqual(manager.getIntersection(controller), undefined);
   });
 
-  test("a new entity from the source replaces the one before it", () => {
+  test("a new mounting replaces the entity the one before it registered", () => {
     const manager = new InteractionManager();
     const ctx = InteractionContext.set({}, manager);
     const { makeInteractive } = interactions(ctx);
@@ -242,43 +242,16 @@ describe("makeInteractive", () => {
     const near = targetMesh(5);
     const far = targetMesh(10);
 
-    /** @type {Subject<THREE.Object3D<XREventMap>>} */
-    const source = new Subject();
-    source.pipe(makeInteractive()).subscribe();
-
-    source.next(near);
+    // Entity replacement is the mounting's job now: a fresh entity is a fresh
+    // mounting, and taking the old one down is what unregisters it.
+    const first = just(near, [makeInteractive()]).subscribe();
     assert.strictEqual(manager.getIntersection(controller)?.object, near);
 
     // The nearer mesh would still win the intersection if it were left behind.
-    source.next(far);
+    first.unsubscribe();
+    const second = just(far, [makeInteractive()]).subscribe();
     assert.strictEqual(manager.getIntersection(controller)?.object, far);
-  });
-
-  test("completes with its source, and lets go of the entity when it does", () => {
-    const manager = new InteractionManager();
-    const ctx = InteractionContext.set({}, manager);
-    const { makeInteractive } = interactions(ctx);
-    const controller = fakeController();
-    const mesh = targetMesh();
-
-    /** @type {Subject<THREE.Object3D<XREventMap>>} */
-    const source = new Subject();
-    let completed = false;
-    source.pipe(makeInteractive()).subscribe({
-      complete: () => {
-        completed = true;
-      },
-    });
-
-    source.next(mesh);
-    assert.strictEqual(manager.getIntersection(controller)?.object, mesh);
-
-    // The registration observable never completes on its own, so an operator
-    // that waits for it -- switchMap does -- would swallow this completion and
-    // hold the entity in the raycast set forever.
-    source.complete();
-    assert.strictEqual(completed, true);
-    assert.strictEqual(manager.getIntersection(controller), undefined);
+    second.unsubscribe();
   });
 
   test("a reactive getter is tracked the way observable() tracks it", () => {

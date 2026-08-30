@@ -80,7 +80,7 @@ export const PortalReadyContext = createProperty(
  * @import {Component, XREventMap} from '../core.js';
  * @import {ClipBox} from './clip.js';
  * @import {Observable} from 'rxjs';
- * @import {MonoTypeOperatorFunction} from 'rxjs';
+ * @import {EntityEffect} from '@apendua/signal';
  */
 
 /**
@@ -334,7 +334,7 @@ export function box(ctx, element, options = {}) {
    * that is no longer clickable would still see events bubbling out of a
    * button inside it and synthesise a second, spurious click on the wrapper.
    *
-   * @type {MonoTypeOperatorFunction<THREE.Object3D<XREventMap>>[]}
+   * @type {EntityEffect<THREE.Object3D<XREventMap>>[]}
    */
   const interactivity = [
     makeInteractive(() => isPanelReady() && shown.get()),
@@ -402,7 +402,7 @@ export function box(ctx, element, options = {}) {
    * which is what the panel's background would have reported had the list
    * not been in the way.
    *
-   * @type {MonoTypeOperatorFunction<THREE.Object3D<XREventMap>>[]}
+   * @type {EntityEffect<THREE.Object3D<XREventMap>>[]}
    */
   const draggability = [
     makeInteractive(() => isPanelReady() && shown.get()),

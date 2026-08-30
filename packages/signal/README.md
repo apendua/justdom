@@ -16,7 +16,12 @@ by construction rather than by scheduling.
 
 RxJS remains the interop layer: any `Subscribable` can be depended on, and
 `toObservable` / `fromObservable` carry values across the boundary in either
-direction.
+direction. What is no longer RxJS is the *entity* layer: `just`, `store` and
+`useEffects` take arrays of **entity effects** — `(entity) => void` functions
+run as `Effect`s while the entity stays mounted — where they used to take
+`MonoTypeOperatorFunction`s. A plain lambda is a valid entry, and `effects(fn)`
+is the identity, kept for the call sites that like to say what the function is
+for.
 
 ## Installation
 
@@ -195,8 +200,13 @@ ordering. The queue notices and throws rather than spinning.
   injection without a compiler).
 - `@memo` / `@memoFn` / `@mutate` — decorators for memoized getters, memoized
   methods, and non-reactive mutations.
+- `just()`, `useEffects()` — mount a list of entity effects on a value:
+  `just` behind a shared node (one mounting however many subscribers, torn
+  down with the last, the value or a factory for it evaluated inside),
+  `useEffects` directly on the surrounding computation.
 - `observable()`, `component()`, `effects()`, `set()`, `use()`, `on()` — the
-  RxJS-facing operator layer, now built on `Effect`.
+  factory layer, built on `Effect`; `set`, `on`, `effectMap` and friends are
+  entity-effect factories now rather than stream operators.
 
 ## Migrating from the push core
 

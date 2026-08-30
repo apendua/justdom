@@ -38,6 +38,13 @@ the siege shot, and writes straight into
 the header comment has the details, including the caption numbers to check
 afterwards.
 
+`node tests/emulator-check.mjs` drives the same emulator harder: it aims the
+emulated controller's ray at the tray, pulls a brick off with the trigger,
+drops it snapped onto an empty cell, walks the history back, and fights a
+short siege — asserting the whole way through the panel's own DOM, which is
+what the panels being real DOM makes cheap. It is the one automated test of
+the drag itself; the pure grid arithmetic under it has unit tests of its own.
+
 The castle is saved to `localStorage` (key `castle-xr:castle`) a moment after
 the last change. The soundtrack is the house one, `glass_desk_habits.mp3` out of
 `@apendua.dev/media`, started with the session and stopped with it — played by

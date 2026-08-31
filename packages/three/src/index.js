@@ -20,7 +20,11 @@ export { place, placeAndScale } from "./elements/place.js";
 export { cursors, pointers } from "./pointers.js";
 export { dom } from "./dom.js";
 export { createPortal, getPortalRoot } from "./elements/portal.js";
-export { createPortalScheduler, PortalSchedulerContext } from "./elements/portalScheduler.js";
+export {
+  createFrameShareBudget,
+  createPortalScheduler,
+  PortalSchedulerContext,
+} from "./elements/portalScheduler.js";
 export {
   isRenderingSuspended,
   sampleRenderingUpdates,

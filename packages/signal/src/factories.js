@@ -149,43 +149,24 @@ export function just(valueOrFactory, effects = []) {
           : valueOrFactory;
       for (const fn of effects) {
         let standing = false;
-        /** @type {{ value: unknown } | null} */
-        let pending = null;
+        // `onError` is the whole of the wiring: it hears a run failing — a
+        // throw, a `context.fail` — and, as the effect's listener of last
+        // resort, the effect itself failing when a dependency dies. A failure
+        // during the first run arrives with this mounting's stack still
+        // underneath, whichever kind it was, so the rethrow lands in the
+        // `catch` below and reaches the subscriber synchronously; later news
+        // goes to the error channel and ends the mounting.
         const effect = new Effect((context) => fn(entity, context), {
           name: "just",
           onError: (err) => {
             if (!standing) {
-              // Still on this mounting's stack: the throw lands below, takes
-              // down whatever was already mounted, and reaches the subscriber
-              // synchronously.
               throw err;
             }
             subscriber.error(err);
           },
-          // A dependency of the mounted effect erroring fails the effect down
-          // the push path, which never consults `onError` — so the mounting
-          // keeps an ear on the observer channel, registered *before* the
-          // first run: a dependency that fails while the mounting is still
-          // being built then fails an effect that is already heard, instead
-          // of one nothing watches yet, and nothing is reported as unhandled
-          // on the way to `pending` and the throw below. The observer is
-          // never unsubscribed — it lives as long as the effect, and a late
-          // `error` into a torn-down subscriber is a no-op.
-          observer: {
-            error: (err) => {
-              if (standing) {
-                subscriber.error(err);
-              } else {
-                pending = pending ?? { value: err };
-              }
-            },
-          },
         });
         mounted.push(effect);
         standing = true;
-        if (pending) {
-          throw /** @type {{ value: unknown }} */ (pending).value;
-        }
       }
       subscriber.next(entity);
     } catch (err) {

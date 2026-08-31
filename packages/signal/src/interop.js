@@ -80,13 +80,12 @@ export function toObservable(node) {
       },
       {
         name: "toObservable",
+        // Hears the run failing, and — as the effect's listener of last
+        // resort — the effect itself dying when the node does. The
+        // subscription above hears the *node* die first and closes the
+        // subscriber, so this second `error` for the same death is a no-op;
+        // what it buys is the effect never being reported as unhandled.
         onError: (err) => subscriber.error(err),
-        // The node failing mid-read kills this effect down the push path,
-        // which consults nobody — the subscription above hears the *node*
-        // die, but the effect would die unheard and be reported as unhandled.
-        // An ear from before the first run keeps that quiet; `error` into a
-        // subscriber the node's failure already closed is a no-op.
-        observer: { error: (err) => subscriber.error(err) },
       },
     );
     return () => {
@@ -112,14 +111,13 @@ export function toObservable(node) {
 export function toEffect(fn, options = {}) {
   return new Stream((subscriber) => {
     const effect = new Effect(fn, {
+      // The one ear this stream needs: a run failing — a throw, a
+      // `context.fail` — and, as the effect's listener of last resort, the
+      // effect itself failing when a dependency dies. All of it lands on the
+      // subscriber's error channel, a dependency erupting during the very
+      // first run included.
       name: options.name ?? "toEffect",
       onError: (err) => subscriber.error(err),
-      // `onError` hears the run throw and `context.fail`; a dependency that
-      // errors instead *fails* the effect down the push path, which consults
-      // neither — without an ear on the observer channel the effect died
-      // silently and the subscriber was never told. Registered before the
-      // first run, so even a dependency failing on the way in is heard.
-      observer: { error: (err) => subscriber.error(err) },
     });
     return () => {
       effect.dispose();

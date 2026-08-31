@@ -545,10 +545,10 @@ describe("an effect nested inside another effect", () => {
     // ear on exactly that: a failure edge from the inner effect to the
     // computation that built it. The inner effect fails and stops; the
     // failure travels the edge and fails the outer effect too, the same way a
-    // dead node the outer effect read would have. `onError` is not in this
-    // path — a failure arriving down an edge fails the effect outright — so
-    // the chain is reported once, at the outer end, where nobody was
-    // listening.
+    // dead node the outer effect read would have. The outer effect's own
+    // `onError` is its listener of last resort, so the chain ends there —
+    // told, not reported — with the outer effect already stopped by the time
+    // it hears.
     /** @type {string[]} */
     const seen = [];
     /** @type {(err: unknown) => void} */
@@ -564,16 +564,15 @@ describe("an effect nested inside another effect", () => {
           { name: "inner" },
         );
       },
-      { name: "outer", onError: () => seen.push("outer") },
+      { name: "outer", onError: (err) => seen.push(/** @type {Error} */ (err).message) },
     );
 
     const { logged } = captureConsoleError(() => report(new Error("after the run")));
 
-    assert.deepEqual(seen, [], "onError hears the pull path, and this is the push path");
+    assert.deepEqual(seen, ["after the run"], "the builder's onError is the end of the chain");
     assert.equal(inner?.isDisposed, true, "the inner effect stops");
     assert.equal(outer.isDisposed, true, "and takes the effect that built it with it");
-    assert.equal(logged.length, 1, "one report for the whole chain");
-    assert.match(String(logged[0][0]), /Unhandled failure in Effect "outer"/);
+    assert.deepEqual(logged, [], "told, so there is nothing to report");
   });
 
   it("keeps a standalone inner effect's failure to itself", () => {
@@ -773,6 +772,10 @@ describe("a node failure, which is the other kind", () => {
   });
 
   it("is handed to a dependent that starts reading after it", () => {
+    // Reading a dead node kills the reader — and for a reader whose *first
+    // run* did the reading, the death rides the constructor's stack out, the
+    // same way a body that threw would. The throw is the delivery, so nothing
+    // is reported along the way.
     /** @type {Subject<number>} */
     const subject = new Subject();
     const source = Derived.from(subject);
@@ -780,25 +783,21 @@ describe("a node failure, which is the other kind", () => {
     subject.error(new Error("already dead"));
 
     /** @type {string[]} */
-    const seen = [];
-    /** @type {Effect | undefined} */
-    let latecomer;
-    /** @type {string[]} */
     const read = [];
-    captureConsoleError(() => {
-      latecomer = new Effect(() => {
-        try {
-          source.get();
-        } catch (err) {
-          read.push(/** @type {Error} */ (err).message);
-        }
-      });
-      latecomer.subscribe({ error: (err) => seen.push(/** @type {Error} */ (err).message) });
+    const { logged } = captureConsoleError(() => {
+      assert.throws(() => {
+        new Effect(() => {
+          try {
+            source.get();
+          } catch (err) {
+            read.push(/** @type {Error} */ (err).message);
+          }
+        });
+      }, /already dead/);
     });
 
-    assert.notEqual(latecomer?.failure, null, "reading a dead node kills the reader");
-    assert.equal(latecomer?.isDisposed, true);
-    assert.deepEqual(read, ["already dead"], "and the read itself is told why");
+    assert.deepEqual(read, ["already dead"], "the read itself is told why");
+    assert.deepEqual(logged, [], "the throw is the delivery");
     early.unsubscribe();
   });
 

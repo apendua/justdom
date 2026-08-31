@@ -643,8 +643,23 @@ export default class ReactiveNode {
       }
     }
     if (!heard) {
-      reportUnhandledFailure(this, err);
+      this.handleUnheardFailure(err);
     }
+  }
+
+  /**
+   * What to do with a failure that found no dependents and no error-handling
+   * observer. The base answer is the report above — say so, loudly, because
+   * this frame is the last that will ever hold the error. A subclass with a
+   * listener the observer list cannot see overrides this: `Effect` delivers
+   * to its `onError`, or to the run still on the stack, before falling back
+   * here.
+   *
+   * @param {unknown} err
+   * @returns {void}
+   */
+  handleUnheardFailure(err) {
+    reportUnhandledFailure(this, err);
   }
 
   /**

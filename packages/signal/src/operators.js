@@ -107,9 +107,9 @@ export function flatMap(fn) {
  *   back, wants `use` — one dependency edge, no `Derived`, no inner effect.
  *   That used to be unsafe during a mounting's first run, when a failure on
  *   the way in fell into a window nothing was watching; the window is closed —
- *   `just` and `useEffect` both keep an ear on their effect from before its
- *   first run — so the only reason left to reach for this operator over `use`
- *   is one of the two above, or the ordering below.
+ *   a failure landing mid-run is rethrown once the run unwinds, onto the
+ *   builder's stack — so the only reason left to reach for this operator over
+ *   `use` is one of the two above, or the ordering below.
  *
  * ### What the hand-rolled subscription still buys
  *

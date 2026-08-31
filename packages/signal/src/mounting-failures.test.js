@@ -234,16 +234,33 @@ describe("how a mounting hears that it failed", () => {
     assert.equal(reports, 0);
   });
 
-  it("lets an observer given at construction hear the whole first run", () => {
-    // The primitive under all of the above, pinned directly: an `observer`
-    // in `EffectOptions` is subscribed before the first run, so a dependency
-    // that fails while that run is still on the stack already has an ear.
+  it("lands a first-run dependency failure on onError, like everything else", () => {
+    // The primitive under all of the above, pinned directly: `onError` is the
+    // effect's listener of last resort, and a failure that lands while the
+    // first run is still on the stack is parked and delivered to it the
+    // moment the run unwinds — one option, every failure.
     const { heard, reports } = measure((heard) => {
       new Effect(() => use(failsOnSubscribe()), {
-        observer: { error: (err) => heard.push(err) },
+        onError: (err) => heard.push(err),
       });
     });
     assert.equal(heard.length, 1);
+    assert.equal(reports, 0);
+  });
+
+  it("rethrows a first-run dependency failure from the constructor without onError", () => {
+    // And without one there is still a stack to travel: a dependency that
+    // dies on the way in comes out of `new Effect` exactly as a body that
+    // threw would — no report, because the throw is the delivery.
+    const { heard, reports } = measure((heard) => {
+      try {
+        new Effect(() => use(failsOnSubscribe()));
+      } catch (err) {
+        heard.push(err);
+      }
+    });
+    assert.equal(heard.length, 1);
+    assert.match(String(heard[0]), /on the way in/);
     assert.equal(reports, 0);
   });
 });

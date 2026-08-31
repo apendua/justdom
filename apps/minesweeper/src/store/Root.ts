@@ -1,9 +1,4 @@
-import { addDependency, createProperty } from "@apendua/signal";
-// RxJS's `fromEvent`, not the core's: the core's is typed for its own `Emitter`
-// and a DOM `EventTarget` does not carry the event map it asks for. A window
-// resize is an RxJS-native source, and it enters the graph as an ordinary
-// subscribable.
-import { fromEvent } from "rxjs";
+import { addDependency, createProperty, fromEvent } from "@apendua/signal";
 
 interface Dimensions {
   width: number;

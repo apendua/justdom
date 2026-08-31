@@ -162,10 +162,16 @@ export function className(strings, ...values) {
  * @returns {Source<string>}
  */
 function shared(key, content) {
+  // The failure channel is the evaluation context's, not a closure over the
+  // node: `fail` called while the evaluation is still on the stack — which
+  // is when `styleElement`'s subscribe function can throw — fails the
+  // *evaluation*, synchronously and retryably, instead of failing the node
+  // mid-evaluation and stranding the teardown registered below on a node
+  // nothing reads any more.
   /** @type {Derived<string>} */
-  const node = new Derived(() => {
+  const node = new Derived(({ fail }) => {
     const subscription = styleElement(content, key).subscribe({
-      error: (err) => node.fail(err),
+      error: fail,
     });
     onCleanup(() => subscription.unsubscribe());
     return key;

@@ -15,10 +15,36 @@ import {
  */
 
 /**
+ * What an evaluation is handed: the previous value, and the node's own
+ * failure channel.
+ *
+ * `fail` is for work the evaluation *starts* rather than does — a node that
+ * mounts a resource on the way through and holds it open with `onCleanup`
+ * (`stylesheet.js` in `@apendua/justdom` mounts a `<style>` element exactly
+ * like this). Such work can die after the evaluation returned, with no stack
+ * left to throw into, and `fail` is where that news goes: the node fails,
+ * terminally, the way a foreign source erroring fails it. It is passed in
+ * rather than reached for so that an inline evaluation does not have to close
+ * over the node it is a part of.
+ *
+ * Called while the evaluation is still on the stack, it does *not* fail the
+ * node — failing a node mid-evaluation disconnects it under the very run
+ * that is rebuilding it, running the previous run's teardowns out of turn
+ * and parking the current run's on a node nothing reads again. And it does
+ * not throw either, because the caller is usually a foreign source's
+ * `error` observer, and a source's teardown bookkeeping does not survive an
+ * observer that throws. Instead the failure is set aside, and the evaluation
+ * fails with it once it unwinds — the same place a thrown one lands: the
+ * pull path, non-terminal, with the reader told synchronously.
+ *
  * @template T
  * @typedef {object} EvaluationContext
  * @property {() => T} getValue the previous value, if there is one
  * @property {() => boolean} hasValue
+ * @property {(err: unknown) => void} fail report that something this value
+ *   was computed from has died. After the evaluation has returned: the node
+ *   fails, terminally. During it: the evaluation itself fails, exactly as if
+ *   it had thrown.
  */
 
 /**
@@ -124,6 +150,16 @@ export class Derived extends ReactiveNode {
 
   /** @type {boolean} */
   #evaluating = false;
+
+  /**
+   * A failure `context.fail` reported while the evaluation it was handed to
+   * was still running. Picked up — and cleared — the moment that evaluation
+   * unwinds, where it becomes the evaluation's own failure; see the
+   * `EvaluationContext` docstring for why it is parked rather than acted on.
+   *
+   * @type {{ value: unknown } | null}
+   */
+  #pendingFailure = null;
 
   /** @type {EvaluationContext<T> | null} */
   #context = null;
@@ -315,11 +351,22 @@ export class Derived extends ReactiveNode {
     this.#evaluating = true;
     this.#evaluations += 1;
     try {
-      computed = { value: this.track(() => this.#evaluate(this.#getContext()), true) };
+      const value = this.track(() => this.#evaluate(this.#getContext()), true);
+      if (this.#pendingFailure) {
+        // The run reported a failure through `context.fail` while it was
+        // still on the stack. Thrown here, after `track` has settled its
+        // bookkeeping, so it takes exactly the path a throw from the body
+        // takes: the failure branch below, with both sets of cleanups owed
+        // and the reader told synchronously. The value the run also produced
+        // is discarded — it was computed from something already dead.
+        throw this.#pendingFailure.value;
+      }
+      computed = { value };
     } catch (err) {
       failure = { error: err };
     } finally {
       this.#evaluating = false;
+      this.#pendingFailure = null;
     }
 
     if (failure) {
@@ -387,9 +434,17 @@ export class Derived extends ReactiveNode {
     this.#evaluating = true;
     this.#evaluations += 1;
     try {
-      return this.track(() => this.#evaluate(this.#getContext()));
+      const value = this.track(() => this.#evaluate(this.#getContext()));
+      if (this.#pendingFailure) {
+        // Same conversion as `#recompute`'s: a failure the run reported
+        // while still on the stack is the run's own failure, thrown to the
+        // reader once it has unwound.
+        throw this.#pendingFailure.value;
+      }
+      return value;
     } finally {
       this.#evaluating = false;
+      this.#pendingFailure = null;
     }
   }
 
@@ -406,6 +461,13 @@ export class Derived extends ReactiveNode {
           return this.#current.value;
         },
         hasValue: () => !!this.#current,
+        fail: (err) => {
+          if (this.#evaluating) {
+            this.#pendingFailure = this.#pendingFailure ?? { value: err };
+            return;
+          }
+          this.fail(err);
+        },
       };
     }
     return this.#context;
@@ -421,6 +483,67 @@ export class Derived extends ReactiveNode {
   }
 
   /**
+   * A `Derived` fed by work that runs for as long as the node is live.
+   *
+   * The escape hatch for a value that the graph cannot compute — one that
+   * arrives from outside, later, possibly many times. `start` runs when the
+   * first reader arrives and its teardown runs when the last one leaves, and
+   * the context it is handed is the *only* way in: `setValue` lands a value,
+   * `fail` ends the node.
+   *
+   * Nothing here bends the node's contract, because the value lands through
+   * a `Signal` the node reads. A read before the first `setValue` throws
+   * `NoValueError` — "not yet", which an effect answers by waiting — so a
+   * read never has to block on work that has not finished. A `setValue` is
+   * an ordinary write: it batches, it invalidates through the normal edge,
+   * and the node's own `isEqual` still decides whether dependents hear about
+   * it. Dormancy tears the work down, and the next reader starts it afresh —
+   * which is why `start` is a function and not a subscription taken here and
+   * now; the last value landed stays behind meanwhile, answering an early
+   * reader until the restarted work brings fresh news, which is the bargain
+   * `from` has always struck. And `fail` is `ReactiveNode`'s `fail`:
+   * terminal, the way a source that died is terminal.
+   *
+   * A `start` that throws on the way in fails the node the same way — the
+   * first reader is told, synchronously.
+   *
+   * This is `from` generalised from "an observable" to "anything that can
+   * call two functions": a WebSocket handler, a `ResizeObserver`, a promise
+   * chain. If what feeds the node is already an observable, `from` says so
+   * more directly.
+   *
+   * @template TValue
+   * @typedef {object} LiveContext
+   * @property {(value: TValue) => void} setValue land a value: readers are
+   *   invalidated through the ordinary write path, and the next read returns
+   *   it.
+   * @property {(err: unknown) => void} fail end the node, terminally, the
+   *   way a foreign source erroring would.
+   */
+
+  /**
+   * @template TValue
+   * @param {(context: LiveContext<TValue>) => (void | (() => void))} start
+   * @param {DerivedOptions<TValue>} [options]
+   * @returns {Derived<TValue>}
+   */
+  static live(start, options = {}) {
+    /** @type {Signal<TValue>} */
+    const signal = new Signal();
+    /** @type {Derived<TValue>} */
+    const derived = new Derived(() => signal.get(), options);
+    derived.addResource(
+      resource(() =>
+        start({
+          setValue: (value) => signal.set(value),
+          fail: (err) => derived.fail(err),
+        }),
+      ),
+    );
+    return derived;
+  }
+
+  /**
    * A `Derived` fed by an observable.
    *
    * The observable is a **source**, held open for exactly as long as somebody
@@ -428,7 +551,8 @@ export class Derived extends ReactiveNode {
    * signal. There is deliberately nothing clever here — the boundary between
    * this library and RxJS is a source on one side and a sink on the other,
    * and never a node in the middle whose place in the graph has to be
-   * guessed at.
+   * guessed at. `live` above is this with the observable generalised away,
+   * and this is `live` applied to one.
    *
    * @template TValue
    * @param {Subscribable<TValue>} observable
@@ -437,21 +561,16 @@ export class Derived extends ReactiveNode {
    * @returns {Derived<TValue>}
    */
   static from(observable, options = {}) {
-    /** @type {Signal<TValue>} */
-    const signal = new Signal();
-    const derived = new Derived(() => signal.get(), {
-      cacheTTL: options.cacheTTL,
-    });
-    derived.addResource(
-      resource(() => {
+    return Derived.live(
+      ({ setValue, fail }) => {
         const subscription = observable.subscribe({
-          next: (value) => signal.set(value),
-          error: (err) => derived.fail(err),
+          next: setValue,
+          error: fail,
         });
         return () => subscription.unsubscribe();
-      }),
+      },
+      { cacheTTL: options.cacheTTL },
     );
-    return derived;
   }
 }
 

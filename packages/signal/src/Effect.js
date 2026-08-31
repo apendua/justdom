@@ -6,6 +6,7 @@ import {
   CircularDependencyError,
   NoValueError,
   activeChannel,
+  addDependency,
   onCleanup,
   withChannel,
 } from "./core.js";
@@ -86,10 +87,17 @@ const MAX_SELF_INVALIDATIONS = 100;
  * @property {UpdateChannel} [channel] which channel to schedule this effect's
  *   re-runs in, and which channel its runs build into. Fixed for the life of
  *   the effect.
- * @property {(err: unknown) => void} [onError] what to do when the effect
- *   throws, or when its run reports a failure through `context.fail`. Without
- *   one, a thrown exception comes back out of whatever was draining the queue
- *   and a reported one fails the effect outright.
+ * @property {(err: unknown) => void} [onError] where this effect's failures
+ *   land. Two kinds arrive, and `isDisposed` tells them apart. A failure of a
+ *   *run* — the body throwing, or the run reporting one through
+ *   `context.fail` — is handled here and the effect carries on. A failure of
+ *   the *effect* — a dependency that died, `fail()` — has already ended it by
+ *   the time this is called: cleanups have run, and this is the notification,
+ *   heard here only when no dependent or error-handling subscriber heard it
+ *   first. Without an `onError`, a thrown exception comes back out of
+ *   whatever was draining the queue, a reported failure fails the effect
+ *   outright, and a failure of the effect that nothing hears is either
+ *   rethrown from the run it interrupted or reported as unhandled.
  * @property {boolean} [deferred] schedule the first run instead of performing
  *   it during construction.
  * @property {string} [name] shown in diagnostics
@@ -148,6 +156,19 @@ export class Effect extends ReactiveNode {
 
   /** @type {number} */
   #consecutiveSelfInvalidations = 0;
+
+  /**
+   * A failure that arrived while a run of this effect was on the stack, with
+   * nobody else to hear it. Parked rather than delivered on the spot, because
+   * the spot is the middle of somebody else's machinery — a source's
+   * subscribe, an attach — where an `onError` that throws (a mounting still
+   * being built rethrows on purpose) would strand teardowns that were never
+   * meant to see an exception. `#execute` picks it up the moment the run
+   * unwinds; see `handleUnheardFailure`.
+   *
+   * @type {{ value: unknown } | null}
+   */
+  #unheardFailure = null;
 
   /**
    * The queue's dedup flag. Public because the queue owns it: an effect
@@ -381,12 +402,25 @@ export class Effect extends ReactiveNode {
         teardown = this.track(this.#invoke);
       } catch (err) {
         this.#running = false;
+        const unheard = this.#unheardFailure;
+        this.#unheardFailure = null;
         if (err instanceof NoValueError) {
+          if (unheard) {
+            // The run was interrupted by the effect failing and *then* hit a
+            // "not yet" — but a failed effect has nothing to wait for, so the
+            // failure is the news, not the missing value.
+            this.#deliverUnheard(unheard.value);
+            return;
+          }
           // Not an error so much as "not yet". The effect stays subscribed to
           // whatever it did manage to read, and will be told when that moves.
           this.#requeueIfStale();
           return;
         }
+        // A parked failure, if there was one, is dropped in favour of the
+        // throw: reading the very dependency whose death was parked throws
+        // the same error, and delivering both would hand one failure to the
+        // handler twice.
         if (this.#onError) {
           this.#onError(err);
           this.#settleOrGiveUp();
@@ -421,6 +455,17 @@ export class Effect extends ReactiveNode {
           this.onCleanup(/** @type {() => void} */ (teardown));
         }
       }
+      if (this.#unheardFailure) {
+        // The effect failed while this run was on the stack, with nobody else
+        // listening — see `handleUnheardFailure`. The run has unwound and its
+        // teardown is settled, so the failure can finally travel: to
+        // `onError`, or up the stack that is still here — the constructor for
+        // a first run, the drain for a queued one.
+        const unheard = this.#unheardFailure;
+        this.#unheardFailure = null;
+        this.#deliverUnheard(unheard.value);
+        return;
+      }
       this.#settleOrGiveUp();
       if (this.#disposed || this.state === CLEAN) {
         return;
@@ -452,6 +497,56 @@ export class Effect extends ReactiveNode {
   }
 
   /**
+   * A failure of this effect that no dependent and no error-handling
+   * subscriber heard. The base class would report it as unhandled; an effect
+   * has two listeners the observer list cannot see, and this is where they
+   * come in — which is what makes `onError` the *one* place to catch an
+   * effect's failures, however they arrive.
+   *
+   * If a run is on the stack, the failure is parked and delivered once the
+   * run unwinds. Delivering here would mean delivering in the middle of
+   * somebody else's machinery — a foreign source's subscribe, an edge attach
+   * — and an `onError` that throws (a mounting still being built rethrows on
+   * purpose) must unwind this effect's own stack, not that one; a source's
+   * teardown bookkeeping does not survive an observer that throws.
+   *
+   * Otherwise `onError` is told directly — the effect is already ended, so
+   * this is notification, not rescue — and only an effect with no `onError`
+   * and no run on the stack falls through to the report.
+   *
+   * @param {unknown} err
+   * @returns {void}
+   */
+  handleUnheardFailure(err) {
+    if (this.#running) {
+      this.#unheardFailure = this.#unheardFailure ?? { value: err };
+      return;
+    }
+    if (this.#onError) {
+      this.#onError(err);
+      return;
+    }
+    super.handleUnheardFailure(err);
+  }
+
+  /**
+   * Land a parked failure now that the run it interrupted has unwound:
+   * `onError` if there is one, and otherwise up the stack that provoked the
+   * run — which for a first run is the constructor, making a dependency that
+   * dies on the way in indistinguishable from a body that threw.
+   *
+   * @param {unknown} err
+   * @returns {void}
+   */
+  #deliverUnheard(err) {
+    if (this.#onError) {
+      this.#onError(err);
+      return;
+    }
+    throw err;
+  }
+
+  /**
    * Take a failure the run reported after the fact, and land it where a thrown
    * one lands.
    *
@@ -459,8 +554,7 @@ export class Effect extends ReactiveNode {
    * synchronous path strikes, where a handled exception does not stop the
    * effect. Without one there is no stack left to throw into, so the effect
    * fails instead: cleanups run, whatever reads or watches it is told, and it
-   * stops for good rather than sitting disconnected and still queueable. An
-   * effect usually has nobody watching, which is what `fail` logs about.
+   * stops for good rather than sitting disconnected and still queueable.
    *
    * @param {unknown} err
    * @returns {void}
@@ -532,7 +626,35 @@ export function effect(run, options) {
 }
 
 /**
- * An effect that lives exactly as long as the computation it is built in.
+ * A dependency that never marks the computation stale: it forwards only the
+ * failure of what it watches. Liveness without listening.
+ *
+ * @param {{ subscribe: ReactiveNode['subscribe'] }} subscribable
+ * @returns {{ subscribe: ReactiveNode['subscribe'] }}
+ */
+export function failuresOf(subscribable) {
+  return {
+    subscribe: (observer) =>
+      subscribable.subscribe({
+        error: (err) => observer.error?.(err),
+      }),
+  };
+}
+
+/**
+ * @typedef {EffectOptions & {
+ *   standalone?: boolean
+ * }} UseEffectOptions `standalone` opts out of the failure edge below: the
+ *   effect still lives and dies with the computation, but a failure of its
+ *   own once it stands is its own — heard by its `onError` or a subscriber,
+ *   and reported as unhandled otherwise, never carried to the computation.
+ *   (A failure during the first run is on the builder's stack either way.)
+ *   For the rare inner effect whose death should not take its region with it.
+ */
+
+/**
+ * An effect that lives exactly as long as the computation it is built in —
+ * and whose failure the computation hears.
  *
  * An effect is a root of demand: nothing reads it, so nothing lets go of it,
  * and it keeps everything it reads awake until somebody disposes it. Which
@@ -542,6 +664,18 @@ export function effect(run, options) {
  * the caller never holds the handle only to dispose it later, and never
  * forgets to.
  *
+ * Disposal alone is not the whole tie, because an effect can die on its own:
+ * a dependency that errors fails it down the push path, which never throws —
+ * so without more, the effect stops, the computation is never told, and the
+ * only trace is an unhandled-failure report. Hence the failure edge: the
+ * computation takes `failuresOf(instance)` as a dependency, so an inner
+ * effect's death is the computation's failure, exactly as a dead node the
+ * computation reads would be. The edge hears nothing else — no values, no
+ * invalidations. It carries only failures that arrive once the effect
+ * stands; one that lands during the *first run* never needs it, because the
+ * constructor rethrows it onto the stack this very call is on, the same way
+ * a body that threw would arrive.
+ *
  * Called with no computation active there is nothing to pair with, so
  * `onCleanup` says so and disposes on the spot rather than leaving an effect
  * nobody can reach. Use `new Effect` where the lifetime really is the
@@ -549,12 +683,16 @@ export function effect(run, options) {
  *
  * @template T
  * @param {(context: EffectContext) => T & Teardown<T>} run
- * @param {EffectOptions} [options]
+ * @param {UseEffectOptions} [options]
  * @returns {Effect}
  */
 export function useEffect(run, options) {
-  const instance = new Effect(run, options);
+  const { standalone = false, ...effectOptions } = options ?? {};
+  const instance = new Effect(run, effectOptions);
   onCleanup(() => instance.dispose());
+  if (!standalone) {
+    addDependency(failuresOf(instance));
+  }
   return instance;
 }
 

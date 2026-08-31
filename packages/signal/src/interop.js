@@ -80,6 +80,11 @@ export function toObservable(node) {
       },
       {
         name: "toObservable",
+        // Hears the run failing, and — as the effect's listener of last
+        // resort — the effect itself dying when the node does. The
+        // subscription above hears the *node* die first and closes the
+        // subscriber, so this second `error` for the same death is a no-op;
+        // what it buys is the effect never being reported as unhandled.
         onError: (err) => subscriber.error(err),
       },
     );
@@ -106,6 +111,11 @@ export function toObservable(node) {
 export function toEffect(fn, options = {}) {
   return new Stream((subscriber) => {
     const effect = new Effect(fn, {
+      // The one ear this stream needs: a run failing — a throw, a
+      // `context.fail` — and, as the effect's listener of last resort, the
+      // effect itself failing when a dependency dies. All of it lands on the
+      // subscriber's error channel, a dependency erupting during the very
+      // first run included.
       name: options.name ?? "toEffect",
       onError: (err) => subscriber.error(err),
     });

@@ -193,7 +193,10 @@ ordering. The queue notices and throws rather than spinning.
 
 - `useEffect()` — the same `Effect`, with its lifetime handed to the
   computation that built it: whatever cleans that computation up disposes the
-  effect, so nobody has to hold the handle just to dispose it later. This is
+  effect, so nobody has to hold the handle just to dispose it later. Its
+  failure travels the same tie: a dependency that dies fails the computation
+  that built the effect, rather than stopping the effect silently — pass
+  `standalone: true` for an effect whose death should stay its own. This is
   what every `use(() => ...)` in this repo turned out to want, and `use()` no
   longer takes a callback at all.
 - `store()` — a reactive `Proxy` over plain objects/arrays, with per-key

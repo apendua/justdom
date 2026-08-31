@@ -350,14 +350,15 @@ describe("Effect", () => {
       // before the run has returned, so the effect is already disposed by the
       // time its teardown is handed over. Registering it then would park it on
       // a list nothing reads again — for a real run, a subscription that stays.
+      // The failure itself, with nobody listening, rides the constructor's
+      // stack out once the run has unwound — after the teardown has been paid.
       const teardown = mock.fn();
-      const error = mock.method(console, "error", () => {});
-      const effect = new Effect(({ fail }) => {
-        fail(new Error("failed on the way through"));
-        return teardown;
-      });
-      error.mock.restore();
-      assert.strictEqual(effect.isDisposed, true);
+      assert.throws(() => {
+        new Effect(({ fail }) => {
+          fail(new Error("failed on the way through"));
+          return teardown;
+        });
+      }, /failed on the way through/);
       assert.strictEqual(teardown.mock.calls.length, 1, "called rather than registered");
     });
   });

@@ -60,7 +60,7 @@ const output = audioOutputSelection();
 // output.outputs — everything sound could be sent to, as a signal
 // output.deviceId — the chosen one, empty until the player picks
 // output.select(id) — send the sound somewhere else
-// output.updates — subscribe (effectMap/use) to keep the list current
+// output.updates — hold it open (use) to keep the list current
 ```
 
 `setAudioOutput(listener.context, deviceId)` applies the choice to an

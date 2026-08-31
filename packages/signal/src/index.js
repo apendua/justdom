@@ -37,6 +37,7 @@ export { Subject, filtered } from "./subscribable.js";
 
 // reactive
 export { default as Emitter, on, fromEvent } from "./Emitter.js";
+export { timer, interval } from "./time.js";
 export {
   effects,
   use,

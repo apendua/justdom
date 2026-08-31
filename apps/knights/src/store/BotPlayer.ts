@@ -1,7 +1,4 @@
-import { flatMap, observable, Stream, type Unsubscribable } from "@apendua/signal";
-// `timer` is an RxJS-native source, entering the graph as an ordinary
-// subscribable; nothing here reaches for RxJS because a package handed it one.
-import { timer } from "rxjs";
+import { flatMap, observable, Stream, timer, type Unsubscribable } from "@apendua/signal";
 import { TIMING_BOT_THINKS } from "../constants";
 import chooseMove from "./bot";
 import type Game from "./Game";

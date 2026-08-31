@@ -270,6 +270,28 @@ export function useEffects(value, effects) {
 }
 
 /**
+ * Mount one entity effect, with the mounting's failure policy.
+ *
+ * That policy is the whole reason this is not a bare `useEffect`: **a run
+ * that fails once the mounting stands ends the mounting**, rather than
+ * escaping to whoever happened to write. A mounted effect belongs to a
+ * subscriber holding the entity, so a throw from one of its re-runs is news
+ * for that subscriber — not for the unrelated `set()` three modules away
+ * out of whose drain the throw would otherwise come. `effect.fail` is what
+ * says so: it ends the effect, and `useEffect`'s failure edge carries that
+ * to the computation, where a pipeline error used to land.
+ *
+ * The first run is exempt, and `standing` is what exempts it. Two reasons,
+ * either sufficient. A first run still has the builder's stack underneath
+ * it, which is a better place for a failure than any channel — it takes the
+ * half-built mounting down synchronously — and that is precisely what an
+ * `Effect` with no `onError` does unaided, so the `throw` below is
+ * *restoring the default*, not choosing something else. It has to be
+ * restored by hand because having an `onError` at all is what suppresses
+ * that default, and the standing half needs one. The other reason is that
+ * `effect` does not exist yet during the first run: its own initialiser is
+ * what is running.
+ *
  * @template T
  * @param {T} value
  * @param {EntityEffect<T>} fn
@@ -281,12 +303,8 @@ function mountEffect(value, fn) {
     name: "useEffects",
     onError: (err) => {
       if (!standing) {
-        // Still on the builder's stack — the throw fails whatever is
-        // mounting, exactly where a synchronous failure belongs.
         throw err;
       }
-      // Later news fails the effect, whose failure `useEffect`'s edge
-      // carries to the computation — where a pipeline error used to land.
       effect.fail(err);
     },
   });

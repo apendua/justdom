@@ -1,6 +1,5 @@
 import { Observable, from } from "rxjs";
-import { toEffect } from "./interop.js";
-import { onEachValue, subscribeAndEmit } from "./util.js";
+import { mountEach } from "./operators.js";
 
 /**
  * @import { MonoTypeOperatorFunction } from "rxjs";
@@ -39,16 +38,9 @@ export function rx(source) {
 }
 
 /**
- * An entity effect, lifted over a stream of entities: mount `fn` on each
- * value the source produces, pass the value on with the mounting already
- * standing, take that mounting down when the next value arrives, and take the
- * last one down on unsubscribe.
- *
- * A mounting's array needs none of this — every entry there is the body of
- * its own `Effect` already, which is why `effects` in the core is the
- * identity — but a pipeline that *receives* entities rather than holding one
- * does, and saying the same thing as `switchMap` into `toEffect` is more
- * machinery than the idea deserves.
+ * `mountEach` from the core, carried into RxJS: an entity effect lifted over
+ * a stream of entities, answering with something an RxJS pipeline can go on
+ * piping.
  *
  * It lives here rather than in the core because what it produces is an RxJS
  * operator: `MonoTypeOperatorFunction` is an RxJS type, and a call site that
@@ -61,9 +53,7 @@ export function rx(source) {
  * @returns {MonoTypeOperatorFunction<T>}
  */
 export function rxEffects(fn) {
-  const operator = onEachValue(
-    subscribeAndEmit((value) => toEffect((context) => fn(value, context), { name: "rxEffects" })),
-  );
+  const operator = mountEach(fn);
   // Through `rx()`, not a cast. What the core's operators build is a `Stream`,
   // and the next operator in an RxJS `.pipe()` will try to *lift* whatever
   // this hands back — `takeUntil(rxEffects(…)(source))` is a real call site —

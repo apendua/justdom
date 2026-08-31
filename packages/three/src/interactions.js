@@ -1,5 +1,4 @@
 import * as THREE from "three";
-import { Observable } from "rxjs";
 import {
   createProperty,
   Derived,
@@ -7,11 +6,12 @@ import {
   onCleanup,
   ReactiveMap,
   Signal,
+  Stream,
   withComputation,
 } from "@apendua/signal";
 
 /**
- * @import { Subscribable } from "@apendua/signal";
+ * @import { Source, Subscribable } from "@apendua/signal";
  * @import { XREventMap, InteractionEvent, InteractionEventType, InteractionEventMap } from "./core.js";
  */
 
@@ -177,10 +177,10 @@ export class InteractionManager {
    *   Puts the callback on the frame loop and hands back the way off again. It
    *   must run late — after everything that moves the scene, with world
    *   matrices already up to date — because that is when the ray is worked out.
-   * @returns {Observable<void>}
+   * @returns {Source<void>}
    */
   addController(controller, onAnimationFrame) {
-    return new Observable(() => {
+    return new Stream(() => {
       /** @type {THREE.Object3D<XREventMap> | undefined} */
       let selectedObject;
       /**

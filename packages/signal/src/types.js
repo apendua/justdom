@@ -59,6 +59,20 @@
  */
 
 /**
+ * A transformation from one source to another, spelled in this package's own
+ * contract so that neither end of a chain has to be an RxJS observable. What
+ * `OperatorFunction` was being imported for.
+ *
+ * @template T, U
+ * @typedef {import("./util.js").Operator<T, U>} Operator
+ */
+
+/**
+ * @template T
+ * @typedef {import("./util.js").MonoTypeOperator<T>} MonoTypeOperator
+ */
+
+/**
  * Work mounted on an entity for as long as its holder stands.
  *
  * This is what `just`, `useEffects` and `store` take where they used to take

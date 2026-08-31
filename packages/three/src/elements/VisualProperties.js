@@ -9,7 +9,7 @@ import {
   withChannel,
 } from "@apendua/signal";
 import { fromEvent, store } from "@apendua/signal";
-import { filter, Subject } from "rxjs";
+import { filtered, Subject } from "@apendua/signal";
 import { getBorderBoxSize, getComputedStyleCached } from "./mirror.js";
 
 import { getElevation } from "./elevation.js";
@@ -207,7 +207,7 @@ export default class VisualProperties {
   /** @type {Subject<EventType>} */
   #events = new Subject();
 
-  #anyInitializedEvent = this.#events.pipe(filter((e) => e === "INITIALIZED"));
+  #anyInitializedEvent = filtered(this.#events, (e) => e === "INITIALIZED");
 
   /**
    * @param {string} fontFamily

@@ -33,7 +33,7 @@ export { toObservable, toEffect, fromObservable } from "./interop.js";
 // for a cold source — a subscribe function run once per subscriber — and
 // `Subject` for the push side. Both are this package's own; neither is RxJS.
 export { Stream } from "./Stream.js";
-export { Subject } from "./subscribable.js";
+export { Subject, filtered } from "./subscribable.js";
 
 // reactive
 export { default as Emitter, on, fromEvent } from "./Emitter.js";
@@ -45,6 +45,7 @@ export {
   map,
   flatMap,
   effectMap,
+  mountEach,
   takeNothing,
   observe,
   observeFn,

@@ -1,5 +1,4 @@
-import { Observable } from "rxjs";
-import { just } from "@apendua/signal";
+import { just, Stream } from "@apendua/signal";
 import { children } from "./dom.js";
 
 /**
@@ -216,7 +215,7 @@ export function claimSegment(fn) {
  * @returns {import("@apendua/signal").Source<unknown>}
  */
 export function hydrate(root, ...content) {
-  return new Observable((subscriber) => {
+  return new Stream((subscriber) => {
     /** @type {HydrationMismatchError | undefined} */
     let mismatch;
 

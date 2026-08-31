@@ -1,4 +1,5 @@
 import { from, map, switchMap } from "rxjs";
+import { rx } from "@apendua/signal/rxjs";
 import { render, createXRButton } from "@apendua/freedom";
 import { XRControllerModelFactory } from "three/examples/jsm/webxr/XRControllerModelFactory.js";
 import App from "./App.js";
@@ -18,7 +19,7 @@ Promise.resolve(
     ? import("./emulator.js").then(({ install }) => install(query.get("emulator") !== "bare"))
     : undefined,
 ).then(() => {
-  render(App, { createControllerModel: (grip) => factory.createControllerModel(grip) })
+  rx(render(App, { createControllerModel: (grip) => factory.createControllerModel(grip) }))
     .pipe(
       switchMap((renderer) =>
         from(createXRButton(renderer)).pipe(

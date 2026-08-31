@@ -1,16 +1,23 @@
 import * as THREE from "three";
-import { BehaviorSubject, Subject, Observable, combineLatest, map } from "rxjs";
 import {
   addDependency,
   Computation,
   createProperty,
   fromEvent,
+  fromObservable,
+  observable,
   Signal,
+  Stream,
+  Subject,
   useEffect,
 } from "@apendua/signal";
 import { InteractionManager, InteractionContext } from "./interactions.js";
 import { createPortalScheduler, PortalSchedulerContext } from "./elements/portalScheduler.js";
 import { fitRayToHit } from "./pointers.js";
+
+/**
+ * @import { Source, Subscribable } from "@apendua/signal";
+ */
 
 export const RendererContext = createProperty(
   /**
@@ -24,8 +31,8 @@ export const RendererContext = createProperty(
 export const RendererSizeContext = createProperty(
   /**
    * @returns {{
-   *   width: Observable<number>;
-   *   height: Observable<number>;
+   *   width: Source<number>;
+   *   height: Source<number>;
    * }}
    */
   () => {
@@ -34,12 +41,21 @@ export const RendererSizeContext = createProperty(
 );
 
 /**
+ * The size the renderer is drawing at.
+ *
+ * `combineLatest` said this before, and a derivation says it for nothing: each
+ * side is read through a node, a node with no value yet throws `NoValueError`,
+ * and a reading effect waits — which is the "not until both have spoken" that
+ * `combineLatest` was here for.
+ *
  * @param {WeakKey} ctx
- * @returns {Observable<{ width: number; height: number }>}
+ * @returns {Source<{ width: number; height: number }>}
  */
 export function size(ctx) {
   const { width, height } = RendererSizeContext.get(ctx);
-  return combineLatest([width, height]).pipe(map(([width, height]) => ({ width, height })));
+  const widthNode = fromObservable(width);
+  const heightNode = fromObservable(height);
+  return observable(() => ({ width: widthNode.get(), height: heightNode.get() }));
 }
 
 export const CameraContext = createProperty(
@@ -364,10 +380,20 @@ export function onLateFrame(ctx, fn, onError = reportListenerError) {
 
 /**
  * @param {WeakKey} ctx
- * @returns {Observable<{ time: number, frame: XRFrame }>}
+ * @returns {Source<{ time: number, frame: XRFrame }>}
  */
 export function frames(ctx) {
-  return frameSubjectFor(RendererContext.get(ctx)).asObservable();
+  const subject = frameSubjectFor(RendererContext.get(ctx));
+  // The `asObservable()` of a subject that is not RxJS's: a read-only view,
+  // and the `subscribe(fn)` form callers use. The subject itself is multicast
+  // and outlives every view of it, so a fresh wrapper per call costs nothing
+  // and hands nobody a `next`.
+  return new Stream((subscriber) => {
+    const subscription = subject.subscribe({
+      next: (value) => subscriber.next(value),
+    });
+    return () => subscription.unsubscribe();
+  });
 }
 
 /**
@@ -388,31 +414,39 @@ export function frames(ctx) {
  */
 
 /**
- * @param {(ctx: WeakKey) => import("@apendua/signal").Subscribable<unknown>} fn Builds the tree, which is
+ * @param {(ctx: WeakKey) => Subscribable<unknown>} fn Builds the tree, which is
  *   mounted rather than read: the scene is `render`'s, and this decorates it.
  *   `effectsOnly` is what a root that produces nothing is wrapped in.
  * @param {RenderOptions} [options]
- * @returns {Observable<THREE.WebGLRenderer>}
+ * @returns {Source<THREE.WebGLRenderer>}
  */
 export function render(fn, options = {}) {
-  return new Observable((subscriber) => {
+  return new Stream((subscriber) => {
     const renderer = new THREE.WebGLRenderer({
       antialias: options.antialias,
     });
-    const width = new BehaviorSubject(window.innerWidth);
-    const height = new BehaviorSubject(window.innerHeight);
+    // `BehaviorSubject` was two things at once here: somewhere to announce a
+    // resize from, and somewhere to read the current size back. A `Signal` is
+    // the announcement, `observable(() => …)` below is the view of it the
+    // context carries, and the window is where the numbers come from — read
+    // once per resize rather than out of the signal, so that nothing here is a
+    // tracked read in whatever computation happened to subscribe.
+    const width = Signal.of(window.innerWidth);
+    const height = Signal.of(window.innerHeight);
 
     renderer.setPixelRatio(window.devicePixelRatio);
-    renderer.setSize(width.getValue(), height.getValue());
+    renderer.setSize(window.innerWidth, window.innerHeight);
 
-    const camera = new THREE.PerspectiveCamera(70, width.getValue() / height.getValue(), 0.1, 20);
+    const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 20);
 
     function onResize() {
-      width.next(window.innerWidth);
-      height.next(window.innerHeight);
-      camera.aspect = width.getValue() / height.getValue();
+      const nextWidth = window.innerWidth;
+      const nextHeight = window.innerHeight;
+      width.set(nextWidth);
+      height.set(nextHeight);
+      camera.aspect = nextWidth / nextHeight;
       camera.updateProjectionMatrix();
-      renderer.setSize(width.getValue(), height.getValue());
+      renderer.setSize(nextWidth, nextHeight);
     }
 
     window.addEventListener("resize", onResize);
@@ -431,8 +465,8 @@ export function render(fn, options = {}) {
     ctx = SceneContext.set(ctx, scene);
     ctx = InteractionContext.set(ctx, interactionManager);
     ctx = RendererSizeContext.set(ctx, {
-      width: width.asObservable(),
-      height: height.asObservable(),
+      width: observable(() => width.get()),
+      height: observable(() => height.get()),
     });
     // One scheduler per rendering context is what makes the portal budget
     // global: every panel in this scene draws frame time from the same pool,

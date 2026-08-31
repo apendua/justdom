@@ -17,7 +17,6 @@ import { InteractionContext } from "./interactions.js";
 /**
  * @import { Signal } from '@apendua/signal';
  * @import { Component, XREventMap } from './core.js';
- * @import { Observable } from 'rxjs';
  * @import { Pointers } from './interactions.js';
  */
 

@@ -1,13 +1,21 @@
-import { map, Observable } from "rxjs";
-import { rx } from "@apendua/signal/rxjs";
 import { renderText } from "./text.js";
-import { Derived, just, onCleanup, toObservable } from "@apendua/signal";
+import { Derived, just, map, onCleanup, Stream, toObservable } from "@apendua/signal";
 import { isHydrating } from "./hydrate.js";
+
+/**
+ * @import { Source, Subscribable } from "@apendua/signal";
+ */
 
 const STYLE_KEY_ATTRIBUTE = "data-style-key";
 
-/** @type {Observable<string>} */
-export const CLASS_NAME = new Observable();
+/**
+ * An identity token, compared with `===` by `stylesheet` below. It is never
+ * subscribed, so its subscribe function has nothing to do — what matters is
+ * that there is exactly one of it.
+ *
+ * @type {Source<string>}
+ */
+export const CLASS_NAME = new Stream(() => {});
 
 /**
  * Creates a class name observable.
@@ -18,12 +26,12 @@ export const CLASS_NAME = new Observable();
  * derived from the source and therefore agree, but a duplicate of each
  * stylesheet in the document.
  *
- * @param {import("@apendua/signal").Subscribable<string>} value - An observable of CSS class content.
+ * @param {Subscribable<string>} value - An observable of CSS class content.
  * @param {string} key - The generated name this stylesheet defines.
- * @returns {Observable<string>}
+ * @returns {Source<never>}
  */
 function styleElement(value, key) {
-  return new Observable((subscriber) => {
+  return new Stream((subscriber) => {
     const adopted = isHydrating()
       ? document.head.querySelector(`style[${STYLE_KEY_ATTRIBUTE}="${key}"]`)
       : null;
@@ -131,7 +139,10 @@ function stableName(prefix, strings, isStatic) {
  */
 export function className(strings, ...values) {
   const key = stableName("class_", strings, values.length === 0);
-  return shared(key, rx(renderText(strings, ...values)).pipe(map((value) => `.${key} {${value}}`)));
+  return shared(
+    key,
+    map((/** @type {string} */ value) => `.${key} {${value}}`)(renderText(strings, ...values)),
+  );
 }
 
 /**
@@ -147,8 +158,8 @@ export function className(strings, ...values) {
  * tool to reach for.
  *
  * @param {string} key
- * @param {import("@apendua/signal").Subscribable<string>} content
- * @returns {import("@apendua/signal").Source<string>}
+ * @param {Subscribable<string>} content
+ * @returns {Source<string>}
  */
 function shared(key, content) {
   /** @type {Derived<string>} */

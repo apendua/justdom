@@ -1,7 +1,5 @@
 import * as THREE from "three";
-import { Derived, effects, observable, onCleanup, set } from "@apendua/signal";
-import { rx, rxEffects } from "@apendua/signal/rxjs";
-import { distinctUntilChanged, switchMap } from "rxjs";
+import { Derived, effects, flatMap, mountEach, observable, onCleanup, set } from "@apendua/signal";
 import { $, Nothing } from "../operators.js";
 import { box } from "./div.js";
 import { getCheckedCached, getComputedStyleCached } from "./mirror.js";
@@ -9,7 +7,7 @@ import { applyClip } from "./clip.js";
 import { place } from "./place.js";
 
 /**
- * @import {Observable} from 'rxjs';
+ * @import {Source} from '@apendua/signal';
  * @import {Component} from '../core.js';
  * @import {BoxSurface} from './div.js';
  */
@@ -248,13 +246,15 @@ export function checkbox(ctx, element) {
       return !(/** @type {HTMLInputElement} */ (el).disabled);
     },
     content: (surface) => [
-      rx(observable(() => checked.get())).pipe(
-        distinctUntilChanged(),
-        switchMap((isChecked) => rx(isChecked ? tick(surface) : Nothing())),
+      // No `distinctUntilChanged` between the two: `checked` is a `Derived`,
+      // and a recomputation that lands on the value it already held stops
+      // there and tells nobody.
+      flatMap((/** @type {boolean} */ isChecked) => (isChecked ? tick(surface) : Nothing()))(
+        observable(() => checked.get()),
       ),
     ],
   });
-  return rx(surface$).pipe(
+  return mountEach(
     // `:checked` is a pseudo-class, and a pseudo-class changes no attribute —
     // so nothing would tell the portal to re-read a style that follows it, and
     // a box that turns blue when ticked would stay the colour it started.
@@ -265,7 +265,7 @@ export function checkbox(ctx, element) {
     // labels, and that form is the reason this attribute exists. See
     // `SELF_SCOPED_ATTRIBUTES`. It doubles as `[data-xr-checked]`, for a rule
     // that should apply in a scene and not on the page.
-    rxEffects(() => {
+    () => {
       if (!checked.get()) {
         return;
       }
@@ -273,6 +273,6 @@ export function checkbox(ctx, element) {
       onCleanup(() => {
         delete element.dataset.xrChecked;
       });
-    }),
-  );
+    },
+  )(surface$);
 }

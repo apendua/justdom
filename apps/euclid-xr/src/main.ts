@@ -1,4 +1,5 @@
 import { from, map, switchMap } from "rxjs";
+import { rx } from "@apendua/signal/rxjs";
 import { render, createXRButton } from "@apendua/freedom";
 import { XRControllerModelFactory } from "three/examples/jsm/webxr/XRControllerModelFactory.js";
 import "./index.css";
@@ -28,7 +29,7 @@ Promise.resolve(
     console.error("Could not install the XR emulator:", err);
   })
   .then(() => {
-    render(App, { createControllerModel })
+    rx(render(App, { createControllerModel }))
       .pipe(
         switchMap((renderer) =>
           from(createXRButton(renderer)).pipe(

@@ -1,7 +1,14 @@
 import * as THREE from "three";
-import { Derived, each, effectMap, fromEvent, just, useEffect } from "@apendua/signal";
-import { distinctUntilChanged, merge, Observable, switchMap } from "rxjs";
-import { rx } from "@apendua/signal/rxjs";
+import {
+  Derived,
+  each,
+  effectMap,
+  flatMap,
+  fromEvent,
+  just,
+  Stream,
+  useEffect,
+} from "@apendua/signal";
 import { addDependency } from "@apendua/signal";
 
 /**
@@ -27,23 +34,23 @@ export function copy(key, value) {
 
 /**
  * @param {() => () => void} fn
- * @returns {Observable<never>}
+ * @returns {Source<never>}
  */
 function teardown(fn) {
-  return new Observable(() => fn());
+  return new Stream(() => fn());
 }
 
 /**
  * @param {Object3D<any>} parent
  * @param {Subscribable<Component>} child
- * @return {Observable<never>}
+ * @return {Source<never>}
  */
 function addToParent(parent, child) {
-  return rx(child).pipe(
-    distinctUntilChanged(),
-    switchMap((component) => {
-      return teardown(() => component.addTo(parent));
-    }),
+  // No `distinctUntilChanged` in front of this: a node-backed child already
+  // stops at the value it was holding, and every other one hands back a
+  // component object built afresh per emission, which no comparison collapses.
+  return flatMap((/** @type {Component} */ component) => teardown(() => component.addTo(parent)))(
+    child,
   );
 }
 
@@ -53,9 +60,18 @@ function addToParent(parent, child) {
  * @returns {EntityEffect<TEntity>}
  */
 export function children(...observables) {
-  return effectMap((entity) =>
-    merge(...observables.map((observable) => addToParent(entity, observable))),
+  // One `effectMap` per child rather than one over a `merge` of them all.
+  // Each child is then the body of its own `Effect`, so one re-runs — and one
+  // fails — without disturbing its siblings, which is what a mounting's array
+  // of effects already says and what `merge` was only approximating.
+  const mountings = observables.map((observable) =>
+    effectMap((/** @type {TEntity} */ entity) => addToParent(entity, observable)),
   );
+  return (entity, context) => {
+    for (const mount of mountings) {
+      mount(entity, context);
+    }
+  };
 }
 
 /**
@@ -78,7 +94,7 @@ export function fragment(...observables) {
  */
 function toComponent() {
   return (source) => {
-    return new Observable((subscriber) => {
+    return new Stream((subscriber) => {
       subscriber.add(
         source.subscribe({
           next: (entity) => {

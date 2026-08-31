@@ -232,6 +232,60 @@ describe("effectMap()", () => {
 
     subscription.unsubscribe();
   });
+
+  it("hands a failure from the way in to the subscriber, and reports nothing", () => {
+    // Which is the whole reason the subscription is taken here rather than
+    // through `use`, and the reason is a matter of *when*: `just` runs the
+    // mounting's effect before it can subscribe to that effect's error
+    // channel, because the body is what builds the entity. A dependency
+    // attached by `use` and failing during that first run therefore fails a
+    // node nothing reads and nothing watches, which the graph says out loud on
+    // `console.error` before `just` picks the failure up from the stored one.
+    //
+    // Both halves matter. The subscriber has to hear it — a hydration mismatch
+    // is caught by `hydrate()` this way and the markup thrown away — and
+    // nothing is supposed to be shouted about on the way, because a failure
+    // that is handled two frames later was never unhandled.
+    const boom = new Error("failed on the way in");
+    const error = mock.method(console, "error", () => {});
+    /** @type {unknown[]} */
+    const heard = [];
+    try {
+      just({}, [
+        effectMap(
+          () =>
+            new Observable(() => {
+              throw boom;
+            }),
+        ),
+      ]).subscribe({ error: (err) => heard.push(err) });
+    } finally {
+      error.mock.restore();
+    }
+
+    assert.deepEqual(heard, [boom], "expected the subscriber to be told");
+    assert.strictEqual(error.mock.calls.length, 0, "expected nothing reported as unhandled");
+  });
+
+  it("hands a later failure to the subscriber too", () => {
+    // The other half of the same channel: news that arrives once the mounting
+    // is standing has no stack to be thrown into, so it goes through
+    // `context.fail` and lands where a failed mounting lands.
+    const boom = new Error("failed later");
+    /** @type {Subject<never>} */
+    const later = new Subject();
+    /** @type {unknown[]} */
+    const heard = [];
+    const subscription = just({}, [effectMap(() => later)]).subscribe({
+      error: (err) => heard.push(err),
+    });
+
+    assert.deepEqual(heard, [], "nothing yet");
+    later.error(boom);
+    assert.deepEqual(heard, [boom], "expected the subscriber to be told");
+
+    subscription.unsubscribe();
+  });
 });
 
 describe("use()", () => {

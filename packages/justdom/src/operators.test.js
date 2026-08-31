@@ -1,7 +1,7 @@
 import { describe, it, mock } from "node:test";
 import assert from "node:assert/strict";
 import { userEvent } from "@testing-library/user-event";
-import { just } from "@apendua/signal";
+import { just, Signal } from "@apendua/signal";
 import { rx } from "@apendua/signal/rxjs";
 import { map, Subject } from "rxjs";
 import { on, set, attr, data, style } from "./operators.js";
@@ -77,6 +77,57 @@ describe("DOM Operators", () => {
 
       subscription.unsubscribe();
       assert.strictEqual(div.getAttribute("data-test"), "test value");
+    });
+
+    it("should follow a getter, and stop following it when the mounting comes down", () => {
+      // The getter form is a derivation, not a source: no observable is built
+      // for it and nothing is subscribed. What it needs from the operator is
+      // exactly what an effect gives — read, write, re-run when the read moves.
+      const div = document.createElement("div");
+      const value = Signal.of("first");
+      const subscription = just(div, [attr("data-test", () => value.get())]).subscribe();
+
+      assert.strictEqual(div.getAttribute("data-test"), "first");
+
+      value.set("second");
+      assert.strictEqual(div.getAttribute("data-test"), "second");
+
+      subscription.unsubscribe();
+      value.set("third");
+      assert.strictEqual(div.getAttribute("data-test"), "second");
+    });
+
+    it("should not write a getter's value again when it has not moved", () => {
+      // The cutoff a `Derived` brings, and the reason the getter form wants one
+      // at all: a write upstream that leaves this value alone must not touch
+      // the attribute, because in a portal a touched attribute is a mutation
+      // record and a re-measure.
+      const div = document.createElement("div");
+      const source = Signal.of({ label: "a", unrelated: 0 });
+      let writes = 0;
+      const observer = { setAttribute: div.setAttribute.bind(div) };
+      const subscription = just(
+        /** @type {any} */ ({
+          setAttribute: (/** @type {string} */ key, /** @type {string} */ v) => {
+            writes += 1;
+            observer.setAttribute(key, v);
+          },
+          removeAttribute: div.removeAttribute.bind(div),
+        }),
+        [attr("data-test", () => source.get().label)],
+      ).subscribe();
+
+      assert.strictEqual(writes, 1);
+      assert.strictEqual(div.getAttribute("data-test"), "a");
+
+      source.set({ label: "a", unrelated: 1 });
+      assert.strictEqual(writes, 1, "the label did not move, so nothing was written");
+
+      source.set({ label: "b", unrelated: 1 });
+      assert.strictEqual(writes, 2);
+      assert.strictEqual(div.getAttribute("data-test"), "b");
+
+      subscription.unsubscribe();
     });
 
     it("should update dataset when data-* attribute is set", () => {

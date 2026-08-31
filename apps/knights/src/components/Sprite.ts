@@ -1,7 +1,6 @@
 import { $$, attr, children } from "@apendua/justdom";
-import { component, effectMap, memo, mutate, observable, store } from "@apendua/signal";
+import { component, Derived, effectMap, memo, mutate, store, useEffect } from "@apendua/signal";
 import { tap } from "rxjs";
-import { rx } from "@apendua/signal/rxjs";
 import {
   ASSETS_PREFIX,
   animationsDb,
@@ -178,8 +177,16 @@ const Sprite = component((_: WeakKey, props: SpriteProps) => {
   const clipId = `sprite_${randomId()}`;
 
   return $$("g", [
-    // Start over whenever a different animation is selected.
-    effectMap(() => rx(observable(() => sprite.animationKey)).pipe(tap(() => sprite.rewind()))),
+    // Start over whenever a different animation is selected. The `Derived` is
+    // the cutoff: the key is a string, so two writes that leave it alone leave
+    // the animation alone too.
+    () => {
+      const animationKey = new Derived(() => sprite.animationKey);
+      useEffect(() => {
+        animationKey.get();
+        sprite.rewind();
+      });
+    },
     // Advance one frame per tick of the shared animation clock.
     effectMap(() => clock.pipe(tap(() => sprite.nextFrame()))),
     attr("transform", () => {

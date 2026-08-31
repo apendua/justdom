@@ -1,6 +1,5 @@
 import { addDependency, batch, Derived, fromEvent, NoValueError, Signal } from "@apendua/signal";
-import { rx } from "@apendua/signal/rxjs";
-import { merge, Subject } from "rxjs";
+import { Subject } from "@apendua/signal";
 import {
   collapseWhitespace,
   findLineStarts,
@@ -2135,9 +2134,15 @@ export function getCheckedCached(element) {
         },
       });
     }
-    const dependency = merge(rx(fromEvent(element, "change")), assigned);
+    // Two edges rather than one `merge` of them: a dependency is anything with
+    // a `subscribe`, and a node reading both is told by either. Both are built
+    // outside the derivation so that each evaluation reads the *same*
+    // dependency and keeps the edge it already has, rather than making a fresh
+    // one to attach and dropping the old.
+    const changed = fromEvent(element, "change");
     signal = new Derived(() => {
-      addDependency(dependency);
+      addDependency(changed);
+      addDependency(assigned);
       return element.checked;
     });
     checkedCache.set(element, signal);

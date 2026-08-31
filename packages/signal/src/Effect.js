@@ -6,6 +6,8 @@ import {
   CircularDependencyError,
   NoValueError,
   activeChannel,
+  activeComputation,
+  addDependency,
   onCleanup,
   withChannel,
 } from "./core.js";
@@ -13,6 +15,7 @@ import { updateQueue, defaultChannel } from "./scheduler.js";
 
 /**
  * @import UpdateChannel from "./UpdateChannel.js";
+ * @import { Observer } from "./subscribable.js";
  */
 
 /**
@@ -92,6 +95,13 @@ const MAX_SELF_INVALIDATIONS = 100;
  *   and a reported one fails the effect outright.
  * @property {boolean} [deferred] schedule the first run instead of performing
  *   it during construction.
+ * @property {Partial<Observer<void>>} [observer] an observer subscribed
+ *   *before* the first run. `subscribe` after construction cannot exist any
+ *   earlier than that, and the first run is where a dependency that fails on
+ *   the way in fails this effect — so an error handler registered any later
+ *   hears the failure only as a replay, after the graph has already reported
+ *   it as unhandled. This is the one way to have an ear on the effect for its
+ *   entire life, first run included.
  * @property {string} [name] shown in diagnostics
  */
 
@@ -216,6 +226,13 @@ export class Effect extends ReactiveNode {
     // its dependencies open from birth, and that is what keeps everything it
     // reads awake.
     this.connect();
+    if (options.observer) {
+      // Before the first run, which is the whole point of the option — see
+      // `EffectOptions`. Never unsubscribed: it lives exactly as long as the
+      // effect, and a disposed effect has let go of everything that could
+      // still fail it.
+      this.subscribe(options.observer);
+    }
     if (options.deferred) {
       updateQueue.enqueue(this);
       return;
@@ -532,7 +549,34 @@ export function effect(run, options) {
 }
 
 /**
- * An effect that lives exactly as long as the computation it is built in.
+ * A dependency that never marks the computation stale: it forwards only the
+ * failure of what it watches. Liveness without listening.
+ *
+ * @param {{ subscribe: ReactiveNode['subscribe'] }} subscribable
+ * @returns {{ subscribe: ReactiveNode['subscribe'] }}
+ */
+export function failuresOf(subscribable) {
+  return {
+    subscribe: (observer) =>
+      subscribable.subscribe({
+        error: (err) => observer.error?.(err),
+      }),
+  };
+}
+
+/**
+ * @typedef {EffectOptions & {
+ *   standalone?: boolean
+ * }} UseEffectOptions `standalone` opts out of the failure edge below: the
+ *   effect still lives and dies with the computation, but a failure of its own
+ *   is its own — reported as unhandled unless something subscribed to it, and
+ *   never carried to the computation. For the rare inner effect whose death
+ *   should not take its region with it.
+ */
+
+/**
+ * An effect that lives exactly as long as the computation it is built in —
+ * and whose failure the computation hears.
  *
  * An effect is a root of demand: nothing reads it, so nothing lets go of it,
  * and it keeps everything it reads awake until somebody disposes it. Which
@@ -542,6 +586,18 @@ export function effect(run, options) {
  * the caller never holds the handle only to dispose it later, and never
  * forgets to.
  *
+ * Disposal alone is not the whole tie, because an effect can die on its own:
+ * a dependency that errors fails it down the push path, which never consults
+ * `onError` and never throws — so without more, the effect stops, the
+ * computation is never told, and the only trace is an unhandled-failure
+ * report. Hence the failure edge: the computation takes `failuresOf(instance)`
+ * as a dependency, so an inner effect's death is the computation's failure,
+ * exactly as a dead node the computation reads would be. The edge hears
+ * nothing else — no values, no invalidations — and the observer registered
+ * before the first run is what closes the last gap, a dependency that fails
+ * while the first run is still on the stack: the failure is heard there and
+ * then, and the edge replays it to the computation the moment it attaches.
+ *
  * Called with no computation active there is nothing to pair with, so
  * `onCleanup` says so and disposes on the spot rather than leaving an effect
  * nobody can reach. Use `new Effect` where the lifetime really is the
@@ -549,12 +605,26 @@ export function effect(run, options) {
  *
  * @template T
  * @param {(context: EffectContext) => T & Teardown<T>} run
- * @param {EffectOptions} [options]
+ * @param {UseEffectOptions} [options]
  * @returns {Effect}
  */
 export function useEffect(run, options) {
-  const instance = new Effect(run, options);
+  const { standalone = false, ...effectOptions } = options ?? {};
+  if (standalone || !activeComputation) {
+    const instance = new Effect(run, effectOptions);
+    onCleanup(() => instance.dispose());
+    return instance;
+  }
+  const instance = new Effect(run, {
+    // An ear from birth, so a first-run failure is heard rather than reported
+    // as unhandled. It only marks the failure heard; delivery is the edge's
+    // job — a stored failure replays into the computation when the edge
+    // attaches, two lines down.
+    observer: { error: () => {} },
+    ...effectOptions,
+  });
   onCleanup(() => instance.dispose());
+  addDependency(failuresOf(instance));
   return instance;
 }
 

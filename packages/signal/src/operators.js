@@ -1,9 +1,13 @@
 import { Derived } from "./Derived.js";
-import { useEffect } from "./Effect.js";
+import { useEffect, failuresOf } from "./Effect.js";
 import { onEachValue, subscribeTo, subscribeAndEmit, each } from "./util.js";
 import { observable, component } from "./factories.js";
 import { addDependency, onCleanup, withComputation } from "./core.js";
 import { toObservable, toEffect, nodeOf } from "./interop.js";
+
+// Moved to `Effect.js`, where `useEffect` wires it; re-exported so existing
+// importers keep their path.
+export { failuresOf };
 
 /**
  * @import { Subscribable, Source } from './subscribable.js';
@@ -100,27 +104,32 @@ export function flatMap(fn) {
  *   them, a second node to choose that stream and a second effect to hold it,
  *   and the node at the bottom did the only work.
  * - A **source that is merely held**, with nothing chosen and nothing read
- *   back, looks like a job for `use` — and it is not, for the reason below.
+ *   back, wants `use` — one dependency edge, no `Derived`, no inner effect.
+ *   That used to be unsafe during a mounting's first run, when a failure on
+ *   the way in fell into a window nothing was watching; the window is closed —
+ *   `just` and `useEffect` both keep an ear on their effect from before its
+ *   first run — so the only reason left to reach for this operator over `use`
+ *   is one of the two above, or the ordering below.
  *
- * ### Why not `use`
+ * ### What the hand-rolled subscription still buys
  *
- * `use(source)` attaches the source as a dependency of the mounting's own
- * effect, which is the right lifetime and the right failure channel *once the
- * mounting is standing*. It is the wrong one while the mounting is being
- * built. `just` runs the effect's body before it subscribes to the effect's
- * error channel — the body is what builds the entity, so there is nothing to
- * subscribe to until it has run — and a dependency that fails during that
- * first run therefore fails a node with no dependents and no observers. The
- * graph says so, loudly and correctly, on `console.error`, and only then does
- * `just` pick the failure up from the stored one and hand it to the
- * subscriber.
+ * When the callback's choice changes, this operator unsubscribes the old
+ * source *before* subscribing the new one: the previous run's `onCleanup`
+ * fires on the way into the re-run, and the new subscribe happens inside it.
+ * `use` orders it the other way — a dependency edge attaches during the run
+ * and the stale one detaches in the bookkeeping afterwards — which a
+ * refcounted source, or a DOM mounting that must vacate before its
+ * replacement claims the same slot, would notice. `justdom`'s `children`
+ * switches whole subtrees through here, so the ordering is load-bearing.
  *
- * So the subscription is taken here directly instead. A failure that arrives
- * while the subscribe is still on this run's stack is *thrown*, which lands in
- * `just`'s own `try` — that is what lets a hydration mismatch be caught before
- * `subscribe` returns, quietly, with no unhandled-failure report on the way.
- * One that arrives later goes through `context.fail`, and lands where a failed
- * mounting lands. `operators.test.js` pins both.
+ * The failure routing, by contrast, is no longer special. A failure that
+ * arrives while the subscribe is still on this run's stack is *thrown*, which
+ * lands in `just`'s own `try` — that is what lets a hydration mismatch be
+ * caught before `subscribe` returns, quietly, with no unhandled-failure
+ * report on the way. One that arrives later goes through `context.fail`, and
+ * lands where a failed mounting lands. `operators.test.js` pins both — but
+ * `use` in an entity effect now takes the same two paths, via the mounting
+ * effect's own channels.
  *
  * @template T
  * @param {(value: T) => Subscribable<unknown>} fn
@@ -276,29 +285,12 @@ function mountEffect(value, fn) {
         // mounting, exactly where a synchronous failure belongs.
         throw err;
       }
-      // Later news fails the effect, whose failure the dependency edge below
+      // Later news fails the effect, whose failure `useEffect`'s edge
       // carries to the computation — where a pipeline error used to land.
       effect.fail(err);
     },
   });
   standing = true;
-  addDependency(failuresOf(effect));
-}
-
-/**
- * A dependency that never marks the computation stale: it forwards only the
- * failure of what it watches. Liveness without listening.
- *
- * @param {{ subscribe: ReactiveNode['subscribe'] }} subscribable
- * @returns {{ subscribe: ReactiveNode['subscribe'] }}
- */
-export function failuresOf(subscribable) {
-  return {
-    subscribe: (observer) =>
-      subscribable.subscribe({
-        error: (err) => observer.error?.(err),
-      }),
-  };
 }
 
 /**

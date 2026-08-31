@@ -162,15 +162,16 @@ export function just(valueOrFactory, effects = []) {
             }
             subscriber.error(err);
           },
-        });
-        mounted.push(effect);
-        // A dependency of the mounted effect erroring fails the effect down
-        // the push path, which never consults `onError` — so the mounting
-        // keeps an ear on the observer channel. A failure from the first run
-        // replays synchronously on subscribe, and lands in `pending` so it is
-        // handled the way a thrown one is.
-        mounted.push(
-          effect.subscribe({
+          // A dependency of the mounted effect erroring fails the effect down
+          // the push path, which never consults `onError` — so the mounting
+          // keeps an ear on the observer channel, registered *before* the
+          // first run: a dependency that fails while the mounting is still
+          // being built then fails an effect that is already heard, instead
+          // of one nothing watches yet, and nothing is reported as unhandled
+          // on the way to `pending` and the throw below. The observer is
+          // never unsubscribed — it lives as long as the effect, and a late
+          // `error` into a torn-down subscriber is a no-op.
+          observer: {
             error: (err) => {
               if (standing) {
                 subscriber.error(err);
@@ -178,8 +179,9 @@ export function just(valueOrFactory, effects = []) {
                 pending = pending ?? { value: err };
               }
             },
-          }),
-        );
+          },
+        });
+        mounted.push(effect);
         standing = true;
         if (pending) {
           throw /** @type {{ value: unknown }} */ (pending).value;

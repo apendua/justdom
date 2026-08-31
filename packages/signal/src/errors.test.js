@@ -540,10 +540,15 @@ describe("an effect nested inside another effect", () => {
     outer.dispose();
   });
 
-  it("does not route a failure reported after an inner run through the outer effect either", () => {
-    // `context.fail` is the push side, and an effect has no dependents — so
-    // there is nobody above it at all, builder or otherwise. Unhandled, it
-    // fails the inner effect and is logged rather than dropped.
+  it("carries a failure reported after an inner run to the effect that built it", () => {
+    // `context.fail` is the push side, and `useEffect` gives the builder an
+    // ear on exactly that: a failure edge from the inner effect to the
+    // computation that built it. The inner effect fails and stops; the
+    // failure travels the edge and fails the outer effect too, the same way a
+    // dead node the outer effect read would have. `onError` is not in this
+    // path — a failure arriving down an edge fails the effect outright — so
+    // the chain is reported once, at the outer end, where nobody was
+    // listening.
     /** @type {string[]} */
     const seen = [];
     /** @type {(err: unknown) => void} */
@@ -559,6 +564,37 @@ describe("an effect nested inside another effect", () => {
           { name: "inner" },
         );
       },
+      { name: "outer", onError: () => seen.push("outer") },
+    );
+
+    const { logged } = captureConsoleError(() => report(new Error("after the run")));
+
+    assert.deepEqual(seen, [], "onError hears the pull path, and this is the push path");
+    assert.equal(inner?.isDisposed, true, "the inner effect stops");
+    assert.equal(outer.isDisposed, true, "and takes the effect that built it with it");
+    assert.equal(logged.length, 1, "one report for the whole chain");
+    assert.match(String(logged[0][0]), /Unhandled failure in Effect "outer"/);
+  });
+
+  it("keeps a standalone inner effect's failure to itself", () => {
+    // The opt-out. An inner effect whose death should not take its region
+    // with it says so, and gets the old contract: it fails alone, and the
+    // failure is reported rather than lost — or heard by whoever subscribed.
+    /** @type {string[]} */
+    const seen = [];
+    /** @type {(err: unknown) => void} */
+    let report = () => {};
+    /** @type {Effect | undefined} */
+    let inner;
+    const outer = new Effect(
+      () => {
+        inner = useEffect(
+          ({ fail }) => {
+            report = fail;
+          },
+          { name: "inner", standalone: true },
+        );
+      },
       { onError: () => seen.push("outer") },
     );
 
@@ -566,15 +602,17 @@ describe("an effect nested inside another effect", () => {
 
     assert.deepEqual(seen, [], "not the outer effect's to hear");
     assert.equal(inner?.isDisposed, true, "the inner effect stops");
-    assert.equal(logged.length, 1, "and it is reported rather than lost");
+    assert.equal(outer.isDisposed, false, "and the outer effect stands");
+    assert.equal(logged.length, 1, "reported rather than lost");
     assert.match(String(logged[0][0]), /Unhandled failure in Effect "inner"/);
     outer.dispose();
   });
 
   it("lets a subscriber on the inner effect hear that failure", () => {
-    // Which is the answer to the previous test: if a nested effect's
-    // after-the-fact failures matter, give it an `onError` or subscribe to it.
-    // Nesting alone does not make the outer effect a handler.
+    // A subscriber with an `error` is a handler wherever it subscribes, so
+    // the failure is heard here as well as travelling the edge — the outer
+    // effect still fails, because an effect that lost one of its own is not
+    // standing any more.
     /** @type {string[]} */
     const seen = [];
     /** @type {(err: unknown) => void} */
@@ -588,9 +626,9 @@ describe("an effect nested inside another effect", () => {
     });
     inner?.subscribe({ error: (err) => seen.push(/** @type {Error} */ (err).message) });
 
-    report(new Error("heard"));
+    captureConsoleError(() => report(new Error("heard")));
     assert.deepEqual(seen, ["heard"]);
-    outer.dispose();
+    assert.equal(outer.isDisposed, true, "the edge still carried it to the builder");
   });
 
   it("disposes the whole nest when the outermost throw is left unhandled", () => {

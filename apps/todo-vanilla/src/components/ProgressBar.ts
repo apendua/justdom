@@ -1,6 +1,5 @@
 import { className, text, $, children, style } from "@apendua/justdom";
-import { set } from "@apendua/signal";
-import { map, Observable, ReplaySubject, share, takeWhile, timer } from "rxjs";
+import { fromObservable, map, observable, set, timer, type Source } from "@apendua/signal";
 
 const containerStyle = className`
   display: flex;
@@ -42,18 +41,25 @@ const labelStyle = className`
 const STEPS = 24;
 
 /**
- * Emits a value that walks from 0 to 1 over `duration` milliseconds, then
- * completes. The steps are deliberately coarse -- the css transition on the bar
- * is what makes the movement smooth, so there is no need to update once per
- * frame.
+ * A value that walks from 0 to 1 over `duration` milliseconds. The steps are
+ * deliberately coarse -- the css transition on the bar is what makes the
+ * movement smooth, so there is no need to update once per frame.
+ *
+ * The node is doing three jobs the RxJS version needed three operators for.
+ * Both the bar and the label read this, and a node is read by however many
+ * want it while holding one timer, which is the `share`; the value it is
+ * holding is what a late reader gets, which is the `ReplaySubject(1)`; and a
+ * derivation that recomputes to the value it already had notifies nobody, so
+ * capping at 1 is the `takeWhile` -- the ramp goes quiet once it arrives.
+ *
+ * The timer itself keeps ticking after that, where `takeWhile` completed and
+ * stopped it. Nothing reads the extra ticks and the whole thing is torn down
+ * when the bar is, which is moments later: this is a `suspend` fallback, and
+ * it goes as soon as there is content to put in its place.
  */
-function progressOver(duration: number): Observable<number> {
-  return timer(0, duration / STEPS).pipe(
-    map((tick) => Math.min(1, tick / STEPS)),
-    takeWhile((value) => value < 1, true),
-    // Both the bar and the label read this, and they should share one timer.
-    share({ connector: () => new ReplaySubject(1), resetOnRefCountZero: true }),
-  );
+function progressOver(duration: number): Source<number> {
+  const ticks = fromObservable(timer(0, duration / STEPS));
+  return observable(() => Math.min(1, ticks.get() / STEPS));
 }
 
 const ProgressBar = (duration: number) => {
@@ -67,7 +73,7 @@ const ProgressBar = (duration: number) => {
       ]),
       $("p", [
         set("className", labelStyle),
-        children(text`Loading ${progress.pipe(map((value) => `${Math.round(value * 100)}%`))}`),
+        children(text`Loading ${map((value: number) => `${Math.round(value * 100)}%`)(progress)}`),
       ]),
     ),
   ]);

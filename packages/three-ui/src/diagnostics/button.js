@@ -10,7 +10,6 @@
 import { $, children, on, set, text } from "@apendua/justdom";
 
 /**
- * @import {Observable} from 'rxjs';
  * @import {DiagnosticsControls} from './diagnostics.js';
  */
 

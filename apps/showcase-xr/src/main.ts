@@ -1,5 +1,3 @@
-import { from, map, switchMap } from "rxjs";
-import { rx } from "@apendua/signal/rxjs";
 import { render, createXRButton } from "@apendua/freedom";
 import Scene from "./components/Scene";
 import "./index.css";
@@ -29,25 +27,14 @@ Promise.resolve(
     console.error("Could not install the XR emulator:", err);
   })
   .then(() => {
-    rx(render(Scene, { antialias: true }))
-      .pipe(
-        switchMap((renderer) =>
-          from(
-            createXRButton(renderer, {
-              ar: { optionalFeatures: ["hand-tracking"] },
-              vr: { optionalFeatures: ["hand-tracking"] },
-            }),
-          ).pipe(
-            map((button) => {
-              const fragment = document.createDocumentFragment();
-              fragment.appendChild(renderer.domElement);
-              fragment.appendChild(button);
-              return fragment;
-            }),
-          ),
-        ),
-      )
-      .subscribe((node) => {
-        root.replaceChildren(node);
-      });
+    render(Scene, { antialias: true }).subscribe({
+      next: (renderer) => {
+        createXRButton(renderer, {
+          ar: { optionalFeatures: ["hand-tracking"] },
+          vr: { optionalFeatures: ["hand-tracking"] },
+        }).then((button) => {
+          root.replaceChildren(renderer.domElement, button);
+        });
+      },
+    });
   });

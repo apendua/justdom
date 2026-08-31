@@ -1,10 +1,7 @@
-import { distinctUntilChanged, switchMap } from "rxjs";
-import { rx } from "@apendua/signal/rxjs";
 import { $, attr, children, on, renderText, set, style, text } from "@apendua/justdom";
-import { observable, Signal } from "@apendua/signal";
+import { flatMap, observable, Signal } from "@apendua/signal";
 
 /**
- * @import {Observable} from "rxjs";
  * @import {EntityEffect} from "@apendua/signal";
  * @import {Mountable} from "@apendua/justdom";
  */
@@ -22,9 +19,8 @@ import { observable, Signal } from "@apendua/signal";
  * @returns {import("@apendua/signal").Source<string>}
  */
 const withModifier = (base, modifier, active) =>
-  rx(observable(active)).pipe(
-    distinctUntilChanged(),
-    switchMap((isActive) => rx(isActive ? renderText`${base} ${modifier}` : base)),
+  flatMap((/** @type {boolean} */ isActive) => (isActive ? renderText`${base} ${modifier}` : base))(
+    observable(active),
   );
 
 /**

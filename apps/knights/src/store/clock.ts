@@ -1,4 +1,4 @@
-import { interval, share } from "rxjs";
+import { fromObservable, interval, toObservable } from "@apendua/signal";
 import { TIMING_FRAMES_PER_SECOND } from "../constants";
 
 /**
@@ -6,7 +6,9 @@ import { TIMING_FRAMES_PER_SECOND } from "../constants";
  *
  * The original project gave each actor its own `setInterval`; a single shared
  * interval does the same job without scaling the number of timers with the
- * number of actors. It's created lazily and torn down once nothing is mounted,
- * which is what `share` buys us here.
+ * number of actors. The node is what buys that: `interval` is cold, so a
+ * subscriber of its own would get a timer of its own, and reading it through
+ * a node means one timer however many sprites are mounted — created when the
+ * first one reads it, dropped when the last one goes.
  */
-export const frames = interval(1000 / TIMING_FRAMES_PER_SECOND).pipe(share());
+export const frames = toObservable(fromObservable(interval(1000 / TIMING_FRAMES_PER_SECOND)));

@@ -3,7 +3,6 @@ import { setupJsdom } from "@apendua/jsdom-env";
 import { just } from "@apendua/signal";
 
 /**
- * @import { Observable } from "rxjs";
  * @import { Mountable } from "@apendua/justdom";
  */
 

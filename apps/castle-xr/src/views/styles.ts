@@ -14,12 +14,10 @@
  * design is carried by colour, line and type.
  */
 import { fontFace, stylesheet, CLASS_NAME } from "@apendua/justdom";
-import { rx } from "@apendua/signal/rxjs";
 import type { DropdownClasses } from "@apendua/justui";
 import titleFontFile from "@apendua.dev/media/fonts/Cinzel-wght.ttf";
 import bodyFontFile from "@apendua.dev/media/fonts/Quicksand-wght.ttf";
-import { combineLatest, map } from "rxjs";
-import type { Subscribable } from "@apendua/signal";
+import { fromObservable, observable, type Subscribable } from "@apendua/signal";
 import { palette } from "../elements/palette.js";
 
 /** Carved Roman capitals, for what a panel is called. */
@@ -87,12 +85,22 @@ export const actionButton = stylesheet`
 /**
  * An action button that greys out while there is nothing for it to act on.
  * The class names are observables — each one keeps its own stylesheet mounted —
- * so the two are combined as streams rather than as strings.
+ * so the two are read through nodes rather than interpolated as strings.
+ *
+ * Both names are read on every run, whichever one comes out: reading only the
+ * one in use would let go of the other's stylesheet, so re-enabling the button
+ * would have to mount a rule again before it could be styled by it. That
+ * holding-both is what `combineLatest` over the three was doing here.
  */
 export function actionButtonClass(enabled: Subscribable<boolean>) {
-  return combineLatest([rx(actionButton), rx(mutedButton), rx(enabled)]).pipe(
-    map(([action, muted, isEnabled]) => (isEnabled ? action : `${action} ${muted}`)),
-  );
+  const action = fromObservable(actionButton);
+  const muted = fromObservable(mutedButton);
+  const isEnabled = fromObservable(enabled);
+  return observable(() => {
+    const base = action.get();
+    const grey = muted.get();
+    return isEnabled.get() ? base : `${base} ${grey}`;
+  });
 }
 
 /** Added to an action button that currently has nothing to act on. */

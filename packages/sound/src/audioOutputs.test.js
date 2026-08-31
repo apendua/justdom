@@ -3,7 +3,7 @@ import test, { afterEach, describe } from "node:test";
 import { audioOutputs, audioOutputSelection, setAudioOutput } from "./audioOutputs.js";
 
 /**
- * @import { Observable, Subscription } from 'rxjs';
+ * @import { Source, Unsubscribable } from '@apendua/signal';
  * @import { AudioOutput } from './audioOutputs.js';
  */
 
@@ -66,8 +66,8 @@ function restoreGlobals() {
 }
 
 /**
- * @param {Observable<AudioOutput[]>} source
- * @returns {{ values: AudioOutput[][], subscription: Subscription }}
+ * @param {Source<AudioOutput[]>} source
+ * @returns {{ values: AudioOutput[][], subscription: Unsubscribable }}
  */
 function collect(source) {
   /** @type {AudioOutput[][]} */

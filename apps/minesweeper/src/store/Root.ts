@@ -1,5 +1,4 @@
-import { fromEvent } from "rxjs";
-import { addDependency, createProperty } from "@apendua/signal";
+import { addDependency, createProperty, fromEvent } from "@apendua/signal";
 
 interface Dimensions {
   width: number;

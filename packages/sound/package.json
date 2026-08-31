@@ -38,9 +38,6 @@
     "test:typecheck": "tsc --project tsconfig.json --noEmit",
     "test:watch": "node --test --watch \"src/**/*.test.js\""
   },
-  "dependencies": {
-    "rxjs": "^7.8.2"
-  },
   "devDependencies": {
     "@apendua/freedom": "workspace:*",
     "@apendua/signal": "workspace:*",

@@ -1,10 +1,8 @@
 import { set, children, $, className } from "@apendua/justdom";
-import { rx } from "@apendua/signal/rxjs";
-import { store, observe } from "@apendua/signal";
+import { flatMap, makeNonReactive, store, observe } from "@apendua/signal";
 import { Fields, FieldsContext } from "../store/Fields";
 import { RootContext } from "../store/Root";
 import Viewport, { ViewportContext } from "../store/Viewport";
-import { switchMap } from "rxjs";
 import Minefield from "./Minefield";
 import Menu, { SizePreset } from "./Menu";
 
@@ -51,30 +49,32 @@ const Game = (ctx: WeakKey) => {
 
   ctx = ViewportContext.set(ctx, viewport);
 
-  return rx(observe(state).game).pipe(
-    switchMap((game: Fields) => {
-      const newContext = FieldsContext.set(ctx, game);
-      const selectedId = state.sizeId;
-      return rx(
-        $("div", [
-          set("className", fullscreen),
-          children(
-            Minefield(newContext, game),
-            Menu(newContext, {
-              presets: SIZE_PRESETS,
-              selectedId,
-              game,
-              onSelect: startGame,
-              onRestart: () => {
-                const preset = SIZE_PRESETS.find((p) => p.id === selectedId) ?? SIZE_PRESETS[0];
-                startGame(preset);
-              },
-            }),
-          ),
-        ]),
-      );
-    }),
-  );
+  // `flatMap` runs its callback inside a derivation, so the size read below is
+  // taken non-reactively: `startGame` writes `sizeId` and then `game`, and a
+  // tracked read of the first would rebuild this whole subtree against the old
+  // board before the new one arrived. The rebuild belongs to `game` alone,
+  // which is what `switchMap` said here.
+  const currentSizeId = makeNonReactive(() => state.sizeId);
+  return flatMap((game: Fields) => {
+    const newContext = FieldsContext.set(ctx, game);
+    const selectedId = currentSizeId();
+    return $("div", [
+      set("className", fullscreen),
+      children(
+        Minefield(newContext, game),
+        Menu(newContext, {
+          presets: SIZE_PRESETS,
+          selectedId,
+          game,
+          onSelect: startGame,
+          onRestart: () => {
+            const preset = SIZE_PRESETS.find((p) => p.id === selectedId) ?? SIZE_PRESETS[0];
+            startGame(preset);
+          },
+        }),
+      ),
+    ]);
+  })(observe(state).game);
 };
 
 export default Game;

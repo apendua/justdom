@@ -10,7 +10,6 @@ import { SAMPLE_COUNT, SAMPLE_MS } from "./frameMeter.js";
 import { bar, caption, chart, hudCard, reading, readingRow, unit, UI_SCALE } from "./styles.js";
 
 /**
- * @import {Observable} from 'rxjs';
  * @import {Mountable} from '@apendua/justdom';
  * @import {Component} from '@apendua/freedom';
  * @import {DiagnosticsControls} from './diagnostics.js';

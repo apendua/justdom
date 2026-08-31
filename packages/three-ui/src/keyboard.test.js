@@ -57,7 +57,6 @@ function dressBoard() {
 }
 
 /**
- * @import {Observable} from "rxjs";
  * @import {Mountable} from "@apendua/justdom";
  * @import {KeyPress, KeyboardLayout} from "./keyboard.js";
  */

@@ -1,5 +1,3 @@
-import { from, map, switchMap } from "rxjs";
-import { rx } from "@apendua/signal/rxjs";
 import { render, createXRButton } from "@apendua/freedom";
 import Stats from "stats.js";
 import { XRControllerModelFactory } from "three/examples/jsm/webxr/XRControllerModelFactory.js";
@@ -38,30 +36,19 @@ Promise.resolve(
     console.error("Could not install the XR emulator:", err);
   })
   .then(() => {
-    rx(
-      render(App, {
-        createControllerModel,
-        onBeforeRender: () => {
-          stats.begin();
-        },
-        onAfterRender: () => {
-          stats.end();
-        },
-      }),
-    )
-      .pipe(
-        switchMap((renderer) =>
-          from(createXRButton(renderer)).pipe(
-            map((button) => {
-              const fragment = document.createDocumentFragment();
-              fragment.appendChild(renderer.domElement);
-              fragment.appendChild(button);
-              return fragment;
-            }),
-          ),
-        ),
-      )
-      .subscribe((node) => {
-        root.replaceChildren(node);
-      });
+    render(App, {
+      createControllerModel,
+      onBeforeRender: () => {
+        stats.begin();
+      },
+      onAfterRender: () => {
+        stats.end();
+      },
+    }).subscribe({
+      next: (renderer) => {
+        createXRButton(renderer).then((button) => {
+          root.replaceChildren(renderer.domElement, button);
+        });
+      },
+    });
   });

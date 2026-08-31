@@ -1,6 +1,14 @@
 import { $$, attr, children, text } from "@apendua/justdom";
-import { component, Derived, effectMap, memo, mutate, store, useEffect } from "@apendua/signal";
-import { tap } from "rxjs";
+import {
+  component,
+  Derived,
+  each,
+  effectMap,
+  memo,
+  mutate,
+  store,
+  useEffect,
+} from "@apendua/signal";
 import {
   ANIMATION_ACTIVE,
   ANIMATION_ATTACK,
@@ -243,7 +251,7 @@ const ActorView = component((ctx: WeakKey, props: ActorViewProps) => {
         actor.restartMove();
       });
     },
-    effectMap(() => clock.pipe(tap(() => actor.tick()))),
+    effectMap(() => each(clock, () => actor.tick())),
     children(
       Sprite(ctx, {
         get actorType() {

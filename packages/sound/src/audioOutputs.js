@@ -6,8 +6,11 @@
  * headset is rarely the only thing plugged in, and the browser's own choice is
  * not always the one the player is wearing.
  */
-import { Observable, distinctUntilChanged, tap } from "rxjs";
-import { makeNonReactive, Signal } from "@apendua/signal";
+import { each, makeNonReactive, Signal, Stream } from "@apendua/signal";
+
+/**
+ * @import { Source } from "@apendua/signal";
+ */
 
 /**
  * One place the browser is willing to send sound to.
@@ -98,39 +101,52 @@ function sameOutputs(a, b) {
  * has something to render, and stays empty on browsers that cannot route audio
  * anyway.
  *
- * @returns {Observable<AudioOutput[]>}
+ * A `devicechange` says something about the machine's devices moved, not that
+ * anything this cares about did — Chromium fires it for a webcam — and every
+ * refresh builds a fresh array, which no identity comparison collapses. So the
+ * `distinctUntilChanged(sameOutputs)` this used to end with is kept, written
+ * out inside the subscribe function: one `previous` per subscriber, which is
+ * where a cold operator held it anyway.
+ *
+ * @returns {Source<AudioOutput[]>}
  */
 export function audioOutputs() {
-  return new Observable(
-    /** @param {import('rxjs').Subscriber<AudioOutput[]>} subscriber */ (subscriber) => {
-      subscriber.next([]);
-      if (!canRouteAudio()) {
-        subscriber.complete();
-        return;
-      }
-      const mediaDevices = navigator.mediaDevices;
-      let closed = false;
-      const refresh = () => {
-        mediaDevices
-          .enumerateDevices()
-          .then((devices) => {
-            if (!closed) {
-              subscriber.next(toAudioOutputs(devices));
-            }
-          })
-          .catch(() => {
-            // Enumeration is a courtesy; a browser that refuses simply leaves the
-            // player on whatever output it chose for them.
-          });
-      };
-      refresh();
-      mediaDevices.addEventListener("devicechange", refresh);
-      return () => {
-        closed = true;
-        mediaDevices.removeEventListener("devicechange", refresh);
-      };
-    },
-  ).pipe(distinctUntilChanged(sameOutputs));
+  return new Stream((subscriber) => {
+    /** @type {AudioOutput[]} */
+    let previous = [];
+    subscriber.next(previous);
+    if (!canRouteAudio()) {
+      subscriber.complete();
+      return;
+    }
+    const mediaDevices = navigator.mediaDevices;
+    let closed = false;
+    const refresh = () => {
+      mediaDevices
+        .enumerateDevices()
+        .then((devices) => {
+          if (closed) {
+            return;
+          }
+          const next = toAudioOutputs(devices);
+          if (sameOutputs(previous, next)) {
+            return;
+          }
+          previous = next;
+          subscriber.next(next);
+        })
+        .catch(() => {
+          // Enumeration is a courtesy; a browser that refuses simply leaves the
+          // player on whatever output it chose for them.
+        });
+    };
+    refresh();
+    mediaDevices.addEventListener("devicechange", refresh);
+    return () => {
+      closed = true;
+      mediaDevices.removeEventListener("devicechange", refresh);
+    };
+  });
 }
 
 /**
@@ -168,7 +184,7 @@ export async function setAudioOutput(context, deviceId) {
  *   picks one, which leaves the sound wherever the browser put it.
  * @property {(deviceId: string) => void} select Send the sound to one of
  *   `outputs`, by id.
- * @property {Observable<AudioOutput[]>} updates Keeps `outputs` current for as
+ * @property {Source<AudioOutput[]>} updates Keeps `outputs` current for as
  *   long as it stays subscribed; nothing here updates until it is.
  */
 
@@ -200,7 +216,7 @@ export function audioOutputSelection() {
     },
   );
 
-  const updates = audioOutputs().pipe(tap(apply));
+  const updates = each(audioOutputs(), apply);
 
   return {
     outputs,

@@ -1,6 +1,4 @@
-import { combineLatest, map, type Observable } from "rxjs";
-import type { Subscribable } from "@apendua/signal";
-import { rx } from "@apendua/signal/rxjs";
+import { fromObservable, observable, type Source, type Subscribable } from "@apendua/signal";
 import { stylesheet, className, CLASS_NAME } from "@apendua/justdom";
 
 /**
@@ -18,8 +16,9 @@ export const fontFamily = 'system-ui, "Segoe UI", Roboto, Helvetica, Arial, sans
  * interpolating them into a plain template string would stringify the
  * observable, not the name.
  */
-export function classes(...names: Subscribable<string>[]): Observable<string> {
-  return combineLatest(names.map((name) => rx(name))).pipe(map((all) => all.join(" ")));
+export function classes(...names: Subscribable<string>[]): Source<string> {
+  const nodes = names.map((name) => fromObservable(name));
+  return observable(() => nodes.map((node) => node.get()).join(" "));
 }
 
 /**

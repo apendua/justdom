@@ -1,11 +1,8 @@
-import { distinctUntilChanged, switchMap } from "rxjs";
-import { rx } from "@apendua/signal/rxjs";
 import { $, attr, children, list, on, renderText, set, text } from "@apendua/justdom";
-import { effects, observable, onCleanup, Signal } from "@apendua/signal";
+import { effects, flatMap, observable, onCleanup, Signal } from "@apendua/signal";
 import { getPortalRoot } from "@apendua/freedom";
 
 /**
- * @import {Observable} from "rxjs";
  * @import {Mountable} from "@apendua/justdom";
  */
 
@@ -110,10 +107,9 @@ export function dropdown(props) {
    * @returns {import("@apendua/signal").Source<string>}
    */
   const withModifier = (base, modifier, active) =>
-    rx(observable(active)).pipe(
-      distinctUntilChanged(),
-      switchMap((isActive) => rx(isActive ? renderText`${base} ${modifier}` : base)),
-    );
+    flatMap((/** @type {boolean} */ isActive) =>
+      isActive ? renderText`${base} ${modifier}` : base,
+    )(observable(active));
 
   /** @param {DropdownOption<T>} entry */
   const option = (entry) =>

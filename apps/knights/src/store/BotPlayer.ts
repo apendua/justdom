@@ -1,9 +1,16 @@
-import { observable } from "@apendua/signal";
-import { EMPTY, switchMap, timer, type Subscription } from "rxjs";
-import { rx } from "@apendua/signal/rxjs";
+import { flatMap, observable, Stream, type Unsubscribable } from "@apendua/signal";
+// `timer` is an RxJS-native source, entering the graph as an ordinary
+// subscribable; nothing here reaches for RxJS because a package handed it one.
+import { timer } from "rxjs";
 import { TIMING_BOT_THINKS } from "../constants";
 import chooseMove from "./bot";
 import type Game from "./Game";
+
+/**
+ * A source that says nothing and never finishes — what `NEVER` was imported
+ * from RxJS for. A mounting handed this one mounts nothing at all.
+ */
+const NOTHING = new Stream<never>(() => {});
 
 /**
  * Plays the computer's side of a game.
@@ -15,24 +22,24 @@ import type Game from "./Game";
  * single blur.
  */
 export default class BotPlayer {
-  #subscription: Subscription;
+  #subscription: Unsubscribable;
 
   public constructor(game: Game, thinkingTime = TIMING_BOT_THINKS) {
-    this.#subscription = rx(observable(() => game.isWaitingForBot))
-      .pipe(switchMap((isWaiting) => (isWaiting ? timer(thinkingTime) : EMPTY)))
-      .subscribe(() => {
-        const actor = game.currentActor;
-        if (!actor) {
-          return;
-        }
-        const move = chooseMove(game, actor);
-        if (move) {
-          game.moveActor(move.actor, move.path, move.opponent);
-        } else {
-          // Nothing worth doing — hand the turn along rather than stalling.
-          game.nextActor();
-        }
-      });
+    this.#subscription = flatMap((isWaiting: boolean) =>
+      isWaiting ? timer(thinkingTime) : NOTHING,
+    )(observable(() => game.isWaitingForBot)).subscribe(() => {
+      const actor = game.currentActor;
+      if (!actor) {
+        return;
+      }
+      const move = chooseMove(game, actor);
+      if (move) {
+        game.moveActor(move.actor, move.path, move.opponent);
+      } else {
+        // Nothing worth doing — hand the turn along rather than stalling.
+        game.nextActor();
+      }
+    });
   }
 
   public dispose(): void {

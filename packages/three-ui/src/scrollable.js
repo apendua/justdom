@@ -3,7 +3,6 @@ import { Derived, effects, onCleanup, Signal } from "@apendua/signal";
 import { getPortalRoot, scrollElementBy } from "@apendua/freedom";
 
 /**
- * @import {Observable} from "rxjs";
  * @import {Mountable} from "@apendua/justdom";
  */
 

@@ -17,7 +17,6 @@ import { frames, onLateFrame } from "../render.js";
 import { InteractionContext } from "../interactions.js";
 
 /**
- * @import {Observable, Unsubscribable} from 'rxjs';
  * @import {Mountable} from '../core.js';
  * @import {Object3D} from 'three';
  * @import {MutationBatch} from './animationClock.js';

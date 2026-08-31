@@ -1,6 +1,14 @@
 import { $$, attr, children } from "@apendua/justdom";
-import { component, Derived, effectMap, memo, mutate, store, useEffect } from "@apendua/signal";
-import { tap } from "rxjs";
+import {
+  component,
+  Derived,
+  each,
+  effectMap,
+  memo,
+  mutate,
+  store,
+  useEffect,
+} from "@apendua/signal";
 import {
   ASSETS_PREFIX,
   animationsDb,
@@ -188,7 +196,7 @@ const Sprite = component((_: WeakKey, props: SpriteProps) => {
       });
     },
     // Advance one frame per tick of the shared animation clock.
-    effectMap(() => clock.pipe(tap(() => sprite.nextFrame()))),
+    effectMap(() => each(clock, () => sprite.nextFrame())),
     attr("transform", () => {
       const geometry = sprite.geometry;
       return geometry ? `translate(${geometry.x},${geometry.y})` : undefined;

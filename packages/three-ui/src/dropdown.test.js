@@ -5,7 +5,6 @@ import { just, Signal } from "@apendua/signal";
 import { dropdown } from "./dropdown.js";
 
 /**
- * @import {Observable} from "rxjs";
  * @import {Mountable} from "@apendua/justdom";
  */
 

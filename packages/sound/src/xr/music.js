@@ -14,9 +14,9 @@ import {
   memoizeDerived,
   onCleanup,
   Signal,
+  Stream,
 } from "@apendua/signal";
 import { $, getXRSession } from "@apendua/freedom";
-import { Observable } from "rxjs";
 import { audioOutputSelection, setAudioOutput } from "../audioOutputs.js";
 
 /**
@@ -32,22 +32,20 @@ import { audioOutputSelection, setAudioOutput } from "../audioOutputs.js";
 const loadSound = memoizeDerived(
   /** @param {string} path */ (path) => {
     return Derived.from(
-      new Observable(
-        /** @param {import('rxjs').Subscriber<AudioBuffer>} subscriber */ (subscriber) => {
-          const loader = new THREE.AudioLoader();
-          loader.load(
-            path,
-            (buffer) => {
-              subscriber.next(buffer);
-            },
-            () => {},
-            (error) => {
-              subscriber.error(error);
-            },
-          );
-          return () => {};
-        },
-      ),
+      new Stream((subscriber) => {
+        const loader = new THREE.AudioLoader();
+        loader.load(
+          path,
+          (buffer) => {
+            subscriber.next(buffer);
+          },
+          () => {},
+          (error) => {
+            subscriber.error(error);
+          },
+        );
+        return () => {};
+      }),
     );
   },
 );

@@ -84,12 +84,43 @@ export function flatMap(fn) {
  * Keep whatever observable `fn` hands back subscribed for as long as the
  * entity stays mounted.
  *
- * The subscription is taken directly rather than through `use`, for the sake
- * of where its errors go. One that arrives while the subscribe is still on
- * this run's stack is *thrown* — it fails the mounting synchronously, which
- * is what lets a hydration mismatch be caught before `subscribe` returns.
- * One that arrives later goes through `context.fail`, and lands where a
- * failed mounting lands.
+ * ### What it is for, and what it is not for
+ *
+ * Two things, and a mounting wants this operator only when it needs both. The
+ * callback *chooses* a source, reactively — it runs in a `Derived`, so a
+ * choice that branches on reactive state is made again when that state moves
+ * — and the chosen source is *held*, with its failure carried to the
+ * mounting. Neither half is free, so:
+ *
+ * - A **getter** wants nothing here. `() => a.b` is a derivation, and
+ *   `Derived` + `useEffect` writes what it reads with two pieces instead of
+ *   five; `set` above and `write` in `@apendua/justdom`'s operators are both
+ *   spelled that way. Wrapping a getter in `observable()` to feed it through
+ *   here builds a node, an effect to push its values, a stream to consume
+ *   them, a second node to choose that stream and a second effect to hold it,
+ *   and the node at the bottom did the only work.
+ * - A **source that is merely held**, with nothing chosen and nothing read
+ *   back, looks like a job for `use` — and it is not, for the reason below.
+ *
+ * ### Why not `use`
+ *
+ * `use(source)` attaches the source as a dependency of the mounting's own
+ * effect, which is the right lifetime and the right failure channel *once the
+ * mounting is standing*. It is the wrong one while the mounting is being
+ * built. `just` runs the effect's body before it subscribes to the effect's
+ * error channel — the body is what builds the entity, so there is nothing to
+ * subscribe to until it has run — and a dependency that fails during that
+ * first run therefore fails a node with no dependents and no observers. The
+ * graph says so, loudly and correctly, on `console.error`, and only then does
+ * `just` pick the failure up from the stored one and hand it to the
+ * subscriber.
+ *
+ * So the subscription is taken here directly instead. A failure that arrives
+ * while the subscribe is still on this run's stack is *thrown*, which lands in
+ * `just`'s own `try` — that is what lets a hydration mismatch be caught before
+ * `subscribe` returns, quietly, with no unhandled-failure report on the way.
+ * One that arrives later goes through `context.fail`, and lands where a failed
+ * mounting lands. `operators.test.js` pins both.
  *
  * @template T
  * @param {(value: T) => Subscribable<unknown>} fn
@@ -182,14 +213,22 @@ export function set(keyOrValues, value) {
   }
   if (typeof value === "function") {
     const valueFn = value;
-    return (entity) => {
+    return (entity, { fail }) => {
       // A `Derived` in front of the assignment for its equality cutoff, which
       // is what the observable this used to route through was providing: a
       // recomputation that lands on the value already written writes nothing.
       const source = new Derived(() => valueFn());
-      useEffect(() => {
-        entity[keyOrValues] = source.get();
-      });
+      // `onError` because a getter that throws on the *first* run throws into
+      // the mounting, which handles it, while one that starts throwing on a
+      // later run throws from the scheduler's flush, where nobody is waiting.
+      // `fail` is the mounting's own channel, and it is where the observable
+      // branch below has always landed.
+      useEffect(
+        () => {
+          entity[keyOrValues] = source.get();
+        },
+        { name: "set", onError: fail },
+      );
     };
   }
   const source = value;

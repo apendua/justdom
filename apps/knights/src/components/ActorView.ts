@@ -1,7 +1,6 @@
 import { $$, attr, children, text } from "@apendua/justdom";
-import { component, effectMap, memo, mutate, observable, store } from "@apendua/signal";
+import { component, Derived, effectMap, memo, mutate, store, useEffect } from "@apendua/signal";
 import { tap } from "rxjs";
-import { rx } from "@apendua/signal/rxjs";
 import {
   ANIMATION_ACTIVE,
   ANIMATION_ATTACK,
@@ -234,8 +233,16 @@ const ActorView = component((ctx: WeakKey, props: ActorViewProps) => {
 
   return $$("g", [
     attr("opacity", () => props.opacity ?? 1.0),
-    // Every new path restarts the walk from its first field.
-    effectMap(() => rx(observable(() => actor.movePath)).pipe(tap(() => actor.restartMove()))),
+    // Every new path restarts the walk from its first field. Read here rather
+    // than inside `restartMove`, which is `@mutate()` and so reads nothing
+    // reactively — the read is the whole point of the effect.
+    () => {
+      const movePath = new Derived(() => actor.movePath);
+      useEffect(() => {
+        movePath.get();
+        actor.restartMove();
+      });
+    },
     effectMap(() => clock.pipe(tap(() => actor.tick()))),
     children(
       Sprite(ctx, {

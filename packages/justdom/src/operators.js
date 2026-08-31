@@ -1,4 +1,4 @@
-import { each, effectMap, effects, observable, set, on } from "@apendua/signal";
+import { Derived, each, effectMap, effects, set, on, useEffect } from "@apendua/signal";
 
 /**
  * @import { EntityEffect, Subscribable } from '@apendua/signal';
@@ -6,6 +6,54 @@ import { each, effectMap, effects, observable, set, on } from "@apendua/signal";
  */
 
 export { set, on };
+
+/**
+ * Write `apply(entity, value)` whenever the value moves, for as long as the
+ * entity stays mounted.
+ *
+ * The two shapes a value arrives in get two different answers, which is what
+ * `set` in the core already does and what the operators below used to paper
+ * over by turning every getter into an observable first.
+ *
+ * A **getter** is a derivation, and wants nothing else: a `Derived` in front
+ * of the write for its equality cutoff — a recomputation landing on the value
+ * already written writes nothing — and an `Effect` to do the writing. No
+ * stream anywhere. What it replaced was `observable(fn)` fed through
+ * `effectMap`, which is a `Derived`, an `Effect` to push its values, a
+ * `Stream` to run the write, another `Derived` to choose that stream and
+ * another `Effect` to hold it: five pieces to assign an attribute, and the
+ * `Derived` at the bottom of the stack was doing the only work.
+ *
+ * An **observable** is a foreign source. It has to be subscribed rather than
+ * read, it can fail, and the mounting is what its failure belongs to —
+ * `effectMap` is the operator that says exactly that, so it stays.
+ *
+ * @template TEntity
+ * @template TValue
+ * @param {Subscribable<TValue> | (() => TValue)} value
+ * @param {(entity: TEntity, value: TValue) => void} apply
+ * @returns {EntityEffect<TEntity>}
+ */
+function write(value, apply) {
+  if (typeof value === "function") {
+    const getValue = value;
+    return (entity, { fail }) => {
+      const source = new Derived(() => getValue());
+      // `onError` because a getter can start throwing on a later run, and an
+      // effect with nowhere to put that throws it from the scheduler's flush
+      // instead — where nobody is waiting for it. `fail` is the mounting's own
+      // channel, which is where the observable branch below already lands.
+      useEffect(
+        () => {
+          apply(entity, source.get());
+        },
+        { name: "write", onError: fail },
+      );
+    };
+  }
+  const source = value;
+  return effectMap((entity) => each(source, (v) => apply(entity, v)));
+}
 
 /**
  * @typedef {object} ObjectWithAttributes
@@ -49,19 +97,13 @@ export function attr(keyOrValues, value) {
   if (!value) {
     throw new Error("Value observable is required when key is provided.");
   }
-  if (typeof value === "function") {
-    value = observable(value);
-  }
-  const source = value;
-  return effectMap((entity) =>
-    each(source, (v) => {
-      if (v === undefined) {
-        entity.removeAttribute(keyOrValues);
-      } else {
-        entity.setAttribute(keyOrValues, v === null ? "null" : v.toString());
-      }
-    }),
-  );
+  return write(value, (entity, v) => {
+    if (v === undefined) {
+      entity.removeAttribute(keyOrValues);
+    } else {
+      entity.setAttribute(keyOrValues, v === null ? "null" : v.toString());
+    }
+  });
 }
 
 /**
@@ -76,17 +118,15 @@ export function attr(keyOrValues, value) {
  * @returns {EntityEffect<TEntity>}
  */
 export function data(key, value) {
-  return effectMap((entity) =>
-    each(value, (v) => {
-      if (v === undefined) {
-        delete entity.dataset[key];
-      } else {
-        // We are trying to mimic the behavior of the dataset property
-        // See: https://developer.mozilla.org/en-US/docs/Web/API/HTMLElement/dataset#setting_values
-        entity.dataset[key] = v === null ? "null" : v.toString();
-      }
-    }),
-  );
+  return write(value, (entity, v) => {
+    if (v === undefined) {
+      delete entity.dataset[key];
+    } else {
+      // We are trying to mimic the behavior of the dataset property
+      // See: https://developer.mozilla.org/en-US/docs/Web/API/HTMLElement/dataset#setting_values
+      entity.dataset[key] = v === null ? "null" : v.toString();
+    }
+  });
 }
 
 /**
@@ -172,14 +212,8 @@ export function style(keyOrValues, value) {
   if (!value) {
     throw new Error("Value observable is required when key is provided.");
   }
-  if (typeof value === "function") {
-    value = observable(value);
-  }
-  const source = value;
-  return effectMap((entity) =>
-    each(source, (v) => {
-      // `keyof CSSStyleDeclaration` includes its numeric index signature.
-      applyStyle(entity.style, String(keyOrValues), v);
-    }),
-  );
+  return write(value, (entity, v) => {
+    // `keyof CSSStyleDeclaration` includes its numeric index signature.
+    applyStyle(entity.style, String(keyOrValues), v);
+  });
 }

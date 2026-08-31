@@ -1,5 +1,5 @@
 import { $$, attr, children, text } from "@apendua/justdom";
-import { component, flatMap, observable } from "@apendua/signal";
+import { component } from "@apendua/signal";
 import { Field } from "../store/Fields";
 import { ViewportContext } from "../store/Viewport";
 
@@ -28,6 +28,16 @@ const NUMBER_COLORS: Record<number, string> = {
 
 const MINE_SPIKE_ANGLES = Array.from({ length: 8 }, (_, i) => (Math.PI / 4) * i);
 
+/**
+ * What a field is showing: a flag, a mine, the count of its neighbours, or
+ * nothing at all.
+ *
+ * The choice is a `component` body rather than an operator over a source of
+ * the field's kind. It is a derivation like any other here — it reads the
+ * field, and re-runs when what it read moves, swapping the subtree under it —
+ * so the component needs no observable of its own, and a field costs one
+ * derivation rather than a node, an effect and a stream.
+ */
 export default component((ctx: WeakKey, field: Field) => {
   const viewport = ViewportContext.get(ctx);
 
@@ -36,8 +46,17 @@ export default component((ctx: WeakKey, field: Field) => {
     return `translate(${x.toFixed(2)},${y.toFixed(2)}) scale(${viewport.fieldHeight.toFixed(2)})`;
   };
 
-  return flatMap((kind: ReturnType<typeof getKind>) => {
+  return component(() => {
+    const kind = getKind(field);
+
     if (kind === "empty") {
+      // An empty group rather than a source that emits nothing. Handing back
+      // nothing tears down what the previous kind mounted *under* the element
+      // but leaves the element itself in the document — `children` put it
+      // there and is still holding it — so a field toggled between flagged and
+      // empty would strand one stale `<g>` per toggle. An empty group is what
+      // this component always rendered here, and it keeps the field's element
+      // count at exactly one.
       return $$("g", []);
     }
 
@@ -119,5 +138,5 @@ export default component((ctx: WeakKey, field: Field) => {
       }),
       children(text`${count}`),
     ]);
-  })(observable(() => getKind(field)));
+  })();
 });

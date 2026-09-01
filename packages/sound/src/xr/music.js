@@ -9,12 +9,12 @@ import * as THREE from "three";
 import {
   component,
   Derived,
-  effectMap,
   effects,
   memoizeDerived,
   onCleanup,
   Signal,
   Stream,
+  use,
 } from "@apendua/signal";
 import { $, getXRSession } from "@apendua/freedom";
 import { audioOutputSelection, setAudioOutput } from "../audioOutputs.js";
@@ -123,8 +123,11 @@ export const Music = component(
         audio.setVolume(controls.volume.get());
       }),
       // Which devices are around is only worth following while there is music
-      // that could come out of them.
-      effectMap(() => controls.output.updates),
+      // that could come out of them. Nothing is chosen and no value is read
+      // back — the list is only held — which is what `use` is for.
+      effects(() => {
+        use(controls.output.updates);
+      }),
       effects(() => {
         const deviceId = controls.output.deviceId.get();
         if (deviceId) {

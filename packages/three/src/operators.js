@@ -1,14 +1,5 @@
 import * as THREE from "three";
-import {
-  Derived,
-  each,
-  effectMap,
-  flatMap,
-  fromEvent,
-  just,
-  Stream,
-  useEffect,
-} from "@apendua/signal";
+import { Derived, each, flatMap, fromEvent, just, Stream, use, useEffect } from "@apendua/signal";
 import { addDependency } from "@apendua/signal";
 
 /**
@@ -25,11 +16,16 @@ import { addDependency } from "@apendua/signal";
  * @returns {EntityEffect<TEntity>}
  */
 export function copy(key, value) {
-  return effectMap((entity) =>
-    each(value, (v) => {
-      /** @type {Record<K, { copy: (v: TEntity[K]) => void }>} */ (entity)[key].copy(v);
-    }),
-  );
+  // Held, not chosen: the source is fixed for the life of the mounting and
+  // nothing reads its values back, which is the case `use` is for — one
+  // dependency edge instead of a `Derived`, an inner effect and a switch.
+  return (entity) => {
+    use(
+      each(value, (v) => {
+        /** @type {Record<K, { copy: (v: TEntity[K]) => void }>} */ (entity)[key].copy(v);
+      }),
+    );
+  };
 }
 
 /**
@@ -60,16 +56,23 @@ function addToParent(parent, child) {
  * @returns {EntityEffect<TEntity>}
  */
 export function children(...observables) {
-  // One `effectMap` per child rather than one over a `merge` of them all.
-  // Each child is then the body of its own `Effect`, so one re-runs — and one
-  // fails — without disturbing its siblings, which is what a mounting's array
-  // of effects already says and what `merge` was only approximating.
-  const mountings = observables.map((observable) =>
-    effectMap((/** @type {TEntity} */ entity) => addToParent(entity, observable)),
-  );
-  return (entity, context) => {
+  // One edge per child rather than one over a `merge` of them all, so a child
+  // that fails does so as itself rather than as an anonymous branch of a
+  // merged stream.
+  //
+  // Held, not chosen: `use` is handed a source that is fixed for the life of
+  // the mounting. Switching a subtree happens *inside* that source — the
+  // `flatMap` above is `onEachValue`, which unsubscribes the component it is
+  // holding before it subscribes the next one — so the vacate-before-claim a
+  // parent slot needs is the stream's, not the holder's. Holding it through
+  // an effect that re-chooses it would buy a `Derived` and an `Effect` per
+  // child to re-choose a source that cannot change.
+  const mountings = observables.map((observable) => (/** @type {TEntity} */ entity) => {
+    use(addToParent(entity, observable));
+  });
+  return (entity) => {
     for (const mount of mountings) {
-      mount(entity, context);
+      mount(entity);
     }
   };
 }

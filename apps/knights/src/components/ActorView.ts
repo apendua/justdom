@@ -3,10 +3,11 @@ import {
   component,
   Derived,
   each,
-  effectMap,
+  effects,
   memo,
   mutate,
   store,
+  use,
   useEffect,
 } from "@apendua/signal";
 import {
@@ -251,7 +252,11 @@ const ActorView = component((ctx: WeakKey, props: ActorViewProps) => {
         actor.restartMove();
       });
     },
-    effectMap(() => each(clock, () => actor.tick())),
+    // The clock is only held, never chosen and never read back, which is what
+    // `use` is for.
+    effects(() => {
+      use(each(clock, () => actor.tick()));
+    }),
     children(
       Sprite(ctx, {
         get actorType() {

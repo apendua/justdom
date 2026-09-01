@@ -213,8 +213,8 @@ ordering. The queue notices and throws rather than spinning.
   mount time; `useEffects` directly on the surrounding computation. Sharing a
   mounting among subscribers is `memoize`'s job, not `just`'s.
 - `observable()`, `component()`, `effects()`, `set()`, `use()`, `on()` — the
-  factory layer, built on `Effect`; `set`, `on`, `effectMap` and friends are
-  entity-effect factories now rather than stream operators. The one that
+  factory layer, built on `Effect`; `set`, `on` and friends are entity-effect
+  factories now rather than stream operators. The one that
   stayed an operator is `rxEffects(fn)`, on the `./rxjs` subpath: the same
   entity effect lifted over a stream of entities, mounted per value, for a
   pipeline that receives them rather than holding one.

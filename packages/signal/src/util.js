@@ -1,4 +1,5 @@
 import { Stream } from "./Stream.js";
+import { makeNonReactive } from "./core.js";
 
 /**
  * @import { Observer, Subscribable, Source, Unsubscribable } from './subscribable.js';
@@ -105,17 +106,28 @@ export function all(...operators) {
  * side effect on it, for the inner value pipelines an effect subscribes
  * through `use`.
  *
+ * "Not reactive" is enforced rather than promised: the callback runs
+ * **untracked**. It is application code on the value path, and the
+ * computation active when a value arrives belongs to whoever pushed it, not
+ * to whoever holds this stream — the effect behind a `toObservable`, the
+ * writer whose `ReactiveMap` mutation notified. Every emitter in this package
+ * hands values on untracked for that reason, but one that forgets would
+ * otherwise take this callback's reads as *its* dependencies: an unrelated
+ * write then re-runs the emitter, which emits again, and every subscriber
+ * downstream sees a value that nothing produced.
+ *
  * @template T
  * @param {Subscribable<T>} source
  * @param {(value: T) => void} fn
  * @returns {Source<T>}
  */
 export function each(source, fn) {
+  const run = makeNonReactive(fn);
   return new Stream((subscriber) => {
     const subscription = source.subscribe({
       next: (value) => {
         try {
-          fn(value);
+          run(value);
         } catch (err) {
           subscriber.error(err);
           return;

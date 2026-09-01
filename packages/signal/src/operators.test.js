@@ -1,15 +1,17 @@
 import { describe, it, beforeEach, mock } from "node:test";
 import assert from "node:assert/strict";
-import { merge, NEVER, Subject, takeUntil } from "rxjs";
+import { merge, Subject, takeUntil } from "rxjs";
 import store from "./store.js";
 import { Computation } from "./index.js";
 import { decorate, memoFn } from "./decorators.js";
 import { Signal, batch } from "./index.js";
 import Emitter, { on } from "./Emitter.js";
 import { just } from "./factories.js";
-import { effectMap, effects, map, takeNothing, observe, observeFn, use } from "./operators.js";
+import { effects, flatMap, map, set, takeNothing, observe, observeFn, use } from "./operators.js";
+import { each } from "./util.js";
+import { Stream } from "./Stream.js";
 import { rx, rxEffects } from "./rxjs.js";
-import { Derived, Effect, onCleanup } from "./index.js";
+import { Derived, Effect } from "./index.js";
 import { Observable } from "rxjs";
 
 describe("effects()", () => {
@@ -176,118 +178,6 @@ describe("rxEffects()", () => {
   });
 });
 
-describe("effectMap()", () => {
-  it("re-runs its callback when what the callback read changes", () => {
-    // The callback chooses *which* observable to keep subscribed, and choosing
-    // is a read: freedom's bricks branch on reactive state — `if
-    // (dragState.get() || props.bodyType === null) return NEVER` — so a brick
-    // acquires its rigid body when the board is made ready, and loses it while
-    // it is carried. Without this the body is chosen once, at mount, and never
-    // again.
-    const bodyType = Signal.of(/** @type {string | null} */ (null));
-    /** @type {string[]} */
-    const log = [];
-    const subscription = just({}, [
-      effectMap(() => {
-        if (bodyType.get() === null) {
-          return NEVER;
-        }
-        return new Observable(() => {
-          log.push("body created");
-          return () => log.push("body removed");
-        });
-      }),
-    ]).subscribe(() => {});
-
-    assert.deepEqual(log, [], "nothing while there is no body to build");
-
-    bodyType.set("dynamic");
-    assert.deepEqual(log, ["body created"], "the callback ran again and its choice was subscribed");
-
-    bodyType.set(null);
-    assert.deepEqual(log, ["body created", "body removed"], "and switching away undoes it");
-
-    subscription.unsubscribe();
-  });
-
-  it("does not adopt what the observable reads while subscribing", () => {
-    // The same rule `use()` follows, and for the same reason: subscribing is
-    // not reading. A foreign observable's `subscribe` may read reactive
-    // things — a `component(...)` builds its entities in there — and tracking
-    // them would tear the subscription down and back up on a write the
-    // mounting never looked at.
-    const unrelated = Signal.of("a");
-    let innerSubscribes = 0;
-    const inner = new Observable(() => {
-      innerSubscribes += 1;
-      unrelated.get();
-      return () => {};
-    });
-
-    const subscription = just({}, [effectMap(() => inner)]).subscribe(() => {});
-    assert.strictEqual(innerSubscribes, 1);
-
-    unrelated.set("b");
-    assert.strictEqual(innerSubscribes, 1, "the mounting never read it, so nothing should move");
-
-    subscription.unsubscribe();
-  });
-
-  it("hands a failure from the way in to the subscriber, and reports nothing", () => {
-    // Which is the whole reason the subscription is taken here rather than
-    // through `use`, and the reason is a matter of *when*: `just` runs the
-    // mounting's effect before it can subscribe to that effect's error
-    // channel, because the body is what builds the entity. A dependency
-    // attached by `use` and failing during that first run therefore fails a
-    // node nothing reads and nothing watches, which the graph says out loud on
-    // `console.error` before `just` picks the failure up from the stored one.
-    //
-    // Both halves matter. The subscriber has to hear it — a hydration mismatch
-    // is caught by `hydrate()` this way and the markup thrown away — and
-    // nothing is supposed to be shouted about on the way, because a failure
-    // that is handled two frames later was never unhandled.
-    const boom = new Error("failed on the way in");
-    const error = mock.method(console, "error", () => {});
-    /** @type {unknown[]} */
-    const heard = [];
-    try {
-      just({}, [
-        effectMap(
-          () =>
-            new Observable(() => {
-              throw boom;
-            }),
-        ),
-      ]).subscribe({ error: (err) => heard.push(err) });
-    } finally {
-      error.mock.restore();
-    }
-
-    assert.deepEqual(heard, [boom], "expected the subscriber to be told");
-    assert.strictEqual(error.mock.calls.length, 0, "expected nothing reported as unhandled");
-  });
-
-  it("hands a later failure to the subscriber too", () => {
-    // The other half of the same channel: news that arrives once the mounting
-    // is standing has no stack to be thrown into, so it goes through
-    // `context.fail` and lands where a failed mounting lands.
-    const boom = new Error("failed later");
-    /** @type {Subject<never>} */
-    const later = new Subject();
-    /** @type {unknown[]} */
-    const heard = [];
-    const subscription = just({}, [effectMap(() => later)]).subscribe({
-      error: (err) => heard.push(err),
-    });
-
-    assert.deepEqual(heard, [], "nothing yet");
-    later.error(boom);
-    assert.deepEqual(heard, [boom], "expected the subscriber to be told");
-
-    subscription.unsubscribe();
-  });
-});
-
 describe("use()", () => {
   it("holds the observable open for as long as the host stands", () => {
     /** @type {string[]} */
@@ -381,6 +271,192 @@ describe("use()", () => {
         }),
       /useEffect/,
     );
+    subscription.unsubscribe();
+  });
+});
+
+describe("flatMap()", () => {
+  it("drops the inner subscription before it takes the next one", () => {
+    // Where vacate-before-claim actually lives. A child subtree switching is
+    // one source emitting a new component, not a holder re-choosing a source
+    // — `children` in justdom and in freedom hold one source for the life of
+    // the mounting — so the ordering a DOM slot needs is `onEachValue`'s,
+    // here, and not the holder's.
+    /** @type {Subject<string>} */
+    const source = new Subject();
+    /** @type {string[]} */
+    const log = [];
+    const inner = (/** @type {string} */ name) =>
+      new Stream(() => {
+        log.push(`+${name}`);
+        return () => log.push(`-${name}`);
+      });
+
+    const subscription = flatMap((/** @type {string} */ name) => inner(name))(source).subscribe(
+      () => {},
+    );
+
+    source.next("a");
+    source.next("b");
+    assert.deepEqual(log, ["+a", "-a", "+b"], "the old one goes before the new one arrives");
+
+    subscription.unsubscribe();
+    assert.deepEqual(log, ["+a", "-a", "+b", "-b"]);
+  });
+
+  it("keeps that order through a mounting that holds it with `use`", () => {
+    // End to end, because this is the path a child subtree actually takes:
+    // an entity effect holds one source for the life of the mounting, and the
+    // source switches underneath it. The holder never re-chooses anything —
+    // its body reads nothing — so the release-before-claim above is the whole
+    // of the ordering, and `use` neither adds to it nor gets in its way.
+    /** @type {string[]} */
+    const log = [];
+    /** @type {Subject<string>} */
+    const child = new Subject();
+    const inner = (/** @type {string} */ name) =>
+      new Stream(() => {
+        log.push(`+${name}`);
+        return () => log.push(`-${name}`);
+      });
+    const held = flatMap((/** @type {string} */ name) => inner(name))(child);
+
+    const subscription = just({}, [
+      () => {
+        use(held);
+      },
+    ]).subscribe(() => {});
+
+    child.next("a");
+    child.next("b");
+    assert.deepEqual(log, ["+a", "-a", "+b"]);
+
+    subscription.unsubscribe();
+    assert.deepEqual(log, ["+a", "-a", "+b", "-b"], "and the last one goes with the mounting");
+  });
+});
+
+describe("each()", () => {
+  it("runs its callback untracked, whoever is tracking when the value arrives", () => {
+    // The callback is application code on the value path, and the computation
+    // active when a value arrives belongs to whoever pushed it. Every emitter
+    // in this package hands values on untracked — `toObservable` says so where
+    // it pushes, `Emitter.emit` wraps its dispatch — so this only bites where
+    // one does not. The emitter below is that case, spelled small: an effect
+    // that pushes from inside its own run, which is what a mutation notifying
+    // its listeners from inside whichever effect wrote looks like.
+    const trigger = Signal.of(0);
+    const unrelated = Signal.of("a");
+    /** @type {Set<(value: number) => void>} */
+    const listeners = new Set();
+    const events = new Stream((subscriber) => {
+      /** @param {number} value */
+      const listener = (value) => subscriber.next(value);
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    });
+
+    let emitterRuns = 0;
+    const emitter = new Effect(() => {
+      emitterRuns += 1;
+      trigger.get();
+      for (const listener of listeners) {
+        listener(emitterRuns);
+      }
+    });
+
+    let callbackRuns = 0;
+    const holder = new Effect(() => {
+      use(
+        each(events, () => {
+          callbackRuns += 1;
+          unrelated.get();
+        }),
+      );
+    });
+
+    trigger.set(1);
+    assert.deepEqual({ emitterRuns, callbackRuns }, { emitterRuns: 2, callbackRuns: 1 });
+
+    unrelated.set("b");
+    assert.deepEqual(
+      { emitterRuns, callbackRuns },
+      { emitterRuns: 2, callbackRuns: 1 },
+      "the emitter never read it; without the untracking it would have, and re-emitted",
+    );
+
+    holder.dispose();
+    emitter.dispose();
+  });
+
+  it("passes the value on, and carries a throw to the subscriber", () => {
+    /** @type {Subject<number>} */
+    const source = new Subject();
+    /** @type {number[]} */
+    const seen = [];
+    const error = mock.fn();
+
+    const subscription = each(source, (value) => {
+      if (value === 3) {
+        throw new Error("no");
+      }
+      seen.push(value);
+    }).subscribe({
+      next: (/** @type {number} */ value) => seen.push(10 * value),
+      error,
+    });
+
+    source.next(1);
+    source.next(2);
+    assert.deepEqual(seen, [1, 10, 2, 20], "the side effect first, then the value on its way out");
+
+    source.next(3);
+    assert.strictEqual(error.mock.calls.length, 1, "and a throw is the stream's failure");
+
+    subscription.unsubscribe();
+  });
+});
+
+describe("set()", () => {
+  it("writes every value an observable produces, until the mounting comes down", () => {
+    /** @type {Subject<string>} */
+    const source = new Subject();
+    const entity = { name: "" };
+
+    const subscription = just(entity, [set("name", source)]).subscribe(() => {});
+
+    source.next("first");
+    assert.strictEqual(entity.name, "first");
+
+    source.next("second");
+    assert.strictEqual(entity.name, "second");
+
+    subscription.unsubscribe();
+    source.next("third");
+    assert.strictEqual(entity.name, "second", "unmounted, so nothing writes any more");
+  });
+
+  it("holds the source for its values alone, without re-running the mounting", () => {
+    // The entity effect reads nothing, so it runs once: a value written
+    // through it is not an invalidation of the thing that holds it.
+    /** @type {Subject<string>} */
+    const source = new Subject();
+    const entity = { name: "" };
+    let runs = 0;
+    /** @type {import("./types.js").EntityEffect<typeof entity>} */
+    const write = set("name", source);
+
+    const subscription = just(entity, [
+      (e, context) => {
+        runs += 1;
+        write(e, context);
+      },
+    ]).subscribe(() => {});
+
+    source.next("first");
+    source.next("second");
+    assert.deepEqual({ runs, name: entity.name }, { runs: 1, name: "second" });
+
     subscription.unsubscribe();
   });
 });

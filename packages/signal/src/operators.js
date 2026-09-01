@@ -2,7 +2,7 @@ import { Derived } from "./Derived.js";
 import { useEffect, failuresOf } from "./Effect.js";
 import { onEachValue, subscribeTo, subscribeAndEmit, each } from "./util.js";
 import { observable, component } from "./factories.js";
-import { addDependency, onCleanup, withComputation } from "./core.js";
+import { addDependency } from "./core.js";
 import { toObservable, toEffect, nodeOf } from "./interop.js";
 
 // Moved to `Effect.js`, where `useEffect` wires it; re-exported so existing
@@ -85,110 +85,6 @@ export function flatMap(fn) {
 }
 
 /**
- * Keep whatever observable `fn` hands back subscribed for as long as the
- * entity stays mounted.
- *
- * ### What it is for, and what it is not for
- *
- * Two things, and a mounting wants this operator only when it needs both. The
- * callback *chooses* a source, reactively — it runs in a `Derived`, so a
- * choice that branches on reactive state is made again when that state moves
- * — and the chosen source is *held*, with its failure carried to the
- * mounting. Neither half is free, so:
- *
- * - A **getter** wants nothing here. `() => a.b` is a derivation, and
- *   `Derived` + `useEffect` writes what it reads with two pieces instead of
- *   five; `set` above and `write` in `@apendua/justdom`'s operators are both
- *   spelled that way. Wrapping a getter in `observable()` to feed it through
- *   here builds a node, an effect to push its values, a stream to consume
- *   them, a second node to choose that stream and a second effect to hold it,
- *   and the node at the bottom did the only work.
- * - A **source that is merely held**, with nothing chosen and nothing read
- *   back, wants `use` — one dependency edge, no `Derived`, no inner effect.
- *   That used to be unsafe during a mounting's first run, when a failure on
- *   the way in fell into a window nothing was watching; the window is closed —
- *   a failure landing mid-run is rethrown once the run unwinds, onto the
- *   builder's stack — so the only reason left to reach for this operator over
- *   `use` is one of the two above, or the ordering below.
- *
- * ### What the hand-rolled subscription still buys
- *
- * When the callback's choice changes, this operator unsubscribes the old
- * source *before* subscribing the new one: the previous run's `onCleanup`
- * fires on the way into the re-run, and the new subscribe happens inside it.
- * `use` orders it the other way — a dependency edge attaches during the run
- * and the stale one detaches in the bookkeeping afterwards — which a
- * refcounted source, or a DOM mounting that must vacate before its
- * replacement claims the same slot, would notice. `justdom`'s `children`
- * switches whole subtrees through here, so the ordering is load-bearing.
- *
- * The failure routing, by contrast, is no longer special. A failure that
- * arrives while the subscribe is still on this run's stack is *thrown*, which
- * lands in `just`'s own `try` — that is what lets a hydration mismatch be
- * caught before `subscribe` returns, quietly, with no unhandled-failure
- * report on the way. One that arrives later goes through `context.fail`, and
- * lands where a failed mounting lands. `operators.test.js` pins both — but
- * `use` in an entity effect now takes the same two paths, via the mounting
- * effect's own channels.
- *
- * @template T
- * @param {(value: T) => Subscribable<unknown>} fn
- * @returns {EntityEffect<T>}
- */
-export function effectMap(fn) {
-  return (entity, { fail }) => {
-    // Two questions that look like one, and they get opposite answers.
-    //
-    // *Choosing* the observable is a read. A callback that branches on
-    // reactive state — `if (dragState.get() || props.bodyType === null) return
-    // NEVER` — has to run again when that state moves, and switch to whatever
-    // it hands back; that is how a brick acquires its rigid body when the
-    // board is made ready, and loses it while it is being carried. So the
-    // callback lives in a `Derived`, which is what `component(fn)` gave it
-    // when this was a stream operator.
-    //
-    // *Subscribing* to what it chose is not a read. Whatever the observable
-    // touches on the way in belongs to it, not to this mounting, and tracking
-    // it would tear the subscription down on a write the mounting never
-    // looked at — which in freedom means rebuilding a subtree.
-    const chosen = new Derived(() => fn(entity));
-    let firstRun = true;
-    useEffect(
-      () => {
-        const source = chosen.get();
-        let sync = true;
-        /** @type {{ value: unknown } | null} */
-        let failure = null;
-        const subscription = withComputation(null, () =>
-          source.subscribe({
-            error: (err) => {
-              if (sync) {
-                failure = failure ?? { value: err };
-              } else {
-                fail(err);
-              }
-            },
-          }),
-        );
-        sync = false;
-        onCleanup(() => subscription.unsubscribe());
-        if (failure) {
-          if (firstRun) {
-            // Still on the mounting's stack, so this reaches whoever is
-            // subscribing — which is what lets a hydration mismatch be caught
-            // before `subscribe` returns.
-            throw /** @type {{ value: unknown }} */ (failure).value;
-          }
-          fail(/** @type {{ value: unknown }} */ (failure).value);
-        }
-      },
-      { name: "effectMap" },
-    );
-    firstRun = false;
-  };
-}
-
-/**
  * @template {object} TEntity
  * @template {keyof WritableProps<TEntity>} K
  * @overload
@@ -241,11 +137,15 @@ export function set(keyOrValues, value) {
     };
   }
   const source = value;
-  return effectMap((entity) =>
-    each(source, (v) => {
-      entity[keyOrValues] = v;
-    }),
-  );
+  // Held, not chosen: one source, fixed for the life of the mounting, whose
+  // values are written over a property. One dependency edge does it.
+  return (entity) => {
+    use(
+      each(source, (v) => {
+        entity[keyOrValues] = v;
+      }),
+    );
+  };
 }
 
 /**

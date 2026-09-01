@@ -191,8 +191,8 @@ export async function setAudioOutput(context, deviceId) {
 /**
  * Holds an output choice on behalf of a scene: the list to choose from, which
  * one is current, and how to move on. The device list is only refreshed while
- * `updates` is subscribed — pass it to `effectMap` or `use` from wherever the
- * sound is set up.
+ * `updates` is subscribed — pass it to `use` from wherever the sound is set
+ * up.
  *
  * @returns {AudioOutputSelection}
  */

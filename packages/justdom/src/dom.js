@@ -1,4 +1,4 @@
-import { each, effectMap, just, map, observable, Stream } from "@apendua/signal";
+import { each, just, map, observable, Stream, use } from "@apendua/signal";
 import ListRenderer from "./ListRenderer.js";
 import { removeSegment, replaceSegment, toSegment } from "./helpers.js";
 import { claimComment, claimElement, claimSegment, isHydrating, withCursor } from "./hydrate.js";
@@ -163,19 +163,27 @@ const renderer = new ListRenderer({
  * @returns {EntityEffect<T>}
  */
 export function children(...children) {
-  return effectMap((node) => {
+  // Held, not chosen. The renderer emits a new mountable whenever the list
+  // changes, and it is `onEachValue` inside that stream — not this holder —
+  // that drops the previous segment before the next one claims it. So the
+  // holder has no ordering to contribute: one dependency edge is the whole of
+  // it.
+  return (node) => {
     if (isHydrating()) {
-      return hydrateFragment(node, children);
+      use(hydrateFragment(node, children));
+      return;
     }
-    return each(renderer.renderFragment(children), (mountable) => {
-      if (!node.firstChild || !node.lastChild) {
-        const placeholder = node.appendChild(document.createComment(""));
-        mountable.replace([placeholder, placeholder]);
-      } else {
-        mountable.replace([node.firstChild, node.lastChild]);
-      }
-    });
-  });
+    use(
+      each(renderer.renderFragment(children), (mountable) => {
+        if (!node.firstChild || !node.lastChild) {
+          const placeholder = node.appendChild(document.createComment(""));
+          mountable.replace([placeholder, placeholder]);
+        } else {
+          mountable.replace([node.firstChild, node.lastChild]);
+        }
+      }),
+    );
+  };
 }
 
 /**

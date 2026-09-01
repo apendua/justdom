@@ -3,10 +3,11 @@ import {
   component,
   Derived,
   each,
-  effectMap,
+  effects,
   memo,
   mutate,
   store,
+  use,
   useEffect,
 } from "@apendua/signal";
 import {
@@ -195,8 +196,12 @@ const Sprite = component((_: WeakKey, props: SpriteProps) => {
         sprite.rewind();
       });
     },
-    // Advance one frame per tick of the shared animation clock.
-    effectMap(() => each(clock, () => sprite.nextFrame())),
+    // Advance one frame per tick of the shared animation clock. Nothing is
+    // chosen here and no value is read back — the clock is only held for as
+    // long as the sprite stands — which is what `use` is for.
+    effects(() => {
+      use(each(clock, () => sprite.nextFrame()));
+    }),
     attr("transform", () => {
       const geometry = sprite.geometry;
       return geometry ? `translate(${geometry.x},${geometry.y})` : undefined;

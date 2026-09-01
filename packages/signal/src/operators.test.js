@@ -7,7 +7,17 @@ import { decorate, memoFn } from "./decorators.js";
 import { Signal, batch } from "./index.js";
 import Emitter, { on } from "./Emitter.js";
 import { just } from "./factories.js";
-import { effectMap, effects, map, set, takeNothing, observe, observeFn, use } from "./operators.js";
+import {
+  effectMap,
+  effects,
+  flatMap,
+  map,
+  set,
+  takeNothing,
+  observe,
+  observeFn,
+  use,
+} from "./operators.js";
 import { each } from "./util.js";
 import { Stream } from "./Stream.js";
 import { rx, rxEffects } from "./rxjs.js";
@@ -384,6 +394,72 @@ describe("use()", () => {
       /useEffect/,
     );
     subscription.unsubscribe();
+  });
+});
+
+describe("flatMap()", () => {
+  it("drops the inner subscription before it takes the next one", () => {
+    // Where vacate-before-claim actually lives. A child subtree switching is
+    // one source emitting a new component, not a holder re-choosing a source
+    // — `children` in justdom and in freedom hold one source for the life of
+    // the mounting — so the ordering a DOM slot needs is `onEachValue`'s,
+    // here, and not the holder's.
+    /** @type {Subject<string>} */
+    const source = new Subject();
+    /** @type {string[]} */
+    const log = [];
+    const inner = (/** @type {string} */ name) =>
+      new Stream(() => {
+        log.push(`+${name}`);
+        return () => log.push(`-${name}`);
+      });
+
+    const subscription = flatMap((/** @type {string} */ name) => inner(name))(source).subscribe(
+      () => {},
+    );
+
+    source.next("a");
+    source.next("b");
+    assert.deepEqual(log, ["+a", "-a", "+b"], "the old one goes before the new one arrives");
+
+    subscription.unsubscribe();
+    assert.deepEqual(log, ["+a", "-a", "+b", "-b"]);
+  });
+
+  it("switches in the same order whichever operator holds it", () => {
+    // The claim this pins is a negative one: holding such a source through
+    // `effectMap` rather than `use` buys nothing, because the holder never
+    // re-chooses. `effectMap`'s ordering differs only when its *callback*
+    // hands back something else, which is not what a switching child does.
+    /**
+     * @param {(child: Subject<string>, held: import("./subscribable.js").Source<any>)
+     *   => import("./types.js").EntityEffect<object>} holder
+     */
+    const order = (holder) => {
+      /** @type {string[]} */
+      const log = [];
+      /** @type {Subject<string>} */
+      const child = new Subject();
+      const inner = (/** @type {string} */ name) =>
+        new Stream(() => {
+          log.push(`+${name}`);
+          return () => log.push(`-${name}`);
+        });
+      const held = flatMap((/** @type {string} */ name) => inner(name))(child);
+      const subscription = just({}, [holder(child, held)]).subscribe(() => {});
+      child.next("a");
+      child.next("b");
+      subscription.unsubscribe();
+      return log;
+    };
+
+    const throughEffectMap = order((_child, held) => effectMap(() => held));
+    const throughUse = order((_child, held) => () => {
+      use(held);
+    });
+
+    assert.deepEqual(throughUse, ["+a", "-a", "+b", "-b"]);
+    assert.deepEqual(throughUse, throughEffectMap, "the same order, node for node");
   });
 });
 

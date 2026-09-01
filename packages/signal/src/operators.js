@@ -108,28 +108,46 @@ export function flatMap(fn) {
  *   That used to be unsafe during a mounting's first run, when a failure on
  *   the way in fell into a window nothing was watching; the window is closed —
  *   a failure landing mid-run is rethrown once the run unwinds, onto the
- *   builder's stack — so the only reason left to reach for this operator over
- *   `use` is one of the two above, or the ordering below.
+ *   builder's stack.
+ * - A **mounting chosen reactively** — the callback branching on state and
+ *   handing back `just(entity, ops)` — wants `useEffects` from inside an
+ *   `effects` body. That is the same mounting minus the sharing, and it
+ *   orders the swap the same way, because a computation runs its cleanups on
+ *   the way into a re-run.
  *
- * ### What the hand-rolled subscription still buys
+ * ### The ordering, and what actually needs it
  *
  * When the callback's choice changes, this operator unsubscribes the old
  * source *before* subscribing the new one: the previous run's `onCleanup`
  * fires on the way into the re-run, and the new subscribe happens inside it.
  * `use` orders it the other way — a dependency edge attaches during the run
  * and the stale one detaches in the bookkeeping afterwards — which a
- * refcounted source, or a DOM mounting that must vacate before its
- * replacement claims the same slot, would notice. `justdom`'s `children`
- * switches whole subtrees through here, so the ordering is load-bearing.
+ * refcounted source, or a mounting that must vacate before its replacement
+ * claims the same slot, would notice.
  *
- * The failure routing, by contrast, is no longer special. A failure that
- * arrives while the subscribe is still on this run's stack is *thrown*, which
- * lands in `just`'s own `try` — that is what lets a hydration mismatch be
- * caught before `subscribe` returns, quietly, with no unhandled-failure
- * report on the way. One that arrives later goes through `context.fail`, and
- * lands where a failed mounting lands. `operators.test.js` pins both — but
- * `use` in an entity effect now takes the same two paths, via the mounting
- * effect's own channels.
+ * That difference is real and `operators.test.js` pins it, but it is narrower
+ * than it looks, and this docstring used to overstate it: it claimed
+ * `justdom`'s `children` needed the ordering, and `children` does not. A
+ * switching child is *one source emitting a new component*, not a holder
+ * re-choosing a source — the holder's callback reads nothing, so it never
+ * re-runs — and the release-before-claim a DOM slot needs comes from
+ * `onEachValue` inside that source, whichever operator holds it.
+ * `flatMap()`'s tests pin that, including the two orders being identical.
+ *
+ * The failure routing is not special either. A failure that arrives while the
+ * subscribe is still on this run's stack is *thrown*, which lands in `just`'s
+ * own `try`; one that arrives later goes through `context.fail`, and lands
+ * where a failed mounting lands. `use` in an entity effect takes the same two
+ * paths, via the mounting effect's own channels — a hydration mismatch is
+ * still caught before `subscribe` returns, with no unhandled-failure report,
+ * which `justdom`'s hydration tests cover.
+ *
+ * What is left, then, is a callback that re-chooses a *foreign source*
+ * reactively AND whose old choice must let go before the new one takes hold.
+ * Nothing in this repository does both: every caller has turned out to be
+ * holding one fixed source, or choosing a mounting. It is kept because it is
+ * public API and because the two properties are real, not because anything
+ * here needs them.
  *
  * @template T
  * @param {(value: T) => Subscribable<unknown>} fn

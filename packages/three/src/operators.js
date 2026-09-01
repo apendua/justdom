@@ -1,15 +1,5 @@
 import * as THREE from "three";
-import {
-  Derived,
-  each,
-  effectMap,
-  flatMap,
-  fromEvent,
-  just,
-  Stream,
-  use,
-  useEffect,
-} from "@apendua/signal";
+import { Derived, each, flatMap, fromEvent, just, Stream, use, useEffect } from "@apendua/signal";
 import { addDependency } from "@apendua/signal";
 
 /**
@@ -66,16 +56,23 @@ function addToParent(parent, child) {
  * @returns {EntityEffect<TEntity>}
  */
 export function children(...observables) {
-  // One `effectMap` per child rather than one over a `merge` of them all.
-  // Each child is then the body of its own `Effect`, so one re-runs — and one
-  // fails — without disturbing its siblings, which is what a mounting's array
-  // of effects already says and what `merge` was only approximating.
-  const mountings = observables.map((observable) =>
-    effectMap((/** @type {TEntity} */ entity) => addToParent(entity, observable)),
-  );
-  return (entity, context) => {
+  // One edge per child rather than one over a `merge` of them all, so a child
+  // that fails does so as itself rather than as an anonymous branch of a
+  // merged stream.
+  //
+  // Held, not chosen: this hands `use` a source that is fixed for the life of
+  // the mounting. Switching a subtree happens *inside* that source — the
+  // `flatMap` above is `onEachValue`, which unsubscribes the component it is
+  // holding before it subscribes the next one — so the vacate-before-claim
+  // this needs is the stream's, not the holder's, and `effectMap` here bought
+  // a `Derived` and an `Effect` per child to re-choose a source that cannot
+  // change.
+  const mountings = observables.map((observable) => (/** @type {TEntity} */ entity) => {
+    use(addToParent(entity, observable));
+  });
+  return (entity) => {
     for (const mount of mountings) {
-      mount(entity, context);
+      mount(entity);
     }
   };
 }

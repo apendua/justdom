@@ -1,4 +1,4 @@
-import { Derived, each, effectMap, effects, set, on, useEffect } from "@apendua/signal";
+import { Derived, each, effects, set, on, use, useEffect } from "@apendua/signal";
 
 /**
  * @import { EntityEffect, Subscribable } from '@apendua/signal';
@@ -25,8 +25,9 @@ export { set, on };
  * `Derived` at the bottom of the stack was doing the only work.
  *
  * An **observable** is a foreign source. It has to be subscribed rather than
- * read, it can fail, and the mounting is what its failure belongs to —
- * `effectMap` is the operator that says exactly that, so it stays.
+ * read, and it can fail — but nothing is *chosen* here, so `use` says it: one
+ * dependency edge, whose failure is the mounting's, which is where the
+ * failure of this write belongs.
  *
  * @template TEntity
  * @template TValue
@@ -52,7 +53,9 @@ function write(value, apply) {
     };
   }
   const source = value;
-  return effectMap((entity) => each(source, (v) => apply(entity, v)));
+  return (entity) => {
+    use(each(source, (v) => apply(entity, v)));
+  };
 }
 
 /**

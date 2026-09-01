@@ -1,8 +1,8 @@
 # @apendua/vite-hmr
 
-A Vite plugin that lets components built with
-[`@apendua/signal`](../signal) and [`@apendua/justdom`](../justdom) survive hot
-module reloads without losing their live reactive state.
+A Vite plugin that lets modules built on [`@apendua/signal`](../signal) and
+[`@apendua/justdom`](../justdom) survive hot module reloads without losing
+their live reactive state.
 
 ## The problem it solves
 
@@ -26,26 +26,107 @@ export default defineConfig({
 });
 ```
 
-The plugin transforms modules at dev-serve time: any locally-defined,
-exported function assigned from an import flagged as `reloadable` for its
-source package (currently `component` from `@apendua/signal`, and
-`stylesheet` / `className` / `fontFace` from `@apendua/justdom`) gets wrapped
-with `$reloadable(name, fn)`. On an HMR update, the wrapped definitions swap
-their implementation in place through a `BehaviorSubject` instead of
-remounting, so already-mounted instances keep their state and simply start
-running the new code on the next reactive tick.
+That is all. The plugin transforms modules at dev-serve time and never runs
+in a production build.
 
-`$reloadable` / `$newReloader`, exported from the package root, are the
-runtime half of the plugin and are injected automatically into transformed
-modules — they are not meant to be imported or called directly.
+## How it works
+
+Every export of a module is registered with the runtime under its exported
+name, and what the module actually exports is something that _follows_ the
+module: the same object every time the module is evaluated, standing in for
+whatever the module currently defines under that name. Each name has a
+holder — a `Signal` carrying the current definition — kept in
+`import.meta.hot.data`, which Vite preserves across every version of a
+module. A hot update re-evaluates the module, the re-evaluated module
+registers its definitions again, and registering writes the holders. What
+the stand-in does with its holder depends on what kind of thing the module
+defined:
+
+- **Any function.** The stand-in is a function that calls the current
+  definition and, on the way, reads the holder — which is an
+  `addDependency` on the module's version. A reactive computation that
+  called the function is thereby a dependent of the module, and a reload
+  invalidates it exactly as a signal write would: it runs again and calls
+  the new code. This applies to every function whatever it returns — a
+  number, a pose, a memoized geometry — not only those that return
+  observables. A function called outside any computation simply runs the
+  current definition.
+
+  When a function hands back a `Stream` — a `component`, an `effectsOnly`,
+  anything built to be subscribed rather than consumed — the stand-in
+  returns a source that switches to the new definition on its own instead
+  of leaving a dependency on the caller. Only the mounted instance is
+  replaced; whoever mounted it keeps its state. This is the behaviour the
+  plugin has always had for components, arrived at by looking at the value
+  rather than at which package the constructor came from.
+
+- **A `Derived`.** The stand-in is a `Derived` that reads the holder and
+  then the current node, so dependents of the export are dependents of
+  whichever node the module currently defines. An `isEqual` cutoff still
+  applies: a reload that computes the same value stops there.
+
+- **A `Stream`.** A `stylesheet`, a `className`, a `fontFace`, an
+  `observable(…)`: the stand-in is a source that switches to the current
+  one, dropping the previous module's subscription before taking the new.
+
+- **Anything else** cannot be followed and is exported as it is. The runtime
+  remembers it, and a re-evaluation that registers the identical value — a
+  primitive constant that did not change, an export that is one of the
+  stand-ins above re-exported under another name — changes nothing. One
+  that registers a different value means the update cannot be taken in
+  place, and the module invalidates itself so that Vite propagates the
+  update to its importers, as it would for a module that does not accept
+  updates at all. A `Signal`, a `store`, a `Subject` or an object literal is
+  a fresh instance on every evaluation, so a module exporting one of those
+  alongside its components is always propagated rather than swapped.
+
+The transform itself needs no knowledge of what a definition is or which
+package constructed it, so nothing is hardcoded about `@apendua/signal` or
+`@apendua/justdom`; any module whose exports are functions, nodes, streams
+and constants is one hot reload can replace in place.
+
+## What the transform does to a module
+
+- `export const x = …` becomes `export const x = $module.reloadable("x", …)`,
+  in place.
+- `export function f() {}` keeps its declaration — and its hoisting — with
+  the `export` removed; the stand-in is declared on the module's first line
+  and exported under `f` at the end.
+- `export default …` is wrapped the same way, under the name `default`.
+- `export { a as b }` is re-exported from a stand-in declared at the end of
+  the module, by which point `a` is initialised whatever it is.
+- The module accepts its own updates, and invalidates itself when the
+  runtime reports an export the update could not replace.
+
+Nothing added moves a line: the header shares the first line with the
+module's own, wrappers are spliced around expressions, and the footer comes
+after the last line. A stack trace or a breakpoint in the transformed module
+still points at the source line, which is why no source map is produced.
+
+A module is left untouched — and so propagates its updates to its importers,
+as any module without `import.meta.hot.accept` does — when transforming it
+could not help: it has no exports, exports only literals, or exports
+something no stand-in can follow. That is a class (`instanceof` and `extends`
+look at the constructor itself), a `let` or `var` (reassignable behind the
+stand-in's back), a destructuring declaration, an object, array or regex
+literal, or a re-export from another module.
+
+`$hmr`, exported from the package root, is the runtime half of the plugin and
+is injected automatically into transformed modules — it is not meant to be
+imported or called directly. The plugin resolves that import itself, so a
+workspace package whose modules are served through an app's dev server does
+not have to depend on this package for its modules to be transformed. The
+two packages the transform never touches are this one and `@apendua/signal`:
+a transformed module imports the runtime, and the runtime is built on the
+core.
 
 ## Scope
 
-The set of reloadable factories is currently hardcoded in `src/plugin.js` to
-what this monorepo's own packages export. This is not a general-purpose
-"preserve state across HMR" plugin for arbitrary code — only for the
-`component` / `stylesheet` / `className` / `fontFace` factories from
-`@apendua/signal` and `@apendua/justdom`.
+Values that are neither functions, `Derived` nodes nor `Stream`s are compared
+by identity, so a module exporting a mutable object — a `Signal` holding
+state, a palette object, a `store` — propagates every update to its
+importers. Preserving such state across a reload is a possible next step, not
+something the plugin does today.
 
 ## License
 

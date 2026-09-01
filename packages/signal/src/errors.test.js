@@ -146,11 +146,18 @@ describe("an error thrown inside a Derived", () => {
     const middle = new Derived(() => broken.get());
     /** @type {unknown[]} */
     const seen = [];
-    const holder = new Effect(() => middle.get(), { onError: (err) => seen.push(err) });
+    // `broken` throws on the very first read, so the effect reading it cannot
+    // get through construction — and construction reports by throwing,
+    // `onError` or no `onError`. Which is the same trip either way; only the
+    // last frame differs.
+    try {
+      new Effect(() => middle.get(), { onError: (err) => seen.push(err) });
+    } catch (err) {
+      seen.push(err);
+    }
 
     assert.equal(seen.length, 1);
     assert.equal(seen[0], failure, "identity survives the trip, so a stack does too");
-    holder.dispose();
   });
 
   it("reaches the reading effect's onError", () => {
@@ -461,38 +468,69 @@ describe("an error thrown inside an Effect", () => {
 describe("an effect nested inside another effect", () => {
   it("hands its first run's failure to the run that built it", () => {
     // The inner effect is constructed *during* the outer run, so its first run
-    // is on the outer run's stack and the throw simply travels up it.
+    // is on the outer run's stack and the throw simply travels up it. Here
+    // that stack is the outer effect's own construction, which does not
+    // consult `onError` either — so the failure keeps going, out of `new
+    // Effect` and into the hands of whoever was building the pair.
+    /** @type {string[]} */
+    const seen = [];
+    assert.throws(
+      () =>
+        new Effect(
+          () => {
+            useEffect(() => {
+              throw new Error("inner first run");
+            });
+          },
+          { onError: (err) => seen.push(/** @type {Error} */ (err).message) },
+        ),
+      /inner first run/,
+    );
+    assert.deepEqual(seen, [], "construction throws rather than handing it over");
+  });
+
+  it("hands it to the builder's onError once the builder stands", () => {
+    // The same trip with one frame changed: the outer effect is standing, so
+    // the run that builds the inner one is a re-run off the queue rather than
+    // a construction, and `onError` is what is at the top of the stack.
+    const source = Signal.of(1);
     /** @type {string[]} */
     const seen = [];
     const outer = new Effect(
       () => {
-        useEffect(() => {
-          throw new Error("inner first run");
-        });
+        if (source.get() === 2) {
+          useEffect(() => {
+            throw new Error("inner first run");
+          });
+        }
       },
       { onError: (err) => seen.push(/** @type {Error} */ (err).message) },
     );
 
+    source.set(2);
     assert.deepEqual(seen, ["inner first run"]);
     outer.dispose();
   });
 
-  it("carries a three-deep first-run failure to the outermost handler", () => {
+  it("carries a three-deep first-run failure all the way out", () => {
     /** @type {string[]} */
     const seen = [];
-    const outer = new Effect(
-      () => {
-        useEffect(() => {
-          useEffect(() => {
-            throw new Error("deepest");
-          });
-        });
-      },
-      { onError: (err) => seen.push(/** @type {Error} */ (err).message) },
+    assert.throws(
+      () =>
+        new Effect(
+          () => {
+            useEffect(() => {
+              useEffect(() => {
+                throw new Error("deepest");
+              });
+            });
+          },
+          { onError: (err) => seen.push(/** @type {Error} */ (err).message) },
+        ),
+      /deepest/,
+      "three stacks up, unchanged",
     );
-
-    assert.deepEqual(seen, ["deepest"], "two stacks up, unchanged");
-    outer.dispose();
+    assert.deepEqual(seen, []);
   });
 
   it("lets an inner onError contain the failure", () => {
@@ -661,12 +699,14 @@ describe("an effect nested inside a Derived", () => {
     });
     /** @type {string[]} */
     const seen = [];
-    const holder = new Effect(() => derived.get(), {
-      onError: (err) => seen.push(/** @type {Error} */ (err).message),
-    });
-
-    assert.deepEqual(seen, ["effect in a derived"]);
-    holder.dispose();
+    assert.throws(
+      () =>
+        new Effect(() => derived.get(), {
+          onError: (err) => seen.push(/** @type {Error} */ (err).message),
+        }),
+      /effect in a derived/,
+    );
+    assert.deepEqual(seen, [], "and the reader was still being built, so it throws");
   });
 
   it("routes the inner effect's re-run to the writer, not to the derived's reader", () => {
@@ -695,7 +735,8 @@ describe("an effect nested inside a Derived", () => {
     // The full alternating stack the pull model claims to see through: the
     // innermost read throws, the effect reading it is on the derived's
     // evaluation stack, and that derived is being read by the outermost
-    // effect. One stack, four frames, one handler at the top.
+    // effect, which is itself still being built. One stack, four frames, and
+    // the failure comes out of the top of it.
     const source = Signal.of(1);
     const broken = brokenAt(source, 1, "innermost");
     const middle = new Derived(() => {
@@ -704,12 +745,14 @@ describe("an effect nested inside a Derived", () => {
     });
     /** @type {string[]} */
     const seen = [];
-    const outer = new Effect(() => middle.get(), {
-      onError: (err) => seen.push(/** @type {Error} */ (err).message),
-    });
-
-    assert.deepEqual(seen, ["innermost"]);
-    outer.dispose();
+    assert.throws(
+      () =>
+        new Effect(() => middle.get(), {
+          onError: (err) => seen.push(/** @type {Error} */ (err).message),
+        }),
+      /innermost/,
+    );
+    assert.deepEqual(seen, []);
   });
 
   it("comes out at the writer when nothing in the stack handles it", () => {

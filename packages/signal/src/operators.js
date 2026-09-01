@@ -181,16 +181,13 @@ export function useEffects(value, effects) {
  * says so: it ends the effect, and `useEffect`'s failure edge carries that
  * to the computation, where a pipeline error used to land.
  *
- * The first run is exempt, and `standing` is what exempts it. Two reasons,
- * either sufficient. A first run still has the builder's stack underneath
- * it, which is a better place for a failure than any channel — it takes the
- * half-built mounting down synchronously — and that is precisely what an
- * `Effect` with no `onError` does unaided, so the `throw` below is
- * *restoring the default*, not choosing something else. It has to be
- * restored by hand because having an `onError` at all is what suppresses
- * that default, and the standing half needs one. The other reason is that
- * `effect` does not exist yet during the first run: its own initialiser is
- * what is running.
+ * Mounting is exempt, and `Effect` is what exempts it: a failure while the
+ * constructor is still on the stack is thrown rather than handed to
+ * `onError`, which takes the half-built mounting down synchronously,
+ * underneath whoever was building it. That is a better place for it than any
+ * channel, and it is also what makes the line below safe to write — `effect`
+ * is a binding its own initialiser is still evaluating, and a handler that
+ * cannot run before the initialiser returns can never read it early.
  *
  * @template T
  * @param {T} value
@@ -198,17 +195,10 @@ export function useEffects(value, effects) {
  * @returns {void}
  */
 function mountEffect(value, fn) {
-  let standing = false;
   const effect = useEffect((context) => fn(value, context), {
     name: "useEffects",
-    onError: (err) => {
-      if (!standing) {
-        throw err;
-      }
-      effect.fail(err);
-    },
+    onError: (err) => effect.fail(err),
   });
-  standing = true;
 }
 
 /**

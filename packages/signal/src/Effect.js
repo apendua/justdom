@@ -88,16 +88,20 @@ const MAX_SELF_INVALIDATIONS = 100;
  *   re-runs in, and which channel its runs build into. Fixed for the life of
  *   the effect.
  * @property {(err: unknown) => void} [onError] where this effect's failures
- *   land. Two kinds arrive, and `isDisposed` tells them apart. A failure of a
- *   *run* — the body throwing, or the run reporting one through
- *   `context.fail` — is handled here and the effect carries on. A failure of
- *   the *effect* — a dependency that died, `fail()` — has already ended it by
- *   the time this is called: cleanups have run, and this is the notification,
- *   heard here only when no dependent or error-handling subscriber heard it
- *   first. Without an `onError`, a thrown exception comes back out of
- *   whatever was draining the queue, a reported failure fails the effect
- *   outright, and a failure of the effect that nothing hears is either
+ *   land **once it stands**. Two kinds arrive, and `isDisposed` tells them
+ *   apart. A failure of a *run* — the body throwing, or the run reporting one
+ *   through `context.fail` — is handled here and the effect carries on. A
+ *   failure of the *effect* — a dependency that died, `fail()` — has already
+ *   ended it by the time this is called: cleanups have run, and this is the
+ *   notification, heard here only when no dependent or error-handling
+ *   subscriber heard it first. Without an `onError`, a thrown exception comes
+ *   back out of whatever was draining the queue, a reported failure fails the
+ *   effect outright, and a failure of the effect that nothing hears is either
  *   rethrown from the run it interrupted or reported as unhandled.
+ *
+ *   Nothing that arrives while the *constructor* is still on the stack comes
+ *   here — see `#handler`. Construction reports failure the way construction
+ *   always reports it, by throwing, whether or not this was passed.
  * @property {boolean} [deferred] schedule the first run instead of performing
  *   it during construction.
  * @property {string} [name] shown in diagnostics
@@ -141,6 +145,17 @@ export class Effect extends ReactiveNode {
   /** @type {boolean} */
   #running = false;
 
+  /**
+   * Whether the constructor is still on the stack.
+   *
+   * The one window in an effect's life where a failure has somewhere better
+   * to go than `onError`: the caller who is building this effect, on a stack
+   * that is still standing. See `#handler`.
+   *
+   * @type {boolean}
+   */
+  #constructing = false;
+
   /** @type {number} */
   #runs = 0;
 
@@ -161,10 +176,11 @@ export class Effect extends ReactiveNode {
    * A failure that arrived while a run of this effect was on the stack, with
    * nobody else to hear it. Parked rather than delivered on the spot, because
    * the spot is the middle of somebody else's machinery — a source's
-   * subscribe, an attach — where an `onError` that throws (a mounting still
-   * being built rethrows on purpose) would strand teardowns that were never
-   * meant to see an exception. `#execute` picks it up the moment the run
-   * unwinds; see `handleUnheardFailure`.
+   * subscribe, an attach — and delivery can throw: during construction it
+   * always does, and an `onError` is entitled to. Either way the exception
+   * has to unwind *this* effect's stack rather than that one, whose teardown
+   * bookkeeping was never meant to see one. `#execute` picks the failure up
+   * the moment the run unwinds; see `handleUnheardFailure`.
    *
    * @type {{ value: unknown } | null}
    */
@@ -247,6 +263,7 @@ export class Effect extends ReactiveNode {
     // then find nothing to do and skip — leaving the effect out of step with
     // the value it just moved.
     this.state = CLEAN;
+    this.#constructing = true;
     try {
       this.#execute();
     } catch (err) {
@@ -254,6 +271,8 @@ export class Effect extends ReactiveNode {
       // staying subscribed to what it managed to read on the way.
       this.dispose();
       throw err;
+    } finally {
+      this.#constructing = false;
     }
   }
 
@@ -421,8 +440,9 @@ export class Effect extends ReactiveNode {
         // throw: reading the very dependency whose death was parked throws
         // the same error, and delivering both would hand one failure to the
         // handler twice.
-        if (this.#onError) {
-          this.#onError(err);
+        const onError = this.#handler();
+        if (onError) {
+          onError(err);
           this.#settleOrGiveUp();
           this.#requeueIfStale();
           return;
@@ -506,13 +526,15 @@ export class Effect extends ReactiveNode {
    * If a run is on the stack, the failure is parked and delivered once the
    * run unwinds. Delivering here would mean delivering in the middle of
    * somebody else's machinery — a foreign source's subscribe, an edge attach
-   * — and an `onError` that throws (a mounting still being built rethrows on
-   * purpose) must unwind this effect's own stack, not that one; a source's
-   * teardown bookkeeping does not survive an observer that throws.
+   * — and delivery can throw: while the constructor is on the stack there is
+   * no handler to consult and the throw is the delivery, and an `onError` is
+   * entitled to throw in its own right. That has to unwind this effect's own
+   * stack, not that one; a source's teardown bookkeeping does not survive an
+   * observer that throws.
    *
    * Otherwise `onError` is told directly — the effect is already ended, so
-   * this is notification, not rescue — and only an effect with no `onError`
-   * and no run on the stack falls through to the report.
+   * this is notification, not rescue — and only an effect with no handler to
+   * consult and no run on the stack falls through to the report.
    *
    * @param {unknown} err
    * @returns {void}
@@ -522,8 +544,9 @@ export class Effect extends ReactiveNode {
       this.#unheardFailure = this.#unheardFailure ?? { value: err };
       return;
     }
-    if (this.#onError) {
-      this.#onError(err);
+    const onError = this.#handler();
+    if (onError) {
+      onError(err);
       return;
     }
     super.handleUnheardFailure(err);
@@ -539,11 +562,43 @@ export class Effect extends ReactiveNode {
    * @returns {void}
    */
   #deliverUnheard(err) {
-    if (this.#onError) {
-      this.#onError(err);
+    const onError = this.#handler();
+    if (onError) {
+      onError(err);
       return;
     }
     throw err;
+  }
+
+  /**
+   * Where a failure goes, or `undefined` when it has to travel the stack.
+   *
+   * `onError` is the effect's *ongoing* failure channel, and an effect only
+   * has one of those once it stands. While the constructor is still running,
+   * every failure — the body throwing, `context.fail`, a dependency dying on
+   * the way in — belongs to the caller who is building this effect, and the
+   * way to hand it to them is to throw: `#execute` lets it out, and the
+   * constructor disposes the half-built effect on its way past.
+   *
+   * Which is what an effect with no `onError` has always done. What this adds
+   * is that passing one no longer changes it. Before, `onError` decided two
+   * unrelated things at once — where a failure is reported, and whether a
+   * failure during mounting is fatal — so a caller who wanted the second
+   * default back had to restore it by hand, with a mutable `standing` flag
+   * and a rethrow, at every site that mounts something. `just` and
+   * `useEffects` both carried that; neither does now.
+   *
+   * It also makes the obvious wiring sound. `onError: (err) => effect.fail(err)`
+   * closes over a binding its own initialiser is still evaluating, so it used
+   * to work only for as long as nothing called it during the first run —
+   * a property of the run's body, not something the effect could promise.
+   * A handler that cannot be reached before the constructor returns can
+   * promise it.
+   *
+   * @returns {((err: unknown) => void) | undefined}
+   */
+  #handler() {
+    return this.#constructing ? undefined : this.#onError;
   }
 
   /**
@@ -563,8 +618,9 @@ export class Effect extends ReactiveNode {
     if (this.#disposed) {
       return;
     }
-    if (this.#onError) {
-      this.#onError(err);
+    const onError = this.#handler();
+    if (onError) {
+      onError(err);
       return;
     }
     this.fail(err);

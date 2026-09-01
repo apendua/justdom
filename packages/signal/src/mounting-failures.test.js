@@ -19,13 +19,14 @@ import { Signal } from "./Signal.js";
  * nested effect's failure reaches the computation that built it** — however
  * early the failure arrives, first run included.
  *
- * Two mechanisms carry that. An `Effect` can be given an `observer` at
- * construction, registered before the first run, which is what closes the
- * window `just`, `toEffect` and `toObservable` all had between running a
- * mounting's effect and listening to it. And `useEffect` wires a failure
- * edge from the inner effect to the surrounding computation, which is what
- * gives a nested effect's failure a path to the mounting at all —
- * `standalone: true` opts out.
+ * Two mechanisms carry that. An `Effect` that cannot get through
+ * construction throws, whichever kind of failure stopped it and whether or
+ * not it was given an `onError` — which closes the window `just`, `toEffect`
+ * and `toObservable` all had between running a mounting's effect and
+ * listening to it, because the builder's own stack is underneath the whole
+ * of it. And `useEffect` wires a failure edge from the inner effect to the
+ * surrounding computation, which is what gives a nested effect's failure a
+ * path to the mounting once it stands — `standalone: true` opts out.
  *
  * The one case deliberately *not* rerouted is an inner effect's body
  * throwing on a later run with no `onError`: that is the pull path, and it
@@ -234,30 +235,42 @@ describe("how a mounting hears that it failed", () => {
     assert.equal(reports, 0);
   });
 
-  it("lands a first-run dependency failure on onError, like everything else", () => {
-    // The primitive under all of the above, pinned directly: `onError` is the
-    // effect's listener of last resort, and a failure that lands while the
-    // first run is still on the stack is parked and delivered to it the
-    // moment the run unwinds — one option, every failure.
-    const { heard, reports } = measure((heard) => {
-      new Effect(() => use(failsOnSubscribe()), {
-        onError: (err) => heard.push(err),
-      });
-    });
-    assert.equal(heard.length, 1);
-    assert.equal(reports, 0);
-  });
-
-  it("rethrows a first-run dependency failure from the constructor without onError", () => {
-    // And without one there is still a stack to travel: a dependency that
-    // dies on the way in comes out of `new Effect` exactly as a body that
-    // threw would — no report, because the throw is the delivery.
+  it("rethrows a first-run dependency failure from the constructor", () => {
+    // The primitive under all of the above, pinned directly. A failure that
+    // lands while the first run is still on the stack is parked and delivered
+    // the moment the run unwinds — and while the constructor is on the stack
+    // there is nowhere better to deliver it than the constructor, so a
+    // dependency that dies on the way in comes out of `new Effect` exactly as
+    // a body that threw would. No report, because the throw is the delivery.
     const { heard, reports } = measure((heard) => {
       try {
         new Effect(() => use(failsOnSubscribe()));
       } catch (err) {
         heard.push(err);
       }
+    });
+    assert.equal(heard.length, 1);
+    assert.match(String(heard[0]), /on the way in/);
+    assert.equal(reports, 0);
+  });
+
+  it("does the same when an onError was passed", () => {
+    // `onError` is the effect's listener of last resort *once it stands*, and
+    // passing one does not make a failure during mounting survivable. Which
+    // is what lets every caller above hand its subscriber an `onError` and
+    // still have the half-built mounting come down on its own stack, without
+    // a flag and a rethrow to restore the default.
+    const { heard, reports } = measure((heard) => {
+      /** @type {unknown[]} */
+      const handled = [];
+      try {
+        new Effect(() => use(failsOnSubscribe()), {
+          onError: (err) => handled.push(err),
+        });
+      } catch (err) {
+        heard.push(err);
+      }
+      assert.deepEqual(handled, [], "onError was not consulted");
     });
     assert.equal(heard.length, 1);
     assert.match(String(heard[0]), /on the way in/);

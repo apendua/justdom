@@ -363,6 +363,78 @@ describe("Effect", () => {
     });
   });
 
+  describe("a failure while the constructor is on the stack", () => {
+    it("throws rather than consulting onError, whichever kind it was", () => {
+      // `onError` is the *ongoing* channel, and there is no ongoing yet. All
+      // three ways a run can fail land in the same place: the caller who is
+      // building the effect, on a stack that is still standing.
+      /** @type {unknown[]} */
+      const handled = [];
+      const onError = (/** @type {unknown} */ err) => handled.push(err);
+
+      assert.throws(
+        () =>
+          new Effect(
+            () => {
+              throw new Error("body threw");
+            },
+            { onError },
+          ),
+        /body threw/,
+        "the body throwing",
+      );
+      assert.throws(
+        () => new Effect(({ fail }) => fail(new Error("reported")), { onError }),
+        /reported/,
+        "a failure the run reported before it returned",
+      );
+      assert.deepStrictEqual(handled, [], "onError heard none of it");
+    });
+
+    it("hands the effect back to onError for every later failure", () => {
+      // The other side of the same rule: once construction has returned, the
+      // handler is the handler again, for a first run that never happened on
+      // that stack as much as for any other.
+      const source = Signal.of(1);
+      /** @type {unknown[]} */
+      const handled = [];
+      const effect = new Effect(
+        () => {
+          if (source.get() === 2) {
+            throw new Error("on a re-run");
+          }
+        },
+        { onError: (err) => handled.push(err) },
+      );
+
+      source.set(2);
+      assert.strictEqual(handled.length, 1);
+      assert.strictEqual(effect.isDisposed, false, "handled, so still going");
+      effect.dispose();
+    });
+
+    it("leaves a deferred effect's first run to onError, having no stack to use", () => {
+      // `deferred` hands the first run to the channel instead of performing
+      // it here, so it arrives out of a drain with nobody to throw at — even
+      // though the default channel drains eagerly enough to do it before the
+      // constructor has returned. Which is why the rule reads "while the
+      // constructor's own run is on the stack" rather than "the first run":
+      // the two are not the same run, and only one of them has a caller.
+      /** @type {unknown[]} */
+      const handled = [];
+      const effect = new Effect(
+        () => {
+          throw new Error("deferred first run");
+        },
+        { deferred: true, onError: (err) => handled.push(err) },
+      );
+
+      defaultChannel.flush();
+      assert.strictEqual(handled.length, 1, "handled, not thrown");
+      effect.dispose();
+    });
+  });
+
   describe("a teardown that takes arguments", () => {
     it("is refused at runtime, which is all `new Effect` can do", () => {
       // A constructor takes no type parameter of its own, so the rule cannot
@@ -738,7 +810,8 @@ describe("Effect", () => {
       // The run got as far as building it and then threw. The effect is
       // already registered on the outer's cleanups, so it is disposed by the
       // next run or by the outer going away — not left running with nobody
-      // holding it.
+      // holding it. A *re-run*, because a construction that throws has no
+      // next run: see below.
       const source = Signal.of(1);
       /** @type {Effect | undefined} */
       let inner;
@@ -747,22 +820,50 @@ describe("Effect", () => {
 
       const outer = new Effect(
         () => {
-          source.get();
-          inner = useEffect(() => {});
-          throw new Error("after building it");
+          if (source.get() > 1) {
+            inner = useEffect(() => {});
+            throw new Error("after building it");
+          }
         },
         { onError: (err) => errors.push(err) },
       );
 
+      source.set(2);
       assert.strictEqual(errors.length, 1);
       assert.strictEqual(inner?.isDisposed, false, "still standing, and still owned");
 
       const first = inner;
-      source.set(2);
+      source.set(3);
       assert.strictEqual(first?.isDisposed, true, "the next run took it");
 
       outer.dispose();
       assert.strictEqual(inner?.isDisposed, true);
+    });
+
+    it("takes an inner effect down with a construction that then failed", () => {
+      // The other half. An effect that cannot get through construction is
+      // disposed on its way out, whether or not it was given an `onError`, so
+      // what its half-finished run built goes with it — which is what lets a
+      // mounting be taken down whole by the caller that was building it.
+      /** @type {Effect | undefined} */
+      let inner;
+      /** @type {unknown[]} */
+      const errors = [];
+
+      assert.throws(
+        () =>
+          new Effect(
+            () => {
+              inner = useEffect(() => {});
+              throw new Error("during construction");
+            },
+            { onError: (err) => errors.push(err) },
+          ),
+        /during construction/,
+      );
+
+      assert.deepStrictEqual(errors, [], "construction throws rather than handing it over");
+      assert.strictEqual(inner?.isDisposed, true, "and nothing it built is left running");
     });
   });
 });

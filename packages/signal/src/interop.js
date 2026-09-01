@@ -60,14 +60,20 @@ export function toObservable(node) {
     // the observer channel, so the subscriber keeps an ear there — taken
     // *first*, so a node that fails during the very evaluation the effect
     // triggers is heard rather than reported as unhandled.
-    const failures = node.subscribe({
-      error: (err) => subscriber.error(err),
-    });
+    //
+    // Handed over with `add` rather than returned at the end, because the
+    // `new Effect` below can throw — a node that dies during the very first
+    // read, and construction is where an effect reports that — and a
+    // teardown that is never returned is never run. `add` owes it from the
+    // moment it is taken, which is when the subscription was acquired.
+    subscriber.add(
+      node.subscribe({
+        error: (err) => subscriber.error(err),
+      }),
+    );
     if (subscriber.closed) {
       // Subscribing replayed a stored failure; there is nothing to read.
-      return () => {
-        failures.unsubscribe();
-      };
+      return;
     }
     const effect = new Effect(
       () => {
@@ -89,7 +95,6 @@ export function toObservable(node) {
       },
     );
     return () => {
-      failures.unsubscribe();
       effect.dispose();
     };
   });

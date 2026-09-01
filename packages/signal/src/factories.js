@@ -148,25 +148,21 @@ export function just(valueOrFactory, effects = []) {
             withComputation(null, /** @type {() => T} */ (valueOrFactory))
           : valueOrFactory;
       for (const fn of effects) {
-        let standing = false;
         // `onError` is the whole of the wiring: it hears a run failing — a
         // throw, a `context.fail` — and, as the effect's listener of last
-        // resort, the effect itself failing when a dependency dies. A failure
-        // during the first run arrives with this mounting's stack still
-        // underneath, whichever kind it was, so the rethrow lands in the
-        // `catch` below and reaches the subscriber synchronously; later news
-        // goes to the error channel and ends the mounting.
-        const effect = new Effect((context) => fn(entity, context), {
-          name: "just",
-          onError: (err) => {
-            if (!standing) {
-              throw err;
-            }
-            subscriber.error(err);
-          },
-        });
-        mounted.push(effect);
-        standing = true;
+        // resort, the effect itself failing when a dependency dies. It hears
+        // none of that during the mounting itself, because an `Effect` that
+        // cannot get through construction throws instead, whichever kind of
+        // failure it was — so a failure while this mounting is being built
+        // lands in the `catch` below and reaches the subscriber
+        // synchronously, with everything already mounted taken down again,
+        // and later news goes to the error channel and ends the mounting.
+        mounted.push(
+          new Effect((context) => fn(entity, context), {
+            name: "just",
+            onError: (err) => subscriber.error(err),
+          }),
+        );
       }
       subscriber.next(entity);
     } catch (err) {

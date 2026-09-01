@@ -1,13 +1,11 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { BehaviorSubject, map, tap } from "rxjs";
-import { just, use } from "@apendua/signal";
-import { rx } from "@apendua/signal/rxjs";
+import { BehaviorSubject } from "rxjs";
+import { each, just, map, use } from "@apendua/signal";
 import { replaceSegment, toSegment } from "./helpers.js";
 import ListRenderer from "./ListRenderer.js";
 
 /**
- * @import {Observable} from "rxjs"
  * @import {EntityEffect} from "@apendua/signal"
  * @import {Mountable, Container} from "./types.js"
  */
@@ -193,16 +191,14 @@ const renderer = new ListRenderer({
 function children(...children) {
   return (node) => {
     use(
-      rx(renderer.renderFragment(children)).pipe(
-        tap((mountable) => {
-          if (!node.firstChild || !node.lastChild) {
-            const placeholder = node.appendChild(document.createComment(""));
-            mountable.replace([placeholder, placeholder]);
-          } else {
-            mountable.replace([node.firstChild, node.lastChild]);
-          }
-        }),
-      ),
+      each(renderer.renderFragment(children), (mountable) => {
+        if (!node.firstChild || !node.lastChild) {
+          const placeholder = node.appendChild(document.createComment(""));
+          mountable.replace([placeholder, placeholder]);
+        } else {
+          mountable.replace([node.firstChild, node.lastChild]);
+        }
+      }),
     );
   };
 }
@@ -211,7 +207,6 @@ function children(...children) {
  * @template T
  * @param {import("@apendua/signal").Subscribable<Array<T>>} items
  * @param {(item: T) => import("@apendua/signal").Subscribable<Mountable>} renderItem
- * @param {(item: T) => Observable<Mountable>} renderItem
  */
 function list(items, renderItem) {
   return renderer.renderList(items, (item) => item, renderItem);
@@ -251,7 +246,9 @@ function cloneNode(node) {
  * @returns {import("@apendua/signal").Source<Mountable>}
  */
 function $(tag, effects = []) {
-  return rx(just(document.createElement(tag), effects)).pipe(map((node) => toMountable(node)));
+  return map((/** @type {HTMLElementTagNameMap[Tag]} */ node) => toMountable(node))(
+    just(document.createElement(tag), effects),
+  );
 }
 
 /**

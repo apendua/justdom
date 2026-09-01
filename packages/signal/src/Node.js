@@ -290,15 +290,12 @@ export default class ReactiveNode {
   /**
    * Run every teardown this node is owed, exactly once each.
    *
-   * One that throws does not strand the rest: they all run, and the first
-   * failure is raised once they have — the policy `Stream` states for the
-   * same job. Without it a single throwing cleanup ended the sweep, and
-   * because the list is emptied before any of them runs, everything
-   * registered after it was owed forever and paid never: a subscription
-   * nobody unsubscribes, an inner effect nobody disposes. That is a leak
-   * caused by an unrelated teardown's bug, and it lands the same way on the
-   * two callers — a `disconnect` and a run clearing the previous run's
-   * cleanups on its way in.
+   * The list is emptied before any of them runs, so a teardown that disposes
+   * something that disposes this node cannot come back round to them — and
+   * `runCleanups` carries the rest of the policy, including that one which
+   * throws does not strand the ones behind it. Detaching first is also why
+   * that matters here: once the list is gone, a sweep that gave up partway
+   * would leave the remainder owed forever and paid never.
    *
    * @returns {void}
    */
@@ -308,18 +305,7 @@ export default class ReactiveNode {
       return;
     }
     this.#cleanups = [];
-    /** @type {{ value: unknown } | null} */
-    let failure = null;
-    for (let index = 0; index < cleanups.length; index += 1) {
-      try {
-        cleanups[index]();
-      } catch (err) {
-        failure = failure ?? { value: err };
-      }
-    }
-    if (failure) {
-      throw failure.value;
-    }
+    runCleanups(cleanups);
   }
 
   /**
@@ -797,12 +783,35 @@ export default class ReactiveNode {
 /**
  * Run a detached list of teardowns, in the order they were registered.
  *
+ * One that throws does not strand the rest: they all run, and the first
+ * failure is raised once they have — the policy `Stream.#undo` states for the
+ * same job. Without it a single throwing teardown abandoned every teardown
+ * behind it, and since the list reaching here has already been detached from
+ * the node, nothing would ever come back for them: a subscription nobody
+ * unsubscribes, an inner effect nobody disposes, lost to an unrelated
+ * teardown's bug.
+ *
+ * This is where `Derived` sweeps on a *recompute* — the abandoned branches of
+ * a rebuild, and the previous evaluation's cleanups on the way into the next
+ * one. `ReactiveNode.cleanup` below is the same sweep over a node's own list,
+ * and defers to this so there is one implementation of the policy rather than
+ * two to keep in step.
+ *
  * @param {Array<() => void>} cleanups
  * @returns {void}
  */
 export function runCleanups(cleanups) {
+  /** @type {{ value: unknown } | null} */
+  let failure = null;
   for (let index = 0; index < cleanups.length; index += 1) {
-    cleanups[index]();
+    try {
+      cleanups[index]();
+    } catch (err) {
+      failure = failure ?? { value: err };
+    }
+  }
+  if (failure) {
+    throw failure.value;
   }
 }
 

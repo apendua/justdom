@@ -135,9 +135,12 @@ describe("Effect", () => {
     assert.deepStrictEqual(ran, ["first", "third"], "and nothing was stranded behind it");
   });
 
-  it("does the same for a Derived's cleanups", () => {
-    // `cleanup` is `ReactiveNode`'s, so the sweep is shared: a `Derived`
-    // letting go of its resources strands nothing either.
+  it("does the same when a Derived lets go of its resources", () => {
+    // The disconnect path: `cleanup` is `ReactiveNode`'s, so a `Derived`
+    // going dormant sweeps through the same method an `Effect` does. Note
+    // what this does *not* cover — see the recompute case below, which takes
+    // an entirely different route and was stranding teardowns while this test
+    // passed.
     /** @type {string[]} */
     const ran = [];
     const source = Signal.of(1);
@@ -153,6 +156,36 @@ describe("Effect", () => {
 
     assert.throws(() => holder.dispose(), /cleanup boom/);
     assert.deepStrictEqual(ran, ["first", "third"]);
+  });
+
+  it("pays every cleanup when a Derived recomputes, not just when it lets go", () => {
+    // The other sweep. A recompute never calls `cleanup` at all: it hands a
+    // detached list to `runCleanups`, which is a second implementation of the
+    // same policy and had to be brought into line separately. Detached is
+    // exactly why stranding is unrecoverable there — the node has already let
+    // go of the list, so nothing comes back for what a throw skipped.
+    /** @type {string[]} */
+    const ran = [];
+    const source = Signal.of(1);
+    const derived = new Derived(() => {
+      source.get();
+      onCleanup(() => ran.push("first"));
+      onCleanup(() => {
+        throw new Error("cleanup boom");
+      });
+      onCleanup(() => ran.push("third"));
+      return source.get();
+    });
+    const holder = new Effect(() => derived.get());
+
+    assert.throws(() => source.set(2), /cleanup boom/, "swept by the recompute, not a dispose");
+    assert.deepStrictEqual(ran, ["first", "third"], "the recompute paid all three");
+
+    // The recompute registered a fresh set on its way through, throwing one
+    // included, so letting go sweeps them again — this time down the other
+    // route. Both pay in full.
+    assert.throws(() => holder.dispose(), /cleanup boom/);
+    assert.deepStrictEqual(ran, ["first", "third", "first", "third"]);
   });
 
   it("stops for good once disposed", () => {

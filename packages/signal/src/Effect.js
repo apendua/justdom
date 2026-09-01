@@ -505,8 +505,9 @@ export class Effect extends ReactiveNode {
             // Registering it now would park it on a list nothing reads again,
             // which for a run that took a subscription means the subscription
             // stays. A failure does not get here: it waits in `#pendingFailure`
-            // for the `finally` below, which is *after* this teardown is
-            // registered, precisely so that the sweep pays it.
+            // to be applied below, *after* this teardown is registered —
+            // whether the run leaves by the `catch` or falls through it —
+            // precisely so that the sweep pays it.
             /** @type {() => void} */ (teardown)();
           } else {
             // Registered after the run, because `track` clears the previous

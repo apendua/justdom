@@ -485,38 +485,49 @@ export class Effect extends ReactiveNode {
         throw err;
       }
       this.#running = false;
-      if (typeof teardown === "function") {
-        if (teardown.length > 0) {
-          // `length` counts what a function *requires*: a rest parameter or a
-          // default makes it zero, and both of those can be called with
-          // nothing, so this fires on exactly the functions that cannot. Which
-          // in practice means one returned by accident — a method reference, a
-          // callback meant for somebody else — rather than a teardown.
-          throw new Error(
-            `Effect "${this.#name}" returned a teardown taking ${teardown.length} argument(s). ` +
-              `A teardown is called with none, so this one can never be given what it asks for.`,
-          );
+      try {
+        if (typeof teardown === "function") {
+          if (teardown.length > 0) {
+            // `length` counts what a function *requires*: a rest parameter or a
+            // default makes it zero, and both of those can be called with
+            // nothing, so this fires on exactly the functions that cannot. Which
+            // in practice means one returned by accident — a method reference, a
+            // callback meant for somebody else — rather than a teardown.
+            throw new Error(
+              `Effect "${this.#name}" returned a teardown taking ${teardown.length} argument(s). ` +
+                `A teardown is called with none, so this one can never be given what it asks for.`,
+            );
+          }
+          if (this.#disposed) {
+            // Disposed on the way through, by something that is not a failure —
+            // the run calling `dispose()` on its own effect — so the sweep that
+            // would have run this teardown has already been and gone.
+            // Registering it now would park it on a list nothing reads again,
+            // which for a run that took a subscription means the subscription
+            // stays. A failure does not get here: it waits in `#pendingFailure`
+            // for the `finally` below, which is *after* this teardown is
+            // registered, precisely so that the sweep pays it.
+            /** @type {() => void} */ (teardown)();
+          } else {
+            // Registered after the run, because `track` clears the previous
+            // run's cleanups on the way in.
+            this.onCleanup(/** @type {() => void} */ (teardown));
+          }
         }
-        if (this.#disposed) {
-          // Disposed on the way through, by something that is not a failure —
-          // the run calling `dispose()` on its own effect — so the sweep that
-          // would have run this teardown has already been and gone.
-          // Registering it now would park it on a list nothing reads again,
-          // which for a run that took a subscription means the subscription
-          // stays. A failure does not get here: it waits in `#pendingFailure`
-          // for the line below, which is *after* this teardown is registered,
-          // precisely so that the sweep pays it.
-          /** @type {() => void} */ (teardown)();
-        } else {
-          // Registered after the run, because `track` clears the previous run's
-          // cleanups on the way in.
-          this.onCleanup(/** @type {() => void} */ (teardown));
-        }
+      } finally {
+        // The run has unwound and its teardown is settled, so a failure that
+        // has been waiting for exactly that can now end the effect — sweeping
+        // this run's teardown along with everything else the run registered.
+        //
+        // In a `finally` because settling the teardown can throw — a teardown
+        // that takes arguments is refused above, and one called here because
+        // the run disposed its own effect can throw on its own account — and
+        // an effect left holding an unapplied failure is a zombie: not
+        // disposed, still queueable, still subscribed to everything it read,
+        // with a failure nothing will ever act on. The exception travels
+        // either way; the ending is not optional.
+        this.#applyPendingFailure();
       }
-      // The run has unwound and its teardown is on the list, so a failure that
-      // has been waiting for exactly that can now end the effect — sweeping
-      // this run's teardown along with everything else the run registered.
-      this.#applyPendingFailure();
       if (this.#unheardFailure) {
         // The effect has ended and nobody heard — see `handleUnheardFailure`.
         // The run has unwound and its teardown is settled, so the failure can

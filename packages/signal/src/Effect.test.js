@@ -443,6 +443,77 @@ describe("Effect", () => {
       assert.strictEqual(inner?.getRuns(), runs, "and not running any more");
     });
 
+    it("ends the effect even when settling the teardown throws", () => {
+      // The one way out of `#execute` that steps over the ending: a teardown
+      // refused for taking arguments throws between the run unwinding and the
+      // failure being applied. Off the queue there is no constructor to catch
+      // it, so the effect used to be left a zombie — not disposed, still
+      // queueable, still subscribed, holding a failure nothing would act on.
+      const source = Signal.of(1);
+      /** @type {Effect | undefined} */
+      let inner;
+      const outer = new Effect(({ fail }) => {
+        if (source.get() === 2) {
+          fail(new Error("parked"));
+          inner = useEffect(() => source.get());
+          return (/** @type {string} */ x) => void x;
+        }
+        return undefined;
+      });
+
+      assert.throws(() => source.set(2), /returned a teardown taking 1 argument/);
+      assert.strictEqual(outer.isDisposed, true, "ended rather than left holding it");
+      assert.strictEqual(inner?.isDisposed, true, "and what the run built went with it");
+    });
+
+    it("keeps the first of several failures reported by one run", () => {
+      assert.throws(() => {
+        new Effect(({ fail }) => {
+          fail(new Error("one"));
+          fail(new Error("two"));
+        });
+      }, /one/);
+    });
+
+    it("does not end a standing effect whose onError handles the report", () => {
+      // The deferral is on the path that *ends* the effect. A handler means
+      // the effect carries on, so there is nothing to defer and nothing to
+      // sweep — the bargain the synchronous path strikes, unchanged.
+      const source = Signal.of(1);
+      /** @type {unknown[]} */
+      const handled = [];
+      const effect = new Effect(
+        ({ fail }) => {
+          if (source.get() === 2) {
+            fail(new Error("mid-run"));
+          }
+        },
+        { onError: (err) => handled.push(err) },
+      );
+
+      source.set(2);
+      assert.strictEqual(handled.length, 1);
+      assert.strictEqual(effect.isDisposed, false, "handled, so still going");
+      effect.dispose();
+    });
+
+    it("stops the re-run loop when the run that failed also invalidated itself", () => {
+      // `#execute` loops for an effect that writes what it reads. An ending
+      // has to win that race, or the effect goes round again on a graph it
+      // has already let go of.
+      const source = Signal.of(1);
+      let runs = 0;
+      assert.throws(() => {
+        new Effect(({ fail }) => {
+          runs += 1;
+          source.get();
+          source.set(source.get() + 1);
+          fail(new Error("ended"));
+        });
+      }, /ended/);
+      assert.strictEqual(runs, 1, "one run, not a spin");
+    });
+
     it("still ends the effect when the run reports and then throws", () => {
       // Both channels at once. The throw is what travels — a failure parked
       // behind it would be the same news twice — but the effect is ending

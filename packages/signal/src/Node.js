@@ -288,6 +288,18 @@ export default class ReactiveNode {
   }
 
   /**
+   * Run every teardown this node is owed, exactly once each.
+   *
+   * One that throws does not strand the rest: they all run, and the first
+   * failure is raised once they have — the policy `Stream` states for the
+   * same job. Without it a single throwing cleanup ended the sweep, and
+   * because the list is emptied before any of them runs, everything
+   * registered after it was owed forever and paid never: a subscription
+   * nobody unsubscribes, an inner effect nobody disposes. That is a leak
+   * caused by an unrelated teardown's bug, and it lands the same way on the
+   * two callers — a `disconnect` and a run clearing the previous run's
+   * cleanups on its way in.
+   *
    * @returns {void}
    */
   cleanup() {
@@ -296,8 +308,17 @@ export default class ReactiveNode {
       return;
     }
     this.#cleanups = [];
+    /** @type {{ value: unknown } | null} */
+    let failure = null;
     for (let index = 0; index < cleanups.length; index += 1) {
-      cleanups[index]();
+      try {
+        cleanups[index]();
+      } catch (err) {
+        failure = failure ?? { value: err };
+      }
+    }
+    if (failure) {
+      throw failure.value;
     }
   }
 

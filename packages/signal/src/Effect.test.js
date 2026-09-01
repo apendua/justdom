@@ -114,6 +114,47 @@ describe("Effect", () => {
     assert.strictEqual(cleanup.mock.calls.length, 2);
   });
 
+  it("pays every cleanup even when one of them throws", () => {
+    // The list is emptied before any of them runs, so a sweep that stopped at
+    // the first throw owed the rest forever and paid them never — a
+    // subscription nobody unsubscribes, an inner effect nobody disposes,
+    // stranded by an unrelated teardown's bug. They all run; the first
+    // failure is raised once they have, which is the policy `Stream` states
+    // for the same job.
+    /** @type {string[]} */
+    const ran = [];
+    const effect = new Effect(() => {
+      onCleanup(() => ran.push("first"));
+      onCleanup(() => {
+        throw new Error("cleanup boom");
+      });
+      onCleanup(() => ran.push("third"));
+    });
+
+    assert.throws(() => effect.dispose(), /cleanup boom/, "the failure still surfaces");
+    assert.deepStrictEqual(ran, ["first", "third"], "and nothing was stranded behind it");
+  });
+
+  it("does the same for a Derived's cleanups", () => {
+    // `cleanup` is `ReactiveNode`'s, so the sweep is shared: a `Derived`
+    // letting go of its resources strands nothing either.
+    /** @type {string[]} */
+    const ran = [];
+    const source = Signal.of(1);
+    const derived = new Derived(() => {
+      onCleanup(() => ran.push("first"));
+      onCleanup(() => {
+        throw new Error("cleanup boom");
+      });
+      onCleanup(() => ran.push("third"));
+      return source.get();
+    });
+    const holder = new Effect(() => derived.get());
+
+    assert.throws(() => holder.dispose(), /cleanup boom/);
+    assert.deepStrictEqual(ran, ["first", "third"]);
+  });
+
   it("stops for good once disposed", () => {
     const source = Signal.of(1);
     const effect = new Effect(() => source.get());

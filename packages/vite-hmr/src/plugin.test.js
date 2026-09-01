@@ -4,6 +4,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { parseAst } from "vite";
 import HMRPlugin, { transform } from "./plugin.js";
 
 /**
@@ -13,6 +14,8 @@ import HMRPlugin, { transform } from "./plugin.js";
 function transformed(code) {
   const result = transform(code);
   assert.ok(result, "expected the module to be transformed");
+  // Whatever else the transform did, what it produced has to be a module.
+  assert.doesNotThrow(() => parseAst(result), "the transformed module parses");
   return result;
 }
 
@@ -112,6 +115,24 @@ describe("transform()", () => {
       output,
       /export \{ \$reloadable_a as a, \$reloadable_bee as bee, \$reloadable_helper as helper, \$reloadable_default as default \};/,
     );
+  });
+
+  test("a specifier list is removed once, whatever follows it kept", () => {
+    // The shape `justdom`'s operators module has: names re-exported from an
+    // import, followed by the rest of the module.
+    const code = [
+      `import { set, on } from "@apendua/signal";`,
+      `export { set, on };`,
+      `/** what follows must survive */`,
+      `export function attr() {}`,
+      `const trailing = "kept";`,
+    ].join("\n");
+    const output = transformed(code);
+    const lines = output.split("\n");
+    assert.strictEqual(lines[1], "");
+    assert.strictEqual(lines[2], `/** what follows must survive */`);
+    assert.strictEqual(lines[3], `function attr() {}`);
+    assert.strictEqual(lines[4], `const trailing = "kept";`);
   });
 
   test("a literal alongside a definition is wrapped, for the runtime to compare", () => {

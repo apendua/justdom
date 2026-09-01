@@ -441,6 +441,8 @@ export function transform(code) {
   const footer = [];
   /** @type {string[]} */
   const specifiers = [];
+  /** @type {Set<AstNode>} */
+  const removed = new Set();
 
   for (const definition of exports) {
     const { name, how, node } = definition;
@@ -474,9 +476,13 @@ export function transform(code) {
       }
       continue;
     }
-    // A specifier list: the statement goes, and each name comes back from an
-    // alias declared once everything is initialised.
-    edits.push({ start: node.start, end: node.end, text: "" });
+    // A specifier list: the statement goes — once, however many names it
+    // carried — and each name comes back from an alias declared once
+    // everything is initialised.
+    if (!removed.has(node)) {
+      removed.add(node);
+      edits.push({ start: node.start, end: node.end, text: "" });
+    }
     const alias = uniqueName(code, `$reloadable_${name.replace(/\W/g, "_")}`);
     footer.push(`const ${alias} = ${reloadable(name, /** @type {string} */ (definition.local))};`);
     specifiers.push(`${alias} as ${IDENTIFIER.test(name) ? name : JSON.stringify(name)}`);

@@ -36,7 +36,10 @@ import { updateQueue, defaultChannel } from "./scheduler.js";
  * @property {(err: unknown) => void} fail Report a failure that happened after
  *   this run returned. Handled exactly as a thrown one: `onError` if the
  *   effect has one, and otherwise the effect fails — its cleanups run, whatever
- *   is watching it is told, and it stops.
+ *   is watching it is told, and it stops. Called from *inside* a run rather
+ *   than after it, that ending waits for the run to unwind, so the rest of
+ *   the body still runs and what it builds is still owned; `throw` is the way
+ *   to stop a run where it stands.
  */
 
 /**
@@ -173,14 +176,45 @@ export class Effect extends ReactiveNode {
   #consecutiveSelfInvalidations = 0;
 
   /**
-   * A failure that arrived while a run of this effect was on the stack, with
-   * nobody else to hear it. Parked rather than delivered on the spot, because
-   * the spot is the middle of somebody else's machinery — a source's
-   * subscribe, an attach — and delivery can throw: during construction it
-   * always does, and an `onError` is entitled to. Either way the exception
-   * has to unwind *this* effect's stack rather than that one, whose teardown
-   * bookkeeping was never meant to see one. `#execute` picks the failure up
-   * the moment the run unwinds; see `handleUnheardFailure`.
+   * A failure that will end this effect, held until the run it arrived during
+   * has unwound.
+   *
+   * Ending an effect disposes it, and disposing it sweeps its cleanups — so
+   * doing that from the middle of a run leaves the rest of the run building
+   * against a corpse. Everything it registers after that point lands on a
+   * fresh list that nothing will ever sweep again: a `useEffect` that outlives
+   * the effect that owns it and goes on running, a subscription nobody
+   * unsubscribes. The run is going to unwind in a moment either way, so the
+   * ending waits for it, and then takes the whole run down at once.
+   *
+   * Distinct from `#unheardFailure` below, which is the *other* half of the
+   * same trip: this one is a failure not yet applied, that one is a failure
+   * already applied that nobody heard.
+   *
+   * @type {{ value: unknown } | null}
+   */
+  #pendingFailure = null;
+
+  /**
+   * Whether `#execute` is applying a pending failure right now.
+   *
+   * `handleUnheardFailure` reads it. Delivering the news of a death from
+   * inside the death itself would mean throwing out of `Node.fail`'s observer
+   * loop with dependents left un-notified, so the news is parked instead and
+   * `#execute` — which is one frame down and has nothing left to do — hands
+   * it on.
+   *
+   * @type {boolean}
+   */
+  #ending = false;
+
+  /**
+   * The death of this effect, which nobody heard. Parked rather than
+   * delivered on the spot, because the spot is `Node.fail`'s observer loop
+   * with dependents still to notify, and delivery can throw: during
+   * construction it always does, and an `onError` is entitled to. `#execute`
+   * picks it up as soon as the ending is complete; see
+   * `handleUnheardFailure`.
    *
    * @type {{ value: unknown } | null}
    */
@@ -421,6 +455,7 @@ export class Effect extends ReactiveNode {
         teardown = this.track(this.#invoke);
       } catch (err) {
         this.#running = false;
+        this.#applyPendingFailure();
         const unheard = this.#unheardFailure;
         this.#unheardFailure = null;
         if (err instanceof NoValueError) {
@@ -463,11 +498,14 @@ export class Effect extends ReactiveNode {
           );
         }
         if (this.#disposed) {
-          // The run failed itself on the way through — `context.fail`, called
-          // before it returned — so the sweep that would have run this teardown
-          // has already been and gone. Registering it now would park it on a
-          // list nothing reads again, which for a run that took a subscription
-          // means the subscription stays.
+          // Disposed on the way through, by something that is not a failure —
+          // the run calling `dispose()` on its own effect — so the sweep that
+          // would have run this teardown has already been and gone.
+          // Registering it now would park it on a list nothing reads again,
+          // which for a run that took a subscription means the subscription
+          // stays. A failure does not get here: it waits in `#pendingFailure`
+          // for the line below, which is *after* this teardown is registered,
+          // precisely so that the sweep pays it.
           /** @type {() => void} */ (teardown)();
         } else {
           // Registered after the run, because `track` clears the previous run's
@@ -475,12 +513,15 @@ export class Effect extends ReactiveNode {
           this.onCleanup(/** @type {() => void} */ (teardown));
         }
       }
+      // The run has unwound and its teardown is on the list, so a failure that
+      // has been waiting for exactly that can now end the effect — sweeping
+      // this run's teardown along with everything else the run registered.
+      this.#applyPendingFailure();
       if (this.#unheardFailure) {
-        // The effect failed while this run was on the stack, with nobody else
-        // listening — see `handleUnheardFailure`. The run has unwound and its
-        // teardown is settled, so the failure can finally travel: to
-        // `onError`, or up the stack that is still here — the constructor for
-        // a first run, the drain for a queued one.
+        // The effect has ended and nobody heard — see `handleUnheardFailure`.
+        // The run has unwound and its teardown is settled, so the failure can
+        // finally travel: to `onError`, or up the stack that is still here —
+        // the constructor for a first run, the drain for a queued one.
         const unheard = this.#unheardFailure;
         this.#unheardFailure = null;
         this.#deliverUnheard(unheard.value);
@@ -506,14 +547,46 @@ export class Effect extends ReactiveNode {
    *
    * Here rather than in `#reportFailure` because a failure arrives from two
    * directions — the run reporting one, and one propagating down from
-   * something the effect reads — and both of them end the effect.
+   * something the effect reads — and both of them end the effect. Which is
+   * also why the deferral below is here: both directions can arrive mid-run,
+   * and both would otherwise sweep the running effect's cleanups out from
+   * under it.
    *
    * @param {unknown} err
    * @returns {void}
    */
   fail(err) {
+    if (this.#running) {
+      // Not yet. See `#pendingFailure`: ending the effect here would sweep
+      // its cleanups out from under a run that is still going, and orphan
+      // whatever that run builds from this point on. `#execute` applies it
+      // the moment the run unwinds.
+      this.#pendingFailure = this.#pendingFailure ?? { value: err };
+      return;
+    }
     super.fail(err);
     this.dispose();
+  }
+
+  /**
+   * Apply a failure that has been waiting for its run to unwind: tell
+   * everyone, then stop.
+   *
+   * `#ending` is up for the duration so that a death nobody hears is parked
+   * rather than delivered from inside `Node.fail`'s observer loop — the loop
+   * has dependents left to notify, and delivery is entitled to throw.
+   *
+   * @param {unknown} err
+   * @returns {void}
+   */
+  #endWithFailure(err) {
+    this.#ending = true;
+    try {
+      super.fail(err);
+      this.dispose();
+    } finally {
+      this.#ending = false;
+    }
   }
 
   /**
@@ -523,14 +596,14 @@ export class Effect extends ReactiveNode {
    * come in — which is what makes `onError` the *one* place to catch an
    * effect's failures, however they arrive.
    *
-   * If a run is on the stack, the failure is parked and delivered once the
-   * run unwinds. Delivering here would mean delivering in the middle of
-   * somebody else's machinery — a foreign source's subscribe, an edge attach
-   * — and delivery can throw: while the constructor is on the stack there is
-   * no handler to consult and the throw is the delivery, and an `onError` is
-   * entitled to throw in its own right. That has to unwind this effect's own
-   * stack, not that one; a source's teardown bookkeeping does not survive an
-   * observer that throws.
+   * Reached only from inside `#endWithFailure`, since `fail` defers while a
+   * run is on the stack and this is what `Node.fail`'s observer loop calls
+   * when it finds nobody listening. So the failure is parked and `#execute`
+   * delivers it a frame down: delivery can throw — while the constructor is
+   * on the stack there is no handler to consult and the throw *is* the
+   * delivery, and an `onError` is entitled to throw in its own right — and
+   * an exception out of the observer loop would leave the dependents behind
+   * it un-notified.
    *
    * Otherwise `onError` is told directly — the effect is already ended, so
    * this is notification, not rescue — and only an effect with no handler to
@@ -540,7 +613,7 @@ export class Effect extends ReactiveNode {
    * @returns {void}
    */
   handleUnheardFailure(err) {
-    if (this.#running) {
+    if (this.#ending) {
       this.#unheardFailure = this.#unheardFailure ?? { value: err };
       return;
     }
@@ -624,6 +697,24 @@ export class Effect extends ReactiveNode {
       return;
     }
     this.fail(err);
+  }
+
+  /**
+   * End the effect, if a failure has been waiting for this run to unwind.
+   *
+   * Called on both of `#execute`'s exits, because a run can report a failure
+   * and then throw as well as report one and return, and the failure is
+   * terminal either way.
+   *
+   * @returns {void}
+   */
+  #applyPendingFailure() {
+    const pending = this.#pendingFailure;
+    if (!pending) {
+      return;
+    }
+    this.#pendingFailure = null;
+    this.#endWithFailure(pending.value);
   }
 
   /**

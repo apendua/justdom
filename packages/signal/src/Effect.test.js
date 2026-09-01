@@ -13,9 +13,11 @@ import {
   useEffect,
   component,
   observable,
+  use,
   withChannel,
 } from "./index.js";
 import UpdateChannel from "./UpdateChannel.js";
+import { Stream } from "./Stream.js";
 
 describe("Effect", () => {
   it("runs once during construction", () => {
@@ -360,6 +362,101 @@ describe("Effect", () => {
         });
       }, /failed on the way through/);
       assert.strictEqual(teardown.mock.calls.length, 1, "called rather than registered");
+    });
+  });
+
+  describe("a failure that lands while a run is on the stack", () => {
+    it("waits for the run to unwind before ending the effect", () => {
+      // `fail` is the *asynchronous* channel — `throw` is how a run stops
+      // where it stands — so calling it from inside a run does not abort the
+      // run. What it must not do is end the effect on the spot: disposing
+      // sweeps the cleanups, and the rest of the run would then be building
+      // against a corpse.
+      /** @type {string[]} */
+      const log = [];
+      assert.throws(() => {
+        new Effect(({ fail }) => {
+          log.push("before");
+          fail(new Error("reported mid-run"));
+          log.push("after");
+        });
+      }, /reported mid-run/);
+      assert.deepStrictEqual(log, ["before", "after"], "the run finished");
+    });
+
+    it("sweeps what the rest of the run registered", () => {
+      // The point of waiting. A cleanup registered after the failure is on
+      // the same list as one registered before it, and one sweep pays both.
+      /** @type {string[]} */
+      const swept = [];
+      assert.throws(() => {
+        new Effect(({ fail }) => {
+          onCleanup(() => swept.push("before"));
+          fail(new Error("reported mid-run"));
+          onCleanup(() => swept.push("after"));
+          return () => swept.push("teardown");
+        });
+      }, /reported mid-run/);
+      assert.deepStrictEqual(swept, ["before", "after", "teardown"], "all of it, once each");
+    });
+
+    it("takes an effect the rest of the run built down with it", () => {
+      // The damaging shape: an inner effect built after the failure used to
+      // outlive the effect that owned it and go on running for good.
+      const source = Signal.of(1);
+      /** @type {Effect | undefined} */
+      let inner;
+      assert.throws(() => {
+        new Effect(({ fail }) => {
+          fail(new Error("reported mid-run"));
+          inner = useEffect(() => source.get());
+        });
+      }, /reported mid-run/);
+
+      assert.strictEqual(inner?.isDisposed, true, "disposed with its owner");
+      const runs = inner?.getRuns();
+      source.set(2);
+      assert.strictEqual(inner?.getRuns(), runs, "and not running any more");
+    });
+
+    it("does the same when a dependency dies on the way in", () => {
+      // The other door to the same place. A dependency that fails during the
+      // run reaches `Effect.fail` directly rather than through `context.fail`,
+      // and defers for the same reason.
+      const source = Signal.of(1);
+      /** @type {Effect | undefined} */
+      let inner;
+      assert.throws(() => {
+        new Effect(() => {
+          use(
+            new Stream(() => {
+              throw new Error("on the way in");
+            }),
+          );
+          inner = useEffect(() => source.get());
+        });
+      }, /on the way in/);
+
+      assert.strictEqual(inner?.isDisposed, true, "disposed with its owner");
+      const runs = inner?.getRuns();
+      source.set(2);
+      assert.strictEqual(inner?.getRuns(), runs, "and not running any more");
+    });
+
+    it("still ends the effect when the run reports and then throws", () => {
+      // Both channels at once. The throw is what travels — a failure parked
+      // behind it would be the same news twice — but the effect is ending
+      // either way, so the sweep still happens.
+      /** @type {string[]} */
+      const swept = [];
+      assert.throws(() => {
+        new Effect(({ fail }) => {
+          onCleanup(() => swept.push("swept"));
+          fail(new Error("reported"));
+          throw new Error("and then threw");
+        });
+      }, /and then threw/);
+      assert.deepStrictEqual(swept, ["swept"]);
     });
   });
 

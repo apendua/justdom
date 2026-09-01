@@ -27,7 +27,7 @@ Promise.resolve(
     console.error("Could not install the XR emulator:", err);
   })
   .then(() => {
-    render(Scene, { antialias: true }).subscribe({
+    render(Scene).subscribe({
       next: (renderer) => {
         createXRButton(renderer, {
           ar: { optionalFeatures: ["hand-tracking"] },

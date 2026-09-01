@@ -406,7 +406,7 @@ export function frames(ctx) {
  * @property {(grip: THREE.XRHandSpace) => THREE.Object3D} [createHandModel]
  * @property {(renderer: THREE.WebGLRenderer) => void} [onBeforeRender]
  * @property {(renderer: THREE.WebGLRenderer) => void} [onAfterRender]
- * @property {boolean} [antialias]
+ * @property {boolean} [antialias] On unless it is turned off; see `render`.
  * @property {number | (() => number)} [portalBudget] Milliseconds of each
  *   frame the scene's portals may spend mounting and settling content,
  *   between them: one pool, divided across every panel by priority and
@@ -430,7 +430,14 @@ export function frames(ctx) {
 export function render(fn, options = {}) {
   return new Stream((subscriber) => {
     const renderer = new THREE.WebGLRenderer({
-      antialias: options.antialias,
+      // On by default, which is the opposite of three's own default. Every
+      // scene here is flat-shaded blocks and thin lines — the two things
+      // aliasing is least kind to — and in a headset the edges sit still in
+      // the world while your head moves, so they crawl. three hands these
+      // attributes to the XRWebGLLayer, so this is 4x MSAA on the headset
+      // rather than a flat-canvas nicety.
+      antialias: options.antialias ?? true,
+      powerPreference: "high-performance",
     });
     // `BehaviorSubject` was two things at once here: somewhere to announce a
     // resize from, and somewhere to read the current size back. A `Signal` is

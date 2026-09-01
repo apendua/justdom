@@ -3,6 +3,65 @@ import { VRButton } from "three/examples/jsm/webxr/VRButton.js";
 import { anchorToViewer } from "./anchor.js";
 
 /**
+ * Which of the rates a runtime offers to ask for: the fastest it will give,
+ * the middle one, or a number in Hz to take the nearest to.
+ *
+ * @typedef {"high" | "mid" | number} FrameRatePreference
+ */
+
+/**
+ * Asks the runtime to run the session at the frame rate the app wants.
+ *
+ * A headset does not give you its best frame rate for asking politely — it
+ * gives you its default, which on current standalone hardware is usually the
+ * slowest rate it supports, and stays there for the life of the session
+ * unless someone says otherwise. `supportedFrameRates` is the list on offer;
+ * `updateTargetFrameRate` is how you pick from it.
+ *
+ * Faster is not free: at 120 Hz a frame has half the budget it has at 60, and
+ * a scene that cannot hold the higher rate is worse off than one that never
+ * asked, because the runtime drops frames rather than easing off. So this is
+ * a preference rather than a demand, and an app with a heavy scene should
+ * pass `"mid"`, or a number, or `false` to leave the default alone.
+ *
+ * Everything here is optional in the WebXR spec and absent in some runtimes,
+ * so every step is guarded, and a refusal is swallowed: a session that will
+ * not change its frame rate is still a perfectly good session.
+ *
+ * @param {WebGLRenderer} renderer
+ * @param {FrameRatePreference} [preference]
+ * @returns {() => void} Stops listening.
+ */
+export function requestFrameRate(renderer, preference = "high") {
+  const onSessionStart = () => {
+    const session = /** @type {XRSession & {
+     *   supportedFrameRates?: Float32Array;
+     *   updateTargetFrameRate?: (rate: number) => Promise<void>;
+     * }} */ (/** @type {unknown} */ (renderer.xr.getSession()));
+    const offered = session?.supportedFrameRates;
+    if (!session || typeof session.updateTargetFrameRate !== "function" || !offered?.length) {
+      return;
+    }
+    const rates = Array.from(offered).sort((a, b) => a - b);
+    let wanted;
+    if (typeof preference === "number") {
+      wanted = rates.reduce((best, rate) =>
+        Math.abs(rate - preference) < Math.abs(best - preference) ? rate : best,
+      );
+    } else if (preference === "mid") {
+      wanted = rates[Math.floor((rates.length - 1) / 2)];
+    } else {
+      wanted = rates[rates.length - 1];
+    }
+    // A runtime is entitled to refuse, and some reject rather than resolve.
+    // Neither is worth an unhandled rejection, let alone the session.
+    Promise.resolve(session.updateTargetFrameRate(wanted)).catch(() => {});
+  };
+  renderer.xr.addEventListener("sessionstart", onSessionStart);
+  return () => renderer.xr.removeEventListener("sessionstart", onSessionStart);
+}
+
+/**
  * @typedef {import('three').WebGLRenderer} WebGLRenderer
  * @typedef {import('three/examples/jsm/webxr/ARButton.js').ARButtonSessionInit} ARButtonSessionInit
  */
@@ -34,11 +93,17 @@ import { anchorToViewer } from "./anchor.js";
  * being trusted blindly (see `anchorToViewer`). `anchor: false` opts out,
  * for an app that wants to manage the reference space itself.
  *
+ * The session is also asked to run at the headset's fastest frame rate, which
+ * is not what it does by default; see `requestFrameRate` for the trade, and
+ * pass `frameRate: "mid"`, a number, or `false` for a scene that would rather
+ * have the frame time than the frames.
+ *
  * @param {WebGLRenderer} renderer
  * @param {{
  *   ar?: Partial<ARButtonSessionInit>;
  *   vr?: XRSessionInit;
  *   anchor?: boolean;
+ *   frameRate?: FrameRatePreference | false;
  * }} [sessionInit]
  * @returns {Promise<HTMLElement>}
  */
@@ -46,6 +111,9 @@ export async function createXRButton(renderer, sessionInit = {}) {
   renderer.xr.setReferenceSpaceType("local");
   if (sessionInit.anchor !== false) {
     anchorToViewer(renderer);
+  }
+  if (sessionInit.frameRate !== false) {
+    requestFrameRate(renderer, sessionInit.frameRate);
   }
   const xr = navigator.xr;
   if (xr) {

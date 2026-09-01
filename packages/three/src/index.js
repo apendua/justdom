@@ -30,7 +30,7 @@ export {
   sampleRenderingUpdates,
   scrollElementBy,
 } from "./elements/renderingUpdates.js";
-export { createXRButton } from "./xr.js";
+export { createXRButton, requestFrameRate } from "./xr.js";
 export { anchorToViewer } from "./anchor.js";
 
 /**

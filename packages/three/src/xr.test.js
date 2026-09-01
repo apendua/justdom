@@ -2,7 +2,7 @@ import { afterEach, describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { ARButton } from "three/examples/jsm/webxr/ARButton.js";
 import { VRButton } from "three/examples/jsm/webxr/VRButton.js";
-import { createXRButton } from "./xr.js";
+import { createXRButton, requestFrameRate } from "./xr.js";
 
 // ARButton and VRButton build real DOM elements, which this plain node:test
 // environment has no `document` for. The decision this module makes —
@@ -15,31 +15,75 @@ import { createXRButton } from "./xr.js";
  */
 
 /**
- * @returns {WebGLRenderer & { calls: string[]; listeners: string[] }}
+ * @typedef {WebGLRenderer & {
+ *   calls: string[];
+ *   listeners: string[];
+ *   emit: (type: string) => void;
+ * }} FakeRenderer
  */
-function fakeRenderer() {
+
+/**
+ * @param {unknown} [session]
+ * @returns {FakeRenderer}
+ */
+function fakeRenderer(session = null) {
   /** @type {string[]} */
   const calls = [];
   /** @type {string[]} */
   const listeners = [];
-  return /** @type {WebGLRenderer & { calls: string[]; listeners: string[] }} */ (
-    /** @type {unknown} */ ({
-      calls,
-      listeners,
-      xr: {
-        setReferenceSpaceType(/** @type {string} */ value) {
-          calls.push(value);
-        },
-        // What the viewer anchor hangs itself on when it is installed.
-        addEventListener(/** @type {string} */ type) {
-          listeners.push(type);
-        },
-        removeEventListener() {},
-        getSession: () => null,
-        getReferenceSpace: () => null,
+  /** @type {Record<string, (() => void)[]>} */
+  const handlers = {};
+  // Built first and cast on the way out: a multi-line comment straight after
+  // `return` counts as a line break, and ASI turns the whole thing into
+  // `return undefined`.
+  const renderer = {
+    calls,
+    listeners,
+    emit(/** @type {string} */ type) {
+      for (const handler of handlers[type] ?? []) {
+        handler();
+      }
+    },
+    xr: {
+      setReferenceSpaceType(/** @type {string} */ value) {
+        calls.push(value);
       },
-    })
-  );
+      // What the viewer anchor hangs itself on when it is installed.
+      addEventListener(/** @type {string} */ type, /** @type {() => void} */ handler) {
+        listeners.push(type);
+        (handlers[type] ??= []).push(handler);
+      },
+      removeEventListener() {},
+      getSession: () => session,
+      getReferenceSpace: () => null,
+    },
+  };
+  return /** @type {FakeRenderer} */ (/** @type {unknown} */ (renderer));
+}
+
+/**
+ * A session that offers a set of frame rates and records what it was asked
+ * for. `rates` of null is a runtime that does not offer the choice at all.
+ *
+ * @param {number[] | null} rates
+ */
+function fakeSession(rates) {
+  /** @type {{ asked: number[]; rejects: boolean }} */
+  const state = { asked: [], rejects: false };
+  return {
+    state,
+    session: {
+      supportedFrameRates: rates ? Float32Array.from(rates) : undefined,
+      updateTargetFrameRate: rates
+        ? async (/** @type {number} */ rate) => {
+            state.asked.push(rate);
+            if (state.rejects) {
+              throw new Error("the runtime said no");
+            }
+          }
+        : undefined,
+    },
+  };
 }
 
 describe("createXRButton", () => {
@@ -168,13 +212,16 @@ describe("createXRButton", () => {
     );
 
     const anchored = fakeRenderer();
-    await createXRButton(anchored);
+    // The frame rate is asked for on `sessionstart` too, and this test is
+    // about the anchor, so it is left out of the way here rather than
+    // counted among the anchor's own listeners.
+    await createXRButton(anchored, { frameRate: false });
     // The anchor waits for sessions on the renderer; the subscription is how
     // it is installed at all.
     assert.deepEqual(anchored.listeners, ["sessionstart", "sessionend"]);
 
     const unanchored = fakeRenderer();
-    await createXRButton(unanchored, { anchor: false });
+    await createXRButton(unanchored, { anchor: false, frameRate: false });
     assert.deepEqual(unanchored.listeners, []);
   });
 
@@ -215,5 +262,70 @@ describe("createXRButton", () => {
     );
     await createXRButton(fakeRenderer(), { ar: arInit, vr: vrInit });
     assert.equal(seenVr, vrInit);
+  });
+});
+
+describe("requestFrameRate", () => {
+  test("asks for the fastest rate the runtime offers", () => {
+    const { state, session } = fakeSession([72, 90, 120]);
+    const renderer = fakeRenderer(session);
+
+    requestFrameRate(renderer);
+    // Nothing is asked for until there is a session to ask.
+    assert.deepEqual(state.asked, []);
+
+    renderer.emit("sessionstart");
+    assert.deepEqual(state.asked, [120]);
+  });
+
+  test("takes the middle rate, or the nearest to a number", () => {
+    const mid = fakeSession([72, 90, 120]);
+    const midRenderer = fakeRenderer(mid.session);
+    requestFrameRate(midRenderer, "mid");
+    midRenderer.emit("sessionstart");
+    assert.deepEqual(mid.state.asked, [90]);
+
+    const near = fakeSession([72, 90, 120]);
+    const nearRenderer = fakeRenderer(near.session);
+    requestFrameRate(nearRenderer, 100);
+    nearRenderer.emit("sessionstart");
+    assert.deepEqual(near.state.asked, [90]);
+  });
+
+  test("offers the rates in whatever order, and still picks the fastest", () => {
+    const { state, session } = fakeSession([120, 72, 90]);
+    const renderer = fakeRenderer(session);
+    requestFrameRate(renderer);
+    renderer.emit("sessionstart");
+    assert.deepEqual(state.asked, [120]);
+  });
+
+  test("says nothing to a runtime that does not offer the choice", () => {
+    const { state, session } = fakeSession(null);
+    const renderer = fakeRenderer(session);
+    requestFrameRate(renderer);
+    // The point is that this does not throw; a session that cannot change
+    // its frame rate is still a perfectly good session.
+    renderer.emit("sessionstart");
+    assert.deepEqual(state.asked, []);
+  });
+
+  test("swallows a refusal rather than leaving a rejection loose", async () => {
+    const { state, session } = fakeSession([72, 90]);
+    state.rejects = true;
+    const renderer = fakeRenderer(session);
+    requestFrameRate(renderer);
+    renderer.emit("sessionstart");
+    assert.deepEqual(state.asked, [90]);
+    // Give the rejected promise a turn to go unhandled, if it were going to.
+    await new Promise((resolve) => setImmediate(resolve));
+  });
+
+  test("stops listening when it is told to", () => {
+    const { session } = fakeSession([72, 90]);
+    const renderer = fakeRenderer(session);
+    const stop = requestFrameRate(renderer);
+    assert.deepEqual(renderer.listeners, ["sessionstart"]);
+    stop();
   });
 });

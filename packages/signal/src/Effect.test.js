@@ -443,6 +443,92 @@ describe("Effect", () => {
       assert.strictEqual(inner?.getRuns(), runs, "and not running any more");
     });
 
+    it("disposes even when a subscriber's error handler throws", () => {
+      // `super.fail` notifies observers on the way out, and an observer's
+      // `error` is arbitrary code. A throw from there used to skip the
+      // disposal on the next line, leaving an effect that had recorded its
+      // failure and let go of every edge but still answered `isDisposed` with
+      // `false` — a corpse that `markStale` would re-enqueue and re-run.
+      const source = Signal.of(1);
+      const effect = new Effect(() => {
+        if (source.get() === 2) {
+          use(
+            new Stream(() => {
+              throw new Error("dep died");
+            }),
+          );
+        }
+      });
+      effect.subscribe({
+        error: () => {
+          throw new Error("handler threw");
+        },
+      });
+
+      assert.throws(() => source.set(2), /handler threw/);
+      assert.strictEqual(effect.isDisposed, true, "disposed despite the throw");
+      assert.strictEqual(effect.isLive(), false, "and not still live to the graph");
+    });
+
+    it("tells onError what the effect died of even when the teardown throws", () => {
+      // Two failures in one run: a dependency dies mid-run — parked, then
+      // applied once the run unwinds — and the same run returns a teardown
+      // that is refused. The refusal's throw used to jump straight over the
+      // delivery, so the effect died and its `onError`, the one place an
+      // effect's failures are meant to arrive, never heard why.
+      const source = Signal.of(1);
+      /** @type {string[]} */
+      const heard = [];
+      const effect = new Effect(
+        () => {
+          if (source.get() === 2) {
+            use(
+              new Stream(() => {
+                throw new Error("dep died");
+              }),
+            );
+            return (/** @type {string} */ x) => void x;
+          }
+          return undefined;
+        },
+        { onError: (err) => heard.push(String(err)) },
+      );
+
+      assert.throws(() => source.set(2), /returned a teardown taking 1 argument/);
+      assert.deepStrictEqual(heard, ["Error: dep died"], "the cause of death arrived");
+      assert.strictEqual(effect.isDisposed, true);
+    });
+
+    it("reports that death when there is no onError to take it", () => {
+      // The same double fault with nothing handling it. The death cannot be
+      // thrown — the refusal is already travelling, and a second exception
+      // would replace it rather than join it — so it is reported instead.
+      // Weaker than the rethrow an unhandled death usually gets, and the most
+      // that is left to say once a run has failed twice.
+      const source = Signal.of(1);
+      const effect = new Effect(() => {
+        if (source.get() === 2) {
+          use(
+            new Stream(() => {
+              throw new Error("dep died");
+            }),
+          );
+          return (/** @type {string} */ x) => void x;
+        }
+        return undefined;
+      });
+
+      const error = mock.method(console, "error", () => {});
+      try {
+        assert.throws(() => source.set(2), /returned a teardown taking 1 argument/);
+        assert.strictEqual(error.mock.calls.length, 1, "reported rather than lost");
+        assert.match(String(error.mock.calls[0].arguments[0]), /Unhandled failure in Effect/);
+      } finally {
+        error.mock.restore();
+      }
+      assert.strictEqual(effect.isDisposed, true);
+    });
+
     it("ends the effect even when settling the teardown throws", () => {
       // The one way out of `#execute` that steps over the ending: a teardown
       // refused for taking arguments throws between the run unwinding and the

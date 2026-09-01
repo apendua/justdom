@@ -514,20 +514,25 @@ export class Effect extends ReactiveNode {
             this.onCleanup(/** @type {() => void} */ (teardown));
           }
         }
-      } finally {
-        // The run has unwound and its teardown is settled, so a failure that
-        // has been waiting for exactly that can now end the effect — sweeping
-        // this run's teardown along with everything else the run registered.
+      } catch (err) {
+        // Settling the teardown threw: one that takes arguments is refused
+        // above, and one called here because the run disposed its own effect
+        // can throw on its own account.
         //
-        // In a `finally` because settling the teardown can throw — a teardown
-        // that takes arguments is refused above, and one called here because
-        // the run disposed its own effect can throw on its own account — and
-        // an effect left holding an unapplied failure is a zombie: not
-        // disposed, still queueable, still subscribed to everything it read,
-        // with a failure nothing will ever act on. The exception travels
-        // either way; the ending is not optional.
+        // Two things still have to happen before that exception is allowed to
+        // leave. The ending is not optional — an effect left holding an
+        // unapplied failure is a zombie, not disposed, still queueable, still
+        // subscribed to everything it read. And neither is saying what it
+        // died of: the delivery below is what this exception would otherwise
+        // jump straight over, which is how a death reaches `onError` at all.
         this.#applyPendingFailure();
+        this.#reportUnheardDeath();
+        throw err;
       }
+      // The run has unwound and its teardown is settled, so a failure that has
+      // been waiting for exactly that can now end the effect — sweeping this
+      // run's teardown along with everything else the run registered.
+      this.#applyPendingFailure();
       if (this.#unheardFailure) {
         // The effect has ended and nobody heard — see `handleUnheardFailure`.
         // The run has unwound and its teardown is settled, so the failure can
@@ -591,12 +596,21 @@ export class Effect extends ReactiveNode {
    * @returns {void}
    */
   #endWithFailure(err) {
-    this.#ending = true;
     try {
+      this.#ending = true;
       super.fail(err);
-      this.dispose();
     } finally {
+      // `super.fail` notifies observers, and an observer's `error` is
+      // arbitrary code that may throw — the same "delivery is entitled to
+      // throw" this class relies on elsewhere. Disposing from the `finally`
+      // is what stops that throw leaving a corpse that still says it is
+      // alive: `super.fail` has already recorded the failure and let go of
+      // every edge, so an effect that skipped this line would answer
+      // `isDisposed` with `false` and `isLive` with `true` for good, keep its
+      // slot in the queue, and be re-enqueued and re-run by `markStale` on a
+      // graph it has already parted ways with.
       this.#ending = false;
+      this.dispose();
     }
   }
 
@@ -708,6 +722,35 @@ export class Effect extends ReactiveNode {
       return;
     }
     this.fail(err);
+  }
+
+  /**
+   * Deliver a death nobody heard, on the way out of a run that is already
+   * unwinding with an exception of its own.
+   *
+   * Like `#deliverUnheard`, except that this one may not throw: an exception
+   * is already travelling, and a second cannot travel beside it — it would
+   * replace the first, so the caller would be told about the effect's death
+   * instead of the bad teardown that caused this exit, and never both. So a
+   * handler is called if there is one, and otherwise the death is *reported*
+   * rather than thrown, which is the only way left to say it out loud. That
+   * is a weaker outcome than the constructor rethrow an unhandled death
+   * usually gets, and it is confined to a run that managed to fail twice.
+   *
+   * @returns {void}
+   */
+  #reportUnheardDeath() {
+    const unheard = this.#unheardFailure;
+    if (!unheard) {
+      return;
+    }
+    this.#unheardFailure = null;
+    const onError = this.#handler();
+    if (onError) {
+      onError(unheard.value);
+      return;
+    }
+    super.handleUnheardFailure(unheard.value);
   }
 
   /**

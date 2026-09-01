@@ -165,9 +165,9 @@ const renderer = new ListRenderer({
 export function children(...children) {
   // Held, not chosen. The renderer emits a new mountable whenever the list
   // changes, and it is `onEachValue` inside that stream — not this holder —
-  // that drops the previous segment before the next one claims it, so there
-  // is nothing here for `effectMap`'s ordering to buy: one dependency edge is
-  // the whole of it.
+  // that drops the previous segment before the next one claims it. So the
+  // holder has no ordering to contribute: one dependency edge is the whole of
+  // it.
   return (node) => {
     if (isHydrating()) {
       use(hydrateFragment(node, children));

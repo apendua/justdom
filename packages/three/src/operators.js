@@ -60,13 +60,13 @@ export function children(...observables) {
   // that fails does so as itself rather than as an anonymous branch of a
   // merged stream.
   //
-  // Held, not chosen: this hands `use` a source that is fixed for the life of
+  // Held, not chosen: `use` is handed a source that is fixed for the life of
   // the mounting. Switching a subtree happens *inside* that source — the
   // `flatMap` above is `onEachValue`, which unsubscribes the component it is
-  // holding before it subscribes the next one — so the vacate-before-claim
-  // this needs is the stream's, not the holder's, and `effectMap` here bought
-  // a `Derived` and an `Effect` per child to re-choose a source that cannot
-  // change.
+  // holding before it subscribes the next one — so the vacate-before-claim a
+  // parent slot needs is the stream's, not the holder's. Holding it through
+  // an effect that re-chooses it would buy a `Derived` and an `Effect` per
+  // child to re-choose a source that cannot change.
   const mountings = observables.map((observable) => (/** @type {TEntity} */ entity) => {
     use(addToParent(entity, observable));
   });

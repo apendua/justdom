@@ -18,11 +18,12 @@ export { set, on };
  * A **getter** is a derivation, and wants nothing else: a `Derived` in front
  * of the write for its equality cutoff — a recomputation landing on the value
  * already written writes nothing — and an `Effect` to do the writing. No
- * stream anywhere. What it replaced was `observable(fn)` fed through
- * `effectMap`, which is a `Derived`, an `Effect` to push its values, a
- * `Stream` to run the write, another `Derived` to choose that stream and
- * another `Effect` to hold it: five pieces to assign an attribute, and the
- * `Derived` at the bottom of the stack was doing the only work.
+ * stream anywhere. What it replaced was `observable(fn)` held through an
+ * operator that re-chose it every run: a `Derived`, an `Effect` to push its
+ * values, a `Stream` to run the write, another `Derived` to choose that
+ * stream and another `Effect` to hold it — five pieces to assign an
+ * attribute, and the `Derived` at the bottom of the stack was doing the only
+ * work.
  *
  * An **observable** is a foreign source. It has to be subscribed rather than
  * read, and it can fail — but nothing is *chosen* here, so `use` says it: one

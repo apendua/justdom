@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { BehaviorSubject, map, tap } from "rxjs";
-import { effectMap, just } from "@apendua/signal";
+import { just, use } from "@apendua/signal";
 import { rx } from "@apendua/signal/rxjs";
 import { replaceSegment, toSegment } from "./helpers.js";
 import ListRenderer from "./ListRenderer.js";
@@ -191,18 +191,20 @@ const renderer = new ListRenderer({
  * @returns {EntityEffect<T>}
  */
 function children(...children) {
-  return effectMap((node) => {
-    return rx(renderer.renderFragment(children)).pipe(
-      tap((mountable) => {
-        if (!node.firstChild || !node.lastChild) {
-          const placeholder = node.appendChild(document.createComment(""));
-          mountable.replace([placeholder, placeholder]);
-        } else {
-          mountable.replace([node.firstChild, node.lastChild]);
-        }
-      }),
+  return (node) => {
+    use(
+      rx(renderer.renderFragment(children)).pipe(
+        tap((mountable) => {
+          if (!node.firstChild || !node.lastChild) {
+            const placeholder = node.appendChild(document.createComment(""));
+            mountable.replace([placeholder, placeholder]);
+          } else {
+            mountable.replace([node.firstChild, node.lastChild]);
+          }
+        }),
+      ),
     );
-  });
+  };
 }
 
 /**

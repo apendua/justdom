@@ -45,7 +45,6 @@ export {
   useEffects,
   map,
   flatMap,
-  effectMap,
   mountEach,
   takeNothing,
   observe,

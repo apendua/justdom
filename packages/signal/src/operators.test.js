@@ -7,7 +7,9 @@ import { decorate, memoFn } from "./decorators.js";
 import { Signal, batch } from "./index.js";
 import Emitter, { on } from "./Emitter.js";
 import { just } from "./factories.js";
-import { effectMap, effects, map, takeNothing, observe, observeFn, use } from "./operators.js";
+import { effectMap, effects, map, set, takeNothing, observe, observeFn, use } from "./operators.js";
+import { each } from "./util.js";
+import { Stream } from "./Stream.js";
 import { rx, rxEffects } from "./rxjs.js";
 import { Derived, Effect, onCleanup } from "./index.js";
 import { Observable } from "rxjs";
@@ -381,6 +383,131 @@ describe("use()", () => {
         }),
       /useEffect/,
     );
+    subscription.unsubscribe();
+  });
+});
+
+describe("each()", () => {
+  it("runs its callback untracked, whoever is tracking when the value arrives", () => {
+    // The callback is application code on the value path, and the computation
+    // active when a value arrives belongs to whoever pushed it. Every emitter
+    // in this package hands values on untracked — `toObservable` says so where
+    // it pushes, `Emitter.emit` wraps its dispatch — so this only bites where
+    // one does not. The emitter below is that case, spelled small: an effect
+    // that pushes from inside its own run, which is what a mutation notifying
+    // its listeners from inside whichever effect wrote looks like.
+    const trigger = Signal.of(0);
+    const unrelated = Signal.of("a");
+    /** @type {Set<(value: number) => void>} */
+    const listeners = new Set();
+    const events = new Stream((subscriber) => {
+      /** @param {number} value */
+      const listener = (value) => subscriber.next(value);
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    });
+
+    let emitterRuns = 0;
+    const emitter = new Effect(() => {
+      emitterRuns += 1;
+      trigger.get();
+      for (const listener of listeners) {
+        listener(emitterRuns);
+      }
+    });
+
+    let callbackRuns = 0;
+    const holder = new Effect(() => {
+      use(
+        each(events, () => {
+          callbackRuns += 1;
+          unrelated.get();
+        }),
+      );
+    });
+
+    trigger.set(1);
+    assert.deepEqual({ emitterRuns, callbackRuns }, { emitterRuns: 2, callbackRuns: 1 });
+
+    unrelated.set("b");
+    assert.deepEqual(
+      { emitterRuns, callbackRuns },
+      { emitterRuns: 2, callbackRuns: 1 },
+      "the emitter never read it; without the untracking it would have, and re-emitted",
+    );
+
+    holder.dispose();
+    emitter.dispose();
+  });
+
+  it("passes the value on, and carries a throw to the subscriber", () => {
+    /** @type {Subject<number>} */
+    const source = new Subject();
+    /** @type {number[]} */
+    const seen = [];
+    const error = mock.fn();
+
+    const subscription = each(source, (value) => {
+      if (value === 3) {
+        throw new Error("no");
+      }
+      seen.push(value);
+    }).subscribe({
+      next: (/** @type {number} */ value) => seen.push(10 * value),
+      error,
+    });
+
+    source.next(1);
+    source.next(2);
+    assert.deepEqual(seen, [1, 10, 2, 20], "the side effect first, then the value on its way out");
+
+    source.next(3);
+    assert.strictEqual(error.mock.calls.length, 1, "and a throw is the stream's failure");
+
+    subscription.unsubscribe();
+  });
+});
+
+describe("set()", () => {
+  it("writes every value an observable produces, until the mounting comes down", () => {
+    /** @type {Subject<string>} */
+    const source = new Subject();
+    const entity = { name: "" };
+
+    const subscription = just(entity, [set("name", source)]).subscribe(() => {});
+
+    source.next("first");
+    assert.strictEqual(entity.name, "first");
+
+    source.next("second");
+    assert.strictEqual(entity.name, "second");
+
+    subscription.unsubscribe();
+    source.next("third");
+    assert.strictEqual(entity.name, "second", "unmounted, so nothing writes any more");
+  });
+
+  it("holds the source for its values alone, without re-running the mounting", () => {
+    // The entity effect reads nothing, so it runs once: a value written
+    // through it is not an invalidation of the thing that holds it.
+    /** @type {Subject<string>} */
+    const source = new Subject();
+    const entity = { name: "" };
+    let runs = 0;
+    /** @type {import("./types.js").EntityEffect<typeof entity>} */
+    const write = set("name", source);
+
+    const subscription = just(entity, [
+      (e, context) => {
+        runs += 1;
+        write(e, context);
+      },
+    ]).subscribe(() => {});
+
+    source.next("first");
+    source.next("second");
+    assert.deepEqual({ runs, name: entity.name }, { runs: 1, name: "second" });
+
     subscription.unsubscribe();
   });
 });

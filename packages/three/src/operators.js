@@ -7,6 +7,7 @@ import {
   fromEvent,
   just,
   Stream,
+  use,
   useEffect,
 } from "@apendua/signal";
 import { addDependency } from "@apendua/signal";
@@ -25,11 +26,16 @@ import { addDependency } from "@apendua/signal";
  * @returns {EntityEffect<TEntity>}
  */
 export function copy(key, value) {
-  return effectMap((entity) =>
-    each(value, (v) => {
-      /** @type {Record<K, { copy: (v: TEntity[K]) => void }>} */ (entity)[key].copy(v);
-    }),
-  );
+  // Held, not chosen: the source is fixed for the life of the mounting and
+  // nothing reads its values back, which is the case `use` is for — one
+  // dependency edge instead of a `Derived`, an inner effect and a switch.
+  return (entity) => {
+    use(
+      each(value, (v) => {
+        /** @type {Record<K, { copy: (v: TEntity[K]) => void }>} */ (entity)[key].copy(v);
+      }),
+    );
+  };
 }
 
 /**

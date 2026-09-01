@@ -241,11 +241,17 @@ export function set(keyOrValues, value) {
     };
   }
   const source = value;
-  return effectMap((entity) =>
-    each(source, (v) => {
-      entity[keyOrValues] = v;
-    }),
-  );
+  // `use` rather than `effectMap`: there is nothing to choose here — one
+  // source, fixed for the life of the mounting — and nothing that has to
+  // vacate before its replacement claims it, because the replacement is the
+  // next value written over a property. One dependency edge does it.
+  return (entity) => {
+    use(
+      each(source, (v) => {
+        entity[keyOrValues] = v;
+      }),
+    );
+  };
 }
 
 /**

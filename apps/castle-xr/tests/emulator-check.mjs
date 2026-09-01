@@ -246,6 +246,40 @@ async function main() {
     localStorage.setItem("castle-xr:castle", seed);
   }, JSON.stringify(castle()));
 
+  // Count the sessions this page offers the browser, which should be none.
+  // three's own XR buttons make one when they are built and another the
+  // instant one is used to leave a session — that second one, racing the end
+  // it was fired next to, is what left a Quest browser behaving as though a
+  // session were still running. freedom shadows the API away; this is what
+  // says it is still doing it. Hooked through defineProperty because that is
+  // how the emulator installs its XRSystem, and nothing else here can be
+  // sure of running first.
+  await page.addInitScript(() => {
+    window.__offers = 0;
+    const watch = (xr) => {
+      if (!xr || xr.__watched || typeof xr.offerSession !== "function") return;
+      const offer = xr.offerSession.bind(xr);
+      Object.defineProperty(xr, "offerSession", {
+        configurable: true,
+        writable: true,
+        value: (...args) => {
+          window.__offers += 1;
+          return offer(...args);
+        },
+      });
+      xr.__watched = true;
+    };
+    const define = Object.defineProperty;
+    Object.defineProperty = function (target, key, descriptor) {
+      // Only the install, never freedom's own shadowing of the same key.
+      if (target === navigator && key === "xr" && descriptor && descriptor.value) {
+        watch(descriptor.value);
+      }
+      return define.call(this, target, key, descriptor);
+    };
+    watch(navigator.xr);
+  });
+
   await page.goto(`${url}?emulator=bare`, { waitUntil: "load", timeout: 60_000 });
   await page.waitForSelector("#ARButton, #VRButton", { timeout: 30_000 });
   await page.click("#ARButton, #VRButton");
@@ -313,6 +347,34 @@ async function main() {
   await frames(page, 30);
   check("back to building restores the castle", (await readCount(page, "Bricks")) === 37);
   await shot(page, "rebuilt.png");
+
+  // Leaving. The button is under the canvas as far as a real pointer is
+  // concerned once a session is running, so this is a DOM click — which is
+  // the path that used to make an offer on its way out.
+  const inSession = await page.evaluate(
+    () => document.querySelector("#ARButton, #VRButton")?.textContent,
+  );
+  await page.evaluate(() => {
+    const button = document.querySelector("#ARButton, #VRButton");
+    if (button) button.click();
+  });
+  await page.waitForTimeout(1500);
+  // three puts the button back to START when the session's own end event
+  // arrives, so the label is the session's state as the page sees it.
+  const afterSession = await page.evaluate(
+    () => document.querySelector("#ARButton, #VRButton")?.textContent,
+  );
+  check(
+    "the session ends when the button says so",
+    /^STOP/.test(inSession ?? "") && /^(START|ENTER)/.test(afterSession ?? ""),
+    `${inSession} -> ${afterSession}`,
+  );
+  const offers = await page.evaluate(() => window.__offers);
+  check(
+    "the browser is never left holding an offer of a session",
+    offers === 0,
+    `offerSession calls: ${offers}`,
+  );
 
   await browser.close();
   await server.close();

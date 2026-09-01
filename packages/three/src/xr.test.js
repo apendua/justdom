@@ -2,7 +2,7 @@ import { afterEach, describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { ARButton } from "three/examples/jsm/webxr/ARButton.js";
 import { VRButton } from "three/examples/jsm/webxr/VRButton.js";
-import { createXRButton, requestFrameRate } from "./xr.js";
+import { createXRButton, requestFrameRate, suppressSessionOffers } from "./xr.js";
 
 // ARButton and VRButton build real DOM elements, which this plain node:test
 // environment has no `document` for. The decision this module makes —
@@ -327,5 +327,75 @@ describe("requestFrameRate", () => {
     const stop = requestFrameRate(renderer);
     assert.deepEqual(renderer.listeners, ["sessionstart"]);
     stop();
+  });
+});
+
+describe("suppressSessionOffers", () => {
+  afterEach(() => {
+    delete navigator.xr;
+  });
+
+  /**
+   * An XRSystem whose `offerSession` lives on a prototype, the way a real
+   * one's does — the shadowing has to survive being deleted off the instance.
+   */
+  function fakeXRSystem() {
+    /** @type {string[]} */
+    const offered = [];
+    const prototype = {
+      offerSession(/** @type {string} */ mode) {
+        offered.push(mode);
+        return Promise.resolve();
+      },
+      isSessionSupported: async (/** @type {string} */ mode) => mode === "immersive-ar",
+    };
+    return { offered, system: Object.create(prototype) };
+  }
+
+  test("hides the offer, and gives it back", () => {
+    const { offered, system } = fakeXRSystem();
+    navigator.xr = /** @type {XRSystem} */ (/** @type {unknown} */ (system));
+
+    const restore = suppressSessionOffers();
+    // The exact shape three's buttons test for.
+    assert.equal(system.offerSession, undefined);
+
+    restore();
+    assert.equal(typeof system.offerSession, "function");
+    system.offerSession("immersive-ar");
+    assert.deepEqual(offered, ["immersive-ar"]);
+  });
+
+  test("says nothing about a runtime that has no offers to make", () => {
+    navigator.xr = /** @type {XRSystem} */ (
+      /** @type {unknown} */ ({ isSessionSupported: async () => false })
+    );
+    // The point is that neither of these throws.
+    suppressSessionOffers()();
+
+    delete navigator.xr;
+    suppressSessionOffers()();
+  });
+
+  test("the button hides it, and leaves it hidden", async (t) => {
+    t.mock.method(ARButton, "createButton", () => ({}));
+    const { system } = fakeXRSystem();
+    navigator.xr = /** @type {XRSystem} */ (/** @type {unknown} */ (system));
+
+    await createXRButton(fakeRenderer());
+
+    // Not restored on the way out: three's button reads this again on every
+    // click, and the click that leaves a session is the one that matters.
+    assert.equal(system.offerSession, undefined);
+  });
+
+  test("offerSession: true leaves three's own behaviour alone", async (t) => {
+    t.mock.method(ARButton, "createButton", () => ({}));
+    const { system } = fakeXRSystem();
+    navigator.xr = /** @type {XRSystem} */ (/** @type {unknown} */ (system));
+
+    await createXRButton(fakeRenderer(), { offerSession: true });
+
+    assert.equal(typeof system.offerSession, "function");
   });
 });

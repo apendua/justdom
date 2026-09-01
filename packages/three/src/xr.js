@@ -62,6 +62,57 @@ export function requestFrameRate(renderer, preference = "high") {
 }
 
 /**
+ * Stops the page standing about with a session on offer.
+ *
+ * `navigator.xr.offerSession` says "start me when you like" — the browser
+ * takes the offer, puts an Enter XR affordance in its own chrome, and may
+ * open the session with no click of ours at all. three's `ARButton` and
+ * `VRButton` make one when they are built, and another the instant the
+ * button is used to *leave* a session: `currentSession.end()` and the offer
+ * on the next line, without waiting for the end to happen.
+ *
+ * That second one is the problem. On a Quest, leaving a session that has
+ * already been re-offered leaves the browser behaving as though the session
+ * were still running — it stops taking taps, and only a restart clears it.
+ * Not every time, which is what a race looks like from the outside.
+ *
+ * There is no way to ask three's buttons not to do this: both call sites
+ * read `navigator.xr.offerSession` and use it if it is there. So it is not
+ * there. The property is shadowed with `undefined`, which both `if`s read as
+ * "this runtime has no offers" — the same branch every browser but Chrome
+ * takes anyway. It stays shadowed for the life of the page, because the
+ * button reads it again every time it is clicked.
+ *
+ * @returns {() => void} Puts it back.
+ */
+export function suppressSessionOffers() {
+  const xr = /** @type {(XRSystem & { offerSession?: unknown }) | undefined} */ (navigator.xr);
+  if (!xr || typeof xr.offerSession !== "function") {
+    return () => {};
+  }
+  const own = Object.getOwnPropertyDescriptor(xr, "offerSession");
+  try {
+    Object.defineProperty(xr, "offerSession", {
+      value: undefined,
+      configurable: true,
+      writable: true,
+    });
+  } catch {
+    // A runtime that will not let go of it keeps it; nothing else here
+    // depends on having won.
+    return () => {};
+  }
+  return () => {
+    if (own) {
+      Object.defineProperty(xr, "offerSession", own);
+    } else {
+      // It came from the prototype, and deleting the shadow uncovers it.
+      delete xr.offerSession;
+    }
+  };
+}
+
+/**
  * @typedef {import('three').WebGLRenderer} WebGLRenderer
  * @typedef {import('three/examples/jsm/webxr/ARButton.js').ARButtonSessionInit} ARButtonSessionInit
  */
@@ -98,12 +149,18 @@ export function requestFrameRate(renderer, preference = "high") {
  * pass `frameRate: "mid"`, a number, or `false` for a scene that would rather
  * have the frame time than the frames.
  *
+ * The button does not offer the browser a session, which is three's own
+ * default and one a Quest can get stuck on; see `suppressSessionOffers`.
+ * `offerSession: true` leaves three's behaviour alone, for a page that wants
+ * the browser's own Enter XR affordance and can live with the risk.
+ *
  * @param {WebGLRenderer} renderer
  * @param {{
  *   ar?: Partial<ARButtonSessionInit>;
  *   vr?: XRSessionInit;
  *   anchor?: boolean;
  *   frameRate?: FrameRatePreference | false;
+ *   offerSession?: boolean;
  * }} [sessionInit]
  * @returns {Promise<HTMLElement>}
  */
@@ -114,6 +171,11 @@ export async function createXRButton(renderer, sessionInit = {}) {
   }
   if (sessionInit.frameRate !== false) {
     requestFrameRate(renderer, sessionInit.frameRate);
+  }
+  if (sessionInit.offerSession !== true) {
+    // Before the button is built, and not put back afterwards: the button
+    // asks again every time it is clicked.
+    suppressSessionOffers();
   }
   const xr = navigator.xr;
   if (xr) {

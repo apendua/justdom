@@ -2,6 +2,85 @@
   "name": "@apendua/freedom",
   "entries": [
     {
+      "version": "0.16.0",
+      "tag": "@apendua/freedom_v0.16.0",
+      "date": "Tue, 01 Sep 2026 20:21:51 GMT",
+      "comments": {
+        "minor": [
+          {
+            "comment": "Replace `animateLate(ctx, fn)` with `onLateFrame(ctx, fn)`, which hands the teardown straight back instead of an `Observable<never>` that never emitted. Both callers of the observable form did the same thing with it -- subscribed on the line that built it and kept the subscription only to unsubscribe later -- which is the shape `animate` had before `useFrame`. The difference is who owns the lifetime: `useFrame` could drop it on the surrounding computation because every one of its callers is a component being built inside one, and the late phase's callers own themselves. A portal disposes what it built from its own teardown, alongside the `new Effect` its pump already owns by hand, and `InteractionManager` is handed the frame hook as a function precisely because it holds no context to ask for frames with -- so this is `onLateFrame` and not a `useLateFrame`, and the doc comment says why. The private `addListener` goes with it: the two controller registrations were reaching past `animateLate` into it anyway and now call `onLateFrame` like the portal does. `InteractionManager.addController` takes a frame hook returning the way off the loop rather than an observable to subscribe to. A failed frame callback still comes off the loop, which is where the observable form ended up once its subscriber was told, and still reaches the global handler when nobody has said where else to send it; `onLateFrame` takes an optional `onError` for a caller who wants it. Nothing changes in the package index -- `animateLate` was never exported from it."
+          },
+          {
+            "comment": "Hold a fixed source with `use` in set() and copy() instead of effectMap, and run each()'s callback untracked so a value's arrival cannot make the callback's reads the pusher's dependencies."
+          },
+          {
+            "comment": "Hold children and the observable branch of write() with `use` instead of effectMap: the release-before-claim a DOM slot needs comes from onEachValue inside the source, not from the operator holding it."
+          },
+          {
+            "comment": "Add `getCamera(ctx)` and `getScene(ctx)`, and remove the `camera(ctx)` observable they replace. `getCamera` is the one reactive-looking getter with nothing to depend on: `render` builds a camera and keeps it for the life of the renderer -- a resize adjusts the one that is there rather than replacing it -- so there is no event that could change the answer. `getScene` does depend on something, because `render` holds whatever scene its tree emits and a tree rooted in a `component` may emit another; the subject holding it is the dependency, exposed through a new `SceneContext`. Asked while the tree is still being built, `getScene` answers with the empty scene `render` starts from -- the real one being what the tree is in the middle of producing -- and because the read is a dependency, a reader that asked early is re-run against the scene that actually arrives. `camera(ctx)` emitted one value and never another, so every caller wrote `use(camera(ctx).pipe(...))` to get at a value it already had; with the getter those become an assignment, or `useEffects(getCamera(ctx), [...])` where something is being mounted on the camera."
+          },
+          {
+            "comment": "Cursors stop rebuilding themselves every time a ray crosses an edge. A cursor exists only while a ray is on something, so it was destroyed and recreated constantly -- and its geometry and materials went with it, taking three's compiled program along and charging a fresh GLSL compile and link on the way back in, a stutter arriving exactly where the hand is trying to be precise. The default ball's geometry and material are now memoized with a keep-warm window, and a custom widget's chrome is cloned once per template and shared by every cursor drawn from it rather than cloned and disposed per widget. Measured in an emulated session, a sweep back and forth across the edge of the object under the ray goes from 20 shader compiles, 10 links and 11 program deletions to none at all. Both use `memoizeWithTTL` from @apendua/signal."
+          },
+          {
+            "comment": "Text runs are rasterized on a canvas that can be read back cheaply, and the portal budget is a share of the frame rather than a fixed five milliseconds"
+          },
+          {
+            "comment": "Move `rxjs` to devDependencies, and drop a dead `@import {Observable, Unsubscribable} from 'rxjs'` in `elements/portal.js` that named types the file never used. No source file in the package names RxJS; the tests that feed RxJS observables in on purpose still do."
+          },
+          {
+            "comment": "`render` builds the scene and puts it in the context, rather than subscribing to one the tree hands back. The scene was the one piece of the rendering context assembled in the wrong direction -- everything else threaded down through `ctx`, and this one came up -- and nothing wanted the freedom that bought: every app built exactly one scene, immediately, and then spent its root component decorating it, which is what a root still does. It just no longer has to make one first: `useEffects(getScene(ctx), [...])`, and the root returns `Nothing()`. `fn` is now mounted rather than read, so its type is `(ctx) => Observable<unknown>`; `getScene` becomes a plain context read, needing no more invalidation than `getCamera`, since one scene is built before anything can ask and kept for the life of the renderer; and the camera and controllers are added to it directly rather than through a `tap` on every emission. The root produces nothing either -- everything it builds it mounts on the way through, `use` and `useEffects` registering against whatever is evaluating -- so it is wrapped in signal's new `effectsOnly` rather than `component`, and has no trailing `return Nothing()`. It stays a factory returning an observable, which is what `render` subscribes and what hot reload swaps. `component` is unchanged and is still what a child is."
+          },
+          {
+            "comment": "Remove the RxJS dependency from justdom and freedom: streams, subjects and operators are now the core's own. Adds mountEach, and exports filtered and the operator types, from @apendua/signal."
+          },
+          {
+            "comment": "Mount entity effects instead of piping operators. just(valueOrFactory, effects), store(data, effects) and useEffects(value, effects) take arrays of EntityEffect — (entity) => void functions run as Effects while the entity stays mounted — in place of MonoTypeOperatorFunction arrays. just is cold now: a subscription is a mounting, built on subscribe and torn down on unsubscribe, and a factory first argument is run per subscription, at mount time — the share/ReplaySubject idempotence guard is gone, and sharing a mounting among subscribers is memoize's job (stylesheet keeps its sharing explicitly, through a Derived). set/on/attr/data/style/effectMap/children/copy/makeInteractive/layoutEffects become effect factories; effects(fn) is the identity; a plain lambda is a valid entry; justdom's $ loses its defer, since a cold just gives every subscriber its own element by construction. Errors: a mounting failing on the way in fails synchronously to whoever is subscribing (hydration mismatches are caught before subscribe returns); later failures end the mounting through the error channel. Constructing a store with one operator gets ~50% faster; piping these factories onto an RxJS observable no longer works — mount them instead."
+          },
+          {
+            "comment": "Decouple public types from RxJS: inputs are typed Subscribable, outputs Source; new @apendua/signal/rxjs subpath exports rx() as the explicit crossing into RxJS pipelines. No runtime change."
+          },
+          {
+            "comment": "Add `useFrame(ctx, fn)`, which is what `use(animate(ctx, fn))` was without the observable in the middle. That pair only ever had one thing to say -- start on the way in, stop on the way out -- and said it by wrapping the registration in an `Observable` so `use` had something to subscribe an `Effect` to; nothing was ever emitted through it and nothing subscribed twice, so the effect is the whole of it. `useFrame` registers the frame callback, its teardown takes the callback off again, and signal's new `useEffect` ties that to the computation that asked. The frame callback's own reads are still tracked by a `Computation` of their own, so a value read while drawing keeps its cache without turning into a re-registration. Add `getXRSession(ctx)` alongside it: the session the renderer is presenting to, or `null` while it is presenting to the page, read as a value and depending on the `sessionstart` and `sessionend` events that can change the answer. Read from an `effects` and the block re-runs as a session starts and again as it ends; guard on `null` and the guarded half is the part that only holds inside one, its `onCleanup` running as the session goes. The `session(ctx)` stream said the same thing in three layers -- an outer observable of inner observables, the inner completing on `sessionend` -- so every caller opened with the same pair of `switchMap`s before reaching what it wanted to do, and nothing was ever done with the nesting except flatten it. `WebXRManager` is declared with an `__EVENT_MAP__` so `fromEvent` types against it, the same way `Object3D` already was. `animate(ctx, fn)` and `session(ctx)` are removed: between them `useFrame` and `getXRSession` cover every call site either had, in the repo and in the docs, and what was left of them was two exports nothing reached for. `animateLate` is unchanged. `useFrame` reports a failed frame callback through the `fail` on the context signal now hands its runs, rather than closing over the effect it is in the middle of building. A frame callback whose source dies therefore says so: nothing subscribes to the effect `useFrame` builds, so signal logs the failure rather than losing it."
+          },
+          {
+            "comment": "XR buttons no longer offer the browser a session of their own accord, which is what left a Quest browser behaving as though one were still running after the player had left it; `offerSession: true` restores three's behaviour"
+          },
+          {
+            "comment": "XR sessions now ask for the headset's fastest frame rate, and antialiasing is on by default"
+          }
+        ],
+        "patch": [
+          {
+            "comment": "Fix content mounted mid-build being lost to orphaned objects: a node the observer reported while its parent was still in the pump's queue built first, found no object to attach to, and hung outside the scene forever -- which is how scrollable's bar vanished the moment layout gave its widget a size. A parent's turn now adopts any child object already built and loose."
+          },
+          {
+            "comment": "Find a stalled rendering step by the frame that never comes, rather than by the document timeline standing still.\n\nA portal drives CSS animations itself while the page behind an immersive session is not being rendered, and what told it to was the document timeline failing to advance between two samples. That is an inference from one consequence of the page having stopped rather than the condition itself, and a browser is free to break it: where the timeline keeps running while the page gets no rendering updates at all, the portal reads a document that is being rendered perfectly well and leaves the animations to a browser that is not going to run them.\n\nThe detector now keeps one `requestAnimationFrame` outstanding and reads whether it is ever answered. That callback runs in the rendering step and nowhere else, so one unanswered for longer than any frame could take is that step having stopped, and one that arrives is it having run. Under an emulator, where the page presents and renders both, the frames come back and nothing is taken over -- the case the old test was chosen for, and one this gets right without asking about sessions at all.\n\nThe takeover it switches on is now per animation and by shortfall rather than by elapsed time. An animation is advanced by however much of the elapsed real time the document timeline did not cover: a stopped timeline leaves the whole of it, a running one leaves none of it, and a page rendering at a fraction of the session's rate is topped up rather than played at double speed. An animation with no start time is advanced by the whole of it whatever the timeline is doing, because what would have anchored it is the pending play task, which belongs to the same rendering step, so it is not moving at all -- that is every transition and every keyframe animation *started* inside a session, a meter that fills on a click or a button that lights under the ray, and it is why a panel could sit dead while the panel beside it, animating since before the headset went on, looked fine.\n\nA sweep that finds nothing takes one more look on the next frame. `getAnimations()` is read from the observer microtask that carried the style change, and whether the browser has created the transition by then is a question of when the style recalc lands; with no animation event coming to announce it and no other sweep due, one missed there was missed for good."
+          },
+          {
+            "comment": "Discriminate a reactive value by whether it is subscribable rather than by instanceof Observable, so a source built by @apendua/signal is still read as a source now that those are no longer RxJS observables."
+          },
+          {
+            "comment": "The three peer range becomes a floor rather than a window: >=0.180.0 in place of ~0.180.0, so anyone already on 0.180 stays supported while this package is built and tested against 0.185.1. Nothing in its own API moves."
+          }
+        ],
+        "dependency": [
+          {
+            "comment": "Updating dependency \"@apendua/justdom\" to `0.3.0`"
+          },
+          {
+            "comment": "Updating dependency \"@apendua/signal\" to `0.6.0`"
+          },
+          {
+            "comment": "Updating dependency \"@apendua/vite-hmr\" to `0.2.0`"
+          },
+          {
+            "comment": "Updating dependency \"@apendua/signal\" to `0.6.0`"
+          }
+        ]
+      }
+    },
+    {
       "version": "0.15.0",
       "tag": "@apendua/freedom_v0.15.0",
       "date": "Tue, 25 Aug 2026 07:15:20 GMT",

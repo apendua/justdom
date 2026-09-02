@@ -1,4 +1,3 @@
-import { Signal } from "@apendua/signal";
 import * as THREE from "three";
 import {
   effects,
@@ -11,15 +10,7 @@ import {
   component,
   onCleanup,
 } from "@apendua/signal";
-import {
-  $,
-  children,
-  interactions,
-  Nothing,
-  setLocalMatrix,
-  useFrame,
-  XREventMap,
-} from "@apendua/freedom";
+import { $, children, drag, interactions, Nothing, XREventMap } from "@apendua/freedom";
 import * as RAPIER from "@dimforge/rapier3d";
 import { BrickStyle, brickShape, BrickType } from "./types.js";
 import {
@@ -79,44 +70,25 @@ interface Events {
 }
 
 /**
- * A drag started with the grip button leaves the brick where it is and hands
- * out a copy instead, so the quickest way to get another brick of some kind is
- * to pull it off one that is already in the castle.
+ * What the board is told about a drag: where the brick is, which hand has it
+ * — its gamepad is where the thumbstick is read from — and whether it is a
+ * move or a copy. A drag started with the grip button leaves the brick where
+ * it is and hands out a copy instead, so the quickest way to get another brick
+ * of some kind is to pull it off one that is already in the castle.
  */
-interface DragState {
+interface DragEvent {
+  matrixWorld: THREE.Matrix4;
   inputSource: XRInputSource;
-  /**
-   * Which button the hand currently holding the brick is holding it with.
-   * A drag can be handed from one hand to the other, and only the release of
-   * *this* button by *this* hand ends it — the first hand letting go of a
-   * brick that has since been taken over changes nothing.
-   */
-  button: "select" | "squeeze";
   clone: boolean;
 }
 
-interface DragStartEvent extends Omit<DragState, "button"> {
-  matrixWorld: THREE.Matrix4;
-}
+interface DragStartEvent extends DragEvent {}
 
-interface DragEndEvent extends Omit<DragState, "button"> {
+interface DragEndEvent extends DragEvent {
   reset: () => void;
-  matrixWorld: THREE.Matrix4;
 }
 
-interface DragMoveEvent extends Omit<DragState, "button"> {
-  matrixWorld: THREE.Matrix4;
-}
-
-/**
- * The parts of a select/squeeze event a drag actually needs. Both the "start"
- * and the "end" flavours of those events carry them.
- */
-interface DragTrigger {
-  target: THREE.Object3D<XREventMap>;
-  controller: THREE.Object3D;
-  inputSource: XRInputSource;
-}
+interface DragMoveEvent extends DragEvent {}
 
 function brickGeometry(type: BrickType): THREE.BufferGeometry {
   const { size, profile } = brickShape(type);
@@ -162,69 +134,25 @@ const Brick = component((ctx: WeakKey, operators: Op<Props, Events>) => {
     interactive: true,
     hitbox: false,
   });
-  const dragState = Signal.of<DragState | null>(null);
-  const { makeInteractive, stopPropagation } = interactions(ctx);
+  const { makeInteractive } = interactions(ctx);
+  // The carrying itself — which hand has the brick, handing it to the other
+  // one, putting it back — is freedom's. What a brick adds is its size in the
+  // hand, which button means a copy, and what the board makes of where it is.
+  const { draggable, held } = drag(ctx, {
+    buttons: ["select", "squeeze"],
+    enabled: () => props.draggable,
+  });
+  /**
+   * Whether the drag under way is handing out a copy. Decided by the button
+   * it started with and kept through a handover: a move stays a move and a
+   * copy stays a copy, whichever button the new hand grabbed with.
+   */
+  let clone = false;
 
   const placeAt = (o: THREE.Object3D) => {
     o.position.copy(props.position);
     o.rotation.copy(props.rotation);
     o.scale.set(props.scale, props.scale, props.scale);
-  };
-
-  const startDrag = (event: DragTrigger, button: "select" | "squeeze", clone: boolean) => {
-    const drag = dragState.get();
-    if (drag) {
-      if (drag.inputSource === event.inputSource) {
-        // Already being dragged by this hand, with the other button.
-        return;
-      }
-      // The other hand taking hold is a handover: the brick moves to the new
-      // hand mid-drag, keeping whatever the drag was — a move stays a move
-      // and a copy stays a copy, whichever button the new hand grabbed with.
-      dragState.set({ inputSource: event.inputSource, button, clone: drag.clone });
-      event.controller.attach(event.target);
-      return;
-    }
-    event.target.userData.oldParent = event.target.parent;
-    event.target.userData.oldMatrix = new THREE.Matrix4().copy(event.target.matrix);
-    emit(props, "dragstart", {
-      matrixWorld: event.target.matrixWorld.clone(),
-      inputSource: event.inputSource,
-      clone,
-    });
-    dragState.set({ inputSource: event.inputSource, button, clone });
-    event.controller.attach(event.target);
-    // A brick on the tray is shown small to keep the row within reach, but
-    // what the player has taken hold of is the brick, not the miniature: it
-    // comes up to the size it will actually be on the board the moment it is
-    // picked, so the hand is aiming with the real thing.
-    if (props.scale !== 1) {
-      event.target.scale.multiplyScalar(1 / props.scale);
-    }
-  };
-
-  const endDrag = (event: DragTrigger, button: "select" | "squeeze") => {
-    const drag = dragState.get();
-    if (!drag || drag.inputSource !== event.inputSource || drag.button !== button) {
-      // Released a button, or a hand, that is not the one holding the brick.
-      return;
-    }
-    if (event.target.userData.oldParent && event.target.parent === event.controller) {
-      const oldMatrix = event.target.userData.oldMatrix.clone();
-      const dragEvent = {
-        matrixWorld: event.target.matrixWorld.clone(),
-        inputSource: drag.inputSource,
-        clone: drag.clone,
-        reset: () => {
-          setLocalMatrix(event.target, oldMatrix);
-        },
-      };
-      event.target.userData.oldParent.attach(event.target);
-      event.target.userData.oldParent = null;
-      event.target.userData.oldMatrix = null;
-      emit(props, "dragend", dragEvent);
-    }
-    dragState.set(null);
   };
 
   return $(new THREE.Group<XREventMap>(), [
@@ -234,16 +162,16 @@ const Brick = component((ctx: WeakKey, operators: Op<Props, Events>) => {
     // While a brick is held it belongs to the hand, and the hand's own movement
     // is what places it. Every other frame its pose comes from the props —
     // including the frame it is let go on, which is what puts a brick back where
-    // it came from when the board refuses the drop. Reading the drag state here
-    // is what makes that last part happen, so it is not as redundant as it looks.
+    // it came from when the board refuses the drop. Reading the hold here is
+    // what makes that last part happen, so it is not as redundant as it looks.
     effects((o) => {
-      if (dragState.get()) {
+      if (held()) {
         return;
       }
       placeAt(o);
     }),
     effects((o) => {
-      if (dragState.get() || props.bodyType === null) {
+      if (held() || props.bodyType === null) {
         return;
       }
       // The body takes its pose from the object when it is built and then
@@ -265,49 +193,44 @@ const Brick = component((ctx: WeakKey, operators: Op<Props, Events>) => {
       ]);
     }),
     effects((o) => {
-      const drag = dragState.get();
-      if (drag) {
-        useFrame(ctx, () => {
-          emit(props, "dragmove", {
-            matrixWorld: o.matrixWorld,
-            inputSource: drag.inputSource,
-            clone: drag.clone,
-          });
-        });
-      }
-    }),
-    effects((o) => {
       if (props.interactive) {
         useEffects(o, [makeInteractive()]);
       }
     }),
-    on("selectstart", (event) => {
-      if (!props.draggable) {
-        return;
+    draggable(),
+    on("dragstart", (event) => {
+      clone = event.button === "squeeze";
+      emit(props, "dragstart", {
+        matrixWorld: event.matrixWorld,
+        inputSource: event.inputSource,
+        clone,
+      });
+      // A brick on the tray is shown small to keep the row within reach, but
+      // what the player has taken hold of is the brick, not the miniature: it
+      // comes up to the size it will actually be on the board the moment it is
+      // picked, so the hand is aiming with the real thing. Once, for the whole
+      // drag: a handover is not a second pick-up.
+      if (props.scale !== 1) {
+        event.target.scale.multiplyScalar(1 / props.scale);
       }
-      stopPropagation(event);
-      startDrag(event, "select", false);
     }),
-    on("selectend", (event) => {
-      if (!dragState.get() && !props.draggable) {
-        return;
-      }
-      stopPropagation(event);
-      endDrag(event, "select");
+    // Held, the brick is a child of the controller, so its world matrix is
+    // whatever the hand is doing. The board is told once a frame, and once
+    // more when the brick is let go.
+    on("dragmove", (event) => {
+      emit(props, "dragmove", {
+        matrixWorld: event.matrixWorld,
+        inputSource: event.inputSource,
+        clone,
+      });
     }),
-    on("squeezestart", (event) => {
-      if (!props.draggable) {
-        return;
-      }
-      stopPropagation(event);
-      startDrag(event, "squeeze", true);
-    }),
-    on("squeezeend", (event) => {
-      if (!dragState.get() && !props.draggable) {
-        return;
-      }
-      stopPropagation(event);
-      endDrag(event, "squeeze");
+    on("dragend", (event) => {
+      emit(props, "dragend", {
+        matrixWorld: event.matrixWorld,
+        inputSource: event.inputSource,
+        clone,
+        reset: event.reset,
+      });
     }),
     children(
       component(() => {

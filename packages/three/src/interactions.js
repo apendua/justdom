@@ -518,7 +518,7 @@ function isSubscribable(value) {
  * @param {Reactive<T>} value
  * @returns {() => T}
  */
-function asReader(value) {
+export function asReader(value) {
   if (isSubscribable(value)) {
     const source = fromObservable(value);
     return () => source.get();

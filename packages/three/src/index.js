@@ -20,6 +20,7 @@ export {
 export { place, placeAndScale } from "./elements/place.js";
 export { cursors, pointers } from "./pointers.js";
 export { dom } from "./dom.js";
+export { drag } from "./drag.js";
 export { createPortal, getPortalRoot } from "./elements/portal.js";
 export {
   createFrameShareBudget,

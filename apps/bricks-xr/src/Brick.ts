@@ -7,8 +7,8 @@
  * hand, and the ghost of where it would land.
  */
 import * as THREE from "three";
-import { component, effects, emit, on, Op, set, Signal, store } from "@apendua/signal";
-import { $, interactions, useFrame, XREventMap } from "@apendua/freedom";
+import { component, effects, emit, on, Op, set, store } from "@apendua/signal";
+import { $, drag, interactions, XREventMap } from "@apendua/freedom";
 import { CELL } from "./grid.js";
 import { palette } from "./palette.js";
 
@@ -27,18 +27,6 @@ interface DragEvent {
 interface Events {
   dragmove: DragEvent;
   dragend: DragEvent;
-}
-
-/**
- * The hand holding the brick, and where the brick came from. A drag can be
- * handed from one hand to the other, and only the release of *this* hand ends
- * it — the first hand letting go of a brick that has since been taken over
- * changes nothing. The parent is remembered here rather than on the object,
- * so a handover cannot overwrite it with the hand it was taken from.
- */
-interface Hold {
-  controller: THREE.Object3D;
-  parent: THREE.Object3D;
 }
 
 const geometry = new THREE.BoxGeometry(CELL, CELL, CELL);
@@ -60,8 +48,11 @@ const Brick = component((ctx: WeakKey, operators: Op<Props, Events>) => {
     { position: new THREE.Vector3(), ghost: false, draggable: false },
     operators,
   );
-  const hold = Signal.of<Hold | null>(null);
-  const { makeInteractive, stopPropagation } = interactions(ctx);
+  const { makeInteractive } = interactions(ctx);
+  // The carrying itself — which hand has the brick, handing it to the other
+  // one, putting it back — is freedom's. What a brick adds is what the board
+  // makes of where it is.
+  const { draggable, held } = drag(ctx, { enabled: () => props.draggable });
 
   return $(new THREE.Mesh<THREE.BufferGeometry, THREE.Material, XREventMap>(), [
     set({
@@ -75,61 +66,19 @@ const Brick = component((ctx: WeakKey, operators: Op<Props, Events>) => {
     // including the frame it is let go on, which is what puts a brick back where
     // it came from when the board refuses the drop.
     effects((o) => {
-      if (!hold.get()) {
+      if (!held()) {
         o.position.copy(props.position);
       }
     }),
     // Only a brick that can be picked up is worth pointing at; a ghost that
     // could be hit would swallow rays aimed at what is behind it.
     makeInteractive(() => props.draggable),
+    draggable(),
     // Held, the brick is a child of the controller, so its world matrix is
-    // whatever the hand is doing. The board is told once a frame.
-    effects((o) => {
-      if (hold.get()) {
-        useFrame(ctx, () => emit(props, "dragmove", { matrixWorld: o.matrixWorld }));
-      }
-    }),
-    on("selectstart", (event) => {
-      if (!props.draggable) {
-        return;
-      }
-      stopPropagation(event);
-      const current = hold.get();
-      if (current) {
-        if (current.controller === event.controller) {
-          return;
-        }
-        // The other hand taking hold is a handover: the brick moves to the new
-        // hand mid-drag and still remembers where it came from.
-        hold.set({ controller: event.controller, parent: current.parent });
-        event.controller.attach(event.target);
-        return;
-      }
-      const parent = event.target.parent;
-      if (!parent) {
-        return;
-      }
-      hold.set({ controller: event.controller, parent });
-      event.controller.attach(event.target);
-    }),
-    on("selectend", (event) => {
-      const current = hold.get();
-      if (!current) {
-        return;
-      }
-      stopPropagation(event);
-      if (current.controller !== event.controller) {
-        // Released by a hand that is not the one holding the brick.
-        return;
-      }
-      // Where the brick ended up is read while it is still on the hand; the drag
-      // is over once it is back under its own parent, because that is when the
-      // effect above puts it back where the props say.
-      const matrixWorld = event.target.matrixWorld.clone();
-      current.parent.attach(event.target);
-      hold.set(null);
-      emit(props, "dragend", { matrixWorld });
-    }),
+    // whatever the hand is doing. The board is told once a frame, and once
+    // more when the brick is let go.
+    on("dragmove", (event) => emit(props, "dragmove", { matrixWorld: event.matrixWorld })),
+    on("dragend", (event) => emit(props, "dragend", { matrixWorld: event.matrixWorld })),
   ]);
 });
 

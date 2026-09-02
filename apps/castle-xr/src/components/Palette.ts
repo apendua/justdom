@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { $, children, dom, interactions, Nothing, XREventMap } from "@apendua/freedom";
+import { $, children, dom, drag, interactions, Nothing, XREventMap } from "@apendua/freedom";
 import { component, effects, emit, on, Op, set, Signal, store } from "@apendua/signal";
 import { children as domChildren, $ as $dom, text } from "@apendua/justdom";
 import Brick from "./Brick.js";
@@ -43,27 +43,17 @@ const PLATE_THICKNESS = 0.15;
 export const Palette = component((ctx: WeakKey, operators: Op<PaletteProps, PaletteEvents>) => {
   const props = store<PaletteProps, PaletteEvents>(defaults, operators);
   const layout = layoutPalette();
-  const { makeInteractive, stopPropagation } = interactions(ctx);
+  const { makeInteractive } = interactions(ctx);
+  // Carried by the hand that pressed on a rail, and handed to the other hand
+  // by a press from it. The rails bubble their presses up to here.
+  const { draggable } = drag(ctx);
 
   return $(new THREE.Group<XREventMap>(), [
     effects((o) => {
       o.position.copy(props.position);
       o.rotation.copy(props.rotation);
     }),
-    on("selectstart", (event) => {
-      if (!event.target.userData.oldParent) {
-        event.target.userData.oldParent = event.target.parent;
-      }
-      event.controller.attach(event.target);
-      stopPropagation(event);
-    }),
-    on("selectend", (event) => {
-      if (event.target.userData.oldParent && event.target.parent === event.controller) {
-        event.target.userData.oldParent.attach(event.target);
-        event.target.userData.oldParent = null;
-      }
-      stopPropagation(event);
-    }),
+    draggable(),
     children(
       $(new THREE.Mesh<THREE.BufferGeometry, THREE.Material, XREventMap>(), [
         effects((o) => {

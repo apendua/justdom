@@ -46,10 +46,7 @@ handling, and — when the device supports it — the WebXR session lifecycle. T
 tree it is given decorates that scene rather than producing one. `getCamera(ctx)`,
 `getXRSession(ctx)`, and `useFrame(ctx, fn)` read from that same context, using the
 `createProperty`-based context mechanism shared with the rest of this
-monorepo's stack. `RendererContext` is the property behind `useFrame`, exported
-so a test can mount a component that asks for frames without a renderer —
-`RendererContext.set(ctx, {})` is enough for the callback to be registered and
-never called.
+monorepo's stack.
 
 ## Pointing at things
 
@@ -97,6 +94,63 @@ lands where the hand was pointing, and what it was pointing at, one frame ago.
 a signal holding that controller's current `THREE.Intersection`, for scenes that
 want to do something else with the hit (a snapping preview, a measurement, a
 sound).
+
+## Picking things up
+
+`drag(ctx, options)` is the carry every scene here ends up wanting: a press on
+an object picks it up, the hand's own movement is what moves it, and the
+release puts it back — where it is in the room, not where it was. It hands
+back two things: `draggable()`, the operator that goes in the object's list,
+and `held()`, a reactive reader saying which hand has it, or null.
+
+```js
+const { draggable, held } = drag(ctx, { enabled: () => props.movable });
+
+$(mesh, [
+  makeInteractive(),
+  draggable(),
+  effects((o) => {
+    if (!held()) {
+      o.position.copy(props.position); // the props place it whenever a hand does not
+    }
+  }),
+  on("dragmove", (event) => board.preview(event.matrixWorld)),
+  on("dragend", (event) => board.drop(event.matrixWorld, event.reset)),
+]);
+```
+
+The object does not know where it goes. It says where it is — `dragstart` when
+it is picked up, `dragmove` once a frame while it is held, `dragend` when it is
+let go, each with its world matrix — and the scene it belongs to decides what
+that means: a cell to snap to, a preview to show, a drop to refuse. `dragend`
+also carries `reset()`, which puts the object back at the local pose it had
+before it was picked up, for a drop the scene refuses or a drag that was only
+ever meant to hand out a copy. The events go to the object itself and do not
+bubble.
+
+`buttons` says which buttons pick the object up — `["select"]`, the trigger,
+unless given; `["select", "squeeze"]` for a scene that means something
+different by each, which the events' `button` tells apart. `enabled` gates
+picking up, as a boolean, a reactive getter or an observable; a drag already
+under way always runs to its release. Interactivity is separate, because an
+object that can be pointed at without being carriable is common:
+`makeInteractive()` goes in the same list.
+
+Two things the bookkeeping is there for, because every scene that did it by
+hand got at least one of them wrong at some point. **It remembers which hand,
+not merely that it is held:** a press from the other hand while the object is
+carried is a handover — the object moves to that hand and the drag carries on,
+one `dragstart` and one `dragend` for the whole of it — and only the holding
+hand's release, of the button it is holding with, ends the drag. **It swallows
+the presses it takes:** the press that picks the object up and the release
+that lets it go never reach whatever is behind, so picking up a brick never
+also picks up the board it sits on. An object taken out of the scene mid-drag
+leaves the hand too.
+
+`RendererContext` is the property behind the once-a-frame `dragmove`, and
+`useFrame`; it is exported so a test can mount a draggable object without a
+renderer — `RendererContext.set(ctx, {})` is enough for the frame callback to
+be registered and never called.
 
 ## Projecting DOM into the scene
 

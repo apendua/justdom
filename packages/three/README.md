@@ -152,6 +152,53 @@ leaves the hand too.
 renderer — `RendererContext.set(ctx, {})` is enough for the frame callback to
 be registered and never called.
 
+## Carrying things level
+
+`carry(ctx, options)` is the other way of moving something with a hand: for a
+board with a floor and things standing on it, which a drag would tip over. A
+hand reaching out across a board rolls and pitches far more than it feels like
+it does, and a board handed the wrist's whole pose arrives on its side with
+everything sliding off it. So a carry keeps only what a level thing can have —
+where it is, and which way round it faces — and poses the object once a frame
+from where the hand has got to, rather than reparenting it.
+
+```js
+const board = carry(ctx, { enabled: () => phase.get() === "build" });
+
+$(new THREE.Group(), [
+  board.carriable(),
+  children(
+    $(floor, [makeInteractive(), board.handle()]), // the furniture it is carried by
+    Game(ctx),
+  ),
+]);
+```
+
+The reference for everything is the **grab point**, the spot the ray landed on
+when the trigger closed. It stays pinned to the ray, as far out along it as it
+was taken hold of, so tipping the wrist tows the board where the ray now
+points instead of leaving the cursor to slide across it; and the turn about
+the vertical pivots the board _about the grab point_, so the spot being held
+is the one spot that never moves. The maths is exported on its own — `yawOf`,
+`levelPose`, `beginCarry`, `carriedPose`, `applyLevelPose` — for a scene that
+wants to carry something by a rule of its own.
+
+The presses are taken by **handles** rather than by the carried object as a
+whole, so that only furniture starts a carry: a board by its floor, a tray by
+its rails. A press that bubbled up from anywhere else — a panel that did not
+want it, whatever sits behind one — would otherwise carry the board off, which
+is a surprising thing for a board to do when the player has just pressed a
+button. `handle()` listens; it does not make the object pointable, so
+`makeInteractive()` goes in the same list, or the presses bubble up from parts
+that already are. A scene that does want any unclaimed press to carry puts
+`handle()` on the carried object itself.
+
+The bookkeeping is `drag()`'s: a press from the other hand mid-carry is a
+handover, taking the grip afresh from wherever its own ray lands, and only the
+carrying hand's release puts the object down; `held()` says which hand has it.
+One difference: a carry that is disabled while under way is put down where it
+is, since nothing was reparented and there is nothing to undo.
+
 ## Projecting DOM into the scene
 
 `dom(ctx, mountable$, operators)` mounts a

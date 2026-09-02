@@ -21,6 +21,7 @@ export { place, placeAndScale } from "./elements/place.js";
 export { cursors, pointers } from "./pointers.js";
 export { dom } from "./dom.js";
 export { drag } from "./drag.js";
+export { carry, yawOf, levelPose, beginCarry, carriedPose, applyLevelPose } from "./carry.js";
 export { createPortal, getPortalRoot } from "./elements/portal.js";
 export {
   createFrameShareBudget,
@@ -71,6 +72,30 @@ export { anchorToViewer } from "./anchor.js";
 
 /**
  * @typedef {import('./pointers.js').CursorOptions} CursorOptions
+ */
+
+/**
+ * @typedef {import('./drag.js').Drag} Drag
+ */
+
+/**
+ * @typedef {import('./drag.js').DragOptions} DragOptions
+ */
+
+/**
+ * @typedef {import('./carry.js').Carry} Carry
+ */
+
+/**
+ * @typedef {import('./carry.js').CarryOptions} CarryOptions
+ */
+
+/**
+ * @typedef {import('./carry.js').LevelPose} LevelPose
+ */
+
+/**
+ * @typedef {import('./carry.js').Grip} Grip
  */
 
 /**

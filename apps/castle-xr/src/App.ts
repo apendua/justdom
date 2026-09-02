@@ -1,15 +1,16 @@
 import * as THREE from "three";
 import {
+  carry,
+  Carry,
   children,
   cursors,
   $,
   XREventMap,
   interactions,
-  useFrame,
   getCamera,
   getScene,
 } from "@apendua/freedom";
-import { effectsOnly, makeNonReactive, Signal, useEffects } from "@apendua/signal";
+import { effectsOnly, useEffects } from "@apendua/signal";
 import { on, set, effects, component } from "@apendua/signal";
 
 import { CastleContext, ListenerContext, SessionContext } from "./elements/context.js";
@@ -23,7 +24,6 @@ import glass_desk_habits from "@apendua.dev/media/glass_desk_habits.mp3";
 import GameUI from "./views/GameUI.js";
 import CastleStore from "./store/CastleStore.js";
 import Session from "./store/Session.js";
-import { applyLevelPose, beginCarry, Carry, carriedPose, levelPose } from "./utils/carry.js";
 
 /**
  * The board sits on a floor of its own, a little below eye level and about an
@@ -42,12 +42,6 @@ const FLOOR_THICKNESS = 0.2;
 /** Where the board stands when the session opens, before anyone moves it. */
 const BOARD_HOME = new THREE.Vector3(0, -0.4, -1.1);
 
-/** Taking hold of the board, and letting go of it again. */
-interface Grip {
-  take: (controller: THREE.Object3D, grabPoint: THREE.Vector3) => void;
-  drop: (controller: THREE.Object3D) => void;
-}
-
 /**
  * The floor, which is also the handle the board is carried by: a press on it is
  * the player picking the board up.
@@ -58,8 +52,8 @@ interface Grip {
  * the board by bubbling and carry it off, which is a surprising thing for a
  * board to do when a player has just pressed a button.
  */
-const Floor = component((ctx: WeakKey, grip: Grip) => {
-  const { makeInteractive, stopPropagation } = interactions(ctx);
+const Floor = component((ctx: WeakKey, board: Carry) => {
+  const { makeInteractive } = interactions(ctx);
   return $(new THREE.Mesh<THREE.BufferGeometry, THREE.Material, XREventMap>(), [
     effects((o) => {
       o.position.set(0, -FLOOR_THICKNESS / 2, 0);
@@ -73,14 +67,7 @@ const Floor = component((ctx: WeakKey, grip: Grip) => {
       },
     }),
     makeInteractive(),
-    on("selectstart", (event) => {
-      stopPropagation(event);
-      grip.take(event.controller, event.intersection.point.clone());
-    }),
-    on("selectend", (event) => {
-      stopPropagation(event);
-      grip.drop(event.controller);
-    }),
+    board.handle(),
   ]);
 });
 
@@ -108,40 +95,13 @@ const App = effectsOnly((ctx: WeakKey) => {
    * moves it with the hand, so the player can put the board wherever there is
    * room for it: on the real table in front of them, or off to one side.
    *
-   * It stays level while it is carried. A hand reaching out across a board
-   * rolls and pitches far more than it feels like it does, and a board handed
-   * the wrist's whole pose arrives tipped on its side with the castle sliding
-   * off it. Only where the hand is and which way round it is held are taken,
-   * and the spot the ray landed on is the one the board is steered by; see
-   * `utils/carry.ts`.
-   *
-   * A press from the other hand while the board is already being carried is a
-   * handover, not a mistake: the new hand takes the grip from wherever its own
-   * ray lands, and the first hand's release then changes nothing. That is how
-   * a board is passed from hand to hand without ever being put down.
+   * It stays level while it is carried, and can change hands on the way: that
+   * is freedom's `carry()`. Building only — during the siege the triggers
+   * belong to the slingshot, and a shot lined up across the board would
+   * otherwise carry the board off; a carry that outlives the building phase
+   * is put down, so pressing Ready does not leave the board in mid-air.
    */
-  let board: THREE.Object3D | undefined;
-  const carried = Signal.of<{ controller: THREE.Object3D; carry: Carry } | null>(null);
-
-  const takeHold = makeNonReactive((controller: THREE.Object3D, grabPoint: THREE.Vector3) => {
-    // Building only. During the siege the triggers belong to the slingshot, and
-    // a shot lined up across the board would otherwise carry the board off.
-    if (!board || gameSession.phase.get() !== "build") {
-      return;
-    }
-    controller.updateWorldMatrix(true, false);
-    board.updateWorldMatrix(true, false);
-    carried.set({
-      controller,
-      carry: beginCarry(controller.matrixWorld, grabPoint, levelPose(board.matrixWorld)),
-    });
-  });
-
-  const letGo = makeNonReactive((controller: THREE.Object3D) => {
-    if (carried.get()?.controller === controller) {
-      carried.set(null);
-    }
-  });
+  const board = carry(ctx, { enabled: () => gameSession.phase.get() === "build" });
 
   useEffects(getScene(ctx), [
     effects(() => {
@@ -159,23 +119,9 @@ const App = effectsOnly((ctx: WeakKey) => {
         effects((o) => {
           // Where the board starts. Where it is after that is wherever it was
           // last carried to, which lives in the object's own transform.
-          board = o;
           o.position.copy(BOARD_HOME);
         }),
-        effects((o) => {
-          const held = carried.get();
-          // A carry that outlives the building phase is dropped rather than
-          // followed: pressing Ready should not leave the board in mid-air.
-          if (!held || gameSession.phase.get() !== "build") {
-            return;
-          }
-          useFrame(ctx, () => {
-            // three.js has written the hand's new pose by now, but only into
-            // its local matrix; the world one is still last frame's.
-            held.controller.updateWorldMatrix(true, false);
-            applyLevelPose(o, carriedPose(held.carry, held.controller.matrixWorld));
-          });
-        }),
+        board.carriable(),
         children(
           // Enough fill to read the shaded sides, and one clear key light so
           // the flat faces of a brick do not all come out the same value.
@@ -195,7 +141,7 @@ const App = effectsOnly((ctx: WeakKey) => {
               o.scale.set(scale, scale, scale);
             }),
             children(
-              Floor(ctx, { take: takeHold, drop: letGo }),
+              Floor(ctx, board),
               Game(ctx),
               // One panel through both phases: the phase only decides which
               // rows it shows, so pressing Ready re-dresses the panel that is

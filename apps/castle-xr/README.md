@@ -72,7 +72,7 @@ panels and lighting together — and carries it with the hand, so it can be put
 down on the real table in front of you, or off to one side, or wherever the room
 actually has space. Letting go leaves it there.
 
-**It stays level while it is carried** (`utils/carry.ts`). A hand reaching out
+**It stays level while it is carried** (`carry()` from `@apendua/freedom`). A hand reaching out
 across a board rolls and pitches far more than it feels like it does, and a
 board handed the wrist's whole pose arrives on its side with the castle sliding
 off it. So the wrist never tilts the board — but everything else it does is
@@ -264,7 +264,6 @@ honest: a castle that was not going to stand up does not stand up.
 | Path                      | What it is                                                                    |
 | ------------------------- | ----------------------------------------------------------------------------- |
 | `elements/palette.ts`     | Every colour in the game, panels and world alike.                             |
-| `utils/carry.ts`          | Carrying the board about the room without letting it tip over.                |
 | `utils/grid.ts`           | The half grid: rotated extents, corner snapping, and the overlap test.        |
 | `utils/launch.ts`         | What a slingshot does when it is let go. Two points in, a shot out.           |
 | `utils/rotations.ts`      | The 24 orientations of a cube, alignment to them, stick-driven turns.         |

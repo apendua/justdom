@@ -42,15 +42,22 @@ import { parseAst } from "vite";
  *   the expression of an `export default`.
  * - `hoisted`: a function declaration exported by name. `export` is removed,
  *   and the wrapper is exported from an alias declared on the first line.
- * - `specifier`: `export { local as name }`. The statement is removed and the
- *   wrapper exported from an alias declared at the end, by which point
- *   `local` is initialised whatever it is.
+ * - `specifier`: `export { local as name }` of a function, an import or a
+ *   global. The statement is removed and the wrapper exported from an alias
+ *   declared at the end, by which point `local` is initialised whatever it
+ *   is. A specifier naming a local `const` is an `inline` on that `const`'s
+ *   initialiser instead — see `collectExports`.
+ * - `register`: a name for a binding already wrapped under another name.
+ *   Nothing is rewritten; the name is registered with the runtime at the end.
  *
  * @typedef {object} Export
  * @property {string} name the exported name
- * @property {"inline" | "hoisted" | "specifier"} how
- * @property {AstNode} node
- * @property {string} [local]
+ * @property {"inline" | "hoisted" | "specifier" | "register"} how
+ * @property {AstNode | null} node
+ * @property {string} [local] the module's own name for the binding
+ * @property {AstNode | null} [statement] for an `inline` export that came in
+ *   through a specifier list: the statement, which is replaced by the
+ *   footer's own
  * @property {boolean} trivial a literal, which the runtime can compare but
  *   which is never worth transforming a module for on its own
  */
@@ -284,9 +291,38 @@ function classifyExpression(node, declared, visiting) {
 }
 
 /**
+ * The `const` declarator `name` is bound by, when it is one with an
+ * initialiser at the top level of the module — the binding an export by
+ * reference can be made reloadable *at*, rather than where it is exported.
+ *
+ * @param {string} name
+ * @param {Map<string, AstNode>} declared
+ * @returns {AstNode | null}
+ */
+function localConst(name, declared) {
+  const node = declared.get(name);
+  if (!node || node.type !== "VariableDeclaration" || node.kind !== "const") {
+    return null;
+  }
+  const declarator = node.declarations.find(
+    (/** @type {AstNode} */ d) => d.id.type === "Identifier" && d.id.name === name,
+  );
+  return declarator && declarator.init ? declarator : null;
+}
+
+/**
  * Every export of the module, or `null` when one of them is something
  * hot reload could never replace — in which case transforming the module
  * would only cost an evaluation before the update propagated anyway.
+ *
+ * An export by reference — `export { locale }`, `export default locale` —
+ * of a `const` declared in the module is made reloadable at the
+ * *declaration*: the initialiser is wrapped, so the module's own binding and
+ * what importers get are the same object. That matters for state, which the
+ * runtime keeps rather than follows: wrapping the reference alone would hand
+ * importers the kept instance while the module's functions kept writing to
+ * the one the re-evaluation built. A binding exported under several names
+ * is wrapped under the first and merely registered under the rest.
  *
  * @param {AstNode[]} body
  * @returns {Export[] | null}
@@ -295,6 +331,39 @@ function collectExports(body) {
   const declared = declarations(body);
   /** @type {Export[]} */
   const exports = [];
+  /** @type {Set<AstNode>} */
+  const wrappedInits = new Set();
+
+  /**
+   * An export of a local `const`: wrap its initialiser, or register the name
+   * against the already-wrapped binding.
+   *
+   * @param {string} name
+   * @param {AstNode} declarator
+   * @param {AstNode | null} statement the specifier statement it came from
+   * @returns {boolean} `false` when the initialiser can never be followed
+   */
+  const exportLocalConst = (name, declarator, statement) => {
+    const kind = classifyExpression(declarator.init, declared);
+    if (kind === "never") {
+      return false;
+    }
+    const local = declarator.id.name;
+    if (wrappedInits.has(declarator.init)) {
+      exports.push({ name, how: "register", node: statement, local, trivial: kind === "trivial" });
+    } else {
+      wrappedInits.add(declarator.init);
+      exports.push({
+        name,
+        how: "inline",
+        node: declarator.init,
+        local,
+        statement,
+        trivial: kind === "trivial",
+      });
+    }
+    return true;
+  };
 
   for (const statement of body) {
     if (statement.type === "ExportAllDeclaration") {
@@ -307,6 +376,13 @@ function collectExports(body) {
       }
       if (node.type === "FunctionDeclaration" && node.id) {
         exports.push({ name: "default", how: "hoisted", node: statement, trivial: false });
+        continue;
+      }
+      const declarator = node.type === "Identifier" ? localConst(node.name, declared) : null;
+      if (declarator) {
+        if (!exportLocalConst("default", declarator, null)) {
+          return null;
+        }
         continue;
       }
       const kind =
@@ -327,12 +403,20 @@ function collectExports(body) {
     if (!declaration) {
       for (const specifier of statement.specifiers) {
         const local = nameOf(specifier.local);
+        const name = nameOf(specifier.exported);
+        const declarator = localConst(local, declared);
+        if (declarator) {
+          if (!exportLocalConst(name, declarator, statement)) {
+            return null;
+          }
+          continue;
+        }
         const kind = classifyBinding(local, declared);
         if (kind === "never") {
           return null;
         }
         exports.push({
-          name: nameOf(specifier.exported),
+          name,
           how: "specifier",
           node: statement,
           local,
@@ -357,34 +441,30 @@ function collectExports(body) {
       if (declarator.id.type !== "Identifier" || !declarator.init) {
         return null;
       }
-      const kind = classifyExpression(declarator.init, declared);
-      if (kind === "never") {
+      if (!exportLocalConst(declarator.id.name, declarator, null)) {
         return null;
       }
-      exports.push({
-        name: declarator.id.name,
-        how: "inline",
-        node: declarator.init,
-        trivial: kind === "trivial",
-      });
     }
   }
   return exports;
 }
 
 /**
- * An identifier the module does not already use. A substring check is
- * stricter than it needs to be, and cheap.
+ * An identifier the module does not already use and the transform has not
+ * handed out yet. A substring check against the source is stricter than it
+ * needs to be, and cheap.
  *
  * @param {string} code
  * @param {string} base
+ * @param {Set<string>} taken
  * @returns {string}
  */
-function uniqueName(code, base) {
+function uniqueName(code, base, taken) {
   let name = base;
-  for (let i = 1; code.includes(name); i += 1) {
+  for (let i = 1; code.includes(name) || taken.has(name); i += 1) {
     name = `${base}${i}`;
   }
+  taken.add(name);
   return name;
 }
 
@@ -402,6 +482,25 @@ function applyEdits(code, edits) {
     result = result.slice(0, start) + text + result.slice(end);
   }
   return result;
+}
+
+/**
+ * @param {string} name
+ * @returns {string}
+ */
+function exportName(name) {
+  return IDENTIFIER.test(name) ? name : JSON.stringify(name);
+}
+
+/**
+ * One entry of an `export { … }` list.
+ *
+ * @param {string} local
+ * @param {string} name
+ * @returns {string}
+ */
+function reexport(local, name) {
+  return local === name ? local : `${local} as ${exportName(name)}`;
 }
 
 /**
@@ -425,8 +524,10 @@ export function transform(code) {
     return;
   }
 
-  const hmr = uniqueName(code, "$hmr");
-  const module = uniqueName(code, "$module");
+  /** @type {Set<string>} */
+  const taken = new Set();
+  const hmr = uniqueName(code, "$hmr", taken);
+  const module = uniqueName(code, "$module", taken);
   /** @type {(name: string, value: string) => string} */
   const reloadable = (name, value) => `${module}.reloadable(${JSON.stringify(name)}, ${value})`;
 
@@ -444,8 +545,22 @@ export function transform(code) {
   /** @type {Set<AstNode>} */
   const removed = new Set();
 
+  /**
+   * Take a specifier statement out, once; its names come back from the
+   * footer's own `export { … }`.
+   *
+   * @param {AstNode | null | undefined} statement
+   */
+  const remove = (statement) => {
+    if (statement && !removed.has(statement)) {
+      removed.add(statement);
+      edits.push({ start: statement.start, end: statement.end, text: "" });
+    }
+  };
+
   for (const definition of exports) {
-    const { name, how, node } = definition;
+    const { name, how } = definition;
+    const node = /** @type {AstNode} */ (definition.node);
     if (how === "inline") {
       edits.push({
         start: node.start,
@@ -459,6 +574,20 @@ export function transform(code) {
         // anonymous default, and carries no semicolon of its own.
         text: node.type === "FunctionDeclaration" ? ");" : ")",
       });
+      if (definition.statement) {
+        remove(definition.statement);
+        specifiers.push(reexport(/** @type {string} */ (definition.local), name));
+      }
+      continue;
+    }
+    if (how === "register") {
+      // The binding is already the reloadable one, wrapped under another
+      // name; this name only has to be known to the runtime.
+      footer.push(`${reloadable(name, /** @type {string} */ (definition.local))};`);
+      if (definition.node) {
+        remove(definition.node);
+        specifiers.push(reexport(/** @type {string} */ (definition.local), name));
+      }
       continue;
     }
     if (how === "hoisted") {
@@ -470,28 +599,28 @@ export function transform(code) {
       if (name === "default") {
         header.push(`export default ${reloadable(name, local)};`);
       } else {
-        const alias = uniqueName(code, `$reloadable_${name}`);
+        const alias = uniqueName(code, `$reloadable_${name}`, taken);
         header.push(`const ${alias} = ${reloadable(name, local)};`);
         specifiers.push(`${alias} as ${name}`);
       }
       continue;
     }
-    // A specifier list: the statement goes — once, however many names it
-    // carried — and each name comes back from an alias declared once
-    // everything is initialised.
-    if (!removed.has(node)) {
-      removed.add(node);
-      edits.push({ start: node.start, end: node.end, text: "" });
-    }
-    const alias = uniqueName(code, `$reloadable_${name.replace(/\W/g, "_")}`);
+    // A specifier naming a function, an import or a global: the statement
+    // goes and the name comes back from an alias declared once everything is
+    // initialised.
+    remove(node);
+    const alias = uniqueName(code, `$reloadable_${name.replace(/\W/g, "_")}`, taken);
     footer.push(`const ${alias} = ${reloadable(name, /** @type {string} */ (definition.local))};`);
-    specifiers.push(`${alias} as ${IDENTIFIER.test(name) ? name : JSON.stringify(name)}`);
+    specifiers.push(`${alias} as ${exportName(name)}`);
   }
 
   if (specifiers.length > 0) {
     footer.push(`export { ${specifiers.join(", ")} };`);
   }
   footer.push(
+    // Every definition is registered by now and every binding initialised,
+    // so this is where the new definitions may take effect.
+    `${module}.commit();`,
     `if (import.meta.hot) {`,
     `  import.meta.hot.accept((newModule) => {`,
     `    const reason = newModule ? ${module}.invalidation(newModule) : "the module failed to evaluate";`,

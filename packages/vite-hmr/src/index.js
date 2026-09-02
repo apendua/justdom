@@ -1,5 +1,6 @@
 import {
   addDependency,
+  batch,
   Derived,
   Emitter,
   flatMap,
@@ -65,6 +66,18 @@ import {
  *   name) changes nothing, and one that registers a different value means
  *   the update cannot be taken in place — see `invalidation`.
  *
+ * ### When a definition takes effect
+ *
+ * Not while the module is still evaluating. Registering queues the new
+ * definition; `commit`, which the transform calls at the very end of the
+ * module body, writes every holder at once. A write from the middle of the
+ * body would re-run the dependents there and then, with the new code reading
+ * bindings the body has not reached yet — a `const` declared below the
+ * export — and one batch for the whole module means a dependent of several
+ * of its exports runs once per reload rather than once per export. A module
+ * that fails to evaluate never reaches its `commit`, so its previous
+ * definitions stand.
+ *
  * ### Where the holders live
  *
  * In `import.meta.hot.data`, which Vite keeps across every version of a
@@ -113,6 +126,8 @@ import {
  * @property {string[]} rejected
  * @property {Set<string>} previous what the evaluation before this one
  *   registered
+ * @property {Map<Entry, unknown>} pending definitions registered by this
+ *   evaluation and not yet written to their holders
  */
 
 /**
@@ -125,6 +140,8 @@ import {
  * @typedef {object} ModuleReloader
  * @property {<T>(name: string, value: T) => T} reloadable register what the
  *   module defines under `name`, and get back what it should export instead.
+ * @property {() => void} commit let the definitions registered by this
+ *   evaluation take effect, all at once. Called at the end of the module body.
  * @property {(newModule: Record<string, unknown>) => string | null} invalidation
  *   why the latest evaluation cannot be taken in place, or `null` when it can.
  */
@@ -271,35 +288,93 @@ function follow(held, args, builtBy, first) {
 }
 
 /**
+ * A function that stands in for the module's current definition.
+ *
+ * A `Proxy`, so that everything a caller can do to a function reaches the
+ * current definition: calling it and constructing with it, but also reading
+ * a static member off it, checking `instanceof` against it (which reads its
+ * `prototype`), extending it, or enumerating what it carries. A plain
+ * wrapper function would answer all of those about itself.
+ *
+ * The one thing a proxy cannot hide is that its target is a function of its
+ * own: `prototype` is a non-configurable property of any ordinary function,
+ * so the target's has to be reported even when the current definition — an
+ * arrow, say — has none. It is reported as writable regardless, since a
+ * non-writable answer would have to match the target's exactly.
+ *
  * @param {Signal<Function>} held
  * @returns {Function}
  */
 function reloadableFunction(held) {
-  /**
-   * @this {unknown}
-   * @param {unknown[]} args
-   */
-  const wrapper = function (...args) {
-    const current = held.peek();
-    const result = new.target
-      ? Reflect.construct(current, args)
-      : Reflect.apply(current, this, args);
-    if (result instanceof Stream) {
-      // A factory. Nothing has been consumed yet — the caller is handed a
-      // source to mount — so the switch happens in the source, and the
-      // caller's own computation stays out of it.
-      return follow(held, args, current, result);
-    }
-    // A plain call, whose result the caller is about to use. Whoever is
-    // evaluating now depends on the module's version, and a reload invalidates
-    // them as any other write would.
-    addDependency(held);
-    return result;
-  };
-  const first = held.peek();
-  Object.defineProperty(wrapper, "name", { value: first.name, configurable: true });
-  Object.defineProperty(wrapper, "length", { value: first.length, configurable: true });
-  return wrapper;
+  const target = function () {};
+  return new Proxy(target, {
+    apply(_, thisArg, args) {
+      const current = held.peek();
+      let stream = false;
+      /** @type {unknown} */
+      let result;
+      try {
+        result = Reflect.apply(current, thisArg, args);
+        stream = result instanceof Stream;
+      } finally {
+        // Recorded whether or not the call returned: a caller that caught the
+        // exception is still one the fix has to reach.
+        if (!stream) {
+          // A plain call, whose result the caller is about to use. Whoever
+          // is evaluating now depends on the module's version, and a reload
+          // invalidates them as any other write would.
+          addDependency(held);
+        }
+      }
+      if (stream) {
+        // A factory. Nothing has been consumed yet — the caller is handed a
+        // source to mount — so the switch happens in the source, and the
+        // caller's own computation stays out of it.
+        return follow(held, args, current, /** @type {Subscribable<unknown>} */ (result));
+      }
+      return result;
+    },
+    construct(_, args, newTarget) {
+      addDependency(held);
+      return Reflect.construct(held.peek(), args, newTarget);
+    },
+    get(_, key) {
+      return Reflect.get(held.peek(), key);
+    },
+    set(_, key, value) {
+      return Reflect.set(held.peek(), key, value);
+    },
+    has(_, key) {
+      return Reflect.has(held.peek(), key);
+    },
+    deleteProperty(_, key) {
+      return Reflect.deleteProperty(held.peek(), key);
+    },
+    defineProperty(_, key, descriptor) {
+      return Reflect.defineProperty(held.peek(), key, descriptor);
+    },
+    ownKeys() {
+      const keys = Reflect.ownKeys(held.peek());
+      return keys.includes("prototype") ? keys : [...keys, "prototype"];
+    },
+    getOwnPropertyDescriptor(_, key) {
+      const descriptor = Reflect.getOwnPropertyDescriptor(held.peek(), key);
+      if (key === "prototype") {
+        return descriptor
+          ? { value: descriptor.value, writable: true, enumerable: false, configurable: false }
+          : Reflect.getOwnPropertyDescriptor(target, key);
+      }
+      // A property the target does not have cannot be reported as
+      // non-configurable, so it is reported as configurable instead.
+      return descriptor ? { ...descriptor, configurable: true } : undefined;
+    },
+    getPrototypeOf() {
+      return Reflect.getPrototypeOf(held.peek());
+    },
+    setPrototypeOf(_, prototype) {
+      return Reflect.setPrototypeOf(held.peek(), prototype);
+    },
+  });
 }
 
 /**
@@ -345,6 +420,7 @@ export function $hmr(hot) {
     names: new Set(),
     rejected: [],
     previous: registry.session ? registry.session.names : new Set(),
+    pending: new Map(),
   };
   registry.session = session;
 
@@ -360,7 +436,8 @@ export function $hmr(hot) {
     const entry = registry.entries.get(name);
     if (entry) {
       if (entry.kind === kind && entry.held) {
-        entry.held.set(value);
+        // Queued rather than written: see `commit`.
+        session.pending.set(entry, value);
         return /** @type {T} */ (entry.exported);
       }
       if (entry.kind === kind && kind === "state" && entry.shape === stateShapeOf(value)) {
@@ -380,6 +457,22 @@ export function $hmr(hot) {
     const created = createEntry(kind, value);
     registry.entries.set(name, created);
     return /** @type {T} */ (created.exported);
+  }
+
+  /**
+   * @returns {void}
+   */
+  function commit() {
+    if (session.pending.size === 0) {
+      return;
+    }
+    const pending = session.pending;
+    session.pending = new Map();
+    batch(() => {
+      for (const [entry, value] of pending) {
+        /** @type {Signal<any>} */ (entry.held).set(value);
+      }
+    });
   }
 
   /**
@@ -407,5 +500,5 @@ export function $hmr(hot) {
     return null;
   }
 
-  return { reloadable, invalidation };
+  return { reloadable, commit, invalidation };
 }

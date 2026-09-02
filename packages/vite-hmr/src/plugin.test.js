@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { parseAst } from "vite";
+import { Effect } from "@apendua/signal";
 import HMRPlugin, { transform } from "./plugin.js";
 
 /**
@@ -28,11 +29,11 @@ function transformed(code) {
 function around(output, code) {
   const lines = output.split("\n");
   const own = code.split("\n");
-  // The accept block is eight lines, the output ends in a newline, and a
-  // specifier export takes a line of its own.
+  // The commit and the accept block are nine lines, the output ends in a
+  // newline, and a specifier export takes a line of its own.
   assert.strictEqual(
     lines.length,
-    own.length + 9 + (output.includes("export {") ? 1 : 0),
+    own.length + 10 + (output.includes("export {") ? 1 : 0),
     "the module keeps its line count",
   );
   return { header: lines[0], footer: lines.slice(own.length) };
@@ -92,7 +93,13 @@ describe("transform()", () => {
     );
     assert.match(
       transformed(`const App = () => 1;\nexport default App;`),
+      /const App = \$module\.reloadable\("default", \(\) => 1\);\nexport default App;/,
+      "a local const is wrapped where it is declared",
+    );
+    assert.match(
+      transformed(`import { App } from "./app.js";\nexport default App;`),
       /export default \$module\.reloadable\("default", App\);/,
+      "an import is wrapped where it is exported",
     );
   });
 
@@ -108,13 +115,54 @@ describe("transform()", () => {
     const lines = output.split("\n");
     assert.strictEqual(lines[3], "", "the statement is gone");
     assert.match(output, /const \$reloadable_a = \$module\.reloadable\("a", a\);/);
-    assert.match(output, /const \$reloadable_bee = \$module\.reloadable\("bee", b\);/);
+    assert.strictEqual(
+      lines[2],
+      `const b = $module.reloadable("bee", () => 2);`,
+      "a local const is wrapped where it is declared",
+    );
     assert.match(output, /const \$reloadable_helper = \$module\.reloadable\("helper", helper\);/);
     assert.match(output, /const \$reloadable_default = \$module\.reloadable\("default", a\);/);
     assert.match(
       output,
-      /export \{ \$reloadable_a as a, \$reloadable_bee as bee, \$reloadable_helper as helper, \$reloadable_default as default \};/,
+      /export \{ \$reloadable_a as a, b as bee, \$reloadable_helper as helper, \$reloadable_default as default \};/,
     );
+  });
+
+  test("a local const exported by reference is wrapped at its declaration", () => {
+    // The module's own binding and what importers get have to be one object:
+    // state is kept across reloads, and a module writing to a fresh instance
+    // of it while importers hold the kept one would split the two.
+    const code = [
+      `import { Signal } from "@apendua/signal";`,
+      `const locale = Signal.of("en");`,
+      `export function setLocale(v) { locale.set(v); }`,
+      `export default locale;`,
+      `export { locale, locale as lang };`,
+    ].join("\n");
+    const output = transformed(code);
+    const lines = output.split("\n");
+    assert.strictEqual(lines[1], `const locale = $module.reloadable("default", Signal.of("en"));`);
+    assert.strictEqual(lines[3], `export default locale;`, "the reference itself is left alone");
+    assert.strictEqual(lines[4], "");
+    assert.match(
+      output,
+      /^\$module\.reloadable\("locale", locale\);$/m,
+      "the other names are registered",
+    );
+    assert.match(output, /^\$module\.reloadable\("lang", locale\);$/m);
+    assert.match(output, /export \{ .*locale, locale as lang \};/);
+  });
+
+  test("names that sanitise alike get distinct aliases", () => {
+    const output = transformed(`function a() {}\nexport { a as "b-c", a as "b_c" };`);
+    assert.match(output, /const \$reloadable_b_c = \$module\.reloadable\("b-c", a\);/);
+    assert.match(output, /const \$reloadable_b_c1 = \$module\.reloadable\("b_c", a\);/);
+    assert.match(output, /export \{ \$reloadable_b_c as "b-c", \$reloadable_b_c1 as b_c \};/);
+  });
+
+  test("the footer commits before accepting", () => {
+    const output = transformed(`export const f = () => 1;`);
+    assert.ok(output.indexOf("$module.commit();") < output.indexOf("import.meta.hot.accept("));
   });
 
   test("a specifier list is removed once, whatever follows it kept", () => {
@@ -280,5 +328,67 @@ describe("a transformed module, evaluated", () => {
     );
     /** @type {Function} */ (hot.accepted)(v3);
     assert.match(hot.invalidated, /LIMIT cannot be replaced in place/);
+  });
+
+  test("a dependent re-runs only once the whole new module body has run", async () => {
+    dir = dir ?? (await mkdtemp(path.join(tmpdir(), "vite-hmr-")));
+    const hot = { data: {}, accept() {}, invalidate() {} };
+    /** @type {any} */ (globalThis).__vite_hmr_test_hot__ = hot;
+    const runtime = pathToFileURL(path.resolve("src/index.js")).href;
+    const signal = import.meta.resolve("@apendua/signal");
+    /**
+     * @param {string} name
+     * @param {string} code
+     */
+    const evaluate = async (name, code) => {
+      const output = transformed(code)
+        .replaceAll(`"@apendua/vite-hmr"`, JSON.stringify(runtime))
+        .replaceAll(`"@apendua/signal"`, JSON.stringify(signal))
+        .replaceAll("import.meta.hot", "globalThis.__vite_hmr_test_hot__");
+      const file = path.join(dir, `${name}.mjs`);
+      await writeFile(file, output);
+      return import(pathToFileURL(file).href);
+    };
+
+    // An export that reads a `const` declared below it.
+    const v1 = await evaluate(
+      "tdz1",
+      `export function greet(who) { return PREFIX + who; }\nconst PREFIX = "hello ";`,
+    );
+    /** @type {string[]} */
+    const seen = [];
+    /** @type {unknown[]} */
+    const errors = [];
+    const effect = new Effect(
+      () => {
+        seen.push(v1.greet("x"));
+      },
+      { onError: (err) => errors.push(err) },
+    );
+    await evaluate(
+      "tdz2",
+      `export function greet(who) { return PREFIX + who; }\nconst PREFIX = "bye ";`,
+    );
+    assert.deepStrictEqual(errors, []);
+    assert.deepStrictEqual(seen, ["hello x", "bye x"]);
+    effect.dispose();
+
+    // State declared locally and exported by reference: the module's own
+    // functions and its importers share the kept instance.
+    const src = [
+      `import { Signal } from "@apendua/signal";`,
+      `const locale = Signal.of("en");`,
+      `export function setLocale(v) { locale.set(v); }`,
+      `export default locale;`,
+    ].join("\n");
+    const hot2 = { data: {}, accept() {}, invalidate() {} };
+    /** @type {any} */ (globalThis).__vite_hmr_test_hot__ = hot2;
+    const s1 = await evaluate("state1", src);
+    s1.setLocale("pl");
+    const s2 = await evaluate("state2", src);
+    assert.strictEqual(s2.default, s1.default, "the signal is kept");
+    assert.strictEqual(s1.default.get(), "pl");
+    s1.setLocale("de");
+    assert.strictEqual(s1.default.get(), "de", "the swapped function writes the kept signal");
   });
 });

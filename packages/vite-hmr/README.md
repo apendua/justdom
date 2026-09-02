@@ -42,15 +42,18 @@ registers its definitions again, and registering writes the holders. What
 the stand-in does with its holder depends on what kind of thing the module
 defined:
 
-- **Any function.** The stand-in is a function that calls the current
+- **Any function.** The stand-in is a `Proxy` that calls the current
   definition and, on the way, reads the holder — which is an
   `addDependency` on the module's version. A reactive computation that
   called the function is thereby a dependent of the module, and a reload
   invalidates it exactly as a signal write would: it runs again and calls
   the new code. This applies to every function whatever it returns — a
   number, a pose, a memoized geometry — not only those that return
-  observables. A function called outside any computation simply runs the
-  current definition.
+  observables, and it holds even when the call throws, so the fix reaches
+  a caller that caught the bug. A function called outside any computation
+  simply runs the current definition. Being a `Proxy`, the stand-in also
+  answers for the definition's static members, `prototype`, `instanceof`
+  and `extends`; only its identity is its own.
 
   When a function hands back a `Stream` — a `component`, an `effectsOnly`,
   anything built to be subscribed rather than consumed — the stand-in
@@ -104,8 +107,18 @@ state and constants is one hot reload can replace in place.
   the `export` removed; the stand-in is declared on the module's first line
   and exported under `f` at the end.
 - `export default …` is wrapped the same way, under the name `default`.
-- `export { a as b }` is re-exported from a stand-in declared at the end of
-  the module, by which point `a` is initialised whatever it is.
+- `export { a as b }` and `export default a` of a `const` declared in the
+  module wrap that `const`'s initialiser, so the module's own binding and
+  what importers get are the same object — which is what lets a kept signal
+  stay shared between the module's functions and its importers. Of a
+  function, an import or a global, the name is re-exported from a stand-in
+  declared at the end of the module, by which point the binding is
+  initialised whatever it is.
+- The new definitions take effect only at the end of the module body, all at
+  once: a dependent re-running mid-body would read bindings the body had not
+  reached yet, and a dependent of several exports runs once per reload rather
+  than once per export. A module that throws while evaluating never gets
+  there, so its previous definitions stand.
 - The module accepts its own updates, and invalidates itself when the
   runtime reports an export the update could not replace.
 

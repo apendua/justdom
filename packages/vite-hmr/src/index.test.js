@@ -32,6 +32,23 @@ function fakeHot() {
 }
 
 /**
+ * One evaluation of a module defining a single export: register it and, as
+ * the transformed module's footer does, let it take effect.
+ *
+ * @template T
+ * @param {HotContext} hot
+ * @param {string} name
+ * @param {T} value
+ * @returns {T}
+ */
+function reload(hot, name, value) {
+  const module = $hmr(hot);
+  const exported = module.reloadable(name, value);
+  module.commit();
+  return exported;
+}
+
+/**
  * Everything a source has said so far, and the handle to stop listening.
  *
  * @template T
@@ -51,7 +68,7 @@ function collect(source) {
 describe("a function export", () => {
   test("re-runs the computation that called it, with the new definition", () => {
     const hot = fakeHot();
-    const double = $hmr(hot).reloadable("double", (/** @type {number} */ n) => n * 2);
+    const double = reload(hot, "double", (/** @type {number} */ n) => n * 2);
 
     /** @type {number[]} */
     const seen = [];
@@ -60,7 +77,7 @@ describe("a function export", () => {
     });
     assert.deepStrictEqual(seen, [42]);
 
-    const again = $hmr(hot).reloadable("double", (/** @type {number} */ n) => n * 3);
+    const again = reload(hot, "double", (/** @type {number} */ n) => n * 3);
     assert.strictEqual(again, double, "the module exports the same wrapper every time");
     assert.deepStrictEqual(seen, [42, 63], "the reload was a write the effect depends on");
     effect.dispose();
@@ -68,9 +85,9 @@ describe("a function export", () => {
 
   test("outside a computation it simply calls the current definition", () => {
     const hot = fakeHot();
-    const greet = $hmr(hot).reloadable("greet", (/** @type {string} */ who) => `hello ${who}`);
+    const greet = reload(hot, "greet", (/** @type {string} */ who) => `hello ${who}`);
     assert.strictEqual(greet("world"), "hello world");
-    $hmr(hot).reloadable("greet", (/** @type {string} */ who) => `goodbye ${who}`);
+    reload(hot, "greet", (/** @type {string} */ who) => `goodbye ${who}`);
     assert.strictEqual(greet("world"), "goodbye world");
   });
 
@@ -82,22 +99,87 @@ describe("a function export", () => {
       // @ts-expect-error
       this.y = y;
     }
-    const Reloadable = /** @type {any} */ ($hmr(hot).reloadable("Point", Point));
+    const Reloadable = /** @type {any} */ (reload(hot, "Point", Point));
     const point = new Reloadable(1, 2);
     assert.deepStrictEqual({ x: point.x, y: point.y }, { x: 1, y: 2 });
     assert.strictEqual(Reloadable.name, "Point");
     assert.strictEqual(Reloadable.length, 2);
 
-    const method = $hmr(hot).reloadable("method", function () {
+    const method = reload(hot, "method", function () {
       // @ts-expect-error — `this` is whatever the call supplied.
       return this.tag;
     });
     assert.strictEqual(method.call({ tag: "bound" }), "bound");
   });
 
+  test("is the current definition to everything but identity", () => {
+    const hot = fakeHot();
+    const Vec = /** @type {any} */ (function Vec() {});
+    Vec.ZERO = "zero";
+    Vec.prototype.len = () => 0;
+    const Exported = /** @type {any} */ (reload(hot, "Vec", Vec));
+
+    assert.strictEqual(Exported.ZERO, "zero", "a static member reads through");
+    assert.ok("ZERO" in Exported);
+    assert.ok(Object.keys(Exported).includes("ZERO"));
+    assert.strictEqual(Exported.prototype, Vec.prototype);
+    assert.ok(new Exported() instanceof Exported, "`instanceof` looks at the current prototype");
+    assert.ok(new Exported() instanceof Vec);
+    assert.strictEqual(new Exported().len(), 0);
+
+    class Sub extends Exported {
+      more() {
+        return 1;
+      }
+    }
+    const sub = new Sub();
+    assert.ok(sub instanceof Sub, "`new.target` reaches the definition");
+    assert.strictEqual(sub.more(), 1);
+    assert.strictEqual(sub.len(), 0);
+    assert.strictEqual(Sub.ZERO, "zero", "statics are inherited through the stand-in");
+
+    Exported.ONE = "one";
+    assert.strictEqual(Vec.ZERO, "zero");
+    assert.strictEqual(/** @type {any} */ (Vec).ONE, "one", "a write lands on the definition");
+
+    const Vec2 = /** @type {any} */ (function Vec2() {});
+    Vec2.ZERO = "zero!";
+    reload(hot, "Vec", Vec2);
+    assert.strictEqual(Exported.ZERO, "zero!", "and after a reload, on the new one");
+    assert.ok(new Exported() instanceof Vec2);
+  });
+
+  test("a call that throws still records the dependency", () => {
+    const hot = fakeHot();
+    const risky = reload(hot, "risky", () => {
+      throw new Error("bug");
+    });
+    const outcome = new Derived(() => {
+      try {
+        return risky();
+      } catch (err) {
+        return `caught: ${/** @type {Error} */ (err).message}`;
+      }
+    });
+    /** @type {unknown[]} */
+    const seen = [];
+    const effect = new Effect(() => {
+      seen.push(outcome.get());
+    });
+    assert.deepStrictEqual(seen, ["caught: bug"]);
+
+    reload(hot, "risky", () => "fixed");
+    assert.deepStrictEqual(
+      seen,
+      ["caught: bug", "fixed"],
+      "the fix reaches the caller that caught the bug",
+    );
+    effect.dispose();
+  });
+
   test("a dependent node is a dependent of the module, and takes the cutoff", () => {
     const hot = fakeHot();
-    const answer = $hmr(hot).reloadable("answer", () => 42);
+    const answer = reload(hot, "answer", () => 42);
     const doubled = new Derived(() => answer() * 2);
     let evaluations = 0;
     const effect = new Effect(() => {
@@ -108,20 +190,79 @@ describe("a function export", () => {
 
     // The same answer from different code: the derived recomputes, the effect
     // does not.
-    $hmr(hot).reloadable("answer", () => 40 + 2);
+    reload(hot, "answer", () => 40 + 2);
     assert.strictEqual(doubled.getEvaluations(), 2);
     assert.strictEqual(evaluations, 1, "an unchanged value stops at the `Derived`");
 
-    $hmr(hot).reloadable("answer", () => 43);
+    reload(hot, "answer", () => 43);
     assert.strictEqual(evaluations, 2);
     effect.dispose();
+  });
+});
+
+describe("what a reload waits for", () => {
+  test("a new definition takes effect at commit, not at registration", () => {
+    const hot = fakeHot();
+    const answer = reload(hot, "answer", () => 1);
+    /** @type {number[]} */
+    const seen = [];
+    const effect = new Effect(() => {
+      seen.push(answer());
+    });
+
+    // The module body, still evaluating: an export registered above a
+    // `const` it reads. Re-running the effect now would read the `const`
+    // before its initialisation.
+    const module = $hmr(hot);
+    /** @type {number | undefined} */
+    let later;
+    module.reloadable("answer", () => /** @type {number} */ (later));
+    assert.deepStrictEqual(seen, [1], "nothing has run the new code yet");
+    later = 2;
+    module.commit();
+    assert.deepStrictEqual(
+      seen,
+      [1, 2],
+      "and at the end of the body it does, with `later` in place",
+    );
+    effect.dispose();
+  });
+
+  test("a dependent of several exports runs once per reload", () => {
+    const hot = fakeHot();
+    const first = $hmr(hot);
+    const a = first.reloadable("a", () => 1);
+    const b = first.reloadable("b", () => 10);
+    first.commit();
+    let runs = 0;
+    const effect = new Effect(() => {
+      a() + b();
+      runs += 1;
+    });
+    assert.strictEqual(runs, 1);
+
+    const next = $hmr(hot);
+    next.reloadable("a", () => 2);
+    next.reloadable("b", () => 20);
+    next.commit();
+    assert.strictEqual(runs, 2, "one batch, one run");
+    effect.dispose();
+  });
+
+  test("a module that never commits leaves its previous definitions standing", () => {
+    const hot = fakeHot();
+    const answer = reload(hot, "answer", () => 1);
+    // An evaluation that registered and then threw before its footer.
+    $hmr(hot).reloadable("answer", () => 2);
+    assert.strictEqual(answer(), 1);
   });
 });
 
 describe("a factory export", () => {
   test("switches the mounted instance without re-running whoever mounted it", () => {
     const hot = fakeHot();
-    const Greeting = $hmr(hot).reloadable(
+    const Greeting = reload(
+      hot,
       "Greeting",
       component((/** @type {string} */ who) => just(`hello ${who}`)),
     );
@@ -141,7 +282,8 @@ describe("a factory export", () => {
     assert.deepStrictEqual(values, ["hello world"]);
     assert.strictEqual(mounts, 1);
 
-    $hmr(hot).reloadable(
+    reload(
+      hot,
       "Greeting",
       component((/** @type {string} */ who) => just(`goodbye ${who}`)),
     );
@@ -171,13 +313,15 @@ describe("a factory export", () => {
         };
       });
 
-    const Behaviour = $hmr(hot).reloadable(
+    const Behaviour = reload(
+      hot,
       "Behaviour",
       component(() => tracked("first")),
     );
     const { subscription } = collect(Behaviour());
 
-    $hmr(hot).reloadable(
+    reload(
+      hot,
       "Behaviour",
       component(() => tracked("second")),
     );
@@ -190,14 +334,16 @@ describe("a factory export", () => {
   test("a definition nothing subscribed to costs nothing on reload", () => {
     const hot = fakeHot();
     let runs = 0;
-    const Behaviour = $hmr(hot).reloadable(
+    const Behaviour = reload(
+      hot,
       "Behaviour",
       effectsOnly(() => {
         runs += 1;
       }),
     );
     Behaviour();
-    $hmr(hot).reloadable(
+    reload(
+      hot,
       "Behaviour",
       effectsOnly(() => {
         runs += 1;
@@ -209,7 +355,7 @@ describe("a factory export", () => {
   test("a source built before the reload is mounted as it is, not rebuilt", () => {
     const hot = fakeHot();
     let built = 0;
-    const Thing = $hmr(hot).reloadable("Thing", () => {
+    const Thing = reload(hot, "Thing", () => {
       built += 1;
       return just("one");
     });
@@ -226,11 +372,11 @@ describe("a source export", () => {
     // The `stylesheet` shape: what the module defines is a `Stream`, already
     // built, with nothing further to wait for.
     const hot = fakeHot();
-    const style = $hmr(hot).reloadable("style", just("first"));
+    const style = reload(hot, "style", just("first"));
     const { values } = collect(style);
     assert.deepStrictEqual(values, ["first"], "the value it is holding, on subscribe");
 
-    $hmr(hot).reloadable("style", just("second"));
+    reload(hot, "style", just("second"));
     assert.deepStrictEqual(values, ["first", "second"], "and the one that replaced it");
   });
 });
@@ -239,7 +385,7 @@ describe("a derived export", () => {
   test("is a node whose dependents follow the module", () => {
     const hot = fakeHot();
     const input = Signal.of(2);
-    const squared = $hmr(hot).reloadable("squared", new Derived(() => input.get() ** 2));
+    const squared = reload(hot, "squared", new Derived(() => input.get() ** 2));
     assert.ok(squared instanceof Derived);
 
     /** @type {number[]} */
@@ -250,7 +396,7 @@ describe("a derived export", () => {
     input.set(3);
     assert.deepStrictEqual(seen, [4, 9]);
 
-    $hmr(hot).reloadable("squared", new Derived(() => input.get() ** 3));
+    reload(hot, "squared", new Derived(() => input.get() ** 3));
     assert.deepStrictEqual(seen, [4, 9, 27], "the new node, read by the old dependents");
     input.set(2);
     assert.deepStrictEqual(seen, [4, 9, 27, 8], "and its inputs still move it");
@@ -261,7 +407,7 @@ describe("a derived export", () => {
 describe("a state export", () => {
   test("a signal keeps what the application wrote to it", () => {
     const hot = fakeHot();
-    const locale = $hmr(hot).reloadable("locale", Signal.of("en"));
+    const locale = reload(hot, "locale", Signal.of("en"));
     locale.set("pl");
 
     const next = $hmr(hot);
@@ -302,7 +448,7 @@ describe("a state export", () => {
 
   test("state that changed shape cannot be taken in place", () => {
     const hot = fakeHot();
-    $hmr(hot).reloadable("thing", Signal.of(1));
+    reload(hot, "thing", Signal.of(1));
     const next = $hmr(hot);
     const replaced = next.reloadable("thing", new ReactiveMap());
     assert.ok(replaced instanceof ReactiveMap, "the new definition is what the new module gets");
@@ -312,7 +458,7 @@ describe("a state export", () => {
   test("an object that merely looks like state is still a value", () => {
     const hot = fakeHot();
     const property = createProperty(() => 1);
-    $hmr(hot).reloadable("lookalike", { get: property.get, set: property.set });
+    reload(hot, "lookalike", { get: property.get, set: property.set });
     const next = $hmr(hot);
     next.reloadable("lookalike", { get: property.get, set: property.set });
     assert.match(String(next.invalidation({ lookalike: null })), /lookalike cannot be replaced/);
@@ -322,9 +468,9 @@ describe("a state export", () => {
 describe("invalidation", () => {
   test("an update whose every export was followed is taken in place", () => {
     const hot = fakeHot();
-    $hmr(hot).reloadable("fn", () => 1);
-    $hmr(hot).reloadable("style", just("a"));
-    $hmr(hot).reloadable("LIMIT", 10);
+    reload(hot, "fn", () => 1);
+    reload(hot, "style", just("a"));
+    reload(hot, "LIMIT", 10);
     const next = $hmr(hot);
     const fn = next.reloadable("fn", () => 2);
     const style = next.reloadable("style", just("b"));
@@ -345,7 +491,7 @@ describe("invalidation", () => {
 
   test("a value that changed cannot be taken in place", () => {
     const hot = fakeHot();
-    $hmr(hot).reloadable("LIMIT", 10);
+    reload(hot, "LIMIT", 10);
     const next = $hmr(hot);
     next.reloadable("LIMIT", 20);
     assert.match(String(next.invalidation({ LIMIT: 20 })), /LIMIT cannot be replaced/);
@@ -353,7 +499,7 @@ describe("invalidation", () => {
 
   test("an object is a different value every evaluation", () => {
     const hot = fakeHot();
-    $hmr(hot).reloadable("palette", { red: "#f00" });
+    reload(hot, "palette", { red: "#f00" });
     const next = $hmr(hot);
     next.reloadable("palette", { red: "#f00" });
     assert.match(String(next.invalidation({ palette: {} })), /palette cannot be replaced/);
@@ -362,7 +508,7 @@ describe("invalidation", () => {
   test("a class is left alone rather than wrapped", () => {
     const hot = fakeHot();
     class Thing {}
-    assert.strictEqual($hmr(hot).reloadable("Thing", Thing), Thing);
+    assert.strictEqual(reload(hot, "Thing", Thing), Thing);
     const next = $hmr(hot);
     class Thing2 {}
     next.reloadable("Thing", Thing2);
@@ -371,7 +517,7 @@ describe("invalidation", () => {
 
   test("a definition that changed kind cannot be taken in place", () => {
     const hot = fakeHot();
-    $hmr(hot).reloadable("thing", () => 1);
+    reload(hot, "thing", () => 1);
     const next = $hmr(hot);
     next.reloadable("thing", just(1));
     assert.match(String(next.invalidation({ thing: null })), /thing cannot be replaced/);
@@ -383,8 +529,8 @@ describe("invalidation", () => {
 
   test("an export nothing registered, and one that went missing", () => {
     const hot = fakeHot();
-    $hmr(hot).reloadable("a", () => 1);
-    $hmr(hot).reloadable("b", () => 2);
+    reload(hot, "a", () => 1);
+    reload(hot, "b", () => 2);
     let next = $hmr(hot);
     next.reloadable("a", () => 1);
     next.reloadable("b", () => 2);

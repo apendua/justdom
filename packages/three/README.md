@@ -46,7 +46,10 @@ handling, and — when the device supports it — the WebXR session lifecycle. T
 tree it is given decorates that scene rather than producing one. `getCamera(ctx)`,
 `getXRSession(ctx)`, and `useFrame(ctx, fn)` read from that same context, using the
 `createProperty`-based context mechanism shared with the rest of this
-monorepo's stack.
+monorepo's stack. `RendererContext` is the property behind `useFrame`, exported
+so a test can mount a component that asks for frames without a renderer —
+`RendererContext.set(ctx, {})` is enough for the callback to be registered and
+never called.
 
 ## Pointing at things
 

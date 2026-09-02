@@ -29,6 +29,18 @@ interface Events {
   dragend: DragEvent;
 }
 
+/**
+ * The hand holding the brick, and where the brick came from. A drag can be
+ * handed from one hand to the other, and only the release of *this* hand ends
+ * it — the first hand letting go of a brick that has since been taken over
+ * changes nothing. The parent is remembered here rather than on the object,
+ * so a handover cannot overwrite it with the hand it was taken from.
+ */
+interface Hold {
+  controller: THREE.Object3D;
+  parent: THREE.Object3D;
+}
+
 const geometry = new THREE.BoxGeometry(CELL, CELL, CELL);
 const solid = new THREE.MeshPhongMaterial({
   color: palette.brick,
@@ -48,7 +60,7 @@ const Brick = component((ctx: WeakKey, operators: Op<Props, Events>) => {
     { position: new THREE.Vector3(), ghost: false, draggable: false },
     operators,
   );
-  const held = Signal.of(false);
+  const hold = Signal.of<Hold | null>(null);
   const { makeInteractive, stopPropagation } = interactions(ctx);
 
   return $(new THREE.Mesh<THREE.BufferGeometry, THREE.Material, XREventMap>(), [
@@ -63,7 +75,7 @@ const Brick = component((ctx: WeakKey, operators: Op<Props, Events>) => {
     // including the frame it is let go on, which is what puts a brick back where
     // it came from when the board refuses the drop.
     effects((o) => {
-      if (!held.get()) {
+      if (!hold.get()) {
         o.position.copy(props.position);
       }
     }),
@@ -73,7 +85,7 @@ const Brick = component((ctx: WeakKey, operators: Op<Props, Events>) => {
     // Held, the brick is a child of the controller, so its world matrix is
     // whatever the hand is doing. The board is told once a frame.
     effects((o) => {
-      if (held.get()) {
+      if (hold.get()) {
         useFrame(ctx, () => emit(props, "dragmove", { matrixWorld: o.matrixWorld }));
       }
     }),
@@ -82,23 +94,40 @@ const Brick = component((ctx: WeakKey, operators: Op<Props, Events>) => {
         return;
       }
       stopPropagation(event);
-      event.target.userData.parent = event.target.parent;
-      held.set(true);
+      const current = hold.get();
+      if (current) {
+        if (current.controller === event.controller) {
+          return;
+        }
+        // The other hand taking hold is a handover: the brick moves to the new
+        // hand mid-drag and still remembers where it came from.
+        hold.set({ controller: event.controller, parent: current.parent });
+        event.controller.attach(event.target);
+        return;
+      }
+      const parent = event.target.parent;
+      if (!parent) {
+        return;
+      }
+      hold.set({ controller: event.controller, parent });
       event.controller.attach(event.target);
     }),
     on("selectend", (event) => {
-      const parent = event.target.userData.parent;
-      if (!held.get() || !parent) {
+      const current = hold.get();
+      if (!current) {
         return;
       }
       stopPropagation(event);
+      if (current.controller !== event.controller) {
+        // Released by a hand that is not the one holding the brick.
+        return;
+      }
       // Where the brick ended up is read while it is still on the hand; the drag
       // is over once it is back under its own parent, because that is when the
       // effect above puts it back where the props say.
       const matrixWorld = event.target.matrixWorld.clone();
-      parent.attach(event.target);
-      event.target.userData.parent = null;
-      held.set(false);
+      current.parent.attach(event.target);
+      hold.set(null);
       emit(props, "dragend", { matrixWorld });
     }),
   ]);

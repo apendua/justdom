@@ -8,6 +8,7 @@ export {
   getScene,
   getXRSession,
   controllers,
+  RendererContext,
 } from "./render.js";
 export {
   InteractionContext,

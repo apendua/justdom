@@ -37,10 +37,10 @@ copy. There is nothing to save, so reloading starts you over.
 | File        | Lines | What it is                                                     |
 | ----------- | ----: | -------------------------------------------------------------- |
 | `grid.ts`   |    35 | Where a brick may go. Pure functions, so `grid.test.ts` is easy. |
-| `Brick.ts`  |   116 | One brick, and the drag that carries it.                        |
-| `Game.ts`   |   148 | The board: the rules, the ghost, the bricks, the panel.         |
+| `Brick.ts`  |   136 | One brick, and the drag that carries it.                        |
+| `Game.ts`   |   149 | The board: the rules, the ghost, the bricks, the panel.         |
 | `Panel.ts`  |    85 | The interface, as DOM.                                          |
-| `App.ts`    |    51 | The scene: floor, light, and where the board floats.            |
+| `App.ts`    |    59 | The scene: floor, light, and where the board floats.            |
 
 Plus `main.ts` to mount it, `emulator.ts` to fake a headset, and `palette.ts` so
 the colours live in one place.
@@ -66,6 +66,13 @@ including the one it is let go on — which is what puts a brick back where it c
 from when the board refuses the drop. Get that ordering wrong and a refused brick
 stays stuck to your hand: it is the one subtle thing in the file, and it is
 commented as such.
+
+The brick remembers which hand is holding it, not merely that it is held. A
+press from the other hand mid-drag is a handover — the brick moves to that hand
+and the drag carries on — and only the holding hand's release ends it, so the
+first hand letting go of a brick it no longer holds changes nothing.
+`Brick.test.ts` drives that through the real interaction manager with two fake
+hands.
 
 **The board owns the rules.** One function says what a release would do — land in
 a cell, be thrown away, or nothing — and the ghost is shown only when the answer

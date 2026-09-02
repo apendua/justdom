@@ -191,13 +191,18 @@ is a surprising thing for a board to do when the player has just pressed a
 button. `handle()` listens; it does not make the object pointable, so
 `makeInteractive()` goes in the same list, or the presses bubble up from parts
 that already are. A scene that does want any unclaimed press to carry puts
-`handle()` on the carried object itself.
+`handle()` on the carried object itself. For furniture that is nothing but a
+handle — a floor slab, a rail — `carryHandle(ctx, carried, geometry, material,
+position)` is the mesh, pointable and listening, ready to be a child of the
+carried group.
 
 The bookkeeping is `drag()`'s: a press from the other hand mid-carry is a
 handover, taking the grip afresh from wherever its own ray lands, and only the
 carrying hand's release puts the object down; `held()` says which hand has it.
 One difference: a carry that is disabled while under way is put down where it
-is, since nothing was reparented and there is nothing to undo.
+is, since nothing was reparented and there is nothing to undo — and so is one
+whose handle leaves the scene, since the release it is waiting for would go to
+a handle no longer listening.
 
 ## Projecting DOM into the scene
 

@@ -301,13 +301,17 @@ function setup(options) {
   }
 
   subscriptions.push(
-    $(group, [board.carriable(), children($(floor, [board.handle()]), $(panel))]).subscribe(
-      (component) => {
-        component.addTo(room);
-        room.updateMatrixWorld(true);
-      },
-    ),
+    $(group, [board.carriable(), children($(panel))]).subscribe((component) => {
+      component.addTo(room);
+    }),
   );
+  // The floor is mounted on its own, so a test can take it out of the scene
+  // while the board stays: a handle that comes and goes, the way a landscape
+  // rebuilt for a new seed does.
+  const handleSubscription = $(floor, [board.handle()]).subscribe((component) => {
+    component.addTo(group);
+    room.updateMatrixWorld(true);
+  });
 
   return {
     left,
@@ -315,7 +319,9 @@ function setup(options) {
     board,
     panel,
     events,
+    unmountHandle: () => handleSubscription.unsubscribe(),
     dispose: () => {
+      handleSubscription.unsubscribe();
       for (const subscription of subscriptions) {
         subscription.unsubscribe();
       }
@@ -392,6 +398,21 @@ describe("carry", () => {
     // disabled.
     press(left, "selectend");
     assert.deepEqual(events, ["room:selectend"]);
+    dispose();
+  });
+
+  test("a handle taken out of the scene mid-carry puts the object down", () => {
+    const { left, board, panel, unmountHandle, dispose } = setup();
+    moveAside(panel);
+    press(left, "selectstart");
+    assert.strictEqual(board.held()?.controller, left);
+    // The landscape is rebuilt under the hand. The release, when it comes,
+    // goes to the old tiles, which are no longer listening — so the carry
+    // cannot wait for it.
+    unmountHandle();
+    assert.equal(board.held(), null);
+    press(left, "selectend");
+    assert.equal(board.held(), null);
     dispose();
   });
 

@@ -21,7 +21,15 @@ export { place, placeAndScale } from "./elements/place.js";
 export { cursors, pointers } from "./pointers.js";
 export { dom } from "./dom.js";
 export { drag } from "./drag.js";
-export { carry, yawOf, levelPose, beginCarry, carriedPose, applyLevelPose } from "./carry.js";
+export {
+  carry,
+  carryHandle,
+  yawOf,
+  levelPose,
+  beginCarry,
+  carriedPose,
+  applyLevelPose,
+} from "./carry.js";
 export { createPortal, getPortalRoot } from "./elements/portal.js";
 export {
   createFrameShareBudget,

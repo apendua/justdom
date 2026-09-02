@@ -2,13 +2,17 @@ import assert from "node:assert/strict";
 import test, { describe } from "node:test";
 import {
   component,
+  createProperty,
   Derived,
   Effect,
   effectsOnly,
   just,
   observable,
+  ReactiveMap,
   Signal,
+  store,
   Stream,
+  Subject,
 } from "@apendua/signal";
 import { $hmr } from "./index.js";
 
@@ -251,6 +255,67 @@ describe("a derived export", () => {
     input.set(2);
     assert.deepStrictEqual(seen, [4, 9, 27, 8], "and its inputs still move it");
     effect.dispose();
+  });
+});
+
+describe("a state export", () => {
+  test("a signal keeps what the application wrote to it", () => {
+    const hot = fakeHot();
+    const locale = $hmr(hot).reloadable("locale", Signal.of("en"));
+    locale.set("pl");
+
+    const next = $hmr(hot);
+    const again = next.reloadable("locale", Signal.of("en"));
+    assert.strictEqual(again, locale, "the first instance is the one exported");
+    assert.strictEqual(again.get(), "pl", "and it still holds what was written");
+    assert.strictEqual(next.invalidation({ locale: again }), null);
+  });
+
+  test("a store, a reactive map, a subject and a context property are kept the same way", () => {
+    const hot = fakeHot();
+    const first = $hmr(hot);
+    const settings = first.reloadable("settings", store({ volume: 1 }));
+    const scores = first.reloadable("scores", new ReactiveMap());
+    const clicks = first.reloadable("clicks", new Subject());
+    const theme = first.reloadable(
+      "theme",
+      createProperty(() => "light"),
+    );
+    settings.volume = 5;
+    scores.set("a", 10);
+
+    const next = $hmr(hot);
+    assert.strictEqual(next.reloadable("settings", store({ volume: 1 })), settings);
+    assert.strictEqual(next.reloadable("scores", new ReactiveMap()), scores);
+    assert.strictEqual(next.reloadable("clicks", new Subject()), clicks);
+    assert.strictEqual(
+      next.reloadable(
+        "theme",
+        createProperty(() => "light"),
+      ),
+      theme,
+    );
+    assert.strictEqual(settings.volume, 5);
+    assert.strictEqual(scores.get("a"), 10);
+    assert.strictEqual(next.invalidation({ settings, scores, clicks, theme }), null);
+  });
+
+  test("state that changed shape cannot be taken in place", () => {
+    const hot = fakeHot();
+    $hmr(hot).reloadable("thing", Signal.of(1));
+    const next = $hmr(hot);
+    const replaced = next.reloadable("thing", new ReactiveMap());
+    assert.ok(replaced instanceof ReactiveMap, "the new definition is what the new module gets");
+    assert.match(String(next.invalidation({ thing: replaced })), /thing cannot be replaced/);
+  });
+
+  test("an object that merely looks like state is still a value", () => {
+    const hot = fakeHot();
+    const property = createProperty(() => 1);
+    $hmr(hot).reloadable("lookalike", { get: property.get, set: property.set });
+    const next = $hmr(hot);
+    next.reloadable("lookalike", { get: property.get, set: property.set });
+    assert.match(String(next.invalidation({ lookalike: null })), /lookalike cannot be replaced/);
   });
 });
 

@@ -15,6 +15,19 @@ import { isPlainObject } from "./util.js";
 const emitters = new WeakMap();
 
 /**
+ * Whether `value` is a store — the proxy `store()` handed back, as opposed to
+ * the plain object it was made from. A store is a piece of state: what it
+ * holds is what has been written to it, so anything that wants to keep state
+ * across a module reload keeps the store itself.
+ *
+ * @param {unknown} value
+ * @returns {boolean}
+ */
+export function isStore(value) {
+  return typeof value === "object" && value !== null && emitters.has(value);
+}
+
+/**
  * @template {IEmitter<Record<any, any>>} T
  * @template {keyof T["__EVENT_MAP__"]} TEvent
  * @param {T} data

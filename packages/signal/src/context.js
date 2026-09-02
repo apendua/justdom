@@ -3,6 +3,24 @@
  */
 
 /**
+ * Every property `createProperty` has made. A property is its symbol — a
+ * value set under one property is invisible to another, however alike they
+ * look — so whatever keeps state across a module reload has to keep the
+ * property itself, and this is how it tells one from a plain object.
+ *
+ * @type {WeakSet<object>}
+ */
+const properties = new WeakSet();
+
+/**
+ * @param {unknown} value
+ * @returns {boolean}
+ */
+export function isProperty(value) {
+  return typeof value === "object" && value !== null && properties.has(value);
+}
+
+/**
  * Creates a property with a default value.
  * @template T
  * @param {() => T} getDefaultValue
@@ -37,5 +55,6 @@ export function createProperty(getDefaultValue) {
     return Object.assign(Object.create(ctx), { [key]: value });
   };
 
+  properties.add(property);
   return property;
 }

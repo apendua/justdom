@@ -7,7 +7,7 @@ export { Effect, effect, useEffect } from "./Effect.js";
 export { default as Computation } from "./Computation.js";
 export { batch, defaultChannel } from "./scheduler.js";
 export { default as UpdateChannel } from "./UpdateChannel.js";
-export { createProperty } from "./context.js";
+export { createProperty, isProperty } from "./context.js";
 
 export {
   addDependency,
@@ -53,7 +53,7 @@ export {
 export { memo, memoFn, decorate, mutate } from "./decorators.js";
 export { observable, component, effectsOnly, just } from "./factories.js";
 export { all, each } from "./util.js";
-export { default as store, emit } from "./store.js";
+export { default as store, emit, isStore } from "./store.js";
 export { default as selector, arraySelector } from "./selector.js";
 export {
   MINUTE,

@@ -69,6 +69,17 @@ defined:
   `observable(…)`: the stand-in is a source that switches to the current
   one, dropping the previous module's subscription before taking the new.
 
+- **State.** A `Signal`, a `store`, a `ReactiveMap` or `ReactiveSet`, a
+  `Subject` or `Emitter`, an `UpdateChannel`, or a context property from
+  `createProperty` is _kept_: what such an export holds is what the running
+  application has put there, and a fresh instance would throw that away. The
+  instance the first evaluation built is the one every later evaluation
+  exports, and the one the re-evaluated module built is dropped unused. So
+  editing a component in a module that also exports the app's `locale`
+  signal swaps the component and leaves the current locale alone. The price
+  is that an edit to a signal's _initial_ value does not show until a full
+  reload — the same bargain every framework's state-preserving HMR strikes.
+
 - **Anything else** cannot be followed and is exported as it is. The runtime
   remembers it, and a re-evaluation that registers the identical value — a
   primitive constant that did not change, an export that is one of the
@@ -76,14 +87,14 @@ defined:
   that registers a different value means the update cannot be taken in
   place, and the module invalidates itself so that Vite propagates the
   update to its importers, as it would for a module that does not accept
-  updates at all. A `Signal`, a `store`, a `Subject` or an object literal is
-  a fresh instance on every evaluation, so a module exporting one of those
-  alongside its components is always propagated rather than swapped.
+  updates at all. An object literal, an array, a class or any other object
+  is a fresh instance on every evaluation, so a module exporting one of
+  those alongside its components is always propagated rather than swapped.
 
 The transform itself needs no knowledge of what a definition is or which
 package constructed it, so nothing is hardcoded about `@apendua/signal` or
-`@apendua/justdom`; any module whose exports are functions, nodes, streams
-and constants is one hot reload can replace in place.
+`@apendua/justdom`; any module whose exports are functions, nodes, streams,
+state and constants is one hot reload can replace in place.
 
 ## What the transform does to a module
 
@@ -122,11 +133,13 @@ core.
 
 ## Scope
 
-Values that are neither functions, `Derived` nodes nor `Stream`s are compared
-by identity, so a module exporting a mutable object — a `Signal` holding
-state, a palette object, a `store` — propagates every update to its
-importers. Preserving such state across a reload is a possible next step, not
-something the plugin does today.
+Values that are none of the above — plain objects, arrays, classes, anything
+this package cannot recognise as state — are compared by identity, so a
+module exporting a palette object next to its components propagates every
+update to its importers. Recognising state relies on `isStore` and
+`isProperty` from `@apendua/signal`, since a store is a `Proxy` and a
+property a bare object; a stateful shape from another library would need the
+same kind of brand before it could be kept.
 
 ## License
 

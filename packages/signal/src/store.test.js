@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { Effect } from "./index.js";
-import store, { replace } from "./store.js";
+import store, { isStore, replace } from "./store.js";
 
 test("observes value", () => {
   const state = store({ value: 1 });
@@ -184,4 +184,13 @@ test("reports one write as one update, not one per dependent", () => {
 
   delete state.a;
   assert.deepStrictEqual(values, ["1/a,b", "undefined/b"]);
+});
+
+test("isStore tells a store from the object it was made from", () => {
+  const data = { value: 1 };
+  const state = store(data);
+  assert.strictEqual(isStore(state), true);
+  assert.strictEqual(isStore(data), false);
+  assert.strictEqual(isStore({ ...state }), false);
+  assert.strictEqual(isStore(null), false);
 });

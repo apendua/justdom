@@ -1,4 +1,18 @@
-import { addDependency, Derived, flatMap, observable, Signal, Stream } from "@apendua/signal";
+import {
+  addDependency,
+  Derived,
+  Emitter,
+  flatMap,
+  isProperty,
+  isStore,
+  observable,
+  ReactiveMap,
+  ReactiveSet,
+  Signal,
+  Stream,
+  Subject,
+  UpdateChannel,
+} from "@apendua/signal";
 
 /**
  * @import { Source, Subscribable } from "@apendua/signal";
@@ -38,6 +52,13 @@ import { addDependency, Derived, flatMap, observable, Signal, Stream } from "@ap
  * - **A `Stream`** — a `stylesheet`, a `className`, an `observable(...)` —
  *   is wrapped in a source that switches to the current one, dropping the
  *   previous module's subscription before taking the new one.
+ * - **State** — a `Signal`, a `store`, a `ReactiveMap` or `ReactiveSet`, a
+ *   `Subject` or `Emitter`, an `UpdateChannel`, a context property — is
+ *   *kept*. What such an export holds is what the running application has
+ *   put there, and a fresh instance would throw that away; so the one the
+ *   first evaluation built is what every later evaluation exports, and the
+ *   instance the re-evaluated module built is dropped unused. The price is
+ *   that an edit to the initial value does not show until a full reload.
  * - **Anything else** cannot be followed. It is handed back untouched and
  *   remembered; a re-evaluation that registers the identical value (a
  *   primitive constant, an already-wrapped export re-exported under another
@@ -66,7 +87,7 @@ import { addDependency, Derived, flatMap, observable, Signal, Stream } from "@ap
  */
 
 /**
- * @typedef {"function" | "derived" | "stream" | "value"} Kind
+ * @typedef {"function" | "derived" | "stream" | "state" | "value"} Kind
  */
 
 /**
@@ -74,8 +95,11 @@ import { addDependency, Derived, flatMap, observable, Signal, Stream } from "@ap
  *
  * @typedef {object} Entry
  * @property {Kind} kind
+ * @property {string} shape which kind of state, for a `state` entry — a
+ *   `Signal` cannot stand in for a `ReactiveMap`. Empty for the others.
  * @property {Signal<any> | null} held the current definition, for the kinds
- *   that follow it. `null` for a plain value, which cannot be followed.
+ *   that follow it. `null` for a plain value, which cannot be followed, and
+ *   for state, which is kept rather than followed.
  * @property {unknown} exported what the module exports under the name: the
  *   wrapper, or the value itself.
  */
@@ -146,6 +170,41 @@ function isClass(fn) {
 }
 
 /**
+ * The kinds of state this package knows to keep, each with the name that
+ * tells it from the others.
+ *
+ * @type {Array<[string, (value: object) => boolean]>}
+ */
+const STATE_SHAPES = [
+  ["Signal", (value) => value instanceof Signal],
+  ["ReactiveMap", (value) => value instanceof ReactiveMap],
+  ["ReactiveSet", (value) => value instanceof ReactiveSet],
+  ["Subject", (value) => value instanceof Subject],
+  ["Emitter", (value) => value instanceof Emitter],
+  ["UpdateChannel", (value) => value instanceof UpdateChannel],
+  ["store", isStore],
+  ["property", isProperty],
+];
+
+/**
+ * Which kind of state `value` is, or `null` when it is none of them.
+ *
+ * @param {unknown} value
+ * @returns {string | null}
+ */
+function stateShapeOf(value) {
+  if (typeof value !== "object" || value === null) {
+    return null;
+  }
+  for (const [shape, matches] of STATE_SHAPES) {
+    if (matches(value)) {
+      return shape;
+    }
+  }
+  return null;
+}
+
+/**
  * @param {unknown} value
  * @returns {Kind}
  */
@@ -163,6 +222,9 @@ function kindOf(value) {
   }
   if (value instanceof Stream) {
     return "stream";
+  }
+  if (stateShapeOf(value) !== null) {
+    return "state";
   }
   return "value";
 }
@@ -247,7 +309,11 @@ function reloadableFunction(held) {
  */
 function createEntry(kind, value) {
   if (kind === "value") {
-    return { kind, held: null, exported: value };
+    return { kind, shape: "", held: null, exported: value };
+  }
+  if (kind === "state") {
+    // Kept, not followed: the instance is the state.
+    return { kind, shape: stateShapeOf(value) ?? "", held: null, exported: value };
   }
   const held = Signal.of(/** @type {any} */ (value));
   /** @type {unknown} */
@@ -260,7 +326,7 @@ function createEntry(kind, value) {
     exported = switchTo(() => held.get());
   }
   wrappers.add(/** @type {object} */ (exported));
-  return { kind, held, exported };
+  return { kind, shape: "", held, exported };
 }
 
 /**
@@ -295,6 +361,11 @@ export function $hmr(hot) {
     if (entry) {
       if (entry.kind === kind && entry.held) {
         entry.held.set(value);
+        return /** @type {T} */ (entry.exported);
+      }
+      if (entry.kind === kind && kind === "state" && entry.shape === stateShapeOf(value)) {
+        // The state the application has been writing to, kept; the instance
+        // this evaluation just built goes unused.
         return /** @type {T} */ (entry.exported);
       }
       if (entry.kind === kind && Object.is(entry.exported, value)) {

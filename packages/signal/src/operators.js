@@ -195,9 +195,8 @@ export function useEffects(value, effects) {
  * @returns {void}
  */
 function mountEffect(value, fn) {
-  const effect = useEffect((context) => fn(value, context), {
+  useEffect((context) => fn(value, context), {
     name: "useEffects",
-    onError: (err) => effect.fail(err),
   });
 }
 

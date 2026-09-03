@@ -1,6 +1,14 @@
 # Change Log - @apendua/freedom
 
-This log was last generated on Tue, 01 Sep 2026 20:21:51 GMT and should not be manually modified.
+This log was last generated on Thu, 03 Sep 2026 07:23:24 GMT and should not be manually modified.
+
+## 0.17.0
+Thu, 03 Sep 2026 07:23:24 GMT
+
+### Minor changes
+
+- Add carry(ctx, options): carrying an object about the room with a hand while it stays level, steered by the grab point, taken by handles (carryHandle for furniture that is nothing but one), handed from hand to hand — the board carry four apps were each keeping a copy of. The maths (yawOf, levelPose, beginCarry, carriedPose, applyLevelPose) is exported on its own.
+- Add drag(ctx, options): picking an object up with a hand and carrying it, with the handover to the other hand, the release that puts it back, and dragstart/dragmove/dragend events on the object — the carry every app here was writing by hand. Export RendererContext, so a component that asks for frames can be mounted in a test without a renderer.
 
 ## 0.16.0
 Tue, 01 Sep 2026 20:21:51 GMT

@@ -1,6 +1,13 @@
 # Change Log - @apendua/signal
 
-This log was last generated on Tue, 01 Sep 2026 20:21:51 GMT and should not be manually modified.
+This log was last generated on Thu, 03 Sep 2026 07:23:24 GMT and should not be manually modified.
+
+## 0.7.0
+Thu, 03 Sep 2026 07:23:24 GMT
+
+### Minor changes
+
+- Add isStore and isProperty, so that a store (a Proxy) and a context property (a bare object) can be told from the objects they resemble. Hot reload uses them to keep state across a module update.
 
 ## 0.6.0
 Tue, 01 Sep 2026 20:21:51 GMT

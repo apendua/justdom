@@ -2,6 +2,18 @@
   "name": "@apendua/signal",
   "entries": [
     {
+      "version": "0.7.0",
+      "tag": "@apendua/signal_v0.7.0",
+      "date": "Thu, 03 Sep 2026 07:23:24 GMT",
+      "comments": {
+        "minor": [
+          {
+            "comment": "Add isStore and isProperty, so that a store (a Proxy) and a context property (a bare object) can be told from the objects they resemble. Hot reload uses them to keep state across a module update."
+          }
+        ]
+      }
+    },
+    {
       "version": "0.6.0",
       "tag": "@apendua/signal_v0.6.0",
       "date": "Tue, 01 Sep 2026 20:21:51 GMT",

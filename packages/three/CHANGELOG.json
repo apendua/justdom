@@ -2,6 +2,35 @@
   "name": "@apendua/freedom",
   "entries": [
     {
+      "version": "0.17.0",
+      "tag": "@apendua/freedom_v0.17.0",
+      "date": "Thu, 03 Sep 2026 07:23:24 GMT",
+      "comments": {
+        "minor": [
+          {
+            "comment": "Add carry(ctx, options): carrying an object about the room with a hand while it stays level, steered by the grab point, taken by handles (carryHandle for furniture that is nothing but one), handed from hand to hand — the board carry four apps were each keeping a copy of. The maths (yawOf, levelPose, beginCarry, carriedPose, applyLevelPose) is exported on its own."
+          },
+          {
+            "comment": "Add drag(ctx, options): picking an object up with a hand and carrying it, with the handover to the other hand, the release that puts it back, and dragstart/dragmove/dragend events on the object — the carry every app here was writing by hand. Export RendererContext, so a component that asks for frames can be mounted in a test without a renderer."
+          }
+        ],
+        "dependency": [
+          {
+            "comment": "Updating dependency \"@apendua/justdom\" to `0.3.1`"
+          },
+          {
+            "comment": "Updating dependency \"@apendua/signal\" to `0.7.0`"
+          },
+          {
+            "comment": "Updating dependency \"@apendua/vite-hmr\" to `0.3.0`"
+          },
+          {
+            "comment": "Updating dependency \"@apendua/signal\" to `0.7.0`"
+          }
+        ]
+      }
+    },
+    {
       "version": "0.16.0",
       "tag": "@apendua/freedom_v0.16.0",
       "date": "Tue, 01 Sep 2026 20:21:51 GMT",

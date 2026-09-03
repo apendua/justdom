@@ -1,6 +1,14 @@
 # Change Log - @apendua/vite-hmr
 
-This log was last generated on Tue, 01 Sep 2026 20:21:51 GMT and should not be manually modified.
+This log was last generated on Thu, 03 Sep 2026 07:23:24 GMT and should not be manually modified.
+
+## 0.3.0
+Thu, 03 Sep 2026 07:23:24 GMT
+
+### Minor changes
+
+- Follow every export by value: any function becomes a dependency of the computations that call it (with the switch kept for functions returning a Stream, so components still swap without touching their parent), a Derived is wrapped in a following Derived, a Stream keeps the switch, and constants are compared by identity. Holders live in import.meta.hot.data so wrappers stay stable across reloads. The transform now parses the module and wraps every export, keeps function hoisting and line numbers, resolves its own runtime import, and stays out of @apendua/signal.
+- Keep state across a reload: a Signal, a store, a ReactiveMap or ReactiveSet, a Subject or Emitter, an UpdateChannel, or a context property exported from a module is the instance the first evaluation built, whatever the re-evaluated module constructed, so editing a component next to the app's locale signal no longer propagates the update or loses the current locale.
 
 ## 0.2.0
 Tue, 01 Sep 2026 20:21:51 GMT

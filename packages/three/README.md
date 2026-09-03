@@ -95,6 +95,115 @@ a signal holding that controller's current `THREE.Intersection`, for scenes that
 want to do something else with the hit (a snapping preview, a measurement, a
 sound).
 
+## Picking things up
+
+`drag(ctx, options)` is the carry every scene here ends up wanting: a press on
+an object picks it up, the hand's own movement is what moves it, and the
+release puts it back — where it is in the room, not where it was. It hands
+back two things: `draggable()`, the operator that goes in the object's list,
+and `held()`, a reactive reader saying which hand has it, or null.
+
+```js
+const { draggable, held } = drag(ctx, { enabled: () => props.movable });
+
+$(mesh, [
+  makeInteractive(),
+  draggable(),
+  effects((o) => {
+    if (!held()) {
+      o.position.copy(props.position); // the props place it whenever a hand does not
+    }
+  }),
+  on("dragmove", (event) => board.preview(event.matrixWorld)),
+  on("dragend", (event) => board.drop(event.matrixWorld, event.reset)),
+]);
+```
+
+The object does not know where it goes. It says where it is — `dragstart` when
+it is picked up, `dragmove` once a frame while it is held, `dragend` when it is
+let go, each with its world matrix — and the scene it belongs to decides what
+that means: a cell to snap to, a preview to show, a drop to refuse. `dragend`
+also carries `reset()`, which puts the object back at the local pose it had
+before it was picked up, for a drop the scene refuses or a drag that was only
+ever meant to hand out a copy. The events go to the object itself and do not
+bubble.
+
+`buttons` says which buttons pick the object up — `["select"]`, the trigger,
+unless given; `["select", "squeeze"]` for a scene that means something
+different by each, which the events' `button` tells apart. `enabled` gates
+picking up, as a boolean, a reactive getter or an observable; a drag already
+under way always runs to its release. Interactivity is separate, because an
+object that can be pointed at without being carriable is common:
+`makeInteractive()` goes in the same list.
+
+Two things the bookkeeping is there for, because every scene that did it by
+hand got at least one of them wrong at some point. **It remembers which hand,
+not merely that it is held:** a press from the other hand while the object is
+carried is a handover — the object moves to that hand and the drag carries on,
+one `dragstart` and one `dragend` for the whole of it — and only the holding
+hand's release, of the button it is holding with, ends the drag. **It swallows
+the presses it takes:** the press that picks the object up and the release
+that lets it go never reach whatever is behind, so picking up a brick never
+also picks up the board it sits on. An object taken out of the scene mid-drag
+leaves the hand too.
+
+`RendererContext` is the property behind the once-a-frame `dragmove`, and
+`useFrame`; it is exported so a test can mount a draggable object without a
+renderer — `RendererContext.set(ctx, {})` is enough for the frame callback to
+be registered and never called.
+
+## Carrying things level
+
+`carry(ctx, options)` is the other way of moving something with a hand: for a
+board with a floor and things standing on it, which a drag would tip over. A
+hand reaching out across a board rolls and pitches far more than it feels like
+it does, and a board handed the wrist's whole pose arrives on its side with
+everything sliding off it. So a carry keeps only what a level thing can have —
+where it is, and which way round it faces — and poses the object once a frame
+from where the hand has got to, rather than reparenting it.
+
+```js
+const board = carry(ctx, { enabled: () => phase.get() === "build" });
+
+$(new THREE.Group(), [
+  board.carriable(),
+  children(
+    $(floor, [makeInteractive(), board.handle()]), // the furniture it is carried by
+    Game(ctx),
+  ),
+]);
+```
+
+The reference for everything is the **grab point**, the spot the ray landed on
+when the trigger closed. It stays pinned to the ray, as far out along it as it
+was taken hold of, so tipping the wrist tows the board where the ray now
+points instead of leaving the cursor to slide across it; and the turn about
+the vertical pivots the board _about the grab point_, so the spot being held
+is the one spot that never moves. The maths is exported on its own — `yawOf`,
+`levelPose`, `beginCarry`, `carriedPose`, `applyLevelPose` — for a scene that
+wants to carry something by a rule of its own.
+
+The presses are taken by **handles** rather than by the carried object as a
+whole, so that only furniture starts a carry: a board by its floor, a tray by
+its rails. A press that bubbled up from anywhere else — a panel that did not
+want it, whatever sits behind one — would otherwise carry the board off, which
+is a surprising thing for a board to do when the player has just pressed a
+button. `handle()` listens; it does not make the object pointable, so
+`makeInteractive()` goes in the same list, or the presses bubble up from parts
+that already are. A scene that does want any unclaimed press to carry puts
+`handle()` on the carried object itself. For furniture that is nothing but a
+handle — a floor slab, a rail — `carryHandle(ctx, carried, geometry, material,
+position)` is the mesh, pointable and listening, ready to be a child of the
+carried group.
+
+The bookkeeping is `drag()`'s: a press from the other hand mid-carry is a
+handover, taking the grip afresh from wherever its own ray lands, and only the
+carrying hand's release puts the object down; `held()` says which hand has it.
+One difference: a carry that is disabled while under way is put down where it
+is, since nothing was reparented and there is nothing to undo — and so is one
+whose handle leaves the scene, since the release it is waiting for would go to
+a handle no longer listening.
+
 ## Projecting DOM into the scene
 
 `dom(ctx, mountable$, operators)` mounts a

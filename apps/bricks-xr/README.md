@@ -37,10 +37,10 @@ copy. There is nothing to save, so reloading starts you over.
 | File        | Lines | What it is                                                     |
 | ----------- | ----: | -------------------------------------------------------------- |
 | `grid.ts`   |    35 | Where a brick may go. Pure functions, so `grid.test.ts` is easy. |
-| `Brick.ts`  |   116 | One brick, and the drag that carries it.                        |
-| `Game.ts`   |   148 | The board: the rules, the ghost, the bricks, the panel.         |
+| `Brick.ts`  |    85 | One brick, and what the board makes of it being carried.        |
+| `Game.ts`   |   149 | The board: the rules, the ghost, the bricks, the panel.         |
 | `Panel.ts`  |    85 | The interface, as DOM.                                          |
-| `App.ts`    |    51 | The scene: floor, light, and where the board floats.            |
+| `App.ts`    |    59 | The scene: floor, light, and where the board floats.            |
 
 Plus `main.ts` to mount it, `emulator.ts` to fake a headset, and `palette.ts` so
 the colours live in one place.
@@ -60,12 +60,15 @@ held, and again when it is let go, and the board decides what that means. That i
 why the same component is the brick you pick up, the copy in your hand, and the
 see-through ghost of where it would land.
 
-While a brick is held it is a child of the controller, so the hand's own movement
-is what moves it. Its position comes from its props on every *other* frame,
-including the one it is let go on — which is what puts a brick back where it came
-from when the board refuses the drop. Get that ordering wrong and a refused brick
-stays stuck to your hand: it is the one subtle thing in the file, and it is
-commented as such.
+The carrying itself is `drag()` from `@apendua/freedom`: while a brick is held
+it is a child of the controller, so the hand's own movement is what moves it,
+and the drag remembers which hand has it — a press from the other hand mid-drag
+is a handover, and only the holding hand's release ends it. What `Brick.ts`
+adds is the one subtle thing: its position comes from its props on every
+*other* frame, including the one it is let go on — which is what puts a brick
+back where it came from when the board refuses the drop. Get that ordering
+wrong and a refused brick stays stuck to your hand, and it is commented as
+such.
 
 **The board owns the rules.** One function says what a release would do — land in
 a cell, be thrown away, or nothing — and the ghost is shown only when the answer

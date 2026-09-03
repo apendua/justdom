@@ -1,0 +1,481 @@
+import * as THREE from "three";
+import {
+  Signal,
+  component,
+  effects,
+  makeNonReactive,
+  onCleanup,
+  useEffect,
+  withComputation,
+} from "@apendua/signal";
+import { asReader, InteractionContext, interactions, setLocalMatrix } from "./interactions.js";
+import { $ } from "./operators.js";
+import { useFrame } from "./render.js";
+
+/**
+ * @import { EntityEffect, Source } from "@apendua/signal";
+ * @import { Object3D, XRTargetRaySpace } from "three";
+ * @import { Component, InputEvent, InputCancelEvent, XREventMap } from "./core.js";
+ * @import { Reactive } from "./interactions.js";
+ */
+
+/*
+ * Carrying something about the room with a hand, without letting it tip over.
+ *
+ * A hand that grabs an object and simply hands its own pose to it — which is
+ * what `drag()` does, by parenting the object to the controller — passes on
+ * the wrist's roll and pitch as well as where the hand has got to. That is
+ * right for a brick, which is being aimed; it is wrong for a board, which has
+ * a floor and things standing on it. So a carry keeps only what a level thing
+ * can have: where it is, and which way round it faces.
+ *
+ * The point the ray landed on when the hand closed — the grab point — is the
+ * reference for everything that follows. It stays pinned to the ray, the same
+ * distance out along it, and the board turns *about it* rather than about the
+ * hand or its own centre. A board grabbed by its far corner is steered by that
+ * corner, and the corner never slides out from under the cursor: tipping the
+ * wrist moves the board where the ray now points, while the board itself stays
+ * level throughout.
+ */
+
+const upAxis = new THREE.Vector3(0, 1, 0);
+
+// Scratch for the once-a-frame path. A carry runs for as long as a hand is
+// closed, and a board being posed every frame is no place to be making
+// garbage: everything below that is not handed back to the caller is written
+// into one of these instead.
+const _position = new THREE.Vector3();
+const _quaternion = new THREE.Quaternion();
+const _direction = new THREE.Vector3();
+const _scale = new THREE.Vector3();
+const _offset = new THREE.Vector3();
+const _matrix = new THREE.Matrix4();
+const _inverse = new THREE.Matrix4();
+
+/**
+ * A pose with no tilt in it: somewhere to stand, and which way round to face.
+ *
+ * @typedef {object} LevelPose
+ * @property {THREE.Vector3} position
+ * @property {number} yaw
+ */
+
+/**
+ * What has to be remembered from the moment a thing was taken hold of.
+ *
+ * @typedef {object} Grip
+ * @property {number} handYaw Which way round the hand was held when it closed.
+ * @property {number} distance How far out along the ray the grab point was.
+ * @property {THREE.Vector3} offset From the grab point to where the carried
+ *   thing stood, at that moment.
+ * @property {number} yaw Which way round the carried thing faced when the hand
+ *   closed on it.
+ */
+
+/**
+ * How far a rotation turns about the up axis, with the tipping over left out:
+ * the twist of the rotation about the vertical, which for a quaternion is
+ * simply the part of it that lies along that axis.
+ *
+ * Asked of the direction the hand points instead, this would fall apart in the
+ * one pose a board on a table is always reached for — a hand aimed at the floor
+ * points nowhere in particular, and the yaw of a vertical ray is anybody's
+ * guess. The twist has no such blind spot: a hand pointing straight down still
+ * says which way round it is held.
+ *
+ * Tip a hand over about any level axis and this does not budge, which is the
+ * property the carry rests on. A wrist motion that does turn about the vertical
+ * — and pitching then rolling is partly that, however it feels — turns the
+ * board with it, because that is a turn the player made.
+ *
+ * @param {THREE.Quaternion} quaternion
+ * @returns {number}
+ */
+export function yawOf(quaternion) {
+  const angle = 2 * Math.atan2(quaternion.y, quaternion.w);
+  // A quaternion says the same thing twice over, so that spans two turns.
+  // Brought back to one, to keep the numbers something a person can read.
+  return Math.atan2(Math.sin(angle), Math.cos(angle));
+}
+
+/**
+ * Reads a matrix as the nearest level pose, dropping whatever tilt it had.
+ *
+ * @param {THREE.Matrix4} matrix
+ * @returns {LevelPose}
+ */
+export function levelPose(matrix) {
+  const position = new THREE.Vector3();
+  const quaternion = new THREE.Quaternion();
+  const scale = new THREE.Vector3();
+  matrix.decompose(position, quaternion, scale);
+  return { position, yaw: yawOf(quaternion) };
+}
+
+/**
+ * The hand as a pointing device: where it is, and where it is aiming. Read
+ * into the scratch above, so the answer is good until the next call.
+ *
+ * @param {THREE.Matrix4} hand
+ */
+function rayOf(hand) {
+  hand.decompose(_position, _quaternion, _scale);
+  // A target ray space points down its own -z; the same convention
+  // three.js's Raycaster.setFromXRController casts along.
+  _direction.set(0, 0, -1).applyQuaternion(_quaternion);
+  return { position: _position, quaternion: _quaternion, direction: _direction };
+}
+
+/**
+ * Takes hold: the hand, the point its ray landed on, and where the carried
+ * thing stood, all as they are at this moment.
+ *
+ * @param {THREE.Matrix4} hand
+ * @param {THREE.Vector3} grabPoint
+ * @param {LevelPose} pose
+ * @returns {Grip}
+ */
+export function beginCarry(hand, grabPoint, pose) {
+  const ray = rayOf(hand);
+  return {
+    handYaw: yawOf(ray.quaternion),
+    distance: grabPoint.clone().sub(ray.position).length(),
+    offset: pose.position.clone().sub(grabPoint),
+    yaw: pose.yaw,
+  };
+}
+
+/**
+ * Where the carried thing belongs now the hand has moved on. The grab point is
+ * put back on the ray, as far out as it was taken hold of, and the thing hangs
+ * off it by the offset it was grabbed with — turned about the grab point as the
+ * hand turns about the vertical, so a twist of the wrist pivots the board on
+ * the spot the cursor is holding rather than sweeping it sideways. The wrist's
+ * roll and pitch never tilt it: they only steer where the ray, and with it the
+ * grab point, goes.
+ *
+ * @param {Grip} grip
+ * @param {THREE.Matrix4} hand
+ * @returns {LevelPose}
+ */
+export function carriedPose(grip, hand) {
+  const ray = rayOf(hand);
+  const turned = yawOf(ray.quaternion) - grip.handYaw;
+  const grabPoint = ray.position.clone().addScaledVector(ray.direction, grip.distance);
+  const offset = _offset.copy(grip.offset).applyAxisAngle(upAxis, turned);
+  return {
+    position: grabPoint.add(offset),
+    yaw: grip.yaw + turned,
+  };
+}
+
+/**
+ * Puts an object at a level pose given in world coordinates, at the world
+ * scale given. One walk up the ancestors, for the parent's world matrix that
+ * turns the pose into a local one.
+ *
+ * @param {THREE.Object3D} object
+ * @param {LevelPose} pose
+ * @param {THREE.Vector3} scale
+ * @returns {void}
+ */
+function placeLevel(object, pose, scale) {
+  _matrix.compose(pose.position, _quaternion.setFromAxisAngle(upAxis, pose.yaw), scale);
+  const { parent } = object;
+  if (parent) {
+    parent.updateWorldMatrix(true, false);
+    _matrix.premultiply(_inverse.copy(parent.matrixWorld).invert());
+  }
+  setLocalMatrix(object, _matrix);
+}
+
+/**
+ * The size an object is in the room, which a carry leaves alone — the boards
+ * being carried here are scaled down to the room, and a carry has no
+ * business changing how big anything is.
+ *
+ * @param {THREE.Object3D} object
+ * @returns {THREE.Vector3}
+ */
+function worldScale(object) {
+  object.updateWorldMatrix(true, false);
+  const scale = new THREE.Vector3();
+  object.matrixWorld.decompose(_position, _quaternion, scale);
+  return scale;
+}
+
+/**
+ * Puts an object at a pose given in world coordinates, leaving its size alone.
+ *
+ * @param {THREE.Object3D} object
+ * @param {LevelPose} pose
+ * @returns {void}
+ */
+export function applyLevelPose(object, pose) {
+  placeLevel(object, pose, worldScale(object));
+}
+
+/**
+ * The hand carrying the object: which controller, and the input source
+ * driving it. A carry can change hands, so both can change over its life.
+ *
+ * @typedef {object} CarryHold
+ * @property {XRTargetRaySpace} controller
+ * @property {XRInputSource} inputSource
+ */
+
+/**
+ * @typedef {object} CarryOptions
+ * @property {Reactive<boolean>} [enabled] Whether a press on a handle can take
+ *   hold right now — a boolean, a reactive getter, or an observable, as
+ *   `makeInteractive` takes. Unlike a drag, a carry that is disabled while
+ *   under way is put down where it is: nothing was reparented, so there is
+ *   nothing to undo, and a board left hanging off a hand that can no longer
+ *   steer it is worse than one set down.
+ */
+
+/**
+ * @typedef {object} Carry
+ * @property {<T extends Object3D<XREventMap>>() => EntityEffect<T>} carriable
+ *   The operator for the object that is carried, for its operator list.
+ * @property {<T extends Object3D<XREventMap>>() => EntityEffect<T>} handle
+ *   The operator for a handle: an object a press on takes the carried thing
+ *   by. It listens for the presses; it does not make the object pointable,
+ *   because which of the carried thing's parts are handles is the scene's
+ *   decision — `makeInteractive()` goes in the same list, or the presses
+ *   bubble up from parts that already are. A handle taken out of the scene
+ *   mid-carry puts the carried thing down, since the release that would have
+ *   is not coming to it any more.
+ * @property {() => CarryHold | null} held The hand carrying the object, or
+ *   null while nobody is. Reactive: read it inside an effect and the effect
+ *   re-runs as the object is taken, handed over, and put down.
+ */
+
+/**
+ * Carrying an object about the room with a hand, level.
+ *
+ * Where `drag()` hands the object the hand's whole pose, this keeps only what
+ * a level thing can have — where it is, and which way round it faces — and
+ * steers it by the grab point, the spot the ray landed on when the hand
+ * closed: see the top of this file. The object is not reparented; it is
+ * posed, once a frame, from where the hand has got to.
+ *
+ * The presses are taken by handles rather than by the carried object as a
+ * whole, so that only furniture starts a carry: a board by its floor, a tray
+ * by its rails. A press that bubbled up from anywhere else — a panel that did
+ * not want it, whatever sits behind one — would otherwise carry the board off,
+ * which is a surprising thing for a board to do when the player has just
+ * pressed a button. A scene that does want any unclaimed press to carry can
+ * put `handle()` on the carried object itself.
+ *
+ * The bookkeeping is `drag()`'s: it remembers which hand, so a press from the
+ * other hand while the object is carried is a handover — the new hand takes
+ * the grip from wherever its own ray lands — and only the carrying hand's
+ * release puts the object down; and the presses a handle takes never reach
+ * whatever is behind it.
+ *
+ * ```js
+ * const board = carry(ctx, { enabled: () => phase.get() === "build" });
+ * $(new THREE.Group(), [
+ *   board.carriable(),
+ *   children(
+ *     $(floor, [makeInteractive(), board.handle()]),
+ *     Game(ctx),
+ *   ),
+ * ]);
+ * ```
+ *
+ * @param {WeakKey} ctx
+ * @param {CarryOptions} [options]
+ * @returns {Carry}
+ */
+export function carry(ctx, options = {}) {
+  const { enabled = true } = options;
+  const manager = InteractionContext.get(ctx);
+  const isEnabled = asReader(enabled);
+  /**
+   * The hand, what it took hold through, how it took hold, and the size the
+   * carried thing is in the room — read once here rather than once a frame,
+   * since nothing about a carry changes it.
+   *
+   * @type {Signal<(CarryHold & { handle: Object3D; grip: Grip; scale: THREE.Vector3 }) | null>}
+   */
+  const hold = Signal.of(null);
+  /** @type {Object3D | undefined} */
+  let object;
+
+  const take = makeNonReactive(
+    /**
+     * @param {Object3D} handle
+     * @param {InputEvent} event
+     */
+    (handle, event) => {
+      if (!isEnabled()) {
+        return;
+      }
+      manager.stopPropagation(event);
+      if (!object) {
+        return;
+      }
+      const { controller, inputSource } = event;
+      controller.updateWorldMatrix(true, false);
+      const scale = worldScale(object);
+      // A press from the other hand while carried is a handover, and takes the
+      // grip afresh from where its own ray lands; the same hand pressing again
+      // cannot happen without a release in between.
+      hold.set({
+        controller,
+        inputSource,
+        handle,
+        grip: beginCarry(
+          controller.matrixWorld,
+          event.intersection.point.clone(),
+          levelPose(object.matrixWorld),
+        ),
+        scale,
+      });
+    },
+  );
+
+  const drop = makeNonReactive(
+    /**
+     * @param {InputCancelEvent} event
+     */
+    (event) => {
+      const current = hold.get();
+      if (!current) {
+        // The press this releases was swallowed above while it was carriable,
+        // so the release is swallowed too rather than reaching whatever is
+        // behind as a release it never saw the press of.
+        if (isEnabled()) {
+          manager.stopPropagation(event);
+        }
+        return;
+      }
+      manager.stopPropagation(event);
+      if (current.controller === event.controller) {
+        hold.set(null);
+      }
+    },
+  );
+
+  /**
+   * @template {Object3D<XREventMap>} T
+   * @returns {EntityEffect<T>}
+   */
+  const handle = () => (entity) => {
+    /** @param {InputEvent} event */
+    const onStart = (event) => take(entity, event);
+    entity.addEventListener("selectstart", onStart);
+    entity.addEventListener("selectend", drop);
+    onCleanup(() => {
+      entity.removeEventListener("selectstart", onStart);
+      entity.removeEventListener("selectend", drop);
+      // The release is dispatched to what was pressed, and this is no longer
+      // listening for it: a carry taken through this handle would otherwise
+      // follow the hand for the rest of the session.
+      if (withComputation(null, () => hold.get())?.handle === entity) {
+        hold.set(null);
+      }
+    });
+  };
+
+  /**
+   * @template {Object3D<XREventMap>} T
+   * @returns {EntityEffect<T>}
+   */
+  const carriable = () => (entity) => {
+    object = entity;
+    onCleanup(() => {
+      if (object === entity) {
+        object = undefined;
+        withComputation(null, () => hold.set(null));
+      }
+    });
+    useEffect(
+      () => {
+        if (!isEnabled()) {
+          withComputation(null, () => {
+            if (hold.get()) {
+              hold.set(null);
+            }
+          });
+        }
+      },
+      { name: "carry:enabled" },
+    );
+    useEffect(
+      () => {
+        const current = hold.get();
+        if (!current) {
+          return;
+        }
+        useFrame(ctx, () => {
+          // three.js has written the hand's new pose by now, but only into
+          // its local matrix; the world one is still last frame's.
+          current.controller.updateWorldMatrix(true, false);
+          placeLevel(
+            entity,
+            carriedPose(current.grip, current.controller.matrixWorld),
+            current.scale,
+          );
+        });
+      },
+      { name: "carry:follow" },
+    );
+  };
+
+  return {
+    carriable,
+    handle,
+    held: () => {
+      const current = hold.get();
+      return current ? { controller: current.controller, inputSource: current.inputSource } : null;
+    },
+  };
+}
+
+/**
+ * A piece of furniture that is also a handle: a mesh of the given geometry
+ * and material, standing at the position, that a press on takes the carried
+ * thing by. The floor a board is carried by, the rails on a tray. Presses are
+ * taken by these rather than by the carried group as a whole, so that only
+ * furniture starts a carry — a press on a brick or a panel means what it
+ * says there.
+ *
+ * ```js
+ * children(carryHandle(ctx, board, floorGeometry, floorMaterial, floorPosition), Game(ctx));
+ * ```
+ *
+ * @param {WeakKey} ctx
+ * @param {Carry} carried
+ * @param {THREE.BufferGeometry} geometry
+ * @param {THREE.Material} material
+ * @param {THREE.Vector3} position
+ * @returns {Source<Component>}
+ */
+export const carryHandle =
+  /** @type {(ctx: WeakKey, carried: Carry, geometry: THREE.BufferGeometry, material: THREE.Material, position: THREE.Vector3) => Source<Component>} */ (
+    component(
+      /**
+       * @param {WeakKey} ctx
+       * @param {Carry} carried
+       * @param {THREE.BufferGeometry} geometry
+       * @param {THREE.Material} material
+       * @param {THREE.Vector3} position
+       */
+      (ctx, carried, geometry, material, position) => {
+        const { makeInteractive } = interactions(ctx);
+        const mesh = /** @type {THREE.Mesh<THREE.BufferGeometry, THREE.Material, XREventMap>} */ (
+          new THREE.Mesh(geometry, material)
+        );
+        return $(mesh, [
+          effects((o) => {
+            o.position.copy(position);
+          }),
+          makeInteractive(),
+          carried.handle(),
+        ]);
+      },
+    )
+  );

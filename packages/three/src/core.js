@@ -3,7 +3,7 @@ import { addDependency, batch, Derived } from "@apendua/signal";
 
 /**
  * @import { Source, Subscribable, Unsubscribable } from "@apendua/signal";
- * @import { Object3D, XRTargetRaySpace, Intersection, Object3DEventMap } from 'three';
+ * @import { Object3D, XRTargetRaySpace, Intersection, Object3DEventMap, Matrix4 } from 'three';
  */
 
 /**
@@ -104,7 +104,47 @@ import { addDependency, batch, Derived } from "@apendua/signal";
  */
 
 /**
- * @typedef {Object3DEventMap & InteractionEventMap} XREventMap
+ * The buttons an object can be picked up with: the trigger (`select`) or the
+ * grip (`squeeze`), as the session names them.
+ *
+ * @typedef {"select" | "squeeze"} DragButton
+ */
+
+/**
+ * What `drag()` says while an object is being carried: which hand has it,
+ * the input source driving that hand (its gamepad, for a thumbstick), which
+ * button it is holding with, and where the object is in the room. On
+ * `dragmove` the matrix is the object's own, live; `dragstart` and `dragend`
+ * carry a copy of where it was picked up and let go.
+ *
+ * @typedef {object} DragEvent
+ * @property {Object3D<XREventMap>} target
+ * @property {XRTargetRaySpace} controller
+ * @property {XRInputSource} inputSource
+ * @property {DragButton} button
+ * @property {Matrix4} matrixWorld
+ */
+
+/**
+ * The release, with the way back: `reset()` puts the object at the local pose
+ * it had before it was picked up, for a drop the scene refuses or a drag that
+ * was only ever meant to hand out a copy.
+ *
+ * @typedef {DragEvent & { reset: () => void }} DragEndEvent
+ */
+
+/**
+ * The events `drag()` dispatches on the object it carries. They do not bubble:
+ * a drag is the object's own affair, and whoever wants to know listens on it.
+ *
+ * @typedef {object} DragEventMap
+ * @property {DragEvent} dragstart
+ * @property {DragEvent} dragmove
+ * @property {DragEndEvent} dragend
+ */
+
+/**
+ * @typedef {Object3DEventMap & InteractionEventMap & DragEventMap} XREventMap
  */
 
 /**

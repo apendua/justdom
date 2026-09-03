@@ -149,6 +149,17 @@ describe("a function export", () => {
     assert.ok(new Exported() instanceof Vec2);
   });
 
+  test("answers for `prototype` even when the definition has none", () => {
+    const hot = fakeHot();
+    const arrow = /** @type {any} */ (reload(hot, "arrow", () => 1));
+    // A proxy over a function must report the target's non-configurable
+    // `prototype`; a falsish answer here would be a TypeError, not `false`.
+    assert.ok("prototype" in arrow);
+    assert.strictEqual(Reflect.deleteProperty(arrow, "prototype"), false);
+    assert.ok(Object.getOwnPropertyNames(arrow).includes("prototype"));
+    assert.strictEqual(arrow(), 1);
+  });
+
   test("a call that throws still records the dependency", () => {
     const hot = fakeHot();
     const risky = reload(hot, "risky", () => {

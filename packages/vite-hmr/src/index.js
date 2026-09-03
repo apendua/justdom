@@ -345,10 +345,12 @@ function reloadableFunction(held) {
       return Reflect.set(held.peek(), key, value);
     },
     has(_, key) {
-      return Reflect.has(held.peek(), key);
+      // The target's `prototype` is non-configurable, so it cannot be reported
+      // absent — even when the current definition, an arrow, has none.
+      return key === "prototype" || Reflect.has(held.peek(), key);
     },
     deleteProperty(_, key) {
-      return Reflect.deleteProperty(held.peek(), key);
+      return key !== "prototype" && Reflect.deleteProperty(held.peek(), key);
     },
     defineProperty(_, key, descriptor) {
       return Reflect.defineProperty(held.peek(), key, descriptor);

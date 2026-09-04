@@ -119,6 +119,23 @@ export function suppressSessionOffers() {
  */
 
 /**
+ * A session init with one more optional feature in it, leaving whatever the
+ * caller asked for alone — including that same feature, asked for twice.
+ *
+ * @template {{ optionalFeatures?: string[] }} T
+ * @param {T | undefined} init
+ * @param {string} feature
+ * @returns {T}
+ */
+function withOptionalFeature(init, feature) {
+  const features = init?.optionalFeatures ?? [];
+  return /** @type {T} */ ({
+    ...init,
+    optionalFeatures: features.includes(feature) ? features : [...features, feature],
+  });
+}
+
+/**
  * Builds the button used to enter XR. Passthrough AR is preferred where the
  * platform can provide it, but plenty of headsets (anything without a
  * passthrough camera) only ever report support for immersive-vr, so this
@@ -160,6 +177,15 @@ export function suppressSessionOffers() {
  * stopped moving; see `installCrashPanel`. `crashPanel: false` opts out, for
  * a page with error reporting of its own.
  *
+ * Hand tracking is asked for, as an optional feature of both session kinds.
+ * A hand put down on the table is reported either way — the runtime exposes
+ * it as a pointer source with a target ray and a synthesised select — but
+ * only with the feature does the source carry a `hand`, which is the one
+ * thing that tells it apart from a controller: three's controller-model
+ * factory would otherwise draw a controller for it, and no joint ever
+ * arrives. A headset without hands ignores the request. `handTracking:
+ * false` leaves it out.
+ *
  * @param {WebGLRenderer} renderer
  * @param {{
  *   ar?: Partial<ARButtonSessionInit>;
@@ -168,10 +194,18 @@ export function suppressSessionOffers() {
  *   frameRate?: FrameRatePreference | false;
  *   offerSession?: boolean;
  *   crashPanel?: boolean;
+ *   handTracking?: boolean;
  * }} [sessionInit]
  * @returns {Promise<HTMLElement>}
  */
 export async function createXRButton(renderer, sessionInit = {}) {
+  if (sessionInit.handTracking !== false) {
+    sessionInit = {
+      ...sessionInit,
+      ar: withOptionalFeature(sessionInit.ar, "hand-tracking"),
+      vr: withOptionalFeature(sessionInit.vr, "hand-tracking"),
+    };
+  }
   renderer.xr.setReferenceSpaceType("local");
   if (sessionInit.anchor !== false) {
     anchorToViewer(renderer);

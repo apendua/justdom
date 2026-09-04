@@ -1,8 +1,10 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
+import { Effect } from "@apendua/signal";
 import {
   CameraContext,
+  createControllerHandle,
   frames,
   getCamera,
   getScene,
@@ -105,5 +107,74 @@ describe("getScene", () => {
 
   test("says so when there is no scene", () => {
     assert.throws(() => getScene({}), /SceneContext not set/);
+  });
+});
+
+describe("createControllerHandle", () => {
+  /**
+   * The three spaces of one controller slot, as `WebXRController` drives
+   * them: plain `Object3D`s that the connection and pinch events are
+   * dispatched on.
+   */
+  function slot() {
+    const controller = /** @type {THREE.XRTargetRaySpace} */ (new THREE.Group());
+    const grip = /** @type {THREE.XRGripSpace} */ (new THREE.Group());
+    const hand = /** @type {THREE.XRHandSpace} */ (new THREE.Group());
+    return { controller, grip, hand, handle: createControllerHandle(0, controller, grip, hand) };
+  }
+
+  /**
+   * @param {THREE.Object3D} space
+   * @param {unknown} data
+   */
+  function connect(space, data) {
+    space.dispatchEvent(/** @type {any} */ ({ type: "connected", data }));
+  }
+
+  test("tells a tracked hand from a controller the way three does: by the source's hand", () => {
+    const { controller, handle } = slot();
+    assert.equal(handle.tracked(), null);
+
+    connect(controller, { handedness: "right", hand: null });
+    assert.equal(handle.tracked(), "controller");
+
+    // Controllers put down; the runtime reconnects the slot as a hand.
+    controller.dispatchEvent(/** @type {any} */ ({ type: "disconnected" }));
+    assert.equal(handle.tracked(), null);
+    connect(controller, { handedness: "right", hand: {} });
+    assert.equal(handle.tracked(), "hand");
+    assert.equal(handle.inputSource.get()?.handedness, "right");
+  });
+
+  test("tracked is derived: reconnecting the same kind of source does not re-run a watcher", () => {
+    const { controller, handle } = slot();
+    /** @type {(string | null)[]} */
+    const seen = [];
+    const watcher = new Effect(() => {
+      seen.push(handle.tracked());
+    });
+    connect(controller, { hand: null });
+    // A new source object of the same kind — what a reconnect looks like —
+    // is a change to `inputSource` and not to `tracked`.
+    connect(controller, { hand: null, gamepad: {} });
+    connect(controller, { hand: {} });
+    assert.deepEqual(seen, [null, "controller", "hand"]);
+    watcher.dispose();
+  });
+
+  test("pinching follows the hand space's pinch events, and ends with the hand", () => {
+    const { controller, hand, handle } = slot();
+    connect(controller, { hand: {} });
+    assert.equal(handle.pinching(), false);
+
+    hand.dispatchEvent(/** @type {any} */ ({ type: "pinchstart" }));
+    assert.equal(handle.pinching(), true);
+    hand.dispatchEvent(/** @type {any} */ ({ type: "pinchend" }));
+    assert.equal(handle.pinching(), false);
+
+    // Controllers picked up mid-pinch: three never sends the `pinchend`.
+    hand.dispatchEvent(/** @type {any} */ ({ type: "pinchstart" }));
+    controller.dispatchEvent(/** @type {any} */ ({ type: "disconnected" }));
+    assert.equal(handle.pinching(), false);
   });
 });

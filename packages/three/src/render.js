@@ -3,6 +3,7 @@ import {
   addDependency,
   Computation,
   createProperty,
+  Derived,
   fromEvent,
   fromObservable,
   observable,
@@ -154,16 +155,29 @@ export function getXRSession(ctx) {
 
 /**
  * One of the player's hands, as three.js models it: where it points, where it
- * holds, and which input source is currently driving it.
+ * holds, the joints it is made of when it is a tracked hand, and which input
+ * source is currently driving it.
  *
  * @typedef {object} ControllerHandle
  * @property {number} index Position in the renderer's controller list.
  * @property {THREE.XRTargetRaySpace} controller Target ray space: origin at the
  *   controller, -Z pointing where it aims.
  * @property {THREE.XRGripSpace} grip Grip space: where a held object sits.
+ * @property {THREE.XRHandSpace} hand Hand space: `joints` are the twenty-five
+ *   `XRHandJoint`s three fills in every frame while a tracked hand drives
+ *   this slot, each an `Object3D` in the reference space. Empty and hidden
+ *   while a controller does.
  * @property {Signal<XRInputSource | null>} inputSource The connected input
  *   source, or null while the hand is not being tracked. Carries the gamepad
  *   and the handedness.
+ * @property {() => "controller" | "hand" | null} tracked What is driving the
+ *   slot: a controller, the hand itself, or nothing. Reactive — read it in an
+ *   effect and the effect re-runs when the player puts the controllers down.
+ * @property {() => boolean} pinching Whether a tracked hand has its index tip
+ *   and thumb tip together, by three's own measure (within 20 mm, with 5 mm
+ *   of hysteresis). Reactive, and always false for a controller. This is
+ *   state, not input: the runtime already turns a pinch into `selectstart` /
+ *   `selectend` on the target ray, and that is what `makeInteractive` hears.
  */
 
 export const ControllersContext = createProperty(
@@ -188,12 +202,15 @@ export function controllers(ctx) {
 }
 
 /**
+ * Exported for its tests; `controllers(ctx)` is how an app gets these.
+ *
  * @param {number} index
  * @param {THREE.XRTargetRaySpace} controller
  * @param {THREE.XRGripSpace} grip
+ * @param {THREE.XRHandSpace} hand
  * @returns {ControllerHandle}
  */
-function createControllerHandle(index, controller, grip) {
+export function createControllerHandle(index, controller, grip, hand) {
   /** @type {Signal<XRInputSource | null>} */
   const inputSource = Signal.of(/** @type {XRInputSource | null} */ (null));
   controller.addEventListener("connected", (event) => {
@@ -202,7 +219,40 @@ function createControllerHandle(index, controller, grip) {
   controller.addEventListener("disconnected", () => {
     inputSource.set(null);
   });
-  return { index, controller, grip, inputSource };
+  // Derived rather than read straight off the source, so that an effect
+  // watching *what* is in the hand is not re-run by every other change to
+  // the source signal — and so that the answer is the one three itself
+  // uses: a source with a `hand` is a hand, whatever its profiles say.
+  const tracked = new Derived(() => {
+    const source = inputSource.get();
+    if (!source) {
+      return null;
+    }
+    return source.hand ? "hand" : "controller";
+  });
+  // three dispatches these on every space of the controller as it measures
+  // the pinch each frame; the hand space is the one that means it.
+  const pinching = Signal.of(false);
+  hand.addEventListener("pinchstart", () => {
+    pinching.set(true);
+  });
+  hand.addEventListener("pinchend", () => {
+    pinching.set(false);
+  });
+  // A controller replacing the hand never sends `pinchend`; the pinch ends
+  // with the hand.
+  controller.addEventListener("disconnected", () => {
+    pinching.set(false);
+  });
+  return {
+    index,
+    controller,
+    grip,
+    hand,
+    inputSource,
+    tracked: () => tracked.get(),
+    pinching: () => pinching.get(),
+  };
 }
 
 /** @type {WeakMap<THREE.WebGLRenderer, Set<XRFrameRequestCallback>>} */
@@ -404,7 +454,12 @@ export function frames(ctx) {
 /**
  * @typedef {object} RenderOptions
  * @property {(grip: THREE.XRGripSpace) => THREE.Object3D} [createControllerModel]
- * @property {(grip: THREE.XRHandSpace) => THREE.Object3D} [createHandModel]
+ * @property {(hand: THREE.XRHandSpace) => THREE.Object3D} [createHandModel]
+ *   Something to draw for a tracked hand, given its hand space: three's
+ *   `OculusHandModel`, or `XRHandModelFactory.createHandModel(hand, "mesh")`.
+ *   Added to the hand space, where it hears the same `connected` /
+ *   `disconnected` events the controller model hears on the grip. Without it
+ *   a tracked hand still points and pinches; it is just not drawn.
  * @property {(renderer: THREE.WebGLRenderer) => void} [onBeforeRender]
  * @property {(renderer: THREE.WebGLRenderer) => void} [onAfterRender]
  * @property {boolean} [antialias] On unless it is turned off; see `render`.
@@ -505,35 +560,39 @@ export function render(fn, options = {}) {
       }),
     );
 
+    // Each slot is three spaces on one input: the target ray it points with,
+    // the grip a held thing sits in, and the hand space whose joints three
+    // fills in when a tracked hand rather than a controller is driving it.
+    // The hand space always exists; it is only populated when the session
+    // was granted `hand-tracking`, which `createXRButton` asks for.
     const controller0 = renderer.xr.getController(0);
     const controllerGrip0 = renderer.xr.getControllerGrip(0);
+    const hand0 = renderer.xr.getHand(0);
     if (options.createControllerModel) {
       controllerGrip0.add(options.createControllerModel(controllerGrip0));
     }
-    // const hand0 = renderer.xr.getHand(0);
-    // if (options.createHandModel) {
-    //   hand0.add(options.createHandModel(hand0));
-    //   controllerGrip0.add(options.createHandModel(hand0));
-    // }
+    if (options.createHandModel) {
+      hand0.add(options.createHandModel(hand0));
+    }
     subscriber.add(
       interactionManager.addController(controller0, (fn) => onLateFrame(ctx, fn)).subscribe(),
     );
     const controller1 = renderer.xr.getController(1);
     const controllerGrip1 = renderer.xr.getControllerGrip(1);
-    // const hand1 = renderer.xr.getHand(1);
-    // if (options.createHandModel) {
-    //   hand1.add(options.createHandModel(hand1));
-    // }
+    const hand1 = renderer.xr.getHand(1);
     if (options.createControllerModel) {
       controllerGrip1.add(options.createControllerModel(controllerGrip1));
+    }
+    if (options.createHandModel) {
+      hand1.add(options.createHandModel(hand1));
     }
     subscriber.add(
       interactionManager.addController(controller1, (fn) => onLateFrame(ctx, fn)).subscribe(),
     );
 
     ctx = ControllersContext.set(ctx, [
-      createControllerHandle(0, controller0, controllerGrip0),
-      createControllerHandle(1, controller1, controllerGrip1),
+      createControllerHandle(0, controller0, controllerGrip0, hand0),
+      createControllerHandle(1, controller1, controllerGrip1, hand1),
     ]);
 
     // Add simple rays to controllers. This will need to be revisited.
@@ -558,12 +617,12 @@ export function render(fn, options = {}) {
     }
 
     scene.add(camera);
-    // scene.add(hand0);
     scene.add(controller0);
     scene.add(controllerGrip0);
-    // scene.add(hand1);
+    scene.add(hand0);
     scene.add(controller1);
     scene.add(controllerGrip1);
+    scene.add(hand1);
 
     // Subscribing is mounting. A root produces nothing — everything it builds
     // it mounts on the way through — so nothing is read off this; the

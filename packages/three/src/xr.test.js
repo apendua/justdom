@@ -246,6 +246,8 @@ describe("createXRButton", () => {
   test("passes the ar/vr session init through to whichever button is used", async (t) => {
     const arInit = { optionalFeatures: ["hand-tracking"] };
     const vrInit = { optionalFeatures: ["local-floor"] };
+    // Untouched, and so the same object: hand tracking is the one thing the
+    // button adds to a session init, and here it is told not to.
     /** @type {unknown} */
     let seenAr;
     /** @type {unknown} */
@@ -270,7 +272,7 @@ describe("createXRButton", () => {
     navigator.xr = /** @type {XRSystem} */ (
       /** @type {unknown} */ ({ isSessionSupported: async () => false })
     );
-    await createXRButton(fakeRenderer(), { ar: arInit, vr: vrInit });
+    await createXRButton(fakeRenderer(), { ar: arInit, vr: vrInit, handTracking: false });
     assert.equal(seenAr, arInit);
 
     navigator.xr = /** @type {XRSystem} */ (
@@ -278,8 +280,93 @@ describe("createXRButton", () => {
         isSessionSupported: async (/** @type {string} */ mode) => mode === "immersive-vr",
       })
     );
-    await createXRButton(fakeRenderer(), { ar: arInit, vr: vrInit });
+    await createXRButton(fakeRenderer(), { ar: arInit, vr: vrInit, handTracking: false });
     assert.equal(seenVr, vrInit);
+  });
+
+  /**
+   * Captures the session init each of three's buttons is handed.
+   *
+   * @param {import('node:test').TestContext} t
+   */
+  function captureInits(t) {
+    /** @type {{ ar?: { optionalFeatures?: string[] }; vr?: { optionalFeatures?: string[] } }} */
+    const seen = {};
+    t.mock.method(
+      ARButton,
+      "createButton",
+      (/** @type {unknown} */ _renderer, /** @type {never} */ sessionInit) => {
+        seen.ar = sessionInit;
+        return {};
+      },
+    );
+    t.mock.method(
+      VRButton,
+      "createButton",
+      (/** @type {unknown} */ _renderer, /** @type {never} */ sessionInit) => {
+        seen.vr = sessionInit;
+        return {};
+      },
+    );
+    return seen;
+  }
+
+  test("asks for hand tracking on both session kinds, keeping whatever else was asked for", async (t) => {
+    const seen = captureInits(t);
+
+    // Nothing asked for: the feature is the whole of the init.
+    navigator.xr = /** @type {XRSystem} */ (
+      /** @type {unknown} */ ({ isSessionSupported: async () => false })
+    );
+    await createXRButton(fakeRenderer(), { anchor: false, frameRate: false });
+    assert.deepEqual(seen.ar, { optionalFeatures: ["hand-tracking"] });
+
+    // Other features asked for: the request is added, not put in their place,
+    // and an app that asked for it itself is not asking twice.
+    navigator.xr = /** @type {XRSystem} */ (
+      /** @type {unknown} */ ({
+        isSessionSupported: async (/** @type {string} */ mode) => mode === "immersive-vr",
+      })
+    );
+    await createXRButton(fakeRenderer(), {
+      anchor: false,
+      frameRate: false,
+      ar: { optionalFeatures: ["hand-tracking"], requiredFeatures: ["hit-test"] },
+      vr: { optionalFeatures: ["local-floor"] },
+    });
+    assert.deepEqual(seen.vr, { optionalFeatures: ["local-floor", "hand-tracking"] });
+
+    navigator.xr = /** @type {XRSystem} */ (
+      /** @type {unknown} */ ({ isSessionSupported: async () => true })
+    );
+    await createXRButton(fakeRenderer(), {
+      anchor: false,
+      frameRate: false,
+      ar: { optionalFeatures: ["hand-tracking"], requiredFeatures: ["hit-test"] },
+    });
+    assert.deepEqual(seen.ar, {
+      optionalFeatures: ["hand-tracking"],
+      requiredFeatures: ["hit-test"],
+    });
+  });
+
+  test("handTracking: false leaves the session init exactly as given", async (t) => {
+    const seen = captureInits(t);
+    navigator.xr = /** @type {XRSystem} */ (
+      /** @type {unknown} */ ({ isSessionSupported: async () => true })
+    );
+
+    await createXRButton(fakeRenderer(), { anchor: false, frameRate: false, handTracking: false });
+    assert.equal(seen.ar, undefined);
+
+    const arInit = { optionalFeatures: ["local-floor"] };
+    await createXRButton(fakeRenderer(), {
+      anchor: false,
+      frameRate: false,
+      handTracking: false,
+      ar: arInit,
+    });
+    assert.deepEqual(seen.ar, { optionalFeatures: ["local-floor"] });
   });
 });
 

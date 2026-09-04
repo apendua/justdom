@@ -61,7 +61,7 @@ difference between seeing a crash and not: an XR frame callback that throws
 is only reported to the window if whatever drives the session says so, and
 the emulator these apps are developed against catches every one of them and
 writes to the console instead. Every option has an opt-out (`anchor`,
-`frameRate`, `offerSession`, `crashPanel`); see the JSDoc on
+`frameRate`, `offerSession`, `crashPanel`, `handTracking`); see the JSDoc on
 `createXRButton`.
 
 ## Pointing at things
@@ -219,6 +219,51 @@ One difference: a carry that is disabled while under way is put down where it
 is, since nothing was reparented and there is nothing to undo — and so is one
 whose handle leaves the scene, since the release it is waiting for would go to
 a handle no longer listening.
+
+## Hands
+
+A headset with hand tracking drives a controller slot with the hand itself
+once the controllers are put down. `createXRButton` asks the session for the
+`hand-tracking` feature, because without it the hand still arrives — the
+runtime reports it as a pointer with a target ray and turns a pinch into
+`selectstart` / `selectend`, so pointing and picking up work either way — but
+nothing tells it apart from a controller: `XRInputSource.hand` is unset, no
+joint is ever reported, and three's controller-model factory draws a
+controller for it. With the feature, `render()` fills in a third space per
+slot beside the target ray and the grip, and `controllers(ctx)` hands it out:
+
+```js
+render(Scene, {
+  createControllerModel: (grip) => new XRControllerModelFactory().createControllerModel(grip),
+  createHandModel: (hand) => new OculusHandModel(hand),
+});
+
+for (const handle of controllers(ctx)) {
+  useEffects(handle.grip, [
+    // Re-runs when the player picks the controllers up or puts them down.
+    effect(() => {
+      handle.tracked(); // "controller" | "hand" | null
+    }),
+  ]);
+  useFrame(ctx, () => {
+    const wrist = handle.hand.joints["wrist"]; // an Object3D per XRHandJoint
+    handle.pinching(); // true while thumb and index tip are together
+  });
+}
+```
+
+`handle.hand` is three's `XRHandSpace`: its `joints` are the twenty-five
+`XRHandJoint`s, each an `Object3D` posed in the reference space every frame
+the hand is tracked, and empty while a controller is in the slot. Whatever
+`createHandModel` returns is added to it, and hears the same `connected` /
+`disconnected` events a controller model hears on the grip — three's
+`OculusHandModel` and `XRHandModelFactory` both do. `tracked()` and
+`pinching()` are reactive readers: `tracked()` says what is driving the slot
+and changes only when that changes; `pinching()` is three's own measure of
+the pinch (20 mm with 5 mm of hysteresis), state to read rather than input to
+act on, since the runtime already turns the pinch into the select events that
+`makeInteractive` listens for. The `inputSource` signal underneath is still
+there for the gamepad and the handedness.
 
 ## Projecting DOM into the scene
 

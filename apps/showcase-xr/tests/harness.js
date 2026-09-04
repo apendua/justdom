@@ -88,9 +88,14 @@ async function serve() {
  * @param {boolean} [options.freeze] Whether to hold every animation at
  *   `FROZEN_TIME`. On for anything compared against a baseline; off for a test
  *   that is watching something move.
+ * @param {() => void} [options.init] Run in the page before anything the app
+ *   loads does, which is the only moment some things can be arranged: a patch
+ *   on a browser prototype has to be in place before three takes hold of the
+ *   thing it patches. It is serialized and re-parsed over there, so it closes
+ *   over nothing from here.
  * @returns {Promise<{ page: Page, browser: Browser, close: () => Promise<void> }>}
  */
-export async function openShowcase({ freeze = true } = {}) {
+export async function openShowcase({ freeze = true, init } = {}) {
   const server = await serve();
   const browser = await chromium.launch({
     executablePath: findChromium(),
@@ -138,6 +143,10 @@ export async function openShowcase({ freeze = true } = {}) {
         return animation;
       };
     }, FROZEN_TIME);
+  }
+
+  if (init) {
+    await page.addInitScript(init);
   }
 
   await page.goto(`${server.url}?emulator=bare`, { waitUntil: "load", timeout: 60_000 });

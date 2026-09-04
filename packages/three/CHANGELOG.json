@@ -2,6 +2,18 @@
   "name": "@apendua/freedom",
   "entries": [
     {
+      "version": "0.18.0",
+      "tag": "@apendua/freedom_v0.18.0",
+      "date": "Fri, 04 Sep 2026 22:51:18 GMT",
+      "comments": {
+        "minor": [
+          {
+            "comment": "Every XR app built on `createXRButton` now puts up a crash panel. Inside an immersive session a failure is invisible: three asks for the next frame only once the current callback has returned, so a throw out of the frame loop ends the loop, and what the player sees is a scene that has stopped moving with the reason in a console nobody is in front of. The panel ends the session, which puts the browser back on screen, and writes the error and its stack onto the page where it can be read on the headset. Unhandled rejections count too, since three's own buttons request a session with a bare `.then` and a refused session is otherwise a rejection nobody hears. The frame loop reports its own failures through `reportCrash(renderer, err)` rather than waiting to hear about them from the window: an XR frame callback's throw only reaches the window's `error` event if whatever drives the session reports it, and the IWER emulator these apps are developed against catches every frame callback and writes to the console instead, so a crash was invisible in a tab. Where no panel is installed the failure is rethrown and the host is as loud about it as before. `installCrashPanel(renderer)` and `CRASH_PANEL_ID` are exported for an app that wants to place it itself; `createXRButton` installs it, and `crashPanel: false` opts out."
+          }
+        ]
+      }
+    },
+    {
       "version": "0.17.0",
       "tag": "@apendua/freedom_v0.17.0",
       "date": "Thu, 03 Sep 2026 07:23:24 GMT",

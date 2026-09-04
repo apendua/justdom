@@ -1,6 +1,7 @@
 import { ARButton } from "three/examples/jsm/webxr/ARButton.js";
 import { VRButton } from "three/examples/jsm/webxr/VRButton.js";
 import { anchorToViewer } from "./anchor.js";
+import { installCrashPanel } from "./crash.js";
 
 /**
  * Which of the rates a runtime offers to ask for: the fastest it will give,
@@ -154,6 +155,11 @@ export function suppressSessionOffers() {
  * `offerSession: true` leaves three's behaviour alone, for a page that wants
  * the browser's own Enter XR affordance and can live with the risk.
  *
+ * An uncaught error ends the session and is written onto the page, where it
+ * can be read on the headset rather than guessed at from a scene that has
+ * stopped moving; see `installCrashPanel`. `crashPanel: false` opts out, for
+ * a page with error reporting of its own.
+ *
  * @param {WebGLRenderer} renderer
  * @param {{
  *   ar?: Partial<ARButtonSessionInit>;
@@ -161,6 +167,7 @@ export function suppressSessionOffers() {
  *   anchor?: boolean;
  *   frameRate?: FrameRatePreference | false;
  *   offerSession?: boolean;
+ *   crashPanel?: boolean;
  * }} [sessionInit]
  * @returns {Promise<HTMLElement>}
  */
@@ -176,6 +183,9 @@ export async function createXRButton(renderer, sessionInit = {}) {
     // Before the button is built, and not put back afterwards: the button
     // asks again every time it is clicked.
     suppressSessionOffers();
+  }
+  if (sessionInit.crashPanel !== false) {
+    installCrashPanel(renderer);
   }
   const xr = navigator.xr;
   if (xr) {

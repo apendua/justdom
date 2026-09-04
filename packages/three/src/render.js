@@ -18,6 +18,7 @@ import {
   PortalSchedulerContext,
 } from "./elements/portalScheduler.js";
 import { fitRayToHit } from "./pointers.js";
+import { reportCrash } from "./crash.js";
 
 /**
  * @import { Source, Subscribable } from "@apendua/signal";
@@ -578,6 +579,32 @@ export function render(fn, options = {}) {
     let previousFrameTime = 0;
 
     renderer.setAnimationLoop((time, frame) => {
+      try {
+        drawFrame(time, frame);
+      } catch (err) {
+        // three asks for the next frame only once this callback has returned,
+        // so by the time anyone sees this the loop is already over: the scene
+        // stops where it stands, which is what a player reports as "it froze"
+        // with nothing to say about why. Taking the loop down explicitly is
+        // the same ending, minus the chance of a second throw on the way out.
+        renderer.setAnimationLoop(null);
+        // Straight to the panel where there is one -- an XR frame callback's
+        // throw is not reliably reported to the window; see `reportCrash`.
+        // Where there is not, the old ending stands: let it out and let the
+        // host be as loud about it as it was before.
+        if (reportCrash(renderer, err)) {
+          console.error(err);
+        } else {
+          throw err;
+        }
+      }
+    });
+
+    /**
+     * @param {number} time
+     * @param {XRFrame} frame
+     */
+    function drawFrame(time, frame) {
       if (previousFrameTime) {
         portalBudget.sample(time - previousFrameTime);
       }
@@ -608,7 +635,7 @@ export function render(fn, options = {}) {
       }
       renderer.render(scene, camera);
       options.onAfterRender?.(renderer);
-    });
+    }
 
     subscriber.next(renderer);
 

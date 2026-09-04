@@ -41,7 +41,13 @@ const loadSound = memoizeDerived(
           },
           () => {},
           (error) => {
-            subscriber.error(error);
+            // A track that will not load or decode leaves the scene without
+            // music, and that is all it does. Failing the node instead would
+            // fail the effect that reads it, and an unhandled effect failure
+            // reaches `window` — where the crash panel now sees it and ends
+            // the session. Decoration must not be able to close a scene, so
+            // this never emits and the player simply stays silent.
+            console.warn(`Could not load the track at ${path}:`, error);
           },
         );
         return () => {};

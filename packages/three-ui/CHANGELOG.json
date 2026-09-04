@@ -2,6 +2,21 @@
   "name": "@apendua/justui",
   "entries": [
     {
+      "version": "0.2.2",
+      "tag": "@apendua/justui_v0.2.2",
+      "date": "Fri, 04 Sep 2026 22:51:18 GMT",
+      "comments": {
+        "dependency": [
+          {
+            "comment": "Updating dependency \"@apendua/freedom\" to `0.18.0`"
+          },
+          {
+            "comment": "Updating dependency \"@apendua/freedom\" to `0.18.0`"
+          }
+        ]
+      }
+    },
+    {
       "version": "0.2.1",
       "tag": "@apendua/justui_v0.2.1",
       "date": "Thu, 03 Sep 2026 07:23:24 GMT",

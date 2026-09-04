@@ -225,6 +225,24 @@ describe("createXRButton", () => {
     assert.deepEqual(unanchored.listeners, []);
   });
 
+  test("installs the crash panel unless told not to", async (t) => {
+    t.mock.method(ARButton, "createButton", () => ({}));
+    navigator.xr = /** @type {XRSystem} */ (
+      /** @type {unknown} */ ({
+        isSessionSupported: async () => true,
+      })
+    );
+    const listen = t.mock.method(window, "addEventListener");
+    const listening = () => listen.mock.calls.map((call) => call.arguments[0]);
+
+    await createXRButton(fakeRenderer(), { anchor: false, frameRate: false });
+    assert.deepEqual(listening(), ["error", "unhandledrejection"]);
+
+    listen.mock.resetCalls();
+    await createXRButton(fakeRenderer(), { anchor: false, frameRate: false, crashPanel: false });
+    assert.deepEqual(listening(), []);
+  });
+
   test("passes the ar/vr session init through to whichever button is used", async (t) => {
     const arInit = { optionalFeatures: ["hand-tracking"] };
     const vrInit = { optionalFeatures: ["local-floor"] };

@@ -48,6 +48,22 @@ tree it is given decorates that scene rather than producing one. `getCamera(ctx)
 `createProperty`-based context mechanism shared with the rest of this
 monorepo's stack.
 
+`createXRButton(renderer, options)` builds the Enter AR / Enter VR button and
+sets the session up the way the scenes here expect: a `local` origin
+re-anchored to the first trustworthy viewer pose, the headset's best frame
+rate, no standing session offers, and a crash panel. That last one is for the
+failure nobody can see: a throw out of the frame loop, an uncaught exception
+or an unhandled rejection ends the session and writes the error, stack and
+all, onto the page, where it can be read on the headset instead of guessed at
+from a scene that has stopped moving. The frame loop reports its own failures
+rather than waiting to hear about them from the window, which is the
+difference between seeing a crash and not: an XR frame callback that throws
+is only reported to the window if whatever drives the session says so, and
+the emulator these apps are developed against catches every one of them and
+writes to the console instead. Every option has an opt-out (`anchor`,
+`frameRate`, `offerSession`, `crashPanel`); see the JSDoc on
+`createXRButton`.
+
 ## Pointing at things
 
 `interactions(ctx)` gives an object the `makeInteractive()` operator, which puts

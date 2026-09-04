@@ -84,6 +84,38 @@ are drawn at all, that they wear the colours their stylesheets asked for, that
 a style written into the mirrored DOM reaches the scene, and that animation
 plays. These run and mean something on any machine.
 
+## Crashing on purpose
+
+`crash.test.js` is in this suite rather than a visual one, and it is here for
+the same reason everything else is: what it checks cannot be seen from jsdom.
+`createXRButton` installs a crash panel — a failure inside a session ends the
+session and writes the error onto the page, where it can be read on the
+headset — and the first version of it shipped unable to see the failure it was
+written for. It listened for the window's `error` event, and a throw out of an
+XR frame callback reaches that event only if whatever drives the session
+reports it. IWER catches every frame callback and writes to the console
+instead, so the panel passed its unit suite, worked whenever the window was
+told, and did nothing at all when the scene actually crashed.
+
+So the check crashes the showcase for real: it patches the WebGL context's
+`clear` to throw, which raises a genuine failure from inside
+`renderer.render`, inside the frame loop, behind the emulator. Nothing in the
+app is touched, because nothing in the app should have to carry a fault for a
+test to find.
+
+The one subtlety is which `clear` to throw from. The emulator composites the
+session's views into the page canvas from the *window's* animation frame and
+clears the same context on its way past, and a throw raised there never enters
+the session's callback at all — it goes straight to the window, which is the
+path that was working when this was broken. Arming that one produces a check
+that passes just as happily against the bug. The patch looks at the stack for
+that reason, and takes only the clear that freedom's own loop asked for.
+
+Removing the frame loop's reporting from `packages/freedom/src/render.js`
+fails it, which is the only property that makes it worth running: the session
+stays open and no panel appears, while the assertion that the window heard
+nothing goes on passing.
+
 ## When it fails
 
 `tests/output/` holds what this run photographed, and `scene.diff.png` marks in

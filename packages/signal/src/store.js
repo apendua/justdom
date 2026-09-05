@@ -15,6 +15,13 @@ import { isPlainObject } from "./util.js";
 const emitters = new WeakMap();
 
 /**
+ * Everything `volatileStore` has made.
+ *
+ * @type {WeakSet<object>}
+ */
+const volatileStores = new WeakSet();
+
+/**
  * Whether `value` is a store — the proxy `store()` handed back, as opposed to
  * the plain object it was made from. A store is a piece of state: what it
  * holds is what has been written to it, so anything that wants to keep state
@@ -25,6 +32,19 @@ const emitters = new WeakMap();
  */
 export function isStore(value) {
   return typeof value === "object" && value !== null && emitters.has(value);
+}
+
+/**
+ * Whether `value` is a store built by `volatileStore` — one whose contents a
+ * hot reload should replace rather than keep.
+ *
+ * `@apendua/vite-hmr` is what asks.
+ *
+ * @param {unknown} value
+ * @returns {boolean}
+ */
+export function isVolatile(value) {
+  return typeof value === "object" && value !== null && volatileStores.has(value);
 }
 
 /**
@@ -258,6 +278,50 @@ function store(data, operators = []) {
     // them, and registers a dependency that can never fire, once per store.
     useEffects(proxy, operators);
   }
+  return proxy;
+}
+
+/**
+ * A store whose contents come from *source* rather than from the running
+ * program — a theme, a palette, layout metrics.
+ *
+ * An ordinary `store` is state, and state is what a hot reload has to keep:
+ * throwing it away would lose the very thing hot reload exists to preserve.
+ * Values written in source are the other case. Keeping them across a reload
+ * means keeping the ones just edited out of the file, which is the opposite
+ * of what the edit asked for.
+ *
+ * So this is a store in every other respect — the same proxy, the same
+ * per-key dependencies, the same nesting — that `@apendua/vite-hmr` treats
+ * differently on a reload: it keeps the object, so the module's own code and
+ * its importers go on sharing it, and `replace`s the contents with the
+ * re-evaluated definition. The readers of the keys that changed re-run, and
+ * nobody else does.
+ *
+ * Which leaves one thing to get right at the call site: a value has to be
+ * *read* inside a computation to follow an edit. A read in a `set({ get
+ * material() {…} })`, in an `effects(…)`, or in a `${() => palette.accent}`
+ * interpolation follows it. One at module scope — `const accent =
+ * palette.accent`, or a plain `${palette.accent}`, which a tagged template
+ * evaluates once — captures a value and keeps it, exactly as any other
+ * constant would.
+ *
+ * @template {object} T
+ * @template {object} [TEventMap={}]
+ * @overload
+ * @param {T} data
+ * @param {Array<EntityEffect<T & IEmitter<TEventMap>>>} [operators]
+ * @return {T & IEmitter<TEventMap>}
+ */
+
+/**
+ * @param {object} data
+ * @param {Array<EntityEffect<unknown>>} [operators]
+ * @return {object}
+ */
+export function volatileStore(data, operators = []) {
+  const proxy = store(data, operators);
+  volatileStores.add(proxy);
   return proxy;
 }
 

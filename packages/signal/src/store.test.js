@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { Effect } from "./index.js";
-import store, { isStore, replace } from "./store.js";
+import store, { isStore, isVolatile, replace, volatileStore } from "./store.js";
 
 test("observes value", () => {
   const state = store({ value: 1 });
@@ -193,4 +193,35 @@ test("isStore tells a store from the object it was made from", () => {
   assert.strictEqual(isStore(data), false);
   assert.strictEqual(isStore({ ...state }), false);
   assert.strictEqual(isStore(null), false);
+});
+
+test("volatileStore() makes a store a hot reload should not preserve", () => {
+  const state = store({ value: 1 });
+  const constants = volatileStore({ value: 1 });
+  assert.strictEqual(isVolatile(constants), true);
+  assert.strictEqual(isVolatile(state), false);
+  assert.strictEqual(isVolatile({ value: 1 }), false);
+  assert.strictEqual(isVolatile(null), false);
+  assert.strictEqual(isStore(constants), true, "it is a store in every other respect");
+  constants.value = 2;
+  assert.strictEqual(constants.value, 2, "including being writable and reactive");
+});
+
+test("replace() moves the keys that changed and leaves the rest alone", () => {
+  // What a hot reload does to a store that opted out of preservation.
+  const palette = volatileStore({ accent: "#f00", spacing: 8 });
+  /** @type {string[]} */
+  const accents = [];
+  /** @type {number[]} */
+  const spacings = [];
+  new Effect(() => {
+    accents.push(palette.accent);
+  });
+  new Effect(() => {
+    spacings.push(palette.spacing);
+  });
+
+  replace(palette, { accent: "#0f0", spacing: 8 });
+  assert.deepStrictEqual(accents, ["#f00", "#0f0"], "the reader of the changed key ran");
+  assert.deepStrictEqual(spacings, [8], "the reader of the unchanged key did not");
 });

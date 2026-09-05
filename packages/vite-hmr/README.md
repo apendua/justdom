@@ -72,6 +72,17 @@ defined:
   `observable(…)`: the stand-in is a source that switches to the current
   one, dropping the previous module's subscription before taking the new.
 
+- **A `volatileStore`.** A theme, a palette, layout
+  metrics: a store whose contents come from source rather than from the
+  running program. The object is kept, as state is, so the module's own code
+  and its importers go on sharing it — and its contents are `replace`d with
+  the re-evaluated definition, so the readers of the keys that changed re-run
+  and nobody else does. A module exporting its theme this way rather than as
+  an object literal is one an edit to a colour reaches without reloading
+  anything, let alone the page. A colour still has to be _read_ inside a
+  computation to follow the edit; one read at module scope is captured, as
+  any constant would be.
+
 - **State.** A `Signal`, a `store`, a `ReactiveMap` or `ReactiveSet`, a
   `Subject` or `Emitter`, an `UpdateChannel`, or a context property from
   `createProperty` is _kept_: what such an export holds is what the running
@@ -147,12 +158,14 @@ core.
 ## Scope
 
 Values that are none of the above — plain objects, arrays, classes, anything
-this package cannot recognise as state — are compared by identity, so a
-module exporting a palette object next to its components propagates every
-update to its importers. Recognising state relies on `isStore` and
-`isProperty` from `@apendua/signal`, since a store is a `Proxy` and a
-property a bare object; a stateful shape from another library would need the
-same kind of brand before it could be kept.
+this package cannot recognise — are compared by identity, so a module
+exporting a palette as a plain object next to its components propagates every
+update to its importers. A `volatileStore` is what such an object
+should be when its readers are reactive. Recognising a store and a
+context property relies on `isStore`, `isVolatile` and `isProperty` from
+`@apendua/signal`, since each is a `Proxy` or a bare object; a stateful shape
+from another library would need the same kind of brand before it could be
+kept.
 
 ## License
 

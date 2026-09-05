@@ -86,8 +86,6 @@ const POUCH_REST = new THREE.Vector3(0, 0.03, -0.13);
 const FRAME_RADIUS = 0.011;
 const BAND_RADIUS = 0.005;
 const STONE_RADIUS = 0.022;
-const FRAME_COLOUR = palette.forkFrame;
-const BAND_COLOUR = palette.band;
 
 /**
  * How close the free hand has to come to the pouch to take hold of it, in board
@@ -262,12 +260,14 @@ const Slingshot = component((ctx: WeakKey, operators: Op<Props, Events>) => {
   });
 
   /** A fixed part of the frame: cut once, never moved again. */
-  const strut = (from: THREE.Vector3, to: THREE.Vector3, radius: number, colour: string) =>
+  const strut = (from: THREE.Vector3, to: THREE.Vector3, radius: number, colour: () => string) =>
     $(new THREE.Mesh(), [
       effects((o) => {
         setSegment(o, from, to);
         o.geometry = cylinderGeometry(radius, 1, 8);
-        o.material = basicMaterial(colour);
+        // Read here rather than handed in already read, so the colour is a
+        // dependency of this effect and an edit to it repaints the strut.
+        o.material = basicMaterial(colour());
       }),
     ]);
 
@@ -276,7 +276,7 @@ const Slingshot = component((ctx: WeakKey, operators: Op<Props, Events>) => {
       effects((o) => {
         ref.current = o;
         o.geometry = cylinderGeometry(BAND_RADIUS, 1, 6);
-        o.material = basicMaterial(BAND_COLOUR);
+        o.material = basicMaterial(palette.band);
         setSegment(o, TIP_LEFT, POUCH_REST);
       }),
     ]);
@@ -315,9 +315,9 @@ const Slingshot = component((ctx: WeakKey, operators: Op<Props, Events>) => {
       });
     }),
     children(
-      strut(HANDLE_BOTTOM, YOKE, FRAME_RADIUS, FRAME_COLOUR),
-      strut(YOKE, TIP_LEFT, FRAME_RADIUS, FRAME_COLOUR),
-      strut(YOKE, TIP_RIGHT, FRAME_RADIUS, FRAME_COLOUR),
+      strut(HANDLE_BOTTOM, YOKE, FRAME_RADIUS, () => palette.forkFrame),
+      strut(YOKE, TIP_LEFT, FRAME_RADIUS, () => palette.forkFrame),
+      strut(YOKE, TIP_RIGHT, FRAME_RADIUS, () => palette.forkFrame),
       band(leftBand),
       band(rightBand),
       $(new THREE.Mesh(), [

@@ -15,7 +15,9 @@ interface GridProps {
 const defaults: GridProps = {
   size: 1,
   cellWidth: 1,
-  colour: palette.gridLine,
+  get colour() {
+    return palette.gridLine;
+  },
   position: new THREE.Vector3(),
   rotation: new THREE.Euler(),
 };

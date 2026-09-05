@@ -28,9 +28,6 @@ const BRICK_DENSITY = 1.4;
 const BRICK_FRICTION = 0.8;
 const BRICK_RESTITUTION = 0.02;
 
-const GHOST_COLOUR = palette.ghost;
-const BLOCKED_COLOUR = palette.refused;
-
 /**
  * How much of an edge each brick gives up to its chamfer, in board units. Just
  * enough for a seam of shaded bevel between two stacked bricks — it is what
@@ -114,9 +111,9 @@ function brickColliderDesc(type: BrickType): RAPIER.ColliderDesc | null {
 function brickMaterialFor(type: BrickType, style: BrickStyle): THREE.Material {
   switch (style) {
     case "ghost":
-      return ghostMaterial(GHOST_COLOUR);
+      return ghostMaterial(palette.ghost);
     case "blocked":
-      return ghostMaterial(BLOCKED_COLOUR);
+      return ghostMaterial(palette.refused);
     default:
       return brickMaterial(brickShape(type).colour);
   }

@@ -13,6 +13,7 @@ import {
   store,
   Stream,
   Subject,
+  volatileStore,
 } from "@apendua/signal";
 import { $hmr } from "./index.js";
 
@@ -412,6 +413,43 @@ describe("a derived export", () => {
     input.set(2);
     assert.deepStrictEqual(seen, [4, 9, 27, 8], "and its inputs still move it");
     effect.dispose();
+  });
+});
+
+describe("a volatileStore export", () => {
+  test("is kept, and takes the new definition key by key", () => {
+    const hot = fakeHot();
+    const theme = reload(hot, "theme", volatileStore({ accent: "#f00", spacing: 8 }));
+    /** @type {string[]} */
+    const accents = [];
+    /** @type {number[]} */
+    const spacings = [];
+    const a = new Effect(() => {
+      accents.push(theme.accent);
+    });
+    const b = new Effect(() => {
+      spacings.push(theme.spacing);
+    });
+
+    const next = $hmr(hot);
+    const again = next.reloadable("theme", volatileStore({ accent: "#0f0", spacing: 8 }));
+    assert.strictEqual(again, theme, "the instance is the one the module and its importers share");
+    assert.deepStrictEqual(accents, ["#f00"], "nothing moves before the body has run");
+    next.commit();
+    assert.deepStrictEqual(accents, ["#f00", "#0f0"], "the reader of the changed key ran");
+    assert.deepStrictEqual(spacings, [8], "the reader of the unchanged key did not");
+    assert.strictEqual(next.invalidation({ theme: again }), null);
+    a.dispose();
+    b.dispose();
+  });
+
+  test("which constructor made it is what tells it from an ordinary store", () => {
+    const hot = fakeHot();
+    reload(hot, "thing", volatileStore({ a: 1 }));
+    const next = $hmr(hot);
+    // The same shape, but state now: not something the first one can stand in for.
+    next.reloadable("thing", store({ a: 1 }));
+    assert.match(String(next.invalidation({ thing: null })), /thing cannot be replaced/);
   });
 });
 

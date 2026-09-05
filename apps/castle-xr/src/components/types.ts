@@ -27,35 +27,45 @@ export const brickShapes: Record<BrickType, BrickShape> = {
     type: "cube",
     label: "Cube",
     size: [1, 1, 1],
-    colour: palette.brick.cube,
+    get colour() {
+      return palette.brick.cube;
+    },
     profile: "box",
   },
   block: {
     type: "block",
     label: "Block",
     size: [2, 1, 0.5],
-    colour: palette.brick.block,
+    get colour() {
+      return palette.brick.block;
+    },
     profile: "box",
   },
   plate: {
     type: "plate",
     label: "Plate",
     size: [2, 0.5, 1],
-    colour: palette.brick.plate,
+    get colour() {
+      return palette.brick.plate;
+    },
     profile: "box",
   },
   pillar: {
     type: "pillar",
     label: "Pillar",
     size: [0.5, 2, 0.5],
-    colour: palette.brick.pillar,
+    get colour() {
+      return palette.brick.pillar;
+    },
     profile: "box",
   },
   wedge: {
     type: "wedge",
     label: "Roof",
     size: [1, 1, 1],
-    colour: palette.brick.roof,
+    get colour() {
+      return palette.brick.roof;
+    },
     profile: "wedge",
   },
 };

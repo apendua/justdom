@@ -6,9 +6,11 @@ import {
   flatMap,
   isProperty,
   isStore,
+  isVolatile,
   observable,
   ReactiveMap,
   ReactiveSet,
+  replace,
   Signal,
   Stream,
   Subject,
@@ -53,6 +55,14 @@ import {
  * - **A `Stream`** — a `stylesheet`, a `className`, an `observable(...)` —
  *   is wrapped in a source that switches to the current one, dropping the
  *   previous module's subscription before taking the new one.
+ * - **A `volatileStore`** — a theme, a palette, layout metrics: a store
+ *   whose contents are written in source rather than by the running program
+ *   — is the one thing both kept and followed. The object is
+ *   kept, so the module's own code and its importers go on sharing it, and
+ *   its contents are `replace`d with the re-evaluated definition, so the
+ *   readers of the keys that changed re-run and nobody else does. Which is
+ *   what a theme wants: an edit to one colour reaches the things wearing
+ *   that colour, and nothing else moves.
  * - **State** — a `Signal`, a `store`, a `ReactiveMap` or `ReactiveSet`, a
  *   `Subject` or `Emitter`, an `UpdateChannel`, a context property — is
  *   *kept*. What such an export holds is what the running application has
@@ -100,7 +110,7 @@ import {
  */
 
 /**
- * @typedef {"function" | "derived" | "stream" | "state" | "value"} Kind
+ * @typedef {"function" | "derived" | "stream" | "constants" | "state" | "value"} Kind
  */
 
 /**
@@ -111,8 +121,9 @@ import {
  * @property {string} shape which kind of state, for a `state` entry — a
  *   `Signal` cannot stand in for a `ReactiveMap`. Empty for the others.
  * @property {Signal<any> | null} held the current definition, for the kinds
- *   that follow it. `null` for a plain value, which cannot be followed, and
- *   for state, which is kept rather than followed.
+ *   that follow it through a holder. `null` for a plain value, which cannot
+ *   be followed; for state, which is kept rather than followed; and for
+ *   constants, which follow by having their contents replaced in place.
  * @property {unknown} exported what the module exports under the name: the
  *   wrapper, or the value itself.
  */
@@ -239,6 +250,11 @@ function kindOf(value) {
   }
   if (value instanceof Stream) {
     return "stream";
+  }
+  if (isVolatile(value)) {
+    // A `volatileStore`: its contents come from source, so a reload is
+    // exactly what should move them.
+    return "constants";
   }
   if (stateShapeOf(value) !== null) {
     return "state";
@@ -392,6 +408,11 @@ function createEntry(kind, value) {
     // Kept, not followed: the instance is the state.
     return { kind, shape: stateShapeOf(value) ?? "", held: null, exported: value };
   }
+  if (kind === "constants") {
+    // Kept as an object, and followed by having its contents replaced: see
+    // `commit`.
+    return { kind, shape: "", held: null, exported: value };
+  }
   const held = Signal.of(/** @type {any} */ (value));
   /** @type {unknown} */
   let exported;
@@ -437,7 +458,7 @@ export function $hmr(hot) {
     const kind = kindOf(value);
     const entry = registry.entries.get(name);
     if (entry) {
-      if (entry.kind === kind && entry.held) {
+      if (entry.kind === kind && (entry.held || kind === "constants")) {
         // Queued rather than written: see `commit`.
         session.pending.set(entry, value);
         return /** @type {T} */ (entry.exported);
@@ -472,7 +493,13 @@ export function $hmr(hot) {
     session.pending = new Map();
     batch(() => {
       for (const [entry, value] of pending) {
-        /** @type {Signal<any>} */ (entry.held).set(value);
+        if (entry.held) {
+          entry.held.set(value);
+        } else {
+          // A `volatileStore`: the kept object takes the new definition, and
+          // only the readers of what changed hear.
+          replace(/** @type {any} */ (entry.exported), /** @type {any} */ (value));
+        }
       }
     });
   }

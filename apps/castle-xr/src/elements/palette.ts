@@ -1,3 +1,5 @@
+import { volatileStore } from "@apendua/signal";
+
 /**
  * One palette for the whole game — the panels, the board and the bricks all
  * draw from here, so nothing has to be matched by eye twice.
@@ -10,8 +12,17 @@
  * not with the table it stands on. Cyan is reserved for what the player is
  * *about* to do — the ghost of a brick, the pointer — so it never has to
  * compete with anything already built.
+ *
+ * A `volatileStore`, so that a colour edited in dev
+ * reaches the things wearing that colour rather than reloading every module
+ * that reads this one. Its contents come from source, so a hot reload is
+ * exactly what should move them — see `docs/signal-user-guide.md`, section
+ * 1.7. A colour has to be *read* inside a computation to follow an edit: a
+ * `set({ get material() {…} })`, an `effects(…)`, or a `${() => palette.x}`
+ * interpolation. Read at module scope it is captured, as any constant would
+ * be.
  */
-export const palette = {
+export const palette = volatileStore({
   // Panels: parchment in a bronze frame
   panel: "#f5ead0",
   panelEdge: "#9a7440",
@@ -56,6 +67,6 @@ export const palette = {
   ghost: "#bfe3ff",
   refused: "#e8503c",
   pointer: "#4bd3ff",
-} as const;
+});
 
 export default palette;

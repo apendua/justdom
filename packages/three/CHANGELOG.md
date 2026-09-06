@@ -1,6 +1,14 @@
 # Change Log - @apendua/freedom
 
-This log was last generated on Fri, 04 Sep 2026 22:51:18 GMT and should not be manually modified.
+This log was last generated on Sun, 06 Sep 2026 21:40:37 GMT and should not be manually modified.
+
+## 0.19.0
+Sun, 06 Sep 2026 21:40:37 GMT
+
+### Minor changes
+
+- Hand tracking: createXRButton asks for the hand-tracking feature by default (handTracking: false opts out), render() fills in a hand space per controller slot and wires createHandModel to it, and the controller handle carries hand plus reactive tracked() and pinching() readers.
+- freedom builds its own XR button rather than three's ARButton/VRButton, whose session state can be left claiming a session that has already ended; offerSession is now made from a state of rest, and the AR session no longer asks for dom-overlay
 
 ## 0.18.0
 Fri, 04 Sep 2026 22:51:18 GMT

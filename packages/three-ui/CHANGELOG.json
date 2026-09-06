@@ -2,6 +2,36 @@
   "name": "@apendua/justui",
   "entries": [
     {
+      "version": "0.2.3",
+      "tag": "@apendua/justui_v0.2.3",
+      "date": "Sun, 06 Sep 2026 21:40:37 GMT",
+      "comments": {
+        "dependency": [
+          {
+            "comment": "Updating dependency \"@apendua/freedom\" to `0.19.0`"
+          },
+          {
+            "comment": "Updating dependency \"@apendua/justdom\" to `0.3.2`"
+          },
+          {
+            "comment": "Updating dependency \"@apendua/signal\" to `0.8.0`"
+          },
+          {
+            "comment": "Updating dependency \"@apendua/vite-hmr\" to `0.4.0`"
+          },
+          {
+            "comment": "Updating dependency \"@apendua/freedom\" to `0.19.0`"
+          },
+          {
+            "comment": "Updating dependency \"@apendua/justdom\" to `0.3.2`"
+          },
+          {
+            "comment": "Updating dependency \"@apendua/signal\" to `0.8.0`"
+          }
+        ]
+      }
+    },
+    {
       "version": "0.2.2",
       "tag": "@apendua/justui_v0.2.2",
       "date": "Fri, 04 Sep 2026 22:51:18 GMT",

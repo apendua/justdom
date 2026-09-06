@@ -2,6 +2,21 @@
   "name": "@apendua/justdom",
   "entries": [
     {
+      "version": "0.3.2",
+      "tag": "@apendua/justdom_v0.3.2",
+      "date": "Sun, 06 Sep 2026 21:40:37 GMT",
+      "comments": {
+        "dependency": [
+          {
+            "comment": "Updating dependency \"@apendua/signal\" to `0.8.0`"
+          },
+          {
+            "comment": "Updating dependency \"@apendua/vite-hmr\" to `0.4.0`"
+          }
+        ]
+      }
+    },
+    {
       "version": "0.3.1",
       "tag": "@apendua/justdom_v0.3.1",
       "date": "Thu, 03 Sep 2026 07:23:24 GMT",

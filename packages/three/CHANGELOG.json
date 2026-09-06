@@ -2,6 +2,35 @@
   "name": "@apendua/freedom",
   "entries": [
     {
+      "version": "0.19.0",
+      "tag": "@apendua/freedom_v0.19.0",
+      "date": "Sun, 06 Sep 2026 21:40:37 GMT",
+      "comments": {
+        "minor": [
+          {
+            "comment": "Hand tracking: createXRButton asks for the hand-tracking feature by default (handTracking: false opts out), render() fills in a hand space per controller slot and wires createHandModel to it, and the controller handle carries hand plus reactive tracked() and pinching() readers."
+          },
+          {
+            "comment": "freedom builds its own XR button rather than three's ARButton/VRButton, whose session state can be left claiming a session that has already ended; offerSession is now made from a state of rest, and the AR session no longer asks for dom-overlay"
+          }
+        ],
+        "dependency": [
+          {
+            "comment": "Updating dependency \"@apendua/justdom\" to `0.3.2`"
+          },
+          {
+            "comment": "Updating dependency \"@apendua/signal\" to `0.8.0`"
+          },
+          {
+            "comment": "Updating dependency \"@apendua/vite-hmr\" to `0.4.0`"
+          },
+          {
+            "comment": "Updating dependency \"@apendua/signal\" to `0.8.0`"
+          }
+        ]
+      }
+    },
+    {
       "version": "0.18.0",
       "tag": "@apendua/freedom_v0.18.0",
       "date": "Fri, 04 Sep 2026 22:51:18 GMT",

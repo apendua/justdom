@@ -1,6 +1,13 @@
 # Change Log - @apendua/vite-hmr
 
-This log was last generated on Thu, 03 Sep 2026 07:23:24 GMT and should not be manually modified.
+This log was last generated on Sun, 06 Sep 2026 21:40:37 GMT and should not be manually modified.
+
+## 0.4.0
+Sun, 06 Sep 2026 21:40:37 GMT
+
+### Minor changes
+
+- Follow a volatileStore across a reload: the object is kept, so the module's own code and its importers go on sharing it, and its contents are replaced with the re-evaluated definition — the shape a theme or palette wants, where an edit should reach the readers of what changed and nothing else. Every other store is state and is still kept untouched.
 
 ## 0.3.0
 Thu, 03 Sep 2026 07:23:24 GMT

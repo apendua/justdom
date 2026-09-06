@@ -2,6 +2,23 @@
   "name": "@apendua/vite-hmr",
   "entries": [
     {
+      "version": "0.4.0",
+      "tag": "@apendua/vite-hmr_v0.4.0",
+      "date": "Sun, 06 Sep 2026 21:40:37 GMT",
+      "comments": {
+        "minor": [
+          {
+            "comment": "Follow a volatileStore across a reload: the object is kept, so the module's own code and its importers go on sharing it, and its contents are replaced with the re-evaluated definition — the shape a theme or palette wants, where an edit should reach the readers of what changed and nothing else. Every other store is state and is still kept untouched."
+          }
+        ],
+        "dependency": [
+          {
+            "comment": "Updating dependency \"@apendua/signal\" to `0.8.0`"
+          }
+        ]
+      }
+    },
+    {
       "version": "0.3.0",
       "tag": "@apendua/vite-hmr_v0.3.0",
       "date": "Thu, 03 Sep 2026 07:23:24 GMT",

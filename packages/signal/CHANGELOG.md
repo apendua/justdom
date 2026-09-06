@@ -1,6 +1,13 @@
 # Change Log - @apendua/signal
 
-This log was last generated on Thu, 03 Sep 2026 07:23:24 GMT and should not be manually modified.
+This log was last generated on Sun, 06 Sep 2026 21:40:37 GMT and should not be manually modified.
+
+## 0.8.0
+Sun, 06 Sep 2026 21:40:37 GMT
+
+### Minor changes
+
+- Add volatileStore(): a store in every respect but one — hot reload does not preserve it. An ordinary store() is state, which a reload has to keep; a volatileStore holds what comes from source rather than from the running program, such as a theme or a palette, so @apendua/vite-hmr keeps the object but replaces its contents with the re-evaluated definition, and the readers of the keys that changed re-run while nobody else does. isVolatile() reports which kind a store is. store() itself is unchanged.
 
 ## 0.7.0
 Thu, 03 Sep 2026 07:23:24 GMT

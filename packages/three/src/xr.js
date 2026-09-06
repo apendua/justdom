@@ -1,6 +1,5 @@
-import { ARButton } from "three/examples/jsm/webxr/ARButton.js";
-import { VRButton } from "three/examples/jsm/webxr/VRButton.js";
 import { anchorToViewer } from "./anchor.js";
+import { createSessionButton, createUnsupportedButton } from "./button.js";
 import { installCrashPanel } from "./crash.js";
 
 /**
@@ -63,7 +62,7 @@ export function requestFrameRate(renderer, preference = "high") {
 }
 
 /**
- * Stops the page standing about with a session on offer.
+ * Stops a page standing about with a session on offer.
  *
  * `navigator.xr.offerSession` says "start me when you like" — the browser
  * takes the offer, puts an Enter XR affordance in its own chrome, and may
@@ -83,6 +82,12 @@ export function requestFrameRate(renderer, preference = "high") {
  * "this runtime has no offers" — the same branch every browser but Chrome
  * takes anyway. It stays shadowed for the life of the page, because the
  * button reads it again every time it is clicked.
+ *
+ * `createXRButton` no longer needs this: it builds freedom's own button, which
+ * makes an offer only when a page asks for one and only from a session state
+ * of rest (see `createSessionButton`). This is still exported for a page that
+ * mounts three's buttons itself, which is the only way that hazard is still
+ * reachable from here.
  *
  * @returns {() => void} Puts it back.
  */
@@ -115,8 +120,17 @@ export function suppressSessionOffers() {
 
 /**
  * @typedef {import('three').WebGLRenderer} WebGLRenderer
- * @typedef {import('three/examples/jsm/webxr/ARButton.js').ARButtonSessionInit} ARButtonSessionInit
  */
+
+/**
+ * What three's `VRButton` asks for on top of whatever it was given, kept
+ * because the immersive-vr fallback has been starting with them all along and
+ * this is not the change to find out which of them three was relying on.
+ * `layers` is the one that would be missed: three reaches for an
+ * `XRProjectionLayer` whenever the browser has `XRWebGLBinding`, and a session
+ * that was never granted the feature is a session it cannot set up.
+ */
+const VR_DEFAULT_FEATURES = ["local-floor", "bounded-floor", "layers"];
 
 /**
  * A session init with one more optional feature in it, leaving whatever the
@@ -140,19 +154,24 @@ function withOptionalFeature(init, feature) {
  * platform can provide it, but plenty of headsets (anything without a
  * passthrough camera) only ever report support for immersive-vr, so this
  * falls back to a VR session there instead of leaving the visitor stuck on a
- * button that can never work. If neither mode is supported it falls back to
- * ARButton's own button, which renders the "AR NOT SUPPORTED" /
- * "WEBXR NEEDS HTTPS" state.
+ * button that can never work. If neither mode is supported the button is the
+ * dead-end one — "AR NOT SUPPORTED", or the link to HTTPS that is the only
+ * one of those states anybody can act on.
  *
- * ARButton always requests `local` as the reference space, with its origin
- * at the headset's position when the session starts. VRButton never touches
- * `renderer.xr`'s reference space type, so three.js is left on its own
- * default, `local-floor`, whose origin sits on the floor instead. Scenes here
- * are laid out for the `local` origin, so falling back to VRButton unchanged
- * would put everything at floor level, well below the headset's initial
- * gaze — the fallback session would start, but the scene would appear
- * missing. Setting the reference space explicitly keeps both paths
- * consistent, matching what ARButton already does internally.
+ * The button and the session state machine behind it are freedom's own rather
+ * than three's `ARButton` / `VRButton`; `createSessionButton` opens with why,
+ * and the short of it is that three's holds the running session in a variable
+ * assigned after an `await`, so a session that ends inside that window leaves
+ * the page insisting one is still running until it is reloaded. The element
+ * keeps three's ids and wording, so anything selecting `#ARButton` /
+ * `#VRButton` or reading the label goes on working.
+ *
+ * The reference space is set to `local`, whose origin is at the headset's
+ * position when the session starts, rather than three's own `local-floor`
+ * default, whose origin sits on the floor. Scenes here are laid out for the
+ * `local` origin, so the default would put everything at floor level, well
+ * below the headset's initial gaze — the session would start, but the scene
+ * would appear missing.
  *
  * A `local` origin is also only a promise that the runtime keeps as well as
  * its tracking allowed at the instant the session was created — entered on
@@ -167,10 +186,12 @@ function withOptionalFeature(init, feature) {
  * pass `frameRate: "mid"`, a number, or `false` for a scene that would rather
  * have the frame time than the frames.
  *
- * The button does not offer the browser a session, which is three's own
- * default and one a Quest can get stuck on; see `suppressSessionOffers`.
- * `offerSession: true` leaves three's behaviour alone, for a page that wants
- * the browser's own Enter XR affordance and can live with the risk.
+ * The browser is not offered a session, which is three's own default and one a
+ * Quest can get stuck on; see `suppressSessionOffers` for what that looked
+ * like. `offerSession: true` asks for the browser's own Enter XR affordance,
+ * and freedom makes that offer itself — only from a session state of rest, so
+ * an offer never overlaps the end of the session it would replace, which is
+ * the ordering that made three's a hazard.
  *
  * An uncaught error ends the session and is written onto the page, where it
  * can be read on the headset rather than guessed at from a scene that has
@@ -186,9 +207,17 @@ function withOptionalFeature(init, feature) {
  * arrives. A headset without hands ignores the request. `handTracking:
  * false` leaves it out.
  *
+ * The AR session no longer asks for `dom-overlay`, which three's `ARButton`
+ * added along with an empty `<div>` on the page and a close cross drawn into
+ * it. Nothing here ever used it: these are headset apps, where the overlay is
+ * not shown and the session is left through the system menu, and the cross was
+ * one more thing reading the session variable that this button exists to stop
+ * trusting. A page that wants one can ask for the feature and pass its own
+ * `domOverlay` root through `ar`.
+ *
  * @param {WebGLRenderer} renderer
  * @param {{
- *   ar?: Partial<ARButtonSessionInit>;
+ *   ar?: XRSessionInit;
  *   vr?: XRSessionInit;
  *   anchor?: boolean;
  *   frameRate?: FrameRatePreference | false;
@@ -213,22 +242,26 @@ export async function createXRButton(renderer, sessionInit = {}) {
   if (sessionInit.frameRate !== false) {
     requestFrameRate(renderer, sessionInit.frameRate);
   }
-  if (sessionInit.offerSession !== true) {
-    // Before the button is built, and not put back afterwards: the button
-    // asks again every time it is clicked.
-    suppressSessionOffers();
-  }
   if (sessionInit.crashPanel !== false) {
     installCrashPanel(renderer);
   }
+  const offerSession = sessionInit.offerSession === true;
   const xr = navigator.xr;
   if (xr) {
     if (await xr.isSessionSupported("immersive-ar").catch(() => false)) {
-      return ARButton.createButton(renderer, sessionInit.ar);
+      return createSessionButton(renderer, {
+        mode: "immersive-ar",
+        init: sessionInit.ar,
+        offerSession,
+      });
     }
     if (await xr.isSessionSupported("immersive-vr").catch(() => false)) {
-      return VRButton.createButton(renderer, sessionInit.vr);
+      let vr = sessionInit.vr;
+      for (const feature of VR_DEFAULT_FEATURES) {
+        vr = withOptionalFeature(vr, feature);
+      }
+      return createSessionButton(renderer, { mode: "immersive-vr", init: vr, offerSession });
     }
   }
-  return ARButton.createButton(renderer, sessionInit.ar);
+  return createUnsupportedButton("immersive-ar");
 }

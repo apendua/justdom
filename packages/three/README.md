@@ -64,6 +64,21 @@ writes to the console instead. Every option has an opt-out (`anchor`,
 `frameRate`, `offerSession`, `crashPanel`, `handTracking`); see the JSDoc on
 `createXRButton`.
 
+The button itself is freedom's own — `createSessionButton`, which
+`createXRButton` builds on — rather than three's `ARButton` / `VRButton`. Both
+of those hold the running session in a variable assigned after an `await`,
+with the `end` listener installed before it, so a session that ends inside
+that window leaves the page saying `STOP AR` for as long as it is open: every
+later click takes the exit branch and calls `end()` on a session that is
+already over. It is the same complaint `suppressSessionOffers` was written
+for — a Quest that goes on behaving as though it were still in a session —
+reached a second way. The element keeps three's ids and wording, so anything
+selecting `#ARButton` / `#VRButton` or reading the label works unchanged; what
+is different is that the session is only ever recorded synchronously, and
+there are three ways back to a button you can press again. `createXRButton`
+no longer needs `suppressSessionOffers`, which stays exported for a page that
+mounts three's buttons itself.
+
 ## Pointing at things
 
 `interactions(ctx)` gives an object the `makeInteractive()` operator, which puts

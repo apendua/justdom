@@ -348,27 +348,58 @@ async function main() {
   check("back to building restores the castle", (await readCount(page, "Bricks")) === 37);
   await shot(page, "rebuilt.png");
 
-  // Leaving. The button is under the canvas as far as a real pointer is
-  // concerned once a session is running, so this is a DOM click — which is
-  // the path that used to make an offer on its way out.
-  const inSession = await page.evaluate(
-    () => document.querySelector("#ARButton, #VRButton")?.textContent,
-  );
+  // The label is the session's state as the page sees it: the button says
+  // STOP while one is running and goes back to START when it ends, whichever
+  // way it ended.
+  const label = () =>
+    page.evaluate(() => document.querySelector("#ARButton, #VRButton")?.textContent);
+
+  // Leaving, first way: the page's own button. It is under the canvas as far
+  // as a real pointer is concerned once a session is running, so this is a DOM
+  // click — the path that used to make an offer on its way out.
+  const inSession = await label();
   await page.evaluate(() => {
     const button = document.querySelector("#ARButton, #VRButton");
     if (button) button.click();
   });
   await page.waitForTimeout(1500);
-  // three puts the button back to START when the session's own end event
-  // arrives, so the label is the session's state as the page sees it.
-  const afterSession = await page.evaluate(
-    () => document.querySelector("#ARButton, #VRButton")?.textContent,
-  );
+  const afterSession = await label();
   check(
     "the session ends when the button says so",
     /^STOP/.test(inSession ?? "") && /^(START|ENTER)/.test(afterSession ?? ""),
     `${inSession} -> ${afterSession}`,
   );
+
+  // Leaving, second way, and the one a headset actually takes: the runtime
+  // ends the session from outside the page, the way the Quest's system menu
+  // does. Nothing here runs the button's click handler, so the only thing that
+  // can put the label back is the session's own `end` event — which is the
+  // half three's button got wrong, and the half no check covered.
+  await page.evaluate(() => {
+    const button = document.querySelector("#ARButton, #VRButton");
+    if (button) button.click();
+  });
+  await page.waitForTimeout(1500);
+  const reentered = await label();
+  await page.evaluate(() => window.xrDevice?.activeSession?.end());
+  await page.waitForTimeout(1500);
+  const afterSystemExit = await label();
+  check(
+    "a session ended by the runtime puts the button back too",
+    /^STOP/.test(reentered ?? "") && /^(START|ENTER)/.test(afterSystemExit ?? ""),
+    `${reentered} -> ${afterSystemExit}`,
+  );
+
+  // And the button still works afterwards, which is the whole complaint: a
+  // page that thinks a session is running spends every later click ending one
+  // that is already over, and never asks for another.
+  await page.evaluate(() => {
+    const button = document.querySelector("#ARButton, #VRButton");
+    if (button) button.click();
+  });
+  await page.waitForTimeout(1500);
+  check("and a session can be entered again after that", /^STOP/.test((await label()) ?? ""));
+
   const offers = await page.evaluate(() => window.__offers);
   check(
     "the browser is never left holding an offer of a session",

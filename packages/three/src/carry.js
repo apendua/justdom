@@ -300,7 +300,11 @@ export function carry(ctx, options = {}) {
    *
    * @type {Signal<(CarryHold & { handle: Object3D; grip: Grip; scale: THREE.Vector3 }) | null>}
    */
-  const hold = Signal.of(null);
+  const hold = Signal.of(
+    /** @type {(CarryHold & { handle: Object3D; grip: Grip; scale: THREE.Vector3 }) | null} */ (
+      null
+    ),
+  );
   /** @type {Object3D | undefined} */
   let object;
 

@@ -1,14 +1,12 @@
 import { afterEach, describe, test } from "node:test";
 import assert from "node:assert/strict";
-import { ARButton } from "three/examples/jsm/webxr/ARButton.js";
-import { VRButton } from "three/examples/jsm/webxr/VRButton.js";
 import { createXRButton, requestFrameRate, suppressSessionOffers } from "./xr.js";
 
-// ARButton and VRButton build real DOM elements, which this plain node:test
-// environment has no `document` for. The decision this module makes —
-// which one to call, with which session init, and when the reference space
-// is set — does not depend on what they return, so their `createButton`
-// statics are stubbed out per test instead of exercising the real thing.
+// The button is freedom's own now (see `button.js`), and it is a real element
+// built against the jsdom the test setup installs — so these check the choice
+// this module makes by looking at what came back and at what it asks the
+// runtime for, rather than by intercepting three's button factories. The state
+// machine behind the element has its own tests in `button.test.js`.
 
 /**
  * @typedef {import('three').WebGLRenderer} WebGLRenderer
@@ -86,84 +84,88 @@ function fakeSession(rates) {
   };
 }
 
+/**
+ * The session init a button actually asks for, which is now observable by
+ * clicking it rather than by intercepting three's button factories: the init
+ * goes to `requestSession`, and this is what hears it.
+ *
+ * @param {(mode: string) => boolean} supports
+ */
+function captureInit(supports) {
+  /** @type {{ mode?: string; init?: XRSessionInit }} */
+  const seen = {};
+  navigator.xr = /** @type {XRSystem} */ (
+    /** @type {unknown} */ ({
+      isSessionSupported: async (/** @type {string} */ mode) => supports(mode),
+      addEventListener() {},
+      requestSession: async (/** @type {string} */ mode, /** @type {XRSessionInit} */ init) => {
+        seen.mode = mode;
+        seen.init = init;
+        // Nothing is presented; the test only wants what was asked for.
+        return new Promise(() => {});
+      },
+    })
+  );
+  return seen;
+}
+
+/** Lets every already-queued microtask and promise callback run. */
+const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+
 describe("createXRButton", () => {
   afterEach(() => {
     delete navigator.xr;
   });
 
-  test("prefers immersive-ar when the platform supports it", async (t) => {
-    const arButton = {};
-    const ar = t.mock.method(ARButton, "createButton", () => arButton);
-    const vr = t.mock.method(VRButton, "createButton", () => {
-      throw new Error("VRButton.createButton should not be called");
-    });
-    navigator.xr = /** @type {XRSystem} */ (
-      /** @type {unknown} */ ({
-        isSessionSupported: async (/** @type {string} */ mode) => mode === "immersive-ar",
-      })
-    );
+  test("prefers immersive-ar when the platform supports it", async () => {
+    const seen = captureInit((mode) => mode === "immersive-ar");
 
     const button = await createXRButton(fakeRenderer());
 
-    assert.equal(button, arButton);
-    assert.equal(ar.mock.callCount(), 1);
-    assert.equal(vr.mock.callCount(), 0);
+    assert.equal(button.id, "ARButton");
+    assert.equal(button.textContent, "START AR");
+    button.click();
+    await settle();
+    assert.equal(seen.mode, "immersive-ar");
   });
 
-  test("falls back to immersive-vr on a headset with no passthrough", async (t) => {
-    const vrButton = {};
-    const ar = t.mock.method(ARButton, "createButton", () => {
-      throw new Error("ARButton.createButton should not be called");
-    });
-    const vr = t.mock.method(VRButton, "createButton", () => vrButton);
-    navigator.xr = /** @type {XRSystem} */ (
-      /** @type {unknown} */ ({
-        isSessionSupported: async (/** @type {string} */ mode) => mode === "immersive-vr",
-      })
-    );
+  test("falls back to immersive-vr on a headset with no passthrough", async () => {
+    const seen = captureInit((mode) => mode === "immersive-vr");
 
     const button = await createXRButton(fakeRenderer());
 
-    assert.equal(button, vrButton);
-    assert.equal(vr.mock.callCount(), 1);
-    assert.equal(ar.mock.callCount(), 0);
+    assert.equal(button.id, "VRButton");
+    assert.equal(button.textContent, "ENTER VR");
+    button.click();
+    await settle();
+    assert.equal(seen.mode, "immersive-vr");
   });
 
-  test("falls back to ARButton's own unsupported state when neither mode is available", async (t) => {
-    const arButton = {};
-    const ar = t.mock.method(ARButton, "createButton", () => arButton);
-    t.mock.method(VRButton, "createButton", () => {
-      throw new Error("VRButton.createButton should not be called");
-    });
-    navigator.xr = /** @type {XRSystem} */ (
-      /** @type {unknown} */ ({ isSessionSupported: async () => false })
-    );
+  test("falls back to the dead-end button when neither mode is available", async () => {
+    captureInit(() => false);
 
-    const button = await createXRButton(fakeRenderer());
+    const button = /** @type {HTMLButtonElement} */ (await createXRButton(fakeRenderer()));
 
-    assert.equal(button, arButton);
-    assert.equal(ar.mock.callCount(), 1);
+    assert.equal(button.id, "ARButton");
+    assert.equal(button.textContent, "AR NOT SUPPORTED");
+    assert.equal(button.disabled, true);
   });
 
-  test("falls back the same way when navigator.xr does not exist at all", async (t) => {
-    const arButton = {};
-    const ar = t.mock.method(ARButton, "createButton", () => arButton);
+  test("falls back the same way when navigator.xr does not exist at all", async () => {
     delete navigator.xr;
 
-    const button = await createXRButton(fakeRenderer());
+    const message = await createXRButton(fakeRenderer());
 
-    assert.equal(button, arButton);
-    assert.equal(ar.mock.callCount(), 1);
+    // No `navigator.xr` at all is the one case that is a link rather than a
+    // button: over plain HTTP the fix is a URL, and that is what it offers.
+    assert.equal(message.tagName, "A");
+    assert.match(message.textContent ?? "", /^WEBXR (NOT AVAILABLE|NEEDS HTTPS)$/);
   });
 
-  test("treats a rejected immersive-ar check the same as unsupported, and still checks immersive-vr", async (t) => {
-    const vrButton = {};
-    t.mock.method(ARButton, "createButton", () => {
-      throw new Error("ARButton.createButton should not be called");
-    });
-    const vr = t.mock.method(VRButton, "createButton", () => vrButton);
+  test("treats a rejected immersive-ar check the same as unsupported, and still checks immersive-vr", async () => {
     navigator.xr = /** @type {XRSystem} */ (
       /** @type {unknown} */ ({
+        addEventListener() {},
         isSessionSupported: async (/** @type {string} */ mode) => {
           if (mode === "immersive-ar") {
             throw new Error("NotSupportedError");
@@ -175,63 +177,39 @@ describe("createXRButton", () => {
 
     const button = await createXRButton(fakeRenderer());
 
-    assert.equal(button, vrButton);
-    assert.equal(vr.mock.callCount(), 1);
+    assert.equal(button.id, "VRButton");
   });
 
-  test("sets the reference space to local before either button is created, so the fallback lands where AR content is authored for", async (t) => {
-    t.mock.method(ARButton, "createButton", () => ({}));
-    const vr = t.mock.method(
-      VRButton,
-      "createButton",
-      (/** @type {WebGLRenderer & { calls: string[] }} */ renderer) => {
-        // VRButton itself never touches the reference space (unlike
-        // ARButton, which sets it right before starting a session) — by the
-        // time it is asked to build a button, createXRButton must already
-        // have set it, or the fallback session would start at floor level
-        // instead of where the scene expects the headset to be.
-        assert.deepEqual(renderer.calls, ["local"]);
-        return {};
-      },
-    );
-    navigator.xr = /** @type {XRSystem} */ (
-      /** @type {unknown} */ ({
-        isSessionSupported: async (/** @type {string} */ mode) => mode === "immersive-vr",
-      })
-    );
+  test("sets the reference space to local, so the fallback lands where AR content is authored for", async () => {
+    captureInit((mode) => mode === "immersive-vr");
+    const renderer = fakeRenderer();
 
-    await createXRButton(fakeRenderer());
+    await createXRButton(renderer);
 
-    assert.equal(vr.mock.callCount(), 1);
+    // three's own default is `local-floor`, whose origin is on the floor
+    // rather than at the head; every scene here is laid out around `local`.
+    assert.deepEqual(renderer.calls, ["local"]);
   });
 
-  test("installs the viewer anchor by default, and not when opted out", async (t) => {
-    t.mock.method(ARButton, "createButton", () => ({}));
-    navigator.xr = /** @type {XRSystem} */ (
-      /** @type {unknown} */ ({ isSessionSupported: async () => false })
-    );
+  test("installs the viewer anchor by default, and not when opted out", async () => {
+    // A supported mode, so the real button is built: the dead-end one never
+    // touches the renderer, and would leave nothing here to tell apart.
+    captureInit(() => true);
 
     const anchored = fakeRenderer();
     // The frame rate is asked for on `sessionstart` too, and this test is
-    // about the anchor, so it is left out of the way here rather than
-    // counted among the anchor's own listeners.
+    // about the anchor, so it is left out of the way here.
     await createXRButton(anchored, { frameRate: false });
-    // The anchor waits for sessions on the renderer; the subscription is how
-    // it is installed at all.
-    assert.deepEqual(anchored.listeners, ["sessionstart", "sessionend"]);
+    // The anchor's pair, and then the button's own resync listener.
+    assert.deepEqual(anchored.listeners, ["sessionstart", "sessionend", "sessionend"]);
 
     const unanchored = fakeRenderer();
     await createXRButton(unanchored, { anchor: false, frameRate: false });
-    assert.deepEqual(unanchored.listeners, []);
+    assert.deepEqual(unanchored.listeners, ["sessionend"]);
   });
 
   test("installs the crash panel unless told not to", async (t) => {
-    t.mock.method(ARButton, "createButton", () => ({}));
-    navigator.xr = /** @type {XRSystem} */ (
-      /** @type {unknown} */ ({
-        isSessionSupported: async () => true,
-      })
-    );
+    captureInit(() => true);
     const listen = t.mock.method(window, "addEventListener");
     const listening = () => listen.mock.calls.map((call) => call.arguments[0]);
 
@@ -243,130 +221,77 @@ describe("createXRButton", () => {
     assert.deepEqual(listening(), []);
   });
 
-  test("passes the ar/vr session init through to whichever button is used", async (t) => {
-    const arInit = { optionalFeatures: ["hand-tracking"] };
-    const vrInit = { optionalFeatures: ["local-floor"] };
-    // Untouched, and so the same object: hand tracking is the one thing the
-    // button adds to a session init, and here it is told not to.
-    /** @type {unknown} */
-    let seenAr;
-    /** @type {unknown} */
-    let seenVr;
-    t.mock.method(
-      ARButton,
-      "createButton",
-      (/** @type {unknown} */ _renderer, /** @type {unknown} */ sessionInit) => {
-        seenAr = sessionInit;
-        return {};
-      },
-    );
-    t.mock.method(
-      VRButton,
-      "createButton",
-      (/** @type {unknown} */ _renderer, /** @type {unknown} */ sessionInit) => {
-        seenVr = sessionInit;
-        return {};
-      },
-    );
-
-    navigator.xr = /** @type {XRSystem} */ (
-      /** @type {unknown} */ ({ isSessionSupported: async () => false })
-    );
-    await createXRButton(fakeRenderer(), { ar: arInit, vr: vrInit, handTracking: false });
-    assert.equal(seenAr, arInit);
-
-    navigator.xr = /** @type {XRSystem} */ (
-      /** @type {unknown} */ ({
-        isSessionSupported: async (/** @type {string} */ mode) => mode === "immersive-vr",
-      })
-    );
-    await createXRButton(fakeRenderer(), { ar: arInit, vr: vrInit, handTracking: false });
-    assert.equal(seenVr, vrInit);
-  });
-
-  /**
-   * Captures the session init each of three's buttons is handed.
-   *
-   * @param {import('node:test').TestContext} t
-   */
-  function captureInits(t) {
-    /** @type {{ ar?: { optionalFeatures?: string[] }; vr?: { optionalFeatures?: string[] } }} */
-    const seen = {};
-    t.mock.method(
-      ARButton,
-      "createButton",
-      (/** @type {unknown} */ _renderer, /** @type {never} */ sessionInit) => {
-        seen.ar = sessionInit;
-        return {};
-      },
-    );
-    t.mock.method(
-      VRButton,
-      "createButton",
-      (/** @type {unknown} */ _renderer, /** @type {never} */ sessionInit) => {
-        seen.vr = sessionInit;
-        return {};
-      },
-    );
-    return seen;
-  }
-
-  test("asks for hand tracking on both session kinds, keeping whatever else was asked for", async (t) => {
-    const seen = captureInits(t);
-
-    // Nothing asked for: the feature is the whole of the init.
-    navigator.xr = /** @type {XRSystem} */ (
-      /** @type {unknown} */ ({ isSessionSupported: async () => false })
-    );
-    await createXRButton(fakeRenderer(), { anchor: false, frameRate: false });
-    assert.deepEqual(seen.ar, { optionalFeatures: ["hand-tracking"] });
+  test("asks for hand tracking on both session kinds, keeping whatever else was asked for", async () => {
+    // Nothing asked for: the feature is the whole of the AR init.
+    let seen = captureInit((mode) => mode === "immersive-ar");
+    let button = await createXRButton(fakeRenderer(), { anchor: false, frameRate: false });
+    button.click();
+    await settle();
+    assert.deepEqual(seen.init, { optionalFeatures: ["hand-tracking"] });
 
     // Other features asked for: the request is added, not put in their place,
-    // and an app that asked for it itself is not asking twice.
-    navigator.xr = /** @type {XRSystem} */ (
-      /** @type {unknown} */ ({
-        isSessionSupported: async (/** @type {string} */ mode) => mode === "immersive-vr",
-      })
-    );
-    await createXRButton(fakeRenderer(), {
+    // and an app that asked for it itself is not asking twice. The VR init
+    // also carries what three's own VRButton always added.
+    seen = captureInit((mode) => mode === "immersive-vr");
+    button = await createXRButton(fakeRenderer(), {
       anchor: false,
       frameRate: false,
       ar: { optionalFeatures: ["hand-tracking"], requiredFeatures: ["hit-test"] },
       vr: { optionalFeatures: ["local-floor"] },
     });
-    assert.deepEqual(seen.vr, { optionalFeatures: ["local-floor", "hand-tracking"] });
+    button.click();
+    await settle();
+    assert.deepEqual(seen.init, {
+      optionalFeatures: ["local-floor", "hand-tracking", "bounded-floor", "layers"],
+    });
 
-    navigator.xr = /** @type {XRSystem} */ (
-      /** @type {unknown} */ ({ isSessionSupported: async () => true })
-    );
-    await createXRButton(fakeRenderer(), {
+    seen = captureInit(() => true);
+    button = await createXRButton(fakeRenderer(), {
       anchor: false,
       frameRate: false,
       ar: { optionalFeatures: ["hand-tracking"], requiredFeatures: ["hit-test"] },
     });
-    assert.deepEqual(seen.ar, {
+    button.click();
+    await settle();
+    assert.deepEqual(seen.init, {
       optionalFeatures: ["hand-tracking"],
       requiredFeatures: ["hit-test"],
     });
   });
 
-  test("handTracking: false leaves the session init exactly as given", async (t) => {
-    const seen = captureInits(t);
-    navigator.xr = /** @type {XRSystem} */ (
-      /** @type {unknown} */ ({ isSessionSupported: async () => true })
-    );
+  test("handTracking: false leaves the session init exactly as given", async () => {
+    let seen = captureInit(() => true);
 
-    await createXRButton(fakeRenderer(), { anchor: false, frameRate: false, handTracking: false });
-    assert.equal(seen.ar, undefined);
-
-    const arInit = { optionalFeatures: ["local-floor"] };
-    await createXRButton(fakeRenderer(), {
+    let button = await createXRButton(fakeRenderer(), {
       anchor: false,
       frameRate: false,
       handTracking: false,
-      ar: arInit,
     });
-    assert.deepEqual(seen.ar, { optionalFeatures: ["local-floor"] });
+    button.click();
+    await settle();
+    assert.equal(seen.init, undefined);
+
+    seen = captureInit(() => true);
+    button = await createXRButton(fakeRenderer(), {
+      anchor: false,
+      frameRate: false,
+      handTracking: false,
+      ar: { optionalFeatures: ["local-floor"] },
+    });
+    button.click();
+    await settle();
+    assert.deepEqual(seen.init, { optionalFeatures: ["local-floor"] });
+  });
+
+  test("does not ask for dom-overlay, which three's ARButton added and nothing here used", async () => {
+    const seen = captureInit(() => true);
+
+    const button = await createXRButton(fakeRenderer(), { anchor: false, frameRate: false });
+    button.click();
+    await settle();
+
+    assert.ok(!(seen.init?.optionalFeatures ?? []).includes("dom-overlay"));
+    assert.equal(document.querySelector("#ARButton ~ div"), null);
   });
 });
 
@@ -450,7 +375,9 @@ describe("suppressSessionOffers", () => {
     const prototype = {
       offerSession(/** @type {string} */ mode) {
         offered.push(mode);
-        return Promise.resolve();
+        // Left pending: a real offer settles only if the browser decides to
+        // open the session, and no test here is about what happens when it does.
+        return new Promise(() => {});
       },
       isSessionSupported: async (/** @type {string} */ mode) => mode === "immersive-ar",
     };
@@ -482,25 +409,25 @@ describe("suppressSessionOffers", () => {
     suppressSessionOffers()();
   });
 
-  test("the button hides it, and leaves it hidden", async (t) => {
-    t.mock.method(ARButton, "createButton", () => ({}));
-    const { system } = fakeXRSystem();
+  test("the button no longer needs to hide anything, and does not", async () => {
+    const { offered, system } = fakeXRSystem();
     navigator.xr = /** @type {XRSystem} */ (/** @type {unknown} */ (system));
 
     await createXRButton(fakeRenderer());
 
-    // Not restored on the way out: three's button reads this again on every
-    // click, and the click that leaves a session is the one that matters.
-    assert.equal(system.offerSession, undefined);
+    // freedom's own button never reaches for this, so shadowing it would only
+    // be taking something away from whoever else is on the page. What matters
+    // is that nothing was offered.
+    assert.equal(typeof system.offerSession, "function");
+    assert.deepEqual(offered, []);
   });
 
-  test("offerSession: true leaves three's own behaviour alone", async (t) => {
-    t.mock.method(ARButton, "createButton", () => ({}));
-    const { system } = fakeXRSystem();
+  test("offerSession: true makes the offer itself, from a standing start", async () => {
+    const { offered, system } = fakeXRSystem();
     navigator.xr = /** @type {XRSystem} */ (/** @type {unknown} */ (system));
 
     await createXRButton(fakeRenderer(), { offerSession: true });
 
-    assert.equal(typeof system.offerSession, "function");
+    assert.deepEqual(offered, ["immersive-ar"]);
   });
 });

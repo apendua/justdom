@@ -107,7 +107,7 @@ export function drag(ctx, options = {}) {
   const manager = InteractionContext.get(ctx);
   const isEnabled = asReader(enabled);
   /** @type {Signal<Hold | null>} */
-  const hold = Signal.of(null);
+  const hold = Signal.of(/** @type {Hold | null} */ (null));
   /** @type {Origin | null} */
   let origin = null;
 

@@ -42,6 +42,7 @@ export {
   scrollElementBy,
 } from "./elements/renderingUpdates.js";
 export { createXRButton, requestFrameRate, suppressSessionOffers } from "./xr.js";
+export { createSessionButton, createUnsupportedButton } from "./button.js";
 export { anchorToViewer } from "./anchor.js";
 export { installCrashPanel, CRASH_PANEL_ID } from "./crash.js";
 

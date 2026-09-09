@@ -58,6 +58,44 @@ function panel() {
   return document.getElementById(CRASH_PANEL_ID);
 }
 
+/**
+ * @param {string} action
+ * @returns {HTMLButtonElement | null}
+ */
+function button(action) {
+  return /** @type {HTMLButtonElement | null} */ (
+    document.querySelector(`#${CRASH_PANEL_ID} button[data-action="${action}"]`)
+  );
+}
+
+/**
+ * Hands the panel a clipboard, or takes the one it has away. jsdom ships no
+ * `navigator.clipboard` at all, which is the same thing the panel sees on a
+ * page that is not allowed one.
+ *
+ * @param {{ writeText: (text: string) => Promise<void> } | null} clipboard
+ */
+function withClipboard(clipboard) {
+  const had = Object.getOwnPropertyDescriptor(navigator, "clipboard");
+  if (clipboard) {
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: clipboard });
+  } else {
+    delete /** @type {Record<string, unknown>} */ (/** @type {unknown} */ (navigator)).clipboard;
+  }
+  return () => {
+    if (had) {
+      Object.defineProperty(navigator, "clipboard", had);
+    } else {
+      delete /** @type {Record<string, unknown>} */ (/** @type {unknown} */ (navigator)).clipboard;
+    }
+  };
+}
+
+/** Lets the copy button's promise settle before the assertions run. */
+function flush() {
+  return new Promise((resolve) => setTimeout(resolve, 0));
+}
+
 describe("installCrashPanel", () => {
   /** @type {(() => void)[]} */
   const installed = [];
@@ -119,9 +157,7 @@ describe("installCrashPanel", () => {
     installed.push(installCrashPanel(renderer));
 
     throwUncaught(new Error("first"));
-    const dismiss = /** @type {HTMLButtonElement | null} */ (
-      document.querySelector(`#${CRASH_PANEL_ID} button`)
-    );
+    const dismiss = button("dismiss");
     assert.ok(dismiss);
     dismiss.click();
     assert.equal(panel(), null);
@@ -131,6 +167,104 @@ describe("installCrashPanel", () => {
     assert.ok(shown);
     assert.doesNotMatch(shown.textContent ?? "", /first/);
     assert.match(shown.textContent ?? "", /second/);
+  });
+
+  test("copies everything the panel is showing", async () => {
+    /** @type {string[]} */
+    const written = [];
+    const restore = withClipboard({
+      writeText: async (text) => {
+        written.push(text);
+      },
+    });
+    try {
+      const { renderer } = fakeRenderer(false);
+      installed.push(installCrashPanel(renderer));
+
+      throwUncaught(new Error("first"));
+      throwUncaught(new Error("second"));
+      const copy = button("copy");
+      assert.ok(copy);
+      copy.click();
+      await flush();
+
+      assert.equal(written.length, 1);
+      assert.match(written[0] ?? "", /first[\s\S]*second/);
+      assert.equal(copy.textContent, "Copied");
+    } finally {
+      restore();
+    }
+  });
+
+  test("copies the fresh panel's errors only, not the dismissed one's", async () => {
+    /** @type {string[]} */
+    const written = [];
+    const restore = withClipboard({
+      writeText: async (text) => {
+        written.push(text);
+      },
+    });
+    try {
+      const { renderer } = fakeRenderer(false);
+      installed.push(installCrashPanel(renderer));
+
+      throwUncaught(new Error("first"));
+      button("dismiss")?.click();
+      throwUncaught(new Error("second"));
+      button("copy")?.click();
+      await flush();
+
+      assert.equal(written.length, 1);
+      assert.doesNotMatch(written[0] ?? "", /first/);
+      assert.match(written[0] ?? "", /second/);
+    } finally {
+      restore();
+    }
+  });
+
+  test("selects the text instead when there is no clipboard to write to", async () => {
+    const restore = withClipboard(null);
+    try {
+      const { renderer } = fakeRenderer(false);
+      installed.push(installCrashPanel(renderer));
+
+      throwUncaught(new Error("nowhere to put it"));
+      const copy = button("copy");
+      assert.ok(copy);
+      copy.click();
+      await flush();
+
+      assert.equal(copy.textContent, "Copy it now");
+      assert.match(window.getSelection()?.toString() ?? "", /nowhere to put it/);
+      window.getSelection()?.removeAllRanges();
+    } finally {
+      restore();
+    }
+  });
+
+  test("says so when the clipboard refuses", async () => {
+    const restore = withClipboard({
+      writeText: async () => {
+        throw new Error("denied");
+      },
+    });
+    try {
+      const { renderer } = fakeRenderer(false);
+      installed.push(installCrashPanel(renderer));
+
+      throwUncaught(new Error("boom"));
+      const copy = button("copy");
+      assert.ok(copy);
+      copy.click();
+      await flush();
+
+      // A refusal still leaves the text selected, so the browser's own copy
+      // is one gesture away.
+      assert.equal(copy.textContent, "Copy it now");
+      window.getSelection()?.removeAllRanges();
+    } finally {
+      restore();
+    }
   });
 
   test("falls back to the message when a cross-origin script reports no error", () => {

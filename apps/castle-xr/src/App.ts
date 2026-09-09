@@ -24,6 +24,8 @@ import glass_desk_habits from "@apendua.dev/media/glass_desk_habits.mp3";
 import GameUI from "./views/GameUI.js";
 import CastleStore from "./store/CastleStore.js";
 import Session from "./store/Session.js";
+// TEMPORARY, to be reverted: see crash-test.ts.
+import { simulateCrash } from "./crash-test.js";
 
 /**
  * The board sits on a floor of its own, a little below eye level and about an
@@ -111,6 +113,12 @@ const App = effectsOnly((ctx: WeakKey) => {
     // have to go and look for is a reading nobody takes while playing.
     effects(() => {
       useDiagnostics(ctx, diagnostics);
+    }),
+    // TEMPORARY, to be reverted: throws on purpose once the session is
+    // running, so the crash panel can be read in the headset it is for.
+    // ?crash=off for the game.
+    effects(() => {
+      simulateCrash(ctx);
     }),
     children(
       Music(ctx, listener, music),

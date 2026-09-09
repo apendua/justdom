@@ -290,35 +290,125 @@ function drawText(context, text, x, y, letterSpacing, wordSpacing) {
 }
 
 /**
- * @param {string} textShadow
- * @returns {{ color: string, offsetX: number, offsetY: number, blur: number } | null}
+ * One layer of a computed `text-shadow`, in the shape the canvas shadow
+ * properties want it. `color` is `null` when the layer named none: author
+ * syntax may leave the color out, and it then means the text's own color,
+ * which only the paint knows.
+ *
+ * @typedef {object} TextShadow
+ * @property {string | null} color
+ * @property {number} offsetX
+ * @property {number} offsetY
+ * @property {number} blur
  */
-function parseTextShadow(textShadow) {
+
+/**
+ * A length inside a `text-shadow`. Computed values are always absolute, so
+ * `px` is the only unit that can turn up and nothing here converts units.
+ */
+const SHADOW_LENGTH = /-?\d*\.?\d+px/g;
+
+/**
+ * What is allowed to stand as the color of a layer: a hex triplet, a bare
+ * identifier (a named color), or a color function with its arguments —
+ * `rgb(0, 0, 0)` and `rgb(0 0 0 / 50%)` alike, and the wide-gamut spellings
+ * a modern engine increasingly serializes to. The list is deliberately of
+ * color functions only: whatever survives this is handed to the canvas
+ * `shadowColor` setter, which ignores what it cannot parse, so a `calc(…)`
+ * or a stray word from a malformed value must not reach it.
+ */
+const SHADOW_COLOR =
+  /^(?:#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|[a-zA-Z]+|(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch|color|color-mix|light-dark)\((?:[^()]|\([^()]*\))*\))$/;
+
+/**
+ * Splits a `text-shadow` into its layers: the commas that separate layers
+ * are the ones at nesting depth zero, not the ones inside a color function.
+ * `rgb(0, 0, 0) 2px 3px 4px` is a single layer with two commas in it, and
+ * splitting on those leaves `rgb(0`, which has no length in it at all.
+ *
+ * @param {string} textShadow
+ * @returns {string[]}
+ */
+function splitShadowLayers(textShadow) {
+  /** @type {string[]} */
+  const layers = [];
+  let depth = 0;
+  let start = 0;
+  for (let i = 0; i < textShadow.length; i++) {
+    const char = textShadow[i];
+    if (char === "(") {
+      depth++;
+    } else if (char === ")") {
+      depth = Math.max(0, depth - 1);
+    } else if (char === "," && depth === 0) {
+      layers.push(textShadow.slice(start, i));
+      start = i + 1;
+    }
+  }
+  layers.push(textShadow.slice(start));
+  return layers;
+}
+
+/**
+ * Reads the *first* layer of a `text-shadow`.
+ *
+ * First layer only, on purpose: a canvas context has one shadow, so painting
+ * the rest would take a draw pass per layer — every glyph drawn again, and
+ * the fill accumulating on each pass wherever the text is not opaque. The
+ * first layer is the one CSS paints on top, so it is the one that reads;
+ * the others are dropped, and the bleed the texture grows is the first
+ * layer's alone. A panel that genuinely needs stacked shadows wants a
+ * multi-pass raster, not an approximation smuggled in here.
+ *
+ * Lengths and color are separated by taking the length tokens out and
+ * treating what remains as the color, rather than by matching a color
+ * pattern over the whole layer. That reads color-first (what a computed
+ * value serializes to) and color-last (what an author writes) alike, and it
+ * cannot mistake the `px` of `2px` for a named color.
+ *
+ * @param {string} textShadow Normally a computed value, so color first and
+ *   lengths in px; author syntax parses too.
+ * @returns {TextShadow | null} `null` when there is no shadow to paint —
+ *   `none`, an empty value, a layer without both offsets, or a color this
+ *   does not recognise (better no shadow than one the canvas silently
+ *   declines to change).
+ */
+export function parseTextShadow(textShadow) {
   if (!textShadow || textShadow === "none") {
     return null;
   }
 
-  const firstShadow = textShadow.split(",")[0].trim();
-  const colorMatch = firstShadow.match(/(rgba?\([^)]*\)|#[0-9a-fA-F]+|[a-zA-Z]+)/);
-  const numberParts = firstShadow.match(/-?\d+(?:\.\d+)?px/g) || [];
-  if (numberParts.length < 2) {
+  const layer = splitShadowLayers(textShadow)[0];
+  const [offsetX, offsetY, blur] = layer.match(SHADOW_LENGTH) ?? [];
+  if (offsetX === undefined || offsetY === undefined) {
+    return null;
+  }
+
+  const color = layer.replace(SHADOW_LENGTH, " ").replace(/\s+/g, " ").trim();
+  if (color && !SHADOW_COLOR.test(color)) {
     return null;
   }
 
   return {
-    color: colorMatch ? colorMatch[1] : "rgba(0,0,0,0)",
-    offsetX: Number.parseFloat(numberParts[0] || "0"),
-    offsetY: Number.parseFloat(numberParts[1] || "0"),
-    blur: numberParts[2] ? Number.parseFloat(numberParts[2]) : 0,
+    color: color || null,
+    offsetX: Number.parseFloat(offsetX),
+    offsetY: Number.parseFloat(offsetY),
+    // A negative blur is not a value CSS produces, and a canvas ignores one;
+    // clamping also keeps it from shrinking the bleed below the glyphs.
+    blur: blur ? Math.max(0, Number.parseFloat(blur)) : 0,
   };
 }
 
 /**
- * @param {TextRenderStyle} style
+ * How far past its layout box a run has to be drawn for nothing to be
+ * clipped by the edge of the texture. Takes the shadow already parsed: the
+ * paint needs the same one, and the two must not be able to disagree about
+ * whether there is a shadow to make room for.
+ *
+ * @param {TextShadow | null} shadow
  * @returns {{ right: number, bottom: number }}
  */
-function getRenderBleed(style) {
-  const shadow = parseTextShadow(style.textShadow);
+export function getRenderBleed(shadow) {
   if (!shadow) {
     return {
       right: TEXT_RENDER_BLEED,
@@ -488,7 +578,8 @@ export const generateTextTexture = (lines, style, bounds, viewportDpr, mask = fa
     normalizedBounds.width = Math.max(normalizedBounds.width, round(line.left + line.width));
     normalizedBounds.height = Math.max(normalizedBounds.height, round(line.baseline + descent));
   }
-  const renderBleed = getRenderBleed(style);
+  const shadow = parseTextShadow(style.textShadow);
+  const renderBleed = getRenderBleed(shadow);
   const textureBounds = getTextureBounds(normalizedBounds, renderBleed);
   const dpr = getEffectiveDpr(viewportDpr);
   const maxDimension = Math.max(textureBounds.width, textureBounds.height, 1);
@@ -510,17 +601,20 @@ export const generateTextTexture = (lines, style, bounds, viewportDpr, mask = fa
   context.textAlign = "left";
   context.textBaseline = "alphabetic";
 
-  const shadow = parseTextShadow(style.textShadow);
+  // The transparent default goes on first and unconditionally. Assigning a
+  // color the engine cannot parse is not an error: the setter simply leaves
+  // `shadowColor` at whatever it held, so what it held has to be "no shadow".
+  context.shadowColor = "rgba(0,0,0,0)";
+  context.shadowOffsetX = 0;
+  context.shadowOffsetY = 0;
+  context.shadowBlur = 0;
   if (shadow) {
-    context.shadowColor = shadow.color;
+    // A layer that named no color takes the text's, which is what CSS does
+    // with an omitted `text-shadow` color.
+    context.shadowColor = shadow.color ?? style.color;
     context.shadowOffsetX = shadow.offsetX;
     context.shadowOffsetY = shadow.offsetY;
     context.shadowBlur = shadow.blur;
-  } else {
-    context.shadowColor = "rgba(0,0,0,0)";
-    context.shadowOffsetX = 0;
-    context.shadowOffsetY = 0;
-    context.shadowBlur = 0;
   }
 
   for (const line of drawnLines) {

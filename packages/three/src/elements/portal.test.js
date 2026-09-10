@@ -4,7 +4,7 @@ import * as THREE from "three";
 import { Derived, Signal, toObservable, UpdateChannel, withChannel } from "@apendua/signal";
 import { $, attr, children, className, stylesheet } from "@apendua/justdom";
 import { InteractionContext, InteractionManager } from "../interactions.js";
-import { getComputedStyleCached } from "./mirror.js";
+import { DomMirror, getComputedStyleCached } from "./mirror.js";
 import { acquireImage, releaseImage } from "./image.js";
 import { createPortal, getPortalRoot } from "./portal.js";
 import { createPortalScheduler, PortalSchedulerContext } from "./portalScheduler.js";
@@ -1498,5 +1498,88 @@ describe("mounting a tree justdom did not build", () => {
     );
 
     portal.disconnect();
+  });
+});
+
+describe("the order a mount is built in", () => {
+  /**
+   * Record the order nodes are built in, by watching the first thing every
+   * build does: adopt the node into the mirror.
+   *
+   * There is no public map from object back to node, and the registration
+   * order of ray targets says nothing — everything registers at once when
+   * the loading state flips. Adoption is the one point the build passes
+   * through, once per node, in the order the pump reaches them.
+   *
+   * @returns {{ names: string[], restore: () => void }}
+   */
+  function recordBuildOrder() {
+    /** @type {string[]} */
+    const names = [];
+    const original = DomMirror.prototype.adopt;
+    DomMirror.prototype.adopt = function adopt(node) {
+      const element = node.nodeType === Node.ELEMENT_NODE ? /** @type {Element} */ (node) : null;
+      const name = element?.getAttribute("data-n");
+      if (name) {
+        names.push(name);
+      }
+      return original.call(this, node);
+    };
+    return {
+      names,
+      restore: () => {
+        DomMirror.prototype.adopt = original;
+      },
+    };
+  }
+
+  test("siblings are built before their children, level by level", async () => {
+    // The property this pins down is a consequence of one line in
+    // `portalPump.js` — the queue is drained with `shift` and grown with
+    // `push`, so it is FIFO, and `buildQueuedNode` puts a node's children on
+    // the tail. That makes the traversal breadth-first, which is not written
+    // down anywhere the way an invariant would be, and is exactly the kind of
+    // thing an optimization would undo without meaning to: `shift` on a queue
+    // of thousands is linear, and swapping it for `pop` to fix that would
+    // silently turn the mount depth-first.
+    //
+    // Whether depth-first would be worse is a separate question — during the
+    // initial mount the panel is hidden, so nobody sees either order. It
+    // matters for content arriving into a panel that is already up, which is
+    // built through the same queue and is visible while it happens.
+    const ctx = InteractionContext.set({}, new InteractionManager());
+    // A budget of zero still builds one node per frame, which is what makes
+    // the order exact rather than "whatever fit in this frame".
+    const portal = createPortal(ctx, { budget: 0 });
+    const parent = new THREE.Group();
+    portal.addTo(parent);
+
+    const probe = recordBuildOrder();
+    try {
+      const cell = (/** @type {string} */ name) => $("div", [attr("data-n", () => name)]);
+      const row = (/** @type {string} */ name) =>
+        $("div", [attr("data-n", () => name), children(cell(`${name}a`), cell(`${name}b`))]);
+      const tree = $("div", [attr("data-n", () => "root"), children(row("r1"), row("r2"))]);
+
+      /** @type {import("@apendua/justdom").Mountable | undefined} */
+      let mountable;
+      const subscription = tree.subscribe((value) => {
+        mountable = value;
+      });
+      assert.ok(mountable);
+      portal.mount(mountable);
+      await settle(portal);
+
+      assert.deepEqual(
+        probe.names,
+        ["root", "r1", "r2", "r1a", "r1b", "r2a", "r2b"],
+        "level by level — not root, r1, r1a, r1b, r2, r2b, which is what a stack would give",
+      );
+
+      subscription.unsubscribe();
+      portal.disconnect();
+    } finally {
+      probe.restore();
+    }
   });
 });

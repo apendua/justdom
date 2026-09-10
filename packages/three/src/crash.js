@@ -5,6 +5,9 @@
 /** The id the panel is mounted under, for anyone who wants to find it. */
 export const CRASH_PANEL_ID = "freedom-crash-panel";
 
+/** How long the copy button says what happened before going back to "Copy". */
+const COPIED_MS = 2000;
+
 /**
  * The panel installed for a renderer, if there is one.
  *
@@ -63,6 +66,13 @@ export function reportCrash(renderer, err) {
  * not crash is left exactly as it was. Every further error is appended until
  * the panel is dismissed, and the next error after that opens a fresh one.
  *
+ * A stack read off a headset is a stack retyped by hand, so the panel also
+ * carries a Copy button: everything it is showing, as text, on the clipboard,
+ * ready to be pasted into a bug report from whatever the headset shares a
+ * clipboard with. Where there is no clipboard to write to — a page served
+ * over plain http, a browser that will not — the text is selected instead,
+ * which leaves the browser's own copy within reach.
+ *
  * Installed by `createXRButton` for every app; `crashPanel: false` opts out.
  *
  * @param {WebGLRenderer} renderer
@@ -76,6 +86,54 @@ export function installCrashPanel(renderer, options = {}) {
   /** @type {HTMLElement | null} */
   let entries = null;
   let reporting = false;
+  /** What the open panel is showing, in the order it was reported. */
+  /** @type {string[]} */
+  let reported = [];
+  /** @type {ReturnType<typeof setTimeout> | undefined} */
+  let relabel;
+
+  /**
+   * The panel's text on the clipboard. Nothing is thrown from here: a copy
+   * that fails is a copy that says so on the button, not a second crash on
+   * top of the one being read.
+   *
+   * @param {HTMLButtonElement} button
+   */
+  const copy = async (button) => {
+    let told = "Copy failed";
+    try {
+      await navigator.clipboard.writeText(reported.join("\n\n"));
+      told = "Copied";
+    } catch {
+      // No clipboard: an insecure page, or a headset browser that will not.
+      // Selecting the text puts the browser's own copy within reach.
+      told = selectEntries() ? "Copy it now" : "Copy failed";
+    }
+    button.textContent = told;
+    clearTimeout(relabel);
+    relabel = setTimeout(() => {
+      button.textContent = "Copy";
+    }, COPIED_MS);
+  };
+
+  /**
+   * @returns {boolean} Whether the text ended up selected.
+   */
+  const selectEntries = () => {
+    const selection = entries && window.getSelection?.();
+    if (!entries || !selection) {
+      return false;
+    }
+    try {
+      const range = document.createRange();
+      range.selectNodeContents(entries);
+      selection.removeAllRanges();
+      selection.addRange(range);
+      return true;
+    } catch {
+      return false;
+    }
+  };
 
   const mount = () => {
     const root = options.root ?? document.body;
@@ -102,12 +160,22 @@ export function installCrashPanel(renderer, options = {}) {
     const title = document.createElement("strong");
     title.textContent = "The app crashed. The XR session was ended so this could be read.";
     title.style.flex = "1";
+    const copyButton = document.createElement("button");
+    copyButton.type = "button";
+    copyButton.dataset.action = "copy";
+    copyButton.textContent = "Copy";
+    copyButton.style.cssText = "font: inherit; padding: 4px 12px";
+    copyButton.addEventListener("click", () => {
+      void copy(copyButton);
+    });
+
     const dismiss = document.createElement("button");
     dismiss.type = "button";
+    dismiss.dataset.action = "dismiss";
     dismiss.textContent = "Dismiss";
     dismiss.style.cssText = "font: inherit; padding: 4px 12px";
     dismiss.addEventListener("click", unmount);
-    header.append(title, dismiss);
+    header.append(title, copyButton, dismiss);
 
     entries = document.createElement("div");
     panel.append(header, entries);
@@ -115,9 +183,12 @@ export function installCrashPanel(renderer, options = {}) {
   };
 
   const unmount = () => {
+    clearTimeout(relabel);
+    relabel = undefined;
     panel?.remove();
     panel = null;
     entries = null;
+    reported = [];
   };
 
   /**
@@ -139,10 +210,12 @@ export function installCrashPanel(renderer, options = {}) {
       if (!panel) {
         mount();
       }
+      const text = describe(err);
       const entry = document.createElement("pre");
       entry.style.cssText = "margin: 0 0 12px; white-space: pre-wrap; word-break: break-word";
-      entry.textContent = describe(err);
+      entry.textContent = text;
       entries?.appendChild(entry);
+      reported.push(text);
     } finally {
       reporting = false;
     }

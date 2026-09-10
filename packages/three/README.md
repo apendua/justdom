@@ -60,7 +60,10 @@ rather than waiting to hear about them from the window, which is the
 difference between seeing a crash and not: an XR frame callback that throws
 is only reported to the window if whatever drives the session says so, and
 the emulator these apps are developed against catches every one of them and
-writes to the console instead. Every option has an opt-out (`anchor`,
+writes to the console instead. The panel's Copy button puts everything it is
+showing on the clipboard, so a stack read off a headset goes into a bug
+report without being retyped; where the page is not allowed a clipboard the
+text is selected instead. Every option has an opt-out (`anchor`,
 `frameRate`, `offerSession`, `crashPanel`, `handTracking`); see the JSDoc on
 `createXRButton`.
 

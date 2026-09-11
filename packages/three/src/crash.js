@@ -62,6 +62,11 @@ export function reportCrash(renderer, err) {
  * nobody hears, and it is exactly the failure a device that will not start
  * an app needs explained.
  *
+ * One kind of error is left alone: the muted `"Script error."` a browser
+ * reports for a script from another origin, which is contentless by
+ * construction and never the app's own code. See `isMuted` for why taking
+ * those turned every hidden tab into a crash report.
+ *
  * The panel is built on the first error and not before, so a page that does
  * not crash is left exactly as it was. Every further error is appended until
  * the panel is dismissed, and the next error after that opens a fresh one.
@@ -86,6 +91,8 @@ export function installCrashPanel(renderer, options = {}) {
   /** @type {HTMLElement | null} */
   let entries = null;
   let reporting = false;
+  /** Whether the console has already been told about a muted error. */
+  let warnedAboutMuted = false;
   /** What the open panel is showing, in the order it was reported. */
   /** @type {string[]} */
   let reported = [];
@@ -223,9 +230,23 @@ export function installCrashPanel(renderer, options = {}) {
 
   /** @param {ErrorEvent} event */
   const onError = (event) => {
-    // A script from another origin reports nothing but "Script error.", and
-    // `error` is null; the message is all there is then.
-    report(event.error ?? event.message);
+    if (isMuted(event)) {
+      // Not ours, and nothing to show. Said once, to the console, because a
+      // page whose neighbour throws every frame does not need it said again.
+      if (!warnedAboutMuted) {
+        warnedAboutMuted = true;
+        console.warn(
+          'freedom: ignoring "Script error." — a script from another origin threw, and the' +
+            " browser withholds everything about it. It is not this app's crash, so the crash" +
+            " panel stays down. The browser's own console has the real error.",
+        );
+      }
+      return;
+    }
+    // Not every error arrives with an `Error` behind it, and the message on
+    // its own does not say where it came from. Where the browser named the
+    // file, the report says so too.
+    report(event.error ?? locate(event));
   };
   /** @param {PromiseRejectionEvent} event */
   const onRejection = (event) => {
@@ -244,6 +265,52 @@ export function installCrashPanel(renderer, options = {}) {
     reporters.delete(renderer);
     unmount();
   };
+}
+
+/**
+ * Whether the browser is refusing to say anything about this one.
+ *
+ * A script from another origin throws behind a curtain. The HTML spec has the
+ * browser *mute* the report rather than leak a stranger's source across an
+ * origin boundary, and what reaches the page is a fixed, contentless event:
+ * the message is exactly `"Script error."`, `error` is null, and the file,
+ * line and column are empty. Nothing distinguishes one such failure from
+ * another, and nothing in it can be acted on.
+ *
+ * It is also never this app's. Everything freedom's apps ship is served from
+ * the page's own origin, so their throws arrive here with the `Error` itself,
+ * stack and all — as does anything a browser extension injects, which the
+ * browser attributes to its `chrome-extension://` file. A muted report means
+ * some script the app does not control failed: an analytics or captcha
+ * beacon, something a browser puts in the page for a feature of its own.
+ * Those tend to fire on lifecycle moments a player can produce at will —
+ * hiding the tab is the usual one, so opening the browser's share sheet, or
+ * switching apps, would raise the panel with "Script error." in it every
+ * time, over an app that was running perfectly.
+ *
+ * So the panel does not take them. Its whole promise is that what it shows is
+ * both real and readable, and a muted error is neither.
+ *
+ * @param {ErrorEvent} event
+ * @returns {boolean}
+ */
+function isMuted(event) {
+  return event.error == null && !event.filename && !event.lineno && !event.colno && !!event.message;
+}
+
+/**
+ * An error event with no `Error` behind it, as text: the message, and where
+ * the browser says it happened.
+ *
+ * @param {ErrorEvent} event
+ * @returns {string}
+ */
+function locate(event) {
+  const message = event.message || "An error with no message";
+  if (!event.filename) {
+    return message;
+  }
+  return `${message}\n    at ${event.filename}:${event.lineno}:${event.colno}`;
 }
 
 /**

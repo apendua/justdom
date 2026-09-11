@@ -80,13 +80,15 @@ function withClipboard(clipboard) {
   if (clipboard) {
     Object.defineProperty(navigator, "clipboard", { configurable: true, value: clipboard });
   } else {
-    delete /** @type {Record<string, unknown>} */ (/** @type {unknown} */ (navigator)).clipboard;
+    delete (/** @type {Record<string, unknown>} */ (/** @type {unknown} */ (navigator)).clipboard);
   }
   return () => {
     if (had) {
       Object.defineProperty(navigator, "clipboard", had);
     } else {
-      delete /** @type {Record<string, unknown>} */ (/** @type {unknown} */ (navigator)).clipboard;
+      delete (
+        /** @type {Record<string, unknown>} */ (/** @type {unknown} */ (navigator)).clipboard
+      );
     }
   };
 }
@@ -267,13 +269,59 @@ describe("installCrashPanel", () => {
     }
   });
 
-  test("falls back to the message when a cross-origin script reports no error", () => {
+  test("leaves the muted 'Script error.' of a cross-origin script alone", () => {
+    // What a browser reports for a script from another origin: a fixed
+    // message and nothing else. It cannot be this app -- its own scripts are
+    // same-origin and arrive with their Error -- and there is nothing in it
+    // to read, so a page whose analytics beacon throws when the tab is hidden
+    // must not be told it crashed. The session stays up with it.
+    const { state, renderer } = fakeRenderer(true);
+    installed.push(installCrashPanel(renderer));
+
+    /** @type {string[]} */
+    const warned = [];
+    const warn = console.warn;
+    console.warn = (/** @type {unknown[]} */ ...args) => warned.push(args.join(" "));
+    try {
+      for (let i = 0; i < 3; i++) {
+        window.dispatchEvent(
+          new window.ErrorEvent("error", {
+            error: null,
+            message: "Script error.",
+            filename: "",
+            lineno: 0,
+            colno: 0,
+          }),
+        );
+      }
+    } finally {
+      console.warn = warn;
+    }
+
+    assert.equal(panel(), null);
+    assert.equal(state.ended, 0);
+    // Said to the console, where a developer can see it, and said once.
+    assert.equal(warned.length, 1);
+    assert.match(warned[0] ?? "", /Script error/);
+  });
+
+  test("shows an error with no Error behind it, and where it came from", () => {
     const { renderer } = fakeRenderer(false);
     installed.push(installCrashPanel(renderer));
 
-    window.dispatchEvent(new window.ErrorEvent("error", { error: null, message: "Script error." }));
+    window.dispatchEvent(
+      new window.ErrorEvent("error", {
+        error: null,
+        message: "Uncaught SyntaxError: unexpected token",
+        filename: "https://labs.apendua.dev/apps/kite-xr/assets/index.js",
+        lineno: 12,
+        colno: 34,
+      }),
+    );
 
-    assert.match(panel()?.textContent ?? "", /Script error\./);
+    const text = panel()?.textContent ?? "";
+    assert.match(text, /unexpected token/);
+    assert.match(text, /index\.js:12:34/);
   });
 
   test("uninstalling stops listening and removes the panel", () => {

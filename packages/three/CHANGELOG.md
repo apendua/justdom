@@ -1,6 +1,17 @@
 # Change Log - @apendua/freedom
 
-This log was last generated on Sun, 06 Sep 2026 21:40:37 GMT and should not be manually modified.
+This log was last generated on Fri, 11 Sep 2026 15:31:13 GMT and should not be manually modified.
+
+## 0.20.0
+Fri, 11 Sep 2026 15:31:13 GMT
+
+### Minor changes
+
+- Add a Copy button to the crash panel, so an error read on a headset can be put on the clipboard
+
+### Patches
+
+- Parse the text-shadow values a computed style actually produces, so a shadowed run is no longer rasterized without its shadow
 
 ## 0.19.0
 Sun, 06 Sep 2026 21:40:37 GMT

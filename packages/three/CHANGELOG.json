@@ -2,6 +2,28 @@
   "name": "@apendua/freedom",
   "entries": [
     {
+      "version": "0.20.0",
+      "tag": "@apendua/freedom_v0.20.0",
+      "date": "Fri, 11 Sep 2026 15:31:13 GMT",
+      "comments": {
+        "minor": [
+          {
+            "comment": "Add a Copy button to the crash panel, so an error read on a headset can be put on the clipboard"
+          }
+        ],
+        "patch": [
+          {
+            "comment": "Parse the text-shadow values a computed style actually produces, so a shadowed run is no longer rasterized without its shadow"
+          }
+        ],
+        "none": [
+          {
+            "comment": "Pin the breadth-first order a portal builds a mount in, which was a consequence of the pump's queue discipline rather than anything written down."
+          }
+        ]
+      }
+    },
+    {
       "version": "0.19.0",
       "tag": "@apendua/freedom_v0.19.0",
       "date": "Sun, 06 Sep 2026 21:40:37 GMT",

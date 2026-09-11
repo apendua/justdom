@@ -55,6 +55,16 @@ export function createPortalPump({
    * carry a whole subtree, which queues its children as it is built. The set
    * is the same membership, kept so a node cannot be queued twice.
    *
+   * **The queue discipline is the traversal order.** Drained from the front
+   * and grown at the back, which makes it FIFO; the portal puts a node's
+   * children on the tail as it builds it. Together those two facts are what
+   * make a mount breadth-first — every sibling before any of their children,
+   * level by level — and neither of them looks like a decision at the point
+   * it is made. It is pinned by a test, because the obvious optimization
+   * here undoes it silently: `shift` on a queue of thousands is linear, and
+   * swapping it for `pop` to fix that turns the mount depth-first without a
+   * word.
+   *
    * @type {Node[]}
    */
   const pendingNodes = [];

@@ -14,7 +14,7 @@
  * gaze aim and the held space bar, so the rubble is honestly Rapier's and lies
  * a little differently every time.
  *
- * The captions in apps/website/src/content/demos.ts quote the numbers on the
+ * The captions in pages/apendua/src/content/demos.ts quote the numbers on the
  * panel — bricks built, shots taken, bricks still standing — so after
  * re-running the siege shot, check they still agree with the picture.
  */
@@ -35,7 +35,7 @@ const OUT =
   process.env.SHOT ??
   resolve(
     HERE,
-    "../website/public/images/demos",
+    "../../pages/apendua/public/images/demos",
     MODE === "build" ? "castle-xr-01.png" : "castle-xr-02.png",
   );
 const SIZE = MODE === "build" ? { width: 1280, height: 960 } : { width: 780, height: 585 };

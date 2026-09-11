@@ -33,7 +33,7 @@ The website's demo screenshots are taken through that same bare emulator, by
 `tests/demo-screenshots.mjs`: it seeds a castle into `localStorage`, drives
 the head and the panel buttons, fires the slingshot with the space bar for
 the siege shot, and writes straight into
-`apps/website/public/images/demos/`. Run it as
+`pages/apendua/public/images/demos/`. Run it as
 `node tests/demo-screenshots.mjs build` and `… siege` from this directory;
 the header comment has the details, including the caption numbers to check
 afterwards.

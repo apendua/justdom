@@ -398,6 +398,12 @@ class Bucket {
       // gives: an antialiased edge that wrote depth would keep out whatever the
       // draw order puts in front of it.
       depthWrite: false,
+      // And is pulled a hair toward the viewer against the box it sits on,
+      // for the other reason `text.js` gives: a local pixel of separation is
+      // less than a headset's depth buffer can resolve at arm's length.
+      polygonOffset: true,
+      polygonOffsetFactor: -2,
+      polygonOffsetUnits: -4,
     });
     const mesh = new THREE.InstancedMesh(geometry, material, capacity);
     // The integer itself, unbiased, which is the half of the arrangement

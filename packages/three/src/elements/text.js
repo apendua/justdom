@@ -164,6 +164,19 @@ export function text(ctx, textNode) {
             // after it — and with the draw order below, nothing that should
             // sit in front of text renders before it.
             depthWrite: false,
+            // But it is still tested against the depth its own box wrote,
+            // one local pixel behind it — a fraction of a millimetre in the
+            // room once a panel is scaled down, which a headset's depth
+            // buffer cannot always tell from the box itself: seen from an
+            // angle, the glyphs then lose the test pixel by pixel and sink
+            // into the surface they sit on. A polygon offset pulls the
+            // text's depth toward the viewer by a couple of units and a
+            // slope, which is what a decal on a surface is drawn with, and
+            // costs the panel nothing in any other draw: nothing that sits
+            // in front of the text is anywhere near that close.
+            polygonOffset: true,
+            polygonOffsetFactor: -2,
+            polygonOffsetUnits: -4,
           });
           applyClip(basic, clipUniform);
           onCleanup(() => {

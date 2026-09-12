@@ -3,7 +3,7 @@
  * point so that the waveforms and voices at `.` stay reachable without
  * `@apendua/freedom` in the room.
  */
-export { createMusicControls, DEFAULT_MUSIC_VOLUME, Music } from "./music.js";
+export { createMusicControls, DEFAULT_MUSIC_VOLUME, loadTrack, Music } from "./music.js";
 
 /**
  * @typedef {import('./music.js').MusicControls} MusicControls

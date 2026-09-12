@@ -28,8 +28,16 @@ import { audioOutputSelection, setAudioOutput } from "../audioOutputs.js";
  * One decoded track per URL, however many components ask for it. Memoized on
  * the path rather than fetched per player: a track swapped back and forth is a
  * common enough thing for it to be worth not decoding twice.
+ *
+ * Reading it throws `NoValueError` until the file has arrived and been
+ * decoded, which is how `Music` waits for it. Exported so that an app can
+ * ask for the track before any session wants it — a loading screen that
+ * reads this from an effect held for the life of the app starts the fetch
+ * at once and keeps the decoded buffer from being dropped between sessions.
+ *
+ * @type {(path: string) => AudioBuffer}
  */
-const loadSound = memoizeDerived(
+export const loadTrack = memoizeDerived(
   /** @param {string} path */ (path) => {
     return Derived.from(
       new Stream((subscriber) => {
@@ -144,7 +152,7 @@ export const Music = component(
         if (!getXRSession(ctx)) {
           return;
         }
-        audio.setBuffer(loadSound(controls.track));
+        audio.setBuffer(loadTrack(controls.track));
         audio.setLoop(true);
         audio.play();
         onCleanup(() => {

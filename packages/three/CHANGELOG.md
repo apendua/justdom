@@ -1,6 +1,18 @@
 # Change Log - @apendua/freedom
 
-This log was last generated on Fri, 11 Sep 2026 15:31:13 GMT and should not be manually modified.
+This log was last generated on Sat, 12 Sep 2026 17:18:36 GMT and should not be manually modified.
+
+## 0.21.0
+Sat, 12 Sep 2026 17:18:36 GMT
+
+### Minor changes
+
+- Add createBakery: draw a panel once, stamp copies of it. For pictures rather than views — cards, number chits, badges — where a portal per copy is the wrong price.
+
+### Patches
+
+- The crash panel no longer treats a cross-origin script's muted "Script error." as this app's crash: it neither opens the panel nor ends the XR session for one, and an error that does carry a location now reports it
+- Batched text rebuilds its array texture from fresh storage when a run changes, instead of updating one layer in place: on Quest the mip chain of an array whose storage already existed was not regenerated after a layer update, so a changed label read correctly up close and blended into its previous value with distance. Panel text is also drawn with a small polygon offset toward the viewer, against the box it sits on.
 
 ## 0.20.0
 Fri, 11 Sep 2026 15:31:13 GMT

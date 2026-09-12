@@ -137,9 +137,10 @@ const NO_LAYER = -1;
  * The runs of one exact size, and the array texture holding them.
  *
  * Layers are handed out and taken back rather than repacked: a label whose
- * text changes rewrites its own layer and disturbs nobody else's, which is
- * what `addLayerUpdate` buys — three uploads that one layer instead of the
- * whole array.
+ * text changes rewrites its own layer of the mirror and disturbs nobody
+ * else's. What reaches the GPU is the whole array, freshly allocated, once
+ * per rebuild that changed anything -- `commit` says why a layer at a time
+ * was not enough.
  */
 class SizeClass {
   /** @type {THREE.DataArrayTexture | null} */
@@ -152,6 +153,8 @@ class SizeClass {
   next = 0;
   /** Bumped when the texture object is replaced, so buckets rebind. */
   generation = 0;
+  /** Whether the mirror has changed since the texture was last built. */
+  stale = false;
 
   /**
    * @param {number} width
@@ -168,6 +171,9 @@ class SizeClass {
   }
 
   /**
+   * Room in the mirror for this many layers. The texture is not touched
+   * here: `commit` builds it, once, after every write of a rebuild is in.
+   *
    * @param {number} needed
    * @returns {void}
    */
@@ -183,32 +189,55 @@ class SizeClass {
     if (this.data) {
       data.set(this.data);
     }
+    this.data = data;
+    this.capacity = capacity;
+    this.stale = true;
+  }
+
+  /**
+   * The texture the buckets sample, rebuilt from the mirror whenever any of
+   * it changed since the last rebuild -- a new `DataArrayTexture` over the
+   * same bytes, and the old one disposed -- rather than the old texture told
+   * which layer to re-upload.
+   *
+   * That was the first design, and three does the right thing with it: one
+   * `texSubImage3D` for the layer, then `generateMipmap` over the array. A
+   * headset's driver does not. On Quest the mip chain of an array whose
+   * storage already existed stayed as it was after a layer went up: the run
+   * read right at arm's length, where level 0 is sampled, and blended into
+   * whatever the layer held before -- the previous value of a readout, or
+   * nothing -- as the player stepped back and the smaller levels took over.
+   * A label written into a fresh array was never affected, which is the
+   * tell: the mips come out right when `texStorage3D` has just been called
+   * and not otherwise. So every change gets fresh storage. It uploads the
+   * whole array where a layer would do, which for a panel's labels is a few
+   * hundred kilobytes a change, and a change is a press or a tick of a clock.
+   *
+   * Called between the writes of a rebuild and the buckets' rebind, which is
+   * the one order that works: a bucket reads the texture off its class when
+   * its generation moves, so the texture has to be the new one by then.
+   *
+   * @returns {void}
+   */
+  commit() {
+    if (!this.stale || !this.data) {
+      return;
+    }
+    this.stale = false;
     if (this.texture) {
       this.texture.dispose();
     }
-    this.data = data;
-    this.capacity = capacity;
-    const texture = new THREE.DataArrayTexture(data, this.width, this.height, capacity);
+    const texture = new THREE.DataArrayTexture(this.data, this.width, this.height, this.capacity);
     texture.format = THREE.RGBAFormat;
     texture.type = THREE.UnsignedByteType;
     // Coverage, not colour: tagged sRGB the hardware would linearize every
-    // sample and the glyph edges would collapse to a thin rim — the same
+    // sample and the glyph edges would collapse to a thin rim -- the same
     // reason the per-run mask texture is untagged.
     texture.colorSpace = THREE.NoColorSpace;
     texture.minFilter = THREE.LinearMipmapLinearFilter;
     texture.magFilter = THREE.LinearFilter;
     texture.generateMipmaps = true;
     texture.needsUpdate = true;
-    // Every layer already in hand has to be marked, and the reason is a trap
-    // worth naming. Three uploads a whole array only while nothing has asked
-    // for a single layer; the moment one has, it uploads exactly the layers
-    // asked for and no others. A grown array starts with all the old pixels
-    // copied into it but never yet uploaded, so one ordinary write afterwards
-    // — the run that prompted the growth — would be the only layer that ever
-    // reached the GPU, and every label written before it would vanish.
-    for (let layer = 0; layer < this.next; layer++) {
-      texture.addLayerUpdate(layer);
-    }
     this.texture = texture;
     this.generation += 1;
   }
@@ -284,7 +313,8 @@ class SizeClass {
   }
 
   /**
-   * Copy a run's pixels into its layer and ask for that layer alone to go up.
+   * Copy a run's pixels into its layer of the mirror. What goes up, and
+   * when, is `commit`'s.
    *
    * @param {number} layer
    * @param {HTMLCanvasElement} canvas
@@ -292,18 +322,12 @@ class SizeClass {
    */
   write(layer, canvas) {
     const context = canvas.getContext("2d");
-    if (layer === NO_LAYER || !context || !this.data || !this.texture) {
+    if (layer === NO_LAYER || !context || !this.data) {
       return;
     }
     const pixels = context.getImageData(0, 0, this.width, this.height).data;
     this.data.set(pixels, layer * this.layerBytes);
-    this.texture.addLayerUpdate(layer);
-    // The layer update is the cheap half. `needsUpdate` also has three
-    // regenerate the mip chain, and it regenerates the array's — every layer
-    // of it, for the one that changed. Not addressed here, and worth knowing
-    // before deepening an array: what a write costs grows with capacity, which
-    // is a second reason not to let one grow without end.
-    this.texture.needsUpdate = true;
+    this.stale = true;
   }
 
   /** @returns {void} */
@@ -314,6 +338,7 @@ class SizeClass {
     }
     this.data = null;
     this.capacity = 0;
+    this.stale = false;
   }
 }
 
@@ -775,6 +800,12 @@ export class TextBatch {
     const children = this.#container.children;
     for (let i = 0; i < children.length; i++) {
       walk(children[i], root, 1);
+    }
+
+    // Every run is settled, so every class that changed builds its texture
+    // now, before a bucket below reads it.
+    for (const sizeClass of this.#classes.values()) {
+      sizeClass.commit();
     }
 
     /** @type {Map<string, number>} */

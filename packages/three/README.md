@@ -476,6 +476,64 @@ clipping catching up over the next several, under a hand that is still
 dragging. An interaction lands whole in the frame that carries it; deferral
 is for content changes, which nobody's hand is resting on.
 
+## Baking a panel into a stamp
+
+A portal is not cheap to keep: real DOM in the document, a mutation observer
+over it, a resize observer under it, and a scheduler pumping the work of
+turning changes into geometry. That is the right price for a panel, which is a
+view of something that keeps changing. It is the wrong price for a *picture* —
+a card, a number chit, a badge, a label on a map — because a picture is the
+same in every copy of itself.
+
+`createBakery` draws each distinct face exactly once, into an oven parked out
+of sight, and hands out copies:
+
+```js
+const bakery = createBakery(ctx, {
+  timber: () => card("TIMBER", "#2f6b3a"),
+  clay: () => card("CLAY", "#b4553a"),
+});
+
+useEffects(getScene(ctx), [
+  children(
+    bakery.oven(),
+    component(() => {
+      const stamp = bakery.stamp("timber");
+      return stamp ? $(stamp) : Nothing();
+    })(),
+  ),
+]);
+```
+
+`stamp` returns null while the oven is working and a fresh copy afterwards;
+`ready()` is reactive, so a component that reads it rebuilds when the oven is
+done. A face the bakery was never given is a mistake rather than a wait, and
+throws.
+
+What makes it worth doing is what a finished portal *is*: boxes batched into
+instanced meshes, text rasterised into texture arrays, every local matrix
+composed and none of it going to move again. `clone()` copies that tree while
+sharing its geometry, materials and textures, so a stamp costs a handful of
+objects and no DOM at all — a hand of fourteen cards is fourteen copies of
+five pictures rather than fourteen portals mirroring fourteen subtrees that
+never change. Stamps also keep their matrices, the way the panel they came
+from does: `clone()` drops the override that arranges that, and the bakery
+puts it back.
+
+**The oven's portals are never disconnected, and must not be.** Disconnecting
+one tears down the tree it drew and disposes the geometry, the materials and
+the texture arrays behind it — which are exactly what every stamp holds a
+reference to, so taking the oven down empties every copy on the table. What it
+costs to keep is a matrix comparison per portal per frame and nothing else:
+the DOM never changes again, so the observers never fire and the pump never
+has anything to do. The watching stops because there is nothing left to watch,
+not because the machinery was taken away.
+
+Stamps are not interactive. Nothing inside a baked face registers as a ray
+target, and a clone would not carry the registration if it did; anything that
+has to be pressed wants a plain invisible mesh in front of it, which is
+cheaper than an interactive portal ever was.
+
 ## Checkboxes
 
 Most elements are a box with other elements in them, which is all a portal has

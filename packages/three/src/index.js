@@ -20,6 +20,7 @@ export {
 export { place, placeAndScale } from "./elements/place.js";
 export { cursors, pointers } from "./pointers.js";
 export { dom } from "./dom.js";
+export { createBakery } from "./bakery.js";
 export { drag } from "./drag.js";
 export {
   carry,
@@ -78,6 +79,18 @@ export { installCrashPanel, CRASH_PANEL_ID } from "./crash.js";
 
 /**
  * @typedef {import('./elements/portal.js').PortalOptions} PortalOptions
+ */
+
+/**
+ * @typedef {import('./bakery.js').Bakery} Bakery
+ */
+
+/**
+ * @typedef {import('./bakery.js').BakeryOptions} BakeryOptions
+ */
+
+/**
+ * @typedef {import('./bakery.js').Face} Face
  */
 
 /**

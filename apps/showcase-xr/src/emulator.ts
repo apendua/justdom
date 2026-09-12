@@ -14,7 +14,10 @@ export interface EmulatorOptions {
 export function install({ devUI = true }: EmulatorOptions = {}) {
   console.log("Installing emulator");
   const xrDevice = new XRDevice(metaQuest3);
-  xrDevice.installRuntime();
+  // Desktop browsers have a navigator.xr of their own that supports nothing,
+  // and IWER steps aside for it unless told not to; the whole point of asking
+  // for the emulator is to have it stand in for that.
+  xrDevice.installRuntime({ forceInstall: true });
   if (devUI) {
     xrDevice.installDevUI(DevUI);
   }

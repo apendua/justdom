@@ -15,7 +15,10 @@ declare global {
  */
 export function install(devui = true) {
   const xrDevice = new XRDevice(metaQuest3);
-  xrDevice.installRuntime();
+  // Desktop browsers have a navigator.xr of their own that supports nothing,
+  // and IWER steps aside for it unless told not to; the whole point of asking
+  // for the emulator is to have it stand in for that.
+  xrDevice.installRuntime({ forceInstall: true });
   if (devui) {
     xrDevice.installDevUI(DevUI);
   }

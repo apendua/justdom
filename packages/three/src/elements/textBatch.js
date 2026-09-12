@@ -209,9 +209,21 @@ class SizeClass {
    * nothing -- as the player stepped back and the smaller levels took over.
    * A label written into a fresh array was never affected, which is the
    * tell: the mips come out right when `texStorage3D` has just been called
-   * and not otherwise. So every change gets fresh storage. It uploads the
-   * whole array where a layer would do, which for a panel's labels is a few
-   * hundred kilobytes a change, and a change is a press or a tick of a clock.
+   * and not otherwise. So every change gets fresh storage.
+   *
+   * What that costs is the upload, and only the upload: three regenerates
+   * the mip chain in `uploadTexture`, after whichever branch it took, and
+   * for an array that call covers every layer -- so both ways regenerate the
+   * same mips just as often, and the old way said as much itself. What
+   * changed is that a flush now sends the array rather than the layers that
+   * moved. `bench/textBatch.bench.mjs` measures it: on a panel of eight
+   * readouts, 36 kB a change becomes 256 kB; on two hundred labels of one
+   * size, 60 kB becomes 3 MB, which is the worst of it and the reason
+   * `MAXIMUM_LAYERS` is worth an eye. The penalty is bounded by how much of
+   * the array a flush changes -- a list that re-renders at once pays 1.3x,
+   * since the old way was already uploading nearly all of it -- and a
+   * panel's labels change on a press or a tick of a clock, which is a
+   * handful a second and not a frame.
    *
    * Called between the writes of a rebuild and the buckets' rebind, which is
    * the one order that works: a bucket reads the texture off its class when

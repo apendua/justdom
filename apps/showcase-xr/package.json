@@ -20,7 +20,7 @@
     "@apendua/justui": "workspace:*",
     "@apendua/signal": "workspace:*",
     "@apendua/vite-hmr": "workspace:*",
-    "@iwer/devui": "^1.1.2",
+    "@iwer/devui": "^2.4.0",
     "@types/node": "^24.7.0",
     "@types/pngjs": "^6.0.5",
     "@types/three": "~0.185.0",

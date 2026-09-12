@@ -21,7 +21,7 @@
     "@apendua/signal": "workspace:*",
     "@apendua/vite-hmr": "workspace:*",
     "@dimforge/rapier3d": "~0.19.3",
-    "@iwer/devui": "^1.1.2",
+    "@iwer/devui": "^2.4.0",
     "@types/lodash": "^4.17.20",
     "@types/node": "^24.7.0",
     "@types/stats.js": "^0.17.4",

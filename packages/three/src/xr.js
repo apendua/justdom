@@ -207,6 +207,19 @@ function withOptionalFeature(init, feature) {
  * arrives. A headset without hands ignores the request. `handTracking:
  * false` leaves it out.
  *
+ * `autoEnter: true` asks for the session as soon as the button is built,
+ * for a packaged app that should come up in the headset rather than on a
+ * panel with something to press. It only applies where the platform hands the
+ * page an activation to spend -- an installed PWA, which on Horizon OS counts
+ * launching from the library as the click `requestSession` would otherwise
+ * need -- so a browser tab keeps the button and never sees a refusal it could
+ * not have avoided. The button is built either way and returned either way:
+ * the automatic request is an attempt, and the button is both the fallback
+ * when it is refused and the way back in after the player leaves a session.
+ * Pair it with the packaging: `bubblewrap init --metaquest` asks whether the
+ * app is 2D or immersive, and this is the half of that answer that lives in
+ * the page.
+ *
  * The AR session no longer asks for `dom-overlay`, which three's `ARButton`
  * added along with an empty `<div>` on the page and a close cross drawn into
  * it. Nothing here ever used it: these are headset apps, where the overlay is
@@ -222,6 +235,7 @@ function withOptionalFeature(init, feature) {
  *   anchor?: boolean;
  *   frameRate?: FrameRatePreference | false;
  *   offerSession?: boolean;
+ *   autoEnter?: boolean;
  *   crashPanel?: boolean;
  *   handTracking?: boolean;
  * }} [sessionInit]
@@ -246,6 +260,7 @@ export async function createXRButton(renderer, sessionInit = {}) {
     installCrashPanel(renderer);
   }
   const offerSession = sessionInit.offerSession === true;
+  const autoEnter = sessionInit.autoEnter === true;
   const xr = navigator.xr;
   if (xr) {
     if (await xr.isSessionSupported("immersive-ar").catch(() => false)) {
@@ -253,6 +268,7 @@ export async function createXRButton(renderer, sessionInit = {}) {
         mode: "immersive-ar",
         init: sessionInit.ar,
         offerSession,
+        autoEnter,
       });
     }
     if (await xr.isSessionSupported("immersive-vr").catch(() => false)) {
@@ -260,7 +276,12 @@ export async function createXRButton(renderer, sessionInit = {}) {
       for (const feature of VR_DEFAULT_FEATURES) {
         vr = withOptionalFeature(vr, feature);
       }
-      return createSessionButton(renderer, { mode: "immersive-vr", init: vr, offerSession });
+      return createSessionButton(renderer, {
+        mode: "immersive-vr",
+        init: vr,
+        offerSession,
+        autoEnter,
+      });
     }
   }
   return createUnsupportedButton("immersive-ar");

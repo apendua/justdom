@@ -101,6 +101,39 @@ function stylize(element) {
 }
 
 /**
+ * Whether this page is running as an installed app rather than in a browser
+ * tab -- the only place an automatic session request can succeed.
+ *
+ * `requestSession` needs a user activation, and a page that has just loaded
+ * has none to spend. What makes the automatic path possible at all is that
+ * Horizon OS counts launching an installed PWA from the library as that
+ * activation; a tab was never handed one, so asking there fails on every
+ * platform and would only put a refusal where a player could see it.
+ *
+ * `standalone` is what a Trusted Web Activity reports. A manifest may ask for
+ * `fullscreen` instead, and both are installed as far as this cares. A
+ * runtime with no `matchMedia` at all -- jsdom, a worker -- is not an
+ * installed app either, which keeps the automatic path off wherever it could
+ * not have worked.
+ *
+ * @returns {boolean}
+ */
+function isInstalledApp() {
+  const media = globalThis.matchMedia;
+  if (typeof media !== "function") {
+    return false;
+  }
+  return ["standalone", "fullscreen"].some((mode) => {
+    try {
+      return media.call(globalThis, `(display-mode: ${mode})`).matches;
+    } catch {
+      // A runtime that has the method and will not answer for this query.
+      return false;
+    }
+  });
+}
+
+/**
  * The state a session button can be in. `requesting` and `ending` are the two
  * that matter: they are the windows in which a second click would otherwise
  * open a second session, or end the same one twice.
@@ -117,6 +150,12 @@ function stylize(element) {
  *   one without the button being touched. Off by default. The offer is only
  *   ever made from idle — never alongside `end()`, which is the ordering that
  *   stranded a Quest and the reason three's version of this is not used.
+ * @property {boolean} [autoEnter] Ask for the session as soon as the button is
+ *   built, without waiting for a click. Off by default, and ignored outside an
+ *   installed app -- see `isInstalledApp`. The button is still built and still
+ *   returned: an automatic request is an attempt, never a replacement for the
+ *   way in, because a refused one that left no button would be a black screen
+ *   with nothing to press.
  */
 
 /**
@@ -127,7 +166,10 @@ function stylize(element) {
  * @param {SessionButtonOptions} options
  * @returns {HTMLButtonElement}
  */
-export function createSessionButton(renderer, { mode, init, offerSession = false }) {
+export function createSessionButton(
+  renderer,
+  { mode, init, offerSession = false, autoEnter = false },
+) {
   const words = wordsFor(mode, "immersive-vr");
   const button = document.createElement("button");
   button.id = words.id;
@@ -268,9 +310,17 @@ export function createSessionButton(renderer, { mode, init, offerSession = false
   /**
    * Ask for a session, the way the button does.
    *
+   * @param {{ quiet?: boolean }} [options] `quiet` keeps a refusal off the
+   *   crash panel. For the automatic request, which nobody asked for out loud:
+   *   the fallback is the button, already built and sitting there, and a panel
+   *   in front of a player who has not touched anything yet would be reporting
+   *   a failure the next tap recovers from. It still reaches the console,
+   *   which is where a refusal that turns out to be permanent is diagnosed --
+   *   and the button's own request reports properly, so a real refusal still
+   *   surfaces the moment the player presses it.
    * @returns {Promise<void>}
    */
-  async function enter() {
+  async function enter({ quiet = false } = {}) {
     const xr = navigator.xr;
     if (phase !== "idle" || !xr) {
       return;
@@ -287,7 +337,11 @@ export function createSessionButton(renderer, { mode, init, offerSession = false
         phase = "idle";
         relabel();
       }
-      report(err);
+      if (quiet) {
+        console.error(err);
+      } else {
+        report(err);
+      }
       return;
     }
     await present(session);
@@ -389,6 +443,15 @@ export function createSessionButton(renderer, { mode, init, offerSession = false
 
   relabel();
   offer();
+
+  // Last of all, and deliberately: the button exists and is about to be
+  // returned, so a refusal here leaves the player something to press rather
+  // than nothing. A standing offer has already been made if the page wanted
+  // one, and if it resolves alongside this request `present` discards
+  // whichever session arrives second.
+  if (autoEnter && isInstalledApp()) {
+    enter({ quiet: true }).catch((err) => console.error(err));
+  }
 
   return button;
 }

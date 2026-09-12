@@ -401,6 +401,129 @@ describe("createSessionButton", () => {
   });
 });
 
+describe("createSessionButton, entering on its own", () => {
+  /**
+   * Stands in for an installed app, or for a browser tab.
+   *
+   * @param {boolean} installed What `(display-mode: standalone)` answers.
+   */
+  function installDisplayMode(installed) {
+    Object.defineProperty(globalThis, "matchMedia", {
+      value: (/** @type {string} */ query) => ({
+        matches: installed && query.includes("standalone"),
+      }),
+      configurable: true,
+      writable: true,
+    });
+  }
+
+  /** Back to a runtime with no `matchMedia` at all, which is where it starts. */
+  function clearDisplayMode() {
+    // @ts-expect-error -- putting the environment back as jsdom left it.
+    delete globalThis.matchMedia;
+  }
+
+  test("asks for a session without being clicked, once installed", async () => {
+    installDisplayMode(true);
+    const session = new FakeSession();
+    const xr = fakeXR([session]);
+    installXR(xr);
+    const renderer = fakeRenderer();
+
+    const button = createSessionButton(/** @type {never} */ (renderer), {
+      mode: "immersive-vr",
+      autoEnter: true,
+    });
+    await settle();
+
+    assert.equal(xr.state.requested, 1);
+    assert.equal(button.textContent, "EXIT VR");
+    clearDisplayMode();
+  });
+
+  test("waits to be asked in a browser tab, where there is no activation to spend", async () => {
+    installDisplayMode(false);
+    const xr = fakeXR([new FakeSession()]);
+    installXR(xr);
+
+    const button = createSessionButton(/** @type {never} */ (fakeRenderer()), {
+      mode: "immersive-vr",
+      autoEnter: true,
+    });
+    await settle();
+
+    assert.equal(xr.state.requested, 0, "a tab was asked for a session it could not have");
+    assert.equal(button.textContent, "ENTER VR");
+    clearDisplayMode();
+  });
+
+  test("stays off unless it is asked for", async () => {
+    installDisplayMode(true);
+    const xr = fakeXR([new FakeSession()]);
+    installXR(xr);
+
+    createSessionButton(/** @type {never} */ (fakeRenderer()), { mode: "immersive-vr" });
+    await settle();
+
+    assert.equal(xr.state.requested, 0);
+    clearDisplayMode();
+  });
+
+  test("leaves a button to press when the automatic request is refused", async () => {
+    installDisplayMode(true);
+    const xr = fakeXR([new FakeSession()]);
+    xr.state.refuse = new Error("no activation");
+    installXR(xr);
+    const renderer = fakeRenderer();
+
+    const button = createSessionButton(/** @type {never} */ (renderer), {
+      mode: "immersive-vr",
+      autoEnter: true,
+    });
+    await settle();
+
+    // The whole point: a refusal is not a black screen. The button is built,
+    // says the way in, and the next request is the player's.
+    assert.equal(button.textContent, "ENTER VR");
+    assert.equal(xr.state.requested, 1);
+
+    xr.state.refuse = null;
+    button.click();
+    await settle();
+    assert.equal(button.textContent, "EXIT VR");
+    clearDisplayMode();
+  });
+
+  test("hands the headset back through the button, and can be re-entered", async () => {
+    installDisplayMode(true);
+    const first = new FakeSession();
+    const second = new FakeSession();
+    const xr = fakeXR([first, second]);
+    installXR(xr);
+    const renderer = fakeRenderer();
+
+    const button = createSessionButton(/** @type {never} */ (renderer), {
+      mode: "immersive-vr",
+      autoEnter: true,
+    });
+    await settle();
+    assert.equal(button.textContent, "EXIT VR");
+
+    // The system menu, not the button: the player left of their own accord.
+    // Nothing walks them straight back in -- the button is the way back.
+    first.dispatch("end");
+    await settle();
+    assert.equal(button.textContent, "ENTER VR");
+    assert.equal(xr.state.requested, 1);
+
+    button.click();
+    await settle();
+    assert.equal(button.textContent, "EXIT VR");
+    assert.equal(xr.state.requested, 2);
+    clearDisplayMode();
+  });
+});
+
 describe("createUnsupportedButton", () => {
   test("says which mode is missing, and cannot be clicked into one", () => {
     installXR(fakeXR([]));

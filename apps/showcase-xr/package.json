@@ -27,7 +27,7 @@
     "@vitejs/plugin-basic-ssl": "^2.1.0",
     "@webgpu/types": "^0.1.65",
     "eslint": "^9.37.0",
-    "iwer": "^2.1.1",
+    "iwer": "^2.4.0",
     "playwright-core": "^1.56.0",
     "pngjs": "^7.0.0",
     "three": "~0.185.0",

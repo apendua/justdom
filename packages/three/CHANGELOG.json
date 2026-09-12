@@ -2,6 +2,26 @@
   "name": "@apendua/freedom",
   "entries": [
     {
+      "version": "0.21.0",
+      "tag": "@apendua/freedom_v0.21.0",
+      "date": "Sat, 12 Sep 2026 17:18:36 GMT",
+      "comments": {
+        "patch": [
+          {
+            "comment": "The crash panel no longer treats a cross-origin script's muted \"Script error.\" as this app's crash: it neither opens the panel nor ends the XR session for one, and an error that does carry a location now reports it"
+          },
+          {
+            "comment": "Batched text rebuilds its array texture from fresh storage when a run changes, instead of updating one layer in place: on Quest the mip chain of an array whose storage already existed was not regenerated after a layer update, so a changed label read correctly up close and blended into its previous value with distance. Panel text is also drawn with a small polygon offset toward the viewer, against the box it sits on."
+          }
+        ],
+        "minor": [
+          {
+            "comment": "Add createBakery: draw a panel once, stamp copies of it. For pictures rather than views — cards, number chits, badges — where a portal per copy is the wrong price."
+          }
+        ]
+      }
+    },
+    {
       "version": "0.20.0",
       "tag": "@apendua/freedom_v0.20.0",
       "date": "Fri, 11 Sep 2026 15:31:13 GMT",

@@ -122,9 +122,21 @@ export function getTextRenderStyle(style) {
   const fontSize = Number.parseFloat(style.fontSize || "");
   const resolvedFontSize = Number.isNaN(fontSize) ? DEFAULT_FONT_SIZE : fontSize;
 
+  // The `font-variant` slot of the canvas `font` shorthand is the CSS2 one:
+  // `normal | small-caps`, and nothing else. `style.fontVariant` is the
+  // computed *shorthand*, which serialises whatever its longhands are set to
+  // -- `font-variant-numeric: tabular-nums` on the element makes it read
+  // "tabular-nums" -- and a shorthand carrying that is not a valid font
+  // string. Assigning an invalid string to `context.font` is a silent no-op,
+  // so the canvas keeps `10px sans-serif` and every run drawn from that style
+  // comes out tiny in the default face, whatever the element's own size and
+  // weight say. Only the caps longhand belongs here, and only when it is the
+  // one keyword the shorthand admits.
+  const variant = style.fontVariantCaps === "small-caps" ? "small-caps" : "normal";
+
   const font = [
     style.fontStyle || "normal",
-    style.fontVariant || "normal",
+    variant,
     style.fontWeight || "400",
     `${resolvedFontSize}px`,
     style.fontFamily || "sans-serif",
@@ -135,7 +147,7 @@ export function getTextRenderStyle(style) {
     font,
     fontFamily: style.fontFamily || "sans-serif",
     fontStyle: style.fontStyle || "normal",
-    fontVariant: style.fontVariant || "normal",
+    fontVariant: variant,
     fontWeight: style.fontWeight || "400",
     fontSize: resolvedFontSize,
     letterSpacing: parsePixelValue(style.letterSpacing, resolvedFontSize),

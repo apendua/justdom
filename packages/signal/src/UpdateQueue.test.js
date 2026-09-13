@@ -104,6 +104,82 @@ describe("UpdateQueue", () => {
     assert.deepStrictEqual(log, ["r0", "r1", "r2"]);
   });
 
+  it("keeps nothing of a lane whose every task was taken back before a drain", () => {
+    // A scene torn down inside a batch: the write that takes it down queues
+    // its effects, the teardown disposes them before the batch ends, and no
+    // pass ever walks a lane with nothing to run -- so the spent slots would
+    // hold their tasks, and everything the tasks close over, for good.
+    const channel = new UpdateChannel({ name: "ghosts", order: 0, manual: true });
+    const queue = new UpdateQueue(channel);
+    /** @type {string[]} */
+    const log = [];
+    for (let round = 0; round < 3; round += 1) {
+      const tasks = ["a", "b", "c"].map((name) => makeTask(`${name}${round}`, channel, log));
+      for (const task of tasks) {
+        queue.enqueue(task);
+      }
+      for (const task of tasks) {
+        queue.dequeue(task);
+      }
+      assert.strictEqual(queue.size, 0);
+      assert.strictEqual(queue.retainedCountOf(channel), 0);
+    }
+    // And the lane still works: what is queued after runs, in order.
+    queue.enqueue(makeTask("x", channel, log));
+    queue.enqueue(makeTask("y", channel, log));
+    channel.flush({ budget: Infinity });
+    assert.deepStrictEqual(log, ["x", "y"]);
+    assert.strictEqual(queue.retainedCountOf(channel), 0);
+  });
+
+  it("keeps nothing of a lane that drained to a spent tail", () => {
+    // The drain stops with the last live task, so a task taken back after
+    // it would sit at the tail unreached -- with every slot before it.
+    const channel = new UpdateChannel({ name: "tail", order: 0, manual: true });
+    const queue = new UpdateQueue(channel);
+    /** @type {string[]} */
+    const log = [];
+    for (let round = 0; round < 3; round += 1) {
+      const live = makeTask(`live${round}`, channel, log);
+      const spent = makeTask(`spent${round}`, channel, log);
+      queue.enqueue(live);
+      queue.enqueue(spent);
+      queue.dequeue(spent);
+      channel.flush({ budget: Infinity });
+      assert.strictEqual(queue.size, 0);
+      assert.strictEqual(queue.retainedCountOf(channel), 0);
+    }
+    assert.deepStrictEqual(log, ["live0", "live1", "live2"]);
+  });
+
+  it("resets a lane emptied by a task disposing the rest mid-pass", () => {
+    const channel = new UpdateChannel({ name: "sweep", order: 0, manual: true });
+    const queue = new UpdateQueue(channel);
+    /** @type {string[]} */
+    const log = [];
+    /** @type {import("./UpdateQueue.js").Task[]} */
+    const rest = [];
+    const first = makeTask("first", channel, log, () => {
+      for (const task of rest) {
+        queue.dequeue(task);
+      }
+    });
+    queue.enqueue(first);
+    for (const name of ["b", "c"]) {
+      const task = makeTask(name, channel, log);
+      rest.push(task);
+      queue.enqueue(task);
+    }
+    channel.flush({ budget: Infinity });
+    assert.deepStrictEqual(log, ["first"]);
+    assert.strictEqual(queue.size, 0);
+    assert.strictEqual(queue.retainedCountOf(channel), 0);
+    // Work that arrives afterwards runs as if nothing had happened.
+    queue.enqueue(makeTask("later", channel, log));
+    channel.flush({ budget: Infinity });
+    assert.deepStrictEqual(log, ["first", "later"]);
+  });
+
   it("takes channels in order, and goes back for one that gains work mid-pass", () => {
     const early = new UpdateChannel({ name: "early", order: 1, manual: true });
     const late = new UpdateChannel({ name: "late", order: 2, manual: true });

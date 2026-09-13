@@ -298,6 +298,9 @@ export default class UpdateQueue {
    * The slot is left where it is and recognized as spent at drain time, which
    * costs a field read rather than a splice out of the middle of an array.
    *
+   * Unless it was the last one, in which case the array goes too — see
+   * `#emptied`.
+   *
    * @param {Task} task
    * @returns {void}
    */
@@ -313,8 +316,37 @@ export default class UpdateQueue {
     lane.size -= 1;
     this.#size -= 1;
     if (lane.size === 0) {
-      this.#reportPending(lane);
+      this.#emptied(lane);
     }
+  }
+
+  /**
+   * The lane has nothing left to run: let go of the array.
+   *
+   * Spent slots are skipped at drain time rather than spliced out, and the
+   * array is reset rather than shifted, so it is only ever let go of when a
+   * drain reaches its end — which a drain does only if the *last* slot held
+   * something live. A spent slot at the tail, and every slot before it, run
+   * or skipped, stays exactly where it is, holding its task and everything
+   * the task closes over; the next drain skips them and stops at its own
+   * dead tail, and the array only ever grows. A scene torn down inside a
+   * batch leaves precisely that tail: the write that takes it down queues
+   * its effects, the teardown disposes them before the batch ends. Every
+   * exit from a level editor was leaving its whole scene hanging from a
+   * lane this way. So: the moment nothing in the lane is left to run,
+   * whether the last task ran or was taken back, the array is dropped.
+   *
+   * Safe mid-pass: the pass takes its next task only while the lane's size
+   * is above zero, and the task it is about to run is already out of the
+   * array's hands; anything that task queues starts a fresh array.
+   *
+   * @param {Lane} lane
+   * @returns {void}
+   */
+  #emptied(lane) {
+    lane.queue.length = 0;
+    lane.head = 0;
+    this.#reportPending(lane);
   }
 
   /**
@@ -361,6 +393,19 @@ export default class UpdateQueue {
    */
   pendingCountOf(channel) {
     return this.#lanes.get(channel)?.size ?? 0;
+  }
+
+  /**
+   * How many slots the channel's lane holds, spent ones included: what the
+   * lane is keeping alive between drains, which is what `pendingCountOf`
+   * does not say. For tests and diagnostics; it is zero once a lane has
+   * drained or emptied.
+   *
+   * @param {UpdateChannel} channel
+   * @returns {number}
+   */
+  retainedCountOf(channel) {
+    return this.#lanes.get(channel)?.queue.length ?? 0;
   }
 
   /**
@@ -481,7 +526,7 @@ export default class UpdateQueue {
           lane.size -= 1;
           this.#size -= 1;
           if (lane.size === 0) {
-            this.#reportPending(lane);
+            this.#emptied(lane);
           }
           // Counted only once the task is fully out of the lane. The count can
           // throw, and a throw that left `queued` set while the lane had

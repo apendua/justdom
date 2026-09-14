@@ -1,8 +1,9 @@
-import { describe, test } from "node:test";
+import { after, before, describe, test } from "node:test";
 import assert from "node:assert/strict";
 import {
   createTextCanvas,
   getRenderBleed,
+  getTextRenderStyle,
   isTintableText,
   parseTextShadow,
 } from "./textHelpers.js";
@@ -209,5 +210,74 @@ describe("getRenderBleed", () => {
     // negative offset moves the shadow into space the glyphs already own.
     const shadow = parseTextShadow("rgb(0, 0, 0) -2px -3px");
     assert.deepEqual(getRenderBleed(shadow), { right: 2, bottom: 2 });
+  });
+});
+
+describe("getTextRenderStyle", () => {
+  // `normalizeColor` resolves a colour through a probe element, and the
+  // jsdom environment installs `window` without putting `getComputedStyle`
+  // on the global. Lending it for the suite is cheaper than widening what
+  // the environment installs for one helper.
+  const missing = typeof globalThis.getComputedStyle === "undefined";
+  before(() => {
+    if (missing) {
+      globalThis.getComputedStyle = (element) => window.getComputedStyle(element);
+    }
+  });
+  after(() => {
+    if (missing) {
+      // @ts-expect-error -- putting back what was not there to begin with.
+      globalThis.getComputedStyle = undefined;
+    }
+  });
+
+  test("builds a font string a canvas will actually take", () => {
+    const style = getTextRenderStyle(
+      styleOf({
+        fontStyle: "normal",
+        fontWeight: "600",
+        fontSize: "32px",
+        fontFamily: "sans-serif",
+      }),
+    );
+    assert.equal(style.font, "normal normal 600 32px sans-serif");
+    assert.equal(style.fontSize, 32);
+  });
+
+  test("small caps are the one variant the shorthand admits", () => {
+    const style = getTextRenderStyle(
+      styleOf({
+        fontVariant: "small-caps",
+        fontVariantCaps: "small-caps",
+        fontSize: "16px",
+        fontFamily: "serif",
+      }),
+    );
+    assert.equal(style.font, "normal small-caps 400 16px serif");
+    assert.equal(style.fontVariant, "small-caps");
+  });
+
+  /**
+   * The `font-variant` slot of the canvas shorthand is the CSS2 one, and
+   * `style.fontVariant` is the computed shorthand: an element carrying
+   * `font-variant-numeric: tabular-nums` -- which is what anything with a
+   * clock or a counter on it wants -- reports "tabular-nums" there. Passing
+   * that through makes the whole font string invalid, and an invalid string
+   * assigned to `context.font` is a no-op rather than a throw, so the run is
+   * drawn in the canvas default of 10px sans-serif with no sign of anything
+   * wrong. Nothing but the caps keyword may reach the shorthand.
+   */
+  test("a numeric variant does not reach the shorthand and void the font", () => {
+    const style = getTextRenderStyle(
+      styleOf({
+        fontVariant: "tabular-nums",
+        fontVariantCaps: "normal",
+        fontWeight: "600",
+        fontSize: "32px",
+        fontFamily: "sans-serif",
+      }),
+    );
+    assert.equal(style.font, "normal normal 600 32px sans-serif");
+    assert.equal(style.fontVariant, "normal");
   });
 });

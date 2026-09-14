@@ -170,3 +170,145 @@ export function trimLineRange(content, from, to, preserved) {
   }
   return [start, end];
 }
+
+/**
+ * One line of a run that can be cut mid-character, in the terms the cut is
+ * solved in: rendered characters, and the band and boundaries they occupy.
+ *
+ * `start` and `length` index the *rendered* text — the collapsed string the
+ * glyphs were drawn from — rather than the text node's data. A cursor counted
+ * in the node's own data would stall for three ticks on an indent nobody can
+ * see, and there is no way to know which characters those are without
+ * collapsing whitespace the way CSS does.
+ *
+ * @typedef {object} RevealLine
+ * @property {number} start Rendered characters before this line, within the run.
+ * @property {number} length Rendered characters on this line.
+ * @property {number} top Band top, relative to the run's bounds.
+ * @property {number} bottom Band bottom, same frame.
+ * @property {Float32Array | null} edges `length + 1` x positions, relative to
+ *   the run's bounds: where the cut falls for every count of characters shown.
+ *   `null` when the line cannot be cut at all — see `buildCharacterEdges`.
+ */
+
+/**
+ * What a revealed run knows about itself beyond its ordinary layout.
+ *
+ * @typedef {object} RevealLayout
+ * @property {number} length Rendered characters in the whole run.
+ * @property {RevealLine[]} lines
+ */
+
+/**
+ * Collapse a line the way `collapseWhitespace` does, and say where each
+ * character of the result came from.
+ *
+ * The cut is indexed in rendered characters and measured with a range, which
+ * is indexed in the node's data — so something has to hold the two together.
+ * Collapsing and mapping in one pass is that something: the run of blanks CSS
+ * turned into a single space is the run whose *first* character is the one
+ * that got a box, so that is the offset the rendered space is measured at.
+ *
+ * @param {string} content The text node's data.
+ * @param {number} from
+ * @param {number} to
+ * @param {string} whiteSpace
+ * @returns {{ text: string, offsets: number[] }} `offsets[i]` is where the
+ *   i-th rendered character sits in `content`; one entry per character.
+ */
+export function collapseLineOffsets(content, from, to, whiteSpace) {
+  /** @type {number[]} */
+  const offsets = [];
+  if (preservesWhitespace(whiteSpace)) {
+    for (let index = from; index < to; index++) {
+      offsets.push(index);
+    }
+    return { text: content.slice(from, to), offsets };
+  }
+  let text = "";
+  // Where the run of blanks currently being swallowed began, or -1. Held
+  // rather than emitted straight away: a run that reaches the end of the line
+  // is trimmed off entirely, and only the next non-blank says it was not.
+  let blank = -1;
+  for (let index = from; index < to; index++) {
+    const char = content[index];
+    if (/\s/.test(char)) {
+      if (text && blank < 0) {
+        blank = index;
+      }
+      continue;
+    }
+    if (blank >= 0) {
+      text += " ";
+      offsets.push(blank);
+      blank = -1;
+    }
+    text += char;
+    offsets.push(index);
+  }
+  return { text, offsets };
+}
+
+/**
+ * How far apart two boundaries have to be before one is taken to have moved.
+ * Well under a subpixel, and comfortably above the noise a client rect's
+ * float arithmetic leaves behind.
+ */
+const EDGE_EPSILON = 1e-3;
+
+/**
+ * Where the cut falls for every count of characters shown on one line.
+ *
+ * Two things the raw measurements cannot be trusted to be, and both are
+ * settled here rather than in the solver, which has no way to tell them from
+ * an ordinary line:
+ *
+ * - **They must advance.** A boundary inside a ligature or a grapheme cluster
+ *   reports a rect that has not moved, so a cursor stepping into one would cut
+ *   in exactly the place it cut before — a keystroke that draws nothing. Such a
+ *   boundary is snapped forward to the next one that does move, which reveals
+ *   the cluster whole on the first keystroke into it rather than on the last.
+ * - **They must advance in one direction.** A line carrying both directions of
+ *   text has a prefix that is not a rectangle, and no single x expresses it.
+ *   That is reported rather than approximated: `null`, which the solver reads
+ *   as a line to reveal as a unit.
+ *
+ * @param {number} count How many rendered characters the line holds.
+ * @param {(index: number) => [left: number, right: number] | null} rectAt The
+ *   horizontal extent of one character, or null where it left no box.
+ * @returns {Float32Array | null} `count + 1` boundaries, ascending.
+ */
+export function buildCharacterEdges(count, rectAt) {
+  const raw = new Float64Array(count + 1);
+  let previous = 0;
+  for (let index = 0; index < count; index++) {
+    const rect = rectAt(index);
+    if (!rect) {
+      // Nothing to measure — a character the layout swallowed after all.
+      // It occupies no width, so the boundary before it is the boundary
+      // after it, and the snap below will step over it.
+      raw[index] = previous;
+      continue;
+    }
+    raw[index] = rect[0];
+    previous = rect[1];
+  }
+  raw[count] = previous;
+  for (let index = 1; index <= count; index++) {
+    if (raw[index] < raw[index - 1] - EDGE_EPSILON) {
+      return null;
+    }
+  }
+  const edges = new Float32Array(count + 1);
+  // Backwards, because a boundary that did not move takes the value of the
+  // next one that did, and the last boundary — the end of the line — always
+  // counts as having moved.
+  edges[count] = raw[count];
+  for (let index = count - 1; index > 0; index--) {
+    edges[index] = raw[index] - raw[index - 1] > EDGE_EPSILON ? raw[index] : edges[index + 1];
+  }
+  if (count > 0) {
+    edges[0] = raw[0];
+  }
+  return edges;
+}

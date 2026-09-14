@@ -1,6 +1,8 @@
 import { addDependency, batch, Derived, fromEvent, NoValueError, Signal } from "@apendua/signal";
 import { Subject } from "@apendua/signal";
 import {
+  buildCharacterEdges,
+  collapseLineOffsets,
   collapseWhitespace,
   findLineStarts,
   groupLineBoxes,
@@ -10,7 +12,7 @@ import {
 import { clipBoxEqual, intersectClipBoxes, toLocalClipBox, UNCLIPPED } from "./clip.js";
 
 /**
- * @import {TextLine} from './textLines.js';
+ * @import {RevealLayout, RevealLine, TextLine} from './textLines.js';
  * @import {TextBounds} from './textHelpers.js';
  * @import {ClipBox} from './clip.js';
  */
@@ -2205,7 +2207,47 @@ function createMeasurementClone(element) {
  *   measures to exactly what it measured before.
  * @property {number} top Same, vertically.
  * @property {TextLine[]} lines Line boxes, positioned relative to `bounds`.
+ * @property {RevealLayout | null} reveal Character boundaries, for a node that
+ *   asked for them with `trackCharacterEdges`, and `null` — always the same
+ *   `null` — for every other node in the scene. Opt-in because it costs a
+ *   range read per character, which is the right price for a letter being
+ *   typed out and quite the wrong one for a label.
  */
+
+/**
+ * The text nodes whose character boundaries are measured along with their
+ * line boxes.
+ *
+ * A weak set and not a flag on the layout for the same reason the layout is
+ * cached per node: the mirror never owns the nodes it measures. It is asked
+ * before the measurement rather than after, so a node has to say so before it
+ * is first laid out — which is what `reveal.text` does, at the moment it
+ * creates the node.
+ *
+ * @type {WeakSet<Text>}
+ */
+const characterEdgeNodes = new WeakSet();
+
+/**
+ * Measure this text node's character boundaries from now on.
+ *
+ * @param {Text} text
+ * @returns {() => void} Stop measuring them.
+ */
+export function trackCharacterEdges(text) {
+  characterEdgeNodes.add(text);
+  return () => {
+    characterEdgeNodes.delete(text);
+  };
+}
+
+/**
+ * @param {Text} text
+ * @returns {boolean}
+ */
+export function tracksCharacterEdges(text) {
+  return characterEdgeNodes.has(text);
+}
 
 /** @type {WeakMap<HTMLElement, Derived<string>>} */
 const whiteSpaceCache = new WeakMap();
@@ -2248,9 +2290,10 @@ function getWhiteSpace(element) {
  * @param {boolean} scrolled Whether to fold the parent's scroll offset in —
  *   true against the live tree, false against a clone, which is never
  *   scrolled and already reports layout positions.
+ * @param {boolean} revealed Whether to measure character boundaries too.
  * @returns {TextLayout}
  */
-function measureTextRects(text, parentElement, whiteSpace, scrolled) {
+function measureTextRects(text, parentElement, whiteSpace, scrolled, revealed) {
   const content = text.textContent || "";
   // Against the live tree the parent's rect is shareable; a measurement
   // clone is created and thrown away inside one measurement, so its rect is
@@ -2274,21 +2317,27 @@ function measureTextRects(text, parentElement, whiteSpace, scrolled) {
   if (boxes.length === 0) {
     // Empty, or not laid out at all. Either way there is nothing to draw,
     // and in particular nothing that should be drawn at the origin instead.
-    return { bounds, left, top, lines: [] };
+    return { bounds, left, top, lines: [], reveal: revealed ? EMPTY_REVEAL : null };
   }
 
   // The overwhelmingly common case is a label on a single line, which the
   // bounding box already describes — and describes for free, the rectangle
   // having been read already.
   if (boxes.length === 1) {
-    const line = collapseWhitespace(content, whiteSpace);
+    const single = revealed
+      ? collapseLineOffsets(content, 0, content.length, whiteSpace)
+      : { text: collapseWhitespace(content, whiteSpace), offsets: [] };
+    const lines = single.text
+      ? [{ text: single.text, left: 0, top: 0, width: bounds.width, height: bounds.height }]
+      : [];
     return {
       bounds,
       left,
       top,
-      lines: line
-        ? [{ text: line, left: 0, top: 0, width: bounds.width, height: bounds.height }]
-        : [],
+      lines,
+      reveal: revealed
+        ? measureRevealLayout(text, range, boundsRect, lines, lines.length ? [single.offsets] : [])
+        : null,
     };
   }
 
@@ -2315,6 +2364,8 @@ function measureTextRects(text, parentElement, whiteSpace, scrolled) {
   });
 
   const lines = [];
+  /** @type {number[][]} */
+  const offsets = [];
   for (let line = 0; line < starts.length; line++) {
     const until = line + 1 < starts.length ? starts[line + 1] : content.length;
     const [from, to] = trimLineRange(content, starts[line], until, preserved);
@@ -2323,9 +2374,15 @@ function measureTextRects(text, parentElement, whiteSpace, scrolled) {
       // before it, or the blank line a `pre` block is entitled to.
       continue;
     }
-    const value = collapseWhitespace(content.slice(from, to), whiteSpace);
+    const collapsed = revealed
+      ? collapseLineOffsets(content, from, to, whiteSpace)
+      : { text: collapseWhitespace(content.slice(from, to), whiteSpace), offsets: [] };
+    const value = collapsed.text;
     if (!value) {
       continue;
+    }
+    if (revealed) {
+      offsets.push(collapsed.offsets);
     }
     // One rectangle per line, over the text the line actually draws, so the
     // extent is the browser's own shaping — kerning included — rather than a
@@ -2342,7 +2399,62 @@ function measureTextRects(text, parentElement, whiteSpace, scrolled) {
     });
   }
 
-  return { bounds, left, top, lines };
+  return {
+    bounds,
+    left,
+    top,
+    lines,
+    reveal: revealed ? measureRevealLayout(text, range, boundsRect, lines, offsets) : null,
+  };
+}
+
+/** @type {RevealLayout} */
+const EMPTY_REVEAL = { length: 0, lines: [] };
+
+/**
+ * The second half of a revealed run's measurement: for each line, the x of
+ * every boundary between the characters drawn on it.
+ *
+ * One range read per character, which is the honest cost of the thing and the
+ * reason it is opt-in — but paid once per *layout*, not once per keystroke,
+ * which is the whole point. Everything a cursor moving does afterwards is
+ * arithmetic over what this returned.
+ *
+ * @param {Text} text
+ * @param {Range} range Reused, and left pointing wherever the last read put it.
+ * @param {DOMRect} boundsRect What the other positions are relative to.
+ * @param {TextLine[]} lines The lines actually drawn, in document order.
+ * @param {number[][]} offsets Where each line's rendered characters sit in
+ *   the node's data, one array per line of `lines`.
+ * @returns {RevealLayout}
+ */
+function measureRevealLayout(text, range, boundsRect, lines, offsets) {
+  /** @type {RevealLine[]} */
+  const revealLines = [];
+  let start = 0;
+  for (let index = 0; index < lines.length; index++) {
+    const line = lines[index];
+    const lineOffsets = offsets[index];
+    const count = lineOffsets.length;
+    const edges = buildCharacterEdges(count, (at) => {
+      range.setStart(text, lineOffsets[at]);
+      range.setEnd(text, lineOffsets[at] + 1);
+      const rect = range.getBoundingClientRect();
+      if (rect.width <= 0 && rect.height <= 0) {
+        return null;
+      }
+      return [rect.left - boundsRect.left, rect.right - boundsRect.left];
+    });
+    revealLines.push({
+      start,
+      length: count,
+      top: line.top,
+      bottom: line.top + line.height,
+      edges,
+    });
+    start += count;
+  }
+  return { length: start, lines: revealLines };
 }
 
 /**
@@ -2366,8 +2478,11 @@ function measureTextLayout(text) {
     throw new NoValueError("Text node has no parent element");
   }
   const whiteSpace = getWhiteSpace(parentElement);
+  // Asked of the live node, always: under a transform the measurement runs
+  // against a clone, and the clone is not the node anybody registered.
+  const revealed = characterEdgeNodes.has(text);
   if (!isTransformed(parentElement)) {
-    return measureTextRects(text, parentElement, whiteSpace, true);
+    return measureTextRects(text, parentElement, whiteSpace, true, revealed);
   }
   const clone = createMeasurementClone(parentElement);
   document.body.appendChild(clone);
@@ -2377,7 +2492,7 @@ function measureTextLayout(text) {
     if (!(cloneText instanceof Text)) {
       throw new NoValueError("Text node not found in measurement clone");
     }
-    return measureTextRects(cloneText, clone, whiteSpace, false);
+    return measureTextRects(cloneText, clone, whiteSpace, false, revealed);
   } finally {
     clone.remove();
   }

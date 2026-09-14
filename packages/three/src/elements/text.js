@@ -17,9 +17,17 @@ import {
   getTextLayout,
 } from "./mirror.js";
 import { getContentRenderOrder } from "./elevation.js";
-import { applyClip, clipBoxEqual, toLocalClipBox, UNCLIPPED } from "./clip.js";
+import {
+  applyClip,
+  applyReveal,
+  clipBoxEqual,
+  toLocalClipBox,
+  UNBOUNDED,
+  UNCLIPPED,
+} from "./clip.js";
 import { place } from "./place.js";
 import { TextBatchContext } from "./textBatch.js";
+import { attachRevealNode, detachRevealNode, getRevealCut } from "./reveal.js";
 
 /**
  * @returns {number}
@@ -125,6 +133,26 @@ export function text(ctx, textNode) {
 
   const clipUniform = { value: new THREE.Vector4(-1e6, -1e6, 1e6, 1e6) };
 
+  /**
+   * Where this run is cut short, and the uniform that says so — for a node
+   * `reveal.text` built, and `null` for every other text node in the scene,
+   * which is the overwhelming majority of them and pays nothing for any of
+   * this, not even the vector.
+   *
+   * Asked here, before anything is built: what it answers decides which
+   * program the material compiles and whether the run joins the batch, and
+   * neither of those is a thing to change afterwards.
+   *
+   * The uniform starts at "nothing drawn" rather than "all of it". The effect
+   * below writes the real cut before the first frame either way, so this only
+   * says which way to fail — and a letter that flashed itself whole and then
+   * erased is the failure somebody would see.
+   */
+  const cut = getRevealCut(textNode);
+  const reveal = cut
+    ? { cut, uniform: { value: new THREE.Vector3(-UNBOUNDED, -UNBOUNDED, -UNBOUNDED) } }
+    : null;
+
   // Hoisted so the batch can be handed the mesh itself: registering from
   // inside the operators below would mean reaching for whatever `$` happened
   // to be dressing.
@@ -178,7 +206,11 @@ export function text(ctx, textNode) {
             polygonOffsetFactor: -2,
             polygonOffsetUnits: -4,
           });
-          applyClip(basic, clipUniform);
+          if (reveal) {
+            applyReveal(basic, clipUniform, reveal.uniform);
+          } else {
+            applyClip(basic, clipUniform);
+          }
           onCleanup(() => {
             basic.dispose();
           });
@@ -231,11 +263,36 @@ export function text(ctx, textNode) {
           place(obj, 0, 0, 0.01);
           batchChanged();
         }),
+        // Now that the node is somewhere `compareDocumentPosition` can answer
+        // about, which is what the offsets between a handle's nodes are found
+        // with. Before the cut below, though only for tidiness: if the two
+        // ran the other way round the cut would simply be solved again.
+        effects(() => {
+          if (!reveal) {
+            return;
+          }
+          attachRevealNode(textNode);
+          onCleanup(() => {
+            detachRevealNode(textNode);
+          });
+        }),
+        // The whole of what a keystroke costs: three floats, and the draw
+        // that was going to happen anyway. Nothing here touches the texture,
+        // the geometry, the DOM or the batch.
+        effects(() => {
+          if (!reveal) {
+            return;
+          }
+          const [x, wholeBottom, cutBottom] = reveal.cut.get();
+          reveal.uniform.value.set(x, wholeBottom, cutBottom);
+        }),
         // After the material and the geometry, both of which the batch reads
         // out of the mesh. A run whose colours are baked into its texture is
-        // declined by the batch and goes on drawing itself.
+        // declined by the batch and goes on drawing itself — and so is a
+        // revealed one, which carries a cut of its own that a shared draw has
+        // nowhere to put. One extra draw per revealed node; a letter has two.
         effects(() => {
-          if (!batch) {
+          if (!batch || reveal) {
             return;
           }
           batch.add(mesh, clipUniform);

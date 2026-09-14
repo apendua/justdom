@@ -30,7 +30,7 @@ import * as THREE from "three";
  * a float uniform, and a driver storing it as mediump is free to turn it into
  * something that no longer compares the way it should.
  */
-const UNBOUNDED = 1e6;
+export const UNBOUNDED = 1e6;
 
 /** @type {ClipBox} */
 export const UNCLIPPED = {
@@ -181,29 +181,82 @@ export function clipBoxEqual(a, b) {
  */
 export function applyClip(material, uniform) {
   material.onBeforeCompile = (shader) => {
-    shader.uniforms.clipBox = uniform;
-    shader.vertexShader = shader.vertexShader
-      .replace("void main() {", "varying vec2 vClipPosition;\nvoid main() {")
-      .replace(
-        "#include <begin_vertex>",
-        "#include <begin_vertex>\n\tvClipPosition = position.xy;",
-      );
-    shader.fragmentShader = shader.fragmentShader
-      .replace("void main() {", "uniform vec4 clipBox;\nvarying vec2 vClipPosition;\nvoid main() {")
-      .replace(
-        "#include <alphatest_fragment>",
-        "#include <alphatest_fragment>\n" +
-          "\tvec2 clipHalf = 0.5 * (clipBox.zw - clipBox.xy);\n" +
-          "\tvec2 clipD = abs(vClipPosition - 0.5 * (clipBox.xy + clipBox.zw)) - clipHalf;\n" +
-          "\tfloat clipDist = max(clipD.x, clipD.y);\n" +
-          "\tdiffuseColor.a *= 1.0 - smoothstep(-fwidth(clipDist), fwidth(clipDist), clipDist);\n" +
-          "\tif (diffuseColor.a < 0.001) discard;",
-      );
+    patchClip(shader, uniform);
   };
   // Programs are cached by material type and defines, neither of which the
   // patch above changes. Without a distinct key a clipped material can be
   // handed the unpatched program compiled for an identical unclipped one.
   material.customProgramCacheKey = () => "freedom-clip";
+}
+
+/**
+ * The clip patch itself, without the material it is installed on: `applyClip`
+ * is the whole of it, and `applyReveal` is it plus a second term.
+ *
+ * @param {import('three').WebGLProgramParametersWithUniforms} shader
+ * @param {{ value: THREE.Vector4 }} uniform
+ * @returns {void}
+ */
+function patchClip(shader, uniform) {
+  shader.uniforms.clipBox = uniform;
+  shader.vertexShader = shader.vertexShader
+    .replace("void main() {", "varying vec2 vClipPosition;\nvoid main() {")
+    .replace("#include <begin_vertex>", "#include <begin_vertex>\n\tvClipPosition = position.xy;");
+  shader.fragmentShader = shader.fragmentShader
+    .replace("void main() {", "uniform vec4 clipBox;\nvarying vec2 vClipPosition;\nvoid main() {")
+    .replace(
+      "#include <alphatest_fragment>",
+      "#include <alphatest_fragment>\n" +
+        "\tvec2 clipHalf = 0.5 * (clipBox.zw - clipBox.xy);\n" +
+        "\tvec2 clipD = abs(vClipPosition - 0.5 * (clipBox.xy + clipBox.zw)) - clipHalf;\n" +
+        "\tfloat clipDist = max(clipD.x, clipD.y);\n" +
+        "\tdiffuseColor.a *= 1.0 - smoothstep(-fwidth(clipDist), fwidth(clipDist), clipDist);\n" +
+        "\tif (diffuseColor.a < 0.001) discard;",
+    );
+}
+
+/**
+ * The same material, clipped *and* cut short at a character.
+ *
+ * Where the clip is a box the text slides through, the cut is a point in the
+ * text itself: lines above it are drawn whole, the line it falls on is drawn
+ * up to it, and everything after it is not drawn at all. Both terms are
+ * written against the same `vClipPosition` — the run's own layout frame, y
+ * down, the frame `toLocalClipBox` already answers in — so a revealed run
+ * inside a scroller is clipped and cut, and there is no second convention to
+ * keep straight.
+ *
+ * The x edge is antialiased, because it falls between two glyphs and a hard
+ * step there crawls as the cut advances. The y steps are not: a line boundary
+ * falls in the leading, where there is nothing to alias.
+ *
+ * @param {THREE.Material} material
+ * @param {{ value: THREE.Vector4 }} clip
+ * @param {{ value: THREE.Vector3 }} cut Shared with the caller: x is where the
+ *   cut line is cut, y the bottom of the last line drawn whole, z the bottom
+ *   of the cut line. Push all three far out of range for a run that is drawn
+ *   entirely, or entirely not — see `solveCut`.
+ * @returns {void}
+ */
+export function applyReveal(material, clip, cut) {
+  material.onBeforeCompile = (shader) => {
+    patchClip(shader, clip);
+    shader.uniforms.revealCut = cut;
+    shader.fragmentShader = shader.fragmentShader
+      .replace("void main() {", "uniform vec3 revealCut;\nvoid main() {")
+      .replace(
+        "#include <alphatest_fragment>",
+        "#include <alphatest_fragment>\n" +
+          "\tfloat revealWhole = step(vClipPosition.y, revealCut.y);\n" +
+          "\tfloat revealEdge = fwidth(vClipPosition.x);\n" +
+          "\tfloat revealOn = step(vClipPosition.y, revealCut.z) *\n" +
+          "\t\t(1.0 - smoothstep(revealCut.x - revealEdge, revealCut.x + revealEdge, vClipPosition.x));\n" +
+          "\tdiffuseColor.a *= clamp(revealWhole + revealOn, 0.0, 1.0);",
+      );
+  };
+  // A reveal material handed the clip-only program would draw uncut, and
+  // silently: nothing about the patch above reaches the cache key on its own.
+  material.customProgramCacheKey = () => "freedom-clip-reveal";
 }
 
 const localPoint = new THREE.Vector3();

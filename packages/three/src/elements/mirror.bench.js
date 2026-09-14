@@ -18,10 +18,11 @@
  */
 
 import * as THREE from "three";
-import { Derived } from "@apendua/signal";
+import { Derived, Signal } from "@apendua/signal";
 import { InteractionContext, InteractionManager } from "../interactions.js";
 import { createPortal } from "./portal.js";
 import { PORTAL_ATTRIBUTE } from "./mirror.js";
+import { makeReveal } from "./reveal.js";
 
 // --- jsdom stand-ins for the pieces of a browser the portal reaches for ----
 
@@ -45,20 +46,29 @@ if (!document.fonts) {
 globalThis.requestAnimationFrame = /** @type {never} */ (undefined);
 globalThis.cancelAnimationFrame = /** @type {never} */ (undefined);
 
-// jsdom lays nothing out, so a Range measures nothing either: one line box
-// per text node, the size a label would have had.
+// jsdom lays nothing out, so a Range measures nothing either. A monospace
+// face on one line is enough of a stand-in, and it has to be a function of the
+// range's own offsets rather than a constant: the last table below asks what a
+// character boundary costs, and a rect that ignored the offsets would say it
+// was free. jsdom does implement the offsets themselves.
+const GLYPH_WIDTH = 8;
+const GLYPH_HEIGHT = 16;
+let rangeReads = 0;
 window.Range.prototype.getBoundingClientRect = function () {
+  rangeReads += 1;
+  const left = this.startOffset * GLYPH_WIDTH;
+  const right = this.endOffset * GLYPH_WIDTH;
   return /** @type {DOMRect} */ ({
-    left: 0,
+    left,
     top: 0,
-    right: 100,
-    bottom: 16,
-    width: 100,
-    height: 16,
+    right,
+    bottom: GLYPH_HEIGHT,
+    width: right - left,
+    height: GLYPH_HEIGHT,
   });
 };
 window.Range.prototype.getClientRects = function () {
-  return /** @type {any} */ ([{ left: 0, top: 0, right: 100, bottom: 16, width: 100, height: 16 }]);
+  return /** @type {any} */ ([this.getBoundingClientRect()]);
 };
 
 /**
@@ -197,7 +207,9 @@ function makeRow(index) {
 /**
  * @typedef {object} Sample
  * @property {number} evaluations
- * @property {number} rectReads
+ * @property {number} rectReads Element rects. Range reads are counted
+ *   separately, since only the typing table below is about them.
+ * @property {number} rangeReads
  * @property {number} ms
  */
 
@@ -208,10 +220,11 @@ function makeRow(index) {
 async function sample(fn) {
   evaluations = 0;
   rectReads = 0;
+  rangeReads = 0;
   const started = performance.now();
   await fn();
   await nextMacrotask();
-  return { evaluations, rectReads, ms: performance.now() - started };
+  return { evaluations, rectReads, rangeReads, ms: performance.now() - started };
 }
 
 /**
@@ -307,4 +320,87 @@ console.log("rows\tevals\trects\tms");
 for (const rows of SIZES) {
   const { mount } = await measure({ rows, perFlush: true });
   console.log(`${rows}\t${mount.evaluations}\t${mount.rectReads}\t${mount.ms.toFixed(0)}`);
+}
+
+/**
+ * The other thing a portal is asked to do with text: draw a little more of it
+ * every tick.
+ *
+ * Two ways of asking, on the same panel. The first is the one that needs no
+ * help from the renderer — a text node whose data grows by a character — and
+ * it pays for a mutation, a re-measurement, a rasterization and an upload,
+ * every tick, in proportion to how long the text already is. The second is
+ * `reveal`: the node holds the whole text from the first frame, and the tick
+ * moves a cursor. What that costs is the point of the exercise.
+ *
+ * The mount column is the price of the second one: a range read per
+ * character, once. Read it against the per-character cost beside it to see
+ * how many characters have to be typed before it has paid for itself.
+ *
+ * @param {object} options
+ * @param {number} options.characters
+ */
+async function measureTyping({ characters }) {
+  const manager = new InteractionManager();
+  const ctx = InteractionContext.set({}, manager);
+  const portal = createPortal(ctx);
+  portal.addTo(new THREE.Group());
+  const containers = document.querySelectorAll(`[${PORTAL_ATTRIBUTE}]`);
+  const containerElement = /** @type {HTMLElement} */ (containers[containers.length - 1]);
+
+  const body = "x".repeat(characters);
+
+  // The letter as it is written today.
+  const rewritten = document.createElement("p");
+  const growing = document.createTextNode(body.slice(0, characters - 1));
+  rewritten.appendChild(growing);
+
+  // And as a reveal.
+  const cursor = Signal.of(characters - 1);
+  const reveal = makeReveal(() => cursor.get());
+  const revealed = document.createElement("p");
+  const placeholder = document.createComment("");
+  revealed.appendChild(placeholder);
+  /** @type {import('../core.js').Mountable | undefined} */
+  let mountable;
+  const subscription = reveal.text`${body}`.subscribe({
+    next: (value) => {
+      mountable = value;
+    },
+  });
+  /** @type {import('../core.js').Mountable} */ (mountable).replace([placeholder, placeholder]);
+
+  const mount = await sample(async () => {
+    containerElement.appendChild(rewritten);
+    containerElement.appendChild(revealed);
+    relayout(containerElement);
+    await nextMacrotask();
+  });
+
+  const rewrite = await sample(() => {
+    growing.data = body;
+    relayout(containerElement);
+  });
+
+  const move = await sample(() => {
+    cursor.set(characters);
+  });
+
+  subscription.unsubscribe();
+  portal.disconnect();
+  containerElement.remove();
+  return { mount, rewrite, move };
+}
+
+console.log("\n=== one more character of a letter, rewritten versus revealed ===");
+console.log(
+  "chars\t| mount: evals\tranges\tms\t| rewrite: evals\tranges\trects\tms\t| reveal: evals\tranges\trects\tms",
+);
+for (const characters of [100, 400, 1600]) {
+  const { mount, rewrite, move } = await measureTyping({ characters });
+  console.log(
+    `${characters}\t| ${mount.evaluations}\t${mount.rangeReads}\t${mount.ms.toFixed(0)}\t| ` +
+      `${rewrite.evaluations}\t${rewrite.rangeReads}\t${rewrite.rectReads}\t${rewrite.ms.toFixed(1)}\t| ` +
+      `${move.evaluations}\t${move.rangeReads}\t${move.rectReads}\t${move.ms.toFixed(1)}`,
+  );
 }

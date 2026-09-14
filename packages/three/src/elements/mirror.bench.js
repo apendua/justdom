@@ -168,21 +168,28 @@ window.getComputedStyle = (element, pseudo) => {
 globalThis.getComputedStyle = window.getComputedStyle;
 
 // Every reactive evaluation in the process, counted. The wall-clock below is
-// jsdom's; this number is the library's own and is what scales. `run` is the
-// one funnel every evaluation goes through, and it lives on the base class
-// every signal and derived shares.
+// jsdom's; this number is the library's own and is what scales.
+//
+// `track` is the one funnel every evaluation goes through — it is what opens
+// the scope a run's reads are recorded against — and it lives on the base
+// class every signal and derived shares. This used to patch `run`, which is
+// not a method of anything: the column read 0 in every row of every table
+// below, which looks exactly like a portal that costs nothing.
 let evaluations = 0;
 /** @type {any} */
-const computationPrototype = Object.getPrototypeOf(Derived.prototype);
-const originalRun = computationPrototype.run;
+const nodePrototype = Object.getPrototypeOf(Derived.prototype);
+const originalTrack = nodePrototype.track;
+if (typeof originalTrack !== "function") {
+  throw new Error("Cannot count evaluations: the reactive node has no `track`.");
+}
 /**
  * @this {unknown}
  * @param {...unknown} args
  * @returns {unknown}
  */
-computationPrototype.run = function (...args) {
+nodePrototype.track = function countingTrack(...args) {
   evaluations += 1;
-  return originalRun.apply(this, args);
+  return originalTrack.apply(this, args);
 };
 
 // --------------------------------------------------------------------------

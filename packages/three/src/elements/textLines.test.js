@@ -309,6 +309,35 @@ describe("buildCharacterEdges", () => {
     assert.deepEqual([...(edges ?? [])], [0, 10, 20, 20]);
   });
 
+  test("boundaries that run right to left are read from the right", () => {
+    // Three characters of a right-to-left line: the first one read sits at
+    // the right end, so the edges descend — and the line is still cuttable.
+    const edges = buildCharacterEdges(
+      3,
+      from([
+        [22, 35],
+        [12, 22],
+        [2, 12],
+      ]),
+    );
+    assert.deepEqual([...(edges ?? [])], [35, 22, 12, 2]);
+  });
+
+  test("a cluster on a right-to-left line is snapped forward the same way", () => {
+    // The same ligature case, read the other way round: the boundary between
+    // the first two characters has not moved, so it takes the next one that
+    // did — which on this line is further *left*.
+    const edges = buildCharacterEdges(
+      3,
+      from([
+        [21, 35],
+        [21, 35],
+        [11, 21],
+      ]),
+    );
+    assert.deepEqual([...(edges ?? [])], [35, 21, 21, 11]);
+  });
+
   test("boundaries that run backwards are refused rather than approximated", () => {
     // Both directions on one line: the prefix of it is not a rectangle, and
     // there is no x that says where to cut.

@@ -232,10 +232,12 @@ function patchClip(shader, uniform) {
  *
  * @param {THREE.Material} material
  * @param {{ value: THREE.Vector4 }} clip
- * @param {{ value: THREE.Vector3 }} cut Shared with the caller: x is where the
+ * @param {{ value: THREE.Vector4 }} cut Shared with the caller: x is where the
  *   cut line is cut, y the bottom of the last line drawn whole, z the bottom
- *   of the cut line. Push all three far out of range for a run that is drawn
- *   entirely, or entirely not — see `solveCut`.
+ *   of the cut line, and w which side of x is drawn — `+1` on a line read
+ *   left to right, `-1` on one read right to left. Push the three positions
+ *   far out of range for a run that is drawn entirely, or entirely not — see
+ *   `solveCut`.
  * @returns {void}
  */
 export function applyReveal(material, clip, cut) {
@@ -243,14 +245,20 @@ export function applyReveal(material, clip, cut) {
     patchClip(shader, clip);
     shader.uniforms.revealCut = cut;
     shader.fragmentShader = shader.fragmentShader
-      .replace("void main() {", "uniform vec3 revealCut;\nvoid main() {")
+      .replace("void main() {", "uniform vec4 revealCut;\nvoid main() {")
       .replace(
         "#include <alphatest_fragment>",
         "#include <alphatest_fragment>\n" +
           "\tfloat revealWhole = step(vClipPosition.y, revealCut.y);\n" +
           "\tfloat revealEdge = fwidth(vClipPosition.x);\n" +
+          // How far past the cut this fragment is, measured in the direction
+          // the line reads, so the same smoothstep keeps the near side of a
+          // left-to-right line and the far side of a right-to-left one. For
+          // w = 1 it is what the unsigned form said: smoothstep(a - e, a + e,
+          // x) is smoothstep(-e, e, x - a).
+          "\tfloat revealPast = (vClipPosition.x - revealCut.x) * revealCut.w;\n" +
           "\tfloat revealOn = step(vClipPosition.y, revealCut.z) *\n" +
-          "\t\t(1.0 - smoothstep(revealCut.x - revealEdge, revealCut.x + revealEdge, vClipPosition.x));\n" +
+          "\t\t(1.0 - smoothstep(-revealEdge, revealEdge, revealPast));\n" +
           "\tdiffuseColor.a *= clamp(revealWhole + revealOn, 0.0, 1.0);",
       );
   };

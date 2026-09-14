@@ -150,7 +150,7 @@ export function text(ctx, textNode) {
    */
   const cut = getRevealCut(textNode);
   const reveal = cut
-    ? { cut, uniform: { value: new THREE.Vector3(-UNBOUNDED, -UNBOUNDED, -UNBOUNDED) } }
+    ? { cut, uniform: { value: new THREE.Vector4(-UNBOUNDED, -UNBOUNDED, -UNBOUNDED, 1) } }
     : null;
 
   // Hoisted so the batch can be handed the mesh itself: registering from
@@ -263,29 +263,33 @@ export function text(ctx, textNode) {
           place(obj, 0, 0, 0.01);
           batchChanged();
         }),
-        // Now that the node is somewhere `compareDocumentPosition` can answer
-        // about, which is what the offsets between a handle's nodes are found
-        // with. Before the cut below, though only for tidiness: if the two
-        // ran the other way round the cut would simply be solved again.
-        effects(() => {
-          if (!reveal) {
-            return;
-          }
-          attachRevealNode(textNode);
-          onCleanup(() => {
-            detachRevealNode(textNode);
-          });
-        }),
-        // The whole of what a keystroke costs: three floats, and the draw
-        // that was going to happen anyway. Nothing here touches the texture,
-        // the geometry, the DOM or the batch.
-        effects(() => {
-          if (!reveal) {
-            return;
-          }
-          const [x, wholeBottom, cutBottom] = reveal.cut.get();
-          reveal.uniform.value.set(x, wholeBottom, cutBottom);
-        }),
+        // Spread in rather than written inline and returning early, because
+        // an effect that does nothing is not free: it is a tracking scope
+        // built, mounted and torn down per text node, and a panel has one
+        // text node per label. Ordinary text does not build these at all.
+        ...(reveal
+          ? [
+              // Now that the node is somewhere `compareDocumentPosition` can
+              // answer about, which is what the offsets between a handle's
+              // nodes are found with. Before the cut below, though only for
+              // tidiness: if the two ran the other way round the cut would
+              // simply be solved again.
+              effects(() => {
+                attachRevealNode(textNode);
+                onCleanup(() => {
+                  detachRevealNode(textNode);
+                });
+              }),
+              // The whole of what a keystroke costs: one uniform write of
+              // four floats, and the draw that was going to happen anyway.
+              // Nothing here touches the texture, the geometry, the DOM or
+              // the batch.
+              effects(() => {
+                const [x, wholeBottom, cutBottom, direction] = reveal.cut.get();
+                reveal.uniform.value.set(x, wholeBottom, cutBottom, direction);
+              }),
+            ]
+          : []),
         // After the material and the geometry, both of which the batch reads
         // out of the mesh. A run whose colours are baked into its texture is
         // declined by the batch and goes on drawing itself — and so is a

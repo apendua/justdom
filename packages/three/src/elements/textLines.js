@@ -188,7 +188,9 @@ export function trimLineRange(content, from, to, preserved) {
  * @property {number} bottom Band bottom, same frame.
  * @property {Float32Array | null} edges `length + 1` x positions, relative to
  *   the run's bounds: where the cut falls for every count of characters shown.
- *   `null` when the line cannot be cut at all — see `buildCharacterEdges`.
+ *   Ascending on a line read left to right and descending on one read right to
+ *   left, which is how the solver tells which side of the cut to draw. `null`
+ *   when the line cannot be cut at all — see `buildCharacterEdges`.
  */
 
 /**
@@ -268,21 +270,57 @@ const EDGE_EPSILON = 1e-3;
  *   in exactly the place it cut before — a keystroke that draws nothing. Such a
  *   boundary is snapped forward to the next one that does move, which reveals
  *   the cluster whole on the first keystroke into it rather than on the last.
- * - **They must advance in one direction.** A line carrying both directions of
- *   text has a prefix that is not a rectangle, and no single x expresses it.
- *   That is reported rather than approximated: `null`, which the solver reads
- *   as a line to reveal as a unit.
+ * - **They must advance in one direction.** Which direction is not assumed: a
+ *   line read right to left has a perfectly good rectangular prefix, running
+ *   from its right edge leftwards, and it is only a line read *both* ways —
+ *   a bidi line — whose prefix is not a rectangle at all. So the line is tried
+ *   each way round and refused only if neither fits, and the refusal (`null`)
+ *   means what the solver reads it as: a line to reveal as a unit.
+ *
+ * One case the two-tries scheme cannot settle: a line of a single character
+ * advances monotonically in both directions, so it is taken as read left to
+ * right. Whole-character cursors cannot tell the difference; a fractional one
+ * wipes that glyph from the wrong side. Settling it would mean carrying the
+ * computed `direction` down into the measurement, which is a style read per
+ * revealed node for one glyph's worth of sub-character animation.
  *
  * @param {number} count How many rendered characters the line holds.
  * @param {(index: number) => [left: number, right: number] | null} rectAt The
  *   horizontal extent of one character, or null where it left no box.
- * @returns {Float32Array | null} `count + 1` boundaries, ascending.
+ * @returns {Float32Array | null} `count + 1` boundaries — ascending for a line
+ *   read left to right, descending for one read right to left.
  */
 export function buildCharacterEdges(count, rectAt) {
+  /** @type {Array<[number, number] | null>} */
+  const rects = new Array(count);
+  for (let index = 0; index < count; index++) {
+    rects[index] = rectAt(index);
+  }
+  // Read once, tried twice: the rects are the expensive part and neither
+  // attempt measures anything.
+  return buildEdgesReading(rects, 1) ?? buildEdgesReading(rects, -1);
+}
+
+/**
+ * The boundaries of a line read in one direction, or `null` if it is not read
+ * that way.
+ *
+ * Positions are folded through the sign on the way in and unfolded on the way
+ * out, so everything between — "must advance", "snap forward past a cluster",
+ * "the last boundary always counts as having moved" — is written once and
+ * holds for a line read either way.
+ *
+ * @param {Array<[number, number] | null>} rects
+ * @param {1 | -1} sign +1 for a line read left to right, -1 for one read
+ *   right to left.
+ * @returns {Float32Array | null}
+ */
+function buildEdgesReading(rects, sign) {
+  const count = rects.length;
   const raw = new Float64Array(count + 1);
   let previous = 0;
   for (let index = 0; index < count; index++) {
-    const rect = rectAt(index);
+    const rect = rects[index];
     if (!rect) {
       // Nothing to measure — a character the layout swallowed after all.
       // It occupies no width, so the boundary before it is the boundary
@@ -290,8 +328,9 @@ export function buildCharacterEdges(count, rectAt) {
       raw[index] = previous;
       continue;
     }
-    raw[index] = rect[0];
-    previous = rect[1];
+    // A character begins on the side its line is read from.
+    raw[index] = sign * rect[sign > 0 ? 0 : 1];
+    previous = sign * rect[sign > 0 ? 1 : 0];
   }
   raw[count] = previous;
   for (let index = 1; index <= count; index++) {
@@ -303,12 +342,13 @@ export function buildCharacterEdges(count, rectAt) {
   // Backwards, because a boundary that did not move takes the value of the
   // next one that did, and the last boundary — the end of the line — always
   // counts as having moved.
-  edges[count] = raw[count];
+  edges[count] = sign * raw[count];
   for (let index = count - 1; index > 0; index--) {
-    edges[index] = raw[index] - raw[index - 1] > EDGE_EPSILON ? raw[index] : edges[index + 1];
+    edges[index] =
+      raw[index] - raw[index - 1] > EDGE_EPSILON ? sign * raw[index] : edges[index + 1];
   }
   if (count > 0) {
-    edges[0] = raw[0];
+    edges[0] = sign * raw[0];
   }
   return edges;
 }

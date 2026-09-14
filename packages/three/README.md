@@ -718,13 +718,13 @@ What a tick costs, before and after:
 | observer flushes | one | none |
 | re-measurements | one per node | none |
 | rasterizations and uploads | one per node | none |
-| uniform writes | none | three floats |
+| uniform writes | none | one, of four floats |
 
 And the constraint goes with it. The layout never moves, so nothing has to be
 predictable about it: any face, any `white-space`, any alignment, wrapped by
 the browser, with no column count anywhere in the app.
 
-Three things to know before reaching for it.
+Four things to know before reaching for it.
 
 **It is measured per character, once.** A revealed node is measured the way
 every text node is — line boxes read back off the browser's own layout — and
@@ -744,8 +744,17 @@ this is for.
 **A line running both ways is revealed as a unit.** The cut is one x on one
 line, and the prefix of a line with both directions of text on it is not a
 rectangle — no x expresses it. Such a line is not cut: it stays hidden until
-the cursor is past it, and then it is drawn whole. Everything else on the run
-cuts as normal.
+the cursor is past it, and then it is drawn whole. A line running entirely
+right to left is an ordinary line read from the other end, and cuts from its
+right edge. Everything else on the run cuts as normal.
+
+**Tight leading trims descenders until the next line catches up.** Line boxes
+that overlap — a `line-height` below the face's content height — share a band
+in which the finished line's descenders and the next line's ascenders sit at
+the same y. The cut keeps that band hidden until the next line is being typed,
+which is the choice that never shows a glyph early; the price is that a
+descender's tail past the cut stays hidden until the next line's cut sweeps
+over it. Ordinary leading has no such band and no such effect.
 
 Clipping composes with all of it: a revealed run inside a scroller is clipped
 by the scroller and cut by the cursor, in the same shader pass. So does a

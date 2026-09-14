@@ -1,6 +1,6 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
-import { Signal } from "@apendua/signal";
+import { Derived, Effect, Signal } from "@apendua/signal";
 import {
   attachRevealNode,
   detachRevealNode,
@@ -128,10 +128,10 @@ describe("solveCut", () => {
   ]);
 
   test("a cursor at zero draws nothing, and a cursor past the end draws it all", () => {
-    assert.deepEqual(solveCut(layout, 0), [-UNBOUNDED, -UNBOUNDED, -UNBOUNDED]);
-    assert.deepEqual(solveCut(layout, -3), [-UNBOUNDED, -UNBOUNDED, -UNBOUNDED]);
-    assert.deepEqual(solveCut(layout, 9), [UNBOUNDED, UNBOUNDED, UNBOUNDED]);
-    assert.deepEqual(solveCut(layout, 1000), [UNBOUNDED, UNBOUNDED, UNBOUNDED]);
+    assert.deepEqual(solveCut(layout, 0), [-UNBOUNDED, -UNBOUNDED, -UNBOUNDED, 1]);
+    assert.deepEqual(solveCut(layout, -3), [-UNBOUNDED, -UNBOUNDED, -UNBOUNDED, 1]);
+    assert.deepEqual(solveCut(layout, 9), [UNBOUNDED, UNBOUNDED, UNBOUNDED, 1]);
+    assert.deepEqual(solveCut(layout, 1000), [UNBOUNDED, UNBOUNDED, UNBOUNDED, 1]);
   });
 
   test("inside the first line nothing is whole, and the cut is where the glyph ends", () => {
@@ -191,8 +191,21 @@ describe("solveCut", () => {
     assert.equal(solveCut(mixed, 8)[1], 2 * LINE);
   });
 
+  test("a right-to-left line is cut from its right edge", () => {
+    const rtl = layoutOf([[0, 3, 0, LINE]]);
+    rtl.lines[0].edges = new Float32Array([30, 20, 10, 0]);
+    const [x, , , direction] = solveCut(rtl, 1);
+    assert.equal(x, 20, "one character in from the right");
+    assert.equal(direction, -1, "and the shader keeps the far side of it");
+  });
+
   test("an empty run is never drawn", () => {
-    assert.deepEqual(solveCut({ length: 0, lines: [] }, 5), [-UNBOUNDED, -UNBOUNDED, -UNBOUNDED]);
+    assert.deepEqual(solveCut({ length: 0, lines: [] }, 5), [
+      -UNBOUNDED,
+      -UNBOUNDED,
+      -UNBOUNDED,
+      1,
+    ]);
   });
 });
 
@@ -249,18 +262,26 @@ describe("one cursor over several nodes", () => {
       const cutB = getRevealCut(second.node);
       assert.ok(cutA && cutB);
 
-      assert.deepEqual(cutA.get(), [-UNBOUNDED, -UNBOUNDED, -UNBOUNDED]);
-      assert.deepEqual(cutB.get(), [-UNBOUNDED, -UNBOUNDED, -UNBOUNDED]);
+      assert.deepEqual(cutA.get(), [-UNBOUNDED, -UNBOUNDED, -UNBOUNDED, 1]);
+      assert.deepEqual(cutB.get(), [-UNBOUNDED, -UNBOUNDED, -UNBOUNDED, 1]);
 
       cursor.set(2);
       assert.equal(cutA.get()[0], 2 * CHAR, "two characters into the first run");
-      assert.deepEqual(cutB.get(), [-UNBOUNDED, -UNBOUNDED, -UNBOUNDED], "and none of the second");
-
-      cursor.set(3);
-      assert.deepEqual(cutA.get(), [UNBOUNDED, UNBOUNDED, UNBOUNDED], "the first run is finished");
       assert.deepEqual(
         cutB.get(),
-        [-UNBOUNDED, -UNBOUNDED, -UNBOUNDED],
+        [-UNBOUNDED, -UNBOUNDED, -UNBOUNDED, 1],
+        "and none of the second",
+      );
+
+      cursor.set(3);
+      assert.deepEqual(
+        cutA.get(),
+        [UNBOUNDED, UNBOUNDED, UNBOUNDED, 1],
+        "the first run is finished",
+      );
+      assert.deepEqual(
+        cutB.get(),
+        [-UNBOUNDED, -UNBOUNDED, -UNBOUNDED, 1],
         "and the second has not started",
       );
 
@@ -268,7 +289,7 @@ describe("one cursor over several nodes", () => {
       assert.equal(cutB.get()[0], CHAR, "one character into the second run");
 
       cursor.set(5);
-      assert.deepEqual(cutB.get(), [UNBOUNDED, UNBOUNDED, UNBOUNDED]);
+      assert.deepEqual(cutB.get(), [UNBOUNDED, UNBOUNDED, UNBOUNDED, 1]);
 
       // A run that leaves takes its characters with it, and the one after it
       // moves up the stream.
@@ -286,7 +307,7 @@ describe("one cursor over several nodes", () => {
 });
 
 describe("what a keystroke costs", () => {
-  test("a cursor moving writes three floats, and re-measures and re-draws nothing", () => {
+  test("a cursor moving writes one uniform, and re-measures and re-draws nothing", () => {
     let measurements = 0;
     const restore = installRange({
       onMeasure: () => {
@@ -499,30 +520,137 @@ describe("a proportional face, wrapped by the browser", () => {
       const [x0, x1, x2, x3] = [0, 4, 20, 24];
 
       cursor.set(1);
-      assert.deepEqual([...cut.get()], [x1, -UNBOUNDED, LINE], "after the narrow glyph");
+      assert.deepEqual([...cut.get()], [x1, -UNBOUNDED, LINE, 1], "after the narrow glyph");
       cursor.set(2);
-      assert.deepEqual([...cut.get()], [x2, -UNBOUNDED, LINE], "after the wide one");
+      assert.deepEqual([...cut.get()], [x2, -UNBOUNDED, LINE, 1], "after the wide one");
       assert.notEqual(x2 - x1, x1 - x0, "the advances are not equal, and the cut follows them");
 
       cursor.set(3);
       assert.equal(x3, 24, "the first line is 24 wide, which is three unequal advances");
       assert.deepEqual(
         [...cut.get()],
-        [0, LINE, 2 * LINE],
+        [0, LINE, 2 * LINE, 1],
         "the first line is whole, and the second has not started",
       );
 
       // Over the break, with nothing spent on the space that was swallowed.
       cursor.set(4);
-      assert.deepEqual([...cut.get()], [16, LINE, 2 * LINE], "one wide glyph into the second line");
+      assert.deepEqual(
+        [...cut.get()],
+        [16, LINE, 2 * LINE, 1],
+        "one wide glyph into the second line",
+      );
 
       cursor.set(6);
-      assert.deepEqual([...cut.get()], [UNBOUNDED, UNBOUNDED, UNBOUNDED], "all of it");
+      assert.deepEqual([...cut.get()], [UNBOUNDED, UNBOUNDED, UNBOUNDED, 1], "all of it");
 
       stop();
     } finally {
       parent.remove();
       restore();
     }
+  });
+});
+
+describe("what the offsets cost", () => {
+  /**
+   * How many reads of a derivation `fn` makes.
+   *
+   * The thing being asked about here leaves no other trace. Re-walking a
+   * handle's nodes on every tick re-*reads* each one's layout and never
+   * re-evaluates it — the derivations are clean, and a clean read is a cached
+   * value — so an evaluation count, which is what a cost question usually
+   * wants, cannot tell the two shapes apart. The reads can.
+   *
+   * @param {() => void} fn
+   * @returns {number}
+   */
+  function countReads(fn) {
+    const prototype = Derived.prototype;
+    const original = prototype.get;
+    let reads = 0;
+    prototype.get = function countingGet(...args) {
+      reads += 1;
+      return original.apply(this, args);
+    };
+    try {
+      fn();
+    } finally {
+      prototype.get = original;
+    }
+    return reads;
+  }
+
+  /**
+   * What one cursor tick costs the last node of a handle that owns `nodes` of
+   * them, once everything has settled.
+   *
+   * @param {number} nodes
+   * @returns {number}
+   */
+  function tickCost(nodes) {
+    const restore = installRange();
+    const cursor = Signal.of(0);
+    const reveal = makeReveal(() => cursor.get());
+    const parent = document.createElement("p");
+    document.body.appendChild(parent);
+    const mirror = createMirror();
+    mirror.adopt(parent);
+    try {
+      const runs = [];
+      for (let index = 0; index < nodes; index++) {
+        const run = mountRun(reveal, parent, "abc");
+        mirror.adopt(run.node);
+        attachRevealNode(run.node);
+        runs.push(run);
+      }
+      const cut = getRevealCut(runs[runs.length - 1].node);
+      assert.ok(cut);
+      // Held open by an effect, because that is how the run that draws this
+      // reads it — and because a derivation nobody is subscribed to keeps no
+      // cache, so an unheld graph recomputes itself on every read and has no
+      // cost model worth measuring.
+      const holder = new Effect(() => {
+        cut.get();
+      });
+      // The cursor is put inside the *last* node in both cases, so that the
+      // cut actually moves and the effect above actually re-runs: a node the
+      // cursor has not reached answers the same thing twice and costs a read
+      // less, which would flatter the wrong shape as easily as the right one.
+      const base = 3 * (nodes - 1);
+      // Settle first: what a tick costs is a question about a handle that has
+      // already been laid out, and the first read of anything pays for the
+      // whole graph behind it.
+      cursor.set(base + 1);
+      cut.get();
+      const cost = countReads(() => {
+        cursor.set(base + 2);
+        cut.get();
+      });
+      holder.dispose();
+      for (const run of runs) {
+        run.stop();
+      }
+      return cost;
+    } finally {
+      parent.remove();
+      restore();
+    }
+  }
+
+  test("a tick costs the same whatever else the handle owns", () => {
+    // The claim `getRevealCut` makes in prose: a re-layout anywhere
+    // recomputes the offsets and a cursor moving never does. Folded into the
+    // cut, the sum would be re-walked on every tick — one read of the order
+    // and one of every earlier node's layout, per keystroke, for a handle
+    // that has not changed since the last one.
+    const one = tickCost(1);
+    const several = tickCost(4);
+    assert.equal(
+      several,
+      one,
+      `a tick cost ${one} reads with one node and ${several} with four: the ` +
+        `offsets are being recomputed per tick rather than per layout`,
+    );
   });
 });

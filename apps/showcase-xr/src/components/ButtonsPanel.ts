@@ -25,7 +25,7 @@ import { cardStyle, captionStyle, classes, headingStyle, rowStyle } from "./pane
 const FOOTNOTE =
   "This paragraph types itself out without ever being rewritten: it is laid " +
   "out once, wrapped by the browser in an ordinary proportional face, and the " +
-  "cursor is three floats in the shader. Tilt the card while it runs — every " +
+  "cursor is four floats in the shader. Tilt the card while it runs — every " +
   "line keeps its place, and the cut keeps up.";
 
 /** Characters a second, which is about as fast as it is still worth reading. */

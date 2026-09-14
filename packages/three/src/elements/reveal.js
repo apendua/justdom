@@ -17,8 +17,9 @@ import { UNBOUNDED } from "./clip.js";
  * typed; only how many of them are drawn does. So the node here holds the
  * *whole* text from the first frame — the browser wraps it once, in whatever
  * face and at whatever width, and nothing about the layout moves again — and
- * the cursor is answered in the fragment shader, as three floats saying where
- * to cut. A keystroke costs a uniform write and a draw. It costs no DOM
+ * the cursor is answered in the fragment shader, as four floats saying where
+ * to cut and which side of it to keep. A keystroke costs a uniform write and
+ * a draw. It costs no DOM
  * mutation, no restyle, no measurement and no upload, and it is the same
  * price whether the letter is fifty characters or five thousand.
  *
@@ -91,22 +92,31 @@ import { UNBOUNDED } from "./clip.js";
  */
 const handles = new WeakMap();
 
-/** @type {WeakMap<Text, Derived<[number, number, number]>>} */
+/** @type {WeakMap<Text, Derived<Cut>>} */
 const cuts = new WeakMap();
 
+/**
+ * Where a run is cut, in its own layout frame: the cut x, the y below which
+ * every line is drawn whole, the bottom of the line the cut falls on, and
+ * which side of the x is kept — `+1` on a line read left to right, `-1` on
+ * one read right to left.
+ *
+ * @typedef {[x: number, wholeBottom: number, cutBottom: number, direction: number]} Cut
+ */
+
 /** Nothing of this run is drawn. */
-const HIDDEN = /** @type {[number, number, number]} */ ([-UNBOUNDED, -UNBOUNDED, -UNBOUNDED]);
+const HIDDEN = /** @type {Cut} */ ([-UNBOUNDED, -UNBOUNDED, -UNBOUNDED, 1]);
 
 /** All of it is — and at no cost, since no comparison in the shader can fail. */
-const SHOWN = /** @type {[number, number, number]} */ ([UNBOUNDED, UNBOUNDED, UNBOUNDED]);
+const SHOWN = /** @type {Cut} */ ([UNBOUNDED, UNBOUNDED, UNBOUNDED, 1]);
 
 /**
- * @param {[number, number, number]} a
- * @param {[number, number, number]} b
+ * @param {Cut} a
+ * @param {Cut} b
  * @returns {boolean}
  */
 function cutEqual(a, b) {
-  return a[0] === b[0] && a[1] === b[1] && a[2] === b[2];
+  return a[0] === b[0] && a[1] === b[1] && a[2] === b[2] && a[3] === b[3];
 }
 
 /**
@@ -344,8 +354,8 @@ export function detachRevealNode(node) {
  * moving never does — a cursor moving reads the sum and solves.
  *
  * @param {Text} node
- * @returns {Derived<[x: number, wholeBottom: number, cutBottom: number]> | null}
- *   `null` for an ordinary text node, which is every text node but these.
+ * @returns {Derived<Cut> | null} `null` for an ordinary text node, which is
+ *   every text node but these.
  */
 export function getRevealCut(node) {
   const existing = cuts.get(node);
@@ -356,6 +366,24 @@ export function getRevealCut(node) {
   if (!handle) {
     return null;
   }
+  // Everything before this node in the stream, in its own derivation rather
+  // than inside the cut below. The cut is re-solved on every tick, and this
+  // must not be: folded in, a handle of N nodes would re-walk the order and
+  // re-read N layouts per keystroke rather than read one cached number.
+  //
+  // Its default equality is `Object.is`, which buys the other half — a
+  // neighbour that re-laid-out to the same length leaves the cut alone
+  // entirely, rather than re-solving to the answer it already had.
+  const offset = new Derived(() => {
+    let sum = 0;
+    for (const other of handle.order.get()) {
+      if (other === node) {
+        break;
+      }
+      sum += getTextLayout(other).reveal?.length ?? 0;
+    }
+    return sum;
+  });
   const cut = new Derived(
     () => {
       const layout = getTextLayout(node).reveal;
@@ -365,14 +393,7 @@ export function getRevealCut(node) {
         // half-drawn letter nobody can finish.
         return SHOWN;
       }
-      let offset = 0;
-      for (const other of handle.order.get()) {
-        if (other === node) {
-          break;
-        }
-        offset += getTextLayout(other).reveal?.length ?? 0;
-      }
-      return solveCut(layout, handle.cursor() - offset);
+      return solveCut(layout, handle.cursor() - offset.get());
     },
     { isEqual: cutEqual },
   );
@@ -391,11 +412,11 @@ export function getRevealCut(node) {
 function cutLineAt(line, within) {
   const { edges } = line;
   if (!edges) {
-    // A line whose prefix is not a rectangle — text running both ways, most
-    // of it — so there is no x that expresses it. It is drawn as a unit, and
-    // the unit is not reached until the cursor is past the line: revealing it
-    // whole on the way in would put characters on the screen before they were
-    // typed, which is the one thing this must never do.
+    // A line whose prefix is not a rectangle — one carrying both directions
+    // of text — so there is no x that expresses it. It is drawn as a unit,
+    // and the unit is not reached until the cursor is past the line:
+    // revealing it whole on the way in would put characters on the screen
+    // before they were typed, which is the one thing this must never do.
     return -UNBOUNDED;
   }
   const whole = Math.min(Math.max(Math.floor(within), 0), line.length);
@@ -418,11 +439,12 @@ function cutLineAt(line, within) {
  *   edges — measured once, when the text was laid out.
  * @param {number} cursor Rendered characters shown. Fractional values
  *   interpolate inside a glyph's advance.
- * @returns {[x: number, wholeBottom: number, cutBottom: number]} The cut x,
- *   the y below which every line is drawn whole, and the bottom of the line
- *   the cut falls on. All three are pushed far out of range when the run is
- *   drawn entirely or not at all, so that a finished letter draws precisely
- *   as an ordinary one.
+ * @returns {Cut} The cut x, the y below which every line is drawn whole, the
+ *   bottom of the line the cut falls on, and which side of the x to keep —
+ *   `+1` on a line read left to right, `-1` on one read right to left. The
+ *   three positions are pushed far out of range when the run is drawn
+ *   entirely or not at all, so that a finished letter draws precisely as an
+ *   ordinary one.
  */
 export function solveCut(layout, cursor) {
   const { lines, length } = layout;
@@ -445,10 +467,17 @@ export function solveCut(layout, cursor) {
     }
   }
   const line = lines[low];
-  // Where the whole lines end. The band between two lines is leading, with
-  // nothing drawn in it, so either edge of it would do — except where the
-  // line boxes overlap, which tight leading does, and there only the lower
-  // of the two keeps the next line's ascenders from showing early.
+  // Where the whole lines end. With ordinary leading the band between two
+  // line boxes is empty, so either edge of it would do. Tight leading makes
+  // the boxes overlap, and in the overlap the finished line's descenders
+  // share y with the next line's ascenders; one cut y cannot keep both
+  // right, and the lower edge is the choice that never shows a glyph before
+  // it is typed. The price is that a descender's tail past the cut stays
+  // hidden until the next line's cut sweeps over it.
   const wholeBottom = low === 0 ? -UNBOUNDED : Math.min(lines[low - 1].bottom, line.top);
-  return [cutLineAt(line, cursor - line.start), wholeBottom, line.bottom];
+  const { edges } = line;
+  // Which way the line reads: a right-to-left line's edges descend, and the
+  // shader keeps the far side of the cut on such a line rather than the near.
+  const direction = edges && edges[line.length] < edges[0] ? -1 : 1;
+  return [cutLineAt(line, cursor - line.start), wholeBottom, line.bottom, direction];
 }

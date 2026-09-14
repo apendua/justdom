@@ -107,6 +107,12 @@ function measureSubtree(element) {
   // the scroller grow with the list would be measuring a wall that is not
   // there — every clip window inside it moving on every row, which no
   // browser would do to a box that said `height: 200px`.
+  //
+  // This changes what the clipped table reports. Before it, the table was
+  // charging the mirror ten evaluations per row for the scroller's own
+  // growth, on top of the twenty-five the open list paid: clipping never
+  // cost anything extra, and the fixture was the entire difference. A
+  // clipped figure from an older run is not comparable with one from here.
   const fixed = /** @type {HTMLElement} */ (element).style?.height ?? "";
   box.height = fixed.endsWith("px") ? parseFloat(fixed) : height || LEAF_HEIGHT;
   box.width = BOX_WIDTH;

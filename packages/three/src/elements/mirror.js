@@ -721,7 +721,12 @@ export class DomMirror {
    * @param {Node | null} previous The surviving child before the change,
    *   if known.
    * @param {Iterable<string> | null} kinds The element names that arrived
-   *   or left, or null when there is no telling.
+   *   or left, or null when there is no telling. Nothing in the package
+   *   passes null — `ingest` always knows — but a caller of
+   *   `childListChanged` that supplies `from` and no hint lands here, and
+   *   what it gets is the narrowed tail with the whole list before the
+   *   change restyled behind it: better than the old scope, and O(N)
+   *   where the full hint is O(kinds).
    * @returns {void}
    */
   #restyleAround(element, from, previous, kinds) {

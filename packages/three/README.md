@@ -372,6 +372,36 @@ matrix write, and it is mirrored on hover like anything else:
 }
 ```
 
+**A row arriving costs the row, by the same kind of contract.** A change to
+a child list moves no attribute, so the only selectors it can change the
+verdict of on the rows already there are the positional ones, and the mirror
+follows those exactly as far as CSS lets them look: forward from the change —
+`~`, `+`, `:nth-child`, `:first-child` and their `-of-type` forms restyle the
+rows after the arrival, which for a row appended at the end is the row
+itself — and one element back, for `:last-child`, `:only-child` and the
+`-of-type` pair, which land on whichever row was last before. What it does
+not follow is **`:nth-last-child` and `:nth-last-of-type`**: a row appended
+at the end shifts every earlier row's position from the end, so mirroring
+them would restyle the whole list on every append — and that is exactly the
+cost that made a list streaming in one row at a time quadratic in its own
+length. Stripe from the top, not the bottom:
+
+```css
+.row:nth-child(even) {
+  background: #f4f4f5;
+} /* fine */
+.row:last-child {
+  border-bottom: none;
+} /* fine */
+.row:nth-last-child(2) {
+  opacity: 0.5;
+} /* ignored — counted from the end */
+```
+
+Inserting or removing in the middle restyles the rows from that point on,
+which is also the set that moved; prepending restyles the list, correctly,
+since every row's `:nth-child` position changed.
+
 **The panel's background is clickable, and it is the panel you should listen
 to.** A ray that lands on the panel but on none of its buttons hits the blocker
 spanning the container, which dispatches a bubbling `click` on the portal's

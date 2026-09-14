@@ -539,6 +539,7 @@ export class DomMirror {
           this.childListChanged(
             /** @type {Element} */ (mutation.target),
             firstDisturbedChild(mutation),
+            childListHint(mutation),
           );
           mutation.addedNodes.forEach((node) => {
             const record = recordOf(node);
@@ -640,27 +641,126 @@ export class DomMirror {
   }
 
   /**
-   * `element`'s child list changed. Structural pseudo-classes and sibling
-   * combinators can restyle anything in the parent-of-target subtree; and
-   * the arriving row moves the rows after it, which is a change in this
-   * element's own layout and travels from here.
+   * `element`'s child list changed. The arriving row moves the rows after
+   * it, which is a change in this element's own layout and travels from
+   * here; and the structural pseudo-classes can restyle the rows around it,
+   * which is `#restyleAround`'s business and reaches exactly as far as the
+   * selectors do.
    *
    * @param {Element} element
    * @param {Node | null} [from] The earliest child the change could have
    *   disturbed — the arriving row, or whatever took a departing one's
    *   place. Omitted, the whole child list is assumed disturbed, which is
    *   the answer for a caller holding no mutation record.
+   * @param {ChildListHint} [hint] What else the mutation record says about
+   *   where the change happened; see `ChildListHint`. Omitted, the restyle
+   *   falls back to the whole list, exactly as the layout does.
    * @returns {void}
    */
-  childListChanged(element, from = null) {
+  childListChanged(
+    element,
+    from = null,
+    { previous = from ? from.previousSibling : null, kinds = null } = {},
+  ) {
     batch(() => {
       const record = recordOf(element);
       if (record) {
         bump(record.childList);
       }
-      this.#restyleScope(element);
+      this.#restyleAround(element, from, previous, kinds);
       this.#layoutChangedAt(element, from);
     });
+  }
+
+  /**
+   * Restyle whatever a change in `element`'s child list could have changed
+   * the styling of, and nothing else.
+   *
+   * A child-list change moves no attribute, so the only selectors whose
+   * verdict on an *existing* element it can move are the ones that look at
+   * an element's position among its siblings — and CSS is precise about
+   * which way each of them looks:
+   *
+   *   - Forward. `~`, `+`, `:nth-child`, `:nth-of-type`, `:first-child`,
+   *     `:first-of-type` match an element by what comes *before* it. A
+   *     change at one point in the list can move them only on the children
+   *     from that point on — which is the same tail `#settleLayout` tells
+   *     it moved — and on nothing before it. For a row appended at the end,
+   *     that tail is the row itself.
+   *
+   *   - Backward, one element. `:last-child` and `:only-child` can change
+   *     on exactly one existing element: the one that was last before the
+   *     change, which is the surviving sibling the change happened after.
+   *
+   *   - Backward, one element per kind. `:last-of-type` and `:only-of-type`
+   *     can change on the last earlier sibling of each element name that
+   *     arrived or left — one node per kind, found by a walk back that
+   *     costs nothing reactive.
+   *
+   *   - `:empty`, on the list itself, and through it on the list's own
+   *     siblings via the combinators above. It can only flip when the
+   *     change was at the very start, which is the wide case below anyway.
+   *
+   * What is knowingly not modelled is the `:nth-last-child` and
+   * `:nth-last-of-type` family: a row appended at the end shifts the
+   * position-from-the-end of every row before it, so following them would
+   * mean restyling the whole list on every append — which is precisely the
+   * cost this scoping exists to remove, and the cost the mirror paid before
+   * it. It is the same bargain `getStyleContext` strikes over `:has()`, and
+   * the README states it alongside the hover contract.
+   *
+   * The narrowness is what makes a list that streams in linear in its own
+   * length. Before this, a child-list change was scoped like an attribute
+   * change on the list — its whole subtree, and its siblings' — so every
+   * row already on a panel restyled for every row that arrived, and
+   * mounting eight hundred one at a time cost forty-seven times what
+   * mounting them together did.
+   *
+   * @param {Element} element
+   * @param {Node | null} from The first child after the change, if known.
+   * @param {Node | null} previous The surviving child before the change,
+   *   if known.
+   * @param {Iterable<string> | null} kinds The element names that arrived
+   *   or left, or null when there is no telling. Nothing in the package
+   *   passes null — `ingest` always knows — but a caller of
+   *   `childListChanged` that supplies `from` and no hint lands here, and
+   *   what it gets is the narrowed tail with the whole list before the
+   *   change restyled behind it: better than the old scope, and O(N)
+   *   where the full hint is O(kinds).
+   * @returns {void}
+   */
+  #restyleAround(element, from, previous, kinds) {
+    // Nothing to narrow from: no record to say where the change happened,
+    // or a change at the start of the list, where `:empty` may have flipped
+    // and every child's position from the start moved. The old answer —
+    // the list, its subtree and its siblings — is the right one here.
+    if (!previous || previous.parentNode !== element) {
+      this.#restyleScope(element);
+      return;
+    }
+    // Forward: the tail, from the change to the end.
+    for (let child = from; child && child.parentNode === element; child = child.nextSibling) {
+      this.#restyleScope(child, { reachesSiblings: false });
+    }
+    // Backward: the element that was last, and the last of each kind.
+    this.#restyleScope(previous, { reachesSiblings: false });
+    if (kinds === null) {
+      for (let child = previous.previousSibling; child; child = child.previousSibling) {
+        this.#restyleScope(child, { reachesSiblings: false });
+      }
+      return;
+    }
+    const pending = new Set(kinds);
+    pending.delete(previous.nodeName);
+    for (
+      let child = previous.previousSibling;
+      child && pending.size > 0;
+      child = child.previousSibling
+    ) {
+      if (pending.delete(child.nodeName)) {
+        this.#restyleScope(child, { reachesSiblings: false });
+      }
+    }
   }
 
   /**
@@ -1034,6 +1134,42 @@ function firstDisturbedChild(mutation) {
     return mutation.target.firstChild;
   }
   return previous.parentNode === mutation.target ? previous.nextSibling : null;
+}
+
+/**
+ * What a childList record says about where the change happened, for the
+ * restyle's benefit. The layout hint above answers "who moved"; a restyle
+ * also needs to know who stayed put just before the change, and what kind
+ * of thing came or went.
+ *
+ * @typedef {object} ChildListHint
+ * @property {Node | null} [previous] The surviving child the change
+ *   happened after — the sibling that was last before an append, or that
+ *   now precedes the gap a removal left. Null for a change at the start, or
+ *   when there is no telling.
+ * @property {Iterable<string> | null} [kinds] The `nodeName`s of the
+ *   elements added and removed, or null when unknown.
+ */
+
+/**
+ * @param {MutationRecord} mutation
+ * @returns {ChildListHint}
+ */
+function childListHint(mutation) {
+  const previous = mutation.previousSibling;
+  /** @type {Set<string>} */
+  const kinds = new Set();
+  for (const nodes of [mutation.addedNodes, mutation.removedNodes]) {
+    nodes.forEach((node) => {
+      if (node.nodeType === Node.ELEMENT_NODE) {
+        kinds.add(node.nodeName);
+      }
+    });
+  }
+  return {
+    previous: previous && previous.parentNode === mutation.target ? previous : null,
+    kinds,
+  };
 }
 
 /**

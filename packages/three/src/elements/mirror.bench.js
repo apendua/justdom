@@ -102,7 +102,19 @@ function measureSubtree(element) {
     height += measureSubtree(child);
   }
   const box = layoutOf.get(element) ?? { left: 0, top: 0, width: BOX_WIDTH, height: 0 };
-  box.height = height || LEAF_HEIGHT;
+  // A box given a height keeps it, whatever is inside: the clipped table
+  // below puts the list in a fixed-height scroller, and a stand-in that let
+  // the scroller grow with the list would be measuring a wall that is not
+  // there — every clip window inside it moving on every row, which no
+  // browser would do to a box that said `height: 200px`.
+  //
+  // This changes what the clipped table reports. Before it, the table was
+  // charging the mirror ten evaluations per row for the scroller's own
+  // growth, on top of the twenty-five the open list paid: clipping never
+  // cost anything extra, and the fixture was the entire difference. A
+  // clipped figure from an older run is not comparable with one from here.
+  const fixed = /** @type {HTMLElement} */ (element).style?.height ?? "";
+  box.height = fixed.endsWith("px") ? parseFloat(fixed) : height || LEAF_HEIGHT;
   box.width = BOX_WIDTH;
   layoutOf.set(element, box);
   return box.height;

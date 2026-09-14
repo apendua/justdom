@@ -1331,6 +1331,140 @@ describe("which siblings a change moves", () => {
   });
 });
 
+describe("which siblings a change restyles", () => {
+  /**
+   * An effect per row reading its colour, so that what is counted is which
+   * rows a child-list change reaches through the style context — the number
+   * that made a list streaming in quadratic, since every row restyled for
+   * every row that arrived.
+   *
+   * @param {Element[]} rows
+   */
+  function watchStyles(rows) {
+    /** @type {Map<Element, number>} */
+    const restyles = new Map();
+    const effects = rows.map(
+      (row) =>
+        new Effect(() => {
+          restyles.set(row, (restyles.get(row) ?? 0) + 1);
+          getComputedStyleCached(row).color;
+        }),
+    );
+    return {
+      restylesOf: (/** @type {Element} */ row) => restyles.get(row) ?? 0,
+      dispose: () => effects.forEach((effect) => effect.dispose()),
+    };
+  }
+
+  test("appending a row restyles the row that was last, and no other", () => {
+    // `:last-child` is the one verdict an append can move on an existing
+    // row. Everything before the old last row keeps its style, whatever
+    // the list's length — the property that makes streaming linear.
+    const { container, rows, insertRow } = setupRowList();
+    const { restylesOf, dispose } = watchStyles(rows);
+    try {
+      assert.deepEqual(rows.map(restylesOf), [1, 1, 1, 1]);
+
+      insertRow(null);
+
+      assert.deepEqual(rows.map(restylesOf), [1, 1, 1, 2]);
+    } finally {
+      dispose();
+      container.remove();
+    }
+  });
+
+  test("inserting in the middle restyles the tail and the row before the gap", () => {
+    // `:nth-child`, `+` and `~` can change on everything after the arrival;
+    // `:last-child` on the row just before it. The rows above are untouched.
+    const { container, rows, insertRow } = setupRowList();
+    const { restylesOf, dispose } = watchStyles(rows);
+    try {
+      insertRow(rows[2]);
+
+      assert.deepEqual(rows.map(restylesOf), [1, 2, 2, 2]);
+    } finally {
+      dispose();
+      container.remove();
+    }
+  });
+
+  test("removing the last row restyles the one that became last", () => {
+    const { container, rows, removeRow } = setupRowList();
+    const { restylesOf, dispose } = watchStyles(rows);
+    try {
+      removeRow(rows[3]);
+
+      assert.deepEqual(rows.slice(0, 3).map(restylesOf), [1, 1, 2]);
+    } finally {
+      dispose();
+      container.remove();
+    }
+  });
+
+  test("removing a row in the middle restyles what closed the gap, and the row above it", () => {
+    const { container, rows, removeRow } = setupRowList();
+    const { restylesOf, dispose } = watchStyles(rows);
+    try {
+      removeRow(rows[1]);
+
+      assert.deepEqual([rows[0], rows[2], rows[3]].map(restylesOf), [2, 2, 2]);
+    } finally {
+      dispose();
+      container.remove();
+    }
+  });
+
+  test("an arrival restyles the last earlier element of its own kind, for `:last-of-type`", () => {
+    // div, span, div, div — then a span appended. The last div restyles for
+    // `:last-child`; the span at index 1 was `:last-of-type` and is not any
+    // more; the divs at 0 and 2 have nothing to hear.
+    const { container, mirror, list, rows } = setupRowList();
+    const span = document.createElement("span");
+    list.replaceChild(span, rows[1]);
+    mirror.adopt(span);
+    const kinds = [rows[0], span, rows[2], rows[3]];
+    const { restylesOf, dispose } = watchStyles(kinds);
+    try {
+      const arriving = document.createElement("span");
+      list.appendChild(arriving);
+      mirror.adopt(arriving);
+      batch(() => mirror.ingest([childListRecord(list, rows[3], [arriving], [])]));
+
+      assert.deepEqual(kinds.map(restylesOf), [1, 2, 1, 2]);
+    } finally {
+      dispose();
+      container.remove();
+    }
+  });
+
+  test("prepending restyles the whole list, since every position from the start moved", () => {
+    const { container, rows, insertRow } = setupRowList();
+    const { restylesOf, dispose } = watchStyles(rows);
+    try {
+      insertRow(rows[0]);
+
+      assert.deepEqual(rows.map(restylesOf), [2, 2, 2, 2]);
+    } finally {
+      dispose();
+      container.remove();
+    }
+  });
+
+  test("with no record to narrow from, the whole list restyles as it always did", () => {
+    const { container, mirror, list, rows } = setupRowList();
+    const { restylesOf, dispose } = watchStyles(rows);
+    try {
+      batch(() => mirror.childListChanged(list));
+
+      assert.deepEqual(rows.map(restylesOf), [2, 2, 2, 2]);
+    } finally {
+      dispose();
+      container.remove();
+    }
+  });
+});
+
 describe("layout boundaries", () => {
   test("a box that kept its size seals its interior, overflow or not", () => {
     // The general rule the overflow cases below are instances of. A block

@@ -1,6 +1,8 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  buildCharacterEdges,
+  collapseLineOffsets,
   collapseWhitespace,
   findLineStarts,
   groupLineBoxes,
@@ -208,5 +210,152 @@ describe("trimLineRange", () => {
 
   test("a line of nothing but collapsible whitespace comes back empty", () => {
     assert.deepEqual(trimLineRange("a    b", 1, 5, false), [5, 5]);
+  });
+});
+
+describe("collapseLineOffsets", () => {
+  test("renders exactly what collapseWhitespace renders", () => {
+    for (const content of ["one two", "  one   two  ", "a\nb", "   ", "", "one  two  three"]) {
+      for (const whiteSpace of ["normal", "pre", "pre-wrap", "nowrap"]) {
+        assert.equal(
+          collapseLineOffsets(content, 0, content.length, whiteSpace).text,
+          collapseWhitespace(content, whiteSpace),
+          `${JSON.stringify(content)} as ${whiteSpace}`,
+        );
+      }
+    }
+  });
+
+  test("a collapsed run of blanks is measured at the one character that was drawn", () => {
+    const content = "one   two";
+    const { text, offsets } = collapseLineOffsets(content, 0, content.length, "normal");
+    assert.equal(text, "one two");
+    // o n e _ t w o — the space maps to the first of the three, which is the
+    // one the layout gave a box to.
+    assert.deepEqual(offsets, [0, 1, 2, 3, 6, 7, 8]);
+    assert.equal(offsets.length, text.length);
+  });
+
+  test("blanks at either end are not rendered and so are not mapped", () => {
+    const content = "  hi  ";
+    const { text, offsets } = collapseLineOffsets(content, 0, content.length, "normal");
+    assert.equal(text, "hi");
+    assert.deepEqual(offsets, [2, 3]);
+  });
+
+  test("preserved whitespace maps one to one, over the range asked for", () => {
+    const content = "  kept  ";
+    const { text, offsets } = collapseLineOffsets(content, 2, 6, "pre");
+    assert.equal(text, "kept");
+    assert.deepEqual(offsets, [2, 3, 4, 5]);
+  });
+});
+
+describe("buildCharacterEdges", () => {
+  /**
+   * @param {Array<number[] | null>} rects
+   * @returns {(index: number) => [number, number] | null}
+   */
+  const from = (rects) => (index) => {
+    const rect = rects[index];
+    return rect ? /** @type {[number, number]} */ ([rect[0], rect[1]]) : null;
+  };
+
+  test("a boundary per character, plus the end of the line", () => {
+    const edges = buildCharacterEdges(
+      3,
+      from([
+        [0, 10],
+        [10, 20],
+        [20, 33],
+      ]),
+    );
+    assert.deepEqual([...(edges ?? [])], [0, 10, 20, 33]);
+  });
+
+  test("a boundary that does not advance is snapped forward past the cluster", () => {
+    // A ligature over the first two characters: the boundary between them
+    // reports the rect the pair does, so it has not moved. Left alone, the
+    // first keystroke into it would draw nothing.
+    const edges = buildCharacterEdges(
+      3,
+      from([
+        [0, 14],
+        [0, 14],
+        [14, 24],
+      ]),
+    );
+    assert.deepEqual([...(edges ?? [])], [0, 14, 14, 24]);
+  });
+
+  test("a run of boundaries that all stand still takes the next one that moves", () => {
+    const edges = buildCharacterEdges(
+      4,
+      from([
+        [0, 30],
+        [0, 30],
+        [0, 30],
+        [30, 40],
+      ]),
+    );
+    assert.deepEqual([...(edges ?? [])], [0, 30, 30, 30, 40]);
+  });
+
+  test("a character that left no box shares the advance of the one beside it", () => {
+    // The same shape as a ligature, seen from the other end: two characters
+    // over one advance, and a boundary between them that cannot move. It is
+    // snapped forward like any other, so the pair is revealed together.
+    const edges = buildCharacterEdges(3, from([[0, 10], null, [10, 20]]));
+    assert.deepEqual([...(edges ?? [])], [0, 10, 20, 20]);
+  });
+
+  test("boundaries that run right to left are read from the right", () => {
+    // Three characters of a right-to-left line: the first one read sits at
+    // the right end, so the edges descend — and the line is still cuttable.
+    const edges = buildCharacterEdges(
+      3,
+      from([
+        [22, 35],
+        [12, 22],
+        [2, 12],
+      ]),
+    );
+    assert.deepEqual([...(edges ?? [])], [35, 22, 12, 2]);
+  });
+
+  test("a cluster on a right-to-left line is snapped forward the same way", () => {
+    // The same ligature case, read the other way round: the boundary between
+    // the first two characters has not moved, so it takes the next one that
+    // did — which on this line is further *left*.
+    const edges = buildCharacterEdges(
+      3,
+      from([
+        [21, 35],
+        [21, 35],
+        [11, 21],
+      ]),
+    );
+    assert.deepEqual([...(edges ?? [])], [35, 21, 21, 11]);
+  });
+
+  test("boundaries that run backwards are refused rather than approximated", () => {
+    // Both directions on one line: the prefix of it is not a rectangle, and
+    // there is no x that says where to cut.
+    assert.equal(
+      buildCharacterEdges(
+        3,
+        from([
+          [0, 10],
+          [30, 40],
+          [20, 30],
+        ]),
+      ),
+      null,
+    );
+  });
+
+  test("a line of one character still has two boundaries", () => {
+    const edges = buildCharacterEdges(1, from([[4, 12]]));
+    assert.deepEqual([...(edges ?? [])], [4, 12]);
   });
 });

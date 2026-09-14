@@ -32,6 +32,7 @@ export {
   applyLevelPose,
 } from "./carry.js";
 export { createPortal, getPortalRoot } from "./elements/portal.js";
+export { makeReveal, solveCut } from "./elements/reveal.js";
 export {
   createFrameShareBudget,
   createPortalScheduler,
@@ -79,6 +80,18 @@ export { installCrashPanel, CRASH_PANEL_ID } from "./crash.js";
 
 /**
  * @typedef {import('./elements/portal.js').PortalOptions} PortalOptions
+ */
+
+/**
+ * @typedef {import('./elements/reveal.js').Reveal} Reveal
+ */
+
+/**
+ * @typedef {import('./elements/textLines.js').RevealLayout} RevealLayout
+ */
+
+/**
+ * @typedef {import('./elements/textLines.js').RevealLine} RevealLine
  */
 
 /**

@@ -665,6 +665,104 @@ whether a session is presenting, which is why it behaves under an emulator,
 where the page is presenting and rendering both: the page is being rendered,
 the frames come back, and the browser is left to its own animations.
 
+## Revealing text
+
+A letter being typed out is a string being rewritten: one more character into
+the DOM per tick, a mutation observed, the run re-measured, the glyphs
+rasterized again and the texture uploaded again. It also forces the layout to
+be something the app can predict, because a growing string re-wraps — hence
+the monospace face and the wrap counted in columns that every typewriter
+effect ends up with, so that the line the last character lands on does not
+move while it is being typed.
+
+None of that is inherent. The glyphs do not change while a letter is being
+typed; only how many of them are drawn does. `makeReveal` is that distinction
+made available: the node holds the whole text from the first frame, the
+browser wraps it once, and the cursor is answered in the fragment shader.
+
+```js
+import { makeReveal } from "@apendua/freedom";
+// The element builders are justdom's, as they are for any panel; `$` and
+// `children` here are that package's, not the ones freedom hands out for
+// Three objects.
+import { $, children, set } from "@apendua/justdom";
+
+const reveal = makeReveal(() => letter.typed.get());
+
+dom(
+  ctx,
+  $("div", [
+    set("className", letterSheet),
+    children(
+      $("p", [children(reveal.text`${letter.body}`)]),
+      $("p", [set("className", signature), children(reveal.text`— ${letter.from}`)]),
+    ),
+  ]),
+);
+```
+
+The cursor counts *rendered* characters — the collapsed string the glyphs were
+drawn from, not the node's data, so the machine does not stall for three ticks
+on an indent nobody can see — and it counts them across every node the handle
+owns, in document order. Zero draws nothing, anything past the end draws
+everything, and a fractional value interpolates inside one glyph's advance, so
+the same primitive serves a discrete typewriter and a smooth wipe. How fast it
+moves, whether it eases, what it sounds like and what the skip button does are
+all the app's: this answers only what is drawn.
+
+What a tick costs, before and after:
+
+| per character | rewritten | revealed |
+| --- | --- | --- |
+| DOM mutations | one per node | none |
+| observer flushes | one | none |
+| re-measurements | one per node | none |
+| rasterizations and uploads | one per node | none |
+| uniform writes | none | one, of four floats |
+
+And the constraint goes with it. The layout never moves, so nothing has to be
+predictable about it: any face, any `white-space`, any alignment, wrapped by
+the browser, with no column count anywhere in the app.
+
+Four things to know before reaching for it.
+
+**It is measured per character, once.** A revealed node is measured the way
+every text node is — line boxes read back off the browser's own layout — and
+then once more, with a range read per character, to find the boundaries the
+cut can fall on. That is why it is opt-in: it is the right price for a letter
+and quite the wrong one for a label, and a scene where every node paid it
+would mount visibly slower. It is paid when the text is laid out, not when the
+cursor moves, and it rides the same budgeted mount every other measurement
+does — so `onLoadingChanged` covers it, and a panel is ready when it is ready.
+
+**A revealed run draws itself.** Text is normally drawn from a batch, one draw
+for a whole panel; a run carrying a cut of its own cannot be, so it keeps its
+own mesh and its own draw, exactly as a run with baked colours does. One extra
+draw per revealed node. A letter has two or three of them, which is the scale
+this is for.
+
+**A line running both ways is revealed as a unit.** The cut is one x on one
+line, and the prefix of a line with both directions of text on it is not a
+rectangle — no x expresses it. Such a line is not cut: it stays hidden until
+the cursor is past it, and then it is drawn whole. A line running entirely
+right to left is an ordinary line read from the other end, and cuts from its
+right edge. Everything else on the run cuts as normal.
+
+**Tight leading trims descenders until the next line catches up.** Line boxes
+that overlap — a `line-height` below the face's content height — share a band
+in which the finished line's descenders and the next line's ascenders sit at
+the same y. The cut keeps that band hidden until the next line is being typed,
+which is the choice that never shows a glyph early; the price is that a
+descender's tail past the cut stays hidden until the next line's cut sweeps
+over it. Ordinary leading has no such band and no such effect.
+
+Clipping composes with all of it: a revealed run inside a scroller is clipped
+by the scroller and cut by the cursor, in the same shader pass. So does a
+transform: the footnote on the *Interactions* card in
+[`apps/showcase-xr`](../../apps/showcase-xr) types itself out on a card that
+can be tilted while it runs, and the cut follows the lines wherever the
+transform puts them.
+
 ## Layers
 
 An element that is positioned and stacked above — `position` other than
@@ -881,8 +979,9 @@ and DOM panels projected into 3D space.
 [`apps/showcase-xr`](../../apps/showcase-xr) is the sampler: four panels in a
 grid demonstrating hover/press transitions, CSS keyframes, a Web Animations
 API animation, a `useFrame(ctx, fn)` loop writing inline styles, animated
-text colour, static transforms, a layout-tier width transition, and every
-`object-fit` an image can be drawn with.
+text colour, a paragraph revealed to a moving cursor, static transforms, a
+layout-tier width transition, and every `object-fit` an image can be drawn
+with.
 
 ## License
 

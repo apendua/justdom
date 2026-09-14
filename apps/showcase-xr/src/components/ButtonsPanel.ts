@@ -1,13 +1,41 @@
 import { className, stylesheet, text, $, children, attr, CLASS_NAME } from "@apendua/justdom";
 import { set, on } from "@apendua/justdom";
-import { Signal, component, observable } from "@apendua/signal";
+import { Signal, component, effects, observable } from "@apendua/signal";
+import { makeReveal, useFrame } from "@apendua/freedom";
 import { cardStyle, captionStyle, classes, headingStyle, rowStyle } from "./panels.js";
 
 /**
  * CSS transitions driven by the ray: hover and press restyle through
  * `[data-xr-hover]` / `[data-xr-active]`, and every change of transform or
  * color *animates* — the transitions play in the scene frame by frame.
+ *
+ * The footnote at the bottom is the odd one out, and deliberately sits here
+ * rather than in the motion panel: everything else on these cards moves by
+ * being *mirrored* — a style is written, the observer reports it, the scene
+ * follows — and that paragraph moves without the DOM being touched at all.
+ * It is also the only real paragraph in the showcase, which is what the thing
+ * it demonstrates is for.
  */
+
+/**
+ * The typed footnote. A constant, because it must not change while it is
+ * being revealed: the whole point is that the text is laid out once and only
+ * how much of it is drawn moves afterwards.
+ */
+const FOOTNOTE =
+  "This paragraph types itself out without ever being rewritten: it is laid " +
+  "out once, wrapped by the browser in an ordinary proportional face, and the " +
+  "cursor is four floats in the shader. Tilt the card while it runs — every " +
+  "line keeps its place, and the cut keeps up.";
+
+/** Characters a second, which is about as fast as it is still worth reading. */
+const TYPING_RATE = 42;
+
+/** How long the finished paragraph stands before it starts over, in ms. */
+const HOLD = 3000;
+
+/** One pass of the footnote and the pause after it, in ms. */
+const CYCLE = (FOOTNOTE.length / TYPING_RATE) * 1000 + HOLD;
 
 const titleStyle = stylesheet`
   .${CLASS_NAME} {
@@ -73,9 +101,18 @@ const tiltableStyle = stylesheet`
   }
 `;
 
-const ButtonsPanel = component((_ctx: WeakKey) => {
+const ButtonsPanel = component((ctx: WeakKey) => {
   const clicks = Signal.of(0);
   const tilted = Signal.of(false);
+
+  /**
+   * How much of the footnote is drawn, in rendered characters. Fractional on
+   * purpose: the cut interpolates inside a glyph's advance, so the edge wipes
+   * across each letter instead of jumping a whole one at a time — at this
+   * rate the difference is the whole difference between a wipe and a stutter.
+   */
+  const typed = Signal.of(0);
+  const reveal = makeReveal(() => typed.get());
 
   const bump = () => clicks.set(clicks.get() + 1);
 
@@ -110,11 +147,24 @@ const ButtonsPanel = component((_ctx: WeakKey) => {
           ]),
         ),
       ]),
+      $("p", [set("className", captionStyle), children(text`text revealed to a cursor`)]),
       $("p", [
         set("className", footnoteStyle),
-        children(
-          text`This paragraph wraps across several lines on purpose: tilt the card and every line keeps its place, because line breaks are measured with the transforms switched off.`,
-        ),
+        effects(() => {
+          // Driven off the frame time rather than off a counter, so the same
+          // moment always shows the same amount of text: the visual suite
+          // photographs the scene with every frame claiming to have arrived
+          // at the same instant, and anything integrating its own ticks would
+          // be somewhere different in every run.
+          //
+          // `useFrame` and not `requestAnimationFrame`, for the reason the
+          // motion panel gives at length: once a session has the display, the
+          // page's own frames stop arriving and the session's do not.
+          useFrame(ctx, (time: number) => {
+            typed.set(((time % CYCLE) / 1000) * TYPING_RATE);
+          });
+        }),
+        children(reveal.text`${FOOTNOTE}`),
       ]),
     ),
   ]);

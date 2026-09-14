@@ -609,6 +609,16 @@ export class TextBatch {
   /**
    * Take this run into the batch. Idempotent.
    *
+   * Two kinds of run are never offered at all, and for the same reason: a
+   * batched run is described entirely by what the bucket copied out of it, so
+   * anything private to the run has nowhere to go. A run whose colours are
+   * baked into its texture is declined below, by `#settle`, because one array
+   * texture cannot hold both coverage and colour. A run that is *revealed* is
+   * not offered by `text.js` in the first place, because it carries a cut
+   * uniform of its own — and making that cut a vertex attribute instead would
+   * dirty the batch on every keystroke, which is the one thing that could
+   * make a reveal cost more than the rewriting it replaces.
+   *
    * @param {THREE.Mesh} mesh
    * @param {{ value: THREE.Vector4 }} clip The clip uniform `text.js` keeps,
    *   which is the one piece of a run's description the mesh does not carry.

@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import { batch, Derived, Effect, selector, toObservable } from "@apendua/signal";
 import {
   createMirror,
+  trackCharacterEdges,
+  tracksCharacterEdges,
   getBorderBoxSize,
   getComputedStyleCached,
   getContentPosition,
@@ -1885,5 +1887,187 @@ describe("clip boxes and positioned elements", () => {
     } finally {
       container.remove();
     }
+  });
+});
+
+describe("character edges", () => {
+  const CHAR = 10;
+  const LINE = 16;
+  const COLUMNS = 4;
+
+  /**
+   * A layout engine for a monospace face in a box four characters wide: the
+   * i-th character sits in column `i % 4` of line `i / 4`. Small enough to
+   * assert against, and the only kind of engine jsdom leaves room for.
+   *
+   * @param {number} index
+   * @returns {{ left: number, right: number, top: number, bottom: number }}
+   */
+  function charRect(index) {
+    const line = Math.floor(index / COLUMNS);
+    const column = index % COLUMNS;
+    return {
+      left: column * CHAR,
+      right: (column + 1) * CHAR,
+      top: line * LINE,
+      bottom: (line + 1) * LINE,
+    };
+  }
+
+  /**
+   * @param {{ onRect?: () => void }} [options]
+   * @returns {() => void}
+   */
+  function installRange({ onRect } = {}) {
+    const original = document.createRange;
+    document.createRange = () => {
+      let start = 0;
+      let end = 0;
+      /**
+       * @returns {Array<{ left: number, top: number, right: number, bottom: number, width: number, height: number }>}
+       */
+      const rects = () => {
+        /** @type {Map<number, { left: number, top: number, right: number, bottom: number, width: number, height: number }>} */
+        const byLine = new Map();
+        for (let index = start; index < end; index++) {
+          const rect = charRect(index);
+          const line = Math.floor(index / COLUMNS);
+          const found = byLine.get(line);
+          if (!found) {
+            byLine.set(line, {
+              ...rect,
+              width: rect.right - rect.left,
+              height: rect.bottom - rect.top,
+            });
+            continue;
+          }
+          found.left = Math.min(found.left, rect.left);
+          found.right = Math.max(found.right, rect.right);
+          found.width = found.right - found.left;
+        }
+        return [...byLine.values()];
+      };
+      return /** @type {Range} */ (
+        /** @type {unknown} */ ({
+          selectNodeContents: (/** @type {Node} */ node) => {
+            start = 0;
+            end = (node.textContent || "").length;
+          },
+          setStart: (/** @type {Node} */ _node, /** @type {number} */ offset) => {
+            start = offset;
+          },
+          setEnd: (/** @type {Node} */ _node, /** @type {number} */ offset) => {
+            end = offset;
+          },
+          getBoundingClientRect: () => {
+            onRect?.();
+            const all = rects();
+            if (all.length === 0) {
+              return /** @type {DOMRect} */ ({
+                left: 0,
+                top: 0,
+                right: 0,
+                bottom: 0,
+                width: 0,
+                height: 0,
+              });
+            }
+            const left = Math.min(...all.map((rect) => rect.left));
+            const top = Math.min(...all.map((rect) => rect.top));
+            const right = Math.max(...all.map((rect) => rect.right));
+            const bottom = Math.max(...all.map((rect) => rect.bottom));
+            return /** @type {DOMRect} */ ({
+              left,
+              top,
+              right,
+              bottom,
+              width: right - left,
+              height: bottom - top,
+            });
+          },
+          getClientRects: () => /** @type {DOMRectList} */ (/** @type {unknown} */ (rects())),
+        })
+      );
+    };
+    return () => {
+      document.createRange = original;
+    };
+  }
+
+  /**
+   * @param {string} content
+   * @param {boolean} tracked
+   * @returns {{ layout: import('./mirror.js').TextLayout, rects: number }}
+   */
+  function measure(content, tracked) {
+    let rects = 0;
+    const restore = installRange({
+      onRect: () => {
+        rects += 1;
+      },
+    });
+    const parent = document.createElement("p");
+    const node = document.createTextNode(content);
+    parent.appendChild(node);
+    document.body.appendChild(parent);
+    const mirror = createMirror();
+    mirror.adopt(parent);
+    mirror.adopt(node);
+    const stop = tracked ? trackCharacterEdges(node) : () => {};
+    try {
+      return { layout: getTextLayout(node), rects };
+    } finally {
+      stop();
+      parent.remove();
+      restore();
+    }
+  }
+
+  test("a label that did not ask is measured exactly as it always was", () => {
+    const { layout } = measure("abcdefgh", false);
+    assert.equal(layout.reveal, null);
+    assert.deepEqual(
+      layout.lines.map((line) => line.text),
+      ["abcd", "efgh"],
+    );
+  });
+
+  test("a node that asked gets a boundary between every character it draws", () => {
+    const { layout } = measure("abcdefgh", true);
+    assert.ok(layout.reveal);
+    assert.equal(layout.reveal.length, 8, "rendered characters across the whole run");
+    assert.deepEqual(
+      layout.reveal.lines.map((line) => [line.start, line.length, line.top, line.bottom]),
+      [
+        [0, 4, 0, LINE],
+        [4, 4, LINE, 2 * LINE],
+      ],
+      "each line knows where it begins in the stream",
+    );
+    for (const line of layout.reveal.lines) {
+      assert.deepEqual([...(line.edges ?? [])], [0, CHAR, 2 * CHAR, 3 * CHAR, 4 * CHAR]);
+    }
+  });
+
+  test("the boundaries are what the extra reads buy, and nobody else pays for them", () => {
+    const plain = measure("abcdefgh", false);
+    const revealed = measure("abcdefgh", true);
+    assert.equal(revealed.rects - plain.rects, 8, "one read per character drawn, and not one more");
+  });
+
+  test("a single-line run is measured the same way", () => {
+    const { layout } = measure("abc", true);
+    assert.ok(layout.reveal);
+    assert.equal(layout.reveal.lines.length, 1);
+    assert.deepEqual([...(layout.reveal.lines[0].edges ?? [])], [0, CHAR, 2 * CHAR, 3 * CHAR]);
+  });
+
+  test("tracking is per node, and is given back", () => {
+    const node = document.createTextNode("abc");
+    assert.equal(tracksCharacterEdges(node), false);
+    const stop = trackCharacterEdges(node);
+    assert.equal(tracksCharacterEdges(node), true);
+    stop();
+    assert.equal(tracksCharacterEdges(node), false);
   });
 });

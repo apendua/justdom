@@ -34,9 +34,13 @@ const classes = {
  * @param {object} options
  * @param {number} options.window
  * @param {number} options.content
+ * @param {boolean} [options.announce] Whether to tell the widget about that
+ *   layout once it is in place. True by default, because a widget that has
+ *   never measured anything is not what most of these tests are about; false
+ *   leaves the first sample to whatever the test is exercising.
  * @param {Partial<import('./scrollable.js').ScrollableProps>} [options.props]
  */
-function mount({ window: shown, content: total, props = {} }) {
+function mount({ window: shown, content: total, announce = true, props = {} }) {
   const host = document.createElement("div");
   document.body.appendChild(host);
 
@@ -68,7 +72,9 @@ function mount({ window: shown, content: total, props = {} }) {
         scrollTop = Math.max(0, Math.min(value, Math.max(total - shown, 0)));
       },
     });
-    viewport.dispatchEvent(new Event("scroll"));
+    if (announce) {
+      viewport.dispatchEvent(new Event("scroll"));
+    }
   }
 
   return {
@@ -100,6 +106,58 @@ describe("scrollable", () => {
     assert.ok(overflows.find(".bar"));
     overflows.subscription.unsubscribe();
     overflows.host.remove();
+  });
+
+  test("a resize is sampled in a task of its own, not in the observer's callback", async () => {
+    // The loop this avoids: mounting the bar takes 40px out of the row the
+    // window sits in, so a sample taken inside the observation callback
+    // resizes the very element the callback was told about. The browser
+    // reports that on the window as "ResizeObserver loop completed with
+    // undelivered notifications." — an `error` event with nothing behind it,
+    // which freedom's crash panel used to end the XR session over.
+    /** @type {(() => void)[]} */
+    const callbacks = [];
+    const had = Object.getOwnPropertyDescriptor(globalThis, "ResizeObserver");
+    globalThis.ResizeObserver = /** @type {typeof ResizeObserver} */ (
+      /** @type {unknown} */ (
+        class {
+          /** @param {() => void} callback */
+          constructor(callback) {
+            callbacks.push(callback);
+          }
+          observe() {}
+          disconnect() {}
+        }
+      )
+    );
+    const view = mount({ window: 100, content: 400, announce: false });
+    try {
+      // Nothing has been laid out yet as far as the widget knows: its first
+      // sample ran before the styles that give the window a size.
+      assert.equal(view.find(".bar"), null);
+      assert.equal(callbacks.length, 1, "the window is observed");
+
+      callbacks[0]?.();
+      assert.equal(
+        view.find(".bar"),
+        null,
+        "the callback must not resize what it was called about",
+      );
+
+      // A task later — not a microtask, which is drained inside the same
+      // delivery and would leave the browser with the same complaint.
+      await new Promise((resolve) => setTimeout(resolve));
+      assert.ok(view.find(".bar"), "and by then the bar has been decided");
+    } finally {
+      view.subscription.unsubscribe();
+      view.host.remove();
+      if (had) {
+        Object.defineProperty(globalThis, "ResizeObserver", had);
+      } else {
+        // @ts-expect-error -- putting the environment back as it was found.
+        delete globalThis.ResizeObserver;
+      }
+    }
   });
 
   test("an arrow moves a step, and the end of the content is the end", () => {

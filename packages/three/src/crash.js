@@ -93,6 +93,8 @@ export function installCrashPanel(renderer, options = {}) {
   let reporting = false;
   /** Whether the console has already been told about a muted error. */
   let warnedAboutMuted = false;
+  /** And about a resize-observation loop, which is reported the same way. */
+  let warnedAboutResizeLoop = false;
   /** What the open panel is showing, in the order it was reported. */
   /** @type {string[]} */
   let reported = [];
@@ -230,6 +232,20 @@ export function installCrashPanel(renderer, options = {}) {
 
   /** @param {ErrorEvent} event */
   const onError = (event) => {
+    if (isResizeLoop(event)) {
+      // Not a crash at all — see `isResizeLoop`. Said once, to the console,
+      // because the layout that produced it will go on producing it.
+      if (!warnedAboutResizeLoop) {
+        warnedAboutResizeLoop = true;
+        console.warn(
+          `freedom: ignoring "${event.message}" — the browser deferred some resize` +
+            " notifications to the next frame. Nothing threw, so the crash panel stays down and" +
+            " the session stays up. Something is resizing what it observes; worth fixing, but" +
+            " not by ending the session.",
+        );
+      }
+      return;
+    }
     if (isMuted(event)) {
       // Not ours, and nothing to show. Said once, to the console, because a
       // page whose neighbour throws every frame does not need it said again.
@@ -265,6 +281,39 @@ export function installCrashPanel(renderer, options = {}) {
     reporters.delete(renderer);
     unmount();
   };
+}
+
+/**
+ * Whether this is the browser complaining about a resize-observation loop
+ * rather than reporting a failure.
+ *
+ * A `ResizeObserver` callback that changes the size of something being
+ * observed makes the browser go round again, and when the round is not
+ * settled by the end of the delivery it says so on the window: "ResizeObserver
+ * loop completed with undelivered notifications." in current browsers,
+ * "ResizeObserver loop limit exceeded" in older ones. It arrives as an `error`
+ * event because that is the only channel the spec has for it — there is no
+ * exception behind it, `error` is null, and the file it names is the document
+ * itself rather than any script. Nothing has gone wrong that ending a session
+ * would help with: the deferred notifications are delivered on the next frame,
+ * and the page carries on.
+ *
+ * The panel has to know that, because the alternative is what this was written
+ * for: a scrolling list whose bar appears when there is something to scroll
+ * takes space out of the row the window sits in, so the observer that noticed
+ * the window had been laid out resized the window — one notice, and an app in
+ * a headset was put back on the desktop with a crash report over it. The
+ * widget no longer does that (see `scrollable` in `@apendua/justui`), but
+ * anything a page mounts can, and none of it is this app crashing.
+ *
+ * `isMuted` does not cover it: the browser names the document as the file, so
+ * the event is not the contentless one a cross-origin script produces.
+ *
+ * @param {ErrorEvent} event
+ * @returns {boolean}
+ */
+function isResizeLoop(event) {
+  return event.error == null && /^ResizeObserver loop\b/.test(event.message ?? "");
 }
 
 /**

@@ -305,6 +305,58 @@ describe("installCrashPanel", () => {
     assert.match(warned[0] ?? "", /Script error/);
   });
 
+  test("leaves a resize-observation loop alone, and the session with it", () => {
+    // What the browser says when a `ResizeObserver` callback resizes something
+    // being observed: a fixed sentence, no `Error`, and the document named as
+    // the file — so `isMuted` does not cover it, and the panel would otherwise
+    // put a player back on the desktop because a scrollbar appeared. It is a
+    // report about layout, not a failure; the session stays up.
+    const { state, renderer } = fakeRenderer(true);
+    installed.push(installCrashPanel(renderer));
+
+    /** @type {string[]} */
+    const warned = [];
+    const warn = console.warn;
+    console.warn = (/** @type {unknown[]} */ ...args) => warned.push(args.join(" "));
+    try {
+      for (const message of [
+        "ResizeObserver loop completed with undelivered notifications.",
+        "ResizeObserver loop limit exceeded",
+      ]) {
+        window.dispatchEvent(
+          new window.ErrorEvent("error", {
+            error: null,
+            message,
+            filename: "https://labs.apendua.dev/apps/todo-xr/",
+            lineno: 0,
+            colno: 0,
+          }),
+        );
+      }
+    } finally {
+      console.warn = warn;
+    }
+
+    assert.equal(panel(), null);
+    assert.equal(state.ended, 0);
+    // Said once, however many times the layout produces it.
+    assert.equal(warned.length, 1);
+    assert.match(warned[0] ?? "", /ResizeObserver loop/);
+  });
+
+  test("still crashes on an error a ResizeObserver callback threw", () => {
+    // The sentence is the browser's own and comes with no `Error`. A throw
+    // from inside a callback is an ordinary uncaught exception that happens to
+    // mention the same words, and it is the app's bug either way.
+    const { state, renderer } = fakeRenderer(true);
+    installed.push(installCrashPanel(renderer));
+
+    throwUncaught(new Error("ResizeObserver loop: the widget could not measure itself"));
+
+    assert.equal(state.ended, 1);
+    assert.match(panel()?.textContent ?? "", /could not measure itself/);
+  });
+
   test("shows an error with no Error behind it, and where it came from", () => {
     const { renderer } = fakeRenderer(false);
     installed.push(installCrashPanel(renderer));

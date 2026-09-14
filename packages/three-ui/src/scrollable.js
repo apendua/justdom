@@ -108,6 +108,42 @@ export function scrollable(props) {
   };
 
   /**
+   * The sample a resize asks for, taken in a task of its own rather than in
+   * the observer's callback.
+   *
+   * Sampling is not a read-only thing to do. A sample that finds the content
+   * no longer fits mounts the bar, the bar takes 40px out of a flex row, and
+   * the viewport — the element being observed — is narrower for it. Done from
+   * inside the observation callback that is a resize the callback caused, and
+   * the browser has a name for that: it finishes the delivery loop with the
+   * new notification still in hand and reports "ResizeObserver loop completed
+   * with undelivered notifications." on the window. Nothing has gone wrong —
+   * the bar is mounted, the second notification arrives next frame — but the
+   * report arrives as an `error` event with no `Error` behind it, and a page
+   * that treats an error event as a crash takes the whole app down over a
+   * scrollbar appearing. freedom's crash panel was exactly such a page.
+   *
+   * A task is the shortest wait that works. A microtask is not: it is drained
+   * inside the same delivery, so the mount is still the loop's own doing and
+   * the report still goes out. A frame would be the obvious other choice and
+   * is the wrong one here — inside an immersive session the page stops being
+   * rendered and `requestAnimationFrame` stops being answered, which is the
+   * one place this widget most has to keep working.
+   */
+  /** @type {ReturnType<typeof setTimeout> | undefined} */
+  let resampling;
+
+  const resample = () => {
+    if (resampling !== undefined) {
+      return;
+    }
+    resampling = setTimeout(() => {
+      resampling = undefined;
+      sample();
+    });
+  };
+
+  /**
    * Every press here scrolls through this, and it goes through
    * `scrollElementBy` rather than writing `scrollTop` itself because a
    * portal only learns that a scroller moved from the `scroll` event — and
@@ -273,14 +309,18 @@ export function scrollable(props) {
           // it one have been applied — which is after this effect runs, so
           // the first sample above measures nothing. A resize observer is
           // what turns that into an answer rather than a race; it reports the
-          // first layout as a resize like any other.
+          // first layout as a resize like any other. Through `resample`,
+          // because what this one goes on to do is resize the very element it
+          // was told about; see there.
           const resizes =
-            typeof ResizeObserver === "undefined" ? null : new ResizeObserver(() => sample());
+            typeof ResizeObserver === "undefined" ? null : new ResizeObserver(resample);
           resizes?.observe(element);
           onCleanup(() => {
             element.removeEventListener("scroll", onScroll);
             mutations.disconnect();
             resizes?.disconnect();
+            clearTimeout(resampling);
+            resampling = undefined;
             viewport = null;
           });
         }),

@@ -748,7 +748,11 @@ the cursor is past it, and then it is drawn whole. Everything else on the run
 cuts as normal.
 
 Clipping composes with all of it: a revealed run inside a scroller is clipped
-by the scroller and cut by the cursor, in the same shader pass.
+by the scroller and cut by the cursor, in the same shader pass. So does a
+transform: the footnote on the *Interactions* card in
+[`apps/showcase-xr`](../../apps/showcase-xr) types itself out on a card that
+can be tilted while it runs, and the cut follows the lines wherever the
+transform puts them.
 
 ## Layers
 
@@ -966,8 +970,9 @@ and DOM panels projected into 3D space.
 [`apps/showcase-xr`](../../apps/showcase-xr) is the sampler: four panels in a
 grid demonstrating hover/press transitions, CSS keyframes, a Web Animations
 API animation, a `useFrame(ctx, fn)` loop writing inline styles, animated
-text colour, static transforms, a layout-tier width transition, and every
-`object-fit` an image can be drawn with.
+text colour, a paragraph revealed to a moving cursor, static transforms, a
+layout-tier width transition, and every `object-fit` an image can be drawn
+with.
 
 ## License
 

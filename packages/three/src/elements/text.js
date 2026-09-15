@@ -27,9 +27,15 @@ import {
 } from "./clip.js";
 import { place } from "./place.js";
 import { TextBatchContext } from "./textBatch.js";
+import { TextScaleContext } from "./textScale.js";
 import { attachRevealNode, detachRevealNode, getRevealCut } from "./reveal.js";
 
 /**
+ * What the page says a device pixel is worth, for a run with no panel to
+ * measure against — text projected onto a plain page, or built under a test
+ * runner. Where there *is* a scene the number means very little; `textScale`
+ * says why, and is asked first.
+ *
  * @returns {number}
  */
 function getViewportDpr() {
@@ -53,6 +59,16 @@ export function text(ctx, textNode) {
    * @type {import('./textBatch.js').TextBatch | null}
    */
   const batch = TextBatchContext.get(ctx);
+
+  /**
+   * How finely this run is rasterized, as the panel it is on measures it —
+   * and null off a panel, where the page's own ratio is the whole answer.
+   * Read inside `textureData` below, so a panel the player walks up to
+   * re-draws its text at the step it has reached.
+   *
+   * @type {(() => number) | null}
+   */
+  const textScale = TextScaleContext.get(ctx);
 
   /**
    * Say that something the batch copied out of this run has changed. Cheap and
@@ -103,7 +119,7 @@ export function text(ctx, textNode) {
       layout.lines,
       renderStyle,
       layout.bounds,
-      getViewportDpr(),
+      textScale ? textScale() : getViewportDpr(),
       tint.masked,
     );
   });

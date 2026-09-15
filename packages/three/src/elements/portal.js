@@ -9,11 +9,12 @@ import { watchDocumentStyles } from "./documentStyles.js";
 import { createBlocker, coverBox } from "./blocker.js";
 import { BoxBatchContext, createBoxBatch } from "./boxBatch.js";
 import { TextBatchContext, createTextBatch } from "./textBatch.js";
+import { TextScaleContext, createTextScale } from "./textScale.js";
 import { keepSubtreeMatrices, placeAndScale } from "./place.js";
 import { createFrameRequester } from "./frameRequester.js";
 import { createPortalPump } from "./portalPump.js";
 import { createPortalScheduler, PortalSchedulerContext } from "./portalScheduler.js";
-import { frames, onLateFrame } from "../render.js";
+import { CameraContext, frames, onLateFrame, RendererContext } from "../render.js";
 import { InteractionContext } from "../interactions.js";
 
 /**
@@ -127,6 +128,25 @@ export function createPortal(
   ctx = TextBatchContext.set(ctx, textBatch);
 
   /**
+   * How finely this panel's text is worth rasterizing, measured off what the
+   * panel is really painting rather than guessed from the page. Null where
+   * there is nothing to measure against — a portal on a plain page, or under
+   * a test runner — and the runs then fall back to the page's own device
+   * pixel ratio, which is the right answer when the panel *is* the page.
+   *
+   * @type {ReturnType<typeof createTextScale> | null}
+   */
+  let textScale = null;
+  try {
+    textScale = createTextScale(containerObject, RendererContext.get(ctx), CameraContext.get(ctx));
+    ctx = TextScaleContext.set(ctx, textScale.read);
+  } catch {
+    // No renderer or camera on this context. Same shape of absence the late
+    // frame hook below is written for, and the same answer: the panel does
+    // without.
+  }
+
+  /**
    * Whether the panel is still mounting its initial content. True from the
    * start; flipped exactly once, by `markLoaded`, when everything the first
    * mount brought has been built and the reactive graph over it has settled.
@@ -148,6 +168,9 @@ export function createPortal(
   // inside the frame callback — a sampled CSS animation, a scroll drag in an
   // immersive session — is not, and would otherwise be drawn a frame late.
   const flushBatches = () => {
+    // First, so that a step the panel has just crossed is one the runs
+    // re-rasterize against rather than one they find out about next frame.
+    textScale?.measure();
     boxBatch.flush();
     textBatch.flush();
   };
@@ -566,6 +589,10 @@ export function createPortal(
     // would hand the entire panel the work its boxes just opted out of.
     containerObject.rotation.set(Math.PI, 0, 0);
     placeAndScale(containerObject, -sizeX / 2, sizeY / 2, 0, scale, scale, scale);
+    // The measurement wants the middle of the panel, and the middle moves
+    // with the size. In the container's own pixels, which is the frame it is
+    // handed back through.
+    textScale?.setPanelSize(size.width, size.height);
     // Container-local px units, y down; content sits at negative local z
     // (toward the viewer after the flip above), so +1 puts the blocker just
     // behind everything the portal draws.

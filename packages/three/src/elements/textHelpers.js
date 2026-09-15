@@ -14,7 +14,19 @@ import { onCleanup } from "@apendua/signal";
  */
 
 const DEFAULT_FONT_SIZE = 16;
-const MAX_DPR = 2;
+/**
+ * The most device pixels a run is ever rasterized for each of its CSS pixels.
+ *
+ * Two things are clamped by it, and they arrive from opposite directions. A
+ * panel under a scene measures what it is really painting (`textScale.js`),
+ * and this is where that stops: four is sixteen times the texels of one, and
+ * a panel of eight hundred labels is not worth any more of them than that.
+ * A panel with nothing to measure against falls back to the page's own
+ * device pixel ratio, and this is the cap that used to be two — which is what
+ * made text on a three-times phone soft for no better reason than that it was
+ * a guess and guesses were kept cheap. The guess is now allowed to be right.
+ */
+export const MAX_TEXT_SCALE = 4;
 const MAX_TEXTURE_SIZE = 2048;
 const TEXT_RENDER_BLEED = 2;
 
@@ -477,12 +489,14 @@ function getTextureBounds(bounds, bleed) {
 }
 
 /**
- * @param {number} viewportDpr
+ * @param {number} renderScale Device pixels per CSS pixel — measured off the
+ *   panel where there is a scene to measure against, and the page's own
+ *   ratio where there is not.
  * @returns {number}
  */
-function getEffectiveDpr(viewportDpr) {
-  const dpr = Number.isFinite(viewportDpr) && viewportDpr > 0 ? viewportDpr : 1;
-  return Math.min(MAX_DPR, dpr);
+function getEffectiveScale(renderScale) {
+  const scale = Number.isFinite(renderScale) && renderScale > 0 ? renderScale : 1;
+  return Math.min(MAX_TEXT_SCALE, scale);
 }
 
 /**
@@ -562,7 +576,8 @@ function measureFontExtent(text, context, fallback, side) {
  * @param {TextLine[]} lines
  * @param {TextRenderStyle} style
  * @param {TextBounds} bounds
- * @param {number} viewportDpr
+ * @param {number} renderScale How many device pixels the run is drawn for
+ *   each of its CSS pixels. `textScale.js` says where the number comes from.
  * @param {boolean} [mask] Rasterize as a coverage mask: white glyphs on an
  *   *opaque black* ground, meant to be read through a material's alpha map.
  *   Opacity is the point — on a transparent canvas the antialiasing lives
@@ -572,7 +587,7 @@ function measureFontExtent(text, context, fallback, side) {
  *   black, the color channels *are* the coverage, gradient and all.
  * @returns {TextTexture}
  */
-export const generateTextTexture = (lines, style, bounds, viewportDpr, mask = false) => {
+export const generateTextTexture = (lines, style, bounds, renderScale, mask = false) => {
   const measuring = getMeasuringContext();
   measuring.font = style.font;
   const ascent = measureFontExtent("Mg", measuring, style.fontSize * 0.8, "Ascent");
@@ -593,7 +608,7 @@ export const generateTextTexture = (lines, style, bounds, viewportDpr, mask = fa
   const shadow = parseTextShadow(style.textShadow);
   const renderBleed = getRenderBleed(shadow);
   const textureBounds = getTextureBounds(normalizedBounds, renderBleed);
-  const dpr = getEffectiveDpr(viewportDpr);
+  const dpr = getEffectiveScale(renderScale);
   const maxDimension = Math.max(textureBounds.width, textureBounds.height, 1);
   const textureScale = Math.min(1, MAX_TEXTURE_SIZE / (maxDimension * dpr));
   const effectiveDpr = dpr * textureScale;

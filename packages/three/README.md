@@ -998,6 +998,33 @@ One print of the measuring tape, on a static panel of 800 mirrored rows at
 | every ancestor placed | none | 3.6 ms/frame |
 | three's defaults | declines the recompute | 3.6 ms/frame |
 
+### How sharp the text comes out
+
+The scale you place a panel at is also what decides how finely its text is
+rasterized, and you do not have to say anything about that either. A run
+used to be drawn at the page's `window.devicePixelRatio`, which is an answer
+to a question nobody in a scene is asking: what makes a glyph sharp is how
+much of the screen the panel covers, and that is the scale above, the
+projection and the distance between the eye and the panel. In an immersive
+session the page's ratio is worse than unhelpful — a headset browser reports
+1 while the eye buffer paints two or three device pixels across every CSS
+pixel of a panel at arm's length, so every label was being magnified, and no
+mip level can put back what level 0 never had.
+
+Each panel measures its own, once a frame, and rasterizes at the power of
+two above it, up to four. Two things follow. Crossing a step re-draws every
+run on that panel, so the step is deliberately coarse and coarsening is held
+back until the measurement is a fifth clear of the boundary — a panel you
+are standing in front of does not re-rasterize because your head drifted a
+centimetre, and one you walk up to sharpens on the frame it needs to.
+And four device pixels to the CSS pixel is sixteen times the texels of one,
+which is the reason there is a ceiling at all: a panel of eight hundred
+labels is not worth any more of them than that.
+
+Off a scene — a portal on a plain page, or a panel under a test runner —
+there is nothing to measure against and the page's ratio is the whole
+answer, which is the right answer there, because the panel *is* the page.
+
 ## Real examples
 
 This package drives several full apps in this monorepo —

@@ -31,6 +31,25 @@ const MAX_TEXTURE_SIZE = 2048;
 const TEXT_RENDER_BLEED = 2;
 
 /**
+ * How many samples the hardware may take across a run when the quad it is on
+ * is foreshortened.
+ *
+ * Trilinear filtering picks one mip level, and it picks it from the *larger*
+ * of the two screen derivatives — so a panel turned away from the viewer is
+ * sampled at the level the compressed axis asks for and blurred by that much
+ * along the axis that is not compressed. A panel at sixty degrees is a whole
+ * level too soft, which is most of what "the text goes blurry when I step to
+ * the side" is. Anisotropic sampling is the filter that fixes it.
+ *
+ * Four rather than a number off the device: three clamps whatever is asked
+ * for to what the hardware can do, so this needs no renderer to be reached
+ * from here, and four is where a run of text has already got back nearly all
+ * there is to get. It is also what `euclid-xr`'s code panel arrived at on its
+ * own, before any of this was shared.
+ */
+export const TEXT_ANISOTROPY = 4;
+
+/**
  * @typedef {object} TextBounds
  * @property {number} width
  * @property {number} height
@@ -573,6 +592,60 @@ function measureFontExtent(text, context, fallback, side) {
 }
 
 /**
+ * The mip chain of a run whose colours are baked into its texture, built here
+ * rather than left to the driver.
+ *
+ * `gl.generateMipmap` averages four texels as they are *stored*, and what is
+ * stored for a baked run is straight alpha on a transparent ground: a texel
+ * the glyphs miss is transparent **black**, and one they half-cover carries
+ * the text's colour at half alpha. Averaging those pulls the colour toward
+ * black — a level-1 texel along the edge of a letter comes out half the
+ * colour at half the alpha, which composites as a dark rim, and every level
+ * under it is darker again. Shadowed text that reads cleanly up close goes
+ * muddy as the panel shrinks, and there is nothing in level 0 to blame for
+ * it.
+ *
+ * The mask path avoids this by painting coverage onto an opaque ground,
+ * where the average of the stored values *is* the average of the coverage. A
+ * baked run cannot: what is behind its glyphs is the panel.
+ *
+ * A canvas can, though. Its backing store is premultiplied, so halving one
+ * with `drawImage` filters it in the space where that average is the right
+ * one, and the un-premultiplication every upload does hands it back as a
+ * half-covered texel carrying the *full* colour at half alpha — exactly the
+ * shape level 0 has. Three uploads a texture's `mipmaps` as its levels and
+ * asks the driver for none of its own, so this replaces the chain rather
+ * than adding to it, and it has to be the whole chain: a level short of 1×1
+ * is a texture `LinearMipmapLinearFilter` cannot sample.
+ *
+ * Only baked runs pay the extra canvases, and a baked run is the rare one —
+ * a text shadow, or a decoration coloured away from the glyphs.
+ *
+ * @param {HTMLCanvasElement} canvas
+ * @returns {HTMLCanvasElement[]} Level 0 first, down to 1×1.
+ */
+export function buildTextMipmaps(canvas) {
+  /** @type {HTMLCanvasElement[]} */
+  const mipmaps = [canvas];
+  let source = canvas;
+  let width = canvas.width;
+  let height = canvas.height;
+  // Halved from the level above rather than from level 0, which is both what
+  // the driver does and less work: every step reads a quarter of what the
+  // one before it read.
+  while (width > 1 || height > 1) {
+    width = Math.max(1, width >> 1);
+    height = Math.max(1, height >> 1);
+    const level = createTextCanvas(width, height);
+    level.context.imageSmoothingEnabled = true;
+    level.context.drawImage(source, 0, 0, width, height);
+    mipmaps.push(level.canvas);
+    source = level.canvas;
+  }
+  return mipmaps;
+}
+
+/**
  * @param {TextLine[]} lines
  * @param {TextRenderStyle} style
  * @param {TextBounds} bounds
@@ -660,7 +733,17 @@ export const generateTextTexture = (lines, style, bounds, renderScale, mask = fa
   // an unmipped linear sample there dances between texels as the head moves.
   texture.minFilter = THREE.LinearMipmapLinearFilter;
   texture.magFilter = THREE.LinearFilter;
-  texture.generateMipmaps = true;
+  // And sampled across the foreshortening, which the panels these sit on are
+  // almost always under.
+  texture.anisotropy = TEXT_ANISOTROPY;
+  if (mask) {
+    // Coverage on an opaque ground, which is the one shape whose stored
+    // average is the average anybody wanted. The driver's chain is right.
+    texture.generateMipmaps = true;
+  } else {
+    texture.mipmaps = buildTextMipmaps(canvas);
+    texture.generateMipmaps = false;
+  }
   texture.needsUpdate = true;
 
   onCleanup(() => {

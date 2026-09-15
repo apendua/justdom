@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { createProperty } from "@apendua/signal";
+import { TEXT_ANISOTROPY } from "./textHelpers.js";
 
 /**
  * @import {Object3D} from 'three';
@@ -248,6 +249,9 @@ class SizeClass {
     texture.colorSpace = THREE.NoColorSpace;
     texture.minFilter = THREE.LinearMipmapLinearFilter;
     texture.magFilter = THREE.LinearFilter;
+    // And across the foreshortening, for the reason `TEXT_ANISOTROPY` gives:
+    // a batched run is on a panel that is hardly ever square-on to the eye.
+    texture.anisotropy = TEXT_ANISOTROPY;
     texture.generateMipmaps = true;
     texture.needsUpdate = true;
     this.texture = texture;

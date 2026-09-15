@@ -1,6 +1,7 @@
 import { after, before, describe, test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  buildTextMipmaps,
   createTextCanvas,
   getRenderBleed,
   getTextRenderStyle,
@@ -100,6 +101,111 @@ describe("createTextCanvas", () => {
     const stub = withStubbedCanvas(() => null);
     try {
       assert.throws(() => createTextCanvas(1, 1), /2D context/);
+    } finally {
+      stub.restore();
+    }
+  });
+});
+
+describe("buildTextMipmaps", () => {
+  /**
+   * The canvases the chain is made of, as the chain makes them. Each one
+   * remembers what was drawn into it, which is the half of this worth
+   * asserting: that a level is the level above it halved, and not level 0
+   * resampled five times over.
+   */
+  function withStubbedCanvases() {
+    /**
+     * @type {{
+     *   width: number,
+     *   height: number,
+     *   drawn: { source: unknown, width: number, height: number }[],
+     *   getContext: () => unknown,
+     * }[]}
+     */
+    const made = [];
+    const real = document.createElement;
+    // @ts-expect-error -- a stand-in for one tag, restored below.
+    document.createElement = () => {
+      const canvas = {
+        width: 0,
+        height: 0,
+        /** @type {{ source: unknown, width: number, height: number }[]} */
+        drawn: [],
+        getContext: () => ({
+          imageSmoothingEnabled: false,
+          /**
+           * @param {unknown} source
+           * @param {number} x
+           * @param {number} y
+           * @param {number} width
+           * @param {number} height
+           */
+          drawImage: (source, x, y, width, height) => {
+            canvas.drawn.push({ source, width, height });
+          },
+        }),
+      };
+      made.push(canvas);
+      return canvas;
+    };
+    return {
+      made,
+      restore: () => {
+        document.createElement = real;
+      },
+    };
+  }
+
+  test("goes all the way down to 1x1, halving as the driver would", () => {
+    const base = /** @type {HTMLCanvasElement} */ (
+      /** @type {unknown} */ ({ width: 37, height: 11 })
+    );
+    const stub = withStubbedCanvases();
+    try {
+      const chain = buildTextMipmaps(base);
+      // Level 0 is the run's own canvas, not a copy of it.
+      assert.equal(chain[0], base);
+      assert.deepEqual(chain.slice(1), stub.made);
+      // A level short of 1x1 is a texture `LinearMipmapLinearFilter` cannot
+      // sample, so the count is the point as much as the sizes are.
+      assert.deepEqual(
+        stub.made.map((canvas) => `${canvas.width}x${canvas.height}`),
+        ["18x5", "9x2", "4x1", "2x1", "1x1"],
+      );
+    } finally {
+      stub.restore();
+    }
+  });
+
+  test("each level is drawn from the one above it, whole", () => {
+    const base = /** @type {HTMLCanvasElement} */ (
+      /** @type {unknown} */ ({ width: 8, height: 4 })
+    );
+    const stub = withStubbedCanvases();
+    try {
+      buildTextMipmaps(base);
+      assert.deepEqual(
+        stub.made.map((canvas) => canvas.drawn),
+        [
+          [{ source: base, width: 4, height: 2 }],
+          [{ source: stub.made[0], width: 2, height: 1 }],
+          [{ source: stub.made[1], width: 1, height: 1 }],
+        ],
+      );
+    } finally {
+      stub.restore();
+    }
+  });
+
+  test("a run that is already one texel is a chain of one", () => {
+    const base = /** @type {HTMLCanvasElement} */ (
+      /** @type {unknown} */ ({ width: 1, height: 1 })
+    );
+    const stub = withStubbedCanvases();
+    try {
+      assert.deepEqual(buildTextMipmaps(base), [base]);
+      assert.deepEqual(stub.made, []);
     } finally {
       stub.restore();
     }

@@ -2,6 +2,7 @@ import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
 import { createTextBatch } from "./textBatch.js";
+import { TEXT_ANISOTROPY } from "./textHelpers.js";
 import { place } from "./place.js";
 
 /**
@@ -140,6 +141,24 @@ describe("text batch teardown", () => {
       p.container.children.find((c) => /** @type {THREE.InstancedMesh} */ (c).isInstancedMesh)
     );
     assert.equal(bucket.count, 12);
+  });
+});
+
+describe("text batch sampling", () => {
+  test("the array a bucket samples is mipmapped, and sampled across the foreshortening", () => {
+    const p = panel(4);
+    p.batch.flush();
+    const bucket = /** @type {THREE.InstancedMesh} */ (
+      p.container.children.find((c) => /** @type {THREE.InstancedMesh} */ (c).isInstancedMesh)
+    );
+    const texture = /** @type {THREE.ShaderMaterial} */ (bucket.material).uniforms.uRuns.value;
+    assert.equal(texture.minFilter, THREE.LinearMipmapLinearFilter);
+    assert.equal(texture.magFilter, THREE.LinearFilter);
+    assert.equal(texture.generateMipmaps, true);
+    // Without this a panel turned away from the viewer is sampled at the
+    // level its compressed axis asks for, and blurred by that much along the
+    // axis that is not compressed.
+    assert.equal(texture.anisotropy, TEXT_ANISOTROPY);
   });
 });
 

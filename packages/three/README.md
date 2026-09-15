@@ -1011,15 +1011,30 @@ session the page's ratio is worse than unhelpful — a headset browser reports
 pixel of a panel at arm's length, so every label was being magnified, and no
 mip level can put back what level 0 never had.
 
-Each panel measures its own, once a frame, and rasterizes at the power of
-two above it, up to four. Two things follow. Crossing a step re-draws every
-run on that panel, so the step is deliberately coarse and coarsening is held
-back until the measurement is a fifth clear of the boundary — a panel you
-are standing in front of does not re-rasterize because your head drifted a
-centimetre, and one you walk up to sharpens on the frame it needs to.
-And four device pixels to the CSS pixel is sixteen times the texels of one,
-which is the reason there is a ceiling at all: a panel of eight hundred
-labels is not worth any more of them than that.
+Each panel measures its own, once a frame, and rasterizes at a step of the
+ladder 1, √2, 2, 2√2, 4 — the one at or above what it measured. Stepped at
+all because crossing a step re-draws every run on the panel, and the answer
+has to sit still while the player's head does not; coarsening is held back
+until the measurement is a fifth clear of the boundary, so a panel you are
+standing in front of does not re-rasterize because you drifted a centimetre,
+while one you walk up to sharpens on the frame it needs to.
+
+Root two rather than two because what a step costs is *quadratic* in it. A
+panel of forty labels holds about 2 MB — the array texture, the mirror of it
+the batch keeps, and the canvas each run holds on to — at one device pixel
+to the CSS pixel, and sixteen times that at four. A panel measuring 2.3 gets
+2.83 rather than 4, which is half the memory, and half of every upload it
+makes for as long as it is open, for a difference nobody has reported
+seeing. Four is the ceiling for the same reason there is one at all.
+
+That ceiling is per panel, if you want it to be. A list of hundreds of rows
+reaches it with every row at once, and would rather be soft than large:
+
+```js
+dom(ctx, List(ctx), [], { maxTextScale: 2 });
+```
+
+It only ever lowers — four is what a run is allowed to cost at all.
 
 Off a scene — a portal on a plain page, or a panel under a test runner —
 there is nothing to measure against and the page's ratio is the whole

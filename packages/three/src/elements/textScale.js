@@ -43,18 +43,42 @@ export const TextScaleContext = createProperty(
 const MIN_DISTANCE = 0.05;
 
 /**
- * How far below a step the measurement has to fall before a panel is
- * rasterized smaller again.
+ * How many steps there are to a doubling: two, so each is root two sharper
+ * than the one below it.
  *
- * Steps are powers of two, rounded up, so a step of 2 covers everything over
- * 1 and up to 2 — and a panel sitting exactly on a boundary would re-draw
- * every label it has, twice, every time the player's head drifted a
- * centimetre. Coarsening is held back to a fifth under the boundary instead,
- * which is a gap no amount of standing still can cross. Sharpening is not:
- * going up is the direction somebody is looking at the panel to do, and a
- * frame of soft text on the way in is what the delay would cost.
+ * Root two, not two. What a step costs is quadratic in it — a panel of forty
+ * labels holds about 2 MB of canvas, mirror and array texture at one device
+ * pixel to the CSS pixel, and sixteen times that at four — so the rounding up
+ * is not free space, it is bought memory nobody asked for. A panel measuring
+ * 2.3 gets 4 under powers of two, which is three quarters waste; under root
+ * two it gets 2.83, which no eye has told the two apart from, at half the
+ * memory and half of every upload the panel makes for the rest of its life.
+ *
+ * What it costs back is more boundaries to cross, and crossing one re-draws
+ * every run on the panel. That is the trade, and it is the right way round:
+ * a crossing is a burst that the hold below already makes rare, and the
+ * memory is paid the whole time the panel is open.
+ *
+ * Counted in steps to a doubling rather than kept as the ratio itself so
+ * that the ladder comes out *exact* on the octaves. `Math.SQRT2 ** 2` is
+ * 2.0000000000000004, and a run scaled by that is a pixel wider than a run
+ * scaled by 2 — one wasted column on every label on the panel, for nothing.
  */
-const COARSEN_AT = 0.4;
+const STEPS_PER_DOUBLING = 2;
+
+/**
+ * How far under a step's own boundary the measurement has to fall before the
+ * panel is rasterized smaller again.
+ *
+ * A step covers everything from the step below it up to itself, and a panel
+ * sitting exactly on that boundary would re-draw every label it has, twice,
+ * every time the player's head drifted a centimetre. Coarsening is held back
+ * to a fifth under the boundary instead, which is a gap no amount of standing
+ * still can cross. Sharpening is not held back at all: going up is the
+ * direction somebody is walking towards the panel to do, and a frame of soft
+ * text on the way in is what the delay would cost.
+ */
+const COARSEN_MARGIN = 0.8;
 
 const scratchScale = new THREE.Vector3();
 const scratchPosition = new THREE.Vector3();
@@ -64,22 +88,23 @@ const scratchViewer = new THREE.Vector3();
 const scratchCentre = new THREE.Vector3();
 
 /**
- * The step a measurement belongs to: the power of two at or above it, inside
- * what a run is allowed to be drawn at.
+ * The step a measurement belongs to: the power of root two at or above it,
+ * inside what this panel is allowed to be drawn at.
  *
- * Powers of two rather than the number itself, because the number moves with
- * the player's head and every change of it re-rasterizes the whole panel.
- * Three steps is enough — a panel is read from about one distance, and the
- * one below is never more than half as sharp as it could be.
+ * Stepped at all rather than taken as it comes, because the measurement moves
+ * with the player's head and every change of it re-rasterizes the whole
+ * panel. A handful of steps is what makes the answer sit still.
  *
  * @param {number} measured
+ * @param {number} max
  * @returns {number}
  */
-function stepFor(measured) {
+function stepFor(measured, max) {
   if (!Number.isFinite(measured) || measured <= 1) {
     return 1;
   }
-  return Math.min(MAX_TEXT_SCALE, 2 ** Math.ceil(Math.log2(measured)));
+  const exponent = Math.ceil(Math.log2(measured) * STEPS_PER_DOUBLING);
+  return Math.min(max, 2 ** (exponent / STEPS_PER_DOUBLING));
 }
 
 /**
@@ -132,8 +157,17 @@ function pixelsPerUnitAtUnitDistance(renderer, camera) {
  * @param {WebGLRenderer} renderer
  * @param {Camera} camera The camera the scene renders through, which is only
  *   the viewer's outside an immersive session — see above.
+ * @param {number} [maxScale] The most this panel is rasterized at, for a
+ *   panel that would rather be soft than large — a long list, where the
+ *   ceiling is reached by hundreds of runs at once rather than by one. Only
+ *   ever lowers: `MAX_TEXT_SCALE` is what a run is allowed to cost at all,
+ *   and nothing asked for here goes above it.
  */
-export function createTextScale(container, renderer, camera) {
+export function createTextScale(container, renderer, camera, maxScale = MAX_TEXT_SCALE) {
+  const max = Math.min(
+    MAX_TEXT_SCALE,
+    Math.max(1, Number.isFinite(maxScale) ? maxScale : MAX_TEXT_SCALE),
+  );
   const published = Signal.of(1);
   /** Read back without tracking anything, which a frame callback must not. */
   let step = 1;
@@ -194,9 +228,11 @@ export function createTextScale(container, renderer, camera) {
         middle.distanceTo(scratchViewer.setFromMatrixPosition(viewer.matrixWorld)),
       );
       const measured = (metresPerPixel * pixelsPerUnit) / distance;
-      const wanted = stepFor(measured);
-      // Up at once, down only once the measurement is clear of the boundary.
-      if (wanted > step || (wanted < step && measured <= step * COARSEN_AT)) {
+      const wanted = stepFor(measured, max);
+      // Up at once, down only once the measurement is clear of the boundary
+      // this step sits on, which is a step's worth below the step itself.
+      const boundary = step / 2 ** (1 / STEPS_PER_DOUBLING);
+      if (wanted > step || (wanted < step && measured <= boundary * COARSEN_MARGIN)) {
         step = wanted;
         published.set(wanted);
       }

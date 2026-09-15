@@ -32,14 +32,19 @@ function renderer() {
  * A panel of `size` container pixels, `metresPerPixel` metres to each of
  * them, sitting `distance` metres straight ahead of a camera at the origin.
  *
- * @param {{ metresPerPixel: number, distance: number, size?: [number, number] }} options
+ * @param {{
+ *   metresPerPixel: number,
+ *   distance: number,
+ *   size?: [number, number],
+ *   maxScale?: number,
+ * }} options
  */
-function panel({ metresPerPixel, distance, size = [0, 0] }) {
+function panel({ metresPerPixel, distance, size = [0, 0], maxScale }) {
   const camera = new THREE.PerspectiveCamera(FOV, 1, 0.1, 100);
   camera.updateProjectionMatrix();
   camera.updateMatrixWorld();
   const container = new THREE.Group();
-  const scale = createTextScale(container, renderer(), camera);
+  const scale = createTextScale(container, renderer(), camera, maxScale);
   scale.setPanelSize(size[0], size[1]);
   /** @param {number} to */
   const moveTo = (to) => {
@@ -71,9 +76,23 @@ describe("createTextScale", () => {
     assert.equal(p.scale.read(), 2);
   });
 
-  test("a step is the power of two above the measurement, not the one below", () => {
-    // 0.001 * 1000 / 0.4 === 2.5, which two would leave short.
+  test("a step is the root two above the measurement, not the one below", () => {
+    // 0.001 * 1000 / 0.4 === 2.5, which 2 would leave short and 4 would
+    // overshoot by three quarters of the memory it costs.
     const p = panel({ metresPerPixel: 0.001, distance: 0.4 });
+    p.scale.measure();
+    assert.equal(p.scale.read(), 2 ** 1.5);
+  });
+
+  test("a panel can ask to stay soft rather than get large", () => {
+    const p = panel({ metresPerPixel: 0.001, distance: 0.4, maxScale: 2 });
+    p.scale.measure();
+    assert.equal(p.scale.read(), 2);
+  });
+
+  test("and cannot ask for more than a run is allowed to cost", () => {
+    // 0.001 * 1000 / 0.05 === 20, asked for at 8, given the ceiling.
+    const p = panel({ metresPerPixel: 0.001, distance: 0.05, maxScale: 8 });
     p.scale.measure();
     assert.equal(p.scale.read(), 4);
   });
@@ -99,14 +118,15 @@ describe("createTextScale", () => {
     p.scale.measure();
     assert.equal(p.scale.read(), 2);
 
-    // 0.909 of a device pixel each: under the step, but not under it far
-    // enough to be worth re-drawing every label on the panel for.
-    p.moveTo(1.1);
+    // 1.25 device pixels each. The boundary this step sits on is root two,
+    // so this is under the step — but not under it far enough to be worth
+    // re-drawing every label on the panel for.
+    p.moveTo(0.8);
     p.scale.measure();
     assert.equal(p.scale.read(), 2);
 
-    // 0.769, which is clear of the hold.
-    p.moveTo(1.3);
+    // 1.0, which is clear of the hold at (2 / root two) * 0.8 === 1.131.
+    p.moveTo(1);
     p.scale.measure();
     assert.equal(p.scale.read(), 1);
   });

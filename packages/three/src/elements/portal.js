@@ -77,6 +77,16 @@ export function getPortalRoot(node) {
  *   starving the others meanwhile is then the point, not a hazard. Within a
  *   priority the offer rotates frame by frame, so equals share the pool and
  *   none waits forever on a peer. 0 by default.
+ * @property {number} [maxTextScale] The most device pixels this panel's text
+ *   is rasterized for each of its CSS pixels. Measured per panel by default
+ *   (`textScale.js` says how) and capped at 4, which is what a panel of a
+ *   few dozen labels should be left alone to do. Lower it for a panel that
+ *   would rather be soft than large: what a step costs is quadratic in it,
+ *   and a list of hundreds of rows reaches the ceiling with every one of
+ *   them at once — the array texture behind it, the mirror of that array,
+ *   and the canvas each run keeps, all sixteen times what they were. 2 is
+ *   the setting for such a panel; 1 turns the measurement off in all but
+ *   name. Never raises: 4 is what a run is allowed to cost at all.
  * @property {(loading: boolean) => void} [onLoadingChanged] Told when the
  *   panel finishes mounting its initial content. Fires once, with `false`:
  *   the loading state starts true and never comes back, because a panel that
@@ -91,7 +101,7 @@ export function getPortalRoot(node) {
  */
 export function createPortal(
   ctx,
-  { opaqueToRays = true, budget = 5, priority = 0, onLoadingChanged } = {},
+  { opaqueToRays = true, budget = 5, priority = 0, maxTextScale, onLoadingChanged } = {},
 ) {
   const containerObject = new THREE.Group();
 
@@ -138,7 +148,12 @@ export function createPortal(
    */
   let textScale = null;
   try {
-    textScale = createTextScale(containerObject, RendererContext.get(ctx), CameraContext.get(ctx));
+    textScale = createTextScale(
+      containerObject,
+      RendererContext.get(ctx),
+      CameraContext.get(ctx),
+      maxTextScale,
+    );
     ctx = TextScaleContext.set(ctx, textScale.read);
   } catch {
     // No renderer or camera on this context. Same shape of absence the late

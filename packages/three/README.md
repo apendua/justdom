@@ -95,6 +95,15 @@ without leaving the scene:
 $(new THREE.Mesh(), [makeInteractive(() => props.draggable)]);
 ```
 
+**Hiding something takes it out of the raycast**, as it takes it out of the
+draw: `object.visible = false` on anything — the ray target itself, a group
+several levels above it, a panel the app hangs a whole card off — and nothing
+under it answers a ray or takes the cursor. That matters most for what an app
+cannot reach: a projected panel registers its own buttons and its own backing
+plane, so dropping one flag on the group it hangs off is the way to put the
+whole card away, and the way to bring it back exactly as it was. Nothing is
+deregistered, so what was pointable before is pointable again.
+
 The manager raycasts once per controller per update to route those events, and
 publishes the result:
 

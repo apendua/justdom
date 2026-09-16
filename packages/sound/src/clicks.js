@@ -25,6 +25,10 @@ import { createClickWaveform } from "./click.js";
  *   clearly further off without becoming inaudible.
  * @property {number} [volume] Loud enough to be felt as contact, quiet enough
  *   to sit under the music.
+ * @property {() => number} [gain] A multiplier over `volume`, read as each
+ *   click is played rather than held as a number — so an app whose player can
+ *   turn its noises down gets the new setting on the next click without
+ *   rebuilding the voices. One is `volume` as given; zero is silence.
  */
 
 /**
@@ -41,6 +45,7 @@ const defaults = {
   voices: 4,
   refDistance: 0.25,
   volume: 0.35,
+  gain: () => 1,
 };
 
 /**
@@ -49,7 +54,7 @@ const defaults = {
  * @returns {Clicks}
  */
 export function createClicks(listener, options = {}) {
-  const { voices: count, refDistance, volume } = { ...defaults, ...options };
+  const { voices: count, refDistance, volume, gain } = { ...defaults, ...options };
   const object = new THREE.Group();
   const { context } = listener;
   const waveform = createClickWaveform(context.sampleRate);
@@ -60,7 +65,8 @@ export function createClicks(listener, options = {}) {
     const voice = new THREE.PositionalAudio(listener);
     voice.setBuffer(buffer);
     voice.setRefDistance(refDistance);
-    voice.setVolume(volume);
+    // The volume is set as the click is played and not here: what `gain`
+    // answers may have changed since the voice was made.
     object.add(voice);
     return voice;
   });
@@ -80,6 +86,8 @@ export function createClicks(listener, options = {}) {
       if (voice.isPlaying) {
         voice.stop();
       }
+      const multiplier = gain();
+      voice.setVolume(volume * (Number.isFinite(multiplier) ? Math.max(0, multiplier) : 0));
       voice.position.copy(position);
       voice.play();
       // The panner follows the object only while the sound is playing, and it

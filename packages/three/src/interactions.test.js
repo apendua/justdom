@@ -357,4 +357,41 @@ describe("getIntersection", () => {
       "hiding the registered root takes the whole subtree out of the cast",
     );
   });
+
+  test("a registered object hidden from above is not a ray target either", () => {
+    // The registration set is flat: each entry is the root of its own walk,
+    // and nothing above it is ever looked at. So a scene that hides a whole
+    // card the way the renderer expects — one flag on the group it hangs off
+    // — used to hide it from the draw and from nothing else, and the buttons
+    // a projected panel registers for itself, which an app cannot reach, went
+    // on answering rays behind it.
+    const manager = new InteractionManager();
+    const card = new THREE.Object3D();
+    const inner = new THREE.Object3D();
+    const button = targetMesh(5);
+    inner.add(button);
+    card.add(inner);
+    card.updateMatrixWorld(true);
+    // The button registers itself, as a projected panel's does; nothing ever
+    // hands the manager the card it hangs under.
+    manager.add(button);
+    const controller = fakeController();
+
+    assert.equal(manager.getIntersection(controller)?.object, button, "up, it takes the ray");
+
+    card.visible = false;
+    assert.equal(
+      manager.getIntersection(controller),
+      undefined,
+      "a card hidden two levels up takes its buttons out of the cast with it",
+    );
+
+    // And it all comes back: hiding is a flag and not a deregistration, so
+    // what was interactive before is interactive again.
+    card.visible = true;
+    assert.equal(manager.getIntersection(controller)?.object, button, "and back again");
+
+    inner.visible = false;
+    assert.equal(manager.getIntersection(controller), undefined, "one level up does it too");
+  });
 });

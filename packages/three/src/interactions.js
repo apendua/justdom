@@ -429,6 +429,9 @@ export class InteractionManager {
     /** @type {THREE.Intersection<THREE.Object3D<XREventMap>>[]} */
     const intersections = [];
     for (const object of this.#objects) {
+      if (!drawn(object)) {
+        continue;
+      }
       intersectVisible(raycaster, object, intersections);
     }
     intersections.sort(byDistance);
@@ -451,6 +454,36 @@ function byDistance(a, b) {
 }
 
 /**
+ * Whether anything *above* a registered object has culled it out of the
+ * draw.
+ *
+ * `intersectVisible` reads `visible` from the registered object downwards,
+ * which is everything three's own recursion would have looked at. What it
+ * cannot see is everything upwards, and the registration set is flat — each
+ * entry is the root of its own walk, and nothing ever asks who its parents
+ * are. So a scene that hides a whole card the way the renderer expects, by
+ * dropping one flag on the group it hangs off, hid it from the draw and from
+ * nothing else: every button and every backing plane registered inside it
+ * went on answering rays, and the cursor went on landing on a card that was
+ * not there. A projected panel is the case that bites, since its blocker and
+ * its buttons register themselves and an app has no way to reach them.
+ *
+ * One walk up the parents per registered object per cast, against a subtree
+ * of ray tests saved whenever it answers no.
+ *
+ * @param {THREE.Object3D<XREventMap>} object
+ * @returns {boolean}
+ */
+function drawn(object) {
+  for (let node = object.parent; node; node = node.parent) {
+    if (!node.visible) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/**
  * Three's own `intersectObjects` recursion, minus the one thing it refuses
  * to consult: `visible`. The raycaster deliberately ignores visibility — a
  * defensible default for a scene tool — but here it made every hidden row
@@ -459,7 +492,9 @@ function byDistance(a, b) {
  * per controller per frame to hit nothing anyone could see. The mirror's
  * contract is the renderer's: an object culled out of the draw is out of
  * the raycast, and its subtree with it — which is what `div()` already
- * promises when it drops a hidden row's registration.
+ * promises when it drops a hidden row's registration. `drawn` above is the
+ * other half of the same contract, for what hangs over a registered object
+ * rather than under it.
  *
  * @param {THREE.Raycaster} raycaster
  * @param {THREE.Object3D<XREventMap>} object

@@ -2,6 +2,58 @@
   "name": "@apendua/freedom",
   "entries": [
     {
+      "version": "0.22.0",
+      "tag": "@apendua/freedom_v0.22.0",
+      "date": "Sat, 19 Sep 2026 16:40:06 GMT",
+      "comments": {
+        "minor": [
+          {
+            "comment": "A child-list change now restyles only the rows the positional selectors could reach (the tail from the change, the row before it, and the last earlier element of each kind), so a list mounted one row at a time is linear in its length rather than quadratic. :nth-last-child and :nth-last-of-type are no longer followed on structural changes; see the README."
+          },
+          {
+            "comment": "Text runs are sampled anisotropically, and a run whose colours are baked into its texture gets a mip chain built from premultiplied canvas halvings rather than one the driver averages toward black"
+          },
+          {
+            "comment": "A panel's text is rasterized for the device pixels the panel is really painting -- measured from its world scale, the projection and its distance -- rather than for the page's devicePixelRatio, which says nothing about either in a scene and reports 1 in a headset"
+          },
+          {
+            "comment": "The measured text scale steps by root two rather than by two, which halves what a panel of a given sharpness costs, and a portal can lower its own ceiling with the new maxTextScale option"
+          },
+          {
+            "comment": "Add makeReveal: text laid out in full and drawn up to a cursor, cut in the fragment shader"
+          },
+          {
+            "comment": "createXRButton takes autoEnter: ask for the session as soon as the button is built, rather than waiting for a click. Only where the page runs as an installed app, whose launch is the activation requestSession needs; a browser tab still waits to be asked. The button is built and returned either way, so a refused session leaves a way in rather than a black screen."
+          }
+        ],
+        "patch": [
+          {
+            "comment": "Do not end an XR session over a ResizeObserver loop notice, and stop scrollable's observer causing one"
+          },
+          {
+            "comment": "Stop a numeric font-variant voiding the canvas font string. The font-variant slot of the canvas shorthand is the CSS2 one, normal | small-caps, but style.fontVariant is the computed shorthand and reads back whatever its longhands are set to -- an element carrying font-variant-numeric: tabular-nums reported \"tabular-nums\" there. An invalid font string is a silent no-op on a 2D context, so every run drawn from such a style came out at the canvas default of 10px sans-serif, whatever the element's own size and weight said. Only the caps longhand now reaches the shorthand."
+          },
+          {
+            "comment": "Hiding an object now takes it and its subtree out of the raycast, however far above the registered ray target the hidden object is. The registration set is flat, so a card hidden by one flag on the group it hangs off went on answering rays -- and a projected panel's own buttons and backing plane are not reachable by the app to hide one at a time."
+          }
+        ],
+        "dependency": [
+          {
+            "comment": "Updating dependency \"@apendua/justdom\" to `0.3.3`"
+          },
+          {
+            "comment": "Updating dependency \"@apendua/signal\" to `0.8.1`"
+          },
+          {
+            "comment": "Updating dependency \"@apendua/vite-hmr\" to `0.4.1`"
+          },
+          {
+            "comment": "Updating dependency \"@apendua/signal\" to `0.8.1`"
+          }
+        ]
+      }
+    },
+    {
       "version": "0.21.0",
       "tag": "@apendua/freedom_v0.21.0",
       "date": "Sat, 12 Sep 2026 17:18:36 GMT",

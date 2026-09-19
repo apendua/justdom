@@ -1,6 +1,13 @@
 # Change Log - @apendua/justui
 
-This log was last generated on Sat, 12 Sep 2026 17:18:36 GMT and should not be manually modified.
+This log was last generated on Sat, 19 Sep 2026 16:40:06 GMT and should not be manually modified.
+
+## 0.2.6
+Sat, 19 Sep 2026 16:40:06 GMT
+
+### Patches
+
+- Do not end an XR session over a ResizeObserver loop notice, and stop scrollable's observer causing one
 
 ## 0.2.5
 Sat, 12 Sep 2026 17:18:36 GMT

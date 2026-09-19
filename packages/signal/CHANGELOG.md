@@ -1,6 +1,13 @@
 # Change Log - @apendua/signal
 
-This log was last generated on Sun, 06 Sep 2026 21:40:37 GMT and should not be manually modified.
+This log was last generated on Sat, 19 Sep 2026 16:40:06 GMT and should not be manually modified.
+
+## 0.8.1
+Sat, 19 Sep 2026 16:40:06 GMT
+
+### Patches
+
+- A lane's array was only let go of when a drain reached its end, which needs the last slot to be live: a spent tail, and every slot before it, stayed and held its tasks -- and everything they closed over -- for as long as the queue lived. The array is dropped the moment nothing in the lane is left to run.
 
 ## 0.8.0
 Sun, 06 Sep 2026 21:40:37 GMT

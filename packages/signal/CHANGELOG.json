@@ -2,6 +2,18 @@
   "name": "@apendua/signal",
   "entries": [
     {
+      "version": "0.8.1",
+      "tag": "@apendua/signal_v0.8.1",
+      "date": "Sat, 19 Sep 2026 16:40:06 GMT",
+      "comments": {
+        "patch": [
+          {
+            "comment": "A lane's array was only let go of when a drain reached its end, which needs the last slot to be live: a spent tail, and every slot before it, stayed and held its tasks -- and everything they closed over -- for as long as the queue lived. The array is dropped the moment nothing in the lane is left to run."
+          }
+        ]
+      }
+    },
+    {
       "version": "0.8.0",
       "tag": "@apendua/signal_v0.8.0",
       "date": "Sun, 06 Sep 2026 21:40:37 GMT",

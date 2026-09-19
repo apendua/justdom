@@ -1,6 +1,24 @@
 # Change Log - @apendua/freedom
 
-This log was last generated on Sat, 12 Sep 2026 17:18:36 GMT and should not be manually modified.
+This log was last generated on Sat, 19 Sep 2026 16:40:06 GMT and should not be manually modified.
+
+## 0.22.0
+Sat, 19 Sep 2026 16:40:06 GMT
+
+### Minor changes
+
+- A child-list change now restyles only the rows the positional selectors could reach (the tail from the change, the row before it, and the last earlier element of each kind), so a list mounted one row at a time is linear in its length rather than quadratic. :nth-last-child and :nth-last-of-type are no longer followed on structural changes; see the README.
+- Text runs are sampled anisotropically, and a run whose colours are baked into its texture gets a mip chain built from premultiplied canvas halvings rather than one the driver averages toward black
+- A panel's text is rasterized for the device pixels the panel is really painting -- measured from its world scale, the projection and its distance -- rather than for the page's devicePixelRatio, which says nothing about either in a scene and reports 1 in a headset
+- The measured text scale steps by root two rather than by two, which halves what a panel of a given sharpness costs, and a portal can lower its own ceiling with the new maxTextScale option
+- Add makeReveal: text laid out in full and drawn up to a cursor, cut in the fragment shader
+- createXRButton takes autoEnter: ask for the session as soon as the button is built, rather than waiting for a click. Only where the page runs as an installed app, whose launch is the activation requestSession needs; a browser tab still waits to be asked. The button is built and returned either way, so a refused session leaves a way in rather than a black screen.
+
+### Patches
+
+- Do not end an XR session over a ResizeObserver loop notice, and stop scrollable's observer causing one
+- Stop a numeric font-variant voiding the canvas font string. The font-variant slot of the canvas shorthand is the CSS2 one, normal | small-caps, but style.fontVariant is the computed shorthand and reads back whatever its longhands are set to -- an element carrying font-variant-numeric: tabular-nums reported "tabular-nums" there. An invalid font string is a silent no-op on a 2D context, so every run drawn from such a style came out at the canvas default of 10px sans-serif, whatever the element's own size and weight said. Only the caps longhand now reaches the shorthand.
+- Hiding an object now takes it and its subtree out of the raycast, however far above the registered ray target the hidden object is. The registration set is flat, so a card hidden by one flag on the group it hangs off went on answering rays -- and a projected panel's own buttons and backing plane are not reachable by the app to hide one at a time.
 
 ## 0.21.0
 Sat, 12 Sep 2026 17:18:36 GMT

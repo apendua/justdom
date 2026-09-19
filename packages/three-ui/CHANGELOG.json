@@ -2,6 +2,41 @@
   "name": "@apendua/justui",
   "entries": [
     {
+      "version": "0.2.6",
+      "tag": "@apendua/justui_v0.2.6",
+      "date": "Sat, 19 Sep 2026 16:40:06 GMT",
+      "comments": {
+        "patch": [
+          {
+            "comment": "Do not end an XR session over a ResizeObserver loop notice, and stop scrollable's observer causing one"
+          }
+        ],
+        "dependency": [
+          {
+            "comment": "Updating dependency \"@apendua/freedom\" to `0.22.0`"
+          },
+          {
+            "comment": "Updating dependency \"@apendua/justdom\" to `0.3.3`"
+          },
+          {
+            "comment": "Updating dependency \"@apendua/signal\" to `0.8.1`"
+          },
+          {
+            "comment": "Updating dependency \"@apendua/vite-hmr\" to `0.4.1`"
+          },
+          {
+            "comment": "Updating dependency \"@apendua/freedom\" to `0.22.0`"
+          },
+          {
+            "comment": "Updating dependency \"@apendua/justdom\" to `0.3.3`"
+          },
+          {
+            "comment": "Updating dependency \"@apendua/signal\" to `0.8.1`"
+          }
+        ]
+      }
+    },
+    {
       "version": "0.2.5",
       "tag": "@apendua/justui_v0.2.5",
       "date": "Sat, 12 Sep 2026 17:18:36 GMT",

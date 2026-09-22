@@ -2,8 +2,20 @@ import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
 import { createBoxBatch } from "./boxBatch.js";
-import { createRectMaterial, rectGeometry } from "./sdfRect.js";
+import { batchedBoxMaterial, createRectUniforms, rectGeometry } from "./sdfRect.js";
 import { place } from "./place.js";
+
+/**
+ * A box as a portal builds one for a batch: the shared invisible material
+ * every batched box wears, and a set of numbers of its own. The two are
+ * handed to the batch together, since the material no longer carries them.
+ *
+ * @returns {{ mesh: THREE.Mesh, uniforms: Record<string, THREE.IUniform> }}
+ */
+function makeBox() {
+  const uniforms = createRectUniforms();
+  return { mesh: new THREE.Mesh(rectGeometry, batchedBoxMaterial()), uniforms };
+}
 
 /**
  * A panel with one box in it, batched.
@@ -12,17 +24,18 @@ function panel() {
   const container = new THREE.Group();
   place(container, 0, 0, 0);
 
-  const box = new THREE.Mesh(rectGeometry, createRectMaterial());
+  const { mesh: box, uniforms } = makeBox();
   place(box, 0, 0, 0);
   container.add(box);
 
   const batch = createBoxBatch(container);
-  batch.add(box);
+  batch.add(box, uniforms);
   batch.flush();
 
   return {
     container,
     box,
+    uniforms,
     batch,
     /** Where the batch believes the box is, in container space. */
     drawnX() {
@@ -50,10 +63,10 @@ function crowdedPanel(count) {
   const batch = createBoxBatch(container);
   const boxes = [];
   for (let i = 0; i < count; i++) {
-    const box = new THREE.Mesh(rectGeometry, createRectMaterial());
+    const { mesh: box, uniforms } = makeBox();
     place(box, i, 0, 0);
     container.add(box);
-    batch.add(box);
+    batch.add(box, uniforms);
     boxes.push(box);
   }
 
@@ -193,10 +206,10 @@ describe("box batch teardown", () => {
     assert.equal(p.meshes.size, 1);
 
     for (let i = 0; i < 40; i++) {
-      const box = new THREE.Mesh(rectGeometry, createRectMaterial());
+      const { mesh: box, uniforms } = makeBox();
       place(box, i, 1, 0);
       p.container.add(box);
-      p.batch.add(box);
+      p.batch.add(box, uniforms);
     }
     p.batch.flush();
     p.watch();
@@ -245,10 +258,10 @@ describe("box batch teardown", () => {
     // Grow it: the geometry is this mesh's, the material is the panel's and is
     // shared with every other bucket in it.
     for (let i = 0; i < 40; i++) {
-      const box = new THREE.Mesh(rectGeometry, createRectMaterial());
+      const { mesh: box, uniforms } = makeBox();
       place(box, i, 1, 0);
       p.container.add(box);
-      p.batch.add(box);
+      p.batch.add(box, uniforms);
     }
     p.batch.flush();
     assert.equal(geometryDisposed, true);
@@ -265,11 +278,11 @@ describe("box batch draw order", () => {
     place(container, 0, 0, 0);
     const batch = createBoxBatch(container);
 
-    const box = new THREE.Mesh(rectGeometry, createRectMaterial());
+    const { mesh: box, uniforms } = makeBox();
     place(box, 0, 0, 0);
     box.renderOrder = 7;
     container.add(box);
-    batch.add(box);
+    batch.add(box, uniforms);
     batch.flush();
 
     const bucket = /** @type {THREE.InstancedMesh} */ (
@@ -294,11 +307,11 @@ describe("box batch draw order", () => {
     // Past the initial capacity of 16, which throws the mesh away and builds a
     // bigger one — the point at which sorting by object id used to reverse.
     for (let i = 0; i < 40; i++) {
-      const box = new THREE.Mesh(rectGeometry, createRectMaterial());
+      const { mesh: box, uniforms } = makeBox();
       place(box, i, 1, 0);
       box.renderOrder = 7;
       p.container.add(box);
-      p.batch.add(box);
+      p.batch.add(box, uniforms);
     }
     p.batch.flush();
 
@@ -314,11 +327,11 @@ describe("box batch draw order", () => {
     place(container, 0, 0, 0);
     const batch = createBoxBatch(container);
     for (const order of [7, 8]) {
-      const box = new THREE.Mesh(rectGeometry, createRectMaterial());
+      const { mesh: box, uniforms } = makeBox();
       place(box, 0, 0, 0);
       box.renderOrder = order;
       container.add(box);
-      batch.add(box);
+      batch.add(box, uniforms);
     }
     batch.flush();
 
@@ -329,5 +342,62 @@ describe("box batch draw order", () => {
     // Text of order 8 draws at 8, between these two.
     assert.deepEqual(orders, [7.5, 8.5]);
     assert.ok(orders[0] < 8 && orders[1] > 8);
+  });
+});
+
+describe("the material a batched box wears", () => {
+  test("is one material, shared, and out of the draw", () => {
+    const p = panel();
+    p.batch.flush();
+    const material = /** @type {THREE.Material} */ (p.box.material);
+    assert.equal(material.visible, false, "a batched box is drawn by the batch, not by itself");
+
+    const other = makeBox();
+    p.container.add(other.mesh);
+    p.batch.add(other.mesh, other.uniforms);
+    p.batch.flush();
+    assert.equal(other.mesh.material, material, "and every batched box wears the same one");
+  });
+
+  test("removing one box does not put the others back into the draw", () => {
+    // The hazard the sharing introduces, and the reason `remove` no longer
+    // touches `visible`: clearing the flag on one box's teardown used to be
+    // harmless because the material was that box's alone. On a shared one it
+    // would put every other box on the page back into the render list.
+    const p = panel();
+    const other = makeBox();
+    p.container.add(other.mesh);
+    p.batch.add(other.mesh, other.uniforms);
+    p.batch.flush();
+
+    p.batch.remove(other.mesh);
+    p.batch.flush();
+
+    assert.equal(
+      /** @type {THREE.Material} */ (p.box.material).visible,
+      false,
+      "the box still in the batch is still the batch's to draw",
+    );
+  });
+
+  test("a box's numbers reach the bucket from its own record", () => {
+    // They no longer live on the material, so this is the path that would
+    // silently draw every box at the same size if the record were dropped.
+    const p = panel();
+    p.box.material = batchedBoxMaterial();
+    p.uniforms.uSize.value.set(37, 11);
+    p.batch.invalidate();
+    p.batch.flush();
+
+    const bucket = /** @type {THREE.InstancedMesh} */ (
+      p.container.children.find(
+        (child) => /** @type {THREE.InstancedMesh} */ (child).isInstancedMesh,
+      )
+    );
+    assert.ok(bucket);
+    const sizes = /** @type {THREE.InstancedBufferAttribute} */ (
+      bucket.geometry.getAttribute("aSize")
+    ).array;
+    assert.deepEqual([sizes[0], sizes[1]], [37, 11]);
   });
 });

@@ -217,7 +217,42 @@ void main() {
  *
  * @returns {THREE.ShaderMaterial}
  */
-export function createRectMaterial() {
+/**
+ * A box's numbers, in the shape a shader wants them.
+ *
+ * Split from the material below because most boxes have no use for a
+ * material. Every box in a portal but an `<img>` is drawn by `boxBatch` as
+ * one instance among many, and its own mesh is never put in the render list
+ * — so what its material carries is these values and nothing else, while
+ * what it costs is a `THREE.Material`: a uuid generated as a string, a place
+ * in three's bookkeeping, and a `dispose()` at teardown, per box, for a
+ * program that is never compiled.
+ *
+ * @returns {Record<string, THREE.IUniform>}
+ */
+export function createRectUniforms() {
+  return {
+    uSize: { value: new THREE.Vector2(1, 1) },
+    uRadii: { value: new THREE.Vector4(0, 0, 0, 0) },
+    uBorder: { value: new THREE.Vector4(0, 0, 0, 0) },
+    uFillColor: { value: new THREE.Vector4(0, 0, 0, 0) },
+    uBorderColor: { value: new THREE.Vector4(0, 0, 0, 0) },
+    // Nothing clips this box until something says otherwise, and "nothing"
+    // has to be a box the element sits well inside of.
+    uClip: { value: new THREE.Vector4(-1e6, -1e6, 1e6, 1e6) },
+    uClipRadii: { value: new THREE.Vector4(0, 0, 0, 0) },
+    // No picture until something loads one. Three binds its own empty
+    // texture for a null sampler, so the declaration costs an unused unit
+    // and nothing else; the branch above is skipped for every box in the
+    // panel at once, which is as coherent as a branch gets.
+    uImage: { value: null },
+    uImageRect: { value: new THREE.Vector4(0, 0, 0, 0) },
+    uImageClip: { value: new THREE.Vector4(0, 0, 0, 0) },
+    uImageOpacity: { value: 0 },
+  };
+}
+
+export function createRectMaterial(uniforms = createRectUniforms()) {
   return new THREE.ShaderMaterial({
     vertexShader,
     fragmentShader,
@@ -240,26 +275,37 @@ export function createRectMaterial() {
     // draw call, was the largest single cost in the frame: dropping both
     // took the render from 86ms to 25ms, pixel for pixel identical.
     forceSinglePass: true,
-    uniforms: {
-      uSize: { value: new THREE.Vector2(1, 1) },
-      uRadii: { value: new THREE.Vector4(0, 0, 0, 0) },
-      uBorder: { value: new THREE.Vector4(0, 0, 0, 0) },
-      uFillColor: { value: new THREE.Vector4(0, 0, 0, 0) },
-      uBorderColor: { value: new THREE.Vector4(0, 0, 0, 0) },
-      // Nothing clips this box until something says otherwise, and "nothing"
-      // has to be a box the element sits well inside of.
-      uClip: { value: new THREE.Vector4(-1e6, -1e6, 1e6, 1e6) },
-      uClipRadii: { value: new THREE.Vector4(0, 0, 0, 0) },
-      // No picture until something loads one. Three binds its own empty
-      // texture for a null sampler, so the declaration costs an unused unit
-      // and nothing else; the branch above is skipped for every box in the
-      // panel at once, which is as coherent as a branch gets.
-      uImage: { value: null },
-      uImageRect: { value: new THREE.Vector4(0, 0, 0, 0) },
-      uImageClip: { value: new THREE.Vector4(0, 0, 0, 0) },
-      uImageOpacity: { value: 0 },
-    },
+    uniforms,
   });
+}
+
+/**
+ * The material a batched box wears.
+ *
+ * One for the page, invisible, and never drawn: `boxBatch` draws these boxes
+ * as instances, so every one of them wants exactly the same thing from a
+ * material — to be skipped. Three consults `visible` before it puts a mesh
+ * in the render list and never compiles a program it does not draw with, so
+ * the cost of sharing this is nothing at all, and the cost of not sharing it
+ * was one material per box.
+ *
+ * Deliberately not disposed. It belongs to the module rather than to any
+ * panel, and disposing it on one panel's teardown would take the material
+ * out from under every other panel on the page.
+ *
+ * @type {THREE.ShaderMaterial | null}
+ */
+let batchedMaterial = null;
+
+/**
+ * @returns {THREE.ShaderMaterial}
+ */
+export function batchedBoxMaterial() {
+  if (!batchedMaterial) {
+    batchedMaterial = createRectMaterial();
+    batchedMaterial.visible = false;
+  }
+  return batchedMaterial;
 }
 
 /**
@@ -267,12 +313,12 @@ export function createRectMaterial() {
  * rect material, in the element's own px. Another uniform write, on the same
  * terms as the rest: a scroll moves this every frame it is moving.
  *
- * @param {THREE.ShaderMaterial} material
+ * @param {Record<string, THREE.IUniform>} uniforms
  * @param {import('./clip.js').ClipBox} box
  * @returns {void}
  */
-export function writeClipUniforms(material, box) {
-  const { uClip, uClipRadii } = material.uniforms;
+export function writeClipUniforms(uniforms, box) {
+  const { uClip, uClipRadii } = uniforms;
   uClip.value.set(box.left, box.top, box.right, box.bottom);
   uClipRadii.value.set(box.topLeft, box.topRight, box.bottomRight, box.bottomLeft);
 }
@@ -286,12 +332,12 @@ export function writeClipUniforms(material, box) {
  * decidedly non-square element may differ from the elliptical corner CSS
  * would draw, circular being the one shape one number describes.
  *
- * @param {THREE.ShaderMaterial} material
+ * @param {Record<string, THREE.IUniform>} uniforms
  * @param {VisualProperties} properties
  * @returns {void}
  */
-export function writeRectUniforms(material, properties) {
-  const { uSize, uRadii, uBorder, uFillColor, uBorderColor } = material.uniforms;
+export function writeRectUniforms(uniforms, properties) {
+  const { uSize, uRadii, uBorder, uFillColor, uBorderColor } = uniforms;
   uSize.value.set(properties.totalWidth, properties.totalHeight);
   uRadii.value.set(
     properties.borderTopLeftRadius,
@@ -317,12 +363,12 @@ export function writeRectUniforms(material, properties) {
  * a resize and an `object-position` transition all end up here, and none of
  * them recompiles anything.
  *
- * @param {THREE.ShaderMaterial} material
+ * @param {Record<string, THREE.IUniform>} uniforms
  * @param {ContentImage | null} image
  * @returns {void}
  */
-export function writeImageUniforms(material, image) {
-  const { uImage, uImageRect, uImageClip, uImageOpacity } = material.uniforms;
+export function writeImageUniforms(uniforms, image) {
+  const { uImage, uImageRect, uImageClip, uImageOpacity } = uniforms;
   if (!image) {
     // Dropping the reference matters as much as the switch: an element that
     // has let go of its picture must not be the reason its texture stays

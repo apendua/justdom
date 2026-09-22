@@ -276,15 +276,18 @@ class Bucket {
    * @param {number} index
    * @param {THREE.Mesh} box
    * @param {THREE.Matrix4} matrix
+   * @param {Record<string, THREE.IUniform>} uniforms The box's numbers. Handed
+   *   in rather than read off `box.material`, because a batched box shares one
+   *   invisible material with every other batched box on the page and keeps
+   *   its numbers to itself.
    * @returns {void}
    */
-  write(index, box, matrix) {
+  write(index, box, matrix, uniforms) {
     const mesh = this.mesh;
     if (!mesh) {
       return;
     }
     mesh.setMatrixAt(index, matrix);
-    const uniforms = /** @type {THREE.ShaderMaterial} */ (box.material).uniforms;
     const { uSize, uRadii, uBorder, uFillColor, uBorderColor, uClip, uClipRadii } = uniforms;
     this.data.aSize[index * 2] = uSize.value.x;
     this.data.aSize[index * 2 + 1] = uSize.value.y;
@@ -381,9 +384,12 @@ export class BoxBatch {
    * The meshes that have given up drawing themselves, and are drawn from a
    * bucket instead.
    *
-   * @type {Set<THREE.Mesh>}
+   * Each box against the numbers it is drawn from, which a batched box keeps
+   * to itself rather than on the material it shares with every other one.
+   *
+   * @type {Map<THREE.Mesh, Record<string, THREE.IUniform>>}
    */
-  #members = new Set();
+  #members = new Map();
 
   /** @type {Map<number, Bucket>} */
   #buckets = new Map();
@@ -426,17 +432,21 @@ export class BoxBatch {
    * starts drawing it. Idempotent.
    *
    * @param {THREE.Mesh} mesh
+   * @param {Record<string, THREE.IUniform>} uniforms The numbers to draw it
+   *   from — see `Bucket.write`.
    * @returns {void}
    */
-  add(mesh) {
+  add(mesh, uniforms) {
     if (this.#members.has(mesh)) {
       return;
     }
-    this.#members.add(mesh);
-    // The one flag that takes a mesh out of the render list without taking it
-    // out of anything else — the ray still finds it, and `visible` still means
-    // what it meant.
-    /** @type {THREE.Material} */ (mesh.material).visible = false;
+    this.#members.set(mesh, uniforms);
+    // Nothing to flip: a batched box wears `batchedBoxMaterial`, which is
+    // invisible and shared, so it is already out of the render list without
+    // being out of anything else — the ray still finds it, and `visible` still
+    // means what it meant. This used to set the flag per mesh, which a shared
+    // material cannot have: clearing it on one box's teardown would put every
+    // other box on the page back into the draw.
     // A mesh that will not be drawn has no business being tested against the
     // frustum for it. Three asks that question — a bounding-sphere transform
     // per mesh per frame — before it looks at whether the material is visible,
@@ -456,9 +466,7 @@ export class BoxBatch {
     if (!this.#members.delete(mesh)) {
       return;
     }
-    if (mesh.material) {
-      /** @type {THREE.Material} */ (mesh.material).visible = true;
-    }
+    // No visibility to restore: the material was never this mesh's to hide.
     mesh.frustumCulled = true;
     this.invalidate();
   }
@@ -610,7 +618,12 @@ export class BoxBatch {
       const box = found[i];
       const bucket = this.#buckets.get(box.renderOrder);
       if (bucket) {
-        bucket.write(bucket.count, box, matrices[i]);
+        bucket.write(
+          bucket.count,
+          box,
+          matrices[i],
+          /** @type {Record<string, THREE.IUniform>} */ (this.#members.get(box)),
+        );
         bucket.count += 1;
       }
     }

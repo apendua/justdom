@@ -1036,6 +1036,56 @@ describe("createPortal", () => {
     portal.disconnect();
   });
 
+  test("the batches draw what the commit attached, in the frame it was attached", async () => {
+    // A box tells its batch about itself when it is built, and the batch
+    // rebuilds by walking the panel — which, with attachment held for the
+    // commit, found nothing where the box now hangs. The boxes then stayed
+    // out of the draw until something unrelated restyled the panel, while
+    // the text that draws itself appeared at once: labels over no card. The
+    // commit has to ask for the rebuild itself. The instanced meshes the
+    // box batch draws from are the observable: their counts add up to the
+    // boxes the walk found.
+    const manager = new InteractionManager();
+    const ctx = InteractionContext.set({}, manager);
+    const portal = createPortal(ctx, { budget: 0 });
+    const parent = new THREE.Group();
+    portal.addTo(parent);
+    const containerObject = parent.children[0];
+    const drawn = () =>
+      containerObject.children
+        .filter((child) => child instanceof THREE.InstancedMesh)
+        .reduce((sum, mesh) => sum + /** @type {THREE.InstancedMesh} */ (mesh).count, 0);
+
+    /** @type {import("@apendua/justdom").Mountable | undefined} */
+    let mountable;
+    const tree = $("div", [children($("div"), $("div"))]);
+    const subscription = tree.subscribe((value) => {
+      mountable = value;
+    });
+    assert.ok(mountable);
+    portal.mount(mountable);
+    await settle(portal);
+    assert.equal(drawn(), 3, "the root and two rows, drawn from the moment the panel shows");
+
+    const containers = document.querySelectorAll("[data-xr-portal]");
+    const list = /** @type {HTMLElement} */ (containers[containers.length - 1].firstElementChild);
+    list.appendChild(document.createElement("div"));
+    list.appendChild(document.createElement("div"));
+    await drain();
+    assert.equal(drawn(), 5, "two more, drawn in the frame they were attached");
+
+    // One of the rows the test appended, not one of justdom's.
+    list.removeChild(/** @type {ChildNode} */ (list.lastElementChild));
+    await drain();
+    assert.equal(drawn(), 4, "and one fewer in the frame it was taken out");
+
+    subscription.unsubscribe();
+    portal.disconnect();
+    // Unmounting asked for a frame; let it run so it does not reach the
+    // next test's count of the shared stub's queue.
+    await drain();
+  });
+
   test("a child moved out of a removed row keeps its object", async () => {
     // Row A goes and its inner element E is appended under row B in the
     // same flush. E is in the tree, its new place is only pending, and its

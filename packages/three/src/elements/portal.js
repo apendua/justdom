@@ -605,6 +605,7 @@ export function createPortal(
    * observer happened to report first.
    */
   const commit = () => {
+    const changed = pendingAttachments.length > 0 || pendingRemovals.size > 0;
     for (const [parentObject, object] of pendingAttachments) {
       const node = objectToNode.get(object);
       // `add` is also the move: an object already under this parent goes to
@@ -619,6 +620,16 @@ export function createPortal(
       object.removeFromParent();
     }
     pendingRemovals.clear();
+    if (changed) {
+      // The batches draw what a walk of the panel finds, and the walk just
+      // changed. Every box and run told its batch about itself when it was
+      // built — but that rebuild ran while the object was still loose, and
+      // found nothing where it now hangs. Without this the new boxes stayed
+      // out of the draw until something unrelated restyled the panel, while
+      // whatever draws itself appeared at once: text over no card.
+      boxBatch.invalidate();
+      textBatch.invalidate();
+    }
   };
 
   /**

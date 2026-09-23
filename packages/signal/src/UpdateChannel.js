@@ -15,6 +15,11 @@ import { Subject } from "./subscribable.js";
  *   trigger of its own — for a caller that drives several channels itself and
  *   wants to divide one budget between them
  * @property {number} [budget] milliseconds of wall clock one pass may spend
+ * @property {boolean} [atomic] run the channel's effects all at once or not at
+ *   all. A pass spends its budget bringing what the queued effects *read* up
+ *   to date — see `Effect.warm` — and runs the effects only once every one of
+ *   them has been, in a single unbudgeted sweep. For an output that has to
+ *   change as a whole: a panel whose boxes moved together.
  * @property {boolean} [fixedOrder] refuse automatic order correction. The
  *   channel then warns about a violation instead of fixing it, which is what
  *   you want when the order is a decision rather than a guess.
@@ -37,6 +42,29 @@ import { Subject } from "./subscribable.js";
  * Only effects belong to channels. A `Derived` has no channel because it has
  * no schedule: it produces a value when somebody asks, and deferring it would
  * mean handing that somebody a stale one.
+ *
+ * ### Atomic channels
+ *
+ * A budget spreads a channel's effects over several passes, and an output
+ * made of many effects then changes in instalments: the boxes a pass got to
+ * move, the ones it did not stay. Where that is worse than waiting, the
+ * channel is `atomic`. The budget is then spent on the other half of the
+ * work — resolving what the queued effects read, which in a graph built the
+ * way this library asks for is where the expense is, since a `Derived` does
+ * the measuring and an effect only writes the result — and the effects
+ * themselves run in one unbudgeted sweep once nothing expensive is left for
+ * them to pull. Until then the channel's outputs stand exactly as they were.
+ * `warm()` is that first half on its own, for a caller with other work to
+ * finish before the sweep may happen.
+ *
+ * What is held is the *effects*. The nodes they read are resolved as the
+ * budget allows, and a read of one of those nodes from outside the channel
+ * sees the resolved value; it is the writes the effects make that wait, which
+ * is where the coherence of an output lives. The trade is the one a budget
+ * always makes, moved one step: a change that will not fit in one pass is
+ * seen later rather than in pieces, and under input that keeps arriving
+ * faster than the budget resolves it, later can be a long time —
+ * `maxStalePasses` is the bound on that, here as elsewhere.
  *
  * ### Order
  *
@@ -70,6 +98,9 @@ export default class UpdateChannel {
 
   /** @type {boolean} */
   #manual;
+
+  /** @type {boolean} */
+  #atomic;
 
   /** @type {number} */
   #maxStalePasses;
@@ -130,6 +161,7 @@ export default class UpdateChannel {
       order = 0,
       trigger,
       manual = false,
+      atomic = false,
       budget = Infinity,
       fixedOrder = false,
       now = () => performance.now(),
@@ -143,6 +175,7 @@ export default class UpdateChannel {
     this.#fixedOrder = fixedOrder;
     this.#trigger = trigger;
     this.#manual = manual;
+    this.#atomic = atomic;
     this.#budget = budget;
     this.#now = now;
     this.#maxStalePasses = maxStalePasses;
@@ -193,6 +226,14 @@ export default class UpdateChannel {
    */
   get drainsOnDemand() {
     return this.#trigger !== undefined || this.#manual;
+  }
+
+  /**
+   * Whether this channel's effects run all at once or not at all — see the
+   * note on atomic channels above.
+   */
+  get isAtomic() {
+    return this.#atomic;
   }
 
   get isPaused() {
@@ -256,6 +297,27 @@ export default class UpdateChannel {
    */
   flush(options = {}) {
     this.#queue?.flushChannel(this, options.budget ?? this.#budget);
+  }
+
+  /**
+   * Bring what this channel's queued effects read up to date, without running
+   * any of them: one pass, bounded by `budget` unless another is given here.
+   *
+   * This is the first half of what an atomic channel's `flush()` does, on its
+   * own — for a caller that has other work to finish before the effects may
+   * run, and would rather the pass got ahead on the reading meanwhile than sat
+   * idle. Any channel can be warmed; only an atomic one needs to be.
+   *
+   * Called during a `batch()` or a flush it does nothing and says so: the
+   * values it would resolve are the ones the batch is halfway through
+   * changing.
+   *
+   * @param {{ budget?: number }} [options]
+   * @returns {boolean} whether everything queued is now warm — which nothing
+   *   queued trivially is.
+   */
+  warm(options = {}) {
+    return this.#queue?.warmChannel(this, options.budget ?? this.#budget) ?? true;
   }
 
   /**

@@ -299,6 +299,17 @@ export function createPortal(
    * the catch-up drain the default would force is precisely the stall this
    * exists to avoid.
    *
+   * Atomic, because a panel is one surface. A budget spent running the
+   * effects moved the boxes it reached and left the rest where they were, so
+   * an update too big for one frame arrived as a wave — rows sliding a few
+   * at a time — where the initial mount, hidden until everything had
+   * settled, arrived whole. An atomic channel spends the budget on what the
+   * effects *read* instead — the measuring and the rasterizing, which is
+   * where a panel's cost is — and runs the effects together, in the frame
+   * that finds nothing left to read. Until then the panel stands as it was.
+   * The objects the pump builds meanwhile, and the ones whose nodes left,
+   * wait for that same frame; see `commit` below.
+   *
    * Null where there are no frames — see above — and every `withChannel`
    * below degrades to the default channel, which is synchronous mounting.
    *
@@ -309,6 +320,7 @@ export function createPortal(
         name: "portal",
         order: 1,
         manual: true,
+        atomic: true,
         maxStalePasses: Infinity,
       })
     : null;
@@ -483,6 +495,86 @@ export function createPortal(
   let sawContent = false;
 
   /**
+   * Objects built and not yet in the scene, each with the content group it
+   * belongs under, in the order they were built. Held for the commit rather
+   * than attached on the spot, so that a row appearing and the rows it
+   * pushes down arrive in the same frame — the channel holds the moves, so
+   * the scene has to hold the arrivals. Only a pumped portal keeps this
+   * list; with no frames to slice across there is nothing to hold for.
+   *
+   * @type {Array<[parent: Object3D, child: Object3D]>}
+   */
+  const pendingAttachments = [];
+
+  /**
+   * Nodes that left the tree and whose objects are still in the scene, for
+   * the same reason: a row leaving and the rows that close over it are one
+   * change. Checked again at the commit — a node moved rather than removed
+   * is back in the tree by then, and its object is not to be taken down.
+   *
+   * @type {Set<Node>}
+   */
+  const pendingRemovals = new Set();
+
+  /**
+   * Put an object where it belongs: now, or at the commit if there is one
+   * to wait for. Both callers go through here so that a node re-inserted
+   * mid-update and one built by the pump keep the same frame.
+   *
+   * @param {Object3D} parentObject
+   * @param {Object3D} object
+   */
+  const attach = (parentObject, object) => {
+    if (pump) {
+      pendingAttachments.push([getContentGroup(parentObject), object]);
+    } else {
+      getContentGroup(parentObject).add(object);
+    }
+  };
+
+  /**
+   * Take a node's object down, now or at the commit, on the same terms.
+   *
+   * @param {Node} node
+   */
+  const detach = (node) => {
+    if (pump) {
+      pendingRemovals.add(node);
+    } else {
+      nodeToObject.get(node)?.removeFromParent();
+      cleanup(node);
+    }
+  };
+
+  /**
+   * The moment the scene changes: the pump has swept the channel, so every
+   * box that moved has moved, and this is what goes with it. Removals first
+   * — a node back in the tree since it was listed is skipped, its object
+   * being about to be re-attached or already where it belongs — then the
+   * arrivals, each still checked against the tree, since a node can leave
+   * between being built and being placed.
+   */
+  const commit = () => {
+    for (const node of pendingRemovals) {
+      if (!containerElement.contains(node)) {
+        nodeToObject.get(node)?.removeFromParent();
+        cleanup(node);
+      }
+    }
+    pendingRemovals.clear();
+    for (const [parentObject, object] of pendingAttachments) {
+      const node = objectToNode.get(object);
+      // `add` is also the move: an object already under this parent goes to
+      // the end of its children, which is where a re-appended node went in
+      // the tree, and where the batches' walk expects to meet it.
+      if (node && containerElement.contains(node)) {
+        parentObject.add(object);
+      }
+    }
+    pendingAttachments.length = 0;
+  };
+
+  /**
    * The initial mount is done: show the panel, let its buttons register, and
    * tell whoever wanted telling. Once, ever — a panel that is already visible
    * absorbs later updates incrementally, and taking it off screen for them
@@ -529,6 +621,11 @@ export function createPortal(
    * every panel whose content arrived while the mount was being sliced lost
    * that content to orphaned objects — built, mirrored, and in no scene.
    *
+   * Connecting is not the same as appearing. A child joins its parent's
+   * object here and now — the parent is not in the scene either, or is
+   * about to be placed with it — but the root of a built branch, whose
+   * parent *is* already in the scene, waits for the commit; see `attach`.
+   *
    * @param {Node} node
    * @returns {boolean} whether anything was genuinely built
    */
@@ -547,7 +644,7 @@ export function createPortal(
     if (!object.parent) {
       const parentObject = node.parentNode ? nodeToObject.get(node.parentNode) : undefined;
       if (parentObject) {
-        getContentGroup(parentObject).add(object);
+        attach(parentObject, object);
       }
     }
     node.childNodes.forEach((childNode) => {
@@ -560,7 +657,8 @@ export function createPortal(
         // Built before this parent was — the observer reported it directly,
         // out of tree order — and left loose. Adopt it, subtree and all: its
         // own children attached to *it* on their turns, so the whole branch
-        // arrives with it.
+        // arrives with it. On the spot rather than at the commit: this
+        // object is not in the scene yet itself, so nothing appears early.
         getContentGroup(object).add(childObject);
       }
     });
@@ -581,6 +679,8 @@ export function createPortal(
           scheduler,
           priority,
           buildNode: buildQueuedNode,
+          onCommit: commit,
+          hasPendingCommit: () => pendingAttachments.length > 0 || pendingRemovals.size > 0,
           onSettled: markLoaded,
           // Content appeared or moved under whatever rays are resting on
           // the panel.
@@ -643,14 +743,15 @@ export function createPortal(
           // A node the portal has never seen goes to the queue and gets
           // built when the pump reaches it — that is the slicing. One it
           // has seen — a reinsertion, a move — already paid its cost and
-          // reattaches on the spot.
+          // reattaches without queueing, in the frame the rest of the
+          // change lands in.
           if (pump && !nodeToObject.has(node)) {
             pump.enqueue(node);
             return;
           }
           const childObject = getOrCreateObjectForNode(node);
           if (childObject && parentObject) {
-            getContentGroup(parentObject).add(childObject);
+            attach(parentObject, childObject);
           }
         });
       }
@@ -663,9 +764,7 @@ export function createPortal(
           // clean it up, so if we detect that it was already seen, we skip it.
           if (!alreadySeen.has(node)) {
             pump?.discard(node);
-            const childObject = nodeToObject.get(node);
-            childObject?.removeFromParent();
-            cleanup(node);
+            detach(node);
           }
         });
       }
@@ -882,6 +981,10 @@ export function createPortal(
 
   objectToCleanup.set(containerObject, () => {
     pump?.dispose();
+    // Nothing is waiting for a commit that is not going to come. The objects
+    // themselves are reached by the walks below, in the tree or the scene.
+    pendingAttachments.length = 0;
+    pendingRemovals.clear();
     if (blocker) {
       // Removing is safe whether `markLoaded` ever added it.
       interactionManager.remove(blocker);

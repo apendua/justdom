@@ -21,6 +21,16 @@ import { batch, Effect, withChannel } from "@apendua/signal";
  *   to draw — reports false, and the pump does not count it against the
  *   at-least-one-per-frame guarantee, or a queue headed by such entries
  *   would spend whole frames building nothing.
+ * @property {() => void} onCommit Told when a tick has brought the scene up
+ *   to date as a whole — the node queue empty and the channel's effects
+ *   swept — and before `afterTick`: the portal's cue to put into the scene
+ *   whatever it has been holding back for exactly that moment, the objects
+ *   it built and the ones whose nodes left.
+ * @property {() => boolean} [hasPendingCommit] Whether the portal is holding
+ *   anything for `onCommit`. Asked when deciding whether a frame is worth
+ *   asking for: a removal that happens to queue nothing in the channel
+ *   still has an object to take out of the scene, and a pump that only
+ *   counted queued nodes and queued effects would never come round for it.
  * @property {() => void} onSettled Told whenever a tick ends with the queue
  *   and the channel both empty — the portal's cue to declare its initial
  *   mount done.
@@ -46,6 +56,8 @@ export function createPortalPump({
   scheduler,
   priority,
   buildNode,
+  onCommit,
+  hasPendingCommit = () => false,
   onSettled,
   afterTick,
 }) {
@@ -79,6 +91,16 @@ export function createPortalPump({
    * — the scheduler's contract asks it of whichever pump it offers a frame
    * to first, and giving the guarantee always is what keeps a zero budget
    * moving instead of stalling.
+   *
+   * The scene changes once per update, not once per frame. The channel is
+   * atomic, so what a frame's slice buys is *reading* — measurements
+   * resolved, text rasterized — and the effects that write the scene run
+   * together, in the frame that finds nothing left to read. And while nodes
+   * are still queued the channel is only warmed, never flushed: a row still
+   * to be built changes the layout of the rows around it, and applying
+   * those moves before the row exists would be the same half-update from the
+   * other side. So the sweep waits for the queue, and the queue's objects
+   * wait for the sweep — `onCommit` is where the portal puts them in.
    *
    * Returns whether the pump is finished, which is how it leaves the
    * scheduler's queue: not by being stopped, but by having nothing left —
@@ -115,10 +137,19 @@ export function createPortalPump({
       // layout constructs computations of its own, and those belong to the
       // panel's region like everything else here.
       withChannel(channel, () => {
-        channel.flush({ budget: Math.max(deadline - now(), 0) });
+        const budget = Math.max(deadline - now(), 0);
+        if (pendingNodes.length > 0) {
+          channel.warm({ budget });
+        } else {
+          channel.flush({ budget });
+        }
       });
+      const settled = pendingNodes.length === 0 && channel.pendingCount === 0;
+      if (settled) {
+        onCommit();
+      }
       afterTick();
-      if (pendingNodes.length > 0 || channel.pendingCount > 0) {
+      if (!settled) {
         return false;
       }
       onSettled();
@@ -127,7 +158,7 @@ export function createPortalPump({
   };
 
   const schedule = () => {
-    if (pendingNodes.length > 0 || channel.pendingCount > 0) {
+    if (pendingNodes.length > 0 || channel.pendingCount > 0 || hasPendingCommit()) {
       scheduler.schedule(pump);
     }
   };

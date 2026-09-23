@@ -13,11 +13,13 @@ import { CircularDependencyError } from "./core.js";
  *
  * @typedef {object} Task
  * @property {boolean} queued
+ * @property {boolean} warmed
  * @property {UpdateChannel} channel
  * @property {number} passId
  * @property {number} runsInPass
  * @property {string} name
  * @property {() => void} runFromQueue
+ * @property {() => void} warm
  */
 
 /**
@@ -388,6 +390,40 @@ export default class UpdateQueue {
   }
 
   /**
+   * Bring what one channel's queued effects read up to date, for at most
+   * `budget` milliseconds, running none of them. The first half of an atomic
+   * pass, offered on its own; see `UpdateChannel.warm`.
+   *
+   * Declined outright inside a batch or a flush — there is no request to
+   * record, because a caller asking whether the channel is warm wants an
+   * answer now, and "not yet" is the true one.
+   *
+   * @param {UpdateChannel} channel
+   * @param {number} budget
+   * @returns {boolean} whether everything queued in the channel is now warm
+   */
+  warmChannel(channel, budget) {
+    if (this.#isBatching || this.#isFlushing) {
+      return false;
+    }
+    const lane = this.#lanes.get(channel);
+    if (!lane || lane.size === 0) {
+      return true;
+    }
+    const timed = Number.isFinite(budget);
+    const now = timed ? channel.now : null;
+    try {
+      this.#isFlushing = true;
+      return this.#warmLane(lane, now, now ? now() : 0, budget);
+    } catch (err) {
+      this.#reset();
+      throw err;
+    } finally {
+      this.#isFlushing = false;
+    }
+  }
+
+  /**
    * @param {UpdateChannel} channel
    * @returns {number}
    */
@@ -490,9 +526,25 @@ export default class UpdateQueue {
     const timed = Number.isFinite(budget);
     // Only a budgeted pass reads the clock. The default channel's drain is
     // the hot path and must not pay for a feature it does not use.
-    const now = timed ? (target?.now ?? (() => performance.now())) : null;
+    let now = timed ? (target?.now ?? (() => performance.now())) : null;
     const startedAt = now ? now() : 0;
     let ranOut = false;
+
+    if (targetLane && target && target.isAtomic) {
+      // The budget goes on the reading, not the running. Every queued effect
+      // has what it read last time resolved, as many as fit; and only when
+      // all of them are resolved does the sweep below run them — all of them,
+      // with the clock put away, because a sweep cut short would be the
+      // half-applied update this channel exists to rule out. A pass that
+      // could not finish the reading runs nothing of the target's, and only
+      // takes the channels that drain of their own accord with it.
+      if (this.#warmLane(targetLane, now, startedAt, budget)) {
+        now = null;
+      } else {
+        ranOut = true;
+        target = null;
+      }
+    }
 
     const previousLane = this.#currentLane;
     try {
@@ -556,6 +608,44 @@ export default class UpdateQueue {
     if (targetLane) {
       targetLane.stalePasses = ranOut && targetLane.size > 0 ? targetLane.stalePasses + 1 : 0;
     }
+  }
+
+  /**
+   * Warm every queued task in the lane that is not warm already, until the
+   * clock says stop.
+   *
+   * A scan from the lane's head rather than a cursor of its own, because a
+   * task can go cold again behind the cursor — something it read was written
+   * while the scan was elsewhere — and the scan has to find it. Skipping a
+   * task that is already warm costs a field read, and the lane holds at most
+   * what one update queued.
+   *
+   * @param {Lane} lane
+   * @param {(() => number) | null} now
+   * @param {number} startedAt
+   * @param {number} budget
+   * @returns {boolean} whether every queued task in the lane is warm
+   */
+  #warmLane(lane, now, startedAt, budget) {
+    const queue = lane.queue;
+    for (let index = lane.head; index < queue.length; index += 1) {
+      const task = queue[index];
+      if (!task.queued || task.warmed) {
+        continue;
+      }
+      task.warm();
+      if (now && now() - startedAt >= budget) {
+        // Out of time. Whether the lane is warm regardless is a question
+        // about the tasks after this one, and they cost a field read each.
+        for (let rest = index + 1; rest < queue.length; rest += 1) {
+          if (queue[rest].queued && !queue[rest].warmed) {
+            return false;
+          }
+        }
+        return true;
+      }
+    }
+    return true;
   }
 
   /**

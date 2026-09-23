@@ -845,8 +845,11 @@ describe("createPortal", () => {
 
     // Later arrivals go through the same budgeted pump but are not a loading
     // state. Each appended row is one node, so a zero budget builds exactly
-    // one per frame — the climb that proves the batch is genuinely spread
-    // across frames rather than deferred whole to the first one.
+    // one per frame — and none of them is in the scene until all of them
+    // are: the rows a new row pushes down move in the frame the channel
+    // sweeps, and the new row appears in that same frame, or the panel would
+    // show the arrival before the room made for it. Four rows, four frames of
+    // building, then one commit.
     const container = document.querySelectorAll("[data-xr-portal]");
     const list = /** @type {HTMLElement} */ (container[container.length - 1].firstElementChild);
     for (let index = 0; index < 4; index++) {
@@ -856,18 +859,148 @@ describe("createPortal", () => {
     assert.equal(portal.isLoading(), false, "a mounted panel does not load again");
 
     const rows = () => rootObject()?.children[0]?.children.length ?? 0;
-    flushFrame();
-    await nextMacrotask();
-    const afterOne = rows();
-    flushFrame();
-    await nextMacrotask();
-    const afterTwo = rows();
-    assert.equal(afterOne, 9, "one appended row is built in the first frame");
-    assert.equal(afterTwo, afterOne + 1, "and exactly one more in the next");
+    for (let frame = 0; frame < 4; frame++) {
+      flushFrame();
+      await nextMacrotask();
+      assert.equal(rows(), 8, `frame ${frame + 1}: built a row, shown none`);
+    }
 
     await settle(portal);
-    assert.equal(rows(), 12, "until the whole batch has arrived");
+    assert.equal(rows(), 12, "the whole batch, in the frame the update commits");
     assert.deepEqual(transitions, [false], "with no second announcement");
+
+    subscription.unsubscribe();
+    portal.disconnect();
+  });
+
+  test("an update too big for one frame changes the panel once, not in instalments", async () => {
+    // The case this exists for. A restyle that reaches every row queues an
+    // effect per row, and a budget that fits three of them a frame used to
+    // apply three a frame: the panel changed as a wave, rows sliding a few
+    // at a time, where the initial mount — hidden until it had settled —
+    // arrived whole. The channel is atomic now: each frame's budget resolves
+    // what the effects will read, and the effects run together in the frame
+    // that finds nothing left to resolve. Until then the panel stands as it
+    // was, however many frames that takes.
+    //
+    // A zero budget makes that several: the channel warms exactly one effect
+    // per frame, and a rule change reaches every effect that reads a style —
+    // a good many per row. How many is not the point and not asserted; that
+    // no frame before the last shows a row changed, and the last shows every
+    // row changed, is.
+    const manager = new InteractionManager();
+    const ctx = InteractionContext.set({}, manager);
+    const portal = createPortal(ctx, { budget: 0 });
+    const parent = new THREE.Group();
+    portal.addTo(parent);
+    const containerObject = parent.children[0];
+
+    // Red at either end of the range, so the linear value the uniform holds
+    // is exact whichever way the colour space conversion goes.
+    const color = Signal.of("rgb(0, 2, 3)");
+    const rowClass = className`
+      background-color: ${toObservable(color)};
+    `;
+    /** @type {import("@apendua/justdom").Mountable | undefined} */
+    let mountable;
+    const tree = $("div", [
+      children(...Array.from({ length: 4 }, () => $("div", [attr("class", rowClass)]))),
+    ]);
+    const subscription = tree.subscribe((value) => {
+      mountable = value;
+    });
+    assert.ok(mountable);
+    portal.mount(mountable);
+    await settle(portal);
+
+    const rootObject = /** @type {THREE.Object3D} */ (
+      containerObject.children.find((child) => !(child instanceof THREE.Mesh))
+    );
+    const rows = rootObject.children[0].children;
+    assert.equal(rows.length, 4);
+    /** What each row's quad is filled with, as the four rows report it. */
+    const fills = () =>
+      rows.map((row) => {
+        const mesh = /** @type {THREE.Mesh} */ (row.children.find((c) => c instanceof THREE.Mesh));
+        const material = /** @type {THREE.ShaderMaterial} */ (mesh.material);
+        return material.uniforms.uFillColor.value.x;
+      });
+    assert.deepEqual(fills(), [0, 0, 0, 0], "the colour the rule says");
+
+    color.set("rgb(255, 2, 3)");
+    await nextMacrotask();
+    let frames = 0;
+    while (frames < 200 && fills().every((fill) => fill === 0)) {
+      flushFrame();
+      await nextMacrotask();
+      frames += 1;
+    }
+    assert.deepEqual(fills(), [1, 1, 1, 1], "the frame that changed one row changed every row");
+    assert.ok(frames > 1, `and it was not the first frame — it took ${frames}`);
+
+    await pump();
+    subscription.unsubscribe();
+    portal.disconnect();
+  });
+
+  test("a row leaving waits for the same frame as the rows that close over it", async () => {
+    // Removing is a change like any other: the row goes and its neighbours
+    // move up, and the two have to land together. The object stays in the
+    // scene until the update commits, and it is cleaned up then — unless
+    // the node is back in the tree by then, in which case it was moved, not
+    // removed, and its object is left exactly where the move put it.
+    const manager = new InteractionManager();
+    const ctx = InteractionContext.set({}, manager);
+    const portal = createPortal(ctx, { budget: 0 });
+    const parent = new THREE.Group();
+    portal.addTo(parent);
+    const containerObject = parent.children[0];
+
+    /** @type {import("@apendua/justdom").Mountable | undefined} */
+    let mountable;
+    const tree = $("div");
+    const subscription = tree.subscribe((value) => {
+      mountable = value;
+    });
+    assert.ok(mountable);
+    portal.mount(mountable);
+    await settle(portal);
+
+    // Rows the test owns rather than justdom's, since it is going to take
+    // them out from under whoever mounted them.
+    const containers = document.querySelectorAll("[data-xr-portal]");
+    const list = /** @type {HTMLElement} */ (containers[containers.length - 1].firstElementChild);
+    for (let index = 0; index < 3; index++) {
+      list.appendChild(document.createElement("div"));
+    }
+    await pump();
+
+    const rootObject = /** @type {THREE.Object3D} */ (
+      containerObject.children.find((child) => !(child instanceof THREE.Mesh))
+    );
+    const rows = () => rootObject.children[0].children;
+    assert.equal(rows().length, 3);
+    const last = /** @type {HTMLElement} */ (list.lastElementChild);
+    const lastObject = rows()[2];
+
+    list.removeChild(last);
+    await nextMacrotask();
+    assert.equal(rows().length, 3, "still in the scene: the update has not committed");
+    await pump();
+    assert.equal(rows().length, 2, "gone with the commit");
+    assert.equal(lastObject.parent, null);
+
+    // Moved rather than removed: out and back in before any frame.
+    const first = /** @type {HTMLElement} */ (list.firstElementChild);
+    const firstObject = rows()[0];
+    list.removeChild(first);
+    await nextMacrotask();
+    list.appendChild(first);
+    await nextMacrotask();
+    await pump();
+    assert.equal(rows().length, 2, "neither lost nor doubled");
+    assert.equal(firstObject.parent, rows()[0].parent, "the same object, still attached");
+    assert.equal(rows()[1], firstObject, "at the end, where the move put it");
 
     subscription.unsubscribe();
     portal.disconnect();
@@ -979,6 +1112,26 @@ describe("createPortal", () => {
     });
     ctx = PortalSchedulerContext.set(ctx, scheduler);
 
+    // Builds are counted where they happen rather than read off the scene,
+    // which no longer shows an object before the update it belongs to
+    // commits. Every build adopts its node into the panel's mirror first,
+    // once, so a count of adoptions per mirror is a count of nodes built per
+    // panel. Elements only: the comment markers `children()` fences its
+    // rows with are adopted too, and build to nothing — the pump does not
+    // count them against a frame, and neither does this. The container's
+    // own adoption, made when the portal is created, is left out the same
+    // way. Mirrors are met in the order the panels were made.
+    /** @type {Map<DomMirror, number>} */
+    const adoptions = new Map();
+    const originalAdopt = DomMirror.prototype.adopt;
+    DomMirror.prototype.adopt = function adopt(node) {
+      const counts =
+        node.nodeType === Node.ELEMENT_NODE &&
+        !(/** @type {Element} */ (node).hasAttribute("data-xr-portal"));
+      adoptions.set(this, (adoptions.get(this) ?? 0) + (counts ? 1 : 0));
+      return originalAdopt.call(this, node);
+    };
+
     const mountPanel = () => {
       const portal = createPortal(ctx);
       const parent = new THREE.Group();
@@ -991,47 +1144,41 @@ describe("createPortal", () => {
       });
       assert.ok(mountable);
       portal.mount(mountable);
-      const containerObject = parent.children[0];
-      return {
-        portal,
-        subscription,
-        built: () => {
-          const root = containerObject.children.find((child) => !(child instanceof THREE.Mesh));
-          if (!root) {
-            return 0;
-          }
-          return 1 + root.children[0].children.length;
-        },
-      };
+      return { portal, subscription };
     };
 
-    const a = mountPanel();
-    const b = mountPanel();
-    await nextMacrotask();
-
-    for (let frame = 0; frame < 4; frame += 1) {
-      flushFrame();
+    try {
+      const a = mountPanel();
+      const b = mountPanel();
       await nextMacrotask();
+
+      for (let frame = 0; frame < 4; frame += 1) {
+        flushFrame();
+        await nextMacrotask();
+      }
+      const built = [...adoptions.values()];
+      assert.equal(built.length, 2, "two panels, two mirrors");
+      assert.equal(
+        built[0] + built[1],
+        4,
+        "four frames, four nodes between the two panels — one budget, not two",
+      );
+      assert.equal(built[0], 2, "split evenly by the rotation");
+      assert.equal(built[1], 2);
+
+      await settle(a.portal);
+      await settle(b.portal);
+      assert.equal(a.portal.isLoading(), false);
+      assert.equal(b.portal.isLoading(), false);
+      assert.deepEqual([...adoptions.values()], [5, 5], "and every node of both, in the end");
+
+      a.subscription.unsubscribe();
+      a.portal.disconnect();
+      b.subscription.unsubscribe();
+      b.portal.disconnect();
+    } finally {
+      DomMirror.prototype.adopt = originalAdopt;
     }
-    assert.equal(
-      a.built() + b.built(),
-      4,
-      "four frames, four nodes between the two panels — one budget, not two",
-    );
-    assert.equal(a.built(), 2, "split evenly by the rotation");
-    assert.equal(b.built(), 2);
-
-    await settle(a.portal);
-    await settle(b.portal);
-    assert.equal(a.portal.isLoading(), false);
-    assert.equal(b.portal.isLoading(), false);
-    assert.equal(a.built(), 5);
-    assert.equal(b.built(), 5);
-
-    a.subscription.unsubscribe();
-    a.portal.disconnect();
-    b.subscription.unsubscribe();
-    b.portal.disconnect();
   });
 
   test("re-writing an attribute with the value it already has invalidates nothing", async () => {

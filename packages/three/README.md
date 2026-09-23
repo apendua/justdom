@@ -457,8 +457,23 @@ nothing inside it registers as a ray target until it is actually there to
 press. Loading ends exactly once, when everything the initial content brought
 has been built and settled; the panel appears whole rather than assembling
 itself in front of the player. Later updates — rows arriving, a menu opening
-— go through the same budgeted pump, but a panel that is already visible
-absorbs them incrementally and never hides itself again.
+— go through the same budgeted pump, and a panel that is already visible
+never hides itself again.
+
+**An update lands whole, however many frames it took.** A visible panel
+cannot hide while it changes, and a change too big for one frame's budget
+used to arrive in instalments: the rows a frame got to were moved, the rest
+were not, and the panel slid into its new layout a few boxes at a time. The
+panel's channel is *atomic* (`UpdateChannel`'s option of that name in
+`@apendua/signal`): each frame's budget goes on resolving what the update
+will read — the measurements, the restyles, the rasterized runs, which is
+where a panel's cost is — and the writes to the scene happen together, in
+the frame that finds nothing left to resolve. Until that frame the panel
+stands exactly as it was, and objects built for rows that arrived wait for
+it too, as do the objects of rows that left, so an arrival and the room made
+for it are one frame. The trade is that a big change is seen later rather
+than in pieces; a scroll is the one thing that does not wait, for the reason
+the scroll section gives.
 
 ```js
 dom(ctx, panel, [set({ position })], {

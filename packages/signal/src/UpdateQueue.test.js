@@ -19,11 +19,15 @@ function makeTask(name, channel, log, extra) {
     name,
     channel,
     queued: false,
+    warmed: false,
     passId: -1,
     runsInPass: 0,
     runFromQueue: () => {
       log.push(name);
       extra?.();
+    },
+    warm: () => {
+      task.warmed = true;
     },
   };
   return task;

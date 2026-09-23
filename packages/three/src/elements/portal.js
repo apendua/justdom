@@ -398,7 +398,14 @@ export function createPortal(
       // which would mutate the array a live walk is reading.
       for (const child of [...getContentGroup(object).children]) {
         const childNode = objectToNode.get(child);
-        if (childNode) {
+        // A child whose node is still in the tree was moved out of this
+        // subtree, not removed with it: its object sits here only until the
+        // commit places it under its new parent, and what is under it moved
+        // with it. Left alone, subtree and all — and still drawn where it
+        // was, which is what the commit is for. Whatever the tree does hold
+        // is the other walk's, so this skips nothing that is anybody's to
+        // clean.
+        if (childNode && !containerElement.contains(childNode)) {
           cleanup(childNode);
         }
       }
@@ -548,17 +555,14 @@ export function createPortal(
    *
    * A child that *moved* out of the removed subtree — appended elsewhere in
    * the same flush — is still in the tree, and its object is still under
-   * this one's content group, its new place being only pending. The walk
-   * would take it down with the rest, so it is let go of first; the commit
-   * puts it where it now belongs.
+   * this one's content group, its new place being only pending. `cleanup`
+   * passes over it, so it stays exactly as drawn until the commit, which
+   * puts it where it now belongs before this object is taken down.
    *
    * @param {Node} node
    */
   const detach = (node) => {
     const object = nodeToObject.get(node);
-    if (object) {
-      releaseMoved(object);
-    }
     cleanup(node);
     if (!object) {
       // Nothing was drawn for it — a comment node, or a node that left
@@ -570,28 +574,6 @@ export function createPortal(
       pendingRemovals.add(object);
     } else {
       object.removeFromParent();
-    }
-  };
-
-  /**
-   * Set loose every object under `object` whose node is still in the tree:
-   * it was moved, not removed, and has an attachment pending. The walk
-   * stops at each such object — what is under it moved with it — and goes
-   * on through the ones that did leave.
-   *
-   * @param {Object3D} object
-   */
-  const releaseMoved = (object) => {
-    for (const child of [...getContentGroup(object).children]) {
-      const childNode = objectToNode.get(child);
-      if (!childNode) {
-        continue;
-      }
-      if (containerElement.contains(childNode)) {
-        child.removeFromParent();
-      } else {
-        releaseMoved(child);
-      }
     }
   };
 

@@ -1132,6 +1132,11 @@ describe("createPortal", () => {
     list.removeChild(a);
     b.appendChild(e);
     await nextMacrotask();
+    assert.equal(
+      objA.children[0].children[0],
+      objE,
+      "until the commit, E's object stays where it was drawn",
+    );
     await drain();
 
     assert.deepEqual(listObject.children, [objB], "A is gone");

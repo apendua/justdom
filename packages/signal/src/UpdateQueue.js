@@ -410,11 +410,29 @@ export default class UpdateQueue {
     if (!lane || lane.size === 0) {
       return true;
     }
+    if (lane.stalePasses >= channel.maxStalePasses) {
+      // Counted here as in `#pass`, so that a channel driven by `warm()`
+      // while its owner has other work pending is bounded the same way: one
+      // unbudgeted warm, and the next flush finds nothing left to read.
+      budget = Infinity;
+    }
     const timed = Number.isFinite(budget);
     const now = timed ? channel.now : null;
     try {
       this.#isFlushing = true;
-      return this.#warmLane(lane, now, now ? now() : 0, budget);
+      const before = this.#size;
+      const warm = this.#warmLane(lane, now, now ? now() : 0, budget);
+      lane.stalePasses = warm ? 0 : lane.stalePasses + 1;
+      if (this.#size !== before) {
+        // Resolving a node can mark an effect — a `Derived` that attaches a
+        // foreign source on the way up, and the source fires — and one in a
+        // channel that drains of its own accord would have drained then and
+        // there, had the flushing flag not been up. A pass over those
+        // channels alone is what it was owed; the atomic lane is not a
+        // target here and is left as it stands.
+        this.#pass(null, Infinity);
+      }
+      return warm;
     } catch (err) {
       this.#reset();
       throw err;
@@ -620,6 +638,13 @@ export default class UpdateQueue {
    * task that is already warm costs a field read, and the lane holds at most
    * what one update queued.
    *
+   * The answer is a second scan of the whole lane, whichever way the first
+   * one ended. Warming a task can cool one *before* it — the node it
+   * resolves attaches a source, the source fires, and what an earlier task
+   * read is marked — so a flag read on the way past is no longer the flag's
+   * value by the end. Trusting it would send that task into the sweep cold,
+   * with its measurement paid there, off the budget.
+   *
    * @param {Lane} lane
    * @param {(() => number) | null} now
    * @param {number} startedAt
@@ -635,14 +660,12 @@ export default class UpdateQueue {
       }
       task.warm();
       if (now && now() - startedAt >= budget) {
-        // Out of time. Whether the lane is warm regardless is a question
-        // about the tasks after this one, and they cost a field read each.
-        for (let rest = index + 1; rest < queue.length; rest += 1) {
-          if (queue[rest].queued && !queue[rest].warmed) {
-            return false;
-          }
-        }
-        return true;
+        break;
+      }
+    }
+    for (let index = lane.head; index < queue.length; index += 1) {
+      if (queue[index].queued && !queue[index].warmed) {
+        return false;
       }
     }
     return true;

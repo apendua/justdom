@@ -507,12 +507,12 @@ export function createPortal(
   const pendingAttachments = [];
 
   /**
-   * Nodes that left the tree and whose objects are still in the scene, for
+   * Objects whose nodes left the tree and which are still in the scene, for
    * the same reason: a row leaving and the rows that close over it are one
-   * change. Checked again at the commit — a node moved rather than removed
-   * is back in the tree by then, and its object is not to be taken down.
+   * change. Only the object's *place* waits; everything else about it is
+   * taken down the moment its node goes — see `detach`.
    *
-   * @type {Set<Node>}
+   * @type {Set<Object3D>}
    */
   const pendingRemovals = new Set();
 
@@ -533,35 +533,78 @@ export function createPortal(
   };
 
   /**
-   * Take a node's object down, now or at the commit, on the same terms.
+   * Take a node's object down. What stands in the scene stays until the
+   * commit; everything behind it goes now.
+   *
+   * The two halves come apart on purpose. An object left standing keeps
+   * the removed row on screen until the rows around it close over it, which
+   * is the one frame the change should take. Its effects are another
+   * matter: still subscribed, they would be queued by the very mutation
+   * that removed the node, warmed against DOM that is no longer in the
+   * document — a style, a rect, a `Range` measurement, a rasterization,
+   * each for nothing — and run in the sweep to write an object about to be
+   * taken out. Cleaning up now unsubscribes them before any frame, as the
+   * observer callback always did, and leaves the object as it was drawn.
+   *
+   * A child that *moved* out of the removed subtree — appended elsewhere in
+   * the same flush — is still in the tree, and its object is still under
+   * this one's content group, its new place being only pending. The walk
+   * would take it down with the rest, so it is let go of first; the commit
+   * puts it where it now belongs.
    *
    * @param {Node} node
    */
   const detach = (node) => {
+    const object = nodeToObject.get(node);
+    if (object) {
+      releaseMoved(object);
+    }
+    cleanup(node);
+    if (!object) {
+      // Nothing was drawn for it — a comment node, or a node that left
+      // before its turn — so there is nothing to hold for the commit, and
+      // no frame to ask for.
+      return;
+    }
     if (pump) {
-      pendingRemovals.add(node);
+      pendingRemovals.add(object);
     } else {
-      nodeToObject.get(node)?.removeFromParent();
-      cleanup(node);
+      object.removeFromParent();
+    }
+  };
+
+  /**
+   * Set loose every object under `object` whose node is still in the tree:
+   * it was moved, not removed, and has an attachment pending. The walk
+   * stops at each such object — what is under it moved with it — and goes
+   * on through the ones that did leave.
+   *
+   * @param {Object3D} object
+   */
+  const releaseMoved = (object) => {
+    for (const child of [...getContentGroup(object).children]) {
+      const childNode = objectToNode.get(child);
+      if (!childNode) {
+        continue;
+      }
+      if (containerElement.contains(childNode)) {
+        child.removeFromParent();
+      } else {
+        releaseMoved(child);
+      }
     }
   };
 
   /**
    * The moment the scene changes: the pump has swept the channel, so every
-   * box that moved has moved, and this is what goes with it. Removals first
-   * — a node back in the tree since it was listed is skipped, its object
-   * being about to be re-attached or already where it belongs — then the
-   * arrivals, each still checked against the tree, since a node can leave
-   * between being built and being placed.
+   * box that moved has moved, and this is what goes with it. Arrivals
+   * first, each still checked against the tree, since a node can leave
+   * between being built and being placed; then the departures. In that
+   * order so that an object moved out of a departing subtree is under its
+   * new parent before the old one is taken down, whichever of the two the
+   * observer happened to report first.
    */
   const commit = () => {
-    for (const node of pendingRemovals) {
-      if (!containerElement.contains(node)) {
-        nodeToObject.get(node)?.removeFromParent();
-        cleanup(node);
-      }
-    }
-    pendingRemovals.clear();
     for (const [parentObject, object] of pendingAttachments) {
       const node = objectToNode.get(object);
       // `add` is also the move: an object already under this parent goes to
@@ -572,6 +615,10 @@ export function createPortal(
       }
     }
     pendingAttachments.length = 0;
+    for (const object of pendingRemovals) {
+      object.removeFromParent();
+    }
+    pendingRemovals.clear();
   };
 
   /**
@@ -981,8 +1028,17 @@ export function createPortal(
 
   objectToCleanup.set(containerObject, () => {
     pump?.dispose();
-    // Nothing is waiting for a commit that is not going to come. The objects
-    // themselves are reached by the walks below, in the tree or the scene.
+    // Nothing is waiting for a commit that is not going to come. An object
+    // built for one is in the tree, where the walk below reaches it — unless
+    // its node left in the meantime, in which case `detach` has already
+    // cleaned it up. Taken down here regardless: `cleanup` is idempotent,
+    // and an object in neither the tree nor the scene is otherwise nobody's.
+    for (const [, object] of pendingAttachments) {
+      const node = objectToNode.get(object);
+      if (node) {
+        cleanup(node);
+      }
+    }
     pendingAttachments.length = 0;
     pendingRemovals.clear();
     if (blocker) {

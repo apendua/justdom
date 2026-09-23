@@ -131,6 +131,23 @@ async function pump() {
   }
 }
 
+/**
+ * `pump`, for a change the panel resolves one effect per frame: at a zero
+ * budget a moved row queues a couple of dozen effects and the channel warms
+ * exactly one of them a frame, which is more frames than `pump` allows.
+ * Bounded like `settle`, so a panel that never settles fails rather than
+ * hangs.
+ *
+ * @returns {Promise<void>}
+ */
+async function drain() {
+  await nextMacrotask();
+  for (let index = 0; index < 500 && frameCallbacks.length > 0; index++) {
+    flushFrame();
+    await nextMacrotask();
+  }
+}
+
 describe("createPortal", () => {
   test("only clickable elements become ray targets, plus one blocker plane", async () => {
     const manager = new InteractionManager();
@@ -946,10 +963,19 @@ describe("createPortal", () => {
   test("a row leaving waits for the same frame as the rows that close over it", async () => {
     // Removing is a change like any other: the row goes and its neighbours
     // move up, and the two have to land together. The object stays in the
-    // scene until the update commits, and it is cleaned up then — unless
-    // the node is back in the tree by then, in which case it was moved, not
-    // removed, and its object is left exactly where the move put it.
+    // scene until the update commits. What does not wait is everything
+    // behind it — its effects are unsubscribed the moment the node goes, as
+    // they always were, so a removed row is drawn where it was but stops
+    // being a ray target at once, and nothing is measured on its behalf
+    // against DOM that is no longer in the document.
     const manager = new InteractionManager();
+    /** @type {THREE.Object3D[]} */
+    const removedTargets = [];
+    const originalRemove = manager.remove.bind(manager);
+    manager.remove = (object) => {
+      removedTargets.push(object);
+      originalRemove(object);
+    };
     const ctx = InteractionContext.set({}, manager);
     const portal = createPortal(ctx, { budget: 0 });
     const parent = new THREE.Group();
@@ -967,11 +993,14 @@ describe("createPortal", () => {
     await settle(portal);
 
     // Rows the test owns rather than justdom's, since it is going to take
-    // them out from under whoever mounted them.
+    // them out from under whoever mounted them. Clickable, so that each is
+    // a ray target with a registration to watch go.
     const containers = document.querySelectorAll("[data-xr-portal]");
     const list = /** @type {HTMLElement} */ (containers[containers.length - 1].firstElementChild);
     for (let index = 0; index < 3; index++) {
-      list.appendChild(document.createElement("div"));
+      const row = document.createElement("div");
+      row.style.cursor = "pointer";
+      list.appendChild(row);
     }
     await pump();
 
@@ -983,27 +1012,151 @@ describe("createPortal", () => {
     const last = /** @type {HTMLElement} */ (list.lastElementChild);
     const lastObject = rows()[2];
 
+    removedTargets.length = 0;
     list.removeChild(last);
     await nextMacrotask();
     assert.equal(rows().length, 3, "still in the scene: the update has not committed");
-    await pump();
+    assert.ok(removedTargets.includes(lastObject), "but no longer a ray target");
+    await drain();
     assert.equal(rows().length, 2, "gone with the commit");
     assert.equal(lastObject.parent, null);
 
-    // Moved rather than removed: out and back in before any frame.
+    // Moved rather than removed, in one flush: the object is kept and goes
+    // where the move put it.
     const first = /** @type {HTMLElement} */ (list.firstElementChild);
     const firstObject = rows()[0];
     list.removeChild(first);
-    await nextMacrotask();
     list.appendChild(first);
     await nextMacrotask();
-    await pump();
+    await drain();
     assert.equal(rows().length, 2, "neither lost nor doubled");
-    assert.equal(firstObject.parent, rows()[0].parent, "the same object, still attached");
-    assert.equal(rows()[1], firstObject, "at the end, where the move put it");
+    assert.equal(rows()[1], firstObject, "the same object, at the end");
 
     subscription.unsubscribe();
     portal.disconnect();
+  });
+
+  test("a child moved out of a removed row keeps its object", async () => {
+    // Row A goes and its inner element E is appended under row B in the
+    // same flush. E is in the tree, its new place is only pending, and its
+    // object still sits under A's content group — so taking A down by
+    // walking that group would take E's object with it, and E would be in
+    // the DOM under B with nothing drawn for it and no event left to say
+    // so. The removal lets go of moved children first; the commit places
+    // them.
+    const manager = new InteractionManager();
+    const ctx = InteractionContext.set({}, manager);
+    const portal = createPortal(ctx, { budget: Infinity });
+    const parent = new THREE.Group();
+    portal.addTo(parent);
+    const containerObject = parent.children[0];
+
+    /** @type {import("@apendua/justdom").Mountable | undefined} */
+    let mountable;
+    const tree = $("div");
+    const subscription = tree.subscribe((value) => {
+      mountable = value;
+    });
+    assert.ok(mountable);
+    portal.mount(mountable);
+    await settle(portal);
+
+    const containers = document.querySelectorAll("[data-xr-portal]");
+    const list = /** @type {HTMLElement} */ (containers[containers.length - 1].firstElementChild);
+    const a = document.createElement("div");
+    const b = document.createElement("div");
+    const e = document.createElement("span");
+    a.appendChild(e);
+    list.appendChild(a);
+    list.appendChild(b);
+    await pump();
+
+    const rootObject = /** @type {THREE.Object3D} */ (
+      containerObject.children.find((child) => !(child instanceof THREE.Mesh))
+    );
+    const listObject = rootObject.children[0];
+    const [objA, objB] = listObject.children;
+    const objE = objA.children[0].children[0];
+    assert.ok(objE, "E was built under A");
+
+    list.removeChild(a);
+    b.appendChild(e);
+    await nextMacrotask();
+    await drain();
+
+    assert.deepEqual(listObject.children, [objB], "A is gone");
+    assert.equal(objB.children[0].children[0], objE, "and E's object, the same one, is under B");
+
+    subscription.unsubscribe();
+    portal.disconnect();
+  });
+
+  test("an object built for a commit that never came is taken down when its node leaves", async () => {
+    // Built in one frame, removed before the next: the object is in the
+    // tree no longer and in the scene never, so neither of the walks a
+    // dispose makes would find it. Its effects are unsubscribed the moment
+    // the node leaves, exactly as an attached object's are, and the
+    // registration the ray target made is the one thing about that the
+    // test can see. Disposing the panel afterwards finds nothing left to do
+    // and nothing to trip over.
+    const manager = new InteractionManager();
+    /** @type {THREE.Object3D[]} */
+    const removedTargets = [];
+    const originalRemove = manager.remove.bind(manager);
+    manager.remove = (object) => {
+      removedTargets.push(object);
+      originalRemove(object);
+    };
+    /** @type {THREE.Object3D[]} */
+    const addedTargets = [];
+    const originalAdd = manager.add.bind(manager);
+    manager.add = (object) => {
+      addedTargets.push(object);
+      originalAdd(object);
+    };
+    const ctx = InteractionContext.set({}, manager);
+    const portal = createPortal(ctx, { budget: 0 });
+    portal.addTo(new THREE.Group());
+
+    /** @type {import("@apendua/justdom").Mountable | undefined} */
+    let mountable;
+    const tree = $("div");
+    const subscription = tree.subscribe((value) => {
+      mountable = value;
+    });
+    assert.ok(mountable);
+    portal.mount(mountable);
+    await settle(portal);
+
+    const containers = document.querySelectorAll("[data-xr-portal]");
+    const list = /** @type {HTMLElement} */ (containers[containers.length - 1].firstElementChild);
+    // Two rows, so that the zero budget leaves the first built and the
+    // second still queued: no commit this frame.
+    const first = document.createElement("div");
+    first.style.cursor = "pointer";
+    list.appendChild(first);
+    list.appendChild(document.createElement("div"));
+    await nextMacrotask();
+    addedTargets.length = 0;
+    flushFrame();
+    await nextMacrotask();
+    assert.equal(addedTargets.length, 1, "the first row was built, and registered itself");
+    const built = addedTargets[0];
+
+    removedTargets.length = 0;
+    list.removeChild(first);
+    await nextMacrotask();
+    assert.ok(removedTargets.includes(built), "its registration went with the node");
+    assert.equal(removedTargets.length, 1);
+
+    // Disposed with the second row still queued and the first still listed
+    // for a commit that will not come.
+    subscription.unsubscribe();
+    portal.disconnect();
+    assert.equal(removedTargets.length, 2, "the blocker, and nothing taken down twice");
+    // The frame the removal asked for is still in the shared stub's queue;
+    // let it run against the disposed pump so it does not reach the next test.
+    await drain();
   });
 
   test("a node that leaves the tree before its frame is never built", async () => {

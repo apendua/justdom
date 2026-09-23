@@ -19,7 +19,9 @@ import { Subject } from "./subscribable.js";
  *   all. A pass spends its budget bringing what the queued effects *read* up
  *   to date — see `Effect.warm` — and runs the effects only once every one of
  *   them has been, in a single unbudgeted sweep. For an output that has to
- *   change as a whole: a panel whose boxes moved together.
+ *   change as a whole: a panel whose boxes moved together. Only a channel
+ *   that drains on demand — a `trigger`, or `manual` — can be atomic, since
+ *   the atomic pass is the one the channel is asked for.
  * @property {boolean} [fixedOrder] refuse automatic order correction. The
  *   channel then warns about a violation instead of fixing it, which is what
  *   you want when the order is a decision rather than a guess.
@@ -169,6 +171,17 @@ export default class UpdateChannel {
     } = options;
     if (!Number.isInteger(order) || order < 0) {
       throw new RangeError("An update channel's order must be a non-negative integer");
+    }
+    if (atomic && trigger === undefined && !manual) {
+      // An atomic pass is the pass a channel is the *target* of, and only a
+      // channel that waits to be asked is ever a target. Left to drain of
+      // its own accord this channel would be taken as a side lane of some
+      // other channel's budgeted pass, one effect at a time under that
+      // channel's clock — the very instalments the option promises cannot
+      // happen. Better refused than quietly not done.
+      throw new RangeError(
+        "An atomic update channel must drain on demand: give it a trigger, or make it manual",
+      );
     }
     this.#name = name;
     this.#order = order;

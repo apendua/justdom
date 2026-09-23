@@ -609,6 +609,112 @@ describe("UpdateChannel, atomic", () => {
     effect.dispose();
   });
 
+  it("does not call the lane warm when a later warm cooled an earlier effect", () => {
+    // Warming B resolves a node whose evaluation writes what A reads, so A
+    // goes cold behind the scan. Out of time right after B, a scan that only
+    // looked ahead of itself would answer "warm", and the sweep would run A
+    // cold — its measurement paid there, off the budget. The answer has to
+    // be a fresh look at the whole lane.
+    let time = 0;
+    const channel = new UpdateChannel({
+      name: "atomic-recool",
+      order: 1,
+      manual: true,
+      atomic: true,
+      now: () => time,
+    });
+    const pulse = Signal.of(0);
+    const shared = Signal.of(0);
+    const a = new Derived(() => {
+      time += 4;
+      return shared.get();
+    });
+    const b = new Derived(() => {
+      time += 4;
+      // Impure on purpose: this is the shape of a node whose resolution
+      // fires a source that another effect's node reads.
+      shared.set(shared.peek() + 1);
+      return pulse.get();
+    });
+    /** @type {string[]} */
+    const applied = [];
+    const effectA = new Effect(() => applied.push(`a:${a.get()}`), { channel });
+    const effectB = new Effect(() => applied.push(`b:${b.get()}`), { channel });
+    applied.length = 0;
+    const evaluationsBefore = a.getEvaluations();
+
+    shared.set(10);
+    pulse.set(1);
+    channel.flush({ budget: 8 });
+    assert.deepStrictEqual(applied, [], "a was cooled by b's warm, so no sweep yet");
+    assert.strictEqual(
+      a.getEvaluations(),
+      evaluationsBefore + 1,
+      "a resolved once, before b cooled it",
+    );
+
+    channel.flush({ budget: 8 });
+    assert.strictEqual(
+      a.getEvaluations(),
+      evaluationsBefore + 2,
+      "a resolved again, on the budget",
+    );
+    assert.deepStrictEqual(applied, ["a:11", "b:1"]);
+    effectA.dispose();
+    effectB.dispose();
+  });
+
+  it("warm() drains what its resolving marked in a channel that drains on its own", () => {
+    // A node resolved during the warm writes a signal an effect in the
+    // default channel reads. That effect would have run at the end of the
+    // write, had the queue not been flushing; the warm owes it the drain.
+    const channel = new UpdateChannel({
+      name: "atomic-side",
+      order: 1,
+      manual: true,
+      atomic: true,
+    });
+    const pulse = Signal.of(0);
+    const side = Signal.of(0);
+    const node = new Derived(() => {
+      side.set(side.peek() + 1);
+      return pulse.get();
+    });
+    const effect = new Effect(() => node.get(), { channel });
+    /** @type {number[]} */
+    const seen = [];
+    const watcher = new Effect(() => seen.push(side.get()));
+    seen.length = 0;
+
+    pulse.set(1);
+    assert.strictEqual(channel.warm({ budget: Infinity }), true);
+    assert.deepStrictEqual(seen, [2], "the default-channel effect ran inside the warm");
+    watcher.dispose();
+    effect.dispose();
+  });
+
+  it("warm() counts a pass cut short towards maxStalePasses", () => {
+    const panel = makePanel({ count: 3, cost: 5, maxStalePasses: 2 });
+    const before = panel.evaluations();
+    panel.source.set(1);
+    assert.strictEqual(panel.channel.warm({ budget: 1 }), false);
+    assert.strictEqual(panel.channel.warm({ budget: 1 }), false);
+    assert.strictEqual(panel.evaluations(), before + 2, "one each");
+    assert.strictEqual(panel.channel.warm({ budget: 1 }), true, "the third ignores the budget");
+    assert.strictEqual(panel.evaluations(), before + 3);
+    panel.dispose();
+  });
+
+  it("refuses to be atomic without a trigger or manual draining", () => {
+    assert.throws(
+      () => new UpdateChannel({ name: "atomic-loose", order: 1, atomic: true }),
+      RangeError,
+    );
+    assert.doesNotThrow(
+      () => new UpdateChannel({ name: "atomic-manual", order: 1, manual: true, atomic: true }),
+    );
+  });
+
   it("a channel that is not atomic is not warmed by its flush", () => {
     const { channel, frame } = makeChannel({ budget: 10 });
     assert.strictEqual(channel.isAtomic, false);

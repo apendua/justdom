@@ -4,7 +4,7 @@ import * as THREE from "three";
 import { Derived, Signal, toObservable, UpdateChannel, withChannel } from "@apendua/signal";
 import { $, attr, children, className, stylesheet } from "@apendua/justdom";
 import { InteractionContext, InteractionManager } from "../interactions.js";
-import { DomMirror, getComputedStyleCached } from "./mirror.js";
+import { DomMirror, getComputedStyleCached, resetMeasuringRangeForTests } from "./mirror.js";
 import { acquireImage, releaseImage } from "./image.js";
 import { createPortal, getPortalRoot } from "./portal.js";
 import { createPortalScheduler, PortalSchedulerContext } from "./portalScheduler.js";
@@ -742,9 +742,17 @@ describe("createPortal", () => {
       rectReads += 1;
       return originalGetRect.call(this);
     };
+    // One range serves every measurement now, so a measurement is a node
+    // being selected on it, not a range being made.
+    resetMeasuringRangeForTests();
     document.createRange = () => {
-      rangeMeasurements += 1;
-      return originalCreateRange();
+      const range = originalCreateRange();
+      const select = range.selectNodeContents.bind(range);
+      range.selectNodeContents = (node) => {
+        rangeMeasurements += 1;
+        select(node);
+      };
+      return range;
     };
     try {
       scrollTop = 40;
@@ -765,6 +773,7 @@ describe("createPortal", () => {
     } finally {
       window.Element.prototype.getBoundingClientRect = originalGetRect;
       document.createRange = originalCreateRange;
+      resetMeasuringRangeForTests();
     }
 
     subscription.unsubscribe();

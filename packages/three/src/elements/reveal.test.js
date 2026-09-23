@@ -9,7 +9,7 @@ import {
   makeReveal,
   solveCut,
 } from "./reveal.js";
-import { createMirror, tracksCharacterEdges } from "./mirror.js";
+import { createMirror, resetMeasuringRangeForTests, tracksCharacterEdges } from "./mirror.js";
 import { text } from "./text.js";
 import { UNBOUNDED } from "./clip.js";
 
@@ -41,8 +41,8 @@ const LINE = 16;
  */
 function installRange({ onMeasure } = {}) {
   const original = document.createRange;
+  resetMeasuringRangeForTests();
   document.createRange = () => {
-    onMeasure?.();
     let start = 0;
     let end = 0;
     const rect = () =>
@@ -57,6 +57,9 @@ function installRange({ onMeasure } = {}) {
     return /** @type {Range} */ (
       /** @type {unknown} */ ({
         selectNodeContents: (/** @type {Node} */ node) => {
+          // One range serves every measurement, so this — not the range
+          // being made — is what "a measurement happened" means.
+          onMeasure?.();
           start = 0;
           end = (node.textContent || "").length;
         },
@@ -73,6 +76,7 @@ function installRange({ onMeasure } = {}) {
   };
   return () => {
     document.createRange = original;
+    resetMeasuringRangeForTests();
   };
 }
 
@@ -422,6 +426,7 @@ describe("a proportional face, wrapped by the browser", () => {
    */
   function installProportionalRange() {
     const original = document.createRange;
+    resetMeasuringRangeForTests();
     document.createRange = () => {
       let start = 0;
       let end = 0;
@@ -495,6 +500,7 @@ describe("a proportional face, wrapped by the browser", () => {
     };
     return () => {
       document.createRange = original;
+      resetMeasuringRangeForTests();
     };
   }
 

@@ -963,11 +963,11 @@ describe("createPortal", () => {
   test("a row leaving waits for the same frame as the rows that close over it", async () => {
     // Removing is a change like any other: the row goes and its neighbours
     // move up, and the two have to land together. The object stays in the
-    // scene until the update commits. What does not wait is everything
-    // behind it — its effects are unsubscribed the moment the node goes, as
-    // they always were, so a removed row is drawn where it was but stops
-    // being a ray target at once, and nothing is measured on its behalf
-    // against DOM that is no longer in the document.
+    // scene until the update commits — and stays *drawn*, which means it
+    // stays whole: its meshes and materials are what its mounting built,
+    // and the mounting's teardown takes them with it, so nothing about the
+    // row is cleaned up before the commit. Until then it is what the player
+    // sees, and what the player sees is pointable.
     const manager = new InteractionManager();
     /** @type {THREE.Object3D[]} */
     const removedTargets = [];
@@ -1012,14 +1012,20 @@ describe("createPortal", () => {
     const last = /** @type {HTMLElement} */ (list.lastElementChild);
     const lastObject = rows()[2];
 
+    const hasQuad = (/** @type {THREE.Object3D} */ row) =>
+      row.children.some((child) => child instanceof THREE.Mesh);
+
     removedTargets.length = 0;
     list.removeChild(last);
     await nextMacrotask();
     assert.equal(rows().length, 3, "still in the scene: the update has not committed");
-    assert.ok(removedTargets.includes(lastObject), "but no longer a ray target");
+    assert.ok(hasQuad(lastObject), "and still drawn — its quad is still on it");
+    assert.ok(!removedTargets.includes(lastObject), "and still a ray target");
     await drain();
     assert.equal(rows().length, 2, "gone with the commit");
     assert.equal(lastObject.parent, null);
+    assert.ok(!hasQuad(lastObject), "taken down whole");
+    assert.ok(removedTargets.includes(lastObject), "registration and all");
 
     // Moved rather than removed, in one flush: the object is kept and goes
     // where the move put it.
@@ -1031,6 +1037,19 @@ describe("createPortal", () => {
     await drain();
     assert.equal(rows().length, 2, "neither lost nor doubled");
     assert.equal(rows()[1], firstObject, "the same object, at the end");
+
+    // And across two flushes, as long as both land before the commit: the
+    // node is back in the tree when the commit looks, so it was moved.
+    const again = /** @type {HTMLElement} */ (list.firstElementChild);
+    const againObject = rows()[0];
+    list.removeChild(again);
+    await nextMacrotask();
+    list.appendChild(again);
+    await nextMacrotask();
+    await drain();
+    assert.equal(rows().length, 2);
+    assert.equal(rows()[1], againObject, "kept, and at the end");
+    assert.ok(hasQuad(againObject), "never taken down");
 
     subscription.unsubscribe();
     portal.disconnect();
@@ -1076,6 +1095,10 @@ describe("createPortal", () => {
 
     // One of the rows the test appended, not one of justdom's.
     list.removeChild(/** @type {ChildNode} */ (list.lastElementChild));
+    await nextMacrotask();
+    flushFrame();
+    await nextMacrotask();
+    assert.equal(drawn(), 5, "a frame on, the removed row is still drawn: no commit yet");
     await drain();
     assert.equal(drawn(), 4, "and one fewer in the frame it was taken out");
 
@@ -1084,6 +1107,100 @@ describe("createPortal", () => {
     // Unmounting asked for a frame; let it run so it does not reach the
     // next test's count of the shared stub's queue.
     await drain();
+  });
+
+  test("the panel moves to its new size in the frame its contents change, not before", async () => {
+    // The container is placed on its own size — centred on its origin — by
+    // a callback that used to be spelled `observable(fn).subscribe()`. That
+    // makes it a `Derived` read by an effect, and a `Derived` is what the
+    // warm phase resolves: the panel jumped to its new height while every
+    // box inside it still waited for the commit. As an effect it is the
+    // write, and waits with the rest. The row that grew the panel is the
+    // yardstick: the panel may move only in the frame the row appears.
+    const originalRect = window.Element.prototype.getBoundingClientRect;
+    let panelHeight = 100;
+    window.Element.prototype.getBoundingClientRect = function () {
+      const element = /** @type {HTMLElement} */ (this);
+      // Every element in the portal reports the same box, so a list that
+      // grows reports it as resized and the climb reaches the container.
+      if (element.closest("[data-xr-portal]")) {
+        return /** @type {DOMRect} */ (
+          /** @type {unknown} */ ({
+            x: 0,
+            y: 0,
+            top: 0,
+            left: 0,
+            right: 100,
+            bottom: panelHeight,
+            width: 100,
+            height: panelHeight,
+          })
+        );
+      }
+      return originalRect.call(this);
+    };
+    try {
+      const manager = new InteractionManager();
+      const ctx = InteractionContext.set({}, manager);
+      const portal = createPortal(ctx, { budget: 0 });
+      const parent = new THREE.Group();
+      portal.addTo(parent);
+      const containerObject = parent.children[0];
+      const drawn = () =>
+        containerObject.children
+          .filter((child) => child instanceof THREE.InstancedMesh)
+          .reduce((sum, mesh) => sum + /** @type {THREE.InstancedMesh} */ (mesh).count, 0);
+
+      /** @type {import("@apendua/justdom").Mountable | undefined} */
+      let mountable;
+      const tree = $("div", [children($("div"))]);
+      const subscription = tree.subscribe((value) => {
+        mountable = value;
+      });
+      assert.ok(mountable);
+      portal.mount(mountable);
+      await settle(portal);
+      assert.equal(containerObject.position.y, 0.5, "half of 100 px, at a centimetre a pixel");
+      assert.equal(drawn(), 2);
+
+      const containers = document.querySelectorAll("[data-xr-portal]");
+      const containerElement = /** @type {HTMLElement} */ (containers[containers.length - 1]);
+      const list = /** @type {HTMLElement} */ (containerElement.firstElementChild);
+      // The order matters for what this proves. A style write on the
+      // container re-measures the container first and its contents after,
+      // so the placement is the *first* effect in the channel's lane; the
+      // row appended in a later flush queues its work behind it. At a zero
+      // budget the placement is then warmed on the first frame — which is
+      // where the old spelling moved the panel, frames before the commit.
+      panelHeight = 200;
+      containerElement.style.setProperty("--grown", "1");
+      await nextMacrotask();
+      list.appendChild(document.createElement("div"));
+      await nextMacrotask();
+
+      /** The frame the panel moved in, and the frame the row appeared in. */
+      let moved = -1;
+      let appeared = -1;
+      for (let frame = 1; frame <= 500 && frameCallbacks.length > 0; frame++) {
+        flushFrame();
+        await nextMacrotask();
+        if (moved < 0 && containerObject.position.y !== 0.5) {
+          moved = frame;
+        }
+        if (appeared < 0 && drawn() === 3) {
+          appeared = frame;
+        }
+      }
+      assert.equal(containerObject.position.y, 1, "half of 200 px in the end");
+      assert.ok(appeared > 1, `the row took more than one frame (${appeared})`);
+      assert.equal(moved, appeared, "and the panel moved in that frame, not before");
+
+      subscription.unsubscribe();
+      portal.disconnect();
+      await drain();
+    } finally {
+      window.Element.prototype.getBoundingClientRect = originalRect;
+    }
   });
 
   test("a child moved out of a removed row keeps its object", async () => {
@@ -1141,14 +1258,13 @@ describe("createPortal", () => {
     portal.disconnect();
   });
 
-  test("an object built for a commit that never came is taken down when its node leaves", async () => {
+  test("an object built for a commit that never came is taken down with the panel", async () => {
     // Built in one frame, removed before the next: the object is in the
     // tree no longer and in the scene never, so neither of the walks a
-    // dispose makes would find it. Its effects are unsubscribed the moment
-    // the node leaves, exactly as an attached object's are, and the
-    // registration the ray target made is the one thing about that the
-    // test can see. Disposing the panel afterwards finds nothing left to do
-    // and nothing to trip over.
+    // dispose makes would find it. It waits for the commit like any removed
+    // object, and a panel disposed before that commit has to take it down
+    // by name. The registration the ray target made is the one thing about
+    // that the test can see.
     const manager = new InteractionManager();
     /** @type {THREE.Object3D[]} */
     const removedTargets = [];
@@ -1196,14 +1312,14 @@ describe("createPortal", () => {
     removedTargets.length = 0;
     list.removeChild(first);
     await nextMacrotask();
-    assert.ok(removedTargets.includes(built), "its registration went with the node");
-    assert.equal(removedTargets.length, 1);
+    assert.equal(removedTargets.length, 0, "waiting for a commit, registration and all");
 
     // Disposed with the second row still queued and the first still listed
     // for a commit that will not come.
     subscription.unsubscribe();
     portal.disconnect();
-    assert.equal(removedTargets.length, 2, "the blocker, and nothing taken down twice");
+    assert.ok(removedTargets.includes(built), "its registration went with the panel");
+    assert.equal(removedTargets.length, 2, "that and the blocker, nothing taken down twice");
     // The frame the removal asked for is still in the shared stub's queue;
     // let it run against the disposed pump so it does not reach the next test.
     await drain();

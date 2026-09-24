@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { batch, observable, Signal, UpdateChannel, withChannel } from "@apendua/signal";
+import { batch, Effect, Signal, UpdateChannel, withChannel } from "@apendua/signal";
 import { div, getContentGroup, PortalReadyContext } from "./div.js";
 import { text } from "./text.js";
 import { checkbox } from "./checkbox.js";
@@ -507,12 +507,14 @@ export function createPortal(
   const pendingAttachments = [];
 
   /**
-   * Objects whose nodes left the tree and which are still in the scene, for
+   * Nodes that left the tree and whose objects are still in the scene, for
    * the same reason: a row leaving and the rows that close over it are one
-   * change. Only the object's *place* waits; everything else about it is
-   * taken down the moment its node goes — see `detach`.
+   * change, and what the player sees of the row until then is the row as
+   * it was. Everything about the object waits — see `detach` for why the
+   * whole of it has to. Checked again at the commit: a node back in the
+   * tree by then was moved, not removed, and keeps its object.
    *
-   * @type {Set<Object3D>}
+   * @type {Set<Node>}
    */
   const pendingRemovals = new Set();
 
@@ -533,66 +535,39 @@ export function createPortal(
   };
 
   /**
-   * Take a node's object down. What stands in the scene stays until the
-   * commit; everything behind it goes now.
+   * Take a node's object down — at the commit, if there is one to wait for,
+   * and the whole of it then, not just its place.
    *
-   * The two halves come apart on purpose. An object left standing keeps
-   * the removed row on screen until the rows around it close over it, which
-   * is the one frame the change should take. Its effects are another
-   * matter: still subscribed, they would be queued by the very mutation
-   * that removed the node, warmed against DOM that is no longer in the
-   * document — a style, a rect, a `Range` measurement, a rasterization,
-   * each for nothing — and run in the sweep to write an object about to be
-   * taken out. Cleaning up now unsubscribes them before any frame, as the
-   * observer callback always did, and leaves the object as it was drawn.
+   * An object cannot be left standing without what stands behind it. Its
+   * meshes, its materials and its place in the batches are what the
+   * mounting built, and the mounting's teardown takes them with it: an
+   * object cleaned up early is an empty group, and a removed row cleaned
+   * up early vanished on the spot while the rows around it waited for the
+   * commit to close over the gap. So a removed row keeps its subscription,
+   * and with it its effects, until the commit.
    *
-   * A child that *moved* out of the removed subtree — appended elsewhere in
-   * the same flush — is still in the tree, and its object is still under
-   * this one's content group, its new place being only pending. The walk
-   * would take it down with the rest, so it is let go of first; the commit
-   * puts it where it now belongs.
+   * What that costs is bounded, and worth knowing. The mutation that
+   * removes a node bumps its `reparented` signal, which invalidates its
+   * subtree's styles and layouts, so its effects are queued and warmed once
+   * against DOM that is no longer in the document — reads that come back
+   * empty, and cost little for it. The same bump is what cuts the subtree
+   * loose: its parent chain now ends at a node with no parent, so nothing
+   * that happens in the live tree afterwards reaches it. One wave, and then
+   * quiet until the commit disposes it.
+   *
+   * A node with nothing drawn for it — a comment marker, a node that left
+   * before its turn — is cleaned up now, holds nothing, and asks for no
+   * frame.
    *
    * @param {Node} node
    */
   const detach = (node) => {
-    const object = nodeToObject.get(node);
-    if (object) {
-      releaseMoved(object);
-    }
-    cleanup(node);
-    if (!object) {
-      // Nothing was drawn for it — a comment node, or a node that left
-      // before its turn — so there is nothing to hold for the commit, and
-      // no frame to ask for.
+    if (pump && nodeToObject.has(node)) {
+      pendingRemovals.add(node);
       return;
     }
-    if (pump) {
-      pendingRemovals.add(object);
-    } else {
-      object.removeFromParent();
-    }
-  };
-
-  /**
-   * Set loose every object under `object` whose node is still in the tree:
-   * it was moved, not removed, and has an attachment pending. The walk
-   * stops at each such object — what is under it moved with it — and goes
-   * on through the ones that did leave.
-   *
-   * @param {Object3D} object
-   */
-  const releaseMoved = (object) => {
-    for (const child of [...getContentGroup(object).children]) {
-      const childNode = objectToNode.get(child);
-      if (!childNode) {
-        continue;
-      }
-      if (containerElement.contains(childNode)) {
-        child.removeFromParent();
-      } else {
-        releaseMoved(child);
-      }
-    }
+    nodeToObject.get(node)?.removeFromParent();
+    cleanup(node);
   };
 
   /**
@@ -601,8 +576,8 @@ export function createPortal(
    * first, each still checked against the tree, since a node can leave
    * between being built and being placed; then the departures. In that
    * order so that an object moved out of a departing subtree is under its
-   * new parent before the old one is taken down, whichever of the two the
-   * observer happened to report first.
+   * new parent before the old one's cleanup walks the group it used to be
+   * in, whichever of the two the observer happened to report first.
    */
   const commit = () => {
     const changed = pendingAttachments.length > 0 || pendingRemovals.size > 0;
@@ -616,8 +591,13 @@ export function createPortal(
       }
     }
     pendingAttachments.length = 0;
-    for (const object of pendingRemovals) {
-      object.removeFromParent();
+    for (const node of pendingRemovals) {
+      // Back in the tree since it was listed: moved, and just re-attached
+      // above, or about to be adopted by a parent still to be built.
+      if (!containerElement.contains(node)) {
+        nodeToObject.get(node)?.removeFromParent();
+        cleanup(node);
+      }
     }
     pendingRemovals.clear();
     if (changed) {
@@ -774,7 +754,17 @@ export function createPortal(
     }
   }
 
-  const resizeSubscription = withChannel(channel, () => observable(resizeCallback).subscribe());
+  // An `Effect` and not `observable(resizeCallback).subscribe()`, which it
+  // was: that spelling wraps the callback in a `Derived` and reads it from
+  // an effect, and a `Derived` is what the channel's warm phase resolves —
+  // so the panel moved to its new size while every box inside it was still
+  // waiting for the commit. The height of a panel centred on its own origin
+  // is exactly what the player sees move. As an effect the callback is the
+  // write, and writes wait for the sweep with everything else.
+  const resizeEffect = withChannel(
+    channel,
+    () => new Effect(resizeCallback, { name: "portal-resize" }),
+  );
 
   /**
    * One observer flush, applied as one transaction. The mirror routes each
@@ -1039,11 +1029,10 @@ export function createPortal(
 
   objectToCleanup.set(containerObject, () => {
     pump?.dispose();
-    // Nothing is waiting for a commit that is not going to come. An object
-    // built for one is in the tree, where the walk below reaches it — unless
-    // its node left in the meantime, in which case `detach` has already
-    // cleaned it up. Taken down here regardless: `cleanup` is idempotent,
-    // and an object in neither the tree nor the scene is otherwise nobody's.
+    // Nothing is waiting for a commit that is not going to come. Both lists
+    // are taken down here by name, because an object can be in neither
+    // place the walks below look — built for a commit, then its node left
+    // — and `cleanup` is idempotent for the ones that are.
     for (const [, object] of pendingAttachments) {
       const node = objectToNode.get(object);
       if (node) {
@@ -1051,6 +1040,9 @@ export function createPortal(
       }
     }
     pendingAttachments.length = 0;
+    for (const node of pendingRemovals) {
+      cleanup(node);
+    }
     pendingRemovals.clear();
     if (blocker) {
       // Removing is safe whether `markLoaded` ever added it.
@@ -1070,7 +1062,7 @@ export function createPortal(
     containerElement.removeEventListener("load", loadCallback, true);
     // A frame asked for by an image that landed just as the portal came down.
     loadFrame?.();
-    resizeSubscription.unsubscribe();
+    resizeEffect.dispose();
     mutationObserver.disconnect();
     animationClock.dispose();
     // After the observer, so nothing can ask for a rebuild on the way out.

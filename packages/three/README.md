@@ -469,11 +469,10 @@ panel's channel is *atomic* (`UpdateChannel`'s option of that name in
 will read — the measurements, the restyles, the rasterized runs, which is
 where a panel's cost is — and the writes to the scene happen together, in
 the frame that finds nothing left to resolve. Until that frame the panel
-stands exactly as it was, and objects built for rows that arrived wait for
-it too, as do the objects of rows that left — drawn where they were, though
-no longer pointable, since everything behind such an object is taken down
-the moment its node goes — so an arrival and the room made for it are one
-frame. The trade is that a big change is seen later rather
+stands exactly as it was — the panel's own size and placement included —
+and objects built for rows that arrived wait for it too, as do the objects
+of rows that left, drawn as they were until then, so an arrival and the
+room made for it are one frame. The trade is that a big change is seen later rather
 than in pieces; a scroll is the one thing that does not wait, for the reason
 the scroll section gives.
 

@@ -452,13 +452,31 @@ pay all of it before the next frame could draw. The portal instead queues
 what the observer reports and spends `budget` milliseconds of each frame on
 it (5 by default), so however large the mount, the frame keeps its rate.
 
-While that runs the panel is *loading*: invisible, and stopping no rays —
-nothing inside it registers as a ray target until it is actually there to
-press. Loading ends exactly once, when everything the initial content brought
-has been built and settled; the panel appears whole rather than assembling
-itself in front of the player. Later updates — rows arriving, a menu opening
-— go through the same budgeted pump, and a panel that is already visible
-never hides itself again.
+While that runs the panel is *loading*: stopping no rays — nothing inside it
+registers as a ray target until it is actually there to press — and showing,
+where it is going to be, a **loading frame**: a translucent rounded rectangle
+the panel's size, with a black border and three dots in the middle that
+brighten in turn. A mount takes a handful of frames, so the frame is there
+to soften a panel appearing from nothing rather than to report on progress;
+it says nothing about how far along the mount is, because nothing can. The
+frame is placed exactly where the panel will be and goes in the same frame
+the panel's content arrives, so the one replaces the other. Loading ends
+exactly once, when everything the initial content brought has been built and
+settled; the panel appears whole rather than assembling itself in front of
+the player. Later updates — rows arriving, a menu opening — go through the
+same budgeted pump, and a panel that is already visible never shows the frame
+again.
+
+A panel that would rather appear from nothing — a readout that is never in
+anybody's way — opts out, and one that wants the frame in its own colours
+says so:
+
+```js
+dom(ctx, readout, [set({ position })], { loadingFrame: false });
+dom(ctx, menu, [set({ position })], {
+  loadingFrame: { color: "white", fill: "black", fillOpacity: 0.4, radius: 8 },
+});
+```
 
 **An update lands whole, however many frames it took.** A visible panel
 cannot hide while it changes, and a change too big for one frame's budget

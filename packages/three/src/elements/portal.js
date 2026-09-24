@@ -12,6 +12,7 @@ import { TextBatchContext, createTextBatch } from "./textBatch.js";
 import { TextScaleContext, createTextScale } from "./textScale.js";
 import { keepSubtreeMatrices, placeAndScale } from "./place.js";
 import { createFrameRequester } from "./frameRequester.js";
+import { createLoadingFrame } from "./loadingFrame.js";
 import { createPortalPump } from "./portalPump.js";
 import { createPortalScheduler, PortalSchedulerContext } from "./portalScheduler.js";
 import { CameraContext, frames, onLateFrame, RendererContext } from "../render.js";
@@ -21,6 +22,7 @@ import { InteractionContext } from "../interactions.js";
  * @import {Mountable} from '../core.js';
  * @import {Object3D} from 'three';
  * @import {MutationBatch} from './animationClock.js';
+ * @import {LoadingFrameOptions} from './loadingFrame.js';
  * @import {PortalScheduler} from './portalScheduler.js';
  */
 
@@ -93,6 +95,15 @@ export function getPortalRoot(node) {
  *   is already visible absorbs later updates incrementally instead of hiding
  *   itself again. For showing a spinner somewhere; `isLoading()` on the
  *   handle is the reactive way to ask.
+ * @property {boolean | LoadingFrameOptions} [loadingFrame] What the player
+ *   sees where the panel is going to be while it mounts: a translucent,
+ *   rounded frame the panel's size with a black border, and three dots in
+ *   the middle that brighten in turn. On by default — a mount takes a
+ *   handful of frames, and a panel that appears from nothing where nothing
+ *   was is what the frame is there to soften — and `false` shows nothing
+ *   until the panel is whole, which is what a readout that is never in
+ *   anybody's way wants. An object tunes the frame's colours, border and
+ *   corners; see `LoadingFrameOptions` in `loadingFrame.js`.
  */
 
 /**
@@ -101,14 +112,24 @@ export function getPortalRoot(node) {
  */
 export function createPortal(
   ctx,
-  { opaqueToRays = true, budget = 5, priority = 0, maxTextScale, onLoadingChanged } = {},
+  {
+    opaqueToRays = true,
+    budget = 5,
+    priority = 0,
+    maxTextScale,
+    onLoadingChanged,
+    loadingFrame = true,
+  } = {},
 ) {
   const containerObject = new THREE.Group();
 
-  // Nothing to see until the initial content has fully mounted: the panel
-  // would otherwise assemble itself in front of the player, boxes first, text
-  // a few frames later. `markLoaded` below is what shows it.
-  containerObject.visible = false;
+  // Visible from the start, and not because there is anything to see. The
+  // container used to hide until the initial mount was done, or the panel
+  // would have assembled itself in front of the player, boxes first and text
+  // a few frames later; but nothing of the content is attached until the
+  // commit that ends the mount (see `commit` below), so the hiding guarded
+  // nothing — and what stands in the container meanwhile, the loading frame,
+  // is exactly what should be seen.
 
   // The panel's perimeter. Everything the portal draws hangs off this, and
   // everything it draws keeps its own matrices; this is what makes that hold
@@ -282,6 +303,48 @@ export function createPortal(
     hasFrames = true;
   } catch {
     hasFrames = typeof requestAnimationFrame === "function";
+  }
+
+  /**
+   * What stands where the panel will be until the panel does: a frame its
+   * size, with a few dots breathing in it. Placed and animated on frames of
+   * its own while the mount runs, and taken down by `markLoaded` in the
+   * same tick that attaches the content, so the one replaces the other.
+   *
+   * The frame has to know the panel's size before the panel's own placement
+   * does. The container is placed by an effect in the atomic channel below,
+   * and that effect waits for the commit with everything else — rightly,
+   * for an update, since the panel's edge moving ahead of its rows is the
+   * instalment the channel exists to prevent. During the mount there is
+   * nothing to hold back, and the frame would sit at the origin, unsized,
+   * until the panel it stood for arrived. So every frame of the mount reads
+   * the container's size and places the container itself, off the channel;
+   * the effect writes the same numbers again at the commit, and nothing
+   * moves.
+   *
+   * Only where there are frames. Without them the mount is synchronous and
+   * over before anything could be drawn, and a frame built to be torn down
+   * in the same task is not worth building.
+   */
+  const loadingFrameObject =
+    loadingFrame && hasFrames
+      ? createLoadingFrame(loadingFrame === true ? {} : loadingFrame)
+      : null;
+  /** @type {() => void} */
+  let stopLoadingFrame = () => {};
+  if (loadingFrameObject) {
+    containerObject.add(loadingFrameObject.object);
+    const stopFrames = requestFrames(() => {
+      const size = getBorderBoxSize(containerElement);
+      placeContainer(size.width, size.height);
+      loadingFrameObject.layout(size.width, size.height);
+      loadingFrameObject.tick(performance.now());
+    });
+    stopLoadingFrame = () => {
+      stopFrames();
+      loadingFrameObject.dispose();
+      stopLoadingFrame = () => {};
+    };
   }
 
   /**
@@ -666,10 +729,13 @@ export function createPortal(
     if (!sawContent || !loading.get()) {
       return;
     }
+    // The frame goes in the tick that attached the content, so the panel
+    // takes its place in the same drawn frame — see `commit`, which the pump
+    // runs just before this.
+    stopLoadingFrame();
     // The blocker before the flip: flipping `loading` is what lets the
     // panel's own controls register, and the background should be in the
     // raycast set before the things drawn in front of it.
-    containerObject.visible = true;
     if (blocker) {
       interactionManager.add(blocker);
     }
@@ -774,11 +840,21 @@ export function createPortal(
         })
       : null;
 
-  function resizeCallback() {
+  /**
+   * Put the container where a panel of this size goes: a centimetre a px,
+   * centred on its origin, and flipped half a turn about x so the CSS y
+   * axis runs the right way. Written by the resize effect at every commit,
+   * and by the loading frame's ticks during the mount — see there for why
+   * the mount cannot wait for the effect.
+   *
+   * @param {number} width in the panel's px
+   * @param {number} height
+   * @returns {void}
+   */
+  function placeContainer(width, height) {
     const scale = 0.01;
-    const size = getBorderBoxSize(containerElement);
-    const sizeX = scale * size.width;
-    const sizeY = scale * size.height;
+    const sizeX = scale * width;
+    const sizeY = scale * height;
     // The rotation is written first and committed by `placeAndScale` with
     // everything else: setting an Euler keeps the quaternion in step, and the
     // quaternion is what the matrix is composed from.
@@ -790,6 +866,11 @@ export function createPortal(
     // would hand the entire panel the work its boxes just opted out of.
     containerObject.rotation.set(Math.PI, 0, 0);
     placeAndScale(containerObject, -sizeX / 2, sizeY / 2, 0, scale, scale, scale);
+  }
+
+  function resizeCallback() {
+    const size = getBorderBoxSize(containerElement);
+    placeContainer(size.width, size.height);
     // The measurement wants the middle of the panel, and the middle moves
     // with the size. In the container's own pixels, which is the frame it is
     // handed back through.
@@ -1079,6 +1160,8 @@ export function createPortal(
 
   objectToCleanup.set(containerObject, () => {
     pump?.dispose();
+    // A panel closed before it finished mounting still had a frame up.
+    stopLoadingFrame();
     // Nothing is waiting for a commit that is not going to come. Both lists
     // are taken down here by name, because an object can be in neither
     // place the walks below look — built for a commit, then its node left

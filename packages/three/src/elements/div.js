@@ -5,7 +5,9 @@ import { $, children, Nothing } from "../operators.js";
 import { interactions } from "../interactions.js";
 import VisualProperties from "./VisualProperties.js";
 import {
+  batchedBoxMaterial,
   createRectMaterial,
+  createRectUniforms,
   rectGeometry,
   writeClipUniforms,
   writeImageUniforms,
@@ -249,6 +251,18 @@ export function box(ctx, element, options = {}) {
   // element's frame, not the quad's — the quad is a unit square scaled to the
   // element's size, so its own coordinates run 0..1.
   const boxMesh = new THREE.Mesh(rectGeometry);
+
+  /**
+   * The numbers this box is drawn from, held apart from anything that draws
+   * with them.
+   *
+   * A batched box is drawn as one instance among many and its own mesh never
+   * reaches the render list, so a material of its own would be a uuid, a
+   * place in three's bookkeeping and a `dispose()` at teardown, per box, for
+   * a program that is never compiled. What it actually needs is this record,
+   * which the batch copies into its instance buffers.
+   */
+  const uniforms = createRectUniforms();
   clipRaycast(boxMesh, () => currentClipBox, object);
 
   /**
@@ -572,7 +586,16 @@ export function box(ctx, element, options = {}) {
       // layout animation affordable and a style change nearly free.
       $(boxMesh, [
         set("material", () => {
-          const material = createRectMaterial();
+          if (batch) {
+            // Shared, invisible, and never disposed — see `batchedBoxMaterial`.
+            // The numbers live in `uniforms` instead, which is what the batch
+            // reads.
+            return batchedBoxMaterial();
+          }
+          // No batch to draw this box: an `<img>`, whose picture is a texture
+          // binding and so a draw of its own, or a panel built outside a
+          // portal. Those still draw themselves, from a material of their own.
+          const material = createRectMaterial(uniforms);
           onCleanup(() => {
             material.dispose();
           });
@@ -585,21 +608,18 @@ export function box(ctx, element, options = {}) {
           if (!batch) {
             return;
           }
-          batch.add(boxMesh);
+          batch.add(boxMesh, uniforms);
           onCleanup(() => {
             batch.remove(boxMesh);
           });
         }),
         // Its own effect, so a scroll writes four numbers and nothing else.
         effects((obj) => {
-          writeClipUniforms(
-            /** @type {THREE.ShaderMaterial} */ (obj.material),
-            getLocalClipBox(element),
-          );
+          writeClipUniforms(uniforms, getLocalClipBox(element));
           batchChanged();
         }),
         effects((obj) => {
-          writeRectUniforms(/** @type {THREE.ShaderMaterial} */ (obj.material), properties);
+          writeRectUniforms(uniforms, properties);
           // A quad scaled to nothing has no surface to draw or hit, and a
           // zero scale is not invertible; an empty box is better described
           // as very small — same convention as the blocker.
@@ -621,7 +641,7 @@ export function box(ctx, element, options = {}) {
         ...(image
           ? [
               effects((obj) => {
-                writeImageUniforms(/** @type {THREE.ShaderMaterial} */ (obj.material), image.get());
+                writeImageUniforms(uniforms, image.get());
               }),
             ]
           : []),

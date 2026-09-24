@@ -55,7 +55,7 @@ describe("sdf rect", () => {
       borderColor: "rgb(0, 0, 255)",
     });
     const material = createRectMaterial();
-    writeRectUniforms(material, properties);
+    writeRectUniforms(material.uniforms, properties);
 
     const { uSize, uRadii, uBorder, uFillColor, uBorderColor } = material.uniforms;
     // jsdom lays nothing out, so the box itself is empty.
@@ -77,12 +77,12 @@ describe("sdf rect", () => {
   test("rewriting uniforms allocates no new material state", () => {
     const properties = propertiesOf({ backgroundColor: "rgb(10, 20, 30)" });
     const material = createRectMaterial();
-    writeRectUniforms(material, properties);
+    writeRectUniforms(material.uniforms, properties);
     const before = {
       size: material.uniforms.uSize.value,
       fill: material.uniforms.uFillColor.value,
     };
-    writeRectUniforms(material, properties);
+    writeRectUniforms(material.uniforms, properties);
     // Same vectors, mutated in place — what makes per-frame writes safe.
     assert.equal(material.uniforms.uSize.value, before.size);
     assert.equal(material.uniforms.uFillColor.value, before.fill);
@@ -99,7 +99,7 @@ describe("the picture layer", () => {
   test("both rectangles land, and they are allowed to disagree", () => {
     const material = createRectMaterial();
     const texture = new THREE.Texture();
-    writeImageUniforms(material, {
+    writeImageUniforms(material.uniforms, {
       texture,
       opacity: 0.75,
       left: -45,
@@ -127,7 +127,7 @@ describe("the picture layer", () => {
     // material still holding it would be that last user.
     const material = createRectMaterial();
     const texture = new THREE.Texture();
-    writeImageUniforms(material, {
+    writeImageUniforms(material.uniforms, {
       texture,
       opacity: 1,
       left: 0,
@@ -136,7 +136,7 @@ describe("the picture layer", () => {
       bottom: 10,
       content: { left: 0, top: 0, right: 10, bottom: 10 },
     });
-    writeImageUniforms(material, null);
+    writeImageUniforms(material.uniforms, null);
     assert.equal(material.uniforms.uImageOpacity.value, 0);
     assert.equal(material.uniforms.uImage.value, null);
   });
@@ -154,9 +154,9 @@ describe("the picture layer", () => {
       bottom: 10,
       content: { left: 0, top: 0, right: 10, bottom: 10 },
     };
-    writeImageUniforms(material, image);
+    writeImageUniforms(material.uniforms, image);
     const before = material.uniforms.uImageRect.value;
-    writeImageUniforms(material, { ...image, left: 1 });
+    writeImageUniforms(material.uniforms, { ...image, left: 1 });
     // The same vector, mutated — which is what makes an object-position
     // transition a per-frame write and not a per-frame allocation.
     assert.equal(material.uniforms.uImageRect.value, before);

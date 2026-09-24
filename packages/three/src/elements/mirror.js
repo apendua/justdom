@@ -2409,6 +2409,73 @@ function getWhiteSpace(element) {
 }
 
 /**
+ * The one Range every text measurement is made with.
+ *
+ * A Range is live: the document keeps every one it hands out and updates
+ * its boundary points on every mutation — a removed node moves them to the
+ * parent, rewritten character data shifts the offsets. Creating one per
+ * measurement and dropping it, still pointing into the text it measured,
+ * left a mount of eight hundred labels with up to eight hundred stale
+ * ranges for every mutation to walk until the collector got to them — the
+ * hover writes a moving ray makes at frame rate included. One shared range
+ * makes that one.
+ *
+ * It also closes a small leak on the transformed path: a measurement clone
+ * is appended to the body and removed, and the floating range kept the
+ * removed subtree reachable until it was collected. After each measurement
+ * the range is pointed at the document itself, where nothing in a panel can
+ * move it and nothing is held.
+ *
+ * Safe to share because every measurement is synchronous: nothing between
+ * `selectNodeContents` and the last rect read yields to anything that could
+ * measure.
+ *
+ * @type {Range | null}
+ */
+let measuringRange = null;
+
+/**
+ * @returns {Range}
+ */
+function getMeasuringRange() {
+  if (!measuringRange) {
+    measuringRange = document.createRange();
+  }
+  return measuringRange;
+}
+
+/**
+ * Tests only: forget the shared range, so a test that stands in for
+ * `document.createRange` is handed the stand-in on the next measurement
+ * rather than a real range made before the stand-in was installed.
+ *
+ * @returns {void}
+ */
+export function resetMeasuringRangeForTests() {
+  measuringRange = null;
+}
+
+/**
+ * @param {Text} text
+ * @param {HTMLElement} parentElement
+ * @param {string} whiteSpace
+ * @param {boolean} scrolled
+ * @param {boolean} revealed
+ * @returns {TextLayout}
+ */
+function measureTextRects(text, parentElement, whiteSpace, scrolled, revealed) {
+  const range = getMeasuringRange();
+  try {
+    return measureTextRectsWith(range, text, parentElement, whiteSpace, scrolled, revealed);
+  } finally {
+    // Let go of the node. The document has children, so offset 0 is a valid
+    // point in it, and it is one that nothing inside a panel can disturb.
+    range.setStart(document, 0);
+    range.setEnd(document, 0);
+  }
+}
+
+/**
  * The measuring core: line boxes and parent-relative position of one text
  * node, read off whatever tree the node currently sits in.
  *
@@ -2420,6 +2487,7 @@ function getWhiteSpace(element) {
  * character; on a wrapped paragraph in Chromium the difference was 2.2ms and
  * 0.5ms, per measurement.
  *
+ * @param {Range} range The shared range — see `getMeasuringRange`.
  * @param {Text} text
  * @param {HTMLElement} parentElement
  * @param {string} whiteSpace
@@ -2429,7 +2497,7 @@ function getWhiteSpace(element) {
  * @param {boolean} revealed Whether to measure character boundaries too.
  * @returns {TextLayout}
  */
-function measureTextRects(text, parentElement, whiteSpace, scrolled, revealed) {
+function measureTextRectsWith(range, text, parentElement, whiteSpace, scrolled, revealed) {
   const content = text.textContent || "";
   // Against the live tree the parent's rect is shareable; a measurement
   // clone is created and thrown away inside one measurement, so its rect is
@@ -2437,7 +2505,6 @@ function measureTextRects(text, parentElement, whiteSpace, scrolled, revealed) {
   const parentRect = scrolled
     ? readClientRect(parentElement)
     : parentElement.getBoundingClientRect();
-  const range = document.createRange();
   range.selectNodeContents(text);
   const boundsRect = range.getBoundingClientRect();
   const left = boundsRect.left - parentRect.left + (scrolled ? parentElement.scrollLeft || 0 : 0);

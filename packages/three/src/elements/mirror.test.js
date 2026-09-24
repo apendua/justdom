@@ -3,8 +3,6 @@ import assert from "node:assert/strict";
 import { batch, Derived, Effect, selector, toObservable } from "@apendua/signal";
 import {
   createMirror,
-  trackCharacterEdges,
-  tracksCharacterEdges,
   getBorderBoxSize,
   getComputedStyleCached,
   getContentPosition,
@@ -13,6 +11,9 @@ import {
   getObjectPosition,
   getTextLayout,
   PORTAL_ATTRIBUTE,
+  resetMeasuringRangeForTests,
+  trackCharacterEdges,
+  tracksCharacterEdges,
 } from "./mirror.js";
 import { UNCLIPPED } from "./clip.js";
 
@@ -680,6 +681,7 @@ describe("text layout under transforms", () => {
     /** @type {Node[]} */
     const measured = [];
     const originalCreateRange = document.createRange;
+    resetMeasuringRangeForTests();
     document.createRange = () =>
       /** @type {Range} */ (
         /** @type {unknown} */ ({
@@ -720,6 +722,7 @@ describe("text layout under transforms", () => {
     } finally {
       parent.remove();
       document.createRange = originalCreateRange;
+      resetMeasuringRangeForTests();
     }
   });
 });
@@ -739,11 +742,15 @@ describe("text layout as a dependency", () => {
     const rect = () => new window.DOMRect(10, 20 - shifted, 30, 12);
 
     const originalCreateRange = document.createRange;
+    resetMeasuringRangeForTests();
     document.createRange = () => {
-      measurements++;
       return /** @type {Range} */ (
         /** @type {unknown} */ ({
-          selectNodeContents: () => {},
+          // One range now serves every measurement, so "a measurement
+          // happened" is a node being selected, not a range being made.
+          selectNodeContents: () => {
+            measurements++;
+          },
           setStart: () => {},
           setEnd: () => {},
           getBoundingClientRect: rect,
@@ -799,6 +806,7 @@ describe("text layout as a dependency", () => {
       subscription.unsubscribe();
       parent.remove();
       document.createRange = originalCreateRange;
+      resetMeasuringRangeForTests();
     }
   });
 
@@ -822,6 +830,7 @@ describe("text layout as a dependency", () => {
       width: 30,
       height: 12,
     });
+    resetMeasuringRangeForTests();
     document.createRange = () => {
       return /** @type {Range} */ (
         /** @type {unknown} */ ({
@@ -903,6 +912,7 @@ describe("text layout as a dependency", () => {
       holders.forEach((effect) => effect.dispose());
       scroller.remove();
       document.createRange = originalCreateRange;
+      resetMeasuringRangeForTests();
     }
   });
 });
@@ -2054,6 +2064,7 @@ describe("character edges", () => {
    */
   function installRange({ onRect } = {}) {
     const original = document.createRange;
+    resetMeasuringRangeForTests();
     document.createRange = () => {
       let start = 0;
       let end = 0;
@@ -2125,6 +2136,7 @@ describe("character edges", () => {
     };
     return () => {
       document.createRange = original;
+      resetMeasuringRangeForTests();
     };
   }
 
@@ -2203,5 +2215,75 @@ describe("character edges", () => {
     assert.equal(tracksCharacterEdges(node), true);
     stop();
     assert.equal(tracksCharacterEdges(node), false);
+  });
+});
+
+describe("the range text is measured with", () => {
+  test("is made once, serves every measurement, and lets go of the node afterwards", () => {
+    // A Range is live — the document keeps every one it hands out and
+    // updates it on every mutation — so one per measurement left a mount's
+    // worth of stale ranges for every later mutation to walk, each still
+    // pointing into the text it had measured. One is made, and between
+    // measurements it points at the document, where nothing in a panel can
+    // move it and nothing is held.
+    let made = 0;
+    let selected = 0;
+    /** @type {Array<[Node, number]>} */
+    const boundaries = [];
+    const rect = () => new window.DOMRect(0, 0, 30, 12);
+
+    const originalCreateRange = document.createRange;
+    resetMeasuringRangeForTests();
+    document.createRange = () => {
+      made++;
+      return /** @type {Range} */ (
+        /** @type {unknown} */ ({
+          selectNodeContents: () => {
+            selected++;
+          },
+          setStart: (/** @type {Node} */ node, /** @type {number} */ offset) => {
+            boundaries.push([node, offset]);
+          },
+          setEnd: (/** @type {Node} */ node, /** @type {number} */ offset) => {
+            boundaries.push([node, offset]);
+          },
+          getBoundingClientRect: rect,
+          getClientRects: () => /** @type {DOMRectList} */ (/** @type {unknown} */ ([rect()])),
+        })
+      );
+    };
+
+    const first = document.createElement("div");
+    first.appendChild(document.createTextNode("one"));
+    const second = document.createElement("div");
+    second.appendChild(document.createTextNode("two"));
+    document.body.append(first, second);
+    layout(first, () => [0, 0, 100, 20]);
+    layout(second, () => [0, 20, 100, 20]);
+
+    const mirror = createMirror();
+    for (const node of [first, first.firstChild, second, second.firstChild]) {
+      mirror.adopt(/** @type {Node} */ (node));
+    }
+
+    try {
+      getTextLayout(/** @type {Text} */ (first.firstChild));
+      getTextLayout(/** @type {Text} */ (second.firstChild));
+
+      assert.equal(selected, 2, "two measurements");
+      assert.equal(made, 1, "on one range");
+      // The last two boundary writes of each measurement park the range on
+      // the document. Both measurements ended that way, so the tail reads
+      // (document, 0) twice over.
+      assert.deepEqual(boundaries.slice(-2), [
+        [document, 0],
+        [document, 0],
+      ]);
+    } finally {
+      first.remove();
+      second.remove();
+      document.createRange = originalCreateRange;
+      resetMeasuringRangeForTests();
+    }
   });
 });

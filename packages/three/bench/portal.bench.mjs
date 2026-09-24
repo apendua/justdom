@@ -101,12 +101,15 @@ window.Element.prototype.getBoundingClientRect = function instrumentedRect() {
 };
 // jsdom's Range has no geometry; a zero-rect stand-in (the same shape the
 // unit tests use) keeps the measurement path running while counting it.
+// One range serves every measurement, so the count is of nodes selected on
+// it, not of ranges made.
 document.createRange = () => {
-  counters.range += 1;
   const rect = () => ({ left: 0, top: 0, right: 0, bottom: 0, width: 0, height: 0 });
   return /** @type {Range} */ (
     /** @type {unknown} */ ({
-      selectNodeContents: () => {},
+      selectNodeContents: () => {
+        counters.range += 1;
+      },
       setStart: () => {},
       setEnd: () => {},
       getBoundingClientRect: rect,

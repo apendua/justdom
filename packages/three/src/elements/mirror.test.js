@@ -2287,3 +2287,69 @@ describe("the range text is measured with", () => {
     }
   });
 });
+
+describe("two layout changes settled in one flush", () => {
+  test("a level reached first from further down still hears an earlier change of its own", () => {
+    // Two childList records in one observer flush. The first is inside the
+    // last row, and its climb reaches the container first, telling it "from
+    // row 3". The second names the container itself — a row inserted after
+    // row 0 — so the container also owes rows 1 and 2. The settle used to see
+    // a level it had already visited and drop the second entry whole.
+    const container = document.createElement("div");
+    container.setAttribute(PORTAL_ATTRIBUTE, "");
+    document.body.appendChild(container);
+    layout(container, () => [0, 0, 200, 80]);
+
+    /** @type {number[]} */
+    const reads = [0, 0, 0, 0];
+    const rows = reads.map((_, i) => {
+      const row = document.createElement("div");
+      container.appendChild(row);
+      layout(row, () => [0, i * 20, 200, i * 20 + 20], { count: () => (reads[i] += 1) });
+      return row;
+    });
+
+    const mirror = createMirror();
+    mirror.adopt(container);
+    for (const row of rows) {
+      mirror.adopt(row);
+    }
+    const positions = rows.map((row) => new Derived(() => getContentPosition(row)));
+    const subscriptions = positions.map((position) =>
+      position.subscribe({ next: () => position.get() }),
+    );
+    for (const position of positions) {
+      position.get();
+    }
+
+    /**
+     * @param {Element} target
+     * @param {Node | null} previousSibling
+     */
+    const childList = (target, previousSibling) =>
+      /** @type {MutationRecord} */ (
+        /** @type {unknown} */ ({
+          type: "childList",
+          target,
+          addedNodes: [],
+          removedNodes: [],
+          previousSibling,
+          nextSibling: previousSibling ? previousSibling.nextSibling : target.firstChild,
+        })
+      );
+
+    try {
+      const before = [...reads];
+      batch(() => mirror.ingest([childList(rows[3], null), childList(container, rows[0])]));
+
+      assert.ok(reads[1] > before[1], "row 1 is told");
+      assert.ok(reads[2] > before[2], "row 2 is told");
+      assert.equal(reads[0], before[0], "row 0, before both changes, is not");
+    } finally {
+      for (const subscription of subscriptions) {
+        subscription.unsubscribe();
+      }
+      container.remove();
+    }
+  });
+});

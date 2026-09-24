@@ -1016,15 +1016,32 @@ export class DomMirror {
       // `resized` keeping a ledger — get different answers after the first.
       // One visit each, and a climb that reaches a level someone else has
       // already settled stops there, its own answer having been decided.
-      const settled = new Set();
+      //
+      // Its *size* answer, that is — not which children it owes. Each level
+      // remembers the earliest child it told, and a later arrival with an
+      // earlier one tells the difference before stopping. Without that, a
+      // level first reached by a climb from further down ("from row 3") and
+      // then named directly by its own change ("from row 1") dropped the
+      // second entry whole, and rows 1 and 2 were never told.
+      /** @type {Map<Element, Node | null>} */
+      const settled = new Map();
       for (const [container, disturbed] of containers) {
         let from = disturbed;
         for (
           let current = /** @type {Element | null} */ (container);
-          current && !settled.has(current);
+          current;
           current = current.parentElement
         ) {
-          settled.add(current);
+          if (settled.has(current)) {
+            const told = /** @type {Node | null} */ (settled.get(current));
+            const earlier = earlierOf(told, from);
+            if (earlier !== told) {
+              settled.set(current, earlier);
+              this.#childrenMoved(current, earlier);
+            }
+            break;
+          }
+          settled.set(current, from);
           this.#childrenMoved(current, from);
           if (current.hasAttribute(PORTAL_ATTRIBUTE)) {
             // The top of what this portal mirrors. Nothing above is projected
@@ -1175,6 +1192,29 @@ function childListHint(mutation) {
 /**
  * Whichever of two disturbed-child hints is the earlier, `null` — "no idea,
  * assume the first" — beating both.
+ *
+ * Both hints are assumed to be current children of the one container they
+ * were named for, which is what makes document order the right question.
+ * Every caller today keeps that true: `firstDisturbedChild` reads the child
+ * off the live tree (or answers `null` when the sibling it would start from
+ * has left), and the character-data and image paths pass a node with the
+ * parent it has *now*. The observer delivers its records after the DOM has
+ * reached its final shape, and the settle runs in the same synchronous
+ * ingest, so nothing can move a hint between naming it and comparing it.
+ *
+ * That assumption is not checked, and it is the one thing to check before
+ * adding a caller that names a child it did not just read off the tree —
+ * a node remembered from an earlier flush, say, or one found by a walk over
+ * geometry rather than over the DOM. A hint that has since been removed or
+ * moved would still compare, and `compareDocumentPosition` between a
+ * disconnected node and a connected one is implementation-specific: the
+ * container could keep the *later* hint and never tell the rows the earlier
+ * one stood for. `#childrenMoved` guards its own end by treating a `from`
+ * that is not a child of the element as the whole list; the matching guard
+ * here is to answer `null` when `a.parentNode !== b.parentNode` (or when
+ * either has no parent at all), so the container assumes the first child.
+ * Left out for now because no path can reach it, and a guard nothing can
+ * exercise is a guard nothing can keep honest.
  *
  * @param {Node | null} a
  * @param {Node | null} b

@@ -264,6 +264,13 @@ export function createPortal(
   containerElement.style.top = "0";
   containerElement.style.left = "0";
   containerElement.style.visibility = "hidden";
+  // Hidden, but not out of flow enough on its own: a descendant wider or
+  // taller than the panel — an unbreakable string, a fixed-size image — is
+  // ordinarily left to bleed past this container's own box, and with nothing
+  // between it and `<html>` clipping that overflow, it is the page itself
+  // that grows a scrollbar for a panel nobody can see. Clipping here keeps
+  // that overflow this container's problem instead of the document's.
+  containerElement.style.overflow = "hidden";
   document.body.appendChild(containerElement);
   mirror.adopt(containerElement);
   nodeToObject.set(containerElement, containerObject);

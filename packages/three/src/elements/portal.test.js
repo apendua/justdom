@@ -1203,6 +1203,147 @@ describe("createPortal", () => {
     }
   });
 
+  test("a child moved under a row that is not built yet lands there at the commit", async () => {
+    // Row A goes, and its inner element E is moved into a *new* row that
+    // arrives in the same flush. E has an object; the new row has none yet,
+    // so there is no parent object to list E against when the observer
+    // reports it — if it reports it at all: E appended into the new row
+    // *before* the row joins the document is a mutation of a detached node,
+    // which the observer never sees. Either way, when the new row's turn
+    // comes its walk finds E's object already parented, under A's group.
+    // So the attachment is kept by node, listed by whichever of the two
+    // saw the move, and resolved at the commit, by which time the new row
+    // is built and E's parent is whatever the tree says it is. Both orders
+    // below.
+    const manager = new InteractionManager();
+    const ctx = InteractionContext.set({}, manager);
+    const portal = createPortal(ctx, { budget: 0 });
+    const parent = new THREE.Group();
+    portal.addTo(parent);
+    const containerObject = parent.children[0];
+
+    /** @type {import("@apendua/justdom").Mountable | undefined} */
+    let mountable;
+    const tree = $("div");
+    const subscription = tree.subscribe((value) => {
+      mountable = value;
+    });
+    assert.ok(mountable);
+    portal.mount(mountable);
+    await settle(portal);
+
+    const containers = document.querySelectorAll("[data-xr-portal]");
+    const list = /** @type {HTMLElement} */ (containers[containers.length - 1].firstElementChild);
+    const a = document.createElement("div");
+    const e = document.createElement("span");
+    a.appendChild(e);
+    list.appendChild(a);
+    await drain();
+
+    const rootObject = /** @type {THREE.Object3D} */ (
+      containerObject.children.find((child) => !(child instanceof THREE.Mesh))
+    );
+    const listObject = rootObject.children[0];
+    const [objA] = listObject.children;
+    const objE = objA.children[0].children[0];
+    assert.ok(objE, "E was built under A");
+
+    const newRow = document.createElement("div");
+    list.removeChild(a);
+    newRow.appendChild(e);
+    list.appendChild(newRow);
+    await nextMacrotask();
+    await drain();
+
+    assert.equal(listObject.children.length, 1, "A is gone and the new row is in");
+    const objNew = listObject.children[0];
+    assert.notEqual(objNew, objA);
+    assert.equal(objNew.children[0].children[0], objE, "and E's object, the same one, is under it");
+
+    // The other order: the row joins the document first, so the observer
+    // does see E arrive under it — under a parent with no object yet.
+    const newerRow = document.createElement("div");
+    list.removeChild(newRow);
+    list.appendChild(newerRow);
+    newerRow.appendChild(e);
+    await nextMacrotask();
+    await drain();
+
+    assert.equal(listObject.children.length, 1);
+    const objNewer = listObject.children[0];
+    assert.notEqual(objNewer, objNew);
+    assert.equal(
+      objNewer.children[0].children[0],
+      objE,
+      "the same object again, under the newer row",
+    );
+
+    subscription.unsubscribe();
+    portal.disconnect();
+    await drain();
+  });
+
+  test("a removed row is drawn until the commit but a press on it reaches nothing", async () => {
+    // Held for the commit, the row's quad is still there for the ray to
+    // land on. What must not follow is the click: the element is out of
+    // the document and the app has let go of it, so a handler still hanging
+    // off it would run against a row the app considers gone.
+    const manager = new InteractionManager();
+    const ctx = InteractionContext.set({}, manager);
+    const portal = createPortal(ctx, { budget: 0 });
+    const parent = new THREE.Group();
+    portal.addTo(parent);
+    const containerObject = parent.children[0];
+
+    /** @type {import("@apendua/justdom").Mountable | undefined} */
+    let mountable;
+    const tree = $("div");
+    const subscription = tree.subscribe((value) => {
+      mountable = value;
+    });
+    assert.ok(mountable);
+    portal.mount(mountable);
+    await settle(portal);
+
+    const containers = document.querySelectorAll("[data-xr-portal]");
+    const list = /** @type {HTMLElement} */ (containers[containers.length - 1].firstElementChild);
+    const row = document.createElement("div");
+    row.style.cursor = "pointer";
+    list.appendChild(row);
+    await drain();
+
+    const rootObject = /** @type {THREE.Object3D} */ (
+      containerObject.children.find((child) => !(child instanceof THREE.Mesh))
+    );
+    const rowObject = /** @type {THREE.Object3D<import("../core.js").XREventMap>} */ (
+      rootObject.children[0].children[0]
+    );
+    let clicks = 0;
+    row.addEventListener("click", () => {
+      clicks += 1;
+    });
+    const controller = new THREE.Object3D();
+    const press = () => {
+      rowObject.dispatchEvent(/** @type {any} */ ({ type: "selectstart", controller }));
+      rowObject.dispatchEvent(/** @type {any} */ ({ type: "selectend", controller }));
+      rowObject.dispatchEvent(/** @type {any} */ ({ type: "select", controller }));
+    };
+    press();
+    assert.equal(clicks, 1, "a press on a row that is there is a click");
+
+    list.removeChild(row);
+    await nextMacrotask();
+    assert.equal(rowObject.parent, rootObject.children[0], "still in the scene until the commit");
+    press();
+    assert.equal(clicks, 1, "but a press on it now reaches nothing");
+    assert.equal(row.dataset.xrActive, undefined, "and does not even mark it pressed");
+
+    await drain();
+    subscription.unsubscribe();
+    portal.disconnect();
+    await drain();
+  });
+
   test("a child moved out of a removed row keeps its object", async () => {
     // Row A goes and its inner element E is appended under row B in the
     // same flush. E is in the tree, its new place is only pending, and its

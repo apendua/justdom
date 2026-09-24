@@ -502,16 +502,23 @@ export function createPortal(
   let sawContent = false;
 
   /**
-   * Objects built and not yet in the scene, each with the content group it
-   * belongs under, in the order they were built. Held for the commit rather
-   * than attached on the spot, so that a row appearing and the rows it
-   * pushes down arrive in the same frame — the channel holds the moves, so
-   * the scene has to hold the arrivals. Only a pumped portal keeps this
-   * list; with no frames to slice across there is nothing to hold for.
+   * Nodes whose objects are built and not yet where they belong in the
+   * scene, in the order they were listed. Held for the commit rather than
+   * attached on the spot, so that a row appearing and the rows it pushes
+   * down arrive in the same frame — the channel holds the moves, so the
+   * scene has to hold the arrivals. Only a pumped portal keeps this list;
+   * with no frames to slice across there is nothing to hold for.
    *
-   * @type {Array<[parent: Object3D, child: Object3D]>}
+   * Nodes, not parent-and-child pairs, because where a node belongs is
+   * decided at the commit and not before: a node moved under a parent that
+   * has no object *yet* — a new row, still queued to be built — has an
+   * object to place and nowhere to put it at the time it is listed. By the
+   * commit the parent is built, since the commit waits for the queue, and
+   * `node.parentNode` says where the object goes.
+   *
+   * @type {Set<Node>}
    */
-  const pendingAttachments = [];
+  const pendingAttachments = new Set();
 
   /**
    * Nodes that left the tree and whose objects are still in the scene, for
@@ -526,17 +533,36 @@ export function createPortal(
   const pendingRemovals = new Set();
 
   /**
-   * Put an object where it belongs: now, or at the commit if there is one
-   * to wait for. Both callers go through here so that a node re-inserted
-   * mid-update and one built by the pump keep the same frame.
+   * Put a node's object under its parent's: now, or at the commit if there
+   * is one to wait for. Both callers go through here so that a node
+   * re-inserted mid-update and one built by the pump keep the same frame.
    *
-   * @param {Object3D} parentObject
-   * @param {Object3D} object
+   * @param {Node} node
    */
-  const attach = (parentObject, object) => {
+  const attach = (node) => {
     if (pump) {
-      pendingAttachments.push([getContentGroup(parentObject), object]);
-    } else {
+      pendingAttachments.add(node);
+      return;
+    }
+    place(node);
+  };
+
+  /**
+   * Put a node's object under the object of whatever its parent is now.
+   * Nothing to do for a node with no object, or whose parent has none —
+   * the latter cannot happen at a commit, which waits for every queued
+   * node to be built, and off the pumped path the parent was built first.
+   *
+   * `add` is also the move: an object already under this parent goes to
+   * the end of its children, which is where a re-appended node went in the
+   * tree, and where the batches' walk expects to meet it.
+   *
+   * @param {Node} node
+   */
+  const place = (node) => {
+    const object = nodeToObject.get(node);
+    const parentObject = node.parentNode ? nodeToObject.get(node.parentNode) : undefined;
+    if (object && parentObject) {
       getContentGroup(parentObject).add(object);
     }
   };
@@ -592,39 +618,43 @@ export function createPortal(
    * order so that an object moved out of a departing subtree is under its
    * new parent before the old one's cleanup walks the group it used to be
    * in, whichever of the two the observer happened to report first.
+   *
+   * One transaction in the panel's region, like the observer callback whose
+   * work this took over: a teardown writes signals — batch memberships,
+   * ray registrations, whatever a component's own cleanup does — and each
+   * such write outside a batch would drain the queue on the spot rather
+   * than once at the end, while anything a teardown happened to construct
+   * would be born in the default channel rather than the panel's.
    */
-  const commit = () => {
-    const changed = pendingAttachments.length > 0 || pendingRemovals.size > 0;
-    for (const [parentObject, object] of pendingAttachments) {
-      const node = objectToNode.get(object);
-      // `add` is also the move: an object already under this parent goes to
-      // the end of its children, which is where a re-appended node went in
-      // the tree, and where the batches' walk expects to meet it.
-      if (node && containerElement.contains(node)) {
-        parentObject.add(object);
+  const commit = () =>
+    projectChanges(() => {
+      const changed = pendingAttachments.size > 0 || pendingRemovals.size > 0;
+      for (const node of pendingAttachments) {
+        if (containerElement.contains(node)) {
+          place(node);
+        }
       }
-    }
-    pendingAttachments.length = 0;
-    for (const node of pendingRemovals) {
-      // Back in the tree since it was listed: moved, and just re-attached
-      // above, or about to be adopted by a parent still to be built.
-      if (!containerElement.contains(node)) {
-        nodeToObject.get(node)?.removeFromParent();
-        cleanup(node);
+      pendingAttachments.clear();
+      for (const node of pendingRemovals) {
+        // Back in the tree since it was listed: moved, and just placed
+        // above.
+        if (!containerElement.contains(node)) {
+          nodeToObject.get(node)?.removeFromParent();
+          cleanup(node);
+        }
       }
-    }
-    pendingRemovals.clear();
-    if (changed) {
-      // The batches draw what a walk of the panel finds, and the walk just
-      // changed. Every box and run told its batch about itself when it was
-      // built — but that rebuild ran while the object was still loose, and
-      // found nothing where it now hangs. Without this the new boxes stayed
-      // out of the draw until something unrelated restyled the panel, while
-      // whatever draws itself appeared at once: text over no card.
-      boxBatch.invalidate();
-      textBatch.invalidate();
-    }
-  };
+      pendingRemovals.clear();
+      if (changed) {
+        // The batches draw what a walk of the panel finds, and the walk just
+        // changed. Every box and run told its batch about itself when it was
+        // built — but that rebuild ran while the object was still loose, and
+        // found nothing where it now hangs. Without this the new boxes stayed
+        // out of the draw until something unrelated restyled the panel, while
+        // whatever draws itself appeared at once: text over no card.
+        boxBatch.invalidate();
+        textBatch.invalidate();
+      }
+    });
 
   /**
    * The initial mount is done: show the panel, let its buttons register, and
@@ -694,10 +724,7 @@ export function createPortal(
       return false;
     }
     if (!object.parent) {
-      const parentObject = node.parentNode ? nodeToObject.get(node.parentNode) : undefined;
-      if (parentObject) {
-        attach(parentObject, object);
-      }
+      attach(node);
     }
     node.childNodes.forEach((childNode) => {
       const childObject = nodeToObject.get(childNode);
@@ -712,6 +739,13 @@ export function createPortal(
         // arrives with it. On the spot rather than at the commit: this
         // object is not in the scene yet itself, so nothing appears early.
         getContentGroup(object).add(childObject);
+      } else if (childObject.parent !== getContentGroup(object)) {
+        // Built under some other parent, and moved here since — into a row
+        // that was not in the document when the move happened, so the
+        // observer has no record of it and nothing has listed it. It is
+        // drawn where it was until the commit, like every move, and placed
+        // here then.
+        attach(childNode);
       }
     });
     return true;
@@ -732,7 +766,7 @@ export function createPortal(
           priority,
           buildNode: buildQueuedNode,
           onCommit: commit,
-          hasPendingCommit: () => pendingAttachments.length > 0 || pendingRemovals.size > 0,
+          hasPendingCommit: () => pendingAttachments.size > 0 || pendingRemovals.size > 0,
           onSettled: markLoaded,
           // Content appeared or moved under whatever rays are resting on
           // the panel.
@@ -811,9 +845,11 @@ export function createPortal(
             pump.enqueue(node);
             return;
           }
-          const childObject = getOrCreateObjectForNode(node);
-          if (childObject && parentObject) {
-            attach(parentObject, childObject);
+          // Listed whether or not the parent has an object yet: a node
+          // moved under a row still queued to be built has nowhere to go
+          // *now*, and somewhere to go by the commit.
+          if (getOrCreateObjectForNode(node)) {
+            attach(node);
           }
         });
       }
@@ -1047,13 +1083,10 @@ export function createPortal(
     // are taken down here by name, because an object can be in neither
     // place the walks below look — built for a commit, then its node left
     // — and `cleanup` is idempotent for the ones that are.
-    for (const [, object] of pendingAttachments) {
-      const node = objectToNode.get(object);
-      if (node) {
-        cleanup(node);
-      }
+    for (const node of pendingAttachments) {
+      cleanup(node);
     }
-    pendingAttachments.length = 0;
+    pendingAttachments.clear();
     for (const node of pendingRemovals) {
       cleanup(node);
     }

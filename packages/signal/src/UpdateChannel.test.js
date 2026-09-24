@@ -715,6 +715,163 @@ describe("UpdateChannel, atomic", () => {
     );
   });
 
+  it("keeps the clock on the channels that come along while the target sweeps", () => {
+    // The sweep is unbudgeted; the pass is not. A lane that drains of its
+    // own accord and comes along with the pass — the default lane, holding
+    // whatever else the program queued — stays under the budget, or the
+    // slice the caller was protecting goes to work that was never the
+    // channel's.
+    let time = 0;
+    const channel = new UpdateChannel({
+      name: "atomic-side-budget",
+      order: 1,
+      manual: true,
+      atomic: true,
+      now: () => time,
+    });
+    const side = new UpdateChannel({ name: "side-of-atomic", order: 2 });
+    const pulse = Signal.of(0);
+    const shared = Signal.of(0);
+    // Resolving this is what queues the side work, mid-pass, where the
+    // flushing flag keeps the side lane from draining on its own.
+    const node = new Derived(() => {
+      shared.set(shared.peek() + 1);
+      return pulse.get();
+    });
+    const target = new Effect(() => node.get(), { channel });
+    /** @type {number[]} */
+    const ran = [];
+    const sideEffects = Array.from(
+      { length: 4 },
+      (_, i) =>
+        new Effect(
+          () => {
+            shared.get();
+            ran.push(i);
+            time += 4;
+          },
+          { channel: side },
+        ),
+    );
+    ran.length = 0;
+
+    pulse.set(1);
+    channel.flush({ budget: 8 });
+    assert.strictEqual(target.getRuns(), 2, "the target swept");
+    assert.deepStrictEqual(
+      ran,
+      [0, 1],
+      "two side effects fit in eight milliseconds; the rest wait",
+    );
+
+    target.dispose();
+    sideEffects.forEach((e) => e.dispose());
+  });
+
+  it("warm() drains a side channel it marked even when the queue's size did not move", () => {
+    // Resolving disposes one queued effect and marks another: the size is
+    // where it was, and the marked effect is still owed its drain.
+    const channel = new UpdateChannel({ name: "atomic-net", order: 1, manual: true, atomic: true });
+    const parked = new UpdateChannel({ name: "parked", order: 3, manual: true });
+    const pulse = Signal.of(0);
+    const side = Signal.of(0);
+    const parkedSource = Signal.of(0);
+    const parkedEffect = new Effect(() => parkedSource.get(), { channel: parked });
+    const node = new Derived(() => {
+      const value = pulse.get();
+      // On the write, not on the first evaluation — which the effect below
+      // makes while it is being built, before the parked effect is queued.
+      if (value === 1) {
+        parkedEffect.dispose();
+        side.set(side.peek() + 1);
+      }
+      return value;
+    });
+    const effect = new Effect(() => node.get(), { channel });
+    /** @type {number[]} */
+    const seen = [];
+    const watcher = new Effect(() => seen.push(side.get()));
+    seen.length = 0;
+
+    parkedSource.set(1);
+    assert.strictEqual(parked.pendingCount, 1, "one queued in the parked lane");
+    pulse.set(1);
+    assert.strictEqual(channel.warm({ budget: Infinity }), true);
+    assert.strictEqual(parked.pendingCount, 0, "disposed during the warm");
+    assert.deepStrictEqual(seen, [1], "and the marked default-channel effect ran regardless");
+
+    watcher.dispose();
+    effect.dispose();
+  });
+
+  it("warm() honours a flush an effect it drained asked for", () => {
+    const channel = new UpdateChannel({
+      name: "atomic-asks",
+      order: 1,
+      manual: true,
+      atomic: true,
+    });
+    const other = new UpdateChannel({ name: "asked-for", order: 2, manual: true });
+    const pulse = Signal.of(0);
+    const side = Signal.of(0);
+    const otherSource = Signal.of(0);
+    const otherEffect = new Effect(() => otherSource.get(), { channel: other });
+    const node = new Derived(() => {
+      side.set(side.peek() + 1);
+      return pulse.get();
+    });
+    const effect = new Effect(() => node.get(), { channel });
+    const asker = new Effect(() => {
+      side.get();
+      other.flush({ budget: Infinity });
+    });
+    const before = otherEffect.getRuns();
+
+    otherSource.set(1);
+    assert.strictEqual(otherEffect.getRuns(), before, "manual: waiting to be asked");
+    pulse.set(1);
+    channel.warm({ budget: Infinity });
+    assert.strictEqual(
+      otherEffect.getRuns(),
+      before + 1,
+      "asked for from inside the warm, and done",
+    );
+
+    asker.dispose();
+    otherEffect.dispose();
+    effect.dispose();
+  });
+
+  it("counts a running effect as warm", () => {
+    // An effect run directly writes what it reads — queueing itself while
+    // still on the stack — and then flushes its own atomic channel. The
+    // queued entry is its own, and its run re-runs it with fresh reads once
+    // it unwinds; a pass that called it cold would run nothing and count a
+    // stale pass that nothing was cut short for.
+    const channel = new UpdateChannel({
+      name: "atomic-running",
+      order: 1,
+      manual: true,
+      atomic: true,
+    });
+    const source = Signal.of(0);
+    const effect = new Effect(
+      () => {
+        if (source.get() === 1) {
+          source.set(2);
+          channel.flush({ budget: Infinity });
+        }
+      },
+      { channel },
+    );
+
+    source.set(1);
+    effect.flush();
+    assert.strictEqual(effect.getRuns(), 3, "the first run, the one for 1, and its re-run for 2");
+    assert.strictEqual(channel.pendingCount, 0, "and the entry the write queued is spent");
+    effect.dispose();
+  });
+
   it("a channel that is not atomic is not warmed by its flush", () => {
     const { channel, frame } = makeChannel({ budget: 10 });
     assert.strictEqual(channel.isAtomic, false);

@@ -413,16 +413,19 @@ export class Effect extends ReactiveNode {
    * a run that marked itself is re-run by `#execute` on the spot, and the
    * entry the mark queued is left behind for the drain to skip. Not saying
    * so here would leave that entry cold for ever, and a lane with a cold
-   * entry never sweeps.
+   * entry never sweeps. A *running* effect is warm on the same grounds: the
+   * run on the stack re-runs itself with fresh reads once it unwinds, so
+   * there is nothing for a warm to resolve on its behalf — and a pass that
+   * counted it cold would count a stale pass nothing was cut short for.
    *
    * @returns {void}
    */
   warm() {
-    if (this.#disposed || this.#running) {
+    if (this.#disposed) {
       return;
     }
     this.warmed = true;
-    if (this.state === CLEAN) {
+    if (this.#running || this.state === CLEAN) {
       return;
     }
     for (const dependency of this.dependencies()) {

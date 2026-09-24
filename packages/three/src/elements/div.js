@@ -325,6 +325,25 @@ export function box(ctx, element, options = {}) {
   });
 
   /**
+   * Whether a press on this element is a press on anything. A projected
+   * panel keeps a removed element's object in the scene, drawn as it was,
+   * until the update that removed it commits — so for those frames the
+   * quad is still there to hit, and the ray still lands on it. What must
+   * not follow is the click: the element is out of the document, the app
+   * has already let go of it, and a handler still hanging off it would run
+   * against a row the app considers gone. A press that lands on such an
+   * element is swallowed — stopped, so that it does not fall through to
+   * whatever is behind the row either — and the gesture is not begun.
+   *
+   * `isConnected` rather than anything reactive, because it is asked from
+   * an event handler, at the moment of the press, and the answer is a DOM
+   * fact rather than a dependency.
+   *
+   * @returns {boolean}
+   */
+  const isGone = () => !element.isConnected;
+
+  /**
    * Being a ray target, and forwarding what happens there back to the DOM.
    * These belong together: an element that stops being clickable has to lose
    * the handlers too, not just the registration. The interaction manager
@@ -341,7 +360,7 @@ export function box(ctx, element, options = {}) {
       // this button sits in, not pressing the button — the same bargain a
       // touchscreen strikes, and for the same reason: there is nowhere else
       // to grab a list that is made of buttons.
-      if (drags.didScroll(e.controller)) {
+      if (isGone() || drags.didScroll(e.controller)) {
         stopPropagation(e);
         return;
       }
@@ -352,6 +371,10 @@ export function box(ctx, element, options = {}) {
       stopPropagation(e);
     }),
     on("selectstart", (e) => {
+      if (isGone()) {
+        stopPropagation(e);
+        return;
+      }
       // Offered to the scroll gesture before anything else: a press over a
       // list may become a drag, and only holding it will tell. Elements with
       // no scrolling ancestor are declined and nothing changes for them.
@@ -364,6 +387,10 @@ export function box(ctx, element, options = {}) {
       stopPropagation(e);
     }),
     on("selectend", (e) => {
+      if (isGone()) {
+        stopPropagation(e);
+        return;
+      }
       drags.end(e.controller);
       const event = new MouseEvent("mouseup", {
         bubbles: true,
@@ -405,15 +432,19 @@ export function box(ctx, element, options = {}) {
   const draggability = [
     makeInteractive(() => isPanelReady() && shown.get()),
     on("selectstart", (e) => {
-      drags.begin(e.controller, element, object);
+      if (!isGone()) {
+        drags.begin(e.controller, element, object);
+      }
       stopPropagation(e);
     }),
     on("selectend", (e) => {
-      drags.end(e.controller);
+      if (!isGone()) {
+        drags.end(e.controller);
+      }
       stopPropagation(e);
     }),
     on("select", (e) => {
-      if (!drags.didScroll(e.controller)) {
+      if (!isGone() && !drags.didScroll(e.controller)) {
         element.dispatchEvent(new MouseEvent("click", { bubbles: true }));
       }
       stopPropagation(e);

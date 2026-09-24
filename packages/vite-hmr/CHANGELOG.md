@@ -1,6 +1,11 @@
 # Change Log - @apendua/vite-hmr
 
-This log was last generated on Sat, 19 Sep 2026 16:40:06 GMT and should not be manually modified.
+This log was last generated on Thu, 24 Sep 2026 14:56:56 GMT and should not be manually modified.
+
+## 0.4.2
+Thu, 24 Sep 2026 14:56:56 GMT
+
+_Version update only_
 
 ## 0.4.1
 Sat, 19 Sep 2026 16:40:06 GMT

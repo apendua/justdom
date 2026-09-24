@@ -2,6 +2,46 @@
   "name": "@apendua/freedom",
   "entries": [
     {
+      "version": "0.23.0",
+      "tag": "@apendua/freedom_v0.23.0",
+      "date": "Thu, 24 Sep 2026 14:56:56 GMT",
+      "comments": {
+        "minor": [
+          {
+            "comment": "Batched boxes share one invisible material instead of carrying one each: a box's numbers move to a uniforms record the batch reads, and a panel of eight hundred boxes goes from eight hundred materials to one."
+          },
+          {
+            "comment": "Update channels can be atomic: a pass spends its budget resolving what the queued effects read (Effect.warm) and runs them all at once, unbudgeted, once every one of them is warm, so an output made of many effects never changes in instalments. UpdateChannel takes an atomic option and gains warm(); Effect gains warm() and a warmed flag the queue owns. The portal's channel is atomic, and it holds the objects of rows that arrived or left for the same frame as the moves around them."
+          },
+          {
+            "comment": "A panel whose mount outruns a short delay (250 ms by default) shows a loading frame where it is going to be: a translucent rounded rectangle its own size with a black border and three dots that brighten in turn, placed from the panel's DOM size before the panel's own placement lands and taken down in the frame the content arrives. A panel that settles within the delay appears the moment it is built and shows none. Once shown the frame stays up for half a second at the least, holding a faster mount until it has had its time. On by default; PortalOptions.loadingFrame turns it off or tunes its colours, border, corners, delay and minimum time. The container element carries data-xr-loading while the panel loads."
+          }
+        ],
+        "patch": [
+          {
+            "comment": "Fix a layout settle that could drop a change: when two layout changes in one observer flush reached the same container, a later one naming an earlier child was skipped, and the rows between were never re-measured."
+          },
+          {
+            "comment": "Measure every text run with one shared Range rather than one per measurement: a Range is live, and a mount used to leave hundreds of stale ones for every mutation to walk until they were collected."
+          }
+        ],
+        "dependency": [
+          {
+            "comment": "Updating dependency \"@apendua/justdom\" to `0.3.4`"
+          },
+          {
+            "comment": "Updating dependency \"@apendua/signal\" to `0.9.0`"
+          },
+          {
+            "comment": "Updating dependency \"@apendua/vite-hmr\" to `0.4.2`"
+          },
+          {
+            "comment": "Updating dependency \"@apendua/signal\" to `0.9.0`"
+          }
+        ]
+      }
+    },
+    {
       "version": "0.22.0",
       "tag": "@apendua/freedom_v0.22.0",
       "date": "Sat, 19 Sep 2026 16:40:06 GMT",

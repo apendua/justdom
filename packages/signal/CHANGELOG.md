@@ -1,6 +1,13 @@
 # Change Log - @apendua/signal
 
-This log was last generated on Sat, 19 Sep 2026 16:40:06 GMT and should not be manually modified.
+This log was last generated on Thu, 24 Sep 2026 14:56:56 GMT and should not be manually modified.
+
+## 0.9.0
+Thu, 24 Sep 2026 14:56:56 GMT
+
+### Minor changes
+
+- Update channels can be atomic: a pass spends its budget resolving what the queued effects read (Effect.warm) and runs them all at once, unbudgeted, once every one of them is warm, so an output made of many effects never changes in instalments. UpdateChannel takes an atomic option and gains warm(); Effect gains warm() and a warmed flag the queue owns. The portal's channel is atomic, and it holds the objects of rows that arrived or left for the same frame as the moves around them.
 
 ## 0.8.1
 Sat, 19 Sep 2026 16:40:06 GMT

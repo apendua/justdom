@@ -398,7 +398,14 @@ export function createPortal(
       // which would mutate the array a live walk is reading.
       for (const child of [...getContentGroup(object).children]) {
         const childNode = objectToNode.get(child);
-        if (childNode) {
+        // A child whose node is still in the tree was moved out of this
+        // subtree, not removed with it: its object sits here only until the
+        // commit places it under its new parent, and what is under it moved
+        // with it. Left alone, subtree and all — and still drawn where it
+        // was, which is what the commit is for. Whatever the tree does hold
+        // is the other walk's, so this skips nothing that is anybody's to
+        // clean.
+        if (childNode && !containerElement.contains(childNode)) {
           cleanup(childNode);
         }
       }
@@ -554,6 +561,13 @@ export function createPortal(
    * loose: its parent chain now ends at a node with no parent, so nothing
    * that happens in the live tree afterwards reaches it. One wave, and then
    * quiet until the commit disposes it.
+   *
+   * A child that *moved* out of the removed subtree — appended elsewhere
+   * before the commit — is still in the tree, and its object is still under
+   * this one's content group, its new place being only pending. The commit
+   * places it before this object is taken down, and `cleanup`'s walk passes
+   * over any child whose node is still in the tree besides, so it stays
+   * exactly as drawn whichever of the two comes first.
    *
    * A node with nothing drawn for it — a comment marker, a node that left
    * before its turn — is cleaned up now, holds nothing, and asks for no

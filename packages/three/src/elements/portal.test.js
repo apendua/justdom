@@ -862,9 +862,9 @@ describe("createPortal", () => {
       );
 
     assert.equal(portal.isLoading(), true, "a mounting panel is loading");
-    assert.ok(loadingFrame(), "and shows its loading frame while it is");
     assert.equal(rootObject(), undefined, "with nothing of its content in the scene yet");
     assert.equal(registered.length, 0, "and nothing in it is a ray target yet");
+    assert.equal(loadingFrame(), undefined, "and no loading frame before a frame has run");
 
     // The mount arrived as ONE root carrying eight rows — nine nodes. At a
     // budget of zero the pump builds exactly one per frame, so frames in the
@@ -874,6 +874,7 @@ describe("createPortal", () => {
     flushFrame();
     await nextMacrotask();
     assert.equal(portal.isLoading(), true, "two frames into a nine-node mount, still loading");
+    assert.ok(loadingFrame(), "and showing its loading frame, the mount having outrun a frame");
     assert.ok(
       (rootObject()?.children[0]?.children.length ?? 0) < 8,
       "because the single root's subtree is being built a node at a time",
@@ -1254,7 +1255,7 @@ describe("createPortal", () => {
       /** @type {boolean[]} */
       const transitions = [];
       const portal = createPortal(ctx, {
-        budget: Infinity,
+        budget: 0,
         loadingFrame: { minimumTime: 1000 },
         onLoadingChanged: (value) => transitions.push(value),
       });
@@ -1281,13 +1282,15 @@ describe("createPortal", () => {
       assert.ok(containerElement.hasAttribute(LOADING_ATTRIBUTE), "loading, for the DOM to see");
       await nextMacrotask();
 
-      // An infinite budget builds the whole mount in one frame. Held.
-      for (const at of [0, 16, 400, 999]) {
+      // Three nodes at a budget of zero: three frames of building, so the
+      // first tick ends unfinished and the frame goes up at 0 ms; the third
+      // finishes the mount at 32 ms, well inside the second. Held.
+      for (const at of [0, 16, 32, 400, 999]) {
         clock = at;
         flushFrame();
         await nextMacrotask();
         assert.equal(portal.isLoading(), true, `still loading at ${at} ms`);
-        assert.ok(loadingFrame(), `the frame still up at ${at} ms`);
+        assert.ok(loadingFrame(), `the frame up at ${at} ms`);
         assert.equal(content(), undefined, `and nothing attached at ${at} ms`);
       }
       assert.deepEqual(transitions, []);
@@ -1302,6 +1305,63 @@ describe("createPortal", () => {
       assert.ok(content(), "and the content in its place");
       assert.equal(containerElement.hasAttribute(LOADING_ATTRIBUTE), false);
       assert.deepEqual(transitions, [false]);
+
+      subscription.unsubscribe();
+      portal.disconnect();
+      await drain();
+    } finally {
+      performance.now = originalNow;
+    }
+  });
+
+  test("a panel built in its first frame appears in that frame, and never shows a loading frame", async () => {
+    // The frame is for a mount that outruns a frame. A panel small enough
+    // to be built in its first tick has nothing to soften: it lands in that
+    // tick, no frame is shown, and the minimum time — which counts from the
+    // showing — holds nothing.
+    const originalNow = performance.now;
+    performance.now = () => 0;
+    try {
+      const manager = new InteractionManager();
+      const ctx = InteractionContext.set({}, manager);
+      const portal = createPortal(ctx, {
+        budget: Infinity,
+        loadingFrame: { minimumTime: 1000 },
+      });
+      const parent = new THREE.Group();
+      portal.addTo(parent);
+      const containerObject = parent.children[0];
+      /** @type {string[]} */
+      const added = [];
+      const originalAdd = containerObject.add.bind(containerObject);
+      containerObject.add = (...objects) => {
+        for (const object of objects) {
+          added.push(object.name);
+        }
+        return originalAdd(...objects);
+      };
+
+      /** @type {import("@apendua/justdom").Mountable | undefined} */
+      let mountable;
+      const tree = $("div", [children($("div"), $("div"))]);
+      const subscription = tree.subscribe((value) => {
+        mountable = value;
+      });
+      assert.ok(mountable);
+      portal.mount(mountable);
+      await nextMacrotask();
+      assert.equal(portal.isLoading(), true);
+
+      flushFrame();
+      await nextMacrotask();
+      assert.equal(portal.isLoading(), false, "loaded in the first frame, the clock at zero");
+      assert.ok(
+        containerObject.children.some(
+          (child) => !(child instanceof THREE.Mesh) && child.name !== "loading-frame",
+        ),
+        "the content in the scene",
+      );
+      assert.ok(!added.includes("loading-frame"), "and the frame never put in it");
 
       subscription.unsubscribe();
       portal.disconnect();

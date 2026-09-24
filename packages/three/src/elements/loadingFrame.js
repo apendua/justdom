@@ -13,11 +13,12 @@ import { placeAndScale } from "./place.js";
  *   without being a panel.
  * @property {number} [borderWidth] The border's width in the panel's px. 2.
  * @property {number} [radius] The corners' radius in the panel's px. 12.
- * @property {number} [minimumTime] The least time the frame stays up, in
- *   milliseconds. A mount that finishes sooner waits for it: a frame that
- *   flashed for three frames and was gone reads as a glitch, not as a
- *   panel arriving. 1000 by default; 0 lets the panel land the moment it
- *   is built.
+ * @property {number} [minimumTime] The least time the frame stays up once
+ *   shown, in milliseconds. A mount that finishes sooner waits for it: a
+ *   frame that flashed for three frames and was gone reads as a glitch,
+ *   not as a panel arriving. 1000 by default; 0 lets the panel land the
+ *   moment it is built. A frame that was never shown — the mount finished
+ *   in its first frame — holds nothing.
  */
 
 /** How many dots the indicator has. */
@@ -121,12 +122,40 @@ export function createLoadingFrame({
 
   let width = -1;
   let height = -1;
-  /** @type {number | null} */
+  /**
+   * When the frame was shown, on the caller's clock — and whether it has
+   * been: a frame that was never shown holds nothing and draws nothing.
+   *
+   * @type {number | null}
+   */
   let startedAt = null;
 
   return {
     /** The thing to put in the scene, in the panel's own frame of reference. */
     object: group,
+
+    /**
+     * Start the frame's clock: it is in the scene from `now`, its dots fade
+     * in from `now`, and its minimum time counts from `now`. The caller
+     * puts `object` in the scene alongside; this only says when.
+     *
+     * @param {number} now milliseconds
+     * @returns {void}
+     */
+    show(now) {
+      if (startedAt === null) {
+        startedAt = now;
+      }
+    },
+
+    /**
+     * Whether `show` has been called.
+     *
+     * @returns {boolean}
+     */
+    isShown() {
+      return startedAt !== null;
+    },
 
     /**
      * Size the frame to the panel and centre the dots in it. In the panel's
@@ -160,15 +189,15 @@ export function createLoadingFrame({
 
     /**
      * Move the dots along. `now` is whatever clock the caller keeps; only
-     * differences in it matter, and the first call is where the clock
-     * starts.
+     * differences in it matter, and `show` is where the clock starts —
+     * before that there is nothing to move.
      *
      * @param {number} now milliseconds
      * @returns {void}
      */
     tick(now) {
       if (startedAt === null) {
-        startedAt = now;
+        return;
       }
       const elapsed = now - startedAt;
       const fade = Math.min(elapsed / FADE_IN, 1);
@@ -179,19 +208,19 @@ export function createLoadingFrame({
     },
 
     /**
-     * Whether the frame has been up for its minimum time, and the panel may
-     * take its place. On the same clock `tick` keeps; a frame that never
-     * ticked is not up at all, and holds nothing unless it has a minimum to
-     * hold for.
+     * Whether the panel may take the frame's place: the frame has been up
+     * for its minimum time, or was never shown at all. A frame nobody saw
+     * has nothing to hold the panel for — which is what lets a mount that
+     * finished in its first frame land in that frame.
      *
      * @param {number} now milliseconds
      * @returns {boolean}
      */
     isDue(now) {
-      if (minimumTime <= 0) {
+      if (startedAt === null || minimumTime <= 0) {
         return true;
       }
-      return startedAt !== null && now - startedAt >= minimumTime;
+      return now - startedAt >= minimumTime;
     },
 
     /**

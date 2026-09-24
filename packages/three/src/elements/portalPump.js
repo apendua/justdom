@@ -34,9 +34,12 @@ import { batch, Effect, withChannel } from "@apendua/signal";
  * @property {() => void} onSettled Told whenever a tick ends with the queue
  *   and the channel both empty — the portal's cue to declare its initial
  *   mount done.
- * @property {() => void} afterTick Told at the end of every tick, drained or
- *   not — the portal's cue that content appeared or moved under whatever
- *   rays are resting on the panel.
+ * @property {(settled: boolean) => void} afterTick Told at the end of every
+ *   tick, drained or not — the portal's cue that content appeared or moved
+ *   under whatever rays are resting on the panel — with whether the tick
+ *   found nothing left to build or sweep: a tick that did not is a mount
+ *   that needs another frame, which is the portal's cue to show something
+ *   in the meantime.
  */
 
 /**
@@ -148,7 +151,7 @@ export function createPortalPump({
       if (settled) {
         onCommit();
       }
-      afterTick();
+      afterTick(settled);
       if (!settled) {
         return false;
       }

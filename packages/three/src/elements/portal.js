@@ -104,11 +104,13 @@ export const LOADING_ATTRIBUTE = "data-xr-loading";
  *   itself again. For showing a spinner somewhere; `isLoading()` on the
  *   handle is the reactive way to ask.
  * @property {boolean | LoadingFrameOptions} [loadingFrame] What the player
- *   sees where the panel is going to be while it mounts: a translucent,
- *   rounded frame the panel's size with a black border, and three dots in
- *   the middle that brighten in turn. On by default — a mount takes a
- *   handful of frames, and a panel that appears from nothing where nothing
- *   was is what the frame is there to soften — and `false` shows nothing
+ *   sees where the panel is going to be while it mounts, if the mount takes
+ *   more than one frame: a translucent, rounded frame the panel's size with
+ *   a black border, and three dots in the middle that brighten in turn. A
+ *   panel small enough to be built in its first frame appears in that
+ *   frame and never shows one. On by default — a mount that does take a
+ *   few frames is a panel appearing from nothing where nothing was, which
+ *   is what the frame is there to soften — and `false` shows nothing
  *   until the panel is whole, which is what a readout that is never in
  *   anybody's way wants. An object tunes the frame's colours, border and
  *   corners, and how long it stays up at the least — a second by default,
@@ -347,15 +349,32 @@ export function createPortal(
       : null;
   /** @type {() => void} */
   let stopLoadingFrame = () => {};
+  /**
+   * Put the frame in the scene and start its clock. Called by the pump's
+   * `afterTick` the first time a tick ends with the mount unfinished — so a
+   * panel small enough to be built in its first tick never shows a frame,
+   * and never waits for one: a frame nobody saw has nothing to hold the
+   * panel for. Until then the ticks below only place and size things, so
+   * the frame is right the moment it is shown.
+   *
+   * @type {() => void}
+   */
+  let showLoadingFrame = () => {};
   if (loadingFrameObject) {
-    containerObject.add(loadingFrameObject.object);
+    showLoadingFrame = () => {
+      if (loadingFrameObject.isShown()) {
+        return;
+      }
+      containerObject.add(loadingFrameObject.object);
+      loadingFrameObject.show(performance.now());
+    };
     const stopFrames = requestFrames(() => {
       const size = getBorderBoxSize(containerElement);
       placeContainer(size.width, size.height);
       loadingFrameObject.layout(size.width, size.height);
       const now = performance.now();
       loadingFrameObject.tick(now);
-      if (loadingFrameObject.isDue(now)) {
+      if (loadingFrameObject.isShown() && loadingFrameObject.isDue(now)) {
         // The mount may have finished before the frame had its time, in
         // which case `commit` declined and the pump, with nothing left to
         // build, left the scheduler. It is asked back here — `schedule` is
@@ -879,7 +898,15 @@ export function createPortal(
           onSettled: markLoaded,
           // Content appeared or moved under whatever rays are resting on
           // the panel.
-          afterTick: () => interactionManager.updateIntersections(),
+          afterTick: (settled) => {
+            if (!settled && loading.get()) {
+              // The mount needs another frame. That is the moment the
+              // player would otherwise be looking at nothing, and the frame
+              // takes it — from this tick on, and for its minimum time.
+              showLoadingFrame();
+            }
+            interactionManager.updateIntersections();
+          },
         })
       : null;
 

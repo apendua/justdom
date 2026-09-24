@@ -60,9 +60,13 @@ describe("createLoadingFrame", () => {
     const dots = frame.object.children.slice(1).map(asMesh);
     const alpha = () => dots.map((dot) => dot.material.uniforms.uFillColor.value.w);
 
-    assert.deepEqual(alpha(), [0, 0, 0], "nothing drawn before the first tick");
+    frame.tick(500);
+    assert.deepEqual(alpha(), [0, 0, 0], "nothing drawn before the frame is shown");
+    assert.equal(frame.isShown(), false);
+    frame.show(1000);
     frame.tick(1000);
-    assert.deepEqual(alpha(), [0, 0, 0], "and nothing at the first tick, which starts the clock");
+    assert.deepEqual(alpha(), [0, 0, 0], "and nothing at the showing, which starts the clock");
+    assert.equal(frame.isShown(), true);
 
     frame.tick(1100);
     const early = alpha();
@@ -86,14 +90,17 @@ describe("createLoadingFrame", () => {
 
   test("it is due once it has been up for its minimum time, on the clock it ticks by", () => {
     const frame = createLoadingFrame({ minimumTime: 500 });
-    assert.equal(frame.isDue(10_000), false, "never ticked: not up, and holding for its minimum");
-    frame.tick(1000);
+    assert.equal(frame.isDue(0), true, "never shown: nobody saw it, so nothing to hold for");
+    frame.show(1000);
     assert.equal(frame.isDue(1000), false);
     assert.equal(frame.isDue(1499), false);
     assert.equal(frame.isDue(1500), true);
+    frame.show(5000);
+    assert.equal(frame.isDue(1500), true, "shown once; a second showing changes nothing");
 
     const none = createLoadingFrame({ minimumTime: 0 });
-    assert.equal(none.isDue(0), true, "nothing to wait for, ticked or not");
+    none.show(0);
+    assert.equal(none.isDue(0), true, "nothing to wait for");
   });
 
   test("laying out the same size again writes nothing", () => {

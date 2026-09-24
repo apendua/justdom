@@ -1016,15 +1016,32 @@ export class DomMirror {
       // `resized` keeping a ledger — get different answers after the first.
       // One visit each, and a climb that reaches a level someone else has
       // already settled stops there, its own answer having been decided.
-      const settled = new Set();
+      //
+      // Its *size* answer, that is — not which children it owes. Each level
+      // remembers the earliest child it told, and a later arrival with an
+      // earlier one tells the difference before stopping. Without that, a
+      // level first reached by a climb from further down ("from row 3") and
+      // then named directly by its own change ("from row 1") dropped the
+      // second entry whole, and rows 1 and 2 were never told.
+      /** @type {Map<Element, Node | null>} */
+      const settled = new Map();
       for (const [container, disturbed] of containers) {
         let from = disturbed;
         for (
           let current = /** @type {Element | null} */ (container);
-          current && !settled.has(current);
+          current;
           current = current.parentElement
         ) {
-          settled.add(current);
+          if (settled.has(current)) {
+            const told = /** @type {Node | null} */ (settled.get(current));
+            const earlier = earlierOf(told, from);
+            if (earlier !== told) {
+              settled.set(current, earlier);
+              this.#childrenMoved(current, earlier);
+            }
+            break;
+          }
+          settled.set(current, from);
           this.#childrenMoved(current, from);
           if (current.hasAttribute(PORTAL_ATTRIBUTE)) {
             // The top of what this portal mirrors. Nothing above is projected

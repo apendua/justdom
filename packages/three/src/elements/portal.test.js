@@ -944,24 +944,40 @@ describe("createPortal", () => {
     );
     const rows = rootObject.children[0].children;
     assert.equal(rows.length, 4);
-    /** What each row's quad is filled with, as the four rows report it. */
-    const fills = () =>
-      rows.map((row) => {
-        const mesh = /** @type {THREE.Mesh} */ (row.children.find((c) => c instanceof THREE.Mesh));
-        const material = /** @type {THREE.ShaderMaterial} */ (mesh.material);
-        return material.uniforms.uFillColor.value.x;
-      });
-    assert.deepEqual(fills(), [0, 0, 0, 0], "the colour the rule says");
+    /**
+     * How many boxes the batch is drawing red. Read off the instances the
+     * batch draws rather than off each box: a batched box no longer has a
+     * material of its own to ask — every one of them wears the same shared,
+     * invisible one — and what the batch copied into its instance buffers is
+     * what reaches the screen anyway. The root and the list have no
+     * background, so red is the rows and only the rows.
+     */
+    const red = () => {
+      let count = 0;
+      for (const child of containerObject.children) {
+        if (!(child instanceof THREE.InstancedMesh)) {
+          continue;
+        }
+        const fill = child.geometry.getAttribute("aFillColor");
+        for (let index = 0; index < child.count; index++) {
+          if (fill.getX(index) === 1) {
+            count += 1;
+          }
+        }
+      }
+      return count;
+    };
+    assert.equal(red(), 0, "the colour the rule says: no red on any row");
 
     color.set("rgb(255, 2, 3)");
     await nextMacrotask();
     let frames = 0;
-    while (frames < 200 && fills().every((fill) => fill === 0)) {
+    while (frames < 200 && red() === 0) {
       flushFrame();
       await nextMacrotask();
       frames += 1;
     }
-    assert.deepEqual(fills(), [1, 1, 1, 1], "the frame that changed one row changed every row");
+    assert.equal(red(), 4, "the frame that changed one row changed every row");
     assert.ok(frames > 1, `and it was not the first frame — it took ${frames}`);
 
     await pump();

@@ -1,6 +1,20 @@
 # Change Log - @apendua/freedom
 
-This log was last generated on Sat, 19 Sep 2026 16:40:06 GMT and should not be manually modified.
+This log was last generated on Thu, 24 Sep 2026 14:56:56 GMT and should not be manually modified.
+
+## 0.23.0
+Thu, 24 Sep 2026 14:56:56 GMT
+
+### Minor changes
+
+- Batched boxes share one invisible material instead of carrying one each: a box's numbers move to a uniforms record the batch reads, and a panel of eight hundred boxes goes from eight hundred materials to one.
+- Update channels can be atomic: a pass spends its budget resolving what the queued effects read (Effect.warm) and runs them all at once, unbudgeted, once every one of them is warm, so an output made of many effects never changes in instalments. UpdateChannel takes an atomic option and gains warm(); Effect gains warm() and a warmed flag the queue owns. The portal's channel is atomic, and it holds the objects of rows that arrived or left for the same frame as the moves around them.
+- A panel whose mount outruns a short delay (250 ms by default) shows a loading frame where it is going to be: a translucent rounded rectangle its own size with a black border and three dots that brighten in turn, placed from the panel's DOM size before the panel's own placement lands and taken down in the frame the content arrives. A panel that settles within the delay appears the moment it is built and shows none. Once shown the frame stays up for half a second at the least, holding a faster mount until it has had its time. On by default; PortalOptions.loadingFrame turns it off or tunes its colours, border, corners, delay and minimum time. The container element carries data-xr-loading while the panel loads.
+
+### Patches
+
+- Fix a layout settle that could drop a change: when two layout changes in one observer flush reached the same container, a later one naming an earlier child was skipped, and the rows between were never re-measured.
+- Measure every text run with one shared Range rather than one per measurement: a Range is live, and a mount used to leave hundreds of stale ones for every mutation to walk until they were collected.
 
 ## 0.22.0
 Sat, 19 Sep 2026 16:40:06 GMT

@@ -21,12 +21,29 @@ import { batch, Effect, withChannel } from "@apendua/signal";
  *   to draw — reports false, and the pump does not count it against the
  *   at-least-one-per-frame guarantee, or a queue headed by such entries
  *   would spend whole frames building nothing.
+ * @property {() => boolean} onCommit Told when a tick has brought the scene
+ *   up to date as a whole — the node queue empty and the channel's effects
+ *   swept — and before `afterTick`: the portal's cue to put into the scene
+ *   whatever it has been holding back for exactly that moment, the objects
+ *   it built and the ones whose nodes left. Answers whether it did. A portal
+ *   may decline — it is holding a finished mount for its loading frame's
+ *   minimum time — and a tick whose commit was declined has not settled:
+ *   the pump stays scheduled and asks again next frame, so the portal
+ *   needs no way of its own to bring the pump back.
+ * @property {() => boolean} [hasPendingCommit] Whether the portal is holding
+ *   anything for `onCommit`. Asked when deciding whether a frame is worth
+ *   asking for: a removal that happens to queue nothing in the channel
+ *   still has an object to take out of the scene, and a pump that only
+ *   counted queued nodes and queued effects would never come round for it.
  * @property {() => void} onSettled Told whenever a tick ends with the queue
  *   and the channel both empty — the portal's cue to declare its initial
  *   mount done.
- * @property {() => void} afterTick Told at the end of every tick, drained or
- *   not — the portal's cue that content appeared or moved under whatever
- *   rays are resting on the panel.
+ * @property {(settled: boolean) => void} afterTick Told at the end of every
+ *   tick, drained or not — the portal's cue that content appeared or moved
+ *   under whatever rays are resting on the panel — with whether the tick
+ *   found nothing left to build or sweep: a tick that did not is a mount
+ *   that needs another frame, which is the portal's cue to show something
+ *   in the meantime.
  */
 
 /**
@@ -46,6 +63,8 @@ export function createPortalPump({
   scheduler,
   priority,
   buildNode,
+  onCommit,
+  hasPendingCommit = () => false,
   onSettled,
   afterTick,
 }) {
@@ -79,6 +98,16 @@ export function createPortalPump({
    * — the scheduler's contract asks it of whichever pump it offers a frame
    * to first, and giving the guarantee always is what keeps a zero budget
    * moving instead of stalling.
+   *
+   * The scene changes once per update, not once per frame. The channel is
+   * atomic, so what a frame's slice buys is *reading* — measurements
+   * resolved, text rasterized — and the effects that write the scene run
+   * together, in the frame that finds nothing left to read. And while nodes
+   * are still queued the channel is only warmed, never flushed: a row still
+   * to be built changes the layout of the rows around it, and applying
+   * those moves before the row exists would be the same half-update from the
+   * other side. So the sweep waits for the queue, and the queue's objects
+   * wait for the sweep — `onCommit` is where the portal puts them in.
    *
    * Returns whether the pump is finished, which is how it leaves the
    * scheduler's queue: not by being stopped, but by having nothing left —
@@ -115,10 +144,18 @@ export function createPortalPump({
       // layout constructs computations of its own, and those belong to the
       // panel's region like everything else here.
       withChannel(channel, () => {
-        channel.flush({ budget: Math.max(deadline - now(), 0) });
+        const budget = Math.max(deadline - now(), 0);
+        if (pendingNodes.length > 0) {
+          channel.warm({ budget });
+        } else {
+          channel.flush({ budget });
+        }
       });
-      afterTick();
-      if (pendingNodes.length > 0 || channel.pendingCount > 0) {
+      // Settled only if the portal took the commit: one it declined leaves
+      // the scene behind the graph, and the tick has to come round again.
+      const settled = pendingNodes.length === 0 && channel.pendingCount === 0 && onCommit();
+      afterTick(settled);
+      if (!settled) {
         return false;
       }
       onSettled();
@@ -127,7 +164,7 @@ export function createPortalPump({
   };
 
   const schedule = () => {
-    if (pendingNodes.length > 0 || channel.pendingCount > 0) {
+    if (pendingNodes.length > 0 || channel.pendingCount > 0 || hasPendingCommit()) {
       scheduler.schedule(pump);
     }
   };

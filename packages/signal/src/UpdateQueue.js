@@ -13,11 +13,13 @@ import { CircularDependencyError } from "./core.js";
  *
  * @typedef {object} Task
  * @property {boolean} queued
+ * @property {boolean} warmed
  * @property {UpdateChannel} channel
  * @property {number} passId
  * @property {number} runsInPass
  * @property {string} name
  * @property {() => void} runFromQueue
+ * @property {() => void} warm
  */
 
 /**
@@ -199,6 +201,15 @@ export default class UpdateQueue {
   /** @type {boolean} */
   #warnedAboutCorrectionLimit = false;
 
+  /**
+   * How many tasks have ever been queued. A warm compares it before and
+   * after to learn whether anything was queued in the meantime, which the
+   * size cannot say — see `warmChannel`.
+   *
+   * @type {number}
+   */
+  #enqueued = 0;
+
   /** @type {boolean} */
   #isBatching = false;
 
@@ -279,6 +290,7 @@ export default class UpdateQueue {
     lane.queue.push(task);
     lane.size += 1;
     this.#size += 1;
+    this.#enqueued += 1;
     if (lane.size === 1) {
       this.#reportPending(lane);
     }
@@ -388,6 +400,68 @@ export default class UpdateQueue {
   }
 
   /**
+   * Bring what one channel's queued effects read up to date, for at most
+   * `budget` milliseconds, running none of them. The first half of an atomic
+   * pass, offered on its own; see `UpdateChannel.warm`.
+   *
+   * Declined outright inside a batch or a flush — there is no request to
+   * record, because a caller asking whether the channel is warm wants an
+   * answer now, and "not yet" is the true one.
+   *
+   * @param {UpdateChannel} channel
+   * @param {number} budget
+   * @returns {boolean} whether everything queued in the channel is now warm
+   */
+  warmChannel(channel, budget) {
+    if (this.#isBatching || this.#isFlushing) {
+      return false;
+    }
+    const lane = this.#lanes.get(channel);
+    if (!lane || lane.size === 0) {
+      return true;
+    }
+    if (lane.stalePasses >= channel.maxStalePasses) {
+      // Counted here as in `#pass`, so that a channel driven by `warm()`
+      // while its owner has other work pending is bounded the same way: one
+      // unbudgeted warm, and the next flush finds nothing left to read.
+      budget = Infinity;
+    }
+    const timed = Number.isFinite(budget);
+    const now = timed ? channel.now : null;
+    try {
+      this.#isFlushing = true;
+      const before = this.#enqueued;
+      const warm = this.#warmLane(lane, now, now ? now() : 0, budget);
+      lane.stalePasses = warm ? 0 : lane.stalePasses + 1;
+      if (this.#enqueued !== before) {
+        // Resolving a node can mark an effect — a `Derived` that attaches a
+        // foreign source on the way up, and the source fires — and one in a
+        // channel that drains of its own accord would have drained then and
+        // there, had the flushing flag not been up. A pass over those
+        // channels alone is what it was owed; the atomic lane is not a
+        // target here and is left as it stands. Decided on what was queued,
+        // not on the queue's size: a resource torn down in the same
+        // evaluation can dispose a queued effect and leave the count where
+        // it was.
+        this.#pass(null, Infinity);
+      }
+      // And whatever those effects asked for — a `flush()` of some other
+      // channel lands in `#requested` while the flag is up, and a caller
+      // that only ever warms would otherwise leave it there for as long as
+      // it has other work to finish. The channel being warmed is not among
+      // them: a request to flush it is a request to commit, which is the
+      // one thing this call was made to put off.
+      this.#satisfyRequests(channel);
+      return warm;
+    } catch (err) {
+      this.#reset();
+      throw err;
+    } finally {
+      this.#isFlushing = false;
+    }
+  }
+
+  /**
    * @param {UpdateChannel} channel
    * @returns {number}
    */
@@ -432,30 +506,7 @@ export default class UpdateQueue {
       this.#isFlushing = true;
       this.#corrections = 0;
       this.#pass(target, budget);
-      // A pass can ask for another channel — `channel.flush()` called from
-      // inside an effect, most plausibly. Satisfy each at most once, so that
-      // two channels flushing each other cannot spin.
-      if (this.#requested.size > 0) {
-        const satisfied = new Set(target ? [target] : []);
-        for (;;) {
-          /** @type {UpdateChannel | undefined} */
-          let next;
-          for (const channel of this.#requested.keys()) {
-            if (!satisfied.has(channel)) {
-              next = channel;
-              break;
-            }
-          }
-          if (!next) {
-            break;
-          }
-          const requestedBudget = this.#requested.get(next) ?? next.budget;
-          this.#requested.delete(next);
-          satisfied.add(next);
-          this.#pass(next, requestedBudget);
-        }
-        this.#requested.clear();
-      }
+      this.#satisfyRequests(target);
     } catch (err) {
       // If we failed in the middle of a flush, we'd better clear the queue to
       // avoid running into trouble if someone invalidates something later. A
@@ -467,6 +518,40 @@ export default class UpdateQueue {
     } finally {
       this.#isFlushing = false;
     }
+  }
+
+  /**
+   * A pass can ask for another channel — `channel.flush()` called from
+   * inside an effect, most plausibly. Satisfy each at most once, so that two
+   * channels flushing each other cannot spin; `except` is the channel whose
+   * pass just ran, and a request for it is spent by that pass.
+   *
+   * @param {UpdateChannel | null} except
+   * @returns {void}
+   */
+  #satisfyRequests(except) {
+    if (this.#requested.size === 0) {
+      return;
+    }
+    const satisfied = new Set(except ? [except] : []);
+    for (;;) {
+      /** @type {UpdateChannel | undefined} */
+      let next;
+      for (const channel of this.#requested.keys()) {
+        if (!satisfied.has(channel)) {
+          next = channel;
+          break;
+        }
+      }
+      if (!next) {
+        break;
+      }
+      const requestedBudget = this.#requested.get(next) ?? next.budget;
+      this.#requested.delete(next);
+      satisfied.add(next);
+      this.#pass(next, requestedBudget);
+    }
+    this.#requested.clear();
   }
 
   /**
@@ -493,6 +578,33 @@ export default class UpdateQueue {
     const now = timed ? (target?.now ?? (() => performance.now())) : null;
     const startedAt = now ? now() : 0;
     let ranOut = false;
+
+    /**
+     * The one lane the clock does not apply to: an atomic target whose
+     * reading is done. Its sweep runs whole — a sweep cut short would be the
+     * half-applied update the channel exists to rule out — but the channels
+     * that drain of their own accord and come along with the pass stay
+     * under the budget, as they were for any budgeted pass before there
+     * were atomic ones; the default lane can hold any amount of unrelated
+     * work, and the slice this pass was given was not given for that.
+     *
+     * @type {Lane | null}
+     */
+    let unbudgeted = null;
+
+    if (targetLane && target && target.isAtomic) {
+      // The budget goes on the reading, not the running. Every queued effect
+      // has what it read last time resolved, as many as fit; and only when
+      // all of them are resolved does the sweep below run them. A pass that
+      // could not finish the reading runs nothing of the target's, and only
+      // takes the channels that drain of their own accord with it.
+      if (this.#warmLane(targetLane, now, startedAt, budget)) {
+        unbudgeted = targetLane;
+      } else {
+        ranOut = true;
+        target = null;
+      }
+    }
 
     const previousLane = this.#currentLane;
     try {
@@ -535,7 +647,7 @@ export default class UpdateQueue {
           // queue believed it held none.
           this.#countRun(task);
           task.runFromQueue();
-          if (now && now() - startedAt >= budget) {
+          if (now && lane !== unbudgeted && now() - startedAt >= budget) {
             ranOut = true;
             break outer;
           }
@@ -556,6 +668,49 @@ export default class UpdateQueue {
     if (targetLane) {
       targetLane.stalePasses = ranOut && targetLane.size > 0 ? targetLane.stalePasses + 1 : 0;
     }
+  }
+
+  /**
+   * Warm every queued task in the lane that is not warm already, until the
+   * clock says stop.
+   *
+   * A scan from the lane's head rather than a cursor of its own, because a
+   * task can go cold again behind the cursor — something it read was written
+   * while the scan was elsewhere — and the scan has to find it. Skipping a
+   * task that is already warm costs a field read, and the lane holds at most
+   * what one update queued.
+   *
+   * The answer is a second scan of the whole lane, whichever way the first
+   * one ended. Warming a task can cool one *before* it — the node it
+   * resolves attaches a source, the source fires, and what an earlier task
+   * read is marked — so a flag read on the way past is no longer the flag's
+   * value by the end. Trusting it would send that task into the sweep cold,
+   * with its measurement paid there, off the budget.
+   *
+   * @param {Lane} lane
+   * @param {(() => number) | null} now
+   * @param {number} startedAt
+   * @param {number} budget
+   * @returns {boolean} whether every queued task in the lane is warm
+   */
+  #warmLane(lane, now, startedAt, budget) {
+    const queue = lane.queue;
+    for (let index = lane.head; index < queue.length; index += 1) {
+      const task = queue[index];
+      if (!task.queued || task.warmed) {
+        continue;
+      }
+      task.warm();
+      if (now && now() - startedAt >= budget) {
+        break;
+      }
+    }
+    for (let index = lane.head; index < queue.length; index += 1) {
+      if (queue[index].queued && !queue[index].warmed) {
+        return false;
+      }
+    }
+    return true;
   }
 
   /**

@@ -229,6 +229,17 @@ export class Effect extends ReactiveNode {
   queued = false;
 
   /**
+   * Whether everything this effect read on its last run has been brought up
+   * to date since the effect was last marked — see `warm`. The queue's field,
+   * like `queued`: an atomic channel warms each queued effect once, and this
+   * is how it knows which ones are done. Cleared by every mark, because a
+   * mark means something it read moved again.
+   *
+   * @type {boolean}
+   */
+  warmed = false;
+
+  /**
    * The queue's per-pass run count, kept here so that it costs a field rather
    * than a map keyed by every effect in the program. See `UpdateQueue`.
    *
@@ -361,9 +372,72 @@ export class Effect extends ReactiveNode {
     if (this.state < state) {
       this.state = state;
     }
+    // Whatever was resolved on this effect's behalf is suspect again.
+    this.warmed = false;
     // Unlike a `Derived`, an effect does not wait to be asked. Nothing is
     // going to ask.
     updateQueue.enqueue(this);
+  }
+
+  /**
+   * Bring what this effect reads up to date, without running it.
+   *
+   * The expensive half of an update is usually not the effect but what it
+   * pulls: a `Derived` that measures the DOM, one that rasterizes text, a
+   * chain of either. The effect itself writes a few numbers where they
+   * belong. Those two halves can be paid at different times, and an atomic
+   * channel pays them at different times on purpose — the pulling spread over
+   * as many passes as its budget needs, the writing all at once, once nothing
+   * expensive is left to pull. This is the first half on its own: every node
+   * this effect recorded on its last run is resolved, so that the run, when it
+   * comes, finds its values already computed.
+   *
+   * What it resolves is the *last* run's dependencies, which is the only set
+   * there is. A run that reads something it did not read last time pays for
+   * that at run time; a first run has nothing recorded and pays for
+   * everything. Both are correct, only later than an atomic channel would
+   * like.
+   *
+   * Errors are left where they land. A `Derived` that fails keeps its failure
+   * and hands it to the next reader, which is this effect's run, which is
+   * where the failure was always going to be handled — so nothing thrown
+   * here has anywhere better to go than to be swallowed.
+   *
+   * `warmed` is set *before* the walk rather than after it. Resolving a
+   * dependency can mark this effect again — a `Derived` that attaches a
+   * foreign source on the way up, and the source fires — and the mark clears
+   * the flag; set afterwards, the flag would claim a warmth the mark had just
+   * taken away.
+   *
+   * A clean effect is warm by definition, and one can be clean *and* queued:
+   * a run that marked itself is re-run by `#execute` on the spot, and the
+   * entry the mark queued is left behind for the drain to skip. Not saying
+   * so here would leave that entry cold for ever, and a lane with a cold
+   * entry never sweeps. A *running* effect is warm on the same grounds: the
+   * run on the stack re-runs itself with fresh reads once it unwinds, so
+   * there is nothing for a warm to resolve on its behalf — and a pass that
+   * counted it cold would count a stale pass nothing was cut short for.
+   *
+   * @returns {void}
+   */
+  warm() {
+    if (this.#disposed) {
+      return;
+    }
+    this.warmed = true;
+    if (this.#running || this.state === CLEAN) {
+      return;
+    }
+    for (const dependency of this.dependencies()) {
+      if (!(dependency instanceof ReactiveNode)) {
+        continue;
+      }
+      try {
+        dependency.updateIfNecessary();
+      } catch {
+        // Kept by the node, delivered by the run.
+      }
+    }
   }
 
   /**
@@ -388,6 +462,8 @@ export class Effect extends ReactiveNode {
       // there and can see the mark — does the re-run itself once it unwinds.
       return;
     }
+    // Spent, whether or not it was ever set: the run reads for itself.
+    this.warmed = false;
     if (this.state === CHECK && !this.hasStaleDependencies()) {
       // Something upstream was written but settled on the value this effect
       // already saw. Worth finding out before spending any of the channel's

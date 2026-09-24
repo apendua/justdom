@@ -365,6 +365,526 @@ describe("UpdateChannel, manual", () => {
   });
 });
 
+describe("UpdateChannel, atomic", () => {
+  /**
+   * A manual atomic channel with a clock the test advances, and a row of
+   * effects each reading a `Derived` that costs `cost` milliseconds to
+   * evaluate — the shape of a panel: the measuring is in the nodes, the
+   * writing is in the effects.
+   *
+   * @param {object} [options]
+   * @param {number} [options.count]
+   * @param {number} [options.cost]
+   * @param {number} [options.maxStalePasses]
+   */
+  function makePanel({ count = 4, cost = 4, maxStalePasses = Infinity } = {}) {
+    let time = 0;
+    const channel = new UpdateChannel({
+      name: "atomic",
+      order: 1,
+      manual: true,
+      atomic: true,
+      maxStalePasses,
+      now: () => time,
+    });
+    const source = Signal.of(0);
+    /** @type {number[]} */
+    const applied = [];
+    const nodes = Array.from(
+      { length: count },
+      (_, i) =>
+        new Derived(() => {
+          time += cost;
+          return source.get() * 10 + i;
+        }),
+    );
+    const effects = nodes.map(
+      (node) =>
+        new Effect(
+          () => {
+            applied.push(node.get());
+          },
+          { channel },
+        ),
+    );
+    applied.length = 0;
+    return {
+      channel,
+      source,
+      nodes,
+      effects,
+      applied,
+      advance: (/** @type {number} */ ms) => {
+        time += ms;
+      },
+      evaluations: () => nodes.reduce((sum, node) => sum + node.getEvaluations(), 0),
+      dispose: () => effects.forEach((e) => e.dispose()),
+    };
+  }
+
+  it("spends the budget on what the effects read, and runs none of them until all of it is read", () => {
+    const panel = makePanel({ count: 4, cost: 4 });
+    const before = panel.evaluations();
+
+    panel.source.set(1);
+    panel.channel.flush({ budget: 10 });
+    assert.strictEqual(panel.evaluations(), before + 3, "three nodes resolved in ten milliseconds");
+    assert.deepStrictEqual(panel.applied, [], "and no output changed");
+    assert.strictEqual(panel.channel.pendingCount, 4, "every effect still waiting");
+
+    panel.channel.flush({ budget: 10 });
+    assert.strictEqual(panel.evaluations(), before + 4, "the last node, then");
+    assert.deepStrictEqual(panel.applied, [10, 11, 12, 13], "every output, in one go");
+    assert.strictEqual(panel.channel.pendingCount, 0);
+    panel.dispose();
+  });
+
+  it("does not cut the sweep short, whatever the budget says", () => {
+    // Once everything is warm, the effects run whatever the clock says: a
+    // sweep that stopped halfway would be the half-applied update the channel
+    // exists to prevent. The cost here is in the effects themselves, which is
+    // the shape the channel is *not* designed for — and even then it holds.
+    let time = 0;
+    const channel = new UpdateChannel({
+      name: "atomic-sweep",
+      order: 1,
+      manual: true,
+      atomic: true,
+      now: () => time,
+    });
+    const source = Signal.of(0);
+    /** @type {number[]} */
+    const ran = [];
+    const effects = Array.from(
+      { length: 4 },
+      (_, i) =>
+        new Effect(
+          () => {
+            source.get();
+            ran.push(i);
+            time += 5;
+          },
+          { channel },
+        ),
+    );
+    ran.length = 0;
+
+    source.set(1);
+    channel.flush({ budget: 1 });
+    assert.deepStrictEqual(ran, [0, 1, 2, 3]);
+    effects.forEach((e) => e.dispose());
+  });
+
+  it("warms a node again when it is written after it was warmed", () => {
+    // Two nodes, one pass each. The first is warm after the first pass; the
+    // source moves before the second; the first has to be resolved again
+    // before the sweep, or the sweep would apply a value from before the
+    // write next to one from after it.
+    const panel = makePanel({ count: 2, cost: 4 });
+    const before = panel.evaluations();
+
+    panel.source.set(1);
+    panel.channel.flush({ budget: 1 });
+    assert.strictEqual(panel.evaluations(), before + 1, "one warm");
+    assert.deepStrictEqual(panel.applied, []);
+
+    panel.source.set(2);
+    panel.channel.flush({ budget: 1 });
+    assert.strictEqual(panel.evaluations(), before + 2, "the other — the first is cold again");
+    assert.deepStrictEqual(panel.applied, [], "so still nothing applied");
+
+    panel.channel.flush({ budget: 1 });
+    assert.strictEqual(panel.evaluations(), before + 3, "the first, re-warmed");
+    assert.deepStrictEqual(panel.applied, [20, 21], "both from after the second write");
+    panel.dispose();
+  });
+
+  it("skips an effect whose warmed inputs settled on the values it already saw", () => {
+    const channel = new UpdateChannel({
+      name: "atomic-equal",
+      order: 1,
+      manual: true,
+      atomic: true,
+    });
+    const source = Signal.of(1);
+    const parity = new Derived(() => source.get() % 2);
+    const effect = new Effect(() => parity.get(), { channel });
+    const before = effect.getRuns();
+
+    source.set(3);
+    channel.flush({ budget: Infinity });
+    assert.strictEqual(effect.getRuns(), before, "1 and 3 have the same parity");
+    assert.strictEqual(channel.pendingCount, 0);
+    effect.dispose();
+  });
+
+  it("warm() gets ahead on the reading and leaves the running to flush()", () => {
+    const panel = makePanel({ count: 2, cost: 4 });
+    const before = panel.evaluations();
+
+    panel.source.set(1);
+    assert.strictEqual(panel.channel.warm({ budget: 1 }), false, "one of two");
+    assert.strictEqual(panel.evaluations(), before + 1);
+    assert.strictEqual(panel.channel.warm({ budget: 1 }), true, "and the other");
+    assert.strictEqual(panel.evaluations(), before + 2);
+    assert.deepStrictEqual(panel.applied, [], "warming runs nothing");
+    assert.strictEqual(panel.channel.pendingCount, 2);
+
+    panel.channel.flush({ budget: 0 });
+    assert.strictEqual(panel.evaluations(), before + 2, "nothing left to read");
+    assert.deepStrictEqual(panel.applied, [10, 11]);
+    panel.dispose();
+  });
+
+  it("warm() declines inside a batch rather than reading a half-written model", () => {
+    const panel = makePanel({ count: 1 });
+    const before = panel.evaluations();
+    batch(() => {
+      panel.source.set(1);
+      assert.strictEqual(panel.channel.warm({ budget: Infinity }), false);
+      assert.strictEqual(panel.evaluations(), before);
+    });
+    assert.strictEqual(panel.channel.warm({ budget: Infinity }), true);
+    panel.dispose();
+  });
+
+  it("ignores the budget after too many passes cut short in a row", () => {
+    // Under input that outruns the budget an atomic channel would otherwise
+    // never reach its sweep. The same bound as for any channel: one
+    // unbounded pass — reading and sweep both — rather than an output that
+    // never changes again.
+    const panel = makePanel({ count: 4, cost: 5, maxStalePasses: 2 });
+
+    panel.source.set(1);
+    panel.channel.flush({ budget: 1 });
+    panel.source.set(2);
+    panel.channel.flush({ budget: 1 });
+    assert.deepStrictEqual(panel.applied, [], "two passes, nothing applied");
+    panel.source.set(3);
+    panel.channel.flush({ budget: 1 });
+    assert.deepStrictEqual(panel.applied, [30, 31, 32, 33], "the third finishes regardless");
+    panel.dispose();
+  });
+
+  it("flush({ budget: Infinity }) settles an atomic channel in one call", () => {
+    const panel = makePanel({ count: 3, cost: 100 });
+    panel.source.set(1);
+    panel.channel.flush({ budget: Infinity });
+    assert.deepStrictEqual(panel.applied, [10, 11, 12]);
+    panel.dispose();
+  });
+
+  it("pays for what a run reads that its last run did not, at the sweep", () => {
+    // The set that gets warmed is the last run's. An effect that reads
+    // something new this time resolves it when it runs — later than an atomic
+    // channel would like, and correct.
+    let time = 0;
+    const channel = new UpdateChannel({
+      name: "atomic-new-read",
+      order: 1,
+      manual: true,
+      atomic: true,
+      now: () => time,
+    });
+    const which = Signal.of("a");
+    const a = new Derived(() => {
+      time += 4;
+      return "A";
+    });
+    const b = new Derived(() => {
+      time += 4;
+      return "B";
+    });
+    /** @type {string[]} */
+    const applied = [];
+    const effect = new Effect(() => applied.push(which.get() === "a" ? a.get() : b.get()), {
+      channel,
+    });
+    applied.length = 0;
+
+    which.set("b");
+    channel.flush({ budget: 1 });
+    assert.strictEqual(b.getEvaluations(), 1, "read for the first time, inside the sweep");
+    assert.deepStrictEqual(applied, ["B"]);
+    effect.dispose();
+  });
+
+  it("does not call the lane warm when a later warm cooled an earlier effect", () => {
+    // Warming B resolves a node whose evaluation writes what A reads, so A
+    // goes cold behind the scan. Out of time right after B, a scan that only
+    // looked ahead of itself would answer "warm", and the sweep would run A
+    // cold — its measurement paid there, off the budget. The answer has to
+    // be a fresh look at the whole lane.
+    let time = 0;
+    const channel = new UpdateChannel({
+      name: "atomic-recool",
+      order: 1,
+      manual: true,
+      atomic: true,
+      now: () => time,
+    });
+    const pulse = Signal.of(0);
+    const shared = Signal.of(0);
+    const a = new Derived(() => {
+      time += 4;
+      return shared.get();
+    });
+    const b = new Derived(() => {
+      time += 4;
+      // Impure on purpose: this is the shape of a node whose resolution
+      // fires a source that another effect's node reads.
+      shared.set(shared.peek() + 1);
+      return pulse.get();
+    });
+    /** @type {string[]} */
+    const applied = [];
+    const effectA = new Effect(() => applied.push(`a:${a.get()}`), { channel });
+    const effectB = new Effect(() => applied.push(`b:${b.get()}`), { channel });
+    applied.length = 0;
+    const evaluationsBefore = a.getEvaluations();
+
+    shared.set(10);
+    pulse.set(1);
+    channel.flush({ budget: 8 });
+    assert.deepStrictEqual(applied, [], "a was cooled by b's warm, so no sweep yet");
+    assert.strictEqual(
+      a.getEvaluations(),
+      evaluationsBefore + 1,
+      "a resolved once, before b cooled it",
+    );
+
+    channel.flush({ budget: 8 });
+    assert.strictEqual(
+      a.getEvaluations(),
+      evaluationsBefore + 2,
+      "a resolved again, on the budget",
+    );
+    assert.deepStrictEqual(applied, ["a:11", "b:1"]);
+    effectA.dispose();
+    effectB.dispose();
+  });
+
+  it("warm() drains what its resolving marked in a channel that drains on its own", () => {
+    // A node resolved during the warm writes a signal an effect in the
+    // default channel reads. That effect would have run at the end of the
+    // write, had the queue not been flushing; the warm owes it the drain.
+    const channel = new UpdateChannel({
+      name: "atomic-side",
+      order: 1,
+      manual: true,
+      atomic: true,
+    });
+    const pulse = Signal.of(0);
+    const side = Signal.of(0);
+    const node = new Derived(() => {
+      side.set(side.peek() + 1);
+      return pulse.get();
+    });
+    const effect = new Effect(() => node.get(), { channel });
+    /** @type {number[]} */
+    const seen = [];
+    const watcher = new Effect(() => seen.push(side.get()));
+    seen.length = 0;
+
+    pulse.set(1);
+    assert.strictEqual(channel.warm({ budget: Infinity }), true);
+    assert.deepStrictEqual(seen, [2], "the default-channel effect ran inside the warm");
+    watcher.dispose();
+    effect.dispose();
+  });
+
+  it("warm() counts a pass cut short towards maxStalePasses", () => {
+    const panel = makePanel({ count: 3, cost: 5, maxStalePasses: 2 });
+    const before = panel.evaluations();
+    panel.source.set(1);
+    assert.strictEqual(panel.channel.warm({ budget: 1 }), false);
+    assert.strictEqual(panel.channel.warm({ budget: 1 }), false);
+    assert.strictEqual(panel.evaluations(), before + 2, "one each");
+    assert.strictEqual(panel.channel.warm({ budget: 1 }), true, "the third ignores the budget");
+    assert.strictEqual(panel.evaluations(), before + 3);
+    panel.dispose();
+  });
+
+  it("refuses to be atomic without a trigger or manual draining", () => {
+    assert.throws(
+      () => new UpdateChannel({ name: "atomic-loose", order: 1, atomic: true }),
+      RangeError,
+    );
+    assert.doesNotThrow(
+      () => new UpdateChannel({ name: "atomic-manual", order: 1, manual: true, atomic: true }),
+    );
+  });
+
+  it("keeps the clock on the channels that come along while the target sweeps", () => {
+    // The sweep is unbudgeted; the pass is not. A lane that drains of its
+    // own accord and comes along with the pass — the default lane, holding
+    // whatever else the program queued — stays under the budget, or the
+    // slice the caller was protecting goes to work that was never the
+    // channel's.
+    let time = 0;
+    const channel = new UpdateChannel({
+      name: "atomic-side-budget",
+      order: 1,
+      manual: true,
+      atomic: true,
+      now: () => time,
+    });
+    const side = new UpdateChannel({ name: "side-of-atomic", order: 2 });
+    const pulse = Signal.of(0);
+    const shared = Signal.of(0);
+    // Resolving this is what queues the side work, mid-pass, where the
+    // flushing flag keeps the side lane from draining on its own.
+    const node = new Derived(() => {
+      shared.set(shared.peek() + 1);
+      return pulse.get();
+    });
+    const target = new Effect(() => node.get(), { channel });
+    /** @type {number[]} */
+    const ran = [];
+    const sideEffects = Array.from(
+      { length: 4 },
+      (_, i) =>
+        new Effect(
+          () => {
+            shared.get();
+            ran.push(i);
+            time += 4;
+          },
+          { channel: side },
+        ),
+    );
+    ran.length = 0;
+
+    pulse.set(1);
+    channel.flush({ budget: 8 });
+    assert.strictEqual(target.getRuns(), 2, "the target swept");
+    assert.deepStrictEqual(
+      ran,
+      [0, 1],
+      "two side effects fit in eight milliseconds; the rest wait",
+    );
+
+    target.dispose();
+    sideEffects.forEach((e) => e.dispose());
+  });
+
+  it("warm() drains a side channel it marked even when the queue's size did not move", () => {
+    // Resolving disposes one queued effect and marks another: the size is
+    // where it was, and the marked effect is still owed its drain.
+    const channel = new UpdateChannel({ name: "atomic-net", order: 1, manual: true, atomic: true });
+    const parked = new UpdateChannel({ name: "parked", order: 3, manual: true });
+    const pulse = Signal.of(0);
+    const side = Signal.of(0);
+    const parkedSource = Signal.of(0);
+    const parkedEffect = new Effect(() => parkedSource.get(), { channel: parked });
+    const node = new Derived(() => {
+      const value = pulse.get();
+      // On the write, not on the first evaluation — which the effect below
+      // makes while it is being built, before the parked effect is queued.
+      if (value === 1) {
+        parkedEffect.dispose();
+        side.set(side.peek() + 1);
+      }
+      return value;
+    });
+    const effect = new Effect(() => node.get(), { channel });
+    /** @type {number[]} */
+    const seen = [];
+    const watcher = new Effect(() => seen.push(side.get()));
+    seen.length = 0;
+
+    parkedSource.set(1);
+    assert.strictEqual(parked.pendingCount, 1, "one queued in the parked lane");
+    pulse.set(1);
+    assert.strictEqual(channel.warm({ budget: Infinity }), true);
+    assert.strictEqual(parked.pendingCount, 0, "disposed during the warm");
+    assert.deepStrictEqual(seen, [1], "and the marked default-channel effect ran regardless");
+
+    watcher.dispose();
+    effect.dispose();
+  });
+
+  it("warm() honours a flush an effect it drained asked for", () => {
+    const channel = new UpdateChannel({
+      name: "atomic-asks",
+      order: 1,
+      manual: true,
+      atomic: true,
+    });
+    const other = new UpdateChannel({ name: "asked-for", order: 2, manual: true });
+    const pulse = Signal.of(0);
+    const side = Signal.of(0);
+    const otherSource = Signal.of(0);
+    const otherEffect = new Effect(() => otherSource.get(), { channel: other });
+    const node = new Derived(() => {
+      side.set(side.peek() + 1);
+      return pulse.get();
+    });
+    const effect = new Effect(() => node.get(), { channel });
+    const asker = new Effect(() => {
+      side.get();
+      other.flush({ budget: Infinity });
+    });
+    const before = otherEffect.getRuns();
+
+    otherSource.set(1);
+    assert.strictEqual(otherEffect.getRuns(), before, "manual: waiting to be asked");
+    pulse.set(1);
+    channel.warm({ budget: Infinity });
+    assert.strictEqual(
+      otherEffect.getRuns(),
+      before + 1,
+      "asked for from inside the warm, and done",
+    );
+
+    asker.dispose();
+    otherEffect.dispose();
+    effect.dispose();
+  });
+
+  it("counts a running effect as warm", () => {
+    // An effect run directly writes what it reads — queueing itself while
+    // still on the stack — and then flushes its own atomic channel. The
+    // queued entry is its own, and its run re-runs it with fresh reads once
+    // it unwinds; a pass that called it cold would run nothing and count a
+    // stale pass that nothing was cut short for.
+    const channel = new UpdateChannel({
+      name: "atomic-running",
+      order: 1,
+      manual: true,
+      atomic: true,
+    });
+    const source = Signal.of(0);
+    const effect = new Effect(
+      () => {
+        if (source.get() === 1) {
+          source.set(2);
+          channel.flush({ budget: Infinity });
+        }
+      },
+      { channel },
+    );
+
+    source.set(1);
+    effect.flush();
+    assert.strictEqual(effect.getRuns(), 3, "the first run, the one for 1, and its re-run for 2");
+    assert.strictEqual(channel.pendingCount, 0, "and the entry the write queued is spent");
+    effect.dispose();
+  });
+
+  it("a channel that is not atomic is not warmed by its flush", () => {
+    const { channel, frame } = makeChannel({ budget: 10 });
+    assert.strictEqual(channel.isAtomic, false);
+    const source = Signal.of(0);
+    const node = new Derived(() => source.get());
+    const effect = new Effect(() => node.get(), { channel });
+    source.set(1);
+    frame();
+    assert.strictEqual(effect.warmed, false);
+    effect.dispose();
+  });
+});
+
 describe("UpdateChannel, order correction", () => {
   it("moves a channel written into from a later one above it", () => {
     // "early" was declared below "late", which is the wrong way round: late

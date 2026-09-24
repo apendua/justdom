@@ -213,6 +213,13 @@ export async function enterSession(page, { freeze = true } = {}) {
   await page.evaluate(() => {
     window.__diagnostics?.visible.set(false);
   });
+  // A mounting panel shows a loading frame where it is going to be, and
+  // keeps it up for half a second at the least, however fast the mount. That is
+  // the one thing here that a fixed number of frames cannot wait out: the
+  // portal marks its container while it loads, and the page is asked.
+  await page.waitForFunction(() => !document.querySelector("[data-xr-loading]"), undefined, {
+    timeout: 30_000,
+  });
   // The panels are built from measured DOM, and the measuring waits on fonts;
   // a few frames of settling is the difference between photographing the
   // scene and photographing it being built.

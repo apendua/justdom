@@ -117,7 +117,7 @@ export const LOADING_ATTRIBUTE = "data-xr-loading";
  *   and `false` shows nothing until the panel is whole, which is what a
  *   readout that is never in anybody's way wants. An object tunes the
  *   frame's colours, border and corners, its delay, and how long it stays
- *   up at the least once shown — a second by default, because a frame
+ *   up at the least once shown — half a second by default, because a frame
  *   that flashed and was gone reads as a glitch rather than as a panel
  *   arriving; the mount is held, built and unseen, until the frame has had
  *   its time. See `LoadingFrameOptions` in `loadingFrame.js`.

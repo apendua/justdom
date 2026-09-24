@@ -463,10 +463,10 @@ thing that gets noticed. For the rest the frame is there to soften a panel
 appearing from nothing rather than to report on progress; it says nothing
 about how far along the mount is, because nothing can. It is placed exactly
 where the panel will be and goes in the same frame the panel's content
-arrives, so the one replaces the other. Once shown it stays up for a second
-at the least: a mount that finishes sooner is held, built and unseen, until
-the frame has had its time, because a frame that flashed for three frames
-and was gone reads as a glitch rather than as a panel arriving.
+arrives, so the one replaces the other. Once shown it stays up for half a
+second at the least: a mount that finishes sooner is held, built and unseen,
+until the frame has had its time, because a frame that flashed for three
+frames and was gone reads as a glitch rather than as a panel arriving.
 Loading ends exactly once, when everything the initial content brought has
 been built and settled; the panel appears whole rather than assembling itself
 in front of the player. Later updates — rows arriving, a menu opening — go

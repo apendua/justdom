@@ -98,6 +98,11 @@ describe("createLoadingFrame", () => {
     frame.show(5000);
     assert.equal(frame.isDue(1500), true, "shown once; a second showing changes nothing");
 
+    const byDefault = createLoadingFrame();
+    byDefault.show(0);
+    assert.equal(byDefault.isDue(499), false, "half a second by default");
+    assert.equal(byDefault.isDue(500), true);
+
     const none = createLoadingFrame({ minimumTime: 0 });
     none.show(0);
     assert.equal(none.isDue(0), true, "nothing to wait for");

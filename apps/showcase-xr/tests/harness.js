@@ -214,7 +214,7 @@ export async function enterSession(page, { freeze = true } = {}) {
     window.__diagnostics?.visible.set(false);
   });
   // A mounting panel shows a loading frame where it is going to be, and
-  // keeps it up for a second at the least, however fast the mount. That is
+  // keeps it up for half a second at the least, however fast the mount. That is
   // the one thing here that a fixed number of frames cannot wait out: the
   // portal marks its container while it loads, and the page is asked.
   await page.waitForFunction(() => !document.querySelector("[data-xr-loading]"), undefined, {

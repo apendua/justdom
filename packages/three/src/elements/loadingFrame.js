@@ -22,7 +22,9 @@ import { placeAndScale } from "./place.js";
  * @property {number} [minimumTime] The least time the frame stays up once
  *   shown, in milliseconds. A mount that finishes sooner waits for it: a
  *   frame that flashed for three frames and was gone reads as a glitch,
- *   not as a panel arriving. 1000 by default; 0 lets the panel land the
+ *   not as a panel arriving. 500 by default — long enough to read as
+ *   deliberate, short enough that a mount which only just outran `delay`
+ *   lands at about three quarters of a second; 0 lets the panel land the
  *   moment it is built. A frame that was never shown — the mount finished
  *   within `delay` — holds nothing.
  */
@@ -88,7 +90,7 @@ export function createLoadingFrame({
   borderWidth = 2,
   radius = 12,
   delay = 250,
-  minimumTime = 1000,
+  minimumTime = 500,
 } = {}) {
   const group = new THREE.Group();
   group.name = "loading-frame";

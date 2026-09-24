@@ -156,8 +156,8 @@ export function createBakery(ctx, faces, { settleFrames = SETTLE_FRAMES } = {}) 
               // out of sight, where a ray would be a surprise.
               opaqueToRays: false,
               // Out of sight is also where a loading frame has nobody to
-              // reassure, and the second it would keep the mount waiting is
-              // a second the first stamp is late by.
+              // reassure, and the time it could keep the mount waiting is
+              // time the first stamp is late by.
               loadingFrame: false,
               onLoadingChanged: (loading) => {
                 if (!loading) {

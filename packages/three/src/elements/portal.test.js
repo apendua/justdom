@@ -9,15 +9,17 @@ import { acquireImage, releaseImage } from "./image.js";
 import { createPortal as createHeldPortal, getPortalRoot, LOADING_ATTRIBUTE } from "./portal.js";
 
 /**
- * `createPortal`, with the loading frame's minimum time off. A panel here
- * loads the moment it is built, so a test can count the frames a mount
- * takes; the hold has tests of its own, which ask for it by name.
+ * `createPortal`, with the loading frame's delay and minimum time off. A
+ * panel here shows its frame on the first frame its mount does not finish
+ * in, and loads the moment it is built, so a test can count the frames a
+ * mount takes; the delay and the hold have tests of their own, which ask
+ * for them by name.
  *
  * @type {typeof createHeldPortal}
  */
 const createPortal = (ctx, options = {}) =>
   createHeldPortal(ctx, {
-    loadingFrame: { minimumTime: 0 },
+    loadingFrame: { delay: 0, minimumTime: 0 },
     ...options,
   });
 import { createPortalScheduler, PortalSchedulerContext } from "./portalScheduler.js";
@@ -1257,7 +1259,9 @@ describe("createPortal", () => {
       const transitions = [];
       const portal = createPortal(ctx, {
         budget: 0,
-        loadingFrame: { minimumTime: 1000 },
+        // No delay, so the frame is up from the first tick and this is a
+        // test of the hold alone; the delay has tests of its own below.
+        loadingFrame: { delay: 0, minimumTime: 1000 },
         onLoadingChanged: (value) => transitions.push(value),
       });
       const parent = new THREE.Group();
@@ -1311,6 +1315,137 @@ describe("createPortal", () => {
       assert.ok(content(), "and the content in its place");
       assert.equal(containerElement.hasAttribute(LOADING_ATTRIBUTE), false);
       assert.deepEqual(transitions, [false]);
+
+      subscription.unsubscribe();
+      portal.disconnect();
+      await drain();
+    } finally {
+      performance.now = originalNow;
+    }
+  });
+
+  test("a mount that settles within the delay never shows the frame, and is not held", async () => {
+    // Three frames of building at a budget of zero, sixteen milliseconds
+    // apart: done at 32 ms, well inside a 250 ms delay. No frame goes up,
+    // so the minimum time — which counts from the showing — holds nothing,
+    // and the panel loads in the frame it was finished in.
+    const originalNow = performance.now;
+    let clock = 0;
+    performance.now = () => clock;
+    try {
+      const manager = new InteractionManager();
+      const ctx = InteractionContext.set({}, manager);
+      const portal = createPortal(ctx, {
+        budget: 0,
+        loadingFrame: { delay: 250, minimumTime: 1000 },
+      });
+      const parent = new THREE.Group();
+      portal.addTo(parent);
+      const containerObject = parent.children[0];
+      /** @type {string[]} */
+      const added = [];
+      const originalAdd = containerObject.add.bind(containerObject);
+      containerObject.add = (...objects) => {
+        for (const object of objects) {
+          added.push(object.name);
+        }
+        return originalAdd(...objects);
+      };
+
+      /** @type {import("@apendua/justdom").Mountable | undefined} */
+      let mountable;
+      const tree = $("div", [children($("div"), $("div"))]);
+      const subscription = tree.subscribe((value) => {
+        mountable = value;
+      });
+      assert.ok(mountable);
+      portal.mount(mountable);
+      await nextMacrotask();
+
+      let frames = 0;
+      while (frames < 20 && portal.isLoading()) {
+        clock = frames * 16;
+        frames += 1;
+        flushFrame();
+        await nextMacrotask();
+      }
+      assert.equal(portal.isLoading(), false);
+      assert.ok(clock < 250, `loaded inside the delay (${clock} ms)`);
+      assert.ok(frames > 1, `and the mount did take more than one frame (${frames})`);
+      assert.ok(!added.includes("loading-frame"), "without the frame ever put in the scene");
+
+      subscription.unsubscribe();
+      portal.disconnect();
+      await drain();
+    } finally {
+      performance.now = originalNow;
+    }
+  });
+
+  test("a mount that outruns the delay shows the frame from then, for its minimum time", async () => {
+    // The first tick, at 0 ms, leaves the mount unfinished but inside the
+    // delay: nothing shown. The next, at 300 ms, is past it: the frame goes
+    // up then, and its minimum time counts from then — so the mount, done a
+    // frame later, is held until 1300 ms, not 1000.
+    const originalNow = performance.now;
+    let clock = 0;
+    performance.now = () => clock;
+    try {
+      const manager = new InteractionManager();
+      const ctx = InteractionContext.set({}, manager);
+      const portal = createPortal(ctx, {
+        budget: 0,
+        loadingFrame: { delay: 250, minimumTime: 1000 },
+      });
+      const parent = new THREE.Group();
+      portal.addTo(parent);
+      const containerObject = parent.children[0];
+      const loadingFrame = () =>
+        containerObject.children.find((child) => child.name === "loading-frame");
+      const content = () =>
+        containerObject.children.find(
+          (child) => !(child instanceof THREE.Mesh) && child.name !== "loading-frame",
+        );
+
+      /** @type {import("@apendua/justdom").Mountable | undefined} */
+      let mountable;
+      const tree = $("div", [children($("div"), $("div"))]);
+      const subscription = tree.subscribe((value) => {
+        mountable = value;
+      });
+      assert.ok(mountable);
+      portal.mount(mountable);
+      await nextMacrotask();
+
+      clock = 0;
+      flushFrame();
+      await nextMacrotask();
+      assert.equal(portal.isLoading(), true);
+      assert.equal(loadingFrame(), undefined, "unfinished at 0 ms, but inside the delay");
+
+      clock = 300;
+      flushFrame();
+      await nextMacrotask();
+      assert.equal(portal.isLoading(), true);
+      assert.ok(loadingFrame(), "past the delay at 300 ms, and shown");
+
+      for (const at of [316, 1000, 1299]) {
+        clock = at;
+        flushFrame();
+        await nextMacrotask();
+        assert.equal(portal.isLoading(), true, `held at ${at} ms`);
+        assert.ok(loadingFrame(), `the frame up at ${at} ms`);
+        assert.equal(content(), undefined, `nothing attached at ${at} ms`);
+      }
+
+      clock = 1300;
+      for (let index = 0; index < 5 && portal.isLoading(); index++) {
+        flushFrame();
+        await nextMacrotask();
+      }
+      assert.equal(portal.isLoading(), false, "loaded a second after the frame went up");
+      assert.equal(loadingFrame(), undefined, "the frame gone");
+      assert.ok(content(), "and the content in its place");
 
       subscription.unsubscribe();
       portal.disconnect();

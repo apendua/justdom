@@ -454,18 +454,19 @@ it (5 by default), so however large the mount, the frame keeps its rate.
 
 While that runs the panel is *loading*: stopping no rays — nothing inside it
 registers as a ray target until it is actually there to press — and, if the
-mount takes more than one frame, showing where it is going to be a **loading
-frame**: a translucent rounded rectangle the panel's size, with a black
-border and three dots in the middle that brighten in turn. A panel small
-enough to be built in its first frame appears in that frame and never shows
-one. For the rest the frame is there to soften a panel appearing from
-nothing rather than to report on progress; it says nothing about how far
-along the mount is, because nothing can. It is placed exactly where the panel
-will be and goes in the same frame the panel's content arrives, so the one
-replaces the other. Once shown it stays up for a second at the least: a
-mount that finishes sooner is held, built and unseen, until the frame has
-had its time, because a frame that flashed for three frames and was gone
-reads as a glitch rather than as a panel arriving.
+mount takes long enough to be noticed, showing where it is going to be a
+**loading frame**: a translucent rounded rectangle the panel's size, with a
+black border and three dots in the middle that brighten in turn. A panel
+that settles within a quarter of a second appears the moment it is built and
+never shows one, since a loader for a wait nobody would have noticed is the
+thing that gets noticed. For the rest the frame is there to soften a panel
+appearing from nothing rather than to report on progress; it says nothing
+about how far along the mount is, because nothing can. It is placed exactly
+where the panel will be and goes in the same frame the panel's content
+arrives, so the one replaces the other. Once shown it stays up for a second
+at the least: a mount that finishes sooner is held, built and unseen, until
+the frame has had its time, because a frame that flashed for three frames
+and was gone reads as a glitch rather than as a panel arriving.
 Loading ends exactly once, when everything the initial content brought has
 been built and settled; the panel appears whole rather than assembling itself
 in front of the player. Later updates — rows arriving, a menu opening — go
@@ -473,15 +474,15 @@ through the same budgeted pump, and a panel that is already visible never
 shows the frame again.
 
 A panel that would rather appear from nothing — a readout that is never in
-anybody's way — opts out; one that wants the frame in its own colours, or up
-for a different least time, says so:
+anybody's way — opts out; one that wants the frame in its own colours, or
+shown after a different delay, or up for a different least time, says so:
 
 ```js
 dom(ctx, readout, [set({ position })], { loadingFrame: false });
 dom(ctx, menu, [set({ position })], {
   loadingFrame: { color: "white", fill: "black", fillOpacity: 0.4, radius: 8 },
 });
-dom(ctx, quick, [set({ position })], { loadingFrame: { minimumTime: 500 } });
+dom(ctx, quick, [set({ position })], { loadingFrame: { delay: 400, minimumTime: 500 } });
 ```
 
 While a panel's mount is under way — from the first content it is given to

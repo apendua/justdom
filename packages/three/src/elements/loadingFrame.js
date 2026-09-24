@@ -13,12 +13,18 @@ import { placeAndScale } from "./place.js";
  *   without being a panel.
  * @property {number} [borderWidth] The border's width in the panel's px. 2.
  * @property {number} [radius] The corners' radius in the panel's px. 12.
+ * @property {number} [delay] How long a mount may take before the frame is
+ *   shown at all, in milliseconds from the mount's start. A panel that
+ *   settles within it appears the moment it is built, with no frame and no
+ *   hold: a loader for a wait nobody would have noticed is the thing that
+ *   gets noticed. 250 by default; 0 shows the frame on the first frame the
+ *   mount does not finish in.
  * @property {number} [minimumTime] The least time the frame stays up once
  *   shown, in milliseconds. A mount that finishes sooner waits for it: a
  *   frame that flashed for three frames and was gone reads as a glitch,
  *   not as a panel arriving. 1000 by default; 0 lets the panel land the
  *   moment it is built. A frame that was never shown — the mount finished
- *   in its first frame — holds nothing.
+ *   within `delay` — holds nothing.
  */
 
 /** How many dots the indicator has. */
@@ -81,6 +87,7 @@ export function createLoadingFrame({
   fillOpacity = 0.2,
   borderWidth = 2,
   radius = 12,
+  delay = 250,
   minimumTime = 1000,
 } = {}) {
   const group = new THREE.Group();
@@ -129,10 +136,41 @@ export function createLoadingFrame({
    * @type {number | null}
    */
   let startedAt = null;
+  /**
+   * When the wait the frame may stand in for began — the mount's start, on
+   * the caller's clock — and whether it has: `delay` counts from here.
+   *
+   * @type {number | null}
+   */
+  let waitingSince = null;
 
   return {
     /** The thing to put in the scene, in the panel's own frame of reference. */
     object: group,
+
+    /**
+     * Start the wait: the mount the frame may stand in for began at `now`,
+     * and `delay` counts from it. Only the first call counts.
+     *
+     * @param {number} now milliseconds
+     * @returns {void}
+     */
+    begin(now) {
+      if (waitingSince === null) {
+        waitingSince = now;
+      }
+    },
+
+    /**
+     * Whether the wait has gone on long enough to be worth showing: `delay`
+     * has passed since `begin`. A wait that never began is not overdue.
+     *
+     * @param {number} now milliseconds
+     * @returns {boolean}
+     */
+    isOverdue(now) {
+      return waitingSince !== null && now - waitingSince >= delay;
+    },
 
     /**
      * Start the frame's clock: it is in the scene from `now`, its dots fade

@@ -103,6 +103,25 @@ describe("createLoadingFrame", () => {
     assert.equal(none.isDue(0), true, "nothing to wait for");
   });
 
+  test("it is overdue once the wait has outlasted its delay, counted from the start", () => {
+    const frame = createLoadingFrame({ delay: 250 });
+    assert.equal(frame.isOverdue(10_000), false, "a wait that never began is not overdue");
+    frame.begin(1000);
+    assert.equal(frame.isOverdue(1249), false);
+    assert.equal(frame.isOverdue(1250), true);
+    frame.begin(5000);
+    assert.equal(frame.isOverdue(1250), true, "only the first begin counts");
+
+    const eager = createLoadingFrame({ delay: 0 });
+    eager.begin(0);
+    assert.equal(eager.isOverdue(0), true, "no delay: overdue from the start");
+
+    const byDefault = createLoadingFrame();
+    byDefault.begin(0);
+    assert.equal(byDefault.isOverdue(249), false, "a quarter of a second by default");
+    assert.equal(byDefault.isOverdue(250), true);
+  });
+
   test("laying out the same size again writes nothing", () => {
     const frame = createLoadingFrame();
     const quad = asMesh(frame.object.children[0]);

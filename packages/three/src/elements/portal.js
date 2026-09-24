@@ -108,17 +108,17 @@ export const LOADING_ATTRIBUTE = "data-xr-loading";
  *   handle is the reactive way to ask.
  * @property {boolean | LoadingFrameOptions} [loadingFrame] What the player
  *   sees where the panel is going to be while it mounts, if the mount takes
- *   more than one frame: a translucent, rounded frame the panel's size with
- *   a black border, and three dots in the middle that brighten in turn. A
- *   panel small enough to be built in its first frame appears in that
- *   frame and never shows one. On by default — a mount that does take a
- *   few frames is a panel appearing from nothing where nothing was, which
- *   is what the frame is there to soften — and `false` shows nothing
- *   until the panel is whole, which is what a readout that is never in
- *   anybody's way wants. An object tunes the frame's colours, border and
- *   corners, and how long it stays up at the least — a second by default,
- *   because a mount that finished in three frames would otherwise flash the
- *   frame and be gone, which reads as a glitch rather than as a panel
+ *   long enough to be noticed: a translucent, rounded frame the panel's
+ *   size with a black border, and three dots in the middle that brighten in
+ *   turn. A panel that settles within the frame's `delay` — 250 ms by
+ *   default — appears the moment it is built and never shows one. On by
+ *   default — a mount that does outrun the delay is a panel appearing from
+ *   nothing where nothing was, which is what the frame is there to soften —
+ *   and `false` shows nothing until the panel is whole, which is what a
+ *   readout that is never in anybody's way wants. An object tunes the
+ *   frame's colours, border and corners, its delay, and how long it stays
+ *   up at the least once shown — a second by default, because a frame
+ *   that flashed and was gone reads as a glitch rather than as a panel
  *   arriving; the mount is held, built and unseen, until the frame has had
  *   its time. See `LoadingFrameOptions` in `loadingFrame.js`.
  */
@@ -350,12 +350,14 @@ export function createPortal(
   /** @type {() => void} */
   let stopLoadingFrame = () => {};
   /**
-   * Put the frame in the scene and start its clock. Called by the pump's
-   * `afterTick` the first time a tick ends with the mount unfinished — so a
-   * panel small enough to be built in its first tick never shows a frame,
-   * and never waits for one: a frame nobody saw has nothing to hold the
-   * panel for. Until then the ticks below only place and size things, so
-   * the frame is right the moment it is shown.
+   * Put the frame in the scene and start its clock, if the mount has been
+   * running for longer than the frame's `delay`. Called by the pump's
+   * `afterTick` whenever a tick ends with the mount unfinished, which is
+   * every frame of a mount — so the frame goes up on the first such tick
+   * past the delay, and a panel that settles within it never shows one and
+   * never waits for one: a frame nobody saw has nothing to hold the panel
+   * for. Until then the ticks below only place and size things, so the
+   * frame is right the moment it is shown.
    *
    * @type {() => void}
    */
@@ -371,11 +373,12 @@ export function createPortal(
   let startLoadingFrame = () => {};
   if (loadingFrameObject) {
     showLoadingFrame = () => {
-      if (loadingFrameObject.isShown()) {
+      const now = performance.now();
+      if (loadingFrameObject.isShown() || !loadingFrameObject.isOverdue(now)) {
         return;
       }
       containerObject.add(loadingFrameObject.object);
-      loadingFrameObject.show(performance.now());
+      loadingFrameObject.show(now);
     };
     /** @type {(() => void) | null} */
     let stopFrames = null;
@@ -383,6 +386,8 @@ export function createPortal(
       if (stopFrames) {
         return;
       }
+      // The mount starts here, and the frame's delay with it.
+      loadingFrameObject.begin(performance.now());
       stopFrames = requestFrames(() => {
         const size = getBorderBoxSize(containerElement);
         placeContainer(size.width, size.height);
@@ -910,9 +915,10 @@ export function createPortal(
           // the panel.
           afterTick: (settled) => {
             if (!settled && loading.get()) {
-              // The mount needs another frame. That is the moment the
-              // player would otherwise be looking at nothing, and the frame
-              // takes it — from this tick on, and for its minimum time.
+              // The mount needs another frame. Once it has needed them for
+              // longer than the frame's delay, the player is looking at
+              // nothing where a panel should be, and the frame takes that
+              // place — from this tick on, and for its minimum time.
               showLoadingFrame();
             }
             interactionManager.updateIntersections();

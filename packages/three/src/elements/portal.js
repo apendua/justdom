@@ -53,6 +53,14 @@ export function getPortalRoot(node) {
 }
 
 /**
+ * Set on a portal's container element while its initial mount is running —
+ * while `isLoading()` on the handle answers true — and taken off when it is
+ * done. `document.querySelector("[data-xr-loading]")` is then "is any panel
+ * still loading", for a caller that has the page and not the handles.
+ */
+export const LOADING_ATTRIBUTE = "data-xr-loading";
+
+/**
  * @typedef {object} PortalOptions
  * @property {boolean} [opaqueToRays] Whether the panel stops rays that land on
  *   it. True by default, which is what any panel with something to press wants.
@@ -103,7 +111,11 @@ export function getPortalRoot(node) {
  *   was is what the frame is there to soften — and `false` shows nothing
  *   until the panel is whole, which is what a readout that is never in
  *   anybody's way wants. An object tunes the frame's colours, border and
- *   corners; see `LoadingFrameOptions` in `loadingFrame.js`.
+ *   corners, and how long it stays up at the least — a second by default,
+ *   because a mount that finished in three frames would otherwise flash the
+ *   frame and be gone, which reads as a glitch rather than as a panel
+ *   arriving; the mount is held, built and unseen, until the frame has had
+ *   its time. See `LoadingFrameOptions` in `loadingFrame.js`.
  */
 
 /**
@@ -243,6 +255,9 @@ export function createPortal(
   // of the object tree it is projected into.
   const containerElement = document.createElement("div");
   containerElement.setAttribute(PORTAL_ATTRIBUTE, "");
+  // Taken off by `markLoaded`. For whoever has only the DOM to ask — a test
+  // harness waiting to photograph the scene rather than its loading frames.
+  containerElement.setAttribute(LOADING_ATTRIBUTE, "");
   containerElement.style.position = "absolute";
   containerElement.style.top = "0";
   containerElement.style.left = "0";
@@ -338,7 +353,16 @@ export function createPortal(
       const size = getBorderBoxSize(containerElement);
       placeContainer(size.width, size.height);
       loadingFrameObject.layout(size.width, size.height);
-      loadingFrameObject.tick(performance.now());
+      const now = performance.now();
+      loadingFrameObject.tick(now);
+      if (loadingFrameObject.isDue(now)) {
+        // The mount may have finished before the frame had its time, in
+        // which case `commit` declined and the pump, with nothing left to
+        // build, left the scheduler. It is asked back here — `schedule` is
+        // a no-op unless something is held — and its next tick commits
+        // and loads. Once loaded, these ticks stop.
+        pump?.schedule();
+      }
     });
     stopLoadingFrame = () => {
       stopFrames();
@@ -689,7 +713,16 @@ export function createPortal(
    * than once at the end, while anything a teardown happened to construct
    * would be born in the default channel rather than the panel's.
    */
-  const commit = () =>
+  const commit = () => {
+    if (loading.get() && loadingFrameObject && !loadingFrameObject.isDue(performance.now())) {
+      // The mount is built, but the frame standing in for it has not been
+      // up for its minimum time, and a frame that flashed and was gone reads
+      // as a glitch. Nothing is applied: the lists stay as they are, so
+      // `hasPendingCommit` keeps saying so and `markLoaded` below sees the
+      // commit did not happen. The frame's own ticks bring the pump back
+      // once the time is up.
+      return;
+    }
     projectChanges(() => {
       const changed = pendingAttachments.size > 0 || pendingRemovals.size > 0;
       for (const node of pendingAttachments) {
@@ -718,6 +751,7 @@ export function createPortal(
         textBatch.invalidate();
       }
     });
+  };
 
   /**
    * The initial mount is done: show the panel, let its buttons register, and
@@ -729,10 +763,19 @@ export function createPortal(
     if (!sawContent || !loading.get()) {
       return;
     }
+    if (pendingAttachments.size > 0 || pendingRemovals.size > 0) {
+      // The pump runs `commit` just before this, and a commit that went
+      // through leaves nothing behind; something still listed means the
+      // commit declined, holding the mount for the loading frame's minimum
+      // time. Not loaded yet, then — by the lists rather than by the clock,
+      // so the two cannot disagree about the same tick.
+      return;
+    }
     // The frame goes in the tick that attached the content, so the panel
     // takes its place in the same drawn frame — see `commit`, which the pump
     // runs just before this.
     stopLoadingFrame();
+    containerElement.removeAttribute(LOADING_ATTRIBUTE);
     // The blocker before the flip: flipping `loading` is what lets the
     // panel's own controls register, and the background should be in the
     // raycast set before the things drawn in front of it.

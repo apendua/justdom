@@ -84,6 +84,18 @@ describe("createLoadingFrame", () => {
     }
   });
 
+  test("it is due once it has been up for its minimum time, on the clock it ticks by", () => {
+    const frame = createLoadingFrame({ minimumTime: 500 });
+    assert.equal(frame.isDue(10_000), false, "never ticked: not up, and holding for its minimum");
+    frame.tick(1000);
+    assert.equal(frame.isDue(1000), false);
+    assert.equal(frame.isDue(1499), false);
+    assert.equal(frame.isDue(1500), true);
+
+    const none = createLoadingFrame({ minimumTime: 0 });
+    assert.equal(none.isDue(0), true, "nothing to wait for, ticked or not");
+  });
+
   test("laying out the same size again writes nothing", () => {
     const frame = createLoadingFrame();
     const quad = asMesh(frame.object.children[0]);

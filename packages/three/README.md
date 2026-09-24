@@ -460,23 +460,32 @@ brighten in turn. A mount takes a handful of frames, so the frame is there
 to soften a panel appearing from nothing rather than to report on progress;
 it says nothing about how far along the mount is, because nothing can. The
 frame is placed exactly where the panel will be and goes in the same frame
-the panel's content arrives, so the one replaces the other. Loading ends
-exactly once, when everything the initial content brought has been built and
-settled; the panel appears whole rather than assembling itself in front of
-the player. Later updates — rows arriving, a menu opening — go through the
-same budgeted pump, and a panel that is already visible never shows the frame
-again.
+the panel's content arrives, so the one replaces the other. It also stays up
+for a second at the least: a mount that finishes sooner is held, built and
+unseen, until the frame has had its time, because a frame that flashed for
+three frames and was gone reads as a glitch rather than as a panel arriving.
+Loading ends exactly once, when everything the initial content brought has
+been built and settled; the panel appears whole rather than assembling itself
+in front of the player. Later updates — rows arriving, a menu opening — go
+through the same budgeted pump, and a panel that is already visible never
+shows the frame again.
 
 A panel that would rather appear from nothing — a readout that is never in
-anybody's way — opts out, and one that wants the frame in its own colours
-says so:
+anybody's way — opts out; one that wants the frame in its own colours, or up
+for a different least time, says so:
 
 ```js
 dom(ctx, readout, [set({ position })], { loadingFrame: false });
 dom(ctx, menu, [set({ position })], {
   loadingFrame: { color: "white", fill: "black", fillOpacity: 0.4, radius: 8 },
 });
+dom(ctx, quick, [set({ position })], { loadingFrame: { minimumTime: 500 } });
 ```
+
+While a panel loads its container element carries `data-xr-loading`, so a
+page — a test harness about to photograph the scene, say — can ask whether
+any panel is still on its way without holding the handles:
+`document.querySelector("[data-xr-loading]")`.
 
 **An update lands whole, however many frames it took.** A visible panel
 cannot hide while it changes, and a change too big for one frame's budget

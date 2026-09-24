@@ -13,6 +13,11 @@ import { placeAndScale } from "./place.js";
  *   without being a panel.
  * @property {number} [borderWidth] The border's width in the panel's px. 2.
  * @property {number} [radius] The corners' radius in the panel's px. 12.
+ * @property {number} [minimumTime] The least time the frame stays up, in
+ *   milliseconds. A mount that finishes sooner waits for it: a frame that
+ *   flashed for three frames and was gone reads as a glitch, not as a
+ *   panel arriving. 1000 by default; 0 lets the panel land the moment it
+ *   is built.
  */
 
 /** How many dots the indicator has. */
@@ -75,6 +80,7 @@ export function createLoadingFrame({
   fillOpacity = 0.2,
   borderWidth = 2,
   radius = 12,
+  minimumTime = 1000,
 } = {}) {
   const group = new THREE.Group();
   group.name = "loading-frame";
@@ -170,6 +176,22 @@ export function createLoadingFrame({
         const breath = DOT_ALPHA_MIN + (DOT_ALPHA_MAX - DOT_ALPHA_MIN) * wave(elapsed, index);
         dot.material.uniforms.uFillColor.value.w = fade * breath;
       });
+    },
+
+    /**
+     * Whether the frame has been up for its minimum time, and the panel may
+     * take its place. On the same clock `tick` keeps; a frame that never
+     * ticked is not up at all, and holds nothing unless it has a minimum to
+     * hold for.
+     *
+     * @param {number} now milliseconds
+     * @returns {boolean}
+     */
+    isDue(now) {
+      if (minimumTime <= 0) {
+        return true;
+      }
+      return startedAt !== null && now - startedAt >= minimumTime;
     },
 
     /**

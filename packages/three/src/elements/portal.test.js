@@ -6,7 +6,20 @@ import { $, attr, children, className, stylesheet } from "@apendua/justdom";
 import { InteractionContext, InteractionManager } from "../interactions.js";
 import { DomMirror, getComputedStyleCached, resetMeasuringRangeForTests } from "./mirror.js";
 import { acquireImage, releaseImage } from "./image.js";
-import { createPortal, getPortalRoot } from "./portal.js";
+import { createPortal as createHeldPortal, getPortalRoot, LOADING_ATTRIBUTE } from "./portal.js";
+
+/**
+ * `createPortal`, with the loading frame's minimum time off. A panel here
+ * loads the moment it is built, so a test can count the frames a mount
+ * takes; the hold has tests of its own, which ask for it by name.
+ *
+ * @type {typeof createHeldPortal}
+ */
+const createPortal = (ctx, options = {}) =>
+  createHeldPortal(ctx, {
+    loadingFrame: { minimumTime: 0 },
+    ...options,
+  });
 import { createPortalScheduler, PortalSchedulerContext } from "./portalScheduler.js";
 
 // jsdom-env exposes the common DOM globals, but not MutationObserver, which
@@ -1222,6 +1235,79 @@ describe("createPortal", () => {
       portal.disconnect();
     } finally {
       window.Element.prototype.getBoundingClientRect = originalRect;
+    }
+  });
+
+  test("a mount that finishes early waits for the loading frame's minimum time", async () => {
+    // A frame that flashed for three frames and was gone would read as a
+    // glitch, so a mount built before the frame has had its time is held —
+    // built and unseen — until it has. The hold sits at the commit: nothing
+    // is attached, the panel is still loading, the frame is still up. Once
+    // the time is up the frame's own tick asks the pump back, and the next
+    // tick commits and loads. On a clock the test drives.
+    const originalNow = performance.now;
+    let clock = 0;
+    performance.now = () => clock;
+    try {
+      const manager = new InteractionManager();
+      const ctx = InteractionContext.set({}, manager);
+      /** @type {boolean[]} */
+      const transitions = [];
+      const portal = createPortal(ctx, {
+        budget: Infinity,
+        loadingFrame: { minimumTime: 1000 },
+        onLoadingChanged: (value) => transitions.push(value),
+      });
+      const parent = new THREE.Group();
+      portal.addTo(parent);
+      const containerObject = parent.children[0];
+      const loadingFrame = () =>
+        containerObject.children.find((child) => child.name === "loading-frame");
+      const content = () =>
+        containerObject.children.find(
+          (child) => !(child instanceof THREE.Mesh) && child.name !== "loading-frame",
+        );
+
+      /** @type {import("@apendua/justdom").Mountable | undefined} */
+      let mountable;
+      const tree = $("div", [children($("div"), $("div"))]);
+      const subscription = tree.subscribe((value) => {
+        mountable = value;
+      });
+      assert.ok(mountable);
+      portal.mount(mountable);
+      const containers = document.querySelectorAll("[data-xr-portal]");
+      const containerElement = containers[containers.length - 1];
+      assert.ok(containerElement.hasAttribute(LOADING_ATTRIBUTE), "loading, for the DOM to see");
+      await nextMacrotask();
+
+      // An infinite budget builds the whole mount in one frame. Held.
+      for (const at of [0, 16, 400, 999]) {
+        clock = at;
+        flushFrame();
+        await nextMacrotask();
+        assert.equal(portal.isLoading(), true, `still loading at ${at} ms`);
+        assert.ok(loadingFrame(), `the frame still up at ${at} ms`);
+        assert.equal(content(), undefined, `and nothing attached at ${at} ms`);
+      }
+      assert.deepEqual(transitions, []);
+
+      clock = 1000;
+      for (let index = 0; index < 5 && portal.isLoading(); index++) {
+        flushFrame();
+        await nextMacrotask();
+      }
+      assert.equal(portal.isLoading(), false, "loaded once the frame had its second");
+      assert.equal(loadingFrame(), undefined, "the frame gone");
+      assert.ok(content(), "and the content in its place");
+      assert.equal(containerElement.hasAttribute(LOADING_ATTRIBUTE), false);
+      assert.deepEqual(transitions, [false]);
+
+      subscription.unsubscribe();
+      portal.disconnect();
+      await drain();
+    } finally {
+      performance.now = originalNow;
     }
   });
 

@@ -54,9 +54,12 @@ export function getPortalRoot(node) {
 
 /**
  * Set on a portal's container element while its initial mount is running —
- * while `isLoading()` on the handle answers true — and taken off when it is
- * done. `document.querySelector("[data-xr-loading]")` is then "is any panel
- * still loading", for a caller that has the page and not the handles.
+ * from the first content the observer reports to the load — and taken off
+ * when it is done. `document.querySelector("[data-xr-loading]")` is then "is
+ * any panel still on its way", for a caller that has the page and not the
+ * handles. A portal that has been given nothing to mount never carries it:
+ * it is not on its way anywhere, and a harness waiting on the attribute
+ * must not wait on that.
  */
 export const LOADING_ATTRIBUTE = "data-xr-loading";
 
@@ -257,9 +260,6 @@ export function createPortal(
   // of the object tree it is projected into.
   const containerElement = document.createElement("div");
   containerElement.setAttribute(PORTAL_ATTRIBUTE, "");
-  // Taken off by `markLoaded`. For whoever has only the DOM to ask — a test
-  // harness waiting to photograph the scene rather than its loading frames.
-  containerElement.setAttribute(LOADING_ATTRIBUTE, "");
   containerElement.style.position = "absolute";
   containerElement.style.top = "0";
   containerElement.style.left = "0";
@@ -360,6 +360,15 @@ export function createPortal(
    * @type {() => void}
    */
   let showLoadingFrame = () => {};
+  /**
+   * Start the ticks. From the first content the observer reports, not from
+   * construction: a portal given nothing to mount has nothing to stand in
+   * for, and would otherwise measure, place and lay out every frame for
+   * its whole life. Idempotent, and `stopLoadingFrame` ends it.
+   *
+   * @type {() => void}
+   */
+  let startLoadingFrame = () => {};
   if (loadingFrameObject) {
     showLoadingFrame = () => {
       if (loadingFrameObject.isShown()) {
@@ -368,24 +377,24 @@ export function createPortal(
       containerObject.add(loadingFrameObject.object);
       loadingFrameObject.show(performance.now());
     };
-    const stopFrames = requestFrames(() => {
-      const size = getBorderBoxSize(containerElement);
-      placeContainer(size.width, size.height);
-      loadingFrameObject.layout(size.width, size.height);
-      const now = performance.now();
-      loadingFrameObject.tick(now);
-      if (loadingFrameObject.isShown() && loadingFrameObject.isDue(now)) {
-        // The mount may have finished before the frame had its time, in
-        // which case `commit` declined and the pump, with nothing left to
-        // build, left the scheduler. It is asked back here — `schedule` is
-        // a no-op unless something is held — and its next tick commits
-        // and loads. Once loaded, these ticks stop.
-        pump?.schedule();
+    /** @type {(() => void) | null} */
+    let stopFrames = null;
+    startLoadingFrame = () => {
+      if (stopFrames) {
+        return;
       }
-    });
+      stopFrames = requestFrames(() => {
+        const size = getBorderBoxSize(containerElement);
+        placeContainer(size.width, size.height);
+        loadingFrameObject.layout(size.width, size.height);
+        loadingFrameObject.tick(performance.now());
+      });
+    };
     stopLoadingFrame = () => {
-      stopFrames();
+      stopFrames?.();
+      stopFrames = null;
       loadingFrameObject.dispose();
+      startLoadingFrame = () => {};
       stopLoadingFrame = () => {};
     };
   }
@@ -639,6 +648,15 @@ export function createPortal(
   const pendingRemovals = new Set();
 
   /**
+   * Whether anything is held for the commit. The one spelling of it: the
+   * pump asks when deciding whether a frame is worth asking for, and the
+   * commit asks whether it changed the walk the batches draw from.
+   *
+   * @returns {boolean}
+   */
+  const hasPendingCommit = () => pendingAttachments.size > 0 || pendingRemovals.size > 0;
+
+  /**
    * Put a node's object under its parent's: now, or at the commit if there
    * is one to wait for. Both callers go through here so that a node
    * re-inserted mid-update and one built by the pump keep the same frame.
@@ -736,14 +754,13 @@ export function createPortal(
     if (loading.get() && loadingFrameObject && !loadingFrameObject.isDue(performance.now())) {
       // The mount is built, but the frame standing in for it has not been
       // up for its minimum time, and a frame that flashed and was gone reads
-      // as a glitch. Nothing is applied: the lists stay as they are, so
-      // `hasPendingCommit` keeps saying so and `markLoaded` below sees the
-      // commit did not happen. The frame's own ticks bring the pump back
-      // once the time is up.
-      return;
+      // as a glitch. Declined: nothing is applied, the lists stay as they
+      // are, and the pump — for which a declined commit is a tick that did
+      // not settle — asks again next frame.
+      return false;
     }
     projectChanges(() => {
-      const changed = pendingAttachments.size > 0 || pendingRemovals.size > 0;
+      const changed = hasPendingCommit();
       for (const node of pendingAttachments) {
         if (containerElement.contains(node)) {
           place(node);
@@ -770,6 +787,7 @@ export function createPortal(
         textBatch.invalidate();
       }
     });
+    return true;
   };
 
   /**
@@ -780,14 +798,6 @@ export function createPortal(
    */
   const markLoaded = () => {
     if (!sawContent || !loading.get()) {
-      return;
-    }
-    if (pendingAttachments.size > 0 || pendingRemovals.size > 0) {
-      // The pump runs `commit` just before this, and a commit that went
-      // through leaves nothing behind; something still listed means the
-      // commit declined, holding the mount for the loading frame's minimum
-      // time. Not loaded yet, then — by the lists rather than by the clock,
-      // so the two cannot disagree about the same tick.
       return;
     }
     // The frame goes in the tick that attached the content, so the panel
@@ -894,7 +904,7 @@ export function createPortal(
           priority,
           buildNode: buildQueuedNode,
           onCommit: commit,
-          hasPendingCommit: () => pendingAttachments.size > 0 || pendingRemovals.size > 0,
+          hasPendingCommit,
           onSettled: markLoaded,
           // Content appeared or moved under whatever rays are resting on
           // the panel.
@@ -1029,6 +1039,13 @@ export function createPortal(
     // reporting the button as hovered until the player twitched. The scene
     // changed under them; ask for the rays to be cast again.
     interactionManager.updateIntersections();
+    if (sawContent && loading.get()) {
+      // The mount is under way: say so where the DOM can see it, and start
+      // placing the panel and the frame that may stand in for it. Both are
+      // idempotent, and both end with `markLoaded`.
+      containerElement.setAttribute(LOADING_ATTRIBUTE, "");
+      startLoadingFrame();
+    }
     if (pump) {
       pump.schedule();
     } else {

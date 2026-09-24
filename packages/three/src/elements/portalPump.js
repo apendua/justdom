@@ -21,11 +21,15 @@ import { batch, Effect, withChannel } from "@apendua/signal";
  *   to draw — reports false, and the pump does not count it against the
  *   at-least-one-per-frame guarantee, or a queue headed by such entries
  *   would spend whole frames building nothing.
- * @property {() => void} onCommit Told when a tick has brought the scene up
- *   to date as a whole — the node queue empty and the channel's effects
+ * @property {() => boolean} onCommit Told when a tick has brought the scene
+ *   up to date as a whole — the node queue empty and the channel's effects
  *   swept — and before `afterTick`: the portal's cue to put into the scene
  *   whatever it has been holding back for exactly that moment, the objects
- *   it built and the ones whose nodes left.
+ *   it built and the ones whose nodes left. Answers whether it did. A portal
+ *   may decline — it is holding a finished mount for its loading frame's
+ *   minimum time — and a tick whose commit was declined has not settled:
+ *   the pump stays scheduled and asks again next frame, so the portal
+ *   needs no way of its own to bring the pump back.
  * @property {() => boolean} [hasPendingCommit] Whether the portal is holding
  *   anything for `onCommit`. Asked when deciding whether a frame is worth
  *   asking for: a removal that happens to queue nothing in the channel
@@ -147,10 +151,9 @@ export function createPortalPump({
           channel.flush({ budget });
         }
       });
-      const settled = pendingNodes.length === 0 && channel.pendingCount === 0;
-      if (settled) {
-        onCommit();
-      }
+      // Settled only if the portal took the commit: one it declined leaves
+      // the scene behind the graph, and the tick has to come round again.
+      const settled = pendingNodes.length === 0 && channel.pendingCount === 0 && onCommit();
       afterTick(settled);
       if (!settled) {
         return false;

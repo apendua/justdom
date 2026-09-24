@@ -1243,9 +1243,10 @@ describe("createPortal", () => {
     // A frame that flashed for three frames and was gone would read as a
     // glitch, so a mount built before the frame has had its time is held —
     // built and unseen — until it has. The hold sits at the commit: nothing
-    // is attached, the panel is still loading, the frame is still up. Once
-    // the time is up the frame's own tick asks the pump back, and the next
-    // tick commits and loads. On a clock the test drives.
+    // is attached, the panel is still loading, the frame is still up. A
+    // declined commit is a tick that did not settle, so the pump stays
+    // scheduled and asks again each frame until the time is up, and the
+    // tick that finds it up commits and loads. On a clock the test drives.
     const originalNow = performance.now;
     let clock = 0;
     performance.now = () => clock;
@@ -1276,11 +1277,16 @@ describe("createPortal", () => {
         mountable = value;
       });
       assert.ok(mountable);
-      portal.mount(mountable);
       const containers = document.querySelectorAll("[data-xr-portal]");
       const containerElement = containers[containers.length - 1];
-      assert.ok(containerElement.hasAttribute(LOADING_ATTRIBUTE), "loading, for the DOM to see");
+      assert.equal(
+        containerElement.hasAttribute(LOADING_ATTRIBUTE),
+        false,
+        "nothing to mount yet: not on its way anywhere",
+      );
+      portal.mount(mountable);
       await nextMacrotask();
+      assert.ok(containerElement.hasAttribute(LOADING_ATTRIBUTE), "loading, for the DOM to see");
 
       // Three nodes at a budget of zero: three frames of building, so the
       // first tick ends unfinished and the frame goes up at 0 ms; the third
@@ -1369,6 +1375,31 @@ describe("createPortal", () => {
     } finally {
       performance.now = originalNow;
     }
+  });
+
+  test("a portal given nothing to mount asks for no frames and is not marked loading", async () => {
+    // Before the loading frame an empty portal cost nothing per frame, and
+    // it still must: the ticks that place the panel and its frame start with
+    // the first content the observer reports, not with the portal. Nor is
+    // such a portal on its way anywhere, so the attribute a harness waits
+    // on stays off it — a page with an empty panel is not a page still
+    // loading.
+    await drain();
+    const manager = new InteractionManager();
+    const ctx = InteractionContext.set({}, manager);
+    const portal = createPortal(ctx, { loadingFrame: { minimumTime: 1000 } });
+    portal.addTo(new THREE.Group());
+    const containers = document.querySelectorAll("[data-xr-portal]");
+    const containerElement = containers[containers.length - 1];
+
+    // In the scene, and never given anything to mount.
+    await nextMacrotask();
+    await nextMacrotask();
+    assert.equal(frameCallbacks.length, 0, "no frame asked for");
+    assert.equal(containerElement.hasAttribute(LOADING_ATTRIBUTE), false, "and not loading");
+    assert.equal(portal.isLoading(), true, "though not loaded either: nothing ever arrived");
+
+    portal.disconnect();
   });
 
   test("a panel that opts out of the loading frame shows nothing until it is whole", async () => {

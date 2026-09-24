@@ -484,10 +484,12 @@ dom(ctx, menu, [set({ position })], {
 dom(ctx, quick, [set({ position })], { loadingFrame: { minimumTime: 500 } });
 ```
 
-While a panel loads its container element carries `data-xr-loading`, so a
-page — a test harness about to photograph the scene, say — can ask whether
-any panel is still on its way without holding the handles:
-`document.querySelector("[data-xr-loading]")`.
+While a panel's mount is under way — from the first content it is given to
+the load — its container element carries `data-xr-loading`, so a page — a
+test harness about to photograph the scene, say — can ask whether any panel
+is still on its way without holding the handles:
+`document.querySelector("[data-xr-loading]")`. A panel given nothing to
+mount is not on its way anywhere and never carries it.
 
 **An update lands whole, however many frames it took.** A visible panel
 cannot hide while it changes, and a change too big for one frame's budget

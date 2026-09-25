@@ -156,6 +156,61 @@ export function withComputation(newComputation, fn) {
 }
 
 /**
+ * Where a warm sets aside the teardowns of the values it replaces, or `null`
+ * outside one.
+ *
+ * A warm resolves what an atomic channel's effects read without running
+ * them, and the effects go on holding the values they were last given until
+ * the sweep — which can be frames later. A `Derived` that tore its old value
+ * down the moment it was resolved would leave every one of those effects
+ * holding a dead resource for as long as that takes: a geometry disposed
+ * while a mesh still draws it, which three uploads again on the next frame
+ * and which nothing will ever free. So while a warm is resolving, the old
+ * value's teardowns go here instead, and the queue runs them once the lane
+ * they were warmed for has nothing left to run — every effect in it has
+ * either been handed the new value or been disposed.
+ *
+ * @type {Array<Array<() => void>> | null}
+ */
+let heldCleanups = null;
+
+/**
+ * Resolve `fn` as a warm for a lane that sets aside into `held`. For
+ * `UpdateQueue`, and nothing else.
+ *
+ * @template T
+ * @param {Array<Array<() => void>>} held
+ * @param {() => T} fn
+ * @returns {T}
+ */
+export function withHeldCleanups(held, fn) {
+  const previous = heldCleanups;
+  heldCleanups = held;
+  try {
+    return fn();
+  } finally {
+    heldCleanups = previous;
+  }
+}
+
+/**
+ * Set a replaced value's teardowns aside for the sweep, if a warm is under
+ * way. Says whether it did; if not, they are the caller's to run.
+ *
+ * @param {Array<() => void>} cleanups
+ * @returns {boolean}
+ */
+export function holdCleanups(cleanups) {
+  if (heldCleanups === null) {
+    return false;
+  }
+  if (cleanups.length > 0) {
+    heldCleanups.push(cleanups);
+  }
+  return true;
+}
+
+/**
  * Record `dependency` as something the currently evaluating node read.
  *
  * @param {Dependency} dependency

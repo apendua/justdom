@@ -2,7 +2,7 @@ import { describe, it, mock } from "node:test";
 import assert from "node:assert/strict";
 import { Subject } from "rxjs";
 
-import { Signal, Derived, Effect, batch, defaultChannel, withChannel } from "./index.js";
+import { Signal, Derived, Effect, batch, defaultChannel, onCleanup, withChannel } from "./index.js";
 import UpdateChannel from "./UpdateChannel.js";
 
 /**
@@ -534,6 +534,118 @@ describe("UpdateChannel, atomic", () => {
     assert.strictEqual(panel.evaluations(), before + 2, "nothing left to read");
     assert.deepStrictEqual(panel.applied, [10, 11]);
     panel.dispose();
+  });
+
+  /**
+   * A node that builds a resource and disposes it through `onCleanup`, and an
+   * atomic effect that holds whichever one it was last given — a text node's
+   * quad and the mesh drawing it.
+   */
+  function makeHeldResource() {
+    const channel = new UpdateChannel({
+      name: "atomic-resource",
+      order: 1,
+      manual: true,
+      atomic: true,
+    });
+    const source = Signal.of(0);
+    /** @type {{ id: number, disposed: boolean }[]} */
+    const made = [];
+    const node = new Derived(() => {
+      const resource = { id: source.get(), disposed: false };
+      made.push(resource);
+      onCleanup(() => {
+        resource.disposed = true;
+      });
+      return resource;
+    });
+    /** @type {{ id: number, disposed: boolean } | null} */
+    let held = null;
+    /**
+     * Whether what the effect held was still alive when it was handed the next.
+     *
+     * @type {boolean[]}
+     */
+    const handedOverAlive = [];
+    const effect = new Effect(
+      () => {
+        const next = node.get();
+        if (held) {
+          handedOverAlive.push(!held.disposed);
+        }
+        held = next;
+      },
+      { channel },
+    );
+    return { channel, source, node, made, effect, handedOverAlive, held: () => held };
+  }
+
+  it("keeps what an effect still holds alive until the sweep hands it the new one", () => {
+    // A warm resolves the node ahead of the effect that reads it, and the
+    // effect goes on holding the old value until the sweep — which can be
+    // frames later. Tearing the old value down at the warm left the effect
+    // holding a dead one: a geometry drawn after its `dispose`, which three
+    // then quietly uploads again, and which nothing ever frees.
+    const { channel, source, made, effect, handedOverAlive, held } = makeHeldResource();
+    assert.strictEqual(held()?.id, 0);
+
+    source.set(1);
+    assert.strictEqual(channel.warm({ budget: Infinity }), true);
+    assert.strictEqual(made.length, 2, "the new one is built at the warm");
+    assert.strictEqual(held()?.id, 0, "the effect has not run");
+    assert.strictEqual(held()?.disposed, false, "so what it holds is still alive");
+
+    channel.flush({ budget: Infinity });
+    assert.strictEqual(held()?.id, 1, "the sweep hands over the new one");
+    assert.deepStrictEqual(handedOverAlive, [true], "with the old one alive up to the hand-over");
+    assert.strictEqual(made[0].disposed, true, "and only then is the old one let go");
+    assert.strictEqual(made[1].disposed, false);
+    effect.dispose();
+  });
+
+  it("lets go of a value warmed past twice before the sweep, once the sweep has run", () => {
+    const { channel, source, made, effect, held } = makeHeldResource();
+
+    source.set(1);
+    channel.warm({ budget: Infinity });
+    source.set(2);
+    channel.warm({ budget: Infinity });
+    assert.strictEqual(made.length, 3);
+    assert.deepStrictEqual(
+      made.map((r) => r.disposed),
+      [false, false, false],
+      "nothing let go before the sweep",
+    );
+
+    channel.flush({ budget: Infinity });
+    assert.strictEqual(held()?.id, 2);
+    assert.deepStrictEqual(
+      made.map((r) => r.disposed),
+      [true, true, false],
+    );
+    effect.dispose();
+  });
+
+  it("lets go of what a warm set aside when the effect is disposed instead of swept", () => {
+    const { channel, source, made, effect } = makeHeldResource();
+
+    source.set(1);
+    channel.warm({ budget: Infinity });
+    assert.strictEqual(made[0].disposed, false);
+
+    effect.dispose();
+    assert.strictEqual(channel.pendingCount, 0);
+    assert.strictEqual(made[0].disposed, true, "the old value goes with the lane's last task");
+  });
+
+  it("still lets go of an old value at once when it is read outside a warm", () => {
+    // Nothing is holding the old value on the strength of a sweep still to
+    // come when the node is simply read, so nothing waits.
+    const { source, node, made, effect } = makeHeldResource();
+    source.set(1);
+    assert.strictEqual(node.get().id, 1);
+    assert.strictEqual(made[0].disposed, true);
+    effect.dispose();
   });
 
   it("warm() declines inside a batch rather than reading a half-written model", () => {

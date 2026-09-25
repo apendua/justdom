@@ -7,6 +7,7 @@ import {
   CircularDependencyError,
   NoValueError,
   addDependency,
+  holdCleanups,
   resource,
 } from "./core.js";
 
@@ -388,7 +389,11 @@ export class Derived extends ReactiveNode {
       }
       this.#error = failure;
       runCleanups(abandoned);
-      runCleanups(previousCleanups);
+      // The old value outlives the failure exactly as it would a success, for
+      // as long as a warm's effects are still holding it.
+      if (!holdCleanups(previousCleanups)) {
+        runCleanups(previousCleanups);
+      }
       return;
     }
 
@@ -420,8 +425,12 @@ export class Derived extends ReactiveNode {
     // The old value is out of the graph now, so what it was holding open can
     // go. After the new one exists rather than before: an evaluation that
     // throws then leaves the old resource intact instead of having destroyed
-    // it on the way to failing.
-    runCleanups(previousCleanups);
+    // it on the way to failing. Unless a warm is resolving it: the effects
+    // that read it go on holding the old value until the sweep, so what it
+    // holds open goes when the sweep has run — see `holdCleanups`.
+    if (!holdCleanups(previousCleanups)) {
+      runCleanups(previousCleanups);
+    }
   }
 
   /**

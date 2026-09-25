@@ -1,4 +1,5 @@
-import { CircularDependencyError } from "./core.js";
+import { CircularDependencyError, withHeldCleanups } from "./core.js";
+import { runCleanups } from "./Node.js";
 
 /**
  * @import UpdateChannel from "./UpdateChannel.js";
@@ -70,6 +71,15 @@ class Lane {
    * @type {number}
    */
   stalePasses = 0;
+
+  /**
+   * The teardowns of values a warm of this lane replaced while its effects
+   * were still holding them, run once the lane has nothing left to run — see
+   * `holdCleanups` in `core.js`.
+   *
+   * @type {Array<Array<() => void>>}
+   */
+  held = [];
 
   /**
    * @param {UpdateChannel} channel
@@ -329,6 +339,9 @@ export default class UpdateQueue {
     this.#size -= 1;
     if (lane.size === 0) {
       this.#emptied(lane);
+      // The last effect a warm resolved for is gone rather than run, so
+      // nothing is left holding what the warm replaced.
+      this.#release(lane);
     }
   }
 
@@ -359,6 +372,37 @@ export default class UpdateQueue {
     lane.queue.length = 0;
     lane.head = 0;
     this.#reportPending(lane);
+  }
+
+  /**
+   * Run what the lane's warms set aside. Called once nothing in the lane is
+   * left to run, after the last of it has: every effect a warm resolved for has since either run —
+   * and been handed the new value — or been disposed, so nothing is holding
+   * the old values any more.
+   *
+   * A teardown that throws is reported from a fresh task rather than thrown
+   * here, as a Stream reports an unhandled error: this runs on the way out of
+   * a sweep or of an effect's `dispose`, and neither caller has any business
+   * receiving somebody else's failure on its own stack.
+   *
+   * @param {Lane} lane
+   * @returns {void}
+   */
+  #release(lane) {
+    if (lane.held.length === 0) {
+      return;
+    }
+    const held = lane.held;
+    lane.held = [];
+    for (const cleanups of held) {
+      try {
+        runCleanups(cleanups);
+      } catch (err) {
+        setTimeout(() => {
+          throw err;
+        });
+      }
+    }
   }
 
   /**
@@ -647,6 +691,12 @@ export default class UpdateQueue {
           // queue believed it held none.
           this.#countRun(task);
           task.runFromQueue();
+          if (lane.size === 0) {
+            // After the run, not at `#emptied` above: the task that emptied
+            // the lane is the last one still holding what a warm replaced,
+            // until it has run and been handed the new value.
+            this.#release(lane);
+          }
           if (now && lane !== unbudgeted && now() - startedAt >= budget) {
             ranOut = true;
             break outer;
@@ -695,16 +745,20 @@ export default class UpdateQueue {
    */
   #warmLane(lane, now, startedAt, budget) {
     const queue = lane.queue;
-    for (let index = lane.head; index < queue.length; index += 1) {
-      const task = queue[index];
-      if (!task.queued || task.warmed) {
-        continue;
+    // What a warm replaces, its effects are still holding: set aside, for
+    // `#release` once the lane is through.
+    withHeldCleanups(lane.held, () => {
+      for (let index = lane.head; index < queue.length; index += 1) {
+        const task = queue[index];
+        if (!task.queued || task.warmed) {
+          continue;
+        }
+        task.warm();
+        if (now && now() - startedAt >= budget) {
+          break;
+        }
       }
-      task.warm();
-      if (now && now() - startedAt >= budget) {
-        break;
-      }
-    }
+    });
     for (let index = lane.head; index < queue.length; index += 1) {
       if (queue[index].queued && !queue[index].warmed) {
         return false;
@@ -894,6 +948,9 @@ export default class UpdateQueue {
       if (had > 0) {
         this.#reportPending(lane);
       }
+      // Nothing queued is going to run now, so nothing will be handed a new
+      // value: what the old ones held open goes here or not at all.
+      this.#release(lane);
     }
     this.#size = 0;
     this.#requested.clear();

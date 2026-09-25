@@ -1007,7 +1007,11 @@ export default class UpdateQueue {
       const had = lane.size;
       lane.size = 0;
       lane.stalePasses = 0;
-      lane.running = 0;
+      // `running` is left alone: every run on the stack puts its own count
+      // back in a `finally`, including one outside this drain — a run
+      // `flushTask` started, whose body began the drain that failed. Zeroing
+      // it here would take that one below zero when it unwinds, and the lane
+      // would never release again.
       if (had > 0) {
         this.#reportPending(lane);
       }
@@ -1025,7 +1029,12 @@ export default class UpdateQueue {
     // Nothing queued is going to run now, so nothing will be handed a new
     // value: what the old ones held open goes here or not at all.
     for (const lane of this.#ordered) {
-      this.#release(lane);
+      // A lane with a run still on the stack — one `flushTask` started, whose
+      // body began the drain that failed — is that run's to release, from
+      // `#runTask`, once it has read the new value; `size` is zero by then.
+      if (lane.running === 0) {
+        this.#release(lane);
+      }
     }
   }
 }

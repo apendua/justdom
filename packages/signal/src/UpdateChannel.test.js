@@ -749,6 +749,63 @@ describe("UpdateChannel, atomic", () => {
     watcher.dispose();
   });
 
+  it("keeps releasing after a drain started inside a flushed run has failed", () => {
+    // `flush()` runs the effect outside any drain, and its body starts one:
+    // an effect in that drain throws, and the queue resets while the flushed
+    // run is still on the stack. The reset must neither zero the lane's
+    // count of running effects under it — the run's own `finally` would take
+    // it below zero, and the lane would never release again — nor release
+    // what the lane holds while that run has not read the new value.
+    const atomic = new UpdateChannel({
+      name: "atomic-outer-run",
+      order: 1,
+      manual: true,
+      atomic: true,
+    });
+    const other = new UpdateChannel({ name: "other-outer-run", order: 2, manual: true });
+    const poke = Signal.of(0);
+    const thrower = new Effect(
+      () => {
+        if (poke.get() === 1) {
+          throw new Error("boom");
+        }
+      },
+      { channel: other },
+    );
+    const trigger = Signal.of(0);
+    const flusher = new Effect(
+      () => {
+        trigger.get();
+        other.flush({ budget: Infinity });
+      },
+      { channel: atomic },
+    );
+    poke.set(1);
+    trigger.set(1);
+    assert.throws(() => flusher.flush(), /boom/);
+    thrower.dispose();
+
+    const source = Signal.of(0);
+    /** @type {{ id: number, disposed: boolean }[]} */
+    const made = [];
+    const node = new Derived(() => {
+      const resource = { id: source.get(), disposed: false };
+      made.push(resource);
+      onCleanup(() => {
+        resource.disposed = true;
+      });
+      return resource;
+    });
+    const reader = new Effect(() => node.get(), { channel: atomic });
+    atomic.flush({ budget: Infinity });
+    source.set(1);
+    atomic.warm({ budget: Infinity });
+    atomic.flush({ budget: Infinity });
+    assert.strictEqual(made[0].disposed, true, "released after the sweep");
+    reader.dispose();
+    flusher.dispose();
+  });
+
   it("keeps what a warm sets aside after a release inside that same warm", () => {
     // Resolving the first node disposes the lane's only effect, which empties
     // the lane and releases it mid-warm. The effect's going drops the second

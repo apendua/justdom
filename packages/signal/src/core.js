@@ -166,9 +166,20 @@ export function withComputation(newComputation, fn) {
  * holding a dead resource for as long as that takes: a geometry disposed
  * while a mesh still draws it, which three uploads again on the next frame
  * and which nothing will ever free. So while a warm is resolving, the old
- * value's teardowns go here instead, and the queue runs them once the lane
- * they were warmed for has nothing left to run — every effect in it has
- * either been handed the new value or been disposed.
+ * value's teardowns go here instead — a value replaced, or a node dropped
+ * from the graph — and the queue runs them once the lane they were warmed
+ * for has nothing left to run or running: every effect in it has either
+ * been handed the new value or been disposed.
+ *
+ * The guarantee is that narrow, and keyed on the warm, not on who holds the
+ * value: *a value replaced during a warm survives until that lane's sweep.*
+ * Two things it does not cover. A node resolved outside a warm — a plain
+ * `get()`, an effect in another channel, a second atomic lane's warm — tears
+ * its old value down at once, even if an atomic effect is still holding it
+ * until its own next sweep. And every value a run of warms replaces is kept
+ * until the sweep, including ones no effect was ever handed. Tracking, per
+ * node, which lanes were handed its current value would close both; nothing
+ * needs it yet with one atomic lane per portal.
  *
  * @type {Array<Array<() => void>> | null}
  */

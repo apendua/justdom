@@ -328,6 +328,25 @@ export class Derived extends ReactiveNode {
   }
 
   /**
+   * This node's teardowns, on the way out of the graph: the one path a
+   * `Derived` takes to them that is not a recompute. Under a warm it is
+   * reached by a node losing its last reader — an item dropped from a list a
+   * parent maps over — and the parent's previous value, which the warm has
+   * set aside, still holds what these free until the sweep. So they are set
+   * aside with it, rather than run while an effect is still drawing with
+   * them. An effect's own teardowns are not: nothing holds an effect's value
+   * but the effect.
+   *
+   * @returns {void}
+   */
+  cleanup() {
+    const cleanups = this.detachCleanups();
+    if (cleanups.length > 0 && !holdCleanups(cleanups)) {
+      runCleanups(cleanups);
+    }
+  }
+
+  /**
    * @returns {void}
    */
   onDisconnect() {

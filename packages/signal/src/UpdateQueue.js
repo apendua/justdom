@@ -82,6 +82,15 @@ class Lane {
   held = [];
 
   /**
+   * How many of this lane's effects are running right now, on the stack.
+   * Nothing a warm set aside may go while one is: an effect taken out of the
+   * lane to run has not been handed the new value until its body has read
+   * it, and a teardown it sets off on the way in — a nested effect it built
+   * last time, disposed — can empty the lane before it gets there.
+   */
+  running = 0;
+
+  /**
    * @param {UpdateChannel} channel
    */
   constructor(channel) {
@@ -340,7 +349,60 @@ export default class UpdateQueue {
     if (lane.size === 0) {
       this.#emptied(lane);
       // The last effect a warm resolved for is gone rather than run, so
-      // nothing is left holding what the warm replaced.
+      // nothing is left holding what the warm replaced — unless one of the
+      // lane's effects is mid-run, and emptied it by disposing something on
+      // its way in: that one still holds the old value, and the release is
+      // owed once its run is over (`#runTask`).
+      if (lane.running === 0) {
+        this.#release(lane);
+      }
+    }
+  }
+
+  /**
+   * Run one queued task out of turn: what `Effect.flush()` asks for. Taken
+   * out of its lane and run as a pass would run it, so that what a warm set
+   * aside for the lane waits for this run to read the new value rather than
+   * going when the dequeue empties the lane.
+   *
+   * @param {Task} task
+   * @returns {void}
+   */
+  flushTask(task) {
+    const lane = this.#lanes.get(task.channel);
+    if (lane) {
+      lane.running += 1;
+    }
+    try {
+      this.dequeue(task);
+    } finally {
+      if (lane) {
+        lane.running -= 1;
+      }
+    }
+    this.#runTask(lane ?? null, task);
+  }
+
+  /**
+   * Run a task already out of its lane, and afterwards release what the
+   * lane's warms set aside if nothing in it is left to run or running.
+   *
+   * @param {Lane | null} lane
+   * @param {Task} task
+   * @returns {void}
+   */
+  #runTask(lane, task) {
+    if (!lane) {
+      task.runFromQueue();
+      return;
+    }
+    lane.running += 1;
+    try {
+      task.runFromQueue();
+    } finally {
+      lane.running -= 1;
+    }
+    if (lane.size === 0 && lane.running === 0) {
       this.#release(lane);
     }
   }
@@ -389,12 +451,15 @@ export default class UpdateQueue {
    * @returns {void}
    */
   #release(lane) {
-    if (lane.held.length === 0) {
+    const held = lane.held;
+    if (held.length === 0) {
       return;
     }
-    const held = lane.held;
-    lane.held = [];
-    for (const cleanups of held) {
+    // Drained in place rather than swapped for a fresh array: a warm still on
+    // the stack is setting aside into this one (`withHeldCleanups`), and
+    // whatever it holds after this has to land where the next release finds
+    // it.
+    for (const cleanups of held.splice(0)) {
       try {
         runCleanups(cleanups);
       } catch (err) {
@@ -690,13 +755,10 @@ export default class UpdateQueue {
           // the next `dequeue` — after which a lane could hold work while the
           // queue believed it held none.
           this.#countRun(task);
-          task.runFromQueue();
-          if (lane.size === 0) {
-            // After the run, not at `#emptied` above: the task that emptied
-            // the lane is the last one still holding what a warm replaced,
-            // until it has run and been handed the new value.
-            this.#release(lane);
-          }
+          // Released after the run, not at `#emptied` above: the task that
+          // emptied the lane is the last one still holding what a warm
+          // replaced, until it has run and been handed the new value.
+          this.#runTask(lane, task);
           if (now && lane !== unbudgeted && now() - startedAt >= budget) {
             ranOut = true;
             break outer;
@@ -945,12 +1007,14 @@ export default class UpdateQueue {
       const had = lane.size;
       lane.size = 0;
       lane.stalePasses = 0;
+      lane.running = 0;
       if (had > 0) {
         this.#reportPending(lane);
       }
-      // Nothing queued is going to run now, so nothing will be handed a new
-      // value: what the old ones held open goes here or not at all.
-      this.#release(lane);
+      // What the old values held open is released below, once the queue's
+      // own counters are back to zero: a teardown may write a signal, and the
+      // enqueue that follows has to land in a lane the queue believes it has,
+      // not in one it is about to forget.
     }
     this.#size = 0;
     this.#requested.clear();
@@ -958,5 +1022,10 @@ export default class UpdateQueue {
     this.#restart = false;
     this.#corrections = 0;
     this.#announcing = 0;
+    // Nothing queued is going to run now, so nothing will be handed a new
+    // value: what the old ones held open goes here or not at all.
+    for (const lane of this.#ordered) {
+      this.#release(lane);
+    }
   }
 }

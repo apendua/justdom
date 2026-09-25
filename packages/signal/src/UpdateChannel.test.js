@@ -810,7 +810,8 @@ describe("UpdateChannel, atomic", () => {
     // Resolving the first node disposes the lane's only effect, which empties
     // the lane and releases it mid-warm. The effect's going drops the second
     // node, whose teardowns are set aside by the same warm after that
-    // release: they must land where the next release will find them.
+    // release: they must land in the live array, and be released when the
+    // warm is done, since the lane is empty and no sweep is coming.
     const channel = new UpdateChannel({
       name: "atomic-mid-warm",
       order: 1,
@@ -846,15 +847,95 @@ describe("UpdateChannel, atomic", () => {
     source.set(1);
     channel.warm({ budget: Infinity });
     assert.strictEqual(channel.pendingCount, 0, "the only effect is gone");
-    assert.strictEqual(secondTornDown, 0, "set aside by the warm, not run");
+    assert.strictEqual(
+      secondTornDown,
+      1,
+      "released at the end of the warm: no sweep is coming for an empty lane",
+    );
+  });
 
-    // The next time the lane empties, it goes.
-    const trigger = Signal.of(0);
-    const later = new Effect(() => trigger.get(), { channel });
-    trigger.set(1);
+  it("releases what a warm sets aside after disposing its lane's last effect, though the lane is never used again", () => {
+    // The warm disposes the lane's only effect partway through: the dequeue
+    // releases what was held by then, and the effect's going replaces a node
+    // another channel keeps alive, whose old value is set aside after that
+    // release. Nothing will ever sweep this lane again.
+    const channel = new UpdateChannel({
+      name: "atomic-abandoned",
+      order: 1,
+      manual: true,
+      atomic: true,
+    });
+    const other = new UpdateChannel({ name: "other-abandoned", order: 2, manual: true });
+    const source = Signal.of(0);
+    /** @type {string[]} */
+    const log = [];
+    const make = (/** @type {string} */ tag) =>
+      new Derived(() => {
+        const id = source.get();
+        onCleanup(() => log.push(`${tag} ${id}`));
+        return id;
+      });
+    const first = make("first");
+    const second = make("second");
+    /** @type {Effect | null} */
+    let effect = null;
+    const killer = new Derived(() => {
+      if (source.get() === 1) {
+        effect?.dispose();
+      }
+      return 0;
+    });
+    const keeper = new Effect(() => second.get(), { channel: other });
+    effect = new Effect(
+      () => {
+        first.get();
+        killer.get();
+        second.get();
+      },
+      { channel },
+    );
+
+    source.set(1);
+    channel.warm({ budget: Infinity });
     channel.flush({ budget: Infinity });
-    assert.strictEqual(secondTornDown, 1, "released with the lane, not lost");
-    later.dispose();
+    other.flush({ budget: Infinity });
+    assert.ok(log.includes("second 0"), `second's old value let go: ${JSON.stringify(log)}`);
+    keeper.dispose();
+  });
+
+  it("releases what a warm set aside when a flushed run throws outside any drain", () => {
+    const channel = new UpdateChannel({
+      name: "atomic-flush-throws",
+      order: 1,
+      manual: true,
+      atomic: true,
+    });
+    const source = Signal.of(0);
+    /** @type {{ id: number, disposed: boolean }[]} */
+    const made = [];
+    const node = new Derived(() => {
+      const resource = { id: source.get(), disposed: false };
+      made.push(resource);
+      onCleanup(() => {
+        resource.disposed = true;
+      });
+      return resource;
+    });
+    const effect = new Effect(
+      () => {
+        if (node.get().id === 1) {
+          throw new Error("the run fails");
+        }
+      },
+      { channel },
+    );
+
+    source.set(1);
+    channel.warm({ budget: Infinity });
+    assert.strictEqual(made[0].disposed, false);
+    assert.throws(() => effect.flush(), /the run fails/);
+    assert.strictEqual(made[0].disposed, true, "released though the run threw");
+    effect.dispose();
   });
 
   it("keeps a node dropped from the graph during a warm alive until the sweep", () => {

@@ -397,13 +397,22 @@ export default class UpdateQueue {
       return;
     }
     lane.running += 1;
+    let threw = true;
     try {
       task.runFromQueue();
+      threw = false;
     } finally {
       lane.running -= 1;
-    }
-    if (lane.size === 0 && lane.running === 0) {
-      this.#release(lane);
+      // Released after the run whether or not it threw: a run that failed
+      // outside any drain — `Effect.flush()` — has no reset coming to release
+      // for it, and a lane nothing uses again would keep what it holds for
+      // ever. The one exception is a throw inside a drain, which goes on to
+      // `#reset`: that releases once the queue's counters are back to zero,
+      // and releasing here first would let a teardown enqueue into a lane
+      // the reset is about to wipe.
+      if (lane.size === 0 && lane.running === 0 && (!threw || !this.#isFlushing)) {
+        this.#release(lane);
+      }
     }
   }
 
@@ -821,6 +830,13 @@ export default class UpdateQueue {
         }
       }
     });
+    // The warm may have disposed every effect it was resolving for — the lane
+    // released at that dequeue, and whatever the warm set aside after it is
+    // still here. No sweep is coming for an empty lane, and a lane nothing
+    // uses again would keep it for ever, so it goes now.
+    if (lane.size === 0 && lane.running === 0) {
+      this.#release(lane);
+    }
     for (let index = lane.head; index < queue.length; index += 1) {
       if (queue[index].queued && !queue[index].warmed) {
         return false;

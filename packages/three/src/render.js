@@ -463,6 +463,9 @@ export function frames(ctx) {
  * @property {(renderer: THREE.WebGLRenderer) => void} [onBeforeRender]
  * @property {(renderer: THREE.WebGLRenderer) => void} [onAfterRender]
  * @property {boolean} [antialias] On unless it is turned off; see `render`.
+ * @property {number} [foveation] Fixed foveation for the headset's layer, from
+ *   0 (every pixel at full resolution) to 1 (the most the browser will blur
+ *   towards the edges). Off unless it is turned up; see `render`.
  * @property {number | (() => number)} [portalBudget] Milliseconds of each
  *   frame the scene's portals may spend mounting and settling content,
  *   between them: one pool, divided across every panel by priority and
@@ -525,6 +528,12 @@ export function render(fn, options = {}) {
     });
 
     renderer.xr.enabled = true;
+    // Off by default, which is again the opposite of three's, whose default
+    // is 1: the strongest foveation the browser offers. The same blocks and
+    // lines that want antialiasing go soft and shimmer at the edges of view
+    // when those pixels are rendered at a fraction of the resolution. three
+    // keeps the value and applies it to whichever layer `setSession` makes.
+    renderer.xr.setFoveation(options.foveation ?? 0);
     const scene = new THREE.Scene();
     const interactionManager = new InteractionManager();
 

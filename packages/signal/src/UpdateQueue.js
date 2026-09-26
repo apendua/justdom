@@ -1,4 +1,5 @@
-import { CircularDependencyError } from "./core.js";
+import { CircularDependencyError, withHeldCleanups } from "./core.js";
+import { runCleanups } from "./Node.js";
 
 /**
  * @import UpdateChannel from "./UpdateChannel.js";
@@ -70,6 +71,24 @@ class Lane {
    * @type {number}
    */
   stalePasses = 0;
+
+  /**
+   * The teardowns of values a warm of this lane replaced while its effects
+   * were still holding them, run once the lane has nothing left to run — see
+   * `holdCleanups` in `core.js`.
+   *
+   * @type {Array<Array<() => void>>}
+   */
+  held = [];
+
+  /**
+   * How many of this lane's effects are running right now, on the stack.
+   * Nothing a warm set aside may go while one is: an effect taken out of the
+   * lane to run has not been handed the new value until its body has read
+   * it, and a teardown it sets off on the way in — a nested effect it built
+   * last time, disposed — can empty the lane before it gets there.
+   */
+  running = 0;
 
   /**
    * @param {UpdateChannel} channel
@@ -329,6 +348,71 @@ export default class UpdateQueue {
     this.#size -= 1;
     if (lane.size === 0) {
       this.#emptied(lane);
+      // The last effect a warm resolved for is gone rather than run, so
+      // nothing is left holding what the warm replaced — unless one of the
+      // lane's effects is mid-run, and emptied it by disposing something on
+      // its way in: that one still holds the old value, and the release is
+      // owed once its run is over (`#runTask`).
+      if (lane.running === 0) {
+        this.#release(lane);
+      }
+    }
+  }
+
+  /**
+   * Run one queued task out of turn: what `Effect.flush()` asks for. Taken
+   * out of its lane and run as a pass would run it, so that what a warm set
+   * aside for the lane waits for this run to read the new value rather than
+   * going when the dequeue empties the lane.
+   *
+   * @param {Task} task
+   * @returns {void}
+   */
+  flushTask(task) {
+    const lane = this.#lanes.get(task.channel);
+    if (lane) {
+      lane.running += 1;
+    }
+    try {
+      this.dequeue(task);
+    } finally {
+      if (lane) {
+        lane.running -= 1;
+      }
+    }
+    this.#runTask(lane ?? null, task);
+  }
+
+  /**
+   * Run a task already out of its lane, and afterwards release what the
+   * lane's warms set aside if nothing in it is left to run or running.
+   *
+   * @param {Lane | null} lane
+   * @param {Task} task
+   * @returns {void}
+   */
+  #runTask(lane, task) {
+    if (!lane) {
+      task.runFromQueue();
+      return;
+    }
+    lane.running += 1;
+    let threw = true;
+    try {
+      task.runFromQueue();
+      threw = false;
+    } finally {
+      lane.running -= 1;
+      // Released after the run whether or not it threw: a run that failed
+      // outside any drain — `Effect.flush()` — has no reset coming to release
+      // for it, and a lane nothing uses again would keep what it holds for
+      // ever. The one exception is a throw inside a drain, which goes on to
+      // `#reset`: that releases once the queue's counters are back to zero,
+      // and releasing here first would let a teardown enqueue into a lane
+      // the reset is about to wipe.
+      if (lane.size === 0 && lane.running === 0 && (!threw || !this.#isFlushing)) {
+        this.#release(lane);
+      }
     }
   }
 
@@ -359,6 +443,40 @@ export default class UpdateQueue {
     lane.queue.length = 0;
     lane.head = 0;
     this.#reportPending(lane);
+  }
+
+  /**
+   * Run what the lane's warms set aside. Called once nothing in the lane is
+   * left to run, after the last of it has: every effect a warm resolved for has since either run —
+   * and been handed the new value — or been disposed, so nothing is holding
+   * the old values any more.
+   *
+   * A teardown that throws is reported from a fresh task rather than thrown
+   * here, as a Stream reports an unhandled error: this runs on the way out of
+   * a sweep or of an effect's `dispose`, and neither caller has any business
+   * receiving somebody else's failure on its own stack.
+   *
+   * @param {Lane} lane
+   * @returns {void}
+   */
+  #release(lane) {
+    const held = lane.held;
+    if (held.length === 0) {
+      return;
+    }
+    // Drained in place rather than swapped for a fresh array: a warm still on
+    // the stack is setting aside into this one (`withHeldCleanups`), and
+    // whatever it holds after this has to land where the next release finds
+    // it.
+    for (const cleanups of held.splice(0)) {
+      try {
+        runCleanups(cleanups);
+      } catch (err) {
+        setTimeout(() => {
+          throw err;
+        });
+      }
+    }
   }
 
   /**
@@ -646,7 +764,10 @@ export default class UpdateQueue {
           // the next `dequeue` — after which a lane could hold work while the
           // queue believed it held none.
           this.#countRun(task);
-          task.runFromQueue();
+          // Released after the run, not at `#emptied` above: the task that
+          // emptied the lane is the last one still holding what a warm
+          // replaced, until it has run and been handed the new value.
+          this.#runTask(lane, task);
           if (now && lane !== unbudgeted && now() - startedAt >= budget) {
             ranOut = true;
             break outer;
@@ -695,15 +816,26 @@ export default class UpdateQueue {
    */
   #warmLane(lane, now, startedAt, budget) {
     const queue = lane.queue;
-    for (let index = lane.head; index < queue.length; index += 1) {
-      const task = queue[index];
-      if (!task.queued || task.warmed) {
-        continue;
+    // What a warm replaces, its effects are still holding: set aside, for
+    // `#release` once the lane is through.
+    withHeldCleanups(lane.held, () => {
+      for (let index = lane.head; index < queue.length; index += 1) {
+        const task = queue[index];
+        if (!task.queued || task.warmed) {
+          continue;
+        }
+        task.warm();
+        if (now && now() - startedAt >= budget) {
+          break;
+        }
       }
-      task.warm();
-      if (now && now() - startedAt >= budget) {
-        break;
-      }
+    });
+    // The warm may have disposed every effect it was resolving for — the lane
+    // released at that dequeue, and whatever the warm set aside after it is
+    // still here. No sweep is coming for an empty lane, and a lane nothing
+    // uses again would keep it for ever, so it goes now.
+    if (lane.size === 0 && lane.running === 0) {
+      this.#release(lane);
     }
     for (let index = lane.head; index < queue.length; index += 1) {
       if (queue[index].queued && !queue[index].warmed) {
@@ -891,9 +1023,18 @@ export default class UpdateQueue {
       const had = lane.size;
       lane.size = 0;
       lane.stalePasses = 0;
+      // `running` is left alone: every run on the stack puts its own count
+      // back in a `finally`, including one outside this drain — a run
+      // `flushTask` started, whose body began the drain that failed. Zeroing
+      // it here would take that one below zero when it unwinds, and the lane
+      // would never release again.
       if (had > 0) {
         this.#reportPending(lane);
       }
+      // What the old values held open is released below, once the queue's
+      // own counters are back to zero: a teardown may write a signal, and the
+      // enqueue that follows has to land in a lane the queue believes it has,
+      // not in one it is about to forget.
     }
     this.#size = 0;
     this.#requested.clear();
@@ -901,5 +1042,15 @@ export default class UpdateQueue {
     this.#restart = false;
     this.#corrections = 0;
     this.#announcing = 0;
+    // Nothing queued is going to run now, so nothing will be handed a new
+    // value: what the old ones held open goes here or not at all.
+    for (const lane of this.#ordered) {
+      // A lane with a run still on the stack — one `flushTask` started, whose
+      // body began the drain that failed — is that run's to release, from
+      // `#runTask`, once it has read the new value; `size` is zero by then.
+      if (lane.running === 0) {
+        this.#release(lane);
+      }
+    }
   }
 }

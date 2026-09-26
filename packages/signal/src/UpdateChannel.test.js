@@ -2,7 +2,17 @@ import { describe, it, mock } from "node:test";
 import assert from "node:assert/strict";
 import { Subject } from "rxjs";
 
-import { Signal, Derived, Effect, batch, defaultChannel, withChannel } from "./index.js";
+import {
+  Signal,
+  Derived,
+  Effect,
+  batch,
+  defaultChannel,
+  onCleanup,
+  useEffect,
+  withChannel,
+} from "./index.js";
+import { updateQueue } from "./scheduler.js";
 import UpdateChannel from "./UpdateChannel.js";
 
 /**
@@ -534,6 +544,498 @@ describe("UpdateChannel, atomic", () => {
     assert.strictEqual(panel.evaluations(), before + 2, "nothing left to read");
     assert.deepStrictEqual(panel.applied, [10, 11]);
     panel.dispose();
+  });
+
+  /**
+   * A node that builds a resource and disposes it through `onCleanup`, and an
+   * atomic effect that holds whichever one it was last given — a text node's
+   * quad and the mesh drawing it.
+   */
+  function makeHeldResource() {
+    const channel = new UpdateChannel({
+      name: "atomic-resource",
+      order: 1,
+      manual: true,
+      atomic: true,
+    });
+    const source = Signal.of(0);
+    /** @type {{ id: number, disposed: boolean }[]} */
+    const made = [];
+    const node = new Derived(() => {
+      const resource = { id: source.get(), disposed: false };
+      made.push(resource);
+      onCleanup(() => {
+        resource.disposed = true;
+      });
+      return resource;
+    });
+    /** @type {{ id: number, disposed: boolean } | null} */
+    let held = null;
+    /**
+     * Whether what the effect held was still alive when it was handed the next.
+     *
+     * @type {boolean[]}
+     */
+    const handedOverAlive = [];
+    const effect = new Effect(
+      () => {
+        const next = node.get();
+        if (held) {
+          handedOverAlive.push(!held.disposed);
+        }
+        held = next;
+      },
+      { channel },
+    );
+    return { channel, source, node, made, effect, handedOverAlive, held: () => held };
+  }
+
+  it("keeps what an effect still holds alive until the sweep hands it the new one", () => {
+    // A warm resolves the node ahead of the effect that reads it, and the
+    // effect goes on holding the old value until the sweep — which can be
+    // frames later. Tearing the old value down at the warm left the effect
+    // holding a dead one: a geometry drawn after its `dispose`, which three
+    // then quietly uploads again, and which nothing ever frees.
+    const { channel, source, made, effect, handedOverAlive, held } = makeHeldResource();
+    assert.strictEqual(held()?.id, 0);
+
+    source.set(1);
+    assert.strictEqual(channel.warm({ budget: Infinity }), true);
+    assert.strictEqual(made.length, 2, "the new one is built at the warm");
+    assert.strictEqual(held()?.id, 0, "the effect has not run");
+    assert.strictEqual(held()?.disposed, false, "so what it holds is still alive");
+
+    channel.flush({ budget: Infinity });
+    assert.strictEqual(held()?.id, 1, "the sweep hands over the new one");
+    assert.deepStrictEqual(handedOverAlive, [true], "with the old one alive up to the hand-over");
+    assert.strictEqual(made[0].disposed, true, "and only then is the old one let go");
+    assert.strictEqual(made[1].disposed, false);
+    effect.dispose();
+  });
+
+  it("lets go of a value warmed past twice before the sweep, once the sweep has run", () => {
+    const { channel, source, made, effect, held } = makeHeldResource();
+
+    source.set(1);
+    channel.warm({ budget: Infinity });
+    source.set(2);
+    channel.warm({ budget: Infinity });
+    assert.strictEqual(made.length, 3);
+    assert.deepStrictEqual(
+      made.map((r) => r.disposed),
+      [false, false, false],
+      "nothing let go before the sweep",
+    );
+
+    channel.flush({ budget: Infinity });
+    assert.strictEqual(held()?.id, 2);
+    assert.deepStrictEqual(
+      made.map((r) => r.disposed),
+      [true, true, false],
+    );
+    effect.dispose();
+  });
+
+  it("lets go of what a warm set aside when the effect is disposed instead of swept", () => {
+    const { channel, source, made, effect } = makeHeldResource();
+
+    source.set(1);
+    channel.warm({ budget: Infinity });
+    assert.strictEqual(made[0].disposed, false);
+
+    effect.dispose();
+    assert.strictEqual(channel.pendingCount, 0);
+    assert.strictEqual(made[0].disposed, true, "the old value goes with the lane's last task");
+  });
+
+  it("keeps the old value alive for an effect that empties its own lane on the way into its run", () => {
+    // The outer effect's previous run built a nested effect in the same
+    // channel; both read the node. The sweep takes the outer one out of the
+    // lane, and its run starts by disposing the nested one — which empties
+    // the lane while the outer run has not yet been handed the new value.
+    const channel = new UpdateChannel({
+      name: "atomic-nested",
+      order: 1,
+      manual: true,
+      atomic: true,
+    });
+    const source = Signal.of(0);
+    /** @type {{ id: number, disposed: boolean }[]} */
+    const made = [];
+    const node = new Derived(() => {
+      const resource = { id: source.get(), disposed: false };
+      made.push(resource);
+      onCleanup(() => {
+        resource.disposed = true;
+      });
+      return resource;
+    });
+    /** @type {{ id: number, disposed: boolean } | null} */
+    let held = null;
+    /** @type {boolean[]} */
+    const aliveAtRun = [];
+    const outer = new Effect(
+      () => {
+        if (held) {
+          aliveAtRun.push(!held.disposed);
+        }
+        held = node.get();
+        useEffect(() => node.get(), { channel });
+      },
+      { channel },
+    );
+
+    source.set(1);
+    channel.warm({ budget: Infinity });
+    channel.flush({ budget: Infinity });
+    assert.deepStrictEqual(aliveAtRun, [true], "the old value alive as the outer run began");
+    assert.strictEqual(made[0].disposed, true, "and let go once the run was over");
+    assert.strictEqual(made[made.length - 1].disposed, false);
+    outer.dispose();
+  });
+
+  it("keeps the old value alive for an effect flushed on its own after a warm", () => {
+    const { channel, source, made, effect, handedOverAlive, held } = makeHeldResource();
+
+    source.set(1);
+    channel.warm({ budget: Infinity });
+    effect.flush();
+    assert.deepStrictEqual(handedOverAlive, [true], "alive up to the hand-over");
+    assert.strictEqual(held()?.id, 1);
+    assert.strictEqual(made[0].disposed, true, "and let go after it");
+    assert.strictEqual(channel.pendingCount, 0);
+    effect.dispose();
+  });
+
+  it("does not strand an effect that a held teardown queues while the queue resets", () => {
+    // The sweep throws, the queue resets, and the reset is where the held
+    // teardowns run. One of them writes a signal another effect reads: that
+    // effect has to be queued in a queue that still counts it, or the next
+    // flush takes the empty-queue fast path and it never runs.
+    const channel = new UpdateChannel({
+      name: "atomic-reset",
+      order: 1,
+      manual: true,
+      atomic: true,
+    });
+    const source = Signal.of(0);
+    const flag = Signal.of(0);
+    const node = new Derived(() => {
+      const id = source.get();
+      onCleanup(() => flag.set(id + 100));
+      return id;
+    });
+    const thrower = new Effect(
+      () => {
+        if (node.get() === 1) {
+          throw new Error("the sweep fails");
+        }
+      },
+      { channel },
+    );
+    /** @type {number[]} */
+    const seen = [];
+    const watcher = new Effect(() => {
+      seen.push(flag.get());
+    });
+    seen.length = 0;
+
+    source.set(1);
+    channel.warm({ budget: Infinity });
+    assert.throws(() => channel.flush({ budget: Infinity }), /the sweep fails/);
+    updateQueue.flush();
+    assert.deepStrictEqual(seen, [100], "the watcher ran with what the teardown wrote");
+    thrower.dispose();
+    watcher.dispose();
+  });
+
+  it("keeps releasing after a drain started inside a flushed run has failed", () => {
+    // `flush()` runs the effect outside any drain, and its body starts one:
+    // an effect in that drain throws, and the queue resets while the flushed
+    // run is still on the stack. The reset must neither zero the lane's
+    // count of running effects under it — the run's own `finally` would take
+    // it below zero, and the lane would never release again — nor release
+    // what the lane holds while that run has not read the new value.
+    const atomic = new UpdateChannel({
+      name: "atomic-outer-run",
+      order: 1,
+      manual: true,
+      atomic: true,
+    });
+    const other = new UpdateChannel({ name: "other-outer-run", order: 2, manual: true });
+    const poke = Signal.of(0);
+    const thrower = new Effect(
+      () => {
+        if (poke.get() === 1) {
+          throw new Error("boom");
+        }
+      },
+      { channel: other },
+    );
+    const trigger = Signal.of(0);
+    const flusher = new Effect(
+      () => {
+        trigger.get();
+        other.flush({ budget: Infinity });
+      },
+      { channel: atomic },
+    );
+    poke.set(1);
+    trigger.set(1);
+    assert.throws(() => flusher.flush(), /boom/);
+    thrower.dispose();
+
+    const source = Signal.of(0);
+    /** @type {{ id: number, disposed: boolean }[]} */
+    const made = [];
+    const node = new Derived(() => {
+      const resource = { id: source.get(), disposed: false };
+      made.push(resource);
+      onCleanup(() => {
+        resource.disposed = true;
+      });
+      return resource;
+    });
+    const reader = new Effect(() => node.get(), { channel: atomic });
+    atomic.flush({ budget: Infinity });
+    source.set(1);
+    atomic.warm({ budget: Infinity });
+    atomic.flush({ budget: Infinity });
+    assert.strictEqual(made[0].disposed, true, "released after the sweep");
+    reader.dispose();
+    flusher.dispose();
+  });
+
+  it("keeps what a warm sets aside after a release inside that same warm", () => {
+    // Resolving the first node disposes the lane's only effect, which empties
+    // the lane and releases it mid-warm. The effect's going drops the second
+    // node, whose teardowns are set aside by the same warm after that
+    // release: they must land in the live array, and be released when the
+    // warm is done, since the lane is empty and no sweep is coming.
+    const channel = new UpdateChannel({
+      name: "atomic-mid-warm",
+      order: 1,
+      manual: true,
+      atomic: true,
+    });
+    const source = Signal.of(0);
+    /** @type {Effect | null} */
+    let victim = null;
+    const first = new Derived(() => {
+      const id = source.get();
+      if (id === 1) {
+        victim?.dispose();
+      }
+      return id;
+    });
+    let secondTornDown = 0;
+    const second = new Derived(() => {
+      source.get();
+      onCleanup(() => {
+        secondTornDown += 1;
+      });
+      return 0;
+    });
+    victim = new Effect(
+      () => {
+        first.get();
+        second.get();
+      },
+      { channel },
+    );
+
+    source.set(1);
+    channel.warm({ budget: Infinity });
+    assert.strictEqual(channel.pendingCount, 0, "the only effect is gone");
+    assert.strictEqual(
+      secondTornDown,
+      1,
+      "released at the end of the warm: no sweep is coming for an empty lane",
+    );
+  });
+
+  it("releases what a warm sets aside after disposing its lane's last effect, though the lane is never used again", () => {
+    // The warm disposes the lane's only effect partway through: the dequeue
+    // releases what was held by then, and the effect's going replaces a node
+    // another channel keeps alive, whose old value is set aside after that
+    // release. Nothing will ever sweep this lane again.
+    const channel = new UpdateChannel({
+      name: "atomic-abandoned",
+      order: 1,
+      manual: true,
+      atomic: true,
+    });
+    const other = new UpdateChannel({ name: "other-abandoned", order: 2, manual: true });
+    const source = Signal.of(0);
+    /** @type {string[]} */
+    const log = [];
+    const make = (/** @type {string} */ tag) =>
+      new Derived(() => {
+        const id = source.get();
+        onCleanup(() => log.push(`${tag} ${id}`));
+        return id;
+      });
+    const first = make("first");
+    const second = make("second");
+    /** @type {Effect | null} */
+    let effect = null;
+    const killer = new Derived(() => {
+      if (source.get() === 1) {
+        effect?.dispose();
+      }
+      return 0;
+    });
+    const keeper = new Effect(() => second.get(), { channel: other });
+    effect = new Effect(
+      () => {
+        first.get();
+        killer.get();
+        second.get();
+      },
+      { channel },
+    );
+
+    source.set(1);
+    channel.warm({ budget: Infinity });
+    channel.flush({ budget: Infinity });
+    other.flush({ budget: Infinity });
+    assert.ok(log.includes("second 0"), `second's old value let go: ${JSON.stringify(log)}`);
+    keeper.dispose();
+  });
+
+  it("releases what a warm set aside when a flushed run throws outside any drain", () => {
+    const channel = new UpdateChannel({
+      name: "atomic-flush-throws",
+      order: 1,
+      manual: true,
+      atomic: true,
+    });
+    const source = Signal.of(0);
+    /** @type {{ id: number, disposed: boolean }[]} */
+    const made = [];
+    const node = new Derived(() => {
+      const resource = { id: source.get(), disposed: false };
+      made.push(resource);
+      onCleanup(() => {
+        resource.disposed = true;
+      });
+      return resource;
+    });
+    const effect = new Effect(
+      () => {
+        if (node.get().id === 1) {
+          throw new Error("the run fails");
+        }
+      },
+      { channel },
+    );
+
+    source.set(1);
+    channel.warm({ budget: Infinity });
+    assert.strictEqual(made[0].disposed, false);
+    assert.throws(() => effect.flush(), /the run fails/);
+    assert.strictEqual(made[0].disposed, true, "released though the run threw");
+    effect.dispose();
+  });
+
+  it("keeps a node dropped from the graph during a warm alive until the sweep", () => {
+    // A parent maps over a list of child nodes; removing an item leaves that
+    // child with no reader, and it leaves the graph while the warm resolves
+    // the parent. The effect still holds the parent's old value, child and
+    // all, until the sweep.
+    const channel = new UpdateChannel({
+      name: "atomic-dormant",
+      order: 1,
+      manual: true,
+      atomic: true,
+    });
+    const items = Signal.of([0, 1]);
+    /** @type {boolean[]} */
+    const disposed = [false, false];
+    const children = [0, 1].map(
+      (i) =>
+        new Derived(() => {
+          onCleanup(() => {
+            disposed[i] = true;
+          });
+          return i;
+        }),
+    );
+    const parent = new Derived(() => items.get().map((i) => children[i].get()));
+    const effect = new Effect(() => parent.get(), { channel });
+
+    items.set([0]);
+    channel.warm({ budget: Infinity });
+    assert.deepStrictEqual(disposed, [false, false], "the dropped child waits for the sweep");
+
+    channel.flush({ budget: Infinity });
+    assert.deepStrictEqual(disposed, [false, true], "and goes with it");
+    effect.dispose();
+  });
+
+  it("runs every held teardown when one of them throws, and reports the throw", () => {
+    const channel = new UpdateChannel({
+      name: "atomic-throwing",
+      order: 1,
+      manual: true,
+      atomic: true,
+    });
+    const source = Signal.of(0);
+    const failing = new Derived(() => {
+      const id = source.get();
+      onCleanup(() => {
+        throw new Error(`teardown ${id}`);
+      });
+      return id;
+    });
+    let tornDown = 0;
+    const quiet = new Derived(() => {
+      source.get();
+      onCleanup(() => {
+        tornDown += 1;
+      });
+      return 0;
+    });
+    const effect = new Effect(
+      () => {
+        failing.get();
+        quiet.get();
+      },
+      { channel },
+    );
+
+    /** @type {Array<() => void>} */
+    const reported = [];
+    const timer = mock.method(globalThis, "setTimeout", (/** @type {() => void} */ fn) => {
+      reported.push(fn);
+      return 0;
+    });
+    try {
+      source.set(1);
+      channel.warm({ budget: Infinity });
+      channel.flush({ budget: Infinity });
+    } finally {
+      timer.mock.restore();
+    }
+    assert.strictEqual(tornDown, 1, "the quiet one ran despite the throw before it");
+    assert.strictEqual(reported.length, 1, "the throw reported from a fresh task");
+    assert.throws(() => reported[0](), /teardown 0/);
+    // Outside a warm the current value's throwing teardown is the caller's,
+    // as it always was.
+    assert.throws(() => effect.dispose(), /teardown 1/);
+  });
+
+  it("still lets go of an old value at once when it is read outside a warm", () => {
+    // The hold is the warm's and no one else's: a node resolved by a plain
+    // read tears its old value down at once — even though, as here, an
+    // atomic effect is still holding that value until its next sweep. The
+    // narrower contract `holdCleanups` states, pinned so a change to it is
+    // a decision rather than an accident.
+    const { source, node, made, effect } = makeHeldResource();
+    source.set(1);
+    assert.strictEqual(node.get().id, 1);
+    assert.strictEqual(made[0].disposed, true);
+    effect.dispose();
   });
 
   it("warm() declines inside a batch rather than reading a half-written model", () => {

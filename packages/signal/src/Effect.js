@@ -492,8 +492,10 @@ export class Effect extends ReactiveNode {
     if (this.#disposed || this.state === CLEAN) {
       return;
     }
-    updateQueue.dequeue(this);
-    this.runFromQueue();
+    // Through the queue rather than dequeue-then-run here: if this is the
+    // last effect in its lane, what a warm set aside for the lane is owed
+    // after this run has read the new value, not when the dequeue empties it.
+    updateQueue.flushTask(this);
   }
 
   /**

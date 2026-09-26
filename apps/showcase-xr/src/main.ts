@@ -1,4 +1,5 @@
 import { render, createXRButton } from "@apendua/freedom";
+import { svgElements } from "@apendua/freedom/svg";
 import Scene from "./components/Scene";
 import "./index.css";
 
@@ -27,7 +28,11 @@ Promise.resolve(
     console.error("Could not install the XR emulator:", err);
   })
   .then(() => {
-    render(Scene).subscribe({
+    // The vector panel is inline SVG, which a portal does not draw on its
+    // own: the plugin that does is a separate entry point, so that a scene
+    // without an SVG in it never loads three's shape subtree. This one has
+    // one, and says so once, for every panel in the scene.
+    render(Scene, { portalPlugins: [svgElements()] }).subscribe({
       next: (renderer) => {
         createXRButton(renderer, {
           ar: { optionalFeatures: ["hand-tracking"] },

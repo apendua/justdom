@@ -7,6 +7,7 @@ import ButtonsPanel from "./ButtonsPanel.js";
 import MotionPanel from "./MotionPanel.js";
 import BoxesPanel from "./BoxesPanel.js";
 import ImagesPanel from "./ImagesPanel.js";
+import VectorsPanel from "./VectorsPanel.js";
 
 declare global {
   interface Window {
@@ -15,17 +16,19 @@ declare global {
      * photographs the scene. The reading is a live number and the chart is a
      * minute of live numbers, so a photograph with the panel in it is a
      * photograph that never matches the one before — and what these baselines
-     * are for is the four panels, not the instrument in front of them.
+     * are for is the five panels, not the instrument in front of them.
      */
     __diagnostics?: DiagnosticsControls;
   }
 }
 
 /**
- * Four panels in a two-by-two grid, each column turned in towards the middle
- * so the set reads as a shallow cockpit rather than a flat wall: interactions
- * and pictures along the top, self-running motion and the box path along the
- * bottom. Each is ordinary DOM projected through its own portal.
+ * Five panels: four in a two-by-two grid, each column turned in towards the
+ * middle so the set reads as a shallow cockpit rather than a flat wall —
+ * interactions and pictures along the top, self-running motion and the box
+ * path along the bottom — and the vector panel square on between them, a
+ * step further back where the cockpit's curve puts its middle. Each is
+ * ordinary DOM projected through its own portal.
  *
  * Panels are positioned by their centres — a portal puts its object's origin
  * there — so the two rows are separated by more than half of the tallest one
@@ -40,8 +43,12 @@ const Scene = effectsOnly((ctx: WeakKey) => {
   const diagnostics = createDiagnostics();
   window.__diagnostics = diagnostics;
 
-  /** Half the horizontal distance between the two columns, in container px. */
-  const column = 3.0;
+  /**
+   * Half the horizontal distance between the two columns, in container px:
+   * far enough apart that a card's width fits between them, with a little
+   * air either side of it.
+   */
+  const column = 3.9;
   /** Half the vertical distance between the two rows. */
   const row = 2.2;
   /** How far each column is turned in towards the viewer. */
@@ -108,6 +115,13 @@ const Scene = effectsOnly((ctx: WeakKey) => {
             ],
             { atomic: false },
           ),
+          dom(ctx, VectorsPanel(ctx), [
+            effects((obj) => {
+              // Square on, half a step back from the columns: where the
+              // cockpit's curve puts its middle.
+              obj.position.set(0, 0, depth / 2);
+            }),
+          ]),
         ),
       ]),
       cursors(ctx, { color: "#ff0000" }),

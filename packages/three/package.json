@@ -24,6 +24,10 @@
     ".": {
       "types": "./lib-types/index.d.ts",
       "import": "./src/index.js"
+    },
+    "./svg": {
+      "types": "./lib-types/svg/index.d.ts",
+      "import": "./src/svg/index.js"
     }
   },
   "main": "./lib/index.js",

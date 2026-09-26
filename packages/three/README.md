@@ -1242,6 +1242,100 @@ Off a scene — a portal on a plain page, or a panel under a test runner —
 there is nothing to measure against and the page's ratio is the whole
 answer, which is the right answer there, because the panel *is* the page.
 
+## SVG
+
+Inline `<svg>` is drawn through a plugin, and only through one. Drawing a
+shape means triangulating it — three's `ShapePath`, its curves, the earcut
+triangulator and the stroker from `SVGLoader`, none of which a panel of
+boxes and text has any use for — so the support lives behind a second entry
+point that the main one never imports. A scene that has SVG in it registers
+it once:
+
+```js
+import { render } from "@apendua/freedom";
+import { svgElements } from "@apendua/freedom/svg";
+
+render(Scene, { portalPlugins: [svgElements()] });
+```
+
+A single panel can carry it instead, through `dom(ctx, tree, [], { plugins:
+[svgElements()] })`. Without the plugin an `<svg>` is the CSS box it also is
+— background, border, radius, its place in the flow — and nothing inside it
+is drawn or measured.
+
+With it, `<path>`, `<rect>`, `<circle>`, `<ellipse>`, `<line>`, `<polyline>`
+and `<polygon>` are drawn, `<g>` groups them, and the `<svg>` stays the box
+it was, its shapes clipped by its own `overflow` and by every scroller above
+it like any other content. What is read is the elements' _computed_ style,
+not their attributes — which is what makes the ordinary ways of styling a
+diagram work: a class on a `<path>`, a `[data-xr-hover]` rule on the button
+around an icon, `fill: currentColor`, a CSS keyframe on `stroke-dashoffset`.
+
+```css
+.diagram .edge {
+  fill: none;
+  stroke: rgb(40, 44, 58);
+  stroke-width: 2;
+  stroke-dasharray: 6 4; /* dashes are cut as geometry */
+  stroke-linecap: round; /* and `0 6` under round caps is a dotted line */
+}
+
+.toolbar button[data-xr-hover] svg path {
+  fill: white; /* restyles through the same path a hover on the button does */
+}
+
+.selection {
+  stroke-dasharray: 6 4;
+  animation: march 0.8s linear infinite; /* marching ants */
+}
+```
+
+What is followed: `fill`, `fill-opacity` and `fill-rule`; `stroke`,
+`stroke-opacity`, `stroke-width`, `stroke-linecap`, `stroke-linejoin`,
+`stroke-miterlimit`, `stroke-dasharray` and `stroke-dashoffset`; `opacity`,
+the group's included; `display` (not `visibility`, which no element in a
+portal follows — the container itself is hidden, and everything inside it
+inherits that); `transform` and
+`transform-origin` on every element in the chain, the `transform`
+_attribute_ included, since the browser computes it as the same property;
+`viewBox` and `preserveAspectRatio`, with the viewport at the `<svg>`'s
+content box; a nested `<svg>` as a viewport. Geometry is read from the
+computed style where the browser exposes it as CSS (`cx`, `r`, `x`,
+`width`, `d`) and from the attribute otherwise, so a shape animated by
+either follows.
+
+Two prints of the measuring tape. **Transforms are baked, for now.** Every
+shape's vertices are computed in the `<svg>`'s own frame — through its
+transform, its ancestors' and the viewport's — because that is the one frame
+the portal already clips and orders content in; so a `transform` animation
+on a `<g>` rewrites its descendants' vertex buffers each frame, where a
+`transform` on a box is a matrix write. Cheap enough for an icon that spins,
+and the plan is to move it onto matrices. **Dashes are geometry, not a
+shader**, for the reason `svg/dash.js` gives, so a `stroke-dashoffset`
+animation rebuilds the stroke each frame — a few hundred vertices, which the
+marching ants in the showcase spend without noticing.
+
+Not drawn yet: `<text>`, markers (so an arrowhead is a `<polygon>` of its
+own for now), `<use>` and `<symbol>`, gradients and patterns (a `url(#…)`
+paint reads as `none`), `clip-path`, `mask`, filters, `<image>`,
+`<foreignObject>`, `vector-effect`, and shapes as ray targets of their own —
+the `<svg>` with `cursor: pointer` on it is the button, as before.
+[`docs/freedom-svg-plan.md`](../../docs/freedom-svg-plan.md) has the order
+they are coming in and why.
+
+## Element plugins
+
+The seam the SVG support goes through is general. A `PortalPlugin` is an
+object with one method, `element(ctx, element)`, asked about every element a
+portal is about to build, before its own dispatch; it returns the object
+tree to mirror the element with — one `Object3D`, emitted synchronously,
+kept in step with the element for as long as the subscription lasts, torn
+down when it ends — or `null` for an element that is not its. Register one
+for a scene with `render()`'s `portalPlugins` or for one panel with
+`PortalOptions.plugins`; a panel's are asked first. `box(ctx, element,
+options)` is exported for a plugin that wants the CSS box drawn and
+something of its own inside it, which is how the checkbox is built.
+
 ## Real examples
 
 This package drives several full apps in this monorepo —
@@ -1250,12 +1344,13 @@ This package drives several full apps in this monorepo —
 [`apps/todo-vanilla`](../../apps/todo-vanilla) — worth reading for realistic scenes
 combining lighting, keyed lists (`list`/`keyedList`), controller/hand input,
 and DOM panels projected into 3D space.
-[`apps/showcase-xr`](../../apps/showcase-xr) is the sampler: four panels in a
+[`apps/showcase-xr`](../../apps/showcase-xr) is the sampler: five panels in a
 grid demonstrating hover/press transitions, CSS keyframes, a Web Animations
 API animation, a `useFrame(ctx, fn)` loop writing inline styles, animated
 text colour, a paragraph revealed to a moving cursor, static transforms, a
-layout-tier width transition, and every `object-fit` an image can be drawn
-with.
+layout-tier width transition, every `object-fit` an image can be drawn
+with, and a card of inline SVG — a diagram with dashed and dotted arrows,
+icons through a `viewBox`, marching ants.
 
 ## License
 

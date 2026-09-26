@@ -18,6 +18,7 @@ import {
   createPortalScheduler,
   PortalSchedulerContext,
 } from "./elements/portalScheduler.js";
+import { PortalPluginsContext } from "./elements/plugins.js";
 import { fitRayToHit } from "./pointers.js";
 import { reportCrash } from "./crash.js";
 
@@ -485,6 +486,15 @@ export function frames(ctx) {
  *   is the five milliseconds this used to say when a frame was 60 Hz, and
  *   half of that when the session is running at 120. Passing a number here
  *   means milliseconds, whatever the frame turns out to be.
+ * @property {readonly import('./elements/plugins.js').PortalPlugin[]} [portalPlugins]
+ *   Element plugins for every portal in this scene: asked about each
+ *   element before the portal's own dispatch, so a scene can teach its
+ *   panels a kind of content the package does not draw by default. The
+ *   one so far is `svgElements()` from `@apendua/freedom/svg`, kept behind
+ *   its own entry point because triangulating a path costs three's whole
+ *   shape subtree, which a scene without an SVG in it should not carry.
+ *   None by default. A single panel adds its own through
+ *   `PortalOptions.plugins`.
  */
 
 /**
@@ -555,6 +565,9 @@ export function render(fn, options = {}) {
       width: observable(() => width.get()),
       height: observable(() => height.get()),
     });
+    if (options.portalPlugins?.length) {
+      ctx = PortalPluginsContext.set(ctx, options.portalPlugins);
+    }
     // A share of the frame rather than a fixed slice of it: the sessions ask
     // for the headset's fastest rate now, and a number of milliseconds that
     // was a third of a frame at 60 Hz is three fifths of one at 120. Fed from

@@ -59,6 +59,25 @@ import { documentTime, sampleRenderingUpdates } from "./renderingUpdates.js";
  */
 const CLASS_RANK = { paint: 0, transform: 1, layout: 2 };
 
+/**
+ * Whether an event target or an animation's target is an element at all —
+ * HTML or SVG alike. Not `instanceof HTMLElement`, which is what this used
+ * to ask: an animating `<path>` is an `SVGElement`, and the clock left every
+ * SVG animation unsampled. Not `instanceof Element` either, because the test
+ * runner's jsdom setup installs `HTMLElement` and `Node` as globals and not
+ * `Element`, and the node type says the same thing everywhere.
+ *
+ * @param {unknown} target
+ * @returns {target is Element}
+ */
+function isElement(target) {
+  return (
+    typeof target === "object" &&
+    target !== null &&
+    /** @type {Node} */ (target).nodeType === Node.ELEMENT_NODE
+  );
+}
+
 const TRANSFORM_PROPERTIES = new Set([
   "transform",
   "transform-origin",
@@ -83,6 +102,29 @@ const PAINT_PROPERTIES = new Set([
   "box-shadow",
   "visibility",
   "filter",
+  // SVG's paint and geometry: none of these can move a CSS box, and the
+  // shape that reads them redraws itself from its own computed style, so a
+  // marching-ants `stroke-dashoffset` is a style re-read of one element per
+  // frame rather than a re-measure of the panel. `x`, `y`, `width` and
+  // `height` are not here — on an HTML element they are layout, and the
+  // clock cannot tell from a property name which kind of element it is on.
+  "fill",
+  "fill-opacity",
+  "fill-rule",
+  "stroke",
+  "stroke-opacity",
+  "stroke-width",
+  "stroke-dasharray",
+  "stroke-dashoffset",
+  "stroke-linecap",
+  "stroke-linejoin",
+  "stroke-miterlimit",
+  "d",
+  "cx",
+  "cy",
+  "r",
+  "rx",
+  "ry",
 ]);
 
 /**
@@ -236,7 +278,7 @@ function classifyKeyframes(effect) {
  * the same value without inheriting it costs a subtree restyle it did not
  * need, which is the safe way to be wrong.
  *
- * @param {HTMLElement} element
+ * @param {Element} element
  * @param {string[]} properties kebab-case
  * @returns {boolean}
  */
@@ -263,7 +305,7 @@ function reachesChildren(element, properties) {
  * computed style — by default inheritance, or by a child's explicit
  * `inherit`.
  *
- * @param {HTMLElement} element
+ * @param {Element} element
  * @param {Animated} animated
  * @returns {boolean}
  */
@@ -294,7 +336,7 @@ export function createAnimationClock(container, emit, requestFrames) {
    * added — each with the invalidation class of what it animates and
    * whether that inherits.
    *
-   * @type {Map<HTMLElement, Map<string, Animated>>}
+   * @type {Map<Element, Map<string, Animated>>}
    */
   const animating = new Map();
 
@@ -312,7 +354,7 @@ export function createAnimationClock(container, emit, requestFrames) {
    * compared changes with it. A row appended mid-animation that inherits
    * is missed until the settle, which checks afresh.
    *
-   * @type {WeakSet<HTMLElement>}
+   * @type {WeakSet<Element>}
    */
   const narrow = new WeakSet();
 
@@ -320,7 +362,7 @@ export function createAnimationClock(container, emit, requestFrames) {
    * `reachesSubtree`, for a running animation: remembers the element once a
    * frame has shown that no child inherits.
    *
-   * @param {HTMLElement} element
+   * @param {Element} element
    * @param {Animated} animated
    * @returns {boolean}
    */
@@ -455,7 +497,7 @@ export function createAnimationClock(container, emit, requestFrames) {
    * One last sample for an animation that just finished: the property has
    * landed on its final value, and no further frame is coming to pick it up.
    *
-   * @param {HTMLElement} element
+   * @param {Element} element
    * @param {Animated} animated
    */
   function settle(element, animated) {
@@ -476,7 +518,7 @@ export function createAnimationClock(container, emit, requestFrames) {
   }
 
   /**
-   * @param {HTMLElement} element
+   * @param {Element} element
    * @param {string} key
    * @param {Animated} animated
    */
@@ -494,7 +536,7 @@ export function createAnimationClock(container, emit, requestFrames) {
   }
 
   /**
-   * @param {HTMLElement} element
+   * @param {Element} element
    * @param {string} key
    */
   function remove(element, key) {
@@ -582,7 +624,7 @@ export function createAnimationClock(container, emit, requestFrames) {
         }
       }
     }
-    /** @type {Map<HTMLElement, Map<string, Animated>>} */
+    /** @type {Map<Element, Map<string, Animated>>} */
     const seen = new Map();
     for (const animation of animations) {
       // A pending animation is about to run — a start the events may not
@@ -594,7 +636,7 @@ export function createAnimationClock(container, emit, requestFrames) {
       // Same duck-typing as above: what matters is that the effect names an
       // element, not which constructor it came from.
       const target = effect ? /** @type {KeyframeEffect} */ (effect).target : null;
-      if (!(target instanceof HTMLElement) || !container.contains(target)) {
+      if (!isElement(target) || !container.contains(target)) {
         continue;
       }
       let keys = seen.get(target);
@@ -616,7 +658,7 @@ export function createAnimationClock(container, emit, requestFrames) {
     // Anything that was running and no longer is has just landed on its final
     // value, and — with no `transitionend` to rely on, which is the whole
     // point of sweeping — this pass is the only notice of it.
-    /** @type {[HTMLElement, Animated][]} */
+    /** @type {[Element, Animated][]} */
     const finished = [];
     for (const [element, keys] of animating) {
       if (seen.has(element)) {
@@ -693,7 +735,7 @@ export function createAnimationClock(container, emit, requestFrames) {
   /** @param {Event} event */
   function onTransitionAdd(event) {
     const element = event.target;
-    if (!(element instanceof HTMLElement)) {
+    if (!isElement(element)) {
       return;
     }
     const { propertyName } = /** @type {TransitionEvent} */ (event);
@@ -703,7 +745,7 @@ export function createAnimationClock(container, emit, requestFrames) {
   /** @param {Event} event */
   function onTransitionRemove(event) {
     const element = event.target;
-    if (!(element instanceof HTMLElement)) {
+    if (!isElement(element)) {
       return;
     }
     const { propertyName } = /** @type {TransitionEvent} */ (event);
@@ -713,7 +755,7 @@ export function createAnimationClock(container, emit, requestFrames) {
   /** @param {Event} event */
   function onAnimationAdd(event) {
     const element = event.target;
-    if (!(element instanceof HTMLElement)) {
+    if (!isElement(element)) {
       return;
     }
     const { animationName } = /** @type {AnimationEvent} */ (event);
@@ -730,7 +772,7 @@ export function createAnimationClock(container, emit, requestFrames) {
   /** @param {Event} event */
   function onAnimationRemove(event) {
     const element = event.target;
-    if (!(element instanceof HTMLElement)) {
+    if (!isElement(element)) {
       return;
     }
     const { animationName } = /** @type {AnimationEvent} */ (event);

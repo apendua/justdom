@@ -1863,6 +1863,30 @@ function sizeEqual(a, b) {
   return a.width === b.width && a.height === b.height;
 }
 
+/**
+ * The element's border box off the layout — whole px, transform-free —
+ * which is what a box on a transformed chain is measured by, since its
+ * client rect would carry the transform a second time.
+ *
+ * `offsetWidth` is that number for an HTML element. An `<svg>` root has no
+ * offset box, though it is laid out as a replaced element like any other,
+ * so it is read as its padding box plus the borders around it — the same
+ * quantity, from the two halves an element in the SVG namespace does have.
+ *
+ * @param {HTMLElement} element
+ * @returns {BorderBoxSize}
+ */
+function layoutSize(element) {
+  if (typeof element.offsetWidth === "number") {
+    return { width: element.offsetWidth, height: element.offsetHeight };
+  }
+  const style = getComputedStyleCached(element);
+  return {
+    width: element.clientWidth + pixels(style.borderLeftWidth) + pixels(style.borderRightWidth),
+    height: element.clientHeight + pixels(style.borderTopWidth) + pixels(style.borderBottomWidth),
+  };
+}
+
 /** @type {WeakMap<HTMLElement, Derived<BorderBoxSize>>} */
 const borderBoxSizeCache = nodeCache();
 
@@ -1888,7 +1912,7 @@ export function getBorderBoxSize(element) {
         getReflowContext(element);
         readParentBox(element);
         if (isTransformed(element)) {
-          return { width: element.offsetWidth, height: element.offsetHeight };
+          return layoutSize(element);
         }
         const rect = readClientRect(element);
         return { width: rect.width, height: rect.height };

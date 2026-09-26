@@ -1,6 +1,13 @@
 # Change Log - @apendua/signal
 
-This log was last generated on Thu, 24 Sep 2026 14:56:56 GMT and should not be manually modified.
+This log was last generated on Sat, 26 Sep 2026 15:05:41 GMT and should not be manually modified.
+
+## 0.10.0
+Sat, 26 Sep 2026 15:05:41 GMT
+
+### Minor changes
+
+- A warm no longer tears down a value an atomic channel's effects still hold: a replaced Derived value's cleanups are set aside and run once the lane's effects have been handed the new value or disposed. Fixes GL buffers leaked by panel text drawn after its geometry was disposed.
 
 ## 0.9.0
 Thu, 24 Sep 2026 14:56:56 GMT

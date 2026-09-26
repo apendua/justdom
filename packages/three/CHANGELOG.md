@@ -1,6 +1,17 @@
 # Change Log - @apendua/freedom
 
-This log was last generated on Thu, 24 Sep 2026 14:56:56 GMT and should not be manually modified.
+This log was last generated on Sat, 26 Sep 2026 15:05:41 GMT and should not be manually modified.
+
+## 0.24.0
+Sat, 26 Sep 2026 15:05:41 GMT
+
+### Minor changes
+
+- render takes foveation: fixed foveation for the headset's layer, 0 by default rather than three's 1, so flat-shaded edges stay sharp at the edges of view.
+
+### Patches
+
+- Clip portal container overflow so oversized panels do not add scrollbars to the page
 
 ## 0.23.0
 Thu, 24 Sep 2026 14:56:56 GMT

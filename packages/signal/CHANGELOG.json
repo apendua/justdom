@@ -2,6 +2,18 @@
   "name": "@apendua/signal",
   "entries": [
     {
+      "version": "0.10.0",
+      "tag": "@apendua/signal_v0.10.0",
+      "date": "Sat, 26 Sep 2026 15:05:41 GMT",
+      "comments": {
+        "minor": [
+          {
+            "comment": "A warm no longer tears down a value an atomic channel's effects still hold: a replaced Derived value's cleanups are set aside and run once the lane's effects have been handed the new value or disposed. Fixes GL buffers leaked by panel text drawn after its geometry was disposed."
+          }
+        ]
+      }
+    },
+    {
       "version": "0.9.0",
       "tag": "@apendua/signal_v0.9.0",
       "date": "Thu, 24 Sep 2026 14:56:56 GMT",

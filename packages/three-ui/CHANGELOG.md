@@ -1,6 +1,11 @@
 # Change Log - @apendua/justui
 
-This log was last generated on Thu, 24 Sep 2026 14:56:56 GMT and should not be manually modified.
+This log was last generated on Sat, 26 Sep 2026 15:05:41 GMT and should not be manually modified.
+
+## 0.2.8
+Sat, 26 Sep 2026 15:05:41 GMT
+
+_Version update only_
 
 ## 0.2.7
 Thu, 24 Sep 2026 14:56:56 GMT

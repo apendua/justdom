@@ -2,6 +2,37 @@
   "name": "@apendua/freedom",
   "entries": [
     {
+      "version": "0.24.0",
+      "tag": "@apendua/freedom_v0.24.0",
+      "date": "Sat, 26 Sep 2026 15:05:41 GMT",
+      "comments": {
+        "patch": [
+          {
+            "comment": "Clip portal container overflow so oversized panels do not add scrollbars to the page"
+          }
+        ],
+        "minor": [
+          {
+            "comment": "render takes foveation: fixed foveation for the headset's layer, 0 by default rather than three's 1, so flat-shaded edges stay sharp at the edges of view."
+          }
+        ],
+        "dependency": [
+          {
+            "comment": "Updating dependency \"@apendua/justdom\" to `0.3.5`"
+          },
+          {
+            "comment": "Updating dependency \"@apendua/signal\" to `0.10.0`"
+          },
+          {
+            "comment": "Updating dependency \"@apendua/vite-hmr\" to `0.4.3`"
+          },
+          {
+            "comment": "Updating dependency \"@apendua/signal\" to `0.10.0`"
+          }
+        ]
+      }
+    },
+    {
       "version": "0.23.0",
       "tag": "@apendua/freedom_v0.23.0",
       "date": "Thu, 24 Sep 2026 14:56:56 GMT",

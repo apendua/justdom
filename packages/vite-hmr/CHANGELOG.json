@@ -2,6 +2,18 @@
   "name": "@apendua/vite-hmr",
   "entries": [
     {
+      "version": "0.4.3",
+      "tag": "@apendua/vite-hmr_v0.4.3",
+      "date": "Sat, 26 Sep 2026 15:05:41 GMT",
+      "comments": {
+        "dependency": [
+          {
+            "comment": "Updating dependency \"@apendua/signal\" to `0.10.0`"
+          }
+        ]
+      }
+    },
+    {
       "version": "0.4.2",
       "tag": "@apendua/vite-hmr_v0.4.2",
       "date": "Thu, 24 Sep 2026 14:56:56 GMT",

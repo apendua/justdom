@@ -426,6 +426,99 @@ describe("createPortal", () => {
     portal.disconnect();
   });
 
+  test("visibility hides what an element paints, and a child can show itself again", async () => {
+    const manager = new InteractionManager();
+    /** @type {THREE.Object3D[]} */
+    const registered = [];
+    const originalAdd = manager.add.bind(manager);
+    const originalRemove = manager.remove.bind(manager);
+    manager.add = (object) => {
+      registered.push(object);
+      originalAdd(object);
+    };
+    manager.remove = (object) => {
+      const index = registered.indexOf(object);
+      if (index >= 0) {
+        registered.splice(index, 1);
+      }
+      originalRemove(object);
+    };
+    const ctx = InteractionContext.set({}, manager);
+
+    const portal = createPortal(ctx);
+    portal.addTo(new THREE.Group());
+
+    const outerStyle = Signal.of("cursor: pointer; visibility: hidden");
+    /** @type {import("@apendua/justdom").Mountable | undefined} */
+    let mountable;
+    const tree = $("div", [
+      attr("style", () => outerStyle.get()),
+      children(
+        $("div", [attr("style", () => "cursor: pointer; visibility: visible")]),
+        $("input", [attr("type", () => "checkbox"), attr("checked", () => "")]),
+      ),
+    ]);
+    const subscription = tree.subscribe((value) => {
+      mountable = value;
+    });
+    assert.ok(mountable);
+    portal.mount(mountable);
+
+    await settle(portal);
+
+    const isBlocker = (/** @type {THREE.Object3D} */ object) =>
+      object instanceof THREE.Mesh && object.geometry instanceof THREE.PlaneGeometry;
+    // The blocker and the inner button. Not the outer button, which is
+    // hidden, and not the checkbox, which inherits that.
+    assert.equal(registered.length, 2);
+    const inner = registered.find((object) => !isBlocker(object));
+    assert.ok(inner?.parent?.parent);
+    const outer = inner.parent.parent;
+    const outerContent = inner.parent;
+
+    /**
+     * The meshes an object paints itself with, leaving out its content group.
+     *
+     * @param {THREE.Object3D} object
+     * @returns {THREE.Object3D[]}
+     */
+    const ownMeshes = (object) => object.children.filter((child) => child instanceof THREE.Mesh);
+    const checkboxObject = outerContent.children.find(
+      (child) => child !== inner && ownMeshes(child).length === 2,
+    );
+    assert.ok(checkboxObject, "the checkbox draws its box and its tick");
+
+    assert.deepEqual(
+      ownMeshes(outer).map((mesh) => mesh.visible),
+      [false],
+      "the hidden element's quad",
+    );
+    assert.deepEqual(
+      ownMeshes(checkboxObject).map((mesh) => mesh.visible),
+      [false, false],
+      "so does a control, tick and all",
+    );
+    assert.deepEqual(
+      ownMeshes(inner).map((mesh) => mesh.visible),
+      [true],
+      "a child that says visible is drawn",
+    );
+    assert.equal(outer.visible, true, "nothing prunes the subtree");
+    assert.equal(outerContent.visible, true);
+
+    outerStyle.set("cursor: pointer");
+    await pump();
+
+    assert.equal(registered.length, 4, "the outer button and the checkbox join");
+    assert.deepEqual(
+      [...ownMeshes(outer), ...ownMeshes(checkboxObject)].map((mesh) => mesh.visible),
+      [true, true, true],
+    );
+
+    subscription.unsubscribe();
+    portal.disconnect();
+  });
+
   test("mirroring a change asks for the rays to be cast again", async () => {
     const manager = new InteractionManager();
     let updates = 0;

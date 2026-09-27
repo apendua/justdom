@@ -1806,6 +1806,39 @@ function getPositionStyle(element) {
   return signal.get();
 }
 
+/** @type {WeakMap<Element | Text, Derived<boolean>>} */
+const hiddenCache = new WeakMap();
+
+/**
+ * Whether CSS says this node paints nothing of its own: computed
+ * `visibility` is `hidden` or `collapse`. For a text node that is its
+ * parent's answer, which is where a text node's style comes from.
+ *
+ * What it does *not* say is anything about the node's descendants, and the
+ * whole difference from `display: none` is there: `visibility` is inherited,
+ * so a child of a hidden element is hidden only until it says `visible`
+ * for itself — and then it is drawn, and pointable, as if nothing above it
+ * were hidden. So this is asked per node, of the node's own meshes, and
+ * never turned into an object's `visible`, which would prune the subtree.
+ *
+ * Behind its own equality gate, like `getPositionStyle`: the computed style
+ * is invalidated by every hover, and the answer almost never flips.
+ *
+ * @param {Element | Text} node
+ * @returns {boolean}
+ */
+export function isVisibilityHidden(node) {
+  let signal = hiddenCache.get(node);
+  if (!signal) {
+    signal = new Derived(() => {
+      const visibility = getComputedStyleCached(node).visibility;
+      return visibility === "hidden" || visibility === "collapse";
+    });
+    hiddenCache.set(node, signal);
+  }
+  return signal.get();
+}
+
 /**
  * @typedef {object} BorderBoxSize
  * @property {number} width

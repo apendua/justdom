@@ -21,6 +21,7 @@ import {
   getLocalClipBox,
   getObjectPosition,
   getScrollOffset,
+  isVisibilityHidden,
 } from "./mirror.js";
 import { clipBoxShows, clipRaycast, UNCLIPPED } from "./clip.js";
 import {
@@ -143,6 +144,10 @@ function isClickable(element) {
  * @property {(mesh: THREE.Mesh) => void} clipMesh Trim a mesh's hits to that
  *   same region. Call once, on a mesh that is not replaced: it wraps
  *   `raycast`, so calling it again on every restyle would nest the wrappers.
+ * @property {() => boolean} hidden Whether the element's own `visibility`
+ *   hides it, read reactively. Content drawn inside the box is the box's
+ *   own painting and goes with it — unlike the element's child nodes, which
+ *   answer for themselves.
  */
 
 /**
@@ -218,6 +223,18 @@ export function box(ctx, element, options = {}) {
    * moment a row overflows it, without anything being told.
    */
   const scrollable = new Derived(() => isScrollable(element));
+
+  /**
+   * Whether `visibility` hides this element. What that hides is the
+   * element's own painting — its quad, whatever `content` draws on it, the
+   * blocker an overlay puts behind itself — and its standing as a ray
+   * target, the way a hidden element on a page takes no clicks. It does not
+   * hide the content group: `visibility` is inherited but can be overridden,
+   * so a child that says `visible` is drawn and pointable under a parent
+   * that is not. That is why this never touches `object.visible`, which
+   * prunes the subtree; see `isVisibilityHidden`.
+   */
+  const hidden = new Derived(() => isVisibilityHidden(element));
 
   /**
    * The picture this element paints inside its box, for the ones that have
@@ -476,8 +493,11 @@ export function box(ctx, element, options = {}) {
     // `cursor: pointer` is a live stylesheet decision — a button gets disabled,
     // a card becomes clickable — so interactivity follows it rather than being
     // fixed at the moment the element was first projected into the scene.
+    // A hidden element takes no clicks, and loses the handlers along with the
+    // registration for the reason given above `interactivity`: a visible
+    // child's events still bubble up the object chain through this one.
     effects((obj) => {
-      if (!clickable.get()) {
+      if (!clickable.get() || hidden.get()) {
         return;
       }
       useEffects(obj, interactivity);
@@ -492,7 +512,7 @@ export function box(ctx, element, options = {}) {
     // A clickable list already carries the gesture through the handlers
     // above; this is for the ordinary case of a list that is only a list.
     effects((obj) => {
-      if (clickable.get() || !scrollable.get()) {
+      if (clickable.get() || !scrollable.get() || hidden.get()) {
         return;
       }
       useEffects(obj, draggability);
@@ -585,6 +605,13 @@ export function box(ctx, element, options = {}) {
           effects((obj) => {
             coverBox(obj, properties.totalWidth, properties.totalHeight, BLOCKER_OFFSET);
           }),
+          // A hidden overlay covers nothing: rays pass through to what is
+          // behind it. `visible` rather than the registration alone, because
+          // a registered ancestor is raycast as a subtree and would find the
+          // plane regardless.
+          effects((obj) => {
+            obj.visible = !hidden.get();
+          }),
         ]);
       })(observable(() => overlay.get())),
       // The whole box — background and border ring both — is one quad and a
@@ -619,6 +646,14 @@ export function box(ctx, element, options = {}) {
           onCleanup(() => {
             batch.remove(boxMesh);
           });
+        }),
+        // The quad is the element's own painting, so it goes when the element
+        // is hidden — out of the draw, out of the batch's walk and out of the
+        // raycast, all three of which follow this flag — while the content
+        // group beside it stays for any child that says `visible`.
+        effects((obj) => {
+          obj.visible = !hidden.get();
+          batchChanged();
         }),
         // Its own effect, so a scroll writes four numbers and nothing else.
         effects((obj) => {
@@ -657,6 +692,7 @@ export function box(ctx, element, options = {}) {
         properties,
         contentRenderOrder: () => getContentRenderOrder(element),
         clipBox: () => getLocalClipBox(element),
+        hidden: () => hidden.get(),
         // The snapshot rather than the signal, and this element's frame rather
         // than the mesh's — the same two reasons the box's own quad is trimmed
         // this way: the filter runs inside three's traversal, and content is

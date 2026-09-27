@@ -92,38 +92,31 @@ const PAINT_PROPERTIES = new Set([
  * restyle the animating element alone rather than its subtree. The layout
  * class is never narrowed: `font-size`, `line-height` and their kind inherit,
  * and an unrecognized property is assumed to be one of them.
+ *
+ * "Stays on the element" is the default and not a law: a child that says
+ * `background-color: inherit` takes its parent's background, animating or
+ * not. See `reachesChildren` for how the clock finds out.
  */
 const INHERITED_PAINT_PROPERTIES = new Set(["color", "visibility"]);
 
 /**
- * How one animation is held: its invalidation class, and whether what it
- * animates can reach the element's descendants through inheritance.
+ * How one animation is held: its invalidation class, whether what it
+ * animates inherits by default, and — for what does not — which properties
+ * those are, so that a child inheriting one of them explicitly can be
+ * caught.
  *
  * @typedef {object} Animated
  * @property {AnimationClass} cls
  * @property {boolean} inherited
+ * @property {string[]} properties the non-inherited ones, kebab-case
  */
 
 /**
- * @param {string} name a CSS property name, kebab-case
+ * @param {string} name a CSS property name, camelCased or not
  * @returns {string}
  */
 function kebab(name) {
   return name.replace(/[A-Z]/g, (ch) => `-${ch.toLowerCase()}`);
-}
-
-/**
- * Whether an animated property can change a descendant's computed style.
- * Anything the layout class holds is assumed to, missing names included.
- *
- * @param {string} [property]
- * @returns {boolean}
- */
-function inherits(property) {
-  const cls = classify(property);
-  return (
-    cls === "layout" || INHERITED_PAINT_PROPERTIES.has(kebab(/** @type {string} */ (property)))
-  );
 }
 
 /**
@@ -150,18 +143,55 @@ function classify(property) {
 }
 
 /**
- * One animated property as the clock holds it.
+ * One animated property as the clock holds it. Anything the layout class
+ * holds is taken to inherit, missing names included.
  *
  * @param {string} [property]
  * @returns {Animated}
  */
 function animatedProperty(property) {
-  return { cls: classify(property), inherited: inherits(property) };
+  const cls = classify(property);
+  if (cls === "layout" || !property) {
+    return { cls, inherited: true, properties: [] };
+  }
+  const name = kebab(property);
+  return INHERITED_PAINT_PROPERTIES.has(name)
+    ? { cls, inherited: true, properties: [] }
+    : { cls, inherited: false, properties: [name] };
 }
 
 /**
- * The worst class across every property a keyframe effect animates, and
- * whether any of them inherits.
+ * Everything some animations amount to: the worst class among them, whether
+ * any inherits, and every non-inherited property they animate. The one fold
+ * both an element's running animations and a keyframe effect's properties
+ * go through.
+ *
+ * @param {Iterable<Animated>} animations
+ * @returns {Animated}
+ */
+function combine(animations) {
+  /** @type {AnimationClass} */
+  let cls = "paint";
+  let inherited = false;
+  /** @type {Set<string>} */
+  const properties = new Set();
+  for (const animation of animations) {
+    if (CLASS_RANK[animation.cls] > CLASS_RANK[cls]) {
+      cls = animation.cls;
+    }
+    if (animation.inherited) {
+      inherited = true;
+    }
+    for (const property of animation.properties) {
+      properties.add(property);
+    }
+  }
+  return { cls, inherited, properties: [...properties] };
+}
+
+/**
+ * What a keyframe effect animates, folded over every property its keyframes
+ * name.
  *
  * @param {AnimationEffect | null} effect
  * @returns {Animated}
@@ -172,11 +202,10 @@ function classifyKeyframes(effect) {
   // same question and one that survives a document without the constructor.
   const keyframed = /** @type {KeyframeEffect | null} */ (effect);
   if (!keyframed || typeof keyframed.getKeyframes !== "function") {
-    return { cls: "layout", inherited: true };
+    return { cls: "layout", inherited: true, properties: [] };
   }
-  /** @type {AnimationClass} */
-  let worst = "paint";
-  let inherited = false;
+  /** @type {Animated[]} */
+  const animated = [];
   for (const frame of keyframed.getKeyframes()) {
     for (const property of Object.keys(frame)) {
       if (
@@ -187,38 +216,59 @@ function classifyKeyframes(effect) {
       ) {
         continue;
       }
-      const cls = classify(property);
-      if (CLASS_RANK[cls] > CLASS_RANK[worst]) {
-        worst = cls;
-      }
-      if (inherits(property)) {
-        inherited = true;
-      }
+      animated.push(animatedProperty(property));
     }
   }
-  return { cls: worst, inherited };
+  return combine(animated);
 }
 
 /**
- * Everything one element's running animations amount to: the worst class
- * among them, and whether any reaches the subtree.
+ * Whether a child of `element` takes one of these properties from it — an
+ * explicit `inherit` on something that does not inherit by default, which
+ * the restyle of the element alone would never reach.
  *
- * @param {Iterable<Animated>} animations
- * @returns {Animated}
+ * Only children, never deeper: a grandchild inheriting explicitly inherits
+ * from its parent, whose value moves only if that parent inherits too — in
+ * which case the parent is the child found here, and the subtree restyle it
+ * causes reaches the grandchild. And by value, because a computed style
+ * does not say *why* it holds what it holds: a child that inherits holds
+ * exactly its parent's value, on every frame. A child that happens to hold
+ * the same value without inheriting it costs a subtree restyle it did not
+ * need, which is the safe way to be wrong.
+ *
+ * @param {HTMLElement} element
+ * @param {string[]} properties kebab-case
+ * @returns {boolean}
  */
-function combine(animations) {
-  /** @type {AnimationClass} */
-  let cls = "paint";
-  let inherited = false;
-  for (const animation of animations) {
-    if (CLASS_RANK[animation.cls] > CLASS_RANK[cls]) {
-      cls = animation.cls;
-    }
-    if (animation.inherited) {
-      inherited = true;
+function reachesChildren(element, properties) {
+  const view = element.ownerDocument.defaultView;
+  if (!view || !element.firstElementChild) {
+    return !view;
+  }
+  const own = view.getComputedStyle(element);
+  const values = properties.map((property) => own.getPropertyValue(property));
+  for (const child of element.children) {
+    const theirs = view.getComputedStyle(child);
+    for (let index = 0; index < properties.length; index++) {
+      if (theirs.getPropertyValue(properties[index]) === values[index]) {
+        return true;
+      }
     }
   }
-  return { cls, inherited };
+  return false;
+}
+
+/**
+ * Whether one element's animations, taken together, can move a descendant's
+ * computed style — by default inheritance, or by a child's explicit
+ * `inherit`.
+ *
+ * @param {HTMLElement} element
+ * @param {Animated} animated
+ * @returns {boolean}
+ */
+function reachesSubtree(element, animated) {
+  return animated.inherited || reachesChildren(element, animated.properties);
 }
 
 /**
@@ -289,10 +339,11 @@ export function createAnimationClock(container, emit, requestFrames) {
 
   /**
    * The batches one sample asks for: a style re-read of the animating
-   * elements always — of their subtrees where what animates inherits, of
-   * the elements alone where it does not; a portal-wide rect re-measure when layout itself is
-   * animating, which moves elements nobody named; a subtree rect re-measure
-   * when a *transform* settles — and only then. While a transform animates,
+   * elements always — of their subtrees where what animates can reach a
+   * child, of the elements alone where it cannot; a portal-wide rect
+   * re-measure when layout itself is animating, which moves elements nobody
+   * named; a subtree rect re-measure when a *transform* settles — and only
+   * then. While a transform animates,
    * nothing consumes its client rects (elements measure off layout offsets,
    * text measures with transforms switched off), so per-frame reflow would
    * buy nothing and cost a text re-measure per tick. The moment the
@@ -331,8 +382,9 @@ export function createAnimationClock(container, emit, requestFrames) {
     const selfTargets = new Set();
     let layout = false;
     for (const [element, keys] of animating) {
-      const { cls, inherited } = combine(keys.values());
-      (inherited ? targets : selfTargets).add(element);
+      const animated = combine(keys.values());
+      const { cls } = animated;
+      (reachesSubtree(element, animated) ? targets : selfTargets).add(element);
       if (cls === "layout") {
         layout = true;
       }
@@ -347,13 +399,17 @@ export function createAnimationClock(container, emit, requestFrames) {
    * @param {HTMLElement} element
    * @param {Animated} animated
    */
-  function settle(element, { cls, inherited }) {
+  function settle(element, animated) {
+    const { cls } = animated;
     const target = new Set([element]);
     const none = new Set();
+    // Checked again rather than trusted from the last frame: the value the
+    // property lands on is what a child that inherits it has to show.
+    const subtree = reachesSubtree(element, animated);
     emit(
       batchesFor(
-        inherited ? target : none,
-        inherited ? none : target,
+        subtree ? target : none,
+        subtree ? none : target,
         cls === "transform" ? target : none,
         cls === "layout",
       ),
@@ -591,7 +647,11 @@ export function createAnimationClock(container, emit, requestFrames) {
     const { animationName } = /** @type {AnimationEvent} */ (event);
     // The event does not say which properties the keyframes animate, so
     // assume the worst; the sweep refines it right away where it can.
-    add(element, `animation:${animationName}`, { cls: "layout", inherited: true });
+    add(element, `animation:${animationName}`, {
+      cls: "layout",
+      inherited: true,
+      properties: [],
+    });
     sweep();
   }
 

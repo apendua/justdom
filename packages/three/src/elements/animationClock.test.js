@@ -190,6 +190,152 @@ describe("animation clock", () => {
     }
   });
 
+  /**
+   * `getComputedStyle` as a browser answers it for `inherit`: the parent's
+   * resolved value. jsdom hands the keyword back as written.
+   *
+   * @returns {() => void} the restore
+   */
+  function resolveInherit() {
+    const original = window.getComputedStyle;
+    /**
+     * @param {Element} element
+     * @returns {{ getPropertyValue: (property: string) => string }}
+     */
+    const resolved = (element) => {
+      const style = original.call(window, element);
+      return {
+        /**
+         * @param {string} property
+         * @returns {string}
+         */
+        getPropertyValue(property) {
+          const value = style.getPropertyValue(property);
+          return value === "inherit" && element.parentElement
+            ? resolved(element.parentElement).getPropertyValue(property)
+            : value;
+        },
+      };
+    };
+    window.getComputedStyle = /** @type {typeof window.getComputedStyle} */ (
+      /** @type {unknown} */ (resolved)
+    );
+    return () => {
+      window.getComputedStyle = original;
+    };
+  }
+
+  test("a child that inherits a non-inherited property explicitly widens it to the subtree", () => {
+    // `background-color: inherit` makes a child follow its parent's
+    // background, animating or not. The element alone would never reach it:
+    // its box would stay at the colour it had before the transition, even
+    // after the transition had landed.
+    const { element, emitted, frames, cleanup } = setup();
+    const restore = resolveInherit();
+    try {
+      element.style.backgroundColor = "rgb(10, 20, 30)";
+      const child = document.createElement("div");
+      child.style.backgroundColor = "inherit";
+      element.appendChild(child);
+
+      element.dispatchEvent(syntheticEvent("transitionrun", { propertyName: "background-color" }));
+      frames.step();
+      assert.deepEqual(
+        emitted[0].map((batch) => [...batch.types]),
+        [["animated"]],
+      );
+
+      // And the end, where the value the child has to show is the last one.
+      element.dispatchEvent(syntheticEvent("transitionend", { propertyName: "background-color" }));
+      const settled = emitted[emitted.length - 1];
+      assert.deepEqual(
+        settled.map((batch) => [...batch.types]),
+        [["animated"]],
+      );
+    } finally {
+      restore();
+      cleanup();
+    }
+  });
+
+  test("children holding values of their own leave the element alone", () => {
+    const { element, emitted, frames, cleanup } = setup();
+    const restore = resolveInherit();
+    try {
+      element.style.backgroundColor = "rgb(10, 20, 30)";
+      const child = document.createElement("div");
+      child.style.backgroundColor = "rgb(40, 50, 60)";
+      element.appendChild(child);
+
+      element.dispatchEvent(syntheticEvent("transitionrun", { propertyName: "background-color" }));
+      frames.step();
+      assert.deepEqual(
+        emitted[0].map((batch) => [...batch.types]),
+        [["animatedSelf"]],
+      );
+    } finally {
+      restore();
+      cleanup();
+    }
+  });
+
+  /**
+   * A container whose `getAnimations` reports one running keyframe
+   * animation on `element`, as a Web Animation would be: no CSS event ever
+   * announces it, so only the sweep can find it.
+   *
+   * @param {HTMLElement} container
+   * @param {HTMLElement} element
+   * @param {Keyframe[]} keyframes
+   */
+  function runKeyframes(container, element, keyframes) {
+    const animation = {
+      playState: "running",
+      pending: false,
+      effect: { target: element, getKeyframes: () => keyframes },
+    };
+    container.getAnimations = () =>
+      /** @type {Animation[]} */ (/** @type {unknown} */ ([animation]));
+  }
+
+  test("a keyframe animation of nothing inherited restyles the element alone", () => {
+    const { container, element, emitted, frames, clock, cleanup } = setup();
+    try {
+      // The bookkeeping keys sit beside the properties and are not animated;
+      // they must not count as properties of any class.
+      runKeyframes(container, element, [
+        { transform: "none", offset: 0, easing: "ease-in", composite: "replace" },
+        { transform: "translateX(10px)", offset: 1, easing: "linear", composite: "replace" },
+      ]);
+      clock.sweep();
+      frames.step();
+      assert.deepEqual(
+        emitted[emitted.length - 1].map((batch) => [...batch.types]),
+        [["animatedSelf"]],
+      );
+    } finally {
+      cleanup();
+    }
+  });
+
+  test("a keyframe animation of anything inherited restyles the subtree", () => {
+    const { container, element, emitted, frames, clock, cleanup } = setup();
+    try {
+      runKeyframes(container, element, [
+        { transform: "none", color: "red", offset: 0 },
+        { transform: "scale(2)", color: "blue", offset: 1 },
+      ]);
+      clock.sweep();
+      frames.step();
+      assert.deepEqual(
+        emitted[emitted.length - 1].map((batch) => [...batch.types]),
+        [["animated"]],
+      );
+    } finally {
+      cleanup();
+    }
+  });
+
   test("a layout transition re-measures everything: it moves elements it cannot name", () => {
     const { element, emitted, frames, cleanup } = setup();
     try {

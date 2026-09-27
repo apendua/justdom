@@ -1,7 +1,7 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
-import { Derived, Signal, toObservable, UpdateChannel, withChannel } from "@apendua/signal";
+import { Derived, Effect, Signal, toObservable, UpdateChannel, withChannel } from "@apendua/signal";
 import { $, attr, children, className, stylesheet } from "@apendua/justdom";
 import { InteractionContext, InteractionManager } from "../interactions.js";
 import { DomMirror, getComputedStyleCached, resetMeasuringRangeForTests } from "./mirror.js";
@@ -1006,6 +1006,73 @@ describe("createPortal", () => {
     portal.disconnect();
   });
 
+  test("an animation of nothing inherited restyles the element, not what is on it", async () => {
+    // The clock and the mirror each have tests of their own for this; what
+    // this one pins is the wire between them. A card turning under a
+    // transform restyles the card and not the label on it; a colour
+    // transition, which the label inherits, restyles both.
+    const manager = new InteractionManager();
+    const ctx = InteractionContext.set({}, manager);
+    const portal = createPortal(ctx);
+    portal.addTo(new THREE.Group());
+    /** @type {import("@apendua/justdom").Mountable | undefined} */
+    let mountable;
+    const subscription = $("div", [children($("div", []))]).subscribe((value) => {
+      mountable = value;
+    });
+    assert.ok(mountable);
+    portal.mount(mountable);
+    await settle(portal);
+
+    const containers = document.querySelectorAll("[data-xr-portal]");
+    const card = /** @type {HTMLElement} */ (containers[containers.length - 1].firstElementChild);
+    const label = /** @type {HTMLElement} */ (card.firstElementChild);
+    // Where a card is mid-turn: a transform of its own, and none on the
+    // label. The clock compares the two to rule out a label that inherits
+    // the transform explicitly, and two unset values would compare equal.
+    card.style.transform = "matrix(0.996, 0.087, -0.087, 0.996, 0, 0)";
+    await pump();
+    const reads = { card: 0, label: 0 };
+    const holders = [
+      new Effect(() => {
+        reads.card += 1;
+        getComputedStyleCached(card);
+      }),
+      new Effect(() => {
+        reads.label += 1;
+        getComputedStyleCached(label);
+      }),
+    ];
+    assert.deepEqual(reads, { card: 1, label: 1 });
+
+    /** @param {string} type @param {string} propertyName */
+    const transition = (type, propertyName) =>
+      card.dispatchEvent(Object.assign(new Event(type, { bubbles: true }), { propertyName }));
+
+    try {
+      transition("transitionrun", "transform");
+      await pump();
+      assert.ok(reads.card > 1, "the card restyles while it turns");
+      assert.equal(reads.label, 1, "the label on it does not");
+      transition("transitionend", "transform");
+      await pump();
+
+      const before = reads.label;
+      transition("transitionrun", "color");
+      await pump();
+      assert.ok(reads.label > before, "a colour reaches the label, which inherits it");
+    } finally {
+      // Ended whichever way the test went, or the clock goes on asking for
+      // frames every test after this one would have to flush.
+      transition("transitionend", "transform");
+      transition("transitionend", "color");
+      await pump();
+      holders.forEach((effect) => effect.dispose());
+      subscription.unsubscribe();
+      portal.disconnect();
+    }
+  });
+
   test("a portal that is not atomic changes by instalments, something every frame", async () => {
     // The trade the option is for. An atomic panel under an update that
     // lands on every frame — a layout transition — re-reads everything each
@@ -1071,6 +1138,61 @@ describe("createPortal", () => {
     );
 
     await pump();
+    subscription.unsubscribe();
+    portal.disconnect();
+  });
+
+  test("a portal that is not atomic puts a new row in without waiting for a busy channel", async () => {
+    // What holds an atomic panel's rows back is the commit, and the commit
+    // waits for the channel to empty. A panel that is not atomic changes by
+    // instalments anyway; holding its new rows for a channel an animation
+    // keeps full would be the very stall it opted out of.
+    const manager = new InteractionManager();
+    const ctx = InteractionContext.set({}, manager);
+    const portal = createPortal(ctx, { budget: 0, atomic: false });
+    const parent = new THREE.Group();
+    portal.addTo(parent);
+    const containerObject = parent.children[0];
+
+    const color = Signal.of("rgb(0, 2, 3)");
+    const rowClass = className`
+      background-color: ${toObservable(color)};
+    `;
+    /** @type {import("@apendua/justdom").Mountable | undefined} */
+    let mountable;
+    const tree = $("div", [
+      children(...Array.from({ length: 4 }, () => $("div", [attr("class", rowClass)]))),
+    ]);
+    const subscription = tree.subscribe((value) => {
+      mountable = value;
+    });
+    assert.ok(mountable);
+    portal.mount(mountable);
+    await settle(portal);
+
+    const rootObject = /** @type {THREE.Object3D} */ (
+      containerObject.children.find((child) => !(child instanceof THREE.Mesh))
+    );
+    const rows = () => rootObject.children[0].children.length;
+    assert.equal(rows(), 4);
+
+    // A restyle of every row, which at a zero budget runs one effect a frame
+    // and keeps the channel busy for many, and a row arriving meanwhile.
+    color.set("rgb(255, 2, 3)");
+    const containers = document.querySelectorAll("[data-xr-portal]");
+    const list = /** @type {HTMLElement} */ (containers[containers.length - 1].firstElementChild);
+    list.appendChild(document.createElement("div"));
+    await nextMacrotask();
+    let frames = 0;
+    while (frames < 200 && rows() < 5) {
+      flushFrame();
+      await nextMacrotask();
+      frames += 1;
+    }
+    assert.equal(rows(), 5, "the new row is in the scene");
+    assert.ok(frames <= 2, `within a frame or two of arriving — it took ${frames}`);
+
+    await drain();
     subscription.unsubscribe();
     portal.disconnect();
   });

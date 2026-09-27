@@ -30,6 +30,16 @@ import { batch, Effect, withChannel } from "@apendua/signal";
  *   minimum time — and a tick whose commit was declined has not settled:
  *   the pump stays scheduled and asks again next frame, so the portal
  *   needs no way of its own to bring the pump back.
+ * @property {() => boolean} [commitsEarly] Whether the portal takes its
+ *   commit as soon as no node is waiting to be built, however much the
+ *   channel still holds. False by default, and for an atomic portal always:
+ *   there the commit is the frame the update lands whole in. A portal that
+ *   is not atomic has no such frame to wait for — its effects already land
+ *   by instalments — and holding its new rows back for a channel that an
+ *   animation keeps busy would stall exactly what the option exists to keep
+ *   moving. A row is placed as it is built, since an effect runs when it is
+ *   made, so it is fit to go in at once. Asked every tick, so the portal
+ *   can keep its initial mount whole and commit early only after.
  * @property {() => boolean} [hasPendingCommit] Whether the portal is holding
  *   anything for `onCommit`. Asked when deciding whether a frame is worth
  *   asking for: a removal that happens to queue nothing in the channel
@@ -64,6 +74,7 @@ export function createPortalPump({
   priority,
   buildNode,
   onCommit,
+  commitsEarly = () => false,
   hasPendingCommit = () => false,
   onSettled,
   afterTick,
@@ -104,8 +115,9 @@ export function createPortalPump({
    * resolved, text rasterized — and the effects that write the scene run
    * together, in the frame that finds nothing left to read. (A portal built
    * with `atomic: false` has a channel that runs its effects under the
-   * budget instead, and then the scene changes by instalments; nothing here
-   * needs to know which.) And while nodes
+   * budget instead, and then the scene changes by instalments — and its
+   * built rows go in without waiting for the channel; see `commitsEarly`.)
+   * And while nodes
    * are still queued the channel is only warmed, never flushed: a row still
    * to be built changes the layout of the rows around it, and applying
    * those moves before the row exists would be the same half-update from the
@@ -156,7 +168,15 @@ export function createPortalPump({
       });
       // Settled only if the portal took the commit: one it declined leaves
       // the scene behind the graph, and the tick has to come round again.
-      const settled = pendingNodes.length === 0 && channel.pendingCount === 0 && onCommit();
+      const built = pendingNodes.length === 0;
+      const drained = built && channel.pendingCount === 0;
+      let settled = drained && onCommit();
+      if (!drained && built && hasPendingCommit() && commitsEarly()) {
+        // Committed, but not settled: the channel still has work, and the
+        // tick comes round for it.
+        onCommit();
+        settled = false;
+      }
       afterTick(settled);
       if (!settled) {
         return false;

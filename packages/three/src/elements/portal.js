@@ -101,9 +101,11 @@ export const LOADING_ATTRIBUTE = "data-xr-loading";
  *   does not fit the budget does not move until the animation ends. False
  *   runs the effects themselves under the budget, as many as fit, in the
  *   order they were queued: something moves every frame, and an update too
- *   big for one frame lands in instalments. For a panel where responding
- *   to the hand matters more than never being seen half-updated. The
- *   initial mount is held back for the commit either way.
+ *   big for one frame lands in instalments. Rows added or removed after
+ *   the mount go in and come out as soon as they are built or gone, not
+ *   when the channel next empties. For a panel where responding to the
+ *   hand matters more than never being seen half-updated. The initial
+ *   mount is held back until it is whole either way.
  * @property {number} [maxTextScale] The most device pixels this panel's text
  *   is rasterized for each of its CSS pixels. Measured per panel by default
  *   (`textScale.js` says how) and capped at 4, which is what a panel of a
@@ -932,6 +934,11 @@ export function createPortal(
           priority,
           buildNode: buildQueuedNode,
           onCommit: commit,
+          // Not atomic, the panel changes by instalments anyway; a row built
+          // after the mount goes in as soon as it is, rather than when a
+          // busy channel happens to empty. The mount itself still arrives
+          // whole.
+          commitsEarly: () => !atomic && !loading.get(),
           hasPendingCommit,
           onSettled: markLoaded,
           // Content appeared or moved under whatever rays are resting on

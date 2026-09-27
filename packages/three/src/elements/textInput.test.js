@@ -178,6 +178,27 @@ describe("a text field in a panel", () => {
     panel.cleanup();
   });
 
+  test("a hidden field draws no value and takes no press, until it is shown", async () => {
+    const panel = fieldPanel((input) => {
+      input.value = "Buy milk";
+      input.style.visibility = "hidden";
+    });
+    await settle(panel.portal);
+
+    assert.equal(panel.targets.size, 1, "only the blocker");
+    const run = panel.run();
+    assert.ok(run, "the run is built, and kept for when the field is shown");
+    assert.equal(run.visible, false);
+
+    panel.input.style.visibility = "";
+    await pump();
+
+    assert.equal(panel.targets.size, 2, "the field is pressable again");
+    assert.equal(run.visible, true);
+
+    panel.cleanup();
+  });
+
   test("draws the placeholder while the value is empty, dimmed", async () => {
     const panel = fieldPanel((input) => {
       input.placeholder = "Add a todo";

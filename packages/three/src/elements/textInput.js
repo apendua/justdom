@@ -518,6 +518,12 @@ function fieldContent(ctx, element, surface, focus) {
       obj.renderOrder = surface.contentRenderOrder();
       batch?.invalidate();
     }),
+    // Painted by the field, so hidden with it — out of the draw, the batch's
+    // walk and the raycast, all of which follow the flag.
+    effects((obj) => {
+      obj.visible = !surface.hidden();
+      batch?.invalidate();
+    }),
     effects(() => {
       if (!batch) {
         return;
@@ -558,6 +564,9 @@ function fieldContent(ctx, element, surface, focus) {
         const clip = toLocalClipBox(contentClip.get(), x, y);
         caretClipUniform.value.set(clip.left, clip.top, clip.right, clip.bottom);
         obj.renderOrder = surface.contentRenderOrder();
+      }),
+      effects((obj) => {
+        obj.visible = !surface.hidden();
       }),
     ]);
   };

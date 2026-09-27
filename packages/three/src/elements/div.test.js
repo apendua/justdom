@@ -172,6 +172,77 @@ describe("div interactivity", () => {
   });
 });
 
+describe("div visibility", () => {
+  /**
+   * The element's own quad, as opposed to the content group beside it.
+   *
+   * @param {THREE.Object3D} object
+   * @returns {THREE.Mesh}
+   */
+  function quadOf(object) {
+    const [mesh] = object.children.filter((child) => child instanceof THREE.Mesh);
+    assert.ok(mesh instanceof THREE.Mesh);
+    return mesh;
+  }
+
+  test("a hidden element draws no quad and is no ray target", () => {
+    const { object, registrations, subscription } = setup("pointer", "visibility: hidden");
+    assert.equal(quadOf(object).visible, false);
+    assert.deepEqual(registrations, []);
+    subscription.unsubscribe();
+  });
+
+  test("hiding keeps the object and its content group, which children answer for", () => {
+    const { object, subscription } = setup("default", "visibility: hidden");
+    // `visibility` is overridable by a descendant, so nothing that would prune
+    // the subtree — the object's own flag, the content group's — is touched.
+    assert.equal(object.visible, true);
+    for (const child of object.children) {
+      if (!(child instanceof THREE.Mesh)) {
+        assert.equal(child.visible, true);
+      }
+    }
+    subscription.unsubscribe();
+  });
+
+  test("visibility follows the stylesheet both ways", () => {
+    const { object, registrations, restyleWith, subscription } = setup("pointer");
+    assert.equal(quadOf(object).visible, true);
+    assert.deepEqual(registrations, ["add"]);
+
+    restyleWith("cursor: pointer; visibility: hidden");
+    assert.equal(quadOf(object).visible, false);
+    assert.deepEqual(registrations, ["add", "remove"]);
+
+    restyleWith("cursor: pointer; visibility: collapse");
+    assert.equal(quadOf(object).visible, false);
+    assert.deepEqual(registrations, ["add", "remove"]);
+
+    restyleWith("cursor: pointer; visibility: visible");
+    assert.equal(quadOf(object).visible, true);
+    assert.deepEqual(registrations, ["add", "remove", "add"]);
+
+    subscription.unsubscribe();
+  });
+
+  test("a hidden overlay covers nothing", () => {
+    const { registered, restyleWith, subscription } = setup(
+      "default",
+      "position: absolute; z-index: 1",
+    );
+    const [blocker] = registered;
+    assert.ok(blocker);
+    assert.equal(blocker.visible, true);
+
+    restyleWith("position: absolute; z-index: 1; visibility: hidden");
+    // Out of the raycast by its flag, which the manager's walk consults —
+    // and which an ancestor raycast as a subtree would consult too.
+    assert.equal(blocker.visible, false);
+
+    subscription.unsubscribe();
+  });
+});
+
 describe("div rendering", () => {
   test("the whole box is one quad: background and border ring share a mesh", () => {
     const { object, subscription } = setup(

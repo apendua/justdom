@@ -144,7 +144,7 @@ function makeTickGeometry(width, height, originX, originY) {
  * @param {BoxSurface} surface
  * @returns {import("@apendua/signal").Source<Component>}
  */
-function tick({ properties, contentRenderOrder, clipBox, clipMesh }) {
+function tick({ properties, contentRenderOrder, clipBox, clipMesh, hidden }) {
   // Created here rather than inline, because `clipMesh` wraps `raycast` and
   // has to do so exactly once — the same reason `div` builds its own quad
   // outside the operators that dress it.
@@ -201,6 +201,11 @@ function tick({ properties, contentRenderOrder, clipBox, clipMesh }) {
     effects(() => {
       const box = clipBox();
       clipUniform.value.set(box.left, box.top, box.right, box.bottom);
+    }),
+    // Painted by the checkbox, so hidden with it: a hidden control shows no
+    // tick, and offers none for a ray to land on.
+    effects((obj) => {
+      obj.visible = !hidden();
     }),
     effects((obj) => {
       place(obj, 0, 0, 1 - MARK_STEP);

@@ -202,8 +202,9 @@ async function main() {
       // stats.js is a div of small canvases; the scene is one big one.
       return Array.from(el.querySelectorAll("canvas")).some((c) => c.clientWidth > 400);
     };
+    // A portal hides itself; hiding it again would hide every panel in it.
     for (const el of document.body.children) {
-      if (!isScene(el)) {
+      if (!isScene(el) && !el.hasAttribute("data-xr-portal")) {
         el.style.visibility = "hidden";
       }
     }

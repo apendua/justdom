@@ -16,6 +16,7 @@ import {
   getParentElement,
   getScrollOffset,
   getTextLayout,
+  hidesVisibility,
 } from "./mirror.js";
 import { getContentRenderOrder } from "./elevation.js";
 import {
@@ -251,6 +252,16 @@ export function text(ctx, textNode) {
         }),
         effects((obj) => {
           place(obj, 0, 0, 0.01);
+          batchChanged();
+        }),
+        // Text is hidden by its parent's `visibility`, which is where its
+        // computed style comes from. On the mesh, which the renderer, the
+        // batch's walk and the raycast all consult; the run keeps its
+        // texture, so showing it again costs a flag and a batch rebuild.
+        // Read through `style`, whose per-key gate this run already pays
+        // for, rather than a per-node signal of its own.
+        effects((obj) => {
+          obj.visible = !hidesVisibility(style.visibility);
           batchChanged();
         }),
         // Spread in rather than written inline and returning early, because

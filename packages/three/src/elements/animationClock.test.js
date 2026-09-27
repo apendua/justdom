@@ -194,15 +194,17 @@ describe("animation clock", () => {
    * `getComputedStyle` as a browser answers it for `inherit`: the parent's
    * resolved value. jsdom hands the keyword back as written.
    *
+   * @param {(element: Element) => void} [onRead] told of every element read
    * @returns {() => void} the restore
    */
-  function resolveInherit() {
+  function resolveInherit(onRead) {
     const original = window.getComputedStyle;
     /**
      * @param {Element} element
      * @returns {{ getPropertyValue: (property: string) => string }}
      */
     const resolved = (element) => {
+      onRead?.(element);
       const style = original.call(window, element);
       return {
         /**
@@ -273,6 +275,67 @@ describe("animation clock", () => {
         emitted[0].map((batch) => [...batch.types]),
         [["animatedSelf"]],
       );
+    } finally {
+      restore();
+      cleanup();
+    }
+  });
+
+  test("children are read until a frame shows none of them inherits, and not after", () => {
+    // A child that inherits holds its parent's value on every frame, so one
+    // frame without a match settles it. The frames before are no proof: a
+    // card turning from `none` matches its children's `none` until it moves.
+    const { element, emitted, frames, cleanup } = setup();
+    let childReads = 0;
+    const child = document.createElement("div");
+    const restore = resolveInherit((read) => {
+      if (read === child) {
+        childReads += 1;
+      }
+    });
+    try {
+      element.appendChild(child);
+      element.dispatchEvent(syntheticEvent("transitionrun", { propertyName: "transform" }));
+
+      // Both unset: a coincidental match, and the safe answer is the subtree.
+      frames.step();
+      assert.deepEqual([...emitted[0][0].types], ["animated"]);
+      assert.equal(childReads, 1);
+
+      // The card has moved; its child has not.
+      element.style.transform = "matrix(0.996, 0.087, -0.087, 0.996, 0, 0)";
+      frames.step();
+      assert.deepEqual([...emitted[1][0].types], ["animatedSelf"]);
+      assert.equal(childReads, 2);
+
+      frames.step();
+      frames.step();
+      assert.deepEqual([...emitted[3][0].types], ["animatedSelf"]);
+      assert.equal(childReads, 2, "and the verdict is kept");
+    } finally {
+      restore();
+      cleanup();
+    }
+  });
+
+  test("a new animation on the element asks its children again", () => {
+    const { element, emitted, frames, cleanup } = setup();
+    const restore = resolveInherit();
+    try {
+      element.style.transform = "matrix(0.996, 0.087, -0.087, 0.996, 0, 0)";
+      element.style.opacity = "0.5";
+      const child = document.createElement("div");
+      child.style.opacity = "inherit";
+      element.appendChild(child);
+
+      element.dispatchEvent(syntheticEvent("transitionrun", { propertyName: "transform" }));
+      frames.step();
+      assert.deepEqual([...emitted[emitted.length - 1][0].types], ["animatedSelf"]);
+
+      // The child inherits opacity, which the kept verdict never compared.
+      element.dispatchEvent(syntheticEvent("transitionrun", { propertyName: "opacity" }));
+      frames.step();
+      assert.deepEqual([...emitted[emitted.length - 1][0].types], ["animated"]);
     } finally {
       restore();
       cleanup();

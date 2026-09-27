@@ -298,6 +298,65 @@ export function createAnimationClock(container, emit, requestFrames) {
    */
   const animating = new Map();
 
+  /**
+   * Elements whose children have been seen *not* to take what they animate
+   * — see `reachesChildren` — for as long as the same animations run.
+   *
+   * A child that inherits explicitly holds its parent's value on every
+   * frame, so a single frame on which no child matches proves none of them
+   * inherits, and the reads need not be repeated. The frames before it are
+   * not proof either way: a card turning from `none` matches its children's
+   * `none` until it has moved, which is why the verdict waits for a
+   * mismatch instead of being taken when the animation starts. Forgotten
+   * whenever the element's set of animations changes, since what is
+   * compared changes with it. A row appended mid-animation that inherits
+   * is missed until the settle, which checks afresh.
+   *
+   * @type {WeakSet<HTMLElement>}
+   */
+  const narrow = new WeakSet();
+
+  /**
+   * `reachesSubtree`, for a running animation: remembers the element once a
+   * frame has shown that no child inherits.
+   *
+   * @param {HTMLElement} element
+   * @param {Animated} animated
+   * @returns {boolean}
+   */
+  function reachesSubtreeWhileRunning(element, animated) {
+    if (animated.inherited) {
+      return true;
+    }
+    if (narrow.has(element)) {
+      return false;
+    }
+    if (reachesChildren(element, animated.properties)) {
+      return true;
+    }
+    narrow.add(element);
+    return false;
+  }
+
+  /**
+   * Whether two sets of running animations are the same ones.
+   *
+   * @param {Map<string, Animated> | undefined} a
+   * @param {Map<string, Animated>} b
+   * @returns {boolean}
+   */
+  function sameAnimations(a, b) {
+    if (!a || a.size !== b.size) {
+      return false;
+    }
+    for (const key of b.keys()) {
+      if (!a.has(key)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
   /** @type {(() => void) | null} */
   let stopFrames = null;
   let ticks = 0;
@@ -384,7 +443,7 @@ export function createAnimationClock(container, emit, requestFrames) {
     for (const [element, keys] of animating) {
       const animated = combine(keys.values());
       const { cls } = animated;
-      (reachesSubtree(element, animated) ? targets : selfTargets).add(element);
+      (reachesSubtreeWhileRunning(element, animated) ? targets : selfTargets).add(element);
       if (cls === "layout") {
         layout = true;
       }
@@ -427,6 +486,9 @@ export function createAnimationClock(container, emit, requestFrames) {
       keys = new Map();
       animating.set(element, keys);
     }
+    if (!keys.has(key)) {
+      narrow.delete(element);
+    }
     keys.set(key, animated);
     start();
   }
@@ -442,6 +504,7 @@ export function createAnimationClock(container, emit, requestFrames) {
       return;
     }
     keys.delete(key);
+    narrow.delete(element);
     if (!keys.size) {
       animating.delete(element);
     }
@@ -561,6 +624,14 @@ export function createAnimationClock(container, emit, requestFrames) {
       }
       finished.push([element, combine(keys.values())]);
     }
+    for (const [element, keys] of seen) {
+      if (!sameAnimations(animating.get(element), keys)) {
+        narrow.delete(element);
+      }
+    }
+    for (const [element] of finished) {
+      narrow.delete(element);
+    }
     animating.clear();
     for (const [element, keys] of seen) {
       animating.set(element, keys);
@@ -583,6 +654,7 @@ export function createAnimationClock(container, emit, requestFrames) {
     for (const element of [...animating.keys()]) {
       if (!container.contains(element)) {
         animating.delete(element);
+        narrow.delete(element);
       }
     }
     if (sampleRenderingUpdates()) {

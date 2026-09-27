@@ -652,7 +652,11 @@ export function createPortal(
    * attached on the spot, so that a row appearing and the rows it pushes
    * down arrive in the same frame — the channel holds the moves, so the
    * scene has to hold the arrivals. Only a pumped portal keeps this list;
-   * with no frames to slice across there is nothing to hold for.
+   * with no frames to slice across there is nothing to hold for. A portal
+   * that is not atomic makes no such promise once it has loaded: its moves
+   * already land by instalments, and it commits as soon as nothing is left
+   * to build (see `commitsEarly` in the pump), so a row can arrive a frame
+   * or more before the rows it pushes down have moved.
    *
    * Nodes, not parent-and-child pairs, because where a node belongs is
    * decided at the commit and not before: a node moved under a parent that
@@ -671,7 +675,9 @@ export function createPortal(
    * change, and what the player sees of the row until then is the row as
    * it was. Everything about the object waits — see `detach` for why the
    * whole of it has to. Checked again at the commit: a node back in the
-   * tree by then was moved, not removed, and keeps its object.
+   * tree by then was moved, not removed, and keeps its object. The same
+   * exception as above: a portal that is not atomic commits these without
+   * waiting for the rows that close over the gap.
    *
    * @type {Set<Node>}
    */
@@ -766,7 +772,10 @@ export function createPortal(
 
   /**
    * The moment the scene changes: the pump has swept the channel, so every
-   * box that moved has moved, and this is what goes with it. Arrivals
+   * box that moved has moved, and this is what goes with it. Except for a
+   * portal that is not atomic, once it has loaded: the pump commits it as
+   * soon as no node is left to build, with the channel still holding work,
+   * and the moves that go with an arrival follow by instalments. Arrivals
    * first, each still checked against the tree, since a node can leave
    * between being built and being placed; then the departures. In that
    * order so that an object moved out of a departing subtree is under its

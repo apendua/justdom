@@ -10,6 +10,9 @@ import {
 import { div, getContentGroup, PortalReadyContext } from "./div.js";
 import { text } from "./text.js";
 import { checkbox } from "./checkbox.js";
+import { InputFocusContext, textInput } from "./textInput.js";
+import { isTextInput } from "./typing.js";
+import { createPortalKeyboard, FOCUS_ATTRIBUTE } from "./portalKeyboard.js";
 import { createMirror, getBorderBoxSize, PORTAL_ATTRIBUTE } from "./mirror.js";
 import { createAnimationClock } from "./animationClock.js";
 import { watchDocumentStyles } from "./documentStyles.js";
@@ -31,7 +34,15 @@ import { InteractionContext } from "../interactions.js";
  * @import {MutationBatch} from './animationClock.js';
  * @import {LoadingFrameOptions} from './loadingFrame.js';
  * @import {PortalScheduler} from './portalScheduler.js';
+ * @import {PortalKeyboardOptions} from './portalKeyboard.js';
  */
+
+/**
+ * The panel's units per px: a centimetre a px, which is what `placeContainer`
+ * scales the container by and what anything hung beside the panel — the
+ * keyboard — has to work its px offsets through.
+ */
+const PANEL_SCALE = 0.01;
 
 /**
  * The portal a node was projected through, if it was.
@@ -150,6 +161,15 @@ function claimRoot(root) {
  *   a portal given one does not `mount()`: the page owns the content. Not
  *   given, the portal makes a hidden container of its own on the body, and
  *   `mount()` is how content reaches it.
+ * @property {PortalKeyboardOptions} [keyboard] A keyboard for the panel's
+ *   text fields. Without one a field is drawn — its box, its value or its
+ *   placeholder — but nothing in the scene can type into it; with one, a
+ *   press on a field brings the keyboard up below the panel, typing goes
+ *   into the field through the events a page's handlers already listen for,
+ *   and `Enter`, `Escape` or a press on the panel's background puts it
+ *   away. What the keyboard is made of is the app's: `create` hands back
+ *   its DOM for a field, wired to the `onKey` it is given. See
+ *   `PortalKeyboardOptions`.
  * @property {boolean} [opaqueToRays] Whether the panel stops rays that land on
  *   it. True by default, which is what any panel with something to press wants.
  *   False leaves the portal drawn but untouchable, for a readout the player
@@ -216,6 +236,7 @@ export function createPortal(
   ctx,
   {
     root,
+    keyboard,
     opaqueToRays = true,
     budget = 5,
     priority = 0,
@@ -224,6 +245,10 @@ export function createPortal(
     loadingFrame = true,
   } = {},
 ) {
+  // The context this panel was built from, before it derives its own below:
+  // what a panel this one builds — its keyboard — starts from, so that the
+  // two keep their batches apart.
+  const baseCtx = ctx;
   const containerObject = new THREE.Group();
 
   // Visible from the start, and not because there is anything to see. The
@@ -384,6 +409,9 @@ export function createPortal(
     // before there was anything listening here at all.
     blocker.addEventListener("select", () => {
       containerElement.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      // A press beside the fields is a press away from them: the keyboard
+      // goes, as a phone's does when you tap outside the field.
+      portalKeyboard?.dismiss();
     });
   }
 
@@ -564,6 +592,28 @@ export function createPortal(
   const projectChanges = (fn) => withChannel(channel, () => batch(fn));
 
   /**
+   * The keyboard this panel offers its fields, if it was given one: what a
+   * field asks about being pressed and being typed into, and the board that
+   * comes up below the panel to do the typing. Fields find it through the
+   * context; without one they get the default, which answers that nothing
+   * is focused and takes no press.
+   */
+  const portalKeyboard = keyboard
+    ? createPortalKeyboard({
+        ctx: baseCtx,
+        options: keyboard,
+        containerObject,
+        containerElement,
+        scale: PANEL_SCALE,
+        placeEffect: (fn, name) => withChannel(channel, () => new Effect(fn, { name })),
+        createPortal,
+      })
+    : null;
+  if (portalKeyboard) {
+    ctx = InputFocusContext.set(ctx, portalKeyboard.focus);
+  }
+
+  /**
    * Take down everything the portal made for a node and for everything under
    * it: the subscription that keeps each object in step with its element,
    * and with it the object's place in the raycast set.
@@ -589,6 +639,7 @@ export function createPortal(
    * @param {Node} node
    */
   function cleanup(node) {
+    portalKeyboard?.released(node);
     const object = nodeToObject.get(node);
     if (object) {
       const cleanupFn = objectToCleanup.get(object);
@@ -637,10 +688,16 @@ export function createPortal(
       switch (element.tagName.toLowerCase()) {
         case "input": {
           const input = /** @type {HTMLInputElement} */ (element);
-          // Only the checkbox so far. Every other kind of input is a box with
-          // chrome inside it that the DOM does not describe — a caret, a
-          // slider's thumb, a stepper's arrows — and a box is what `div` draws.
-          object$ = input.type === "checkbox" ? checkbox(ctx, input) : div(ctx, element);
+          // The checkbox, and the fields that hold a line of text. Every
+          // other kind of input is a box with chrome inside it that the DOM
+          // does not describe — a slider's thumb, a stepper's arrows, a
+          // colour swatch — and a box is what `div` draws.
+          object$ =
+            input.type === "checkbox"
+              ? checkbox(ctx, input)
+              : isTextInput(input)
+                ? textInput(ctx, input)
+                : div(ctx, element);
           break;
         }
         default: {
@@ -1022,7 +1079,7 @@ export function createPortal(
    * @returns {void}
    */
   function placeContainer(width, height) {
-    const scale = 0.01;
+    const scale = PANEL_SCALE;
     const sizeX = scale * width;
     const sizeY = scale * height;
     // The rotation is written first and committed by `placeAndScale` with
@@ -1171,13 +1228,19 @@ export function createPortal(
     // it, and it is a reflected attribute, so watching it catches the property
     // assignment as well as setAttribute. Without it a control disabled after
     // mounting would stay pointable until something else happened to restyle.
+    // `value` and `placeholder` are for the text field, whose drawn text
+    // follows both; the `value` property, which the attribute stops
+    // reflecting once anything has been typed, is followed another way.
     attributeFilter: [
       "data-xr-hover",
       "data-xr-active",
       "data-xr-checked",
+      FOCUS_ATTRIBUTE,
       "disabled",
       "class",
       "style",
+      "value",
+      "placeholder",
     ],
     characterData: true,
   });
@@ -1378,6 +1441,9 @@ export function createPortal(
   }
 
   objectToCleanup.set(containerObject, () => {
+    // First: the board is a panel of its own hanging off this one's parent,
+    // and it comes down before the parent is left.
+    portalKeyboard?.dispose();
     pump?.dispose();
     // A panel closed before it finished mounting still had a frame up.
     stopLoadingFrame();
@@ -1471,6 +1537,15 @@ export function createPortal(
      */
     isLoading() {
       return loading.get();
+    },
+    /**
+     * How big the panel is, in its px: its container's border box, which
+     * is what `placeContainer` centres it by. Reactive, through the mirror's
+     * own measurement, so a scene placing something beside the panel — as
+     * the portal's keyboard is placed below it — follows the panel's size.
+     */
+    size() {
+      return getBorderBoxSize(containerElement);
     },
   };
 }

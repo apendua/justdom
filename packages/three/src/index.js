@@ -32,6 +32,7 @@ export {
   applyLevelPose,
 } from "./carry.js";
 export { createPortal, getPortalRoot } from "./elements/portal.js";
+export { isTextInput, typeIntoInput } from "./elements/typing.js";
 export { makeReveal, solveCut } from "./elements/reveal.js";
 export {
   createFrameShareBudget,
@@ -80,6 +81,18 @@ export { installCrashPanel, CRASH_PANEL_ID } from "./crash.js";
 
 /**
  * @typedef {import('./elements/portal.js').PortalOptions} PortalOptions
+ */
+
+/**
+ * @typedef {import('./elements/portalKeyboard.js').PortalKeyboardOptions} PortalKeyboardOptions
+ */
+
+/**
+ * @typedef {import('./elements/portalKeyboard.js').KeyboardTarget} KeyboardTarget
+ */
+
+/**
+ * @typedef {import('./elements/typing.js').KeyPress} KeyPress
  */
 
 /**

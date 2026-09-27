@@ -540,6 +540,29 @@ function getMeasuringContext() {
 }
 
 /**
+ * What one line of text would measure in this style, for a run the browser
+ * laid out nowhere — an `<input>`'s value, which is not a text node and has
+ * no line boxes to read back. The width is the canvas's, kerned the way
+ * `drawText` will draw it, so what is measured here is what is painted.
+ *
+ * @param {string} text
+ * @param {TextRenderStyle} style
+ * @returns {{ width: number, ascent: number, descent: number }}
+ */
+export function measureTextRun(text, style) {
+  const context = getMeasuringContext();
+  context.font = style.font;
+  const ascent = measureFontExtent("Mg", context, style.fontSize * 0.8, "Ascent");
+  const descent = measureFontExtent("Mg", context, style.fontSize * 0.2, "Descent");
+  const drawn = applyTextTransform(text, style.textTransform);
+  return {
+    width: measureTextWidth(context, drawn, style.letterSpacing, style.wordSpacing),
+    ascent,
+    descent,
+  };
+}
+
+/**
  * @typedef {object} DrawnLine
  * @property {string} text
  * @property {number} left

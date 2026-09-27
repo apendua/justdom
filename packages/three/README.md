@@ -732,9 +732,71 @@ does the toggling and fires `change`, and an application reads `checked` and
 listens for `change` exactly as it would on a page — including
 `set("checked", …)` from the other direction, which the scene follows.
 
-Every other kind of `<input>` is still drawn as a plain box: a text field's
-caret, a range's thumb and a number's steppers are chrome the DOM does not
-describe, and there is nothing honest to mirror.
+Every other kind of `<input>` is still drawn as a plain box: a range's thumb,
+a colour swatch and a file picker's button are chrome the DOM does not
+describe, and there is nothing honest to mirror. The text fields are the
+other exception, and have a section of their own.
+
+## Text fields and the keyboard
+
+`<input type="text">`, and the other types that hold a line of text
+(`search`, `url`, `tel`, `email`, `password`, `number`), are drawn as what
+they are: a box with the value in it, or the placeholder while the value is
+empty, in the colour the page gives placeholders. A field is a ray target
+without asking, like a checkbox, and a disabled one is not.
+
+The value is not a text node, so the observer never hears it change. The
+portal follows it two other ways: through the `input` and `change` events a
+keystroke dispatches, and through the `value` property itself, which is what
+an app writes to clear a field after a submit. The property is intercepted
+on the element for as long as the portal watches it — an own accessor over
+the prototype's, taken off again with the portal — so that
+`input.value = ""` is followed without the app knowing a mirror exists. A
+`value` or `placeholder` attribute rewritten from outside is followed too.
+
+Drawing a field is half of it. Typing into one needs a keyboard, and there
+is nothing in a headset to type with: the system's keyboard is the
+compositor's and never reaches the panel. What reaches it is a board of
+ordinary boxes, mirrored by a portal of its own; `keyboard(props)` in
+[`@apendua/justui`](../justui) is one. This package has no keyboard and
+does not depend on one, so what a panel takes is a factory:
+
+```js
+import { keyboard } from "@apendua/justui";
+
+dom(ctx, hud, [set({ position })], {
+  keyboard: {
+    create: ({ onKey }) => keyboard({ classes, onKey }),
+  },
+});
+```
+
+`create` is called with the field when the field is pressed, and hands back
+the board's DOM — a justdom tree, or anything with the `Mountable` shape —
+wired to the `onKey` it is given. The portal does the rest, the same way for
+every panel: the board comes up below the panel, reclined toward the hands
+like a phone on a stand (`gap` and `tilt` tune where); a press on a key goes
+into the field through `typeIntoInput`, which is exported too — the
+character goes in at the caret, backspace takes one out, and `keydown`,
+`input` and `keyup` are dispatched in a browser's order, so an app that
+listens for `input` or for `keydown` of `Enter` on a page hears the same
+thing in the scene. `Enter` asks the field's form to submit, if it is in
+one. While the board is up the field carries `data-xr-focus`, a
+presentational flag like `data-xr-hover` for a stylesheet to draw a focus
+ring with, and a caret at the end of the text. The board goes on `Enter`,
+on `Escape`, on a press on the panel's background, when the field leaves
+the document, and with the panel; `dismiss` on the target closes it for any
+other reason a board might have.
+
+Without a keyboard a field is drawn and pressed like any box, and nothing
+in the scene can type into it — which is what a panel with a read-only
+readout in an `<input>` wants.
+
+Two things a text field does not do. It draws no selection: the caret is
+the end of the entry, where a tap on a phone puts it, and the mirror moves
+the value under it when the value outgrows the field. And it does not
+blink, since a blink is an animation the panel would pay for at frame rate
+to say what the board's presence says already.
 
 ## Transforms
 
@@ -1166,7 +1228,7 @@ answer, which is the right answer there, because the panel *is* the page.
 This package drives several full apps in this monorepo —
 [`apps/rubik`](../../apps/rubik), [`apps/blockout-xr`](../../apps/blockout-xr),
 [`apps/marblerun`](../../apps/marblerun),
-[`apps/todo-xr`](../../apps/todo-xr) — worth reading for realistic scenes
+[`apps/todo-vanilla`](../../apps/todo-vanilla) — worth reading for realistic scenes
 combining lighting, keyed lists (`list`/`keyedList`), controller/hand input,
 and DOM panels projected into 3D space.
 [`apps/showcase-xr`](../../apps/showcase-xr) is the sampler: four panels in a

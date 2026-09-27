@@ -132,7 +132,12 @@ export const PORTAL_ATTRIBUTE = "data-xr-portal";
  * own, and an inline width or a swapped class is exactly how a panel does
  * move its layout on purpose.
  */
-const PRESENTATIONAL_ATTRIBUTES = new Set(["data-xr-hover", "data-xr-active", "data-xr-checked"]);
+const PRESENTATIONAL_ATTRIBUTES = new Set([
+  "data-xr-hover",
+  "data-xr-active",
+  "data-xr-checked",
+  "data-xr-focus",
+]);
 
 /**
  * Of those, the ones that may only style the element they match and its
@@ -163,8 +168,13 @@ const PRESENTATIONAL_ATTRIBUTES = new Set(["data-xr-hover", "data-xr-active", "d
  * completed item, and mirroring `:checked` faithfully is the whole reason
  * `data-xr-checked` exists. Charging it the same narrowness as hover would be
  * cost without benefit.
+ *
+ * `data-xr-focus` is here with hover, though it is written at a press's
+ * frequency rather than a hover's, because what a focus ring styles is the
+ * field: `:focus` on a page reaches no sibling either, and `:focus-within`,
+ * which does, reaches upward, where no mutation here is followed anyway.
  */
-const SELF_SCOPED_ATTRIBUTES = new Set(["data-xr-hover", "data-xr-active"]);
+const SELF_SCOPED_ATTRIBUTES = new Set(["data-xr-hover", "data-xr-active", "data-xr-focus"]);
 
 /**
  * Whether a computed `transform` value is one the mirror treats as a

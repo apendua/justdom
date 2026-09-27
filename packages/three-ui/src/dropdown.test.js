@@ -184,4 +184,47 @@ describe("dropdown", () => {
 
     cleanup();
   });
+
+  test("a menu open when its element becomes a panel is scoped to the panel from then on", () => {
+    // The page mounted this dropdown long before any session: a flat app
+    // that adds an immersive session mirrors the element it already shows,
+    // and the portal marks that element `data-xr-portal` when it takes it
+    // and unmarks it when it lets go. The mark here is set by hand for
+    // exactly that reason — it is the whole of what the widget looks at, so
+    // the test is about the widget's answer and not the portal's machinery.
+    const { root, cleanup } = mount(
+      dropdown({ options: OPTIONS, classes, selected: () => "a", onSelect: () => {} }),
+    );
+    const panel = /** @type {HTMLElement} */ (root.parentElement);
+    const elsewhere = document.createElement("div");
+    document.body.appendChild(elsewhere);
+
+    click(trigger(root));
+    assert.ok(menu(root), "open, on a page with no panel anywhere");
+
+    // The session begins: the element the menu is in is now a panel.
+    panel.setAttribute("data-xr-portal", "");
+
+    // The emulator's click, on the page around the scene. Had the menu kept
+    // the scope it opened with — the document — this would have closed it
+    // from under the ray reaching for it.
+    click(elsewhere);
+    assert.ok(menu(root), "a click on the page around the panel is not elsewhere");
+
+    // The panel's own background, which is what a ray landing beside the menu
+    // reports.
+    click(panel);
+    assert.equal(menu(root), null, "a click on the panel is");
+
+    // The session ends with the menu open again: the mark comes off, and the
+    // page's clicks count once more.
+    click(trigger(root));
+    assert.ok(menu(root), "open again");
+    panel.removeAttribute("data-xr-portal");
+    click(elsewhere);
+    assert.equal(menu(root), null, "a click on the page shuts it once the panel is gone");
+
+    elsewhere.remove();
+    cleanup();
+  });
 });

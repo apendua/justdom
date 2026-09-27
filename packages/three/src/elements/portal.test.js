@@ -23,145 +23,17 @@ const createPortal = (ctx, options = {}) =>
     ...options,
   });
 import { createPortalScheduler, PortalSchedulerContext } from "./portalScheduler.js";
-
-// jsdom-env exposes the common DOM globals, but not MutationObserver, which
-// the portal uses to mirror the tree.
-if (typeof globalThis.MutationObserver === "undefined") {
-  globalThis.MutationObserver = window.MutationObserver;
-}
-
-// jsdom has no FontFaceSet; VisualProperties consults it for x-height, and
-// one test below closes a loading period by hand, so the stub keeps real
-// listeners rather than swallowing them.
-/** @type {Map<string, Set<(event: unknown) => void>>} */
-const fontListeners = new Map();
-if (!document.fonts) {
-  Object.defineProperty(document, "fonts", {
-    value: {
-      status: "loaded",
-      ready: Promise.resolve(),
-      /**
-       * @param {string} event
-       * @param {(event: unknown) => void} handler
-       */
-      addEventListener(event, handler) {
-        let handlers = fontListeners.get(event);
-        if (!handlers) {
-          handlers = new Set();
-          fontListeners.set(event, handlers);
-        }
-        handlers.add(handler);
-      },
-      /**
-       * @param {string} event
-       * @param {(event: unknown) => void} handler
-       */
-      removeEventListener(event, handler) {
-        fontListeners.get(event)?.delete(handler);
-      },
-    },
-  });
-}
-
-/**
- * Stand in for the browser closing a font-loading period.
- *
- * @param {string} event
- * @returns {void}
- */
-function dispatchFontsEvent(event) {
-  for (const handler of [...(fontListeners.get(event) ?? [])]) {
-    handler({ type: event });
-  }
-}
-
-// jsdom runs no animation frames, and the portal borrows them for the parts
-// of itself that sample rather than listen. A queue flushed by hand is both a
-// frame source and a clock the tests can stop, which is what lets one of them
-// look at the gap between an event arriving and the frame that answers it.
-/** @type {Array<FrameRequestCallback>} */
-const frameCallbacks = [];
-globalThis.requestAnimationFrame = (callback) => frameCallbacks.push(callback);
-globalThis.cancelAnimationFrame = () => {};
-
-/**
- * @returns {void}
- */
-function flushFrame() {
-  for (const callback of frameCallbacks.splice(0, frameCallbacks.length)) {
-    callback(0);
-  }
-}
-
-/**
- * @returns {Promise<void>}
- */
-function nextMacrotask() {
-  return new Promise((resolve) => {
-    setTimeout(resolve, 0);
-  });
-}
-
-/**
- * Drive frames and microtasks until the portal has projected everything.
- * Mounting is sliced across frames — the observer's flush queues work and
- * the portal's pump spends a budget of each frame on it — so a test that
- * mounts and then asserts must first stand in for the frame loop. Bounded,
- * so a portal that never settles fails its test instead of hanging it.
- *
- * @param {{ isLoading: () => boolean }} portal
- * @returns {Promise<void>}
- */
-async function settle(portal) {
-  await nextMacrotask();
-  for (let index = 0; index < 500 && portal.isLoading(); index++) {
-    flushFrame();
-    await nextMacrotask();
-  }
-  // The load transition queues one more round of its own — ray-target
-  // registrations are gated on the panel being ready, and re-evaluate,
-  // through the same budgeted channel, the moment it becomes so — and a
-  // frame with work left queues its successor. Drain until a frame queues
-  // nothing, so a test starts from a genuinely quiet panel and no live pump
-  // entry leaks into its counting.
-  for (let index = 0; index < 20 && frameCallbacks.length > 0; index++) {
-    flushFrame();
-    await nextMacrotask();
-  }
-}
-
-/**
- * Let a change made after the initial mount reach the scene: changes queue
- * in the portal's channel and drain at the top of a frame, so the frame has
- * to happen. Two rounds, because the first frame's work can queue a second's
- * — a restyle that flips what is registered, say.
- *
- * @returns {Promise<void>}
- */
-async function pump() {
-  await nextMacrotask();
-  for (let index = 0; index < 20 && frameCallbacks.length > 0; index++) {
-    flushFrame();
-    await nextMacrotask();
-  }
-}
-
-/**
- * `pump`, for a change the panel resolves one effect per frame: at a zero
- * budget a moved row queues a couple of dozen effects and the channel warms
- * exactly one of them a frame, which is more frames than `pump` allows.
- * Bounded like `settle`, so a panel that never settles fails rather than
- * hangs.
- *
- * @returns {Promise<void>}
- */
-async function drain() {
-  await nextMacrotask();
-  for (let index = 0; index < 500 && frameCallbacks.length > 0; index++) {
-    flushFrame();
-    await nextMacrotask();
-  }
-}
+import {
+  countingManager,
+  dispatchFontsEvent,
+  drain,
+  flushFrame,
+  frameCallbacks,
+  nextMacrotask,
+  pageCard,
+  pump,
+  settle,
+} from "../test/portalHarness.js";
 
 describe("createPortal", () => {
   test("only clickable elements become ray targets, plus one blocker plane", async () => {
@@ -2683,6 +2555,260 @@ describe("the order a mount is built in", () => {
       portal.disconnect();
     } finally {
       probe.restore();
+    }
+  });
+});
+
+describe("mirroring an element the page owns", () => {
+  test("what the element already holds is the initial content, and the element is left as it was", async () => {
+    const { ctx, targets } = countingManager();
+    const { root, button } = pageCard();
+
+    const portal = createPortal(ctx, { root });
+    const parent = new THREE.Group();
+    portal.addTo(parent);
+
+    // Claimed on the spot: the mark the mirror walks up to is there before a
+    // single frame has run. The first look at the content follows a
+    // microtask later, when an observer's flush would have, and the loading
+    // flag a harness waits on goes up with it.
+    assert.ok(root.hasAttribute("data-xr-portal"), "the element is the top of the panel");
+    assert.equal(portal.isLoading(), true);
+    await nextMacrotask();
+    assert.ok(root.hasAttribute(LOADING_ATTRIBUTE), "content already there is a mount under way");
+
+    await settle(portal);
+
+    assert.equal(portal.isLoading(), false, "the content it held was mounted");
+    assert.equal(root.hasAttribute(LOADING_ATTRIBUTE), false);
+    assert.equal(targets.size, 2, "one blocker and the one clickable child");
+    assert.equal(getPortalRoot(button), root, "the element is what the panel's scope is");
+
+    // Nothing about the element itself was touched: not where it is, not how
+    // it is styled — a page that is showing it goes on showing it.
+    assert.equal(root.parentNode, document.body);
+    assert.equal(root.style.visibility, "");
+    assert.equal(root.style.position, "");
+    assert.equal(root.style.overflow, "");
+
+    portal.disconnect();
+
+    assert.equal(root.isConnected, true, "the element is the page's and stays");
+    assert.equal(root.hasAttribute("data-xr-portal"), false, "the mark comes off");
+    assert.equal(root.hasAttribute(LOADING_ATTRIBUTE), false);
+    assert.equal(targets.size, 0, "nothing is left in the raycast set");
+    root.remove();
+  });
+
+  test("what the page does to the element afterwards is followed", async () => {
+    const { ctx, targets } = countingManager();
+    const { root, button } = pageCard();
+    const portal = createPortal(ctx, { root });
+    portal.addTo(new THREE.Group());
+    await settle(portal);
+    assert.equal(targets.size, 2);
+
+    // A control arriving: the observer's business, exactly as for a mounted
+    // tree.
+    const another = document.createElement("div");
+    another.style.cursor = "pointer";
+    root.appendChild(another);
+    await drain();
+    assert.equal(targets.size, 3, "the new control is a ray target");
+
+    // And one leaving.
+    root.removeChild(button);
+    await drain();
+    assert.equal(targets.size, 2, "the removed control is not");
+
+    portal.disconnect();
+    root.remove();
+  });
+
+  test("an empty element waits for its first child, like an empty container", async () => {
+    const { ctx, targets } = countingManager();
+    const root = document.createElement("div");
+    document.body.appendChild(root);
+    const portal = createPortal(ctx, { root });
+    portal.addTo(new THREE.Group());
+
+    // Given nothing, it is on its way nowhere: no loading flag for a harness
+    // to wait on, and no blocker over whatever is behind it.
+    assert.equal(root.hasAttribute(LOADING_ATTRIBUTE), false);
+    await settle(portal);
+    assert.equal(portal.isLoading(), true, "nothing arrived, nothing loaded");
+    assert.equal(targets.size, 0);
+
+    const button = document.createElement("div");
+    button.style.cursor = "pointer";
+    root.appendChild(button);
+    await settle(portal);
+    assert.equal(portal.isLoading(), false, "the first child was the initial content");
+    assert.equal(targets.size, 2);
+
+    portal.disconnect();
+    root.remove();
+  });
+
+  test("the portal's own flags come off the page's elements with it", async () => {
+    const { ctx } = countingManager();
+    const { root, button } = pageCard();
+    const portal = createPortal(ctx, { root });
+    portal.addTo(new THREE.Group());
+    await settle(portal);
+
+    // What a ray resting on the button when the session ends leaves behind.
+    button.dataset.xrHover = "true";
+    button.dataset.xrActive = "true";
+    portal.disconnect();
+
+    assert.equal(button.hasAttribute("data-xr-hover"), false, "no hover styling left on the page");
+    assert.equal(button.hasAttribute("data-xr-active"), false);
+    root.remove();
+  });
+
+  test("it does not mount: the content is the page's", async () => {
+    const { ctx } = countingManager();
+    const { root } = pageCard();
+    const portal = createPortal(ctx, { root });
+    portal.addTo(new THREE.Group());
+
+    /** @type {import("@apendua/justdom").Mountable | undefined} */
+    let mountable;
+    const subscription = $("div").subscribe((value) => {
+      mountable = value;
+    });
+    assert.ok(mountable);
+    const tree = mountable;
+    assert.throws(() => portal.mount(tree), /does not mount/);
+    assert.equal(root.childNodes.length, 2, "nothing was put in or taken out");
+
+    subscription.unsubscribe();
+    portal.disconnect();
+    root.remove();
+  });
+
+  test("an element it cannot honestly mirror is refused", async () => {
+    const { ctx } = countingManager();
+
+    // Not in the document: no layout to read, and its arrival would be a
+    // mutation of a parent nobody is watching.
+    const detached = document.createElement("div");
+    assert.throws(() => createPortal(ctx, { root: detached }), /in the document/);
+
+    // Already somebody's panel.
+    const { root } = pageCard();
+    const portal = createPortal(ctx, { root });
+    assert.throws(() => createPortal(ctx, { root }), /already being mirrored/);
+
+    // Inside a panel: every walk would stop at the inner mark and the outer
+    // panel would lose the subtree without knowing.
+    const inner = document.createElement("div");
+    root.appendChild(inner);
+    assert.throws(() => createPortal(ctx, { root: inner }), /inside a panel/);
+
+    // Holding a panel, the same problem from above.
+    const wrapper = document.createElement("div");
+    document.body.appendChild(wrapper);
+    wrapper.appendChild(root);
+    assert.throws(() => createPortal(ctx, { root: wrapper }), /panel inside it/);
+
+    // None of the refusals left a mark of its own.
+    assert.equal(detached.hasAttribute("data-xr-portal"), false);
+    assert.equal(inner.hasAttribute("data-xr-portal"), false);
+    assert.equal(wrapper.hasAttribute("data-xr-portal"), false);
+
+    portal.disconnect();
+    // A released element can be claimed again.
+    const again = createPortal(ctx, { root: wrapper });
+    assert.ok(wrapper.hasAttribute("data-xr-portal"));
+    again.disconnect();
+    wrapper.remove();
+  });
+});
+
+describe("an element the page owns, claimed a second time", () => {
+  test("is tracked by the second portal as it was by the first", async () => {
+    // The case the feature is for: a session over the page, then another.
+    // The mirror's caches are module-level and keyed by node, so a node the
+    // first portal adopted would otherwise still carry the first mirror's
+    // signals under it, and the second portal's fonts and stylesheets would
+    // reach nothing — an empty second session with no error to say why.
+    const { ctx } = countingManager();
+    const { root, label } = pageCard();
+
+    const first = createPortal(ctx, { root });
+    first.addTo(new THREE.Group());
+    await settle(first);
+    first.disconnect();
+
+    const second = createPortal(ctx, { root });
+    second.addTo(new THREE.Group());
+    await settle(second);
+
+    // Fonts arriving re-measure every box in the panel; count the label's.
+    let measured = 0;
+    const original = label.getBoundingClientRect.bind(label);
+    label.getBoundingClientRect = () => {
+      measured += 1;
+      return original();
+    };
+    dispatchFontsEvent("loadingdone");
+    await drain();
+    assert.ok(measured > 0, "the second panel re-measured on the second mirror's signal");
+
+    second.disconnect();
+    root.remove();
+  });
+
+  test("a claim that fails leaves no mark", () => {
+    // Without an interaction manager on the context the portal cannot be
+    // built. The refusal has to come before the element is marked, or the
+    // page would carry a mark with no portal to take it off — and every
+    // later claim, the right one included, would be refused as a second.
+    const { root } = pageCard();
+    assert.throws(() => createPortal({}, { root }), /InteractionContext/);
+    assert.equal(root.hasAttribute("data-xr-portal"), false);
+
+    // And the element can still be claimed by a portal that can be built.
+    const { ctx } = countingManager();
+    const portal = createPortal(ctx, { root });
+    assert.ok(root.hasAttribute("data-xr-portal"));
+    portal.disconnect();
+    root.remove();
+  });
+
+  test("the first look waits a microtask, so the handle is in hand when it reports", async () => {
+    // Where there are no frames the whole mount is synchronous, and a first
+    // look taken during construction would report the load — through
+    // `onLoadingChanged(false)` — to a caller not yet holding the portal.
+    const { ctx } = countingManager();
+    const { root } = pageCard();
+    // No frames at all, which is the path that mounts synchronously: the
+    // harness's queue stands in for `requestAnimationFrame`, so it goes.
+    const raf = globalThis.requestAnimationFrame;
+    // @ts-expect-error -- taking the global away for one test.
+    delete globalThis.requestAnimationFrame;
+    try {
+      /** @type {ReturnType<typeof createPortal> | undefined} */
+      let portal;
+      /** @type {boolean[]} */
+      const heard = [];
+      portal = createPortal(ctx, {
+        root,
+        onLoadingChanged: (loading) => {
+          heard.push(loading);
+          assert.ok(portal, "the handle exists by the time the panel reports");
+        },
+      });
+      portal.addTo(new THREE.Group());
+      assert.deepEqual(heard, [], "nothing reported during construction");
+      await nextMacrotask();
+      assert.deepEqual(heard, [false], "reported once the first look ran");
+      portal.disconnect();
+    } finally {
+      globalThis.requestAnimationFrame = raf;
+      root.remove();
     }
   });
 });

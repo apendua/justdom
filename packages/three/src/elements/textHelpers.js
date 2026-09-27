@@ -540,6 +540,79 @@ function getMeasuringContext() {
 }
 
 /**
+ * How every mark drawn on a panel's surface — a run of text, a field's
+ * value, its caret — is blended and depth-tested. One recipe, here, because
+ * a mark drawn one way and its neighbour another is a mark that z-fights
+ * differently from an angle.
+ *
+ * Two-sided, because the container's half turn faces every plane away from
+ * the viewer. One pass: the back pass three adds for a two-sided transparent
+ * material orders a closed shape's own surfaces, and a quad has only the one
+ * — the pass would be a second draw and, the expensive half, a second
+ * program invalidation per mark per frame. No depth write: an antialiased
+ * edge pixel that wrote depth would keep out whatever renders after it, and
+ * with the draw order a panel uses nothing that belongs in front of text
+ * renders before it. But still depth-tested against the box it sits on, one
+ * local pixel behind — a fraction of a millimetre in the room once a panel
+ * is scaled down, which a headset's depth buffer cannot always tell from
+ * the box itself, so seen from an angle the glyphs would lose the test pixel
+ * by pixel and sink into the surface. The polygon offset pulls the mark
+ * toward the viewer by a couple of units and a slope, which is what a decal
+ * is drawn with, and costs nothing anywhere else: nothing in front of text
+ * is anywhere near that close.
+ *
+ * Spread into a `ShaderMaterial` as readily as into a `MeshBasicMaterial`;
+ * `createMarkMaterial` is the latter.
+ */
+export const MARK_MATERIAL_SETTINGS = Object.freeze({
+  side: THREE.DoubleSide,
+  forceSinglePass: true,
+  transparent: true,
+  depthWrite: false,
+  polygonOffset: true,
+  polygonOffsetFactor: -2,
+  polygonOffsetUnits: -4,
+});
+
+/**
+ * A material to draw one mark with, on `MARK_MATERIAL_SETTINGS`: white, to be
+ * tinted by the caller, and discarding the fully transparent texels a mask's
+ * ground leaves.
+ *
+ * @returns {THREE.MeshBasicMaterial}
+ */
+export function createMarkMaterial() {
+  return new THREE.MeshBasicMaterial({
+    ...MARK_MATERIAL_SETTINGS,
+    alphaTest: 0.001,
+    color: "white",
+  });
+}
+
+/**
+ * What one line of text would measure in this style, for a run the browser
+ * laid out nowhere — an `<input>`'s value, which is not a text node and has
+ * no line boxes to read back. The width is the canvas's, kerned the way
+ * `drawText` will draw it, so what is measured here is what is painted.
+ *
+ * @param {string} text
+ * @param {TextRenderStyle} style
+ * @returns {{ width: number, ascent: number, descent: number }}
+ */
+export function measureTextRun(text, style) {
+  const context = getMeasuringContext();
+  context.font = style.font;
+  const ascent = measureFontExtent("Mg", context, style.fontSize * 0.8, "Ascent");
+  const descent = measureFontExtent("Mg", context, style.fontSize * 0.2, "Descent");
+  const drawn = applyTextTransform(text, style.textTransform);
+  return {
+    width: measureTextWidth(context, drawn, style.letterSpacing, style.wordSpacing),
+    ascent,
+    descent,
+  };
+}
+
+/**
  * @typedef {object} DrawnLine
  * @property {string} text
  * @property {number} left

@@ -1,8 +1,18 @@
 import * as THREE from "three";
-import { batch, Effect, Signal, UpdateChannel, withChannel } from "@apendua/signal";
+import {
+  batch,
+  Effect,
+  Signal,
+  UpdateChannel,
+  withChannel,
+  withComputation,
+} from "@apendua/signal";
 import { div, getContentGroup, PortalReadyContext } from "./div.js";
 import { text } from "./text.js";
 import { checkbox } from "./checkbox.js";
+import { InputFocusContext, textInput } from "./textInput.js";
+import { isTextInput } from "./typing.js";
+import { createPortalKeyboard, FOCUS_ATTRIBUTE } from "./portalKeyboard.js";
 import { createMirror, getBorderBoxSize, PORTAL_ATTRIBUTE } from "./mirror.js";
 import { createAnimationClock } from "./animationClock.js";
 import { watchDocumentStyles } from "./documentStyles.js";
@@ -24,7 +34,15 @@ import { InteractionContext } from "../interactions.js";
  * @import {MutationBatch} from './animationClock.js';
  * @import {LoadingFrameOptions} from './loadingFrame.js';
  * @import {PortalScheduler} from './portalScheduler.js';
+ * @import {PortalKeyboardOptions} from './portalKeyboard.js';
  */
+
+/**
+ * The panel's units per px: a centimetre a px, which is what `placeContainer`
+ * scales the container by and what anything hung beside the panel — the
+ * keyboard — has to work its px offsets through.
+ */
+const PANEL_SCALE = 0.01;
 
 /**
  * The portal a node was projected through, if it was.
@@ -64,7 +82,94 @@ export function getPortalRoot(node) {
 export const LOADING_ATTRIBUTE = "data-xr-loading";
 
 /**
+ * The portal's own container: a hidden element on the body for a mounted
+ * tree to live in, marked as the top of a panel.
+ *
+ * @returns {HTMLElement}
+ */
+function createContainerElement() {
+  const containerElement = document.createElement("div");
+  containerElement.setAttribute(PORTAL_ATTRIBUTE, "");
+  containerElement.style.position = "absolute";
+  containerElement.style.top = "0";
+  containerElement.style.left = "0";
+  containerElement.style.visibility = "hidden";
+  // Hidden, but not out of flow enough on its own: a descendant wider or
+  // taller than the panel — an unbreakable string, a fixed-size image — is
+  // ordinarily left to bleed past this container's own box, and with nothing
+  // between it and `<html>` clipping that overflow, it is the page itself
+  // that grows a scrollbar for a panel nobody can see. Clipping here keeps
+  // that overflow this container's problem instead of the document's.
+  containerElement.style.overflow = "hidden";
+  document.body.appendChild(containerElement);
+  return containerElement;
+}
+
+/**
+ * Take an element the page owns as the top of a panel: mark it, and nothing
+ * else — its styles, its place in the document and what it holds are the
+ * page's. The checks are for the three ways the mark can lie. Every walk in
+ * the mirror climbs to the nearest element carrying it and stops, so a
+ * panel inside a panel is a mirror that never reaches the outer one's top,
+ * and an element two portals watch is two mirrors each crediting the other's
+ * work to itself; and an element outside the document has no layout to
+ * mirror, and its arrival in the document later is a mutation of its new
+ * parent, which no observer of the element itself will hear.
+ *
+ * @param {HTMLElement} root
+ * @returns {HTMLElement}
+ */
+function claimRoot(root) {
+  if (!root.isConnected) {
+    throw new Error("A portal can only mirror an element that is in the document.");
+  }
+  if (root.hasAttribute(PORTAL_ATTRIBUTE)) {
+    throw new Error("This element is already being mirrored by a portal.");
+  }
+  if (root.parentElement?.closest(`[${PORTAL_ATTRIBUTE}]`)) {
+    throw new Error(
+      "A portal cannot mirror an element inside a panel; it is already part of that panel.",
+    );
+  }
+  if (root.querySelector(`[${PORTAL_ATTRIBUTE}]`)) {
+    throw new Error(
+      "A portal cannot mirror an element with a panel inside it; mirror the two separately.",
+    );
+  }
+  root.setAttribute(PORTAL_ATTRIBUTE, "");
+  return root;
+}
+
+/**
  * @typedef {object} PortalOptions
+ * @property {HTMLElement} [root] An element the page already has, to be
+ *   mirrored where it stands instead of content mounted into a container of
+ *   the portal's own. For an app that delivers a flat interface first and an
+ *   immersive session as an extra: the DOM the page is showing is the DOM
+ *   the scene shows, with nothing built twice, and a press on the mirrored
+ *   button is a click on the real one. The element plays exactly the part
+ *   the portal's own container plays — it is the panel's frame, what is
+ *   drawn is what is inside it, its border box is the panel's size, it is
+ *   what `getPortalRoot` finds and what the background click is dispatched
+ *   on — so its own background and border are not mirrored; a panel that
+ *   wants a card puts the card inside. Whatever it holds at the time is
+ *   projected, and whatever changes in it afterwards is followed, the same
+ *   observer either way. The portal marks it `data-xr-portal` while it
+ *   watches and takes the mark off when disconnected, leaving the element
+ *   where it was; it never restyles it, moves it or removes it. It has to be
+ *   in the document, and neither inside another panel nor holding one, and
+ *   a portal given one does not `mount()`: the page owns the content. Not
+ *   given, the portal makes a hidden container of its own on the body, and
+ *   `mount()` is how content reaches it.
+ * @property {PortalKeyboardOptions} [keyboard] A keyboard for the panel's
+ *   text fields. Without one a field is drawn — its box, its value or its
+ *   placeholder — but nothing in the scene can type into it; with one, a
+ *   press on a field brings the keyboard up below the panel, typing goes
+ *   into the field through the events a page's handlers already listen for,
+ *   and `Enter`, `Escape` or a press on the panel's background puts it
+ *   away. What the keyboard is made of is the app's: `create` hands back
+ *   its DOM for a field, wired to the `onKey` it is given. See
+ *   `PortalKeyboardOptions`.
  * @property {boolean} [opaqueToRays] Whether the panel stops rays that land on
  *   it. True by default, which is what any panel with something to press wants.
  *   False leaves the portal drawn but untouchable, for a readout the player
@@ -127,9 +232,26 @@ export const LOADING_ATTRIBUTE = "data-xr-loading";
  * @param {WeakKey} ctx
  * @param {PortalOptions} [options]
  */
-export function createPortal(
+export function createPortal(ctx, options) {
+  // Outside whatever computation is calling. `dom()` builds portals from
+  // inside its mounting's effect, and a signal read anywhere in here — the
+  // resize effect's first run, a first look at content the page already
+  // holds — would otherwise be that effect's dependency: the panel loading
+  // would re-run the mounting, which would take the panel down and build it
+  // again, forever. Untracked here rather than at each call site, so that
+  // the next caller, and the next read someone adds below, is safe too.
+  return withComputation(null, () => buildPortal(ctx, options));
+}
+
+/**
+ * @param {WeakKey} ctx
+ * @param {PortalOptions} [options]
+ */
+function buildPortal(
   ctx,
   {
+    root,
+    keyboard,
     opaqueToRays = true,
     budget = 5,
     priority = 0,
@@ -138,6 +260,16 @@ export function createPortal(
     loadingFrame = true,
   } = {},
 ) {
+  // First, before anything is marked or made: the one thing here that a
+  // caller can get wrong synchronously, and a throw after the element had
+  // been claimed would leave the page carrying a mark with no portal to
+  // take it off — refusing every later claim, the right one included.
+  const interactionManager = InteractionContext.get(ctx);
+
+  // The context this panel was built from, before it derives its own below:
+  // what a panel this one builds — its keyboard — starts from, so that the
+  // two keep their batches apart.
+  const baseCtx = ctx;
   const containerObject = new THREE.Group();
 
   // Visible from the start, and not because there is anything to see. The
@@ -257,26 +389,15 @@ export function createPortal(
   const mirror = createMirror();
 
   // The DOM root everything this portal projects lives under, and the root
-  // of the object tree it is projected into.
-  const containerElement = document.createElement("div");
-  containerElement.setAttribute(PORTAL_ATTRIBUTE, "");
-  containerElement.style.position = "absolute";
-  containerElement.style.top = "0";
-  containerElement.style.left = "0";
-  containerElement.style.visibility = "hidden";
-  // Hidden, but not out of flow enough on its own: a descendant wider or
-  // taller than the panel — an unbreakable string, a fixed-size image — is
-  // ordinarily left to bleed past this container's own box, and with nothing
-  // between it and `<html>` clipping that overflow, it is the page itself
-  // that grows a scrollbar for a panel nobody can see. Clipping here keeps
-  // that overflow this container's problem instead of the document's.
-  containerElement.style.overflow = "hidden";
-  document.body.appendChild(containerElement);
+  // of the object tree it is projected into. The portal's own unless the
+  // caller handed one over — an element the page already has, watched where
+  // it stands — and the same thing to everything below either way: the
+  // attribute is what the mirror walks up to, and nothing here asks who put
+  // it there.
+  const containerElement = root ? claimRoot(root) : createContainerElement();
   mirror.adopt(containerElement);
   nodeToObject.set(containerElement, containerObject);
   objectToNode.set(containerObject, containerElement);
-
-  const interactionManager = InteractionContext.get(ctx);
 
   // With only clickable elements as ray targets (see div.js), the portal
   // still has to be opaque to rays as a whole — a panel should block the
@@ -307,6 +428,9 @@ export function createPortal(
     // before there was anything listening here at all.
     blocker.addEventListener("select", () => {
       containerElement.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      // A press beside the fields is a press away from them: the keyboard
+      // goes, as a phone's does when you tap outside the field.
+      portalKeyboard?.dismiss();
     });
   }
 
@@ -487,6 +611,28 @@ export function createPortal(
   const projectChanges = (fn) => withChannel(channel, () => batch(fn));
 
   /**
+   * The keyboard this panel offers its fields, if it was given one: what a
+   * field asks about being pressed and being typed into, and the board that
+   * comes up below the panel to do the typing. Fields find it through the
+   * context; without one they get the default, which answers that nothing
+   * is focused and takes no press.
+   */
+  const portalKeyboard = keyboard
+    ? createPortalKeyboard({
+        ctx: baseCtx,
+        options: keyboard,
+        containerObject,
+        containerElement,
+        scale: PANEL_SCALE,
+        placeEffect: (fn, name) => withChannel(channel, () => new Effect(fn, { name })),
+        createPortal,
+      })
+    : null;
+  if (portalKeyboard) {
+    ctx = InputFocusContext.set(ctx, portalKeyboard.focus);
+  }
+
+  /**
    * Take down everything the portal made for a node and for everything under
    * it: the subscription that keeps each object in step with its element,
    * and with it the object's place in the raycast set.
@@ -512,6 +658,7 @@ export function createPortal(
    * @param {Node} node
    */
   function cleanup(node) {
+    portalKeyboard?.released(node);
     const object = nodeToObject.get(node);
     if (object) {
       const cleanupFn = objectToCleanup.get(object);
@@ -540,6 +687,11 @@ export function createPortal(
     node.childNodes.forEach((childNode) => {
       cleanup(childNode);
     });
+    // Forgotten as well as taken down: the mirror's caches outlive the
+    // portal, and a node kept in them keeps this mirror's signals under it.
+    // The element the page owns is the one that comes back — see
+    // `forgetNode` in mirror.js.
+    mirror.release(node);
   }
 
   /**
@@ -560,10 +712,16 @@ export function createPortal(
       switch (element.tagName.toLowerCase()) {
         case "input": {
           const input = /** @type {HTMLInputElement} */ (element);
-          // Only the checkbox so far. Every other kind of input is a box with
-          // chrome inside it that the DOM does not describe — a caret, a
-          // slider's thumb, a stepper's arrows — and a box is what `div` draws.
-          object$ = input.type === "checkbox" ? checkbox(ctx, input) : div(ctx, element);
+          // The checkbox, and the fields that hold a line of text. Every
+          // other kind of input is a box with chrome inside it that the DOM
+          // does not describe — a slider's thumb, a stepper's arrows, a
+          // colour swatch — and a box is what `div` draws.
+          object$ =
+            input.type === "checkbox"
+              ? checkbox(ctx, input)
+              : isTextInput(input)
+                ? textInput(ctx, input)
+                : div(ctx, element);
           break;
         }
         default: {
@@ -945,7 +1103,7 @@ export function createPortal(
    * @returns {void}
    */
   function placeContainer(width, height) {
-    const scale = 0.01;
+    const scale = PANEL_SCALE;
     const sizeX = scale * width;
     const sizeY = scale * height;
     // The rotation is written first and committed by `placeAndScale` with
@@ -1041,6 +1199,15 @@ export function createPortal(
         });
       }
     });
+    contentChanged();
+  };
+
+  /**
+   * What follows any change to the panel's content, once it has been routed
+   * into the mirror and the object tree: an observer flush, or the first
+   * look at an element the page handed over with content already in it.
+   */
+  const contentChanged = () => {
     // A class swap is how most transitions begin, and inside an immersive
     // session the mutation is the only trace of one that reaches us: the
     // events that would announce it are dispatched with the rendering
@@ -1085,13 +1252,19 @@ export function createPortal(
     // it, and it is a reflected attribute, so watching it catches the property
     // assignment as well as setAttribute. Without it a control disabled after
     // mounting would stay pointable until something else happened to restyle.
+    // `value` and `placeholder` are for the text field, whose drawn text
+    // follows both; the `value` property, which the attribute stops
+    // reflecting once anything has been typed, is followed another way.
     attributeFilter: [
       "data-xr-hover",
       "data-xr-active",
       "data-xr-checked",
+      FOCUS_ATTRIBUTE,
       "disabled",
       "class",
       "style",
+      "value",
+      "placeholder",
     ],
     characterData: true,
   });
@@ -1258,7 +1431,81 @@ export function createPortal(
     });
   });
 
+  // An element the page handed over may already have content in it, and no
+  // observer is going to report what was there before it started watching.
+  // Taken as the initial content, by the path a mounted tree's first flush
+  // takes: queued for the pump where there are frames, built on the spot
+  // where there are none, and everything that follows a flush follows this.
+  // An empty one is a panel given nothing to mount, and is left to the
+  // observer exactly like the portal's own container — the first child to
+  // arrive is the initial content then.
+  //
+  // In a microtask, which is when an observer's flush would have run: the
+  // caller holds the handle by then, so what the first look sets off —
+  // `onLoadingChanged(false)`, where there are no frames to slice across
+  // and the whole mount is synchronous — never reaches a caller that has
+  // not been handed the portal yet. A child the page adds or takes away in
+  // between is fine either way: the observer reports it too, and both the
+  // queue and the object map are idempotent. A portal disconnected in
+  // between has nothing to look at.
+  //
+  // And should the look itself fail, the panel goes down with it, mark
+  // included: the mark was written before the content was ever read, and a
+  // page left carrying one with no portal behind it is refused every later
+  // claim, the right one included.
+  if (root) {
+    queueMicrotask(() => {
+      if (released || !containerElement.firstChild) {
+        return;
+      }
+      try {
+        projectChanges(() => {
+          sawContent = true;
+          for (let node = containerElement.firstChild; node; node = node.nextSibling) {
+            if (pump) {
+              pump.enqueue(node);
+            } else if (getOrCreateObjectForNode(node)) {
+              attach(node);
+            }
+          }
+        });
+        contentChanged();
+      } catch (err) {
+        disconnect();
+        throw err;
+      }
+    });
+  }
+
+  /**
+   * Whether `disconnect` has run. The first look above checks it, and a
+   * second `disconnect` is a no-op rather than a second walk.
+   */
+  let released = false;
+
+  /**
+   * Take the panel down: everything under the element, then, for an element
+   * the page owns, the portal's marks — after the walk, not before it, since
+   * the teardowns it runs still look up the tree for the top of the panel.
+   * What is left on the element afterwards is the page's own, the hover and
+   * press flags included, which each element's teardown clears for itself.
+   */
+  function disconnect() {
+    if (released) {
+      return;
+    }
+    released = true;
+    cleanup(containerElement);
+    if (root) {
+      containerElement.removeAttribute(PORTAL_ATTRIBUTE);
+      containerElement.removeAttribute(LOADING_ATTRIBUTE);
+    }
+  }
+
   objectToCleanup.set(containerObject, () => {
+    // First: the board is a panel of its own hanging off this one's parent,
+    // and it comes down before the parent is left.
+    portalKeyboard?.dispose();
     pump?.dispose();
     // A panel closed before it finished mounting still had a frame up.
     stopLoadingFrame();
@@ -1278,7 +1525,10 @@ export function createPortal(
       // Removing is safe whether `markLoaded` ever added it.
       interactionManager.remove(blocker);
     }
-    if (containerElement.parentNode) {
+    // The portal's own container goes with it. One the page handed over is
+    // the page's, and stays exactly where it is; `disconnect` takes the
+    // portal's marks off it once everything under it is cleaned up.
+    if (!root && containerElement.parentNode) {
       containerElement.parentNode.removeChild(containerElement);
     }
     if (containerObject.parent) {
@@ -1309,9 +1559,20 @@ export function createPortal(
       parent.add(containerObject);
     },
     /**
+     * Put a tree into the portal's own container, in place of whatever it
+     * held. Not for a portal watching an element the page owns: what that
+     * element holds is the page's to decide, and replacing it from here
+     * would be the portal taking over content it was only asked to watch.
+     *
      * @param {Mountable} mountable
      */
     mount(mountable) {
+      if (root) {
+        throw new Error(
+          "This portal mirrors an element the page owns and does not mount into it; " +
+            "put the content in the element and the portal will follow it.",
+        );
+      }
       if (containerElement.firstChild && containerElement.lastChild) {
         mountable.replace([containerElement.firstChild, containerElement.lastChild]);
       } else {
@@ -1320,9 +1581,7 @@ export function createPortal(
         mountable.replace([placeholder, placeholder]);
       }
     },
-    disconnect() {
-      cleanup(containerElement);
-    },
+    disconnect,
     /**
      * Whether the panel is still mounting its initial content. Reactive: a
      * computation that reads it re-runs when the answer changes, which it
@@ -1330,6 +1589,15 @@ export function createPortal(
      */
     isLoading() {
       return loading.get();
+    },
+    /**
+     * How big the panel is, in its px: its container's border box, which
+     * is what `placeContainer` centres it by. Reactive, through the mirror's
+     * own measurement, so a scene placing something beside the panel — as
+     * the portal's keyboard is placed below it — follows the panel's size.
+     */
+    size() {
+      return getBorderBoxSize(containerElement);
     },
   };
 }

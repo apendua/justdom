@@ -308,6 +308,67 @@ A justdom tree satisfies it, because the two declarations are the same shape
 and TypeScript compares them structurally; so does anything else that builds
 real DOM nodes and knows how to hand them over.
 
+### Mirroring DOM the page already has
+
+A mountable is for a panel that exists only in the scene. An app that
+delivers a flat interface first, and an immersive session as something
+extra, already has its DOM — laid out, styled, wired to its state — and has
+no reason to build it a second time for the headset. `dom()` takes an
+element as well as a tree, and mirrors it where it stands:
+
+```js
+const hud = document.getElementById("hud");
+
+dom(ctx, hud, [set({ position })]);
+```
+
+Nothing about the element changes hands. It stays in the document, where the
+page put it, with the styles the page gave it; the portal watches it with the
+same observer it watches its own container with, so whatever the element
+holds when the portal is built is the initial content and whatever the page
+does to it afterwards — a row arriving, a class swapped, a transition
+started, a list scrolled — is followed. A press on the mirrored button is a
+click dispatched on the real one, so the handlers the page already has are
+the handlers the scene uses, and the hover and press flags the portal writes
+are taken off again with the portal. When the session ends the page is as it
+was.
+
+The element plays exactly the part the portal's own container plays, and the
+one thing to know follows from that: **it is the panel's frame, and what is
+drawn is what is inside it.** Its border box is the panel's size — a panel
+centred on its origin, a centimetre a px, as ever — and it is what
+`getPortalRoot` finds and what the background click lands on, but its own
+background and border are not mirrored. A card wants to be the element's
+child, not the element:
+
+```html
+<div id="hud">
+  <div class="card">…</div>
+</div>
+```
+
+which is where a page's mount point usually leaves things anyway. The
+element has to be in the document, and the portal refuses one that is not,
+one that is already a panel, one inside a panel and one with a panel inside
+it, since every walk the mirror makes climbs to the nearest panel top and
+stops. A portal built over such an element does not `mount()`: the page owns
+the content.
+
+**And the element has to stay laid out.** The mirror reads the browser's
+layout, so an element with none has nothing to give it: `display: none`, or
+taking the element out of the document, measures every box at nothing, and
+the panel is an empty frame with no error to say why. A page that wants its
+own view of the element out of the way while a session runs hides it with
+`visibility: hidden`, which keeps the layout and is what the portal's own
+container has always been, or covers it — the todo app puts the renderer's
+canvas over the page for exactly as long as a session is presenting.
+
+Which element is up to the app, and it can change: `dom()` takes a
+subscribable of elements as readily as one of trees, and each emission is a
+fresh portal with the previous one taken down and its element released.
+`createPortal(ctx, { root: element })` is the same thing without the group,
+for a scene that drives portals by hand.
+
 Two things about a portal are worth knowing before writing UI for one.
 
 **Sizes are re-measured when the tree changes, not when an attribute does.**
@@ -417,20 +478,32 @@ spanning the container, which dispatches a bubbling `click` on the portal's
 root element. That is what "clicked outside" means to a menu that wants to
 close itself; there is no other way for the tree inside to learn it happened.
 
-Listen for it on the panel rather than on the document, via
-`getPortalRoot(node)`:
+Count only the panel's own clicks as elsewhere, via `getPortalRoot(node)`,
+and ask it when the click arrives rather than when the listener goes up:
 
 ```js
-const scope = getPortalRoot(root) ?? document;
-scope.addEventListener("click", onClickElsewhere);
+document.addEventListener("click", (event) => {
+  if (root.contains(event.target)) return; // inside
+  const panel = getPortalRoot(root);
+  if (panel && !panel.contains(event.target)) return; // the page, not the panel
+  close();
+});
 ```
 
-A `document` listener also hears every real mouse click on the page around the
-scene — the VR button, and in development an emulator whose every control is a
-mouse click. A menu listening there closes itself the moment you reach for the
-control that was going to choose from it, which looks exactly like the ray
-having no effect. `getPortalRoot` returns null off a portal, where `document`
-is the right answer and there is nothing to disambiguate.
+Every real mouse click on the page around the scene — the VR button, and in
+development an emulator whose every control is a mouse click — also reaches
+the document. A menu that counted those would close itself the moment you
+reach for the control that was going to choose from it, which looks exactly
+like the ray having no effect. `getPortalRoot` returns null off a portal,
+where the whole page is the right scope and there is nothing to disambiguate.
+
+Asked per click, because which panel a node is in can change while a
+listener is up. A portal that mirrors an element the page already shows (see
+above) marks that element when it takes it and unmarks it when it lets go,
+so a menu that resolved its scope once, when it opened, would keep the wrong
+one across either moment: closed by the emulator's click once the session
+begins, or deaf to the page's clicks once it ends. The `dropdown` and
+`scrollable` widgets in [`@apendua/justui`](../justui) do it this way.
 
 A panel with nothing to press can say so and stop stopping rays:
 
@@ -668,9 +741,81 @@ does the toggling and fires `change`, and an application reads `checked` and
 listens for `change` exactly as it would on a page — including
 `set("checked", …)` from the other direction, which the scene follows.
 
-Every other kind of `<input>` is still drawn as a plain box: a text field's
-caret, a range's thumb and a number's steppers are chrome the DOM does not
-describe, and there is nothing honest to mirror.
+Every other kind of `<input>` is still drawn as a plain box: a range's thumb,
+a colour swatch and a file picker's button are chrome the DOM does not
+describe, and there is nothing honest to mirror. The text fields are the
+other exception, and have a section of their own.
+
+## Text fields and the keyboard
+
+`<input type="text">`, and the other types that hold a line of text
+(`search`, `url`, `tel`, `email`, `password`, `number`), are drawn as what
+they are: a box with the value in it, or the placeholder while the value is
+empty, in the colour the page gives placeholders. A field is a ray target
+without asking, like a checkbox, and a disabled one is not.
+
+The value is not a text node, so the observer never hears it change. The
+portal follows it two other ways: through the `input` and `change` events a
+keystroke dispatches, and through the `value` property itself, which is what
+an app writes to clear a field after a submit. The property is intercepted
+on the element for as long as the portal watches it — an own accessor over
+the prototype's, taken off again with the portal — so that
+`input.value = ""` is followed without the app knowing a mirror exists. A
+`value` or `placeholder` attribute rewritten from outside is followed too.
+
+Drawing a field is half of it. Typing into one needs a keyboard, and there
+is nothing in a headset to type with: the system's keyboard is the
+compositor's and never reaches the panel. What reaches it is a board of
+ordinary boxes, mirrored by a portal of its own; `keyboard(props)` in
+[`@apendua/justui`](../justui) is one. This package has no keyboard and
+does not depend on one, so what a panel takes is a factory:
+
+```js
+import { keyboard } from "@apendua/justui";
+
+dom(ctx, hud, [set({ position })], {
+  keyboard: {
+    create: ({ onKey }) => keyboard({ classes, onKey }),
+  },
+});
+```
+
+`create` is called with the field when the field is pressed, and hands back
+the board's DOM — a justdom tree, or anything with the `Mountable` shape —
+wired to the `onKey` it is given. The portal does the rest, the same way for
+every panel: the board comes up below the panel, reclined toward the hands
+like a phone on a stand (`gap` and `tilt` tune where); a press on a key goes
+into the field through `typeIntoInput`, which is exported too — the
+character goes in at the caret, backspace takes one out, and `keydown`,
+`input` and `keyup` are dispatched in a browser's order, so an app that
+listens for `input` or for `keydown` of `Enter` on a page hears the same
+thing in the scene. `Enter` asks the field's form to submit, if it is in
+one. While the board is up the field carries `data-xr-focus`, a
+presentational flag like `data-xr-hover` for a stylesheet to draw a focus
+ring with, and a caret at the end of the text. The board goes on `Enter`,
+on `Escape`, on a press on the panel's background, when the field leaves
+the document, and with the panel; `dismiss` on the target closes it for any
+other reason a board might have.
+
+Without a keyboard a field is drawn and pressed like any box, and nothing
+in the scene can type into it — which is what a panel with a read-only
+readout in an `<input>` wants.
+
+Two things a text field does not do. It draws no selection: the caret is
+the end of the entry, where a tap on a phone puts it, and the mirror moves
+the value under it when the value outgrows the field. And it does not
+blink, since a blink is an animation the panel would pay for at frame rate
+to say what the board's presence says already.
+
+A number field is typed the way a page types one. Its value is sanitized:
+`1.` on the way to `1.5` is not a number, so `value` reads `""` while the
+browser's own editor goes on showing `1.`. A script cannot reach that
+editor, so the field keeps a draft of what was typed, the keyboard edits
+the draft, and the mirror draws it. `input` is dispatched for every key,
+the ones that leave `value` empty included, which is what a page sees too.
+A letter never gets in, since a page's number field filters it before
+anything else happens. The draft goes when the app writes the value, `""`
+after a submit included.
 
 ## Transforms
 
@@ -1102,7 +1247,7 @@ answer, which is the right answer there, because the panel *is* the page.
 This package drives several full apps in this monorepo —
 [`apps/rubik`](../../apps/rubik), [`apps/blockout-xr`](../../apps/blockout-xr),
 [`apps/marblerun`](../../apps/marblerun),
-[`apps/todo-xr`](../../apps/todo-xr) — worth reading for realistic scenes
+[`apps/todo-vanilla`](../../apps/todo-vanilla) — worth reading for realistic scenes
 combining lighting, keyed lists (`list`/`keyedList`), controller/hand input,
 and DOM panels projected into 3D space.
 [`apps/showcase-xr`](../../apps/showcase-xr) is the sampler: four panels in a

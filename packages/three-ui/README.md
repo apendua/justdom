@@ -71,7 +71,9 @@ The menu is mounted and unmounted rather than hidden, because a portal
 re-measures on a tree change and only restyles on an attribute one, and it
 closes on a click anywhere else in the panel — scoped to the panel through
 `getPortalRoot`, so the mouse click that is busy pressing the trigger on the
-page behind does not also close it.
+page behind does not also close it. The panel is looked up per click, not
+once when the menu opens, so a menu that is open when a portal takes the
+element it lives in, or lets it go, is scoped correctly on the next click.
 
 `options` may be a getter, for a list that changes under the player — devices
 coming and going, a document being edited — and the open menu follows it.
@@ -310,8 +312,9 @@ every key by ray — the argument for the whole package, checked.
 
 ## Real examples
 
-[`apps/todo-xr`](../../apps/todo-xr) types into a panel with the keyboard and
-scrolls its list with `scrollable`; [`apps/rubik`](../../apps/rubik),
+[`apps/todo-vanilla`](../../apps/todo-vanilla) scrolls its list with
+`scrollable` on the page and in the headset alike, and dresses the keyboard
+freedom's portal offers its text field; [`apps/rubik`](../../apps/rubik),
 [`apps/castle-xr`](../../apps/castle-xr),
 [`apps/marblerun`](../../apps/marblerun) and the rest of the headset apps pick
 an audio output with the dropdown and carry the diagnostics button in their own

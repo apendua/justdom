@@ -155,6 +155,12 @@ function isClickable(element) {
  *   else belongs inside the box, on top of its background — the tick in a
  *   checkbox, and nothing at all for an element whose contents are its own
  *   child nodes.
+ * @property {() => void} [onPress] Told when a ray's press on this box has
+ *   been delivered to the element as a click — for a control that has to do
+ *   something the DOM will not do for it, such as a text field asking for a
+ *   keyboard. After the click, so whatever the click's own handlers did is
+ *   done by then; and only for a press that was a press, not the start of a
+ *   scroll.
  */
 
 /**
@@ -171,7 +177,7 @@ function isClickable(element) {
  * @returns {import("@apendua/signal").Source<THREE.Object3D>}
  */
 export function box(ctx, element, options = {}) {
-  const { clickable: isRayTarget = isClickable, content = () => [] } = options;
+  const { clickable: isRayTarget = isClickable, content = () => [], onPress } = options;
   /** @type {THREE.Object3D<XREventMap>} */
   const object = new THREE.Object3D();
   const properties = new VisualProperties();
@@ -382,6 +388,7 @@ export function box(ctx, element, options = {}) {
         bubbles: true,
       });
       element.dispatchEvent(event);
+      onPress?.();
       stopPropagation(e);
     }),
     on("selectstart", (e) => {

@@ -116,8 +116,49 @@ describe("animation clock", () => {
       frames.step();
       const [batches] = emitted;
       assert.equal(batches.length, 1);
+      // Of the element alone: a background is not inherited, so nothing
+      // under the element can have moved with it.
+      assert.deepEqual([...batches[0].types], ["animatedSelf"]);
+      assert.deepEqual([...(batches[0].targets ?? [])], [element]);
+    } finally {
+      cleanup();
+    }
+  });
+
+  test("an inherited paint transition re-reads the subtree's styles", () => {
+    const { element, emitted, frames, cleanup } = setup();
+    try {
+      element.dispatchEvent(syntheticEvent("transitionrun", { propertyName: "color" }));
+      frames.step();
+      const [batches] = emitted;
+      assert.equal(batches.length, 1);
       assert.deepEqual([...batches[0].types], ["animated"]);
       assert.deepEqual([...(batches[0].targets ?? [])], [element]);
+    } finally {
+      cleanup();
+    }
+  });
+
+  test("one inherited property among an element's animations widens it to the subtree", () => {
+    const { element, emitted, frames, cleanup } = setup();
+    try {
+      element.dispatchEvent(syntheticEvent("transitionrun", { propertyName: "transform" }));
+      element.dispatchEvent(syntheticEvent("transitionrun", { propertyName: "color" }));
+      frames.step();
+      const [batches] = emitted;
+      assert.deepEqual(
+        batches.map((batch) => [...batch.types]),
+        [["animated"]],
+      );
+
+      // The colour lands and the transform runs on: the element alone again.
+      element.dispatchEvent(syntheticEvent("transitionend", { propertyName: "color" }));
+      frames.step();
+      const ticked = emitted[emitted.length - 1];
+      assert.deepEqual(
+        ticked.map((batch) => [...batch.types]),
+        [["animatedSelf"]],
+      );
     } finally {
       cleanup();
     }
@@ -131,9 +172,11 @@ describe("animation clock", () => {
       // Mid-flight, nothing consumes the transformed client rects: elements
       // measure off layout offsets and text measures with transforms
       // switched off. Only the style sample goes out.
+      // And the style sample is of the element alone: a transform is not
+      // inherited, so a card turning restyles the card and nothing on it.
       const [ticked] = emitted;
       assert.equal(ticked.length, 1);
-      assert.deepEqual([...ticked[0].types], ["animated"]);
+      assert.deepEqual([...ticked[0].types], ["animatedSelf"]);
 
       // The end is different: the element returns to the client-rect path,
       // and whatever its subtree cached mid-flight is stale.

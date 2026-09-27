@@ -1006,6 +1006,75 @@ describe("createPortal", () => {
     portal.disconnect();
   });
 
+  test("a portal that is not atomic changes by instalments, something every frame", async () => {
+    // The trade the option is for. An atomic panel under an update that
+    // lands on every frame — a layout transition — re-reads everything each
+    // frame, and when that does not fit the budget it does not move until
+    // the animation ends. Not atomic, the budget runs effects rather than
+    // resolving for them: the rows change a few at a time, as they did
+    // before there were atomic channels, and the first of them changes in
+    // the first frame.
+    const manager = new InteractionManager();
+    const ctx = InteractionContext.set({}, manager);
+    const portal = createPortal(ctx, { budget: 0, atomic: false });
+    const parent = new THREE.Group();
+    portal.addTo(parent);
+    const containerObject = parent.children[0];
+
+    const color = Signal.of("rgb(0, 2, 3)");
+    const rowClass = className`
+      background-color: ${toObservable(color)};
+    `;
+    /** @type {import("@apendua/justdom").Mountable | undefined} */
+    let mountable;
+    const tree = $("div", [
+      children(...Array.from({ length: 4 }, () => $("div", [attr("class", rowClass)]))),
+    ]);
+    const subscription = tree.subscribe((value) => {
+      mountable = value;
+    });
+    assert.ok(mountable);
+    portal.mount(mountable);
+    await settle(portal);
+
+    /** How many boxes the batch is drawing red; see the test above. */
+    const red = () => {
+      let count = 0;
+      for (const child of containerObject.children) {
+        if (!(child instanceof THREE.InstancedMesh)) {
+          continue;
+        }
+        const fill = child.geometry.getAttribute("aFillColor");
+        for (let index = 0; index < child.count; index++) {
+          if (fill.getX(index) === 1) {
+            count += 1;
+          }
+        }
+      }
+      return count;
+    };
+    assert.equal(red(), 0);
+
+    color.set("rgb(255, 2, 3)");
+    await nextMacrotask();
+    /** @type {number[]} */
+    const seen = [];
+    while (seen.length < 200 && red() < 4) {
+      flushFrame();
+      await nextMacrotask();
+      seen.push(red());
+    }
+    assert.equal(red(), 4, "every row, in the end");
+    assert.ok(
+      seen.some((count) => count > 0 && count < 4),
+      `and some rows before the rest: ${seen.join(", ")}`,
+    );
+
+    await pump();
+    subscription.unsubscribe();
+    portal.disconnect();
+  });
+
   test("a row leaving waits for the same frame as the rows that close over it", async () => {
     // Removing is a change like any other: the row goes and its neighbours
     // move up, and the two have to land together. The object stays in the

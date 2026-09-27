@@ -68,12 +68,17 @@ const Scene = effectsOnly((ctx: WeakKey) => {
           o.position.set(0, 0, -0.65);
         }),
         children(
-          dom(ctx, ButtonsPanel(ctx), [
-            effects((obj) => {
-              obj.position.set(-column, row, depth);
-              obj.rotation.set(0, yaw, 0);
-            }),
-          ]),
+          dom(
+            ctx,
+            ButtonsPanel(ctx),
+            [
+              effects((obj) => {
+                obj.position.set(-column, row, depth);
+                obj.rotation.set(0, yaw, 0);
+              }),
+            ],
+            { atomic: false },
+          ),
           dom(ctx, ImagesPanel(ctx), [
             effects((obj) => {
               obj.position.set(column, row, depth);
@@ -86,12 +91,17 @@ const Scene = effectsOnly((ctx: WeakKey) => {
               obj.rotation.set(0, yaw, 0);
             }),
           ]),
-          dom(ctx, BoxesPanel(ctx), [
-            effects((obj) => {
-              obj.position.set(column, -row, depth);
-              obj.rotation.set(0, -yaw, 0);
-            }),
-          ]),
+          dom(
+            ctx,
+            BoxesPanel(ctx),
+            [
+              effects((obj) => {
+                obj.position.set(column, -row, depth);
+                obj.rotation.set(0, -yaw, 0);
+              }),
+            ],
+            { atomic: false },
+          ),
         ),
       ]),
       cursors(ctx, { color: "#ff0000" }),

@@ -102,7 +102,10 @@ export function createPortalPump({
    * The scene changes once per update, not once per frame. The channel is
    * atomic, so what a frame's slice buys is *reading* — measurements
    * resolved, text rasterized — and the effects that write the scene run
-   * together, in the frame that finds nothing left to read. And while nodes
+   * together, in the frame that finds nothing left to read. (A portal built
+   * with `atomic: false` has a channel that runs its effects under the
+   * budget instead, and then the scene changes by instalments; nothing here
+   * needs to know which.) And while nodes
    * are still queued the channel is only warmed, never flushed: a row still
    * to be built changes the layout of the rows around it, and applying
    * those moves before the row exists would be the same half-update from the

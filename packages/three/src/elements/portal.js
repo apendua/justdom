@@ -90,6 +90,20 @@ export const LOADING_ATTRIBUTE = "data-xr-loading";
  *   starving the others meanwhile is then the point, not a hazard. Within a
  *   priority the offer rotates frame by frame, so equals share the pool and
  *   none waits forever on a peer. 0 by default.
+ * @property {boolean} [atomic] Whether an update reaches the scene whole or
+ *   not at all. True by default: the budget is spent resolving what the
+ *   panel's effects read, and the effects run together in the frame that
+ *   finds nothing left to read, so a change too big for one frame arrives
+ *   late rather than as a wave of rows sliding a few at a time. The cost is
+ *   paid by anything that invalidates the panel on *every* frame — a layout
+ *   transition, most of all — since each frame's invalidation undoes the
+ *   reading the frame before it did, and a panel whose per-frame reading
+ *   does not fit the budget does not move until the animation ends. False
+ *   runs the effects themselves under the budget, as many as fit, in the
+ *   order they were queued: something moves every frame, and an update too
+ *   big for one frame lands in instalments. For a panel where responding
+ *   to the hand matters more than never being seen half-updated. The
+ *   initial mount is held back for the commit either way.
  * @property {number} [maxTextScale] The most device pixels this panel's text
  *   is rasterized for each of its CSS pixels. Measured per panel by default
  *   (`textScale.js` says how) and capped at 4, which is what a panel of a
@@ -133,6 +147,7 @@ export function createPortal(
     opaqueToRays = true,
     budget = 5,
     priority = 0,
+    atomic = true,
     maxTextScale,
     onLoadingChanged,
     loadingFrame = true,
@@ -435,7 +450,8 @@ export function createPortal(
    * where a panel's cost is — and runs the effects together, in the frame
    * that finds nothing left to read. Until then the panel stands as it was.
    * The objects the pump builds meanwhile, and the ones whose nodes left,
-   * wait for that same frame; see `commit` below.
+   * wait for that same frame; see `commit` below. Unless the portal was
+   * asked not to be — see `PortalOptions.atomic` for what that trades.
    *
    * Null where there are no frames — see above — and every `withChannel`
    * below degrades to the default channel, which is synchronous mounting.
@@ -447,7 +463,7 @@ export function createPortal(
         name: "portal",
         order: 1,
         manual: true,
-        atomic: true,
+        atomic,
         maxStalePasses: Infinity,
       })
     : null;
@@ -1098,7 +1114,8 @@ export function createPortal(
 
   /**
    * What the animation clock's batches mean in the mirror's vocabulary:
-   * `animated` is a style change stretched over time, `reflow` is rects
+   * `animated` is a style change stretched over time, `animatedSelf` the
+   * same confined to the element, `reflow` is rects
    * moving without a mutation — a settling transform for its own subtree,
    * an animating layout property for everyone.
    *
@@ -1109,6 +1126,9 @@ export function createPortal(
       for (const animationBatch of batches) {
         if (animationBatch.types.has("animated") && animationBatch.targets) {
           mirror.animatedStyles(animationBatch.targets);
+        }
+        if (animationBatch.types.has("animatedSelf") && animationBatch.targets) {
+          mirror.animatedStyles(animationBatch.targets, { subtree: false });
         }
         if (animationBatch.types.has("reflow")) {
           mirror.reflowed(animationBatch.targets);

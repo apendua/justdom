@@ -10,6 +10,7 @@ import {
   getLocalClipBox,
   getObjectPosition,
   getTextLayout,
+  isTransformed,
   PORTAL_ATTRIBUTE,
   resetMeasuringRangeForTests,
   trackCharacterEdges,
@@ -224,6 +225,85 @@ describe("getComputedStyleCached", () => {
 
     holders.forEach((effect) => effect.dispose());
     list.remove();
+  });
+
+  test("an animation of nothing inherited restyles the element alone", () => {
+    // card ─┬─ "text"
+    //       └── label ── "inner"
+    //
+    // A card turning under a CSS transform: the transform is not inherited,
+    // so no computed value under the card moves, and the clock says so by
+    // asking for the element alone. At the subtree scope every frame of the
+    // turn restyled the whole card.
+    const card = document.createElement("div");
+    const text = document.createTextNode("text");
+    const label = document.createElement("span");
+    label.appendChild(document.createTextNode("inner"));
+    card.appendChild(text);
+    card.appendChild(label);
+    document.body.appendChild(card);
+
+    const mirror = createMirror();
+    for (const node of [card, text, label]) {
+      mirror.adopt(node);
+    }
+
+    const reads = { card: 0, text: 0, label: 0 };
+    const dependents = {
+      card: new Derived(() => {
+        reads.card += 1;
+        return getComputedStyleCached(card).transform;
+      }),
+      // A text node's computed style is its parent's, so it has to follow
+      // its parent's own changes too.
+      text: new Derived(() => {
+        reads.text += 1;
+        return getComputedStyleCached(text).transform;
+      }),
+      label: new Derived(() => {
+        reads.label += 1;
+        return getComputedStyleCached(label).color;
+      }),
+    };
+    const holders = Object.values(dependents).map((dependent) => new Effect(() => dependent.get()));
+    assert.deepEqual(reads, { card: 1, text: 1, label: 1 });
+
+    mirror.animatedStyles([card], { subtree: false });
+    assert.deepEqual(reads, { card: 2, text: 2, label: 1 });
+
+    // The subtree scope, for an animation that does reach the descendants.
+    mirror.animatedStyles([card]);
+    assert.deepEqual(reads, { card: 3, text: 3, label: 2 });
+
+    holders.forEach((effect) => effect.dispose());
+    card.remove();
+  });
+
+  test("a descendant still sees an ancestor's transform move under the narrow scope", () => {
+    // What a descendant does derive from an ancestor's style it reads through
+    // the ancestor's own memoized style — `isTransformed` above all — and
+    // that is what the narrow scope still invalidates.
+    const card = document.createElement("div");
+    const label = document.createElement("span");
+    card.appendChild(label);
+    document.body.appendChild(card);
+
+    const mirror = createMirror();
+    for (const node of [card, label]) {
+      mirror.adopt(node);
+    }
+
+    const transformed = new Derived(() => isTransformed(label));
+    const holder = new Effect(() => transformed.get());
+    assert.equal(transformed.get(), false);
+
+    // Written as the browser resolves it, which jsdom does not do.
+    card.style.transform = "matrix(0.996, 0.087, -0.087, 0.996, 0, 0)";
+    mirror.animatedStyles([card], { subtree: false });
+    assert.equal(transformed.get(), true);
+
+    holder.dispose();
+    card.remove();
   });
 
   test("which flag it is decides whether a sibling restyles", () => {

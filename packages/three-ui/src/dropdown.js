@@ -148,24 +148,40 @@ export function dropdown(props) {
     // emulator whose every control is a real mouse click. Listening to the
     // document would hear those too, and close the menu from under the very
     // trigger press that was meant to choose from it.
+    //
+    // Which panel is asked per click rather than once when the menu opens,
+    // because the answer can change while it is open: a portal can take an
+    // element the page already shows and mirror it in place, and release it
+    // again when the session ends. A menu open across either moment would
+    // otherwise keep the scope it started with — closed by the emulator's
+    // click once in the scene, or deaf to the page's clicks once out of it.
+    // Listening on the document and filtering is what makes the moment not
+    // matter: the document hears every click, and the panel decides.
     effects((/** @type {HTMLDivElement} */ root) => {
       if (!open.get()) {
         return;
       }
-      /** @type {HTMLElement | Document} */
-      const scope = getPortalRoot(root) ?? document;
       /** @param {Event} event */
       const onClickElsewhere = (event) => {
+        if (!(event.target instanceof Node)) {
+          return;
+        }
         // The click that opened the menu is still on its way up, and it came
         // from inside.
-        if (event.target instanceof Node && root.contains(event.target)) {
+        if (root.contains(event.target)) {
+          return;
+        }
+        // In a panel, only the panel's own clicks count as elsewhere; the
+        // page around the scene is not elsewhere, it is off the map.
+        const panel = getPortalRoot(root);
+        if (panel && !panel.contains(event.target)) {
           return;
         }
         open.set(false);
       };
-      scope.addEventListener("click", onClickElsewhere);
+      document.addEventListener("click", onClickElsewhere);
       onCleanup(() => {
-        scope.removeEventListener("click", onClickElsewhere);
+        document.removeEventListener("click", onClickElsewhere);
       });
     }),
     children(

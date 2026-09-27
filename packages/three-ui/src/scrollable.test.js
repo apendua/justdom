@@ -321,4 +321,53 @@ describe("scrollable", () => {
       view.host.remove();
     }
   });
+
+  test("an arrow mounted before its element became a panel listens to the panel's releases", async () => {
+    // A flat page already showing this widget, mirrored when a session begins:
+    // the portal marks the element `data-xr-portal` then, long after the arrow
+    // was mounted, and takes the mark off when the session ends. Set by hand
+    // here because the mark is all the widget looks at; which releases count
+    // is the question, not how the portal gets there.
+    const view = mount({
+      window: 100,
+      content: 400,
+      props: { step: 10, repeatDelay: 5, repeatInterval: 5 },
+    });
+    const wait = (/** @type {number} */ ms) =>
+      new Promise((resolve) => {
+        setTimeout(resolve, ms);
+      });
+    try {
+      const down = view.find(".bar > .button:last-child");
+      assert.ok(down);
+      view.host.setAttribute("data-xr-portal", "");
+
+      down.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+      assert.equal(view.scrollTop, 10, "the press acted once");
+
+      // A real mouse released on the page around the scene, while the ray is
+      // still holding the arrow. Not this panel's release: the arrow keeps
+      // repeating.
+      document.body.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+      await wait(30);
+      assert.ok(view.scrollTop > 10, "a release off the panel did not stop the repeat");
+
+      // The ray's own release, landing on the panel wherever the hand drifted.
+      const before = view.scrollTop;
+      view.host.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+      await wait(30);
+      assert.equal(view.scrollTop, before, "the panel's release stopped it");
+
+      // The session over, the mark off: the page's releases count again.
+      view.host.removeAttribute("data-xr-portal");
+      down.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+      const pressed = view.scrollTop;
+      document.body.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+      await wait(30);
+      assert.equal(view.scrollTop, pressed, "off a panel, any release stops the repeat");
+    } finally {
+      view.subscription.unsubscribe();
+      view.host.remove();
+    }
+  });
 });

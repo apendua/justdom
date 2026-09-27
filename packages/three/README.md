@@ -469,20 +469,32 @@ spanning the container, which dispatches a bubbling `click` on the portal's
 root element. That is what "clicked outside" means to a menu that wants to
 close itself; there is no other way for the tree inside to learn it happened.
 
-Listen for it on the panel rather than on the document, via
-`getPortalRoot(node)`:
+Count only the panel's own clicks as elsewhere, via `getPortalRoot(node)`,
+and ask it when the click arrives rather than when the listener goes up:
 
 ```js
-const scope = getPortalRoot(root) ?? document;
-scope.addEventListener("click", onClickElsewhere);
+document.addEventListener("click", (event) => {
+  if (root.contains(event.target)) return; // inside
+  const panel = getPortalRoot(root);
+  if (panel && !panel.contains(event.target)) return; // the page, not the panel
+  close();
+});
 ```
 
-A `document` listener also hears every real mouse click on the page around the
-scene — the VR button, and in development an emulator whose every control is a
-mouse click. A menu listening there closes itself the moment you reach for the
-control that was going to choose from it, which looks exactly like the ray
-having no effect. `getPortalRoot` returns null off a portal, where `document`
-is the right answer and there is nothing to disambiguate.
+Every real mouse click on the page around the scene — the VR button, and in
+development an emulator whose every control is a mouse click — also reaches
+the document. A menu that counted those would close itself the moment you
+reach for the control that was going to choose from it, which looks exactly
+like the ray having no effect. `getPortalRoot` returns null off a portal,
+where the whole page is the right scope and there is nothing to disambiguate.
+
+Asked per click, because which panel a node is in can change while a
+listener is up. A portal that mirrors an element the page already shows (see
+above) marks that element when it takes it and unmarks it when it lets go,
+so a menu that resolved its scope once, when it opened, would keep the wrong
+one across either moment: closed by the emulator's click once the session
+begins, or deaf to the page's clicks once it ends. The `dropdown` and
+`scrollable` widgets in [`@apendua/justui`](../justui) do it this way.
 
 A panel with nothing to press can say so and stop stopping rays:
 

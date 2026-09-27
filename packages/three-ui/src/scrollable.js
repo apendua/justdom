@@ -219,13 +219,25 @@ export function scrollable(props) {
           repeat = setInterval(act, repeatInterval);
         }, repeatDelay);
       };
-      /** @type {HTMLElement | Document} */
-      const scope = getPortalRoot(element) ?? document;
+      // Heard on the document and filtered by panel, with the panel asked at
+      // the release rather than when the arrow was mounted: a portal can
+      // take the element this arrow is in after the fact — a page already
+      // showing it, mirrored when a session begins — and let it go when the
+      // session ends, and an arrow that remembered the answer from its
+      // mounting would be scoped to the wrong thing after either.
+      /** @param {Event} event */
+      const release = (event) => {
+        const panel = getPortalRoot(element);
+        if (panel && event.target instanceof Node && !panel.contains(event.target)) {
+          return;
+        }
+        stop();
+      };
       element.addEventListener("mousedown", press);
-      scope.addEventListener("mouseup", stop);
+      document.addEventListener("mouseup", release);
       onCleanup(() => {
         element.removeEventListener("mousedown", press);
-        scope.removeEventListener("mouseup", stop);
+        document.removeEventListener("mouseup", release);
         stop();
       });
     });

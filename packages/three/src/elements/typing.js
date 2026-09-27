@@ -74,6 +74,67 @@ const SELECTABLE_TYPES = new Set(["text", "search", "url", "tel", "password"]);
 const BLOCKING_TYPES = new Set(["date", "datetime-local", "month", "time", "week"]);
 
 /**
+ * The characters a number field lets through at all. A browser filters the
+ * key before anything else happens to it — a letter typed into a number
+ * field on a page does nothing — and so does this, which is what keeps a
+ * stray letter from becoming a draft the field could never hold.
+ */
+const NUMBER_CHARACTERS = /^[0-9eE+\-.]$/;
+
+/**
+ * What a field that sanitizes its value shows while it is being typed into,
+ * where that is not the value.
+ *
+ * A number field is typed a key at a time, and many of the strings on the
+ * way to a number are not numbers themselves: `1.` on the way to `1.5`,
+ * `-` on the way to `-3`, `1e` on the way to `1e3`. The browser sanitizes
+ * each to `""` — so `value` reads `""` — while its own editor goes on
+ * showing what was typed, and the next key goes after it. A script cannot
+ * reach that editor, so this keeps its text instead: edits apply to the
+ * draft, `value` is assigned from it, and the mirror draws the draft rather
+ * than the value. `valueAtDraft` is what the field's value was when the
+ * draft was written, which is how a draft the app has since overwritten —
+ * `input.value = "4"` after a submit — is known to be stale.
+ *
+ * @type {WeakMap<HTMLInputElement, { text: string, valueAtDraft: string }>}
+ */
+const drafts = new WeakMap();
+
+/**
+ * What the field is showing: its draft, where one is still current, and its
+ * value otherwise. For a field whose value is always what was typed — every
+ * selectable type — the two are the same and there is never a draft.
+ *
+ * @param {HTMLInputElement} input
+ * @returns {string}
+ */
+export function getShownValue(input) {
+  const draft = drafts.get(input);
+  if (!draft) {
+    return input.value;
+  }
+  if (draft.valueAtDraft !== input.value) {
+    // The value moved without the draft: somebody other than the keyboard
+    // wrote it. What they wrote is what the field shows now.
+    drafts.delete(input);
+    return input.value;
+  }
+  return draft.text;
+}
+
+/**
+ * Forget the field's draft, for a writer that sets the value to what it
+ * already was — `""` over a draft of `-` — which `getShownValue` cannot tell
+ * from nothing having happened. The mirror's `value` interception calls it.
+ *
+ * @param {HTMLInputElement} input
+ * @returns {void}
+ */
+export function discardDraft(input) {
+  drafts.delete(input);
+}
+
+/**
  * Where the caret is, as the character offset after it. The end of the
  * value for a field whose selection cannot be read, and for one whose
  * selection has never been placed, which reports the end anyway once its
@@ -90,7 +151,7 @@ export function getCaretOffset(input) {
       return end;
     }
   }
-  return input.value.length;
+  return getShownValue(input).length;
 }
 
 /**
@@ -130,11 +191,12 @@ function viewOf(node) {
  * browser does: `beforeinput` first, which a page may cancel to refuse the
  * edit, then the edit, then `input`.
  *
- * A field the browser sanitizes — `number`, whose value is emptied rather
- * than set to something that is not a number — refuses an edit it would
- * have sanitized away: the old value stays and nothing says it changed,
- * which is what a page's own key does with a letter typed into a number
- * field.
+ * A field whose selection cannot be read — `number`, `email` — is edited
+ * at the end of what it shows, which for a field that sanitizes its value
+ * is its draft (see `drafts`): the edit goes into the draft, the value is
+ * assigned from it and comes back sanitized or not, and `input` is
+ * dispatched either way, as a browser dispatches it for `1.` on the way to
+ * `1.5` while the value reads `""`.
  *
  * @param {HTMLInputElement} input
  * @param {string} text What goes in; empty to only take the selection out.
@@ -153,21 +215,22 @@ function replaceRange(input, text, start, end, inputType) {
   if (!proceed) {
     return;
   }
-  const before = input.value;
-  const candidate = before.slice(0, start) + text + before.slice(end);
   if (SELECTABLE_TYPES.has(input.type)) {
     try {
       input.setRangeText(text, start, end, "end");
     } catch {
-      input.value = candidate;
+      const before = input.value;
+      input.value = before.slice(0, start) + text + before.slice(end);
     }
   } else {
+    const before = getShownValue(input);
+    const candidate = before.slice(0, start) + text + before.slice(end);
     input.value = candidate;
-    if (input.value === "" && candidate !== "") {
-      // Sanitized away: not a value this field can hold. Put the old one
-      // back, and say nothing, since nothing changed.
-      input.value = before;
-      return;
+    if (input.value === candidate) {
+      // Held as typed: nothing for a draft to add.
+      drafts.delete(input);
+    } else {
+      drafts.set(input, { text: candidate, valueAtDraft: input.value });
     }
   }
   input.dispatchEvent(new Constructor("input", { bubbles: true, inputType, data }));
@@ -221,7 +284,7 @@ function selectionOf(input) {
       return [start, end];
     }
   }
-  const end = input.value.length;
+  const end = getShownValue(input).length;
   return [end, end];
 }
 
@@ -264,7 +327,9 @@ export function typeIntoInput(input, press) {
   if (proceed && !chord && !input.disabled && !input.readOnly) {
     const [start, end] = selectionOf(input);
     if (press.key.length === 1) {
-      replaceRange(input, press.key, start, end, "insertText");
+      if (input.type !== "number" || NUMBER_CHARACTERS.test(press.key)) {
+        replaceRange(input, press.key, start, end, "insertText");
+      }
     } else if (press.key === "Backspace") {
       if (start !== end) {
         replaceRange(input, "", start, end, "deleteContentBackward");
@@ -274,7 +339,7 @@ export function typeIntoInput(input, press) {
     } else if (press.key === "Delete") {
       if (start !== end) {
         replaceRange(input, "", start, end, "deleteContentForward");
-      } else if (end < input.value.length) {
+      } else if (end < getShownValue(input).length) {
         replaceRange(input, "", end, end + 1, "deleteContentForward");
       }
     } else if (press.key === "Enter") {

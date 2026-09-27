@@ -28,7 +28,7 @@ import { rectGeometry } from "./sdfRect.js";
 import { place, placeAndScale } from "./place.js";
 import { TextBatchContext } from "./textBatch.js";
 import { TextScaleContext } from "./textScale.js";
-import { getCaretOffset } from "./typing.js";
+import { discardDraft, getCaretOffset, getShownValue } from "./typing.js";
 
 /**
  * @import {Component} from '../core.js';
@@ -231,6 +231,10 @@ function installValueHooks(element) {
         },
         /** @param {string} value */
         set(value) {
+          // A script's write replaces whatever was being typed, even when it
+          // writes the value the field already held: `""` over a draft of
+          // `-` is a cleared field, not a half-typed number.
+          discardDraft(element);
           setter.call(this, value);
           bump();
         },
@@ -311,7 +315,10 @@ function fieldContent(ctx, element, surface, focus) {
   const state = selector(() => {
     getComputedStyleCached(element);
     version.get();
-    return { value: element.value, caret: getCaretOffset(element) };
+    // What the field shows, which for a number field half way through a
+    // number is the text typed so far rather than the `""` its value reads:
+    // `1.` on the way to `1.5`. See `drafts` in typing.js.
+    return { value: getShownValue(element), caret: getCaretOffset(element) };
   });
 
   // A password is drawn as the page draws it: one bullet a character, and

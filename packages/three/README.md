@@ -807,6 +807,16 @@ the value under it when the value outgrows the field. And it does not
 blink, since a blink is an animation the panel would pay for at frame rate
 to say what the board's presence says already.
 
+A number field is typed the way a page types one. Its value is sanitized:
+`1.` on the way to `1.5` is not a number, so `value` reads `""` while the
+browser's own editor goes on showing `1.`. A script cannot reach that
+editor, so the field keeps a draft of what was typed, the keyboard edits
+the draft, and the mirror draws it. `input` is dispatched for every key,
+the ones that leave `value` empty included, which is what a page sees too.
+A letter never gets in, since a page's number field filters it before
+anything else happens. The draft goes when the app writes the value, `""`
+after a submit included.
+
 ## Transforms
 
 A CSS `transform` (with its `transform-origin`) is mirrored onto the

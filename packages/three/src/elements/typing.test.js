@@ -1,6 +1,13 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
-import { getCaretOffset, isTextInput, moveCaretToEnd, typeIntoInput } from "./typing.js";
+import {
+  discardDraft,
+  getCaretOffset,
+  getShownValue,
+  isTextInput,
+  moveCaretToEnd,
+  typeIntoInput,
+} from "./typing.js";
 
 /**
  * A field in the document, with what a page's handlers would hear recorded
@@ -211,5 +218,75 @@ describe("typeIntoInput", () => {
     typeIntoInput(user, { key: "Enter" });
     assert.equal(submitted, 1, "a submit button makes Enter submit");
     form.remove();
+  });
+});
+
+describe("typing a number", () => {
+  /**
+   * @param {HTMLInputElement} input
+   * @param {string} keys
+   */
+  const type = (input, keys) => {
+    for (const key of keys) {
+      typeIntoInput(input, { key });
+    }
+  };
+
+  test("a number is typed as the keys spell it, through prefixes that are not numbers", () => {
+    for (const number of ["1.5", "-3", "1e3", "0.25", "-1.5e-2"]) {
+      const { input, remove } = field("", "number");
+      type(input, number);
+      assert.equal(input.value, number, `${number} arrives whole`);
+      assert.equal(getShownValue(input), number);
+      remove();
+    }
+  });
+
+  test("half way through, the field shows what was typed and its value reads empty", () => {
+    const { input, heard, remove } = field("", "number");
+    /** @type {string[]} */
+    const values = [];
+    input.addEventListener("input", () => values.push(input.value));
+    type(input, "1.");
+    assert.equal(input.value, "", "`1.` is not a number, and the browser says so");
+    assert.equal(getShownValue(input), "1.", "but it is what the field shows");
+    assert.equal(getCaretOffset(input), 2, "and the caret is after it");
+    assert.deepEqual(values, ["1", ""], "an input event for every key, as a browser sends");
+    assert.deepEqual(heard.filter((kind) => kind.startsWith("input")).length, 2);
+    type(input, "5");
+    assert.equal(input.value, "1.5");
+    remove();
+  });
+
+  test("backspace edits the draft, not the empty value", () => {
+    const { input, remove } = field("", "number");
+    type(input, "-1.");
+    assert.equal(getShownValue(input), "-1.");
+    typeIntoInput(input, { key: "Backspace" });
+    assert.equal(input.value, "-1", "back to a number");
+    typeIntoInput(input, { key: "Backspace" });
+    assert.equal(getShownValue(input), "-", "the sign alone is shown");
+    assert.equal(input.value, "");
+    typeIntoInput(input, { key: "Backspace" });
+    assert.equal(getShownValue(input), "");
+    remove();
+  });
+
+  test("a value written by the app replaces the draft", () => {
+    const { input, remove } = field("", "number");
+    type(input, "1.");
+    input.value = "4";
+    assert.equal(getShownValue(input), "4", "a different value makes the draft stale");
+    type(input, "2");
+    assert.equal(input.value, "42", "and typing carries on from what the app wrote");
+
+    type(input, "-");
+    assert.equal(getShownValue(input), "42-");
+    // Writing the value the field already reads, `""`, cannot be told from
+    // nothing having happened; the mirror's setter hook says so instead.
+    input.value = "";
+    discardDraft(input);
+    assert.equal(getShownValue(input), "");
+    remove();
   });
 });

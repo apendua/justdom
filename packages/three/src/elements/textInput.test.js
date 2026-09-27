@@ -257,6 +257,29 @@ describe("a text field in a panel", () => {
     panel.cleanup();
   });
 
+  test("a number half way typed is drawn as typed, and a scripted clear clears it", async () => {
+    const { typeIntoInput } = await import("./typing.js");
+    const panel = fieldPanel((input) => {
+      input.type = "number";
+      input.placeholder = "Qty";
+    });
+    await settle(panel.portal);
+    canvas.drawn.length = 0;
+    typeIntoInput(panel.input, { key: "1" });
+    typeIntoInput(panel.input, { key: "." });
+    await pump();
+    assert.equal(panel.input.value, "", "the value reads empty");
+    assert.ok(canvas.drawn.includes("1."), "the field draws what was typed");
+
+    // The app clearing the field writes the `""` it already reads; the
+    // setter hook is what tells the mirror the draft is gone.
+    canvas.drawn.length = 0;
+    panel.input.value = "";
+    await pump();
+    assert.ok(canvas.drawn.includes("Qty"), "the field is empty again: its placeholder is drawn");
+    panel.cleanup();
+  });
+
   test("a password is drawn as bullets, never as its characters", async () => {
     const panel = fieldPanel((input) => {
       input.type = "password";

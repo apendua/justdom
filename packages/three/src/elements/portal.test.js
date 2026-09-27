@@ -2686,3 +2686,211 @@ describe("the order a mount is built in", () => {
     }
   });
 });
+
+describe("mirroring an element the page owns", () => {
+  /**
+   * A card the page already has: a root with a button and a label in it, in
+   * the document before any portal hears of it, as an app's own interface
+   * would be.
+   *
+   * @returns {{ root: HTMLDivElement, button: HTMLDivElement, label: HTMLDivElement }}
+   */
+  function pageCard() {
+    const root = document.createElement("div");
+    root.style.padding = "8px";
+    const button = document.createElement("div");
+    button.style.cursor = "pointer";
+    // A plain box rather than a run of text: jsdom lays out no text, and
+    // measuring a run would ask a `Range` for rects it does not have.
+    const label = document.createElement("div");
+    label.style.padding = "4px";
+    root.append(button, label);
+    document.body.appendChild(root);
+    return { root, button, label };
+  }
+
+  /**
+   * An interaction manager that keeps count of what is registered with it.
+   *
+   * @returns {{ manager: InteractionManager, ctx: WeakKey, targets: Set<THREE.Object3D> }}
+   */
+  function countingManager() {
+    const manager = new InteractionManager();
+    /** @type {Set<THREE.Object3D>} */
+    const targets = new Set();
+    const originalAdd = manager.add.bind(manager);
+    const originalRemove = manager.remove.bind(manager);
+    manager.add = (object) => {
+      targets.add(object);
+      originalAdd(object);
+    };
+    manager.remove = (object) => {
+      targets.delete(object);
+      originalRemove(object);
+    };
+    return { manager, ctx: InteractionContext.set({}, manager), targets };
+  }
+
+  test("what the element already holds is the initial content, and the element is left as it was", async () => {
+    const { ctx, targets } = countingManager();
+    const { root, button } = pageCard();
+
+    const portal = createPortal(ctx, { root });
+    const parent = new THREE.Group();
+    portal.addTo(parent);
+
+    // Claimed on the spot: the mark the mirror walks up to, and the loading
+    // flag a harness waits on, both there before a single frame has run.
+    assert.ok(root.hasAttribute("data-xr-portal"), "the element is the top of the panel");
+    assert.ok(root.hasAttribute(LOADING_ATTRIBUTE), "content already there is a mount under way");
+    assert.equal(portal.isLoading(), true);
+
+    await settle(portal);
+
+    assert.equal(portal.isLoading(), false, "the content it held was mounted");
+    assert.equal(root.hasAttribute(LOADING_ATTRIBUTE), false);
+    assert.equal(targets.size, 2, "one blocker and the one clickable child");
+    assert.equal(getPortalRoot(button), root, "the element is what the panel's scope is");
+
+    // Nothing about the element itself was touched: not where it is, not how
+    // it is styled — a page that is showing it goes on showing it.
+    assert.equal(root.parentNode, document.body);
+    assert.equal(root.style.visibility, "");
+    assert.equal(root.style.position, "");
+    assert.equal(root.style.overflow, "");
+
+    portal.disconnect();
+
+    assert.equal(root.isConnected, true, "the element is the page's and stays");
+    assert.equal(root.hasAttribute("data-xr-portal"), false, "the mark comes off");
+    assert.equal(root.hasAttribute(LOADING_ATTRIBUTE), false);
+    assert.equal(targets.size, 0, "nothing is left in the raycast set");
+    root.remove();
+  });
+
+  test("what the page does to the element afterwards is followed", async () => {
+    const { ctx, targets } = countingManager();
+    const { root, button } = pageCard();
+    const portal = createPortal(ctx, { root });
+    portal.addTo(new THREE.Group());
+    await settle(portal);
+    assert.equal(targets.size, 2);
+
+    // A control arriving: the observer's business, exactly as for a mounted
+    // tree.
+    const another = document.createElement("div");
+    another.style.cursor = "pointer";
+    root.appendChild(another);
+    await drain();
+    assert.equal(targets.size, 3, "the new control is a ray target");
+
+    // And one leaving.
+    root.removeChild(button);
+    await drain();
+    assert.equal(targets.size, 2, "the removed control is not");
+
+    portal.disconnect();
+    root.remove();
+  });
+
+  test("an empty element waits for its first child, like an empty container", async () => {
+    const { ctx, targets } = countingManager();
+    const root = document.createElement("div");
+    document.body.appendChild(root);
+    const portal = createPortal(ctx, { root });
+    portal.addTo(new THREE.Group());
+
+    // Given nothing, it is on its way nowhere: no loading flag for a harness
+    // to wait on, and no blocker over whatever is behind it.
+    assert.equal(root.hasAttribute(LOADING_ATTRIBUTE), false);
+    await settle(portal);
+    assert.equal(portal.isLoading(), true, "nothing arrived, nothing loaded");
+    assert.equal(targets.size, 0);
+
+    const button = document.createElement("div");
+    button.style.cursor = "pointer";
+    root.appendChild(button);
+    await settle(portal);
+    assert.equal(portal.isLoading(), false, "the first child was the initial content");
+    assert.equal(targets.size, 2);
+
+    portal.disconnect();
+    root.remove();
+  });
+
+  test("the portal's own flags come off the page's elements with it", async () => {
+    const { ctx } = countingManager();
+    const { root, button } = pageCard();
+    const portal = createPortal(ctx, { root });
+    portal.addTo(new THREE.Group());
+    await settle(portal);
+
+    // What a ray resting on the button when the session ends leaves behind.
+    button.dataset.xrHover = "true";
+    button.dataset.xrActive = "true";
+    portal.disconnect();
+
+    assert.equal(button.hasAttribute("data-xr-hover"), false, "no hover styling left on the page");
+    assert.equal(button.hasAttribute("data-xr-active"), false);
+    root.remove();
+  });
+
+  test("it does not mount: the content is the page's", async () => {
+    const { ctx } = countingManager();
+    const { root } = pageCard();
+    const portal = createPortal(ctx, { root });
+    portal.addTo(new THREE.Group());
+
+    /** @type {import("@apendua/justdom").Mountable | undefined} */
+    let mountable;
+    const subscription = $("div").subscribe((value) => {
+      mountable = value;
+    });
+    assert.ok(mountable);
+    const tree = mountable;
+    assert.throws(() => portal.mount(tree), /does not mount/);
+    assert.equal(root.childNodes.length, 2, "nothing was put in or taken out");
+
+    subscription.unsubscribe();
+    portal.disconnect();
+    root.remove();
+  });
+
+  test("an element it cannot honestly mirror is refused", async () => {
+    const { ctx } = countingManager();
+
+    // Not in the document: no layout to read, and its arrival would be a
+    // mutation of a parent nobody is watching.
+    const detached = document.createElement("div");
+    assert.throws(() => createPortal(ctx, { root: detached }), /in the document/);
+
+    // Already somebody's panel.
+    const { root } = pageCard();
+    const portal = createPortal(ctx, { root });
+    assert.throws(() => createPortal(ctx, { root }), /already being mirrored/);
+
+    // Inside a panel: every walk would stop at the inner mark and the outer
+    // panel would lose the subtree without knowing.
+    const inner = document.createElement("div");
+    root.appendChild(inner);
+    assert.throws(() => createPortal(ctx, { root: inner }), /inside a panel/);
+
+    // Holding a panel, the same problem from above.
+    const wrapper = document.createElement("div");
+    document.body.appendChild(wrapper);
+    wrapper.appendChild(root);
+    assert.throws(() => createPortal(ctx, { root: wrapper }), /panel inside it/);
+
+    // None of the refusals left a mark of its own.
+    assert.equal(detached.hasAttribute("data-xr-portal"), false);
+    assert.equal(inner.hasAttribute("data-xr-portal"), false);
+    assert.equal(wrapper.hasAttribute("data-xr-portal"), false);
+
+    portal.disconnect();
+    // A released element can be claimed again.
+    const again = createPortal(ctx, { root: wrapper });
+    assert.ok(wrapper.hasAttribute("data-xr-portal"));
+    again.disconnect();
+    wrapper.remove();
+  });
+});

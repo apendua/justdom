@@ -308,6 +308,58 @@ A justdom tree satisfies it, because the two declarations are the same shape
 and TypeScript compares them structurally; so does anything else that builds
 real DOM nodes and knows how to hand them over.
 
+### Mirroring DOM the page already has
+
+A mountable is for a panel that exists only in the scene. An app that
+delivers a flat interface first, and an immersive session as something
+extra, already has its DOM — laid out, styled, wired to its state — and has
+no reason to build it a second time for the headset. `dom()` takes an
+element as well as a tree, and mirrors it where it stands:
+
+```js
+const hud = document.getElementById("hud");
+
+dom(ctx, hud, [set({ position })]);
+```
+
+Nothing about the element changes hands. It stays in the document, where the
+page put it, with the styles the page gave it; the portal watches it with the
+same observer it watches its own container with, so whatever the element
+holds when the portal is built is the initial content and whatever the page
+does to it afterwards — a row arriving, a class swapped, a transition
+started, a list scrolled — is followed. A press on the mirrored button is a
+click dispatched on the real one, so the handlers the page already has are
+the handlers the scene uses, and the hover and press flags the portal writes
+are taken off again with the portal. When the session ends the page is as it
+was.
+
+The element plays exactly the part the portal's own container plays, and the
+one thing to know follows from that: **it is the panel's frame, and what is
+drawn is what is inside it.** Its border box is the panel's size — a panel
+centred on its origin, a centimetre a px, as ever — and it is what
+`getPortalRoot` finds and what the background click lands on, but its own
+background and border are not mirrored. A card wants to be the element's
+child, not the element:
+
+```html
+<div id="hud">
+  <div class="card">…</div>
+</div>
+```
+
+which is where a page's mount point usually leaves things anyway. The
+element has to be in the document, and the portal refuses one that is not,
+one that is already a panel, one inside a panel and one with a panel inside
+it, since every walk the mirror makes climbs to the nearest panel top and
+stops. A portal built over such an element does not `mount()`: the page owns
+the content.
+
+Which element is up to the app, and it can change: `dom()` takes a
+subscribable of elements as readily as one of trees, and each emission is a
+fresh portal with the previous one taken down and its element released.
+`createPortal(ctx, { root: element })` is the same thing without the group,
+for a scene that drives portals by hand.
+
 Two things about a portal are worth knowing before writing UI for one.
 
 **Sizes are re-measured when the tree changes, not when an attribute does.**

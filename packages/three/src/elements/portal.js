@@ -1,5 +1,12 @@
 import * as THREE from "three";
-import { batch, Effect, Signal, UpdateChannel, withChannel } from "@apendua/signal";
+import {
+  batch,
+  Effect,
+  Signal,
+  UpdateChannel,
+  withChannel,
+  withComputation,
+} from "@apendua/signal";
 import { div, getContentGroup, PortalReadyContext } from "./div.js";
 import { text } from "./text.js";
 import { checkbox } from "./checkbox.js";
@@ -64,7 +71,85 @@ export function getPortalRoot(node) {
 export const LOADING_ATTRIBUTE = "data-xr-loading";
 
 /**
+ * The portal's own container: a hidden element on the body for a mounted
+ * tree to live in, marked as the top of a panel.
+ *
+ * @returns {HTMLElement}
+ */
+function createContainerElement() {
+  const containerElement = document.createElement("div");
+  containerElement.setAttribute(PORTAL_ATTRIBUTE, "");
+  containerElement.style.position = "absolute";
+  containerElement.style.top = "0";
+  containerElement.style.left = "0";
+  containerElement.style.visibility = "hidden";
+  // Hidden, but not out of flow enough on its own: a descendant wider or
+  // taller than the panel — an unbreakable string, a fixed-size image — is
+  // ordinarily left to bleed past this container's own box, and with nothing
+  // between it and `<html>` clipping that overflow, it is the page itself
+  // that grows a scrollbar for a panel nobody can see. Clipping here keeps
+  // that overflow this container's problem instead of the document's.
+  containerElement.style.overflow = "hidden";
+  document.body.appendChild(containerElement);
+  return containerElement;
+}
+
+/**
+ * Take an element the page owns as the top of a panel: mark it, and nothing
+ * else — its styles, its place in the document and what it holds are the
+ * page's. The checks are for the three ways the mark can lie. Every walk in
+ * the mirror climbs to the nearest element carrying it and stops, so a
+ * panel inside a panel is a mirror that never reaches the outer one's top,
+ * and an element two portals watch is two mirrors each crediting the other's
+ * work to itself; and an element outside the document has no layout to
+ * mirror, and its arrival in the document later is a mutation of its new
+ * parent, which no observer of the element itself will hear.
+ *
+ * @param {HTMLElement} root
+ * @returns {HTMLElement}
+ */
+function claimRoot(root) {
+  if (!root.isConnected) {
+    throw new Error("A portal can only mirror an element that is in the document.");
+  }
+  if (root.hasAttribute(PORTAL_ATTRIBUTE)) {
+    throw new Error("This element is already being mirrored by a portal.");
+  }
+  if (root.parentElement?.closest(`[${PORTAL_ATTRIBUTE}]`)) {
+    throw new Error(
+      "A portal cannot mirror an element inside a panel; it is already part of that panel.",
+    );
+  }
+  if (root.querySelector(`[${PORTAL_ATTRIBUTE}]`)) {
+    throw new Error(
+      "A portal cannot mirror an element with a panel inside it; mirror the two separately.",
+    );
+  }
+  root.setAttribute(PORTAL_ATTRIBUTE, "");
+  return root;
+}
+
+/**
  * @typedef {object} PortalOptions
+ * @property {HTMLElement} [root] An element the page already has, to be
+ *   mirrored where it stands instead of content mounted into a container of
+ *   the portal's own. For an app that delivers a flat interface first and an
+ *   immersive session as an extra: the DOM the page is showing is the DOM
+ *   the scene shows, with nothing built twice, and a press on the mirrored
+ *   button is a click on the real one. The element plays exactly the part
+ *   the portal's own container plays — it is the panel's frame, what is
+ *   drawn is what is inside it, its border box is the panel's size, it is
+ *   what `getPortalRoot` finds and what the background click is dispatched
+ *   on — so its own background and border are not mirrored; a panel that
+ *   wants a card puts the card inside. Whatever it holds at the time is
+ *   projected, and whatever changes in it afterwards is followed, the same
+ *   observer either way. The portal marks it `data-xr-portal` while it
+ *   watches and takes the mark off when disconnected, leaving the element
+ *   where it was; it never restyles it, moves it or removes it. It has to be
+ *   in the document, and neither inside another panel nor holding one, and
+ *   a portal given one does not `mount()`: the page owns the content. Not
+ *   given, the portal makes a hidden container of its own on the body, and
+ *   `mount()` is how content reaches it.
  * @property {boolean} [opaqueToRays] Whether the panel stops rays that land on
  *   it. True by default, which is what any panel with something to press wants.
  *   False leaves the portal drawn but untouchable, for a readout the player
@@ -130,6 +215,7 @@ export const LOADING_ATTRIBUTE = "data-xr-loading";
 export function createPortal(
   ctx,
   {
+    root,
     opaqueToRays = true,
     budget = 5,
     priority = 0,
@@ -257,21 +343,12 @@ export function createPortal(
   const mirror = createMirror();
 
   // The DOM root everything this portal projects lives under, and the root
-  // of the object tree it is projected into.
-  const containerElement = document.createElement("div");
-  containerElement.setAttribute(PORTAL_ATTRIBUTE, "");
-  containerElement.style.position = "absolute";
-  containerElement.style.top = "0";
-  containerElement.style.left = "0";
-  containerElement.style.visibility = "hidden";
-  // Hidden, but not out of flow enough on its own: a descendant wider or
-  // taller than the panel — an unbreakable string, a fixed-size image — is
-  // ordinarily left to bleed past this container's own box, and with nothing
-  // between it and `<html>` clipping that overflow, it is the page itself
-  // that grows a scrollbar for a panel nobody can see. Clipping here keeps
-  // that overflow this container's problem instead of the document's.
-  containerElement.style.overflow = "hidden";
-  document.body.appendChild(containerElement);
+  // of the object tree it is projected into. The portal's own unless the
+  // caller handed one over — an element the page already has, watched where
+  // it stands — and the same thing to everything below either way: the
+  // attribute is what the mirror walks up to, and nothing here asks who put
+  // it there.
+  const containerElement = root ? claimRoot(root) : createContainerElement();
   mirror.adopt(containerElement);
   nodeToObject.set(containerElement, containerObject);
   objectToNode.set(containerObject, containerElement);
@@ -1041,6 +1118,15 @@ export function createPortal(
         });
       }
     });
+    contentChanged();
+  };
+
+  /**
+   * What follows any change to the panel's content, once it has been routed
+   * into the mirror and the object tree: an observer flush, or the first
+   * look at an element the page handed over with content already in it.
+   */
+  const contentChanged = () => {
     // A class swap is how most transitions begin, and inside an immersive
     // session the mutation is the only trace of one that reaches us: the
     // events that would announce it are dispatched with the rendering
@@ -1258,6 +1344,39 @@ export function createPortal(
     });
   });
 
+  // An element the page handed over may already have content in it, and no
+  // observer is going to report what was there before it started watching.
+  // Taken as the initial content, by the path a mounted tree's first flush
+  // takes: queued for the pump where there are frames, built on the spot
+  // where there are none, and everything that follows a flush follows this.
+  // An empty one is a panel given nothing to mount, and is left to the
+  // observer exactly like the portal's own container — the first child to
+  // arrive is the initial content then. Last, after every listener above is
+  // in place, so nothing the content brings with it — an animation already
+  // running, an image still loading — is missed.
+  //
+  // Outside whatever computation is building the portal. A flush runs in
+  // the observer's microtask and belongs to nobody; this runs now, inside
+  // the effect that called `createPortal` — `dom()`'s mounting, say — and
+  // the reads it makes, `loading` among them, would otherwise be that
+  // effect's dependencies: the panel loading would re-run the mounting,
+  // which would take the panel down and build it again, forever.
+  if (root && containerElement.firstChild) {
+    withComputation(null, () => {
+      projectChanges(() => {
+        sawContent = true;
+        for (let node = containerElement.firstChild; node; node = node.nextSibling) {
+          if (pump) {
+            pump.enqueue(node);
+          } else if (getOrCreateObjectForNode(node)) {
+            attach(node);
+          }
+        }
+      });
+      contentChanged();
+    });
+  }
+
   objectToCleanup.set(containerObject, () => {
     pump?.dispose();
     // A panel closed before it finished mounting still had a frame up.
@@ -1278,7 +1397,10 @@ export function createPortal(
       // Removing is safe whether `markLoaded` ever added it.
       interactionManager.remove(blocker);
     }
-    if (containerElement.parentNode) {
+    // The portal's own container goes with it. One the page handed over is
+    // the page's, and stays exactly where it is; `disconnect` takes the
+    // portal's marks off it once everything under it is cleaned up.
+    if (!root && containerElement.parentNode) {
       containerElement.parentNode.removeChild(containerElement);
     }
     if (containerObject.parent) {
@@ -1309,9 +1431,20 @@ export function createPortal(
       parent.add(containerObject);
     },
     /**
+     * Put a tree into the portal's own container, in place of whatever it
+     * held. Not for a portal watching an element the page owns: what that
+     * element holds is the page's to decide, and replacing it from here
+     * would be the portal taking over content it was only asked to watch.
+     *
      * @param {Mountable} mountable
      */
     mount(mountable) {
+      if (root) {
+        throw new Error(
+          "This portal mirrors an element the page owns and does not mount into it; " +
+            "put the content in the element and the portal will follow it.",
+        );
+      }
       if (containerElement.firstChild && containerElement.lastChild) {
         mountable.replace([containerElement.firstChild, containerElement.lastChild]);
       } else {
@@ -1322,6 +1455,14 @@ export function createPortal(
     },
     disconnect() {
       cleanup(containerElement);
+      if (root) {
+        // After the walk, not before it: the teardowns it runs still look
+        // up the tree for the top of the panel. What is left on the element
+        // afterwards is the page's own, the hover and press flags included,
+        // which each element's teardown clears for itself.
+        containerElement.removeAttribute(PORTAL_ATTRIBUTE);
+        containerElement.removeAttribute(LOADING_ATTRIBUTE);
+      }
     },
     /**
      * Whether the panel is still mounting its initial content. Reactive: a

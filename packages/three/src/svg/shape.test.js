@@ -186,7 +186,8 @@ describe("svg shape", () => {
     // Fill first, stroke after: at equal render order and depth the sort
     // falls back to id, and the stroke has to cover the fill's edge.
     assert.ok(stroke.id > fill.id);
-    assert.equal(stroke.renderOrder, fill.renderOrder);
+    assert.ok(stroke.renderOrder > fill.renderOrder);
+    assert.equal(Math.floor(stroke.renderOrder), Math.floor(fill.renderOrder));
     s.teardown();
   });
 
@@ -338,6 +339,83 @@ describe("svg shape", () => {
     assert.equal(area(evenodd.meshes[0]), 1200);
     nonzero.teardown();
     evenodd.teardown();
+  });
+
+  test("shapes keep document order in the draw order, whatever order their meshes were made in", () => {
+    // Two rects under one root; the first has no fill to begin with, so its
+    // fill mesh is created after the second's. With a shared render order
+    // three would fall back to mesh id and draw it on top; the fraction from
+    // document order keeps it underneath.
+    const root = document.createElementNS(SVG_NS, "svg");
+    root.getBoundingClientRect = () =>
+      /** @type {DOMRect} */ ({ left: 0, top: 0, right: 100, bottom: 50, width: 100, height: 50 });
+    const first = document.createElementNS(SVG_NS, "rect");
+    first.setAttribute("width", "10");
+    first.setAttribute("height", "10");
+    first.setAttribute("fill", "none");
+    first.setAttribute("stroke", "black");
+    const second = document.createElementNS(SVG_NS, "rect");
+    second.setAttribute("width", "10");
+    second.setAttribute("height", "10");
+    second.setAttribute("fill", "red");
+    root.append(first, second);
+    document.body.appendChild(root);
+    const mirror = createMirror();
+    mirror.adopt(root);
+    mirror.adopt(first);
+    mirror.adopt(second);
+    /** @type {Object3D[]} */
+    const objects = [];
+    const subscriptions = [first, second].map((el, i) =>
+      shape({}, el).subscribe((value) => {
+        objects[i] = value;
+      }),
+    );
+    const meshesOf = (/** @type {Object3D} */ object) =>
+      /** @type {Mesh[]} */ (object.children.filter((child) => child instanceof THREE.Mesh));
+
+    first.setAttribute("fill", "blue");
+    mirror.attributeChanged(first);
+    // The fill mesh arrived after the stroke's, so it is the later child;
+    // tell them apart by colour rather than by position.
+    const firstMeshes = meshesOf(objects[0]);
+    const firstFill = /** @type {Mesh} */ (
+      firstMeshes.find((mesh) => material(mesh).color.getHexString() === "0000ff")
+    );
+    const firstStroke = /** @type {Mesh} */ (firstMeshes.find((mesh) => mesh !== firstFill));
+    const [secondFill] = meshesOf(objects[1]);
+    assert.ok(firstFill.id > secondFill.id, "the first rect's fill mesh was made later");
+    assert.ok(firstFill.renderOrder < firstStroke.renderOrder, "fill under its own stroke");
+    assert.ok(firstStroke.renderOrder < secondFill.renderOrder, "the first rect under the second");
+    const base = Math.floor(secondFill.renderOrder);
+    assert.ok(secondFill.renderOrder < base + 1, "all of it inside the root's own step");
+
+    // A shape inserted before both takes the bottom, and the others move up.
+    const zeroth = document.createElementNS(SVG_NS, "rect");
+    zeroth.setAttribute("width", "10");
+    zeroth.setAttribute("height", "10");
+    zeroth.setAttribute("fill", "green");
+    root.insertBefore(zeroth, first);
+    mirror.adopt(zeroth);
+    mirror.childListChanged(root, zeroth);
+    /** @type {Object3D | undefined} */
+    let zerothObject;
+    subscriptions.push(
+      shape({}, zeroth).subscribe((value) => {
+        zerothObject = value;
+      }),
+    );
+    assert.ok(zerothObject);
+    const [zerothFill] = meshesOf(zerothObject);
+    assert.ok(
+      zerothFill.renderOrder < meshesOf(objects[0])[0].renderOrder,
+      "inserted first, drawn first",
+    );
+
+    for (const subscription of subscriptions) {
+      subscription.unsubscribe();
+    }
+    root.remove();
   });
 
   test("teardown disposes what it made", () => {

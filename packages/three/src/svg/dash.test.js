@@ -267,6 +267,50 @@ describe("dashRuns", () => {
     }
   });
 
+  test("a dotted line with an offset starts where the offset says, not before the line", () => {
+    // The walk to the starting dash used to stop on a zero-length entry with
+    // phase still unspent, leaving a negative remainder that closed a "dash"
+    // before the first point — a dot 1.5 units off the start here. Every
+    // intermediate offset of an animated `stroke-dashoffset` on `0 6` hit it.
+    const line = polyline([
+      [0, 0],
+      [20, 0],
+    ]);
+    assert.deepEqual(plain(dashRuns(line, [0, 6], 3, 0.1)), [
+      [
+        [2.95, 0],
+        [3.05, 0],
+      ],
+      [
+        [8.95, 0],
+        [9.05, 0],
+      ],
+      [
+        [14.95, 0],
+        [15.05, 0],
+      ],
+    ]);
+    assert.deepEqual(plain(dashRuns(line, [0, 6], 1, 0.1)), [
+      [
+        [4.95, 0],
+        [5.05, 0],
+      ],
+      [
+        [10.95, 0],
+        [11.05, 0],
+      ],
+      [
+        [16.95, 0],
+        [17.05, 0],
+      ],
+    ]);
+    // An offset that lands exactly on a dot still draws it.
+    assert.deepEqual(plain(dashRuns(line, [0, 6], 6, 0.1))[0], [
+      [-0.05, 0],
+      [0.05, 0],
+    ]);
+  });
+
   test("a closed path is dashed like an open one", () => {
     const square = polyline([
       [0, 0],

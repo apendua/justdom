@@ -7,6 +7,7 @@ import { place } from "../elements/place.js";
 import { getContentRenderOrder } from "../elements/elevation.js";
 import {
   getBorderBoxSize,
+  getChildNodes,
   getComputedStyleCached,
   getInteriorClipBox,
   getParentElement,
@@ -295,6 +296,76 @@ function readChain(element) {
   return { ctm, opacity, root: null };
 }
 
+/** The elements that draw something, and so take a place in the paint order. */
+const SHAPE_TAGS = new Set(["path", "rect", "circle", "ellipse", "line", "polyline", "polygon"]);
+
+/**
+ * @typedef {object} PaintOrder
+ * @property {Map<Element, number>} index Each shape's place in the root's
+ *   document order, counting shapes only.
+ * @property {number} count How many there are.
+ */
+
+/**
+ * @param {PaintOrder} a
+ * @param {PaintOrder} b
+ * @returns {boolean}
+ */
+function paintOrderEqual(a, b) {
+  if (a.count !== b.count) {
+    return false;
+  }
+  for (const [element, at] of a.index) {
+    if (b.index.get(element) !== at) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/** @type {WeakMap<Element, Derived<PaintOrder>>} */
+const paintOrders = new WeakMap();
+
+/**
+ * The document order of the shapes under an `<svg>` root — SVG's painter
+ * order — as one computation per root that every shape in it reads, rather
+ * than a walk per shape. It follows the mirror's child-list signals, so a
+ * shape arriving or leaving anywhere under the root renumbers the root once,
+ * and the shapes whose place did not change stop there.
+ *
+ * @param {Element} root
+ * @returns {PaintOrder}
+ */
+function getPaintOrder(root) {
+  let signal = paintOrders.get(root);
+  if (!signal) {
+    signal = new Derived(
+      () => {
+        /** @type {Map<Element, number>} */
+        const index = new Map();
+        /** @param {Node} node */
+        const walk = (node) => {
+          for (const child of getChildNodes(node)) {
+            if (child.nodeType !== Node.ELEMENT_NODE) {
+              continue;
+            }
+            const element = /** @type {Element} */ (child);
+            if (SHAPE_TAGS.has(element.localName)) {
+              index.set(element, index.size);
+            }
+            walk(element);
+          }
+        };
+        walk(root);
+        return { index, count: index.size };
+      },
+      { isEqual: paintOrderEqual },
+    );
+    paintOrders.set(root, signal);
+  }
+  return signal.get();
+}
+
 /**
  * How many segments to sample each curve of a shape at, given how large the
  * matrix draws a user unit: three's default of twelve at unit scale, more
@@ -565,14 +636,30 @@ export function shape(ctx, element) {
   });
 
   /**
-   * Where the shapes of this root belong in the draw order: the root's own
-   * content order, the same for every shape in it, at the same depth — so
-   * that three's stable sort falls through to mesh id, and meshes are made
-   * in document order, which is SVG's painter order.
+   * Where this shape's meshes belong in the draw order: the root's content
+   * order, plus a fraction from the shape's place in the root's document
+   * order — fill, then stroke, then the next shape — that keeps every
+   * shape of one `<svg>` strictly inside the root's own step. SVG paints
+   * in document order, and this says so explicitly rather than leaning on
+   * three's sort falling through to mesh id: that fallback is document
+   * order only for the initial build, and a fill switched on by a hover, or
+   * a shape inserted before its siblings, would otherwise jump the stack.
+   *
+   * @param {0 | 1} layer 0 for the fill, 1 for the stroke drawn over it.
+   * @returns {() => number}
    */
-  const renderOrder = () => {
+  const renderOrderOf = (layer) => () => {
     const root = chain.get().root;
-    return getContentRenderOrder(asHtml(root ?? element));
+    const base = getContentRenderOrder(asHtml(root ?? element));
+    if (!root) {
+      return base;
+    }
+    const { index, count } = getPaintOrder(root);
+    const at = index.get(element);
+    if (at === undefined) {
+      return base;
+    }
+    return base + (2 * at + layer + 1) / (2 * count + 2);
   };
 
   /**
@@ -612,7 +699,7 @@ export function shape(ctx, element) {
               paint: () => fillPaint.get(),
               opacity: () =>
                 opacity() * parseNumber(readProperty(style(), element, "fill-opacity"), 1),
-              renderOrder,
+              renderOrder: renderOrderOf(0),
               clip,
             })
           : Nothing(),
@@ -629,7 +716,7 @@ export function shape(ctx, element) {
               paint: () => strokePaint.get(),
               opacity: () =>
                 opacity() * parseNumber(readProperty(style(), element, "stroke-opacity"), 1),
-              renderOrder,
+              renderOrder: renderOrderOf(1),
               clip,
             })
           : Nothing(),

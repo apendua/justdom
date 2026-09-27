@@ -62,15 +62,20 @@ export function dashRuns(points, pattern, offset, dotLength = 0) {
   }
 
   // Where in the pattern the line starts: `offset` into it, wrapped into
-  // one repeat, then walked to the dash it lands in.
+  // one repeat, then walked to the dash it lands in. The walk stops only
+  // once the phase is spent: a zero-length entry is stepped over while there
+  // is phase left to consume, and entered when there is none — which is
+  // what puts a dot at the start of a dotted line, and what keeps an offset
+  // dotted line (marching dots) from opening with a dash before the line's
+  // start, where a negative remainder would have put one. Terminates because
+  // the phase is below one repeat and the repeat's lengths sum to more than
+  // zero.
   let phase = ((offset % total) + total) % total;
   let index = 0;
-  while (phase >= pattern[index] && pattern[index] > 0) {
+  while (phase > 0 && phase >= pattern[index]) {
     phase -= pattern[index];
     index = (index + 1) % pattern.length;
   }
-  // A zero-length dash at the very start is entered rather than skipped, so
-  // that a dotted line begins with a dot.
   let remaining = pattern[index] - phase;
   let on = index % 2 === 0;
 

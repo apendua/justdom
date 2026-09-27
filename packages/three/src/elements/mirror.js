@@ -358,6 +358,17 @@ class NodeRecord {
   self = Signal.of(0);
 
   /**
+   * This node's own computed style moved and nothing under it can have: an
+   * animation of a property that does not inherit — a transform, an
+   * opacity, a background. Read by this node's style context alone (and by
+   * its text children's, whose computed style *is* this node's), where
+   * `self` is read by every descendant's.
+   *
+   * @type {Signal<number>}
+   */
+  own = Signal.of(0);
+
+  /**
    * Some *child* of this node changed its attributes. Sibling combinators
    * (`~`, `+`) let a mutation restyle the elements after it, so each
    * child's computed style depends on this — one signal on the parent
@@ -890,13 +901,30 @@ export class DomMirror {
    * frame the transition runs; at the old scope each of those frames
    * restyled every sibling in the list and everything under them.
    *
+   * `subtree: false` narrows it once more, to the element alone, for an
+   * animation of nothing a child inherits. A transform on a card's root
+   * moves no computed value under it, and at the subtree scope every frame
+   * of it restyled the whole card — which, on an atomic channel, was more
+   * than a frame's budget could re-resolve, so the tilt never reached the
+   * scene until it had finished. Whatever a descendant does derive from an
+   * ancestor's style — `isTransformed` — reads it through the ancestor's
+   * own memoized style, which this still invalidates.
+   *
    * @param {Iterable<Node>} targets
+   * @param {{ subtree?: boolean }} [options]
    * @returns {void}
    */
-  animatedStyles(targets) {
+  animatedStyles(targets, { subtree = true } = {}) {
     batch(() => {
       for (const target of targets) {
-        this.#restyleScope(target, { reachesSiblings: false });
+        if (subtree) {
+          this.#restyleScope(target, { reachesSiblings: false });
+        } else {
+          const record = recordOf(target);
+          if (record) {
+            bump(record.own);
+          }
+        }
       }
     });
   }
@@ -1509,6 +1537,9 @@ function getStyleContext(node) {
           sum += currentRecord.self.get();
           if (depth > 0) {
             sum += currentRecord.members.get();
+          }
+          if (depth === 0 || (depth === 1 && node.nodeType === Node.TEXT_NODE)) {
+            sum += currentRecord.own.get();
           }
         }
         if (

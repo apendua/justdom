@@ -3,12 +3,13 @@ import { documentTime, sampleRenderingUpdates } from "./renderingUpdates.js";
 /**
  * The kinds of change the clock can announce, and the shape it announces
  * them in. `animated` says the computed styles of the targets' subtrees may
- * have moved; `reflow` says client rects have — of the targets' subtrees,
- * or of everything when layout itself is animating and no target can name
- * what it displaced. The portal translates these into the mirror's targeted
- * invalidations.
+ * have moved; `animatedSelf` says only the targets' own have, because what
+ * is animating does not inherit; `reflow` says client rects have — of the
+ * targets' subtrees, or of everything when layout itself is animating and
+ * no target can name what it displaced. The portal translates these into
+ * the mirror's targeted invalidations.
  *
- * @typedef {"animated" | "reflow"} MutationType
+ * @typedef {"animated" | "animatedSelf" | "reflow"} MutationType
  */
 
 /**
@@ -85,6 +86,40 @@ const PAINT_PROPERTIES = new Set([
 ]);
 
 /**
+ * The paint properties a child inherits. Everything else in the paint and
+ * transform classes stays on the element it is set on — a rotating card does
+ * not change a single computed value under it — which is what lets the clock
+ * restyle the animating element alone rather than its subtree. The layout
+ * class is never narrowed: `font-size`, `line-height` and their kind inherit,
+ * and an unrecognized property is assumed to be one of them.
+ *
+ * "Stays on the element" is the default and not a law: a child that says
+ * `background-color: inherit` takes its parent's background, animating or
+ * not. See `reachesChildren` for how the clock finds out.
+ */
+const INHERITED_PAINT_PROPERTIES = new Set(["color", "visibility"]);
+
+/**
+ * How one animation is held: its invalidation class, whether what it
+ * animates inherits by default, and — for what does not — which properties
+ * those are, so that a child inheriting one of them explicitly can be
+ * caught.
+ *
+ * @typedef {object} Animated
+ * @property {AnimationClass} cls
+ * @property {boolean} inherited
+ * @property {string[]} properties the non-inherited ones, kebab-case
+ */
+
+/**
+ * @param {string} name a CSS property name, camelCased or not
+ * @returns {string}
+ */
+function kebab(name) {
+  return name.replace(/[A-Z]/g, (ch) => `-${ch.toLowerCase()}`);
+}
+
+/**
  * The invalidation class of one animated property. Keyframes hand properties
  * back camelCased; transition events use the CSS names; both resolve here.
  * Anything unrecognized — including a missing name — is assumed to move
@@ -97,7 +132,7 @@ function classify(property) {
   if (!property) {
     return "layout";
   }
-  const name = property.replace(/[A-Z]/g, (ch) => `-${ch.toLowerCase()}`);
+  const name = kebab(property);
   if (TRANSFORM_PROPERTIES.has(name)) {
     return "transform";
   }
@@ -108,10 +143,58 @@ function classify(property) {
 }
 
 /**
- * The worst class across every property a keyframe effect animates.
+ * One animated property as the clock holds it. Anything the layout class
+ * holds is taken to inherit, missing names included.
+ *
+ * @param {string} [property]
+ * @returns {Animated}
+ */
+function animatedProperty(property) {
+  const cls = classify(property);
+  if (cls === "layout" || !property) {
+    return { cls, inherited: true, properties: [] };
+  }
+  const name = kebab(property);
+  return INHERITED_PAINT_PROPERTIES.has(name)
+    ? { cls, inherited: true, properties: [] }
+    : { cls, inherited: false, properties: [name] };
+}
+
+/**
+ * Everything some animations amount to: the worst class among them, whether
+ * any inherits, and every non-inherited property they animate. The one fold
+ * both an element's running animations and a keyframe effect's properties
+ * go through.
+ *
+ * @param {Iterable<Animated>} animations
+ * @returns {Animated}
+ */
+function combine(animations) {
+  /** @type {AnimationClass} */
+  let cls = "paint";
+  let inherited = false;
+  /** @type {Set<string>} */
+  const properties = new Set();
+  for (const animation of animations) {
+    if (CLASS_RANK[animation.cls] > CLASS_RANK[cls]) {
+      cls = animation.cls;
+    }
+    if (animation.inherited) {
+      inherited = true;
+    }
+    for (const property of animation.properties) {
+      properties.add(property);
+    }
+  }
+  return { cls, inherited, properties: [...properties] };
+}
+
+/**
+ * What a keyframe effect animates, folded over every property its keyframes
+ * name.
  *
  * @param {AnimationEffect | null} effect
- * @returns {AnimationClass}
+ * @returns {Animated}
  */
 function classifyKeyframes(effect) {
   // Duck-typed rather than `instanceof KeyframeEffect`: only that subclass
@@ -119,10 +202,10 @@ function classifyKeyframes(effect) {
   // same question and one that survives a document without the constructor.
   const keyframed = /** @type {KeyframeEffect | null} */ (effect);
   if (!keyframed || typeof keyframed.getKeyframes !== "function") {
-    return "layout";
+    return { cls: "layout", inherited: true, properties: [] };
   }
-  /** @type {AnimationClass} */
-  let worst = "paint";
+  /** @type {Animated[]} */
+  const animated = [];
   for (const frame of keyframed.getKeyframes()) {
     for (const property of Object.keys(frame)) {
       if (
@@ -133,13 +216,59 @@ function classifyKeyframes(effect) {
       ) {
         continue;
       }
-      const cls = classify(property);
-      if (CLASS_RANK[cls] > CLASS_RANK[worst]) {
-        worst = cls;
+      animated.push(animatedProperty(property));
+    }
+  }
+  return combine(animated);
+}
+
+/**
+ * Whether a child of `element` takes one of these properties from it — an
+ * explicit `inherit` on something that does not inherit by default, which
+ * the restyle of the element alone would never reach.
+ *
+ * Only children, never deeper: a grandchild inheriting explicitly inherits
+ * from its parent, whose value moves only if that parent inherits too — in
+ * which case the parent is the child found here, and the subtree restyle it
+ * causes reaches the grandchild. And by value, because a computed style
+ * does not say *why* it holds what it holds: a child that inherits holds
+ * exactly its parent's value, on every frame. A child that happens to hold
+ * the same value without inheriting it costs a subtree restyle it did not
+ * need, which is the safe way to be wrong.
+ *
+ * @param {HTMLElement} element
+ * @param {string[]} properties kebab-case
+ * @returns {boolean}
+ */
+function reachesChildren(element, properties) {
+  const view = element.ownerDocument.defaultView;
+  if (!view || !element.firstElementChild) {
+    return !view;
+  }
+  const own = view.getComputedStyle(element);
+  const values = properties.map((property) => own.getPropertyValue(property));
+  for (const child of element.children) {
+    const theirs = view.getComputedStyle(child);
+    for (let index = 0; index < properties.length; index++) {
+      if (theirs.getPropertyValue(properties[index]) === values[index]) {
+        return true;
       }
     }
   }
-  return worst;
+  return false;
+}
+
+/**
+ * Whether one element's animations, taken together, can move a descendant's
+ * computed style — by default inheritance, or by a child's explicit
+ * `inherit`.
+ *
+ * @param {HTMLElement} element
+ * @param {Animated} animated
+ * @returns {boolean}
+ */
+function reachesSubtree(element, animated) {
+  return animated.inherited || reachesChildren(element, animated.properties);
 }
 
 /**
@@ -162,11 +291,71 @@ export function createAnimationClock(container, emit, requestFrames) {
   /**
    * What is animating right now: for each element, its running animations —
    * keyed so that a transition's end event can find what its start event
-   * added — each with the invalidation class of what it animates.
+   * added — each with the invalidation class of what it animates and
+   * whether that inherits.
    *
-   * @type {Map<HTMLElement, Map<string, AnimationClass>>}
+   * @type {Map<HTMLElement, Map<string, Animated>>}
    */
   const animating = new Map();
+
+  /**
+   * Elements whose children have been seen *not* to take what they animate
+   * — see `reachesChildren` — for as long as the same animations run.
+   *
+   * A child that inherits explicitly holds its parent's value on every
+   * frame, so a single frame on which no child matches proves none of them
+   * inherits, and the reads need not be repeated. The frames before it are
+   * not proof either way: a card turning from `none` matches its children's
+   * `none` until it has moved, which is why the verdict waits for a
+   * mismatch instead of being taken when the animation starts. Forgotten
+   * whenever the element's set of animations changes, since what is
+   * compared changes with it. A row appended mid-animation that inherits
+   * is missed until the settle, which checks afresh.
+   *
+   * @type {WeakSet<HTMLElement>}
+   */
+  const narrow = new WeakSet();
+
+  /**
+   * `reachesSubtree`, for a running animation: remembers the element once a
+   * frame has shown that no child inherits.
+   *
+   * @param {HTMLElement} element
+   * @param {Animated} animated
+   * @returns {boolean}
+   */
+  function reachesSubtreeWhileRunning(element, animated) {
+    if (animated.inherited) {
+      return true;
+    }
+    if (narrow.has(element)) {
+      return false;
+    }
+    if (reachesChildren(element, animated.properties)) {
+      return true;
+    }
+    narrow.add(element);
+    return false;
+  }
+
+  /**
+   * Whether two sets of running animations are the same ones.
+   *
+   * @param {Map<string, Animated> | undefined} a
+   * @param {Map<string, Animated>} b
+   * @returns {boolean}
+   */
+  function sameAnimations(a, b) {
+    if (!a || a.size !== b.size) {
+      return false;
+    }
+    for (const key of b.keys()) {
+      if (!a.has(key)) {
+        return false;
+      }
+    }
+    return true;
+  }
 
   /** @type {(() => void) | null} */
   let stopFrames = null;
@@ -208,10 +397,12 @@ export function createAnimationClock(container, emit, requestFrames) {
   }
 
   /**
-   * The batches one sample asks for: a style re-read scoped to the animating
-   * elements always; a portal-wide rect re-measure when layout itself is
-   * animating, which moves elements nobody named; a subtree rect re-measure
-   * when a *transform* settles — and only then. While a transform animates,
+   * The batches one sample asks for: a style re-read of the animating
+   * elements always — of their subtrees where what animates can reach a
+   * child, of the elements alone where it cannot; a portal-wide rect
+   * re-measure when layout itself is animating, which moves elements nobody
+   * named; a subtree rect re-measure when a *transform* settles — and only
+   * then. While a transform animates,
    * nothing consumes its client rects (elements measure off layout offsets,
    * text measures with transforms switched off), so per-frame reflow would
    * buy nothing and cost a text re-measure per tick. The moment the
@@ -219,14 +410,21 @@ export function createAnimationClock(container, emit, requestFrames) {
    * client-rect path, and the rects its subtree cached mid-flight are
    * whatever the animation last made of them.
    *
-   * @param {Set<Node>} targets
+   * @param {Set<Node>} targets restyled with their subtrees
+   * @param {Set<Node>} selfTargets restyled alone
    * @param {Set<Node>} transformTargets
    * @param {boolean} layout
    * @returns {MutationBatch[]}
    */
-  function batchesFor(targets, transformTargets, layout) {
+  function batchesFor(targets, selfTargets, transformTargets, layout) {
     /** @type {MutationBatch[]} */
-    const batches = [{ types: new Set(["animated"]), targets }];
+    const batches = [];
+    if (targets.size) {
+      batches.push({ types: new Set(["animated"]), targets });
+    }
+    if (selfTargets.size) {
+      batches.push({ types: new Set(["animatedSelf"]), targets: selfTargets });
+    }
     if (layout) {
       batches.push({ types: new Set(["reflow"]), targets: null });
     } else if (transformTargets.size) {
@@ -239,16 +437,18 @@ export function createAnimationClock(container, emit, requestFrames) {
   function buildBatches() {
     /** @type {Set<Node>} */
     const targets = new Set();
+    /** @type {Set<Node>} */
+    const selfTargets = new Set();
     let layout = false;
     for (const [element, keys] of animating) {
-      targets.add(element);
-      for (const cls of keys.values()) {
-        if (cls === "layout") {
-          layout = true;
-        }
+      const animated = combine(keys.values());
+      const { cls } = animated;
+      (reachesSubtreeWhileRunning(element, animated) ? targets : selfTargets).add(element);
+      if (cls === "layout") {
+        layout = true;
       }
     }
-    return batchesFor(targets, new Set(), layout);
+    return batchesFor(targets, selfTargets, new Set(), layout);
   }
 
   /**
@@ -256,25 +456,40 @@ export function createAnimationClock(container, emit, requestFrames) {
    * landed on its final value, and no further frame is coming to pick it up.
    *
    * @param {HTMLElement} element
-   * @param {AnimationClass} cls
+   * @param {Animated} animated
    */
-  function settle(element, cls) {
+  function settle(element, animated) {
+    const { cls } = animated;
     const target = new Set([element]);
-    emit(batchesFor(target, cls === "transform" ? target : new Set(), cls === "layout"));
+    const none = new Set();
+    // Checked again rather than trusted from the last frame: the value the
+    // property lands on is what a child that inherits it has to show.
+    const subtree = reachesSubtree(element, animated);
+    emit(
+      batchesFor(
+        subtree ? target : none,
+        subtree ? none : target,
+        cls === "transform" ? target : none,
+        cls === "layout",
+      ),
+    );
   }
 
   /**
    * @param {HTMLElement} element
    * @param {string} key
-   * @param {AnimationClass} cls
+   * @param {Animated} animated
    */
-  function add(element, key, cls) {
+  function add(element, key, animated) {
     let keys = animating.get(element);
     if (!keys) {
       keys = new Map();
       animating.set(element, keys);
     }
-    keys.set(key, cls);
+    if (!keys.has(key)) {
+      narrow.delete(element);
+    }
+    keys.set(key, animated);
     start();
   }
 
@@ -284,15 +499,16 @@ export function createAnimationClock(container, emit, requestFrames) {
    */
   function remove(element, key) {
     const keys = animating.get(element);
-    const cls = keys?.get(key);
-    if (!keys || cls === undefined) {
+    const animated = keys?.get(key);
+    if (!keys || animated === undefined) {
       return;
     }
     keys.delete(key);
+    narrow.delete(element);
     if (!keys.size) {
       animating.delete(element);
     }
-    settle(element, cls);
+    settle(element, animated);
     if (!animating.size) {
       stop();
     }
@@ -366,7 +582,7 @@ export function createAnimationClock(container, emit, requestFrames) {
         }
       }
     }
-    /** @type {Map<HTMLElement, Map<string, AnimationClass>>} */
+    /** @type {Map<HTMLElement, Map<string, Animated>>} */
     const seen = new Map();
     for (const animation of animations) {
       // A pending animation is about to run — a start the events may not
@@ -389,7 +605,7 @@ export function createAnimationClock(container, emit, requestFrames) {
       if (typeof CSSTransition !== "undefined" && animation instanceof CSSTransition) {
         keys.set(
           `transition:${animation.transitionProperty}`,
-          classify(animation.transitionProperty),
+          animatedProperty(animation.transitionProperty),
         );
       } else if (typeof CSSAnimation !== "undefined" && animation instanceof CSSAnimation) {
         keys.set(`animation:${animation.animationName}`, classifyKeyframes(effect));
@@ -400,27 +616,28 @@ export function createAnimationClock(container, emit, requestFrames) {
     // Anything that was running and no longer is has just landed on its final
     // value, and — with no `transitionend` to rely on, which is the whole
     // point of sweeping — this pass is the only notice of it.
-    /** @type {[HTMLElement, AnimationClass][]} */
+    /** @type {[HTMLElement, Animated][]} */
     const finished = [];
     for (const [element, keys] of animating) {
       if (seen.has(element)) {
         continue;
       }
-      /** @type {AnimationClass} */
-      let worst = "paint";
-      for (const cls of keys.values()) {
-        if (CLASS_RANK[cls] > CLASS_RANK[worst]) {
-          worst = cls;
-        }
+      finished.push([element, combine(keys.values())]);
+    }
+    for (const [element, keys] of seen) {
+      if (!sameAnimations(animating.get(element), keys)) {
+        narrow.delete(element);
       }
-      finished.push([element, worst]);
+    }
+    for (const [element] of finished) {
+      narrow.delete(element);
     }
     animating.clear();
     for (const [element, keys] of seen) {
       animating.set(element, keys);
     }
-    for (const [element, cls] of finished) {
-      settle(element, cls);
+    for (const [element, animated] of finished) {
+      settle(element, animated);
     }
     if (animating.size) {
       start();
@@ -437,6 +654,7 @@ export function createAnimationClock(container, emit, requestFrames) {
     for (const element of [...animating.keys()]) {
       if (!container.contains(element)) {
         animating.delete(element);
+        narrow.delete(element);
       }
     }
     if (sampleRenderingUpdates()) {
@@ -479,7 +697,7 @@ export function createAnimationClock(container, emit, requestFrames) {
       return;
     }
     const { propertyName } = /** @type {TransitionEvent} */ (event);
-    add(element, `transition:${propertyName}`, classify(propertyName));
+    add(element, `transition:${propertyName}`, animatedProperty(propertyName));
   }
 
   /** @param {Event} event */
@@ -501,7 +719,11 @@ export function createAnimationClock(container, emit, requestFrames) {
     const { animationName } = /** @type {AnimationEvent} */ (event);
     // The event does not say which properties the keyframes animate, so
     // assume the worst; the sweep refines it right away where it can.
-    add(element, `animation:${animationName}`, "layout");
+    add(element, `animation:${animationName}`, {
+      cls: "layout",
+      inherited: true,
+      properties: [],
+    });
     sweep();
   }
 

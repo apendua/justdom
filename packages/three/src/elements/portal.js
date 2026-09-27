@@ -195,6 +195,22 @@ function claimRoot(root) {
  *   starving the others meanwhile is then the point, not a hazard. Within a
  *   priority the offer rotates frame by frame, so equals share the pool and
  *   none waits forever on a peer. 0 by default.
+ * @property {boolean} [atomic] Whether an update reaches the scene whole or
+ *   not at all. True by default: the budget is spent resolving what the
+ *   panel's effects read, and the effects run together in the frame that
+ *   finds nothing left to read, so a change too big for one frame arrives
+ *   late rather than as a wave of rows sliding a few at a time. The cost is
+ *   paid by anything that invalidates the panel on *every* frame — a layout
+ *   transition, most of all — since each frame's invalidation undoes the
+ *   reading the frame before it did, and a panel whose per-frame reading
+ *   does not fit the budget does not move until the animation ends. False
+ *   runs the effects themselves under the budget, as many as fit, in the
+ *   order they were queued: something moves every frame, and an update too
+ *   big for one frame lands in instalments. Rows added or removed after
+ *   the mount go in and come out as soon as they are built or gone, not
+ *   when the channel next empties. For a panel where responding to the
+ *   hand matters more than never being seen half-updated. The initial
+ *   mount is held back until it is whole either way.
  * @property {number} [maxTextScale] The most device pixels this panel's text
  *   is rasterized for each of its CSS pixels. Measured per panel by default
  *   (`textScale.js` says how) and capped at 4, which is what a panel of a
@@ -255,6 +271,7 @@ function buildPortal(
     opaqueToRays = true,
     budget = 5,
     priority = 0,
+    atomic = true,
     maxTextScale,
     onLoadingChanged,
     loadingFrame = true,
@@ -559,7 +576,8 @@ function buildPortal(
    * where a panel's cost is — and runs the effects together, in the frame
    * that finds nothing left to read. Until then the panel stands as it was.
    * The objects the pump builds meanwhile, and the ones whose nodes left,
-   * wait for that same frame; see `commit` below.
+   * wait for that same frame; see `commit` below. Unless the portal was
+   * asked not to be — see `PortalOptions.atomic` for what that trades.
    *
    * Null where there are no frames — see above — and every `withChannel`
    * below degrades to the default channel, which is synchronous mounting.
@@ -571,7 +589,7 @@ function buildPortal(
         name: "portal",
         order: 1,
         manual: true,
-        atomic: true,
+        atomic,
         maxStalePasses: Infinity,
       })
     : null;
@@ -792,7 +810,11 @@ function buildPortal(
    * attached on the spot, so that a row appearing and the rows it pushes
    * down arrive in the same frame — the channel holds the moves, so the
    * scene has to hold the arrivals. Only a pumped portal keeps this list;
-   * with no frames to slice across there is nothing to hold for.
+   * with no frames to slice across there is nothing to hold for. A portal
+   * that is not atomic makes no such promise once it has loaded: its moves
+   * already land by instalments, and it commits as soon as nothing is left
+   * to build (see `commitsEarly` in the pump), so a row can arrive a frame
+   * or more before the rows it pushes down have moved.
    *
    * Nodes, not parent-and-child pairs, because where a node belongs is
    * decided at the commit and not before: a node moved under a parent that
@@ -811,7 +833,9 @@ function buildPortal(
    * change, and what the player sees of the row until then is the row as
    * it was. Everything about the object waits — see `detach` for why the
    * whole of it has to. Checked again at the commit: a node back in the
-   * tree by then was moved, not removed, and keeps its object.
+   * tree by then was moved, not removed, and keeps its object. The same
+   * exception as above: a portal that is not atomic commits these without
+   * waiting for the rows that close over the gap.
    *
    * @type {Set<Node>}
    */
@@ -906,7 +930,10 @@ function buildPortal(
 
   /**
    * The moment the scene changes: the pump has swept the channel, so every
-   * box that moved has moved, and this is what goes with it. Arrivals
+   * box that moved has moved, and this is what goes with it. Except for a
+   * portal that is not atomic, once it has loaded: the pump commits it as
+   * soon as no node is left to build, with the channel still holding work,
+   * and the moves that go with an arrival follow by instalments. Arrivals
    * first, each still checked against the tree, since a node can leave
    * between being built and being placed; then the departures. In that
    * order so that an object moved out of a departing subtree is under its
@@ -1074,6 +1101,11 @@ function buildPortal(
           priority,
           buildNode: buildQueuedNode,
           onCommit: commit,
+          // Not atomic, the panel changes by instalments anyway; a row built
+          // after the mount goes in as soon as it is, rather than when a
+          // busy channel happens to empty. The mount itself still arrives
+          // whole.
+          commitsEarly: () => !atomic && !loading.get(),
           hasPendingCommit,
           onSettled: markLoaded,
           // Content appeared or moved under whatever rays are resting on
@@ -1271,7 +1303,8 @@ function buildPortal(
 
   /**
    * What the animation clock's batches mean in the mirror's vocabulary:
-   * `animated` is a style change stretched over time, `reflow` is rects
+   * `animated` is a style change stretched over time, `animatedSelf` the
+   * same confined to the element, `reflow` is rects
    * moving without a mutation — a settling transform for its own subtree,
    * an animating layout property for everyone.
    *
@@ -1282,6 +1315,9 @@ function buildPortal(
       for (const animationBatch of batches) {
         if (animationBatch.types.has("animated") && animationBatch.targets) {
           mirror.animatedStyles(animationBatch.targets);
+        }
+        if (animationBatch.types.has("animatedSelf") && animationBatch.targets) {
+          mirror.animatedStyles(animationBatch.targets, { subtree: false });
         }
         if (animationBatch.types.has("reflow")) {
           mirror.reflowed(animationBatch.targets);

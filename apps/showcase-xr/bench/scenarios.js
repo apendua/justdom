@@ -101,7 +101,7 @@ const SETUP_LONG_LIST = `
   ${PRELUDE}
   await frames(30);
   // How the list gets long is the app's business, and the app changes:
-  // todo-xr had a bulk button, then gained a keyboard and lost it. A
+  // the todo app had a bulk button, then gained a keyboard and lost it. A
   // benchmark whose whole purpose is running the same stimulus against two
   // revisions cannot be wedded to one revision's button, so take whichever
   // affordance is there and count items rather than presses.

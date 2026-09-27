@@ -5,7 +5,7 @@ cheaper to mirror, or did it just move the cost somewhere the stopwatch
 wasn't looking?**
 
 It lives in `showcase-xr` because that is the project with the Playwright
-dependency, but it drives whichever app you point it at — `todo-xr` by
+dependency, but it drives whichever app you point it at — `todo-vanilla` by
 default, because that is the one with a list long enough to hurt.
 
 ## Running it
@@ -30,7 +30,7 @@ node bench/run.js --style-reads             # + computed-style property reads
 | `--against <rev>` | none      | any git revision — branch, tag, SHA. Omit to measure the working tree alone. |
 | `--repeat <n>`    | 3         | rounds, interleaved A-B-A-B. Medians reported.                               |
 | `--scenario a,b`  | all six   | `mount`, `scroll`, `mixed`, `burst`, `mutate`, `idle`.                       |
-| `--app <name>`    | `todo-xr` | any project under `apps/`.                                                   |
+| `--app <name>`    | `todo-vanilla` | any project under `apps/`.                                                   |
 | `--rounds <n>`    | 20        | presses of "Add 10 items" during setup.                                      |
 | `--burst <n>`     | 100       | items each `mount` burst adds at once.                                       |
 | `--style-reads`   | off       | wrap computed styles to count property reads.                                |

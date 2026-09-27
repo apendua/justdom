@@ -312,8 +312,9 @@ every key by ray — the argument for the whole package, checked.
 
 ## Real examples
 
-[`apps/todo-xr`](../../apps/todo-xr) types into a panel with the keyboard and
-scrolls its list with `scrollable`; [`apps/rubik`](../../apps/rubik),
+[`apps/todo-vanilla`](../../apps/todo-vanilla) scrolls its list with
+`scrollable` on the page and in the headset alike, and dresses the keyboard
+freedom's portal offers its text field; [`apps/rubik`](../../apps/rubik),
 [`apps/castle-xr`](../../apps/castle-xr),
 [`apps/marblerun`](../../apps/marblerun) and the rest of the headset apps pick
 an audio output with the dropdown and carry the diagnostics button in their own

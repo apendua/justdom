@@ -519,6 +519,40 @@ describe("createPortal", () => {
     portal.disconnect();
   });
 
+  test("the container is out of the page's way without hiding what it holds", async () => {
+    const portal = createPortal(InteractionContext.set({}, new InteractionManager()));
+    portal.addTo(new THREE.Group());
+    /** @type {import("@apendua/justdom").Mountable | undefined} */
+    let mountable;
+    const subscription = $("div", [attr("id", () => "held")]).subscribe((value) => {
+      mountable = value;
+    });
+    assert.ok(mountable);
+    portal.mount(mountable);
+    await settle(portal);
+
+    const held = /** @type {HTMLElement} */ (document.getElementById("held"));
+    const container = getPortalRoot(held);
+    assert.ok(container);
+    // Kept out of the tab order, the accessibility tree and find-in-page,
+    // which `visibility: hidden` used to do and being off-screen does not.
+    assert.ok(container.hasAttribute("inert"));
+    assert.equal(container.getAttribute("aria-hidden"), "true");
+
+    // A page hiding its own furniture does not reach into the panel: the
+    // container says `visible` for itself, so what is inside inherits that
+    // rather than whatever is above.
+    document.body.style.visibility = "hidden";
+    try {
+      assert.equal(window.getComputedStyle(held).visibility, "visible");
+    } finally {
+      document.body.style.visibility = "";
+    }
+
+    subscription.unsubscribe();
+    portal.disconnect();
+  });
+
   test("mirroring a change asks for the rays to be cast again", async () => {
     const manager = new InteractionManager();
     let updates = 0;

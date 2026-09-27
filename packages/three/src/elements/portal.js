@@ -112,6 +112,25 @@ function createContainerElement() {
   // Only the portal's own container is treated this way. A root the page
   // hands over is on show and the page's to style; see `claimRoot`.
   containerElement.style.transform = "translate(-100%, -100%)";
+  // Visible, explicitly, so that the panel answers only for itself. The
+  // property is inherited, and a computed value does not say where it came
+  // from: a page that hides its own furniture while a session runs — a
+  // `visibility: hidden` on `<body>`, or on a wrapper the portal ends up in
+  // — would otherwise hide every element of every panel, where the mirror's
+  // other root-scoped questions all stop at this container.
+  containerElement.style.visibility = "visible";
+  // What `visibility: hidden` used to do for free and moving off-screen does
+  // not: keep the panel out of the page's own interaction. Without this a
+  // Tab lands on invisible buttons and Enter clicks them, a screen reader
+  // reads the panel, find-in-page matches its text, and focusing something
+  // scrolls this `overflow: hidden` box — which the portal's scroll listener
+  // would faithfully mirror. `inert` refuses all of that and none of what
+  // the portal needs: clicks it synthesises with `dispatchEvent` still
+  // arrive, a checkbox still toggles on them, and computed styles are
+  // untouched. `aria-hidden` says the same to assistive technology that
+  // predates `inert`.
+  containerElement.setAttribute("inert", "");
+  containerElement.setAttribute("aria-hidden", "true");
   // Out of sight, but not out of flow enough on its own: a descendant wider or
   // taller than the panel — an unbreakable string, a fixed-size image — is
   // ordinarily left to bleed past this container's own box, and with nothing

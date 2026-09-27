@@ -1806,6 +1806,18 @@ function getPositionStyle(element) {
   return signal.get();
 }
 
+/**
+ * Whether a computed `visibility` hides what it applies to. `collapse` does,
+ * for anything that is not a table row or column — and a panel has no table
+ * layout to collapse, so it is `hidden` by another name here.
+ *
+ * @param {string} visibility
+ * @returns {boolean}
+ */
+export function hidesVisibility(visibility) {
+  return visibility === "hidden" || visibility === "collapse";
+}
+
 /** @type {WeakMap<Element | Text, Derived<boolean>>} */
 const hiddenCache = new WeakMap();
 
@@ -1830,10 +1842,7 @@ const hiddenCache = new WeakMap();
 export function isVisibilityHidden(node) {
   let signal = hiddenCache.get(node);
   if (!signal) {
-    signal = new Derived(() => {
-      const visibility = getComputedStyleCached(node).visibility;
-      return visibility === "hidden" || visibility === "collapse";
-    });
+    signal = new Derived(() => hidesVisibility(getComputedStyleCached(node).visibility));
     hiddenCache.set(node, signal);
   }
   return signal.get();

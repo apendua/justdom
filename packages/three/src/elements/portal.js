@@ -232,7 +232,22 @@ function claimRoot(root) {
  * @param {WeakKey} ctx
  * @param {PortalOptions} [options]
  */
-export function createPortal(
+export function createPortal(ctx, options) {
+  // Outside whatever computation is calling. `dom()` builds portals from
+  // inside its mounting's effect, and a signal read anywhere in here — the
+  // resize effect's first run, a first look at content the page already
+  // holds — would otherwise be that effect's dependency: the panel loading
+  // would re-run the mounting, which would take the panel down and build it
+  // again, forever. Untracked here rather than at each call site, so that
+  // the next caller, and the next read someone adds below, is safe too.
+  return withComputation(null, () => buildPortal(ctx, options));
+}
+
+/**
+ * @param {WeakKey} ctx
+ * @param {PortalOptions} [options]
+ */
+function buildPortal(
   ctx,
   {
     root,
@@ -245,6 +260,12 @@ export function createPortal(
     loadingFrame = true,
   } = {},
 ) {
+  // First, before anything is marked or made: the one thing here that a
+  // caller can get wrong synchronously, and a throw after the element had
+  // been claimed would leave the page carrying a mark with no portal to
+  // take it off — refusing every later claim, the right one included.
+  const interactionManager = InteractionContext.get(ctx);
+
   // The context this panel was built from, before it derives its own below:
   // what a panel this one builds — its keyboard — starts from, so that the
   // two keep their batches apart.
@@ -377,8 +398,6 @@ export function createPortal(
   mirror.adopt(containerElement);
   nodeToObject.set(containerElement, containerObject);
   objectToNode.set(containerObject, containerElement);
-
-  const interactionManager = InteractionContext.get(ctx);
 
   // With only clickable elements as ray targets (see div.js), the portal
   // still has to be opaque to rays as a whole — a panel should block the
@@ -668,6 +687,11 @@ export function createPortal(
     node.childNodes.forEach((childNode) => {
       cleanup(childNode);
     });
+    // Forgotten as well as taken down: the mirror's caches outlive the
+    // portal, and a node kept in them keeps this mirror's signals under it.
+    // The element the page owns is the one that comes back — see
+    // `forgetNode` in mirror.js.
+    mirror.release(node);
   }
 
   /**
@@ -1414,30 +1438,68 @@ export function createPortal(
   // where there are none, and everything that follows a flush follows this.
   // An empty one is a panel given nothing to mount, and is left to the
   // observer exactly like the portal's own container — the first child to
-  // arrive is the initial content then. Last, after every listener above is
-  // in place, so nothing the content brings with it — an animation already
-  // running, an image still loading — is missed.
+  // arrive is the initial content then.
   //
-  // Outside whatever computation is building the portal. A flush runs in
-  // the observer's microtask and belongs to nobody; this runs now, inside
-  // the effect that called `createPortal` — `dom()`'s mounting, say — and
-  // the reads it makes, `loading` among them, would otherwise be that
-  // effect's dependencies: the panel loading would re-run the mounting,
-  // which would take the panel down and build it again, forever.
-  if (root && containerElement.firstChild) {
-    withComputation(null, () => {
-      projectChanges(() => {
-        sawContent = true;
-        for (let node = containerElement.firstChild; node; node = node.nextSibling) {
-          if (pump) {
-            pump.enqueue(node);
-          } else if (getOrCreateObjectForNode(node)) {
-            attach(node);
+  // In a microtask, which is when an observer's flush would have run: the
+  // caller holds the handle by then, so what the first look sets off —
+  // `onLoadingChanged(false)`, where there are no frames to slice across
+  // and the whole mount is synchronous — never reaches a caller that has
+  // not been handed the portal yet. A child the page adds or takes away in
+  // between is fine either way: the observer reports it too, and both the
+  // queue and the object map are idempotent. A portal disconnected in
+  // between has nothing to look at.
+  //
+  // And should the look itself fail, the panel goes down with it, mark
+  // included: the mark was written before the content was ever read, and a
+  // page left carrying one with no portal behind it is refused every later
+  // claim, the right one included.
+  if (root) {
+    queueMicrotask(() => {
+      if (released || !containerElement.firstChild) {
+        return;
+      }
+      try {
+        projectChanges(() => {
+          sawContent = true;
+          for (let node = containerElement.firstChild; node; node = node.nextSibling) {
+            if (pump) {
+              pump.enqueue(node);
+            } else if (getOrCreateObjectForNode(node)) {
+              attach(node);
+            }
           }
-        }
-      });
-      contentChanged();
+        });
+        contentChanged();
+      } catch (err) {
+        disconnect();
+        throw err;
+      }
     });
+  }
+
+  /**
+   * Whether `disconnect` has run. The first look above checks it, and a
+   * second `disconnect` is a no-op rather than a second walk.
+   */
+  let released = false;
+
+  /**
+   * Take the panel down: everything under the element, then, for an element
+   * the page owns, the portal's marks — after the walk, not before it, since
+   * the teardowns it runs still look up the tree for the top of the panel.
+   * What is left on the element afterwards is the page's own, the hover and
+   * press flags included, which each element's teardown clears for itself.
+   */
+  function disconnect() {
+    if (released) {
+      return;
+    }
+    released = true;
+    cleanup(containerElement);
+    if (root) {
+      containerElement.removeAttribute(PORTAL_ATTRIBUTE);
+      containerElement.removeAttribute(LOADING_ATTRIBUTE);
+    }
   }
 
   objectToCleanup.set(containerObject, () => {
@@ -1519,17 +1581,7 @@ export function createPortal(
         mountable.replace([placeholder, placeholder]);
       }
     },
-    disconnect() {
-      cleanup(containerElement);
-      if (root) {
-        // After the walk, not before it: the teardowns it runs still look
-        // up the tree for the top of the panel. What is left on the element
-        // afterwards is the page's own, the hover and press flags included,
-        // which each element's teardown clears for itself.
-        containerElement.removeAttribute(PORTAL_ATTRIBUTE);
-        containerElement.removeAttribute(LOADING_ATTRIBUTE);
-      }
-    },
+    disconnect,
     /**
      * Whether the panel is still mounting its initial content. Reactive: a
      * computation that reads it re-runs when the answer changes, which it

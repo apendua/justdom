@@ -82,8 +82,8 @@ export function getPortalRoot(node) {
 export const LOADING_ATTRIBUTE = "data-xr-loading";
 
 /**
- * The portal's own container: a hidden element on the body for a mounted
- * tree to live in, marked as the top of a panel.
+ * The portal's own container: an element parked off-screen on the body for
+ * a mounted tree to live in, marked as the top of a panel.
  *
  * @returns {HTMLElement}
  */
@@ -93,8 +93,26 @@ function createContainerElement() {
   containerElement.style.position = "absolute";
   containerElement.style.top = "0";
   containerElement.style.left = "0";
-  containerElement.style.visibility = "hidden";
-  // Hidden, but not out of flow enough on its own: a descendant wider or
+  // Out of sight by being out of the viewport: shifted up and left by its own
+  // size, so its far corner meets the page's origin and all of it lies where
+  // the page cannot scroll. Not `visibility: hidden`, which it used to be:
+  // that is inherited, so every element inside reported `hidden` to CSS and
+  // content could no longer hide or show a part of itself with it. A
+  // transform is the panel's alone, and it moves nothing the mirror
+  // measures — sizes are unchanged, positions are taken relative to this
+  // container, and the container's own transform is never mirrored (see
+  // `isTransformed`). Nor does `left`/`top` do it: an offset that large
+  // widens the room an absolute box shrinks to fit in, and the text rewraps.
+  //
+  // The transform also makes this container the containing block of any
+  // `position: fixed` descendant, which is what the mirror already assumes
+  // (see `getPortalContainer`); before, such a box anchored to the viewport
+  // and drifted from the panel whenever the page scrolled.
+  //
+  // Only the portal's own container is treated this way. A root the page
+  // hands over is on show and the page's to style; see `claimRoot`.
+  containerElement.style.transform = "translate(-100%, -100%)";
+  // Out of sight, but not out of flow enough on its own: a descendant wider or
   // taller than the panel — an unbreakable string, a fixed-size image — is
   // ordinarily left to bleed past this container's own box, and with nothing
   // between it and `<html>` clipping that overflow, it is the page itself

@@ -67,6 +67,12 @@ const Scene = effectsOnly((ctx: WeakKey) => {
           // the origin, so straight ahead is y = 0.
           o.position.set(0, 0, -0.65);
         }),
+        // The Interactions and Boxes panels are not atomic: each runs a
+        // transition a click starts — the card's tilt, the meter's width —
+        // that invalidates the panel on every frame, and an atomic panel
+        // whose per-frame work outgrows its slice of the budget holds still
+        // until the transition ends. Instalments that move beat a whole
+        // update that jumps, for something under the player's hand.
         children(
           dom(
             ctx,

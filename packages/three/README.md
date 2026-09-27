@@ -1293,9 +1293,9 @@ around an icon, `fill: currentColor`, a CSS keyframe on `stroke-dashoffset`.
 What is followed: `fill`, `fill-opacity` and `fill-rule`; `stroke`,
 `stroke-opacity`, `stroke-width`, `stroke-linecap`, `stroke-linejoin`,
 `stroke-miterlimit`, `stroke-dasharray` and `stroke-dashoffset`; `opacity`,
-the group's included; `display` (not `visibility`, which no element in a
-portal follows — the container itself is hidden, and everything inside it
-inherits that); `transform` and
+the group's included; `display`; `visibility`, on the shape's own meshes
+as on a box's quad, so a shape that says `visible` is drawn under a hidden
+`<g>`; `transform` and
 `transform-origin` on every element in the chain, the `transform`
 _attribute_ included, since the browser computes it as the same property;
 `viewBox` and `preserveAspectRatio`, with the viewport at the `<svg>`'s

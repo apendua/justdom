@@ -11,6 +11,7 @@ import {
   getComputedStyleCached,
   getInteriorClipBox,
   getParentElement,
+  isVisibilityHidden,
 } from "../elements/mirror.js";
 import { isSvgRoot, SVG_NAMESPACE } from "../elements/plugins.js";
 import {
@@ -550,9 +551,11 @@ emptyGeometry.setAttribute("position", new THREE.BufferAttribute(new Float32Arra
  *   `stroke-opacity` that goes with this mesh.
  * @param {() => number} options.renderOrder
  * @param {{ value: THREE.Vector4 }} options.clip
+ * @param {() => boolean} options.hidden Whether `visibility` hides the
+ *   element this mesh paints.
  * @returns {Source<Component>}
  */
-function paintedMesh({ geometry, paint, opacity, renderOrder, clip }) {
+function paintedMesh({ geometry, paint, opacity, renderOrder, clip, hidden }) {
   const mesh = new THREE.Mesh();
   return $(mesh, [
     set("material", () => {
@@ -590,7 +593,7 @@ function paintedMesh({ geometry, paint, opacity, renderOrder, clip }) {
         material.color.copy(current.color);
         material.opacity = current.alpha * opacity();
       }
-      obj.visible = current !== null;
+      obj.visible = current !== null && !hidden();
     }),
     effects((obj) => {
       place(obj, 0, 0, 0);
@@ -672,13 +675,21 @@ export function shape(ctx, element) {
 
   const opacity = () => chain.get().opacity;
 
+  /**
+   * Whether `visibility` hides this shape, as a box's `hidden` does: its
+   * meshes go out of the draw, and nothing else. Inherited like any
+   * `visibility`, so a hidden `<g>` hides the shapes under it through their
+   * own computed style, and a shape that says `visible` for itself is drawn
+   * under it — the reason this is asked per shape and never turned into a
+   * group's `visible`, which would prune the subtree.
+   */
+  const hidden = new Derived(() => isVisibilityHidden(element));
+
   return just(object, [
     effects((obj) => {
       place(obj, 0, 0, 0);
-      // `display` and not `visibility`: the portal's own container is
-      // `visibility: hidden`, which every element inside it inherits, so a
-      // shape cannot tell an authored `hidden` from the panel's. A box does
-      // not follow `visibility` either.
+      // `display: none` takes the shape out; `visibility` is the meshes'
+      // business, below, the way it is a box's quad and not its object.
       obj.visible = style().display !== "none";
     }),
     effects(() => {
@@ -697,6 +708,7 @@ export function shape(ctx, element) {
                 return current ? buildFillGeometry(current, fillRule.get(), chain.get().ctm) : null;
               },
               paint: () => fillPaint.get(),
+              hidden: () => hidden.get(),
               opacity: () =>
                 opacity() * parseNumber(readProperty(style(), element, "fill-opacity"), 1),
               renderOrder: renderOrderOf(0),
@@ -714,6 +726,7 @@ export function shape(ctx, element) {
                   : null;
               },
               paint: () => strokePaint.get(),
+              hidden: () => hidden.get(),
               opacity: () =>
                 opacity() * parseNumber(readProperty(style(), element, "stroke-opacity"), 1),
               renderOrder: renderOrderOf(1),

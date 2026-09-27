@@ -418,6 +418,54 @@ describe("svg shape", () => {
     root.remove();
   });
 
+  test("visibility hides the meshes, and a shape that says visible is drawn under a hidden group", () => {
+    const s = setup("rect", { x: "0", y: "0", width: "10", height: "10", fill: "red" });
+    assert.equal(s.meshes[0].visible, true);
+    s.setAttribute("style", "visibility: hidden");
+    assert.equal(s.meshes[0].visible, false, "a hidden shape draws nothing");
+    assert.equal(s.object.visible, true, "and its object stays, as a box's does");
+    s.setAttribute("style", null);
+    assert.equal(s.meshes[0].visible, true);
+    s.teardown();
+
+    // Inherited from a group, and overridden by the shape.
+    const root = document.createElementNS(SVG_NS, "svg");
+    root.getBoundingClientRect = () =>
+      /** @type {DOMRect} */ ({ left: 0, top: 0, right: 100, bottom: 50, width: 100, height: 50 });
+    const group = document.createElementNS(SVG_NS, "g");
+    group.setAttribute("style", "visibility: hidden");
+    const inherits = document.createElementNS(SVG_NS, "rect");
+    const overrides = document.createElementNS(SVG_NS, "rect");
+    for (const rect of [inherits, overrides]) {
+      rect.setAttribute("width", "10");
+      rect.setAttribute("height", "10");
+      rect.setAttribute("fill", "red");
+      group.appendChild(rect);
+    }
+    overrides.setAttribute("style", "visibility: visible");
+    root.appendChild(group);
+    document.body.appendChild(root);
+    const mirror = createMirror();
+    for (const node of [root, group, inherits, overrides]) {
+      mirror.adopt(node);
+    }
+    /** @type {Object3D[]} */
+    const objects = [];
+    const subscriptions = [inherits, overrides].map((el, i) =>
+      shape({}, el).subscribe((value) => {
+        objects[i] = value;
+      }),
+    );
+    const fillOf = (/** @type {Object3D} */ object) =>
+      /** @type {Mesh} */ (object.children.find((child) => child instanceof THREE.Mesh));
+    assert.equal(fillOf(objects[0]).visible, false, "hidden by its group");
+    assert.equal(fillOf(objects[1]).visible, true, "visible for itself");
+    for (const subscription of subscriptions) {
+      subscription.unsubscribe();
+    }
+    root.remove();
+  });
+
   test("teardown disposes what it made", () => {
     const s = setup("rect", {
       x: "0",

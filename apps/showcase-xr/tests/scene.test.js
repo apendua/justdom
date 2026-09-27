@@ -61,6 +61,14 @@ const STRICT = process.env.VISUAL_STRICT === "1";
 const ACCENT = /** @type {[number, number, number]} */ ([0, 123, 255]);
 
 /**
+ * The teal the vector panel's diagram nodes are filled with, and nothing
+ * else in the showcase is: SVG shapes are drawn through a plugin with a path
+ * of its own — parsed geometry, triangulated fills, stroked outlines — and
+ * none of the unit suite can see whether any of it appears.
+ */
+const NODE_COLOR = /** @type {[number, number, number]} */ ([0, 168, 150]);
+
+/**
  * Baselines are filed under the environment that drew them, so more than one
  * can be committed at a time and none of them clobbers another: CI keeps its
  * own, and anyone who records locally keeps theirs beside it. The name is a
@@ -131,7 +139,7 @@ describe("the showcase in an emulated headset", { timeout: 180_000 }, () => {
   });
 
   test("the panels are drawn", () => {
-    // Four panels of white cards against a dark room: if the session came up
+    // Five panels of white cards against a dark room: if the session came up
     // empty, or the portal drew nothing, this is what notices.
     const ink = inkRatio(scene);
     assert.ok(ink > 0.15, `expected the scene to be covered in panels, got ${ink.toFixed(3)}`);
@@ -145,6 +153,19 @@ describe("the showcase in an emulated headset", { timeout: 180_000 }, () => {
     // the colour tells you.
     const accented = countNear(scene, ACCENT);
     assert.ok(accented > 500, `expected the accent colour in the frame, found ${accented} pixels`);
+  });
+
+  test("the vector panel's shapes are drawn", () => {
+    // The two node rectangles and the small node between them are filled
+    // with a colour the rest of the scene never uses, so finding it means the
+    // SVG plugin parsed, triangulated and painted at least those; a diagram
+    // that came out as the empty box the portal drew before the plugin
+    // finds none of it.
+    const filled = countNear(scene, NODE_COLOR);
+    assert.ok(
+      filled > 400,
+      `expected the diagram's teal nodes in the frame, found ${filled} pixels`,
+    );
   });
 
   test("the scene matches its baseline", (t) => {

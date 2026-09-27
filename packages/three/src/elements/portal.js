@@ -25,6 +25,7 @@ import { createFrameRequester } from "./frameRequester.js";
 import { createLoadingFrame } from "./loadingFrame.js";
 import { createPortalPump } from "./portalPump.js";
 import { createPortalScheduler, PortalSchedulerContext } from "./portalScheduler.js";
+import { isSvgElement, isSvgRoot, PortalPluginsContext, projectWithPlugins } from "./plugins.js";
 import { CameraContext, frames, onLateFrame, RendererContext } from "../render.js";
 import { InteractionContext } from "../interactions.js";
 
@@ -35,6 +36,7 @@ import { InteractionContext } from "../interactions.js";
  * @import {LoadingFrameOptions} from './loadingFrame.js';
  * @import {PortalScheduler} from './portalScheduler.js';
  * @import {PortalKeyboardOptions} from './portalKeyboard.js';
+ * @import {PortalPlugin} from './plugins.js';
  */
 
 /**
@@ -279,6 +281,12 @@ function claimRoot(root) {
  *   that flashed and was gone reads as a glitch rather than as a panel
  *   arriving; the mount is held, built and unseen, until the frame has had
  *   its time. See `LoadingFrameOptions` in `loadingFrame.js`.
+ * @property {readonly PortalPlugin[]} [plugins] Element plugins for this
+ *   panel alone, asked before the ones the scene registered through
+ *   `render()`'s `portalPlugins` and before the portal's own dispatch. For
+ *   a panel that carries something the rest of the scene does not — an SVG
+ *   diagram in one card of a scene whose other panels are plain boxes. See
+ *   `PortalPlugin`.
  */
 
 /**
@@ -312,6 +320,7 @@ function buildPortal(
     maxTextScale,
     onLoadingChanged,
     loadingFrame = true,
+    plugins: ownPlugins = [],
   } = {},
 ) {
   // First, before anything is marked or made: the one thing here that a
@@ -325,6 +334,18 @@ function buildPortal(
   // two keep their batches apart.
   const baseCtx = ctx;
   const containerObject = new THREE.Group();
+
+  /**
+   * Who is asked about an element before the portal's own dispatch: this
+   * panel's plugins first, then the scene's. Resolved once, here — the list
+   * does not change for the life of the panel, and the dispatch runs once
+   * per element built.
+   *
+   * @type {readonly PortalPlugin[]}
+   */
+  const plugins = ownPlugins.length
+    ? [...ownPlugins, ...PortalPluginsContext.get(ctx)]
+    : PortalPluginsContext.get(ctx);
 
   // Visible from the start, and not because there is anything to see. The
   // container used to hide until the initial mount was done, or the panel
@@ -764,26 +785,49 @@ function buildPortal(
     let object$;
     if (node.nodeType === Node.ELEMENT_NODE) {
       const element = /** @type {HTMLElement} */ (node);
-      switch (element.tagName.toLowerCase()) {
-        case "input": {
-          const input = /** @type {HTMLInputElement} */ (element);
-          // The checkbox, and the fields that hold a line of text. Every
-          // other kind of input is a box with chrome inside it that the DOM
-          // does not describe — a slider's thumb, a stepper's arrows, a
-          // colour swatch — and a box is what `div` draws.
-          object$ =
-            input.type === "checkbox"
-              ? checkbox(ctx, input)
-              : isTextInput(input)
-                ? textInput(ctx, input)
-                : div(ctx, element);
-          break;
-        }
-        default: {
-          object$ = div(ctx, element);
+      // A plugin is asked first, about every element: it may have something
+      // to say about an `<input>` or a `<canvas>` as much as about a shape.
+      const claimed = projectWithPlugins(plugins, ctx, element);
+      if (claimed) {
+        object$ = claimed;
+      } else if (isSvgElement(element) && !isSvgRoot(element)) {
+        // Nobody's. A `<path>` drawn as a CSS box is a transparent rectangle
+        // measured for nothing, so an SVG subtree no plugin claims produces
+        // no objects at all — the walk stops here, since a node with no
+        // object has nothing for its children to attach to. The `<svg>`
+        // root is left to `div` below: it is a real box in the page's flow,
+        // with a background and a border that were always drawn.
+        return undefined;
+      } else {
+        switch (element.tagName.toLowerCase()) {
+          case "input": {
+            const input = /** @type {HTMLInputElement} */ (element);
+            // The checkbox, and the fields that hold a line of text. Every
+            // other kind of input is a box with chrome inside it that the
+            // DOM does not describe — a slider's thumb, a stepper's arrows,
+            // a colour swatch — and a box is what `div` draws.
+            object$ =
+              input.type === "checkbox"
+                ? checkbox(ctx, input)
+                : isTextInput(input)
+                  ? textInput(ctx, input)
+                  : div(ctx, element);
+            break;
+          }
+          default: {
+            object$ = div(ctx, element);
+          }
         }
       }
     } else if (node.nodeType === Node.TEXT_NODE) {
+      // The text of an SVG — the string in a `<text>`, the whitespace between
+      // shapes — has no CSS line boxes to measure and is nobody's yet
+      // (`docs/freedom-svg-plan.md`, S5). Skipped rather than measured as
+      // HTML text, which it would come out of as nothing at best.
+      const parent = node.parentNode;
+      if (parent && isSvgElement(parent)) {
+        return undefined;
+      }
       object$ = text(ctx, /** @type {Text} */ (node));
     }
     if (!object$) {

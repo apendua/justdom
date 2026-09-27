@@ -165,6 +165,25 @@ function pageOffset(element) {
   let y = 0;
   /** @type {Element | null} */
   let el = element;
+  if (!(el instanceof HTMLElement)) {
+    // An `<svg>` root has no offset box to read, though the HTML around it
+    // does. Its place is taken from the client rects instead — its own
+    // against its parent's, the difference added to the parent's layout
+    // offset. Under a transformed ancestor those rects carry the transform,
+    // so this is the transformed-bounds approximation the clip already
+    // makes for rotated content rather than the exact layout offset an
+    // HTML element gets; an `<svg>` in an untransformed chain never comes
+    // through here at all.
+    const parent = el.parentElement;
+    if (!parent) {
+      return { x, y };
+    }
+    const rect = el.getBoundingClientRect();
+    const parentRect = parent.getBoundingClientRect();
+    x = rect.left - parentRect.left;
+    y = rect.top - parentRect.top;
+    el = parent;
+  }
   while (el instanceof HTMLElement) {
     x += el.offsetLeft;
     y += el.offsetTop;

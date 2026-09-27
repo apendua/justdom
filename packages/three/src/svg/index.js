@@ -1,0 +1,74 @@
+import { box } from "../elements/div.js";
+import { isSvgElement, isSvgRoot } from "../elements/plugins.js";
+import { group, shape } from "./shape.js";
+
+/**
+ * @import {PortalPlugin} from '../elements/plugins.js';
+ */
+
+/**
+ * Inline SVG in a portal, as a plugin.
+ *
+ * A separate entry point — `@apendua/freedom/svg` — and not part of the main
+ * one, because drawing a shape means triangulating it: three's `ShapePath`,
+ * its curves and the earcut triangulator, plus the stroker from
+ * `SVGLoader`, none of which a panel of boxes and text has any use for. A
+ * scene that has SVG in it registers the plugin once and pays for that
+ * once; a scene that does not never loads it, and an `<svg>` in such a scene
+ * is drawn as the CSS box it also is, with nothing inside.
+ *
+ * ```js
+ * import { render } from "@apendua/freedom";
+ * import { svgElements } from "@apendua/freedom/svg";
+ *
+ * render(Scene, { portalPlugins: [svgElements()] });
+ * ```
+ *
+ * What it draws, and from what, is in the package README under *SVG*, and
+ * what it does not yet draw is in `docs/freedom-svg-plan.md`.
+ *
+ * @returns {PortalPlugin}
+ */
+export function svgElements() {
+  return {
+    element(ctx, element) {
+      if (!isSvgElement(element)) {
+        return null;
+      }
+      switch (element.localName) {
+        case "svg":
+          // The outermost `<svg>` is a CSS box in the page's flow — a
+          // background, a border, a size the page laid out, a place in the
+          // clip chain — and is drawn as exactly that. Its shapes hang off
+          // its content group like any children. One nested inside another
+          // is a viewport in user space, which the shapes below it fold
+          // into their own matrices; here it only groups.
+          return isSvgRoot(element)
+            ? box(ctx, /** @type {HTMLElement} */ (element))
+            : group(ctx, element);
+        case "g":
+        case "a":
+        case "switch":
+          return group(ctx, element);
+        case "path":
+        case "rect":
+        case "circle":
+        case "ellipse":
+        case "line":
+        case "polyline":
+        case "polygon":
+          return shape(ctx, element);
+        default:
+          // `<defs>`, `<symbol>`, `<marker>`, `<clipPath>`, `<mask>`, the
+          // gradients and patterns: templates, drawn only where something
+          // refers to them, and nothing does yet. `<text>`, `<image>`,
+          // `<use>` and `<foreignObject>`: not drawn yet either. Declined,
+          // and so skipped by the portal with everything under them, which
+          // for a template is the right answer in itself.
+          return null;
+      }
+    },
+  };
+}
+
+export { shape, group } from "./shape.js";

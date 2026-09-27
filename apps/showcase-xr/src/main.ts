@@ -1,5 +1,5 @@
 import { render, createXRButton } from "@apendua/freedom";
-import Scene from "./components/Scene";
+import createScene from "./components/Scene";
 import "./index.css";
 
 const root = document.querySelector<HTMLDivElement>("#root");
@@ -8,6 +8,31 @@ if (!root) {
 }
 
 const query = new URLSearchParams(location.search);
+
+/**
+ * `?svg=off` leaves the vector panel out, and with it the plugin that draws
+ * it, so the scene can be measured with and without inline SVG — the frame
+ * rate readout in front of the panels is the instrument. The other four
+ * panels do not move. Anything else, or nothing, keeps the panel in.
+ */
+const vectors = query.get("svg") !== "off";
+
+// The panel is inline SVG, which a portal does not draw on its own: the
+// plugin that does is a separate entry point, so that a scene without an SVG
+// in it never loads three's `SVGLoader` or the stroking and dashing built on
+// it. Loaded here only when the panel is in the scene, and so its own chunk,
+// fetched beside the emulator's rather than after it. A plugin that fails to
+// load leaves the panel out rather than drawing an empty card in its place,
+// and says so.
+const plugins = vectors
+  ? import("@apendua/freedom/svg").then(
+      ({ svgElements }) => [svgElements()],
+      (err) => {
+        console.error("Could not load the SVG plugin; the vector panel is left out:", err);
+        return null;
+      },
+    )
+  : Promise.resolve([]);
 
 // Available in production builds too, so the deployed demo can be exercised
 // from an ordinary browser. The import is dynamic, so the emulator and its dev
@@ -26,8 +51,11 @@ Promise.resolve(
   .catch((err) => {
     console.error("Could not install the XR emulator:", err);
   })
-  .then(() => {
-    render(Scene).subscribe({
+  .then(() => plugins)
+  .then((portalPlugins) => {
+    // Registered once, for every panel in the scene.
+    const scene = createScene({ vectors: portalPlugins !== null && vectors });
+    render(scene, { portalPlugins: portalPlugins ?? [] }).subscribe({
       next: (renderer) => {
         createXRButton(renderer, {
           ar: { optionalFeatures: ["hand-tracking"] },

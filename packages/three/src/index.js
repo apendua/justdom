@@ -33,6 +33,8 @@ export {
 } from "./carry.js";
 export { createPortal, getPortalRoot } from "./elements/portal.js";
 export { isTextInput, typeIntoInput } from "./elements/typing.js";
+export { PortalPluginsContext } from "./elements/plugins.js";
+export { box, getContentGroup } from "./elements/div.js";
 export { makeReveal, solveCut } from "./elements/reveal.js";
 export {
   createFrameShareBudget,
@@ -93,6 +95,18 @@ export { installCrashPanel, CRASH_PANEL_ID } from "./crash.js";
 
 /**
  * @typedef {import('./elements/typing.js').KeyPress} KeyPress
+ */
+
+/**
+ * @typedef {import('./elements/plugins.js').PortalPlugin} PortalPlugin
+ */
+
+/**
+ * @typedef {import('./elements/div.js').BoxOptions} BoxOptions
+ */
+
+/**
+ * @typedef {import('./elements/div.js').BoxSurface} BoxSurface
  */
 
 /**

@@ -256,4 +256,36 @@ describe("a text field in a panel", () => {
     assert.equal(caretSized.length, 0, "no one-px-wide mark");
     panel.cleanup();
   });
+
+  test("a password is drawn as bullets, never as its characters", async () => {
+    const panel = fieldPanel((input) => {
+      input.type = "password";
+      input.value = "hunter2";
+    });
+    await settle(panel.portal);
+    assert.equal(canvas.drawn.includes("hunter2"), false, "the value never reaches the canvas");
+    assert.ok(canvas.drawn.includes("\u2022".repeat(7)), "one bullet a character");
+    panel.cleanup();
+  });
+});
+
+describe("trackValue", () => {
+  test("two watchers of one field share the hooks, and the last one out removes them", async () => {
+    const { trackValue } = await import("./textInput.js");
+    const input = document.createElement("input");
+    document.body.appendChild(input);
+    const first = trackValue(input);
+    const second = trackValue(input);
+    assert.ok(Object.prototype.hasOwnProperty.call(input, "value"), "intercepted");
+    first();
+    assert.ok(
+      Object.prototype.hasOwnProperty.call(input, "value"),
+      "still intercepted for the watcher that remains",
+    );
+    first();
+    assert.ok(Object.prototype.hasOwnProperty.call(input, "value"), "a second stop is a no-op");
+    second();
+    assert.equal(Object.prototype.hasOwnProperty.call(input, "value"), false, "gone with the last");
+    input.remove();
+  });
 });

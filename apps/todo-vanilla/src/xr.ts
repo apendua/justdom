@@ -52,7 +52,7 @@ export async function offerXR(panel: HTMLElement): Promise<void> {
     controllerModelFactory.createControllerModel.bind(controllerModelFactory);
   const createHandModel = (hand: XRHandSpace) => new OculusHandModel(hand);
 
-  render(Scene(panel), { createControllerModel, createHandModel }).subscribe({
+  render(Scene(panel), { createControllerModel, createHandModel, presentingOnly: true }).subscribe({
     next: (renderer) => {
       // The canvas is the session's, not the page's: a headset shows the
       // page nothing while presenting, and the page has its own DOM to show

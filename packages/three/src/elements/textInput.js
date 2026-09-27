@@ -15,6 +15,7 @@ import { $, children, Nothing } from "../operators.js";
 import { box } from "./div.js";
 import { getBorderBoxSize, getComputedStyleCached } from "./mirror.js";
 import {
+  createMarkMaterial,
   generateTextTexture,
   getTextRenderStyle,
   isTintableText,
@@ -98,6 +99,12 @@ const CARET_WIDTH = 1;
 const PLACEHOLDER_ALPHA = 0.54;
 
 /**
+ * What a password field shows for each character of its value: the bullet
+ * browsers draw.
+ */
+const PASSWORD_BULLET = "•";
+
+/**
  * Where an element's value is bumped from: the events a keystroke dispatches
  * and the setter an app writes. One signal per element, kept for the life of
  * the element rather than the mounting, because two things in the scene may
@@ -134,20 +141,69 @@ export function touchValue(element) {
 }
 
 /**
+ * How many watchers each element has, and what the first of them installed
+ * for all of them: one listener pair and one accessor per element however
+ * many portals follow it, taken down when the last of them lets go. Two
+ * watchers of one field are ordinary — the same `<input>` mirrored by two
+ * panels, or a panel re-mounting while the one it replaces is still coming
+ * down — and a second watcher that installed nothing, or a first that took
+ * the accessor away from under the second, would leave the survivor deaf to
+ * `input.value = ""`.
+ *
+ * @type {WeakMap<HTMLInputElement, { count: number, dispose: () => void }>}
+ */
+const valueWatchers = new WeakMap();
+
+/**
  * Follow the element's value from here on: through the events typing
  * dispatches, and through the `value` setter — the prototype's accessor
  * shadowed by one on the element that calls through and then says so.
- * Idempotent per element, and the stop function puts everything back.
+ * Counted per element: the first call installs, the last stop removes, and
+ * every call between shares what the first installed. See `valueWatchers`.
  *
  * The accessor is looked up along the prototype chain rather than on a
  * global `HTMLInputElement`, which the element's document may not share
  * with this code; the first prototype carrying an own `value` descriptor
- * is the one the browser defined it on.
+ * is the one the browser defined it on. An element that already carries an
+ * own `value` — an app's, or a library's — is left with it and followed
+ * through its events alone.
  *
  * @param {HTMLInputElement} element
  * @returns {() => void}
  */
 export function trackValue(element) {
+  const existing = valueWatchers.get(element);
+  if (existing) {
+    existing.count += 1;
+  } else {
+    valueWatchers.set(element, { count: 1, dispose: installValueHooks(element) });
+  }
+  let stopped = false;
+  return () => {
+    if (stopped) {
+      return;
+    }
+    stopped = true;
+    const watchers = valueWatchers.get(element);
+    if (!watchers) {
+      return;
+    }
+    watchers.count -= 1;
+    if (watchers.count === 0) {
+      valueWatchers.delete(element);
+      watchers.dispose();
+    }
+  };
+}
+
+/**
+ * The listeners and the accessor behind `trackValue`, installed once per
+ * element.
+ *
+ * @param {HTMLInputElement} element
+ * @returns {() => void} Take them down.
+ */
+function installValueHooks(element) {
   const version = valueVersionOf(element);
   const bump = () => {
     version.set(version.peek() + 1);
@@ -233,29 +289,6 @@ function pointEqual(a, b) {
 }
 
 /**
- * The material every mark inside a field is drawn with: two-sided, one
- * pass, no depth write and a polygon offset, for the reasons `text.js`
- * gives at length — a portal's planes face away from the viewer, and a
- * glyph a fraction of a millimetre in front of its box loses the depth test
- * pixel by pixel from an angle without the offset.
- *
- * @returns {THREE.MeshBasicMaterial}
- */
-function markMaterial() {
-  return new THREE.MeshBasicMaterial({
-    side: THREE.DoubleSide,
-    forceSinglePass: true,
-    transparent: true,
-    alphaTest: 0.001,
-    color: "white",
-    depthWrite: false,
-    polygonOffset: true,
-    polygonOffsetFactor: -2,
-    polygonOffsetUnits: -4,
-  });
-}
-
-/**
  * The value, or the placeholder, drawn inside the field; and the caret,
  * while the field is the one being typed into.
  *
@@ -281,9 +314,14 @@ function fieldContent(ctx, element, surface, focus) {
     return { value: element.value, caret: getCaretOffset(element) };
   });
 
+  // A password is drawn as the page draws it: one bullet a character, and
+  // never the characters. What is measured for the caret is the bullets too,
+  // so nothing about the value but its length reaches the scene.
   const shown = selector(() => {
     if (state.value) {
-      return { text: state.value, placeholder: false };
+      const text =
+        element.type === "password" ? PASSWORD_BULLET.repeat(state.value.length) : state.value;
+      return { text, placeholder: false };
     }
     return { text: element.placeholder || "", placeholder: true };
   });
@@ -419,7 +457,7 @@ function fieldContent(ctx, element, surface, focus) {
       onCleanup(stop);
     }),
     set("material", () => {
-      const material = markMaterial();
+      const material = createMarkMaterial();
       applyClip(material, runClipUniform);
       onCleanup(() => {
         material.dispose();
@@ -490,7 +528,7 @@ function fieldContent(ctx, element, surface, focus) {
     const caretClipUniform = { value: new THREE.Vector4(-1e6, -1e6, 1e6, 1e6) };
     return $(caretMesh, [
       set("material", () => {
-        const material = markMaterial();
+        const material = createMarkMaterial();
         applyClip(material, caretClipUniform);
         onCleanup(() => {
           material.dispose();

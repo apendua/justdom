@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { createProperty } from "@apendua/signal";
-import { TEXT_ANISOTROPY } from "./textHelpers.js";
+import { MARK_MATERIAL_SETTINGS, TEXT_ANISOTROPY } from "./textHelpers.js";
 
 /**
  * @import {Object3D} from 'three';
@@ -432,19 +432,9 @@ class Bucket {
       vertexShader,
       fragmentShader,
       uniforms: { uRuns: { value: this.sizeClass.texture } },
-      transparent: true,
-      side: THREE.DoubleSide,
-      forceSinglePass: true,
-      // Text never occludes through the depth buffer, for the reason `text.js`
-      // gives: an antialiased edge that wrote depth would keep out whatever the
-      // draw order puts in front of it.
-      depthWrite: false,
-      // And is pulled a hair toward the viewer against the box it sits on,
-      // for the other reason `text.js` gives: a local pixel of separation is
-      // less than a headset's depth buffer can resolve at arm's length.
-      polygonOffset: true,
-      polygonOffsetFactor: -2,
-      polygonOffsetUnits: -4,
+      // Blended and depth-tested as every mark on a panel is, a run drawn by
+      // itself included; the reasons are with the settings.
+      ...MARK_MATERIAL_SETTINGS,
     });
     const mesh = new THREE.InstancedMesh(geometry, material, capacity);
     // The integer itself, unbiased, which is the half of the arrangement

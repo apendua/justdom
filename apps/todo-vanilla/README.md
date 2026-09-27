@@ -56,6 +56,15 @@ on the page as a list with its own scrollbar, and in the scene as a window the
 portal clips to, rows below the fold neither drawn nor pressable. Rows can
 also be grabbed and pulled with the trigger.
 
+**Nothing runs until a session does.** The renderer is made with
+`presentingOnly`, so no frame is drawn and no frame callback runs between
+sessions, and the panel is mounted when a session starts and taken down when
+it ends: a visitor who never presses Enter pays for a button and nothing
+else, and the page is never mirrored into a scene nobody is looking at. The
+session is set against one dark colour all the way round — an opaque sphere
+around the viewer, since in AR three clears to the passthrough whatever the
+scene's background says.
+
 **The keyboard is the portal's to place.** `TodoKeyboard` says what a key
 looks like; when the board appears, where it hangs, what a key does to the
 field and when the board goes are decided by freedom, the same way for every

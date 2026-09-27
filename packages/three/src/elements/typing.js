@@ -66,6 +66,14 @@ export function isTextInput(node) {
 const SELECTABLE_TYPES = new Set(["text", "search", "url", "tel", "password"]);
 
 /**
+ * The input types that block implicit submission besides the text fields:
+ * the ones the HTML standard lists and `isTextInput` does not cover.
+ *
+ * @type {ReadonlySet<string>}
+ */
+const BLOCKING_TYPES = new Set(["date", "datetime-local", "month", "time", "week"]);
+
+/**
  * Where the caret is, as the character offset after it. The end of the
  * value for a field whose selection cannot be read, and for one whose
  * selection has never been placed, which reports the end anyway once its
@@ -118,29 +126,84 @@ function viewOf(node) {
 
 /**
  * Replace the selection — or, where the selection cannot be read, the end
- * of the value — with `text`, leaving the caret after it, and say so with
- * an `input` event.
+ * of the value — with `text`, leaving the caret after it, and say so, as a
+ * browser does: `beforeinput` first, which a page may cancel to refuse the
+ * edit, then the edit, then `input`.
+ *
+ * A field the browser sanitizes — `number`, whose value is emptied rather
+ * than set to something that is not a number — refuses an edit it would
+ * have sanitized away: the old value stays and nothing says it changed,
+ * which is what a page's own key does with a letter typed into a number
+ * field.
  *
  * @param {HTMLInputElement} input
  * @param {string} text What goes in; empty to only take the selection out.
  * @param {number} start
  * @param {number} end
- * @param {string} inputType What the `input` event says happened.
+ * @param {string} inputType What the events say happened.
  * @returns {void}
  */
 function replaceRange(input, text, start, end, inputType) {
+  const view = viewOf(input);
+  const Constructor = view.InputEvent ?? view.Event;
+  const data = text || null;
+  const proceed = input.dispatchEvent(
+    new Constructor("beforeinput", { bubbles: true, cancelable: true, inputType, data }),
+  );
+  if (!proceed) {
+    return;
+  }
+  const before = input.value;
+  const candidate = before.slice(0, start) + text + before.slice(end);
   if (SELECTABLE_TYPES.has(input.type)) {
     try {
       input.setRangeText(text, start, end, "end");
     } catch {
-      input.value = input.value.slice(0, start) + text + input.value.slice(end);
+      input.value = candidate;
     }
   } else {
-    input.value = input.value.slice(0, start) + text + input.value.slice(end);
+    input.value = candidate;
+    if (input.value === "" && candidate !== "") {
+      // Sanitized away: not a value this field can hold. Put the old one
+      // back, and say nothing, since nothing changed.
+      input.value = before;
+      return;
+    }
   }
-  const view = viewOf(input);
-  const Constructor = view.InputEvent ?? view.Event;
-  input.dispatchEvent(new Constructor("input", { bubbles: true, inputType, data: text || null }));
+  input.dispatchEvent(new Constructor("input", { bubbles: true, inputType, data }));
+}
+
+/**
+ * Whether Enter in this field submits its form, by the rule browsers apply:
+ * a form with a submit button is submitted by it, and a form without one
+ * only when this is the one field in it that would block implicit
+ * submission — otherwise a two-field login form with no button, submitted
+ * by a script of its own, would be submitted by a keyboard's Enter where
+ * the page's own Enter does nothing.
+ *
+ * @param {HTMLFormElement} form
+ * @returns {boolean}
+ */
+function submitsImplicitly(form) {
+  if (
+    form.querySelector(
+      "button:not([type]), button[type=submit], input[type=submit], input[type=image]",
+    )
+  ) {
+    return true;
+  }
+  let blocking = 0;
+  for (const element of Array.from(form.elements)) {
+    if (
+      isTextInput(element) ||
+      (element.nodeType === 1 &&
+        /** @type {Element} */ (element).tagName === "INPUT" &&
+        BLOCKING_TYPES.has(/** @type {HTMLInputElement} */ (element).type))
+    ) {
+      blocking += 1;
+    }
+  }
+  return blocking === 1;
 }
 
 /**
@@ -164,8 +227,8 @@ function selectionOf(input) {
 
 /**
  * Do to the field what the key would have done, and dispatch what a
- * browser would have dispatched: `keydown`, then the edit and its `input`
- * event, then `keyup`. A `keydown` listener that calls `preventDefault`
+ * browser would have dispatched: `keydown`, then `beforeinput`, the edit
+ * and its `input` event, then `keyup`. A `keydown` listener that calls `preventDefault`
  * stops the edit, as it does on a page.
  *
  * What the named keys do: `Backspace` and `Delete` take out the selection,
@@ -193,7 +256,12 @@ export function typeIntoInput(input, press) {
     cancelable: true,
   };
   const proceed = input.dispatchEvent(new view.KeyboardEvent("keydown", init));
-  if (proceed && !input.disabled && !input.readOnly) {
+  // A chord with ctrl or meta is a shortcut, not a character: the keydown
+  // says so to whoever handles shortcuts, and nothing is typed, as on a
+  // page. Alt is left to type, since on a real layout it is also how some
+  // characters are reached.
+  const chord = init.ctrlKey || init.metaKey;
+  if (proceed && !chord && !input.disabled && !input.readOnly) {
     const [start, end] = selectionOf(input);
     if (press.key.length === 1) {
       replaceRange(input, press.key, start, end, "insertText");
@@ -215,7 +283,7 @@ export function typeIntoInput(input, press) {
       // `requestSubmit` runs the validation and the `submit` event that a
       // press of the form's own button would.
       const form = input.form;
-      if (form && typeof form.requestSubmit === "function") {
+      if (form && typeof form.requestSubmit === "function" && submitsImplicitly(form)) {
         form.requestSubmit();
       }
     }

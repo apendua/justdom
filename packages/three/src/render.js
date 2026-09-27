@@ -466,6 +466,14 @@ export function frames(ctx) {
  * @property {number} [foveation] Fixed foveation for the headset's layer, from
  *   0 (every pixel at full resolution) to 1 (the most the browser will blur
  *   towards the edges). Off unless it is turned up; see `render`.
+ * @property {boolean} [presentingOnly] Draw only while an immersive session
+ *   is presenting. Off by default, which is what a headset app wants: its
+ *   canvas is the page, and the page is drawn between sessions. On is for a
+ *   page that has a flat interface of its own and offers a session as an
+ *   extra — nothing is drawn, no frame callback runs and no portal is pumped
+ *   until the session starts, so a visitor who never presses Enter pays for
+ *   none of it. `useFrame` and anything that waits on frames wait for the
+ *   session with it.
  * @property {number | (() => number)} [portalBudget] Milliseconds of each
  *   frame the scene's portals may spend mounting and settling content,
  *   between them: one pool, divided across every panel by priority and
@@ -646,7 +654,11 @@ export function render(fn, options = {}) {
 
     let previousFrameTime = 0;
 
-    renderer.setAnimationLoop((time, frame) => {
+    /**
+     * @param {number} time
+     * @param {XRFrame} frame
+     */
+    const loop = (time, frame) => {
       try {
         drawFrame(time, frame);
       } catch (err) {
@@ -666,7 +678,31 @@ export function render(fn, options = {}) {
           throw err;
         }
       }
-    });
+    };
+
+    if (options.presentingOnly) {
+      // Only the session's loop. `setAnimationLoop` on the renderer arms two:
+      // the window's, which runs whenever no session does, and the
+      // session's. Handing the callback to the XR manager alone arms the
+      // second, which only ever runs while a session is presenting — and
+      // arming it from a `sessionstart` listener instead would not do, since
+      // three's own `setAnimationLoop` restarts the window's loop as well,
+      // and the two would then both draw every frame of the session.
+      renderer.xr.setAnimationLoop(loop);
+      // Three restarts the window's loop when a session ends, for a page
+      // that draws on its canvas between sessions. This one does not: stop
+      // it, which takes the session's callback with it, and hand that back.
+      const onSessionEnd = () => {
+        renderer.setAnimationLoop(null);
+        renderer.xr.setAnimationLoop(loop);
+      };
+      renderer.xr.addEventListener("sessionend", onSessionEnd);
+      subscriber.add(() => {
+        renderer.xr.removeEventListener("sessionend", onSessionEnd);
+      });
+    } else {
+      renderer.setAnimationLoop(loop);
+    }
 
     /**
      * @param {number} time

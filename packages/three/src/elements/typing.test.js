@@ -154,4 +154,62 @@ describe("typeIntoInput", () => {
     assert.equal(input.value, "12");
     remove();
   });
+
+  test("beforeinput goes first, and cancelling it refuses the edit", () => {
+    const { input, heard, remove } = field("ab");
+    input.addEventListener("beforeinput", (event) => {
+      heard.push(`beforeinput:${/** @type {InputEvent} */ (event).data}`);
+      if (/** @type {InputEvent} */ (event).data === "x") {
+        event.preventDefault();
+      }
+    });
+    moveCaretToEnd(input);
+    typeIntoInput(input, { key: "c" });
+    assert.deepEqual(heard, ["keydown:c", "beforeinput:c", "input:insertText", "keyup:c"]);
+    heard.length = 0;
+    typeIntoInput(input, { key: "x" });
+    assert.equal(input.value, "abc", "a page that filters its input filters the board too");
+    assert.deepEqual(heard, ["keydown:x", "beforeinput:x", "keyup:x"], "and no input event");
+    remove();
+  });
+
+  test("a ctrl or meta chord is a shortcut, not a character", () => {
+    const { input, heard, remove } = field("ab");
+    moveCaretToEnd(input);
+    typeIntoInput(input, { key: "a", ctrlKey: true });
+    typeIntoInput(input, { key: "v", metaKey: true });
+    assert.equal(input.value, "ab");
+    assert.deepEqual(heard, ["keydown:a", "keyup:a", "keydown:v", "keyup:v"], "heard, not typed");
+    remove();
+  });
+
+  test("a character a number field cannot hold leaves the value as it was", () => {
+    const { input, heard, remove } = field("12", "number");
+    typeIntoInput(input, { key: "a" });
+    assert.equal(input.value, "12", "not emptied by sanitization");
+    assert.deepEqual(heard, ["keydown:a", "keyup:a"], "and nothing says it changed");
+    remove();
+  });
+
+  test("enter submits a form without a button only when this is its one field", () => {
+    const form = document.createElement("form");
+    const user = document.createElement("input");
+    const password = document.createElement("input");
+    password.type = "password";
+    form.append(user, password);
+    document.body.appendChild(form);
+    let submitted = 0;
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      submitted += 1;
+    });
+    typeIntoInput(user, { key: "Enter" });
+    assert.equal(submitted, 0, "two fields and no button: a browser submits nothing");
+
+    const button = document.createElement("button");
+    form.appendChild(button);
+    typeIntoInput(user, { key: "Enter" });
+    assert.equal(submitted, 1, "a submit button makes Enter submit");
+    form.remove();
+  });
 });

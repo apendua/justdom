@@ -142,7 +142,7 @@ const scrollStyles = {
     gap: 0.5rem;
     width: 100%;
     max-width: 400px;
-    height: 168px;
+    height: 252px;
   `,
   // The window's corners are rounded, and the portal clips to them: the
   // rounded box the shader already draws every element with is the same one

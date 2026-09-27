@@ -61,12 +61,11 @@ export function dom(ctx, source, effects = [], options = {}) {
         addTo(parent) {
           // A portal per source, switched as the tree re-renders.
           const subscription = mountEach((/** @type {DomSource} */ content) => {
-            const portal = isElement(content)
-              ? createPortal(ctx, { ...options, root: content })
-              : createPortal(ctx, options);
+            const root = isElement(content) ? content : undefined;
+            const portal = createPortal(ctx, root ? { ...options, root } : options);
             portal.addTo(obj);
-            if (!isElement(content)) {
-              portal.mount(content);
+            if (!root) {
+              portal.mount(/** @type {Mountable} */ (content));
             }
             parent.add(obj);
             onCleanup(() => {

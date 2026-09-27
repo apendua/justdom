@@ -354,6 +354,15 @@ it, since every walk the mirror makes climbs to the nearest panel top and
 stops. A portal built over such an element does not `mount()`: the page owns
 the content.
 
+**And the element has to stay laid out.** The mirror reads the browser's
+layout, so an element with none has nothing to give it: `display: none`, or
+taking the element out of the document, measures every box at nothing, and
+the panel is an empty frame with no error to say why. A page that wants its
+own view of the element out of the way while a session runs hides it with
+`visibility: hidden`, which keeps the layout and is what the portal's own
+container has always been, or covers it — the todo app puts the renderer's
+canvas over the page for exactly as long as a session is presenting.
+
 Which element is up to the app, and it can change: `dom()` takes a
 subscribable of elements as readily as one of trees, and each emission is a
 fresh portal with the previous one taken down and its element released.

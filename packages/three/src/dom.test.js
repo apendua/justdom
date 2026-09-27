@@ -3,61 +3,9 @@ import assert from "node:assert/strict";
 import * as THREE from "three";
 import { observable, Signal } from "@apendua/signal";
 import { $, attr } from "@apendua/justdom";
-import { InteractionContext, InteractionManager } from "./interactions.js";
 import { LOADING_ATTRIBUTE, getPortalRoot } from "./elements/portal.js";
 import { dom } from "./dom.js";
-
-// jsdom-env exposes the common DOM globals, but not MutationObserver, which
-// the portal under `dom()` uses to mirror the tree.
-if (typeof globalThis.MutationObserver === "undefined") {
-  globalThis.MutationObserver = window.MutationObserver;
-}
-
-// jsdom has no FontFaceSet, and VisualProperties consults it for x-height.
-// Nothing here closes a loading period, so the stub only has to exist.
-if (!document.fonts) {
-  Object.defineProperty(document, "fonts", {
-    value: {
-      status: "loaded",
-      ready: Promise.resolve(),
-      addEventListener() {},
-      removeEventListener() {},
-    },
-  });
-}
-
-// jsdom runs no animation frames, and a portal borrows them to slice its
-// mount across. A queue flushed by hand is a frame source the test drives.
-/** @type {Array<FrameRequestCallback>} */
-const frameCallbacks = [];
-globalThis.requestAnimationFrame = (callback) => frameCallbacks.push(callback);
-globalThis.cancelAnimationFrame = () => {};
-
-function flushFrame() {
-  for (const callback of frameCallbacks.splice(0, frameCallbacks.length)) {
-    callback(0);
-  }
-}
-
-function nextMacrotask() {
-  return new Promise((resolve) => {
-    setTimeout(resolve, 0);
-  });
-}
-
-/**
- * Drive frames until nothing asks for another. `dom()` hands out no portal
- * handle to ask `isLoading()` of, so the quiet frame queue is the sign that
- * whatever it mounted has settled. Bounded, so a panel that never settles
- * fails its test rather than hanging it.
- */
-async function settle() {
-  await nextMacrotask();
-  for (let index = 0; index < 500 && frameCallbacks.length > 0; index++) {
-    flushFrame();
-    await nextMacrotask();
-  }
-}
+import { countingManager, nextMacrotask, settle } from "./test/portalHarness.js";
 
 /**
  * A card the page already has: a clickable box in a root, in the document.
@@ -73,26 +21,6 @@ function pageCard() {
   return { root, button };
 }
 
-/**
- * An interaction manager that keeps count of what is registered with it.
- */
-function countingManager() {
-  const manager = new InteractionManager();
-  /** @type {Set<THREE.Object3D>} */
-  const targets = new Set();
-  const originalAdd = manager.add.bind(manager);
-  const originalRemove = manager.remove.bind(manager);
-  manager.add = (object) => {
-    targets.add(object);
-    originalAdd(object);
-  };
-  manager.remove = (object) => {
-    targets.delete(object);
-    originalRemove(object);
-  };
-  return { ctx: InteractionContext.set({}, manager), targets };
-}
-
 describe("dom", () => {
   test("given an element the page owns, mirrors it where it stands", async () => {
     const { ctx, targets } = countingManager();
@@ -106,6 +34,9 @@ describe("dom", () => {
     });
     assert.ok(unmount, "nothing was mounted");
     assert.ok(root.hasAttribute("data-xr-portal"), "the element is the panel");
+    // The first look at what the element holds runs a microtask later, when
+    // an observer's flush would have.
+    await nextMacrotask();
     assert.ok(root.hasAttribute(LOADING_ATTRIBUTE), "its content is the mount");
 
     await settle();

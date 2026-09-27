@@ -214,8 +214,52 @@ let geometryGeneration = 0;
  * @property {number} height
  */
 
+/**
+ * Every per-node cache in this module, so that a node can be forgotten.
+ *
+ * The caches are module-level and keyed by node, which is what lets the
+ * element components and the tests read them without a mirror in hand. It
+ * also means a node outlives the portal that adopted it: its record still
+ * names the first mirror, and every `Derived` cached for it still depends on
+ * that mirror's signals. An element the page owns is exactly the node that
+ * is claimed again — a second session over the same page — and a second
+ * portal that adopted it would find the record already there, leave it, and
+ * bump signals nothing under the element depends on: fonts arriving would
+ * re-measure no text, a stylesheet swap restyle nothing. So a portal
+ * forgets every node it lets go of, and a re-claimed node starts clean.
+ *
+ * @type {WeakMap<object, unknown>[]}
+ */
+const nodeCaches = [];
+
+/**
+ * A cache keyed by node that `forgetNode` knows about.
+ *
+ * @template {WeakMap<any, any>} T
+ * @returns {T}
+ */
+function nodeCache() {
+  const cache = new WeakMap();
+  nodeCaches.push(cache);
+  return /** @type {T} */ (cache);
+}
+
+/**
+ * Drop everything this module remembers about a node: its record and every
+ * cached read. The next `adopt` starts it over under whichever mirror asks.
+ *
+ * @param {Node} node
+ * @returns {void}
+ */
+export function forgetNode(node) {
+  records.delete(node);
+  for (const cache of nodeCaches) {
+    cache.delete(node);
+  }
+}
+
 /** @type {WeakMap<Element, { generation: number, rect: ClientRect }>} */
-const clientRectCache = new WeakMap();
+const clientRectCache = nodeCache();
 
 /**
  * The element's client rect, at most once per geometry generation. A plain
@@ -255,7 +299,7 @@ function readClientRect(element) {
  *
  * @type {WeakMap<Element, BorderBoxSize>}
  */
-const lastSettledSize = new WeakMap();
+const lastSettledSize = nodeCache();
 
 /**
  * Whether the element's border box differs from the last size recorded for
@@ -472,6 +516,19 @@ export class DomMirror {
     if (!records.has(node)) {
       records.set(node, new NodeRecord(this, node));
     }
+  }
+
+  /**
+   * Let go of a node this mirror adopted: its record and every read cached
+   * for it, so that a portal claiming it later — a second session over an
+   * element the page owns — is not left with this mirror's signals under
+   * it. See `forgetNode`.
+   *
+   * @param {Node} node
+   * @returns {void}
+   */
+  release(node) {
+    forgetNode(node);
   }
 
   /**
@@ -1248,7 +1305,7 @@ function earlierOf(a, b) {
  */
 
 /** @type {WeakMap<Element, Derived<FlowMode>>} */
-const flowModeCache = new WeakMap();
+const flowModeCache = nodeCache();
 
 /**
  * How this element arranges its children.
@@ -1337,7 +1394,7 @@ export function createMirror() {
  *
  * @type {WeakMap<Node, Derived<HTMLElement | null>>}
  */
-const parentElementCache = new WeakMap();
+const parentElementCache = nodeCache();
 
 /**
  * The node's parent, as a dependency. Invalidated by exactly the childList
@@ -1364,7 +1421,7 @@ export function getParentElement(node) {
 }
 
 /** @type {WeakMap<Node, Derived<Node[]>>} */
-const childNodesCache = new WeakMap();
+const childNodesCache = nodeCache();
 
 /**
  * The element's child nodes, as a dependency of its own: the parent is the
@@ -1390,7 +1447,7 @@ export function getChildNodes(node) {
 }
 
 /** @type {WeakMap<Node, Derived<number>>} */
-const styleContextCache = new WeakMap();
+const styleContextCache = nodeCache();
 
 /**
  * Everything that can invalidate this node's computed style, folded into one
@@ -1470,7 +1527,7 @@ function isPositioned(element) {
 }
 
 /** @type {WeakMap<Node, Derived<number>>} */
-const reflowContextCache = new WeakMap();
+const reflowContextCache = nodeCache();
 
 /**
  * Everything that can move this node's measured geometry *from above*,
@@ -1543,7 +1600,7 @@ function getReflowContext(node) {
 }
 
 /** @type {WeakMap<HTMLElement, Derived<number>>} */
-const inlineSizeCache = new WeakMap();
+const inlineSizeCache = nodeCache();
 
 /**
  * The element's border box across the inline axis alone, behind a gate of its
@@ -1608,7 +1665,7 @@ function readParentBox(node) {
 }
 
 /** @type {WeakMap<Element | Text, Map<string | null, Derived<CSSStyleDeclaration>>>} */
-const computedStyleCache = new WeakMap();
+const computedStyleCache = nodeCache();
 
 /**
  * @param {Element | Text} element
@@ -1651,7 +1708,7 @@ export function getComputedStyleCached(element, pseudoElement = null) {
 }
 
 /** @type {WeakMap<HTMLElement, Derived<boolean>>} */
-const transformedCache = new WeakMap();
+const transformedCache = nodeCache();
 
 /**
  * Whether the element, or anything above it inside the portal, carries a CSS
@@ -1687,7 +1744,7 @@ export function isTransformed(element) {
 }
 
 /** @type {WeakMap<Element, Derived<string>>} */
-const positionCache = new WeakMap();
+const positionCache = nodeCache();
 
 /**
  * The element's computed `position`, behind its own equality gate: the clip
@@ -1724,7 +1781,7 @@ function sizeEqual(a, b) {
 }
 
 /** @type {WeakMap<HTMLElement, Derived<BorderBoxSize>>} */
-const borderBoxSizeCache = new WeakMap();
+const borderBoxSizeCache = nodeCache();
 
 /**
  * How big the element's border box is. A client rect includes CSS
@@ -1802,7 +1859,7 @@ function measureOffsetWithin(node, ancestor) {
 }
 
 /** @type {WeakMap<Element, Derived<ContentPosition>>} */
-const contentPositionCache = new WeakMap();
+const contentPositionCache = nodeCache();
 
 /**
  * Where the element sits in its parent's content space. Scroll-invariant by
@@ -1854,7 +1911,7 @@ export function getScrollOffset(element) {
 }
 
 /** @type {WeakMap<HTMLElement, Derived<HTMLElement | null>>} */
-const anchorCache = new WeakMap();
+const anchorCache = nodeCache();
 
 /**
  * The containing block of an absolutely positioned element: the nearest
@@ -1922,7 +1979,7 @@ function anchoredOffsetEqual(a, b) {
 }
 
 /** @type {WeakMap<HTMLElement, Derived<AnchoredOffset>>} */
-const anchoredOffsetCache = new WeakMap();
+const anchoredOffsetCache = nodeCache();
 
 /**
  * For a positioned element: its containing block and where it sits in that
@@ -1960,7 +2017,7 @@ function getAnchoredOffset(element) {
 }
 
 /** @type {WeakMap<HTMLElement, Derived<ContentPosition>>} */
-const objectPositionCache = new WeakMap();
+const objectPositionCache = nodeCache();
 
 /**
  * Where the element's object belongs within its parent's content group.
@@ -2065,7 +2122,7 @@ export function clipsOverflow(style) {
 }
 
 /** @type {WeakMap<HTMLElement, Derived<ClipBox>>} */
-const ownClipWindowCache = new WeakMap();
+const ownClipWindowCache = nodeCache();
 
 /**
  * What an element confines its descendants to, in the element's *own*
@@ -2152,7 +2209,7 @@ function clipPairEqual(a, b) {
 }
 
 /** @type {WeakMap<HTMLElement, Derived<ClipPair>>} */
-const clipPairCache = new WeakMap();
+const clipPairCache = nodeCache();
 
 /**
  * The element's clipping, both halves in one computation: what its
@@ -2265,7 +2322,7 @@ export function getLocalClipBox(element) {
 }
 
 /** @type {WeakMap<HTMLInputElement, Derived<boolean>>} */
-const checkedCache = new WeakMap();
+const checkedCache = nodeCache();
 
 /**
  * Whether a checkbox is ticked, as something the scene can be drawn from.
@@ -2426,7 +2483,7 @@ export function tracksCharacterEdges(text) {
 }
 
 /** @type {WeakMap<HTMLElement, Derived<string>>} */
-const whiteSpaceCache = new WeakMap();
+const whiteSpaceCache = nodeCache();
 
 /**
  * The computed `white-space` that applies to text inside `element`, behind
@@ -2742,7 +2799,7 @@ function measureTextLayout(text) {
 }
 
 /** @type {WeakMap<Text, Derived<TextLayout>>} */
-const textLayoutCache = new WeakMap();
+const textLayoutCache = nodeCache();
 
 /**
  * @param {Text} text

@@ -239,11 +239,18 @@ const VectorsPanel = component((_ctx: WeakKey) => {
           // A dashed arrow straight across, head and all.
           $$("line", [attr({ class: "dashed", x1: 94, y1: 56, x2: 168, y2: 56 })]),
           $$("polygon", [attr({ class: "head", points: "168,50 180,56 168,62" })]),
-          // A dotted arrow curving down to the small node and back up.
+          // A dotted arrow curving down to the small node and back up. Each
+          // head is aimed along the last nine units of its curve, which is
+          // the direction the dots are read as travelling, with its tip one
+          // unit short of the node — and is twelve long by seven wide, since
+          // a head near equilateral reads as pointing whichever way its
+          // flattest edge faces away from.
           $$("path", [attr({ class: "dotted", d: "M52 80 C 52 112, 110 112, 122 104" })]),
-          $$("polygon", [attr({ class: "head pink", points: "116,110 127,101 118,97" })]),
+          $$("polygon", [
+            attr({ class: "head pink", points: "113.4,110.8 123.5,103.5 111,104.2" }),
+          ]),
           $$("path", [attr({ class: "dotted", d: "M150 96 C 170 84, 190 92, 220 80" })]),
-          $$("polygon", [attr({ class: "head pink", points: "212,76 224,78 216,88" })]),
+          $$("polygon", [attr({ class: "head pink", points: "212.7,86.3 222.9,79 210.4,79.7" })]),
         ),
       ]),
       $("p", [set("className", captionStyle), children(text`one icon, three sizes, currentColor`)]),

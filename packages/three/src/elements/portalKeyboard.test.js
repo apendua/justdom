@@ -6,6 +6,7 @@ import { InteractionContext, InteractionManager } from "../interactions.js";
 import { createPortal as createHeldPortal } from "./portal.js";
 import { withPanelOptions } from "./panelOptions.js";
 import { createKeyboardSlot, disposeKeyboardSlot, KeyboardSlotContext } from "./keyboardSlot.js";
+import { CameraContext, SceneContext } from "../render.js";
 import { stubCanvas } from "../test/stubCanvas.js";
 import { rectGeometry } from "./sdfRect.js";
 import { CARET_BLINK_MS } from "./textInput.js";
@@ -91,8 +92,11 @@ const ownKeyboard = (create) => ({ options: { keyboard: { gap: 20, create } } })
  * @param {Configure} [configure]
  * @param {import('./keyboardSlot.js').KeyboardSlot} [slot] The scene's
  *   keyboard, for panels that share one; without it the panel has its own.
+ * @param {{ scene: THREE.Scene, camera: THREE.Camera }} [room] A scene and a
+ *   camera for the board to open in front of; without them it hangs below
+ *   the panel, as it does on a plain page.
  */
-function keyboardPanel(configure = ownKeyboard, slot) {
+function keyboardPanel(configure = ownKeyboard, slot, room) {
   const manager = new InteractionManager();
   /** @type {Set<THREE.Object3D>} */
   const targets = new Set();
@@ -126,6 +130,9 @@ function keyboardPanel(configure = ownKeyboard, slot) {
   }
   if (slot) {
     ctx = KeyboardSlotContext.set(ctx, slot);
+  }
+  if (room) {
+    ctx = SceneContext.set(CameraContext.set(ctx, room.camera), room.scene);
   }
   const portal = createPortal(ctx, { ...options, root });
   const parent = new THREE.Group();
@@ -241,7 +248,7 @@ describe("the portal's keyboard", () => {
     panel.press(panel.fieldObject());
     await settle();
 
-    const pivot = panel.parent.children.find((child) => child !== panel.parent.children[0]);
+    const pivot = hinge(panel.parent);
     assert.ok(pivot, "the hinge is in the scene");
     // jsdom lays nothing out, so the panel is 0px tall: the hinge sits the
     // gap below the origin, in the panel's units — 20px at a centimetre each.
@@ -383,7 +390,7 @@ describe("the keyboard from the panel options", () => {
     panel.press(panel.fieldObject());
     await settle();
     assert.equal(panel.created.length, 1, "the context's factory, still");
-    const pivot = panel.parent.children[1];
+    const pivot = hinge(panel.parent);
     assert.ok(Math.abs(pivot.position.y - -0.2) < 1e-9, `the panel's gap, at ${pivot.position.y}`);
     panel.cleanup();
   });
@@ -438,6 +445,19 @@ function sleep(ms) {
   return new Promise((resolve) => {
     setTimeout(resolve, ms);
   });
+}
+
+/**
+ * The hinge the board turns on, below a panel: under the anchor that hangs
+ * beside the panel's own container.
+ *
+ * @param {THREE.Object3D} parent
+ * @returns {THREE.Object3D}
+ */
+function hinge(parent) {
+  const anchor = parent.children[1];
+  assert.ok(anchor, "the board hangs beside the panel");
+  return anchor.children[0];
 }
 
 /**
@@ -578,5 +598,197 @@ describe("one keyboard for every panel in a scene", () => {
     assert.equal(slot.host, null);
     a.cleanup();
     b.cleanup();
+  });
+});
+
+describe("the keyboard in front of the player", () => {
+  /** @type {ReturnType<typeof stubCanvas>} */
+  let canvas;
+  before(() => {
+    canvas = stubCanvas();
+  });
+  after(() => {
+    canvas.restore();
+  });
+
+  /**
+   * A scene with a head in it: standing at the origin, eyes at 1.6 m,
+   * looking down -z.
+   */
+  function room() {
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera();
+    camera.position.set(0, 1.6, 0);
+    camera.updateMatrixWorld();
+    return { scene, camera };
+  }
+
+  /**
+   * @param {THREE.Vector3} actual
+   * @param {[number, number, number]} expected
+   */
+  function assertNear(actual, [x, y, z]) {
+    assert.ok(
+      Math.abs(actual.x - x) < 1e-9 &&
+        Math.abs(actual.y - y) < 1e-9 &&
+        Math.abs(actual.z - z) < 1e-9,
+      `expected (${x}, ${y}, ${z}), got (${actual.x}, ${actual.y}, ${actual.z})`,
+    );
+  }
+
+  /**
+   * Two panels sharing a scene's keyboard and a room, with one factory.
+   *
+   * @param {Partial<import('./portalKeyboard.js').PortalKeyboardOptions>} [options]
+   */
+  function scene(options = {}) {
+    const slot = createKeyboardSlot();
+    const space = room();
+    /** @type {KeyboardTarget[]} */
+    const created = [];
+    /** @param {KeyboardTarget} target */
+    const create = (target) => {
+      created.push(target);
+      return $("div", [children($("div", [attr("style", () => "cursor: pointer")]))]);
+    };
+    /** @type {Configure} */
+    const configure = () => ({ options: { keyboard: { ...options, create } } });
+    const a = keyboardPanel(configure, slot, space);
+    const b = keyboardPanel(configure, slot, space);
+    return {
+      ...space,
+      created,
+      a,
+      b,
+      cleanup: () => {
+        a.cleanup();
+        b.cleanup();
+        disposeKeyboardSlot(slot);
+      },
+    };
+  }
+
+  test("opens ahead of the eyes and below them, facing the head, a millimetre a px", async () => {
+    const s = scene();
+    await settle();
+    s.a.press(s.a.fieldObject());
+    await settle();
+
+    assert.equal(panels(), 3, "two panels and the board");
+    assert.equal(s.a.parent.children.length, 1, "nothing hangs below the panel");
+    assert.equal(s.scene.children.length, 1, "the board is in the room");
+    const anchor = s.scene.children[0];
+    assertNear(anchor.position, [0, 1.4, -0.45]);
+    assert.ok(Math.abs(anchor.rotation.y) < 1e-9, "facing back down +z, at the head");
+    assert.ok(Math.abs(anchor.scale.x - 0.1) < 1e-9, "0.001 m a px over the panel's 0.01 units");
+    assert.ok(anchor.children[0].rotation.x < 0, "reclined toward the viewer");
+
+    s.cleanup();
+  });
+
+  test("stays where it was put while the head moves and the typing changes panel", async () => {
+    const s = scene();
+    await settle();
+    s.a.press(s.a.fieldObject());
+    await settle();
+    const anchor = s.scene.children[0];
+
+    s.camera.position.set(2, 1.6, 2);
+    s.camera.rotation.set(0, Math.PI / 2, 0);
+    s.camera.updateMatrixWorld();
+    s.b.press(s.b.fieldObject());
+    await settle();
+
+    assert.equal(s.created.length, 1, "the same board");
+    assert.equal(s.created[0].field(), s.b.input, "typing into the second panel's field");
+    assert.equal(s.scene.children.length, 1);
+    assert.equal(s.scene.children[0], anchor);
+    assertNear(anchor.position, [0, 1.4, -0.45]);
+    assert.equal(s.b.parent.children.length, 1, "not below the second panel either");
+
+    s.cleanup();
+  });
+
+  test("opens in front of the head again once it has gone", async () => {
+    const s = scene();
+    await settle();
+    s.a.press(s.a.fieldObject());
+    await settle();
+    s.created[0].onKey({ key: "Escape" });
+    await settle();
+    assert.equal(s.scene.children.length, 0, "the room is empty again");
+
+    // Turned a quarter to the left: looking down -x.
+    s.camera.rotation.set(0, Math.PI / 2, 0);
+    s.camera.updateMatrixWorld();
+    s.a.press(s.a.fieldObject());
+    await settle();
+    const anchor = s.scene.children[0];
+    assertNear(anchor.position, [-0.45, 1.4, 0]);
+    assert.ok(Math.abs(anchor.rotation.y - Math.PI / 2) < 1e-9, `yaw ${anchor.rotation.y}`);
+
+    s.cleanup();
+  });
+
+  test("takes its size, reach and drop from the options", async () => {
+    const s = scene({ scale: 0.002, reach: 0.6, drop: 0.3 });
+    await settle();
+    s.a.press(s.a.fieldObject());
+    await settle();
+    const anchor = s.scene.children[0];
+    assertNear(anchor.position, [0, 1.3, -0.6]);
+    assert.ok(Math.abs(anchor.scale.x - 0.2) < 1e-9);
+    s.cleanup();
+  });
+
+  test('hangs below the panel with `placement: "panel"`, and follows the typing', async () => {
+    const s = scene({ placement: "panel", gap: 20 });
+    await settle();
+    s.a.press(s.a.fieldObject());
+    await settle();
+    assert.equal(s.scene.children.length, 0, "not in the room");
+    assert.ok(Math.abs(hinge(s.a.parent).position.y - -0.2) < 1e-9);
+
+    s.b.press(s.b.fieldObject());
+    await settle();
+    assert.equal(s.a.parent.children.length, 1, "gone from the first panel");
+    assert.ok(Math.abs(hinge(s.b.parent).position.y - -0.2) < 1e-9, "below the second");
+    s.cleanup();
+  });
+
+  test("is posed by a placement function, once, as it opens", async () => {
+    /** @type {import('./portalKeyboard.js').KeyboardPlacement[]} */
+    const calls = [];
+    const s = scene({
+      placement: (placement) => {
+        calls.push(placement);
+        placement.anchor.position.set(1, 2, 3);
+      },
+    });
+    await settle();
+    s.a.press(s.a.fieldObject());
+    await settle();
+    s.b.press(s.b.fieldObject());
+    await settle();
+
+    assert.equal(calls.length, 1, "once, not again for the second field");
+    assert.equal(calls[0].camera, s.camera);
+    assert.equal(calls[0].field, s.a.input);
+    assert.equal(calls[0].panelObject, s.a.parent.children[0]);
+    assert.equal(calls[0].anchor, s.scene.children[0]);
+    assertNear(s.scene.children[0].position, [1, 2, 3]);
+    s.cleanup();
+  });
+
+  test("goes from the room with the panel it was typing for", async () => {
+    const s = scene();
+    await settle();
+    s.a.press(s.a.fieldObject());
+    await settle();
+    s.a.portal.disconnect();
+    assert.equal(s.scene.children.length, 0);
+    assert.equal(panels(), 1, "the second panel alone");
+    s.a.root.remove();
+    s.b.cleanup();
   });
 });

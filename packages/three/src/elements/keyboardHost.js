@@ -1,12 +1,14 @@
 import * as THREE from "three";
-import { Signal, withComputation } from "@apendua/signal";
+import { Effect, Signal, withChannel, withComputation } from "@apendua/signal";
 import { getBorderBoxSize } from "./mirror.js";
 import { place } from "./place.js";
 import { moveCaretToEnd, typeIntoInput } from "./typing.js";
 import { touchValue } from "./textInput.js";
+import { DEFAULT_KEYBOARD_SCALE, viewerPose } from "./keyboardPlacement.js";
+import { CameraContext, SceneContext } from "../render.js";
 
 /**
- * @import {Effect, Unsubscribable} from '@apendua/signal';
+ * @import {Unsubscribable} from '@apendua/signal';
  * @import {Mountable} from '../core.js';
  * @import {KeyPress} from './typing.js';
  * @import {KeyboardTarget, PortalKeyboardOptions} from './portalKeyboard.js';
@@ -23,6 +25,12 @@ import { touchValue } from "./textInput.js";
  * different board — a different `create`. Everything a panel still decides
  * for itself it hands over through a `KeyboardBinding`: which factory, how
  * the board hangs, and the frame to hang it in.
+ *
+ * Where it opens is the `placement` of the panel whose field opened it. In
+ * front of the player, the default, it is put in the room once, at a size
+ * of its own, and stays there while the typing moves from panel to panel;
+ * below a panel, it follows the typing from one panel to the next, at the
+ * panel's size. `keyboardPlacement.js` has the pose.
  *
  * The board comes and goes imperatively, from the press and the dismissal
  * themselves, rather than from an effect over the target. A panel taken
@@ -83,17 +91,35 @@ const DEFAULT_TILT = (24 * Math.PI) / 180;
  */
 
 /**
- * The board while it is up: what built it, and what to take down.
+ * Where the board is while it is up: the anchor it hangs from, the hinge
+ * its top edge turns on, and the drop that puts its top edge at the hinge,
+ * the board's own container centring itself on its origin as every panel
+ * does. Made when the board opens and kept until it goes, so that a board
+ * built again for another panel's `create` comes up where the last one was.
+ *
+ * In the room, the anchor is in the scene, posed once, and scaled to the
+ * board's own size. On a panel, it is hung off the parent of the panel
+ * being typed for, with nothing of its own, and moves to the next one.
+ *
+ * @typedef {object} Frame
+ * @property {THREE.Group} anchor
+ * @property {THREE.Group} pivot
+ * @property {THREE.Group} drop
+ * @property {"room" | "panel"} mode
+ * @property {KeyboardBinding} openedFor The panel whose field opened it,
+ *   whose options say how the board sits in the room.
+ * @property {KeyboardBinding | null} attachedTo The panel it hangs off,
+ *   on a panel.
+ * @property {Effect | null} placement
+ */
+
+/**
+ * The board itself: what built it, and what to take down.
  *
  * @typedef {object} Board
  * @property {PortalKeyboardOptions["create"]} create
  * @property {ReturnType<CreatePortal>} panel
  * @property {Unsubscribable} subscription
- * @property {THREE.Group} pivot The hinge, at the panel's bottom edge.
- * @property {THREE.Group} drop Under the hinge, the drop that puts the
- *   board's top edge at it.
- * @property {KeyboardBinding | null} attachedTo
- * @property {Effect | null} placement
  */
 
 /**
@@ -106,6 +132,21 @@ const DEFAULT_TILT = (24 * Math.PI) / 180;
  */
 
 /**
+ * The scene and the camera, if the board is under a `render()` that has
+ * them; null for a portal on a plain page or under a test runner.
+ *
+ * @param {WeakKey} ctx
+ * @returns {{ scene: THREE.Scene, camera: THREE.Camera } | null}
+ */
+function roomOf(ctx) {
+  try {
+    return { scene: SceneContext.get(ctx), camera: CameraContext.get(ctx) };
+  } catch {
+    return null;
+  }
+}
+
+/**
  * @param {object} deps
  * @param {CreatePortal} deps.createPortal The portal factory, handed in
  *   rather than imported: the portal imports this.
@@ -115,6 +156,8 @@ export function createKeyboardHost({ createPortal }) {
   /** @type {Signal<KeyboardFocus | null>} */
   const target = Signal.of(/** @type {KeyboardFocus | null} */ (null));
 
+  /** @type {Frame | null} */
+  let frame = null;
   /** @type {Board | null} */
   let board = null;
 
@@ -131,37 +174,98 @@ export function createKeyboardHost({ createPortal }) {
   };
 
   /**
-   * Take the board down, leaving the target as it is.
+   * Make the frame for a board about to open, and put it where it goes.
+   *
+   * @param {KeyboardFocus} focus
+   * @returns {Frame}
+   */
+  function openFrame({ element, binding }) {
+    const anchor = new THREE.Group();
+    const pivot = new THREE.Group();
+    const drop = new THREE.Group();
+    anchor.add(pivot);
+    pivot.add(drop);
+    const {
+      placement = "viewer",
+      reach,
+      drop: below,
+      scale = DEFAULT_KEYBOARD_SCALE,
+    } = binding.options;
+    const room = placement === "panel" ? null : roomOf(binding.ctx);
+    if (!room) {
+      return {
+        anchor,
+        pivot,
+        drop,
+        mode: "panel",
+        openedFor: binding,
+        attachedTo: null,
+        placement: null,
+      };
+    }
+    room.scene.add(anchor);
+    // The board's container is scaled to the panel's units per px, as every
+    // panel's is; this makes a px of it `scale` metres in the room.
+    anchor.scale.setScalar(scale / binding.scale);
+    if (typeof placement === "function") {
+      placement({
+        anchor,
+        camera: room.camera,
+        panelObject: binding.containerObject,
+        field: element,
+      });
+    } else {
+      room.camera.updateWorldMatrix(true, false);
+      const pose = viewerPose(room.camera.matrixWorld, { reach, drop: below });
+      anchor.position.copy(pose.position);
+      anchor.rotation.set(0, pose.yaw, 0);
+    }
+    return {
+      anchor,
+      pivot,
+      drop,
+      mode: "room",
+      openedFor: binding,
+      attachedTo: null,
+      placement: null,
+    };
+  }
+
+  function closeFrame() {
+    if (!frame) {
+      return;
+    }
+    frame.placement?.dispose();
+    frame.anchor.removeFromParent();
+    frame = null;
+  }
+
+  /**
+   * Take the board down, leaving its frame and the target as they are.
    */
   function closeBoard() {
     if (!board) {
       return;
     }
-    const { panel, subscription, pivot, placement } = board;
+    const { panel, subscription } = board;
     board = null;
-    placement?.dispose();
     subscription.unsubscribe();
     panel.disconnect();
-    pivot.removeFromParent();
   }
 
   /**
    * @param {KeyboardFocus} focus
+   * @param {THREE.Object3D} parent
    * @returns {Board}
    */
-  function buildBoard({ element, binding }) {
-    const pivot = new THREE.Group();
-    const drop = new THREE.Group();
-    pivot.add(drop);
-
+  function buildBoard({ element, binding }, parent) {
     const panel = createPortal(binding.ctx, {
       opaqueToRays: true,
-      // A board that has been asked for is wanted now, and it comes up
-      // under a panel that is already there; a frame standing in for it
-      // would be one more thing to look at.
+      // A board that has been asked for is wanted now; a frame standing in
+      // for it would be one more thing to look at.
       loadingFrame: false,
     });
-    panel.addTo(drop);
+    panel.addTo(parent);
 
     const { create } = binding.options;
     /** @type {KeyboardTarget} */
@@ -176,32 +280,47 @@ export function createKeyboardHost({ createPortal }) {
         panel.mount(mountable);
       },
     });
-    return { create, panel, subscription, pivot, drop, attachedTo: null, placement: null };
+    return { create, panel, subscription };
   }
 
   /**
-   * Hang the board off the panel of the field being typed into.
+   * Keep the board hanging from its frame's hinge as its size changes, and,
+   * on a panel, below that panel as the panel's size changes. Built again
+   * whenever the board or the panel it hangs off is another one.
    *
-   * @param {Board} current
-   * @param {KeyboardBinding} binding
+   * @param {Frame} current
+   * @param {Board} shown
    */
-  function attach(current, binding) {
-    const parent = binding.containerObject.parent;
-    if (current.attachedTo === binding || !parent) {
-      return;
-    }
+  function placeBoard(current, shown) {
     current.placement?.dispose();
-    parent.add(current.pivot);
-    current.attachedTo = binding;
+    const { pivot, drop } = current;
+    const binding = current.attachedTo ?? current.openedFor;
     const { gap = DEFAULT_GAP, tilt = DEFAULT_TILT } = binding.options;
-    const { pivot, drop, panel } = current;
-    current.placement = binding.placeEffect(() => {
-      const panelSize = getBorderBoxSize(binding.containerElement);
-      const boardSize = panel.size();
-      pivot.rotation.set(-tilt, 0, 0);
-      place(pivot, 0, -(panelSize.height / 2 + gap) * binding.scale, 0);
-      place(drop, 0, -(boardSize.height / 2) * binding.scale, 0);
-    }, "portal-keyboard-place");
+    const units = binding.scale;
+    if (current.mode === "panel") {
+      current.placement = binding.placeEffect(() => {
+        const panelSize = getBorderBoxSize(binding.containerElement);
+        const boardSize = shown.panel.size();
+        pivot.rotation.set(-tilt, 0, 0);
+        place(pivot, 0, -(panelSize.height / 2 + gap) * units, 0);
+        place(drop, 0, -(boardSize.height / 2) * units, 0);
+      }, "portal-keyboard-place");
+    } else {
+      // In the default channel: the board in the room is no panel's, and
+      // moves with nothing but itself.
+      current.placement = withChannel(
+        null,
+        () =>
+          new Effect(
+            () => {
+              const boardSize = shown.panel.size();
+              pivot.rotation.set(-tilt, 0, 0);
+              place(drop, 0, -(boardSize.height / 2) * units, 0);
+            },
+            { name: "portal-keyboard-place" },
+          ),
+      );
+    }
   }
 
   /**
@@ -229,6 +348,7 @@ export function createKeyboardHost({ createPortal }) {
     }
     withComputation(null, () => {
       closeBoard();
+      closeFrame();
       moveFocusMark(current.element, undefined);
       target.set(null);
     });
@@ -255,8 +375,22 @@ export function createKeyboardHost({ createPortal }) {
         if (board && board.create !== binding.options.create) {
           closeBoard();
         }
-        board ??= buildBoard(next);
-        attach(board, binding);
+        const current = (frame ??= openFrame(next));
+        let changed = false;
+        if (current.mode === "panel" && current.attachedTo !== binding) {
+          // On a panel, the board goes to the panel of the field being
+          // typed into; in the room, it stays where it was put.
+          /** @type {THREE.Object3D} */ (binding.containerObject.parent).add(current.anchor);
+          current.attachedTo = binding;
+          changed = true;
+        }
+        if (!board) {
+          board = buildBoard(next, current.drop);
+          changed = true;
+        }
+        if (changed) {
+          placeBoard(current, board);
+        }
       });
     },
     dismiss,

@@ -99,6 +99,10 @@ export { installCrashPanel, CRASH_PANEL_ID } from "./crash.js";
  */
 
 /**
+ * @typedef {import('./elements/portalKeyboard.js').KeyboardPlacement} KeyboardPlacement
+ */
+
+/**
  * @typedef {import('./elements/typing.js').KeyPress} KeyPress
  */
 

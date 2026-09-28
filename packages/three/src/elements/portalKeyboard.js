@@ -26,8 +26,9 @@ export { FOCUS_ATTRIBUTE } from "./keyboardHost.js";
  * there rather than bringing up a second board. What is here is a panel's
  * side of that — its options, its frame, and when it lets go.
  *
- * It appears when a field is pressed, hangs below the panel and reclined
- * toward the hands like a phone on a stand, types into the field through
+ * It appears when a field is pressed, in front of the player and reclined
+ * toward the hands like a phone on a stand (or below the panel, with
+ * `placement: "panel"`), types into the field through
  * `typeIntoInput`, and goes on `Enter`, on `Escape`, on a press on the
  * panel's own background, when the field leaves the document, and with the
  * panel. While it is up the field carries `data-xr-focus`, which a
@@ -61,11 +62,41 @@ export { FOCUS_ATTRIBUTE } from "./keyboardHost.js";
  *   dressed in the panel's own classes and handed `target.onKey`. Called
  *   when a field is pressed; the tree is mounted into a portal of its own
  *   and taken down when the board goes.
+ * @property {"viewer" | "panel" | ((placement: KeyboardPlacement) => void)} [placement]
+ *   Where the board opens. `"viewer"`, the default, puts it in front of the
+ *   player, `reach` ahead of the eyes and `drop` below them, turned to face
+ *   them, and leaves it there in the room while it is up: moving to a field
+ *   in another panel does not move it. `"panel"` hangs it below the panel
+ *   of the field being typed into, `gap` under its bottom edge, scaled with
+ *   the panel, and moves it to the next field's panel. A function poses the
+ *   board itself when it opens (see `KeyboardPlacement`). Where there is no
+ *   camera to be in front of — a portal on a plain page, or under a test
+ *   runner — `"viewer"` and a function are `"panel"`.
+ * @property {number} [reach] How far ahead of the eyes the board's top edge
+ *   opens, in metres. 0.45 by default.
+ * @property {number} [drop] How far below the eyes, in metres. 0.2 by
+ *   default.
+ * @property {number} [scale] How big the board is in the room, in metres per
+ *   CSS px of it. A millimetre by default, whichever panel's field opened
+ *   it. Not used by `"panel"`, where the board is the panel's scale.
  * @property {number} [gap] The room between the panel's bottom edge and the
- *   board's top edge, in the panel's px. 12 by default.
+ *   board's top edge, in the panel's px, with `"panel"`. 12 by default.
  * @property {number} [tilt] How far the board is reclined toward the viewer,
- *   in radians, hinged at its top edge. 24° by default; 0 leaves it in the
- *   panel's plane.
+ *   in radians, hinged at its top edge. 24° by default; 0 stands it upright.
+ */
+
+/**
+ * What a `placement` function is handed to pose the board with, once, as it
+ * opens. `anchor` is in the scene, scaled already; the board's top edge is
+ * at its origin and its face, reclined by `tilt`, looks down its +z. Set its
+ * position and rotation in world terms.
+ *
+ * @typedef {object} KeyboardPlacement
+ * @property {import('three').Object3D} anchor
+ * @property {import('three').Camera} camera
+ * @property {import('three').Object3D} panelObject The panel whose field was
+ *   pressed.
+ * @property {HTMLInputElement} field
  */
 
 /**

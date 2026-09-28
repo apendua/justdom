@@ -207,7 +207,9 @@ export function createKeyboardHost({ createPortal, ctx: sceneCtx = null }) {
       return;
     }
     typeIntoInput(current.element, press);
-    if (press.key === "Enter" || press.key === "Escape") {
+    // Not on Enter: on a page the field keeps its focus after a submit, and
+    // an app that clears it wants the next entry typed straight in.
+    if (press.key === "Escape") {
       dismiss();
     }
   };

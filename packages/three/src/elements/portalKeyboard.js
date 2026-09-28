@@ -1,3 +1,5 @@
+import { isTextInput } from "./typing.js";
+
 /**
  * @import {Subscribable} from '@apendua/signal';
  * @import {Mountable} from '../core.js';
@@ -29,18 +31,19 @@ export { FOCUS_ATTRIBUTE } from "./keyboardHost.js";
  * It appears when a field is pressed, in front of the player and reclined
  * toward the hands like a phone on a stand (or below the panel, with
  * `placement: "panel"`), types into the field through
- * `typeIntoInput`, and goes on `Enter`, on `Escape`, on a press on the
- * panel's own background, when the field leaves the document, and with the
- * panel. While it is up the field carries `data-xr-focus`, which a
+ * `typeIntoInput`, and goes on `Escape`, on a press anywhere in a panel
+ * but on a field, when the field leaves the document, and with the panel.
+ * `Enter` submits and leaves the field being typed into, as it does on a
+ * page, so a list can be filled one entry after another. While it is up the field carries `data-xr-focus`, which a
  * stylesheet may use the way it uses `:focus` — presentationally, exactly
  * as `data-xr-hover`.
  */
 
 /**
  * The field a keyboard is built for, and what it is handed to reach it:
- * `onKey` does to the field being typed into what the key would have done
- * and closes the board on the keys that end an entry; `dismiss` closes it
- * for any other reason a board might have — a "done" key of its own, say.
+ * `onKey` does to the field being typed into what the key would have done,
+ * and closes the board on `Escape`; `dismiss` closes it for any other
+ * reason a board might have — a "done" key of its own, say.
  *
  * A board outlives the field it was built for: pressing another field, in
  * this panel or another one with the same `create`, moves the typing
@@ -107,9 +110,37 @@ export { FOCUS_ATTRIBUTE } from "./keyboardHost.js";
  */
 
 /**
+ * Whether a click on this element is a press that will give it the typing:
+ * a field the keyboard can type into. Its own press moves the typing there
+ * right after the click, so the click is not focus leaving.
+ *
+ * @param {EventTarget | null} target
+ * @returns {boolean}
+ */
+function takesTheTyping(target) {
+  // By shape rather than `instanceof`: the element may be from another
+  // window than the one this module was loaded in.
+  const node = /** @type {Node | null} */ (target);
+  if (!node || typeof node.nodeType !== "number" || !isTextInput(node)) {
+    return false;
+  }
+  const field = /** @type {HTMLInputElement} */ (node);
+  return !field.disabled && !field.readOnly;
+}
+
+/**
  * A panel's side of the scene's keyboard: the `InputFocus` its fields are
- * built with, and the three ways a panel lets go of the board — a press on
- * its background, a node of its leaving, and the panel itself going.
+ * built with, and the three ways a panel lets go of the board — a press in
+ * it anywhere but on a field, a node of its leaving, and the panel itself
+ * going.
+ *
+ * A press is heard as the click it becomes. Every press the portal turns
+ * into a click on an element — a button, a row, a label — and a press on
+ * the background, which it turns into a click on the panel's root, bubbles
+ * to the root; so does a mouse click on a panel mirrored from the page. On
+ * a page, each of those takes focus away from the field, and so here each
+ * of them puts the keyboard away. A press that became a scroll clicks
+ * nothing, and leaves the keyboard be.
  *
  * @param {KeyboardHost} host
  * @param {KeyboardBinding} binding
@@ -123,15 +154,16 @@ export function bindPortalKeyboard(host, binding) {
     },
   };
 
+  /** @param {Event} event */
+  const onClick = (event) => {
+    if (host.field() !== null && !takesTheTyping(event.target)) {
+      host.dismiss();
+    }
+  };
+  binding.containerElement.addEventListener("click", onClick);
+
   return {
     focus,
-    /**
-     * A press on the panel's background: away from the fields, whichever
-     * panel they are in, as tapping outside the field on a phone is.
-     */
-    dismiss() {
-      host.dismiss();
-    },
     /**
      * A node has left the panel. If it is the field being typed into, the
      * board has nothing to type into any more.
@@ -142,6 +174,7 @@ export function bindPortalKeyboard(host, binding) {
       host.release(node);
     },
     dispose() {
+      binding.containerElement.removeEventListener("click", onClick);
       host.unbind(binding);
     },
   };

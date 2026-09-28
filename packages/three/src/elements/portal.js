@@ -208,11 +208,13 @@ function claimRoot(root) {
  *   (see `PanelOptions`), or `false` for none whatever the context says.
  *   Without one a field is drawn — its box, its value or its
  *   placeholder — but nothing in the scene can type into it; with one, a
- *   press on a field brings the keyboard up below the panel, typing goes
+ *   press on a field brings up the scene's keyboard — one for every panel,
+ *   in front of the player unless `placement` says otherwise — typing goes
  *   into the field through the events a page's handlers already listen for,
- *   and `Enter`, `Escape` or a press on the panel's background puts it
- *   away. What the keyboard is made of is the app's: `create` hands back
- *   its DOM for a field, wired to the `onKey` it is given. See
+ *   and `Escape`, or a press anywhere in a panel other than on a field, puts
+ *   it away, the way a click elsewhere takes focus from a field on a page.
+ *   What the keyboard is made of is the app's: `create` hands back its DOM
+ *   for a field, wired to the `onKey` it is given. See
  *   `PortalKeyboardOptions`.
  * @property {boolean} [opaqueToRays] Whether the panel stops rays that land on
  *   it. True by default, which is what any panel with something to press wants.
@@ -510,11 +512,11 @@ function buildPortal(ctx, ownOptions = {}) {
     // Deliberately without stopping propagation: a panel the scene made
     // grabbable is still grabbable by its background, which is how it behaved
     // before there was anything listening here at all.
+    //
+    // The keyboard hears it the same way: a click in the panel that is not
+    // on a field is focus leaving the field (see `bindPortalKeyboard`).
     blocker.addEventListener("select", () => {
       containerElement.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-      // A press beside the fields is a press away from them: the keyboard
-      // goes, as a phone's does when you tap outside the field.
-      portalKeyboard?.dismiss();
     });
   }
 

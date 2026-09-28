@@ -218,7 +218,7 @@ describe("the portal's keyboard", () => {
     canvas.restore();
   });
 
-  test("comes up when a field is pressed, types into it, and goes on Enter", async () => {
+  test("comes up when a field is pressed, types into it, and goes on Escape", async () => {
     const panel = keyboardPanel();
     await settle();
     assert.equal(panels(), 1, "the panel alone");
@@ -243,8 +243,14 @@ describe("the portal's keyboard", () => {
     assert.equal(panel.input.value, "abc", "at the end, where a tap puts the caret");
     assert.deepEqual(heard, ["abc"]);
 
-    // Enter ends the entry.
+    // Enter submits, and the field keeps the typing, as it does on a page.
     panel.created[0].onKey({ key: "Enter", code: "Enter" });
+    await settle();
+    assert.equal(panels(), 2, "the board is still up");
+    assert.ok(panel.input.hasAttribute("data-xr-focus"), "and the field still has it");
+
+    // Escape puts it away.
+    panel.created[0].onKey({ key: "Escape", code: "Escape" });
     await settle();
     assert.equal(panels(), 1, "the board is gone");
     assert.equal(panel.input.hasAttribute("data-xr-focus"), false);
@@ -280,6 +286,51 @@ describe("the portal's keyboard", () => {
     await settle();
     assert.equal(panels(), 1, "the board is gone");
     assert.equal(panel.input.hasAttribute("data-xr-focus"), false);
+
+    panel.cleanup();
+  });
+
+  test("a press on anything in the panel but a field puts it away", async () => {
+    const panel = keyboardPanel();
+    await settle();
+    panel.press(panel.fieldObject());
+    await settle();
+    assert.equal(panels(), 2);
+
+    // A button pressed by a ray is a click on it, bubbling to the panel's
+    // root; so is a mouse click on a panel mirrored from the page. Any
+    // element will do: what matters is that it is not a field.
+    const other = document.createElement("span");
+    panel.root.appendChild(other);
+    await settle();
+    other.click();
+    await settle();
+    assert.equal(panels(), 1, "the board is gone");
+    assert.equal(panel.input.hasAttribute("data-xr-focus"), false);
+
+    panel.cleanup();
+  });
+
+  test("a click on a field that takes the typing leaves it up", async () => {
+    const panel = keyboardPanel();
+    await settle();
+    panel.press(panel.fieldObject());
+    await settle();
+
+    // The press on a field clicks it before it moves the typing there.
+    const other = document.createElement("input");
+    other.type = "text";
+    panel.root.appendChild(other);
+    other.click();
+    panel.input.click();
+    await settle();
+    assert.equal(panels(), 2, "still up");
+
+    // A field that cannot be typed into is anywhere else.
+    other.readOnly = true;
+    other.click();
+    await settle();
+    assert.equal(panels(), 1, "a read-only field takes nothing");
 
     panel.cleanup();
   });

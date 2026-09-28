@@ -4,10 +4,13 @@ import * as THREE from "three";
 import { $, attr, children } from "@apendua/justdom";
 import { InteractionContext, InteractionManager } from "../interactions.js";
 import { createPortal as createHeldPortal } from "./portal.js";
+import { withPanelOptions } from "./panelOptions.js";
 import { stubCanvas } from "../test/stubCanvas.js";
 
 /**
  * @import {KeyboardTarget} from './portalKeyboard.js';
+ * @import {PanelOptions} from './panelOptions.js';
+ * @import {PortalOptions} from './portal.js';
  */
 
 /** @type {typeof createHeldPortal} */
@@ -66,10 +69,25 @@ async function settle() {
 const panels = () => document.querySelectorAll("[data-xr-portal]").length;
 
 /**
+ * Where a panel's keyboard comes from: its own options, the context's, or
+ * both. Handed the factory the test records with.
+ *
+ * @typedef {(create: (target: KeyboardTarget) => ReturnType<typeof $>) => {
+ *   panelOptions?: PanelOptions,
+ *   options?: Omit<PortalOptions, "root">,
+ * }} Configure
+ */
+
+/** @type {Configure} */
+const ownKeyboard = (create) => ({ options: { keyboard: { gap: 20, create } } });
+
+/**
  * A panel with a field in it and a keyboard on offer. The keyboard's DOM
  * is one clickable key; what it is handed is recorded.
+ *
+ * @param {Configure} [configure]
  */
-function keyboardPanel() {
+function keyboardPanel(configure = ownKeyboard) {
   const manager = new InteractionManager();
   /** @type {Set<THREE.Object3D>} */
   const targets = new Set();
@@ -83,7 +101,7 @@ function keyboardPanel() {
     targets.delete(object);
     originalRemove(object);
   };
-  const ctx = InteractionContext.set({}, manager);
+  let ctx = InteractionContext.set({}, manager);
 
   const root = document.createElement("div");
   const input = document.createElement("input");
@@ -94,16 +112,14 @@ function keyboardPanel() {
 
   /** @type {KeyboardTarget[]} */
   const created = [];
-  const portal = createPortal(ctx, {
-    root,
-    keyboard: {
-      gap: 20,
-      create: (target) => {
-        created.push(target);
-        return $("div", [children($("div", [attr("style", () => "cursor: pointer")]))]);
-      },
-    },
+  const { panelOptions, options } = configure((target) => {
+    created.push(target);
+    return $("div", [children($("div", [attr("style", () => "cursor: pointer")]))]);
   });
+  if (panelOptions) {
+    ctx = withPanelOptions(ctx, panelOptions);
+  }
+  const portal = createPortal(ctx, { ...options, root });
   const parent = new THREE.Group();
   portal.addTo(parent);
 
@@ -285,6 +301,84 @@ describe("the portal's keyboard", () => {
     await settle();
     assert.equal(countMeshesUnder(panel.parent.children[0]), before, "and gone with the board");
     panel.cleanup();
+  });
+});
+
+describe("the keyboard from the panel options", () => {
+  /** @type {ReturnType<typeof stubCanvas>} */
+  let canvas;
+  before(() => {
+    canvas = stubCanvas();
+  });
+  after(() => {
+    canvas.restore();
+  });
+
+  test("is offered by a panel that names none of its own", async () => {
+    const panel = keyboardPanel((create) => ({ panelOptions: { keyboard: { create } } }));
+    await settle();
+    panel.press(panel.fieldObject());
+    await settle();
+    assert.equal(panel.created.length, 1, "the context's factory was asked for a board");
+    assert.equal(panel.created[0].element, panel.input);
+    assert.equal(panels(), 2);
+    panel.cleanup();
+  });
+
+  test("has the panel's own options laid over it", async () => {
+    const panel = keyboardPanel((create) => ({
+      panelOptions: { keyboard: { create, gap: 5 } },
+      options: { keyboard: { gap: 20 } },
+    }));
+    await settle();
+    panel.press(panel.fieldObject());
+    await settle();
+    assert.equal(panel.created.length, 1, "the context's factory, still");
+    const pivot = panel.parent.children[1];
+    assert.ok(Math.abs(pivot.position.y - -0.2) < 1e-9, `the panel's gap, at ${pivot.position.y}`);
+    panel.cleanup();
+  });
+
+  test("is turned off by a panel's `keyboard: false`", async () => {
+    const panel = keyboardPanel((create) => ({
+      panelOptions: { keyboard: { create } },
+      options: { keyboard: false },
+    }));
+    await settle();
+    panel.press(panel.fieldObject());
+    await settle();
+    assert.equal(panel.created.length, 0, "no board");
+    assert.equal(panels(), 1);
+    assert.equal(panel.input.hasAttribute("data-xr-focus"), false);
+    panel.cleanup();
+  });
+
+  test("is none when nothing names a factory", async () => {
+    const panel = keyboardPanel(() => ({
+      panelOptions: { keyboard: { gap: 5 } },
+      options: { keyboard: { tilt: 0 } },
+    }));
+    await settle();
+    panel.press(panel.fieldObject());
+    await settle();
+    assert.equal(panels(), 1, "no board, and nothing thrown");
+    assert.equal(panel.input.hasAttribute("data-xr-focus"), false);
+    panel.cleanup();
+  });
+
+  test("reaches the portal's other options too", async () => {
+    const readout = keyboardPanel(() => ({ panelOptions: { opaqueToRays: false } }));
+    await settle();
+    assert.equal(readout.blocker(), undefined, "the scene's default: no blocker");
+    readout.cleanup();
+
+    const button = keyboardPanel(() => ({
+      panelOptions: { opaqueToRays: false },
+      options: { opaqueToRays: true },
+    }));
+    await settle();
+    assert.ok(button.blocker(), "the panel's own value wins");
+    button.cleanup();
   });
 });
 

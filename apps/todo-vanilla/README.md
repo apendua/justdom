@@ -37,7 +37,8 @@ the panels, for a harness photographing the scene.
 | `src/xr.ts` | The offer: checks the platform can present, makes the renderer and the Enter button, shows the canvas only while a session runs. Hands `render()` the keyboard as a panel option. |
 | `src/components/TodoApp.ts` | The app, written for the page: a field, an Add button, a count, and the list behind `scrollable` from `@apendua/justui`. |
 | `src/components/TodoItem.ts` | A row: a checkbox drawn honestly in both builds, a label, a Delete button. |
-| `src/components/Scene.ts` | The scene: `dom(ctx, panel, …)`. Lights, a cursor, and the panel. |
+| `src/components/Scene.ts` | The scene: `dom(ctx, panel, …)`. Lights, a cursor, the panel, and the frame rate while a session runs. |
+| `src/session.ts` | The session the page is shown in, or null: written by the scene from `getXRSession`, read by the app for its exit button. |
 | `src/components/TodoKeyboard.ts` | What the headset's keyboard looks like: `keyboard` from `@apendua/justui` dressed for this panel. |
 | `src/emulator.ts` | IWER, behind `?emulator`. |
 
@@ -56,6 +57,14 @@ viewport that hides its overflow, arrows, a track and a thumb — so it works
 on the page as a list with its own scrollbar, and in the scene as a window the
 portal clips to, rows below the fold neither drawn nor pressable. Rows can
 also be grabbed and pulled with the trigger.
+
+**Two things are there only in a session.** The frame rate, from justui's
+`useDiagnostics`, hangs in the upper left of the view. And the card grows an
+exit button in its top-right corner, an ordinary `<button>` hidden on the
+page, which ends the session when pressed. The app cannot ask the renderer
+whether there is a session, since it is mounted before there is one, so the
+scene tells it: it copies `getXRSession(ctx)` into `xrSession`, and the
+button's `hidden` follows that.
 
 **Nothing runs until a session does.** The renderer is made with
 `presentingOnly`, so no frame is drawn and no frame callback runs between

@@ -1,14 +1,8 @@
 import * as THREE from "three";
-import { children, cursors, $, dom, getScene, RendererContext } from "@apendua/freedom";
-import {
-  component,
-  effects,
-  effectsOnly,
-  onCleanup,
-  Signal,
-  Stream,
-  useEffects,
-} from "@apendua/signal";
+import { children, cursors, $, dom, getScene, getXRSession } from "@apendua/freedom";
+import { createDiagnostics, useDiagnostics } from "@apendua/justui";
+import { component, effects, effectsOnly, Stream, useEffects } from "@apendua/signal";
+import { xrSession } from "../session.js";
 
 /**
  * What the session is set against: one colour, all the way round, rather
@@ -55,6 +49,10 @@ function backdrop(): THREE.Mesh {
  * one. The keyboard its field is typed with is not this panel's but the
  * scene's, handed to `render()` as a panel option in `xr.ts`.
  *
+ * While a session runs there is also the frame rate, in the corner of the
+ * view (`useDiagnostics` from justui), and the app is told about the session
+ * (`xrSession`) so that its card can show a button that ends it.
+ *
  * The panel exists only while a session is presenting. Between sessions the
  * page is all anyone sees, and a portal kept up behind it would go on
  * mirroring every hover and keystroke on the page into a scene nobody is
@@ -68,8 +66,9 @@ export const Scene = (panel: HTMLElement) =>
     // about 46 cm wide, at half a metre — a tablet held out in front of you.
     const scale = 0.1;
 
-    const renderer = RendererContext.get(ctx) as THREE.WebGLRenderer;
-    const presenting = Signal.of(renderer.xr.isPresenting);
+    // Kept across sessions, so a second session's chart starts from the
+    // first one's scale rather than from nothing.
+    const diagnostics = createDiagnostics();
 
     useEffects(getScene(ctx), [
       effects((scene) => {
@@ -78,14 +77,12 @@ export const Scene = (panel: HTMLElement) =>
         scene.background = new THREE.Color(BACKDROP);
       }),
       effects(() => {
-        const start = () => presenting.set(true);
-        const end = () => presenting.set(false);
-        renderer.xr.addEventListener("sessionstart", start);
-        renderer.xr.addEventListener("sessionend", end);
-        onCleanup(() => {
-          renderer.xr.removeEventListener("sessionstart", start);
-          renderer.xr.removeEventListener("sessionend", end);
-        });
+        // Re-run as a session starts and as it ends.
+        const session = getXRSession(ctx);
+        xrSession.set(session);
+        if (session) {
+          useDiagnostics(ctx, diagnostics);
+        }
       }),
       children(
         $(backdrop()),
@@ -104,7 +101,7 @@ export const Scene = (panel: HTMLElement) =>
           }),
           children(
             component(() => {
-              if (!presenting.get()) {
+              if (!getXRSession(ctx)) {
                 return NOTHING;
               }
               return dom(ctx, panel, [

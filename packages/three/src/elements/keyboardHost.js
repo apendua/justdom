@@ -4,14 +4,18 @@ import { getBorderBoxSize } from "./mirror.js";
 import { place } from "./place.js";
 import { moveCaretToEnd, typeIntoInput } from "./typing.js";
 import { touchValue } from "./textInput.js";
-import { DEFAULT_KEYBOARD_SCALE, viewerPose } from "./keyboardPlacement.js";
-import { CameraContext, SceneContext } from "../render.js";
+import { DEFAULT_KEYBOARD_SCALE, shouldReuse, viewerPose } from "./keyboardPlacement.js";
+import { createKeyboardHandles } from "./keyboardHandles.js";
+import { levelPose } from "../carry.js";
+import { CameraContext, RendererContext, SceneContext } from "../render.js";
 
 /**
  * @import {Unsubscribable} from '@apendua/signal';
  * @import {Mountable} from '../core.js';
  * @import {KeyPress} from './typing.js';
  * @import {KeyboardTarget, PortalKeyboardOptions} from './portalKeyboard.js';
+ * @import {KeyboardHandles} from './keyboardHandles.js';
+ * @import {LevelPose} from '../carry.js';
  */
 
 /**
@@ -111,6 +115,8 @@ const DEFAULT_TILT = (24 * Math.PI) / 180;
  * @property {KeyboardBinding | null} attachedTo The panel it hangs off,
  *   on a panel.
  * @property {Effect | null} placement
+ * @property {KeyboardHandles | null} handles What the player moves it by,
+ *   in the room.
  */
 
 /**
@@ -133,26 +139,49 @@ const DEFAULT_TILT = (24 * Math.PI) / 180;
 
 /**
  * The scene and the camera, if the board is under a `render()` that has
- * them; null for a portal on a plain page or under a test runner.
+ * them; null for a portal on a plain page or under a test runner. And
+ * whether there is a renderer too, which a carry follows the hand by.
  *
  * @param {WeakKey} ctx
- * @returns {{ scene: THREE.Scene, camera: THREE.Camera } | null}
+ * @returns {{ scene: THREE.Scene, camera: THREE.Camera, frames: boolean } | null}
  */
 function roomOf(ctx) {
+  /** @type {{ scene: THREE.Scene, camera: THREE.Camera }} */
+  let room;
   try {
-    return { scene: SceneContext.get(ctx), camera: CameraContext.get(ctx) };
+    room = { scene: SceneContext.get(ctx), camera: CameraContext.get(ctx) };
   } catch {
     return null;
   }
+  try {
+    RendererContext.get(ctx);
+    return { ...room, frames: true };
+  } catch {
+    return { ...room, frames: false };
+  }
+}
+
+/**
+ * Where the head is, level.
+ *
+ * @param {THREE.Camera} camera
+ * @returns {LevelPose}
+ */
+function headOf(camera) {
+  camera.updateWorldMatrix(true, false);
+  return levelPose(camera.matrixWorld);
 }
 
 /**
  * @param {object} deps
  * @param {CreatePortal} deps.createPortal The portal factory, handed in
  *   rather than imported: the portal imports this.
+ * @param {WeakKey | null} [deps.ctx] The scene's context, which the room is
+ *   looked for in; without one, the context of the panel that opens the
+ *   board.
  * @returns {KeyboardHost}
  */
-export function createKeyboardHost({ createPortal }) {
+export function createKeyboardHost({ createPortal, ctx: sceneCtx = null }) {
   /** @type {Signal<KeyboardFocus | null>} */
   const target = Signal.of(/** @type {KeyboardFocus | null} */ (null));
 
@@ -160,6 +189,16 @@ export function createKeyboardHost({ createPortal }) {
   let frame = null;
   /** @type {Board | null} */
   let board = null;
+
+  /**
+   * Where the player last put the board down, and where their head was
+   * when they did: the next board opens there, unless they have since
+   * walked or turned away from it (`shouldReuse`). For the life of the
+   * scene; nothing is kept past it.
+   *
+   * @type {{ board: LevelPose, head: LevelPose } | null}
+   */
+  let putDown = null;
 
   /** @param {KeyPress} press */
   const onKey = (press) => {
@@ -191,7 +230,7 @@ export function createKeyboardHost({ createPortal }) {
       drop: below,
       scale = DEFAULT_KEYBOARD_SCALE,
     } = binding.options;
-    const room = placement === "panel" ? null : roomOf(binding.ctx);
+    const room = placement === "panel" ? null : roomOf(sceneCtx ?? binding.ctx);
     if (!room) {
       return {
         anchor,
@@ -201,13 +240,19 @@ export function createKeyboardHost({ createPortal }) {
         openedFor: binding,
         attachedTo: null,
         placement: null,
+        handles: null,
       };
     }
     room.scene.add(anchor);
     // The board's container is scaled to the panel's units per px, as every
     // panel's is; this makes a px of it `scale` metres in the room.
     anchor.scale.setScalar(scale / binding.scale);
-    if (typeof placement === "function") {
+    const head = headOf(room.camera);
+    if (putDown && shouldReuse(putDown.head, head)) {
+      // Where the player put it, over wherever the scene would have.
+      anchor.position.copy(putDown.board.position);
+      anchor.rotation.set(0, putDown.board.yaw, 0);
+    } else if (typeof placement === "function") {
       placement({
         anchor,
         camera: room.camera,
@@ -215,11 +260,25 @@ export function createKeyboardHost({ createPortal }) {
         field: element,
       });
     } else {
-      room.camera.updateWorldMatrix(true, false);
       const pose = viewerPose(room.camera.matrixWorld, { reach, drop: below });
       anchor.position.copy(pose.position);
       anchor.rotation.set(0, pose.yaw, 0);
     }
+
+    const { draggable = true } = binding.options;
+    const handles =
+      draggable && room.frames
+        ? createKeyboardHandles(sceneCtx ?? binding.ctx, {
+            anchor,
+            pivot,
+            width: typeof draggable === "object" ? draggable.handleWidth : undefined,
+            onPutDown: () => {
+              anchor.updateWorldMatrix(true, false);
+              putDown = { board: levelPose(anchor.matrixWorld), head: headOf(room.camera) };
+            },
+          })
+        : null;
+
     return {
       anchor,
       pivot,
@@ -228,6 +287,7 @@ export function createKeyboardHost({ createPortal }) {
       openedFor: binding,
       attachedTo: null,
       placement: null,
+      handles,
     };
   }
 
@@ -235,6 +295,7 @@ export function createKeyboardHost({ createPortal }) {
     if (!frame) {
       return;
     }
+    frame.handles?.dispose();
     frame.placement?.dispose();
     frame.anchor.removeFromParent();
     frame = null;
@@ -316,6 +377,7 @@ export function createKeyboardHost({ createPortal }) {
               const boardSize = shown.panel.size();
               pivot.rotation.set(-tilt, 0, 0);
               place(drop, 0, -(boardSize.height / 2) * units, 0);
+              current.handles?.layout(boardSize.width, boardSize.height, units);
             },
             { name: "portal-keyboard-place" },
           ),

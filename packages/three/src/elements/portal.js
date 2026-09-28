@@ -707,7 +707,7 @@ function buildPortal(ctx, ownOptions = {}) {
         (() => {
           const slot = KeyboardSlotContext.get(ctx);
           if (slot) {
-            return (slot.host ??= createKeyboardHost({ createPortal }));
+            return (slot.host ??= createKeyboardHost({ createPortal, ctx: slot.ctx }));
           }
           return (ownKeyboardHost = createKeyboardHost({ createPortal }));
         })(),

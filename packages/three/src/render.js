@@ -666,6 +666,10 @@ export function render(fn, options = {}) {
       subscriber.add(fitRayToHit(ray, controller, interactionManager.pointers).subscribe());
     }
 
+    // The context is whole now; the keyboard looks for the scene, the camera
+    // and the renderer here.
+    keyboardSlot.ctx = ctx;
+
     scene.add(camera);
     scene.add(controller0);
     scene.add(controllerGrip0);

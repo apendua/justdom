@@ -1,7 +1,7 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
-import { viewerPose } from "./keyboardPlacement.js";
+import { shouldReuse, viewerPose } from "./keyboardPlacement.js";
 
 /**
  * A head at the given place, turned by the given yaw and pitch.
@@ -65,5 +65,26 @@ describe("viewerPose", () => {
   test("takes reach and drop", () => {
     const pose = viewerPose(head([0, 1.6, 0]), { reach: 0.6, drop: 0.3 });
     assertNear(pose.position, [0, 1.3, -0.6]);
+  });
+});
+
+describe("shouldReuse", () => {
+  /**
+   * @param {[number, number, number]} position
+   * @param {number} yaw
+   */
+  const pose = (position, yaw) => ({ position: new THREE.Vector3(...position), yaw });
+
+  test("keeps where the board was put while the player stays near and facing it", () => {
+    assert.equal(shouldReuse(pose([0, 1.6, 0], 0), pose([0.5, 1.6, 0.5], 0.8)), true);
+  });
+
+  test("lets it go once they have walked more than a metre", () => {
+    assert.equal(shouldReuse(pose([0, 1.6, 0], 0), pose([0, 1.6, 1.2], 0)), false);
+  });
+
+  test("lets it go once they have turned more than 60°", () => {
+    assert.equal(shouldReuse(pose([0, 1.6, 0], 0), pose([0, 1.6, 0], 1.2)), false);
+    assert.equal(shouldReuse(pose([0, 1.6, 0], 3), pose([0, 1.6, 0], -3)), true, "across ±π");
   });
 });

@@ -17,6 +17,11 @@ import { createProperty } from "@apendua/signal";
  *
  * @typedef {object} KeyboardSlot
  * @property {KeyboardHost | null} host
+ * @property {WeakKey | null} ctx The scene's own context, once `render()`
+ *   has finished building it: where the keyboard finds the scene and the
+ *   camera it opens in front of, and the renderer and interactions a carry
+ *   needs. The same ones every panel in the scene has, asked of the scene
+ *   rather than of whichever panel happened to open the board.
  */
 
 /**
@@ -31,10 +36,11 @@ export const KeyboardSlotContext = createProperty(
 );
 
 /**
+ * @param {WeakKey | null} [ctx]
  * @returns {KeyboardSlot}
  */
-export function createKeyboardSlot() {
-  return { host: null };
+export function createKeyboardSlot(ctx = null) {
+  return { host: null, ctx };
 }
 
 /**

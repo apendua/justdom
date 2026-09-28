@@ -79,6 +79,13 @@ export { FOCUS_ATTRIBUTE } from "./keyboardHost.js";
  * @property {number} [scale] How big the board is in the room, in metres per
  *   CSS px of it. A millimetre by default, whichever panel's field opened
  *   it. Not used by `"panel"`, where the board is the panel's scale.
+ * @property {boolean | { handleWidth?: number }} [draggable] Whether the
+ *   player can move a board in the room, by strips along its edges that show
+ *   when a ray is on the board and take it when pressed. On by default;
+ *   `handleWidth` is the strips' width in the board's px, 14 by default. A
+ *   board the player put down opens there again, unless they have since
+ *   walked more than a metre or turned more than 60° away from it. Not used
+ *   by `"panel"`, where the board goes with the panel.
  * @property {number} [gap] The room between the panel's bottom edge and the
  *   board's top edge, in the panel's px, with `"panel"`. 12 by default.
  * @property {number} [tilt] How far the board is reclined toward the viewer,

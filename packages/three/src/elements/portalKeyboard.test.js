@@ -6,7 +6,8 @@ import { InteractionContext, InteractionManager } from "../interactions.js";
 import { createPortal as createHeldPortal } from "./portal.js";
 import { withPanelOptions } from "./panelOptions.js";
 import { createKeyboardSlot, disposeKeyboardSlot, KeyboardSlotContext } from "./keyboardSlot.js";
-import { CameraContext, SceneContext } from "../render.js";
+import { CameraContext, RendererContext, SceneContext } from "../render.js";
+import { HANDLE_OPACITY_ACTIVE, HANDLE_OPACITY_NEAR } from "./keyboardHandles.js";
 import { stubCanvas } from "../test/stubCanvas.js";
 import { rectGeometry } from "./sdfRect.js";
 import { CARET_BLINK_MS } from "./textInput.js";
@@ -92,9 +93,11 @@ const ownKeyboard = (create) => ({ options: { keyboard: { gap: 20, create } } })
  * @param {Configure} [configure]
  * @param {import('./keyboardSlot.js').KeyboardSlot} [slot] The scene's
  *   keyboard, for panels that share one; without it the panel has its own.
- * @param {{ scene: THREE.Scene, camera: THREE.Camera }} [room] A scene and a
- *   camera for the board to open in front of; without them it hangs below
- *   the panel, as it does on a plain page.
+ * @param {{ scene: THREE.Scene, camera: THREE.Camera, renderer?: object }} [room] A scene and a
+ *   camera for the board to open in front of, and a renderer to carry it
+ *   with; without them it hangs below the panel, as it does on a plain
+ *   page. Put on the slot's context, the first panel's, as `render()`
+ *   would.
  */
 function keyboardPanel(configure = ownKeyboard, slot, room) {
   const manager = new InteractionManager();
@@ -132,7 +135,14 @@ function keyboardPanel(configure = ownKeyboard, slot, room) {
     ctx = KeyboardSlotContext.set(ctx, slot);
   }
   if (room) {
-    ctx = SceneContext.set(CameraContext.set(ctx, room.camera), room.scene);
+    // On the scene's context, as `render()` sets it out, rather than the
+    // panel's: a panel with a renderer waits on frames a test cannot give.
+    assert.ok(slot, "a room is the scene's, and so is its slot");
+    let sceneCtx = SceneContext.set(CameraContext.set(ctx, room.camera), room.scene);
+    if (room.renderer) {
+      sceneCtx = RendererContext.set(sceneCtx, /** @type {any} */ (room.renderer));
+    }
+    slot.ctx ??= sceneCtx;
   }
   const portal = createPortal(ctx, { ...options, root });
   const parent = new THREE.Group();
@@ -181,6 +191,7 @@ function keyboardPanel(configure = ownKeyboard, slot, room) {
   };
 
   return {
+    manager,
     portal,
     parent,
     root,
@@ -790,5 +801,201 @@ describe("the keyboard in front of the player", () => {
     assert.equal(panels(), 1, "the second panel alone");
     s.a.root.remove();
     s.b.cleanup();
+  });
+});
+
+describe("the keyboard's handles", () => {
+  /** @type {ReturnType<typeof stubCanvas>} */
+  let canvas;
+  before(() => {
+    canvas = stubCanvas();
+  });
+  after(() => {
+    canvas.restore();
+  });
+
+  const SIDES = ["top", "bottom", "left", "right"];
+
+  /**
+   * A panel in a room with a renderer, which a carry needs, and its board
+   * open.
+   *
+   * @param {Partial<import('./portalKeyboard.js').PortalKeyboardOptions>} [options]
+   */
+  async function openBoard(options = {}) {
+    const slot = createKeyboardSlot();
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera();
+    camera.position.set(0, 1.6, 0);
+    camera.updateMatrixWorld();
+    const panel = keyboardPanel(
+      (create) => ({ options: { keyboard: { ...options, create } } }),
+      slot,
+      { scene, camera, renderer: {} },
+    );
+    await settle();
+    panel.press(panel.fieldObject());
+    await settle();
+    const anchor = scene.children[0];
+    const strip = (/** @type {string} */ side) =>
+      anchor?.getObjectByName(`keyboard-handle-${side}`);
+    const bar = (/** @type {string} */ side) =>
+      /** @type {THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicMaterial> | undefined} */ (
+        anchor?.getObjectByName(`keyboard-handle-${side}-bar`)
+      );
+    const controller = new THREE.Group();
+    /**
+     * An event as the manager dispatches it: from what the ray met, up
+     * through its parents.
+     *
+     * @param {string} type
+     * @param {THREE.Object3D} object
+     */
+    const dispatch = (type, object) => {
+      panel.manager.dispatch(
+        /** @type {any} */ (object),
+        /** @type {any} */ ({
+          type,
+          target: object,
+          originalTarget: object,
+          controller,
+          inputSource: {},
+          intersection: { object, point: object.getWorldPosition(new THREE.Vector3()) },
+        }),
+      );
+    };
+    return {
+      slot,
+      scene,
+      camera,
+      panel,
+      anchor,
+      strip,
+      bar,
+      dispatch,
+      reopen: async () => {
+        panel.created[panel.created.length - 1].onKey({ key: "Escape" });
+        await settle();
+        panel.press(panel.fieldObject());
+        await settle();
+        return scene.children[0];
+      },
+      cleanup: () => {
+        panel.cleanup();
+        disposeKeyboardSlot(slot);
+      },
+    };
+  }
+
+  /**
+   * @param {ReturnType<Awaited<ReturnType<typeof openBoard>>["bar"]>} bar
+   */
+  const opacity = (bar) => (bar?.visible ? bar.material.opacity : 0);
+
+  test("are there, along the four edges, and invisible until a ray is on the board", async () => {
+    const b = await openBoard();
+    for (const side of SIDES) {
+      assert.ok(b.strip(side), `a ${side} strip`);
+      assert.equal(opacity(b.bar(side)), 0, `the ${side} bar is not shown`);
+    }
+    const top = /** @type {THREE.Object3D} */ (b.strip("top"));
+    const bottom = /** @type {THREE.Object3D} */ (b.strip("bottom"));
+    assert.ok(top.position.y > 0, "the top strip is above the hinge");
+    assert.ok(bottom.position.y < top.position.y, "the bottom one below it");
+    b.cleanup();
+  });
+
+  test("show faintly with a ray on the board, and fully on the one it is on", async () => {
+    const b = await openBoard();
+    const onBoard = b.anchor.children[0].children[0];
+
+    b.dispatch("pointerenter", onBoard);
+    for (const side of SIDES) {
+      assert.equal(opacity(b.bar(side)), HANDLE_OPACITY_NEAR, `${side}, with a ray on a key`);
+    }
+
+    // Off the key and onto the top strip, as the manager says it.
+    b.dispatch("pointerleave", onBoard);
+    b.dispatch("pointerenter", /** @type {THREE.Object3D} */ (b.strip("top")));
+    assert.equal(opacity(b.bar("top")), HANDLE_OPACITY_ACTIVE);
+    assert.equal(opacity(b.bar("left")), HANDLE_OPACITY_NEAR);
+
+    b.dispatch("pointerleave", /** @type {THREE.Object3D} */ (b.strip("top")));
+    for (const side of SIDES) {
+      assert.equal(opacity(b.bar(side)), 0, `${side}, with the ray gone`);
+    }
+    b.cleanup();
+  });
+
+  test("carry the board, and it opens where it was put down", async () => {
+    const b = await openBoard();
+    const top = /** @type {THREE.Object3D} */ (b.strip("top"));
+    /** @type {string[]} */
+    const behind = [];
+    b.scene.addEventListener(/** @type {any} */ ("selectstart"), () => behind.push("selectstart"));
+
+    b.dispatch("selectstart", top);
+    await settle();
+    assert.deepEqual(behind, [], "the press is the handle's, not the room's");
+    for (const side of SIDES) {
+      assert.equal(opacity(b.bar(side)), HANDLE_OPACITY_ACTIVE, `${side}, while carried`);
+    }
+
+    // The hand has moved it, as a frame of the carry would.
+    b.anchor.position.set(0.3, 1.2, -0.6);
+    b.anchor.rotation.set(0, 0.4, 0);
+    b.dispatch("selectend", top);
+    await settle();
+    assert.equal(opacity(b.bar("top")), 0, "put down, and the ray is not on it");
+
+    const again = await b.reopen();
+    assert.notEqual(again, b.anchor, "a new board");
+    assert.ok(
+      again.position.distanceTo(new THREE.Vector3(0.3, 1.2, -0.6)) < 1e-9,
+      "where it was put",
+    );
+    assert.ok(Math.abs(again.rotation.y - 0.4) < 1e-9, "turned as it was put");
+
+    // Two metres on, where it was put is behind the player.
+    b.camera.position.set(0, 1.6, -2);
+    b.camera.updateMatrixWorld();
+    const fresh = await b.reopen();
+    assert.ok(fresh.position.distanceTo(new THREE.Vector3(0, 1.4, -2.45)) < 1e-9, "in front again");
+    b.cleanup();
+  });
+
+  test("a press on a handle neither types nor puts the board away", async () => {
+    const b = await openBoard();
+    const left = /** @type {THREE.Object3D} */ (b.strip("left"));
+    for (const type of ["selectstart", "select", "selectend"]) {
+      b.dispatch(type, left);
+    }
+    await settle();
+    assert.equal(panels(), 2, "the panel and the board");
+    assert.equal(b.panel.input.value, "ab");
+    assert.ok(b.panel.input.hasAttribute("data-xr-focus"));
+    b.cleanup();
+  });
+
+  test("are not there with `draggable: false`, nor below a panel", async () => {
+    const fixed = await openBoard({ draggable: false });
+    assert.equal(fixed.strip("top"), undefined);
+    fixed.cleanup();
+
+    const below = await openBoard({ placement: "panel" });
+    assert.equal(below.anchor, undefined, "nothing in the room");
+    assert.equal(hinge(below.panel.parent).getObjectByName("keyboard-handle-top"), undefined);
+    below.cleanup();
+  });
+
+  test("go with the board", async () => {
+    const b = await openBoard();
+    const top = /** @type {THREE.Object3D} */ (b.strip("top"));
+    assert.ok(b.panel.targets.has(top), "a ray target while the board is up");
+    b.panel.created[0].onKey({ key: "Escape" });
+    await settle();
+    assert.equal(b.panel.targets.has(top), false, "and not after");
+    assert.equal(b.scene.children.length, 0);
+    b.cleanup();
   });
 });

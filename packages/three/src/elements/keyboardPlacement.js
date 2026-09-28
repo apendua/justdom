@@ -67,3 +67,28 @@ export function viewerPose(head, { reach = DEFAULT_REACH, drop = DEFAULT_DROP } 
   position.y -= drop;
   return { position, yaw: Math.atan2(-_ahead.x, -_ahead.z) };
 }
+
+/**
+ * How far the player may have walked, in metres, and turned, in radians,
+ * since they put the board somewhere, for it to open there again. Further
+ * than that and where they put it is somewhere they have left: the board
+ * opens in front of them instead.
+ */
+export const REUSE_DISTANCE = 1;
+export const REUSE_TURN = Math.PI / 3;
+
+/**
+ * Whether a board the player put down, with their head where it was then,
+ * should open there again with their head where it is now.
+ *
+ * @param {LevelPose} then The head when the board was put down.
+ * @param {LevelPose} now The head now.
+ * @returns {boolean}
+ */
+export function shouldReuse(then, now) {
+  if (then.position.distanceTo(now.position) > REUSE_DISTANCE) {
+    return false;
+  }
+  const turn = now.yaw - then.yaw;
+  return Math.abs(Math.atan2(Math.sin(turn), Math.cos(turn))) <= REUSE_TURN;
+}

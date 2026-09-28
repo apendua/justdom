@@ -1,16 +1,12 @@
-import * as THREE from "three";
-import { Effect, Signal, withChannel, withComputation } from "@apendua/signal";
-import { getBorderBoxSize } from "./mirror.js";
-import { place } from "./place.js";
-import { moveCaretToEnd, typeIntoInput } from "./typing.js";
-import { touchValue } from "./textInput.js";
-
 /**
  * @import {Subscribable} from '@apendua/signal';
  * @import {Mountable} from '../core.js';
  * @import {InputFocus} from './textInput.js';
  * @import {KeyPress} from './typing.js';
+ * @import {KeyboardBinding, KeyboardHost} from './keyboardHost.js';
  */
+
+export { FOCUS_ATTRIBUTE } from "./keyboardHost.js";
 
 /**
  * The keyboard a panel offers its text fields.
@@ -25,6 +21,11 @@ import { touchValue } from "./textInput.js";
  * else — when it appears, where it hangs, what typing means, when it goes —
  * is decided here, so that every panel with fields in it behaves the same.
  *
+ * The board is the scene's, not the panel's: `keyboardHost.js` keeps one
+ * per `render()`, and a field pressed in another panel moves the typing
+ * there rather than bringing up a second board. What is here is a panel's
+ * side of that — its options, its frame, and when it lets go.
+ *
  * It appears when a field is pressed, hangs below the panel and reclined
  * toward the hands like a phone on a stand, types into the field through
  * `typeIntoInput`, and goes on `Enter`, on `Escape`, on a press on the
@@ -36,12 +37,18 @@ import { touchValue } from "./textInput.js";
 
 /**
  * The field a keyboard is built for, and what it is handed to reach it:
- * `onKey` does to the field what the key would have done and closes the
- * board on the keys that end an entry; `dismiss` closes it for any other
- * reason a board might have — a "done" key of its own, say.
+ * `onKey` does to the field being typed into what the key would have done
+ * and closes the board on the keys that end an entry; `dismiss` closes it
+ * for any other reason a board might have — a "done" key of its own, say.
+ *
+ * A board outlives the field it was built for: pressing another field, in
+ * this panel or another one with the same `create`, moves the typing
+ * without building the board again. `element` is the field it was built
+ * for; `field()` is the one it is typing into now.
  *
  * @typedef {object} KeyboardTarget
  * @property {HTMLInputElement} element
+ * @property {() => HTMLInputElement} field Reactive.
  * @property {(press: KeyPress) => void} onKey
  * @property {() => void} dismiss
  */
@@ -62,159 +69,31 @@ import { touchValue } from "./textInput.js";
  */
 
 /**
- * The attribute a field carries while the keyboard is typing into it.
+ * A panel's side of the scene's keyboard: the `InputFocus` its fields are
+ * built with, and the three ways a panel lets go of the board — a press on
+ * its background, a node of its leaving, and the panel itself going.
+ *
+ * @param {KeyboardHost} host
+ * @param {KeyboardBinding} binding
  */
-export const FOCUS_ATTRIBUTE = "data-xr-focus";
-
-const DEFAULT_GAP = 12;
-const DEFAULT_TILT = (24 * Math.PI) / 180;
-
-/**
- * @typedef {object} PortalKeyboardDeps
- * @property {WeakKey} ctx The context the panel was built from, before it
- *   derived its own — the board is a panel of its own, with batches of its
- *   own, and must not see the panel's.
- * @property {PortalKeyboardOptions} options
- * @property {THREE.Object3D} containerObject The panel's perimeter. The
- *   board hangs off the same parent, so it is placed and scaled with the
- *   panel.
- * @property {HTMLElement} containerElement The panel's DOM root, whose size
- *   says where the panel's bottom edge is.
- * @property {number} scale The panel's units per px — what `placeContainer`
- *   scales the container by — so the board's offsets, worked out in px, land
- *   in the parent's frame.
- * @property {(fn: () => void, name: string) => Effect} placeEffect Build an
- *   effect in the panel's own channel, so the board is moved with the
- *   panel's other writes rather than ahead of them.
- * @property {(ctx: WeakKey, options: object) => {
- *   addTo: (parent: THREE.Object3D) => void,
- *   mount: (mountable: Mountable) => void,
- *   disconnect: () => void,
- *   size: () => { width: number, height: number },
- * }} createPortal The portal factory, handed in rather than imported: the
- *   portal imports this.
- */
-
-/**
- * @param {PortalKeyboardDeps} deps
- */
-export function createPortalKeyboard({
-  ctx,
-  options,
-  containerObject,
-  containerElement,
-  scale,
-  placeEffect,
-  createPortal,
-}) {
-  const { create, gap = DEFAULT_GAP, tilt = DEFAULT_TILT } = options;
-
-  /**
-   * The field being typed into, or null while the board is down.
-   *
-   * @type {Signal<HTMLInputElement | null>}
-   */
-  const target = Signal.of(null);
-
-  const dismiss = () => {
-    target.set(null);
-  };
-
-  // In the default channel, like the pump's own watch: a press writes the
-  // target, and the board has to come up on that write's flush, not on a
-  // frame the panel's channel happens to be pumped on.
-  const board = withChannel(
-    null,
-    () =>
-      new Effect(
-        () => {
-          const element = target.get();
-          if (!element) {
-            return;
-          }
-          const parent = containerObject.parent;
-          if (!parent) {
-            // A panel not in the scene has nowhere to hang a board.
-            return;
-          }
-          // The construction is not this effect's to track: the portal it
-          // builds and the tree the factory builds read what they read for
-          // themselves, and a dependency taken here would rebuild the board
-          // on the next keystroke.
-          return withComputation(null, () => {
-            element.setAttribute(FOCUS_ATTRIBUTE, "");
-            // As tapping a field on a phone does, and said to the mirror,
-            // which draws the caret from the selection.
-            moveCaretToEnd(element);
-            touchValue(element);
-
-            // The hinge, at the panel's bottom edge; and under it the drop
-            // that puts the board's top edge at the hinge, the board's own
-            // container centring itself on its origin as every panel does.
-            const pivot = new THREE.Group();
-            const drop = new THREE.Group();
-            pivot.add(drop);
-            parent.add(pivot);
-
-            const panel = createPortal(ctx, {
-              opaqueToRays: true,
-              // A board that has been asked for is wanted now, and it comes
-              // up under a panel that is already there; a frame standing in
-              // for it would be one more thing to look at.
-              loadingFrame: false,
-            });
-            panel.addTo(drop);
-
-            const dismissIfCurrent = () => {
-              if (target.peek() === element) {
-                dismiss();
-              }
-            };
-            /** @param {KeyPress} press */
-            const onKey = (press) => {
-              typeIntoInput(element, press);
-              if (press.key === "Enter" || press.key === "Escape") {
-                dismissIfCurrent();
-              }
-            };
-            const subscription = create({ element, onKey, dismiss: dismissIfCurrent }).subscribe({
-              next: (mountable) => {
-                panel.mount(mountable);
-              },
-            });
-
-            const placement = placeEffect(() => {
-              const panelSize = getBorderBoxSize(containerElement);
-              const boardSize = panel.size();
-              pivot.rotation.set(-tilt, 0, 0);
-              place(pivot, 0, -(panelSize.height / 2 + gap) * scale, 0);
-              place(drop, 0, -(boardSize.height / 2) * scale, 0);
-            }, "portal-keyboard-place");
-
-            return () => {
-              placement.dispose();
-              subscription.unsubscribe();
-              panel.disconnect();
-              parent.remove(pivot);
-              element.removeAttribute(FOCUS_ATTRIBUTE);
-            };
-          });
-        },
-        { name: "portal-keyboard" },
-      ),
-  );
-
+export function bindPortalKeyboard(host, binding) {
   /** @type {InputFocus} */
   const focus = {
-    isFocused: (element) => target.get() === element,
+    isFocused: (element) => host.field() === element,
     press: (element) => {
-      target.set(element);
+      host.focus(element, binding);
     },
   };
 
   return {
     focus,
-    dismiss,
+    /**
+     * A press on the panel's background: away from the fields, whichever
+     * panel they are in, as tapping outside the field on a phone is.
+     */
+    dismiss() {
+      host.dismiss();
+    },
     /**
      * A node has left the panel. If it is the field being typed into, the
      * board has nothing to type into any more.
@@ -222,12 +101,10 @@ export function createPortalKeyboard({
      * @param {Node} node
      */
     released(node) {
-      if (target.peek() === node) {
-        dismiss();
-      }
+      host.release(node);
     },
     dispose() {
-      board.dispose();
+      host.unbind(binding);
     },
   };
 }

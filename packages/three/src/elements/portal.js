@@ -12,7 +12,9 @@ import { text } from "./text.js";
 import { checkbox } from "./checkbox.js";
 import { InputFocusContext, textInput } from "./textInput.js";
 import { isTextInput } from "./typing.js";
-import { createPortalKeyboard, FOCUS_ATTRIBUTE } from "./portalKeyboard.js";
+import { bindPortalKeyboard, FOCUS_ATTRIBUTE } from "./portalKeyboard.js";
+import { createKeyboardHost } from "./keyboardHost.js";
+import { KeyboardSlotContext } from "./keyboardSlot.js";
 import { createMirror, getBorderBoxSize, PORTAL_ATTRIBUTE } from "./mirror.js";
 import { createAnimationClock } from "./animationClock.js";
 import { watchDocumentStyles } from "./documentStyles.js";
@@ -692,24 +694,35 @@ function buildPortal(ctx, ownOptions = {}) {
 
   /**
    * The keyboard this panel offers its fields, if it was given one: what a
-   * field asks about being pressed and being typed into, and the board that
-   * comes up below the panel to do the typing. Fields find it through the
-   * context; without one they get the default, which answers that nothing
-   * is focused and takes no press.
+   * field asks about being pressed and being typed into, bound to the board
+   * that does the typing. Under `render()` the board is the scene's, one for
+   * every panel; outside one the panel keeps a board of its own, taken down
+   * with it. Fields find it through the context; without one they get the
+   * default, which answers that nothing is focused and takes no press.
    */
+  /** @type {import('./keyboardHost.js').KeyboardHost | null} */
+  let ownKeyboardHost = null;
   const portalKeyboard = keyboard
-    ? createPortalKeyboard({
-        // Without the scene's panel options: the board is the portal's, not
-        // the app's, and a keyboard the app set for its panels would give
-        // the board a keyboard of its own.
-        ctx: PanelOptionsContext.set(baseCtx, {}),
-        options: keyboard,
-        containerObject,
-        containerElement,
-        scale: PANEL_SCALE,
-        placeEffect: (fn, name) => withChannel(channel, () => new Effect(fn, { name })),
-        createPortal,
-      })
+    ? bindPortalKeyboard(
+        (() => {
+          const slot = KeyboardSlotContext.get(ctx);
+          if (slot) {
+            return (slot.host ??= createKeyboardHost({ createPortal }));
+          }
+          return (ownKeyboardHost = createKeyboardHost({ createPortal }));
+        })(),
+        {
+          // Without the scene's panel options: the board is the portal's, not
+          // the app's, and a keyboard the app set for its panels would give
+          // the board a keyboard of its own.
+          ctx: PanelOptionsContext.set(baseCtx, {}),
+          options: keyboard,
+          containerObject,
+          containerElement,
+          scale: PANEL_SCALE,
+          placeEffect: (fn, name) => withChannel(channel, () => new Effect(fn, { name })),
+        },
+      )
     : null;
   if (portalKeyboard) {
     ctx = InputFocusContext.set(ctx, portalKeyboard.focus);
@@ -1630,6 +1643,7 @@ function buildPortal(ctx, ownOptions = {}) {
     // First: the board is a panel of its own hanging off this one's parent,
     // and it comes down before the parent is left.
     portalKeyboard?.dispose();
+    ownKeyboardHost?.dispose();
     pump?.dispose();
     // A panel closed before it finished mounting still had a frame up.
     stopLoadingFrame();

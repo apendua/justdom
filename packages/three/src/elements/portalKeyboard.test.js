@@ -5,6 +5,7 @@ import { $, attr, children } from "@apendua/justdom";
 import { InteractionContext, InteractionManager } from "../interactions.js";
 import { createPortal as createHeldPortal } from "./portal.js";
 import { withPanelOptions } from "./panelOptions.js";
+import { createKeyboardSlot, disposeKeyboardSlot, KeyboardSlotContext } from "./keyboardSlot.js";
 import { stubCanvas } from "../test/stubCanvas.js";
 import { rectGeometry } from "./sdfRect.js";
 import { CARET_BLINK_MS } from "./textInput.js";
@@ -88,8 +89,10 @@ const ownKeyboard = (create) => ({ options: { keyboard: { gap: 20, create } } })
  * is one clickable key; what it is handed is recorded.
  *
  * @param {Configure} [configure]
+ * @param {import('./keyboardSlot.js').KeyboardSlot} [slot] The scene's
+ *   keyboard, for panels that share one; without it the panel has its own.
  */
-function keyboardPanel(configure = ownKeyboard) {
+function keyboardPanel(configure = ownKeyboard, slot) {
   const manager = new InteractionManager();
   /** @type {Set<THREE.Object3D>} */
   const targets = new Set();
@@ -120,6 +123,9 @@ function keyboardPanel(configure = ownKeyboard) {
   });
   if (panelOptions) {
     ctx = withPanelOptions(ctx, panelOptions);
+  }
+  if (slot) {
+    ctx = KeyboardSlotContext.set(ctx, slot);
   }
   const portal = createPortal(ctx, { ...options, root });
   const parent = new THREE.Group();
@@ -446,3 +452,131 @@ function countMeshesUnder(object) {
   });
   return count;
 }
+
+describe("one keyboard for every panel in a scene", () => {
+  /** @type {ReturnType<typeof stubCanvas>} */
+  let canvas;
+  before(() => {
+    canvas = stubCanvas();
+  });
+  after(() => {
+    canvas.restore();
+  });
+
+  /**
+   * Two panels sharing a scene's keyboard, both offered the same factory.
+   */
+  function twoPanels() {
+    const slot = createKeyboardSlot();
+    /** @type {KeyboardTarget[]} */
+    const created = [];
+    // One function for both, as a scene's panel options would give them.
+    /** @param {KeyboardTarget} target */
+    const create = (target) => {
+      created.push(target);
+      return $("div", [children($("div", [attr("style", () => "cursor: pointer")]))]);
+    };
+    /** @type {Configure} */
+    const configure = () => ({ options: { keyboard: { create } } });
+    const a = keyboardPanel(configure, slot);
+    const b = keyboardPanel(configure, slot);
+    return { slot, created, a, b };
+  }
+
+  test("moves the typing to a field in another panel without a second board", async () => {
+    const { slot, created, a, b } = twoPanels();
+    await settle();
+    a.press(a.fieldObject());
+    await settle();
+    assert.equal(panels(), 3, "two panels and one board");
+    assert.ok(a.input.hasAttribute("data-xr-focus"));
+
+    b.press(b.fieldObject());
+    await settle();
+    assert.equal(panels(), 3, "still one board");
+    assert.equal(created.length, 1, "built once");
+    assert.equal(a.input.hasAttribute("data-xr-focus"), false, "the first field let go");
+    assert.ok(b.input.hasAttribute("data-xr-focus"), "the second one took it");
+    assert.equal(created[0].element, a.input, "built for the first field");
+    assert.equal(created[0].field(), b.input, "typing into the second");
+    assert.equal(a.parent.children.length, 1, "the board left the first panel");
+    assert.equal(b.parent.children.length, 2, "and hangs below the second");
+
+    created[0].onKey({ key: "c", code: "KeyC" });
+    assert.equal(b.input.value, "abc", "keys go to the field being typed into");
+    assert.equal(a.input.value, "ab");
+
+    a.cleanup();
+    b.cleanup();
+    disposeKeyboardSlot(slot);
+  });
+
+  test("builds the board again for a panel that asks for a different one", async () => {
+    const slot = createKeyboardSlot();
+    const a = keyboardPanel(ownKeyboard, slot);
+    const b = keyboardPanel(ownKeyboard, slot);
+    await settle();
+    a.press(a.fieldObject());
+    await settle();
+    b.press(b.fieldObject());
+    await settle();
+    assert.equal(a.created.length, 1);
+    assert.equal(b.created.length, 1, "the second panel's factory was asked");
+    assert.equal(panels(), 3, "the first board went as the second came");
+    a.cleanup();
+    b.cleanup();
+    disposeKeyboardSlot(slot);
+  });
+
+  test("goes on a press on the background of either panel", async () => {
+    for (const which of /** @type {const} */ (["a", "b"])) {
+      const scene = twoPanels();
+      await settle();
+      scene.a.press(scene.a.fieldObject());
+      await settle();
+      assert.equal(panels(), 3);
+      scene[which].press(scene[which].blocker());
+      await settle();
+      assert.equal(panels(), 2, `gone on a press on panel ${which}`);
+      assert.equal(scene.a.input.hasAttribute("data-xr-focus"), false);
+      scene.a.cleanup();
+      scene.b.cleanup();
+      disposeKeyboardSlot(scene.slot);
+    }
+  });
+
+  test("stays while another panel's field or the other panel goes", async () => {
+    const { slot, a, b } = twoPanels();
+    await settle();
+    a.press(a.fieldObject());
+    await settle();
+
+    b.input.remove();
+    await settle();
+    assert.equal(panels(), 3, "not the field being typed into");
+
+    b.portal.disconnect();
+    assert.equal(panels(), 2, "the first panel and the board");
+    assert.ok(a.input.hasAttribute("data-xr-focus"));
+
+    a.portal.disconnect();
+    assert.equal(panels(), 0, "gone with the panel it was typing for");
+    assert.equal(a.input.hasAttribute("data-xr-focus"), false);
+    a.root.remove();
+    b.root.remove();
+    disposeKeyboardSlot(slot);
+  });
+
+  test("goes with the scene", async () => {
+    const { slot, a, b } = twoPanels();
+    await settle();
+    a.press(a.fieldObject());
+    await settle();
+    assert.equal(panels(), 3);
+    disposeKeyboardSlot(slot);
+    assert.equal(panels(), 2, "the board is gone");
+    assert.equal(slot.host, null);
+    a.cleanup();
+    b.cleanup();
+  });
+});

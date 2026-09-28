@@ -9,7 +9,6 @@ import {
   Stream,
   useEffects,
 } from "@apendua/signal";
-import TodoKeyboard from "./TodoKeyboard.js";
 
 /**
  * What the session is set against: one colour, all the way round, rather
@@ -47,15 +46,14 @@ function backdrop(): THREE.Mesh {
 
 /**
  * The scene: the page's own todo element, mirrored into a panel in front of
- * the viewer, with a keyboard on offer for its field.
+ * the viewer.
  *
  * Nothing here builds UI. The element handed in is the one the page mounted
  * the app into and is showing right now; `dom(ctx, element)` watches it
  * where it stands, so what the headset shows is what the page shows, the
  * same nodes, and a press on the mirrored Add button is a click on the real
- * one. The one thing the scene adds is the keyboard, which a page does not
- * need and a headset cannot do without: `TodoKeyboard` says what it looks
- * like, the portal says when it appears and where it hangs.
+ * one. The keyboard its field is typed with is not this panel's but the
+ * scene's, handed to `render()` as a panel option in `xr.ts`.
  *
  * The panel exists only while a session is presenting. Between sessions the
  * page is all anyone sees, and a portal kept up behind it would go on
@@ -109,24 +107,14 @@ export const Scene = (panel: HTMLElement) =>
               if (!presenting.get()) {
                 return NOTHING;
               }
-              return dom(
-                ctx,
-                panel,
-                [
-                  effects((obj) => {
-                    // A little above the group's origin, which puts the
-                    // middle of the panel a touch under eye level once it is
-                    // scaled down and pushed away, and leaves the keyboard
-                    // the room below it that the portal hangs it in.
-                    obj.position.set(0, 1, 0);
-                  }),
-                ],
-                {
-                  keyboard: {
-                    create: ({ onKey }) => TodoKeyboard({ onKey }),
-                  },
-                },
-              );
+              return dom(ctx, panel, [
+                effects((obj) => {
+                  // A little above the group's origin, which puts the
+                  // middle of the panel a touch under eye level once it is
+                  // scaled down and pushed away.
+                  obj.position.set(0, 1, 0);
+                }),
+              ]);
             })(),
           ),
         ]),

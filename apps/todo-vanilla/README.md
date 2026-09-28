@@ -34,10 +34,10 @@ the panels, for a harness photographing the scene.
 | File | What it is |
 | --- | --- |
 | `src/main.ts` | Mounts `TodoApp` into `#root`, then offers a session that mirrors `#root`. |
-| `src/xr.ts` | The offer: checks the platform can present, makes the renderer and the Enter button, shows the canvas only while a session runs. |
+| `src/xr.ts` | The offer: checks the platform can present, makes the renderer and the Enter button, shows the canvas only while a session runs. Hands `render()` the keyboard as a panel option. |
 | `src/components/TodoApp.ts` | The app, written for the page: a field, an Add button, a count, and the list behind `scrollable` from `@apendua/justui`. |
 | `src/components/TodoItem.ts` | A row: a checkbox drawn honestly in both builds, a label, a Delete button. |
-| `src/components/Scene.ts` | The scene: `dom(ctx, panel, …, { keyboard })`. Lights, a cursor, and the panel. |
+| `src/components/Scene.ts` | The scene: `dom(ctx, panel, …)`. Lights, a cursor, and the panel. |
 | `src/components/TodoKeyboard.ts` | What the headset's keyboard looks like: `keyboard` from `@apendua/justui` dressed for this panel. |
 | `src/emulator.ts` | IWER, behind `?emulator`. |
 
@@ -45,7 +45,7 @@ Three things the page does not know about, and does not need to.
 
 **The field is a real `<input>`.** On the page the browser draws the caret
 and takes the keys. In the scene freedom draws the value, the placeholder and
-a caret, and the keyboard it mounts under the panel types through the same
+a caret, and the keyboard it opens in front of the viewer types through the same
 `input` and `keydown` events the page's handlers already listen for, so
 `Enter` adds a todo in both. Clearing the field after a submit is a plain
 `value` write, which the mirror follows. `[data-xr-focus]` is the scene's
@@ -66,9 +66,13 @@ session is set against one dark colour all the way round — an opaque sphere
 around the viewer, since in AR three clears to the passthrough whatever the
 scene's background says.
 
-**The keyboard is the portal's to place.** `TodoKeyboard` says what a key
-looks like; when the board appears, where it hangs, what a key does to the
-field and when the board goes are decided by freedom, the same way for every
-panel given a `keyboard`. Press the field and it swings out below the panel,
-reclined toward the hands; `Enter`, `Escape` or a press on the panel's
-background puts it away.
+**The keyboard is the scene's to place.** `TodoKeyboard` says what a key
+looks like, and `xr.ts` hands it to `render()` as a panel option, so every
+panel in the scene gets it without asking. When the board appears, where it
+opens, what a key does to the field and when the board goes are decided by
+freedom. Press the field and it opens in front of you, below eye level and
+reclined toward the hands; point at it and handles show along its edges to
+move it by. It behaves like focus on the page: `Enter` adds the todo and
+keeps the field, so the next one can be typed straight in, while pressing
+Add, or anything else in the card, puts the keyboard away as a click would
+blur the field. `Escape` puts it away too.

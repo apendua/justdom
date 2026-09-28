@@ -42,9 +42,9 @@ import { discardDraft, getCaretOffset, getShownValue } from "./typing.js";
  * A text field is a box with a line of text in it, and both halves are
  * things a scene can be told: the box comes from `div`'s, and the value is
  * drawn here — the placeholder in its place while the value is empty, in
- * the colour the page gives placeholders, and a caret at the end of the
- * text while the portal's keyboard is typing into the field. What it cannot
- * mirror is the browser's own editing: the selection, the blink, the
+ * the colour the page gives placeholders, and a blinking caret at the end of
+ * the text while the portal's keyboard is typing into the field. What it
+ * cannot mirror is the browser's own editing: the selection, and the
  * scrolling of a value longer than the field. The value is scrolled so
  * that the caret shows while the field is being typed into, and shown from
  * its start otherwise, which is what a field does on a page.
@@ -85,11 +85,22 @@ export const InputFocusContext = createProperty(
 
 /**
  * How the caret is drawn: one px wide, in the text's colour, as tall as the
- * glyphs. It does not blink — a blink is an animation the panel would pay
- * for at frame rate, for a mark whose whole job is to say which field the
- * keyboard is typing into, and that it says standing still.
+ * glyphs.
  */
 const CARET_WIDTH = 1;
+
+/**
+ * How long the caret is shown, and then hidden, as it blinks: the half
+ * period browsers blink a caret at. It shows solid again for the full
+ * interval after every keystroke, as a page's does, so it is never the thing
+ * that is missing while you are typing.
+ *
+ * A blink costs next to nothing here. The caret is a mesh of its own rather
+ * than a run in the panel's batch, so blinking it is flipping `visible` on a
+ * timer: nothing is measured or rasterized again, and a scene in a session
+ * draws every frame whether or not anything changed.
+ */
+export const CARET_BLINK_MS = 530;
 
 /**
  * What the placeholder is drawn in when the page says nothing: the text
@@ -567,6 +578,19 @@ function fieldContent(ctx, element, surface, focus) {
       }),
       effects((obj) => {
         obj.visible = !surface.hidden();
+        if (!obj.visible) {
+          return;
+        }
+        // Read for the restart: a keystroke, or the caret moving, brings the
+        // caret back solid and the blink starts over from there.
+        void state.value;
+        void state.caret;
+        const timer = setInterval(() => {
+          obj.visible = !obj.visible;
+        }, CARET_BLINK_MS);
+        onCleanup(() => {
+          clearInterval(timer);
+        });
       }),
     ]);
   };

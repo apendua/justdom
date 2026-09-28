@@ -801,11 +801,11 @@ Without a keyboard a field is drawn and pressed like any box, and nothing
 in the scene can type into it — which is what a panel with a read-only
 readout in an `<input>` wants.
 
-Two things a text field does not do. It draws no selection: the caret is
-the end of the entry, where a tap on a phone puts it, and the mirror moves
-the value under it when the value outgrows the field. And it does not
-blink, since a blink is an animation the panel would pay for at frame rate
-to say what the board's presence says already.
+A text field draws no selection: the caret is the end of the entry, where a
+tap on a phone puts it, and the mirror moves the value under it when the
+value outgrows the field. The caret blinks as a page's does, every 530 ms,
+and stays solid for a moment after each keystroke. It is a mesh of its own,
+so a blink only flips its visibility: nothing on the panel is drawn again.
 
 A number field is typed the way a page types one. Its value is sanitized:
 `1.` on the way to `1.5` is not a number, so `value` reads `""` while the

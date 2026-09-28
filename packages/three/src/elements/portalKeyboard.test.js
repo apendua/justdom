@@ -5,6 +5,8 @@ import { $, attr, children } from "@apendua/justdom";
 import { InteractionContext, InteractionManager } from "../interactions.js";
 import { createPortal as createHeldPortal } from "./portal.js";
 import { stubCanvas } from "../test/stubCanvas.js";
+import { rectGeometry } from "./sdfRect.js";
+import { CARET_BLINK_MS } from "./textInput.js";
 
 /**
  * @import {KeyboardTarget} from './portalKeyboard.js';
@@ -286,7 +288,45 @@ describe("the portal's keyboard", () => {
     assert.equal(countMeshesUnder(panel.parent.children[0]), before, "and gone with the board");
     panel.cleanup();
   });
+
+  test("the caret blinks, and is solid again after a keystroke", async () => {
+    const panel = keyboardPanel();
+    await settle();
+    panel.press(panel.fieldObject());
+    await settle();
+    /** @type {THREE.Object3D | undefined} */
+    let caret;
+    panel.parent.children[0].traverse((child) => {
+      if (child instanceof THREE.Mesh && child.geometry === rectGeometry) {
+        caret = child;
+      }
+    });
+    assert.ok(caret, "the caret is a mesh of its own");
+    assert.equal(caret.visible, true, "shown as the typing starts");
+
+    await sleep(CARET_BLINK_MS * 1.4);
+    assert.equal(caret.visible, false, "hidden for the second half of the blink");
+
+    panel.created[0].onKey({ key: "c", code: "KeyC" });
+    await settle();
+    assert.equal(caret.visible, true, "a keystroke brings it back");
+    await sleep(CARET_BLINK_MS * 0.6);
+    assert.equal(caret.visible, true, "and the blink starts over from there");
+
+    panel.created[0].onKey({ key: "Escape" });
+    await settle();
+    panel.cleanup();
+  });
 });
+
+/**
+ * @param {number} ms
+ */
+function sleep(ms) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
 
 /**
  * @param {THREE.Object3D} object

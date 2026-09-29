@@ -333,7 +333,11 @@ describe("checkbox clipping", () => {
       // keeping it on the material, so the patch is the only way to reach it
       // without a GL context — which is also proof the patch is installed.
       const material = /** @type {MeshBasicMaterial} */ (mark.material);
-      assert.equal(material.customProgramCacheKey?.(), "freedom-clip", "the tick is clipped");
+      assert.equal(
+        material.customProgramCacheKey?.(),
+        "freedom-clip-matrix",
+        "the tick is clipped",
+      );
       /** @type {{uniforms: Record<string, {value: THREE.Vector4}>, vertexShader: string, fragmentShader: string}} */
       const shader = {
         uniforms: {},

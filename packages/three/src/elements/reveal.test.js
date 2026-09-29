@@ -353,7 +353,7 @@ describe("what a keystroke costs", () => {
       const material = /** @type {THREE.Material} */ (mesh.material);
       assert.equal(
         material.customProgramCacheKey?.(),
-        "freedom-clip-reveal",
+        "freedom-clip-matrix-reveal",
         "a reveal material must not be handed the clip-only program",
       );
 

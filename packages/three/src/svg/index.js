@@ -1,6 +1,7 @@
 import { box } from "../elements/div.js";
 import { isSvgElement, isSvgRoot } from "../elements/plugins.js";
-import { group, shape } from "./shape.js";
+import { toMatrix4 } from "./geometry.js";
+import { group, rootMatrix, shape } from "./shape.js";
 
 /**
  * @import {PortalPlugin} from '../elements/plugins.js';
@@ -40,11 +41,15 @@ export function svgElements() {
           // The outermost `<svg>` is a CSS box in the page's flow — a
           // background, a border, a size the page laid out, a place in the
           // clip chain — and is drawn as exactly that. Its shapes hang off
-          // its content group like any children. One nested inside another
-          // is a viewport in user space, which the shapes below it fold
-          // into their own matrices; here it only groups.
+          // its content group like any children, and the content group
+          // carries the viewport, so they are in user space below it. One
+          // nested inside another is a group whose matrix is its viewport.
           return isSvgRoot(element)
-            ? box(ctx, /** @type {HTMLElement} */ (element))
+            ? box(ctx, /** @type {HTMLElement} */ (element), {
+                contentMatrix: (target) => {
+                  toMatrix4(rootMatrix(element), target);
+                },
+              })
             : group(ctx, element);
         case "g":
         case "a":

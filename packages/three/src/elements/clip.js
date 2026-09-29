@@ -165,28 +165,49 @@ export function clipBoxEqual(a, b) {
 }
 
 /**
- * Teach an ordinary three material to stop drawing outside a box given in the
- * coordinates its geometry is authored in.
+ * The clip matrix for a mesh whose vertices are already in the frame its clip
+ * box is given in — every box, text run and tick a portal draws. Shared by
+ * all of them and never written: a mesh that needs another matrix brings a
+ * uniform of its own.
+ *
+ * @type {{ readonly value: THREE.Matrix3 }}
+ */
+export const IDENTITY_CLIP_MATRIX = Object.freeze({ value: new THREE.Matrix3() });
+
+/**
+ * Teach an ordinary three material to stop drawing outside a box.
  *
  * The boxes an element draws have a shader of their own and take the clip as
- * uniforms; this is for the one thing in a portal that does not — a text
- * quad, which is a `MeshBasicMaterial` carrying a rasterized mask. The patch
- * fades coverage across the edge rather than cutting it, so a line of text
- * crossing the top of a scroller is trimmed as cleanly as the box around it.
+ * uniforms; this is for the things in a portal that do not — a text quad,
+ * which is a `MeshBasicMaterial` carrying a rasterized mask, a checkbox's
+ * tick, an SVG shape. The patch fades coverage across the edge rather than
+ * cutting it, so a line of text crossing the top of a scroller is trimmed as
+ * cleanly as the box around it.
+ *
+ * The box is given in some frame of its own, and `matrix` takes the mesh's
+ * local coordinates into it, in the vertex shader, so the fragment compares
+ * like with like. For almost everything that frame is the mesh's own and the
+ * matrix is the identity; an SVG shape keeps its geometry in its user space
+ * and its object carries the transforms, so its matrix is the one from that
+ * user space to the `<svg>` root the box is measured against. The clip edge
+ * stays axis-aligned in the box's frame whatever the matrix does — which is
+ * what CSS does to content under a transform, too.
  *
  * @param {THREE.Material} material
  * @param {{ value: THREE.Vector4 }} uniform Shared with the caller, which
  *   writes the current box into it as the layout changes.
+ * @param {{ value: THREE.Matrix3 }} [matrix] Mesh-local to clip frame, also
+ *   written by the caller; the identity when left out.
  * @returns {void}
  */
-export function applyClip(material, uniform) {
+export function applyClip(material, uniform, matrix = IDENTITY_CLIP_MATRIX) {
   material.onBeforeCompile = (shader) => {
-    patchClip(shader, uniform);
+    patchClip(shader, uniform, matrix);
   };
   // Programs are cached by material type and defines, neither of which the
   // patch above changes. Without a distinct key a clipped material can be
   // handed the unpatched program compiled for an identical unclipped one.
-  material.customProgramCacheKey = () => "freedom-clip";
+  material.customProgramCacheKey = () => "freedom-clip-matrix";
 }
 
 /**
@@ -195,13 +216,21 @@ export function applyClip(material, uniform) {
  *
  * @param {import('three').WebGLProgramParametersWithUniforms} shader
  * @param {{ value: THREE.Vector4 }} uniform
+ * @param {{ value: THREE.Matrix3 }} matrix
  * @returns {void}
  */
-function patchClip(shader, uniform) {
+function patchClip(shader, uniform, matrix) {
   shader.uniforms.clipBox = uniform;
+  shader.uniforms.clipMatrix = matrix;
   shader.vertexShader = shader.vertexShader
-    .replace("void main() {", "varying vec2 vClipPosition;\nvoid main() {")
-    .replace("#include <begin_vertex>", "#include <begin_vertex>\n\tvClipPosition = position.xy;");
+    .replace(
+      "void main() {",
+      "uniform mat3 clipMatrix;\nvarying vec2 vClipPosition;\nvoid main() {",
+    )
+    .replace(
+      "#include <begin_vertex>",
+      "#include <begin_vertex>\n\tvClipPosition = (clipMatrix * vec3(position.xy, 1.0)).xy;",
+    );
   shader.fragmentShader = shader.fragmentShader
     .replace("void main() {", "uniform vec4 clipBox;\nvarying vec2 vClipPosition;\nvoid main() {")
     .replace(
@@ -242,7 +271,7 @@ function patchClip(shader, uniform) {
  */
 export function applyReveal(material, clip, cut) {
   material.onBeforeCompile = (shader) => {
-    patchClip(shader, clip);
+    patchClip(shader, clip, IDENTITY_CLIP_MATRIX);
     shader.uniforms.revealCut = cut;
     shader.fragmentShader = shader.fragmentShader
       .replace("void main() {", "uniform vec4 revealCut;\nvoid main() {")
@@ -264,7 +293,7 @@ export function applyReveal(material, clip, cut) {
   };
   // A reveal material handed the clip-only program would draw uncut, and
   // silently: nothing about the patch above reaches the cache key on its own.
-  material.customProgramCacheKey = () => "freedom-clip-reveal";
+  material.customProgramCacheKey = () => "freedom-clip-matrix-reveal";
 }
 
 const localPoint = new THREE.Vector3();

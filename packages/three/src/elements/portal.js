@@ -26,6 +26,7 @@ import { createLoadingFrame } from "./loadingFrame.js";
 import { createPortalPump } from "./portalPump.js";
 import { createPortalScheduler, PortalSchedulerContext } from "./portalScheduler.js";
 import { isSvgElement, isSvgRoot, PortalPluginsContext, projectWithPlugins } from "./plugins.js";
+import { mergePanelOptions, PanelOptionsContext, resolveKeyboard } from "./panelOptions.js";
 import { CameraContext, frames, onLateFrame, RendererContext } from "../render.js";
 import { InteractionContext } from "../interactions.js";
 
@@ -200,8 +201,10 @@ function claimRoot(root) {
  *   a portal given one does not `mount()`: the page owns the content. Not
  *   given, the portal makes a hidden container of its own on the body, and
  *   `mount()` is how content reaches it.
- * @property {PortalKeyboardOptions} [keyboard] A keyboard for the panel's
- *   text fields. Without one a field is drawn — its box, its value or its
+ * @property {Partial<PortalKeyboardOptions> | false} [keyboard] A keyboard for
+ *   the panel's text fields, spread over the one `PanelOptionsContext` has
+ *   (see `PanelOptions`), or `false` for none whatever the context says.
+ *   Without one a field is drawn — its box, its value or its
  *   placeholder — but nothing in the scene can type into it; with one, a
  *   press on a field brings the keyboard up below the panel, typing goes
  *   into the field through the events a page's handlers already listen for,
@@ -266,7 +269,7 @@ function claimRoot(root) {
  *   is already visible absorbs later updates incrementally instead of hiding
  *   itself again. For showing a spinner somewhere; `isLoading()` on the
  *   handle is the reactive way to ask.
- * @property {boolean | LoadingFrameOptions} [loadingFrame] What the player
+ * @property {false | LoadingFrameOptions} [loadingFrame] What the player
  *   sees where the panel is going to be while it mounts, if the mount takes
  *   long enough to be noticed: a translucent, rounded frame the panel's
  *   size with a black border, and three dots in the middle that brighten in
@@ -280,7 +283,10 @@ function claimRoot(root) {
  *   up at the least once shown — half a second by default, because a frame
  *   that flashed and was gone reads as a glitch rather than as a panel
  *   arriving; the mount is held, built and unseen, until the frame has had
- *   its time. See `LoadingFrameOptions` in `loadingFrame.js`.
+ *   its time. See `LoadingFrameOptions` in `loadingFrame.js`. There is no
+ *   `true`: the frame is already on when this is left out, and a `true`
+ *   would only throw away a frame the scene's `PanelOptions` had tuned.
+ *   Pass `{}` to ask for the defaults outright.
  * @property {readonly PortalPlugin[]} [plugins] Element plugins for this
  *   panel alone, asked before the ones the scene registered through
  *   `render()`'s `portalPlugins` and before the portal's own dispatch. For
@@ -306,23 +312,24 @@ export function createPortal(ctx, options) {
 
 /**
  * @param {WeakKey} ctx
- * @param {PortalOptions} [options]
+ * @param {PortalOptions} [ownOptions]
  */
-function buildPortal(
-  ctx,
-  {
+function buildPortal(ctx, ownOptions = {}) {
+  // The scene's panel options first, this panel's over them; the defaults
+  // below are for what neither of them said.
+  const {
     root,
-    keyboard,
+    keyboard: keyboardOption,
     opaqueToRays = true,
     budget = 5,
     priority = 0,
     atomic = true,
     maxTextScale,
     onLoadingChanged,
-    loadingFrame = true,
+    loadingFrame = {},
     plugins: ownPlugins = [],
-  } = {},
-) {
+  } = mergePanelOptions(PanelOptionsContext.get(ctx), ownOptions);
+  const keyboard = resolveKeyboard(keyboardOption);
   // First, before anything is marked or made: the one thing here that a
   // caller can get wrong synchronously, and a throw after the element had
   // been claimed would leave the page carrying a mark with no portal to
@@ -549,10 +556,7 @@ function buildPortal(
    * over before anything could be drawn, and a frame built to be torn down
    * in the same task is not worth building.
    */
-  const loadingFrameObject =
-    loadingFrame && hasFrames
-      ? createLoadingFrame(loadingFrame === true ? {} : loadingFrame)
-      : null;
+  const loadingFrameObject = loadingFrame && hasFrames ? createLoadingFrame(loadingFrame) : null;
   /** @type {() => void} */
   let stopLoadingFrame = () => {};
   /**
@@ -695,7 +699,10 @@ function buildPortal(
    */
   const portalKeyboard = keyboard
     ? createPortalKeyboard({
-        ctx: baseCtx,
+        // Without the scene's panel options: the board is the portal's, not
+        // the app's, and a keyboard the app set for its panels would give
+        // the board a keyboard of its own.
+        ctx: PanelOptionsContext.set(baseCtx, {}),
         options: keyboard,
         containerObject,
         containerElement,

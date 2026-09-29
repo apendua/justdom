@@ -34,6 +34,7 @@ export {
 export { createPortal, getPortalRoot } from "./elements/portal.js";
 export { isTextInput, typeIntoInput } from "./elements/typing.js";
 export { PortalPluginsContext } from "./elements/plugins.js";
+export { PanelOptionsContext, withPanelOptions } from "./elements/panelOptions.js";
 export { box, getContentGroup } from "./elements/div.js";
 export { makeReveal, solveCut } from "./elements/reveal.js";
 export {
@@ -83,6 +84,10 @@ export { installCrashPanel, CRASH_PANEL_ID } from "./crash.js";
 
 /**
  * @typedef {import('./elements/portal.js').PortalOptions} PortalOptions
+ */
+
+/**
+ * @typedef {import('./elements/panelOptions.js').PanelOptions} PanelOptions
  */
 
 /**

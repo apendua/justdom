@@ -19,6 +19,7 @@ import {
   PortalSchedulerContext,
 } from "./elements/portalScheduler.js";
 import { PortalPluginsContext } from "./elements/plugins.js";
+import { withPanelOptions } from "./elements/panelOptions.js";
 import { fitRayToHit } from "./pointers.js";
 import { reportCrash } from "./crash.js";
 
@@ -495,6 +496,10 @@ export function frames(ctx) {
  *   shape subtree, which a scene without an SVG in it should not carry.
  *   None by default. A single panel adds its own through
  *   `PortalOptions.plugins`.
+ * @property {import('./elements/panelOptions.js').PanelOptions} [panelOptions]
+ *   What every panel in this scene starts from — the keyboard its fields are
+ *   typed with, most of all — with each panel's own options laid over it.
+ *   A part of the scene narrows it with `withPanelOptions`. None by default.
  */
 
 /**
@@ -567,6 +572,9 @@ export function render(fn, options = {}) {
     });
     if (options.portalPlugins?.length) {
       ctx = PortalPluginsContext.set(ctx, options.portalPlugins);
+    }
+    if (options.panelOptions) {
+      ctx = withPanelOptions(ctx, options.panelOptions);
     }
     // A share of the frame rather than a fixed slice of it: the sessions ask
     // for the headset's fastest rate now, and a number of milliseconds that

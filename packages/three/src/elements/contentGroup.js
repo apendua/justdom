@@ -42,3 +42,20 @@ export function getContentGroup(object) {
 export function setContentGroup(object, group) {
   contentGroups.set(object, group);
 }
+
+/**
+ * The object of the parent of an object's element, which is one step up the
+ * DOM in the object tree. That is one object up when the parent element
+ * hangs its children directly under its own object, and two when it puts
+ * them in a content group.
+ *
+ * @param {Object3D} object
+ * @returns {Object3D | null}
+ */
+export function getParentObject(object) {
+  const parent = object.parent;
+  if (parent?.parent && getContentGroup(parent.parent) === parent) {
+    return parent.parent;
+  }
+  return parent;
+}

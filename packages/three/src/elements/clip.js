@@ -307,14 +307,21 @@ const localPoint = new THREE.Vector3();
  * from under its scroller would still be clickable — the bug that makes a
  * scrolling list feel broken rather than unfinished.
  *
+ * The box is read in the frame the clip patch reads it in. The hit goes
+ * into `frame`'s local coordinates and then through `matrix`. For an SVG
+ * shape that is the `clipMatrix` its material carries, so a ray meets
+ * exactly what is drawn.
+ *
  * @param {Object3D} mesh
  * @param {() => ClipBox} getClipBox
- * @param {Object3D} [frame] Whose coordinates the box is given in. Defaults to
- *   the mesh; a box drawn as a scaled unit quad, or a blocker covering an
- *   element, has to name the element instead.
+ * @param {Object3D} [frame] Whose coordinates the box is given in, before
+ *   `matrix`. Defaults to the mesh; a box drawn as a scaled unit quad, or a
+ *   blocker covering an element, has to name the element instead.
+ * @param {{ value: THREE.Matrix3 }} [matrix] From `frame`'s coordinates to
+ *   the box's, read at every cast; the identity when left out.
  * @returns {void}
  */
-export function clipRaycast(mesh, getClipBox, frame = mesh) {
+export function clipRaycast(mesh, getClipBox, frame = mesh, matrix = IDENTITY_CLIP_MATRIX) {
   const inherited = mesh.raycast.bind(mesh);
   /**
    * @param {Raycaster} raycaster
@@ -330,6 +337,8 @@ export function clipRaycast(mesh, getClipBox, frame = mesh) {
     for (let index = intersects.length - 1; index >= first; index--) {
       localPoint.copy(intersects[index].point);
       frame.worldToLocal(localPoint);
+      localPoint.z = 1;
+      localPoint.applyMatrix3(matrix.value);
       if (
         localPoint.x < box.left ||
         localPoint.y < box.top ||

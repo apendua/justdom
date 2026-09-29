@@ -1572,11 +1572,34 @@ shader**, for the reason `svg/dash.js` gives, so a `stroke-dashoffset`
 animation rebuilds the stroke each frame — a few hundred vertices, which the
 marching ants in the showcase spend without noticing.
 
+A shape with `cursor: pointer` is a ray target of its own, by the rule a
+box follows. It forwards the ray to its element exactly as a box does:
+`mousedown`, `mouseup` and `click` for a press, `mousemove` while the ray
+moves over it, and `data-xr-hover` and `data-xr-active` on the element for
+a stylesheet to answer. A press that turns into a drag scrolls the list the
+`<svg>` sits in. `pointer-events` decides which of the fill and the stroke
+a ray can hit, with SVG's values: the default `visiblePainted` hits
+whatever is painted and visible, `none` lets the ray through to what is
+behind, `fill` and `stroke` pick one region, and `all` hits a region with
+no paint, which is drawn as nothing and hit all the same. The `<svg>`'s
+clip trims the hits as it trims the drawing, so a node scrolled out of
+view takes no press.
+
+```css
+.diagram .node {
+  cursor: pointer;
+}
+
+.diagram .node[data-xr-hover] {
+  fill: rgb(64, 204, 186); /* a colour write; the node keeps its draw order */
+}
+```
+
 Not drawn yet: `<text>`, markers (so an arrowhead is a `<polygon>` of its
 own for now), `<use>` and `<symbol>`, gradients and patterns (a `url(#…)`
-paint reads as `none`), `clip-path`, `mask`, filters, `<image>`,
-`<foreignObject>`, `vector-effect`, and shapes as ray targets of their own —
-the `<svg>` with `cursor: pointer` on it is the button, as before.
+paint reads as `none`, though it still counts as painted for a ray),
+`clip-path`, `mask`, filters, `<image>`, `<foreignObject>` and
+`vector-effect`.
 [`docs/freedom-svg-plan.md`](../../docs/freedom-svg-plan.md) has the order
 they are coming in and why.
 

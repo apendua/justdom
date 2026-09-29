@@ -5,6 +5,7 @@ import {
   getParentElement,
   PORTAL_ATTRIBUTE,
 } from "./mirror.js";
+import { getParentObject } from "./contentGroup.js";
 import { createFrameRequester } from "./frameRequester.js";
 import { sampleRenderingUpdates, scrollElementBy } from "./renderingUpdates.js";
 
@@ -220,11 +221,12 @@ export function createScrollDrags(requestFrames) {
       if (!scroller) {
         return;
       }
-      // The gesture is measured in the scroller's space, so walk up as many
-      // objects as there are elements between the two. Each element step is
-      // two objects: the parent's content group — the one a scroll
-      // translates — and the parent's own object, whose frame is the
-      // scroller's border box and holds still while its content slides.
+      // The gesture is measured in the scroller's space, so walk up one
+      // parent object per element between the two. Under a box that step is
+      // two objects. The first is the box's content group, which a scroll
+      // translates. The second is the box's own object, whose frame is its
+      // border box and does not move while its content slides. Under an SVG
+      // `<g>`, which has no content group, the step is one object.
       /** @type {THREE.Object3D | null} */
       let space = object;
       for (
@@ -232,7 +234,7 @@ export function createScrollDrags(requestFrames) {
         el && el !== scroller;
         el = getParentElement(el)
       ) {
-        space = space?.parent?.parent ?? null;
+        space = space && getParentObject(space);
       }
       if (!space) {
         return;

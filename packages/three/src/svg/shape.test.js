@@ -1,11 +1,13 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
+import { InteractionContext } from "../interactions.js";
 import { createMirror } from "../elements/mirror.js";
 import { group, shape } from "./shape.js";
 
 /**
  * @import { Mesh, MeshBasicMaterial, Object3D } from "three";
+ * @import { InteractionManager } from "../interactions.js";
  */
 
 // jsdom-env installs the common DOM globals, but not DOMParser, which three's
@@ -29,8 +31,10 @@ const SVG_NS = "http://www.w3.org/2000/svg";
  * @param {number} [options.height]
  * @param {string} [options.wrap] A `<g>` to put the shape in, as its
  *   attributes.
+ * @param {InteractionManager} [options.manager] What the shape registers
+ *   itself with, if it is ever clickable.
  */
-function setup(tag, attributes, { viewBox, width = 100, height = 50 } = {}) {
+function setup(tag, attributes, { viewBox, width = 100, height = 50, manager } = {}) {
   const root = document.createElementNS(SVG_NS, "svg");
   if (viewBox) {
     root.setAttribute("viewBox", viewBox);
@@ -60,13 +64,15 @@ function setup(tag, attributes, { viewBox, width = 100, height = 50 } = {}) {
 
   /** @type {Object3D} */
   let object;
-  const subscription = shape({}, element).subscribe((value) => {
+  const ctx = manager ? InteractionContext.set({}, manager) : {};
+  const subscription = shape(ctx, element).subscribe((value) => {
     object = value;
   });
 
   return {
     root,
     element,
+    mirror,
     subscription,
     get object() {
       return object;
@@ -684,5 +690,247 @@ describe("svg shape", () => {
     }
     s.teardown();
     assert.deepEqual(disposed.sort(), ["geometry", "geometry", "material", "material"]);
+  });
+});
+
+describe("svg shape as a ray target", () => {
+  /**
+   * An interaction manager that records what it is handed, as the div
+   * tests use one. The test is about which object the shape registers and
+   * when, not what the manager does with it.
+   */
+  function recordingManager() {
+    /** @type {string[]} */
+    const registrations = [];
+    /** @type {Object3D[]} */
+    const registered = [];
+    const manager = /** @type {InteractionManager} */ (
+      /** @type {unknown} */ ({
+        /** @param {Object3D} object */
+        add: (object) => {
+          registrations.push("add");
+          registered.push(object);
+        },
+        /** @param {Object3D} object */
+        remove: (object) => {
+          registrations.push("remove");
+          registered.splice(registered.indexOf(object), 1);
+        },
+        stopPropagation: () => {},
+      })
+    );
+    return { manager, registrations, registered };
+  }
+
+  /**
+   * A shape's meshes in the order they are drawn, fill before stroke. The
+   * object's children can be in another order, because a fill that arrives
+   * later is added after the stroke, and the draw order is what counts.
+   *
+   * @param {{ meshes: Mesh[] }} s
+   * @returns {Mesh[]}
+   */
+  function drawn(s) {
+    return [...s.meshes].sort((a, b) => a.renderOrder - b.renderOrder);
+  }
+
+  /** A 20px square at (10, 10), filled and with a 2px stroke. */
+  const SQUARE = {
+    x: "10",
+    y: "10",
+    width: "20",
+    height: "20",
+    fill: "red",
+    stroke: "blue",
+    "stroke-width": "2",
+  };
+
+  /**
+   * The meshes a ray from in front of the point (x, y) meets, each once.
+   * The walk is the interaction manager's. It skips what is not visible and
+   * asks each mesh's own `raycast`.
+   *
+   * @param {Object3D} object
+   * @param {number} x
+   * @param {number} y
+   * @returns {Object3D[]}
+   */
+  function hitsAt(object, x, y) {
+    object.updateMatrixWorld(true);
+    const raycaster = new THREE.Raycaster(new THREE.Vector3(x, y, 5), new THREE.Vector3(0, 0, -1));
+    /** @type {THREE.Intersection[]} */
+    const intersections = [];
+    /** @param {Object3D} node */
+    const walk = (node) => {
+      if (!node.visible) {
+        return;
+      }
+      node.raycast(raycaster, intersections);
+      node.children.forEach(walk);
+    };
+    walk(object);
+    // A mesh is met once per triangle, and a ray down a diagonal meets two.
+    return [...new Set(intersections.map((intersection) => intersection.object))];
+  }
+
+  test("a shape is a ray target only under cursor: pointer, and follows it", () => {
+    const { manager, registrations, registered } = recordingManager();
+    const s = setup("rect", SQUARE, { manager });
+    assert.deepEqual(registrations, []);
+
+    s.setAttribute("style", "cursor: pointer");
+    assert.deepEqual(registrations, ["add"]);
+    assert.deepEqual(registered, [s.object]);
+
+    // A restyle that leaves the answer alone does not churn it.
+    s.setAttribute("style", "cursor: pointer; opacity: 0.5");
+    assert.deepEqual(registrations, ["add"]);
+
+    s.setAttribute("style", null);
+    assert.deepEqual(registrations, ["add", "remove"]);
+    s.teardown();
+  });
+
+  test("a press on a shape reaches its element as a box's does", () => {
+    const { manager } = recordingManager();
+    const s = setup("rect", { ...SQUARE, style: "cursor: pointer" }, { manager });
+    /** @type {string[]} */
+    const events = [];
+    for (const type of ["mousedown", "mouseup", "click", "mousemove"]) {
+      s.element.addEventListener(type, (event) => {
+        events.push(`${event.type} on ${/** @type {Element} */ (event.target).localName}`);
+      });
+    }
+    const controller = new THREE.Object3D();
+    /** @param {string} type */
+    const dispatch = (type) => {
+      s.object.dispatchEvent(
+        /** @type {never} */ ({ type, controller, target: s.object, originalTarget: s.object }),
+      );
+    };
+    const dataset = /** @type {SVGElement} */ (s.element).dataset;
+
+    dispatch("pointerenter");
+    assert.equal(dataset.xrHover, "true");
+    dispatch("pointermove");
+    dispatch("selectstart");
+    assert.equal(dataset.xrActive, "true");
+    dispatch("selectend");
+    assert.equal(dataset.xrActive, undefined);
+    dispatch("select");
+    assert.deepEqual(events, [
+      "mousemove on rect",
+      "mousedown on rect",
+      "mouseup on rect",
+      "click on rect",
+    ]);
+
+    // Held and hovered when it stops being clickable. The handler that
+    // would have cleared the flags is gone, so the teardown clears them.
+    dispatch("selectstart");
+    s.setAttribute("style", null);
+    assert.equal(dataset.xrHover, undefined);
+    assert.equal(dataset.xrActive, undefined);
+    s.teardown();
+  });
+
+  // These tests set `pointer-events` through `style`. jsdom computes it as
+  // `auto` whatever the attribute says, where a browser folds the
+  // presentation attribute into the computed value.
+  test("a ray meets the fill and the stroke, and nothing under pointer-events: none", () => {
+    const s = setup("rect", SQUARE);
+    const [fill, stroke] = s.meshes;
+    assert.deepEqual(hitsAt(s.object, 20, 20), [fill]);
+    // On the edge, where the stroke covers the fill's border.
+    assert.deepEqual(new Set(hitsAt(s.object, 10.5, 20)), new Set([fill, stroke]));
+    assert.deepEqual(hitsAt(s.object, 9.5, 20), [stroke]);
+    assert.deepEqual(hitsAt(s.object, 50, 20), []);
+
+    s.setAttribute("style", "pointer-events: none");
+    assert.deepEqual(hitsAt(s.object, 20, 20), []);
+    assert.deepEqual(hitsAt(s.object, 9.5, 20), []);
+    // Still drawn, since pointer-events decides hits and not paint.
+    assert.equal(fill.visible && material(fill).visible, true);
+    s.teardown();
+  });
+
+  test("pointer-events: stroke leaves the inside to what is behind, and fill the edge", () => {
+    const s = setup("rect", { ...SQUARE, style: "pointer-events: stroke" });
+    const [, stroke] = s.meshes;
+    assert.deepEqual(hitsAt(s.object, 20, 20), []);
+    assert.deepEqual(hitsAt(s.object, 9.5, 20), [stroke]);
+
+    s.setAttribute("style", "pointer-events: fill");
+    const [fill] = s.meshes;
+    assert.deepEqual(hitsAt(s.object, 20, 20), [fill]);
+    assert.deepEqual(hitsAt(s.object, 9.5, 20), []);
+    s.teardown();
+  });
+
+  test("an unpainted fill is hit under pointer-events: all, and still not drawn", () => {
+    const s = setup("rect", { ...SQUARE, fill: "none" });
+    assert.equal(s.meshes.length, 1, "only the stroke, by default");
+    assert.deepEqual(hitsAt(s.object, 20, 20), []);
+
+    s.setAttribute("style", "pointer-events: all");
+    assert.equal(s.meshes.length, 2);
+    const [fill] = drawn(s);
+    assert.deepEqual(hitsAt(s.object, 20, 20), [fill]);
+    assert.equal(material(fill).visible, false);
+
+    // `transparent` is a paint, so the default hits it. That is how a page
+    // makes an invisible shape clickable.
+    s.setAttribute("style", null);
+    s.setAttribute("fill", "transparent");
+    assert.deepEqual(hitsAt(s.object, 20, 20), [drawn(s)[0]]);
+    s.teardown();
+  });
+
+  test("a hidden shape is out of the rays by default, and in them under painted", () => {
+    const s = setup("rect", { ...SQUARE, style: "visibility: hidden" });
+    assert.deepEqual(hitsAt(s.object, 20, 20), []);
+
+    s.setAttribute("style", "visibility: hidden; pointer-events: painted");
+    const [fill] = s.meshes;
+    assert.deepEqual(hitsAt(s.object, 20, 20), [fill]);
+    assert.equal(material(fill).visible, false, "hit, and still hidden");
+    s.teardown();
+  });
+
+  test("a ray is trimmed where the clip patch trims the drawing, through the viewBox", () => {
+    // Twice the size under the `viewBox`, so the square covers (20, 20) to
+    // (60, 60) of a root 50px tall, so its lower part is outside the root.
+    const s = setup("rect", SQUARE, { viewBox: "0 0 50 25", width: 100, height: 50 });
+    s.root.style.overflow = "hidden";
+    s.mirror.attributeChanged(s.root);
+    const [fill] = s.meshes;
+    // The shape's object carries none of the viewport; place it as the
+    // root's content group would.
+    const content = new THREE.Object3D();
+    content.scale.set(2, 2, 1);
+    content.add(s.object);
+    content.updateMatrixWorld(true);
+
+    assert.deepEqual(hitsAt(content, 40, 30), [fill]);
+    assert.deepEqual(hitsAt(content, 40, 55), [], "below the root's bottom edge");
+    s.teardown();
+  });
+
+  test("a hover that switches the fill on puts it under the stroke", () => {
+    const { manager } = recordingManager();
+    const s = setup("rect", { ...SQUARE, fill: "none", style: "cursor: pointer" }, { manager });
+    s.object.dispatchEvent(
+      /** @type {never} */ ({ type: "pointerenter", target: s.object, originalTarget: s.object }),
+    );
+    assert.equal(/** @type {SVGElement} */ (s.element).dataset.xrHover, "true");
+
+    // What a `[data-xr-hover] { fill: … }` rule does to the computed style.
+    s.setAttribute("fill", "red");
+    const [fill, stroke] = drawn(s);
+    assert.equal(material(fill).visible, true);
+    assert.ok(fill.renderOrder < stroke.renderOrder, "the new fill under the old stroke");
+    assert.equal(Math.floor(fill.renderOrder), Math.floor(stroke.renderOrder));
+    assert.equal(/** @type {SVGElement} */ (s.element).dataset.xrHover, "true", "still hovered");
+    s.teardown();
   });
 });

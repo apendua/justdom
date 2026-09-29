@@ -176,6 +176,23 @@ describe("clipRaycast", () => {
     assert.equal(hitsAt(frame, 20, 5), 0);
   });
 
+  test("the box can be read through a matrix, as the clip patch reads it", () => {
+    // An SVG shape's vertices are in its user space and the box is in the
+    // root's frame, and the matrix the material carries maps one to the
+    // other. Here user space is drawn at twice the size, offset by 10px.
+    const mesh = setup();
+    const matrix = { value: new THREE.Matrix3().set(2, 0, 10, 0, 2, 10, 0, 0, 1) };
+    clipRaycast(mesh, () => box(0, 0, 100, 50), mesh, matrix);
+    // (20, 15) in user space is (50, 40) in the box's frame, inside it.
+    assert.equal(hitsAt(mesh, 20, 15), 1);
+    // (20, 25) is (50, 60), below the box, though inside it in user space.
+    assert.equal(hitsAt(mesh, 20, 25), 0);
+
+    // Read at every cast, so a matrix written later is the one that counts.
+    matrix.value.identity();
+    assert.equal(hitsAt(mesh, 20, 25), 1);
+  });
+
   test("hits already in the list are left alone", () => {
     const mesh = setup();
     clipRaycast(mesh, () => box(0, 10, 100, 40));

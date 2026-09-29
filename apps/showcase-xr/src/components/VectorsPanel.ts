@@ -50,6 +50,18 @@ const diagramStyle = stylesheet`
     fill: ${NODE_COLOR};
     stroke: rgb(0, 118, 105);
     stroke-width: 2;
+    cursor: pointer;
+  }
+
+  /* The nodes are ray targets of their own and light up under the ray, as
+     a button does. A new fill is a colour write, and the node keeps its
+     place in the draw order. */
+  .${CLASS_NAME} .node[data-xr-hover] {
+    fill: rgb(64, 204, 186);
+  }
+
+  .${CLASS_NAME} .node[data-xr-active] {
+    fill: rgb(0, 118, 105);
   }
 
   .${CLASS_NAME} .port {

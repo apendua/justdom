@@ -2,6 +2,7 @@ import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
 import { PORTAL_ATTRIBUTE } from "./mirror.js";
+import { setContentGroup } from "./contentGroup.js";
 import { createScrollDrags, findScroller, isScrollable } from "./scroll.js";
 import { describeScroller } from "../test/scroller.js";
 
@@ -31,10 +32,11 @@ function setup() {
   // The list's object: local px, sitting at the world origin facing +z, so a
   // ray from (x, y, 5) pointing at -z lands on the list at exactly (x, y).
   const space = new THREE.Object3D();
-  // The gesture walks two objects per element: a box's DOM children ride in
-  // a content group under its object, the way div.js builds one.
+  // A box's DOM children ride in a content group under its object, the way
+  // div.js builds one.
   const contentGroup = new THREE.Object3D();
   space.add(contentGroup);
+  setContentGroup(space, contentGroup);
   const rowObject = new THREE.Object3D();
   contentGroup.add(rowObject);
   space.updateMatrixWorld(true);
@@ -68,6 +70,7 @@ function setup() {
     list,
     row,
     rowObject,
+    contentGroup,
     controller,
     drags,
     aimAt,
@@ -196,6 +199,43 @@ describe("dragging a list", () => {
 
     assert.equal(list.scrollTop, 300, "the bottom of a 400px list showing 100px");
     drags.end(controller);
+  });
+
+  test("a shape inside an <svg> in the list drags it in the list's own px", () => {
+    const { list, contentGroup, controller, drags, aimAt, frame } = setup();
+    const SVG_NS = "http://www.w3.org/2000/svg";
+    const svg = document.createElementNS(SVG_NS, "svg");
+    const g = document.createElementNS(SVG_NS, "g");
+    const rect = document.createElementNS(SVG_NS, "rect");
+    list.appendChild(svg);
+    svg.appendChild(g);
+    g.appendChild(rect);
+
+    // The `<svg>` is a box, with a content group scaled by its `viewBox`.
+    // The `<g>` below it has none, so the `<rect>` is its direct child.
+    const svgObject = new THREE.Object3D();
+    const svgContent = new THREE.Object3D();
+    svgContent.scale.set(2, 2, 1);
+    svgObject.add(svgContent);
+    setContentGroup(svgObject, svgContent);
+    const gObject = new THREE.Object3D();
+    gObject.position.set(5, 5, 0);
+    svgContent.add(gObject);
+    const rectObject = new THREE.Object3D();
+    gObject.add(rectObject);
+    contentGroup.add(svgObject);
+    svgObject.updateMatrixWorld(true);
+
+    drags.begin(controller, /** @type {HTMLElement} */ (/** @type {Element} */ (rect)), rectObject);
+    frame();
+    aimAt(0, -40);
+    frame();
+    // Measured in any frame under the `viewBox`, the same hand would have
+    // travelled 20 units rather than 40.
+    assert.equal(list.scrollTop, 40);
+
+    drags.end(controller);
+    svg.remove();
   });
 
   test("grabbing something with no scrolling ancestor does nothing", () => {

@@ -2,12 +2,15 @@ import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
 import {
+  applyClip,
+  applyReveal,
   clipBoxEqual,
   clipBoxShows,
   clipRaycast,
   intersectClipBoxes,
   isEmptyClipBox,
   toLocalClipBox,
+  IDENTITY_CLIP_MATRIX,
   UNCLIPPED,
 } from "./clip.js";
 
@@ -183,5 +186,95 @@ describe("clipRaycast", () => {
     );
     mesh.raycast(raycaster, intersects);
     assert.equal(intersects.length, 1, "somebody else's hit is not this filter's business");
+  });
+});
+
+describe("the clip patch", () => {
+  /**
+   * What three hands `onBeforeCompile`: the two chunks the patch looks for,
+   * and an empty uniform table it fills in.
+   *
+   * @param {THREE.Material} material
+   */
+  function compile(material) {
+    const shader = {
+      uniforms: /** @type {Record<string, { value: unknown }>} */ ({}),
+      vertexShader: "void main() {\n#include <begin_vertex>\n}",
+      fragmentShader: "void main() {\n#include <alphatest_fragment>\n}",
+    };
+    material.onBeforeCompile(/** @type {never} */ (shader), /** @type {never} */ (null));
+    return shader;
+  }
+
+  /**
+   * Whether a vertex at (x, y) in the mesh's own coordinates lands inside
+   * the clip box — the vertex shader's `clipMatrix * vec3(position.xy, 1)`
+   * and the fragment shader's box test, read off the uniforms the patch
+   * installed.
+   *
+   * @param {Record<string, { value: unknown }>} uniforms
+   * @param {number} x
+   * @param {number} y
+   */
+  function inside(uniforms, x, y) {
+    const matrix = /** @type {THREE.Matrix3} */ (uniforms.clipMatrix.value);
+    const box = /** @type {THREE.Vector4} */ (uniforms.clipBox.value);
+    const at = new THREE.Vector3(x, y, 1).applyMatrix3(matrix);
+    return at.x >= box.x && at.y >= box.y && at.x <= box.z && at.y <= box.w;
+  }
+
+  test("the position is taken through a matrix before it meets the box", () => {
+    const material = new THREE.MeshBasicMaterial();
+    applyClip(material, { value: new THREE.Vector4(0, 0, 10, 10) });
+    const shader = compile(material);
+    assert.match(shader.vertexShader, /uniform mat3 clipMatrix;/);
+    assert.match(
+      shader.vertexShader,
+      /vClipPosition = \(clipMatrix \* vec3\(position\.xy, 1\.0\)\)\.xy;/,
+    );
+    assert.match(shader.fragmentShader, /uniform vec4 clipBox;/);
+    assert.equal(material.customProgramCacheKey(), "freedom-clip-matrix");
+  });
+
+  test("left out, the matrix is the shared identity, and nothing moves", () => {
+    const material = new THREE.MeshBasicMaterial();
+    applyClip(material, { value: new THREE.Vector4(0, 0, 10, 10) });
+    const { uniforms } = compile(material);
+    assert.equal(uniforms.clipMatrix, IDENTITY_CLIP_MATRIX);
+    assert.ok(IDENTITY_CLIP_MATRIX.value.equals(new THREE.Matrix3()));
+    assert.equal(inside(uniforms, 5, 5), true);
+    assert.equal(inside(uniforms, 15, 5), false);
+  });
+
+  test("a matrix of the caller's moves the clip edge through the mesh", () => {
+    // A mesh drawn at twice its size, 20px in: its own x = 5 is the box's
+    // x = 30, so a box ending at 25 cuts the mesh at its own x = 2.5.
+    const matrix = { value: new THREE.Matrix3() };
+    const box = { value: new THREE.Vector4(0, 0, 25, 100) };
+    const material = new THREE.MeshBasicMaterial();
+    applyClip(material, box, matrix);
+    const { uniforms } = compile(material);
+    assert.equal(uniforms.clipMatrix, matrix, "the caller's uniform, not a copy");
+    assert.equal(inside(uniforms, 5, 0), true, "at the identity, 5 is well inside");
+
+    matrix.value.set(2, 0, 20, 0, 2, 0, 0, 0, 1);
+    assert.equal(inside(uniforms, 2, 0), true);
+    assert.equal(inside(uniforms, 3, 0), false, "past the edge once the matrix moves it");
+
+    // A rotation: a quarter turn takes the mesh's x axis onto the box's y.
+    matrix.value.set(0, -1, 0, 1, 0, 0, 0, 0, 1);
+    assert.equal(inside(uniforms, 50, 0), true, "(50, 0) lands at (0, 50)");
+    assert.equal(inside(uniforms, 0, 50), false, "(0, 50) lands at (-50, 0)");
+  });
+
+  test("the reveal patch is the clip patch at the identity, plus its cut", () => {
+    const material = new THREE.MeshBasicMaterial();
+    const clip = { value: new THREE.Vector4(0, 0, 10, 10) };
+    applyReveal(material, clip, { value: new THREE.Vector4() });
+    const shader = compile(material);
+    assert.equal(shader.uniforms.clipMatrix, IDENTITY_CLIP_MATRIX);
+    assert.equal(shader.uniforms.clipBox, clip);
+    assert.ok(shader.uniforms.revealCut);
+    assert.equal(material.customProgramCacheKey(), "freedom-clip-matrix-reveal");
   });
 });

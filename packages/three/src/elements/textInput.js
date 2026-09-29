@@ -803,8 +803,14 @@ function caretByRay(element, focus, locator) {
     let holding = null;
     const local = new THREE.Vector3();
 
-    /** @param {InputEvent | PointerEvent} event */
-    const moveCaret = (event) => {
+    /**
+     * @param {InputEvent | PointerEvent} event
+     * @param {boolean} press Whether this is the press itself, which always
+     *   places the caret: it is also what collapses a selection — a field
+     *   the page `select()`ed on focus has its caret at the end of the
+     *   selection, and a press there means "type here", not "replace all".
+     */
+    const moveCaret = (event, press) => {
       const point = event.intersection?.point;
       if (!point || !locator.offsetAt) {
         return;
@@ -813,9 +819,10 @@ function caretByRay(element, focus, locator) {
       local.copy(point);
       object.worldToLocal(local);
       const offset = locator.offsetAt(local.x);
-      if (offset === getCaretOffset(element)) {
-        // Still on the same character: nothing to move, and nothing to
-        // tell the mirror, the preview or the caret's blink.
+      if (!press && offset === getCaretOffset(element)) {
+        // A drag still on the same character: nothing to move, and nothing
+        // to tell the mirror, the preview or the caret's blink. The press
+        // collapsed any selection, so the caret is all there is to compare.
         return;
       }
       (focus.placeCaret ?? placeCaretIn)(element, offset);
@@ -828,12 +835,12 @@ function caretByRay(element, focus, locator) {
         return;
       }
       holding = event.controller;
-      moveCaret(event);
+      moveCaret(event, true);
     };
     /** @param {PointerEvent} event */
     const onMove = (event) => {
       if (holding !== null && event.controller === holding) {
-        moveCaret(event);
+        moveCaret(event, false);
       }
     };
     /** @param {InputCancelEvent} event */

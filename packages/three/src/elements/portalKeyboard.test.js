@@ -1169,6 +1169,26 @@ describe("the caret, placed by a ray", () => {
     panel.cleanup();
   });
 
+  test("a press where the selection ends collapses it, so typing appends", async () => {
+    const panel = keyboardPanel();
+    await settle();
+    const field = /** @type {THREE.Object3D} */ (panel.fieldObject());
+    panel.press(field);
+    await settle();
+    // As a page that selects a field's contents on focus does.
+    panel.input.select();
+    assert.deepEqual([panel.input.selectionStart, panel.input.selectionEnd], [0, 2]);
+    ray(panel.manager, "selectstart", field, new THREE.Group(), 100);
+    assert.deepEqual(
+      [panel.input.selectionStart, panel.input.selectionEnd],
+      [2, 2],
+      "collapsed at the end, where the ray pressed",
+    );
+    panel.created[0].onKey({ key: "c", code: "KeyC" });
+    assert.equal(panel.input.value, "abc", "appended, not replacing the selection");
+    panel.cleanup();
+  });
+
   test("a press that focuses a field puts the caret at the end, wherever it lands", async () => {
     const panel = keyboardPanel();
     await settle();
@@ -1402,6 +1422,23 @@ describe("the keyboard's preview", () => {
     assert.equal(panels(), 3, "the board still up");
     s.cleanup();
   }
+
+  test("a press on it where the field's selection ends collapses the field's selection", async () => {
+    const s = await open({ preview: { tilt: 0 } });
+    s.a.input.select();
+    ray(
+      s.a.manager,
+      "selectstart",
+      /** @type {THREE.Object3D} */ (s.object()),
+      new THREE.Group(),
+      100,
+    );
+    await settle();
+    assert.deepEqual([s.a.input.selectionStart, s.a.input.selectionEnd], [2, 2]);
+    s.created[0].onKey({ key: "c", code: "KeyC" });
+    assert.equal(s.a.input.value, "abc");
+    s.cleanup();
+  });
 
   test("leans toward the player, hinged at its bottom edge", async () => {
     /** @param {number | undefined} tilt */

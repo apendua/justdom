@@ -2,7 +2,7 @@ import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
 import { createMirror } from "../elements/mirror.js";
-import { shape } from "./shape.js";
+import { group, shape } from "./shape.js";
 
 /**
  * @import { Mesh, MeshBasicMaterial, Object3D } from "three";
@@ -117,7 +117,61 @@ function bounds(mesh) {
  * @param {number} value
  */
 function round(value) {
-  return Math.round(value * 1e4) / 1e4;
+  // `+ 0` folds the -0 a rotation's cosine rounds to into 0.
+  return Math.round(value * 1e4) / 1e4 + 0;
+}
+
+/**
+ * The clip patch's `clipMatrix`, read the way three reads it: by letting the
+ * material patch a shader. It is the matrix from the mesh's vertices to the
+ * root's frame — where the clip box is, and where the browser draws.
+ *
+ * @param {Mesh} mesh
+ * @returns {THREE.Matrix3}
+ */
+function clipMatrixOf(mesh) {
+  const shader = {
+    uniforms: /** @type {Record<string, { value: unknown }>} */ ({}),
+    vertexShader: "void main() {\n#include <begin_vertex>\n}",
+    fragmentShader: "void main() {\n#include <alphatest_fragment>\n}",
+  };
+  /** @type {THREE.Material} */ (mesh.material).onBeforeCompile(
+    /** @type {never} */ (shader),
+    /** @type {never} */ (null),
+  );
+  return /** @type {THREE.Matrix3} */ (shader.uniforms.clipMatrix.value);
+}
+
+/**
+ * The extent of a mesh's vertices in the root's frame: taken through its
+ * clip matrix, which is where the clip patch compares them against the box.
+ *
+ * @param {Mesh} mesh
+ */
+function rootBounds(mesh) {
+  const matrix = clipMatrixOf(mesh);
+  const position = mesh.geometry.getAttribute("position");
+  const box = new THREE.Box2();
+  for (let i = 0; i < position.count; i++) {
+    const at = new THREE.Vector3(position.getX(i), position.getY(i), 1).applyMatrix3(matrix);
+    box.expandByPoint(new THREE.Vector2(at.x, at.y));
+  }
+  return {
+    left: round(box.min.x),
+    top: round(box.min.y),
+    right: round(box.max.x),
+    bottom: round(box.max.y),
+  };
+}
+
+/**
+ * The 2D part of an object's local matrix, as `[a, b, c, d, e, f]`.
+ *
+ * @param {Object3D} object
+ */
+function matrix2d(object) {
+  const e = object.matrix.elements;
+  return [e[0], e[1], e[4], e[5], e[12], e[13]].map(round);
 }
 
 /**
@@ -157,14 +211,62 @@ describe("svg shape", () => {
     s.teardown();
   });
 
-  test("the viewBox scales user space into the root's box", () => {
-    // A 10×5 box in a 100×50 root: ten px per user unit.
+  test("the viewBox scales user space into the root's box, through the clip matrix", () => {
+    // A 10×5 box in a 100×50 root: ten px per user unit. The vertices stay
+    // in user units — the root's content group carries the viewport — and
+    // the clip is told how to get from them to the root's px.
     const s = setup(
       "rect",
       { x: "1", y: "1", width: "2", height: "1", fill: "red" },
       { viewBox: "0 0 10 5" },
     );
-    assert.deepEqual(bounds(s.meshes[0]), { left: 10, top: 10, right: 30, bottom: 20 });
+    assert.deepEqual(bounds(s.meshes[0]), { left: 1, top: 1, right: 3, bottom: 2 });
+    assert.deepEqual(rootBounds(s.meshes[0]), { left: 10, top: 10, right: 30, bottom: 20 });
+    assert.deepEqual(matrix2d(s.object), [1, 0, 0, 1, 0, 0], "the shape itself is not moved");
+    s.teardown();
+  });
+
+  test("a shape's own transform is its object's matrix, not its vertices", () => {
+    const s = setup("rect", {
+      x: "0",
+      y: "0",
+      width: "10",
+      height: "10",
+      fill: "red",
+      // Written as the computed value Chromium reports for the attribute
+      // `translate(20 5) scale(2)`: jsdom maps no presentation attribute
+      // into computed style, and the computed style is what is read.
+      style: "transform: matrix(2, 0, 0, 2, 20, 5)",
+    });
+    assert.deepEqual(bounds(s.meshes[0]), { left: 0, top: 0, right: 10, bottom: 10 });
+    assert.deepEqual(matrix2d(s.object), [2, 0, 0, 2, 20, 5]);
+    assert.deepEqual(rootBounds(s.meshes[0]), { left: 20, top: 5, right: 40, bottom: 25 });
+
+    // Moving it is a matrix write: the same geometry, drawn somewhere else.
+    const geometry = s.meshes[0].geometry;
+    s.setAttribute("style", "transform: matrix(2, 0, 0, 2, 30, 5)");
+    assert.deepEqual(matrix2d(s.object), [2, 0, 0, 2, 30, 5]);
+    assert.equal(s.meshes[0].geometry, geometry, "a translation re-samples nothing");
+    assert.deepEqual(rootBounds(s.meshes[0]), { left: 30, top: 5, right: 50, bottom: 25 });
+    s.teardown();
+  });
+
+  test("scaling re-samples curves only when it crosses a rung of the ladder", () => {
+    const s = setup("circle", {
+      cx: "0",
+      cy: "0",
+      r: "5",
+      fill: "red",
+      style: "transform: matrix(1.1, 0, 0, 1.1, 0, 0)",
+    });
+    const first = s.meshes[0].geometry;
+    s.setAttribute("style", "transform: matrix(1.2, 0, 0, 1.2, 0, 0)");
+    assert.equal(s.meshes[0].geometry, first, "1.1 and 1.2 sample alike");
+    s.setAttribute("style", "transform: matrix(4, 0, 0, 4, 0, 0)");
+    assert.notEqual(s.meshes[0].geometry, first, "four times larger is sampled finer");
+    assert.ok(
+      s.meshes[0].geometry.getAttribute("position").count > first.getAttribute("position").count,
+    );
     s.teardown();
   });
 
@@ -463,6 +565,106 @@ describe("svg shape", () => {
     for (const subscription of subscriptions) {
       subscription.unsubscribe();
     }
+    root.remove();
+  });
+
+  test("a <g> that moves leaves its shapes' geometry alone", () => {
+    const root = document.createElementNS(SVG_NS, "svg");
+    root.setAttribute("viewBox", "0 0 50 25");
+    root.getBoundingClientRect = () =>
+      /** @type {DOMRect} */ ({ left: 0, top: 0, right: 100, bottom: 50, width: 100, height: 50 });
+    const g = document.createElementNS(SVG_NS, "g");
+    g.setAttribute("style", "transform: matrix(1, 0, 0, 1, 10, 0)");
+    const rect = document.createElementNS(SVG_NS, "rect");
+    rect.setAttribute("width", "5");
+    rect.setAttribute("height", "5");
+    rect.setAttribute("fill", "red");
+    rect.setAttribute("stroke", "blue");
+    g.appendChild(rect);
+    root.appendChild(g);
+    document.body.appendChild(root);
+    const mirror = createMirror();
+    for (const node of [root, g, rect]) {
+      mirror.adopt(node);
+    }
+    /** @type {Object3D | undefined} */
+    let groupObject;
+    /** @type {Object3D | undefined} */
+    let shapeObject;
+    const subscriptions = [
+      group({}, g).subscribe((value) => {
+        groupObject = value;
+      }),
+      shape({}, rect).subscribe((value) => {
+        shapeObject = value;
+      }),
+    ];
+    assert.ok(groupObject && shapeObject);
+    const meshes = /** @type {Mesh[]} */ (shapeObject.children);
+    const geometries = meshes.map((mesh) => mesh.geometry);
+    assert.deepEqual(matrix2d(groupObject), [1, 0, 0, 1, 10, 0], "the group carries its move");
+    // Twice the viewBox, then the group's 10 units: 20px in.
+    assert.deepEqual(rootBounds(meshes[0]), { left: 20, top: 0, right: 30, bottom: 10 });
+
+    // Every frame of a transform animation on the group, in miniature.
+    // `translate(20 5) rotate(90)`, as computed.
+    g.setAttribute("style", "transform: matrix(0, 1, -1, 0, 20, 5)");
+    mirror.attributeChanged(g);
+    assert.deepEqual(matrix2d(groupObject), [0, 1, -1, 0, 20, 5]);
+    assert.deepEqual(
+      meshes.map((mesh) => mesh.geometry),
+      geometries,
+      "one matrix write: the buffers under the group are the same objects",
+    );
+    assert.deepEqual(matrix2d(shapeObject), [1, 0, 0, 1, 0, 0]);
+    // The clip follows: the rect's corner (5, 5) is now at (20 - 5, 5 + 5)
+    // in user units, (30, 20) in the root's px.
+    assert.deepEqual(rootBounds(meshes[0]), { left: 30, top: 10, right: 40, bottom: 20 });
+
+    // And the world matrix three composes agrees with the clip matrix.
+    const content = new THREE.Object3D();
+    content.matrixAutoUpdate = false;
+    content.matrix.makeScale(2, 2, 1);
+    content.add(groupObject);
+    groupObject.add(shapeObject);
+    content.updateMatrixWorld(true);
+    const corner = new THREE.Vector3(5, 5, 0).applyMatrix4(meshes[0].matrixWorld);
+    const clipped = new THREE.Vector3(5, 5, 1).applyMatrix3(clipMatrixOf(meshes[0]));
+    assert.deepEqual([round(corner.x), round(corner.y)], [round(clipped.x), round(clipped.y)]);
+
+    for (const subscription of subscriptions) {
+      subscription.unsubscribe();
+    }
+    root.remove();
+  });
+
+  test("a nested svg is a group whose matrix is its viewport", () => {
+    const root = document.createElementNS(SVG_NS, "svg");
+    root.getBoundingClientRect = () =>
+      /** @type {DOMRect} */ ({ left: 0, top: 0, right: 100, bottom: 50, width: 100, height: 50 });
+    const inner = document.createElementNS(SVG_NS, "svg");
+    for (const [name, value] of Object.entries({
+      x: "10",
+      y: "20",
+      width: "40",
+      height: "20",
+      viewBox: "0 0 4 2",
+    })) {
+      inner.setAttribute(name, value);
+    }
+    root.appendChild(inner);
+    document.body.appendChild(root);
+    const mirror = createMirror();
+    mirror.adopt(root);
+    mirror.adopt(inner);
+    /** @type {Object3D | undefined} */
+    let object;
+    const subscription = group({}, inner).subscribe((value) => {
+      object = value;
+    });
+    assert.ok(object);
+    assert.deepEqual(matrix2d(object), [10, 0, 0, 10, 10, 20]);
+    subscription.unsubscribe();
     root.remove();
   });
 

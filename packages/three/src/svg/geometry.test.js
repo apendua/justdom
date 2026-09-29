@@ -1,5 +1,6 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
+import * as THREE from "three";
 import {
   aboutOrigin,
   apply,
@@ -9,6 +10,9 @@ import {
   parseCssMatrix,
   parsePreserveAspectRatio,
   parseViewBox,
+  samplingScale,
+  toMatrix3,
+  toMatrix4,
   transformPositions,
   translation,
   viewportMatrix,
@@ -144,5 +148,25 @@ describe("svg geometry", () => {
       // The box's own corner lands on the viewport's.
       assert.deepEqual(apply(m, 10, 20), [0, 0]);
     });
+  });
+
+  test("a matrix reaches three's 4×4 and 3×3 as the same map of the plane", () => {
+    const m = multiply(translation(7, -3), [0, 1, -1, 0, 0, 0]);
+    const [x, y] = apply(m, 2, 5);
+    const four = new THREE.Vector3(2, 5, 4).applyMatrix4(toMatrix4(m, new THREE.Matrix4()));
+    assertClose([four.x, four.y, four.z], [x, y, 4], "4×4, z passed through");
+    const three = new THREE.Vector3(2, 5, 1).applyMatrix3(toMatrix3(m, new THREE.Matrix3()));
+    assertClose([three.x, three.y, three.z], [x, y, 1], "3×3, homogeneous");
+  });
+
+  test("the sampling scale climbs in half-octaves and never rounds down", () => {
+    assert.equal(samplingScale(1), 1);
+    assert.equal(samplingScale(2), 2);
+    assert.equal(samplingScale(1.1), Math.SQRT2);
+    assert.equal(samplingScale(1.3), Math.SQRT2, "a small zoom is the same rung");
+    assert.ok(samplingScale(1.5) > 1.5);
+    assert.ok(samplingScale(0.3) >= 0.3 && samplingScale(0.3) < 0.3 * Math.SQRT2);
+    assert.equal(samplingScale(0), 1, "a degenerate matrix samples as if unscaled");
+    assert.equal(samplingScale(Number.NaN), 1);
   });
 });

@@ -49,6 +49,9 @@ import { TextBatchContext } from "./textBatch.js";
  */
 const contentGroups = new WeakMap();
 
+/** Scratch for composing a scroll onto a content group's matrix. */
+const scrollTranslation = new THREE.Matrix4();
+
 /**
  * Where a node's projected children belong under its object: the content
  * group for a box, the object itself for anything that has none (the
@@ -160,6 +163,12 @@ function isClickable(element) {
  *   else belongs inside the box, on top of its background — the tick in a
  *   checkbox, and nothing at all for an element whose contents are its own
  *   child nodes.
+ * @property {(target: THREE.Matrix4) => void} [contentMatrix] Where the
+ *   element's children are drawn from, if not from its border-box corner:
+ *   writes the matrix from the children's frame to the element's into
+ *   `target`, read reactively. An `<svg>` root is the case — its children
+ *   are in user space, and this is its `viewBox`. The scroll offset is
+ *   applied on top of it.
  * @property {() => void} [onPress] Told when a ray's press on this box has
  *   been delivered to the element as a click — for a control that has to do
  *   something the DOM will not do for it, such as a text field asking for a
@@ -182,7 +191,12 @@ function isClickable(element) {
  * @returns {import("@apendua/signal").Source<THREE.Object3D>}
  */
 export function box(ctx, element, options = {}) {
-  const { clickable: isRayTarget = isClickable, content = () => [], onPress } = options;
+  const {
+    clickable: isRayTarget = isClickable,
+    content = () => [],
+    contentMatrix,
+    onPress,
+  } = options;
   /** @type {THREE.Object3D<XREventMap>} */
   const object = new THREE.Object3D();
   const properties = new VisualProperties();
@@ -566,8 +580,10 @@ export function box(ctx, element, options = {}) {
       // re-measured or repositioned — their coordinates were chosen so the
       // scroll could not change them. (`|| 0` turns the -0 an unscrolled
       // axis would negate to back into 0.)
-      const scroll = getScrollOffset(element);
-      place(contentGroup, -scroll.left || 0, -scroll.top || 0, 0);
+      if (!contentMatrix) {
+        const scroll = getScrollOffset(element);
+        place(contentGroup, -scroll.left || 0, -scroll.top || 0, 0);
+      }
       currentClipBox = getLocalClipBox(element);
       // Fragments outside the box are discarded, but an element with nothing
       // left to show is worth skipping wholesale — `visible` prunes it and
@@ -576,6 +592,23 @@ export function box(ctx, element, options = {}) {
       obj.visible = shown.get();
       batchChanged();
     }),
+    // The content group of a box whose children are in a frame of their
+    // own: the same scroll, applied after the matrix into the box's frame.
+    // An effect apart, and only for such a box, so the matrix's reads — a
+    // `viewBox`, the content box it is fitted to — are nobody else's.
+    ...(contentMatrix
+      ? [
+          effects(() => {
+            const scroll = getScrollOffset(element);
+            contentGroup.matrixAutoUpdate = false;
+            contentMatrix(contentGroup.matrix);
+            contentGroup.matrix.premultiply(
+              scrollTranslation.makeTranslation(-scroll.left || 0, -scroll.top || 0, 0),
+            );
+            contentGroup.matrixWorldNeedsUpdate = true;
+          }),
+        ]
+      : []),
     children(
       // An overlay is opaque to rays in its own right. Without this the ray
       // that lands between two menu rows carries on through the menu and hits

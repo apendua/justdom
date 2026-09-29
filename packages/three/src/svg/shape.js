@@ -23,7 +23,9 @@ import {
   parseCssMatrix,
   parsePreserveAspectRatio,
   parseViewBox,
-  transformPositions,
+  samplingScale,
+  toMatrix3,
+  toMatrix4,
   translation,
   viewportMatrix,
 } from "./geometry.js";
@@ -55,17 +57,17 @@ import {
  * a fill mesh, a stroke mesh, or both, each triangulated from the element's
  * geometry and dressed from its computed style.
  *
- * Where the vertices land is decided here and not in the scene graph. Every
- * shape is baked into the frame of the `<svg>` root it sits in — its user
- * space taken through its own transform, its ancestors' transforms and the
- * root's viewport transform, on the CPU — and its object sits at the root's
- * origin with an identity matrix. That is the one frame the portal already
- * knows how to clip and order content in: the clip patch tests the mesh's
- * own `position.xy` against a box in the element's frame, so a shape whose
- * vertices are in that frame is clipped by the same four numbers the root's
- * text would be. The price is that a transform animation on a `<g>` rewrites
- * its descendants' vertex buffers each frame; the plan's S4 moves transforms
- * onto matrices once the clip can follow them there.
+ * The vertices stay in the shape's own user space, and where they land is
+ * the scene graph's business, as it is for a box under a CSS transform: the
+ * `<svg>` root's content group carries the viewport matrix, each `<g>` and
+ * nested `<svg>` carries its own transform, and the shape's object carries
+ * the shape's. Three composes them, so a transform animated on a `<g>` is a
+ * matrix write per frame and its descendants' buffers never change.
+ *
+ * The clip box is still given in the root's frame, which is no longer the
+ * frame the vertices are in; the shape tells the clip patch the matrix
+ * between the two — the composition of everything above — so the edge stays
+ * where the root's overflow puts it.
  */
 
 /**
@@ -184,10 +186,11 @@ function ownTransform(element, style, viewBoxOrigin) {
 
 /**
  * Everything the element inherits from where it stands: the matrix from its
- * user space to its `<svg>` root's border-box frame, the opacity of the
- * groups above it folded into one number, and the root itself — null for a
- * shape that is not inside an `<svg>` at all, which the DOM allows and a
- * browser draws nothing for.
+ * user space to its `<svg>` root's border-box frame — the product of the
+ * matrices the objects between the two carry — the opacity of the groups
+ * above it folded into one number, and the root itself: null for a shape
+ * that is not inside an `<svg>` at all, which the DOM allows and a browser
+ * draws nothing for.
  *
  * @typedef {object} Chain
  * @property {Matrix2D} ctm
@@ -222,10 +225,89 @@ function nearestViewBoxOrigin(element) {
 }
 
 /**
- * Walk from the element to its root, composing as it goes. Every computed
- * style read on the way is a dependency, so a transform written to a `<g>`
- * three levels up, or the root resizing under a new `viewBox`, re-runs the
- * shapes below it and nothing else.
+ * The matrix an `<svg>` root's content group carries: from the root's user
+ * space to its border-box frame — the `viewBox` fitted into the content
+ * box, offset from the border-box corner by the border and padding around
+ * it. Every computed style and size read is a dependency, so a root that
+ * resizes, or a new `viewBox`, re-runs this and nothing under it.
+ *
+ * @param {Element} root
+ * @returns {Matrix2D}
+ */
+export function rootMatrix(root) {
+  const style = getComputedStyleCached(root);
+  const size = getBorderBoxSize(asHtml(root));
+  const borderLeft = px(style.borderLeftWidth);
+  const borderTop = px(style.borderTopWidth);
+  const paddingLeft = px(style.paddingLeft);
+  const paddingTop = px(style.paddingTop);
+  const width =
+    size.width - borderLeft - px(style.borderRightWidth) - paddingLeft - px(style.paddingRight);
+  const height =
+    size.height - borderTop - px(style.borderBottomWidth) - paddingTop - px(style.paddingBottom);
+  const viewport = viewportMatrix(
+    parseViewBox(root.getAttribute("viewBox")),
+    parsePreserveAspectRatio(root.getAttribute("preserveAspectRatio")),
+    width,
+    height,
+  );
+  return multiply(translation(borderLeft + paddingLeft, borderTop + paddingTop), viewport);
+}
+
+/**
+ * The matrix an element below the root carries on its own object: from its
+ * user space to its parent's. That is its computed `transform` about its
+ * `transform-origin`, and for a nested `<svg>` the viewport it establishes
+ * first — placed at its `x`, `y`, its own `viewBox` fitted into the `width`
+ * and `height` it names. Not yet clipped to that viewport
+ * (`docs/freedom-svg-plan.md`, S2b).
+ *
+ * @param {Element} element
+ * @returns {Matrix2D}
+ */
+export function localMatrix(element) {
+  const style = getComputedStyleCached(element);
+  /** @type {Matrix2D} */
+  let matrix = IDENTITY;
+  if (element.localName === "svg") {
+    const width = parseLength(readProperty(style, element, "width"), 0);
+    const height = parseLength(readProperty(style, element, "height"), 0);
+    const viewport = viewportMatrix(
+      parseViewBox(element.getAttribute("viewBox")),
+      parsePreserveAspectRatio(element.getAttribute("preserveAspectRatio")),
+      width,
+      height,
+    );
+    const x = parseLength(readProperty(style, element, "x"), 0);
+    const y = parseLength(readProperty(style, element, "y"), 0);
+    matrix = multiply(translation(x, y), viewport);
+  }
+  const own = ownTransform(element, style, nearestViewBoxOrigin(element));
+  return own ? multiply(own, matrix) : matrix;
+}
+
+/**
+ * Commit a 2D matrix as an object's local matrix, the way `place` commits a
+ * position: the object stops recomposing its own, and its world matrix is
+ * marked stale so the next walk carries the change to what is below it.
+ *
+ * @param {THREE.Object3D} object
+ * @param {Matrix2D} matrix
+ * @returns {void}
+ */
+function commitMatrix(object, matrix) {
+  object.matrixAutoUpdate = false;
+  toMatrix4(matrix, object.matrix);
+  object.matrixWorldNeedsUpdate = true;
+}
+
+/**
+ * Walk from the element to its root, composing the same matrices the
+ * objects on the way carry. Every computed style read on the way is a
+ * dependency, so a transform written to a `<g>` three levels up, or the
+ * root resizing under a new `viewBox`, re-runs the shapes below it and
+ * nothing else — and what a re-run costs is a uniform write and, at most, a
+ * new sampling density.
  *
  * @param {Element} element
  * @returns {Chain}
@@ -238,60 +320,14 @@ function readChain(element) {
   let current = element;
   while (current) {
     const style = getComputedStyleCached(current);
-    if (isSvgRoot(current)) {
-      // The viewport: the root's content box, which is where the `viewBox`
-      // is fitted, offset from the border-box corner the frame is measured
-      // from by the border and padding around it.
-      const size = getBorderBoxSize(asHtml(current));
-      const borderLeft = px(style.borderLeftWidth);
-      const borderTop = px(style.borderTopWidth);
-      const paddingLeft = px(style.paddingLeft);
-      const paddingTop = px(style.paddingTop);
-      const width =
-        size.width - borderLeft - px(style.borderRightWidth) - paddingLeft - px(style.paddingRight);
-      const height =
-        size.height -
-        borderTop -
-        px(style.borderBottomWidth) -
-        paddingTop -
-        px(style.paddingBottom);
-      const viewport = viewportMatrix(
-        parseViewBox(current.getAttribute("viewBox")),
-        parsePreserveAspectRatio(current.getAttribute("preserveAspectRatio")),
-        width,
-        height,
-      );
-      ctm = multiply(
-        translation(borderLeft + paddingLeft, borderTop + paddingTop),
-        multiply(viewport, ctm),
-      );
-      // The root's own opacity is applied to its box by `div`; the shapes
-      // inside are drawn from materials of their own, so it is applied here
-      // too, or a faded-out icon would keep its picture at full strength.
-      opacity *= parseNumber(style.opacity, 1);
-      return { ctm, opacity, root: current };
-    }
-    if (current.localName === "svg") {
-      // A nested viewport: placed at its `x`, `y`, with its own `viewBox`
-      // fitted into the `width` and `height` it names. Not yet clipped to
-      // that viewport (`docs/freedom-svg-plan.md`, S2).
-      const width = parseLength(readProperty(style, current, "width"), 0);
-      const height = parseLength(readProperty(style, current, "height"), 0);
-      const viewport = viewportMatrix(
-        parseViewBox(current.getAttribute("viewBox")),
-        parsePreserveAspectRatio(current.getAttribute("preserveAspectRatio")),
-        width,
-        height,
-      );
-      const x = parseLength(readProperty(style, current, "x"), 0);
-      const y = parseLength(readProperty(style, current, "y"), 0);
-      ctm = multiply(translation(x, y), multiply(viewport, ctm));
-    }
-    const own = ownTransform(current, style, nearestViewBoxOrigin(current));
-    if (own) {
-      ctm = multiply(own, ctm);
-    }
+    // The root's own opacity is applied to its box by `div`; the shapes
+    // inside are drawn from materials of their own, so it is applied here
+    // too, or a faded-out icon would keep its picture at full strength.
     opacity *= parseNumber(style.opacity, 1);
+    if (isSvgRoot(current)) {
+      return { ctm: multiply(rootMatrix(current), ctm), opacity, root: current };
+    }
+    ctm = multiply(localMatrix(current), ctm);
     current = getParentElement(current);
   }
   return { ctm, opacity, root: null };
@@ -436,15 +472,16 @@ function readStrokeSpec(style, element) {
 }
 
 /**
- * The fill's triangles, in the root's frame — or null for a shape that
- * encloses no area.
+ * The fill's triangles, in user space — or null for a shape that encloses
+ * no area.
  *
  * @param {ShapePath} path
  * @param {"nonzero" | "evenodd"} fillRule
- * @param {Matrix2D} ctm
+ * @param {number} scale How large the shape is drawn, per user unit, which
+ *   decides how finely its curves are sampled.
  * @returns {THREE.BufferGeometry | null}
  */
-export function buildFillGeometry(path, fillRule, ctm) {
+export function buildFillGeometry(path, fillRule, scale) {
   // `toShapes` reads the fill rule off the path it is called on. The parsed
   // path is shared by every element with the same geometry, so the rule is
   // written just before the call and read nowhere after it.
@@ -453,13 +490,11 @@ export function buildFillGeometry(path, fillRule, ctm) {
   if (!shapes.length) {
     return null;
   }
-  const geometry = new THREE.ShapeGeometry(shapes, segmentsFor(matrixScale(ctm)));
-  const position = geometry.getAttribute("position");
-  if (!position.count) {
+  const geometry = new THREE.ShapeGeometry(shapes, segmentsFor(scale));
+  if (!geometry.getAttribute("position").count) {
     geometry.dispose();
     return null;
   }
-  transformPositions(/** @type {Float32Array} */ (position.array), ctm);
   // Drawn flat and unlit, and clipped in the position varying alone: the
   // normals and uvs `ShapeGeometry` writes are dead weight on the GPU.
   geometry.deleteAttribute("normal");
@@ -468,22 +503,21 @@ export function buildFillGeometry(path, fillRule, ctm) {
 }
 
 /**
- * The stroke's triangles, in the root's frame — the element's subpaths
- * sampled, cut into dashes where there are any, and each run given width,
- * joins and caps by three's stroker in user space before the whole is taken
- * through the matrix, so that a `viewBox` that stretches one axis stretches
- * the stroke with it, as the browser does. Null for nothing to draw.
+ * The stroke's triangles, in user space — the element's subpaths sampled,
+ * cut into dashes where there are any, and each run given width, joins and
+ * caps by three's stroker. The matrices above take the stroke where the
+ * shape goes, so a `viewBox` that stretches one axis stretches the stroke
+ * with it, as the browser does. Null for nothing to draw.
  *
  * @param {ShapePath} path
  * @param {StrokeSpec} spec
- * @param {Matrix2D} ctm
+ * @param {number} scale How large the shape is drawn, per user unit.
  * @returns {THREE.BufferGeometry | null}
  */
-export function buildStrokeGeometry(path, spec, ctm) {
+export function buildStrokeGeometry(path, spec, scale) {
   if (!(spec.width > 0)) {
     return null;
   }
-  const scale = matrixScale(ctm);
   const segments = segmentsFor(scale);
   const style = SVGLoader.getStrokeStyle(spec.width, "#000", spec.join, spec.cap, spec.miterLimit);
   // In user units: what the stroker merges as one point has to be small
@@ -520,10 +554,8 @@ export function buildStrokeGeometry(path, spec, ctm) {
   if (!vertices.length) {
     return null;
   }
-  const positions = new Float32Array(vertices);
-  transformPositions(positions, ctm);
   const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+  geometry.setAttribute("position", new THREE.BufferAttribute(new Float32Array(vertices), 3));
   return geometry;
 }
 
@@ -551,11 +583,12 @@ emptyGeometry.setAttribute("position", new THREE.BufferAttribute(new Float32Arra
  *   `stroke-opacity` that goes with this mesh.
  * @param {() => number} options.renderOrder
  * @param {{ value: THREE.Vector4 }} options.clip
+ * @param {{ value: THREE.Matrix3 }} options.clipMatrix
  * @param {() => boolean} options.hidden Whether `visibility` hides the
  *   element this mesh paints.
  * @returns {Source<Component>}
  */
-function paintedMesh({ geometry, paint, opacity, renderOrder, clip, hidden }) {
+function paintedMesh({ geometry, paint, opacity, renderOrder, clip, clipMatrix, hidden }) {
   const mesh = new THREE.Mesh();
   return $(mesh, [
     set("material", () => {
@@ -570,7 +603,7 @@ function paintedMesh({ geometry, paint, opacity, renderOrder, clip, hidden }) {
         transparent: true,
         depthWrite: false,
       });
-      applyClip(material, clip);
+      applyClip(material, clip, clipMatrix);
       onCleanup(() => {
         material.dispose();
       });
@@ -625,7 +658,17 @@ export function shape(ctx, element) {
     return current ? parseShape(current) : null;
   });
 
+  /** This shape's own transform, which its object carries. */
+  const own = new Derived(() => localMatrix(element), { isEqual: matrixEqual });
+
   const chain = new Derived(() => readChain(element), { isEqual: chainEqual });
+
+  // What the chain decides, apart, so a transform animated above the shape
+  // stops at the clip matrix and reaches neither the draw order, nor the
+  // alpha, nor — until it crosses a rung — the geometry.
+  const root = new Derived(() => chain.get().root);
+  const opacity = new Derived(() => chain.get().opacity);
+  const scale = new Derived(() => samplingScale(matrixScale(chain.get().ctm)));
 
   const fillPaint = new Derived(() => parsePaint(readProperty(style(), element, "fill")), {
     isEqual: paintEqual,
@@ -652,12 +695,12 @@ export function shape(ctx, element) {
    * @returns {() => number}
    */
   const renderOrderOf = (layer) => () => {
-    const root = chain.get().root;
-    const base = getContentRenderOrder(asHtml(root ?? element));
-    if (!root) {
+    const current = root.get();
+    const base = getContentRenderOrder(asHtml(current ?? element));
+    if (!current) {
       return base;
     }
-    const { index, count } = getPaintOrder(root);
+    const { index, count } = getPaintOrder(current);
     const at = index.get(element);
     if (at === undefined) {
       return base;
@@ -667,13 +710,17 @@ export function shape(ctx, element) {
 
   /**
    * What the root's overflow and the scrollers above it leave of the shape,
-   * in the root's frame — which is the frame the vertices are in. One
-   * uniform, shared by both meshes, written in an effect of its own so a
-   * scroll writes four numbers here and nothing else.
+   * in the root's frame. One uniform, shared by both meshes, written in an
+   * effect of its own so a scroll writes four numbers here and nothing else.
    */
   const clip = { value: new THREE.Vector4(-1e6, -1e6, 1e6, 1e6) };
 
-  const opacity = () => chain.get().opacity;
+  /**
+   * From the shape's user space, where its vertices are, to the root's
+   * frame, where the clip box is: the composition of every matrix above the
+   * meshes. Shared by both, and written when the chain moves.
+   */
+  const clipMatrix = { value: new THREE.Matrix3() };
 
   /**
    * Whether `visibility` hides this shape, as a box's `hidden` does: its
@@ -687,15 +734,20 @@ export function shape(ctx, element) {
 
   return just(object, [
     effects((obj) => {
-      place(obj, 0, 0, 0);
+      commitMatrix(obj, own.get());
+    }),
+    effects((obj) => {
       // `display: none` takes the shape out; `visibility` is the meshes'
       // business, below, the way it is a box's quad and not its object.
       obj.visible = style().display !== "none";
     }),
     effects(() => {
-      const root = chain.get().root;
-      const box = root ? getInteriorClipBox(asHtml(root)) : UNCLIPPED;
+      const current = root.get();
+      const box = current ? getInteriorClipBox(asHtml(current)) : UNCLIPPED;
       clip.value.set(box.left, box.top, box.right, box.bottom);
+    }),
+    effects(() => {
+      toMatrix3(chain.get().ctm, clipMatrix.value);
     }),
     children(
       // Fill before stroke: with equal render order and depth the sort
@@ -705,14 +757,15 @@ export function shape(ctx, element) {
           ? paintedMesh({
               geometry: () => {
                 const current = path.get();
-                return current ? buildFillGeometry(current, fillRule.get(), chain.get().ctm) : null;
+                return current ? buildFillGeometry(current, fillRule.get(), scale.get()) : null;
               },
               paint: () => fillPaint.get(),
               hidden: () => hidden.get(),
               opacity: () =>
-                opacity() * parseNumber(readProperty(style(), element, "fill-opacity"), 1),
+                opacity.get() * parseNumber(readProperty(style(), element, "fill-opacity"), 1),
               renderOrder: renderOrderOf(0),
               clip,
+              clipMatrix,
             })
           : Nothing(),
       )(observable(() => fillPaint.get() !== null)),
@@ -721,16 +774,15 @@ export function shape(ctx, element) {
           ? paintedMesh({
               geometry: () => {
                 const current = path.get();
-                return current
-                  ? buildStrokeGeometry(current, strokeSpec.get(), chain.get().ctm)
-                  : null;
+                return current ? buildStrokeGeometry(current, strokeSpec.get(), scale.get()) : null;
               },
               paint: () => strokePaint.get(),
               hidden: () => hidden.get(),
               opacity: () =>
-                opacity() * parseNumber(readProperty(style(), element, "stroke-opacity"), 1),
+                opacity.get() * parseNumber(readProperty(style(), element, "stroke-opacity"), 1),
               renderOrder: renderOrderOf(1),
               clip,
+              clipMatrix,
             })
           : Nothing(),
       )(observable(() => strokePaint.get() !== null)),
@@ -739,12 +791,14 @@ export function shape(ctx, element) {
 }
 
 /**
- * A `<g>` (or anything else that only groups): an object with nothing of
- * its own, so that the object tree keeps the DOM's shape and the portal has
- * somewhere to attach the children. Its transform and opacity are not
- * applied here — every shape below folds its ancestors' into its own
- * vertices and alpha — but `display: none` is, since a hidden group's
- * shapes still compute a `display` of their own.
+ * A `<g>` (or anything else that only groups, a nested `<svg>` included):
+ * an object with nothing to draw of its own, so that the object tree keeps
+ * the DOM's shape and the portal has somewhere to attach the children. It
+ * carries its transform — and a nested `<svg>` its viewport — as its matrix,
+ * so moving it moves everything below without touching their geometry.
+ * Its opacity is not applied here: every shape below folds its ancestors'
+ * into its own alpha. `display: none` is, since a hidden group's shapes
+ * still compute a `display` of their own.
  *
  * @param {WeakKey} ctx
  * @param {Element} element
@@ -752,9 +806,12 @@ export function shape(ctx, element) {
  */
 export function group(ctx, element) {
   const object = new THREE.Object3D();
+  const matrix = new Derived(() => localMatrix(element), { isEqual: matrixEqual });
   return just(object, [
     effects((obj) => {
-      place(obj, 0, 0, 0);
+      commitMatrix(obj, matrix.get());
+    }),
+    effects((obj) => {
       obj.visible = getComputedStyleCached(element).display !== "none";
     }),
   ]);

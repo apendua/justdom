@@ -22,11 +22,12 @@ import { cardStyle, captionStyle, classes, headingStyle, rowStyle } from "./pane
  * it is styled the way a diagram on a page is styled, through classes and
  * a stylesheet rather than presentation attributes, because computed style
  * is what the plugin reads. Below it: the same icon through the same
- * `viewBox` at three sizes, a rotated group, the three line joins and caps,
- * a `stroke-dashoffset` animation (the marching ants every selection
- * rectangle wears) and a stroke colour animated by CSS keyframes — the two
- * animations being the ones that cost a geometry rebuild and a uniform write
- * respectively, which is worth being able to see side by side.
+ * `viewBox` at three sizes, a star spun by a CSS animation on its `<g>`, a
+ * rotated group, the three line joins and caps, a `stroke-dashoffset`
+ * animation (the marching ants every selection rectangle wears) and a stroke
+ * colour animated by CSS keyframes. The three animations cost a matrix
+ * write, a geometry rebuild and a uniform write respectively, which is worth
+ * being able to see side by side.
  *
  * The teal of the diagram's nodes is used nowhere else in the showcase, so
  * the visual suite can count it and know the shapes were drawn.
@@ -94,6 +95,10 @@ const diagramStyle = stylesheet`
  * takes the colour from the element around it, as an icon on a page does.
  */
 const iconStyle = stylesheet`
+  @keyframes ${CLASS_NAME}-spin {
+    to { transform: rotate(360deg); }
+  }
+
   .${CLASS_NAME} {
     display: block;
     color: rgb(0, 123, 255);
@@ -118,6 +123,13 @@ const iconStyle = stylesheet`
     stroke: rgb(178, 122, 24);
     stroke-width: 1;
     stroke-linejoin: round;
+  }
+
+  /* About the viewBox's centre: a group's transform moves its shapes
+     without touching their geometry, one matrix per frame. */
+  .${CLASS_NAME} .spin {
+    transform-origin: 12px 12px;
+    animation: ${CLASS_NAME}-spin 6s linear infinite;
   }
 `;
 
@@ -264,12 +276,17 @@ const VectorsPanel = component((_ctx: WeakKey) => {
             attr("class", classes(iconStyle, iconLarge)),
             attr({ viewBox: "0 0 24 24" }),
             children(
-              $$("polygon", [
-                attr({
-                  class: "star",
-                  points:
-                    "12,2 14.9,8.6 22,9.3 16.6,14.1 18.2,21 12,17.4 5.8,21 7.4,14.1 2,9.3 9.1,8.6",
-                }),
+              $$("g", [
+                attr({ class: "spin" }),
+                children(
+                  $$("polygon", [
+                    attr({
+                      class: "star",
+                      points:
+                        "12,2 14.9,8.6 22,9.3 16.6,14.1 18.2,21 12,17.4 5.8,21 7.4,14.1 2,9.3 9.1,8.6",
+                    }),
+                  ]),
+                ),
               ]),
             ),
           ]),

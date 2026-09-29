@@ -1382,13 +1382,16 @@ computed style where the browser exposes it as CSS (`cx`, `r`, `x`,
 `width`, `d`) and from the attribute otherwise, so a shape animated by
 either follows.
 
-Two prints of the measuring tape. **Transforms are baked, for now.** Every
-shape's vertices are computed in the `<svg>`'s own frame — through its
-transform, its ancestors' and the viewport's — because that is the one frame
-the portal already clips and orders content in; so a `transform` animation
-on a `<g>` rewrites its descendants' vertex buffers each frame, where a
-`transform` on a box is a matrix write. Cheap enough for an icon that spins,
-and the plan is to move it onto matrices. **Dashes are geometry, not a
+Transforms are matrices, as they are for boxes: a shape's vertices stay in
+its own user space, the `<svg>`'s content group carries the viewport, and
+each `<g>`, nested `<svg>` and shape carries its own `transform` on its
+object. A `transform` animated on a `<g>` — or the `<svg>` resizing — is a
+matrix write per frame, and nothing under it is rebuilt; the clip follows
+the shapes there through the clip patch's matrix. A scale animation
+re-samples curves only when it crosses a half-octave, so a zoomed shape
+never shows its polygons and a slow zoom does not re-triangulate each frame.
+
+One print of the measuring tape. **Dashes are geometry, not a
 shader**, for the reason `svg/dash.js` gives, so a `stroke-dashoffset`
 animation rebuilds the stroke each frame — a few hundred vertices, which the
 marching ants in the showcase spend without noticing.

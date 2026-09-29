@@ -3,8 +3,9 @@
  * viewport transform an `<svg>` applies to its user space, the CSS transform
  * each element applies about its origin, and the composition of the two into
  * one matrix from a shape's user space to the `<svg>` root's border-box
- * frame — the frame the shape's vertices are baked into, because it is the
- * frame the portal's clip box and render order are already given in.
+ * frame — the frame the portal's clip box is given in. Each of the parts is
+ * committed to an object's matrix in the scene graph; the composition is
+ * what the clip patch is told, so the clip can follow the shape there.
  *
  * Everything here is pure and 2D. A matrix is the six numbers SVG and CSS
  * both write it as, `[a, b, c, d, e, f]`: x′ = a·x + c·y + e and y′ = b·x +
@@ -134,9 +135,9 @@ export function transformPositions(positions, m) {
 /**
  * A CSS `transform` as computed — `matrix(…)` or `matrix3d(…)` — reduced to
  * the plane. The depth terms of a 3D matrix are dropped rather than
- * projected: a shape is flat, and what a `rotateX` on a `<g>` would mean in a
- * scene is a question for the phase that gives shapes matrices of their own
- * (`docs/freedom-svg-plan.md`, S4). `none`, or anything unreadable, is null.
+ * projected: a shape is flat, and it is kept on the panel's plane even under a
+ * `rotateX` on a `<g>`, whose depth is not the SVG's to give. `none`, or
+ * anything unreadable, is null.
  *
  * @param {string} value
  * @returns {Matrix2D | null}
@@ -275,4 +276,48 @@ export function viewportMatrix(viewBox, aspect, width, height) {
     }
   }
   return [sx, 0, 0, sy, tx - viewBox.x * sx, ty - viewBox.y * sy];
+}
+
+/**
+ * The matrix as three's 4×4, in the plane: z passes through untouched, so
+ * an object carrying it keeps the depth its parent gave it.
+ *
+ * @param {Matrix2D} m
+ * @param {import('three').Matrix4} target
+ * @returns {import('three').Matrix4}
+ */
+export function toMatrix4(m, target) {
+  const [a, b, c, d, e, f] = m;
+  return target.set(a, c, 0, e, b, d, 0, f, 0, 0, 1, 0, 0, 0, 0, 1);
+}
+
+/**
+ * The matrix as three's 3×3 in homogeneous 2D coordinates — the shape of the
+ * clip patch's `clipMatrix` uniform.
+ *
+ * @param {Matrix2D} m
+ * @param {import('three').Matrix3} target
+ * @returns {import('three').Matrix3}
+ */
+export function toMatrix3(m, target) {
+  const [a, b, c, d, e, f] = m;
+  return target.set(a, c, e, b, d, f, 0, 0, 1);
+}
+
+/**
+ * A scale, rounded up to the next rung of a ladder a half-octave apart —
+ * one, √2, two, 2√2, … — for deciding how finely to sample curves. Sampled
+ * geometry lives in user space and is drawn through a matrix, so a scale
+ * that changes every frame (a zoom animated on a `<g>`) must not re-sample
+ * every frame; it re-samples when it crosses a rung, and never draws a
+ * curve coarser than the exact scale would have.
+ *
+ * @param {number} scale
+ * @returns {number}
+ */
+export function samplingScale(scale) {
+  if (!(scale > 0) || !Number.isFinite(scale)) {
+    return 1;
+  }
+  return 2 ** (Math.ceil(Math.log2(scale) * 2 - 1e-9) / 2);
 }

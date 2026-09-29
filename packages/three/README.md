@@ -95,6 +95,15 @@ without leaving the scene:
 $(new THREE.Mesh(), [makeInteractive(() => props.draggable)]);
 ```
 
+The events are the registered object's, whichever of its meshes the ray
+met. A projected button is a quad of background and a quad of text, and a
+hand drifting from the one onto the other gets a `pointermove`, not a
+`pointerleave` and a `pointerenter`; a press on the label released on the
+background is a `select`. Every event says which `controller` it came from
+and which `inputSource` three connected to it, so what is pointed at can
+reach the hand's gamepad. A pointer event's is null until something
+connects, which is a controller under a test.
+
 **Hiding something takes it out of the raycast**, as it takes it out of the
 draw: `object.visible = false` on anything — the ray target itself, a group
 several levels above it, a panel the app hangs a whole card off — and nothing
@@ -635,6 +644,50 @@ Spread over frames it would tear: the content sliding this frame, its
 clipping catching up over the next several, under a hand that is still
 dragging. An interaction lands whole in the frame that carries it; deferral
 is for content changes, which nobody's hand is resting on.
+
+### Haptics
+
+A button on a page has a click to say it was pressed; a projected one is a
+quad at the end of a ray, and the hand holding the controller can be told.
+Mark an element `data-xr-haptic` and the controller's motors pulse when the
+ray arrives on it and again when the trigger closes on it. The mark on a
+card marks every button in it:
+
+```html
+<div class="card" data-xr-haptic>
+  <button>One</button>
+  <button>Two</button>
+</div>
+```
+
+The mark is the opt-in, read when the ray arrives, so it can be put on and
+taken off at any time. What it feels like is the panel's, or the scene's
+(see **Panel defaults** below):
+
+```js
+dom(ctx, menu, [set({ position })], {
+  haptics: { hover: false, strength: 0.6, flavor: "knock" },
+});
+```
+
+`hover` and `active` turn either event off; both are on unless told.
+`strength` multiplies every pulse, clamped to what the motors can do.
+`flavor` picks the pulses: `tick` (a light high-frequency click, the
+default), `knock` (the low motor, a thump), `buzz` (longer and softer) or
+`key` (a mechanical key, felt closing and opening again), or a
+`HapticFlavor` of your own, a `hover` pulse, a `press` pulse and an
+optional `release` pulse, each a `duration` in milliseconds and a `strong`
+and a `weak` magnitude from 0 to 1. `HAPTIC_FLAVORS` holds the named ones
+to start from. `false` is no haptics for the panel whatever the scene says;
+there is no `true`, for the reason `loadingFrame` has none.
+
+What plays is the hand's own: the event carries the input source three
+connected to the controller, and every actuator of its gamepad gets a
+`dual-rumble` effect, or a `pulse` on a runtime that only has that. A
+tracked hand has no motors and feels nothing. A hover is one pulse per
+button, not per quad: the ray drifting from a label onto its background is
+a `pointermove`, as **Pointing at things** says. The pulses are worked out
+once per panel, so an element's handler pays for the call and nothing else.
 
 ## Baking a panel into a stamp
 
@@ -1367,12 +1420,13 @@ render(Scene, {
 });
 ```
 
-`keyboard`, `loadingFrame`, `maxTextScale`, `atomic`, `opaqueToRays`,
-`priority` and `budget` can be set this way. A panel's own options are laid
-over them: its value wins, except that a `keyboard` or a `loadingFrame`
-given as an object is spread over the scene's, so a panel can change one
-thing about them without restating the rest. `withPanelOptions(ctx, …)`
-does the same for a part of the scene, over whatever is in scope already.
+`keyboard`, `loadingFrame`, `haptics`, `maxTextScale`, `atomic`,
+`opaqueToRays`, `priority` and `budget` can be set this way. A panel's own
+options are laid over them: its value wins, except that a `keyboard`, a
+`loadingFrame` or a `haptics` given as an object is spread over the scene's,
+so a panel can change one thing about them without restating the rest.
+`withPanelOptions(ctx, …)` does the same for a part of the scene, over
+whatever is in scope already.
 `plugins` is not among them — it has `portalPlugins`, whose list a panel's
 own is put in front of rather than in place of — and neither are `root` and
 `onLoadingChanged`, which are only ever one panel's.

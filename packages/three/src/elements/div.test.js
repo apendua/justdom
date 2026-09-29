@@ -5,6 +5,8 @@ import { InteractionContext } from "../interactions.js";
 import { createMirror, PORTAL_ATTRIBUTE } from "./mirror.js";
 import { div } from "./div.js";
 import { GRADIENT_LINEAR, rampAtlas } from "./gradient.js";
+import { createHaptics, HAPTIC_ATTRIBUTE, HapticsContext } from "./haptics.js";
+import { recordingSource } from "../test/rumble.js";
 
 /**
  * @import { InteractionManager } from "../interactions.js";
@@ -35,8 +37,10 @@ Object.defineProperty(document, "fonts", {
  *
  * @param {string} cursor
  * @param {string} [cssText] Anything else the element should be styled with.
+ * @param {import('./haptics.js').Haptics | null} [haptics] What the panel
+ *   the element is in feels like; none, as outside a panel, unless given.
  */
-function setup(cursor, cssText = "") {
+function setup(cursor, cssText = "", haptics = null) {
   const element = document.createElement("div");
   element.style.cssText = cssText;
   element.style.cursor = cursor;
@@ -68,7 +72,7 @@ function setup(cursor, cssText = "") {
     })
   );
 
-  const ctx = InteractionContext.set({}, manager);
+  const ctx = HapticsContext.set(InteractionContext.set({}, manager), haptics);
 
   /** @type {THREE.Object3D<XREventMap>} */
   let object;
@@ -104,9 +108,14 @@ function setup(cursor, cssText = "") {
       element.style.cssText = cssText;
       mirror.attributeChanged(element, { presentational: true, selfScoped: true });
     },
-    /** @param {"pointerenter" | "pointerleave"} type */
-    dispatch: (type) => {
-      object.dispatchEvent(/** @type {any} */ ({ type, target: object, originalTarget: object }));
+    /**
+     * @param {"pointerenter" | "pointerleave" | "selectstart" | "selectend"} type
+     * @param {XRInputSource | null} [inputSource] The hand it came from.
+     */
+    dispatch: (type, inputSource = null) => {
+      object.dispatchEvent(
+        /** @type {any} */ ({ type, target: object, originalTarget: object, inputSource }),
+      );
     },
   };
 }
@@ -666,6 +675,49 @@ describe("div drag-to-scroll", () => {
 
     document.removeEventListener("click", listener);
     subscription.unsubscribe();
+  });
+});
+
+describe("div haptics", () => {
+  test("a marked element is felt on hover, press and release, by the hand that did it", () => {
+    const { source, played } = recordingSource();
+    const { element, dispatch, subscription } = setup(
+      "pointer",
+      "",
+      createHaptics({ flavor: "key" }),
+    );
+    element.setAttribute(HAPTIC_ATTRIBUTE, "");
+
+    dispatch("pointerenter", source);
+    dispatch("selectstart", source);
+    dispatch("selectend", source);
+    dispatch("pointerleave", source);
+    assert.deepEqual(
+      played.map((effect) => effect.duration),
+      [12, 30, 18],
+      "the key's hover, press and release, and nothing for leaving",
+    );
+
+    // A hand with no motors, or a test's event with no hand, is not an error.
+    dispatch("pointerenter");
+    assert.equal(played.length, 3);
+    subscription.unsubscribe();
+  });
+
+  test("an element that did not ask feels like nothing, as does one in a panel without haptics", () => {
+    const { source, played } = recordingSource();
+    const unmarked = setup("pointer", "", createHaptics({}));
+    unmarked.dispatch("pointerenter", source);
+    unmarked.dispatch("selectstart", source);
+    assert.deepEqual(played, []);
+    unmarked.subscription.unsubscribe();
+
+    const silent = setup("pointer");
+    silent.element.setAttribute(HAPTIC_ATTRIBUTE, "");
+    silent.dispatch("pointerenter", source);
+    silent.dispatch("selectstart", source);
+    assert.deepEqual(played, []);
+    silent.subscription.unsubscribe();
   });
 });
 

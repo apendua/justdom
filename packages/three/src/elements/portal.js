@@ -29,6 +29,7 @@ import { createPortalPump } from "./portalPump.js";
 import { createPortalScheduler, PortalSchedulerContext } from "./portalScheduler.js";
 import { isSvgElement, isSvgRoot, PortalPluginsContext, projectWithPlugins } from "./plugins.js";
 import { mergePanelOptions, PanelOptionsContext, resolveKeyboard } from "./panelOptions.js";
+import { createHaptics, HapticsContext } from "./haptics.js";
 import { CameraContext, frames, onLateFrame, RendererContext } from "../render.js";
 import { InteractionContext } from "../interactions.js";
 
@@ -36,6 +37,7 @@ import { InteractionContext } from "../interactions.js";
  * @import {Mountable} from '../core.js';
  * @import {Object3D} from 'three';
  * @import {MutationBatch} from './animationClock.js';
+ * @import {HapticOptions} from './haptics.js';
  * @import {LoadingFrameOptions} from './loadingFrame.js';
  * @import {PortalScheduler} from './portalScheduler.js';
  * @import {PortalKeyboardOptions} from './portalKeyboard.js';
@@ -291,6 +293,20 @@ function claimRoot(root) {
  *   `true`: the frame is already on when this is left out, and a `true`
  *   would only throw away a frame the scene's `PanelOptions` had tuned.
  *   Pass `{}` to ask for the defaults outright.
+ * @property {false | HapticOptions} [haptics] What the hand feels from the
+ *   elements in this panel marked `data-xr-haptic`, on the element or on
+ *   anything above it: a pulse of the controller's motors when the ray
+ *   arrives on one and another when the trigger closes on it. On by
+ *   default, as a `tick` at full strength, so marking a button is all a
+ *   panel has to do; the mark is the opt-in, and an element without one
+ *   feels like nothing whatever this says. An object turns either event
+ *   off (`hover`, `active`), scales every pulse (`strength`), or picks the
+ *   pulses (`flavor`: `tick`, `knock`, `buzz`, `key`, or a `HapticFlavor`
+ *   of your own), and is spread over the scene's `PanelOptions.haptics`;
+ *   `false` is no haptics whatever the scene says. There is no `true`,
+ *   for the reason `loadingFrame` has none: pass `{}` for the defaults
+ *   outright. A tracked hand has no motors and feels nothing either way.
+ *   See `HapticOptions` in `haptics.js`.
  * @property {readonly PortalPlugin[]} [plugins] Element plugins for this
  *   panel alone, asked before the ones the scene registered through
  *   `render()`'s `portalPlugins` and before the portal's own dispatch. For
@@ -331,6 +347,7 @@ function buildPortal(ctx, ownOptions = {}) {
     maxTextScale,
     onLoadingChanged,
     loadingFrame = {},
+    haptics = {},
     plugins: ownPlugins = [],
   } = mergePanelOptions(PanelOptionsContext.get(ctx), ownOptions);
   const keyboard = resolveKeyboard(keyboardOption);
@@ -392,6 +409,9 @@ function buildPortal(ctx, ownOptions = {}) {
   // same `ctx` gets its own and neither can see the other's.
   ctx = BoxBatchContext.set(ctx, boxBatch);
   ctx = TextBatchContext.set(ctx, textBatch);
+  // Resolved once for the panel: the pulses are worked out here, and an
+  // element's handler pays for the call and nothing else.
+  ctx = HapticsContext.set(ctx, createHaptics(haptics));
 
   /**
    * How finely this panel's text is worth rasterizing, measured off what the

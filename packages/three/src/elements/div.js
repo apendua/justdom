@@ -37,6 +37,7 @@ import { isScrollable, scrollDrags } from "./scroll.js";
 import { place, placeAndScale } from "./place.js";
 import { BoxBatchContext } from "./boxBatch.js";
 import { TextBatchContext } from "./textBatch.js";
+import { HapticsContext } from "./haptics.js";
 
 /**
  * The group that carries an element's projected DOM children, one per box.
@@ -212,6 +213,12 @@ export function box(ctx, element, options = {}) {
   const { makeInteractive, stopPropagation } = interactions(ctx);
   const drags = scrollDrags(ctx);
   const isPanelReady = PortalReadyContext.get(ctx);
+  /**
+   * What the hand feels on this element, if it is marked `data-xr-haptic`
+   * and the panel has haptics at all. The handlers below hand it the hand
+   * each event came from; it decides the rest.
+   */
+  const haptics = HapticsContext.get(ctx);
 
   /**
    * Whether this element wants to be a ray target, as its own signal so that
@@ -445,6 +452,7 @@ export function box(ctx, element, options = {}) {
       });
       element.dispatchEvent(event);
       element.dataset.xrActive = "true";
+      haptics?.press(e.inputSource, element);
       stopPropagation(e);
     }),
     on("selectend", (e) => {
@@ -458,6 +466,7 @@ export function box(ctx, element, options = {}) {
       });
       element.dispatchEvent(event);
       delete element.dataset.xrActive;
+      haptics?.release(e.inputSource, element);
       stopPropagation(e);
     }),
     on("pointermove", () => {
@@ -466,8 +475,9 @@ export function box(ctx, element, options = {}) {
       });
       element.dispatchEvent(event);
     }),
-    on("pointerenter", () => {
+    on("pointerenter", (e) => {
       element.dataset.xrHover = "true";
+      haptics?.hover(e.inputSource, element);
     }),
     on("pointerleave", () => {
       delete element.dataset.xrHover;

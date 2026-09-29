@@ -197,6 +197,24 @@ export class InteractionManager {
       let squeezedTarget;
       /** @type {THREE.Object3D<XREventMap> | undefined} */
       let targetedObject;
+      /**
+       * What the ray is on, as opposed to which of its meshes it met: a
+       * hand drifting from a button's label onto its background has not
+       * left the button, and is not told it has. Compared the way a press
+       * and its release are, through `getTarget`.
+       *
+       * @type {THREE.Object3D<XREventMap> | undefined}
+       */
+      let targetedTarget;
+      /**
+       * The source three connected to this controller, for the pointer
+       * events to carry: a press already comes with its own, a move does
+       * not. Null until the first `connected`, and again after
+       * `disconnected`.
+       *
+       * @type {XRInputSource | null}
+       */
+      let inputSource = null;
       // The hand has to be looked at once when it arrives; after that only
       // when it moves, or when somebody says the scene changed under it.
       let shouldUpdateIntersections = true;
@@ -348,11 +366,14 @@ export class InteractionManager {
         // fact about this frame, not something a listener gets to veto.
         this.#setPointer(controller, intersection);
         if (intersection) {
-          if (targetedObject === intersection.object) {
-            this.dispatch(targetedObject, {
+          const target = this.getTarget(intersection.object);
+          if (target === targetedTarget) {
+            // The same thing, whichever of its meshes the ray is on now.
+            this.dispatch(intersection.object, {
               type: "pointermove",
-              target: targetedObject,
-              originalTarget: targetedObject,
+              inputSource,
+              target: intersection.object,
+              originalTarget: intersection.object,
               controller,
               intersection,
             });
@@ -360,6 +381,7 @@ export class InteractionManager {
             if (targetedObject) {
               this.dispatch(targetedObject, {
                 type: "pointerleave",
+                inputSource,
                 target: targetedObject,
                 originalTarget: targetedObject,
                 controller,
@@ -367,6 +389,7 @@ export class InteractionManager {
             }
             this.dispatch(intersection.object, {
               type: "pointerenter",
+              inputSource,
               target: intersection.object,
               originalTarget: intersection.object,
               controller,
@@ -374,15 +397,29 @@ export class InteractionManager {
             });
           }
           targetedObject = intersection.object;
+          targetedTarget = target;
         } else if (!intersection && targetedObject) {
           this.dispatch(targetedObject, {
             type: "pointerleave",
+            inputSource,
             target: targetedObject,
             originalTarget: targetedObject,
             controller,
           });
           targetedObject = undefined;
+          targetedTarget = undefined;
         }
+      };
+
+      /**
+       * @param {THREE.WebXRSpaceEventMap['connected']} event
+       */
+      const onConnected = (event) => {
+        inputSource = event.data;
+      };
+
+      const onDisconnected = () => {
+        inputSource = null;
       };
 
       // three.js fires this while updating the controller from the XR frame,
@@ -403,6 +440,8 @@ export class InteractionManager {
       controller.addEventListener("squeezestart", onSqueezeStart);
       controller.addEventListener("squeezeend", onSqueezeEnd);
       controller.addEventListener("move", onMove);
+      controller.addEventListener("connected", onConnected);
+      controller.addEventListener("disconnected", onDisconnected);
 
       return () => {
         controller.removeEventListener("selectstart", onSelectStart);
@@ -410,6 +449,8 @@ export class InteractionManager {
         controller.removeEventListener("squeezestart", onSqueezeStart);
         controller.removeEventListener("squeezeend", onSqueezeEnd);
         controller.removeEventListener("move", onMove);
+        controller.removeEventListener("connected", onConnected);
+        controller.removeEventListener("disconnected", onDisconnected);
 
         this.#controllers.delete(controller);
         this.#invalidate.delete(invalidate);

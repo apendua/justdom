@@ -125,8 +125,9 @@ a re-record would have quietly blessed it.
 
 ## In CI
 
-`.github/workflows/visual.yml` runs this on every pull request, on an ordinary
-shared runner. The runner is not pinned to anything except the browser build
+`.github/workflows/visual.yml` runs this on every pull request that touches
+the showcase or its direct dependencies, once it is out of draft, and not on
+the push that merges it. It runs on an ordinary shared runner. The runner is not pinned to anything except the browser build
 Playwright brings, which is enough because the runner is also what recorded the
 baselines: the fingerprint makes "this machine is not that machine" a failure
 with a name rather than a mystery. Every run uploads `tests/output` — the

@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import * as THREE from "three";
 import { createBoxBatch } from "./boxBatch.js";
 import { batchedBoxMaterial, createRectUniforms, rectGeometry } from "./sdfRect.js";
+import { rampUniforms } from "./gradient.js";
 import { place } from "./place.js";
 
 /**
@@ -399,5 +400,62 @@ describe("the material a batched box wears", () => {
       bucket.geometry.getAttribute("aSize")
     ).array;
     assert.deepEqual([sizes[0], sizes[1]], [37, 11]);
+  });
+
+  test("a gradient rides in the size attribute's spare lanes and two of its own", () => {
+    // Attribute slots are the limit, so the kind, flags and ramp row are one
+    // packed number and the opacity the other spare lane; this is the
+    // packing the vertex shader undoes.
+    const p = panel();
+    p.uniforms.uSize.value.set(20, 10);
+    p.uniforms.uGradient.value.set(2, 1, 0, 1);
+    p.uniforms.uGradientRamp.value.set(5, 0.5);
+    p.uniforms.uGradientGeometry.value.set(1, 2, 3, 4);
+    p.uniforms.uGradientTile.value.set(5, 6, 7, 8);
+    p.batch.invalidate();
+    p.batch.flush();
+
+    const bucket = /** @type {THREE.InstancedMesh} */ (
+      p.container.children.find(
+        (child) => /** @type {THREE.InstancedMesh} */ (child).isInstancedMesh,
+      )
+    );
+    assert.ok(bucket);
+    const read = (/** @type {string} */ name) =>
+      Array.from(
+        /** @type {THREE.InstancedBufferAttribute} */ (bucket.geometry.getAttribute(name)).array,
+      ).slice(0, 4);
+    // kind + 4 * repeating + 8 * repeat-x + 16 * repeat-y + 32 * row
+    assert.deepEqual(read("aSize"), [20, 10, 2 + 4 + 16 + 32 * 5, 0.5]);
+    assert.deepEqual(read("aGradientGeometry"), [1, 2, 3, 4]);
+    assert.deepEqual(read("aGradientTile"), [5, 6, 7, 8]);
+  });
+
+  test("the batched material samples the page's ramp atlas", () => {
+    const p = panel();
+    const bucket = /** @type {THREE.InstancedMesh} */ (
+      p.container.children.find(
+        (child) => /** @type {THREE.InstancedMesh} */ (child).isInstancedMesh,
+      )
+    );
+    assert.ok(bucket);
+    const material = /** @type {THREE.ShaderMaterial} */ (bucket.material);
+    assert.equal(material.uniforms.uRamp, rampUniforms.uRamp);
+    assert.equal(material.uniforms.uRampHeight, rampUniforms.uRampHeight);
+  });
+
+  test("a box's description stays within the attribute slots WebGL promises", () => {
+    // Sixteen is the minimum MAX_VERTEX_ATTRIBS, and what a headset browser
+    // gives. A vec4 or smaller takes one slot, a mat4 four.
+    const p = panel();
+    const bucket = /** @type {THREE.InstancedMesh} */ (
+      p.container.children.find(
+        (child) => /** @type {THREE.InstancedMesh} */ (child).isInstancedMesh,
+      )
+    );
+    assert.ok(bucket);
+    const attributes = Object.keys(bucket.geometry.attributes).length;
+    // Plus the instance matrix, which is not a geometry attribute.
+    assert.ok(attributes + 4 <= 16, `${attributes} attributes and a matrix`);
   });
 });

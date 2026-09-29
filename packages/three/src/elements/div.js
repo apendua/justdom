@@ -10,9 +10,11 @@ import {
   createRectUniforms,
   rectGeometry,
   writeClipUniforms,
+  writeGradientUniforms,
   writeImageUniforms,
   writeRectUniforms,
 } from "./sdfRect.js";
+import { RampSlot } from "./gradient.js";
 import { contentImage, isImageElement } from "./image.js";
 import { createBlocker, coverBox } from "./blocker.js";
 import {
@@ -287,6 +289,13 @@ export function box(ctx, element, options = {}) {
    */
   const uniforms = createRectUniforms();
   clipRaycast(boxMesh, () => currentClipBox, object);
+
+  /**
+   * This box's hold on a row of the page's gradient ramps. Kept for the life
+   * of the box rather than of a write, so that rewriting a box whose gradient
+   * has not changed — every frame of a layout animation — bakes nothing.
+   */
+  const rampSlot = new RampSlot();
 
   /**
    * The batch this box is drawn by, if there is one and this box can join it.
@@ -660,8 +669,15 @@ export function box(ctx, element, options = {}) {
           writeClipUniforms(uniforms, getLocalClipBox(element));
           batchChanged();
         }),
+        // Lets go of the ramp row when the box goes, and not before.
+        effects(() => {
+          onCleanup(() => {
+            rampSlot.release();
+          });
+        }),
         effects((obj) => {
           writeRectUniforms(uniforms, properties);
+          writeGradientUniforms(uniforms, properties, rampSlot);
           // A quad scaled to nothing has no surface to draw or hit, and a
           // zero scale is not invertible; an empty box is better described
           // as very small — same convention as the blocker.

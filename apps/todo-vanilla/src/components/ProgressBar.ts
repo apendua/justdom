@@ -23,10 +23,24 @@ const trackStyle = className`
 // would be two writes per step, and the colour ramp would have to live in
 // JavaScript; here the element carries one number and the static rule derives
 // everything else from it.
+//
+// The stripes over it are a gradient tiled by `background-size`: one 16px
+// tile repeated along the bar, so the bar can grow without the stripes
+// stretching with it — and, in a scene, without the gradient being laid out
+// again, since a tile of a fixed size has nothing about it that the bar's
+// width can change.
 const barStyle = className`
   height: 100%;
   width: calc(var(--progress, 0) * 100%);
   background-color: hsl(calc(var(--progress, 0) * 120deg), 75%, 45%);
+  background-image: linear-gradient(
+    45deg,
+    rgba(255, 255, 255, 0.3) 25%,
+    transparent 25% 50%,
+    rgba(255, 255, 255, 0.3) 50% 75%,
+    transparent 75%
+  );
+  background-size: 16px 16px;
   transition:
     width 120ms linear,
     background-color 120ms linear;

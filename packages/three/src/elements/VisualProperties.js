@@ -13,6 +13,11 @@ import { filtered, Subject } from "@apendua/signal";
 import { getBorderBoxSize, getComputedStyleCached } from "./mirror.js";
 
 import { getElevation } from "./elevation.js";
+import { layoutGradient, parseBackground } from "./gradient.js";
+
+/**
+ * @import {GradientLayout} from './gradient.js';
+ */
 
 /**
  * @typedef {object} RawVisualProperties
@@ -31,6 +36,17 @@ import { getElevation } from "./elevation.js";
  * @property {string} borderTopLeftRadius
  * @property {string} borderTopRightRadius
  * @property {string} backgroundColor
+ * @property {string} backgroundImage
+ * @property {string} backgroundSize
+ * @property {string} backgroundPositionX
+ * @property {string} backgroundPositionY
+ * @property {string} backgroundPosition
+ * @property {string} backgroundRepeat
+ * @property {string} backgroundOrigin
+ * @property {string} paddingTop
+ * @property {string} paddingRight
+ * @property {string} paddingBottom
+ * @property {string} paddingLeft
  * @property {string} borderColor
  * @property {string} textColor
  * @property {number} layerNo
@@ -54,6 +70,7 @@ import { getElevation } from "./elevation.js";
  * @property {number} borderTopRightRadius
  * @property {THREE.Color} backgroundColor
  * @property {number} backgroundAlpha
+ * @property {GradientLayout | null} backgroundGradient
  * @property {THREE.Color} borderColor
  * @property {number} borderAlpha
  * @property {THREE.Color} textColor
@@ -232,6 +249,12 @@ export default class VisualProperties {
     const fontSize = parseFloat(style.fontSize || "0");
     const [inheritedOpacity, layerNo] = getInheritedOpacity(element);
     const opacity = parseFloat(style.opacity || "1") * inheritedOpacity;
+    // Every box pays for reading `background-image`; only a box that has one
+    // pays for the properties that lay it out. They are all left empty
+    // otherwise, which is a value that does not change and so notifies
+    // nobody.
+    const backgroundImage = style.backgroundImage || "none";
+    const hasImage = backgroundImage !== "none";
     /** @type {RawVisualProperties} */
     const properties = {
       totalWidth: size.width,
@@ -249,6 +272,17 @@ export default class VisualProperties {
       borderTopLeftRadius: style.borderTopLeftRadius,
       borderTopRightRadius: style.borderTopRightRadius,
       backgroundColor: style.backgroundColor,
+      backgroundImage,
+      backgroundSize: hasImage ? style.backgroundSize : "",
+      backgroundPositionX: hasImage ? style.backgroundPositionX : "",
+      backgroundPositionY: hasImage ? style.backgroundPositionY : "",
+      backgroundPosition: hasImage ? style.backgroundPosition : "",
+      backgroundRepeat: hasImage ? style.backgroundRepeat : "",
+      backgroundOrigin: hasImage ? style.backgroundOrigin : "",
+      paddingTop: hasImage ? style.paddingTop : "",
+      paddingRight: hasImage ? style.paddingRight : "",
+      paddingBottom: hasImage ? style.paddingBottom : "",
+      paddingLeft: hasImage ? style.paddingLeft : "",
       borderColor: style.borderColor,
       textColor: style.color,
       layerNo,
@@ -379,6 +413,60 @@ export default class VisualProperties {
     return backgroundAlpha * this.#props.opacity;
   }
 
+  /**
+   * The background's gradient as a description that does not depend on size
+   * — parsed when the style changes and at no other time, which is why it is
+   * its own memo rather than a step inside `backgroundGradient`.
+   */
+  get background() {
+    const props = this.#props;
+    if (props.backgroundImage === "none") {
+      return null;
+    }
+    return parseBackground({
+      image: props.backgroundImage,
+      size: props.backgroundSize,
+      positionX: props.backgroundPositionX,
+      positionY: props.backgroundPositionY,
+      position: props.backgroundPosition,
+      repeat: props.backgroundRepeat,
+      origin: props.backgroundOrigin,
+      currentColor: props.textColor,
+    });
+  }
+
+  /**
+   * The gradient layer painted over the background colour, laid out against
+   * this element's box, or `null` for none. Its colours carry no opacity: the
+   * layer is composited over the background colour first and the element's
+   * opacity applied to the two together, which is what CSS does and what
+   * folding the opacity into each colour would get wrong.
+   *
+   * @returns {GradientLayout | null}
+   */
+  get backgroundGradient() {
+    const background = this.background;
+    if (!background) {
+      return null;
+    }
+    return layoutGradient(background, {
+      width: this.totalWidth,
+      height: this.totalHeight,
+      border: [
+        this.borderTopWidth,
+        this.borderRightWidth,
+        this.borderBottomWidth,
+        this.borderLeftWidth,
+      ],
+      padding: [
+        parseSize(this.#props.paddingTop, this.unitsH),
+        parseSize(this.#props.paddingRight, this.unitsW),
+        parseSize(this.#props.paddingBottom, this.unitsH),
+        parseSize(this.#props.paddingLeft, this.unitsW),
+      ],
+    });
+  }
+
   get borderColor() {
     const [borderColor] = parseColor(this.#props.borderColor);
     return borderColor;
@@ -438,6 +526,8 @@ decorate(VisualProperties.prototype, "borderTopLeftRadius", memo());
 decorate(VisualProperties.prototype, "borderTopRightRadius", memo());
 decorate(VisualProperties.prototype, "backgroundColor", memo());
 decorate(VisualProperties.prototype, "backgroundAlpha", memo());
+decorate(VisualProperties.prototype, "background", memo());
+decorate(VisualProperties.prototype, "backgroundGradient", memo());
 decorate(VisualProperties.prototype, "borderColor", memo());
 decorate(VisualProperties.prototype, "borderAlpha", memo());
 decorate(VisualProperties.prototype, "textColor", memo());

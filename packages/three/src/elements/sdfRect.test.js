@@ -4,10 +4,19 @@ import * as THREE from "three";
 import {
   createRectMaterial,
   rectGeometry,
+  writeGradientUniforms,
   writeImageUniforms,
   writeRectUniforms,
 } from "./sdfRect.js";
 import VisualProperties from "./VisualProperties.js";
+import {
+  GRADIENT_LINEAR,
+  layoutGradient,
+  parseBackground,
+  rampAtlas,
+  rampUniforms,
+  RampSlot,
+} from "./gradient.js";
 
 // Same stub as div.test.js: jsdom has no Font Loading API, and
 // `VisualProperties` will not resolve size units until `document.fonts` says
@@ -161,5 +170,47 @@ describe("the picture layer", () => {
     // transition a per-frame write and not a per-frame allocation.
     assert.equal(material.uniforms.uImageRect.value, before);
     assert.equal(before.x, 1);
+  });
+});
+
+describe("the gradient layer", () => {
+  test("a box without a background image draws no gradient and holds no ramp", () => {
+    const properties = propertiesOf({ backgroundColor: "rgb(10, 20, 30)" });
+    const material = createRectMaterial();
+    const slot = new RampSlot();
+    const before = rampAtlas.size;
+    writeGradientUniforms(material.uniforms, properties, slot);
+    assert.equal(material.uniforms.uGradient.value.x, 0);
+    assert.equal(rampAtlas.size, before);
+  });
+
+  test("a laid-out gradient lands in its documented lanes", () => {
+    const layout = layoutGradient(
+      parseBackground({
+        image: "repeating-linear-gradient(to right, rgb(1, 2, 3) 0 10px, rgb(4, 5, 6) 10px 20px)",
+        size: "50px 40px",
+        repeat: "repeat no-repeat",
+        positionX: "10px",
+        positionY: "5px",
+      }),
+      { width: 200, height: 100, border: [0, 0, 0, 0], padding: [0, 0, 0, 0] },
+    );
+    assert.ok(layout);
+    const properties = /** @type {VisualProperties} */ (
+      /** @type {unknown} */ ({ backgroundGradient: layout, opacity: 0.75 })
+    );
+    const material = createRectMaterial();
+    const slot = new RampSlot();
+    writeGradientUniforms(material.uniforms, properties, slot);
+    const { uGradient, uGradientGeometry, uGradientTile, uGradientRamp } = material.uniforms;
+    // (kind, repeating, repeat-x, repeat-y)
+    assert.deepEqual(uGradient.value.toArray(), [GRADIENT_LINEAR, 1, 1, 0]);
+    assert.deepEqual(uGradientGeometry.value.toArray(), layout.geometry);
+    assert.deepEqual(uGradientTile.value.toArray(), [10, 5, 50, 40]);
+    // (row, opacity)
+    assert.deepEqual(uGradientRamp.value.toArray(), [slot.row, 0.75]);
+    // The ramp texture is the page's, by reference.
+    assert.equal(material.uniforms.uRamp, rampUniforms.uRamp);
+    slot.release();
   });
 });

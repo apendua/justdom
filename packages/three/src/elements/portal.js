@@ -269,7 +269,7 @@ function claimRoot(root) {
  *   is already visible absorbs later updates incrementally instead of hiding
  *   itself again. For showing a spinner somewhere; `isLoading()` on the
  *   handle is the reactive way to ask.
- * @property {boolean | LoadingFrameOptions} [loadingFrame] What the player
+ * @property {false | LoadingFrameOptions} [loadingFrame] What the player
  *   sees where the panel is going to be while it mounts, if the mount takes
  *   long enough to be noticed: a translucent, rounded frame the panel's
  *   size with a black border, and three dots in the middle that brighten in
@@ -283,7 +283,10 @@ function claimRoot(root) {
  *   up at the least once shown — half a second by default, because a frame
  *   that flashed and was gone reads as a glitch rather than as a panel
  *   arriving; the mount is held, built and unseen, until the frame has had
- *   its time. See `LoadingFrameOptions` in `loadingFrame.js`.
+ *   its time. See `LoadingFrameOptions` in `loadingFrame.js`. There is no
+ *   `true`: the frame is already on when this is left out, and a `true`
+ *   would only throw away a frame the scene's `PanelOptions` had tuned.
+ *   Pass `{}` to ask for the defaults outright.
  * @property {readonly PortalPlugin[]} [plugins] Element plugins for this
  *   panel alone, asked before the ones the scene registered through
  *   `render()`'s `portalPlugins` and before the portal's own dispatch. For
@@ -323,9 +326,17 @@ function buildPortal(ctx, ownOptions = {}) {
     atomic = true,
     maxTextScale,
     onLoadingChanged,
-    loadingFrame = true,
+    loadingFrame = {},
     plugins: ownPlugins = [],
   } = mergePanelOptions(PanelOptionsContext.get(ctx), ownOptions);
+  // Refused rather than read as "the defaults": a `true` laid over a frame
+  // the scene tuned would quietly throw the tuning away. Before the root is
+  // claimed, for the reason given below.
+  if (/** @type {unknown} */ (loadingFrame) === true) {
+    throw new TypeError(
+      "loadingFrame: true is not an option. Leave it out for the default frame, or pass an object to tune it.",
+    );
+  }
   const keyboard = resolveKeyboard(keyboardOption);
   // First, before anything is marked or made: the one thing here that a
   // caller can get wrong synchronously, and a throw after the element had
@@ -553,10 +564,7 @@ function buildPortal(ctx, ownOptions = {}) {
    * over before anything could be drawn, and a frame built to be torn down
    * in the same task is not worth building.
    */
-  const loadingFrameObject =
-    loadingFrame && hasFrames
-      ? createLoadingFrame(loadingFrame === true ? {} : loadingFrame)
-      : null;
+  const loadingFrameObject = loadingFrame && hasFrames ? createLoadingFrame(loadingFrame) : null;
   /** @type {() => void} */
   let stopLoadingFrame = () => {};
   /**

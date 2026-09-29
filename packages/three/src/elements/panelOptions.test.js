@@ -45,7 +45,7 @@ describe("mergePanelOptions", () => {
     });
   });
 
-  test("spreads one loading frame over the other, and lets a boolean replace it", () => {
+  test("spreads one loading frame over the other, and lets `false` replace it", () => {
     assert.deepEqual(
       mergePanelOptions({ loadingFrame: { delay: 100 } }, { loadingFrame: { minimumTime: 0 } }),
       { loadingFrame: { delay: 100, minimumTime: 0 } },

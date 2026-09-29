@@ -27,8 +27,9 @@ import { createProperty } from "@apendua/signal";
  *   scene can name the factory and a panel only the `gap`; `false`, at either
  *   level, is no keyboard. A keyboard with no `create` once the two are
  *   merged is no keyboard either.
- * @property {boolean | LoadingFrameOptions} [loadingFrame] Two objects are
- *   spread one over the other; otherwise the panel's value wins.
+ * @property {false | LoadingFrameOptions} [loadingFrame] Two objects are
+ *   spread one over the other; `false`, at either level, is no frame. There
+ *   is no `true` (see `PortalOptions.loadingFrame`).
  * @property {number} [maxTextScale]
  * @property {boolean} [atomic]
  * @property {boolean} [opaqueToRays]

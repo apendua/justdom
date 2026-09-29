@@ -313,6 +313,18 @@ describe("the portal's keyboard", () => {
     await sleep(CARET_BLINK_MS * 0.6);
     assert.equal(caret.visible, true, "and the blink starts over from there");
 
+    // A key that changes nothing restarts it too: Backspace in an empty
+    // field leaves the value and the caret where they were.
+    panel.input.value = "";
+    await settle();
+    await sleep(CARET_BLINK_MS * 1.4);
+    assert.equal(caret.visible, false, "hidden again");
+    panel.created[0].onKey({ key: "Backspace", code: "Backspace" });
+    assert.equal(panel.input.value, "", "nothing to take out");
+    assert.equal(caret.visible, true, "and still the key brings it back");
+    await sleep(CARET_BLINK_MS * 0.6);
+    assert.equal(caret.visible, true, "for the whole of the first half");
+
     panel.created[0].onKey({ key: "Escape" });
     await settle();
     panel.cleanup();

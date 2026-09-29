@@ -92,8 +92,9 @@ const CARET_WIDTH = 1;
 /**
  * How long the caret is shown, and then hidden, as it blinks: the half
  * period browsers blink a caret at. It shows solid again for the full
- * interval after every keystroke, as a page's does, so it is never the thing
- * that is missing while you are typing.
+ * interval after every keystroke, as a page's does — whether or not the key
+ * changed anything — so it is never the thing that is missing while you are
+ * typing.
  *
  * A blink costs next to nothing here. The caret is a mesh of its own rather
  * than a run in the panel's batch, so blinking it is flipping `visible` on a
@@ -581,15 +582,29 @@ function fieldContent(ctx, element, surface, focus) {
         if (!obj.visible) {
           return;
         }
-        // Read for the restart: a keystroke, or the caret moving, brings the
-        // caret back solid and the blink starts over from there.
+        // Read for the restart: the value or the caret changing without a
+        // key — an app clearing the field after a submit — brings the caret
+        // back solid, and the blink starts over from there.
         void state.value;
         void state.caret;
-        const timer = setInterval(() => {
-          obj.visible = !obj.visible;
-        }, CARET_BLINK_MS);
+        /** @type {ReturnType<typeof setInterval> | undefined} */
+        let timer;
+        const restart = () => {
+          clearInterval(timer);
+          obj.visible = true;
+          timer = setInterval(() => {
+            obj.visible = !obj.visible;
+          }, CARET_BLINK_MS);
+        };
+        restart();
+        // And so does every key, including those that change neither —
+        // Backspace in an empty field, a key at `maxlength`, a letter a
+        // number field refuses. `typeIntoInput` dispatches a `keydown` for
+        // each of them, as a page's keyboard would.
+        element.addEventListener("keydown", restart);
         onCleanup(() => {
           clearInterval(timer);
+          element.removeEventListener("keydown", restart);
         });
       }),
     ]);

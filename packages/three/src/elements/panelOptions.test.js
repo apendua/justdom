@@ -9,6 +9,7 @@ import {
 
 /**
  * @import {PortalOptions} from './portal.js';
+ * @import {PanelOptions} from './panelOptions.js';
  */
 
 const create = () => {
@@ -43,6 +44,16 @@ describe("mergePanelOptions", () => {
     assert.deepEqual(mergePanelOptions({ keyboard: { create } }, { keyboard: false }), {
       keyboard: false,
     });
+  });
+
+  test("takes `false` or options for the loading frame, and not `true`", () => {
+    /** @type {PanelOptions[]} */
+    const allowed = [{ loadingFrame: false }, { loadingFrame: {} }, { loadingFrame: { delay: 0 } }];
+    assert.equal(allowed.length, 3);
+    /** @type {PanelOptions} */
+    // @ts-expect-error -- the frame is on when left out; `true` says nothing more.
+    const refused = { loadingFrame: true };
+    assert.ok(refused);
   });
 
   test("spreads one loading frame over the other, and lets `false` replace it", () => {

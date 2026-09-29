@@ -329,14 +329,6 @@ function buildPortal(ctx, ownOptions = {}) {
     loadingFrame = {},
     plugins: ownPlugins = [],
   } = mergePanelOptions(PanelOptionsContext.get(ctx), ownOptions);
-  // Refused rather than read as "the defaults": a `true` laid over a frame
-  // the scene tuned would quietly throw the tuning away. Before the root is
-  // claimed, for the reason given below.
-  if (/** @type {unknown} */ (loadingFrame) === true) {
-    throw new TypeError(
-      "loadingFrame: true is not an option. Leave it out for the default frame, or pass an object to tune it.",
-    );
-  }
   const keyboard = resolveKeyboard(keyboardOption);
   // First, before anything is marked or made: the one thing here that a
   // caller can get wrong synchronously, and a throw after the element had

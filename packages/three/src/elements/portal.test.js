@@ -7,7 +7,6 @@ import { InteractionContext, InteractionManager } from "../interactions.js";
 import { DomMirror, getComputedStyleCached, resetMeasuringRangeForTests } from "./mirror.js";
 import { acquireImage, releaseImage } from "./image.js";
 import { createPortal as createHeldPortal, getPortalRoot, LOADING_ATTRIBUTE } from "./portal.js";
-import { withPanelOptions } from "./panelOptions.js";
 
 /**
  * `createPortal`, with the loading frame's delay and minimum time off. A
@@ -3093,29 +3092,6 @@ describe("an element the page owns, claimed a second time", () => {
     const { ctx } = countingManager();
     const portal = createPortal(ctx, { root });
     assert.ok(root.hasAttribute("data-xr-portal"));
-    portal.disconnect();
-    root.remove();
-  });
-
-  test("`loadingFrame: true` is refused, from the panel or the scene, and leaves no mark", () => {
-    // There is no `true`: the frame is on by default, and a `true` laid over
-    // a frame the scene tuned would throw the tuning away.
-    const { ctx } = countingManager();
-    const { root } = pageCard();
-    const yes = /** @type {any} */ (true);
-    assert.throws(() => createHeldPortal(ctx, { root, loadingFrame: yes }), /loadingFrame: true/);
-    assert.equal(root.hasAttribute("data-xr-portal"), false);
-    assert.throws(
-      () => createHeldPortal(withPanelOptions(ctx, { loadingFrame: yes }), { root }),
-      /loadingFrame: true/,
-    );
-    assert.equal(root.hasAttribute("data-xr-portal"), false);
-
-    // A panel's `false` or object over the scene's `true` is fine.
-    const portal = createHeldPortal(withPanelOptions(ctx, { loadingFrame: yes }), {
-      root,
-      loadingFrame: false,
-    });
     portal.disconnect();
     root.remove();
   });

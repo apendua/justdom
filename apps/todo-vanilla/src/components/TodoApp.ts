@@ -361,6 +361,17 @@ const TodoApp = component((ctx: WeakKey) => {
             $("button", [set("className", buttonStyle), children(text`Add`), on("click", addTodo)]),
           ),
         ]),
+        // DEMO, to be reverted: a number field, so the headset's keyboard can
+        // be seen switching to its number pad. It does nothing else.
+        $("div", [
+          set("className", inputContainerStyle),
+          children(
+            $("input", [
+              set("className", inputStyle),
+              set({ type: "number", placeholder: "A number (keyboard demo)" }),
+            ]),
+          ),
+        ]),
         $("p", [
           set("className", remainingStyle),
           children(

@@ -606,6 +606,10 @@ export function box(ctx, element, options = {}) {
               scrollTranslation.makeTranslation(-scroll.left || 0, -scroll.top || 0, 0),
             );
             contentGroup.matrixWorldNeedsUpdate = true;
+            // The batches copy instance matrices by walking the panel, and
+            // re-walk only when told; anything batched under this group
+            // (SVG text, batched shapes) would otherwise stay where it was.
+            batchChanged();
           }),
         ]
       : []),

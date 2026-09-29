@@ -1385,9 +1385,9 @@ either follows.
 Transforms are matrices, as they are for boxes: a shape's vertices stay in
 its own user space, the `<svg>`'s content group carries the viewport, and
 each `<g>`, nested `<svg>` and shape carries its own `transform` on its
-object. A `transform` animated on a `<g>` — or the `<svg>` resizing — is a
-matrix write per frame, and nothing under it is rebuilt; the clip follows
-the shapes there through the clip patch's matrix. A scale animation
+object. A `transform` animated on a `<g>` is a matrix write per frame, and
+nothing under it is rebuilt; the clip follows the shapes there through the
+clip patch's matrix. A scale change — animated, or the `<svg>` resizing —
 re-samples curves only when it crosses a half-octave, so a zoomed shape
 never shows its polygons and a slow zoom does not re-triangulate each frame.
 

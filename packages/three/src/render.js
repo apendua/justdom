@@ -20,6 +20,11 @@ import {
 } from "./elements/portalScheduler.js";
 import { PortalPluginsContext } from "./elements/plugins.js";
 import { withPanelOptions } from "./elements/panelOptions.js";
+import {
+  createKeyboardSlot,
+  disposeKeyboardSlot,
+  KeyboardSlotContext,
+} from "./elements/keyboardSlot.js";
 import { fitRayToHit } from "./pointers.js";
 import { reportCrash } from "./crash.js";
 
@@ -576,6 +581,13 @@ export function render(fn, options = {}) {
     if (options.panelOptions) {
       ctx = withPanelOptions(ctx, options.panelOptions);
     }
+    // One keyboard for every panel in the scene, made by the first panel
+    // that offers one and taken down with the scene.
+    const keyboardSlot = createKeyboardSlot();
+    ctx = KeyboardSlotContext.set(ctx, keyboardSlot);
+    subscriber.add(() => {
+      disposeKeyboardSlot(keyboardSlot);
+    });
     // A share of the frame rather than a fixed slice of it: the sessions ask
     // for the headset's fastest rate now, and a number of milliseconds that
     // was a third of a frame at 60 Hz is three fifths of one at 120. Fed from
@@ -653,6 +665,10 @@ export function render(fn, options = {}) {
       controller.add(ray);
       subscriber.add(fitRayToHit(ray, controller, interactionManager.pointers).subscribe());
     }
+
+    // The context is whole now; the keyboard looks for the scene, the camera
+    // and the renderer here.
+    keyboardSlot.ctx = ctx;
 
     scene.add(camera);
     scene.add(controller0);

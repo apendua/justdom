@@ -3,6 +3,7 @@ import { XRControllerModelFactory } from "three/examples/jsm/webxr/XRControllerM
 import { OculusHandModel } from "three/examples/jsm/webxr/OculusHandModel.js";
 import type { XRHandSpace } from "three";
 import Scene from "./components/Scene.js";
+import TodoKeyboard from "./components/TodoKeyboard.js";
 
 /**
  * Whether this platform can open an immersive session at all. Asked before
@@ -52,7 +53,17 @@ export async function offerXR(panel: HTMLElement): Promise<void> {
     controllerModelFactory.createControllerModel.bind(controllerModelFactory);
   const createHandModel = (hand: XRHandSpace) => new OculusHandModel(hand);
 
-  render(Scene(panel), { createControllerModel, createHandModel, presentingOnly: true }).subscribe({
+  render(Scene(panel), {
+    createControllerModel,
+    createHandModel,
+    presentingOnly: true,
+    // The keyboard for every panel in the scene: what it looks like is
+    // `TodoKeyboard`'s, and where it opens, when it goes and how it is
+    // moved are freedom's.
+    panelOptions: {
+      keyboard: { create: ({ onKey }) => TodoKeyboard({ onKey }) },
+    },
+  }).subscribe({
     next: (renderer) => {
       // The canvas is the session's, not the page's: a headset shows the
       // page nothing while presenting, and the page has its own DOM to show

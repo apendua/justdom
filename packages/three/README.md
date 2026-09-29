@@ -768,34 +768,84 @@ is nothing in a headset to type with: the system's keyboard is the
 compositor's and never reaches the panel. What reaches it is a board of
 ordinary boxes, mirrored by a portal of its own; `keyboard(props)` in
 [`@apendua/justui`](../justui) is one. This package has no keyboard and
-does not depend on one, so what a panel takes is a factory:
+does not depend on one, so what a scene gives it is a factory, once, for
+every panel:
 
 ```js
 import { keyboard } from "@apendua/justui";
 
-dom(ctx, hud, [set({ position })], {
-  keyboard: {
-    create: ({ onKey }) => keyboard({ classes, onKey }),
+render(Scene, {
+  panelOptions: {
+    keyboard: {
+      create: ({ onKey }) => keyboard({ classes, onKey }),
+    },
   },
 });
 ```
 
-`create` is called with the field when the field is pressed, and hands back
-the board's DOM — a justdom tree, or anything with the `Mountable` shape —
-wired to the `onKey` it is given. The portal does the rest, the same way for
-every panel: the board comes up below the panel, reclined toward the hands
-like a phone on a stand (`gap` and `tilt` tune where); a press on a key goes
-into the field through `typeIntoInput`, which is exported too — the
-character goes in at the caret, backspace takes one out, and `keydown`,
+`create` is called when a field is pressed, and hands back the board's DOM
+— a justdom tree, or anything with the `Mountable` shape — wired to the
+`onKey` it is given. The rest is decided here, the same way for every
+panel.
+
+**There is one board for the whole scene.** A player has one pair of hands,
+so whichever field was pressed last is the one being typed into, whatever
+panel it is in. Pressing a field in another panel moves the typing there:
+the board stays up, `onKey` types into the new field, and `field()` on the
+target the factory was handed says which one that is (`element` is the
+field it was built for). The board is only built again if that panel's
+keyboard has a different `create`.
+
+**It opens in front of the player**, not beside the panel: `reach` ahead of
+the eyes (0.45 m) on the level heading they face, `drop` below them
+(0.2 m), turned toward them and reclined toward the hands by `tilt` (24°),
+like a phone on a stand. Once open it stays where it is in the room, so the
+head moving, or the typing moving to another panel, does not move it. Its
+size is its own, `scale` metres per CSS px of it — a millimetre by default
+— whichever panel opened it. `placement: "panel"` hangs it below the panel
+of the field being typed into instead, `gap` px under its bottom edge and at
+the panel's scale, and a function poses it yourself when it opens. On a
+plain page, or under a test runner, where there is no camera to be in front
+of, it hangs below the panel.
+
+**It can be moved.** Four strips along its edges are invisible until a ray
+is on the board, show faintly while one is, and fully on the strip a ray is
+on; pressing one picks the board up with `carry()`, level, and releasing
+puts it down. It opens there again next time, unless the player has since
+walked more than a metre or turned more than 60° away. `draggable: false`
+turns this off; `draggable: { handleWidth }` changes how wide the strips
+are.
+
+A key goes into the field through `typeIntoInput`, which is exported too —
+the character goes in at the caret, backspace takes one out, and `keydown`,
 `input` and `keyup` are dispatched in a browser's order, so an app that
 listens for `input` or for `keydown` of `Enter` on a page hears the same
 thing in the scene. `Enter` asks the field's form to submit, if it is in
 one. While the board is up the field carries `data-xr-focus`, a
 presentational flag like `data-xr-hover` for a stylesheet to draw a focus
-ring with, and a caret at the end of the text. The board goes on `Enter`,
-on `Escape`, on a press on the panel's background, when the field leaves
-the document, and with the panel; `dismiss` on the target closes it for any
-other reason a board might have.
+ring with, and a caret at the end of the text.
+
+The board follows focus the way a page does. `Enter` submits and leaves the
+field being typed into, so an app that clears the field after a submit can
+take the next entry straight away. A press anywhere in a panel other than
+on a field — a button, a row, the background — is focus leaving the field,
+and the board goes, as the field would blur on a page; a press on another
+field moves the typing there instead. It also goes on `Escape`, which a
+board can offer as its "done" key, when the field being typed into leaves
+the document or its panel goes, and with the scene; `dismiss` on the target
+closes it for any other reason a board might have.
+
+A panel can still say something of its own. Its `keyboard` option is laid
+over the scene's, so a panel for entering a code can bring a different
+board, and `keyboard: false` gives a panel none:
+
+```js
+dom(ctx, codeEntry, [], { keyboard: { create: ({ onKey }) => codeKeyboard(onKey) } });
+dom(ctx, readout, [], { keyboard: false });
+```
+
+A portal built outside `render()` keeps a board of its own, given its own
+`keyboard` option, as panels did before there was a scene to share one.
 
 Without a keyboard a field is drawn and pressed like any box, and nothing
 in the scene can type into it — which is what a panel with a read-only
@@ -1241,6 +1291,34 @@ It only ever lowers — four is what a run is allowed to cost at all.
 Off a scene — a portal on a plain page, or a panel under a test runner —
 there is nothing to measure against and the page's ratio is the whole
 answer, which is the right answer there, because the panel *is* the page.
+
+### Panel defaults
+
+Some of what a panel is told belongs to the scene rather than to any one
+panel: the keyboard its fields are typed with, how sharp its text is worth
+drawing, whether a slow mount shows a frame. Passing those to every `dom()`
+is how one gets forgotten. `render()` takes them once, as `panelOptions`,
+and every panel in the scene starts from them:
+
+```js
+render(Scene, {
+  panelOptions: {
+    maxTextScale: 2,
+    loadingFrame: { delay: 400 },
+    keyboard: { create: ({ onKey }) => keyboard({ classes, onKey }) },
+  },
+});
+```
+
+`keyboard`, `loadingFrame`, `maxTextScale`, `atomic`, `opaqueToRays`,
+`priority` and `budget` can be set this way. A panel's own options are laid
+over them: its value wins, except that a `keyboard` or a `loadingFrame`
+given as an object is spread over the scene's, so a panel can change one
+thing about them without restating the rest. `withPanelOptions(ctx, …)`
+does the same for a part of the scene, over whatever is in scope already.
+`plugins` is not among them — it has `portalPlugins`, whose list a panel's
+own is put in front of rather than in place of — and neither are `root` and
+`onLoadingChanged`, which are only ever one panel's.
 
 ## SVG
 

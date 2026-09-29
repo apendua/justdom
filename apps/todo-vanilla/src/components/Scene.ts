@@ -1,15 +1,8 @@
 import * as THREE from "three";
-import { children, cursors, $, dom, getScene, RendererContext } from "@apendua/freedom";
-import {
-  component,
-  effects,
-  effectsOnly,
-  onCleanup,
-  Signal,
-  Stream,
-  useEffects,
-} from "@apendua/signal";
-import TodoKeyboard from "./TodoKeyboard.js";
+import { children, cursors, $, dom, getScene, getXRSession } from "@apendua/freedom";
+import { createDiagnostics, useDiagnostics } from "@apendua/justui";
+import { component, effects, effectsOnly, Stream, useEffects } from "@apendua/signal";
+import { xrSession } from "../session.js";
 
 /**
  * What the session is set against: one colour, all the way round, rather
@@ -47,15 +40,18 @@ function backdrop(): THREE.Mesh {
 
 /**
  * The scene: the page's own todo element, mirrored into a panel in front of
- * the viewer, with a keyboard on offer for its field.
+ * the viewer.
  *
  * Nothing here builds UI. The element handed in is the one the page mounted
  * the app into and is showing right now; `dom(ctx, element)` watches it
  * where it stands, so what the headset shows is what the page shows, the
  * same nodes, and a press on the mirrored Add button is a click on the real
- * one. The one thing the scene adds is the keyboard, which a page does not
- * need and a headset cannot do without: `TodoKeyboard` says what it looks
- * like, the portal says when it appears and where it hangs.
+ * one. The keyboard its field is typed with is not this panel's but the
+ * scene's, handed to `render()` as a panel option in `xr.ts`.
+ *
+ * While a session runs there is also the frame rate, in the corner of the
+ * view (`useDiagnostics` from justui), and the app is told about the session
+ * (`xrSession`) so that its card can show a button that ends it.
  *
  * The panel exists only while a session is presenting. Between sessions the
  * page is all anyone sees, and a portal kept up behind it would go on
@@ -70,8 +66,9 @@ export const Scene = (panel: HTMLElement) =>
     // about 46 cm wide, at half a metre — a tablet held out in front of you.
     const scale = 0.1;
 
-    const renderer = RendererContext.get(ctx) as THREE.WebGLRenderer;
-    const presenting = Signal.of(renderer.xr.isPresenting);
+    // Kept across sessions, so a second session's chart starts from the
+    // first one's scale rather than from nothing.
+    const diagnostics = createDiagnostics();
 
     useEffects(getScene(ctx), [
       effects((scene) => {
@@ -80,14 +77,12 @@ export const Scene = (panel: HTMLElement) =>
         scene.background = new THREE.Color(BACKDROP);
       }),
       effects(() => {
-        const start = () => presenting.set(true);
-        const end = () => presenting.set(false);
-        renderer.xr.addEventListener("sessionstart", start);
-        renderer.xr.addEventListener("sessionend", end);
-        onCleanup(() => {
-          renderer.xr.removeEventListener("sessionstart", start);
-          renderer.xr.removeEventListener("sessionend", end);
-        });
+        // Re-run as a session starts and as it ends.
+        const session = getXRSession(ctx);
+        xrSession.set(session);
+        if (session) {
+          useDiagnostics(ctx, diagnostics);
+        }
       }),
       children(
         $(backdrop()),
@@ -106,27 +101,17 @@ export const Scene = (panel: HTMLElement) =>
           }),
           children(
             component(() => {
-              if (!presenting.get()) {
+              if (!getXRSession(ctx)) {
                 return NOTHING;
               }
-              return dom(
-                ctx,
-                panel,
-                [
-                  effects((obj) => {
-                    // A little above the group's origin, which puts the
-                    // middle of the panel a touch under eye level once it is
-                    // scaled down and pushed away, and leaves the keyboard
-                    // the room below it that the portal hangs it in.
-                    obj.position.set(0, 1, 0);
-                  }),
-                ],
-                {
-                  keyboard: {
-                    create: ({ onKey }) => TodoKeyboard({ onKey }),
-                  },
-                },
-              );
+              return dom(ctx, panel, [
+                effects((obj) => {
+                  // A little above the group's origin, which puts the
+                  // middle of the panel a touch under eye level once it is
+                  // scaled down and pushed away.
+                  obj.position.set(0, 1, 0);
+                }),
+              ]);
             })(),
           ),
         ]),

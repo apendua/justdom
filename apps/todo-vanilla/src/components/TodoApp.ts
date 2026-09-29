@@ -14,6 +14,7 @@ import { Signal, toObservable } from "@apendua/signal";
 import { store, on, set, observable, component } from "@apendua/signal";
 import { scrollable } from "@apendua/justui";
 import ProgressBar from "./ProgressBar.js";
+import { xrSession } from "../session.js";
 import TodoItem from "./TodoItem.js";
 
 // Artificial delay used to demonstrate suspense. The progress bar is given the
@@ -35,6 +36,7 @@ export const fontFamily = 'system-ui, "Segoe UI", Roboto, Helvetica, Arial, sans
 // out from under whatever ray was pointing at them.
 const containerStyle = stylesheet`
   .${CLASS_NAME} {
+    position: relative;
     font-family: ${fontFamily};
     display: flex;
     flex-direction: column;
@@ -113,6 +115,41 @@ const buttonStyle = stylesheet`
 
   .${CLASS_NAME}:hover, .${CLASS_NAME}[data-xr-hover] {
     background-color: #0056b3;
+  }
+`;
+
+// Ends the immersive session: in the card's top-right corner, and only
+// while there is a session to end. An ordinary button, mirrored like the
+// rest of the card, so a press on it in the scene is a click on it here.
+// `[hidden]` is restated because the class sets `display`, which would
+// otherwise win over the browser's own rule for it.
+const exitStyle = stylesheet`
+  .${CLASS_NAME} {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    font-size: 1.25rem;
+    line-height: 1;
+    color: #4a5260;
+    background-color: #dfe6ef;
+    border: none;
+    border-radius: 18px;
+    cursor: pointer;
+  }
+
+  .${CLASS_NAME}:hover, .${CLASS_NAME}[data-xr-hover] {
+    color: white;
+    background-color: #d9434f;
+  }
+
+  .${CLASS_NAME}[hidden] {
+    display: none;
   }
 `;
 
@@ -214,10 +251,11 @@ interface Todo {
 
 /**
  * The app. One tree, written for the page: a heading, a field with an Add
- * button, a count, and a list behind a scrolling window. It knows nothing
- * about the scene — the scene mirrors the element this is mounted in (see
- * `xr.ts`), so every widget here is ordinary HTML and CSS and every handler
- * is the one a page would have.
+ * button, a count, and a list behind a scrolling window. It knows next to
+ * nothing about the scene — the scene mirrors the element this is mounted in
+ * (see `xr.ts`), so every widget here is ordinary HTML and CSS and every
+ * handler is the one a page would have. The one exception is the exit
+ * button, shown only while `xrSession` says there is a session to end.
  */
 const TodoApp = component((ctx: WeakKey) => {
   const todos = Signal.of<Todo[]>([
@@ -252,6 +290,20 @@ const TodoApp = component((ctx: WeakKey) => {
     $("div", [
       set("className", containerStyle),
       children(
+        $("button", [
+          set("className", exitStyle),
+          set({
+            type: "button",
+            title: "Exit VR",
+            get hidden() {
+              return xrSession.get() === null;
+            },
+          }),
+          children(text`×`),
+          on("click", () => {
+            void xrSession.get()?.end();
+          }),
+        ]),
         $("h1", [set("className", headerStyle), children(text`Todo App`)]),
         $("div", [
           set("className", inputContainerStyle),

@@ -78,10 +78,12 @@ const keyboardClasses = {
  * gives it a `keyboard` — so what is left to the app is the look, which is
  * exactly what the page's own keyboard, had it one, would leave to it.
  */
-const TodoKeyboard = component(({ onKey }: Pick<KeyboardTarget, "onKey">) => {
+const TodoKeyboard = component(({ onKey, field }: Pick<KeyboardTarget, "onKey" | "field">) => {
   return $("div", [
     set("className", boardSurfaceStyle),
-    children(keyboard({ classes: keyboardClasses, onKey })),
+    // `field` is what lets the board follow the field it types into: a
+    // number field would get the number pad.
+    children(keyboard({ classes: keyboardClasses, onKey, field })),
   ]);
 });
 

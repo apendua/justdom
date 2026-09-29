@@ -10,6 +10,7 @@ import {
   selector,
   set,
   Signal,
+  withComputation,
 } from "@apendua/signal";
 import { $, children, Nothing } from "../operators.js";
 import { box } from "./div.js";
@@ -28,10 +29,11 @@ import { rectGeometry } from "./sdfRect.js";
 import { place, placeAndScale } from "./place.js";
 import { TextBatchContext } from "./textBatch.js";
 import { TextScaleContext } from "./textScale.js";
-import { discardDraft, getCaretOffset, getShownValue } from "./typing.js";
+import { discardDraft, getCaretOffset, getShownValue, setCaretOffset } from "./typing.js";
 
 /**
- * @import {Component} from '../core.js';
+ * @import {EntityEffect} from '@apendua/signal';
+ * @import {Component, InputEvent, PointerEvent, InputCancelEvent, XREventMap} from '../core.js';
  * @import {BoxSurface} from './div.js';
  * @import {ClipBox} from './clip.js';
  */
@@ -42,12 +44,19 @@ import { discardDraft, getCaretOffset, getShownValue } from "./typing.js";
  * A text field is a box with a line of text in it, and both halves are
  * things a scene can be told: the box comes from `div`'s, and the value is
  * drawn here — the placeholder in its place while the value is empty, in
- * the colour the page gives placeholders, and a blinking caret at the end of
- * the text while the portal's keyboard is typing into the field. What it
+ * the colour the page gives placeholders, and a blinking caret in the text
+ * while the portal's keyboard is typing into the field. What it
  * cannot mirror is the browser's own editing: the selection, and the
  * scrolling of a value longer than the field. The value is scrolled so
  * that the caret shows while the field is being typed into, and shown from
  * its start otherwise, which is what a field does on a page.
+ *
+ * While the field is being typed into, the ray places the caret: a press
+ * puts it between the two characters nearest where the ray landed, and
+ * holding the press while moving the ray along the field drags it there —
+ * the tap-and-slide a phone's field offers, with the trigger for the
+ * finger. Where the caret goes is the portal's to decide (see
+ * `InputFocus.placeCaret`); the field only says which character it is.
  *
  * The value is not a text node. Nothing the observer reports says it
  * changed, so the field is watched in two other ways: through the `input`
@@ -68,6 +77,11 @@ import { discardDraft, getCaretOffset, getShownValue } from "./typing.js";
  * @typedef {object} InputFocus
  * @property {(element: HTMLInputElement) => boolean} isFocused Reactive.
  * @property {(element: HTMLInputElement) => void} press
+ * @property {(element: HTMLInputElement, offset: number) => void} [placeCaret]
+ *   A ray put the caret of a focused field `offset` characters into what it
+ *   shows. Put there by `placeCaretIn` when not given; a field that stands
+ *   in for another — the keyboard's preview of the field being typed into —
+ *   puts it in that other field instead.
  */
 
 /** @type {InputFocus} */
@@ -75,6 +89,20 @@ const NO_FOCUS = {
   isFocused: () => false,
   press: () => {},
 };
+
+/**
+ * Put the caret `offset` characters into the field, and tell whoever draws
+ * it. What a focused field does with a ray's press unless its focus says
+ * otherwise.
+ *
+ * @param {HTMLInputElement} element
+ * @param {number} offset
+ * @returns {void}
+ */
+export function placeCaretIn(element, offset) {
+  setCaretOffset(element, offset);
+  touchValue(element);
+}
 
 export const InputFocusContext = createProperty(
   /**
@@ -150,6 +178,20 @@ function valueVersionOf(element) {
 export function touchValue(element) {
   const version = valueVersionOf(element);
   version.set(version.peek() + 1);
+}
+
+/**
+ * Read, reactively, that the element's value or caret may have changed:
+ * a computation that calls this re-runs whenever the mirror would draw the
+ * field again. For something in the scene that shows the field somewhere
+ * else — the keyboard's preview of it. Only while a portal is following
+ * the element, which a field in a panel always is.
+ *
+ * @param {HTMLInputElement} element
+ * @returns {void}
+ */
+export function watchValue(element) {
+  valueVersionOf(element).get();
 }
 
 /**
@@ -305,6 +347,15 @@ function pointEqual(a, b) {
 }
 
 /**
+ * Which character a point on the field is at, filled in by the field's
+ * content once it is drawn: the offset of the caret nearest the point,
+ * given in the field's own px, from its border box's top left. Null until
+ * then, and again once the content is gone.
+ *
+ * @typedef {{ offsetAt: ((x: number) => number) | null }} CaretLocator
+ */
+
+/**
  * The value, or the placeholder, drawn inside the field; and the caret,
  * while the field is the one being typed into.
  *
@@ -312,9 +363,10 @@ function pointEqual(a, b) {
  * @param {HTMLInputElement} element
  * @param {BoxSurface} surface
  * @param {InputFocus} focus
+ * @param {CaretLocator} locator
  * @returns {import("@apendua/signal").Source<Component>[]}
  */
-function fieldContent(ctx, element, surface, focus) {
+function fieldContent(ctx, element, surface, focus, locator) {
   const batch = TextBatchContext.get(ctx);
   const textScale = TextScaleContext.get(ctx);
   const version = valueVersionOf(element);
@@ -396,6 +448,17 @@ function fieldContent(ctx, element, surface, focus) {
 
   const focused = new Derived(() => focus.isFocused(element));
 
+  /**
+   * How far the value is scrolled, in px, while the field is being typed
+   * into. Kept from one run to the next, as a browser keeps it: the value
+   * only slides when the caret would otherwise leave the field, and then
+   * only as far as it takes to bring it back. A caret moved about inside
+   * what shows — by a ray, dragging it along the field — moves over text
+   * that stays put, which is what makes the text under the ray the text the
+   * caret goes to.
+   */
+  let scroll = 0;
+
   // Where the run's texture goes in the field's frame. Aligned as the page
   // aligns it, and, for a value wider than the field while it is being
   // typed into, slid left so the caret stays in view — which is the one
@@ -410,16 +473,43 @@ function fieldContent(ctx, element, surface, focus) {
       } else if (align === "right" || align === "end") {
         left += width - run;
       }
-      if (focused.get()) {
-        const overshoot = caretAdvance.width - width;
-        if (overshoot > 0) {
-          left -= overshoot;
-        }
+      if (focused.get() && run > width) {
+        const caret = caretAdvance.width;
+        scroll = Math.min(Math.max(scroll, caret - width, 0), caret, run - width);
+        left = x - scroll;
+      } else {
+        scroll = 0;
       }
       return { x: left, y };
     },
     { isEqual: pointEqual },
   );
+
+  /**
+   * Which character a ray's point is nearest, measured against the run as
+   * it is drawn now — scrolled, and bullets for a password.
+   *
+   * @param {number} x
+   * @returns {number}
+   */
+  const offsetAt = (x) =>
+    withComputation(null, () => {
+      if (shown.placeholder) {
+        return 0;
+      }
+      const along = x - origin.get().x;
+      let best = 0;
+      let distance = Math.abs(along);
+      for (let offset = 1; offset <= shown.text.length; offset++) {
+        const advance = measureTextRun(shown.text.slice(0, offset), renderStyle).width;
+        const next = Math.abs(along - advance);
+        if (next < distance) {
+          best = offset;
+          distance = next;
+        }
+      }
+      return best;
+    });
 
   const layout = selector(() => {
     const height = frame.height;
@@ -474,6 +564,14 @@ function fieldContent(ctx, element, surface, focus) {
     effects(() => {
       const stop = trackValue(element);
       onCleanup(stop);
+    }),
+    // And the ray told where the characters are, for as long as they are
+    // drawn.
+    effects(() => {
+      locator.offsetAt = offsetAt;
+      onCleanup(() => {
+        locator.offsetAt = null;
+      });
     }),
     set("material", () => {
       const material = createMarkMaterial();
@@ -627,6 +725,8 @@ function fieldContent(ctx, element, surface, focus) {
  */
 export function textInput(ctx, element) {
   const focus = InputFocusContext.get(ctx);
+  /** @type {CaretLocator} */
+  const locator = { offsetAt: null };
   return box(ctx, element, {
     // A field is there to be typed into, so it is a ray target without
     // asking, exactly as a checkbox is; a disabled one is not, however it is
@@ -641,6 +741,77 @@ export function textInput(ctx, element) {
         focus.press(element);
       }
     },
-    content: (surface) => fieldContent(ctx, element, surface, focus),
+    content: (surface) => fieldContent(ctx, element, surface, focus, locator),
+    interactions: [caretByRay(element, focus, locator)],
   });
+}
+
+/**
+ * The ray placing the caret of a field that is being typed into: a press
+ * puts it at the character nearest where the ray landed, and moving the ray
+ * with the press held drags it along. Only on a focused field — the press
+ * that focuses a field puts the caret at the end, where a tap on a phone
+ * does — and only for the hand that pressed.
+ *
+ * The point is taken into the field's own frame, the box's object's, which
+ * is px from the border box's top left whatever the panel's pose, scale or
+ * a CSS transform on the field.
+ *
+ * @param {HTMLInputElement} element
+ * @param {InputFocus} focus
+ * @param {CaretLocator} locator
+ * @returns {EntityEffect<THREE.Object3D<XREventMap>>}
+ */
+function caretByRay(element, focus, locator) {
+  return (object) => {
+    /** @type {unknown} */
+    let holding = null;
+    const local = new THREE.Vector3();
+
+    /** @param {InputEvent | PointerEvent} event */
+    const moveCaret = (event) => {
+      const point = event.intersection?.point;
+      if (!point || !locator.offsetAt) {
+        return;
+      }
+      object.updateWorldMatrix(true, false);
+      local.copy(point);
+      object.worldToLocal(local);
+      const offset = locator.offsetAt(local.x);
+      (focus.placeCaret ?? placeCaretIn)(element, offset);
+    };
+
+    /** @param {InputEvent} event */
+    const onStart = (event) => {
+      const typing = withComputation(null, () => focus.isFocused(element));
+      if (!typing || element.disabled || element.readOnly) {
+        return;
+      }
+      holding = event.controller;
+      moveCaret(event);
+    };
+    /** @param {PointerEvent} event */
+    const onMove = (event) => {
+      if (holding !== null && event.controller === holding) {
+        moveCaret(event);
+      }
+    };
+    /** @param {InputCancelEvent} event */
+    const onEnd = (event) => {
+      if (event.controller === holding) {
+        holding = null;
+      }
+    };
+    object.addEventListener("selectstart", onStart);
+    object.addEventListener("pointermove", onMove);
+    object.addEventListener("pointerenter", onMove);
+    object.addEventListener("selectend", onEnd);
+    onCleanup(() => {
+      holding = null;
+      object.removeEventListener("selectstart", onStart);
+      object.removeEventListener("pointermove", onMove);
+      object.removeEventListener("pointerenter", onMove);
+      object.removeEventListener("selectend", onEnd);
+    });
+  };
 }

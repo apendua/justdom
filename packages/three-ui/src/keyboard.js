@@ -1,5 +1,5 @@
 import { $, attr, children, on, renderText, set, style, text } from "@apendua/justdom";
-import { flatMap, observable, Signal } from "@apendua/signal";
+import { Derived, flatMap, observable, Signal } from "@apendua/signal";
 
 /**
  * @import {EntityEffect} from "@apendua/signal";
@@ -132,7 +132,18 @@ const withModifier = (base, modifier, active) =>
  *   something. Modifiers are not reported through it — they arrive as flags on
  *   the press that follows.
  * @property {KeyboardClasses} classes
- * @property {KeyboardLayout} [layout] Defaults to {@link MOBILE_LAYOUT}.
+ * @property {KeyboardLayout} [layout] The one layout the board always shows.
+ *   Defaults to {@link MOBILE_LAYOUT}, or, with `field`, to whichever of
+ *   `MOBILE_LAYOUT` and `numericLayout` the field asks for.
+ * @property {() => HTMLInputElement | null} [field] The field being typed
+ *   into, read reactively — `field` on the target `@apendua/freedom` hands a
+ *   board's factory is exactly this. A board given one follows it the way a
+ *   phone's keyboard follows the field it pops up for: a number field gets
+ *   the number pad, and nothing else. See {@link isNumericField}. Ignored
+ *   when `layout` is given, which is a board that asked for one layout by
+ *   name.
+ * @property {KeyboardLayout} [numericLayout] What a numeric field gets.
+ *   Defaults to {@link NUMERIC_LAYOUT}.
  */
 
 /** @type {Record<KeyboardModifier, boolean>} */
@@ -278,6 +289,72 @@ export const MOBILE_LAYOUT = [
 ];
 
 /**
+ * @param {string} value
+ * @returns {KeyboardKey}
+ */
+const digit = (value) => ({ code: `Digit${value}`, label: value, key: value });
+
+/**
+ * The layout a number field gets: a phone's number pad, four keys across.
+ * Nothing on it types anything a number field would refuse, and everything a
+ * number is written with — digits, a sign, a decimal point — is one click
+ * away, with no view to switch and no shift to hold. `esc` and `enter` are
+ * where they are on the letters board, bottom left and bottom right, so the
+ * hand that knows one board knows this one.
+ *
+ * Every row adds up to 4 units, the zero spanning two of them the way it
+ * does on a pad.
+ *
+ * @type {KeyboardLayout}
+ */
+export const NUMERIC_LAYOUT = [
+  [digit("1"), digit("2"), digit("3"), special("Minus", "-", { key: "-", name: "Minus" })],
+  [
+    digit("4"),
+    digit("5"),
+    digit("6"),
+    special("Backspace", "⌫", { key: "Backspace", name: "Backspace" }),
+  ],
+  [digit("7"), digit("8"), digit("9"), special("Period", ".", { key: ".", name: "Decimal point" })],
+  [
+    special("Escape", "esc", { key: "Escape", name: "Escape" }),
+    { ...digit("0"), width: 2 },
+    special("Enter", "enter", { key: "Enter", name: "Enter" }),
+  ],
+];
+
+/**
+ * The `inputmode` values that ask for a number pad rather than a board of
+ * letters, as they do of a phone.
+ *
+ * @type {ReadonlySet<string>}
+ */
+const NUMERIC_INPUT_MODES = new Set(["numeric", "decimal"]);
+
+/**
+ * Whether a field is one a number pad is the board for: an
+ * `<input type="number">`, or any field whose `inputmode` says `numeric` or
+ * `decimal` — which is how a page asks a phone for the pad on a field that
+ * holds digits but is not a number, a PIN or a code.
+ *
+ * By attribute rather than `instanceof`, because the field may be from
+ * another document than the one this code's globals belong to.
+ *
+ * @param {HTMLInputElement | null | undefined} field
+ * @returns {boolean}
+ */
+export function isNumericField(field) {
+  if (!field) {
+    return false;
+  }
+  if (field.type === "number") {
+    return true;
+  }
+  const mode = field.getAttribute("inputmode");
+  return mode !== null && NUMERIC_INPUT_MODES.has(mode.trim().toLowerCase());
+}
+
+/**
  * A keyboard made of ordinary elements, clicked rather than typed on, so that
  * it works in a `dom(ctx, …)` portal as well as it does on a page.
  *
@@ -300,11 +377,18 @@ export const MOBILE_LAYOUT = [
  * symbols view that snapped back after one character would be re-engaged for
  * every digit of a number.
  *
+ * Given the `field` it types into, the board also follows what kind of field
+ * that is: a number field gets `NUMERIC_LAYOUT` and a text field the letters,
+ * as on a phone. That one change is a different board rather than new faces
+ * — the pad and the letters have nothing in common to re-label — so it is
+ * the one time the tree is built again, and it happens only as the typing
+ * moves between a number field and a text one, never while typing.
+ *
  * @param {KeyboardProps} props
  * @returns {import("@apendua/signal").Source<Mountable>}
  */
 export function keyboard(props) {
-  const { onKey, classes, layout = MOBILE_LAYOUT } = props;
+  const { onKey, classes, layout, field, numericLayout = NUMERIC_LAYOUT } = props;
 
   /** @type {Record<KeyboardModifier, Signal<boolean>>} */
   const held = {
@@ -447,13 +531,34 @@ export function keyboard(props) {
       children(...keys.map(key)),
     ]);
 
-  return $("div", [
-    set("className", classes.root),
-    style({ display: "flex", flexDirection: "column" }),
-    attr("role", () => "group"),
-    attr("aria-label", () => "Keyboard"),
-    children(...layout.map(row)),
-  ]);
+  /**
+   * @param {KeyboardLayout} rows
+   * @returns {import("@apendua/signal").Source<Mountable>}
+   */
+  const board = (rows) =>
+    $("div", [
+      set("className", classes.root),
+      style({ display: "flex", flexDirection: "column" }),
+      attr("role", () => "group"),
+      attr("aria-label", () => "Keyboard"),
+      children(...rows.map(row)),
+    ]);
+
+  if (layout || !field) {
+    return board(layout ?? MOBILE_LAYOUT);
+  }
+
+  // A `Derived` for its equality cutoff: the typing moving from one text
+  // field to another lands on the layout it already had, and tells nobody.
+  const chosen = new Derived(() => (isNumericField(field()) ? numericLayout : MOBILE_LAYOUT));
+  return flatMap((/** @type {KeyboardLayout} */ rows) => {
+    // A new board starts clean: a shift or a symbols view held on the old
+    // one has no key to be released by on this one.
+    for (const signal of Object.values(held)) {
+      signal.set(false);
+    }
+    return board(rows);
+  })(observable(() => chosen.get()));
 }
 
 export default keyboard;

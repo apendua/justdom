@@ -61,7 +61,7 @@ export async function offerXR(panel: HTMLElement): Promise<void> {
     // `TodoKeyboard`'s, and where it opens, when it goes and how it is
     // moved are freedom's.
     panelOptions: {
-      keyboard: { create: ({ onKey }) => TodoKeyboard({ onKey }) },
+      keyboard: { create: ({ onKey, field }) => TodoKeyboard({ onKey, field }) },
     },
   }).subscribe({
     next: (renderer) => {

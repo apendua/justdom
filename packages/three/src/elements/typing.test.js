@@ -6,6 +6,7 @@ import {
   getShownValue,
   isTextInput,
   moveCaretToEnd,
+  setCaretOffset,
   typeIntoInput,
 } from "./typing.js";
 
@@ -287,6 +288,73 @@ describe("typing a number", () => {
     input.value = "";
     discardDraft(input);
     assert.equal(getShownValue(input), "");
+    remove();
+  });
+});
+
+describe("placing the caret", () => {
+  test("in a field whose selection can be written, is the selection", () => {
+    const { input, remove } = field("abc");
+    setCaretOffset(input, 1);
+    assert.equal(input.selectionStart, 1);
+    assert.equal(input.selectionEnd, 1);
+    assert.equal(getCaretOffset(input), 1);
+    typeIntoInput(input, { key: "x" });
+    assert.equal(input.value, "axbc", "the next key goes in there");
+    assert.equal(getCaretOffset(input), 2, "and the caret after it");
+
+    setCaretOffset(input, 99);
+    assert.equal(getCaretOffset(input), 4, "clamped to the value");
+    setCaretOffset(input, -3);
+    assert.equal(getCaretOffset(input), 0);
+    remove();
+  });
+
+  test("in a field whose selection cannot be, is kept for it, and typing goes there", () => {
+    for (const type of ["email", "number"]) {
+      const { input, remove } = field(type === "email" ? "ab@c" : "125", type);
+      setCaretOffset(input, 2);
+      assert.equal(getCaretOffset(input), 2, type);
+      typeIntoInput(input, { key: type === "email" ? "x" : "3" });
+      assert.equal(input.value, type === "email" ? "abx@c" : "1235", `${type}: in the middle`);
+      assert.equal(getCaretOffset(input), 3, `${type}: after what went in`);
+      typeIntoInput(input, { key: "Backspace" });
+      assert.equal(input.value, type === "email" ? "ab@c" : "125", `${type}: backspace there`);
+      assert.equal(getCaretOffset(input), 2);
+      typeIntoInput(input, { key: "Delete" });
+      assert.equal(input.value, type === "email" ? "abc" : "12", `${type}: delete ahead of it`);
+      remove();
+    }
+  });
+
+  test("a caret kept for a field goes back to the end when the app writes the value", () => {
+    const { input, remove } = field("12", "number");
+    setCaretOffset(input, 0);
+    typeIntoInput(input, { key: "-" });
+    assert.equal(input.value, "-12");
+    input.value = "7";
+    assert.equal(getCaretOffset(input), 1, "a new value, and the caret at its end");
+    setCaretOffset(input, 0);
+    moveCaretToEnd(input);
+    assert.equal(getCaretOffset(input), 1, "and at the end when a tap puts it there");
+    remove();
+  });
+
+  test("follows a draft that is not the value yet", () => {
+    const { input, remove } = field("", "number");
+    for (const key of "15") {
+      typeIntoInput(input, { key });
+    }
+    setCaretOffset(input, 1);
+    typeIntoInput(input, { key: "." });
+    assert.equal(input.value, "1.5");
+    setCaretOffset(input, 3);
+    typeIntoInput(input, { key: "e" });
+    assert.equal(input.value, "", "`1.5e` is not a number yet");
+    assert.equal(getShownValue(input), "1.5e");
+    assert.equal(getCaretOffset(input), 4, "measured against what the field shows");
+    typeIntoInput(input, { key: "2" });
+    assert.equal(input.value, "1.5e2");
     remove();
   });
 });

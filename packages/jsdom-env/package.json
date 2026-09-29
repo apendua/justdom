@@ -31,9 +31,10 @@
     "lib-types"
   ],
   "scripts": {
-    "build": "npm run test:typecheck && npm run compile",
+    "build": "npm run test:syntax && npm run test:typecheck && npm run compile",
     "build:types": "tsc --project tsconfig.types.json",
     "compile": "npm run build:types",
+    "test:syntax": "node --experimental-vm-modules --no-warnings ../../common/scripts/check-native-syntax.mjs src",
     "test:typecheck": "tsc --project tsconfig.json --noEmit"
   },
   "dependencies": {

@@ -185,6 +185,12 @@ describe("MOBILE_LAYOUT", () => {
 });
 
 describe("keyboard", () => {
+  test("marks its root for a scene's haptics, so every key is felt", () => {
+    const board = typing();
+    assert.equal(board.root.getAttribute("data-xr-haptic"), "");
+    board.cleanup();
+  });
+
   test("types what is printed on the key", () => {
     const board = typing();
 

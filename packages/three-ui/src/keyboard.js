@@ -452,6 +452,11 @@ export function keyboard(props) {
     style({ display: "flex", flexDirection: "column" }),
     attr("role", () => "group"),
     attr("aria-label", () => "Keyboard"),
+    // Every key is felt: a board projected into a scene marks itself for
+    // freedom's haptics, which read the mark off the nearest ancestor, and
+    // the panel the board types for says what a key feels like. Nothing
+    // on a page reads it.
+    attr("data-xr-haptic", () => ""),
     children(...layout.map(row)),
   ]);
 }

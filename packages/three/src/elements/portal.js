@@ -736,8 +736,11 @@ function buildPortal(ctx, ownOptions = {}) {
         {
           // Without the scene's panel options: the board is the portal's, not
           // the app's, and a keyboard the app set for its panels would give
-          // the board a keyboard of its own.
-          ctx: PanelOptionsContext.set(baseCtx, {}),
+          // the board a keyboard of its own. The one option that does go
+          // through is this panel's haptics: the board types for this panel,
+          // and the hand pressing its keys is the hand pressing the panel's
+          // buttons, which should feel the same.
+          ctx: PanelOptionsContext.set(baseCtx, { haptics }),
           options: keyboard,
           containerObject,
           containerElement,

@@ -689,6 +689,11 @@ button, not per quad: the ray drifting from a label onto its background is
 a `pointermove`, as **Pointing at things** says. The pulses are worked out
 once per panel, so an element's handler pays for the call and nothing else.
 
+The keyboard a field brings up is a panel of its own, and its keys follow
+the `haptics` of the panel it is typing for. `@apendua/justui`'s board marks
+itself, so its keys are felt without the app saying anything; a board of
+your own marks its root the same way.
+
 ## Baking a panel into a stamp
 
 A portal is not cheap to keep: real DOM in the document, a mutation observer

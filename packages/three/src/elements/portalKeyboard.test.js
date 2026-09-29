@@ -11,6 +11,8 @@ import { HANDLE_OPACITY_ACTIVE, HANDLE_OPACITY_NEAR } from "./keyboardHandles.js
 import { stubCanvas } from "../test/stubCanvas.js";
 import { rectGeometry } from "./sdfRect.js";
 import { CARET_BLINK_MS } from "./textInput.js";
+import { HAPTIC_ATTRIBUTE } from "./haptics.js";
+import { recordingSource } from "../test/rumble.js";
 
 /**
  * @import {KeyboardTarget} from './portalKeyboard.js';
@@ -88,7 +90,8 @@ const ownKeyboard = (create) => ({ options: { keyboard: { gap: 20, create } } })
 
 /**
  * A panel with a field in it and a keyboard on offer. The keyboard's DOM
- * is one clickable key; what it is handed is recorded.
+ * is one clickable key on a board marked `data-xr-haptic`, as justui's is;
+ * what it is handed is recorded.
  *
  * @param {Configure} [configure]
  * @param {import('./keyboardSlot.js').KeyboardSlot} [slot] The scene's
@@ -126,7 +129,10 @@ function keyboardPanel(configure = ownKeyboard, slot, room) {
   const created = [];
   const { panelOptions, options } = configure((target) => {
     created.push(target);
-    return $("div", [children($("div", [attr("style", () => "cursor: pointer")]))]);
+    return $("div", [
+      attr(HAPTIC_ATTRIBUTE, () => ""),
+      children($("div", [attr("style", () => "cursor: pointer")])),
+    ]);
   });
   if (panelOptions) {
     ctx = withPanelOptions(ctx, panelOptions);
@@ -168,6 +174,21 @@ function keyboardPanel(configure = ownKeyboard, slot, room) {
     }
     return undefined;
   };
+  /**
+   * The board's key, once the board is up: the registered object under the
+   * hinge that is not the board's blocker plane.
+   */
+  const keyObject = () => {
+    const board = hinge(parent);
+    for (const target of targets) {
+      const isBlocker =
+        target instanceof THREE.Mesh && target.geometry instanceof THREE.PlaneGeometry;
+      if (!isBlocker && board.getObjectById(target.id)) {
+        return target;
+      }
+    }
+    return undefined;
+  };
   const blocker = () => {
     /** @type {THREE.Mesh | undefined} */
     let found;
@@ -178,16 +199,22 @@ function keyboardPanel(configure = ownKeyboard, slot, room) {
     }
     return found;
   };
-  /** A ray's press, as the manager delivers it. */
-  const press = (/** @type {THREE.Object3D | undefined} */ object) => {
+  /**
+   * A ray's press, as the manager delivers it.
+   *
+   * @param {THREE.Object3D | undefined} object
+   * @param {XRInputSource | null} [inputSource] The hand pressing, for what
+   *   it feels.
+   */
+  const press = (object, inputSource = null) => {
     assert.ok(object, "nothing to press");
     const controller = new THREE.Group();
     // @ts-expect-error -- the shape the handlers read, not three's full event.
-    object.dispatchEvent({ type: "selectstart", controller });
+    object.dispatchEvent({ type: "selectstart", controller, inputSource });
     // @ts-expect-error -- as above.
-    object.dispatchEvent({ type: "select", controller });
+    object.dispatchEvent({ type: "select", controller, inputSource });
     // @ts-expect-error -- as above.
-    object.dispatchEvent({ type: "selectend", controller });
+    object.dispatchEvent({ type: "selectend", controller, inputSource });
   };
 
   return {
@@ -199,6 +226,7 @@ function keyboardPanel(configure = ownKeyboard, slot, room) {
     created,
     targets,
     fieldObject,
+    keyObject,
     blocker,
     press,
     cleanup: () => {
@@ -482,6 +510,42 @@ describe("the keyboard from the panel options", () => {
     assert.equal(panels(), 1, "no board, and nothing thrown");
     assert.equal(panel.input.hasAttribute("data-xr-focus"), false);
     panel.cleanup();
+  });
+
+  test("the board's keys feel the way the panel's own haptics say", async () => {
+    /**
+     * The board of a panel configured so, brought up and pressed once by a
+     * hand that keeps a record.
+     *
+     * @param {Configure} configure
+     */
+    const pressedKey = async (configure) => {
+      const panel = keyboardPanel(configure);
+      await settle();
+      panel.press(panel.fieldObject());
+      await settle();
+      const { source, played } = recordingSource();
+      panel.press(panel.keyObject(), source);
+      panel.cleanup();
+      return played.map((effect) => effect.duration);
+    };
+
+    assert.deepEqual(await pressedKey(ownKeyboard), [24], "a tick, as any marked button");
+    assert.deepEqual(
+      await pressedKey((create) => ({
+        panelOptions: { keyboard: { create }, haptics: { flavor: "knock" } },
+      })),
+      [48],
+      "the scene's flavor",
+    );
+    assert.deepEqual(
+      await pressedKey((create) => ({
+        panelOptions: { keyboard: { create }, haptics: { flavor: "knock" } },
+        options: { haptics: false },
+      })),
+      [],
+      "and none for a panel that turned them off",
+    );
   });
 
   test("reaches the portal's other options too", async () => {

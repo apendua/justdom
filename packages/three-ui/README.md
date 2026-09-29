@@ -126,7 +126,10 @@ asked for by name rather than the dressing: the root and its rows are flex
 boxes, and each key gets the `flex-grow` its width unit calls for — 1 for a
 letter, 1.5 for shift, 5 for the space bar, every row adding up to 10. Gaps,
 corners, colours and type are yours; `key` needs a `cursor: pointer` like any
-other control, or rays pass straight through the board.
+other control, or rays pass straight through the board. The root carries
+`data-xr-haptic`, so in a scene every key is felt on hover and press the way
+the `haptics` option of the panel it types for says; freedom's README has
+the flavors.
 
 The tree is built once and never changes shape — a state change moves a class
 name and the text inside a key. A changed tree costs a re-measure of every box

@@ -61,7 +61,9 @@ const DEFAULT_TILT = (24 * Math.PI) / 180;
  * @property {WeakKey} ctx What the board is built from: the context the
  *   panel was built from, before it derived its own, and without the
  *   scene's panel options — the board is a panel of its own, with batches
- *   of its own, and none of the app's defaults.
+ *   of its own, and none of the app's defaults — except the panel's
+ *   `haptics`, which the board's keys follow, since the same hand presses
+ *   both.
  * @property {THREE.Object3D} containerObject The panel's perimeter. The
  *   board hangs off the same parent, so it is placed and scaled with the
  *   panel.

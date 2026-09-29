@@ -30,7 +30,12 @@ export const fontFamily = 'system-ui, "Segoe UI", Roboto, Helvetica, Arial, sans
 
 // The card paints a surface of its own, with the padding showing as a margin
 // all the way round and corners rounded the way freedom's shader rounds every
-// box. The width is fixed rather than shrink-to-fit, and it matters more in a
+// box. The surface is a gradient, as are most of the controls below: freedom
+// draws `background-image` gradients, and this app is where to see them in a
+// headset — linear on the card and the buttons, conic and radial on the exit
+// button, a repeating hatch on a finished row, and a tiled stripe on the
+// loading bar. The flat colour under each is what shows where a gradient
+// cannot be drawn. The width is fixed rather than shrink-to-fit, and it matters more in a
 // headset than on the page: a panel is centred on its own origin, so a row of
 // long text would not merely widen the card, it would slide both its edges
 // out from under whatever ray was pointing at them.
@@ -46,6 +51,7 @@ const containerStyle = stylesheet`
     max-width: 100%;
     padding: 2rem;
     background-color: #eef2f7;
+    background-image: linear-gradient(160deg, #f6f9fd 0%, #e6edf7 55%, #d8e2f0 100%);
     border-radius: 24px;
   }
 
@@ -102,11 +108,21 @@ const inputStyle = stylesheet`
   }
 `;
 
+/**
+ * The blue every pressable control here wears: lit from above, and darker
+ * under the ray. A hover is a swap between two gradients, which in a scene is
+ * a swap between two rows of freedom's gradient ramp — each baked the first
+ * time it is seen and shared by every control wearing it after that.
+ */
+const blueGradient = "linear-gradient(to bottom, #3b93ff, #0062d6)";
+const blueGradientHover = "linear-gradient(to bottom, #1f6fd1, #003f8a)";
+
 const buttonStyle = stylesheet`
   .${CLASS_NAME} {
     padding: 0.5rem 1rem;
     font-size: 1rem;
     background-color: #007bff;
+    background-image: ${blueGradient};
     color: white;
     border: none;
     border-radius: 4px;
@@ -115,6 +131,7 @@ const buttonStyle = stylesheet`
 
   .${CLASS_NAME}:hover, .${CLASS_NAME}[data-xr-hover] {
     background-color: #0056b3;
+    background-image: ${blueGradientHover};
   }
 `;
 
@@ -138,6 +155,15 @@ const exitStyle = stylesheet`
     line-height: 1;
     color: #4a5260;
     background-color: #dfe6ef;
+    /* Brushed metal: a conic sweep around the centre of a round button. */
+    background-image: conic-gradient(
+      from 45deg,
+      #eef2f7,
+      #c3cedc,
+      #eef2f7,
+      #c3cedc,
+      #eef2f7
+    );
     border: none;
     border-radius: 18px;
     cursor: pointer;
@@ -146,6 +172,8 @@ const exitStyle = stylesheet`
   .${CLASS_NAME}:hover, .${CLASS_NAME}[data-xr-hover] {
     color: white;
     background-color: #d9434f;
+    /* A lit red dome, its highlight up and to the left. */
+    background-image: radial-gradient(circle at 35% 30%, #ff8a93, #d9434f 55%, #a3222d);
   }
 
   .${CLASS_NAME}[hidden] {
@@ -206,6 +234,7 @@ const scrollStyles = {
       font-size: 1rem;
       color: white;
       background-color: #007bff;
+      background-image: ${blueGradient};
       border-radius: 4px;
       cursor: pointer;
       user-select: none;
@@ -213,6 +242,7 @@ const scrollStyles = {
 
     .${CLASS_NAME}:hover, .${CLASS_NAME}[data-xr-hover] {
       background-color: #0056b3;
+      background-image: ${blueGradientHover};
     }
   `,
   track: className`
@@ -226,6 +256,7 @@ const scrollStyles = {
     left: 4px;
     right: 4px;
     background-color: #007bff;
+    background-image: linear-gradient(to right, #3b93ff, #0062d6);
     border-radius: 4px;
   `,
   page: stylesheet`

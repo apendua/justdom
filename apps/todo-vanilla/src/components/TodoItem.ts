@@ -13,6 +13,14 @@ const itemStyle = className`
   box-shadow: 0 1px 2px rgba(0,0,0,0.1);
 `;
 
+/**
+ * A finished row is hatched: a repeating gradient in px, which a row can
+ * afford because its width does not move — a px stop is a different fraction
+ * of a gradient at every size, and a box that resizes would bake a new one
+ * each time it did.
+ */
+const completedBackground = "repeating-linear-gradient(-45deg, #ffffff 0 8px, #eef2f8 8px 16px)";
+
 const textStyle = className`
   flex-grow: 1;
   margin-left: 0.5rem;
@@ -47,18 +55,22 @@ const checkboxStyle = stylesheet`
   .${CLASS_NAME}:checked, .${CLASS_NAME}[data-xr-checked] {
     background-color: #007bff;
     border-color: #007bff;
-    /* The tick, for the page. In a scene freedom draws its own vector tick
-       and never reads background-image, so this shows on a page and only
-       there. A background rather than ::after because generated content on a
-       replaced element is Chrome-only; the polyline is the same one freedom
-       draws, so the two show the same mark. */
-    background-image: url('data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"%3E%3Cpolyline points="0.16,0.5 0.4,0.74 0.84,0.24" fill="none" stroke="white" stroke-width="0.16"/%3E%3C/svg%3E');
+    /* The tick, for the page, over a gradient for both. In a scene freedom
+       draws its own vector tick, and of a stack of background images it draws
+       the topmost gradient and skips any url(), so the tick shows on a page
+       and only there while the gradient shows on both. A background rather
+       than ::after because generated content on a replaced element is
+       Chrome-only; the polyline is the same one freedom draws, so the two
+       show the same mark. */
+    background-image:
+      url('data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"%3E%3Cpolyline points="0.16,0.5 0.4,0.74 0.84,0.24" fill="none" stroke="white" stroke-width="0.16"/%3E%3C/svg%3E'),
+      linear-gradient(135deg, #3b93ff, #0056b3);
   }
 `;
 
 const deleteButtonStyle = stylesheet`
   .${CLASS_NAME} {
-    background: #ff4d4d;
+    background: #ff4d4d linear-gradient(to bottom, #ff6b6b, #e03131);
     color: white;
     border: none;
     padding: 0.25rem 0.5rem;
@@ -68,7 +80,7 @@ const deleteButtonStyle = stylesheet`
   }
 
   .${CLASS_NAME}:hover, .${CLASS_NAME}[data-xr-hover] {
-    background: #cc0000;
+    background: #cc0000 linear-gradient(to bottom, #e03131, #a61e1e);
   }
 `;
 
@@ -96,6 +108,7 @@ const TodoItem = component((_: WeakKey, id: string, operators: Op<TodoProps, Tod
 
   return $("li", [
     set("className", itemStyle),
+    style("backgroundImage", () => (props.completed ? completedBackground : "none")),
     children(
       $("input", [
         set("className", checkboxStyle),

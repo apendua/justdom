@@ -1144,6 +1144,31 @@ describe("the caret, placed by a ray", () => {
     panel.cleanup();
   });
 
+  test("a drag that stays on one character does not place the caret again", async () => {
+    const panel = keyboardPanel();
+    await settle();
+    const field = /** @type {THREE.Object3D} */ (panel.fieldObject());
+    panel.press(field);
+    await settle();
+    let writes = 0;
+    const setSelectionRange = panel.input.setSelectionRange.bind(panel.input);
+    panel.input.setSelectionRange = (...args) => {
+      writes += 1;
+      setSelectionRange(...args);
+    };
+    const hand = new THREE.Group();
+    ray(panel.manager, "selectstart", field, hand, 8);
+    assert.equal(writes, 1, "the press puts it between `a` and `b`");
+    for (const x of [8, 9, 11, 12]) {
+      ray(panel.manager, "pointermove", field, hand, x);
+    }
+    assert.equal(writes, 1, "sliding over the same gap moves nothing");
+    ray(panel.manager, "pointermove", field, hand, 1);
+    assert.equal(writes, 2, "and the next character over does");
+    ray(panel.manager, "selectend", field, hand);
+    panel.cleanup();
+  });
+
   test("a press that focuses a field puts the caret at the end, wherever it lands", async () => {
     const panel = keyboardPanel();
     await settle();

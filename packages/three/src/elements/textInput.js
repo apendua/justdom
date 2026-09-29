@@ -486,6 +486,38 @@ function fieldContent(ctx, element, surface, focus, locator) {
   );
 
   /**
+   * How far along the run each caret position is, from 0 before the first
+   * character to the run's width after the last: measured once per value
+   * and style, not once per ray move, since a drag asks every frame the ray
+   * moves and the answer only changes with what is typed.
+   *
+   * @type {{ text: string, font: string, spacing: string, advances: number[] } | null}
+   */
+  let prefixes = null;
+
+  /**
+   * @param {string} text
+   * @returns {number[]}
+   */
+  const advancesOf = (text) => {
+    const { font, letterSpacing, wordSpacing, textTransform } = renderStyle;
+    const spacing = `${letterSpacing}|${wordSpacing}|${textTransform}`;
+    if (
+      !prefixes ||
+      prefixes.text !== text ||
+      prefixes.font !== font ||
+      prefixes.spacing !== spacing
+    ) {
+      const advances = [0];
+      for (let offset = 1; offset <= text.length; offset++) {
+        advances.push(measureTextRun(text.slice(0, offset), renderStyle).width);
+      }
+      prefixes = { text, font, spacing, advances };
+    }
+    return prefixes.advances;
+  };
+
+  /**
    * Which character a ray's point is nearest, measured against the run as
    * it is drawn now — scrolled, and bullets for a password.
    *
@@ -498,17 +530,20 @@ function fieldContent(ctx, element, surface, focus, locator) {
         return 0;
       }
       const along = x - origin.get().x;
-      let best = 0;
-      let distance = Math.abs(along);
-      for (let offset = 1; offset <= shown.text.length; offset++) {
-        const advance = measureTextRun(shown.text.slice(0, offset), renderStyle).width;
-        const next = Math.abs(along - advance);
-        if (next < distance) {
-          best = offset;
-          distance = next;
+      const advances = advancesOf(shown.text);
+      // The first caret position at or past the point, then whichever of it
+      // and the one before is nearer.
+      let low = 0;
+      let high = advances.length - 1;
+      while (low < high) {
+        const middle = (low + high) >> 1;
+        if (advances[middle] < along) {
+          low = middle + 1;
+        } else {
+          high = middle;
         }
       }
-      return best;
+      return low > 0 && along - advances[low - 1] <= advances[low] - along ? low - 1 : low;
     });
 
   const layout = selector(() => {
@@ -778,6 +813,11 @@ function caretByRay(element, focus, locator) {
       local.copy(point);
       object.worldToLocal(local);
       const offset = locator.offsetAt(local.x);
+      if (offset === getCaretOffset(element)) {
+        // Still on the same character: nothing to move, and nothing to
+        // tell the mirror, the preview or the caret's blink.
+        return;
+      }
       (focus.placeCaret ?? placeCaretIn)(element, offset);
     };
 

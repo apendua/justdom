@@ -6,7 +6,7 @@ import { createMirror, PORTAL_ATTRIBUTE } from "./mirror.js";
 import { div } from "./div.js";
 import { GRADIENT_LINEAR, rampAtlas } from "./gradient.js";
 import { createHaptics, HapticsContext } from "./haptics.js";
-import { getContentGroup } from "./div.js";
+import { getContentGroup } from "./contentGroup.js";
 import { scrollDrags } from "./scroll.js";
 import { describeScroller } from "../test/scroller.js";
 import { recordingSource } from "../test/rumble.js";

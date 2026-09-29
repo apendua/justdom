@@ -37,7 +37,8 @@ export { PREVIEW_ATTRIBUTE } from "./elements/keyboardPreview.js";
 export { PortalPluginsContext } from "./elements/plugins.js";
 export { PanelOptionsContext, withPanelOptions } from "./elements/panelOptions.js";
 export { HAPTIC_FLAVORS, playHaptic } from "./elements/haptics.js";
-export { box, getContentGroup } from "./elements/div.js";
+export { box } from "./elements/div.js";
+export { getContentGroup } from "./elements/contentGroup.js";
 export { makeReveal, solveCut } from "./elements/reveal.js";
 export {
   createFrameShareBudget,

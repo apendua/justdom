@@ -7,7 +7,8 @@ import {
   withChannel,
   withComputation,
 } from "@apendua/signal";
-import { div, getContentGroup, PortalReadyContext } from "./div.js";
+import { div, PortalReadyContext } from "./div.js";
+import { getContentGroup } from "./contentGroup.js";
 import { text } from "./text.js";
 import { checkbox } from "./checkbox.js";
 import { InputFocusContext, textInput } from "./textInput.js";

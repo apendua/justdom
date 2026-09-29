@@ -4,6 +4,7 @@ import * as THREE from "three";
 import { InteractionContext } from "../interactions.js";
 import { createMirror, PORTAL_ATTRIBUTE } from "./mirror.js";
 import { div } from "./div.js";
+import { GRADIENT_LINEAR, rampAtlas } from "./gradient.js";
 
 /**
  * @import { InteractionManager } from "../interactions.js";
@@ -665,5 +666,75 @@ describe("div drag-to-scroll", () => {
 
     document.removeEventListener("click", listener);
     subscription.unsubscribe();
+  });
+});
+
+describe("div gradients", () => {
+  /**
+   * A box the size of a real one — jsdom lays nothing out, and a gradient in
+   * a box with no area draws nothing — wearing `cssText`.
+   *
+   * @param {string} cssText
+   */
+  function sized(cssText) {
+    const element = document.createElement("div");
+    element.style.cssText = cssText;
+    element.getBoundingClientRect = () =>
+      /** @type {DOMRect} */ ({
+        left: 0,
+        top: 0,
+        right: 200,
+        bottom: 100,
+        width: 200,
+        height: 100,
+      });
+    document.body.appendChild(element);
+    const mirror = createMirror();
+    mirror.adopt(element);
+    const manager = /** @type {InteractionManager} */ (
+      /** @type {unknown} */ ({ add: () => {}, remove: () => {}, stopPropagation: () => {} })
+    );
+    /** @type {THREE.Object3D | undefined} */
+    let object;
+    const subscription = div(InteractionContext.set({}, manager), element).subscribe((value) => {
+      object = value;
+    });
+    const uniforms = () => {
+      const mesh = /** @type {THREE.Mesh} */ (
+        object?.children.find((child) => child instanceof THREE.Mesh)
+      );
+      return /** @type {THREE.ShaderMaterial} */ (mesh.material).uniforms;
+    };
+    return {
+      subscription,
+      uniforms,
+      restyleWith: (/** @type {string} */ text) => {
+        element.style.cssText = text;
+        mirror.attributeChanged(element);
+      },
+    };
+  }
+
+  test("a gradient is drawn from a ramp row the box holds until it goes", () => {
+    const before = rampAtlas.size;
+    const box = sized("background-image: linear-gradient(90deg, rgb(255, 0, 0), rgb(0, 0, 255))");
+    assert.equal(box.uniforms().uGradient.value.x, GRADIENT_LINEAR);
+    assert.equal(rampAtlas.size, before + 1);
+
+    // The same gradient again takes nothing new...
+    box.restyleWith("background-image: linear-gradient(90deg, rgb(255, 0, 0), rgb(0, 0, 255))");
+    assert.equal(rampAtlas.size, before + 1);
+    // ...another swaps its row for a new one...
+    box.restyleWith("background-image: linear-gradient(90deg, rgb(0, 255, 0), rgb(0, 0, 255))");
+    assert.equal(rampAtlas.size, before + 1);
+    // ...and none gives it back.
+    box.restyleWith("background-color: rgb(255, 0, 0)");
+    assert.equal(box.uniforms().uGradient.value.x, 0);
+    assert.equal(rampAtlas.size, before);
+
+    box.restyleWith("background-image: linear-gradient(rgb(1, 1, 1), rgb(2, 2, 2))");
+    assert.equal(rampAtlas.size, before + 1);
+    box.subscription.unsubscribe();
+    assert.equal(rampAtlas.size, before, "teardown releases the row");
   });
 });

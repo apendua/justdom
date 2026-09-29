@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { createProperty } from "@apendua/signal";
-import { rectGeometry, SDF_GLSL } from "./sdfRect.js";
+import { GRADIENT_GLSL, rectGeometry, SDF_GLSL } from "./sdfRect.js";
+import { rampUniforms } from "./gradient.js";
 
 /**
  * @import {Object3D} from 'three';
@@ -10,7 +11,7 @@ import { rectGeometry, SDF_GLSL } from "./sdfRect.js";
  * Drawing a panel's boxes together instead of one at a time.
  *
  * A box costs almost nothing to describe — a size, four radii, four border
- * widths, two colours and a clip window — and almost nothing to draw, since
+ * widths, two colours, a clip window and perhaps a gradient — and almost nothing to draw, since
  * every one of them is the same unit quad and the same distance field. What
  * it costs is being asked for: a draw call apiece, each one binding a
  * material, uploading its uniforms and issuing its own command. On a panel of
@@ -60,14 +61,25 @@ export const BoxBatchContext = createProperty(
   () => null,
 );
 
+// Attribute slots are the budget here, not bytes. WebGL promises sixteen and
+// a headset browser gives exactly that; the quad's position takes one and
+// the instance matrix four, which leaves eleven for a box's description, and
+// every one of them is a slot whether it carries two floats or four. So the
+// gradient's small numbers ride in the two lanes `aSize` would otherwise
+// leave empty: `z` is a header packing the kind, three flags and the ramp
+// row into one integer-valued float (exact far past any row count a page
+// reaches), and `w` the element's opacity. Unpacked here, once per vertex,
+// rather than per fragment. Two slots of the eleven are left.
 const instancedVertex = /* glsl */ `
-attribute vec2 aSize;
+attribute vec4 aSize;
 attribute vec4 aRadii;
 attribute vec4 aBorder;
 attribute vec4 aFillColor;
 attribute vec4 aBorderColor;
 attribute vec4 aClip;
 attribute vec4 aClipRadii;
+attribute vec4 aGradientGeometry;
+attribute vec4 aGradientTile;
 varying vec2 vUnit;
 varying vec2 vSize;
 varying vec4 vRadii;
@@ -76,15 +88,30 @@ varying vec4 vFillColor;
 varying vec4 vBorderColor;
 varying vec4 vClip;
 varying vec4 vClipRadii;
+varying vec4 vGradient;
+varying vec4 vGradientGeometry;
+varying vec4 vGradientTile;
+varying vec2 vGradientRamp;
 void main() {
   vUnit = position.xy;
-  vSize = aSize;
+  vSize = aSize.xy;
   vRadii = aRadii;
   vBorder = aBorder;
   vFillColor = aFillColor;
   vBorderColor = aBorderColor;
   vClip = aClip;
   vClipRadii = aClipRadii;
+  float header = floor(aSize.z + 0.5);
+  float flags = floor(header / 4.0);
+  vGradient = vec4(
+    mod(header, 4.0),
+    mod(flags, 2.0),
+    mod(floor(flags / 2.0), 2.0),
+    mod(floor(flags / 4.0), 2.0)
+  );
+  vGradientRamp = vec2(floor(flags / 8.0), aSize.w);
+  vGradientGeometry = aGradientGeometry;
+  vGradientTile = aGradientTile;
   gl_Position = projectionMatrix * modelViewMatrix * instanceMatrix * vec4(position, 1.0);
 }
 `;
@@ -98,16 +125,24 @@ varying vec4 vFillColor;
 varying vec4 vBorderColor;
 varying vec4 vClip;
 varying vec4 vClipRadii;
+varying vec4 vGradient;
+varying vec4 vGradientGeometry;
+varying vec4 vGradientTile;
+varying vec2 vGradientRamp;
 ${SDF_GLSL}
+${GRADIENT_GLSL}
 void main() {
   vec2 coverages = sdfCoverages(vUnit, vSize, vRadii, vBorder, vClip, vClipRadii);
   float fillCoverage = coverages.x;
   float borderCoverage = coverages.y;
-  float alpha = vFillColor.a * fillCoverage + vBorderColor.a * borderCoverage;
+  vec4 fill = withGradient(
+    vFillColor, vUnit * vSize, vGradient, vGradientGeometry, vGradientTile, vGradientRamp
+  );
+  float alpha = fill.a * fillCoverage + vBorderColor.a * borderCoverage;
   if (alpha < 0.001) {
     discard;
   }
-  vec3 color = (vFillColor.rgb * vFillColor.a * fillCoverage +
+  vec3 color = (fill.rgb * fill.a * fillCoverage +
                 vBorderColor.rgb * vBorderColor.a * borderCoverage) / alpha;
   gl_FragColor = vec4(color, alpha);
   #include <tonemapping_fragment>
@@ -144,6 +179,12 @@ function batchMaterial() {
     // for a quad.
     side: THREE.DoubleSide,
     forceSinglePass: true,
+    // The page's ramp atlas, by reference: the same two uniform objects every
+    // box material holds, so an atlas that grows is seen by all of them.
+    uniforms: {
+      uRamp: rampUniforms.uRamp,
+      uRampHeight: rampUniforms.uRampHeight,
+    },
   });
 }
 
@@ -230,13 +271,15 @@ class Bucket {
     geometry.setIndex(rectGeometry.getIndex());
     /** @type {[string, number][]} */
     const attributes = [
-      ["aSize", 2],
+      ["aSize", 4],
       ["aRadii", 4],
       ["aBorder", 4],
       ["aFillColor", 4],
       ["aBorderColor", 4],
       ["aClip", 4],
       ["aClipRadii", 4],
+      ["aGradientGeometry", 4],
+      ["aGradientTile", 4],
     ];
     this.data = {};
     for (const [name, size] of attributes) {
@@ -289,8 +332,18 @@ class Bucket {
     }
     mesh.setMatrixAt(index, matrix);
     const { uSize, uRadii, uBorder, uFillColor, uBorderColor, uClip, uClipRadii } = uniforms;
-    this.data.aSize[index * 2] = uSize.value.x;
-    this.data.aSize[index * 2 + 1] = uSize.value.y;
+    const { uGradient, uGradientGeometry, uGradientTile, uGradientRamp } = uniforms;
+    const gradient = uGradient.value;
+    const ramp = uGradientRamp.value;
+    const size = this.data.aSize;
+    size[index * 4] = uSize.value.x;
+    size[index * 4 + 1] = uSize.value.y;
+    // Unpacked by the vertex shader; see `instancedVertex`.
+    size[index * 4 + 2] =
+      gradient.x + 4 * gradient.y + 8 * gradient.z + 16 * gradient.w + 32 * ramp.x;
+    size[index * 4 + 3] = ramp.y;
+    writeVec4(this.data.aGradientGeometry, index, uGradientGeometry.value);
+    writeVec4(this.data.aGradientTile, index, uGradientTile.value);
     writeVec4(this.data.aRadii, index, uRadii.value);
     writeVec4(this.data.aBorder, index, uBorder.value);
     writeVec4(this.data.aFillColor, index, uFillColor.value);

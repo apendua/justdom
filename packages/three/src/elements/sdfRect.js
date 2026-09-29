@@ -1,8 +1,10 @@
 import * as THREE from "three";
+import { RAMP_WIDTH, rampUniforms } from "./gradient.js";
 
 /**
  * @import VisualProperties from './VisualProperties.js';
  * @import {ContentImage} from './image.js';
+ * @import {RampSlot} from './gradient.js';
  */
 
 /**
@@ -93,6 +95,104 @@ rectGeometry.setIndex([0, 1, 2, 2, 1, 3]);
 // background through it. uImageOpacity at zero is the whole feature
 // switched off, which is what every element that is not an image carries.
 
+// The gradient layer, which CSS paints between the background colour and
+// the picture, and so does this. `gradient.js` has done everything that does
+// not have to happen per pixel: what arrives is the tile one copy of the
+// image fills, a kind, and a few numbers that turn a point in the tile into
+// `t`, how far along the gradient it is — one period per unit for a
+// repeating gradient, which `fract` then wraps. `t` looks up a row of the
+// ramp atlas, which holds the stops already interpolated.
+//
+// Lanes: `gradient` is (kind, repeating, repeat-x, repeat-y), kind 0 being
+// no gradient at all; `ramp` is (row, opacity). A non-repeating axis is
+// trimmed to the tile with an edge antialiased the way every other edge here
+// is — against the pixel footprint of `q`, taken once, outside any branch,
+// because a derivative asked for inside one is undefined. The ramp is read
+// with an explicit level for the same reason: a box's kind differs from its
+// neighbour's along the seam between them, and it has no mipmaps to choose
+// between anyway.
+//
+// The composite: the layer goes over the background colour, and the
+// element's opacity goes over both. The fill colour arrives with the opacity
+// already folded in, so it is divided back out first — otherwise a
+// half-transparent element with an opaque gradient would show its background
+// colour through it.
+//
+// And it happens in sRGB, not in the linear space the rest of this shader
+// works in, because that is where CSS composites one background layer over
+// another: a half-transparent blue over white is (127, 127, 255), and done in
+// linear it comes out a washed-out (188, 188, 255). So the ramp's texels are
+// read as the sRGB bytes they are — the atlas texture declares no colour
+// space, and the sampler's filtering between texels is then sRGB
+// interpolation too, which is what CSS asks of a gradient — the fill is
+// encoded to meet them, and the result decoded back. Only a box with a
+// gradient pays for the conversions.
+
+/**
+ * The gradient layer, as GLSL: `withGradient` takes the fill colour a box
+ * would have drawn and returns it with the layer composited over. Shared by
+ * the per-element material and the batched one for the reason `SDF_GLSL`
+ * is, and included after it, since it antialiases with `coverageOf`.
+ */
+export const GRADIENT_GLSL = /* glsl */ `
+uniform sampler2D uRamp;
+uniform float uRampHeight;
+vec3 gradientEncode(vec3 linear) {
+  return mix(
+    linear * 12.92,
+    1.055 * pow(max(linear, vec3(0.0)), vec3(1.0 / 2.4)) - 0.055,
+    step(vec3(0.0031308), linear)
+  );
+}
+vec3 gradientDecode(vec3 srgb) {
+  return mix(
+    srgb / 12.92,
+    pow((max(srgb, vec3(0.0)) + 0.055) / 1.055, vec3(2.4)),
+    step(vec3(0.04045), srgb)
+  );
+}
+float tileEdge(float q, float start, float size, float footprint) {
+  float w = max(footprint, 1e-4);
+  return 1.0 - smoothstep(-w, w, abs(q - start - 0.5 * size) - 0.5 * size);
+}
+vec4 withGradient(vec4 fill, vec2 q, vec4 gradient, vec4 geometry, vec4 tile, vec2 ramp) {
+  vec2 footprint = fwidth(q);
+  if (gradient.x < 0.5) {
+    return fill;
+  }
+  vec2 size = max(tile.zw, vec2(1e-6));
+  vec2 local = q - tile.xy;
+  vec2 wrapped = local - size * floor(local / size);
+  local = mix(local, wrapped, step(0.5, gradient.zw));
+  float coverage =
+    mix(tileEdge(q.x, tile.x, tile.z, footprint.x), 1.0, step(0.5, gradient.z)) *
+    mix(tileEdge(q.y, tile.y, tile.w, footprint.y), 1.0, step(0.5, gradient.w));
+  float t;
+  if (gradient.x < 1.5) {
+    t = dot(local, geometry.xy) + geometry.z;
+  } else if (gradient.x < 2.5) {
+    t = length((local - geometry.xy) / geometry.zw);
+  } else {
+    vec2 d = local - geometry.xy;
+    t = fract(atan(d.x, -d.y) * 0.15915494 - geometry.z) * geometry.w;
+  }
+  t = gradient.y > 0.5 ? fract(t) : clamp(t, 0.0, 1.0);
+  vec2 uv = vec2(
+    (t * ${(RAMP_WIDTH - 1).toFixed(1)} + 0.5) / ${RAMP_WIDTH.toFixed(1)},
+    (ramp.x + 0.5) / uRampHeight
+  );
+  vec4 layer = textureLod(uRamp, uv, 0.0);
+  float over = layer.a * coverage;
+  float opacity = ramp.y;
+  float under = opacity > 0.0 ? min(fill.a / opacity, 1.0) : 0.0;
+  float alpha = over + under * (1.0 - over);
+  vec3 color = alpha > 0.0
+    ? (layer.rgb * over + gradientEncode(fill.rgb) * under * (1.0 - over)) / alpha
+    : vec3(0.0);
+  return vec4(gradientDecode(color), alpha * opacity);
+}
+`;
+
 const vertexShader = /* glsl */ `
 varying vec2 vUnit;
 void main() {
@@ -176,12 +276,19 @@ uniform sampler2D uImage;
 uniform vec4 uImageRect;
 uniform vec4 uImageClip;
 uniform float uImageOpacity;
+uniform vec4 uGradient;
+uniform vec4 uGradientGeometry;
+uniform vec4 uGradientTile;
+uniform vec2 uGradientRamp;
 ${SDF_GLSL}
+${GRADIENT_GLSL}
 void main() {
   vec2 coverages = sdfCoverages(vUnit, uSize, uRadii, uBorder, uClip, uClipRadii);
   float fillCoverage = coverages.x;
   float borderCoverage = coverages.y;
-  vec4 fill = uFillColor;
+  vec4 fill = withGradient(
+    uFillColor, vUnit * uSize, uGradient, uGradientGeometry, uGradientTile, uGradientRamp
+  );
   if (uImageOpacity > 0.0) {
     vec2 q = vUnit * uSize;
     vec2 uv = (q - uImageRect.xy) / max(uImageRect.zw - uImageRect.xy, vec2(1e-6));
@@ -249,6 +356,15 @@ export function createRectUniforms() {
     uImageRect: { value: new THREE.Vector4(0, 0, 0, 0) },
     uImageClip: { value: new THREE.Vector4(0, 0, 0, 0) },
     uImageOpacity: { value: 0 },
+    // No gradient until something writes one: kind 0 in `uGradient.x` skips
+    // the layer. The ramp texture and its height are the page's, shared by
+    // reference with every other box — see `rampUniforms`.
+    uGradient: { value: new THREE.Vector4(0, 0, 0, 0) },
+    uGradientGeometry: { value: new THREE.Vector4(0, 0, 0, 0) },
+    uGradientTile: { value: new THREE.Vector4(0, 0, 1, 1) },
+    uGradientRamp: { value: new THREE.Vector2(0, 1) },
+    uRamp: rampUniforms.uRamp,
+    uRampHeight: rampUniforms.uRampHeight,
   };
 }
 
@@ -382,4 +498,36 @@ export function writeImageUniforms(uniforms, image) {
   const { content } = image;
   uImageClip.value.set(content.left, content.top, content.right, content.bottom);
   uImageOpacity.value = image.opacity;
+}
+
+/**
+ * Write the gradient an element paints over its background colour, holding
+ * the ramp row it needs through `slot`. Values only, like the rest of this
+ * file; the one thing that can cost more is a ramp nobody has baked yet,
+ * which is a row of texels and an upload of the atlas — once per distinct
+ * gradient, not once per write.
+ *
+ * @param {Record<string, THREE.IUniform>} uniforms
+ * @param {VisualProperties} properties
+ * @param {RampSlot} slot The box's hold on its ramp row, which it keeps
+ *   between writes and lets go of when it is torn down.
+ * @returns {void}
+ */
+export function writeGradientUniforms(uniforms, properties, slot) {
+  const { uGradient, uGradientGeometry, uGradientTile, uGradientRamp } = uniforms;
+  const layout = properties.backgroundGradient;
+  const row = slot.set(layout);
+  if (!layout) {
+    uGradient.value.set(0, 0, 0, 0);
+    return;
+  }
+  uGradient.value.set(
+    layout.kind,
+    layout.repeating ? 1 : 0,
+    layout.repeatX ? 1 : 0,
+    layout.repeatY ? 1 : 0,
+  );
+  uGradientGeometry.value.fromArray(layout.geometry);
+  uGradientTile.value.fromArray(layout.tile);
+  uGradientRamp.value.set(row, properties.opacity);
 }

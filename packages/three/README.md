@@ -1126,6 +1126,63 @@ takes the one the picture turned out to have; giving images an explicit size
 in the stylesheet avoids that reflow, exactly as it avoids the flash on a
 flat page.
 
+## Gradients
+
+A `background-image` that is a gradient is drawn, laid out the way CSS lays
+it out, over the element's `background-color`:
+
+```css
+.gauge-fill {
+  background: linear-gradient(90deg, #3b82f6, #ef4444);
+}
+.hatched {
+  background: #111
+    repeating-linear-gradient(45deg, transparent 0 10px, rgb(255 255 255 / 0.1) 10px 20px);
+}
+.badge {
+  background: radial-gradient(circle at 30% 30%, #fde68a, #d97706) right 8px center / 24px 24px
+    no-repeat;
+}
+```
+
+`linear-`, `radial-` and `conic-gradient` and their `repeating-` forms are all
+drawn, with stops in `%`, `px` or angles, hard stops, double-position stops and
+interpolation hints. Stops interpolate in premultiplied sRGB, and the layer
+composites over the background colour in sRGB too, which is what CSS does —
+so a fade to `transparent` keeps its hue and a translucent gradient looks the
+way it does in the page. `background-size`, `background-position`,
+`background-repeat` and `background-origin` place and tile it.
+
+It costs no draw call. A box with a gradient stays one instance in its
+panel's batch: the stop list is baked, once, into a row of a texture shared by
+the whole page, and what the box carries is which row and a few numbers saying
+how its pixels map onto it. Rows are shared by content — a hundred rows
+wearing one gradient bake it once — and given back when the last box wearing
+them goes. Swapping gradients on hover is a lookup, or one row baked the first
+time a new one is seen.
+
+What to know:
+
+- **One layer.** A background that stacks several images is drawn as its
+  topmost gradient over its background colour; the others, and any `url()`
+  image, are not drawn.
+- **`background-clip` is not mirrored.** The background, colour and gradient
+  alike, fills the padding box, so a `content-box` clip draws wider than the
+  page does. `background-origin` works.
+- **`space` repeats as `repeat`.** Tiles are laid edge to edge rather than
+  spaced out. `round` works.
+- **Interpolation is sRGB whatever the gradient asks for.** `in oklab` and its
+  kin are accepted and ignored — the CSS default for gradients written with
+  ordinary colours, which is almost all of them. A stop colour in a space
+  browsers do not compute to `rgb()`, such as `oklch()`, makes the gradient
+  unreadable and the box draws its background colour alone.
+- **Prefer percentage stops on anything that resizes.** A `px` stop is a
+  different fraction of the gradient at every size, so a box animating its
+  width bakes a new row every frame it moves; percentage stops, and anything
+  moved with `transform`, bake nothing.
+- **Tile edges are antialiased** like every other edge in a panel, so a
+  `no-repeat` tile's border is a pixel softer than the page's.
+
 ## Clipping and scrolling
 
 An element that hides its overflow clips what is inside it, in the scene as on

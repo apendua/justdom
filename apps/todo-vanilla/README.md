@@ -14,12 +14,13 @@ interface adds an immersive session without building its UI twice.
 ## Running it
 
 ```
-npm run dev        # https://localhost:5173, from vite's basic-ssl plugin
+npm run dev        # http://localhost:5173
 npm run build      # what `rush build` runs
 ```
 
-The dev server is https because WebXR is only offered on a secure origin; a
-headset on the same network opens it by IP and accepts the certificate once.
+The dev server is plain http on localhost, which browsers treat as a secure
+origin, so WebXR (and the emulator) work there. Serving it to a headset over the
+local network would need https and is not set up.
 
 On a laptop the page is the page and nothing else: no session can be opened,
 so no button is shown and no renderer is made. `?emulator` installs a headset

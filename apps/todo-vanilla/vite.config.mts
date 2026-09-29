@@ -1,6 +1,5 @@
 import { defineConfig } from "vite";
 import { VitePWA } from "vite-plugin-pwa";
-import basicSsl from "@vitejs/plugin-basic-ssl";
 import PluginHMR from "@apendua/vite-hmr/plugin";
 
 // https://vitejs.dev/config/
@@ -8,7 +7,6 @@ export default defineConfig({
   plugins: [
     // WebXR is only offered on a secure origin, and a headset on the same
     // network reaches the dev server by IP: https it is.
-    basicSsl(),
     PluginHMR(),
     VitePWA({
       registerType: "autoUpdate",

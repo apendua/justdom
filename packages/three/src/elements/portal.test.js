@@ -2,7 +2,7 @@ import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
 import { Derived, Effect, Signal, toObservable, UpdateChannel, withChannel } from "@apendua/signal";
-import { $, attr, children, className, stylesheet } from "@apendua/justdom";
+import { $, $$, attr, children, className, stylesheet } from "@apendua/justdom";
 import { InteractionContext, InteractionManager } from "../interactions.js";
 import { DomMirror, getComputedStyleCached, resetMeasuringRangeForTests } from "./mirror.js";
 import { acquireImage, releaseImage } from "./image.js";
@@ -651,6 +651,56 @@ describe("createPortal", () => {
     flushFrame();
     await nextMacrotask();
     assert.equal(updates, before + 2, "nothing keeps asking for frames");
+
+    subscription.unsubscribe();
+    portal.disconnect();
+  });
+
+  test("a picture inside an svg is not announced, since nothing in the flow moves for it", async () => {
+    // An `<img>` that loads can take the picture's size and push its
+    // neighbours along. An `<image>` in an `<svg>` cannot: the root's box is
+    // laid out by the page whatever the picture is. Announcing it would
+    // re-measure the panel once per picture in a diagram full of them.
+    const manager = new InteractionManager();
+    let updates = 0;
+    const originalUpdate = manager.updateIntersections.bind(manager);
+    manager.updateIntersections = () => {
+      updates += 1;
+      originalUpdate();
+    };
+    const ctx = InteractionContext.set({}, manager);
+    const portal = createPortal(ctx, { budget: Infinity });
+    portal.addTo(new THREE.Group());
+
+    /** @type {import("@apendua/justdom").Mountable | undefined} */
+    let mountable;
+    const tree = $("div", [
+      children(
+        $$("svg", [
+          attr({ viewBox: "0 0 10 10" }),
+          children($$("image", [attr({ href: "data:image/gif;base64,a", width: 10, height: 10 })])),
+        ]),
+      ),
+    ]);
+    const subscription = tree.subscribe((value) => {
+      mountable = value;
+    });
+    assert.ok(mountable);
+    portal.mount(mountable);
+
+    await settle(portal);
+
+    const containers = document.querySelectorAll(`[${"data-xr-portal"}]`);
+    const image = containers[containers.length - 1].querySelector("image");
+    assert.ok(image, "the picture is in the panel");
+
+    const before = updates;
+    image.dispatchEvent(new Event("load"));
+    flushFrame();
+    await pump();
+    flushFrame();
+    await nextMacrotask();
+    assert.equal(updates, before, "an SVG picture's load re-measures nothing");
 
     subscription.unsubscribe();
     portal.disconnect();

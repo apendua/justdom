@@ -221,7 +221,7 @@ function ownTransform(element, style, viewBoxOrigin) {
  * @param {Chain} b
  * @returns {boolean}
  */
-function chainEqual(a, b) {
+export function chainEqual(a, b) {
   return a.root === b.root && a.opacity === b.opacity && matrixEqual(a.ctm, b.ctm);
 }
 
@@ -313,7 +313,7 @@ export function localMatrix(element) {
  * @param {Matrix2D} matrix
  * @returns {void}
  */
-function commitMatrix(object, matrix) {
+export function commitMatrix(object, matrix) {
   object.matrixAutoUpdate = false;
   toMatrix4(matrix, object.matrix);
   object.matrixWorldNeedsUpdate = true;
@@ -330,7 +330,7 @@ function commitMatrix(object, matrix) {
  * @param {Element} element
  * @returns {Chain}
  */
-function readChain(element) {
+export function readChain(element) {
   /** @type {Matrix2D} */
   let ctm = IDENTITY;
   let opacity = 1;
@@ -352,7 +352,16 @@ function readChain(element) {
 }
 
 /** The elements that draw something, and so take a place in the paint order. */
-const SHAPE_TAGS = new Set(["path", "rect", "circle", "ellipse", "line", "polyline", "polygon"]);
+const PAINTED_TAGS = new Set([
+  "path",
+  "rect",
+  "circle",
+  "ellipse",
+  "line",
+  "polyline",
+  "polygon",
+  "image",
+]);
 
 /**
  * @typedef {object} PaintOrder
@@ -382,9 +391,9 @@ function paintOrderEqual(a, b) {
 const paintOrders = new WeakMap();
 
 /**
- * The document order of the shapes under an `<svg>` root — SVG's painter
- * order — as one computation per root that every shape in it reads, rather
- * than a walk per shape. It follows the mirror's child-list signals, so a
+ * The document order of the shapes and images under an `<svg>` root — SVG's
+ * painter order — as one computation per root that every shape in it reads,
+ * rather than a walk per shape. It follows the mirror's child-list signals, so a
  * shape arriving or leaving anywhere under the root renumbers the root once,
  * and the shapes whose place did not change stop there.
  *
@@ -405,7 +414,7 @@ function getPaintOrder(root) {
               continue;
             }
             const element = /** @type {Element} */ (child);
-            if (SHAPE_TAGS.has(element.localName)) {
+            if (PAINTED_TAGS.has(element.localName)) {
               index.set(element, index.size);
             }
             walk(element);
@@ -419,6 +428,34 @@ function getPaintOrder(root) {
     paintOrders.set(root, signal);
   }
   return signal.get();
+}
+
+/**
+ * Where an element's meshes belong in the draw order: the root's content
+ * order, plus a fraction from the element's place in the root's document
+ * order (fill, then stroke, then the next element), which keeps everything
+ * one `<svg>` draws strictly inside the root's own step. SVG paints in
+ * document order, and this says so explicitly rather than leaning on three's
+ * sort falling through to mesh id. That fallback is document order only for
+ * the initial build, and a fill switched on by a hover, or a shape inserted
+ * before its siblings, would otherwise jump the stack.
+ *
+ * @param {Element} element
+ * @param {Element | null} root The element's `<svg>` root, from its chain.
+ * @param {0 | 1} layer 0 for a fill or an image, 1 for a stroke over it.
+ * @returns {number}
+ */
+export function paintRenderOrder(element, root, layer) {
+  const base = getContentRenderOrder(asHtml(root ?? element));
+  if (!root) {
+    return base;
+  }
+  const { index, count } = getPaintOrder(root);
+  const at = index.get(element);
+  if (at === undefined) {
+    return base;
+  }
+  return base + (2 * at + layer + 1) / (2 * count + 2);
 }
 
 /**
@@ -582,7 +619,7 @@ export function buildStrokeGeometry(path, spec, scale) {
  * an empty buffer draws nothing and costs nothing. Shared and never
  * disposed, like the rect quad.
  */
-const emptyGeometry = new THREE.BufferGeometry();
+export const emptyGeometry = new THREE.BufferGeometry();
 emptyGeometry.setAttribute("position", new THREE.BufferAttribute(new Float32Array(0), 3));
 
 /**
@@ -693,6 +730,70 @@ function paintedMesh({
 }
 
 /**
+ * The clip patch's two uniforms for what one element draws, and the effects
+ * that keep them current. Both are shared by every mesh the element has.
+ *
+ * `clip` is what the root's overflow and the scrollers above it leave, in
+ * the root's frame, written in an effect of its own so a scroll writes four
+ * numbers and nothing else. `clipMatrix` goes from the element's user space,
+ * where its vertices are, to that frame: the composition of every matrix
+ * above the meshes, written when the chain moves.
+ *
+ * @param {() => Element | null} root
+ * @param {() => Matrix2D} ctm
+ */
+export function clipUniforms(root, ctm) {
+  const clip = { value: new THREE.Vector4(-1e6, -1e6, 1e6, 1e6) };
+  const clipMatrix = { value: new THREE.Matrix3() };
+  /** What `clip` holds, for the raycast, which reads it untracked. */
+  let current = UNCLIPPED;
+  return {
+    clip,
+    clipMatrix,
+    clipBox: () => current,
+    followClip: [
+      effects(() => {
+        const at = root();
+        const box = at ? getInteriorClipBox(asHtml(at)) : UNCLIPPED;
+        clip.value.set(box.left, box.top, box.right, box.bottom);
+        current = box;
+      }),
+      effects(() => {
+        toMatrix3(ctm(), clipMatrix.value);
+      }),
+    ],
+  };
+}
+
+/**
+ * Make an element's object a ray target of its own while it is clickable, by
+ * the rule a box follows, and a ray can hit some part of it.
+ *
+ * Whether it is clickable is a signal of its own for the reason a box's is.
+ * The handlers write `data-xr-*` onto the element, which invalidates its
+ * computed style, and a re-read must not remount them.
+ *
+ * @param {WeakKey} ctx
+ * @param {Element} element
+ * @param {() => boolean} hittable Whether a ray can hit any of it. One that
+ *   no ray can hit is not registered, even under `cursor: pointer`.
+ */
+export function rayTarget(ctx, element, hittable) {
+  const clickable = new Derived(() => isClickable(asHtml(element)));
+  return effects((/** @type {THREE.Object3D<XREventMap>} */ obj) => {
+    if (!clickable.get() || !hittable()) {
+      return;
+    }
+    // Built here and not up front, so that elements nobody can click, which
+    // is most of them, pay nothing for it.
+    useEffects(
+      obj,
+      forwardPointerEvents(ctx, asHtml(element), obj, { enabled: PortalReadyContext.get(ctx) }),
+    );
+  });
+}
+
+/**
  * @param {WeakKey} ctx
  * @param {Element} element
  * @returns {Source<THREE.Object3D>}
@@ -740,45 +841,15 @@ export function shape(ctx, element) {
   });
 
   /**
-   * Where this shape's meshes belong in the draw order: the root's content
-   * order, plus a fraction from the shape's place in the root's document
-   * order — fill, then stroke, then the next shape — that keeps every
-   * shape of one `<svg>` strictly inside the root's own step. SVG paints
-   * in document order, and this says so explicitly rather than leaning on
-   * three's sort falling through to mesh id: that fallback is document
-   * order only for the initial build, and a fill switched on by a hover, or
-   * a shape inserted before its siblings, would otherwise jump the stack.
-   *
    * @param {0 | 1} layer 0 for the fill, 1 for the stroke drawn over it.
    * @returns {() => number}
    */
-  const renderOrderOf = (layer) => () => {
-    const current = root.get();
-    const base = getContentRenderOrder(asHtml(current ?? element));
-    if (!current) {
-      return base;
-    }
-    const { index, count } = getPaintOrder(current);
-    const at = index.get(element);
-    if (at === undefined) {
-      return base;
-    }
-    return base + (2 * at + layer + 1) / (2 * count + 2);
-  };
+  const renderOrderOf = (layer) => () => paintRenderOrder(element, root.get(), layer);
 
-  /**
-   * What the root's overflow and the scrollers above it leave of the shape,
-   * in the root's frame. One uniform, shared by both meshes, written in an
-   * effect of its own so a scroll writes four numbers here and nothing else.
-   */
-  const clip = { value: new THREE.Vector4(-1e6, -1e6, 1e6, 1e6) };
-
-  /**
-   * From the shape's user space, where its vertices are, to the root's
-   * frame, where the clip box is: the composition of every matrix above the
-   * meshes. Shared by both, and written when the chain moves.
-   */
-  const clipMatrix = { value: new THREE.Matrix3() };
+  const { clip, clipMatrix, clipBox, followClip } = clipUniforms(
+    () => root.get(),
+    () => chain.get().ctm,
+  );
 
   /**
    * Whether `visibility` hides this shape, as a box's `hidden` does: its
@@ -789,9 +860,6 @@ export function shape(ctx, element) {
    * group's `visible`, which would prune the subtree.
    */
   const hidden = new Derived(() => isVisibilityHidden(element));
-
-  /** What `clip` holds, for the raycast, which reads it untracked. */
-  let currentClipBox = UNCLIPPED;
 
   /**
    * Which regions a ray can hit, from `pointer-events`. Every shape asks,
@@ -824,43 +892,17 @@ export function shape(ctx, element) {
    */
   const hittable = new Derived(() => fillHit.get() || strokeHit.get());
 
-  /**
-   * Whether the shape is a ray target of its own, by the rule a box follows.
-   * It is a signal of its own for the reason a box's is. The handlers below
-   * write `data-xr-*` onto this element, which invalidates its computed
-   * style, and a re-read must not remount them.
-   */
-  const clickable = new Derived(() => isClickable(asHtml(element)));
-
   return just(object, [
     effects((obj) => {
       commitMatrix(obj, own.get());
     }),
-    effects((obj) => {
-      if (!clickable.get() || !hittable.get()) {
-        return;
-      }
-      // Built here and not up front, so that shapes nobody can click, which
-      // is most of them, pay nothing for it.
-      useEffects(
-        obj,
-        forwardPointerEvents(ctx, asHtml(element), obj, { enabled: PortalReadyContext.get(ctx) }),
-      );
-    }),
+    rayTarget(ctx, element, () => hittable.get()),
     effects((obj) => {
       // `display: none` takes the shape out; `visibility` is the meshes'
       // business, below, the way it is a box's quad and not its object.
       obj.visible = style().display !== "none";
     }),
-    effects(() => {
-      const current = root.get();
-      const box = current ? getInteriorClipBox(asHtml(current)) : UNCLIPPED;
-      clip.value.set(box.left, box.top, box.right, box.bottom);
-      currentClipBox = box;
-    }),
-    effects(() => {
-      toMatrix3(chain.get().ctm, clipMatrix.value);
-    }),
+    ...followClip,
     children(
       // Fill before stroke: with equal render order and depth the sort
       // falls back to mesh id, and the stroke has to cover the fill's edge.
@@ -879,7 +921,7 @@ export function shape(ctx, element) {
               renderOrder: renderOrderOf(0),
               clip,
               clipMatrix,
-              clipBox: () => currentClipBox,
+              clipBox,
             })
           : Nothing(),
       )(observable(() => fillPaint.get() !== null || fillHit.get())),
@@ -898,7 +940,7 @@ export function shape(ctx, element) {
               renderOrder: renderOrderOf(1),
               clip,
               clipMatrix,
-              clipBox: () => currentClipBox,
+              clipBox,
             })
           : Nothing(),
       )(observable(() => strokePaint.get() !== null || strokeHit.get())),

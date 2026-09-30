@@ -18,7 +18,8 @@ import { cardStyle, captionStyle, classes, headingStyle, rowStyle } from "./pane
  * test of all of them.
  *
  * The diagram at the top is the case the whole thing exists for — boxes
- * joined by arrows, the arrows dashed and dotted, the heads polygons — and
+ * joined by arrows, the arrows dashed and dotted, the heads polygons, two
+ * pictures above them through `<image>`, one turned by its group — and
  * it is styled the way a diagram on a page is styled, through classes and
  * a stylesheet rather than presentation attributes, because computed style
  * is what the plugin reads. Below it: the same icon through the same
@@ -32,6 +33,24 @@ import { cardStyle, captionStyle, classes, headingStyle, rowStyle } from "./pane
  * The teal of the diagram's nodes is used nowhere else in the showcase, so
  * the visual suite can count it and know the shapes were drawn.
  */
+
+/**
+ * Two pictures for the diagram's `<image>` elements, as data URLs so no
+ * asset travels with the app. One is a bitmap, a 16px PNG of four squares,
+ * and one is an SVG file, which is drawn as a bitmap of itself as it would
+ * be in an `<img>`.
+ */
+const RASTER_PICTURE =
+  "data:image/png;base64," +
+  "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAIAAACQkWg2AAAAIUlEQVR42mP4sMoGKwrR6cGKGEY10EQDLglcBo1qoIkGAGorcRAqZXGIAAAAAElFTkSuQmCC";
+
+const VECTOR_PICTURE = `data:image/svg+xml,${encodeURIComponent(
+  `<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24">` +
+    `<circle cx="12" cy="12" r="11" fill="rgb(0,123,255)"/>` +
+    `<path d="M7 12.5l3.5 3.5 6.5-7.5" fill="none" stroke="white" stroke-width="2.5"` +
+    ` stroke-linecap="round" stroke-linejoin="round"/>` +
+    `</svg>`,
+)}`;
 
 /** The nodes' fill: the colour the visual suite looks for. */
 export const NODE_COLOR = "rgb(0, 168, 150)";
@@ -251,6 +270,16 @@ const VectorsPanel = component((_ctx: WeakKey) => {
             children(
               $$("line", [attr({ x1: 0, y1: 40, x2: 272, y2: 40 })]),
               $$("line", [attr({ x1: 0, y1: 80, x2: 272, y2: 80 })]),
+            ),
+          ]),
+          // Two pictures above the nodes, through `<image>`: the SVG file
+          // upright, the bitmap turned by its group, which an <img> in a box
+          // cannot be.
+          $$("image", [attr({ href: VECTOR_PICTURE, x: 40, y: 4, width: 26, height: 26 })]),
+          $$("g", [
+            attr({ transform: "rotate(-20 220 17)" }),
+            children(
+              $$("image", [attr({ href: RASTER_PICTURE, x: 207, y: 4, width: 26, height: 26 })]),
             ),
           ]),
           // Two nodes and a small third one.

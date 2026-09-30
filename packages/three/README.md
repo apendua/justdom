@@ -1579,6 +1579,19 @@ clip patch's matrix. A scale change — animated, or the `<svg>` resizing —
 re-samples curves only when it crosses a half-octave, so a zoomed shape
 never shows its polygons and a slow zoom does not re-triangulate each frame.
 
+An `<image>` is a textured quad in its user space, under the same matrices
+as a shape, so a rotated `<g>` turns the picture with it. The texture comes
+from the cache an `<img>` uses, shared by URL. `href` is read, and the
+legacy `xlink:href` when there is no `href`. The box is `x`, `y`, `width`
+and `height`, and a size left `auto` takes the picture's. The picture is
+fitted into the box by `preserveAspectRatio`: `meet` fits it inside,
+`slice` covers the box and cuts off what overhangs, and `none` stretches
+it. An `<image>` takes its place in the paint order among the shapes, fades
+with `opacity`, and is a ray target like a shape with a fill. Its load
+re-measures nothing, because nothing in the HTML flow moves for it. A
+picture that is itself an SVG file is a bitmap of that file, as it is in an
+`<img>`.
+
 One print of the measuring tape. **Dashes are geometry, not a
 shader**, for the reason `svg/dash.js` gives, so a `stroke-dashoffset`
 animation rebuilds the stroke each frame — a few hundred vertices, which the
@@ -1619,7 +1632,7 @@ they inherit, and a press on the icon is a press on the button.
 Not drawn yet: `<text>`, markers (so an arrowhead is a `<polygon>` of its
 own for now), `<use>` and `<symbol>`, gradients and patterns (a `url(#…)`
 paint reads as `none`, though it still counts as painted for a ray),
-`clip-path`, `mask`, filters, `<image>`, `<foreignObject>` and
+`clip-path`, `mask`, filters, `<foreignObject>` and
 `vector-effect`.
 [`docs/freedom-svg-plan.md`](../../docs/freedom-svg-plan.md) has the order
 they are coming in and why.

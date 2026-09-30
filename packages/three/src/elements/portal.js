@@ -1566,11 +1566,19 @@ function buildPortal(ctx, ownOptions = {}) {
    * URL rather than read off this element, and `image.js` hears the same event
    * for itself. This is only the layout half.
    *
+   * An `<image>` inside an `<svg>` has no layout half. Whatever size its
+   * picture turns out to be, nothing in the HTML flow moves for it, and the
+   * image node hears the event for itself. So its load is not announced, or
+   * a diagram of forty pictures would re-measure the panel once for each.
+   *
    * @param {Event} event
    */
   const loadCallback = (event) => {
     const target = event.target;
     if (!(target instanceof Node) || target.nodeType !== Node.ELEMENT_NODE) {
+      return;
+    }
+    if (isSvgElement(target)) {
       return;
     }
     loaded.add(target);

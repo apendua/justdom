@@ -1619,9 +1619,10 @@ the default `overflow: hidden` asks for.
 A `<use>` draws a copy of the element its `href` (or `xlink:href`) names,
 at its `x` and `y`. A `<symbol>` is a viewport: its `viewBox` is fitted
 into the `<use>`'s `width` and `height`, or the symbol's own, or else the
-whole of the nearest `viewBox`. Anything else, a `<g>` or a shape drawn
-once already where it stands, is drawn again whole, its own `transform`
-included. The copy inherits the `<use>`'s styles, as a browser's clone
+whole of the nearest viewport, a percentage being of that viewport too.
+Anything else, a `<g>` or a shape drawn once already where it stands, is
+drawn again whole, its own `transform` included. The copy inherits the
+`<use>`'s styles, as a browser's clone
 does, so a sprite whose paths set no `fill` takes the `<use>`'s. The
 mirror sees only the original element, so a property counts as inherited
 when nothing between the copied element and the top of the copy changes

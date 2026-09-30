@@ -42,9 +42,10 @@ function layOut(element, left, top, width, height) {
  * @param {string} options.id
  * @param {string[]} options.rowIds
  * @param {boolean} options.accept Whether the list takes drops.
+ * @param {string[]} options.fixed The rows that are not draggable.
  * @param {Record<string, unknown>} options.seen What its handlers saw.
  */
-async function mirroredList(ctx, { id, rowIds, accept, seen }) {
+async function mirroredList(ctx, { id, rowIds, accept, fixed, seen }) {
   const root = document.createElement("div");
   const list = document.createElement("div");
   list.id = id;
@@ -56,7 +57,9 @@ async function mirroredList(ctx, { id, rowIds, accept, seen }) {
   const rows = rowIds.map((rowId, index) => {
     const row = document.createElement("div");
     row.id = rowId;
-    row.setAttribute("draggable", "true");
+    if (!fixed.includes(rowId)) {
+      row.setAttribute("draggable", "true");
+    }
     layOut(row, 0, index * 40, 300, 40);
     list.appendChild(row);
     return row;
@@ -64,7 +67,8 @@ async function mirroredList(ctx, { id, rowIds, accept, seen }) {
   document.body.appendChild(root);
 
   list.addEventListener("dragstart", (event) => {
-    const { dataTransfer } = /** @type {DragEvent} */ (event);
+    const { dataTransfer, clientX, clientY } = /** @type {DragEvent} */ (event);
+    seen.startPoint = [Math.round(clientX), Math.round(clientY)];
     const row = /** @type {HTMLElement} */ (event.target);
     dataTransfer?.setData("text/plain", row.id);
     if (dataTransfer) {
@@ -113,8 +117,10 @@ async function mirroredList(ctx, { id, rowIds, accept, seen }) {
  * @param {boolean} [options.accept] Whether the lists take drops.
  * @param {boolean} [options.second] Whether there is a second list, a
  *   panel of its own four metres to the right of the first.
+ * @param {string[]} [options.fixed] The rows that are not draggable when
+ *   the panel is built.
  */
-async function sortableList({ accept = true, second = false } = {}) {
+async function sortableList({ accept = true, second = false, fixed = [] } = {}) {
   /** @type {string[]} */
   const events = [];
   /** @type {Record<string, unknown>} */
@@ -131,9 +137,15 @@ async function sortableList({ accept = true, second = false } = {}) {
 
   const manager = new InteractionManager();
   const ctx = InteractionContext.set({}, manager);
-  const first = await mirroredList(ctx, { id: "list", rowIds: ["a", "b", "c"], accept, seen });
+  const first = await mirroredList(ctx, {
+    id: "list",
+    rowIds: ["a", "b", "c"],
+    accept,
+    fixed,
+    seen,
+  });
   const other = second
-    ? await mirroredList(ctx, { id: "other", rowIds: ["d", "e", "f"], accept, seen })
+    ? await mirroredList(ctx, { id: "other", rowIds: ["d", "e", "f"], accept, fixed, seen })
     : null;
   other?.parent.position.set(4, 0, 0);
 
@@ -205,6 +217,7 @@ describe("drag and drop in a panel", () => {
       ["dragstart a", "drag a", "dragenter b", "dragover b"],
       "past it, a drag, over the row the ray is on",
     );
+    assert.deepEqual(s.seen.startPoint, [150, 20], "picked up where it was pressed");
     assert.deepEqual(s.seen.overPoint, [150, 50], "at the point under the ray, on the page");
     assert.equal(s.seen.overData, "", "the data is guarded while the drag is under way");
     assert.deepEqual(s.seen.overTypes, ["text/plain"], "and its types are not");
@@ -331,6 +344,27 @@ describe("drag and drop in a panel", () => {
       ["d", "a", "e", "f"],
       "the other list's handler took it",
     );
+    s.teardown();
+  });
+
+  test("picks up a row made draggable after the panel was built", async () => {
+    const s = await sortableList({ fixed: ["a"] });
+    const [a] = s.rows;
+
+    s.aim(150, 20);
+    s.trigger("selectstart");
+    s.aim(150, 60);
+    s.trigger("selectend");
+    assert.equal(s.events.filter((event) => event.startsWith("drag")).length, 0);
+
+    a.setAttribute("draggable", "true");
+    await drain();
+    s.events.length = 0;
+    s.aim(150, 20);
+    s.trigger("selectstart");
+    s.aim(150, 60);
+    assert.deepEqual(s.events.slice(0, 2), ["mousedown a", "dragstart a"]);
+    s.trigger("selectend");
     s.teardown();
   });
 

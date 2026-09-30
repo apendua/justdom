@@ -55,10 +55,12 @@ import { createRectMaterial, rectGeometry } from "./sdfRect.js";
 
 /**
  * How far in front of the panel the ghost is drawn, in the panel's px.
- * Toward the viewer is negative z under the container's half turn, and this
- * is well clear of any layer the panel stacks.
+ * Toward the viewer is negative z under the container's half turn. Close to
+ * the panel, so that perspective does not move it off the row it outlines;
+ * it is drawn over every layer the panel stacks by `depthTest` being off,
+ * not by its distance.
  */
-const GHOST_Z = -64;
+const GHOST_Z = -2;
 
 /** Drawn after everything else in the scene, so the panel never covers it. */
 const GHOST_RENDER_ORDER = 1e9;
@@ -316,8 +318,9 @@ export function createDragAndDrop(requestFrames, readHit) {
   const local = new THREE.Vector2();
 
   /**
-   * Where the hand's ray crosses the source panel's plane, in the panel's
-   * px, written into `inPanel`; false when it points away from it.
+   * Where the hand's ray crosses the source panel's plane, in world space in
+   * `onPlane` and in the panel's px in `inPanel`; false when it points away
+   * from it.
    *
    * @param {Session} session
    * @returns {boolean}
@@ -327,8 +330,8 @@ export function createDragAndDrop(requestFrames, readHit) {
     if (!raycaster.ray.intersectPlane(session.plane, onPlane)) {
       return false;
     }
-    session.panel.worldToLocal(onPlane);
-    inPanel.set(onPlane.x, onPlane.y);
+    session.panel.worldToLocal(scratch.copy(onPlane));
+    inPanel.set(scratch.x, scratch.y);
     return true;
   }
 

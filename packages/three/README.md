@@ -727,6 +727,12 @@ The rules are the browser's:
   element until the trigger opens, the elements the ray crosses take no
   `data-xr-hover` and hear no `mousemove`.
 
+What a page draws while it drags has to be something a panel follows. It
+follows a class or an inline style changing, and not a data attribute of
+the page's own, so a drop marker is a class on the row it is next to, as in
+the todo app's list (`apps/todo-vanilla`). `draggable` is followed too: a
+row made draggable after the panel was built can be picked up.
+
 A drag can end on another panel in the scene, since every panel answers
 what is under the ray in its own px. It can also end on nothing: a ray on
 something in the scene that is not a panel, or on nothing at all, is over no

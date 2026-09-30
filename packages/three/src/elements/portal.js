@@ -1426,7 +1426,9 @@ function buildPortal(ctx, ownOptions = {}) {
     // it, and it is a reflected attribute, so watching it catches the property
     // assignment as well as setAttribute. Without it a control disabled after
     // mounting would stay pointable until something else happened to restyle.
-    // `value` and `placeholder` are for the text field, whose drawn text
+    // `draggable` is here for the same reason: it makes an element a ray
+    // target (see `isDragSource`), and a page that lets a row be picked up
+    // only in an edit mode sets it after mounting. `value` and `placeholder` are for the text field, whose drawn text
     // follows both; the `value` property, which the attribute stops
     // reflecting once anything has been typed, is followed another way.
     attributeFilter: [
@@ -1435,6 +1437,7 @@ function buildPortal(ctx, ownOptions = {}) {
       "data-xr-checked",
       FOCUS_ATTRIBUTE,
       "disabled",
+      "draggable",
       "class",
       "style",
       "value",

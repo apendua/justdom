@@ -791,6 +791,24 @@ describe("svg shape as a ray target", () => {
     s.teardown();
   });
 
+  test("a shape no ray can hit is not registered, cursor or not", () => {
+    const { manager, registrations } = recordingManager();
+    const s = setup(
+      "rect",
+      { ...SQUARE, style: "cursor: pointer; pointer-events: none" },
+      { manager },
+    );
+    assert.deepEqual(registrations, []);
+
+    s.setAttribute("style", "cursor: pointer");
+    assert.deepEqual(registrations, ["add"]);
+
+    // Hidden, under the default `visiblePainted`, is out of reach too.
+    s.setAttribute("style", "cursor: pointer; visibility: hidden");
+    assert.deepEqual(registrations, ["add", "remove"]);
+    s.teardown();
+  });
+
   test("a press on a shape reaches its element as a box's does", () => {
     const { manager } = recordingManager();
     const s = setup("rect", { ...SQUARE, style: "cursor: pointer" }, { manager });

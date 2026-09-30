@@ -817,6 +817,13 @@ export function shape(ctx, element) {
   const strokeHit = new Derived(() => hits(hitRegions.get().stroke, "stroke"));
 
   /**
+   * Whether a ray can hit any of the shape. One that no ray can hit is not
+   * registered, even under `cursor: pointer`, so `pointer-events: none` on
+   * an icon takes it out of the raycast set altogether.
+   */
+  const hittable = new Derived(() => fillHit.get() || strokeHit.get());
+
+  /**
    * Whether the shape is a ray target of its own, by the rule a box follows.
    * It is a signal of its own for the reason a box's is. The handlers below
    * write `data-xr-*` onto this element, which invalidates its computed
@@ -829,7 +836,7 @@ export function shape(ctx, element) {
       commitMatrix(obj, own.get());
     }),
     effects((obj) => {
-      if (!clickable.get()) {
+      if (!clickable.get() || !hittable.get()) {
         return;
       }
       // Built here and not up front, so that shapes nobody can click, which

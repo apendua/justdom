@@ -95,6 +95,20 @@ without leaving the scene:
 $(new THREE.Mesh(), [makeInteractive(() => props.draggable)]);
 ```
 
+The events are the registered object's, whichever of its meshes the ray
+met. A projected button is a quad of background and a quad of text, and a
+hand drifting from the one onto the other gets a `pointermove`, not a
+`pointerleave` and a `pointerenter`; a press on the label released on the
+background is a `select`. Every event says which `controller` it came from
+and which `inputSource` three connected to it, so what is pointed at can
+reach the hand's gamepad. A pointer event's is null until something
+connects, which is a controller under a test. A pointer event also names
+the registered object its hit belongs to, as `registeredTarget`, since
+`originalTarget` is the mesh and `target` is, as three's dispatcher writes
+it, the object whose listener is running; and `pointerenter` and
+`pointerleave` carry `relatedTarget`, as the web's do: the registered
+object the ray was on before, or is on now, or null for nothing.
+
 **Hiding something takes it out of the raycast**, as it takes it out of the
 draw: `object.visible = false` on anything — the ray target itself, a group
 several levels above it, a panel the app hangs a whole card off — and nothing
@@ -635,6 +649,79 @@ Spread over frames it would tear: the content sliding this frame, its
 clipping catching up over the next several, under a hand that is still
 dragging. An interaction lands whole in the frame that carries it; deferral
 is for content changes, which nobody's hand is resting on.
+
+### Haptics
+
+A button on a page has a click to say it was pressed; a projected one is a
+quad at the end of a ray, and the hand holding the controller can be told.
+Every control in a panel, which is every element with `cursor: pointer`,
+the rule that makes one a ray target, pulses the controller's motors when
+the trigger closes on it. Nothing is marked: a panel with buttons in it is
+felt, and so is the keyboard.
+
+A pulse when the ray arrives on a control is there too, and off unless a
+panel asks for it. A press is always worth telling the hand about. A hover
+is worth it where the player aims at one small target after another
+without looking, and elsewhere a ray sweeping across a panel on its way
+somewhere is a stutter of pulses nobody asked for. The keyboard a field
+brings up is the case it is for, and has it on (see the last paragraph
+below).
+
+What it feels like is the panel's, or the scene's (see **Panel defaults**
+below):
+
+```js
+dom(ctx, numberPad, [set({ position })], {
+  haptics: { hover: true, strength: 0.6, flavor: "knock" },
+});
+```
+
+`hover` turns the arrival pulse on and `active` turns the press off; a
+press is felt and a hover is not unless told.
+`strength` multiplies every pulse, clamped to what the motors can do.
+`flavor` picks the pulses: `tick` (a light high-frequency click, the
+default), `knock` (the low motor, a thump), `buzz` (longer and softer) or
+`key` (a mechanical key, felt closing and opening again), or a
+`HapticFlavor` of your own, a `hover` pulse, a `press` pulse and an
+optional `release` pulse, each a `duration` in milliseconds and a `strong`
+and a `weak` magnitude from 0 to 1. `HAPTIC_FLAVORS` holds the named ones
+to start from. `false` is no haptics for the panel whatever the scene says;
+there is no `true`, for the reason `loadingFrame` has none.
+
+What plays is the hand's own: the event carries the input source three
+connected to the controller, and every actuator of its gamepad gets a
+`dual-rumble` effect, or a `pulse` on a runtime that only has that. A
+tracked hand has no motors and feels nothing. The pulses are worked out
+once per panel, so an element's handler pays for the call and nothing else.
+`playHaptic(source, effect)` is that driver on its own, for a scene with
+haptics of its own to play, so that one place knows both interfaces and
+what to do when a motor refuses.
+
+**A hover is one pulse per arrival on a control.** `cursor` is inherited,
+so the label or the icon inside a button is a ray target of its own, and
+the ray crossing from it onto the button's own background is an enter as
+far as the manager can tell. It is not an arrival: the hand has been on the
+button the whole time. So a pulse plays only when the ray comes onto a
+control from outside it, from another control or from nothing, which the
+enter's `relatedTarget` says (see **Pointing at things**). The control is
+the outermost element in the unbroken run of clickable ancestors and
+everything in it, so a ray moving between a button's background and its
+label, either way round, is moving within one control and plays nothing;
+neither does the enter bubbling up from the label, which has played its
+own. Coming from anywhere outside that is an arrival, from another control
+or from a scrollable list, which is a ray target, to be dragged by, and not
+a control, so a button entered from the gap between its rows is entered
+whether the ray meets its background or its label first. What the rule
+gives up is a distinct control nested in another, a delete button inside a
+clickable row, whose hover from the row is not an arrival. Its press still
+is. And nothing plays while the hand is scrolling a list, glide included:
+the rows passing under the ray were not aimed at, as `:hover` on a page
+does not fire on rows scrolling under a pressed pointer.
+
+The keyboard a field brings up is a panel of its own, and its keys follow
+the `haptics` of the panel it is typing for, with the hover on: a panel
+that does not want its keys felt on hover says `hover: false` by name, and
+one with `haptics: false` has a silent board too.
 
 ## Baking a panel into a stamp
 
@@ -1398,12 +1485,13 @@ render(Scene, {
 });
 ```
 
-`keyboard`, `loadingFrame`, `maxTextScale`, `atomic`, `opaqueToRays`,
-`priority` and `budget` can be set this way. A panel's own options are laid
-over them: its value wins, except that a `keyboard` or a `loadingFrame`
-given as an object is spread over the scene's, so a panel can change one
-thing about them without restating the rest. `withPanelOptions(ctx, …)`
-does the same for a part of the scene, over whatever is in scope already.
+`keyboard`, `loadingFrame`, `haptics`, `maxTextScale`, `atomic`,
+`opaqueToRays`, `priority` and `budget` can be set this way. A panel's own
+options are laid over them: its value wins, except that a `keyboard`, a
+`loadingFrame` or a `haptics` given as an object is spread over the scene's,
+so a panel can change one thing about them without restating the rest.
+`withPanelOptions(ctx, …)` does the same for a part of the scene, over
+whatever is in scope already.
 `plugins` is not among them — it has `portalPlugins`, whose list a panel's
 own is put in front of rather than in place of — and neither are `root` and
 `onLoadingChanged`, which are only ever one panel's.

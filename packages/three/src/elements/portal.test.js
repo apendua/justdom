@@ -7,6 +7,8 @@ import { InteractionContext, InteractionManager } from "../interactions.js";
 import { DomMirror, getComputedStyleCached, resetMeasuringRangeForTests } from "./mirror.js";
 import { acquireImage, releaseImage } from "./image.js";
 import { createPortal as createHeldPortal, getPortalRoot, LOADING_ATTRIBUTE } from "./portal.js";
+import { withPanelOptions } from "./panelOptions.js";
+import { recordingSource } from "../test/rumble.js";
 
 /**
  * `createPortal`, with the loading frame's delay and minimum time off. A
@@ -1962,6 +1964,82 @@ describe("createPortal", () => {
     subscription.unsubscribe();
     portal.disconnect();
     await drain();
+  });
+
+  test("a button is felt as the scene's haptics say, with the panel's own laid over", async () => {
+    const manager = new InteractionManager();
+    const scene = withPanelOptions(InteractionContext.set({}, manager), {
+      haptics: { flavor: "knock" },
+    });
+
+    /**
+     * A panel under the scene with a button in it, and that button's object,
+     * ready to be pointed at.
+     *
+     * @param {import('./portal.js').PortalOptions} options
+     */
+    const panel = async (options) => {
+      const portal = createPortal(scene, { budget: 0, ...options });
+      const parent = new THREE.Group();
+      portal.addTo(parent);
+      const containerObject = parent.children[0];
+      /** @type {import("@apendua/justdom").Mountable | undefined} */
+      let mountable;
+      const subscription = $("div").subscribe((value) => {
+        mountable = value;
+      });
+      assert.ok(mountable);
+      portal.mount(mountable);
+      await settle(portal);
+      const containers = document.querySelectorAll("[data-xr-portal]");
+      const card = /** @type {HTMLElement} */ (containers[containers.length - 1].firstElementChild);
+      const button = document.createElement("div");
+      button.style.cursor = "pointer";
+      card.appendChild(button);
+      await drain();
+      const rootObject = /** @type {THREE.Object3D} */ (
+        containerObject.children.find((child) => !(child instanceof THREE.Mesh))
+      );
+      const object = /** @type {THREE.Object3D<import("../core.js").XREventMap>} */ (
+        rootObject.children[0].children[0]
+      );
+      const { source, played } = recordingSource();
+      const controller = new THREE.Object3D();
+      for (const type of ["pointerenter", "selectstart", "selectend"]) {
+        object.dispatchEvent(
+          /** @type {any} */ ({
+            type,
+            controller,
+            inputSource: source,
+            originalTarget: object,
+            registeredTarget: object,
+            relatedTarget: null,
+          }),
+        );
+      }
+      subscription.unsubscribe();
+      portal.disconnect();
+      await drain();
+      return played;
+    };
+
+    assert.deepEqual(
+      (await panel({})).map((effect) => [effect.duration, effect.strongMagnitude]),
+      [[60, 0.5]],
+      "the scene's knock on the press, and no hover, since nobody asked for one",
+    );
+    assert.deepEqual(
+      (await panel({ haptics: { hover: true, strength: 0.5 } })).map((effect) => [
+        effect.duration,
+        effect.strongMagnitude,
+      ]),
+      [
+        [30, 0.125],
+        [60, 0.25],
+      ],
+      "the panel turns the hover on and halves the scene's knock",
+    );
+    assert.deepEqual(await panel({ haptics: false }), [], "and can have none");
   });
 
   test("a removed row is drawn until the commit but a press on it reaches nothing", async () => {

@@ -29,6 +29,7 @@ import { createPortalPump } from "./portalPump.js";
 import { createPortalScheduler, PortalSchedulerContext } from "./portalScheduler.js";
 import { isSvgElement, isSvgRoot, PortalPluginsContext, projectWithPlugins } from "./plugins.js";
 import { mergePanelOptions, PanelOptionsContext, resolveKeyboard } from "./panelOptions.js";
+import { createHaptics, HapticsContext } from "./haptics.js";
 import { CameraContext, frames, onLateFrame, RendererContext } from "../render.js";
 import { InteractionContext } from "../interactions.js";
 
@@ -36,6 +37,7 @@ import { InteractionContext } from "../interactions.js";
  * @import {Mountable} from '../core.js';
  * @import {Object3D} from 'three';
  * @import {MutationBatch} from './animationClock.js';
+ * @import {HapticOptions} from './haptics.js';
  * @import {LoadingFrameOptions} from './loadingFrame.js';
  * @import {PortalScheduler} from './portalScheduler.js';
  * @import {PortalKeyboardOptions} from './portalKeyboard.js';
@@ -291,6 +293,23 @@ function claimRoot(root) {
  *   `true`: the frame is already on when this is left out, and a `true`
  *   would only throw away a frame the scene's `PanelOptions` had tuned.
  *   Pass `{}` to ask for the defaults outright.
+ * @property {false | HapticOptions} [haptics] What the hand feels from the
+ *   controls in this panel, every element with `cursor: pointer`, the rule
+ *   that makes one a ray target: a pulse of the controller's motors when
+ *   the trigger closes on one and, with `hover`, another when the ray
+ *   arrives on it. The press is on by default, as a `tick` at full
+ *   strength, so a panel with buttons in it is felt without saying
+ *   anything; the hover is off, except on the keyboard a field brings up,
+ *   whose keys are aimed at one after another without looking and which
+ *   turns it on unless this panel's own `hover: false` says otherwise. An
+ *   object turns either event on or off (`hover`, `active`), scales every
+ *   pulse (`strength`), or picks the
+ *   pulses (`flavor`: `tick`, `knock`, `buzz`, `key`, or a `HapticFlavor`
+ *   of your own), and is spread over the scene's `PanelOptions.haptics`;
+ *   `false` is no haptics whatever the scene says. There is no `true`,
+ *   for the reason `loadingFrame` has none: pass `{}` for the defaults
+ *   outright. A tracked hand has no motors and feels nothing either way.
+ *   See `HapticOptions` in `haptics.js`.
  * @property {readonly PortalPlugin[]} [plugins] Element plugins for this
  *   panel alone, asked before the ones the scene registered through
  *   `render()`'s `portalPlugins` and before the portal's own dispatch. For
@@ -331,6 +350,7 @@ function buildPortal(ctx, ownOptions = {}) {
     maxTextScale,
     onLoadingChanged,
     loadingFrame = {},
+    haptics = {},
     plugins: ownPlugins = [],
   } = mergePanelOptions(PanelOptionsContext.get(ctx), ownOptions);
   const keyboard = resolveKeyboard(keyboardOption);
@@ -392,6 +412,9 @@ function buildPortal(ctx, ownOptions = {}) {
   // same `ctx` gets its own and neither can see the other's.
   ctx = BoxBatchContext.set(ctx, boxBatch);
   ctx = TextBatchContext.set(ctx, textBatch);
+  // Resolved once for the panel: the pulses are worked out here, and an
+  // element's handler pays for the call and nothing else.
+  ctx = HapticsContext.set(ctx, createHaptics(haptics));
 
   /**
    * How finely this panel's text is worth rasterizing, measured off what the
@@ -716,8 +739,15 @@ function buildPortal(ctx, ownOptions = {}) {
         {
           // Without the scene's panel options: the board is the portal's, not
           // the app's, and a keyboard the app set for its panels would give
-          // the board a keyboard of its own.
-          ctx: PanelOptionsContext.set(baseCtx, {}),
+          // the board a keyboard of its own. The one option that does go
+          // through is this panel's haptics: the board types for this panel,
+          // and the hand pressing its keys is the hand pressing the panel's
+          // buttons, which should feel the same. With the hover on unless
+          // the panel turned it off by name: a keyboard is where aiming at
+          // one small target after another without looking wants it.
+          ctx: PanelOptionsContext.set(baseCtx, {
+            haptics: haptics === false ? false : { hover: true, ...haptics },
+          }),
           options: keyboard,
           containerObject,
           containerElement,

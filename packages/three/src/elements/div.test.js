@@ -5,6 +5,11 @@ import { InteractionContext } from "../interactions.js";
 import { createMirror, PORTAL_ATTRIBUTE } from "./mirror.js";
 import { div } from "./div.js";
 import { GRADIENT_LINEAR, rampAtlas } from "./gradient.js";
+import { createHaptics, HapticsContext } from "./haptics.js";
+import { getContentGroup } from "./div.js";
+import { scrollDrags } from "./scroll.js";
+import { describeScroller } from "../test/scroller.js";
+import { recordingSource } from "../test/rumble.js";
 
 /**
  * @import { InteractionManager } from "../interactions.js";
@@ -35,12 +40,15 @@ Object.defineProperty(document, "fonts", {
  *
  * @param {string} cursor
  * @param {string} [cssText] Anything else the element should be styled with.
+ * @param {import('./haptics.js').Haptics | null} [haptics] What the panel
+ *   the element is in feels like; none, as outside a panel, unless given.
+ * @param {HTMLElement} [parent] Where the element goes; the body unless given.
  */
-function setup(cursor, cssText = "") {
+function setup(cursor, cssText = "", haptics = null, parent = document.body) {
   const element = document.createElement("div");
   element.style.cssText = cssText;
   element.style.cursor = cursor;
-  document.body.appendChild(element);
+  parent.appendChild(element);
 
   const mirror = createMirror();
   mirror.adopt(element);
@@ -68,7 +76,7 @@ function setup(cursor, cssText = "") {
     })
   );
 
-  const ctx = InteractionContext.set({}, manager);
+  const ctx = HapticsContext.set(InteractionContext.set({}, manager), haptics);
 
   /** @type {THREE.Object3D<XREventMap>} */
   let object;
@@ -77,6 +85,7 @@ function setup(cursor, cssText = "") {
   });
 
   return {
+    ctx,
     element,
     mirror,
     registrations,
@@ -104,9 +113,33 @@ function setup(cursor, cssText = "") {
       element.style.cssText = cssText;
       mirror.attributeChanged(element, { presentational: true, selfScoped: true });
     },
-    /** @param {"pointerenter" | "pointerleave"} type */
-    dispatch: (type) => {
-      object.dispatchEvent(/** @type {any} */ ({ type, target: object, originalTarget: object }));
+    /**
+     * @param {"pointerenter" | "pointerleave" | "selectstart" | "selectend"} type
+     * @param {XRInputSource | null} [inputSource] The hand it came from.
+     * @param {THREE.Object3D | null} [relatedTarget] Where the ray was before.
+     * @param {THREE.Object3D} [registeredTarget] What the hit belongs to,
+     *   when not this object: the event as it bubbles up from a nested
+     *   target.
+     * @param {THREE.Object3D} [controller] The hand, for what it is doing.
+     */
+    dispatch: (
+      type,
+      inputSource = null,
+      relatedTarget = null,
+      registeredTarget = object,
+      controller = new THREE.Object3D(),
+    ) => {
+      object.dispatchEvent(
+        /** @type {any} */ ({
+          type,
+          target: object,
+          originalTarget: registeredTarget,
+          registeredTarget,
+          inputSource,
+          relatedTarget,
+          controller,
+        }),
+      );
     },
   };
 }
@@ -576,25 +609,6 @@ describe("div clipping", () => {
   });
 });
 
-/**
- * Describe an element as a list with more inside it than fits, the way a real
- * one would report itself — jsdom lays nothing out, so every one of these is
- * zero otherwise.
- *
- * @param {HTMLElement} element
- * @param {{ client: number, scroll: number }} size
- */
-function describeScroller(element, { client, scroll }) {
-  for (const [name, value] of [
-    ["clientHeight", client],
-    ["scrollHeight", scroll],
-    ["clientWidth", client],
-    ["scrollWidth", client],
-  ]) {
-    Object.defineProperty(element, name, { configurable: true, get: () => value });
-  }
-}
-
 describe("div drag-to-scroll", () => {
   test("a list with more in it than fits becomes something the ray can take hold of", () => {
     const { element, mirror, registrations, registered, subscription } = setup(
@@ -666,6 +680,118 @@ describe("div drag-to-scroll", () => {
 
     document.removeEventListener("click", listener);
     subscription.unsubscribe();
+  });
+});
+
+describe("div haptics", () => {
+  test("a control is felt on hover, press and release, by the hand that did it", () => {
+    const { source, played } = recordingSource();
+    const { dispatch, subscription } = setup(
+      "pointer",
+      "",
+      createHaptics({ hover: true, flavor: "key" }),
+    );
+
+    dispatch("pointerenter", source);
+    dispatch("selectstart", source);
+    dispatch("selectend", source);
+    dispatch("pointerleave", source);
+    assert.deepEqual(
+      played.map((effect) => effect.duration),
+      [30, 45, 30],
+      "the key's hover, press and release, and nothing for leaving",
+    );
+
+    // A hand with no motors, or a test's event with no hand, is not an error.
+    dispatch("pointerenter");
+    assert.equal(played.length, 3);
+    subscription.unsubscribe();
+  });
+
+  test("a hover is one pulse per arrival, whatever is clickable inside the control", () => {
+    const { source, played } = recordingSource();
+    const haptics = createHaptics({ hover: true });
+    const button = setup("pointer", "", haptics);
+    // The label inside the button inherits its cursor, and so is a target
+    // of its own, under the button's object as the portal would put it.
+    const label = setup("pointer", "", haptics, button.element);
+    getContentGroup(button.object).add(label.object);
+    const other = new THREE.Object3D();
+
+    label.dispatch("pointerenter", source);
+    assert.equal(played.length, 1, "the ray arrives on the label from nothing");
+    button.dispatch("pointerenter", source, null, label.object);
+    assert.equal(played.length, 1, "the same enter bubbling up plays nothing more");
+
+    button.dispatch("pointerenter", source, label.object);
+    assert.equal(played.length, 1, "drifting from the label onto the button is not an arrival");
+    label.dispatch("pointerenter", source, button.object);
+    assert.equal(played.length, 1, "nor is drifting back");
+
+    button.dispatch("pointerenter", source, other);
+    assert.equal(played.length, 2, "coming from another control is");
+
+    label.subscription.unsubscribe();
+    button.subscription.unsubscribe();
+  });
+
+  test("a button entered from the list it is in is entered, but not while the list scrolls", () => {
+    const { source, played } = recordingSource();
+    const haptics = createHaptics({ hover: true });
+    // A list with more in it than fits, inside a panel: a ray target to be
+    // dragged by, and the ancestor of every button in it, but no control.
+    const root = document.createElement("div");
+    root.setAttribute(PORTAL_ATTRIBUTE, "");
+    const list = document.createElement("div");
+    list.style.overflow = "hidden";
+    describeScroller(list, { client: 100, scroll: 400 });
+    root.appendChild(list);
+    document.body.appendChild(root);
+    const listObject = new THREE.Object3D();
+    const listContent = new THREE.Object3D();
+    listObject.add(listContent);
+
+    const button = setup("pointer", "", haptics, list);
+    listContent.add(button.object);
+    const controller = /** @type {THREE.XRTargetRaySpace} */ (
+      /** @type {unknown} */ (new THREE.Object3D())
+    );
+
+    button.dispatch("pointerenter", source, listObject, button.object, controller);
+    assert.equal(played.length, 1, "from the gap between the rows is an arrival");
+
+    // The ray crossing the gap may meet the button's label first, which is
+    // a target of its own by the button's cursor: still the button, still
+    // an arrival.
+    const label = setup("pointer", "", haptics, button.element);
+    getContentGroup(button.object).add(label.object);
+    label.dispatch("pointerenter", source, listObject, label.object, controller);
+    assert.equal(played.length, 2, "onto the label from the list is an arrival");
+    button.dispatch("pointerenter", source, label.object, button.object, controller);
+    assert.equal(played.length, 2, "and from the label onto the button is not");
+    label.subscription.unsubscribe();
+
+    // The hand takes hold of the list: rows now pass under a ray that is
+    // aimed at none of them.
+    const drags = scrollDrags(button.ctx);
+    drags.begin(controller, button.element, button.object);
+    button.dispatch("pointerenter", source, listObject, button.object, controller);
+    assert.equal(played.length, 2, "silent while the list is being scrolled");
+    drags.end(controller);
+    button.dispatch("pointerenter", source, listObject, button.object, controller);
+    assert.equal(played.length, 3, "and felt again once it is let go");
+
+    button.subscription.unsubscribe();
+    root.remove();
+  });
+
+  test("a control in a panel without haptics feels like nothing", () => {
+    const { source, played } = recordingSource();
+    const silent = setup("pointer");
+    silent.dispatch("pointerenter", source);
+    silent.dispatch("selectstart", source);
+    assert.deepEqual(played, []);
+    silent.subscription.unsubscribe();
   });
 });
 

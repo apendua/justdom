@@ -139,10 +139,16 @@ export function createKeyboardHandles(
     pointing.set(event.controller, /** @type {THREE.Object3D} */ (event.originalTarget));
     refresh();
   };
-  /** @param {PointerCancelEvent} event */
+  /**
+   * A hand's leave always clears it: the manager sends one leave per hand
+   * before that hand's next enter, and what it names as left is whichever
+   * mesh the ray was on last, which after a drift from a key's label onto
+   * its background is not the mesh the enter named.
+   *
+   * @param {PointerCancelEvent} event
+   */
   const onLeave = (event) => {
-    if (pointing.get(event.controller) === event.originalTarget) {
-      pointing.delete(event.controller);
+    if (pointing.delete(event.controller)) {
       refresh();
     }
   };

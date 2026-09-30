@@ -11,6 +11,7 @@ import {
   Stream,
   Subject,
   useEffect,
+  withComputation,
 } from "@apendua/signal";
 import { InteractionManager, InteractionContext } from "./interactions.js";
 import {
@@ -615,35 +616,33 @@ export function render(fn, options = {}) {
     // fills in when a tracked hand rather than a controller is driving it.
     // The hand space always exists; it is only populated when the session
     // was granted `hand-tracking`, which `createXRButton` asks for.
-    const controller0 = renderer.xr.getController(0);
-    const controllerGrip0 = renderer.xr.getControllerGrip(0);
-    const hand0 = renderer.xr.getHand(0);
-    if (options.createControllerModel) {
-      controllerGrip0.add(options.createControllerModel(controllerGrip0));
-    }
-    if (options.createHandModel) {
-      hand0.add(options.createHandModel(hand0));
-    }
-    subscriber.add(
-      interactionManager.addController(controller0, (fn) => onLateFrame(ctx, fn)).subscribe(),
-    );
-    const controller1 = renderer.xr.getController(1);
-    const controllerGrip1 = renderer.xr.getControllerGrip(1);
-    const hand1 = renderer.xr.getHand(1);
-    if (options.createControllerModel) {
-      controllerGrip1.add(options.createControllerModel(controllerGrip1));
-    }
-    if (options.createHandModel) {
-      hand1.add(options.createHandModel(hand1));
-    }
-    subscriber.add(
-      interactionManager.addController(controller1, (fn) => onLateFrame(ctx, fn)).subscribe(),
-    );
+    const handles = [0, 1].map((index) => {
+      const controller = renderer.xr.getController(index);
+      const grip = renderer.xr.getControllerGrip(index);
+      const hand = renderer.xr.getHand(index);
+      if (options.createControllerModel) {
+        grip.add(options.createControllerModel(grip));
+      }
+      if (options.createHandModel) {
+        hand.add(options.createHandModel(hand));
+      }
+      const handle = createControllerHandle(index, controller, grip, hand);
+      subscriber.add(
+        interactionManager
+          .addController(
+            controller,
+            (fn) => onLateFrame(ctx, fn),
+            // The handle's signal is the one record of what drives the
+            // slot. Read untracked: the manager asks from the frame loop,
+            // inside whatever computation is running there.
+            () => withComputation(null, () => handle.inputSource.get()),
+          )
+          .subscribe(),
+      );
+      return handle;
+    });
 
-    ctx = ControllersContext.set(ctx, [
-      createControllerHandle(0, controller0, controllerGrip0, hand0),
-      createControllerHandle(1, controller1, controllerGrip1, hand1),
-    ]);
+    ctx = ControllersContext.set(ctx, handles);
 
     // Add simple rays to controllers. This will need to be revisited.
     const lineGeometry = new THREE.BufferGeometry().setFromPoints([
@@ -660,7 +659,7 @@ export function render(fn, options = {}) {
     // The length is not fixed: each ray is cut at whatever it is pointing at,
     // so it stops at the surface rather than disappearing into it. Both clones
     // share the geometry, which is why the length lives in the scale.
-    for (const controller of [controller0, controller1]) {
+    for (const { controller } of handles) {
       const ray = line.clone();
       controller.add(ray);
       subscriber.add(fitRayToHit(ray, controller, interactionManager.pointers).subscribe());
@@ -671,12 +670,9 @@ export function render(fn, options = {}) {
     keyboardSlot.ctx = ctx;
 
     scene.add(camera);
-    scene.add(controller0);
-    scene.add(controllerGrip0);
-    scene.add(hand0);
-    scene.add(controller1);
-    scene.add(controllerGrip1);
-    scene.add(hand1);
+    for (const { controller, grip, hand } of handles) {
+      scene.add(controller, grip, hand);
+    }
 
     // Subscribing is mounting. A root produces nothing — everything it builds
     // it mounts on the way through — so nothing is read off this; the

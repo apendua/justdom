@@ -177,9 +177,14 @@ export class InteractionManager {
    *   Puts the callback on the frame loop and hands back the way off again. It
    *   must run late — after everything that moves the scene, with world
    *   matrices already up to date — because that is when the ray is worked out.
+   * @param {() => XRInputSource | null} [inputSource] What is driving the
+   *   controller, for the pointer events to carry: a press already comes
+   *   with its own, a move does not. `render()` hands in the controller
+   *   handle's, which is the one copy of it; without one the events say
+   *   null, which is a controller under a test.
    * @returns {Source<void>}
    */
-  addController(controller, onAnimationFrame) {
+  addController(controller, onAnimationFrame, inputSource = () => null) {
     return new Stream(() => {
       /** @type {THREE.Object3D<XREventMap> | undefined} */
       let selectedObject;
@@ -197,6 +202,15 @@ export class InteractionManager {
       let squeezedTarget;
       /** @type {THREE.Object3D<XREventMap> | undefined} */
       let targetedObject;
+      /**
+       * What the ray is on, as opposed to which of its meshes it met: a
+       * hand drifting from a button's label onto its background has not
+       * left the button, and is not told it has. Compared the way a press
+       * and its release are, through `getTarget`.
+       *
+       * @type {THREE.Object3D<XREventMap> | undefined}
+       */
+      let targetedTarget;
       // The hand has to be looked at once when it arrives; after that only
       // when it moves, or when somebody says the scene changed under it.
       let shouldUpdateIntersections = true;
@@ -348,11 +362,20 @@ export class InteractionManager {
         // fact about this frame, not something a listener gets to veto.
         this.#setPointer(controller, intersection);
         if (intersection) {
-          if (targetedObject === intersection.object) {
-            this.dispatch(targetedObject, {
+          // Always found: the raycast meets nothing but what is under a
+          // registered object.
+          const target = /** @type {THREE.Object3D<XREventMap>} */ (
+            this.getTarget(intersection.object)
+          );
+          const source = inputSource();
+          if (target === targetedTarget) {
+            // The same thing, whichever of its meshes the ray is on now.
+            this.dispatch(intersection.object, {
               type: "pointermove",
-              target: targetedObject,
-              originalTarget: targetedObject,
+              inputSource: source,
+              registeredTarget: target,
+              target: intersection.object,
+              originalTarget: intersection.object,
               controller,
               intersection,
             });
@@ -360,6 +383,10 @@ export class InteractionManager {
             if (targetedObject) {
               this.dispatch(targetedObject, {
                 type: "pointerleave",
+                inputSource: source,
+                // Set with `targetedObject`, so as defined as it is.
+                registeredTarget: /** @type {THREE.Object3D<XREventMap>} */ (targetedTarget),
+                relatedTarget: target,
                 target: targetedObject,
                 originalTarget: targetedObject,
                 controller,
@@ -367,6 +394,9 @@ export class InteractionManager {
             }
             this.dispatch(intersection.object, {
               type: "pointerenter",
+              inputSource: source,
+              registeredTarget: target,
+              relatedTarget: targetedTarget ?? null,
               target: intersection.object,
               originalTarget: intersection.object,
               controller,
@@ -374,14 +404,19 @@ export class InteractionManager {
             });
           }
           targetedObject = intersection.object;
+          targetedTarget = target;
         } else if (!intersection && targetedObject) {
           this.dispatch(targetedObject, {
             type: "pointerleave",
+            inputSource: inputSource(),
+            registeredTarget: /** @type {THREE.Object3D<XREventMap>} */ (targetedTarget),
+            relatedTarget: null,
             target: targetedObject,
             originalTarget: targetedObject,
             controller,
           });
           targetedObject = undefined;
+          targetedTarget = undefined;
         }
       };
 

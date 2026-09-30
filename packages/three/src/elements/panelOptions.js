@@ -1,6 +1,7 @@
 import { createProperty } from "@apendua/signal";
 
 /**
+ * @import {HapticOptions} from './haptics.js';
  * @import {LoadingFrameOptions} from './loadingFrame.js';
  * @import {PortalKeyboardOptions} from './portalKeyboard.js';
  */
@@ -30,6 +31,11 @@ import { createProperty } from "@apendua/signal";
  * @property {false | LoadingFrameOptions} [loadingFrame] Two objects are
  *   spread one over the other; `false`, at either level, is no frame. There
  *   is no `true` (see `PortalOptions.loadingFrame`).
+ * @property {false | HapticOptions} [haptics] What the panel's controls
+ *   feel like. Two objects are spread one over the other,
+ *   so a scene can pick the flavor and a panel only turn hover off;
+ *   `false`, at either level, is no haptics. There is no `true` (see
+ *   `PortalOptions.haptics`).
  * @property {number} [maxTextScale]
  * @property {boolean} [atomic]
  * @property {boolean} [opaqueToRays]
@@ -48,6 +54,9 @@ export const PanelOptionsContext = createProperty(
   () => ({}),
 );
 
+/** The options that are spread one over the other rather than replaced. */
+const SPREAD_OPTIONS = new Set(["keyboard", "loadingFrame", "haptics"]);
+
 /**
  * @param {unknown} value
  * @returns {value is object}
@@ -59,8 +68,9 @@ function isObject(value) {
 /**
  * `own` laid over `base`: what a panel ends up with, or what a nested scope
  * does. An option `own` leaves out, or sets to `undefined`, is `base`'s.
- * `keyboard` and `loadingFrame` are spread when both sides are objects, so a
- * panel can change one thing about them without restating the rest.
+ * `keyboard`, `loadingFrame` and `haptics` are spread when both sides are
+ * objects, so a panel can change one thing about them without restating
+ * the rest.
  *
  * @template {PanelOptions} T
  * @param {PanelOptions} base
@@ -75,7 +85,7 @@ export function mergePanelOptions(base, own) {
       continue;
     }
     const inherited = merged[key];
-    if ((key === "keyboard" || key === "loadingFrame") && isObject(inherited) && isObject(value)) {
+    if (SPREAD_OPTIONS.has(key) && isObject(inherited) && isObject(value)) {
       merged[key] = { ...inherited, ...value };
     } else {
       merged[key] = value;

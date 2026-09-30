@@ -69,6 +69,30 @@ describe("mergePanelOptions", () => {
     });
   });
 
+  test("spreads one set of haptics over the other, and lets `false` replace it", () => {
+    assert.deepEqual(
+      mergePanelOptions(
+        { haptics: { flavor: "knock", strength: 0.5 } },
+        { haptics: { hover: false } },
+      ),
+      { haptics: { flavor: "knock", strength: 0.5, hover: false } },
+    );
+    assert.deepEqual(mergePanelOptions({ haptics: { flavor: "knock" } }, { haptics: false }), {
+      haptics: false,
+    });
+    assert.deepEqual(mergePanelOptions({ haptics: false }, { haptics: {} }), { haptics: {} });
+  });
+
+  test("takes `false` or options for the haptics, and not `true`", () => {
+    /** @type {PanelOptions[]} */
+    const allowed = [{ haptics: false }, { haptics: {} }, { haptics: { flavor: "buzz" } }];
+    assert.equal(allowed.length, 3);
+    /** @type {PanelOptions} */
+    // @ts-expect-error -- haptics are on when left out; `true` says nothing more.
+    const refused = { haptics: true };
+    assert.ok(refused);
+  });
+
   test("passes a panel's own options through untouched", () => {
     const root = document.createElement("div");
     /** @type {PortalOptions} */

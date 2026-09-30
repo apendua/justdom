@@ -36,6 +36,7 @@ export { isTextInput, typeIntoInput } from "./elements/typing.js";
 export { PREVIEW_ATTRIBUTE } from "./elements/keyboardPreview.js";
 export { PortalPluginsContext } from "./elements/plugins.js";
 export { PanelOptionsContext, withPanelOptions } from "./elements/panelOptions.js";
+export { HAPTIC_FLAVORS, playHaptic } from "./elements/haptics.js";
 export { box, getContentGroup } from "./elements/div.js";
 export { makeReveal, solveCut } from "./elements/reveal.js";
 export {
@@ -89,6 +90,26 @@ export { installCrashPanel, CRASH_PANEL_ID } from "./crash.js";
 
 /**
  * @typedef {import('./elements/panelOptions.js').PanelOptions} PanelOptions
+ */
+
+/**
+ * @typedef {import('./elements/haptics.js').HapticOptions} HapticOptions
+ */
+
+/**
+ * @typedef {import('./elements/haptics.js').HapticFlavor} HapticFlavor
+ */
+
+/**
+ * @typedef {import('./elements/haptics.js').HapticFlavorName} HapticFlavorName
+ */
+
+/**
+ * @typedef {import('./elements/haptics.js').HapticPulse} HapticPulse
+ */
+
+/**
+ * @typedef {import('./elements/haptics.js').HapticEffect} HapticEffect
  */
 
 /**

@@ -10,6 +10,7 @@ import {
   setLocalMatrix,
   setWorldMatrix,
 } from "./interactions.js";
+import { fakeFrameLoop } from "./test/frameLoop.js";
 
 /**
  * @import { XREventMap } from "./core.js";
@@ -84,6 +85,151 @@ function moveAside(/** @type {THREE.Object3D} */ object) {
 function connect(manager, controller) {
   return manager.addController(controller, () => () => {}).subscribe();
 }
+
+describe("pointer events", () => {
+  test("a ray drifting from a label to its background neither leaves nor re-enters the button", () => {
+    const manager = new InteractionManager();
+    const controller = fakeController();
+    const loop = fakeFrameLoop();
+    const subscription = manager.addController(controller, loop.onAnimationFrame).subscribe();
+    const { button, label } = labelledButton();
+    manager.add(button);
+
+    /** @type {string[]} */
+    const events = [];
+    for (const type of /** @type {const} */ (["pointerenter", "pointermove", "pointerleave"])) {
+      button.addEventListener(type, (event) =>
+        events.push(`${type}:${event.originalTarget.position.z}`),
+      );
+    }
+
+    loop.run();
+    assert.deepEqual(events, ["pointerenter:-5"], "the ray arrives on the label");
+
+    // The label slides out from under the ray, which now meets the
+    // background: the same button, and a player would not say the hand had
+    // left it. A hover styling that flickered off and on here, or a buzz
+    // that played twice, would say otherwise.
+    moveAside(label);
+    manager.updateIntersections();
+    loop.run();
+    assert.deepEqual(events, ["pointerenter:-5", "pointermove:-6"]);
+
+    moveAside(button);
+    manager.updateIntersections();
+    loop.run();
+    assert.deepEqual(events, ["pointerenter:-5", "pointermove:-6", "pointerleave:-6"]);
+    subscription.unsubscribe();
+  });
+
+  test("an enter says where the ray came from, and a leave where it went", () => {
+    const manager = new InteractionManager();
+    const controller = fakeController();
+    const loop = fakeFrameLoop();
+    const subscription = manager.addController(controller, loop.onAnimationFrame).subscribe();
+    const near = labelledButton();
+    const far = labelledButton();
+    far.background.position.z = -12;
+    far.label.position.z = -11;
+    far.button.updateMatrixWorld(true);
+    manager.add(near.button);
+    manager.add(far.button);
+
+    /** @type {string[]} */
+    const events = [];
+    for (const [name, { button }] of Object.entries({ near, far })) {
+      for (const type of /** @type {const} */ (["pointerenter", "pointerleave"])) {
+        button.addEventListener(type, (event) => {
+          const from =
+            event.relatedTarget === null
+              ? "nothing"
+              : event.relatedTarget === near.button
+                ? "near"
+                : "far";
+          events.push(`${name} ${type} ${from}`);
+        });
+      }
+    }
+
+    loop.run();
+    assert.deepEqual(events, ["near pointerenter nothing"]);
+
+    moveAside(near.button);
+    manager.updateIntersections();
+    loop.run();
+    assert.deepEqual(events, [
+      "near pointerenter nothing",
+      "near pointerleave far",
+      "far pointerenter near",
+    ]);
+
+    moveAside(far.button);
+    manager.updateIntersections();
+    loop.run();
+    assert.deepEqual(events.at(-1), "far pointerleave nothing");
+    subscription.unsubscribe();
+  });
+
+  test("carry what is driving the controller, as read when they are sent", () => {
+    const manager = new InteractionManager();
+    const controller = fakeController();
+    const loop = fakeFrameLoop();
+    /** @type {XRInputSource | null} */
+    let driving = null;
+    const subscription = manager
+      .addController(controller, loop.onAnimationFrame, () => driving)
+      .subscribe();
+    const { button } = labelledButton();
+    manager.add(button);
+
+    /** @type {(XRInputSource | null)[]} */
+    const sources = [];
+    for (const type of /** @type {const} */ (["pointerenter", "pointermove", "pointerleave"])) {
+      button.addEventListener(type, (event) => sources.push(event.inputSource));
+    }
+
+    loop.run();
+    assert.deepEqual(sources, [null], "nothing is driving it yet");
+
+    const source = /** @type {XRInputSource} */ (/** @type {unknown} */ ({ handedness: "left" }));
+    driving = source;
+    manager.updateIntersections();
+    loop.run();
+    assert.deepEqual(sources, [null, source]);
+
+    driving = null;
+    moveAside(button);
+    manager.updateIntersections();
+    loop.run();
+    assert.deepEqual(sources, [null, source, null]);
+    subscription.unsubscribe();
+  });
+
+  test("name the registered object the hit belongs to, whichever mesh was met", () => {
+    const manager = new InteractionManager();
+    const controller = fakeController();
+    const loop = fakeFrameLoop();
+    const subscription = manager.addController(controller, loop.onAnimationFrame).subscribe();
+    const { button, label } = labelledButton();
+    manager.add(button);
+
+    /** @type {THREE.Object3D[]} */
+    const registered = [];
+    for (const type of /** @type {const} */ (["pointerenter", "pointermove", "pointerleave"])) {
+      button.addEventListener(type, (event) => registered.push(event.registeredTarget));
+    }
+
+    loop.run();
+    moveAside(label);
+    manager.updateIntersections();
+    loop.run();
+    moveAside(button);
+    manager.updateIntersections();
+    loop.run();
+    assert.deepEqual(registered, [button, button, button]);
+    subscription.unsubscribe();
+  });
+});
 
 describe("select", () => {
   test("a press and a release on the same button are a click, whatever the ray met", () => {

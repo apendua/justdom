@@ -11,6 +11,7 @@ import { HANDLE_OPACITY_ACTIVE, HANDLE_OPACITY_NEAR } from "./keyboardHandles.js
 import { stubCanvas } from "../test/stubCanvas.js";
 import { rectGeometry } from "./sdfRect.js";
 import { CARET_BLINK_MS } from "./textInput.js";
+import { recordingSource } from "../test/rumble.js";
 import { PREVIEW_ATTRIBUTE } from "./keyboardPreview.js";
 import { getCaretOffset } from "./typing.js";
 
@@ -170,6 +171,21 @@ function keyboardPanel(configure = ownKeyboard, slot, room) {
     }
     return undefined;
   };
+  /**
+   * The board's key, once the board is up: the registered object under the
+   * hinge that is not the board's blocker plane.
+   */
+  const keyObject = () => {
+    const board = hinge(parent);
+    for (const target of targets) {
+      const isBlocker =
+        target instanceof THREE.Mesh && target.geometry instanceof THREE.PlaneGeometry;
+      if (!isBlocker && board.getObjectById(target.id)) {
+        return target;
+      }
+    }
+    return undefined;
+  };
   const blocker = () => {
     /** @type {THREE.Mesh | undefined} */
     let found;
@@ -180,16 +196,22 @@ function keyboardPanel(configure = ownKeyboard, slot, room) {
     }
     return found;
   };
-  /** A ray's press, as the manager delivers it. */
-  const press = (/** @type {THREE.Object3D | undefined} */ object) => {
+  /**
+   * A ray's press, as the manager delivers it.
+   *
+   * @param {THREE.Object3D | undefined} object
+   * @param {XRInputSource | null} [inputSource] The hand pressing, for what
+   *   it feels.
+   */
+  const press = (object, inputSource = null) => {
     assert.ok(object, "nothing to press");
     const controller = new THREE.Group();
     // @ts-expect-error -- the shape the handlers read, not three's full event.
-    object.dispatchEvent({ type: "selectstart", controller });
+    object.dispatchEvent({ type: "selectstart", controller, inputSource });
     // @ts-expect-error -- as above.
-    object.dispatchEvent({ type: "select", controller });
+    object.dispatchEvent({ type: "select", controller, inputSource });
     // @ts-expect-error -- as above.
-    object.dispatchEvent({ type: "selectend", controller });
+    object.dispatchEvent({ type: "selectend", controller, inputSource });
   };
 
   return {
@@ -201,6 +223,7 @@ function keyboardPanel(configure = ownKeyboard, slot, room) {
     created,
     targets,
     fieldObject,
+    keyObject,
     blocker,
     press,
     cleanup: () => {
@@ -484,6 +507,66 @@ describe("the keyboard from the panel options", () => {
     assert.equal(panels(), 1, "no board, and nothing thrown");
     assert.equal(panel.input.hasAttribute("data-xr-focus"), false);
     panel.cleanup();
+  });
+
+  test("the board's keys feel the way the panel's own haptics say, hover included", async () => {
+    /**
+     * The board of a panel configured so, brought up, and one of its keys
+     * arrived on and pressed by a hand that keeps a record.
+     *
+     * @param {Configure} configure
+     */
+    const feltKey = async (configure) => {
+      const panel = keyboardPanel(configure);
+      await settle();
+      panel.press(panel.fieldObject());
+      await settle();
+      const { source, played } = recordingSource();
+      const key = panel.keyObject();
+      assert.ok(key, "a key to point at");
+      key.dispatchEvent(
+        /** @type {any} */ ({
+          type: "pointerenter",
+          controller: new THREE.Group(),
+          inputSource: source,
+          registeredTarget: key,
+          originalTarget: key,
+          relatedTarget: null,
+        }),
+      );
+      panel.press(key, source);
+      panel.cleanup();
+      return played.map((effect) => effect.duration);
+    };
+
+    assert.deepEqual(
+      await feltKey(ownKeyboard),
+      [30, 40],
+      "a tick on arriving and on the press: the board turns the hover on for itself",
+    );
+    assert.deepEqual(
+      await feltKey((create) => ({
+        panelOptions: { keyboard: { create }, haptics: { flavor: "knock" } },
+      })),
+      [30, 60],
+      "the scene's flavor",
+    );
+    assert.deepEqual(
+      await feltKey((create) => ({
+        panelOptions: { keyboard: { create } },
+        options: { haptics: { hover: false } },
+      })),
+      [40],
+      "no hover for a panel that turned it off by name",
+    );
+    assert.deepEqual(
+      await feltKey((create) => ({
+        panelOptions: { keyboard: { create }, haptics: { flavor: "knock" } },
+        options: { haptics: false },
+      })),
+      [],
+      "and nothing for a panel that turned them off",
+    );
   });
 
   test("reaches the portal's other options too", async () => {
@@ -956,6 +1039,29 @@ describe("the keyboard's handles", () => {
     assert.ok(top.position.y > 0, "the top strip is above the hinge");
     assert.ok(bottom.position.y < top.position.y, "the bottom one below it");
     b.cleanup();
+  });
+
+  test("go idle when the ray leaves, however far it drifted within a key first", async () => {
+    const b = await openBoard();
+    const key = b.anchor.children[0].children[0];
+    // A key is a background quad and a label quad, and a ray that arrived on
+    // the one and drifted onto the other leaves from the other: the manager
+    // says enter and leave per key, and names whichever mesh was met last.
+    const label = new THREE.Object3D();
+    key.add(label);
+
+    b.dispatch("pointerenter", key);
+    b.dispatch("pointermove", label);
+    b.dispatch("pointerleave", label);
+    try {
+      for (const side of SIDES) {
+        assert.equal(opacity(b.bar(side)), 0, `${side}, with the ray gone`);
+      }
+    } finally {
+      // A board left open holds the runner up, and hides which assertion
+      // it was that failed.
+      b.cleanup();
+    }
   });
 
   test("show faintly with a ray on the board, and fully on the one it is on", async () => {

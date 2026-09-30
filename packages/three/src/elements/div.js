@@ -37,6 +37,7 @@ import { isScrollable, scrollDrags } from "./scroll.js";
 import { place, placeAndScale } from "./place.js";
 import { BoxBatchContext } from "./boxBatch.js";
 import { TextBatchContext } from "./textBatch.js";
+import { HapticsContext, isArrival } from "./haptics.js";
 
 /**
  * The group that carries an element's projected DOM children, one per box.
@@ -218,6 +219,31 @@ export function box(ctx, element, options = {}) {
   const { makeInteractive, stopPropagation } = interactions(ctx);
   const drags = scrollDrags(ctx);
   const isPanelReady = PortalReadyContext.get(ctx);
+  /**
+   * What the hand feels on this element, if it is a control and the panel
+   * has haptics at all. The handlers below hand it the hand each event came
+   * from.
+   */
+  const haptics = HapticsContext.get(ctx);
+
+  /**
+   * The object of the control this element is part of: its own, unless
+   * its parent is clickable too, in which case the label is part of the
+   * button, and so on up the unbroken run of clickable ancestors. Each
+   * element step is two objects, the parent's content group and then the
+   * parent's own object, the way `scrollDrags.begin` walks. Asked once per
+   * arrival, off cached computed styles.
+   *
+   * @returns {THREE.Object3D}
+   */
+  const controlRoot = () => {
+    /** @type {THREE.Object3D} */
+    let root = object;
+    for (let el = element.parentElement; el && isClickable(el); el = el.parentElement) {
+      root = root.parent?.parent ?? root;
+    }
+    return root;
+  };
 
   /**
    * Whether this element wants to be a ray target, as its own signal so that
@@ -451,6 +477,7 @@ export function box(ctx, element, options = {}) {
       });
       element.dispatchEvent(event);
       element.dataset.xrActive = "true";
+      haptics?.press(e.inputSource);
       stopPropagation(e);
     }),
     on("selectend", (e) => {
@@ -464,6 +491,7 @@ export function box(ctx, element, options = {}) {
       });
       element.dispatchEvent(event);
       delete element.dataset.xrActive;
+      haptics?.release(e.inputSource);
       stopPropagation(e);
     }),
     on("pointermove", () => {
@@ -472,8 +500,22 @@ export function box(ctx, element, options = {}) {
       });
       element.dispatchEvent(event);
     }),
-    on("pointerenter", () => {
+    on("pointerenter", (e) => {
       element.dataset.xrHover = "true";
+      // Once per arrival on this control. Not for an enter bubbling up from
+      // a target nested in this one, which plays its own; not for the ray
+      // moving between this element and something clickable inside it,
+      // which `isArrival` says is not an arrival at all; and not while the
+      // hand is scrolling a list, when the rows pass under a ray that is
+      // aimed at none of them, glide included.
+      if (
+        haptics &&
+        e.registeredTarget === object &&
+        !drags.scrolling(e.controller) &&
+        isArrival(controlRoot(), e.relatedTarget)
+      ) {
+        haptics.hover(e.inputSource);
+      }
     }),
     on("pointerleave", () => {
       delete element.dataset.xrHover;

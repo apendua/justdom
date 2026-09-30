@@ -1,7 +1,12 @@
 {
-  "extends": "./tsconfig.build.json",
   "compilerOptions": {
+    "typeRoots": ["./src/types", "./node_modules/@types"],
+    "rootDirs": ["./src"],
+    "rootDir": "./src",
     "outDir": "./lib-types",
     "emitDeclarationOnly": true
-  }
+  },
+  "include": ["src"],
+  "extends": "../../common/config/typescript/tsconfig.package-browser-base.json",
+  "exclude": ["src/**/*.test.*", "src/test/**", "src/testUtils/**"]
 }

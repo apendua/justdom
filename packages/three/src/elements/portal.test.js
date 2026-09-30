@@ -2025,7 +2025,7 @@ describe("createPortal", () => {
 
     assert.deepEqual(
       (await panel({})).map((effect) => [effect.duration, effect.strongMagnitude]),
-      [[48, 1]],
+      [[60, 1]],
       "the scene's knock, pressed and not hovered",
     );
     assert.deepEqual(
@@ -2034,8 +2034,8 @@ describe("createPortal", () => {
         effect.strongMagnitude,
       ]),
       [
-        [18, 0.225],
-        [48, 0.5],
+        [30, 0.25],
+        [60, 0.5],
       ],
       "the panel turns hover back on and halves the scene's knock",
     );

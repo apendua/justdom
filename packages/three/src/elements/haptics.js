@@ -35,6 +35,12 @@ import { createProperty } from "@apendua/signal";
  * `buzz` is longer and softer, a rumble rather than a click. `key` is a
  * mechanical key: a hard press and a lighter release.
  *
+ * No pulse is shorter than 30 ms or leaves either motor at nothing. A
+ * controller with one actuator, which is what a Quest holds, folds the two
+ * magnitudes into one drive, and a pulse that only named the weak motor
+ * came out as nothing at all; and the light tick the games here already
+ * play, 40 ms at 0.4, is about the least a hand notices.
+ *
  * @typedef {"tick" | "knock" | "buzz" | "key"} HapticFlavorName
  */
 
@@ -46,21 +52,21 @@ import { createProperty } from "@apendua/signal";
  */
 export const HAPTIC_FLAVORS = Object.freeze({
   tick: {
-    hover: { duration: 12, strong: 0, weak: 0.4 },
-    press: { duration: 24, strong: 0.25, weak: 0.8 },
+    hover: { duration: 30, strong: 0.3, weak: 0.45 },
+    press: { duration: 40, strong: 0.6, weak: 1 },
   },
   knock: {
-    hover: { duration: 18, strong: 0.45, weak: 0.15 },
-    press: { duration: 48, strong: 1, weak: 0.4 },
+    hover: { duration: 30, strong: 0.5, weak: 0.2 },
+    press: { duration: 60, strong: 1, weak: 0.5 },
   },
   buzz: {
-    hover: { duration: 45, strong: 0.1, weak: 0.3 },
-    press: { duration: 100, strong: 0.35, weak: 0.6 },
+    hover: { duration: 60, strong: 0.2, weak: 0.4 },
+    press: { duration: 120, strong: 0.45, weak: 0.7 },
   },
   key: {
-    hover: { duration: 12, strong: 0, weak: 0.3 },
-    press: { duration: 30, strong: 0.5, weak: 0.9 },
-    release: { duration: 18, strong: 0.15, weak: 0.5 },
+    hover: { duration: 30, strong: 0.3, weak: 0.4 },
+    press: { duration: 45, strong: 0.7, weak: 1 },
+    release: { duration: 30, strong: 0.3, weak: 0.6 },
   },
 });
 
@@ -127,42 +133,32 @@ export const HapticsContext = createProperty(
  */
 
 /**
- * Whether a ray arriving on a control's object from `relatedTarget`, the
- * registered object it was on before, counts as arriving on the control at
- * all, and so is worth one pulse.
+ * Whether a ray arriving on a control from `relatedTarget`, the registered
+ * object it was on before, counts as arriving on the control at all, and
+ * so is worth one pulse.
  *
  * `cursor` is inherited, so the label or the icon inside a button is a ray
  * target of its own, and the ray crossing from it onto the button's own
  * background is an enter as far as the manager can tell. It is not an
- * arrival: the hand has been on the button the whole time. So a ray coming
- * from something nested in the control is moving within it, and so is a
- * ray coming from the thing the control's `cursor` was inherited from, the
- * button the label is in. A ray coming from any other ancestor has
- * arrived: a scrollable list registers itself to be dragged by and is not
- * a control, so a button entered from the gap between its rows is entered.
- * `cursorInherited` says which, asked only when it matters. What the rule
- * gives up is a distinct control nested in another, a delete button inside
- * a clickable row, whose hover from the row is not an arrival; its press
- * still is.
+ * arrival: the hand has been on the button the whole time. The control is
+ * the whole of that: `root` is the object of the outermost element in the
+ * unbroken run of clickable ancestors, the button for its label, and a ray
+ * coming from anywhere in it is moving within it. A ray coming from
+ * anywhere else has arrived, whether from another control, from a
+ * scrollable list, which registers itself to be dragged by and is not a
+ * control, or from nothing. What the rule gives up is a distinct control
+ * nested in another, a delete button inside a clickable row, whose hover
+ * from the row is not an arrival; its press still is.
  *
  * Containment is asked of the objects rather than the elements, since a
  * panel's objects are arranged as its elements are.
  *
- * @param {Object3D} object
+ * @param {Object3D} root
  * @param {Object3D | null} relatedTarget
- * @param {() => boolean} cursorInherited Whether the control's `cursor` is
- *   its parent element's rather than its own, which is what makes it part
- *   of the control above it.
  * @returns {boolean}
  */
-export function isArrival(object, relatedTarget, cursorInherited) {
-  if (relatedTarget === null) {
-    return true;
-  }
-  if (contains(object, relatedTarget)) {
-    return false;
-  }
-  return !(contains(relatedTarget, object) && cursorInherited());
+export function isArrival(root, relatedTarget) {
+  return relatedTarget === null || !contains(root, relatedTarget);
 }
 
 /**

@@ -20,28 +20,26 @@ describe("isArrival", () => {
   list.add(button);
   button.add(label);
   const other = new THREE.Object3D();
-  const own = () => false;
-  const inherited = () => true;
 
   test("is one from nothing, and from another control", () => {
-    assert.equal(isArrival(button, null, own), true);
-    assert.equal(isArrival(button, other, own), true);
+    assert.equal(isArrival(button, null), true);
+    assert.equal(isArrival(button, other), true);
   });
 
-  test("is not one from something nested in the control, nor onto it", () => {
-    assert.equal(isArrival(button, label, own), false, "the label is part of the button");
-    assert.equal(isArrival(label, button, inherited), false, "and going back onto it is the same");
+  test("is not one from within the control, whichever of its parts the ray was on", () => {
+    // The control is the button and everything in it, so the button is the
+    // root whether the ray lands on its background or on its label.
+    assert.equal(isArrival(button, label), false, "onto the background from the label");
+    assert.equal(isArrival(button, button), false, "onto the label from the background");
   });
 
   test("is one from an ancestor the control is not part of", () => {
     // A scrollable list registers itself to be dragged by, and the gap
-    // between its rows is the list: a button entered from it is entered.
-    assert.equal(isArrival(button, list, own), true, "a button from the list it is in");
-    assert.equal(
-      isArrival(button, list, inherited),
-      false,
-      "a control inside a control is the price",
-    );
+    // between its rows is the list: a button entered from it is entered,
+    // and so is its label, whose root is still the button.
+    assert.equal(isArrival(button, list), true);
+    // A control inside a control is the price: the row is its root.
+    assert.equal(isArrival(list, list), false);
   });
 });
 
@@ -74,8 +72,8 @@ describe("createHaptics", () => {
     haptics.press(source);
     haptics.release(source);
     assert.deepEqual(played, [
-      { type: "dual-rumble", duration: 12, strongMagnitude: 0, weakMagnitude: 0.4 },
-      { type: "dual-rumble", duration: 24, strongMagnitude: 0.25, weakMagnitude: 0.8 },
+      { type: "dual-rumble", duration: 30, strongMagnitude: 0.3, weakMagnitude: 0.45 },
+      { type: "dual-rumble", duration: 40, strongMagnitude: 0.6, weakMagnitude: 1 },
     ]);
   });
 
@@ -105,7 +103,7 @@ describe("createHaptics", () => {
     pressOnly.release(source);
     assert.deepEqual(
       played.map((effect) => effect.duration),
-      [30, 18],
+      [45, 30],
       "a key is felt closing and opening",
     );
   });
@@ -117,15 +115,15 @@ describe("createHaptics", () => {
     assert.ok(half);
     half.press(source);
     assert.deepEqual(played, [
-      { type: "dual-rumble", duration: 48, strongMagnitude: 0.5, weakMagnitude: 0.2 },
+      { type: "dual-rumble", duration: 60, strongMagnitude: 0.5, weakMagnitude: 0.25 },
     ]);
 
     played.length = 0;
     const loud = createHaptics({ strength: 2, flavor: "knock" });
     assert.ok(loud);
-    loud.press(source);
+    loud.hover(source);
     assert.deepEqual(played, [
-      { type: "dual-rumble", duration: 48, strongMagnitude: 1, weakMagnitude: 0.8 },
+      { type: "dual-rumble", duration: 30, strongMagnitude: 1, weakMagnitude: 0.4 },
     ]);
   });
 
@@ -166,7 +164,7 @@ describe("createHaptics", () => {
     const haptics = createHaptics({ flavor: "knock" });
     assert.ok(haptics);
     haptics.press(source);
-    assert.deepEqual(pulsed, [[1, 48]]);
+    assert.deepEqual(pulsed, [[1, 60]]);
   });
 
   test("is silent for no hand, a hand with no gamepad, and a gamepad with no motors", () => {

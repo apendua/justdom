@@ -694,13 +694,15 @@ the ray crossing from it onto the button's own background is an enter as
 far as the manager can tell. It is not an arrival: the hand has been on the
 button the whole time. So a pulse plays only when the ray comes onto a
 control from outside it, from another control or from nothing, which the
-enter's `relatedTarget` says (see **Pointing at things**). Coming from
-something clickable nested in the control, or going from the control onto
-the thing its `cursor` was inherited from, is a move within one control and
-plays nothing; neither does the enter bubbling up from the nested element,
-which has played its own. Coming from any other ancestor is an arrival: a
-scrollable list is a ray target, to be dragged by, and not a control, so a
-button entered from the gap between its rows is entered. What the rule
+enter's `relatedTarget` says (see **Pointing at things**). The control is
+the outermost element in the unbroken run of clickable ancestors and
+everything in it, so a ray moving between a button's background and its
+label, either way round, is moving within one control and plays nothing;
+neither does the enter bubbling up from the label, which has played its
+own. Coming from anywhere outside that is an arrival, from another control
+or from a scrollable list, which is a ray target, to be dragged by, and not
+a control, so a button entered from the gap between its rows is entered
+whether the ray meets its background or its label first. What the rule
 gives up is a distinct control nested in another, a delete button inside a
 clickable row, whose hover from the row is not an arrival. Its press still
 is. And nothing plays while the hand is scrolling a list, glide included:

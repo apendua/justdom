@@ -227,15 +227,22 @@ export function box(ctx, element, options = {}) {
   const haptics = HapticsContext.get(ctx);
 
   /**
-   * Whether this element is a control by its parent's `cursor` rather than
-   * its own, which is what a label inside a button is. Asked when a ray
-   * arrives from an ancestor; the computed style is cached.
+   * The object of the control this element is part of: its own, unless
+   * its parent is clickable too, in which case the label is part of the
+   * button, and so on up the unbroken run of clickable ancestors. Each
+   * element step is two objects, the parent's content group and then the
+   * parent's own object, the way `scrollDrags.begin` walks. Asked once per
+   * arrival, off cached computed styles.
    *
-   * @returns {boolean}
+   * @returns {THREE.Object3D}
    */
-  const cursorInherited = () => {
-    const parent = element.parentElement;
-    return parent !== null && isClickable(parent);
+  const controlRoot = () => {
+    /** @type {THREE.Object3D} */
+    let root = object;
+    for (let el = element.parentElement; el && isClickable(el); el = el.parentElement) {
+      root = root.parent?.parent ?? root;
+    }
+    return root;
   };
 
   /**
@@ -505,7 +512,7 @@ export function box(ctx, element, options = {}) {
         haptics &&
         e.registeredTarget === object &&
         !drags.scrolling(e.controller) &&
-        isArrival(object, e.relatedTarget, cursorInherited)
+        isArrival(controlRoot(), e.relatedTarget)
       ) {
         haptics.hover(e.inputSource);
       }

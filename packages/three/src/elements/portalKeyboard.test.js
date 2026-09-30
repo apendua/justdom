@@ -527,12 +527,12 @@ describe("the keyboard from the panel options", () => {
       return played.map((effect) => effect.duration);
     };
 
-    assert.deepEqual(await pressedKey(ownKeyboard), [24], "a tick, as any button");
+    assert.deepEqual(await pressedKey(ownKeyboard), [40], "a tick, as any button");
     assert.deepEqual(
       await pressedKey((create) => ({
         panelOptions: { keyboard: { create }, haptics: { flavor: "knock" } },
       })),
-      [48],
+      [60],
       "the scene's flavor",
     );
     assert.deepEqual(

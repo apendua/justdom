@@ -694,7 +694,7 @@ describe("div haptics", () => {
     dispatch("pointerleave", source);
     assert.deepEqual(
       played.map((effect) => effect.duration),
-      [12, 30, 18],
+      [30, 45, 30],
       "the key's hover, press and release, and nothing for leaving",
     );
 
@@ -756,15 +756,26 @@ describe("div haptics", () => {
     button.dispatch("pointerenter", source, listObject, button.object, controller);
     assert.equal(played.length, 1, "from the gap between the rows is an arrival");
 
+    // The ray crossing the gap may meet the button's label first, which is
+    // a target of its own by the button's cursor: still the button, still
+    // an arrival.
+    const label = setup("pointer", "", haptics, button.element);
+    getContentGroup(button.object).add(label.object);
+    label.dispatch("pointerenter", source, listObject, label.object, controller);
+    assert.equal(played.length, 2, "onto the label from the list is an arrival");
+    button.dispatch("pointerenter", source, label.object, button.object, controller);
+    assert.equal(played.length, 2, "and from the label onto the button is not");
+    label.subscription.unsubscribe();
+
     // The hand takes hold of the list: rows now pass under a ray that is
     // aimed at none of them.
     const drags = scrollDrags(button.ctx);
     drags.begin(controller, button.element, button.object);
     button.dispatch("pointerenter", source, listObject, button.object, controller);
-    assert.equal(played.length, 1, "silent while the list is being scrolled");
+    assert.equal(played.length, 2, "silent while the list is being scrolled");
     drags.end(controller);
     button.dispatch("pointerenter", source, listObject, button.object, controller);
-    assert.equal(played.length, 2, "and felt again once it is let go");
+    assert.equal(played.length, 3, "and felt again once it is let go");
 
     button.subscription.unsubscribe();
     root.remove();

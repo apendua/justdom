@@ -11,7 +11,7 @@ import {
 } from "@apendua/signal";
 import { SVGLoader } from "three/addons/loaders/SVGLoader.js";
 import { $, children, Nothing } from "../operators.js";
-import { applyClip, clipRaycast, UNCLIPPED } from "../elements/clip.js";
+import { applyClip, clipRaycast, intersectClipBoxes, UNCLIPPED } from "../elements/clip.js";
 import { PortalReadyContext } from "../elements/div.js";
 import { forwardPointerEvents, isClickable } from "../elements/pointerForwarding.js";
 import { place } from "../elements/place.js";
@@ -28,20 +28,25 @@ import { isSvgRoot, SVG_NAMESPACE } from "../elements/plugins.js";
 import {
   aboutOrigin,
   IDENTITY,
+  intersectRects,
+  invert,
   matrixEqual,
   matrixScale,
   multiply,
   parseCssMatrix,
   parsePreserveAspectRatio,
   parseViewBox,
+  rectEqual,
   samplingScale,
   toMatrix3,
   toMatrix4,
+  transformRect,
   translation,
   viewportMatrix,
 } from "./geometry.js";
 import { dashRuns } from "./dash.js";
 import {
+  clipsViewport,
   paintEqual,
   isPainted,
   parseDashArray,
@@ -61,7 +66,7 @@ import {
  * @import {ShapePath} from 'three';
  * @import {Component, XREventMap} from '../core.js';
  * @import {ClipBox} from '../elements/clip.js';
- * @import {Matrix2D} from './geometry.js';
+ * @import {Matrix2D, Rect} from './geometry.js';
  * @import {HitRule, Paint} from './style.js';
  */
 
@@ -214,6 +219,10 @@ function ownTransform(element, style, viewBoxOrigin) {
  * @property {Matrix2D} ctm
  * @property {number} opacity
  * @property {Element | null} root
+ * @property {Rect | null} clip What the viewports above the element leave of
+ *   it, a nested `<svg>`, a `<symbol>` or a `<marker>`, in the root's frame.
+ *   Null for none. The root's own overflow is not in it: that is a box's,
+ *   and the portal's clip chain has it.
  */
 
 /**
@@ -222,7 +231,12 @@ function ownTransform(element, style, viewBoxOrigin) {
  * @returns {boolean}
  */
 export function chainEqual(a, b) {
-  return a.root === b.root && a.opacity === b.opacity && matrixEqual(a.ctm, b.ctm);
+  return (
+    a.root === b.root &&
+    a.opacity === b.opacity &&
+    matrixEqual(a.ctm, b.ctm) &&
+    rectEqual(a.clip, b.clip)
+  );
 }
 
 /**
@@ -273,12 +287,31 @@ export function rootMatrix(root) {
 }
 
 /**
+ * The viewport a nested `<svg>` establishes, in its parent's user space:
+ * its `x`, `y`, `width` and `height`.
+ *
+ * @param {Element} element
+ * @param {CSSStyleDeclaration} style
+ * @returns {Rect}
+ */
+function nestedViewport(element, style) {
+  const x = parseLength(readProperty(style, element, "x"), 0);
+  const y = parseLength(readProperty(style, element, "y"), 0);
+  return {
+    left: x,
+    top: y,
+    right: x + parseLength(readProperty(style, element, "width"), 0),
+    bottom: y + parseLength(readProperty(style, element, "height"), 0),
+  };
+}
+
+/**
  * The matrix an element below the root carries on its own object: from its
  * user space to its parent's. That is its computed `transform` about its
  * `transform-origin`, and for a nested `<svg>` the viewport it establishes
  * first — placed at its `x`, `y`, its own `viewBox` fitted into the `width`
- * and `height` it names. Not yet clipped to that viewport
- * (`docs/freedom-svg-plan.md`, S2b).
+ * and `height` it names. What the viewport clips is the chain's business,
+ * in `readChain`.
  *
  * @param {Element} element
  * @returns {Matrix2D}
@@ -432,12 +465,37 @@ export function readChain(element, instance = null) {
   /** @type {Matrix2D} */
   let ctm = IDENTITY;
   let opacity = 1;
+  /**
+   * Each clipping viewport passed on the way, in the user space of its
+   * parent, with the matrix from the element's user space to there. Where
+   * that space lands in the root's frame is known only at the top.
+   *
+   * @type {{ rect: Rect, below: Matrix2D }[]}
+   */
+  const viewports = [];
+  /**
+   * @param {Chain} top
+   * @returns {Chain}
+   */
+  const finish = (top) => {
+    let clip = top.clip;
+    for (const { rect, below } of viewports) {
+      const back = invert(below);
+      clip = intersectRects(clip, back ? transformRect(multiply(top.ctm, back), rect) : null);
+    }
+    return { ...top, clip };
+  };
   /** @type {Element | null} */
   let current = element;
   while (current) {
     if (instance && current === instance.template) {
       const at = instance.chain();
-      return { ctm: multiply(at.ctm, ctm), opacity: opacity * at.opacity, root: at.root };
+      return finish({
+        ctm: multiply(at.ctm, ctm),
+        opacity: opacity * at.opacity,
+        root: at.root,
+        clip: at.clip,
+      });
     }
     const style = getComputedStyleCached(current);
     // The root's own opacity is applied to its box by `div`; the shapes
@@ -445,12 +503,20 @@ export function readChain(element, instance = null) {
     // too, or a faded-out icon would keep its picture at full strength.
     opacity *= parseNumber(style.opacity, 1);
     if (isSvgRoot(current)) {
-      return { ctm: multiply(rootMatrix(current), ctm), opacity, root: current };
+      return finish({
+        ctm: multiply(rootMatrix(current), ctm),
+        opacity,
+        root: current,
+        clip: null,
+      });
     }
     ctm = multiply(localMatrix(current), ctm);
+    if (current !== element && current.localName === "svg" && clipsViewport(style.overflow)) {
+      viewports.push({ rect: nestedViewport(current, style), below: ctm });
+    }
     current = getParentElement(current);
   }
-  return { ctm, opacity, root: null };
+  return { ctm, opacity, root: null, clip: null };
 }
 
 /** The elements `shape` draws. */
@@ -866,18 +932,22 @@ function paintedMesh({
  * The clip patch's two uniforms for what one element draws, and the effects
  * that keep them current. Both are shared by every mesh the element has.
  *
- * `clip` is what the root's overflow and the scrollers above it leave, in
- * the root's frame, written in an effect of its own so a scroll writes four
- * numbers and nothing else. `clipMatrix` goes from the element's user space,
- * where its vertices are, to that frame: the composition of every matrix
- * above the meshes, written when the chain moves.
+ * `clip` is what the root's overflow, the scrollers above it and the
+ * viewports in the chain leave, in the root's frame, written in an effect of
+ * its own so a scroll writes four numbers and nothing else. `clipMatrix`
+ * goes from the element's user space, where its vertices are, to that
+ * frame: the composition of every matrix above the meshes, written when the
+ * chain moves.
  *
- * @param {() => Element | null} root
- * @param {() => Matrix2D} ctm
+ * @param {() => Chain} chain
  */
-export function clipUniforms(root, ctm) {
+export function clipUniforms(chain) {
   const clip = { value: new THREE.Vector4(-1e6, -1e6, 1e6, 1e6) };
   const clipMatrix = { value: new THREE.Matrix3() };
+  // Apart from the matrix, so a transform animated above the element is a
+  // matrix write and not a clip box read too.
+  const root = new Derived(() => chain().root);
+  const viewports = new Derived(() => chain().clip, { isEqual: rectEqual });
   /** What `clip` holds, for the raycast, which reads it untracked. */
   let current = UNCLIPPED;
   return {
@@ -886,13 +956,23 @@ export function clipUniforms(root, ctm) {
     clipBox: () => current,
     followClip: [
       effects(() => {
-        const at = root();
-        const box = at ? getInteriorClipBox(asHtml(at)) : UNCLIPPED;
+        const at = root.get();
+        let box = at ? getInteriorClipBox(asHtml(at)) : UNCLIPPED;
+        const rect = viewports.get();
+        if (rect) {
+          box = intersectClipBoxes(box, {
+            ...rect,
+            topLeft: 0,
+            topRight: 0,
+            bottomRight: 0,
+            bottomLeft: 0,
+          });
+        }
         clip.value.set(box.left, box.top, box.right, box.bottom);
         current = box;
       }),
       effects(() => {
-        toMatrix3(ctm(), clipMatrix.value);
+        toMatrix3(chain().ctm, clipMatrix.value);
       }),
     ],
   };
@@ -1002,10 +1082,7 @@ export function shape(ctx, element, { instance = null, decorate } = {}) {
    */
   const renderOrderOf = (layer) => () => paintSlot(element, root.get(), instance, layer).start;
 
-  const { clip, clipMatrix, clipBox, followClip } = clipUniforms(
-    () => root.get(),
-    () => chain.get().ctm,
-  );
+  const { clip, clipMatrix, clipBox, followClip } = clipUniforms(() => chain.get());
 
   /**
    * Whether `visibility` hides this shape, as a box's `hidden` does: its

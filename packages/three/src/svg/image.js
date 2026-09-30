@@ -303,10 +303,7 @@ export function image(ctx, element, instance = null) {
     return rule !== null && (!rule.visible || !hidden.get());
   });
 
-  const { clip, clipMatrix, clipBox, followClip } = clipUniforms(
-    () => root.get(),
-    () => chain.get().ctm,
-  );
+  const { clip, clipMatrix, clipBox, followClip } = clipUniforms(() => chain.get());
 
   const mesh = new THREE.Mesh();
   clipRaycast(mesh, clipBox, mesh, clipMatrix);

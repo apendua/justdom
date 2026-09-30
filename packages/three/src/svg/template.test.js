@@ -393,3 +393,125 @@ describe("use", () => {
     s.teardown();
   });
 });
+
+/**
+ * The clip box the clip patch compares a mesh against, in the root's frame.
+ *
+ * @param {Mesh} mesh
+ */
+function clipBoxOf(mesh) {
+  const shader = {
+    uniforms: /** @type {Record<string, { value: unknown }>} */ ({}),
+    vertexShader: "void main() {\n#include <begin_vertex>\n}",
+    fragmentShader: "void main() {\n#include <alphatest_fragment>\n}",
+  };
+  /** @type {THREE.Material} */ (mesh.material).onBeforeCompile(
+    /** @type {never} */ (shader),
+    /** @type {never} */ (null),
+  );
+  const box = /** @type {THREE.Vector4} */ (shader.uniforms.clipBox.value);
+  return [box.x, box.y, box.z, box.w].map(round);
+}
+
+describe("viewport clips", () => {
+  /** What the clip box holds for nothing clipped. */
+  const OPEN = [-1e6, -1e6, 1e6, 1e6];
+
+  test("a nested svg clips what is inside it to its viewport, in the root's px", () => {
+    const rect = svg("rect", { width: "100", height: "100", fill: "red" });
+    const nested = svg(
+      "svg",
+      { x: "5", y: "2", width: "10", height: "5", style: "overflow: hidden" },
+      [rect],
+    );
+    const s = scene([nested], [rect]);
+    // The root draws its viewBox twice over, so (5, 2)–(15, 7) is (10, 4)–(30, 14).
+    assert.deepEqual(clipBoxOf(meshesUnder(s.objects[0])[0]), [10, 4, 30, 14]);
+    s.teardown();
+  });
+
+  test("overflow: visible on the nested svg clips nothing", () => {
+    const rect = svg("rect", { width: "100", height: "100", fill: "red" });
+    const nested = svg(
+      "svg",
+      { x: "5", y: "2", width: "10", height: "5", style: "overflow: visible" },
+      [rect],
+    );
+    const s = scene([nested], [rect]);
+    assert.deepEqual(clipBoxOf(meshesUnder(s.objects[0])[0]), OPEN);
+    s.teardown();
+  });
+
+  test("nested viewports intersect, each placed by what is above it", () => {
+    const rect = svg("rect", { width: "100", height: "100", fill: "red" });
+    const inner = svg(
+      "svg",
+      { x: "4", y: "0", width: "20", height: "20", style: "overflow: hidden" },
+      [rect],
+    );
+    const outer = svg(
+      "svg",
+      { x: "5", y: "2", width: "10", height: "5", style: "overflow: hidden" },
+      [inner],
+    );
+    const s = scene([outer], [rect]);
+    // The inner viewport starts at x = 5 + 4 = 9 in the root's user space
+    // and runs past the outer one, which ends at 15.
+    assert.deepEqual(clipBoxOf(meshesUnder(s.objects[0])[0]), [18, 4, 30, 14]);
+    s.teardown();
+  });
+
+  test("under a rotation the clip is the viewport's bounding box", () => {
+    const rect = svg("rect", { width: "100", height: "100", fill: "red" });
+    const nested = svg("svg", { width: "10", height: "4", style: "overflow: hidden" }, [rect]);
+    // A quarter turn, as computed, and moved right so it stays in view.
+    const g = svg("g", { style: "transform: matrix(0, 1, -1, 0, 20, 0)" }, [nested]);
+    const s = scene([g], [rect]);
+    // (0, 0)–(10, 4) turned is (16, 0)–(20, 10) in user space.
+    assert.deepEqual(clipBoxOf(meshesUnder(s.objects[0])[0]), [32, 0, 40, 20]);
+    s.teardown();
+  });
+
+  test("a marker clips its content to its box", () => {
+    const head = svg("rect", { x: "-5", y: "-5", width: "20", height: "20", fill: "red" });
+    const marker = svg(
+      "marker",
+      {
+        id: "clip-marker",
+        markerWidth: "4",
+        markerHeight: "2",
+        markerUnits: "userSpaceOnUse",
+        style: "overflow: hidden",
+      },
+      [head],
+    );
+    const line = svg("line", {
+      x1: "0",
+      y1: "10",
+      x2: "20",
+      y2: "10",
+      stroke: "black",
+      "marker-end": "url(#clip-marker)",
+    });
+    const s = scene([svg("defs", {}, [marker]), line], [line]);
+    const markerMesh = s.objects[0].children
+      .filter((child) => !(child instanceof THREE.Mesh))
+      .flatMap(meshesUnder)[0];
+    // The box is 4×2 at the line's end, (20, 10), not turned (orient 0).
+    assert.deepEqual(clipBoxOf(markerMesh), [40, 20, 48, 24]);
+    s.teardown();
+  });
+
+  test("a symbol clips its content to the viewport the use gives it", () => {
+    const rect = svg("rect", { x: "-5", y: "-5", width: "20", height: "20", fill: "red" });
+    const symbol = svg(
+      "symbol",
+      { id: "clip-symbol", viewBox: "0 0 10 10", style: "overflow: hidden" },
+      [rect],
+    );
+    const use = svg("use", { href: "#clip-symbol", x: "20", y: "0", width: "5", height: "5" });
+    const s = scene([svg("defs", {}, [symbol]), use], [use]);
+    assert.deepEqual(clipBoxOf(meshesUnder(s.objects[0])[0]), [40, 0, 50, 10]);
+    s.teardown();
+  });
+});

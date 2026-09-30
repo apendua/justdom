@@ -4,10 +4,13 @@ import { getChildNodes, getComputedStyleCached } from "../elements/mirror.js";
 import { isSvgElement } from "../elements/plugins.js";
 import {
   IDENTITY,
+  intersectRects,
   matrixEqual,
   multiply,
   parsePreserveAspectRatio,
   parseViewBox,
+  rectEqual,
+  transformRect,
   translation,
   viewportMatrix,
 } from "./geometry.js";
@@ -15,6 +18,7 @@ import { image } from "./image.js";
 import {
   findMarker,
   MARKABLE_TAGS,
+  markerFrame,
   markerMatrix,
   markerVertices,
   parseMarkerReference,
@@ -31,7 +35,7 @@ import {
   shape,
   SHAPE_TAGS,
 } from "./shape.js";
-import { parseLength, readProperty } from "./style.js";
+import { clipsViewport, parseLength, readProperty } from "./style.js";
 
 /**
  * Templates: SVG content defined in one place and drawn in others. A
@@ -239,12 +243,45 @@ function markers(ctx, element, host, hostInstance) {
         },
         { isEqual: matrixEqual },
       );
+      /**
+       * The marker's box in the path's user space, as the matrix from the
+       * box to there and its size, or null when the marker does not clip.
+       */
+      const box = new Derived(
+        () => {
+          const style = getComputedStyleCached(marker);
+          const vertex = vertices.get()[index];
+          if (!vertex || !clipsViewport(style.overflow)) {
+            return null;
+          }
+          const spec = readMarkerSpec(marker);
+          return {
+            frame: markerFrame(spec, vertex, host.strokeWidth()),
+            rect: { left: 0, top: 0, right: spec.width, bottom: spec.height },
+          };
+        },
+        {
+          isEqual: (a, b) =>
+            a === b || (!!a && !!b && matrixEqual(a.frame, b.frame) && rectEqual(a.rect, b.rect)),
+        },
+      );
       /** @type {Instance} */
       const instance = {
         template: marker,
         chain: () => {
           const at = host.chain();
-          return { ctm: multiply(at.ctm, matrix.get()), opacity: at.opacity, root: at.root };
+          const current = box.get();
+          return {
+            ctm: multiply(at.ctm, matrix.get()),
+            opacity: at.opacity,
+            root: at.root,
+            clip: current
+              ? intersectRects(
+                  at.clip,
+                  transformRect(multiply(at.ctm, current.frame), current.rect),
+                )
+              : at.clip,
+          };
         },
         slot: host.markerSlot,
         // A marker's content inherits from where the marker is defined, not
@@ -423,12 +460,39 @@ export function drawUse(ctx, element, instance = null) {
         },
         { isEqual: matrixEqual },
       );
+      /**
+       * The symbol's viewport in the `<use>`'s user space, or null for no
+       * clip: an element other than a symbol, a symbol with no size to
+       * clip to, or one whose `overflow` shows what spills out of it.
+       */
+      const viewport = new Derived(
+        () => {
+          if (!isSymbol || !clipsViewport(getComputedStyleCached(target).overflow)) {
+            return null;
+          }
+          const size = symbolViewport(element, target);
+          if (!size) {
+            return null;
+          }
+          const current = style();
+          const x = parseLength(readProperty(current, element, "x"), 0);
+          const y = parseLength(readProperty(current, element, "y"), 0);
+          return { left: x, top: y, right: x + size.width, bottom: y + size.height };
+        },
+        { isEqual: rectEqual },
+      );
       /** @type {Instance} */
       const copy = {
         template: isSymbol ? target : /** @type {Element} */ (target.parentElement),
         chain: () => {
           const at = chain.get();
-          return { ctm: multiply(at.ctm, placement.get()), opacity: at.opacity, root: at.root };
+          const rect = viewport.get();
+          return {
+            ctm: multiply(at.ctm, placement.get()),
+            opacity: at.opacity,
+            root: at.root,
+            clip: rect ? intersectRects(at.clip, transformRect(at.ctm, rect)) : at.clip,
+          };
         },
         slot: () => paintSlot(element, chain.get().root, instance, 0),
         inherit: {

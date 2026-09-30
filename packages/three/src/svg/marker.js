@@ -230,6 +230,43 @@ export function readMarkerSpec(marker) {
 }
 
 /**
+ * The matrix from a marker's viewport, the box `markerWidth` by
+ * `markerHeight` with its origin at the top-left corner, to the user space
+ * of the path it is drawn on, for one vertex. The box is what the marker
+ * clips its content to.
+ *
+ * @param {MarkerSpec} spec
+ * @param {MarkerVertex} vertex
+ * @param {number} strokeWidth The path's.
+ * @returns {Matrix2D}
+ */
+export function markerFrame(spec, vertex, strokeWidth) {
+  let angle = spec.orient.angle;
+  if (spec.orient.kind !== "angle") {
+    angle = vertex.angle;
+    if (spec.orient.kind === "auto-start-reverse" && vertex.position === "start") {
+      angle += Math.PI;
+    }
+  }
+  const [refX, refY] = apply(markerViewport(spec), spec.refX, spec.refY);
+  const scale = spec.strokeUnits ? strokeWidth : 1;
+  return multiply(
+    translation(vertex.x, vertex.y),
+    multiply(rotation(angle), multiply(scaling(scale, scale), translation(-refX, -refY))),
+  );
+}
+
+/**
+ * The marker's `viewBox` fitted into its box.
+ *
+ * @param {MarkerSpec} spec
+ * @returns {Matrix2D}
+ */
+function markerViewport(spec) {
+  return viewportMatrix(spec.viewBox, spec.aspect, spec.width, spec.height);
+}
+
+/**
  * The matrix from a marker's user space to the user space of the path it
  * is drawn on, for one vertex.
  *
@@ -239,23 +276,7 @@ export function readMarkerSpec(marker) {
  * @returns {Matrix2D}
  */
 export function markerMatrix(spec, vertex, strokeWidth) {
-  let angle = spec.orient.angle;
-  if (spec.orient.kind !== "angle") {
-    angle = vertex.angle;
-    if (spec.orient.kind === "auto-start-reverse" && vertex.position === "start") {
-      angle += Math.PI;
-    }
-  }
-  const viewport = viewportMatrix(spec.viewBox, spec.aspect, spec.width, spec.height);
-  const [refX, refY] = apply(viewport, spec.refX, spec.refY);
-  const scale = spec.strokeUnits ? strokeWidth : 1;
-  return multiply(
-    translation(vertex.x, vertex.y),
-    multiply(
-      rotation(angle),
-      multiply(scaling(scale, scale), multiply(translation(-refX, -refY), viewport)),
-    ),
-  );
+  return multiply(markerFrame(spec, vertex, strokeWidth), markerViewport(spec));
 }
 
 /**

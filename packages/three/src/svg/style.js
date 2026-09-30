@@ -175,6 +175,19 @@ export function parsePointerEvents(value) {
 }
 
 /**
+ * Whether a viewport's `overflow` clips its content: a nested `<svg>`, a
+ * `<symbol>` or a `<marker>`, all `hidden` by the browser's own stylesheet.
+ * Not the mirror's `clipsOverflow`, because in SVG `auto` means `visible`.
+ *
+ * @param {string} value Computed `overflow`.
+ * @returns {boolean}
+ */
+export function clipsViewport(value) {
+  const first = value.trim().split(/\s+/)[0];
+  return first === "hidden" || first === "scroll" || first === "clip";
+}
+
+/**
  * @param {string} value
  * @returns {"nonzero" | "evenodd"}
  */

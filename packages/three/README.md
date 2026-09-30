@@ -1565,10 +1565,14 @@ as on a box's quad, so a shape that says `visible` is drawn under a hidden
 `transform-origin` on every element in the chain, the `transform`
 _attribute_ included, since the browser computes it as the same property;
 `viewBox` and `preserveAspectRatio`, with the viewport at the `<svg>`'s
-content box; a nested `<svg>` as a viewport. Geometry is read from the
-computed style where the browser exposes it as CSS (`cx`, `r`, `x`,
-`width`, `d`) and from the attribute otherwise, so a shape animated by
-either follows.
+content box; a nested `<svg>` as a viewport, clipping what spills out of
+it unless its `overflow` is `visible` or `auto` (the browser's own
+stylesheet makes it `hidden`). A `<symbol>` and a `<marker>` clip their
+content to their viewports the same way. The clip box is axis-aligned in
+the `<svg>`'s frame, so a viewport under a rotation clips to its bounding
+box. Geometry is read from the computed style where the browser exposes it
+as CSS (`cx`, `r`, `x`, `width`, `d`) and from the attribute otherwise, so
+a shape animated by either follows.
 
 Transforms are matrices, as they are for boxes: a shape's vertices stay in
 its own user space, the `<svg>`'s content group carries the viewport, and
@@ -1602,9 +1606,7 @@ matrix, so a path that moves, or a `refX` edited, moves its markers without
 rebuilding them. They are drawn over the path's stroke and under whatever
 comes after the path, and styled by their own rules, not the path's. An
 edit inside the `<marker>` reaches every copy. Markers are not ray
-targets: a press on an arrowhead goes to what is behind it. A marker's
-content is not clipped to its `markerWidth` and `markerHeight` box, which
-the default `overflow: hidden` asks for.
+targets: a press on an arrowhead goes to what is behind it.
 
 ```html
 <defs>

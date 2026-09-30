@@ -96,6 +96,89 @@ export function apply(m, x, y) {
 }
 
 /**
+ * The matrix that undoes `m`, or null for one that flattens the plane and
+ * cannot be undone.
+ *
+ * @param {Matrix2D} m
+ * @returns {Matrix2D | null}
+ */
+export function invert(m) {
+  const [a, b, c, d, e, f] = m;
+  const det = a * d - b * c;
+  if (!det) {
+    return null;
+  }
+  return [d / det, -b / det, -c / det, a / det, (c * f - d * e) / det, (b * e - a * f) / det];
+}
+
+/**
+ * An axis-aligned rectangle, the shape of every clip in a portal.
+ *
+ * @typedef {object} Rect
+ * @property {number} left
+ * @property {number} top
+ * @property {number} right
+ * @property {number} bottom
+ */
+
+/**
+ * The smallest axis-aligned rectangle holding `rect` once `m` has moved it.
+ * Exact under a scale and a move; around a rotation, the bounding box.
+ *
+ * @param {Matrix2D} m
+ * @param {Rect} rect
+ * @returns {Rect}
+ */
+export function transformRect(m, rect) {
+  const corners = [
+    apply(m, rect.left, rect.top),
+    apply(m, rect.right, rect.top),
+    apply(m, rect.right, rect.bottom),
+    apply(m, rect.left, rect.bottom),
+  ];
+  const xs = corners.map(([x]) => x);
+  const ys = corners.map(([, y]) => y);
+  return {
+    left: Math.min(...xs),
+    top: Math.min(...ys),
+    right: Math.max(...xs),
+    bottom: Math.max(...ys),
+  };
+}
+
+/**
+ * The part of two rectangles both hold, either of which may be null for no
+ * limit. One with no area is kept as it is: it clips everything.
+ *
+ * @param {Rect | null} a
+ * @param {Rect | null} b
+ * @returns {Rect | null}
+ */
+export function intersectRects(a, b) {
+  if (!a || !b) {
+    return a ?? b;
+  }
+  return {
+    left: Math.max(a.left, b.left),
+    top: Math.max(a.top, b.top),
+    right: Math.min(a.right, b.right),
+    bottom: Math.min(a.bottom, b.bottom),
+  };
+}
+
+/**
+ * @param {Rect | null} a
+ * @param {Rect | null} b
+ * @returns {boolean}
+ */
+export function rectEqual(a, b) {
+  if (!a || !b) {
+    return a === b;
+  }
+  return a.left === b.left && a.top === b.top && a.right === b.right && a.bottom === b.bottom;
+}
+
+/**
  * How much bigger the matrix draws things, as one number: the geometric
  * mean of its two axis scales, which is what decides how finely a curve is
  * worth sampling before it goes through it.

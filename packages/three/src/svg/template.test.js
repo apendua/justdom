@@ -2,6 +2,7 @@ import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
 import { createMirror } from "../elements/mirror.js";
+import { PortalTemplatesContext } from "../elements/plugins.js";
 import { drawShape, drawUse } from "./template.js";
 
 /**
@@ -219,6 +220,71 @@ describe("markers", () => {
     s.teardown();
   });
 
+  test("a marker that names itself from inside is drawn once, not forever", () => {
+    const s = setup();
+    // The arrowhead's own path names the marker it is in, as a rule like
+    // `path { marker-end: url(#arrow) }` would make it.
+    s.head.setAttribute("marker-end", `url(#${s.marker.id})`);
+    s.mirror.attributeChanged(s.head);
+    assert.equal(s.markerMeshes.length, 1);
+    s.teardown();
+  });
+
+  test("a hidden line hides its markers", () => {
+    const s = setup();
+    s.line.setAttribute("style", "visibility: hidden");
+    s.mirror.attributeChanged(s.line);
+    const copies = s.lineObject.children.filter((child) => !(child instanceof THREE.Mesh));
+    assert.equal(copies.length, 1);
+    assert.equal(copies[0].visible, false);
+    s.teardown();
+  });
+
+  test("a marker defined after the line is adopted before it is read, so edits reach it", () => {
+    const head = svg("path", { d: "M0 0 L10 5 L0 10 z", fill: "red" });
+    const marker = svg("marker", { id: "late-marker", viewBox: "0 0 10 10" }, [head]);
+    const line = svg("line", {
+      x1: "0",
+      y1: "10",
+      x2: "40",
+      y2: "10",
+      stroke: "black",
+      "marker-end": "url(#late-marker)",
+    });
+    // The defs come last, as in many exported drawings: the line is built
+    // before the portal's walk reaches them.
+    const root = svg("svg", { viewBox: "0 0 50 25" }, [line, svg("defs", {}, [marker])]);
+    root.getBoundingClientRect = () =>
+      /** @type {DOMRect} */ ({ left: 0, top: 0, right: 100, bottom: 50, width: 100, height: 50 });
+    document.body.appendChild(root);
+    const mirror = createMirror();
+    mirror.adopt(root);
+    mirror.adopt(line);
+    /** @param {Node} node */
+    const adopt = (node) => {
+      mirror.adopt(node);
+      node.childNodes.forEach(adopt);
+    };
+    /** @type {Object3D | undefined} */
+    let object;
+    const subscription = drawShape(PortalTemplatesContext.set({}, adopt), line).subscribe(
+      (value) => {
+        object = value;
+      },
+    );
+    assert.ok(object);
+    const copyMeshes = () =>
+      /** @type {Object3D} */ (object).children
+        .filter((child) => !(child instanceof THREE.Mesh))
+        .flatMap(meshesUnder);
+    const before = copyMeshes()[0].geometry;
+    head.setAttribute("d", "M0 0 L10 5 L0 10 L5 5 z");
+    mirror.attributeChanged(head);
+    assert.notEqual(copyMeshes()[0].geometry, before, "the edit reached the copy");
+    subscription.unsubscribe();
+    root.remove();
+  });
+
   test("a marker is drawn and never hit", () => {
     const s = setup();
     const [mesh] = s.markerMeshes;
@@ -400,9 +466,10 @@ describe("use", () => {
       [direct, a],
     );
     assert.equal(meshesUnder(s.objects[0]).length, 0, "a use inside what it names");
-    // `a` draws symbol b, whose `b` draws symbol a, whose `a` draws b, and
-    // so on: stopped by depth, with a rect drawn at every other level.
-    assert.ok(meshesUnder(s.objects[1]).length > 0);
+    // `a` draws symbol b, whose `b` draws symbol a, whose `a` would draw b
+    // again: that is the cycle, and it stops there, with symbol a's rect
+    // drawn once.
+    assert.equal(meshesUnder(s.objects[1]).length, 1);
     s.teardown();
   });
 });

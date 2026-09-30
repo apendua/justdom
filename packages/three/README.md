@@ -1606,8 +1606,11 @@ copy of its content is drawn at each vertex. The copy follows the marker's
 matrix, so a path that moves, or a `refX` edited, moves its markers without
 rebuilding them. They are drawn over the path's stroke and under whatever
 comes after the path, and styled by their own rules, not the path's. An
-edit inside the `<marker>` reaches every copy. Markers are not ray
-targets: a press on an arrowhead goes to what is behind it.
+edit inside the `<marker>` reaches every copy, wherever in the document
+the `<defs>` is. A path hidden by `visibility` hides its markers. A marker
+whose content names the same marker is drawn once, where a browser also
+stops. Markers are not ray targets: a press on an arrowhead goes to what
+is behind it.
 
 ```html
 <defs>
@@ -1630,8 +1633,9 @@ mirror sees only the original element, so a property counts as inherited
 when nothing between the copied element and the top of the copy changes
 it; an element that sets a property to exactly the value it would have
 inherited reads as not setting it. An edit inside the symbol reaches every
-copy. A copy is drawn where its `<use>` stands in the draw order, and is
-not a ray target. An `href` changed after mounting is not followed,
+copy, wherever in the document the symbol is. A copy is drawn where its
+`<use>` stands in the draw order, and is not a ray target. A `<use>` whose
+copy would draw it again stops there. An `href` changed after mounting is not followed,
 because the portal's observer does not watch that attribute.
 
 One print of the measuring tape. **Dashes are geometry, not a

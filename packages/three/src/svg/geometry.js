@@ -60,6 +60,16 @@ export function scaling(sx, sy) {
 }
 
 /**
+ * @param {number} radians Clockwise on screen, where y runs down.
+ * @returns {Matrix2D}
+ */
+export function rotation(radians) {
+  const cos = Math.cos(radians);
+  const sin = Math.sin(radians);
+  return [cos, sin, -sin, cos, 0, 0];
+}
+
+/**
  * The transform `m`, applied about the point (ox, oy) rather than about the
  * origin — which is what a CSS `transform` does about its `transform-origin`.
  *

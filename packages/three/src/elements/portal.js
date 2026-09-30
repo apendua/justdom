@@ -824,6 +824,27 @@ function buildPortal(ctx, ownOptions = {}) {
   }
 
   /**
+   * The nodes of SVG subtrees no plugin drew, which are templates: the
+   * contents of a `<defs>`, a `<marker>`, a `<symbol>`. The portal builds
+   * nothing for them, and a plugin draws them where something refers to
+   * them. They are adopted by the mirror all the same, so that an edit to a
+   * marker's path or a symbol's children reaches whatever draws it.
+   *
+   * @type {WeakSet<Node>}
+   */
+  const templateNodes = new WeakSet();
+
+  /**
+   * @param {Node} node
+   * @returns {void}
+   */
+  function adoptTemplate(node) {
+    mirror.adopt(node);
+    templateNodes.add(node);
+    node.childNodes.forEach(adoptTemplate);
+  }
+
+  /**
    * Build the object for this one node and nothing below it. The recursion
    * over children is the caller's business, because the two callers want it
    * done differently: the synchronous path walks the subtree here and now,
@@ -834,6 +855,15 @@ function buildPortal(ctx, ownOptions = {}) {
    */
   function createObjectForNode(node) {
     mirror.adopt(node);
+    const parent = node.parentNode;
+    if (parent && templateNodes.has(parent)) {
+      // Inside an SVG subtree no plugin drew, such as a `<marker>` in its
+      // `<defs>`: a template, followed but never built on its own.
+      adoptTemplate(node);
+      return undefined;
+    }
+    // Built after all, having been moved out of a template.
+    templateNodes.delete(node);
     /** @type {import("@apendua/signal").Subscribable<THREE.Object3D> | undefined} */
     let object$;
     if (node.nodeType === Node.ELEMENT_NODE) {
@@ -850,6 +880,7 @@ function buildPortal(ctx, ownOptions = {}) {
         // object has nothing for its children to attach to. The `<svg>`
         // root is left to `div` below: it is a real box in the page's flow,
         // with a background and a border that were always drawn.
+        adoptTemplate(element);
         return undefined;
       } else {
         switch (element.tagName.toLowerCase()) {

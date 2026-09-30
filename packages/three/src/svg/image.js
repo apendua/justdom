@@ -13,7 +13,7 @@ import {
   commitMatrix,
   emptyGeometry,
   localMatrix,
-  paintRenderOrder,
+  paintSlot,
   rayTarget,
   readChain,
 } from "./shape.js";
@@ -24,6 +24,7 @@ import { parseLength, parsePointerEvents, readProperty } from "./style.js";
  * @import {XREventMap} from '../core.js';
  * @import {Size} from '../elements/objectFit.js';
  * @import {PreserveAspectRatio} from './geometry.js';
+ * @import {Instance} from './shape.js';
  */
 
 /**
@@ -228,15 +229,17 @@ export function getSvgImageSource(element) {
 /**
  * @param {WeakKey} ctx
  * @param {Element} element
+ * @param {Instance | null} [instance] The instance this picture is part of,
+ *   when it is template content drawn somewhere else.
  * @returns {Source<THREE.Object3D>}
  */
-export function image(ctx, element) {
+export function image(ctx, element, instance = null) {
   /** @type {THREE.Object3D<XREventMap>} */
   const object = new THREE.Object3D();
   const style = () => getComputedStyleCached(element);
 
   const own = new Derived(() => localMatrix(element), { isEqual: matrixEqual });
-  const chain = new Derived(() => readChain(element), { isEqual: chainEqual });
+  const chain = new Derived(() => readChain(element, instance), { isEqual: chainEqual });
   const root = new Derived(() => chain.get().root);
   const opacity = new Derived(() => chain.get().opacity);
 
@@ -292,6 +295,10 @@ export function image(ctx, element) {
    * behind.
    */
   const hittable = new Derived(() => {
+    if (instance) {
+      // Drawn and never hit, as template content is in `shape`.
+      return false;
+    }
     const rule = parsePointerEvents(readProperty(style(), element, "pointer-events")).fill;
     return rule !== null && (!rule.visible || !hidden.get());
   });
@@ -365,7 +372,7 @@ export function image(ctx, element) {
         }),
         effects((obj) => {
           place(obj, 0, 0, 0);
-          obj.renderOrder = paintRenderOrder(element, root.get(), 0);
+          obj.renderOrder = paintSlot(element, root.get(), instance, 0).start;
         }),
       ]),
     ),

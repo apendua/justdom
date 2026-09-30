@@ -57,7 +57,7 @@ import {
 } from "./style.js";
 
 /**
- * @import {Source} from '@apendua/signal';
+ * @import {EntityEffect, Source} from '@apendua/signal';
  * @import {ShapePath} from 'three';
  * @import {Component, XREventMap} from '../core.js';
  * @import {ClipBox} from '../elements/clip.js';
@@ -320,6 +320,23 @@ export function commitMatrix(object, matrix) {
 }
 
 /**
+ * A copy of a template's content drawn somewhere else: one instance of a
+ * `<marker>` at a vertex of a path. What is inside the template is drawn by
+ * the same `shape`, `group` and `image` as anything else, told by this where
+ * it stands. Its chain stops at the template and continues from the place
+ * the instance is drawn, and its draw order is a share of the slot the
+ * instance was given.
+ *
+ * @typedef {object} Instance
+ * @property {Element} template The element whose content is drawn, which
+ *   the walk up from that content stops at.
+ * @property {() => Chain} chain The matrix from the template's user space to
+ *   the root's frame at this instance, the opacity above it, and the root.
+ * @property {() => PaintSlot} slot The range of render orders the instance
+ *   draws its content in.
+ */
+
+/**
  * Walk from the element to its root, composing the same matrices the
  * objects on the way carry. Every computed style read on the way is a
  * dependency, so a transform written to a `<g>` three levels up, or the
@@ -327,16 +344,24 @@ export function commitMatrix(object, matrix) {
  * nothing else — and what a re-run costs is a uniform write and, at most, a
  * new sampling density.
  *
+ * Inside an instance the walk stops at the template, which is not drawn
+ * where it stands, and goes on from the instance's own chain.
+ *
  * @param {Element} element
+ * @param {Instance | null} [instance]
  * @returns {Chain}
  */
-export function readChain(element) {
+export function readChain(element, instance = null) {
   /** @type {Matrix2D} */
   let ctm = IDENTITY;
   let opacity = 1;
   /** @type {Element | null} */
   let current = element;
   while (current) {
+    if (instance && current === instance.template) {
+      const at = instance.chain();
+      return { ctm: multiply(at.ctm, ctm), opacity: opacity * at.opacity, root: at.root };
+    }
     const style = getComputedStyleCached(current);
     // The root's own opacity is applied to its box by `div`; the shapes
     // inside are drawn from materials of their own, so it is applied here
@@ -351,8 +376,8 @@ export function readChain(element) {
   return { ctm, opacity, root: null };
 }
 
-/** The elements that draw something, and so take a place in the paint order. */
-const PAINTED_TAGS = new Set([
+/** The elements `shape` draws. */
+export const SHAPE_TAGS = new Set([
   "path",
   "rect",
   "circle",
@@ -360,8 +385,10 @@ const PAINTED_TAGS = new Set([
   "line",
   "polyline",
   "polygon",
-  "image",
 ]);
+
+/** The elements that draw something, and so take a place in the paint order. */
+const PAINTED_TAGS = new Set([...SHAPE_TAGS, "image"]);
 
 /**
  * @typedef {object} PaintOrder
@@ -391,9 +418,9 @@ function paintOrderEqual(a, b) {
 const paintOrders = new WeakMap();
 
 /**
- * The document order of the shapes and images under an `<svg>` root — SVG's
- * painter order — as one computation per root that every shape in it reads,
- * rather than a walk per shape. It follows the mirror's child-list signals, so a
+ * The document order of the shapes and images under an `<svg>` root, or
+ * under a template — SVG's painter order — as one computation per root that
+ * every shape in it reads, rather than a walk per shape. It follows the mirror's child-list signals, so a
  * shape arriving or leaving anywhere under the root renumbers the root once,
  * and the shapes whose place did not change stop there.
  *
@@ -431,31 +458,60 @@ function getPaintOrder(root) {
 }
 
 /**
- * Where an element's meshes belong in the draw order: the root's content
- * order, plus a fraction from the element's place in the root's document
- * order (fill, then stroke, then the next element), which keeps everything
- * one `<svg>` draws strictly inside the root's own step. SVG paints in
+ * A range of render orders: where something starts drawing, and how far it
+ * may go before the next thing in the draw order.
+ *
+ * @typedef {object} PaintSlot
+ * @property {number} start
+ * @property {number} span
+ */
+
+/**
+ * The layers an element draws in, in SVG's order: the fill, the stroke over
+ * it, and the markers over both. A shape without markers leaves the third
+ * one empty.
+ */
+const LAYERS = 3;
+
+/**
+ * Where one layer of an element belongs in the draw order. SVG paints in
  * document order, and this says so explicitly rather than leaning on three's
  * sort falling through to mesh id. That fallback is document order only for
  * the initial build, and a fill switched on by a hover, or a shape inserted
  * before its siblings, would otherwise jump the stack.
  *
+ * An `<svg>` root's slot is its content render order and the step up to the
+ * next one. Each element in it gets an equal share of that slot by its place
+ * in the root's document order, split into its three layers. The content of
+ * an instance shares out the instance's slot the same way, by its place in
+ * the template, so the arrowheads on a path are drawn over its stroke and
+ * under whatever comes after it.
+ *
  * @param {Element} element
  * @param {Element | null} root The element's `<svg>` root, from its chain.
- * @param {0 | 1} layer 0 for a fill or an image, 1 for a stroke over it.
- * @returns {number}
+ * @param {Instance | null} instance
+ * @param {0 | 1 | 2} layer 0 for a fill or an image, 1 for a stroke, 2 for
+ *   markers.
+ * @returns {PaintSlot} Where the layer starts, which is the render order of
+ *   what it draws, and its span, which an instance drawn there shares out.
  */
-export function paintRenderOrder(element, root, layer) {
-  const base = getContentRenderOrder(asHtml(root ?? element));
-  if (!root) {
-    return base;
+export function paintSlot(element, root, instance, layer) {
+  const scope = instance ? instance.template : root;
+  if (!scope) {
+    return { start: getContentRenderOrder(asHtml(element)), span: 0 };
   }
-  const { index, count } = getPaintOrder(root);
+  const slot = instance
+    ? instance.slot()
+    : { start: getContentRenderOrder(asHtml(scope)), span: 1 };
+  const { index, count } = getPaintOrder(scope);
   const at = index.get(element);
   if (at === undefined) {
-    return base;
+    return { start: slot.start, span: 0 };
   }
-  return base + (2 * at + layer + 1) / (2 * count + 2);
+  // One step more than there are layers, so the last one ends short of the
+  // next slot rather than on it.
+  const step = slot.span / (LAYERS * count + 1);
+  return { start: slot.start + step * (LAYERS * at + layer + 1), span: step };
 }
 
 /**
@@ -794,11 +850,33 @@ export function rayTarget(ctx, element, hittable) {
 }
 
 /**
+ * What a shape shows of itself to what decorates it: the markers drawn on
+ * its vertices need its geometry, its stroke width, where it stands and
+ * where in the draw order its marker layer is.
+ *
+ * @typedef {object} ShapeHost
+ * @property {() => ShapePath | null} path
+ * @property {() => number} strokeWidth
+ * @property {() => Chain} chain
+ * @property {() => PaintSlot} markerSlot
+ */
+
+/**
+ * @typedef {object} ShapeOptions
+ * @property {Instance | null} [instance] The instance this shape is part of,
+ *   when it is template content drawn somewhere else.
+ * @property {(host: ShapeHost) => EntityEffect<THREE.Object3D>[]} [decorate]
+ *   More to hang off the shape's object. It is how `svg/template.js` adds
+ *   markers without this module knowing about templates.
+ */
+
+/**
  * @param {WeakKey} ctx
  * @param {Element} element
+ * @param {ShapeOptions} [options]
  * @returns {Source<THREE.Object3D>}
  */
-export function shape(ctx, element) {
+export function shape(ctx, element, { instance = null, decorate } = {}) {
   /** @type {THREE.Object3D<XREventMap>} */
   const object = new THREE.Object3D();
 
@@ -820,7 +898,7 @@ export function shape(ctx, element) {
   /** This shape's own transform, which its object carries. */
   const own = new Derived(() => localMatrix(element), { isEqual: matrixEqual });
 
-  const chain = new Derived(() => readChain(element), { isEqual: chainEqual });
+  const chain = new Derived(() => readChain(element, instance), { isEqual: chainEqual });
 
   // What the chain decides, apart, so a transform animated above the shape
   // stops at the clip matrix and reaches neither the draw order, nor the
@@ -844,7 +922,7 @@ export function shape(ctx, element) {
    * @param {0 | 1} layer 0 for the fill, 1 for the stroke drawn over it.
    * @returns {() => number}
    */
-  const renderOrderOf = (layer) => () => paintRenderOrder(element, root.get(), layer);
+  const renderOrderOf = (layer) => () => paintSlot(element, root.get(), instance, layer).start;
 
   const { clip, clipMatrix, clipBox, followClip } = clipUniforms(
     () => root.get(),
@@ -892,11 +970,18 @@ export function shape(ctx, element) {
    */
   const hittable = new Derived(() => fillHit.get() || strokeHit.get());
 
+  /**
+   * Template content is drawn and never hit. The element a press on it would
+   * be forwarded to is the one in the template, which is nowhere on the
+   * page, so a marker on a clickable path does not take the press either.
+   */
+  const drawnOnly = instance !== null;
+
   return just(object, [
     effects((obj) => {
       commitMatrix(obj, own.get());
     }),
-    rayTarget(ctx, element, () => hittable.get()),
+    rayTarget(ctx, element, () => !drawnOnly && hittable.get()),
     effects((obj) => {
       // `display: none` takes the shape out; `visibility` is the meshes'
       // business, below, the way it is a box's quad and not its object.
@@ -915,7 +1000,7 @@ export function shape(ctx, element) {
               },
               paint: () => fillPaint.get(),
               hidden: () => hidden.get(),
-              hit: () => fillHit.get(),
+              hit: () => !drawnOnly && fillHit.get(),
               opacity: () =>
                 opacity.get() * parseNumber(readProperty(style(), element, "fill-opacity"), 1),
               renderOrder: renderOrderOf(0),
@@ -934,7 +1019,7 @@ export function shape(ctx, element) {
               },
               paint: () => strokePaint.get(),
               hidden: () => hidden.get(),
-              hit: () => strokeHit.get(),
+              hit: () => !drawnOnly && strokeHit.get(),
               opacity: () =>
                 opacity.get() * parseNumber(readProperty(style(), element, "stroke-opacity"), 1),
               renderOrder: renderOrderOf(1),
@@ -945,6 +1030,12 @@ export function shape(ctx, element) {
           : Nothing(),
       )(observable(() => strokePaint.get() !== null || strokeHit.get())),
     ),
+    ...(decorate?.({
+      path: () => path.get(),
+      strokeWidth: () => strokeSpec.get().width,
+      chain: () => chain.get(),
+      markerSlot: () => paintSlot(element, root.get(), instance, 2),
+    }) ?? []),
   ]);
 }
 
@@ -960,9 +1051,12 @@ export function shape(ctx, element) {
  *
  * @param {WeakKey} ctx
  * @param {Element} element
+ * @param {EntityEffect<THREE.Object3D>[]} [decorate] More to hang off the
+ *   group's object: in a template, its children, which the portal does not
+ *   build there.
  * @returns {Source<THREE.Object3D>}
  */
-export function group(ctx, element) {
+export function group(ctx, element, decorate = []) {
   const object = new THREE.Object3D();
   const matrix = new Derived(() => localMatrix(element), { isEqual: matrixEqual });
   return just(object, [
@@ -972,5 +1066,6 @@ export function group(ctx, element) {
     effects((obj) => {
       obj.visible = getComputedStyleCached(element).display !== "none";
     }),
+    ...decorate,
   ]);
 }

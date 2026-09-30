@@ -1592,6 +1592,29 @@ re-measures nothing, because nothing in the HTML flow moves for it. A
 picture that is itself an SVG file is a bitmap of that file, as it is in an
 `<img>`.
 
+Markers are drawn: `marker-start`, `marker-mid` and `marker-end` on a
+`<path>`, `<line>`, `<polyline>` or `<polygon>` name a `<marker>`, and a
+copy of its content is drawn at each vertex. The copy follows the marker's
+`viewBox`, `preserveAspectRatio`, `markerWidth`, `markerHeight`, `refX`,
+`refY` (with SVG 2's keywords), `markerUnits` and `orient` (`auto`,
+`auto-start-reverse` or an angle). Each copy is one object carrying one
+matrix, so a path that moves, or a `refX` edited, moves its markers without
+rebuilding them. They are drawn over the path's stroke and under whatever
+comes after the path, and styled by their own rules, not the path's. An
+edit inside the `<marker>` reaches every copy. Markers are not ray
+targets: a press on an arrowhead goes to what is behind it. A marker's
+content is not clipped to its `markerWidth` and `markerHeight` box, which
+the default `overflow: hidden` asks for.
+
+```html
+<defs>
+  <marker id="arrow" viewBox="0 0 10 10" refX="10" refY="5" orient="auto">
+    <path d="M0 0 L10 5 L0 10 z" />
+  </marker>
+</defs>
+<line x1="0" y1="10" x2="40" y2="10" marker-end="url(#arrow)" />
+```
+
 One print of the measuring tape. **Dashes are geometry, not a
 shader**, for the reason `svg/dash.js` gives, so a `stroke-dashoffset`
 animation rebuilds the stroke each frame — a few hundred vertices, which the
@@ -1629,10 +1652,9 @@ the scene*). Where the button should be the target itself, put
 `<svg>` nor its shapes are then ray targets of their own, whatever `cursor`
 they inherit, and a press on the icon is a press on the button.
 
-Not drawn yet: `<text>`, markers (so an arrowhead is a `<polygon>` of its
-own for now), `<use>` and `<symbol>`, gradients and patterns (a `url(#…)`
-paint reads as `none`, though it still counts as painted for a ray),
-`clip-path`, `mask`, filters, `<foreignObject>` and
+Not drawn yet: `<text>`, `<use>` and `<symbol>`, gradients and patterns
+(a `url(#…)` paint reads as `none`, though it still counts as painted for
+a ray), `clip-path`, `mask`, filters, `<foreignObject>` and
 `vector-effect`.
 [`docs/freedom-svg-plan.md`](../../docs/freedom-svg-plan.md) has the order
 they are coming in and why.

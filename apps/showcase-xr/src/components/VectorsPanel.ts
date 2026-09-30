@@ -18,7 +18,7 @@ import { cardStyle, captionStyle, classes, headingStyle, rowStyle } from "./pane
  * test of all of them.
  *
  * The diagram at the top is the case the whole thing exists for — boxes
- * joined by arrows, the arrows dashed and dotted, the heads polygons, two
+ * joined by arrows, the arrows dashed and dotted, their heads markers, two
  * pictures above them through `<image>`, one turned by its group — and
  * it is styled the way a diagram on a page is styled, through classes and
  * a stylesheet rather than presentation attributes, because computed style
@@ -51,6 +51,10 @@ const VECTOR_PICTURE = `data:image/svg+xml,${encodeURIComponent(
     ` stroke-linecap="round" stroke-linejoin="round"/>` +
     `</svg>`,
 )}`;
+
+/** The ids of the diagram's two arrowhead markers. */
+const DARK_HEAD = "vectors-dark-head";
+const PINK_HEAD = "vectors-pink-head";
 
 /** The nodes' fill: the colour the visual suite looks for. */
 export const NODE_COLOR = "rgb(0, 168, 150)";
@@ -264,6 +268,42 @@ const VectorsPanel = component((_ctx: WeakKey) => {
         attr("class", diagramStyle),
         attr({ viewBox: "0 0 272 120" }),
         children(
+          // The arrowheads, drawn wherever a line names them. Sized in the
+          // diagram's own units rather than in stroke widths, so the dashed
+          // and the dotted arrows' heads keep the sizes they were drawn at.
+          // The pink one is twelve long by seven wide, since a head near
+          // equilateral reads as pointing whichever way its flattest edge
+          // faces away from.
+          $$("defs", [
+            children(
+              $$("marker", [
+                attr({
+                  id: DARK_HEAD,
+                  viewBox: "0 0 12 12",
+                  markerWidth: 12,
+                  markerHeight: 12,
+                  markerUnits: "userSpaceOnUse",
+                  refX: 0,
+                  refY: 6,
+                  orient: "auto",
+                }),
+                children($$("path", [attr({ class: "head", d: "M0 0 L12 6 L0 12 z" })])),
+              ]),
+              $$("marker", [
+                attr({
+                  id: PINK_HEAD,
+                  viewBox: "0 0 12 7",
+                  markerWidth: 12,
+                  markerHeight: 7,
+                  markerUnits: "userSpaceOnUse",
+                  refX: 12,
+                  refY: 3.5,
+                  orient: "auto",
+                }),
+                children($$("path", [attr({ class: "head pink", d: "M0 0 L12 3.5 L0 7 z" })])),
+              ]),
+            ),
+          ]),
           // A faint dotted grid behind everything, the kind a canvas draws.
           $$("g", [
             attr({ class: "grid" }),
@@ -289,21 +329,35 @@ const VectorsPanel = component((_ctx: WeakKey) => {
           // Ports on the nodes' edges.
           $$("circle", [attr({ class: "port", cx: 88, cy: 56, r: 4 })]),
           $$("circle", [attr({ class: "port", cx: 184, cy: 56, r: 4 })]),
-          // A dashed arrow straight across, head and all.
-          $$("line", [attr({ class: "dashed", x1: 94, y1: 56, x2: 168, y2: 56 })]),
-          $$("polygon", [attr({ class: "head", points: "168,50 180,56 168,62" })]),
-          // A dotted arrow curving down to the small node and back up. Each
-          // head is aimed along the last nine units of its curve, which is
-          // the direction the dots are read as travelling, with its tip one
-          // unit short of the node — and is twelve long by seven wide, since
-          // a head near equilateral reads as pointing whichever way its
-          // flattest edge faces away from.
-          $$("path", [attr({ class: "dotted", d: "M52 80 C 52 112, 110 112, 122 104" })]),
-          $$("polygon", [
-            attr({ class: "head pink", points: "113.4,110.8 123.5,103.5 111,104.2" }),
+          // A dashed arrow straight across, its head a marker set on after
+          // the end of the line.
+          $$("line", [
+            attr({
+              class: "dashed",
+              x1: 94,
+              y1: 56,
+              x2: 168,
+              y2: 56,
+              "marker-end": `url(#${DARK_HEAD})`,
+            }),
           ]),
-          $$("path", [attr({ class: "dotted", d: "M150 96 C 170 84, 190 92, 220 80" })]),
-          $$("polygon", [attr({ class: "head pink", points: "212.7,86.3 222.9,79 210.4,79.7" })]),
+          // A dotted arrow curving down to the small node and back up. The
+          // markers point along each curve's end with the tip on it, which
+          // is the direction the dots are read as travelling.
+          $$("path", [
+            attr({
+              class: "dotted",
+              d: "M52 80 C 52 112, 110 112, 122 104",
+              "marker-end": `url(#${PINK_HEAD})`,
+            }),
+          ]),
+          $$("path", [
+            attr({
+              class: "dotted",
+              d: "M150 96 C 170 84, 190 92, 220 80",
+              "marker-end": `url(#${PINK_HEAD})`,
+            }),
+          ]),
         ),
       ]),
       $("p", [set("className", captionStyle), children(text`one icon, three sizes, currentColor`)]),

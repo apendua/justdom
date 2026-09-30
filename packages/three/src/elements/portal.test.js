@@ -706,6 +706,55 @@ describe("createPortal", () => {
     portal.disconnect();
   });
 
+  test("an svg template the portal does not build is still followed", async () => {
+    // A `<marker>` in its `<defs>` is drawn where a path names it, not where
+    // it stands, so the portal builds nothing for it. Whatever draws it still
+    // has to hear an edit inside it, which only reaches nodes in the mirror.
+    const ctx = InteractionContext.set({}, new InteractionManager());
+    const portal = createPortal(ctx, { budget: Infinity });
+    portal.addTo(new THREE.Group());
+
+    /** @type {import("@apendua/justdom").Mountable | undefined} */
+    let mountable;
+    const tree = $("div", [
+      children(
+        $$("svg", [
+          children(
+            $$("defs", [
+              children($$("marker", [children($$("path", [attr({ d: "M0 0 L10 5 L0 10 z" })]))])),
+            ]),
+          ),
+        ]),
+      ),
+    ]);
+    const subscription = tree.subscribe((value) => {
+      mountable = value;
+    });
+    assert.ok(mountable);
+    portal.mount(mountable);
+    await settle(portal);
+
+    const containers = document.querySelectorAll(`[${"data-xr-portal"}]`);
+    const path = containers[containers.length - 1].querySelector("marker path");
+    assert.ok(path, "the marker's path is in the panel");
+    let reads = 0;
+    const style = new Derived(() => {
+      getComputedStyleCached(path);
+      reads += 1;
+      return reads;
+    });
+    const reader = style.subscribe({});
+    const before = style.get();
+
+    path.setAttribute("class", "edited");
+    await settle(portal);
+    assert.notEqual(style.get(), before, "the edit reached the marker's path");
+
+    reader.unsubscribe();
+    subscription.unsubscribe();
+    portal.disconnect();
+  });
+
   test("a panel that is closed lets go of the raycast set, even if its DOM went first", async () => {
     // Closing a panel and opening it again is where this bites. The portal is
     // told to disconnect by the component that owned the tree — and that

@@ -134,9 +134,10 @@ const BLOCKER_OFFSET = 2;
  *   are in user space, and this is its `viewBox`. The scroll offset is
  *   applied on top of it.
  * @property {() => void} [onPress] Told when a ray's press on this box has
- *   been delivered to the element as a click — for a control that has to do
- *   something the DOM will not do for it, such as a text field asking for a
- *   keyboard. After the click, so whatever the click's own handlers did is
+ *   been delivered as a click, to the element or to the clickable element
+ *   inside it that the ray met, which the click bubbles up from. It is for
+ *   a control that has to do something the DOM will not do for it, such as
+ *   a text field asking for a keyboard. After the click, so whatever the click's own handlers did is
  *   done by then; and only for a press that was a press, not the start of a
  *   scroll.
  * @property {EntityEffect<THREE.Object3D<XREventMap>>[]} [interactions] More

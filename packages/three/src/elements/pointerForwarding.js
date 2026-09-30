@@ -113,8 +113,9 @@ function hasForwardingAncestor(object) {
  * @typedef {object} ForwardingOptions
  * @property {Reactive<boolean>} enabled Whether rays can hit the object at
  *   all, handed to `makeInteractive`.
- * @property {() => void} [onPress] Told when a press has been delivered to
- *   the element as a click; see `BoxOptions.onPress`.
+ * @property {() => void} [onPress] Told when a press on the element, or on
+ *   a clickable element inside it, has been delivered as a click; see
+ *   `BoxOptions.onPress`.
  */
 
 /**
@@ -237,7 +238,17 @@ export function forwardPointerEvents(ctx, element, object, { enabled, onPress })
       passOn(e);
     }),
     on("selectend", (e) => {
+      delete element.dataset.xrActive;
       if (isGone(element)) {
+        // A release is owed to whatever still holds the press. An element
+        // that has left the document sends no `mouseup` of its own, and the
+        // next clickable element up sends it on itself, which is where a
+        // page sends a release whose target has gone. The outermost ends the
+        // hand's drag when none is left to.
+        if (hasForwardingAncestor(object)) {
+          return;
+        }
+        drags.end(e.controller);
         stopPropagation(e);
         return;
       }
@@ -246,7 +257,6 @@ export function forwardPointerEvents(ctx, element, object, { enabled, onPress })
         element.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
         haptics?.release(e.inputSource);
       });
-      delete element.dataset.xrActive;
       passOn(e);
     }),
     on("pointermove", () => {

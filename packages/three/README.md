@@ -315,7 +315,8 @@ directly into a 3D or WebXR scene and still receive pointer events routed
 through `interactions(ctx)`.
 
 An element is a ray target of its own when its computed `cursor` is
-`pointer`, the signal a page uses for "clickable". A press on it arrives as
+`pointer`, the signal a page uses for "clickable", and its
+`pointer-events` is not `none`. A press on it arrives as
 `mousedown`, `mouseup` and `click` on the element, and the element carries
 `data-xr-hover` while the ray is on it and `data-xr-active` while it is held.
 Clickable elements nest, if only because `cursor` is inherited, and a press

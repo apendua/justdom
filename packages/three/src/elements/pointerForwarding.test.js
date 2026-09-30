@@ -6,6 +6,7 @@ import { shape } from "../svg/shape.js";
 import { getContentGroup } from "./contentGroup.js";
 import { box } from "./div.js";
 import { createMirror } from "./mirror.js";
+import { scrollDrags } from "./scroll.js";
 import { createHaptics, HapticsContext } from "./haptics.js";
 import { recordingSource } from "../test/rumble.js";
 
@@ -84,10 +85,25 @@ function nest({ outer, inner, build, haptics = null }) {
     panel.addEventListener(/** @type {never} */ (type), () => escaped.push(type));
   }
 
-  const controller = new THREE.Object3D();
+  const controller = /** @type {THREE.XRTargetRaySpace} */ (
+    /** @type {unknown} */ (new THREE.Object3D())
+  );
+
+  /** @type {THREE.Object3D[]} */
+  const ended = [];
+  const drags = scrollDrags(ctx);
+  const end = drags.end;
+  drags.end = (hand) => {
+    ended.push(hand);
+    end(hand);
+  };
+
   return {
     events,
     escaped,
+    controller,
+    /** The hands whose drag gesture was told the press is over. */
+    ended,
     /**
      * A ray event, dispatched the way the manager dispatches one: to the
      * mesh the ray met, and up from there.
@@ -155,6 +171,74 @@ describe("a press on nested clickable elements", () => {
     assert.deepEqual(s.events, ["mousedown on span", "mouseup on span", "click on span"]);
     assert.deepEqual(pressed, ["span", "button"], "each hears its own press");
     assert.deepEqual(s.escaped, [], "and nothing outside the panel hears it");
+    s.teardown();
+  });
+
+  test("released after the pressed element has gone, ends on the next one up", () => {
+    // A live list dropping a row's control while the hand still holds it:
+    // the case `isGone` is for.
+    const outer = html("button", "cursor: pointer");
+    const inner = html("span", "cursor: pointer");
+    outer.appendChild(inner);
+    const s = nest({
+      outer,
+      inner,
+      build: (ctx, element) => box(ctx, /** @type {HTMLElement} */ (element)),
+    });
+
+    s.press("selectstart");
+    inner.remove();
+    s.press("selectend");
+    assert.equal(outer.dataset.xrActive, undefined, "the button is not left held");
+    assert.equal(inner.dataset.xrActive, undefined);
+    // Where a page sends a release whose target has gone: to what is left.
+    assert.deepEqual(s.events, ["mousedown on span", "mouseup on button"]);
+    assert.deepEqual(s.ended, [s.controller], "and the hand's drag is over");
+    assert.deepEqual(s.escaped, []);
+    s.teardown();
+  });
+
+  test("released after a lone pressed element has gone, still ends the drag", () => {
+    const outer = html("div", "");
+    const inner = html("span", "cursor: pointer");
+    outer.appendChild(inner);
+    const s = nest({
+      outer,
+      inner,
+      build: (ctx, element) => box(ctx, /** @type {HTMLElement} */ (element)),
+    });
+
+    s.press("selectstart");
+    inner.remove();
+    s.press("selectend");
+    assert.equal(inner.dataset.xrActive, undefined);
+    assert.deepEqual(s.events, ["mousedown on span"], "nothing is left to take the release");
+    assert.deepEqual(s.ended, [s.controller]);
+    assert.deepEqual(s.escaped, []);
+    s.teardown();
+  });
+
+  test("on an icon under pointer-events: none, is the button's", () => {
+    // What a browser computes for the icon: the button's `cursor: pointer`
+    // inherited, with `pointer-events: none` set on it. jsdom inherits
+    // neither, so both are spelled out.
+    const outer = html("button", "cursor: pointer");
+    const inner = document.createElementNS(SVG_NS, "svg");
+    inner.setAttribute("style", "cursor: pointer; pointer-events: none");
+    outer.appendChild(inner);
+    const s = nest({
+      outer,
+      inner,
+      build: (ctx, element) => box(ctx, /** @type {HTMLElement} */ (element)),
+    });
+
+    s.press("selectstart");
+    assert.equal(outer.dataset.xrActive, "true");
+    assert.equal(/** @type {SVGElement} */ (inner).dataset.xrActive, undefined);
+    s.press("selectend");
+    s.press("select");
+    assert.deepEqual(s.events, ["mousedown on button", "mouseup on button", "click on button"]);
+    assert.deepEqual(s.escaped, []);
     s.teardown();
   });
 

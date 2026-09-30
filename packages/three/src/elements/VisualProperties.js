@@ -217,6 +217,38 @@ function getRelativeXHeightShared(fontFamily, fontWeight) {
 /**
  * @implements {IVisualProperties}
  */
+/**
+ * The sides of a box, in the order CSS lists them.
+ */
+const BORDER_SIDES = /** @type {const} */ (["Top", "Right", "Bottom", "Left"]);
+
+/**
+ * The one colour a box's border is drawn in: the colour of the first side
+ * that has a border, top, right, bottom, left.
+ *
+ * A box is drawn with a width per side but a single border colour, and the
+ * computed `border-color` shorthand is no answer to which. It lists every
+ * side's colour, and a side with no border still has one, `currentColor`
+ * by default. Read from the front, `border-bottom: 1px solid #eee` was the
+ * text colour of the top edge, which has no border, and a divider was drawn
+ * in the colour of the text. A side whose computed width is 0 is one CSS
+ * draws nothing on, `border-style: none` included, so it has no say here.
+ *
+ * Borders on several sides in different colours still share the first of
+ * them; drawing each in its own would need a colour per side in the shader.
+ *
+ * @param {CSSStyleDeclaration} style
+ * @returns {string}
+ */
+function getDrawnBorderColor(style) {
+  for (const side of BORDER_SIDES) {
+    if (parseFloat(style[`border${side}Width`]) > 0) {
+      return style[`border${side}Color`];
+    }
+  }
+  return style.borderTopColor;
+}
+
 export default class VisualProperties {
   /** @type {RawVisualProperties | undefined} */
   #properties;
@@ -283,7 +315,7 @@ export default class VisualProperties {
       paddingRight: hasImage ? style.paddingRight : "",
       paddingBottom: hasImage ? style.paddingBottom : "",
       paddingLeft: hasImage ? style.paddingLeft : "",
-      borderColor: style.borderColor,
+      borderColor: getDrawnBorderColor(style),
       textColor: style.color,
       layerNo,
       elevation: getElevation(element),

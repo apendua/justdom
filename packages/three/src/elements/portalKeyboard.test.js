@@ -12,6 +12,8 @@ import { stubCanvas } from "../test/stubCanvas.js";
 import { rectGeometry } from "./sdfRect.js";
 import { CARET_BLINK_MS } from "./textInput.js";
 import { recordingSource } from "../test/rumble.js";
+import { PREVIEW_ATTRIBUTE } from "./keyboardPreview.js";
+import { getCaretOffset } from "./typing.js";
 
 /**
  * @import {KeyboardTarget} from './portalKeyboard.js';
@@ -1107,5 +1109,427 @@ describe("the keyboard's handles", () => {
     assert.equal(b.panel.targets.has(top), false, "and not after");
     assert.equal(b.scene.children.length, 0);
     b.cleanup();
+  });
+});
+
+/**
+ * Give every `<input>` a width, which jsdom does not: 200 px across and 20
+ * down, by client rect and by layout offsets both — a transformed field is
+ * measured by the second. Without it a field is 0 px wide and every value
+ * is scrolled to its caret, which is true but says nothing about where a
+ * character is.
+ *
+ * @returns {() => void} Take it off again.
+ */
+function wideInputs() {
+  const proto = window.HTMLInputElement.prototype;
+  proto.getBoundingClientRect = () => new window.DOMRect(0, 0, 200, 20);
+  Object.defineProperty(proto, "offsetWidth", { configurable: true, get: () => 200 });
+  Object.defineProperty(proto, "offsetHeight", { configurable: true, get: () => 20 });
+  return () => {
+    Reflect.deleteProperty(proto, "getBoundingClientRect");
+    Reflect.deleteProperty(proto, "offsetWidth");
+    Reflect.deleteProperty(proto, "offsetHeight");
+  };
+}
+
+/**
+ * An event as the manager dispatches it, from what the ray met up through
+ * its parents, landing `x` px into the field `object` draws.
+ *
+ * @param {InteractionManager} manager
+ * @param {string} type
+ * @param {THREE.Object3D} object
+ * @param {THREE.Object3D} controller
+ * @param {number} [x]
+ */
+function ray(manager, type, object, controller, x) {
+  object.updateWorldMatrix(true, false);
+  const point = x === undefined ? undefined : object.localToWorld(new THREE.Vector3(x, 10, 0));
+  manager.dispatch(
+    /** @type {any} */ (object),
+    /** @type {any} */ ({
+      type,
+      target: object,
+      originalTarget: object,
+      controller,
+      inputSource: {},
+      ...(point ? { intersection: { object, point } } : {}),
+    }),
+  );
+}
+
+describe("the caret, placed by a ray", () => {
+  /** @type {ReturnType<typeof stubCanvas>} */
+  let canvas;
+  /** @type {() => void} */
+  let narrow;
+  before(() => {
+    canvas = stubCanvas();
+    narrow = wideInputs();
+  });
+  after(() => {
+    narrow();
+    canvas.restore();
+  });
+
+  test("goes where the ray presses on the field being typed into, and follows a drag", async () => {
+    const panel = keyboardPanel();
+    await settle();
+    const field = /** @type {THREE.Object3D} */ (panel.fieldObject());
+    panel.press(field);
+    await settle();
+    assert.equal(panel.input.selectionStart, 2, "the press that focused it put it at the end");
+
+    // jsdom's inputs have a px of border and two of padding, so the value
+    // starts 3 px in, at seven px a glyph: 8 px in is nearest the gap
+    // between `a` and `b`, 10 px in.
+    const hand = new THREE.Group();
+    ray(panel.manager, "selectstart", field, hand, 8);
+    assert.equal(panel.input.selectionStart, 1, "between the two");
+    panel.created[0].onKey({ key: "c", code: "KeyC" });
+    assert.equal(panel.input.value, "acb", "and the next key goes in there");
+
+    ray(panel.manager, "pointermove", field, hand, 1);
+    assert.equal(panel.input.selectionStart, 0, "dragged to the start");
+    ray(panel.manager, "pointermove", field, new THREE.Group(), 20);
+    assert.equal(panel.input.selectionStart, 0, "another hand's ray is only pointing");
+    ray(panel.manager, "pointermove", field, hand, 100);
+    assert.equal(panel.input.selectionStart, 3, "past the end is the end");
+
+    ray(panel.manager, "selectend", field, hand);
+    ray(panel.manager, "pointermove", field, hand, 1);
+    assert.equal(panel.input.selectionStart, 3, "let go, the ray is only pointing again");
+    panel.cleanup();
+  });
+
+  test("a drag that stays on one character does not place the caret again", async () => {
+    const panel = keyboardPanel();
+    await settle();
+    const field = /** @type {THREE.Object3D} */ (panel.fieldObject());
+    panel.press(field);
+    await settle();
+    let writes = 0;
+    const setSelectionRange = panel.input.setSelectionRange.bind(panel.input);
+    panel.input.setSelectionRange = (...args) => {
+      writes += 1;
+      setSelectionRange(...args);
+    };
+    const hand = new THREE.Group();
+    ray(panel.manager, "selectstart", field, hand, 8);
+    assert.equal(writes, 1, "the press puts it between `a` and `b`");
+    for (const x of [8, 9, 11, 12]) {
+      ray(panel.manager, "pointermove", field, hand, x);
+    }
+    assert.equal(writes, 1, "sliding over the same gap moves nothing");
+    ray(panel.manager, "pointermove", field, hand, 1);
+    assert.equal(writes, 2, "and the next character over does");
+    ray(panel.manager, "selectend", field, hand);
+    panel.cleanup();
+  });
+
+  test("a press where the selection ends collapses it, so typing appends", async () => {
+    const panel = keyboardPanel();
+    await settle();
+    const field = /** @type {THREE.Object3D} */ (panel.fieldObject());
+    panel.press(field);
+    await settle();
+    // As a page that selects a field's contents on focus does.
+    panel.input.select();
+    assert.deepEqual([panel.input.selectionStart, panel.input.selectionEnd], [0, 2]);
+    ray(panel.manager, "selectstart", field, new THREE.Group(), 100);
+    assert.deepEqual(
+      [panel.input.selectionStart, panel.input.selectionEnd],
+      [2, 2],
+      "collapsed at the end, where the ray pressed",
+    );
+    panel.created[0].onKey({ key: "c", code: "KeyC" });
+    assert.equal(panel.input.value, "abc", "appended, not replacing the selection");
+    panel.cleanup();
+  });
+
+  test("a press that focuses a field puts the caret at the end, wherever it lands", async () => {
+    const panel = keyboardPanel();
+    await settle();
+    const field = /** @type {THREE.Object3D} */ (panel.fieldObject());
+    const hand = new THREE.Group();
+    ray(panel.manager, "selectstart", field, hand, 1);
+    ray(panel.manager, "select", field, hand, 1);
+    ray(panel.manager, "selectend", field, hand);
+    await settle();
+    assert.ok(panel.input.hasAttribute("data-xr-focus"));
+    assert.equal(panel.input.selectionStart, 2);
+    panel.cleanup();
+  });
+
+  test("is placed in a field whose selection a script cannot write", async () => {
+    const panel = keyboardPanel();
+    panel.input.type = "email";
+    panel.input.value = "ab@c";
+    await settle();
+    const field = /** @type {THREE.Object3D} */ (panel.fieldObject());
+    panel.press(field);
+    await settle();
+    const hand = new THREE.Group();
+    ray(panel.manager, "selectstart", field, hand, 15);
+    assert.equal(getCaretOffset(panel.input), 2);
+    panel.created[0].onKey({ key: "x", code: "KeyX" });
+    assert.equal(panel.input.value, "abx@c");
+    panel.cleanup();
+  });
+
+  test("measures a password by its bullets", async () => {
+    const panel = keyboardPanel();
+    panel.input.type = "password";
+    await settle();
+    const field = /** @type {THREE.Object3D} */ (panel.fieldObject());
+    panel.press(field);
+    await settle();
+    // Three px of border and padding, then a bullet seven px wide.
+    ray(panel.manager, "selectstart", field, new THREE.Group(), 11);
+    assert.equal(panel.input.selectionStart, 1);
+    panel.cleanup();
+  });
+});
+
+describe("the keyboard's preview", () => {
+  /** @type {ReturnType<typeof stubCanvas>} */
+  let canvas;
+  /** @type {() => void} */
+  let narrow;
+  before(() => {
+    canvas = stubCanvas();
+    narrow = wideInputs();
+  });
+  after(() => {
+    narrow();
+    canvas.restore();
+  });
+
+  const preview = () =>
+    /** @type {HTMLInputElement | null} */ (document.querySelector(`[${PREVIEW_ATTRIBUTE}]`));
+
+  /**
+   * Two panels sharing a scene's keyboard in a room, the first one's field
+   * pressed and its board open.
+   *
+   * @param {Partial<import('./portalKeyboard.js').PortalKeyboardOptions>} [options]
+   * @param {(a: HTMLInputElement, b: HTMLInputElement) => void} [dress]
+   */
+  async function open(options = {}, dress = () => {}) {
+    const slot = createKeyboardSlot();
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera();
+    camera.position.set(0, 1.6, 0);
+    camera.updateMatrixWorld();
+    /** @type {KeyboardTarget[]} */
+    const created = [];
+    /** @param {KeyboardTarget} target */
+    const create = (target) => {
+      created.push(target);
+      return $("div", [children($("div", [attr("style", () => "cursor: pointer")]))]);
+    };
+    /** @type {Configure} */
+    const configure = () => ({ options: { keyboard: { ...options, create } } });
+    const a = keyboardPanel(configure, slot, { scene, camera });
+    const b = keyboardPanel(configure, slot, { scene, camera });
+    b.input.value = "xyz";
+    dress(a.input, b.input);
+    await settle();
+    a.press(a.fieldObject());
+    await settle();
+    /**
+     * What the preview is drawn as: the one ray target on the board with a
+     * run of text in it.
+     */
+    const object = () => {
+      const anchor = scene.children[0];
+      for (const target of a.targets) {
+        if (!anchor?.getObjectById(target.id)) {
+          continue;
+        }
+        let drawsText = false;
+        target.traverse((child) => {
+          if (
+            child instanceof THREE.Mesh &&
+            child.geometry !== rectGeometry &&
+            !(child.geometry instanceof THREE.PlaneGeometry)
+          ) {
+            drawsText = true;
+          }
+        });
+        if (drawsText) {
+          return target;
+        }
+      }
+      return undefined;
+    };
+    return {
+      scene,
+      a,
+      b,
+      created,
+      object,
+      cleanup: () => {
+        a.cleanup();
+        b.cleanup();
+        disposeKeyboardSlot(slot);
+      },
+    };
+  }
+
+  test("copies the field above the keys, and follows the typing", async () => {
+    const s = await open();
+    const copy = preview();
+    assert.ok(copy, "a preview on the board");
+    assert.equal(panels(), 3, "in the board's own panel, not one of its own");
+    assert.equal(copy.value, "ab");
+    assert.ok(
+      copy.nextElementSibling?.querySelector("[style*='cursor']"),
+      "and the board the app made under it",
+    );
+
+    s.created[0].onKey({ key: "c", code: "KeyC" });
+    await settle();
+    assert.equal(copy.value, "abc");
+    assert.equal(getCaretOffset(copy), 3, "the caret where the field has it");
+
+    // The typing moving to another panel's field moves the preview with it.
+    s.b.press(s.b.fieldObject());
+    await settle();
+    assert.equal(preview(), copy, "the same preview");
+    assert.equal(copy.value, "xyz");
+
+    s.created[0].onKey({ key: "Escape" });
+    await settle();
+    assert.equal(preview(), null, "gone with the board");
+    s.cleanup();
+  });
+
+  test("shows a password as it is, and a number as it is typed", async () => {
+    const s = await open({}, (a, b) => {
+      a.type = "password";
+      b.type = "number";
+      b.value = "";
+    });
+    const copy = /** @type {HTMLInputElement} */ (preview());
+    assert.equal(copy.type, "text");
+    assert.equal(copy.value, "ab", "unmasked");
+
+    s.b.press(s.b.fieldObject());
+    await settle();
+    for (const key of "1.") {
+      s.created[0].onKey({ key });
+    }
+    await settle();
+    assert.equal(s.b.input.value, "", "the field's value is not a number yet");
+    assert.equal(copy.value, "1.", "but the preview shows what was typed");
+    s.cleanup();
+  });
+
+  test("shows the field's placeholder, and wears its look", async () => {
+    const s = await open({}, (a) => {
+      a.value = "";
+      a.placeholder = "Name";
+      a.style.color = "rgb(1, 2, 3)";
+      a.style.backgroundColor = "rgb(4, 5, 6)";
+    });
+    const copy = /** @type {HTMLInputElement} */ (preview());
+    assert.equal(copy.placeholder, "Name");
+    assert.equal(copy.style.color, "rgb(1, 2, 3)");
+    assert.equal(copy.style.backgroundColor, "rgb(4, 5, 6)");
+    s.cleanup();
+  });
+
+  test("wears a class of the app's instead, if it is given one", async () => {
+    const s = await open({ preview: { className: "strip" } }, (a) => {
+      a.style.color = "rgb(1, 2, 3)";
+    });
+    const copy = /** @type {HTMLInputElement} */ (preview());
+    assert.equal(copy.className, "strip");
+    assert.equal(copy.style.color, "", "and none of the field's");
+    s.cleanup();
+  });
+
+  test("a ray on it places the caret in the field being typed into", async () => {
+    await rayOnPreview({ preview: { tilt: 0 } });
+  });
+
+  test("and does wherever it leans", async () => {
+    await rayOnPreview({});
+  });
+
+  /** @param {Partial<import('./portalKeyboard.js').PortalKeyboardOptions>} options */
+  async function rayOnPreview(options) {
+    const s = await open(options);
+    const object = s.object();
+    assert.ok(object, "the preview is a ray target");
+    const hand = new THREE.Group();
+    ray(s.a.manager, "selectstart", object, hand, 8);
+    await settle();
+    assert.equal(s.a.input.selectionStart, 1, "in the field");
+    assert.equal(getCaretOffset(/** @type {HTMLInputElement} */ (preview())), 1, "and shown");
+    s.created[0].onKey({ key: "c", code: "KeyC" });
+    assert.equal(s.a.input.value, "acb");
+
+    ray(s.a.manager, "pointermove", object, hand, 1);
+    await settle();
+    assert.equal(s.a.input.selectionStart, 0, "dragged along");
+    ray(s.a.manager, "selectend", object, hand);
+    await settle();
+    assert.ok(s.a.input.hasAttribute("data-xr-focus"), "and the typing is still there");
+    assert.equal(panels(), 3, "the board still up");
+    s.cleanup();
+  }
+
+  test("a press on it where the field's selection ends collapses the field's selection", async () => {
+    const s = await open({ preview: { tilt: 0 } });
+    s.a.input.select();
+    ray(
+      s.a.manager,
+      "selectstart",
+      /** @type {THREE.Object3D} */ (s.object()),
+      new THREE.Group(),
+      100,
+    );
+    await settle();
+    assert.deepEqual([s.a.input.selectionStart, s.a.input.selectionEnd], [2, 2]);
+    s.created[0].onKey({ key: "c", code: "KeyC" });
+    assert.equal(s.a.input.value, "abc");
+    s.cleanup();
+  });
+
+  test("leans toward the player, hinged at its bottom edge", async () => {
+    /** @param {number | undefined} tilt */
+    const lean = async (tilt) => {
+      const s = await open(tilt === undefined ? {} : { preview: { tilt } });
+      const object = /** @type {THREE.Object3D} */ (s.object());
+      const pivot = s.scene.children[0].children[0];
+      s.scene.updateMatrixWorld(true);
+      // Ten px up the preview from its bottom edge, and the edge itself, in
+      // the hinge's frame, whose +z is the way the board faces.
+      const top = pivot.worldToLocal(object.localToWorld(new THREE.Vector3(0, 10, 0)));
+      const bottom = pivot.worldToLocal(object.localToWorld(new THREE.Vector3(0, 20, 0)));
+      s.cleanup();
+      return { forward: top.z - bottom.z, up: top.y - bottom.y };
+    };
+    const flat = await lean(0);
+    assert.ok(Math.abs(flat.forward) < 1e-9, "tilt 0 keeps it in the plane of the keys");
+    const leaning = await lean(undefined);
+    assert.ok(leaning.forward > 0, `its top toward the player (${leaning.forward})`);
+    assert.ok(leaning.up > 0, "and still above its bottom edge");
+    assert.ok(
+      Math.abs(Math.atan2(leaning.forward, leaning.up) - (15 * Math.PI) / 180) < 1e-6,
+      "by fifteen degrees",
+    );
+  });
+
+  test("is not there with `preview: false`, nor below a panel", async () => {
+    const off = await open({ preview: false });
+    assert.equal(preview(), null);
+    off.cleanup();
+    const below = await open({ placement: "panel" });
+    assert.equal(preview(), null);
+    below.cleanup();
   });
 });

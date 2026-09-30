@@ -3,7 +3,8 @@ import { Effect, Signal, withChannel, withComputation } from "@apendua/signal";
 import { getBorderBoxSize } from "./mirror.js";
 import { place } from "./place.js";
 import { moveCaretToEnd, typeIntoInput } from "./typing.js";
-import { touchValue } from "./textInput.js";
+import { InputFocusContext, touchValue } from "./textInput.js";
+import { createKeyboardPreview } from "./keyboardPreview.js";
 import { DEFAULT_KEYBOARD_SCALE, shouldReuse, viewerPose } from "./keyboardPlacement.js";
 import { createKeyboardHandles } from "./keyboardHandles.js";
 import { levelPose } from "../carry.js";
@@ -15,6 +16,7 @@ import { CameraContext, RendererContext, SceneContext } from "../render.js";
  * @import {KeyPress} from './typing.js';
  * @import {KeyboardTarget, PortalKeyboardOptions} from './portalKeyboard.js';
  * @import {KeyboardHandles} from './keyboardHandles.js';
+ * @import {KeyboardPreview} from './keyboardPreview.js';
  * @import {LevelPose} from '../carry.js';
  */
 
@@ -128,6 +130,8 @@ const DEFAULT_TILT = (24 * Math.PI) / 180;
  * @property {PortalKeyboardOptions["create"]} create
  * @property {ReturnType<CreatePortal>} panel
  * @property {Unsubscribable} subscription
+ * @property {KeyboardPreview | null} preview The field above the keys, in
+ *   the room, unless the panel said `preview: false`.
  */
 
 /**
@@ -312,25 +316,45 @@ export function createKeyboardHost({ createPortal, ctx: sceneCtx = null }) {
     if (!board) {
       return;
     }
-    const { panel, subscription } = board;
+    const { panel, subscription, preview } = board;
     board = null;
     subscription.unsubscribe();
+    preview?.dispose();
     panel.disconnect();
   }
 
   /**
    * @param {KeyboardFocus} focus
-   * @param {THREE.Object3D} parent
+   * @param {Frame} current
    * @returns {Board}
    */
-  function buildBoard({ element, binding }, parent) {
-    const panel = createPortal(binding.ctx, {
-      opaqueToRays: true,
-      // A board that has been asked for is wanted now; a frame standing in
-      // for it would be one more thing to look at.
-      loadingFrame: false,
-    });
-    panel.addTo(parent);
+  function buildBoard({ element, binding }, current) {
+    // The preview only in the room: below a panel, the field it would copy
+    // is right there above the keys already, which is the whole of what
+    // the preview is for.
+    const { preview: previewOption = true } = binding.options;
+    const preview =
+      current.mode === "room" && previewOption
+        ? createKeyboardPreview({
+            field: () => target.get()?.element ?? null,
+            options: typeof previewOption === "object" ? previewOption : {},
+          })
+        : null;
+    const panel = createPortal(
+      // The preview is the one field in the board's panel that is being
+      // typed into, as far as its caret is concerned.
+      preview ? InputFocusContext.set(binding.ctx, preview.focus) : binding.ctx,
+      {
+        opaqueToRays: true,
+        // A board that has been asked for is wanted now; a frame standing in
+        // for it would be one more thing to look at.
+        loadingFrame: false,
+      },
+    );
+    panel.addTo(current.drop);
+    if (preview) {
+      panel.mount(preview.mountable);
+    }
 
     const { create } = binding.options;
     /** @type {KeyboardTarget} */
@@ -342,10 +366,14 @@ export function createKeyboardHost({ createPortal, ctx: sceneCtx = null }) {
     };
     const subscription = create(keyboardTarget).subscribe({
       next: (mountable) => {
-        panel.mount(mountable);
+        if (preview) {
+          preview.mountBoard(mountable);
+        } else {
+          panel.mount(mountable);
+        }
       },
     });
-    return { create, panel, subscription };
+    return { create, panel, subscription, preview };
   }
 
   /**
@@ -451,7 +479,7 @@ export function createKeyboardHost({ createPortal, ctx: sceneCtx = null }) {
           changed = true;
         }
         if (!board) {
-          board = buildBoard(next, current.drop);
+          board = buildBoard(next, current);
           changed = true;
         }
         if (changed) {

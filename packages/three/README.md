@@ -840,7 +840,7 @@ import { keyboard } from "@apendua/justui";
 render(Scene, {
   panelOptions: {
     keyboard: {
-      create: ({ onKey }) => keyboard({ classes, onKey }),
+      create: ({ onKey, field }) => keyboard({ classes, onKey, field }),
     },
   },
 });
@@ -848,8 +848,9 @@ render(Scene, {
 
 `create` is called when a field is pressed, and hands back the board's DOM
 — a justdom tree, or anything with the `Mountable` shape — wired to the
-`onKey` it is given. The rest is decided here, the same way for every
-panel.
+`onKey` it is given. `field` is there for a board that wants to know what
+it is typing into: justui's gives a number field its number pad. The rest
+is decided here, the same way for every panel.
 
 **There is one board for the whole scene.** A player has one pair of hands,
 so whichever field was pressed last is the one being typed into, whatever
@@ -879,6 +880,23 @@ walked more than a metre or turned more than 60° away. `draggable: false`
 turns this off; `draggable: { handleWidth }` changes how wide the strips
 are.
 
+**It shows what is being typed.** The board is where the hands are, and the
+field it types into is wherever its panel is — a glance up and back down
+for every word. So a board in the room carries a copy of the field just
+above its keys: the value as it is typed, the placeholder while it is
+empty, the caret where the next key goes. It leans toward the player,
+hinged at its bottom edge, by `preview.tilt` (15°) beyond the keys' own
+recline, `preview.gap` px (8) above them. It is unmasked: a password shows
+its characters there, which only the player, in the headset, can see — and
+a password typed one aimed click at a time is where seeing what was typed
+matters most. It wears the field's own look (font, colours, border,
+padding), so it reads as the field it stands for, unless
+`preview.className` names a class of the app's for it; either way it
+carries `data-xr-keyboard-preview` (`PREVIEW_ATTRIBUTE`) for a stylesheet
+to find it by. Its caret is placed by a ray, as the field's is (below), and
+goes into the field. `preview: false` leaves it off; a board hung below a
+panel has none, since the field is right above it there.
+
 A key goes into the field through `typeIntoInput`, which is exported too —
 the character goes in at the caret, backspace takes one out, and `keydown`,
 `input` and `keyup` are dispatched in a browser's order, so an app that
@@ -886,7 +904,7 @@ listens for `input` or for `keydown` of `Enter` on a page hears the same
 thing in the scene. `Enter` asks the field's form to submit, if it is in
 one. While the board is up the field carries `data-xr-focus`, a
 presentational flag like `data-xr-hover` for a stylesheet to draw a focus
-ring with, and a caret at the end of the text.
+ring with, and a caret, at the end of the text until it is moved.
 
 The board follows focus the way a page does. `Enter` submits and leaves the
 field being typed into, so an app that clears the field after a submit can
@@ -914,11 +932,24 @@ Without a keyboard a field is drawn and pressed like any box, and nothing
 in the scene can type into it — which is what a panel with a read-only
 readout in an `<input>` wants.
 
-A text field draws no selection: the caret is the end of the entry, where a
-tap on a phone puts it, and the mirror moves the value under it when the
-value outgrows the field. The caret blinks as a page's does, every 530 ms,
-and stays solid for a moment after each keystroke. It is a mesh of its own,
-so a blink only flips its visibility: nothing on the panel is drawn again.
+A text field draws no selection, only a caret. Pressing a field puts the
+caret at the end of the entry, where a tap on a phone puts it; once the
+field is being typed into, the ray moves it — a press puts it between the
+two characters nearest where the ray landed, and holding the trigger while
+the ray slides along the field drags it, the way a finger drags a phone's
+caret. The next key goes in there. A password is measured by its bullets,
+and the keyboard's preview places the caret in the field it copies. The
+mirror scrolls the value as a page does, only when the caret would leave the
+field and only as far as it takes to bring it back, so a caret dragged
+about inside what shows moves over text that stays put. The caret blinks as
+a page's does, every 530 ms, and stays solid for a moment after each
+keystroke. It is a mesh of its own, so a blink only flips its visibility:
+nothing on the panel is drawn again.
+
+`number` and `email` fields keep a caret the page cannot reach —
+`selectionStart` reads null and `setSelectionRange` throws on them — so one
+placed by a ray is kept alongside the field instead, and typing goes in
+there all the same. A value the app writes puts it back at the end.
 
 A number field is typed the way a page types one. Its value is sanitized:
 `1.` on the way to `1.5` is not a number, so `value` reads `""` while the
@@ -1425,7 +1456,7 @@ render(Scene, {
   panelOptions: {
     maxTextScale: 2,
     loadingFrame: { delay: 400 },
-    keyboard: { create: ({ onKey }) => keyboard({ classes, onKey }) },
+    keyboard: { create: ({ onKey, field }) => keyboard({ classes, onKey, field }) },
   },
 });
 ```

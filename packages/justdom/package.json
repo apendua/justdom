@@ -29,19 +29,18 @@
       "import": "./src/hydrate.js"
     }
   },
-  "main": "./lib/index.js",
+  "main": "./src/index.js",
   "module": "./src/index.js",
   "files": [
-    "lib",
     "src",
     "lib-types"
   ],
   "scripts": {
-    "build": "npm run test && npm run compile && npm run build:types",
+    "build": "npm run test && npm run build:types",
     "build:types": "tsc --project tsconfig.types.json",
-    "compile": "tsc --project tsconfig.build.json",
-    "test": "npm run test:typecheck && node --import ./src/test/setup-jsdom.js --test \"src/**/*.test.js\"",
+    "test": "npm run test:syntax && npm run test:typecheck && node --import ./src/test/setup-jsdom.js --test \"src/**/*.test.js\"",
     "test:coverage": "npm run test:typecheck && node --import ./src/test/setup-jsdom.js --test --experimental-test-coverage \"src/**/*.test.js\"",
+    "test:syntax": "node --experimental-vm-modules --no-warnings ../../common/scripts/check-native-syntax.mjs src",
     "test:typecheck": "tsc --project tsconfig.json --noEmit",
     "test:watch": "node --import ./src/test/setup-jsdom.js --test --watch \"src/**/*.test.js\""
   },

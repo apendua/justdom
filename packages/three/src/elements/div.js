@@ -178,6 +178,11 @@ function isClickable(element) {
  *   keyboard. After the click, so whatever the click's own handlers did is
  *   done by then; and only for a press that was a press, not the start of a
  *   scroll.
+ * @property {EntityEffect<THREE.Object3D<XREventMap>>[]} [interactions] More
+ *   of what the box hears from rays, for a control that needs more of it
+ *   than a click — a text field placing its caret where the ray is. Put on
+ *   the box's object with its own handlers, and taken off with them, so
+ *   they come and go as the box stops and starts being a ray target.
  */
 
 /**
@@ -199,6 +204,7 @@ export function box(ctx, element, options = {}) {
     content = () => [],
     contentMatrix,
     onPress,
+    interactions: ownInteractions = [],
   } = options;
   /** @type {THREE.Object3D<XREventMap>} */
   const object = new THREE.Object3D();
@@ -488,6 +494,7 @@ export function box(ctx, element, options = {}) {
     on("pointerleave", () => {
       delete element.dataset.xrHover;
     }),
+    ...ownInteractions,
   ];
 
   /**

@@ -6,6 +6,7 @@ import { isTextInput } from "./typing.js";
  * @import {InputFocus} from './textInput.js';
  * @import {KeyPress} from './typing.js';
  * @import {KeyboardBinding, KeyboardHost} from './keyboardHost.js';
+ * @import {KeyboardPreviewOptions} from './keyboardPreview.js';
  */
 
 export { FOCUS_ATTRIBUTE } from "./keyboardHost.js";
@@ -93,6 +94,14 @@ export { FOCUS_ATTRIBUTE } from "./keyboardHost.js";
  *   board's top edge, in the panel's px, with `"panel"`. 12 by default.
  * @property {number} [tilt] How far the board is reclined toward the viewer,
  *   in radians, hinged at its top edge. 24° by default; 0 stands it upright.
+ * @property {boolean | KeyboardPreviewOptions} [preview] Whether a board in
+ *   the room carries a copy of the field being typed into above its keys,
+ *   leaning toward the player: the value unmasked, the caret, and a caret
+ *   the ray can place — so the typing can be watched where the hands are
+ *   rather than on the panel. On by default; an object says how it leans,
+ *   how far above the keys it is and what it is dressed in (see
+ *   `KeyboardPreviewOptions`). Not used by `"panel"`, where the field is
+ *   right above the board already.
  */
 
 /**

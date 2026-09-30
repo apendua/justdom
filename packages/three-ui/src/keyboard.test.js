@@ -1,9 +1,9 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { children } from "@apendua/justdom";
-import { just } from "@apendua/signal";
+import { just, Signal } from "@apendua/signal";
 import * as THREE from "three";
-import { keyboard, MOBILE_LAYOUT } from "./keyboard.js";
+import { isNumericField, keyboard, MOBILE_LAYOUT, NUMERIC_LAYOUT } from "./keyboard.js";
 import { createPortal, InteractionContext, InteractionManager } from "@apendua/freedom";
 
 // jsdom-env exposes the common DOM globals, but not MutationObserver, which
@@ -479,6 +479,172 @@ describe("keyboard", () => {
  * checked: a whole board projected through a real portal, rather than the
  * two-`div` fixtures the portal's own tests use.
  */
+describe("NUMERIC_LAYOUT", () => {
+  test("is four rows of equal width", () => {
+    assert.equal(NUMERIC_LAYOUT.length, 4);
+    for (const [index, row] of NUMERIC_LAYOUT.entries()) {
+      const width = row.reduce((total, entry) => total + (entry.width ?? 1), 0);
+      assert.equal(width, 4, `row ${index} should be 4 units wide`);
+    }
+  });
+
+  test("names every position exactly once", () => {
+    const codes = NUMERIC_LAYOUT.flat().map((entry) => entry.code);
+    assert.equal(new Set(codes).size, codes.length);
+  });
+
+  test("types every digit, a sign and a point in one click, and nothing else", () => {
+    const typed = NUMERIC_LAYOUT.flat()
+      .map((entry) => entry.key)
+      .filter((key) => key !== undefined && key.length === 1)
+      .sort();
+    assert.deepEqual(typed, [..."-.0123456789"].sort());
+    for (const entry of NUMERIC_LAYOUT.flat()) {
+      assert.equal(entry.modifier, undefined, `${entry.code} is a modifier`);
+      assert.equal(entry.symbols, undefined, `${entry.code} has a second face`);
+    }
+  });
+});
+
+describe("isNumericField", () => {
+  /**
+   * @param {string} type
+   * @param {string} [inputMode]
+   */
+  const field = (type, inputMode) => {
+    const input = document.createElement("input");
+    input.type = type;
+    if (inputMode !== undefined) {
+      input.setAttribute("inputmode", inputMode);
+    }
+    return input;
+  };
+
+  test("is a number field, or a field whose inputmode asks for digits", () => {
+    assert.equal(isNumericField(field("number")), true);
+    assert.equal(isNumericField(field("text", "numeric")), true);
+    assert.equal(isNumericField(field("text", "decimal")), true);
+    assert.equal(isNumericField(field("password", "numeric")), true, "a PIN");
+  });
+
+  test("is not anything else", () => {
+    assert.equal(isNumericField(field("text")), false);
+    assert.equal(isNumericField(field("email")), false);
+    assert.equal(isNumericField(field("text", "text")), false);
+    assert.equal(isNumericField(null), false);
+  });
+});
+
+describe("a keyboard that follows its field", () => {
+  /**
+   * A board typing into whichever of two fields `current` names.
+   *
+   * @param {Partial<import("./keyboard.js").KeyboardProps>} [props]
+   */
+  function following(props = {}) {
+    const text = document.createElement("input");
+    text.type = "text";
+    const number = document.createElement("input");
+    number.type = "number";
+    const current = Signal.of(/** @type {HTMLInputElement | null} */ (text));
+    /** @type {KeyPress[]} */
+    const pressed = [];
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const subscription = just(host, [
+      children(
+        keyboard({
+          classes,
+          onKey: (press) => pressed.push(press),
+          field: () => current.get(),
+          ...props,
+        }),
+      ),
+    ]).subscribe();
+    const root = () => /** @type {HTMLElement} */ (host.firstElementChild);
+    return {
+      text,
+      number,
+      current,
+      pressed,
+      root,
+      /** The codes on the board, in document order. */
+      codes: () =>
+        Array.from(root().querySelectorAll("[data-code]")).map((key) =>
+          key.getAttribute("data-code"),
+        ),
+      cleanup: () => {
+        subscription.unsubscribe();
+        host.remove();
+      },
+    };
+  }
+
+  /** @param {KeyboardLayout} layout */
+  const codesOf = (layout) =>
+    layout
+      .flat()
+      .filter((entry) => !entry.spacer)
+      .map((entry) => entry.code);
+
+  test("shows the letters for a text field and the pad for a number field", () => {
+    const board = following();
+    assert.deepEqual(board.codes(), codesOf(MOBILE_LAYOUT));
+
+    board.current.set(board.number);
+    assert.deepEqual(board.codes(), codesOf(NUMERIC_LAYOUT), "the pad, and nothing else");
+    click(board.root(), "Digit7");
+    click(board.root(), "Period");
+    assert.deepEqual(
+      board.pressed.map(({ key }) => key),
+      ["7", "."],
+    );
+
+    board.current.set(board.text);
+    assert.deepEqual(board.codes(), codesOf(MOBILE_LAYOUT), "and back");
+    board.cleanup();
+  });
+
+  test("builds the board again only when the layout changes", () => {
+    const board = following();
+    const letters = board.root();
+    const other = document.createElement("input");
+    board.current.set(other);
+    assert.equal(board.root(), letters, "one text field to another is the same board");
+    board.current.set(null);
+    assert.equal(board.root(), letters, "and so is no field at all");
+    board.current.set(board.number);
+    assert.notEqual(board.root(), letters);
+    board.cleanup();
+  });
+
+  test("lets go of what was held on the board it leaves", () => {
+    const board = following();
+    click(board.root(), "Symbols");
+    click(board.root(), "ShiftLeft");
+    board.current.set(board.number);
+    board.current.set(board.text);
+    assert.equal(keyEl(board.root(), "KeyQ").textContent, "q", "letters, unshifted");
+    board.cleanup();
+  });
+
+  test("takes a numeric layout of its own", () => {
+    /** @type {KeyboardLayout} */
+    const pad = [[{ code: "Digit1", label: "1", key: "1" }]];
+    const board = following({ numericLayout: pad });
+    board.current.set(board.number);
+    assert.deepEqual(board.codes(), ["Digit1"]);
+    board.cleanup();
+  });
+
+  test("is the one layout it was given, whatever the field", () => {
+    const board = following({ layout: MOBILE_LAYOUT });
+    board.current.set(board.number);
+    assert.deepEqual(board.codes(), codesOf(MOBILE_LAYOUT));
+    board.cleanup();
+  });
+});
+
 describe("projecting a keyboard", () => {
   test("gives every key of a keyboard its own ray target, and types the one that is pointed at", async () => {
     const undress = dressBoard();

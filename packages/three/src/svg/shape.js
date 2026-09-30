@@ -377,6 +377,10 @@ export function commitMatrix(object, matrix) {
  *   the root's frame at this instance, the opacity above it, and the root.
  * @property {() => PaintSlot} slot The range of render orders the instance
  *   draws its content in.
+ * @property {ReadonlySet<Element>} expanding The templates whose content
+ *   this instance is inside, its own included. A marker named again from
+ *   inside itself is a cycle, which a browser draws nothing more for, and
+ *   so is not expanded again.
  */
 
 /**
@@ -902,6 +906,8 @@ export function rayTarget(ctx, element, hittable) {
  * @property {() => number} strokeWidth
  * @property {() => Chain} chain
  * @property {() => PaintSlot} markerSlot
+ * @property {() => boolean} hidden Whether `visibility` hides the shape, which
+ *   hides its markers too, as it does in a browser.
  */
 
 /**
@@ -1078,6 +1084,7 @@ export function shape(ctx, element, { instance = null, decorate } = {}) {
       strokeWidth: () => strokeSpec.get().width,
       chain: () => chain.get(),
       markerSlot: () => paintSlot(element, root.get(), instance, 2),
+      hidden: () => hidden.get(),
     }) ?? []),
   ]);
 }

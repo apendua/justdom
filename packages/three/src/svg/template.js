@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { Derived, effects, flatMap, just, Stream, use } from "@apendua/signal";
 import { getChildNodes, getComputedStyleCached } from "../elements/mirror.js";
-import { isSvgElement } from "../elements/plugins.js";
+import { isSvgElement, PortalTemplatesContext } from "../elements/plugins.js";
 import { IDENTITY, matrixEqual, multiply } from "./geometry.js";
 import { image } from "./image.js";
 import {
@@ -156,13 +156,25 @@ function placementsEqual(a, b) {
  * @param {WeakKey} ctx
  * @param {Element} element
  * @param {ShapeHost} host
+ * @param {Instance | null} hostInstance The instance the shape is part of.
  * @returns {EntityEffect<THREE.Object3D>}
  */
-function markers(ctx, element, host) {
+function markers(ctx, element, host, hostInstance) {
   const style = () => getComputedStyleCached(element);
+  const adopt = PortalTemplatesContext.get(ctx);
+  const expanding = hostInstance?.expanding ?? new Set();
   /** @param {string} name */
-  const named = (name) =>
-    findMarker(element, parseMarkerReference(readProperty(style(), element, name)));
+  const named = (name) => {
+    const marker = findMarker(element, parseMarkerReference(readProperty(style(), element, name)));
+    if (!marker || expanding.has(marker)) {
+      return null;
+    }
+    // Before anything reads it: a `<defs>` later in the document than this
+    // path, or in another `<svg>`, is not in the mirror yet, and a read
+    // cached now would never hear an edit inside the marker.
+    adopt(marker);
+    return marker;
+  };
 
   const referenced = new Derived(
     () => ({ start: named("marker-start"), mid: named("marker-mid"), end: named("marker-end") }),
@@ -216,12 +228,16 @@ function markers(ctx, element, host) {
           return { ctm: multiply(at.ctm, matrix.get()), opacity: at.opacity, root: at.root };
         },
         slot: host.markerSlot,
+        expanding: new Set([...expanding, marker]),
       };
       mountInto(
         obj,
         just(new THREE.Object3D(), [
           effects((copy) => {
             commitMatrix(copy, matrix.get());
+          }),
+          effects((copy) => {
+            copy.visible = !host.hidden();
           }),
           templateChildren(ctx, marker, instance),
         ]),
@@ -243,7 +259,7 @@ export function drawShape(ctx, element, instance = null) {
   return shape(ctx, element, {
     instance,
     decorate: MARKABLE_TAGS.has(element.localName)
-      ? (host) => [markers(ctx, element, host)]
+      ? (host) => [markers(ctx, element, host, instance)]
       : undefined,
   });
 }

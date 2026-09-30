@@ -28,7 +28,13 @@ import { createFrameRequester } from "./frameRequester.js";
 import { createLoadingFrame } from "./loadingFrame.js";
 import { createPortalPump } from "./portalPump.js";
 import { createPortalScheduler, PortalSchedulerContext } from "./portalScheduler.js";
-import { isSvgElement, isSvgRoot, PortalPluginsContext, projectWithPlugins } from "./plugins.js";
+import {
+  isSvgElement,
+  isSvgRoot,
+  PortalPluginsContext,
+  PortalTemplatesContext,
+  projectWithPlugins,
+} from "./plugins.js";
 import { mergePanelOptions, PanelOptionsContext, resolveKeyboard } from "./panelOptions.js";
 import { createHaptics, HapticsContext } from "./haptics.js";
 import { CameraContext, frames, onLateFrame, RendererContext } from "../render.js";
@@ -843,6 +849,13 @@ function buildPortal(ctx, ownOptions = {}) {
     templateNodes.add(node);
     node.childNodes.forEach(adoptTemplate);
   }
+  // Only what is inside this panel: a marker another panel or the page
+  // owns is not this mirror's to follow, and its own portal adopts it.
+  ctx = PortalTemplatesContext.set(ctx, (node) => {
+    if (containerElement.contains(node)) {
+      adoptTemplate(node);
+    }
+  });
 
   /**
    * Build the object for this one node and nothing below it. The recursion

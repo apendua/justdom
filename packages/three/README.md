@@ -1583,8 +1583,9 @@ An `<image>` is a textured quad in its user space, under the same matrices
 as a shape, so a rotated `<g>` turns the picture with it. The texture comes
 from the cache an `<img>` uses, shared by URL. `href` is read, and the
 legacy `xlink:href` when there is no `href`. The box is `x`, `y`, `width`
-and `height`, and a size left `auto` takes the picture's. The picture is
-fitted into the box by `preserveAspectRatio`: `meet` fits it inside,
+and `height`, a percentage is of the nearest viewport, and a size left
+`auto` takes the picture's. The picture is fitted into the box by
+`preserveAspectRatio`, as a `viewBox` is fitted: `meet` fits it inside,
 `slice` covers the box and cuts off what overhangs, and `none` stretches
 it. An `<image>` takes its place in the paint order among the shapes, fades
 with `opacity`, and is a ray target like a shape with a fill. Its load

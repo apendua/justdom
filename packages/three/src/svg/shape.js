@@ -818,8 +818,9 @@ export function shape(ctx, element) {
 
   /**
    * Whether a ray can hit any of the shape. One that no ray can hit is not
-   * registered, even under `cursor: pointer`, so `pointer-events: none` on
-   * an icon takes it out of the raycast set altogether.
+   * registered, even under `cursor: pointer`: a hidden shape under the
+   * default `visiblePainted`, or one that paints nothing. `isClickable`
+   * already says no under `pointer-events: none`.
    */
   const hittable = new Derived(() => fillHit.get() || strokeHit.get());
 

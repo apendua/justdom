@@ -187,6 +187,19 @@ describe("div interactivity", () => {
     subscription.unsubscribe();
   });
 
+  test("pointer-events: none takes an element out of the rays, cursor or not", () => {
+    // What a browser computes for an icon's `<svg>` in a button: the
+    // button's `cursor: pointer` inherited, and `pointer-events: none` set
+    // so that the button, and not the icon, is what a press lands on.
+    const { registrations, restyleWith, subscription } = setup("pointer", "pointer-events: none");
+    assert.deepEqual(registrations, []);
+
+    restyleWith("cursor: pointer");
+    assert.deepEqual(registrations, ["add"]);
+
+    subscription.unsubscribe();
+  });
+
   test("the handlers go with the registration, and leave no hover state behind", () => {
     const { element, dispatch, restyle, subscription } = setup("pointer");
 

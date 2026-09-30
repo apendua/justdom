@@ -1,13 +1,14 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
-import { InteractionContext } from "../interactions.js";
+import { InteractionContext, intersectVisible } from "../interactions.js";
 import { createMirror } from "../elements/mirror.js";
 import { group, shape } from "./shape.js";
 
 /**
  * @import { Mesh, MeshBasicMaterial, Object3D } from "three";
  * @import { InteractionManager } from "../interactions.js";
+ * @import { XREventMap } from "../core.js";
  */
 
 // jsdom-env installs the common DOM globals, but not DOMParser, which three's
@@ -746,9 +747,8 @@ describe("svg shape as a ray target", () => {
   };
 
   /**
-   * The meshes a ray from in front of the point (x, y) meets, each once.
-   * The walk is the interaction manager's. It skips what is not visible and
-   * asks each mesh's own `raycast`.
+   * The meshes a ray from in front of the point (x, y) meets, each once,
+   * found by the interaction manager's own walk.
    *
    * @param {Object3D} object
    * @param {number} x
@@ -758,17 +758,9 @@ describe("svg shape as a ray target", () => {
   function hitsAt(object, x, y) {
     object.updateMatrixWorld(true);
     const raycaster = new THREE.Raycaster(new THREE.Vector3(x, y, 5), new THREE.Vector3(0, 0, -1));
-    /** @type {THREE.Intersection[]} */
+    /** @type {THREE.Intersection<Object3D<XREventMap>>[]} */
     const intersections = [];
-    /** @param {Object3D} node */
-    const walk = (node) => {
-      if (!node.visible) {
-        return;
-      }
-      node.raycast(raycaster, intersections);
-      node.children.forEach(walk);
-    };
-    walk(object);
+    intersectVisible(raycaster, /** @type {Object3D<XREventMap>} */ (object), intersections);
     // A mesh is met once per triangle, and a ray down a diagonal meets two.
     return [...new Set(intersections.map((intersection) => intersection.object))];
   }

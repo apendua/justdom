@@ -20,11 +20,17 @@ import { scrollDrags } from "./scroll.js";
  * shapes follow the same rule, and `cursor` is inherited into them from the
  * page around the `<svg>`.
  *
+ * `pointer-events: none` says the opposite, as it does on a page, and wins.
+ * `cursor` is inherited, so an icon's `<svg>` inside a button computes
+ * `pointer` too, and `pointer-events: none` on the icon is how a page makes
+ * the button, and not the icon, the target of a press.
+ *
  * @param {HTMLElement} element
  * @returns {boolean}
  */
 export function isClickable(element) {
-  return getComputedStyleCached(element).cursor === "pointer";
+  const style = getComputedStyleCached(element);
+  return style.cursor === "pointer" && style.getPropertyValue("pointer-events") !== "none";
 }
 
 /**

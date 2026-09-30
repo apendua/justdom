@@ -1598,9 +1598,9 @@ view takes no press.
 `cursor` is inherited, so the shapes of an icon inside a `cursor: pointer`
 button are clickable too, and a press on the icon is a press on the
 `<path>`. Where the button should take the press whole, put
-`pointer-events: none` on the icon's `<svg>`, as a page would. A shape no
-ray can hit is not registered at all, and the ray lands on the button
-behind it.
+`pointer-events: none` on the icon's `<svg>`, as a page would. Neither the
+`<svg>` nor its shapes are then ray targets of their own, whatever `cursor`
+they inherit, and a press on the icon is a press on the button.
 
 Not drawn yet: `<text>`, markers (so an arrowhead is a `<polygon>` of its
 own for now), `<use>` and `<symbol>`, gradients and patterns (a `url(#…)`

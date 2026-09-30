@@ -536,7 +536,7 @@ function drawn(object) {
  * @param {THREE.Intersection<THREE.Object3D<XREventMap>>[]} intersections
  * @returns {void}
  */
-function intersectVisible(raycaster, object, intersections) {
+export function intersectVisible(raycaster, object, intersections) {
   if (!object.visible) {
     return;
   }

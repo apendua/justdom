@@ -314,6 +314,17 @@ portal, so ordinary DOM-based UI (menus, HUDs, forms) can be composited
 directly into a 3D or WebXR scene and still receive pointer events routed
 through `interactions(ctx)`.
 
+An element is a ray target of its own when its computed `cursor` is
+`pointer`, the signal a page uses for "clickable". A press on it arrives as
+`mousedown`, `mouseup` and `click` on the element, and the element carries
+`data-xr-hover` while the ray is on it and `data-xr-active` while it is held.
+Clickable elements nest, if only because `cursor` is inherited, and a press
+inside several of them goes where it goes on a page. The innermost one is the
+target, its DOM events are sent once and bubble from there, and every
+clickable element around it takes `data-xr-active` as well, as `:active`
+would. The ray event stops at the outermost of them, so nothing outside the
+panel hears a press the panel took.
+
 It does that without depending on `justdom`. What `dom()` takes is a
 `Mountable` — a tree that has not been put anywhere yet, exposing one method
 that swaps it into a span of sibling nodes — and that type is declared here
@@ -1596,8 +1607,10 @@ view takes no press.
 ```
 
 `cursor` is inherited, so the shapes of an icon inside a `cursor: pointer`
-button are clickable too, and a press on the icon is a press on the
-`<path>`. Where the button should take the press whole, put
+button are clickable too. A press on the icon is then a press on the
+`<path>`, which bubbles to the button in the DOM and holds the button as
+well, the way nested clickable elements always do (see *Projecting DOM into
+the scene*). Where the button should be the target itself, put
 `pointer-events: none` on the icon's `<svg>`, as a page would. Neither the
 `<svg>` nor its shapes are then ray targets of their own, whatever `cursor`
 they inherit, and a press on the icon is a press on the button.

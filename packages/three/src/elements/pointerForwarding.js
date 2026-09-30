@@ -9,7 +9,7 @@ import { scrollDrags } from "./scroll.js";
  * @import {EntityEffect} from '@apendua/signal';
  * @import {Object3D} from 'three';
  * @import {Reactive} from '../interactions.js';
- * @import {XREventMap} from '../core.js';
+ * @import {InteractionEvent, XREventMap} from '../core.js';
  */
 
 /**
@@ -77,6 +77,39 @@ export function isGone(element) {
 }
 
 /**
+ * The objects forwarding a ray's events right now, so that a handler can
+ * tell whether another one is above it.
+ *
+ * @type {WeakSet<Object3D>}
+ */
+const forwarding = new WeakSet();
+
+/**
+ * The ray events whose DOM events have already been sent. The manager hands
+ * one event object to every object up the chain, so the first handler to
+ * see it sends the DOM event and the ones above only follow it.
+ *
+ * @type {WeakSet<object>}
+ */
+const delivered = new WeakSet();
+
+/**
+ * Whether another forwarding object is above this one, which makes this
+ * one not the outermost of a nest of clickable elements.
+ *
+ * @param {Object3D} object
+ * @returns {boolean}
+ */
+function hasForwardingAncestor(object) {
+  for (let node = object.parent; node; node = node.parent) {
+    if (forwarding.has(node)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
  * @typedef {object} ForwardingOptions
  * @property {Reactive<boolean>} enabled Whether rays can hit the object at
  *   all, handed to `makeInteractive`.
@@ -96,6 +129,15 @@ export function isGone(element) {
  * Boxes and SVG shapes both forward rays through this function, so a
  * panel's stylesheet and its click handlers see the same events whichever
  * of the two the ray met.
+ *
+ * Clickable elements nest, if only because `cursor` is inherited: the label
+ * in a button, the icon in it, a button on a clickable card. A press goes
+ * where it goes on a page. The innermost element is the target of the DOM
+ * events, sent once, and they bubble through the DOM from there. Every
+ * clickable element around it is pressed too, the way `:active` applies to
+ * the ancestors of what is pressed, so each one takes `data-xr-active` and
+ * hears its own `onPress`. The ray event stops at the outermost of them,
+ * so nothing outside the panel sees a press the panel took.
  *
  * These belong together: an element that stops being clickable has to lose
  * the handlers too, not just the registration. The interaction manager
@@ -122,10 +164,40 @@ export function forwardPointerEvents(ctx, element, object, { enabled, onPress })
    */
   const haptics = HapticsContext.get(ctx);
 
+  /**
+   * Send the DOM event for a ray event, unless an element inside this one
+   * already has.
+   *
+   * @param {object} e
+   * @param {() => void} send
+   * @returns {void}
+   */
+  const deliverOnce = (e, send) => {
+    if (!delivered.has(e)) {
+      delivered.add(e);
+      send();
+    }
+  };
+
+  /**
+   * Let the ray event go on to the next clickable element up, or stop it
+   * here if there is none.
+   *
+   * @param {InteractionEvent} e
+   * @returns {void}
+   */
+  const passOn = (e) => {
+    if (!hasForwardingAncestor(object)) {
+      stopPropagation(e);
+    }
+  };
+
   return [
     makeInteractive(enabled),
     () => {
+      forwarding.add(object);
       onCleanup(() => {
+        forwarding.delete(object);
         delete element.dataset.xrHover;
         delete element.dataset.xrActive;
       });
@@ -139,43 +211,43 @@ export function forwardPointerEvents(ctx, element, object, { enabled, onPress })
         stopPropagation(e);
         return;
       }
-      const event = new MouseEvent("click", {
-        bubbles: true,
+      deliverOnce(e, () => {
+        element.dispatchEvent(new MouseEvent("click", { bubbles: true }));
       });
-      element.dispatchEvent(event);
       onPress?.();
-      stopPropagation(e);
+      passOn(e);
     }),
     on("selectstart", (e) => {
       if (isGone(element)) {
         stopPropagation(e);
         return;
       }
-      // Offered to the scroll gesture before anything else: a press over a
-      // list may become a drag, and only holding it will tell. Elements with
-      // no scrolling ancestor are declined and nothing changes for them.
-      drags.begin(e.controller, element, object);
-      const event = new MouseEvent("mousedown", {
-        bubbles: true,
+      deliverOnce(e, () => {
+        // Offered to the scroll gesture before anything else: a press over
+        // a list may become a drag, and only holding it will tell. Elements
+        // with no scrolling ancestor are declined and nothing changes for
+        // them. Once, by the element the press landed on, since a second
+        // `begin` for the same hand would start the gesture over.
+        drags.begin(e.controller, element, object);
+        element.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+        // Felt once, however many clickable elements the press holds.
+        haptics?.press(e.inputSource);
       });
-      element.dispatchEvent(event);
       element.dataset.xrActive = "true";
-      haptics?.press(e.inputSource);
-      stopPropagation(e);
+      passOn(e);
     }),
     on("selectend", (e) => {
       if (isGone(element)) {
         stopPropagation(e);
         return;
       }
-      drags.end(e.controller);
-      const event = new MouseEvent("mouseup", {
-        bubbles: true,
+      deliverOnce(e, () => {
+        drags.end(e.controller);
+        element.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+        haptics?.release(e.inputSource);
       });
-      element.dispatchEvent(event);
       delete element.dataset.xrActive;
-      haptics?.release(e.inputSource);
-      stopPropagation(e);
+      passOn(e);
     }),
     on("pointermove", () => {
       const event = new MouseEvent("mousemove", {

@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { Derived, effects, flatMap, just, Stream, use } from "@apendua/signal";
 import { getChildNodes, getComputedStyleCached } from "../elements/mirror.js";
-import { isSvgElement } from "../elements/plugins.js";
+import { isSvgElement, PortalTemplatesContext } from "../elements/plugins.js";
 import {
   IDENTITY,
   matrixEqual,
@@ -55,13 +55,6 @@ import { parseLengthIn, readProperty } from "./style.js";
 
 /** Elements that only group, inside a template as outside one. */
 const GROUP_TAGS = new Set(["g", "a", "switch", "svg"]);
-
-/**
- * How deep instances may nest: a `<use>` of a symbol that holds a `<use>`,
- * a marker on a path inside a marker. Deep enough for any real drawing, and
- * what stops one that ends up drawing itself.
- */
-const MAX_DEPTH = 8;
 
 /**
  * Keep `source`'s object a child of `parent` for as long as the surrounding
@@ -189,8 +182,20 @@ function placementsEqual(a, b) {
  * @returns {EntityEffect<THREE.Object3D>}
  */
 function markers(ctx, element, host, hostInstance) {
+  const adopt = PortalTemplatesContext.get(ctx);
+  const expanding = hostInstance?.expanding ?? new Set();
   /** @param {string} name */
-  const named = (name) => findMarker(element, parseMarkerReference(host.read(name)));
+  const named = (name) => {
+    const marker = findMarker(element, parseMarkerReference(host.read(name)));
+    if (!marker || expanding.has(marker)) {
+      return null;
+    }
+    // Before anything reads it: a `<defs>` later in the document than this
+    // path, or in another `<svg>`, is not in the mirror yet, and a read
+    // cached now would never hear an edit inside the marker.
+    adopt(marker);
+    return marker;
+  };
 
   const referenced = new Derived(
     () => ({ start: named("marker-start"), mid: named("marker-mid"), end: named("marker-end") }),
@@ -223,10 +228,6 @@ function markers(ctx, element, host, hostInstance) {
   );
 
   return effects((obj) => {
-    const depth = (hostInstance?.depth ?? 0) + 1;
-    if (depth > MAX_DEPTH) {
-      return;
-    }
     for (const { marker, index } of placements.get()) {
       const matrix = new Derived(
         () => {
@@ -251,13 +252,16 @@ function markers(ctx, element, host, hostInstance) {
         // A marker's content inherits from where the marker is defined, not
         // from the path it is drawn on.
         inherit: null,
-        depth,
+        expanding: new Set([...expanding, marker]),
       };
       mountInto(
         obj,
         just(new THREE.Object3D(), [
           effects((copy) => {
             commitMatrix(copy, matrix.get());
+          }),
+          effects((copy) => {
+            copy.visible = !host.hidden();
           }),
           templateChildren(ctx, marker, instance),
         ]),
@@ -380,8 +384,8 @@ export function drawUse(ctx, element, instance = null) {
     }),
     effects((obj) => {
       const target = referenced.get();
-      const depth = (instance?.depth ?? 0) + 1;
-      if (!target || depth > MAX_DEPTH) {
+      const expanding = instance?.expanding ?? new Set();
+      if (!target || expanding.has(target)) {
         return;
       }
       const isSymbol = target.localName === "symbol";
@@ -425,7 +429,7 @@ export function drawUse(ctx, element, instance = null) {
           boundary: /** @type {Element} */ (target.parentElement),
           read: (name) => readDrawnProperty(element, name, instance),
         },
-        depth,
+        expanding: new Set([...expanding, target]),
       };
       /** @type {EntityEffect<THREE.Object3D>[]} */
       const content = [];

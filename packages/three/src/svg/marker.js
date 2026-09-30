@@ -1,4 +1,4 @@
-import { LineCurve } from "three";
+import { EllipseCurve, LineCurve } from "three";
 import { SVG_NAMESPACE } from "../elements/plugins.js";
 import {
   apply,
@@ -73,6 +73,26 @@ export function bisect(into, out) {
 }
 
 /**
+ * Whether a curve is the joint three puts before an arc rather than a
+ * segment of the path. `Path.absellipse` draws a line from the current
+ * point to where the arc computes that it starts, and the two differ by
+ * rounding, so the line is a fraction of a unit long and its direction is
+ * noise. SVG starts an arc at the current point, so there is no segment
+ * there and no vertex.
+ *
+ * @param {Curve<Vector2>} curve
+ * @param {Curve<Vector2> | undefined} next
+ * @returns {boolean}
+ */
+function isArcJoint(curve, next) {
+  if (!(curve instanceof LineCurve) || !(next instanceof EllipseCurve)) {
+    return false;
+  }
+  const scale = 1 + Math.abs(curve.v1.x) + Math.abs(curve.v1.y);
+  return curve.v1.distanceTo(curve.v2) <= 1e-6 * scale;
+}
+
+/**
  * Every vertex of a parsed path, in order: the start of each subpath and the
  * end of each of its segments. A closed subpath ends where it began, with a
  * vertex there for each end, and both point halfway between the closing
@@ -86,7 +106,9 @@ export function markerVertices(path) {
   const vertices = [];
   for (const subPath of path.subPaths) {
     /** @type {Curve<Vector2>[]} */
-    const curves = [...subPath.curves];
+    const curves = subPath.curves.filter(
+      (curve, index) => !isArcJoint(curve, subPath.curves[index + 1]),
+    );
     if (!curves.length) {
       continue;
     }

@@ -95,6 +95,22 @@ describe("markerVertices", () => {
     );
   });
 
+  test("an arc after a segment starts where the segment ends, with one vertex there", () => {
+    // Three puts a line of rounding error before an arc that does not
+    // start exactly at the current point. It is not a segment.
+    const vertices = markerVertices(parse(`<path d="M0 0 L10 0 A5 5 0 0 1 20 0 L30 0"/>`));
+    const corners = vertices.filter((vertex) => round(vertex.x) === 10 && round(vertex.y) === 0);
+    assert.equal(vertices.length, 4);
+    assert.equal(corners.length, 1);
+    // Arriving along +x, leaving up the arc at -90°: halfway is -45°.
+    assert.equal(Math.round((corners[0].angle * 180) / Math.PI), -45);
+  });
+
+  test("two arcs in a row meet at one vertex", () => {
+    const vertices = markerVertices(parse(`<path d="M0 0 A5 5 0 0 1 10 0 A5 5 0 0 1 20 0"/>`));
+    assert.equal(vertices.length, 3);
+  });
+
   test("a second subpath's vertices are all mid but the last", () => {
     const vertices = markerVertices(parse(`<path d="M0 0 L10 0 M20 0 L30 0"/>`));
     assert.deepEqual(

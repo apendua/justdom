@@ -381,8 +381,11 @@ export function commitMatrix(object, matrix) {
  * @property {Inheritance | null} inherit Where the content inherits from, for
  *   a copy that inherits from where it is drawn: a `<use>`'s, and not a
  *   marker's.
- * @property {number} depth How many instances this one is inside, so that a
- *   `<use>` that ends up drawing itself stops.
+ * @property {ReadonlySet<Element>} expanding The templates whose content
+ *   this instance is inside, its own included. A template named again from
+ *   inside itself, a marker by its own content or a `<use>` by a symbol it
+ *   draws, is a cycle, which a browser draws nothing more for, and so is not
+ *   expanded again.
  */
 
 /**
@@ -981,6 +984,8 @@ export function rayTarget(ctx, element, hittable) {
  * @property {() => number} strokeWidth
  * @property {() => Chain} chain
  * @property {() => PaintSlot} markerSlot
+ * @property {() => boolean} hidden Whether `visibility` hides the shape, which
+ *   hides its markers too, as it does in a browser.
  */
 
 /**
@@ -1153,6 +1158,7 @@ export function shape(ctx, element, { instance = null, decorate } = {}) {
       strokeWidth: () => strokeSpec.get().width,
       chain: () => chain.get(),
       markerSlot: () => paintSlot(element, root.get(), instance, 2),
+      hidden: () => hidden.get(),
     }) ?? []),
   ]);
 }

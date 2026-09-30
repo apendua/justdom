@@ -35,8 +35,9 @@ the panels, for a harness photographing the scene.
 | --- | --- |
 | `src/main.ts` | Mounts `TodoApp` into `#root`, then offers a session that mirrors `#root`. |
 | `src/xr.ts` | The offer: checks the platform can present, makes the renderer and the Enter button, shows the canvas only while a session runs. Hands `render()` the keyboard as a panel option. |
-| `src/components/TodoApp.ts` | The app, written for the page: a field, an Add button, a count, and the list behind `scrollable` from `@apendua/justui`. |
-| `src/components/TodoItem.ts` | A row: a checkbox drawn honestly in both builds, a label, a Delete button. |
+| `src/components/TodoApp.ts` | The app, written for the page: a field, an Add button, a count, and the list behind `scrollable` from `@apendua/justui`, reordered by dragging. |
+| `src/components/TodoItem.ts` | A row: a drag handle, a checkbox drawn honestly in both builds, a label, a Delete button. |
+| `tests/drag-check.mjs` | Reorders the list by dragging, with the mouse on the page and with the controller in the emulator. |
 | `src/components/Scene.ts` | The scene: `dom(ctx, panel, …)`. Lights, a cursor, the panel, and the frame rate while a session runs. |
 | `src/session.ts` | The session the page is shown in, or null: written by the scene from `getXRSession`, read by the app for its exit button. |
 | `src/components/TodoKeyboard.ts` | What the headset's keyboard looks like: `keyboard` from `@apendua/justui` dressed for this panel. |
@@ -57,6 +58,18 @@ viewport that hides its overflow, arrows, a track and a thumb — so it works
 on the page as a list with its own scrollbar, and in the scene as a window the
 portal clips to, rows below the fold neither drawn nor pressable. Rows can
 also be grabbed and pulled with the trigger.
+
+**The rows can be reordered by dragging.** Each row has a handle at its
+left, `draggable="true"`, and the list listens for the browser's drag and
+drop: `dragstart` on the handle says which todo is carried, `dragover`
+marks the edge of the row it would land on, and `drop` moves it. On the
+page that is a mouse drag. In a session it is the trigger closed on the
+handle, the ray carried down the list and the trigger opened, and freedom
+turns that into the same events, so the same handlers run. The marks are
+classes rather than data attributes because a class is what the panel
+follows. `node tests/drag-check.mjs` does both, the mouse on the page and
+the controller in the emulator, and prints the events and the order the
+todos ended up in; `SHOT=drag.png` photographs the drag half way.
 
 **Two things are there only in a session.** The frame rate, from justui's
 `useDiagnostics`, hangs in the upper left of the view. And the card grows an

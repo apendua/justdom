@@ -4,9 +4,8 @@ import { $, children } from "../operators.js";
 import { applyClip, clipRaycast } from "../elements/clip.js";
 import { acquireImage, releaseImage } from "../elements/image.js";
 import { getComputedStyleCached, isVisibilityHidden } from "../elements/mirror.js";
-import { fitImage } from "../elements/objectFit.js";
 import { place } from "../elements/place.js";
-import { matrixEqual, parsePreserveAspectRatio } from "./geometry.js";
+import { matrixEqual, parsePreserveAspectRatio, viewportMatrix } from "./geometry.js";
 import {
   chainEqual,
   clipUniforms,
@@ -16,8 +15,9 @@ import {
   paintRenderOrder,
   rayTarget,
   readChain,
+  viewportSize,
 } from "./shape.js";
-import { parseLength, parsePointerEvents, readProperty } from "./style.js";
+import { parseLengthIn, parsePointerEvents, readProperty } from "./style.js";
 
 /**
  * @import {Source} from '@apendua/signal';
@@ -62,9 +62,9 @@ const XLINK_NAMESPACE = "http://www.w3.org/1999/xlink";
  */
 
 /**
- * The `x`, `y`, `width` and `height` an `<image>` names, in user units. A
- * size that is `auto` or missing is NaN, for `placeImage` to take from the
- * picture.
+ * The `x`, `y`, `width` and `height` an `<image>` names, in user units, a
+ * percentage already resolved against the viewport. A size that is `auto`
+ * or missing is NaN, for `placeImage` to take from the picture.
  *
  * @typedef {object} ImageBox
  * @property {number} x
@@ -74,34 +74,15 @@ const XLINK_NAMESPACE = "http://www.w3.org/1999/xlink";
  */
 
 /**
- * `preserveAspectRatio` in the vocabulary `fitImage` takes. `meet` is
- * `contain` and `slice` is `cover`; `none` is `fill`, which stretches the
- * picture to the box. The alignment is `object-position` as percentages.
- *
- * @param {PreserveAspectRatio} aspect
- * @returns {{ fit: string, position: string }}
- */
-export function aspectToObjectFit(aspect) {
-  if (aspect.align === "none") {
-    return { fit: "fill", position: "50% 50%" };
-  }
-  /** @type {Record<string, string>} */
-  const percent = { Min: "0%", Mid: "50%", Max: "100%" };
-  const match = /^x(Min|Mid|Max)Y(Min|Mid|Max)$/.exec(aspect.align);
-  return {
-    fit: aspect.meet ? "contain" : "cover",
-    position: match ? `${percent[match[1]]} ${percent[match[2]]}` : "50% 50%",
-  };
-}
-
-/**
  * The quad an `<image>` draws, or null for nothing to draw.
  *
  * A size left `auto` takes the picture's: both, and the picture is drawn at
  * its intrinsic size; one, and the other follows the picture's aspect
  * ratio. The picture is then fitted into the box by `preserveAspectRatio`,
- * and whatever of it falls outside the box, which `slice` does on one axis,
- * is cut off the quad rather than drawn and clipped.
+ * by the same arithmetic that fits a `viewBox` into a viewport: SVG places a
+ * picture as though it were a `viewBox` of its own intrinsic size. Whatever
+ * of it falls outside the box, which `slice` does on one axis, is cut off
+ * the quad rather than drawn and clipped.
  *
  * @param {ImageBox} box
  * @param {PreserveAspectRatio} aspect
@@ -124,14 +105,20 @@ export function placeImage(box, aspect, natural) {
   if (!(width > 0 && height > 0)) {
     return null;
   }
-  const { fit, position } = aspectToObjectFit(aspect);
-  const rect = fitImage(fit, position, { width, height }, natural);
-  const x = box.x + rect.x;
-  const y = box.y + rect.y;
+  const [sx, , , sy, tx, ty] = viewportMatrix(
+    { x: 0, y: 0, width: natural.width, height: natural.height },
+    aspect,
+    width,
+    height,
+  );
+  const x = box.x + tx;
+  const y = box.y + ty;
+  const drawnWidth = natural.width * sx;
+  const drawnHeight = natural.height * sy;
   const left = Math.max(box.x, x);
   const top = Math.max(box.y, y);
-  const right = Math.min(box.x + width, x + rect.width);
-  const bottom = Math.min(box.y + height, y + rect.height);
+  const right = Math.min(box.x + width, x + drawnWidth);
+  const bottom = Math.min(box.y + height, y + drawnHeight);
   if (!(right > left && bottom > top)) {
     return null;
   }
@@ -140,10 +127,10 @@ export function placeImage(box, aspect, natural) {
     top,
     right,
     bottom,
-    u0: (left - x) / rect.width,
-    v0: (top - y) / rect.height,
-    u1: (right - x) / rect.width,
-    v1: (bottom - y) / rect.height,
+    u0: (left - x) / drawnWidth,
+    v0: (top - y) / drawnHeight,
+    u1: (right - x) / drawnWidth,
+    v1: (bottom - y) / drawnHeight,
   };
 }
 
@@ -267,14 +254,20 @@ export function image(ctx, element) {
         return null;
       }
       const current = style();
-      /** @param {string} name */
-      const length = (name) => parseLength(readProperty(current, element, name), Number.NaN);
+      const viewport = viewportSize(element);
+      /**
+       * @param {string} name
+       * @param {"width" | "height"} axis What a percentage is of.
+       * @param {number} fallback
+       */
+      const length = (name, axis, fallback) =>
+        parseLengthIn(readProperty(current, element, name), viewport?.[axis], fallback);
       return placeImage(
         {
-          x: parseLength(readProperty(current, element, "x"), 0),
-          y: parseLength(readProperty(current, element, "y"), 0),
-          width: length("width"),
-          height: length("height"),
+          x: length("x", "width", 0),
+          y: length("y", "height", 0),
+          width: length("width", "width", Number.NaN),
+          height: length("height", "height", Number.NaN),
         },
         parsePreserveAspectRatio(element.getAttribute("preserveAspectRatio")),
         { width: state.width, height: state.height },
@@ -323,11 +316,11 @@ export function image(ctx, element) {
     children(
       $(mesh, [
         set("material", () => {
-          // A new material per picture rather than a new `map` on one:
-          // three compiles a program with or without a map, and swapping
-          // one in would need the material recompiled anyway.
+          // One material for the life of the node, whatever picture it
+          // shows. The effects below write its opacity and visibility, and
+          // a material built afresh per picture would come back without
+          // them, since a picture arrives after the node is built.
           const material = new THREE.MeshBasicMaterial({
-            map: texture.get(),
             side: THREE.DoubleSide,
             forceSinglePass: true,
             transparent: true,
@@ -349,6 +342,19 @@ export function image(ctx, element) {
             built.dispose();
           });
           return built;
+        }),
+        effects((obj) => {
+          const material = /** @type {THREE.MeshBasicMaterial} */ (obj.material);
+          const next = texture.get();
+          if (material.map !== next) {
+            // Three compiles a program with a map or without one, so gaining
+            // or losing it recompiles; one picture replacing another does
+            // not.
+            if (!material.map !== !next) {
+              material.needsUpdate = true;
+            }
+            material.map = next;
+          }
         }),
         effects((obj) => {
           /** @type {THREE.MeshBasicMaterial} */ (obj.material).opacity = opacity.get();

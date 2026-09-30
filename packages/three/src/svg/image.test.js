@@ -4,13 +4,7 @@ import * as THREE from "three";
 import { createMirror } from "../elements/mirror.js";
 import { acquireImage, releaseImage } from "../elements/image.js";
 import { parsePreserveAspectRatio } from "./geometry.js";
-import {
-  aspectToObjectFit,
-  buildImageGeometry,
-  getSvgImageSource,
-  image,
-  placeImage,
-} from "./image.js";
+import { buildImageGeometry, getSvgImageSource, image, placeImage } from "./image.js";
 import { shape } from "./shape.js";
 
 /**
@@ -67,6 +61,34 @@ function withLoadedPictures(texture, body) {
   };
   try {
     body();
+  } finally {
+    THREE.TextureLoader.prototype.load = original;
+  }
+}
+
+/**
+ * Hold every load until `arrive` is called, which is how a picture lands in
+ * a browser: after the node that asked for it is built.
+ *
+ * @param {THREE.Texture} texture
+ * @param {(arrive: () => void) => void} body
+ */
+function withDeferredPictures(texture, body) {
+  const original = THREE.TextureLoader.prototype.load;
+  /** @type {((texture: THREE.Texture) => void)[]} */
+  const waiting = [];
+  THREE.TextureLoader.prototype.load = function (_url, onLoad) {
+    if (onLoad) {
+      waiting.push(/** @type {(texture: THREE.Texture) => void} */ (onLoad));
+    }
+    return texture;
+  };
+  try {
+    body(() => {
+      for (const onLoad of waiting.splice(0)) {
+        onLoad(texture);
+      }
+    });
   } finally {
     THREE.TextureLoader.prototype.load = original;
   }
@@ -163,20 +185,6 @@ function clipMatrixOf(mesh) {
   );
   return /** @type {THREE.Matrix3} */ (shader.uniforms.clipMatrix.value);
 }
-
-describe("preserveAspectRatio as object-fit", () => {
-  test("meet is contain, slice is cover, none is fill", () => {
-    assert.deepEqual(aspectToObjectFit(aspect("xMidYMid meet")), {
-      fit: "contain",
-      position: "50% 50%",
-    });
-    assert.deepEqual(aspectToObjectFit(aspect("xMinYMax slice")), {
-      fit: "cover",
-      position: "0% 100%",
-    });
-    assert.equal(aspectToObjectFit(aspect("none")).fit, "fill");
-  });
-});
 
 describe("placeImage", () => {
   const natural = { width: 200, height: 100 };
@@ -326,6 +334,34 @@ describe("svg image", () => {
       // The viewBox scales user space ten times into the root's 100×50.
       const corner = new THREE.Vector3(2, 2, 1).applyMatrix3(clipMatrixOf(s.mesh));
       assert.deepEqual([round(corner.x), round(corner.y)], [20, 20]);
+      s.teardown();
+    });
+  });
+
+  test("a percentage size is of the viewport, not the picture's own size", () => {
+    withLoadedPictures(fakeTexture(2000, 1500), () => {
+      const s = setup(
+        { href: PICTURE, x: "10%", width: "80%", height: "100%", preserveAspectRatio: "none" },
+        { viewBox: "0 0 10 5" },
+      );
+      assert.deepEqual(bounds(s.mesh), [1, 0, 9, 5]);
+      s.teardown();
+    });
+  });
+
+  test("a picture that arrives after the node is built is faded like one that was there", () => {
+    const texture = fakeTexture(10, 10);
+    withDeferredPictures(texture, (arrive) => {
+      const s = setup(
+        { href: PICTURE, width: "10", height: "10", style: "opacity: 0.5" },
+        { wrap: { style: "opacity: 0.5" } },
+      );
+      const before = s.material;
+      arrive();
+      assert.equal(s.material, before, "one material, whatever picture it shows");
+      assert.equal(s.material.map, texture);
+      assert.equal(s.material.opacity, 0.25);
+      assert.equal(s.mesh.visible, true);
       s.teardown();
     });
   });

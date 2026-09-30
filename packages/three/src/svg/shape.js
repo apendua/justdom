@@ -253,23 +253,66 @@ function nearestViewBoxOrigin(element) {
  * @returns {Matrix2D}
  */
 export function rootMatrix(root) {
-  const style = getComputedStyleCached(root);
-  const size = getBorderBoxSize(asHtml(root));
-  const borderLeft = px(style.borderLeftWidth);
-  const borderTop = px(style.borderTopWidth);
-  const paddingLeft = px(style.paddingLeft);
-  const paddingTop = px(style.paddingTop);
-  const width =
-    size.width - borderLeft - px(style.borderRightWidth) - paddingLeft - px(style.paddingRight);
-  const height =
-    size.height - borderTop - px(style.borderBottomWidth) - paddingTop - px(style.paddingBottom);
+  const box = rootContentBox(root);
   const viewport = viewportMatrix(
     parseViewBox(root.getAttribute("viewBox")),
     parsePreserveAspectRatio(root.getAttribute("preserveAspectRatio")),
-    width,
-    height,
+    box.width,
+    box.height,
   );
-  return multiply(translation(borderLeft + paddingLeft, borderTop + paddingTop), viewport);
+  return multiply(translation(box.left, box.top), viewport);
+}
+
+/**
+ * An `<svg>` root's content box, the viewport its `viewBox` is fitted into:
+ * where it starts in the border-box frame, past the border and padding, and
+ * its size in px.
+ *
+ * @param {Element} root
+ * @returns {{ left: number, top: number, width: number, height: number }}
+ */
+function rootContentBox(root) {
+  const style = getComputedStyleCached(root);
+  const size = getBorderBoxSize(asHtml(root));
+  const left = px(style.borderLeftWidth) + px(style.paddingLeft);
+  const top = px(style.borderTopWidth) + px(style.paddingTop);
+  return {
+    left,
+    top,
+    width: size.width - left - px(style.borderRightWidth) - px(style.paddingRight),
+    height: size.height - top - px(style.borderBottomWidth) - px(style.paddingBottom),
+  };
+}
+
+/**
+ * The size of the viewport an element is in, in its user units: what a
+ * percentage length on it is a percentage of. That is the nearest `<svg>`'s
+ * `viewBox`, or without one its own size, which for the root is its
+ * content box in px. Null for an element that is in no `<svg>`.
+ *
+ * @param {Element} element
+ * @returns {{ width: number, height: number } | null}
+ */
+export function viewportSize(element) {
+  for (let current = getParentElement(element); current; current = getParentElement(current)) {
+    if (current.localName !== "svg" || current.namespaceURI !== SVG_NAMESPACE) {
+      continue;
+    }
+    const viewBox = parseViewBox(current.getAttribute("viewBox"));
+    if (viewBox) {
+      return { width: viewBox.width, height: viewBox.height };
+    }
+    if (isSvgRoot(current)) {
+      const box = rootContentBox(current);
+      return { width: box.width, height: box.height };
+    }
+    const style = getComputedStyleCached(current);
+    return {
+      width: parseLength(readProperty(style, current, "width"), 0),
+      height: parseLength(readProperty(style, current, "height"), 0),
+    };
+  }
+  return null;
 }
 
 /**

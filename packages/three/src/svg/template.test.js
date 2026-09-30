@@ -323,6 +323,7 @@ function scene(content, draw) {
     ),
   );
   return {
+    root,
     mirror,
     objects,
     teardown() {
@@ -388,6 +389,24 @@ describe("use", () => {
     s.teardown();
   });
 
+  test("a percentage on the use follows a new viewBox on the root", () => {
+    const symbol = svg("symbol", { id: "use-symbol-reflow", viewBox: "0 0 10 10" }, [
+      svg("rect", { width: "10", height: "10", fill: "red" }),
+    ]);
+    const use = svg("use", { href: "#use-symbol-reflow", y: "50%", width: "10", height: "10" });
+    const s = scene([svg("defs", {}, [symbol]), use], [use]);
+    s.root.setAttribute("preserveAspectRatio", "none");
+    s.mirror.attributeChanged(s.root);
+    const [mesh] = meshesUnder(s.objects[0]);
+    // 50% of 25 is 12.5, and the rect's foot 10 below it, doubled to px.
+    assert.deepEqual(toRoot(mesh, 0, 10), [0, 45]);
+    s.root.setAttribute("viewBox", "0 0 50 50");
+    s.mirror.attributeChanged(s.root);
+    // 50% of 50 is 25, and px are user units on y now.
+    assert.deepEqual(toRoot(meshesUnder(s.objects[0])[0], 0, 10), [0, 35]);
+    s.teardown();
+  });
+
   test("the copy inherits the use's paint where the symbol sets none", () => {
     const bare = svg("path", { d: "M0 0 L5 0 L5 5 z" });
     const own = svg("path", { d: "M0 0 L5 0 L5 5 z", fill: "blue" });
@@ -397,6 +416,28 @@ describe("use", () => {
     const [inherited, set] = meshesUnder(s.objects[0]);
     assert.equal(colourOf(inherited), "ff0000", "inherited from the use");
     assert.equal(colourOf(set), "0000ff", "its own");
+    s.teardown();
+  });
+
+  test("currentColor in a symbol is the use's colour, not where the symbol is defined", () => {
+    const symbol = svg("symbol", { id: "use-symbol-current" }, [
+      svg("path", { d: "M0 0 L5 0 L5 5 z", fill: "currentColor" }),
+    ]);
+    const defs = svg("defs", { style: "color: blue" }, [symbol]);
+    const use = svg("use", { href: "#use-symbol-current", style: "color: red" });
+    const s = scene([defs, use], [use]);
+    assert.equal(colourOf(meshesUnder(s.objects[0])[0]), "ff0000");
+    s.teardown();
+  });
+
+  test("a hidden use hides its copy", () => {
+    const symbol = svg("symbol", { id: "use-symbol-hidden" }, [
+      svg("rect", { width: "5", height: "5", fill: "red" }),
+    ]);
+    const use = svg("use", { href: "#use-symbol-hidden", style: "visibility: hidden" });
+    const s = scene([svg("defs", {}, [symbol]), use], [use]);
+    const [mesh] = meshesUnder(s.objects[0]);
+    assert.equal(/** @type {THREE.MeshBasicMaterial} */ (mesh.material).visible, false);
     s.teardown();
   });
 
@@ -507,6 +548,47 @@ describe("viewport clips", () => {
     const s = scene([nested], [rect]);
     // The root draws its viewBox twice over, so (5, 2)–(15, 7) is (10, 4)–(30, 14).
     assert.deepEqual(clipBoxOf(meshesUnder(s.objects[0])[0]), [10, 4, 30, 14]);
+    s.teardown();
+  });
+
+  test("a nested svg of auto or percentage size clips to the viewport around it", () => {
+    /** @type {Record<string, string>[]} */
+    const sizes = [{}, { width: "100%", height: "100%" }];
+    for (const size of sizes) {
+      const rect = svg("rect", { width: "100", height: "100", fill: "red" });
+      const nested = svg("svg", { x: "5", y: "2", style: "overflow: hidden", ...size }, [rect]);
+      const s = scene([nested], [rect]);
+      // The whole 50 by 25 of the root's viewBox, from (5, 2), doubled.
+      assert.deepEqual(clipBoxOf(meshesUnder(s.objects[0])[0]), [10, 4, 110, 54]);
+      s.teardown();
+    }
+  });
+
+  test("a nested svg's own transform moves its clip with its content", () => {
+    const rect = svg("rect", { width: "100", height: "100", fill: "red" });
+    const nested = svg(
+      "svg",
+      {
+        x: "5",
+        y: "2",
+        width: "10",
+        height: "5",
+        // `translate(20, 0)`, as computed.
+        style: "overflow: hidden; transform: matrix(1, 0, 0, 1, 20, 0)",
+      },
+      [rect],
+    );
+    const s = scene([nested], [rect]);
+    assert.deepEqual(clipBoxOf(meshesUnder(s.objects[0])[0]), [50, 4, 70, 14]);
+    s.teardown();
+  });
+
+  test("a symbol in a nested svg with no size fills that svg, and is not clipped away", () => {
+    const rect = svg("rect", { width: "10", height: "10", fill: "red" });
+    const symbol = svg("symbol", { id: "clip-symbol-nested", style: "overflow: hidden" }, [rect]);
+    const use = svg("use", { href: "#clip-symbol-nested" });
+    const s = scene([svg("defs", {}, [symbol]), svg("svg", {}, [use])], [use]);
+    assert.deepEqual(clipBoxOf(meshesUnder(s.objects[0])[0]), [0, 0, 100, 50]);
     s.teardown();
   });
 

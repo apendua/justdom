@@ -22,6 +22,7 @@ import {
   getComputedStyleCached,
   getInteriorClipBox,
   getParentElement,
+  hidesVisibility,
   isVisibilityHidden,
 } from "../elements/mirror.js";
 import { isSvgRoot, SVG_NAMESPACE } from "../elements/plugins.js";
@@ -52,6 +53,7 @@ import {
   parseDashArray,
   parseFillRule,
   parseLength,
+  parseLengthIn,
   parseLineCap,
   parseLineJoin,
   parseNumber,
@@ -320,32 +322,61 @@ export function viewportSize(element) {
       const box = rootContentBox(current);
       return { width: box.width, height: box.height };
     }
-    const style = getComputedStyleCached(current);
-    return {
-      width: parseLength(readProperty(style, current, "width"), 0),
-      height: parseLength(readProperty(style, current, "height"), 0),
-    };
+    const box = svgViewport(current);
+    return Number.isFinite(box.width) && Number.isFinite(box.height)
+      ? { width: box.width, height: box.height }
+      : null;
   }
   return null;
 }
 
 /**
- * The viewport a nested `<svg>` establishes, in its parent's user space:
- * its `x`, `y`, `width` and `height`.
+ * Where a nested `<svg>` puts its viewport, in its parent's user space: its
+ * `x`, `y`, `width` and `height`. A size left `auto` is the whole of the
+ * viewport around it, as a percentage is a share of it. A size that cannot
+ * be known, with no viewport around to measure, is NaN.
  *
- * @param {Element} element
- * @param {CSSStyleDeclaration} style
- * @returns {Rect}
+ * @param {Element} svg
+ * @returns {{ x: number, y: number, width: number, height: number }}
  */
-function nestedViewport(element, style) {
-  const x = parseLength(readProperty(style, element, "x"), 0);
-  const y = parseLength(readProperty(style, element, "y"), 0);
-  return {
-    left: x,
-    top: y,
-    right: x + parseLength(readProperty(style, element, "width"), 0),
-    bottom: y + parseLength(readProperty(style, element, "height"), 0),
+export function svgViewport(svg) {
+  const style = getComputedStyleCached(svg);
+  const outer = viewportSize(svg);
+  /**
+   * @param {string} name
+   * @param {"width" | "height"} axis
+   */
+  const size = (name, axis) => {
+    const value = parseLengthIn(readProperty(style, svg, name), outer?.[axis], Number.NaN);
+    return Number.isNaN(value) ? (outer?.[axis] ?? Number.NaN) : value;
   };
+  return {
+    x: parseLengthIn(readProperty(style, svg, "x"), outer?.width, 0),
+    y: parseLengthIn(readProperty(style, svg, "y"), outer?.height, 0),
+    width: size("width", "width"),
+    height: size("height", "height"),
+  };
+}
+
+/**
+ * The matrix a nested `<svg>`'s viewport puts its content under: its own
+ * `viewBox` fitted into its `width` and `height`, placed at its `x`, `y`.
+ * Its `transform`, if it has one, applies on top of this.
+ *
+ * @param {Element} svg
+ * @returns {Matrix2D}
+ */
+function svgViewportMatrix(svg) {
+  const box = svgViewport(svg);
+  const viewport = viewportMatrix(
+    parseViewBox(svg.getAttribute("viewBox")),
+    parsePreserveAspectRatio(svg.getAttribute("preserveAspectRatio")),
+    // A size nobody can know fits no `viewBox`: user units are the
+    // parent's, as for a size of 0.
+    Number.isFinite(box.width) ? box.width : 0,
+    Number.isFinite(box.height) ? box.height : 0,
+  );
+  return multiply(translation(box.x, box.y), viewport);
 }
 
 /**
@@ -353,8 +384,8 @@ function nestedViewport(element, style) {
  * user space to its parent's. That is its computed `transform` about its
  * `transform-origin`, and for a nested `<svg>` the viewport it establishes
  * first — placed at its `x`, `y`, its own `viewBox` fitted into the `width`
- * and `height` it names. What the viewport clips is the chain's business,
- * in `readChain`.
+ * and `height` it names (`svgViewport`). What the viewport clips is the
+ * chain's business, in `readChain`.
  *
  * @param {Element} element
  * @returns {Matrix2D}
@@ -364,17 +395,7 @@ export function localMatrix(element) {
   /** @type {Matrix2D} */
   let matrix = IDENTITY;
   if (element.localName === "svg") {
-    const width = parseLength(readProperty(style, element, "width"), 0);
-    const height = parseLength(readProperty(style, element, "height"), 0);
-    const viewport = viewportMatrix(
-      parseViewBox(element.getAttribute("viewBox")),
-      parsePreserveAspectRatio(element.getAttribute("preserveAspectRatio")),
-      width,
-      height,
-    );
-    const x = parseLength(readProperty(style, element, "x"), 0);
-    const y = parseLength(readProperty(style, element, "y"), 0);
-    matrix = multiply(translation(x, y), viewport);
+    matrix = svgViewportMatrix(element);
   }
   const own = ownTransform(element, style, nearestViewBoxOrigin(element));
   return own ? multiply(own, matrix) : matrix;
@@ -448,7 +469,27 @@ const INHERITED = new Set([
   "marker-start",
   "marker-mid",
   "marker-end",
+  "color",
+  "visibility",
 ]);
+
+/** The properties whose value may be `currentColor`, the element's `color`. */
+const COLOR_VALUED = new Set(["fill", "stroke"]);
+
+/**
+ * What an element says about a property itself, through its presentation
+ * attribute or its `style` attribute, or null for nothing. A stylesheet rule
+ * is not seen here; the computed value comparison below catches those.
+ *
+ * @param {Element} element
+ * @param {string} name
+ * @returns {string | null}
+ */
+function declaredValue(element, name) {
+  const inline = /** @type {ElementCSSInlineStyle} */ (/** @type {unknown} */ (element)).style;
+  const value = inline?.getPropertyValue(name) || element.getAttribute(name);
+  return value ? value.trim() : null;
+}
 
 /**
  * A property of an element as it is drawn: its own computed value, or, in a
@@ -460,9 +501,15 @@ const INHERITED = new Set([
  * it can see is whether anything in the copied content sets the property:
  * where each element's value is the same as its parent's all the way up to
  * the boundary, the value was inherited from outside, and the `<use>`'s is
- * taken instead. An element that sets the property to exactly the value it
- * would have inherited reads as not setting it, which is the one case this
- * gets wrong.
+ * taken instead. An element whose attribute or `style` names the property
+ * sets it, whatever the value. One that sets it through a stylesheet rule to
+ * exactly the value it would have inherited reads as not setting it, which
+ * is the one case this gets wrong.
+ *
+ * A `fill` or `stroke` of `currentColor` is resolved against the copy's
+ * `color`, which is inherited from the `<use>` in turn. The computed value
+ * the mirror sees was resolved where the symbol is defined, against a
+ * `color` the drawing never has.
  *
  * @param {Element} element
  * @param {string} name
@@ -478,6 +525,12 @@ export function readDrawnProperty(element, name, instance) {
   let current = element;
   let currentValue = value;
   while (current !== inherit.boundary) {
+    const declared = declaredValue(current, name);
+    if (declared !== null) {
+      return COLOR_VALUED.has(name) && declared.toLowerCase() === "currentcolor"
+        ? readDrawnProperty(current, "color", instance)
+        : value;
+    }
     const parent = getParentElement(current);
     if (!parent) {
       return value;
@@ -490,6 +543,21 @@ export function readDrawnProperty(element, name, instance) {
     currentValue = parentValue;
   }
   return inherit.read(name);
+}
+
+/**
+ * Whether `visibility` hides what an element draws, as the element is drawn.
+ * In a copy made by a `<use>` that follows `readDrawnProperty`, so a hidden
+ * `<use>`, or one under a hidden `<g>`, hides its copy as a browser does.
+ *
+ * @param {Element} element
+ * @param {Instance | null} instance
+ * @returns {boolean}
+ */
+export function isDrawnHidden(element, instance) {
+  return instance?.inherit
+    ? hidesVisibility(readDrawnProperty(element, "visibility", instance))
+    : isVisibilityHidden(element);
 }
 
 /**
@@ -556,10 +624,19 @@ export function readChain(element, instance = null) {
         clip: null,
       });
     }
-    ctm = multiply(localMatrix(current), ctm);
     if (current !== element && current.localName === "svg" && clipsViewport(style.overflow)) {
-      viewports.push({ rect: nestedViewport(current, style), below: ctm });
+      // The viewport is in the space the `<svg>`'s own `transform` then
+      // moves, so its clip moves with the content. A size nobody can know
+      // clips nothing.
+      const box = svgViewport(current);
+      if (Number.isFinite(box.width) && Number.isFinite(box.height)) {
+        viewports.push({
+          rect: { left: box.x, top: box.y, right: box.x + box.width, bottom: box.y + box.height },
+          below: multiply(svgViewportMatrix(current), ctm),
+        });
+      }
     }
+    ctm = multiply(localMatrix(current), ctm);
     current = getParentElement(current);
   }
   return { ctm, opacity, root: null, clip: null };
@@ -1140,7 +1217,7 @@ export function shape(ctx, element, { instance = null, decorate } = {}) {
    * under it — the reason this is asked per shape and never turned into a
    * group's `visible`, which would prune the subtree.
    */
-  const hidden = new Derived(() => isVisibilityHidden(element));
+  const hidden = new Derived(() => isDrawnHidden(element, instance));
 
   /**
    * Which regions a ray can hit, from `pointer-events`. Every shape asks,

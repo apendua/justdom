@@ -73,8 +73,10 @@ catch a missing border or a check that fails for everyone but one machine.
 
 CI's baselines are the ones that gate a pull request, and CI is where they are
 drawn: dispatch the **Visual regression** workflow with `record: true` and the
-runner redraws them and commits them to the branch — a push that runs the check
-against what it just recorded, which is what proves a recording reproduces. That is also what to do
+runner redraws them, runs the strict check against what it just drew, which is
+what proves a recording reproduces, and commits them to the branch only if that
+passes. The workflow pushes with its own token, which starts no run, so the pull
+request's check turns green on the branch's next push. That is also what to do
 after a deliberate visual change, or after a Playwright bump — which moves the
 browser build, and so the fingerprint. Recording locally is fine too; it lands
 in a directory of its own and does not disturb CI's.
@@ -125,14 +127,14 @@ a re-record would have quietly blessed it.
 
 ## In CI
 
-`.github/workflows/visual.yml` runs this on every pull request that touches
-the showcase or its direct dependencies, once it is out of draft, and not on
-the push that merges it. It runs on an ordinary shared runner. The runner is not pinned to anything except the browser build
-Playwright brings, which is enough because the runner is also what recorded the
-baselines: the fingerprint makes "this machine is not that machine" a failure
-with a name rather than a mystery. Every run uploads `tests/output` — the
-frames it took, the diff it found, and the log it wrote — as an artifact called
-**scene**.
+`.github/workflows/visual.yml` runs this on every pull request that touches the
+showcase or its direct dependencies, once it is out of draft, and not on the
+push that merges it. It runs on an ordinary shared runner. The runner is not
+pinned to anything except the browser build Playwright brings, which is enough
+because the runner is also what recorded the baselines: the fingerprint makes
+"this machine is not that machine" a failure with a name rather than a mystery.
+Every run uploads `tests/output` — the frames it took, the diff it found, and
+the log it wrote — as an artifact called **scene**.
 
 A failing run also says so on the pull request, because the one thing a pixel
 comparison's log cannot tell you is the thing you want to know: it says how

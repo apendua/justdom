@@ -1,8 +1,19 @@
 import * as THREE from "three";
-import { Derived, effects, flatMap, just, observable, onCleanup, set } from "@apendua/signal";
+import {
+  Derived,
+  effects,
+  flatMap,
+  just,
+  observable,
+  onCleanup,
+  set,
+  useEffects,
+} from "@apendua/signal";
 import { SVGLoader } from "three/addons/loaders/SVGLoader.js";
 import { $, children, Nothing } from "../operators.js";
-import { applyClip, UNCLIPPED } from "../elements/clip.js";
+import { applyClip, clipRaycast, UNCLIPPED } from "../elements/clip.js";
+import { PortalReadyContext } from "../elements/div.js";
+import { forwardPointerEvents, isClickable } from "../elements/pointerForwarding.js";
 import { place } from "../elements/place.js";
 import { getContentRenderOrder } from "../elements/elevation.js";
 import {
@@ -32,6 +43,7 @@ import {
 import { dashRuns } from "./dash.js";
 import {
   paintEqual,
+  isPainted,
   parseDashArray,
   parseFillRule,
   parseLength,
@@ -39,6 +51,7 @@ import {
   parseLineJoin,
   parseNumber,
   parsePaint,
+  parsePointerEvents,
   readProperty,
   readShapeMarkup,
 } from "./style.js";
@@ -46,9 +59,10 @@ import {
 /**
  * @import {Source} from '@apendua/signal';
  * @import {ShapePath} from 'three';
- * @import {Component} from '../core.js';
+ * @import {Component, XREventMap} from '../core.js';
+ * @import {ClipBox} from '../elements/clip.js';
  * @import {Matrix2D} from './geometry.js';
- * @import {Paint} from './style.js';
+ * @import {HitRule, Paint} from './style.js';
  */
 
 /**
@@ -68,6 +82,10 @@ import {
  * frame the vertices are in; the shape tells the clip patch the matrix
  * between the two — the composition of everything above — so the edge stays
  * where the root's overflow puts it.
+ *
+ * A shape under `cursor: pointer` is a ray target of its own and forwards
+ * what happens there to its element as a box does. Its `pointer-events`
+ * decides which of its fill and stroke a ray can hit.
  */
 
 /**
@@ -573,6 +591,14 @@ emptyGeometry.setAttribute("position", new THREE.BufferAttribute(new Float32Arra
  * that a colour animation is a uniform write and a geometry change is not
  * also a new material.
  *
+ * Being drawn and being hit are separate questions, because
+ * `pointer-events` answers the second on its own terms. A region that is
+ * not drawn can still be hit, such as `fill: none` under
+ * `pointer-events: all` or a hidden shape under `painted`. A region that is
+ * drawn can be one no ray finds. The mesh stays in the scene while either
+ * answer is yes. It is drawn only for the first and raycast only for the
+ * second.
+ *
  * @param {object} options
  * @param {() => THREE.BufferGeometry | null} options.geometry Builds the
  *   geometry, reading whatever decides it; re-run, and the previous
@@ -584,12 +610,36 @@ emptyGeometry.setAttribute("position", new THREE.BufferAttribute(new Float32Arra
  * @param {() => number} options.renderOrder
  * @param {{ value: THREE.Vector4 }} options.clip
  * @param {{ value: THREE.Matrix3 }} options.clipMatrix
+ * @param {() => ClipBox} options.clipBox The box `clip` holds. Three's
+ *   raycast reads it, and nothing is tracked there.
  * @param {() => boolean} options.hidden Whether `visibility` hides the
  *   element this mesh paints.
+ * @param {() => boolean} options.hit Whether a ray can hit this region.
  * @returns {Source<Component>}
  */
-function paintedMesh({ geometry, paint, opacity, renderOrder, clip, clipMatrix, hidden }) {
+function paintedMesh({
+  geometry,
+  paint,
+  opacity,
+  renderOrder,
+  clip,
+  clipMatrix,
+  clipBox,
+  hidden,
+  hit,
+}) {
   const mesh = new THREE.Mesh();
+  // Trimmed once, for the life of the mesh, to the part the clip patch
+  // leaves drawn, with the same box, frame and matrix the shader uses. A
+  // region no ray may hit skips the raycast entirely.
+  clipRaycast(mesh, clipBox, mesh, clipMatrix);
+  const clipped = mesh.raycast;
+  let hittable = false;
+  mesh.raycast = (raycaster, intersects) => {
+    if (hittable) {
+      clipped(raycaster, intersects);
+    }
+  };
   return $(mesh, [
     set("material", () => {
       const material = new THREE.MeshBasicMaterial({
@@ -626,7 +676,14 @@ function paintedMesh({ geometry, paint, opacity, renderOrder, clip, clipMatrix, 
         material.color.copy(current.color);
         material.opacity = current.alpha * opacity();
       }
-      obj.visible = current !== null && !hidden();
+    }),
+    effects((obj) => {
+      const drawn = paint() !== null && !hidden();
+      hittable = hit();
+      /** @type {THREE.MeshBasicMaterial} */ (obj.material).visible = drawn;
+      // The raycaster skips an invisible object, so a mesh that is only hit
+      // stays visible, and its material keeps it out of the draw.
+      obj.visible = drawn || hittable;
     }),
     effects((obj) => {
       place(obj, 0, 0, 0);
@@ -641,6 +698,7 @@ function paintedMesh({ geometry, paint, opacity, renderOrder, clip, clipMatrix, 
  * @returns {Source<THREE.Object3D>}
  */
 export function shape(ctx, element) {
+  /** @type {THREE.Object3D<XREventMap>} */
   const object = new THREE.Object3D();
 
   const style = () => getComputedStyleCached(element);
@@ -732,9 +790,62 @@ export function shape(ctx, element) {
    */
   const hidden = new Derived(() => isVisibilityHidden(element));
 
+  /** What `clip` holds, for the raycast, which reads it untracked. */
+  let currentClipBox = UNCLIPPED;
+
+  /**
+   * Which regions a ray can hit, from `pointer-events`. Every shape asks,
+   * not only a clickable one, because a ray walks the meshes below whatever
+   * is registered. A shape inside a clickable `<svg>` or `<a>` decides by
+   * this whether a press on it reaches that ancestor or goes through to
+   * what is behind, as it does on a page.
+   */
+  const hitRegions = new Derived(() =>
+    parsePointerEvents(readProperty(style(), element, "pointer-events")),
+  );
+
+  /**
+   * @param {HitRule | null} rule
+   * @param {string} name `fill` or `stroke`, whichever paints the region.
+   * @returns {boolean}
+   */
+  const hits = (rule, name) =>
+    rule !== null &&
+    (!rule.painted || isPainted(readProperty(style(), element, name))) &&
+    (!rule.visible || !hidden.get());
+  const fillHit = new Derived(() => hits(hitRegions.get().fill, "fill"));
+  const strokeHit = new Derived(() => hits(hitRegions.get().stroke, "stroke"));
+
+  /**
+   * Whether a ray can hit any of the shape. One that no ray can hit is not
+   * registered, even under `cursor: pointer`: a hidden shape under the
+   * default `visiblePainted`, or one that paints nothing. `isClickable`
+   * already says no under `pointer-events: none`.
+   */
+  const hittable = new Derived(() => fillHit.get() || strokeHit.get());
+
+  /**
+   * Whether the shape is a ray target of its own, by the rule a box follows.
+   * It is a signal of its own for the reason a box's is. The handlers below
+   * write `data-xr-*` onto this element, which invalidates its computed
+   * style, and a re-read must not remount them.
+   */
+  const clickable = new Derived(() => isClickable(asHtml(element)));
+
   return just(object, [
     effects((obj) => {
       commitMatrix(obj, own.get());
+    }),
+    effects((obj) => {
+      if (!clickable.get() || !hittable.get()) {
+        return;
+      }
+      // Built here and not up front, so that shapes nobody can click, which
+      // is most of them, pay nothing for it.
+      useEffects(
+        obj,
+        forwardPointerEvents(ctx, asHtml(element), obj, { enabled: PortalReadyContext.get(ctx) }),
+      );
     }),
     effects((obj) => {
       // `display: none` takes the shape out; `visibility` is the meshes'
@@ -745,6 +856,7 @@ export function shape(ctx, element) {
       const current = root.get();
       const box = current ? getInteriorClipBox(asHtml(current)) : UNCLIPPED;
       clip.value.set(box.left, box.top, box.right, box.bottom);
+      currentClipBox = box;
     }),
     effects(() => {
       toMatrix3(chain.get().ctm, clipMatrix.value);
@@ -761,14 +873,16 @@ export function shape(ctx, element) {
               },
               paint: () => fillPaint.get(),
               hidden: () => hidden.get(),
+              hit: () => fillHit.get(),
               opacity: () =>
                 opacity.get() * parseNumber(readProperty(style(), element, "fill-opacity"), 1),
               renderOrder: renderOrderOf(0),
               clip,
               clipMatrix,
+              clipBox: () => currentClipBox,
             })
           : Nothing(),
-      )(observable(() => fillPaint.get() !== null)),
+      )(observable(() => fillPaint.get() !== null || fillHit.get())),
       flatMap((/** @type {boolean} */ stroked) =>
         stroked
           ? paintedMesh({
@@ -778,14 +892,16 @@ export function shape(ctx, element) {
               },
               paint: () => strokePaint.get(),
               hidden: () => hidden.get(),
+              hit: () => strokeHit.get(),
               opacity: () =>
                 opacity.get() * parseNumber(readProperty(style(), element, "stroke-opacity"), 1),
               renderOrder: renderOrderOf(1),
               clip,
               clipMatrix,
+              clipBox: () => currentClipBox,
             })
           : Nothing(),
-      )(observable(() => strokePaint.get() !== null)),
+      )(observable(() => strokePaint.get() !== null || strokeHit.get())),
     ),
   ]);
 }

@@ -111,6 +111,70 @@ export function paintEqual(a, b) {
 }
 
 /**
+ * Whether a `fill` or `stroke` paints anything, in the sense hit testing
+ * uses. Any paint but `none` counts. A `url(#…)` paint server counts though
+ * it is not drawn yet, and so does `transparent`, which is how a page makes
+ * an invisible shape clickable.
+ *
+ * @param {string} value
+ * @returns {boolean}
+ */
+export function isPainted(value) {
+  const trimmed = value.trim();
+  return trimmed !== "" && trimmed !== "none";
+}
+
+/**
+ * When a ray can hit one of a shape's two regions, the fill or the stroke.
+ *
+ * @typedef {object} HitRule
+ * @property {boolean} painted Only while the region's paint is not `none`.
+ * @property {boolean} visible Only while `visibility` shows the shape.
+ */
+
+/**
+ * What a shape's `pointer-events` lets a ray hit. Each region has a rule,
+ * or null when no ray hits it.
+ *
+ * @typedef {object} HitRegions
+ * @property {HitRule | null} fill
+ * @property {HitRule | null} stroke
+ */
+
+/** @type {Record<string, HitRegions>} */
+const HIT_REGIONS = (() => {
+  const painted = { painted: true, visible: false };
+  const visible = { painted: false, visible: true };
+  const visiblePainted = { painted: true, visible: true };
+  const always = { painted: false, visible: false };
+  return {
+    visiblePainted: { fill: visiblePainted, stroke: visiblePainted },
+    visibleFill: { fill: visible, stroke: null },
+    visibleStroke: { fill: null, stroke: visible },
+    visible: { fill: visible, stroke: visible },
+    painted: { fill: painted, stroke: painted },
+    fill: { fill: always, stroke: null },
+    stroke: { fill: null, stroke: always },
+    all: { fill: always, stroke: always },
+    none: { fill: null, stroke: null },
+  };
+})();
+
+/**
+ * `pointer-events` on a shape, as SVG defines it. `auto` and any value this
+ * does not know, `bounding-box` among them, read as `visiblePainted`, the
+ * initial value.
+ *
+ * @param {string} value
+ * @returns {HitRegions}
+ */
+export function parsePointerEvents(value) {
+  return Object.hasOwn(HIT_REGIONS, value.trim())
+    ? HIT_REGIONS[value.trim()]
+    : HIT_REGIONS.visiblePainted;
+}
+
+/**
  * @param {string} value
  * @returns {"nonzero" | "evenodd"}
  */

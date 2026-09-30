@@ -314,6 +314,18 @@ portal, so ordinary DOM-based UI (menus, HUDs, forms) can be composited
 directly into a 3D or WebXR scene and still receive pointer events routed
 through `interactions(ctx)`.
 
+An element is a ray target of its own when its computed `cursor` is
+`pointer`, the signal a page uses for "clickable", and its
+`pointer-events` is not `none`. A press on it arrives as
+`mousedown`, `mouseup` and `click` on the element, and the element carries
+`data-xr-hover` while the ray is on it and `data-xr-active` while it is held.
+Clickable elements nest, if only because `cursor` is inherited, and a press
+inside several of them goes where it goes on a page. The innermost one is the
+target, its DOM events are sent once and bubble from there, and every
+clickable element around it takes `data-xr-active` as well, as `:active`
+would. The ray event stops at the outermost of them, so nothing outside the
+panel hears a press the panel took.
+
 It does that without depending on `justdom`. What `dom()` takes is a
 `Mountable` — a tree that has not been put anywhere yet, exposing one method
 that swaps it into a span of sibling nodes — and that type is declared here
@@ -1572,11 +1584,43 @@ shader**, for the reason `svg/dash.js` gives, so a `stroke-dashoffset`
 animation rebuilds the stroke each frame — a few hundred vertices, which the
 marching ants in the showcase spend without noticing.
 
+A shape with `cursor: pointer` is a ray target of its own, by the rule a
+box follows. It forwards the ray to its element exactly as a box does:
+`mousedown`, `mouseup` and `click` for a press, `mousemove` while the ray
+moves over it, and `data-xr-hover` and `data-xr-active` on the element for
+a stylesheet to answer. A press that turns into a drag scrolls the list the
+`<svg>` sits in. `pointer-events` decides which of the fill and the stroke
+a ray can hit, with SVG's values: the default `visiblePainted` hits
+whatever is painted and visible, `none` lets the ray through to what is
+behind, `fill` and `stroke` pick one region, and `all` hits a region with
+no paint, which is drawn as nothing and hit all the same. The `<svg>`'s
+clip trims the hits as it trims the drawing, so a node scrolled out of
+view takes no press.
+
+```css
+.diagram .node {
+  cursor: pointer;
+}
+
+.diagram .node[data-xr-hover] {
+  fill: rgb(64, 204, 186); /* a colour write; the node keeps its draw order */
+}
+```
+
+`cursor` is inherited, so the shapes of an icon inside a `cursor: pointer`
+button are clickable too. A press on the icon is then a press on the
+`<path>`, which bubbles to the button in the DOM and holds the button as
+well, the way nested clickable elements always do (see *Projecting DOM into
+the scene*). Where the button should be the target itself, put
+`pointer-events: none` on the icon's `<svg>`, as a page would. Neither the
+`<svg>` nor its shapes are then ray targets of their own, whatever `cursor`
+they inherit, and a press on the icon is a press on the button.
+
 Not drawn yet: `<text>`, markers (so an arrowhead is a `<polygon>` of its
 own for now), `<use>` and `<symbol>`, gradients and patterns (a `url(#…)`
-paint reads as `none`), `clip-path`, `mask`, filters, `<image>`,
-`<foreignObject>`, `vector-effect`, and shapes as ray targets of their own —
-the `<svg>` with `cursor: pointer` on it is the button, as before.
+paint reads as `none`, though it still counts as painted for a ray),
+`clip-path`, `mask`, filters, `<image>`, `<foreignObject>` and
+`vector-effect`.
 [`docs/freedom-svg-plan.md`](../../docs/freedom-svg-plan.md) has the order
 they are coming in and why.
 

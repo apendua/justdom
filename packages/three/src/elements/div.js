@@ -19,7 +19,6 @@ import { contentImage, isImageElement } from "./image.js";
 import { createBlocker, coverBox } from "./blocker.js";
 import {
   getBorderBoxSize,
-  getComputedStyleCached,
   getLocalClipBox,
   getObjectPosition,
   getScrollOffset,
@@ -37,35 +36,11 @@ import { isScrollable, scrollDrags } from "./scroll.js";
 import { place, placeAndScale } from "./place.js";
 import { BoxBatchContext } from "./boxBatch.js";
 import { TextBatchContext } from "./textBatch.js";
-import { HapticsContext, isArrival } from "./haptics.js";
-
-/**
- * The group that carries an element's projected DOM children, one per box.
- *
- * Its whole purpose is scrolling: children are positioned in their parent's
- * *content* space — coordinates that a scroll does not change — and the
- * group is translated by minus the scroll offset, so a scroll is one
- * position write here instead of a re-measure of everything inside. The
- * portal attaches child objects through `getContentGroup`.
- *
- * @type {WeakMap<THREE.Object3D, THREE.Object3D>}
- */
-const contentGroups = new WeakMap();
+import { forwardPointerEvents, isClickable, isGone } from "./pointerForwarding.js";
+import { setContentGroup } from "./contentGroup.js";
 
 /** Scratch for composing a scroll onto a content group's matrix. */
 const scrollTranslation = new THREE.Matrix4();
-
-/**
- * Where a node's projected children belong under its object: the content
- * group for a box, the object itself for anything that has none (the
- * portal's own container).
- *
- * @param {THREE.Object3D} object
- * @returns {THREE.Object3D}
- */
-export function getContentGroup(object) {
-  return contentGroups.get(object) ?? object;
-}
 
 /**
  * Whether the panel these elements belong to is ready to be interacted with,
@@ -115,20 +90,6 @@ const ELEVATION_STEP = 8;
 const BLOCKER_OFFSET = 2;
 
 /**
- * Whether the element asks to be a ray target of its own. `cursor: pointer`
- * is the same signal the ordinary web uses to mark an element clickable, so
- * buttons opt in through their stylesheet with no extra attribute. Everything
- * else — cards, labels, layout wrappers — stays out of the raycast set; the
- * portal's blocker plane keeps the panel as a whole opaque to rays.
- *
- * @param {HTMLElement} element
- * @returns {boolean}
- */
-function isClickable(element) {
-  return getComputedStyleCached(element).cursor === "pointer";
-}
-
-/**
  * What a box hands to whatever else is drawn inside it: the properties it is
  * being drawn from — the same live object its own mesh reads, so a mark keeps
  * step with the surface it sits on — and where that content belongs in the
@@ -173,9 +134,10 @@ function isClickable(element) {
  *   are in user space, and this is its `viewBox`. The scroll offset is
  *   applied on top of it.
  * @property {() => void} [onPress] Told when a ray's press on this box has
- *   been delivered to the element as a click — for a control that has to do
- *   something the DOM will not do for it, such as a text field asking for a
- *   keyboard. After the click, so whatever the click's own handlers did is
+ *   been delivered as a click, to the element or to the clickable element
+ *   inside it that the ray met, which the click bubbles up from. It is for
+ *   a control that has to do something the DOM will not do for it, such as
+ *   a text field asking for a keyboard. After the click, so whatever the click's own handlers did is
  *   done by then; and only for a press that was a press, not the start of a
  *   scroll.
  * @property {EntityEffect<THREE.Object3D<XREventMap>>[]} [interactions] More
@@ -214,37 +176,11 @@ export function box(ctx, element, options = {}) {
   // content space; scrolling translates the group. See `getContentGroup`.
   const contentGroup = new THREE.Group();
   object.add(contentGroup);
-  contentGroups.set(object, contentGroup);
+  setContentGroup(object, contentGroup);
 
   const { makeInteractive, stopPropagation } = interactions(ctx);
   const drags = scrollDrags(ctx);
   const isPanelReady = PortalReadyContext.get(ctx);
-  /**
-   * What the hand feels on this element, if it is a control and the panel
-   * has haptics at all. The handlers below hand it the hand each event came
-   * from.
-   */
-  const haptics = HapticsContext.get(ctx);
-
-  /**
-   * The object of the control this element is part of: its own, unless
-   * its parent is clickable too, in which case the label is part of the
-   * button, and so on up the unbroken run of clickable ancestors. Each
-   * element step is two objects, the parent's content group and then the
-   * parent's own object, the way `scrollDrags.begin` walks. Asked once per
-   * arrival, off cached computed styles.
-   *
-   * @returns {THREE.Object3D}
-   */
-  const controlRoot = () => {
-    /** @type {THREE.Object3D} */
-    let root = object;
-    for (let el = element.parentElement; el && isClickable(el); el = el.parentElement) {
-      root = root.parent?.parent ?? root;
-    }
-    return root;
-  };
-
   /**
    * Whether this element wants to be a ray target, as its own signal so that
    * the group below is attached and detached only when the answer actually
@@ -417,108 +353,14 @@ export function box(ctx, element, options = {}) {
   });
 
   /**
-   * Whether a press on this element is a press on anything. A projected
-   * panel keeps a removed element's object in the scene, drawn as it was,
-   * until the update that removed it commits — so for those frames the
-   * quad is still there to hit, and the ray still lands on it. What must
-   * not follow is the click: the element is out of the document, the app
-   * has already let go of it, and a handler still hanging off it would run
-   * against a row the app considers gone. A press that lands on such an
-   * element is swallowed — stopped, so that it does not fall through to
-   * whatever is behind the row either — and the gesture is not begun.
-   *
-   * `isConnected` rather than anything reactive, because it is asked from
-   * an event handler, at the moment of the press, and the answer is a DOM
-   * fact rather than a dependency.
-   *
-   * @returns {boolean}
-   */
-  const isGone = () => !element.isConnected;
-
-  /**
    * Being a ray target, and forwarding what happens there back to the DOM.
-   * These belong together: an element that stops being clickable has to lose
-   * the handlers too, not just the registration. The interaction manager
-   * dispatches up the parent chain, so a listener left behind on a wrapper
-   * that is no longer clickable would still see events bubbling out of a
-   * button inside it and synthesise a second, spurious click on the wrapper.
    *
    * @type {EntityEffect<THREE.Object3D<XREventMap>>[]}
    */
   const interactivity = [
-    makeInteractive(() => isPanelReady() && shown.get()),
-    on("select", (e) => {
-      // A press that turned into a drag was the player scrolling the list
-      // this button sits in, not pressing the button — the same bargain a
-      // touchscreen strikes, and for the same reason: there is nowhere else
-      // to grab a list that is made of buttons.
-      if (isGone() || drags.didScroll(e.controller)) {
-        stopPropagation(e);
-        return;
-      }
-      const event = new MouseEvent("click", {
-        bubbles: true,
-      });
-      element.dispatchEvent(event);
-      onPress?.();
-      stopPropagation(e);
-    }),
-    on("selectstart", (e) => {
-      if (isGone()) {
-        stopPropagation(e);
-        return;
-      }
-      // Offered to the scroll gesture before anything else: a press over a
-      // list may become a drag, and only holding it will tell. Elements with
-      // no scrolling ancestor are declined and nothing changes for them.
-      drags.begin(e.controller, element, object);
-      const event = new MouseEvent("mousedown", {
-        bubbles: true,
-      });
-      element.dispatchEvent(event);
-      element.dataset.xrActive = "true";
-      haptics?.press(e.inputSource);
-      stopPropagation(e);
-    }),
-    on("selectend", (e) => {
-      if (isGone()) {
-        stopPropagation(e);
-        return;
-      }
-      drags.end(e.controller);
-      const event = new MouseEvent("mouseup", {
-        bubbles: true,
-      });
-      element.dispatchEvent(event);
-      delete element.dataset.xrActive;
-      haptics?.release(e.inputSource);
-      stopPropagation(e);
-    }),
-    on("pointermove", () => {
-      const event = new MouseEvent("mousemove", {
-        bubbles: false,
-      });
-      element.dispatchEvent(event);
-    }),
-    on("pointerenter", (e) => {
-      element.dataset.xrHover = "true";
-      // Once per arrival on this control. Not for an enter bubbling up from
-      // a target nested in this one, which plays its own; not for the ray
-      // moving between this element and something clickable inside it,
-      // which `isArrival` says is not an arrival at all; and not while the
-      // hand is scrolling a list, when the rows pass under a ray that is
-      // aimed at none of them, glide included.
-      if (
-        haptics &&
-        e.registeredTarget === object &&
-        !drags.scrolling(e.controller) &&
-        isArrival(controlRoot(), e.relatedTarget)
-      ) {
-        haptics.hover(e.inputSource);
-      }
-    }),
-    on("pointerleave", () => {
-      delete element.dataset.xrHover;
+    ...forwardPointerEvents(ctx, element, object, {
+      enabled: () => isPanelReady() && shown.get(),
+      onPress,
     }),
     ...ownInteractions,
   ];
@@ -542,19 +384,19 @@ export function box(ctx, element, options = {}) {
   const draggability = [
     makeInteractive(() => isPanelReady() && shown.get()),
     on("selectstart", (e) => {
-      if (!isGone()) {
+      if (!isGone(element)) {
         drags.begin(e.controller, element, object);
       }
       stopPropagation(e);
     }),
     on("selectend", (e) => {
-      if (!isGone()) {
+      if (!isGone(element)) {
         drags.end(e.controller);
       }
       stopPropagation(e);
     }),
     on("select", (e) => {
-      if (!isGone() && !drags.didScroll(e.controller)) {
+      if (!isGone(element) && !drags.didScroll(e.controller)) {
         element.dispatchEvent(new MouseEvent("click", { bubbles: true }));
       }
       stopPropagation(e);
@@ -566,20 +408,13 @@ export function box(ctx, element, options = {}) {
     // a card becomes clickable — so interactivity follows it rather than being
     // fixed at the moment the element was first projected into the scene.
     // A hidden element takes no clicks, and loses the handlers along with the
-    // registration for the reason given above `interactivity`: a visible
+    // registration, for the reason `forwardPointerEvents` gives. A visible
     // child's events still bubble up the object chain through this one.
     effects((obj) => {
       if (!clickable.get() || hidden()) {
         return;
       }
       useEffects(obj, interactivity);
-      // Losing the handlers means losing the `pointerleave` that would have
-      // cleared these, so an element that stops being clickable while the ray
-      // is on it would stay stuck in its hover or active styling.
-      onCleanup(() => {
-        delete element.dataset.xrHover;
-        delete element.dataset.xrActive;
-      });
     }),
     // A clickable list already carries the gesture through the handlers
     // above; this is for the ordinary case of a list that is only a list.

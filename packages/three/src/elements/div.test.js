@@ -6,7 +6,7 @@ import { createMirror, PORTAL_ATTRIBUTE } from "./mirror.js";
 import { div } from "./div.js";
 import { GRADIENT_LINEAR, rampAtlas } from "./gradient.js";
 import { createHaptics, HapticsContext } from "./haptics.js";
-import { getContentGroup } from "./div.js";
+import { getContentGroup } from "./contentGroup.js";
 import { scrollDrags } from "./scroll.js";
 import { describeScroller } from "../test/scroller.js";
 import { recordingSource } from "../test/rumble.js";
@@ -182,6 +182,19 @@ describe("div interactivity", () => {
     // of those would pull the listeners out from under the events they handle.
     restyle("pointer");
     restyle("pointer");
+    assert.deepEqual(registrations, ["add"]);
+
+    subscription.unsubscribe();
+  });
+
+  test("pointer-events: none takes an element out of the rays, cursor or not", () => {
+    // What a browser computes for an icon's `<svg>` in a button: the
+    // button's `cursor: pointer` inherited, and `pointer-events: none` set
+    // so that the button, and not the icon, is what a press lands on.
+    const { registrations, restyleWith, subscription } = setup("pointer", "pointer-events: none");
+    assert.deepEqual(registrations, []);
+
+    restyleWith("cursor: pointer");
     assert.deepEqual(registrations, ["add"]);
 
     subscription.unsubscribe();

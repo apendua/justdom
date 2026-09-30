@@ -1,12 +1,14 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  isPainted,
   parseDashArray,
   parseFillRule,
   parseLength,
   parseLineCap,
   parseLineJoin,
   parsePaint,
+  parsePointerEvents,
   readProperty,
   readShapeMarkup,
 } from "./style.js";
@@ -81,6 +83,31 @@ describe("svg style reading", () => {
     assert.equal(parseLineCap("anything"), "butt");
     assert.equal(parseLineJoin("bevel"), "bevel");
     assert.equal(parseLineJoin("miter-clip"), "miter");
+  });
+
+  test("isPainted counts every paint but none, drawn or not", () => {
+    assert.equal(isPainted("rgb(255, 0, 0)"), true);
+    assert.equal(isPainted("transparent"), true);
+    assert.equal(isPainted("url(#gradient)"), true);
+    assert.equal(isPainted("none"), false);
+    assert.equal(isPainted(""), false);
+  });
+
+  test("parsePointerEvents gives each region its rule, as SVG does", () => {
+    const always = { painted: false, visible: false };
+    const initial = parsePointerEvents("visiblePainted");
+    assert.deepEqual(initial.fill, { painted: true, visible: true });
+    assert.equal(parsePointerEvents("auto"), initial);
+    assert.equal(parsePointerEvents("bounding-box"), initial);
+    assert.equal(parsePointerEvents("toString"), initial, "not read off the prototype");
+    assert.deepEqual(parsePointerEvents("none"), { fill: null, stroke: null });
+    assert.deepEqual(parsePointerEvents("stroke"), { fill: null, stroke: always });
+    assert.deepEqual(parsePointerEvents(" all "), { fill: always, stroke: always });
+    assert.deepEqual(parsePointerEvents("visibleFill"), {
+      fill: { painted: false, visible: true },
+      stroke: null,
+    });
+    assert.deepEqual(parsePointerEvents("painted").stroke, { painted: true, visible: false });
   });
 
   describe("readShapeMarkup", () => {

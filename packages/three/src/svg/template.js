@@ -368,11 +368,18 @@ export function drawUse(ctx, element, instance = null) {
   const style = () => getComputedStyleCached(element);
   const own = new Derived(() => localMatrix(element), { isEqual: matrixEqual });
   const chain = new Derived(() => readChain(element, instance), { isEqual: chainEqual });
+  const adopt = PortalTemplatesContext.get(ctx);
   const referenced = new Derived(() => {
     // Read for the invalidation: a `<use>` restyled is a reason to look
     // again.
     style();
-    return findReferenced(element);
+    const target = findReferenced(element);
+    // Before anything reads it, as `markers` does, for a `<symbol>` in a
+    // `<defs>` the portal's walk has not reached yet.
+    if (target) {
+      adopt(target);
+    }
+    return target;
   });
 
   return just(new THREE.Object3D(), [

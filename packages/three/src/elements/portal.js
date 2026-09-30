@@ -850,9 +850,12 @@ function buildPortal(ctx, ownOptions = {}) {
     node.childNodes.forEach(adoptTemplate);
   }
   // Only what is inside this panel: a marker another panel or the page
-  // owns is not this mirror's to follow, and its own portal adopts it.
+  // owns is not this mirror's to follow, and its own portal adopts it. And
+  // only what the portal has not built: a `<use>` may name a `<g>` drawn
+  // where it stands, and a node taken for a template has children the
+  // portal does not build.
   ctx = PortalTemplatesContext.set(ctx, (node) => {
-    if (containerElement.contains(node)) {
+    if (containerElement.contains(node) && !nodeToObject.has(node)) {
       adoptTemplate(node);
     }
   });

@@ -1631,8 +1631,9 @@ mirror sees only the original element, so a property counts as inherited
 when nothing between the copied element and the top of the copy changes
 it; an element that sets a property to exactly the value it would have
 inherited reads as not setting it. An edit inside the symbol reaches every
-copy. A copy is drawn where its `<use>` stands in the draw order, and is
-not a ray target. An `href` changed after mounting is not followed,
+copy, wherever in the document the symbol is. A copy is drawn where its
+`<use>` stands in the draw order, and is not a ray target. A `<use>` whose
+copy would draw it again stops there. An `href` changed after mounting is not followed,
 because the portal's observer does not watch that attribute.
 
 One print of the measuring tape. **Dashes are geometry, not a

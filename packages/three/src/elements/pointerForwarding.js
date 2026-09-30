@@ -1,5 +1,6 @@
 import { on, onCleanup } from "@apendua/signal";
 import { interactions } from "../interactions.js";
+import { getParentObject } from "./contentGroup.js";
 import { HapticsContext, isArrival } from "./haptics.js";
 import { getComputedStyleCached } from "./mirror.js";
 import { scrollDrags } from "./scroll.js";
@@ -31,6 +32,26 @@ import { scrollDrags } from "./scroll.js";
 export function isClickable(element) {
   const style = getComputedStyleCached(element);
   return style.cursor === "pointer" && style.getPropertyValue("pointer-events") !== "none";
+}
+
+/**
+ * The object of the control an element is part of: its own, unless its
+ * parent is clickable too, in which case the label is part of the button,
+ * and so on up the unbroken run of clickable ancestors. The walk goes one
+ * element at a time through `getParentObject`, as the scroll gesture does,
+ * so it is right under an SVG `<g>` as well as under a box. Asked once per
+ * arrival, off cached computed styles.
+ *
+ * @param {HTMLElement} element
+ * @param {Object3D} object The element's object.
+ * @returns {Object3D}
+ */
+export function getControlRoot(element, object) {
+  let root = object;
+  for (let el = element.parentElement; el && isClickable(el); el = el.parentElement) {
+    root = getParentObject(root) ?? root;
+  }
+  return root;
 }
 
 /**
@@ -100,25 +121,6 @@ export function forwardPointerEvents(ctx, element, object, { enabled, onPress })
    * from.
    */
   const haptics = HapticsContext.get(ctx);
-
-  /**
-   * The object of the control this element is part of: its own, unless
-   * its parent is clickable too, in which case the label is part of the
-   * button, and so on up the unbroken run of clickable ancestors. Each
-   * element step is two objects, the parent's content group and then the
-   * parent's own object, the way `scrollDrags.begin` walks. Asked once per
-   * arrival, off cached computed styles.
-   *
-   * @returns {Object3D}
-   */
-  const controlRoot = () => {
-    /** @type {Object3D} */
-    let root = object;
-    for (let el = element.parentElement; el && isClickable(el); el = el.parentElement) {
-      root = root.parent?.parent ?? root;
-    }
-    return root;
-  };
 
   return [
     makeInteractive(enabled),
@@ -193,7 +195,7 @@ export function forwardPointerEvents(ctx, element, object, { enabled, onPress })
         haptics &&
         e.registeredTarget === object &&
         !drags.scrolling(e.controller) &&
-        isArrival(controlRoot(), e.relatedTarget)
+        isArrival(getControlRoot(element, object), e.relatedTarget)
       ) {
         haptics.hover(e.inputSource);
       }

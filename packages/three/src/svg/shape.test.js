@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import * as THREE from "three";
 import { InteractionContext, intersectVisible } from "../interactions.js";
 import { createMirror } from "../elements/mirror.js";
+import { setContentGroup } from "../elements/contentGroup.js";
+import { getControlRoot } from "../elements/pointerForwarding.js";
 import { group, shape } from "./shape.js";
 
 /**
@@ -799,6 +801,38 @@ describe("svg shape as a ray target", () => {
     s.setAttribute("style", "cursor: pointer; visibility: hidden");
     assert.deepEqual(registrations, ["add", "remove"]);
     s.teardown();
+  });
+
+  test("a shape's control is found through a <g>, which has no content group", () => {
+    // What decides whether a ray moving onto the shape arrives on a new
+    // control: the unbroken run of clickable elements above it, as objects.
+    // jsdom inherits no `cursor`, so each element says it for itself.
+    const root = document.createElementNS(SVG_NS, "svg");
+    const g = document.createElementNS(SVG_NS, "g");
+    const rect = document.createElementNS(SVG_NS, "rect");
+    for (const element of [root, g, rect]) {
+      element.setAttribute("style", "cursor: pointer");
+    }
+    root.appendChild(g);
+    g.appendChild(rect);
+    document.body.appendChild(root);
+
+    // The `<svg>` is a box with a content group; the `<g>` is an object the
+    // `<rect>` hangs straight off.
+    const rootObject = new THREE.Object3D();
+    const content = new THREE.Object3D();
+    rootObject.add(content);
+    setContentGroup(rootObject, content);
+    const gObject = new THREE.Object3D();
+    content.add(gObject);
+    const rectObject = new THREE.Object3D();
+    gObject.add(rectObject);
+
+    assert.equal(
+      getControlRoot(/** @type {HTMLElement} */ (/** @type {Element} */ (rect)), rectObject),
+      rootObject,
+    );
+    root.remove();
   });
 
   test("a press on a shape reaches its element as a box's does", () => {

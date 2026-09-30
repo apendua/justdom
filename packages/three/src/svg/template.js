@@ -32,10 +32,11 @@ import {
   paintSlot,
   readChain,
   readDrawnProperty,
+  viewportSize,
   shape,
   SHAPE_TAGS,
 } from "./shape.js";
-import { clipsViewport, parseLength, readProperty } from "./style.js";
+import { clipsViewport, parseLengthIn, readProperty } from "./style.js";
 
 /**
  * Templates: SVG content defined in one place and drawn in others. A
@@ -345,9 +346,10 @@ export function findReferenced(use) {
 
 /**
  * The viewport size a `<use>` gives a `<symbol>`: its own `width` and
- * `height`, or the symbol's, or all of the nearest viewport's `viewBox`,
- * which is what the initial `100%` comes to in user units. Null when none
- * of them says, and the symbol's content is drawn in its own units.
+ * `height`, or the symbol's, or the whole of the nearest viewport, which is
+ * what the initial `100%` comes to. A percentage is of that viewport too.
+ * Null when none of them says, and the symbol's content is drawn in its own
+ * units.
  *
  * @param {Element} use
  * @param {Element} symbol
@@ -355,20 +357,20 @@ export function findReferenced(use) {
  */
 function symbolViewport(use, symbol) {
   const style = getComputedStyleCached(use);
+  const viewport = viewportSize(use);
   /**
    * @param {"width" | "height"} name
    */
   const size = (name) => {
-    const own = parseLength(readProperty(style, use, name), Number.NaN);
+    const own = parseLengthIn(readProperty(style, use, name), viewport?.[name], Number.NaN);
     if (!Number.isNaN(own)) {
       return own;
     }
-    const symbols = parseLength(symbol.getAttribute(name) ?? "", Number.NaN);
+    const symbols = parseLengthIn(symbol.getAttribute(name) ?? "", viewport?.[name], Number.NaN);
     if (!Number.isNaN(symbols)) {
       return symbols;
     }
-    const viewBox = nearestViewBox(use);
-    return viewBox ? viewBox[name] : Number.NaN;
+    return viewport ? viewport[name] : Number.NaN;
   };
   const width = size("width");
   const height = size("height");
@@ -376,16 +378,19 @@ function symbolViewport(use, symbol) {
 }
 
 /**
- * @param {Element} element
- * @returns {import('./geometry.js').ViewBox | null}
+ * Where a `<use>` puts its copy: its `x` and `y`, a percentage being of the
+ * viewport it stands in.
+ *
+ * @param {Element} use
+ * @returns {[number, number]}
  */
-function nearestViewBox(element) {
-  for (let current = element.parentElement; current; current = current.parentElement) {
-    if (current.localName === "svg" && isSvgElement(current)) {
-      return parseViewBox(current.getAttribute("viewBox"));
-    }
-  }
-  return null;
+function useOrigin(use) {
+  const style = getComputedStyleCached(use);
+  const viewport = viewportSize(use);
+  return [
+    parseLengthIn(readProperty(style, use, "x"), viewport?.width, 0),
+    parseLengthIn(readProperty(style, use, "y"), viewport?.height, 0),
+  ];
 }
 
 /**
@@ -435,9 +440,7 @@ export function drawUse(ctx, element, instance = null) {
       const isSymbol = target.localName === "symbol";
       const placement = new Derived(
         () => {
-          const current = style();
-          const x = parseLength(readProperty(current, element, "x"), 0);
-          const y = parseLength(readProperty(current, element, "y"), 0);
+          const [x, y] = useOrigin(element);
           const moved = translation(x, y);
           if (!isSymbol) {
             return moved;
@@ -474,9 +477,7 @@ export function drawUse(ctx, element, instance = null) {
           if (!size) {
             return null;
           }
-          const current = style();
-          const x = parseLength(readProperty(current, element, "x"), 0);
-          const y = parseLength(readProperty(current, element, "y"), 0);
+          const [x, y] = useOrigin(element);
           return { left: x, top: y, right: x + size.width, bottom: y + size.height };
         },
         { isEqual: rectEqual },

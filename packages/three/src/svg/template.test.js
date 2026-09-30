@@ -309,6 +309,19 @@ describe("use", () => {
     s.teardown();
   });
 
+  test("a percentage size on the use is of the viewport it stands in", () => {
+    const symbol = svg("symbol", { id: "use-symbol-percent", viewBox: "0 0 10 10" }, [
+      svg("rect", { width: "10", height: "10", fill: "red" }),
+    ]);
+    const use = svg("use", { href: "#use-symbol-percent", x: "20%", width: "40%", height: "80%" });
+    const s = scene([svg("defs", {}, [symbol]), use], [use]);
+    const [mesh] = meshesUnder(s.objects[0]);
+    // 40% of 50 by 80% of 25 is 20 square, starting at 20% of 50: (10, 10)
+    // in the symbol is (30, 20) in user space, twice that in px.
+    assert.deepEqual(toRoot(mesh, 10, 10), [60, 40]);
+    s.teardown();
+  });
+
   test("the copy inherits the use's paint where the symbol sets none", () => {
     const bare = svg("path", { d: "M0 0 L5 0 L5 5 z" });
     const own = svg("path", { d: "M0 0 L5 0 L5 5 z", fill: "blue" });

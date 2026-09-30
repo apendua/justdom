@@ -315,7 +315,8 @@ directly into a 3D or WebXR scene and still receive pointer events routed
 through `interactions(ctx)`.
 
 An element is a ray target of its own when its computed `cursor` is
-`pointer`, the signal a page uses for "clickable", and its
+`pointer`, the signal a page uses for "clickable", or when it is
+`draggable="true"` (see **Dragging and dropping** below), and its
 `pointer-events` is not `none`. A press on it arrives as
 `mousedown`, `mouseup` and `click` on the element, and the element carries
 `data-xr-hover` while the ray is on it and `data-xr-active` while it is held.
@@ -662,14 +663,98 @@ clipping catching up over the next several, under a hand that is still
 dragging. An interaction lands whole in the frame that carries it; deferral
 is for content changes, which nobody's hand is resting on.
 
+### Dragging and dropping
+
+A page that sorts a list or moves cards between columns with the browser's
+drag and drop works in a panel unchanged. The panel sends the same events
+the browser would, in the same order, to the same elements, and the page's
+handlers do the rest:
+
+```html
+<div class="column">
+  <div class="card" draggable="true">…</div>
+</div>
+```
+
+```js
+card.addEventListener("dragstart", (event) => {
+  event.dataTransfer.setData("text/plain", card.id);
+  event.dataTransfer.effectAllowed = "move";
+});
+column.addEventListener("dragover", (event) => {
+  event.preventDefault(); // this column takes drops
+  event.dataTransfer.dropEffect = "move";
+});
+column.addEventListener("drop", (event) => {
+  event.preventDefault();
+  const id = event.dataTransfer.getData("text/plain");
+  column.append(document.getElementById(id));
+});
+```
+
+The gesture is a mouse drag done with the trigger. Closing it on a
+`draggable="true"` element, or on anything inside one, is a `mousedown`.
+While the hand has moved less than the scroll gesture's few px the press is
+still a press, and letting go is a click. Past that the page gets
+`dragstart` on the draggable element. After it, once a frame, the source
+gets `drag` and the element under the ray gets `dragover`, with `dragenter`
+and `dragleave` as the ray moves from one element to the next. Opening the
+trigger sends `drop` to the element under the ray, if its last `dragover`
+was cancelled, and `dragleave` to it otherwise. `dragend` goes to the
+source either way. A drag sends no `mouseup` and no `click`.
+
+The rules are the browser's:
+
+- Cancelling `mousedown` stops the press from becoming a drag, and cancelling
+  `dragstart` leaves an ordinary press that ends in a click.
+- An element takes a drop only by cancelling `dragover`. Its `dropEffect`
+  then has to be one the source's `effectAllowed` allows, or the drop is
+  refused. `dragend` carries the operation that happened in its
+  `dropEffect`, `"none"` for a drop nobody took.
+- `dataTransfer` is writable in `dragstart` only. During the drag a handler
+  sees `types` but `getData` returns `""`, and `drop` reads the data.
+- The element under the ray can be any element in the panel, not only a ray
+  target. It is found the way a page hit-tests: later siblings are over
+  earlier ones, children are over their parents, and an element with
+  `pointer-events: none` or hidden by `visibility` lets the ray through to
+  what is behind it. Nothing is found where an overflow-clipping ancestor
+  cuts an element off.
+- The events carry `clientX` and `clientY`: the point under the ray, mapped
+  back onto the page's own layout. A list that compares them with a row's
+  `getBoundingClientRect()` to decide whether a card goes above or below it
+  gets the answer it gets under a mouse.
+- `:hover` does not change under a drag. From a press on a draggable
+  element until the trigger opens, the elements the ray crosses take no
+  `data-xr-hover` and hear no `mousemove`.
+
+A drag can end on another panel in the scene, since every panel answers
+what is under the ray in its own px. It can also end on nothing: a ray on
+something in the scene that is not a panel, or on nothing at all, is over no
+element, and letting go there drops nothing. A drag whose panel is taken
+down before the trigger opens is cancelled, with a `dragleave` and a
+`dragend` whose `dropEffect` is `"none"`.
+
+While the drag is under way a translucent card the size of the source, or
+of what `setDragImage` was given, follows the ray in the plane of the panel
+the drag started on. The ghost is an outline, not a picture of the element
+as a browser draws it.
+
+Three things differ from a browser. Only `draggable="true"` makes an
+element draggable. Images and links are draggable on a page without saying
+so, but what a browser drags out of them is a URL for another application,
+and counting them would take scrolling away from every list of links.
+`dataTransfer.files` is always empty and there is no `dataTransfer.items`,
+since nothing is ever dragged in from outside the page. And a drag does not
+scroll a list it is held near the edge of.
+
 ### Haptics
 
 A button on a page has a click to say it was pressed; a projected one is a
 quad at the end of a ray, and the hand holding the controller can be told.
-Every control in a panel, which is every element with `cursor: pointer`,
-the rule that makes one a ray target, pulses the controller's motors when
-the trigger closes on it. Nothing is marked: a panel with buttons in it is
-felt, and so is the keyboard.
+Every control in a panel, which is every element the ray-target rule
+covers (`cursor: pointer` or `draggable="true"`), pulses the controller's
+motors when the trigger closes on it. Nothing is marked: a panel with
+buttons in it is felt, and so is the keyboard.
 
 A pulse when the ray arrives on a control is there too, and off unless a
 panel asks for it. A press is always worth telling the hand about. A hover
@@ -1369,7 +1454,10 @@ that travels more than a few px is a scroll rather than a press, so pulling a
 list made of buttons does not also press the one you grabbed — the same
 bargain a touchscreen strikes; below that threshold the press is delivered as
 an ordinary click. There is nothing to opt into: a list becomes draggable the
-moment it overflows, and stops being so when it no longer does.
+moment it overflows, and stops being so when it no longer does. A press on a
+`draggable="true"` row is the exception. It becomes a drag and drop, not a
+scroll, as it does under a mouse, so a list made only of draggable rows is
+scrolled by its gaps and its padding.
 
 For a scrollbar's kind of control — visible, precise, resting — there is
 `scrollable(props)` in [`@apendua/justui`](../justui): arrows, a track and a

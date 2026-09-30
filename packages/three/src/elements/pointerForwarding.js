@@ -1,6 +1,7 @@
 import { on, onCleanup } from "@apendua/signal";
 import { interactions } from "../interactions.js";
 import { getParentObject } from "./contentGroup.js";
+import { dragAndDrop, isDragSource } from "./dragAndDrop.js";
 import { HapticsContext, isArrival } from "./haptics.js";
 import { getComputedStyleCached } from "./mirror.js";
 import { scrollDrags } from "./scroll.js";
@@ -32,6 +33,19 @@ import { scrollDrags } from "./scroll.js";
 export function isClickable(element) {
   const style = getComputedStyleCached(element);
   return style.cursor === "pointer" && style.getPropertyValue("pointer-events") !== "none";
+}
+
+/**
+ * Whether the element is a ray target of its own: something to click, or
+ * something to pick up. A `draggable="true"` card is often styled
+ * `cursor: grab` rather than `pointer`, and it has to be pressable to be
+ * dragged.
+ *
+ * @param {HTMLElement} element
+ * @returns {boolean}
+ */
+export function isRayTarget(element) {
+  return isClickable(element) || isDragSource(element);
 }
 
 /**
@@ -125,7 +139,10 @@ function hasForwardingAncestor(object) {
  * `data-xr-hover`, and while it is held, `data-xr-active`. A stylesheet
  * answers those flags where a page would use `:hover` and `:active`.
  * Where the panel has haptics, the hand feels a press and its release, and
- * an arrival on a control where the panel asks for one.
+ * an arrival on a control where the panel asks for one. A press on
+ * something draggable that the hand carries away is a drag and drop
+ * instead, and its release is a `drop` and a `dragend` rather than a
+ * `mouseup` and a `click` (see `dragAndDrop.js`).
  *
  * Boxes and SVG shapes both forward rays through this function, so a
  * panel's stylesheet and its click handlers see the same events whichever
@@ -158,6 +175,7 @@ function hasForwardingAncestor(object) {
 export function forwardPointerEvents(ctx, element, object, { enabled, onPress }) {
   const { makeInteractive, stopPropagation } = interactions(ctx);
   const drags = scrollDrags(ctx);
+  const dnd = dragAndDrop(ctx);
   /**
    * What the hand feels on this element, if it is a control and the panel
    * has haptics at all. The handlers below hand it the hand each event came
@@ -208,7 +226,9 @@ export function forwardPointerEvents(ctx, element, object, { enabled, onPress })
       // this button sits in, not pressing the button — the same bargain a
       // touchscreen strikes, and for the same reason: there is nowhere else
       // to grab a list that is made of buttons.
-      if (isGone(element) || drags.didScroll(e.controller)) {
+      // A press that became a drag and drop is no click either, as a mouse
+      // drag is not.
+      if (isGone(element) || drags.didScroll(e.controller) || dnd.didDrag(e.controller)) {
         stopPropagation(e);
         return;
       }
@@ -224,13 +244,20 @@ export function forwardPointerEvents(ctx, element, object, { enabled, onPress })
         return;
       }
       deliverOnce(e, () => {
-        // Offered to the scroll gesture before anything else: a press over
-        // a list may become a drag, and only holding it will tell. Elements
-        // with no scrolling ancestor are declined and nothing changes for
-        // them. Once, by the element the press landed on, since a second
+        // Cancelable, as a real one is: a page that cancels its `mousedown`
+        // is saying that nothing is to be dragged from here.
+        const pressed = element.dispatchEvent(
+          new MouseEvent("mousedown", { bubbles: true, cancelable: true }),
+        );
+        // A press on something draggable may become a drag and drop, and
+        // otherwise a press over a list may become a scroll; only holding
+        // it will tell. The page's own gesture comes first, as it does
+        // under a mouse, where dragging a row drags the row and not the
+        // list. Once, by the element the press landed on, since a second
         // `begin` for the same hand would start the gesture over.
-        drags.begin(e.controller, element, object);
-        element.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+        if (!(pressed && dnd.begin(e.controller, element, object))) {
+          drags.begin(e.controller, element, object);
+        }
         // Felt once, however many clickable elements the press holds.
         haptics?.press(e.inputSource);
       });
@@ -254,18 +281,32 @@ export function forwardPointerEvents(ctx, element, object, { enabled, onPress })
       }
       deliverOnce(e, () => {
         drags.end(e.controller);
-        element.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+        // A drag's release is its `drop` and its `dragend`, which the drag
+        // sends from the controller's own `selectend`.
+        if (!dnd.didDrag(e.controller)) {
+          element.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+        }
         haptics?.release(e.inputSource);
       });
       passOn(e);
     }),
-    on("pointermove", () => {
+    on("pointermove", (e) => {
+      if (dnd.holding(e.controller)) {
+        return;
+      }
       const event = new MouseEvent("mousemove", {
         bubbles: false,
       });
       element.dispatchEvent(event);
     }),
     on("pointerenter", (e) => {
+      // Nothing is hovered under a drag, as `:hover` holds still under one
+      // on a page; the targets the drag passes over hear `dragenter`. From
+      // the press, since the ray has already moved in the frame the press
+      // becomes a drag.
+      if (dnd.holding(e.controller)) {
+        return;
+      }
       element.dataset.xrHover = "true";
       // Once per arrival on this control. Not for an enter bubbling up from
       // a target nested in this one, which plays its own; not for the ray

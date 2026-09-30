@@ -349,6 +349,63 @@ describe("svg image", () => {
     });
   });
 
+  test("a percentage size follows a new viewBox", () => {
+    withLoadedPictures(fakeTexture(10, 10), () => {
+      const s = setup(
+        { href: PICTURE, width: "50%", height: "100%", preserveAspectRatio: "none" },
+        { viewBox: "0 0 10 5" },
+      );
+      assert.deepEqual(bounds(s.mesh), [0, 0, 5, 5]);
+      s.root.setAttribute("viewBox", "0 0 20 10");
+      s.mirror.attributeChanged(s.root);
+      assert.deepEqual(bounds(s.mesh), [0, 0, 10, 10]);
+      s.teardown();
+    });
+  });
+
+  test("a percentage inside a nested svg of auto size is of the viewport around it", () => {
+    withLoadedPictures(fakeTexture(10, 10), () => {
+      const root = document.createElementNS(SVG_NS, "svg");
+      root.setAttribute("viewBox", "0 0 10 5");
+      root.getBoundingClientRect = () =>
+        /** @type {DOMRect} */ ({
+          left: 0,
+          top: 0,
+          right: 100,
+          bottom: 50,
+          width: 100,
+          height: 50,
+        });
+      const nested = document.createElementNS(SVG_NS, "svg");
+      const element = document.createElementNS(SVG_NS, "image");
+      for (const [name, value] of Object.entries({
+        href: PICTURE,
+        width: "50%",
+        height: "100%",
+        preserveAspectRatio: "none",
+      })) {
+        element.setAttribute(name, value);
+      }
+      nested.appendChild(element);
+      root.appendChild(nested);
+      document.body.appendChild(root);
+      const mirror = createMirror();
+      for (const node of [root, nested, element]) {
+        mirror.adopt(node);
+      }
+      /** @type {Object3D | undefined} */
+      let object;
+      const subscription = image({}, element).subscribe((value) => {
+        object = value;
+      });
+      assert.ok(object);
+      // The nested svg names no size, so it is the whole 10 by 5.
+      assert.deepEqual(bounds(/** @type {Mesh} */ (object.children[0])), [0, 0, 5, 5]);
+      subscription.unsubscribe();
+      root.remove();
+    });
+  });
+
   test("a picture that arrives after the node is built is faded like one that was there", () => {
     const texture = fakeTexture(10, 10);
     withDeferredPictures(texture, (arrive) => {

@@ -17,6 +17,7 @@ import { forwardPointerEvents, isClickable } from "../elements/pointerForwarding
 import { place } from "../elements/place.js";
 import { getContentRenderOrder } from "../elements/elevation.js";
 import {
+  getAttributeCached,
   getBorderBoxSize,
   getChildNodes,
   getComputedStyleCached,
@@ -235,7 +236,7 @@ function chainEqual(a, b) {
 function nearestViewBoxOrigin(element) {
   for (let current = element.parentElement; current; current = current.parentElement) {
     if (current.localName === "svg" && current.namespaceURI === SVG_NAMESPACE) {
-      const viewBox = parseViewBox(current.getAttribute("viewBox"));
+      const viewBox = parseViewBox(getAttributeCached(current, "viewBox"));
       return viewBox ? { x: viewBox.x, y: viewBox.y } : { x: 0, y: 0 };
     }
   }
@@ -264,8 +265,8 @@ export function rootMatrix(root) {
   const height =
     size.height - borderTop - px(style.borderBottomWidth) - paddingTop - px(style.paddingBottom);
   const viewport = viewportMatrix(
-    parseViewBox(root.getAttribute("viewBox")),
-    parsePreserveAspectRatio(root.getAttribute("preserveAspectRatio")),
+    parseViewBox(getAttributeCached(root, "viewBox")),
+    parsePreserveAspectRatio(getAttributeCached(root, "preserveAspectRatio")),
     width,
     height,
   );
@@ -291,8 +292,8 @@ export function localMatrix(element) {
     const width = parseLength(readProperty(style, element, "width"), 0);
     const height = parseLength(readProperty(style, element, "height"), 0);
     const viewport = viewportMatrix(
-      parseViewBox(element.getAttribute("viewBox")),
-      parsePreserveAspectRatio(element.getAttribute("preserveAspectRatio")),
+      parseViewBox(getAttributeCached(element, "viewBox")),
+      parsePreserveAspectRatio(getAttributeCached(element, "preserveAspectRatio")),
       width,
       height,
     );

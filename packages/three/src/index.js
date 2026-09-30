@@ -33,6 +33,7 @@ export {
 } from "./carry.js";
 export { createPortal, getPortalRoot } from "./elements/portal.js";
 export { isTextInput, typeIntoInput } from "./elements/typing.js";
+export { PREVIEW_ATTRIBUTE } from "./elements/keyboardPreview.js";
 export { PortalPluginsContext } from "./elements/plugins.js";
 export { PanelOptionsContext, withPanelOptions } from "./elements/panelOptions.js";
 export { box, getContentGroup } from "./elements/div.js";
@@ -100,6 +101,10 @@ export { installCrashPanel, CRASH_PANEL_ID } from "./crash.js";
 
 /**
  * @typedef {import('./elements/portalKeyboard.js').KeyboardPlacement} KeyboardPlacement
+ */
+
+/**
+ * @typedef {import('./elements/keyboardPreview.js').KeyboardPreviewOptions} KeyboardPreviewOptions
  */
 
 /**

@@ -59,7 +59,7 @@ export function isTextInput(node) {
 /**
  * The types whose selection a script may read and write. `number` and the
  * others outside this set throw on `setSelectionRange`, so on those the
- * caret is always the end of the value.
+ * caret is kept here instead (see `carets`).
  *
  * @type {ReadonlySet<string>}
  */
@@ -135,11 +135,30 @@ export function discardDraft(input) {
 }
 
 /**
+ * Where the caret is in a field whose selection a script cannot touch, for
+ * as long as it is somewhere other than the end.
+ *
+ * `number` and `email` keep a caret like any field, but only the browser's
+ * own editor can see it: `selectionStart` reads null and
+ * `setSelectionRange` throws. A board of boxes is not that editor, so a
+ * caret placed in one of them — by a ray, on the field or on the keyboard's
+ * preview of it — is kept here, and typing goes in where it says. `shown`
+ * is what the field showed when the caret was put there, which is how a
+ * caret the value has since moved out from under — an app clearing the
+ * field — is known to be stale: the caret goes back to the end, where a
+ * value written by script leaves it on a page.
+ *
+ * @type {WeakMap<HTMLInputElement, { offset: number, shown: string }>}
+ */
+const carets = new WeakMap();
+
+/**
  * Where the caret is, as the character offset after it. The end of the
- * value for a field whose selection cannot be read, and for one whose
- * selection has never been placed, which reports the end anyway once its
- * value has been set from script — the only way a value gets into a field
- * nobody has typed into.
+ * value for a field whose selection has never been placed, which reports
+ * the end anyway once its value has been set from script — the only way a
+ * value gets into a field nobody has typed into. For a field whose
+ * selection cannot be read, the end unless the caret was put somewhere
+ * else with `setCaretOffset`.
  *
  * @param {HTMLInputElement} input
  * @returns {number}
@@ -151,17 +170,57 @@ export function getCaretOffset(input) {
       return end;
     }
   }
-  return getShownValue(input).length;
+  const shown = getShownValue(input);
+  const caret = carets.get(input);
+  if (caret && caret.shown === shown) {
+    return Math.min(caret.offset, shown.length);
+  }
+  carets.delete(input);
+  return shown.length;
+}
+
+/**
+ * Put the caret at `offset` characters into what the field shows, clamped
+ * to it: through the selection where a script may write one, and kept
+ * alongside the field where it may not (see `carets`), so that the next key
+ * goes in there either way.
+ *
+ * Says nothing to anyone. The mirror hears of a moved caret the way it
+ * hears of a moved value — `touchValue` in textInput.js, which the callers
+ * that draw one call.
+ *
+ * @param {HTMLInputElement} input
+ * @param {number} offset
+ * @returns {void}
+ */
+export function setCaretOffset(input, offset) {
+  const shown = getShownValue(input);
+  const at = Math.max(0, Math.min(Math.round(offset), shown.length));
+  if (SELECTABLE_TYPES.has(input.type)) {
+    try {
+      input.setSelectionRange(at, at);
+      return;
+    } catch {
+      // A type the browser will not place a caret in after all: kept here
+      // instead, as for the ones it says so of up front.
+    }
+  }
+  if (at === shown.length) {
+    carets.delete(input);
+  } else {
+    carets.set(input, { offset: at, shown });
+  }
 }
 
 /**
  * Put the caret at the end of the value, as tapping a field on a phone
- * does. A no-op for a field whose selection cannot be written.
+ * does.
  *
  * @param {HTMLInputElement} input
  * @returns {void}
  */
 export function moveCaretToEnd(input) {
+  carets.delete(input);
   if (!SELECTABLE_TYPES.has(input.type)) {
     return;
   }
@@ -192,8 +251,8 @@ function viewOf(node) {
  * edit, then the edit, then `input`.
  *
  * A field whose selection cannot be read — `number`, `email` — is edited
- * at the end of what it shows, which for a field that sanitizes its value
- * is its draft (see `drafts`): the edit goes into the draft, the value is
+ * at the caret kept for it (see `carets`), in what it shows, which for a
+ * field that sanitizes its value is its draft (see `drafts`): the edit goes into the draft, the value is
  * assigned from it and comes back sanitized or not, and `input` is
  * dispatched either way, as a browser dispatches it for `1.` on the way to
  * `1.5` while the value reads `""`.
@@ -232,6 +291,9 @@ function replaceRange(input, text, start, end, inputType) {
     } else {
       drafts.set(input, { text: candidate, valueAtDraft: input.value });
     }
+    // After what went in, as a browser leaves it; written after the draft,
+    // which is what the caret is measured against.
+    setCaretOffset(input, start + text.length);
   }
   input.dispatchEvent(new Constructor("input", { bubbles: true, inputType, data }));
 }
@@ -271,7 +333,8 @@ function submitsImplicitly(form) {
 
 /**
  * The selection to edit: what is selected, or the caret with nothing
- * selected — read where it can be, the end of the value where it cannot.
+ * selected — read where it can be, and where it cannot, the caret
+ * `getCaretOffset` keeps for the field.
  *
  * @param {HTMLInputElement} input
  * @returns {[number, number]}
@@ -284,8 +347,8 @@ function selectionOf(input) {
       return [start, end];
     }
   }
-  const end = getShownValue(input).length;
-  return [end, end];
+  const caret = getCaretOffset(input);
+  return [caret, caret];
 }
 
 /**

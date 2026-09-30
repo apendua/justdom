@@ -1,5 +1,5 @@
 export { dropdown } from "./dropdown.js";
-export { keyboard, MOBILE_LAYOUT } from "./keyboard.js";
+export { isNumericField, keyboard, MOBILE_LAYOUT, NUMERIC_LAYOUT } from "./keyboard.js";
 export { scrollable } from "./scrollable.js";
 export {
   chartCeiling,

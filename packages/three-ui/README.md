@@ -25,7 +25,7 @@ nothing else, and work on a page with no scene anywhere near them.
 |                            |                                                          |
 | -------------------------- | -------------------------------------------------------- |
 | `dropdown(props)`          | A `<select>` built out of elements, because a real one cannot be mirrored. |
-| `keyboard(props)`          | A phone's board, clickable, for typing at a panel you point at. |
+| `keyboard(props)`          | A phone's board, clickable, for typing at a panel you point at — and its number pad, for a number field. |
 | `scrollable(props)`        | A window with arrows, a track and a thumb.               |
 | `createDiagnostics()`, `useDiagnostics(ctx, controls)`, `diagnosticsButton(controls, className)` | The frame rate readout, head-locked. |
 
@@ -135,10 +135,47 @@ shift: flipping the whole board to digits is the same keys wearing different
 faces, not a different board.
 
 `MOBILE_LAYOUT` is exported, and `layout` takes any array of rows of
-`KeyboardKey`, for a numeric pad, a game's own control strip, or a board with
-one key on it. A custom layout may also use the modifiers the default one
-deliberately leaves out — caps lock, ctrl, alt, meta, fn — the machinery is
-all still there.
+`KeyboardKey`, for a game's own control strip, or a board with one key on
+it. A custom layout may also use the modifiers the default one deliberately
+leaves out — caps lock, ctrl, alt, meta, fn — the machinery is all still
+there.
+
+### Following the field
+
+A phone's keyboard knows what it is typing into, and a number field gets the
+number pad rather than the letters. Hand the board the field and so does
+this one:
+
+```js
+render(Scene, {
+  panelOptions: {
+    keyboard: {
+      create: ({ onKey, field }) => keyboard({ classes, onKey, field }),
+    },
+  },
+});
+```
+
+`field` is a getter for the field being typed into, read reactively — the
+`field` on the target `freedom`'s keyboard hands its factory is exactly
+that, and it changes as the typing moves from panel to panel. A field that
+asks for digits gets `NUMERIC_LAYOUT`: `<input type="number">`, and any
+field whose `inputmode` is `numeric` or `decimal`, which is how a page asks a
+phone for the pad on a PIN or a code (`isNumericField` is the test, and is
+exported). Every other field gets `MOBILE_LAYOUT`.
+
+`NUMERIC_LAYOUT` is a phone's pad, four keys across: the digits, a minus
+and a decimal point — everything a number is written with and nothing a
+number field would refuse — with backspace, and `esc` and `enter` bottom
+left and bottom right, where they are on the letters. `numericLayout`
+replaces it; a `layout` given by name is the one board shown whatever the
+field is.
+
+Switching between the two is the one time the tree is built again: the pad
+and the letters have no keys in common to re-label. It happens only as the
+typing moves between a number field and a text one, never while typing, and
+it starts the new board with nothing held — a shift left engaged on the
+letters has no key on the pad to be released by.
 
 ## Scrollable
 

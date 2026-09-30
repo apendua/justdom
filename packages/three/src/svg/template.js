@@ -2,7 +2,15 @@ import * as THREE from "three";
 import { Derived, effects, flatMap, just, Stream, use } from "@apendua/signal";
 import { getChildNodes, getComputedStyleCached } from "../elements/mirror.js";
 import { isSvgElement } from "../elements/plugins.js";
-import { IDENTITY, matrixEqual, multiply } from "./geometry.js";
+import {
+  IDENTITY,
+  matrixEqual,
+  multiply,
+  parsePreserveAspectRatio,
+  parseViewBox,
+  translation,
+  viewportMatrix,
+} from "./geometry.js";
 import { image } from "./image.js";
 import {
   findMarker,
@@ -12,8 +20,18 @@ import {
   parseMarkerReference,
   readMarkerSpec,
 } from "./marker.js";
-import { commitMatrix, group, shape, SHAPE_TAGS } from "./shape.js";
-import { readProperty } from "./style.js";
+import {
+  chainEqual,
+  commitMatrix,
+  group,
+  localMatrix,
+  paintSlot,
+  readChain,
+  readDrawnProperty,
+  shape,
+  SHAPE_TAGS,
+} from "./shape.js";
+import { parseLength, readProperty } from "./style.js";
 
 /**
  * Templates: SVG content defined in one place and drawn in others. A
@@ -36,6 +54,13 @@ import { readProperty } from "./style.js";
 
 /** Elements that only group, inside a template as outside one. */
 const GROUP_TAGS = new Set(["g", "a", "switch", "svg"]);
+
+/**
+ * How deep instances may nest: a `<use>` of a symbol that holds a `<use>`,
+ * a marker on a path inside a marker. Deep enough for any real drawing, and
+ * what stops one that ends up drawing itself.
+ */
+const MAX_DEPTH = 8;
 
 /**
  * Keep `source`'s object a child of `parent` for as long as the surrounding
@@ -102,6 +127,9 @@ function drawInstanced(ctx, element, instance) {
   if (element.localName === "image") {
     return image(ctx, element, instance);
   }
+  if (element.localName === "use") {
+    return drawUse(ctx, element, instance);
+  }
   return null;
 }
 
@@ -156,13 +184,12 @@ function placementsEqual(a, b) {
  * @param {WeakKey} ctx
  * @param {Element} element
  * @param {ShapeHost} host
+ * @param {Instance | null} hostInstance The instance the shape is part of.
  * @returns {EntityEffect<THREE.Object3D>}
  */
-function markers(ctx, element, host) {
-  const style = () => getComputedStyleCached(element);
+function markers(ctx, element, host, hostInstance) {
   /** @param {string} name */
-  const named = (name) =>
-    findMarker(element, parseMarkerReference(readProperty(style(), element, name)));
+  const named = (name) => findMarker(element, parseMarkerReference(host.read(name)));
 
   const referenced = new Derived(
     () => ({ start: named("marker-start"), mid: named("marker-mid"), end: named("marker-end") }),
@@ -195,6 +222,10 @@ function markers(ctx, element, host) {
   );
 
   return effects((obj) => {
+    const depth = (hostInstance?.depth ?? 0) + 1;
+    if (depth > MAX_DEPTH) {
+      return;
+    }
     for (const { marker, index } of placements.get()) {
       const matrix = new Derived(
         () => {
@@ -216,6 +247,10 @@ function markers(ctx, element, host) {
           return { ctm: multiply(at.ctm, matrix.get()), opacity: at.opacity, root: at.root };
         },
         slot: host.markerSlot,
+        // A marker's content inherits from where the marker is defined, not
+        // from the path it is drawn on.
+        inherit: null,
+        depth,
       };
       mountInto(
         obj,
@@ -243,7 +278,186 @@ export function drawShape(ctx, element, instance = null) {
   return shape(ctx, element, {
     instance,
     decorate: MARKABLE_TAGS.has(element.localName)
-      ? (host) => [markers(ctx, element, host)]
+      ? (host) => [markers(ctx, element, host, instance)]
       : undefined,
   });
+}
+
+/** The legacy namespace of `xlink:href`. */
+const XLINK_NAMESPACE = "http://www.w3.org/1999/xlink";
+
+/**
+ * The element a `<use>` draws, or null for none: a missing id, a reference
+ * to another document, and a reference to the `<use>` itself or to anything
+ * around it, which would draw forever.
+ *
+ * @param {Element} use
+ * @returns {Element | null}
+ */
+export function findReferenced(use) {
+  const href = use.getAttribute("href") ?? use.getAttributeNS(XLINK_NAMESPACE, "href") ?? "";
+  if (!href.startsWith("#") || href.length < 2) {
+    return null;
+  }
+  const found = use.ownerDocument.getElementById(href.slice(1));
+  if (!found || !isSvgElement(found) || found.contains(use)) {
+    return null;
+  }
+  return found;
+}
+
+/**
+ * The viewport size a `<use>` gives a `<symbol>`: its own `width` and
+ * `height`, or the symbol's, or all of the nearest viewport's `viewBox`,
+ * which is what the initial `100%` comes to in user units. Null when none
+ * of them says, and the symbol's content is drawn in its own units.
+ *
+ * @param {Element} use
+ * @param {Element} symbol
+ * @returns {{ width: number, height: number } | null}
+ */
+function symbolViewport(use, symbol) {
+  const style = getComputedStyleCached(use);
+  /**
+   * @param {"width" | "height"} name
+   */
+  const size = (name) => {
+    const own = parseLength(readProperty(style, use, name), Number.NaN);
+    if (!Number.isNaN(own)) {
+      return own;
+    }
+    const symbols = parseLength(symbol.getAttribute(name) ?? "", Number.NaN);
+    if (!Number.isNaN(symbols)) {
+      return symbols;
+    }
+    const viewBox = nearestViewBox(use);
+    return viewBox ? viewBox[name] : Number.NaN;
+  };
+  const width = size("width");
+  const height = size("height");
+  return Number.isNaN(width) || Number.isNaN(height) ? null : { width, height };
+}
+
+/**
+ * @param {Element} element
+ * @returns {import('./geometry.js').ViewBox | null}
+ */
+function nearestViewBox(element) {
+  for (let current = element.parentElement; current; current = current.parentElement) {
+    if (current.localName === "svg" && isSvgElement(current)) {
+      return parseViewBox(current.getAttribute("viewBox"));
+    }
+  }
+  return null;
+}
+
+/**
+ * A `<use>`: a copy of the element its `href` names, drawn at its `x`, `y`.
+ *
+ * The `<use>`'s object carries its own `transform`. Below it, one object
+ * carries the move to `x`, `y` and, for a `<symbol>`, the symbol's viewport,
+ * and the copy is drawn below that as an instance. A `<symbol>` is a
+ * template whose children are drawn; anything else, a `<g>` or a `<path>`
+ * drawn once already where it stands, is drawn whole.
+ *
+ * The copy inherits from the `<use>`, as a browser's clone does, through
+ * `readDrawnProperty`. It follows edits to the referenced content, since the
+ * mirror follows that content wherever it is. It is drawn and never hit, as
+ * a marker is. Not followed: an `href` changed after the copy was made,
+ * which the portal's observer does not watch.
+ *
+ * @param {WeakKey} ctx
+ * @param {Element} element
+ * @param {Instance | null} [instance] The instance the `<use>` is part of.
+ * @returns {Source<THREE.Object3D>}
+ */
+export function drawUse(ctx, element, instance = null) {
+  const style = () => getComputedStyleCached(element);
+  const own = new Derived(() => localMatrix(element), { isEqual: matrixEqual });
+  const chain = new Derived(() => readChain(element, instance), { isEqual: chainEqual });
+  const referenced = new Derived(() => {
+    // Read for the invalidation: a `<use>` restyled is a reason to look
+    // again.
+    style();
+    return findReferenced(element);
+  });
+
+  return just(new THREE.Object3D(), [
+    effects((obj) => {
+      commitMatrix(obj, own.get());
+    }),
+    effects((obj) => {
+      obj.visible = style().display !== "none";
+    }),
+    effects((obj) => {
+      const target = referenced.get();
+      const depth = (instance?.depth ?? 0) + 1;
+      if (!target || depth > MAX_DEPTH) {
+        return;
+      }
+      const isSymbol = target.localName === "symbol";
+      const placement = new Derived(
+        () => {
+          const current = style();
+          const x = parseLength(readProperty(current, element, "x"), 0);
+          const y = parseLength(readProperty(current, element, "y"), 0);
+          const moved = translation(x, y);
+          if (!isSymbol) {
+            return moved;
+          }
+          // The symbol's attributes are not CSS; its computed style is what
+          // the mirror invalidates when one of them changes.
+          getComputedStyleCached(target);
+          const size = symbolViewport(element, target);
+          return size
+            ? multiply(
+                moved,
+                viewportMatrix(
+                  parseViewBox(target.getAttribute("viewBox")),
+                  parsePreserveAspectRatio(target.getAttribute("preserveAspectRatio")),
+                  size.width,
+                  size.height,
+                ),
+              )
+            : moved;
+        },
+        { isEqual: matrixEqual },
+      );
+      /** @type {Instance} */
+      const copy = {
+        template: isSymbol ? target : /** @type {Element} */ (target.parentElement),
+        chain: () => {
+          const at = chain.get();
+          return { ctm: multiply(at.ctm, placement.get()), opacity: at.opacity, root: at.root };
+        },
+        slot: () => paintSlot(element, chain.get().root, instance, 0),
+        inherit: {
+          boundary: /** @type {Element} */ (target.parentElement),
+          read: (name) => readDrawnProperty(element, name, instance),
+        },
+        depth,
+      };
+      /** @type {EntityEffect<THREE.Object3D>[]} */
+      const content = [];
+      if (isSymbol) {
+        content.push(templateChildren(ctx, target, copy));
+      } else {
+        const drawn = drawInstanced(ctx, target, copy);
+        if (drawn) {
+          content.push((/** @type {THREE.Object3D} */ placed) => {
+            mountInto(placed, drawn);
+          });
+        }
+      }
+      mountInto(
+        obj,
+        just(new THREE.Object3D(), [
+          effects((placed) => {
+            commitMatrix(placed, placement.get());
+          }),
+          ...content,
+        ]),
+      );
+    }),
+  ]);
 }

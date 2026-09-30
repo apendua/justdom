@@ -1615,6 +1615,21 @@ the default `overflow: hidden` asks for.
 <line x1="0" y1="10" x2="40" y2="10" marker-end="url(#arrow)" />
 ```
 
+A `<use>` draws a copy of the element its `href` (or `xlink:href`) names,
+at its `x` and `y`. A `<symbol>` is a viewport: its `viewBox` is fitted
+into the `<use>`'s `width` and `height`, or the symbol's own, or else the
+whole of the nearest `viewBox`. Anything else, a `<g>` or a shape drawn
+once already where it stands, is drawn again whole, its own `transform`
+included. The copy inherits the `<use>`'s styles, as a browser's clone
+does, so a sprite whose paths set no `fill` takes the `<use>`'s. The
+mirror sees only the original element, so a property counts as inherited
+when nothing between the copied element and the top of the copy changes
+it; an element that sets a property to exactly the value it would have
+inherited reads as not setting it. An edit inside the symbol reaches every
+copy. A copy is drawn where its `<use>` stands in the draw order, and is
+not a ray target. An `href` changed after mounting is not followed,
+because the portal's observer does not watch that attribute.
+
 One print of the measuring tape. **Dashes are geometry, not a
 shader**, for the reason `svg/dash.js` gives, so a `stroke-dashoffset`
 animation rebuilds the stroke each frame — a few hundred vertices, which the
@@ -1652,10 +1667,9 @@ the scene*). Where the button should be the target itself, put
 `<svg>` nor its shapes are then ray targets of their own, whatever `cursor`
 they inherit, and a press on the icon is a press on the button.
 
-Not drawn yet: `<text>`, `<use>` and `<symbol>`, gradients and patterns
-(a `url(#…)` paint reads as `none`, though it still counts as painted for
-a ray), `clip-path`, `mask`, filters, `<foreignObject>` and
-`vector-effect`.
+Not drawn yet: `<text>`, gradients and patterns (a `url(#…)` paint reads
+as `none`, though it still counts as painted for a ray), `clip-path`,
+`mask`, filters, `<foreignObject>` and `vector-effect`.
 [`docs/freedom-svg-plan.md`](../../docs/freedom-svg-plan.md) has the order
 they are coming in and why.
 

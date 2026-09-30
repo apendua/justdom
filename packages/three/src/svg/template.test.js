@@ -2,7 +2,7 @@ import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
 import { createMirror } from "../elements/mirror.js";
-import { drawShape } from "./template.js";
+import { drawShape, drawUse } from "./template.js";
 
 /**
  * @import { Mesh, Object3D } from "three";
@@ -229,6 +229,167 @@ describe("markers", () => {
       new THREE.Vector3(0, 0, -1),
     );
     assert.equal(raycaster.intersectObject(mesh).length, 0);
+    s.teardown();
+  });
+});
+
+/**
+ * An `<svg>` root holding `content`, in a root twice the size of its
+ * `viewBox`, every node adopted by a mirror as the portal adopts them, and
+ * each of `draw` drawn through the plugin's own entry point for it.
+ *
+ * @param {Element[]} content
+ * @param {Element[]} draw
+ */
+function scene(content, draw) {
+  const root = svg("svg", { viewBox: "0 0 50 25" }, content);
+  root.getBoundingClientRect = () =>
+    /** @type {DOMRect} */ ({ left: 0, top: 0, right: 100, bottom: 50, width: 100, height: 50 });
+  document.body.appendChild(root);
+  const mirror = createMirror();
+  mirror.adopt(root);
+  root.querySelectorAll("*").forEach((node) => mirror.adopt(node));
+  /** @type {Object3D[]} */
+  const objects = [];
+  const subscriptions = draw.map((element) =>
+    (element.localName === "use" ? drawUse({}, element) : drawShape({}, element)).subscribe(
+      (value) => objects.push(value),
+    ),
+  );
+  return {
+    mirror,
+    objects,
+    teardown() {
+      subscriptions.forEach((subscription) => subscription.unsubscribe());
+      root.remove();
+    },
+  };
+}
+
+/**
+ * @param {Mesh} mesh
+ * @param {number} x
+ * @param {number} y
+ */
+function toRoot(mesh, x, y) {
+  const at = new THREE.Vector3(x, y, 1).applyMatrix3(clipMatrixOf(mesh));
+  return [round(at.x), round(at.y)];
+}
+
+/**
+ * @param {Mesh} mesh
+ */
+function colourOf(mesh) {
+  return /** @type {THREE.MeshBasicMaterial} */ (mesh.material).color.getHexString();
+}
+
+describe("use", () => {
+  test("a symbol is drawn at the use's x, y, its viewBox fitted to the use's size", () => {
+    const symbol = svg("symbol", { id: "use-symbol-a", viewBox: "0 0 10 10" }, [
+      svg("rect", { width: "10", height: "10", fill: "red" }),
+    ]);
+    const use = svg("use", { href: "#use-symbol-a", x: "20", y: "0", width: "20", height: "20" });
+    const s = scene([svg("defs", {}, [symbol]), use], [use]);
+    const [mesh] = meshesUnder(s.objects[0]);
+    assert.ok(mesh, "the symbol's rect is drawn");
+    // (10, 10) in the symbol is (40, 20) in the root's user space, twice
+    // that in its px.
+    assert.deepEqual(toRoot(mesh, 10, 10), [80, 40]);
+    s.teardown();
+  });
+
+  test("a symbol with no size of its own fills the viewport's viewBox", () => {
+    const symbol = svg("symbol", { id: "use-symbol-b", viewBox: "0 0 5 2.5" }, [
+      svg("rect", { width: "5", height: "2.5", fill: "red" }),
+    ]);
+    const use = svg("use", { href: "#use-symbol-b" });
+    const s = scene([svg("defs", {}, [symbol]), use], [use]);
+    const [mesh] = meshesUnder(s.objects[0]);
+    assert.deepEqual(toRoot(mesh, 5, 2.5), [100, 50]);
+    s.teardown();
+  });
+
+  test("the copy inherits the use's paint where the symbol sets none", () => {
+    const bare = svg("path", { d: "M0 0 L5 0 L5 5 z" });
+    const own = svg("path", { d: "M0 0 L5 0 L5 5 z", fill: "blue" });
+    const symbol = svg("symbol", { id: "use-symbol-c" }, [bare, own]);
+    const use = svg("use", { href: "#use-symbol-c", fill: "red" });
+    const s = scene([svg("defs", {}, [symbol]), use], [use]);
+    const [inherited, set] = meshesUnder(s.objects[0]);
+    assert.equal(colourOf(inherited), "ff0000", "inherited from the use");
+    assert.equal(colourOf(set), "0000ff", "its own");
+    s.teardown();
+  });
+
+  test("an element that is drawn where it stands is drawn again at the use, own transform and all", () => {
+    const original = svg("rect", {
+      id: "use-original",
+      width: "5",
+      height: "5",
+      fill: "red",
+      // `translate(1, 2)`, as computed: jsdom does not resolve it.
+      style: "transform: matrix(1, 0, 0, 1, 1, 2)",
+    });
+    const use = svg("use", { href: "#use-original", x: "10" });
+    const s = scene([original, use], [use]);
+    const [mesh] = meshesUnder(s.objects[0]);
+    assert.deepEqual(toRoot(mesh, 0, 0), [22, 4]);
+    s.teardown();
+  });
+
+  test("an edit inside the symbol reaches the copy", () => {
+    const rect = svg("rect", { width: "5", height: "5", fill: "red" });
+    const symbol = svg("symbol", { id: "use-symbol-e" }, [rect]);
+    const use = svg("use", { href: "#use-symbol-e" });
+    const s = scene([svg("defs", {}, [symbol]), use], [use]);
+    rect.setAttribute("fill", "blue");
+    s.mirror.attributeChanged(rect);
+    assert.equal(colourOf(meshesUnder(s.objects[0])[0]), "0000ff");
+    s.teardown();
+  });
+
+  test("the copy is drawn where the use stands in the draw order", () => {
+    const symbol = svg("symbol", { id: "use-symbol-f" }, [
+      svg("rect", { width: "5", height: "5", fill: "red" }),
+      svg("rect", { width: "5", height: "5", fill: "blue" }),
+    ]);
+    const before = svg("rect", { width: "5", height: "5", fill: "black" });
+    const use = svg("use", { href: "#use-symbol-f" });
+    const after = svg("rect", { width: "5", height: "5", fill: "black" });
+    const s = scene([svg("defs", {}, [symbol]), before, use, after], [before, use, after]);
+    const [lower, copy, upper] = s.objects;
+    const [first, second] = meshesUnder(copy).map((mesh) => mesh.renderOrder);
+    const below = meshesUnder(lower)[0].renderOrder;
+    const above = meshesUnder(upper)[0].renderOrder;
+    assert.ok(
+      below < first && first < second && second < above,
+      `${below} ${first} ${second} ${above}`,
+    );
+    s.teardown();
+  });
+
+  test("a use that would draw itself draws nothing, directly or through another", () => {
+    const direct = svg("use", { href: "#use-loop-g" });
+    const g = svg("g", { id: "use-loop-g" }, [direct]);
+    const a = svg("use", { href: "#use-loop-b" });
+    const b = svg("use", { href: "#use-loop-a" });
+    const s = scene(
+      [
+        g,
+        svg("defs", {}, [
+          svg("symbol", { id: "use-loop-a" }, [
+            a,
+            svg("rect", { width: "1", height: "1", fill: "red" }),
+          ]),
+          svg("symbol", { id: "use-loop-b" }, [b]),
+        ]),
+      ],
+      [direct, a],
+    );
+    assert.equal(meshesUnder(s.objects[0]).length, 0, "a use inside what it names");
+    // `a` draws symbol b, whose `b` draws symbol a, whose `a` draws b, and
+    // so on: stopped by depth, with a rect drawn at every other level.
+    assert.ok(meshesUnder(s.objects[1]).length > 0);
     s.teardown();
   });
 });

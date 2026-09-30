@@ -23,8 +23,9 @@ import { cardStyle, captionStyle, classes, headingStyle, rowStyle } from "./pane
  * it is styled the way a diagram on a page is styled, through classes and
  * a stylesheet rather than presentation attributes, because computed style
  * is what the plugin reads. Below it: the same icon through the same
- * `viewBox` at three sizes, a star spun by a CSS animation on its `<g>`, a
- * rotated group, the three line joins and caps, a `stroke-dashoffset`
+ * `viewBox` at three sizes, a star spun by a CSS animation on its `<g>`, one
+ * symbol drawn three times by `<use>` in three fills, a rotated group, the
+ * three line joins and caps, a `stroke-dashoffset`
  * animation (the marching ants every selection rectangle wears) and a stroke
  * colour animated by CSS keyframes. The three animations cost a matrix
  * write, a geometry rebuild and a uniform write respectively, which is worth
@@ -55,6 +56,9 @@ const VECTOR_PICTURE = `data:image/svg+xml,${encodeURIComponent(
 /** The ids of the diagram's two arrowhead markers. */
 const DARK_HEAD = "vectors-dark-head";
 const PINK_HEAD = "vectors-pink-head";
+
+/** The id of the symbol the icon row draws three times. */
+const DOT = "vectors-dot";
 
 /** The nodes' fill: the colour the visual suite looks for. */
 export const NODE_COLOR = "rgb(0, 168, 150)";
@@ -382,6 +386,52 @@ const VectorsPanel = component((_ctx: WeakKey) => {
                     }),
                   ]),
                 ),
+              ]),
+            ),
+          ]),
+          // One symbol drawn three times by <use>. The dot sets no fill of
+          // its own, so each copy takes the fill of the <use> that draws it.
+          $$("svg", [
+            attr("class", classes(iconStyle, iconLarge)),
+            attr({ viewBox: "0 0 24 24" }),
+            children(
+              $$("defs", [
+                children(
+                  $$("symbol", [
+                    attr({ id: DOT, viewBox: "0 0 10 10" }),
+                    children($$("circle", [attr({ cx: 5, cy: 5, r: 4.5 })])),
+                  ]),
+                ),
+              ]),
+              $$("use", [
+                attr({
+                  href: `#${DOT}`,
+                  x: 1,
+                  y: 2,
+                  width: 11,
+                  height: 11,
+                  fill: "rgb(221, 64, 104)",
+                }),
+              ]),
+              $$("use", [
+                attr({
+                  href: `#${DOT}`,
+                  x: 12,
+                  y: 2,
+                  width: 11,
+                  height: 11,
+                  fill: "rgb(240, 170, 60)",
+                }),
+              ]),
+              $$("use", [
+                attr({
+                  href: `#${DOT}`,
+                  x: 6.5,
+                  y: 11.5,
+                  width: 11,
+                  height: 11,
+                  fill: "rgb(0, 123, 255)",
+                }),
               ]),
             ),
           ]),

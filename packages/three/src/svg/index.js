@@ -3,7 +3,7 @@ import { isSvgElement, isSvgRoot } from "../elements/plugins.js";
 import { toMatrix4 } from "./geometry.js";
 import { image } from "./image.js";
 import { group, rootMatrix } from "./shape.js";
-import { drawShape } from "./template.js";
+import { drawShape, drawUse } from "./template.js";
 
 /**
  * @import {PortalPlugin} from '../elements/plugins.js';
@@ -67,11 +67,13 @@ export function svgElements() {
           return drawShape(ctx, element);
         case "image":
           return image(ctx, element);
+        case "use":
+          return drawUse(ctx, element);
         default:
           // `<defs>`, `<symbol>`, `<marker>`, `<clipPath>`, `<mask>`, the
           // gradients and patterns: templates, drawn only where something
-          // refers to them, which for a `<marker>` is `svg/template.js`.
-          // `<text>`, `<use>` and `<foreignObject>`: not drawn yet either.
+          // refers to them, which for a `<marker>` or a `<symbol>` is
+          // `svg/template.js`. `<text>` and `<foreignObject>`: not drawn yet.
           // Declined, and so skipped by the portal with everything under
           // them, which for a template is the right answer in itself.
           return null;

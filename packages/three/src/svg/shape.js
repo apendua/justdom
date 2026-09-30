@@ -328,13 +328,90 @@ export function commitMatrix(object, matrix) {
  * instance was given.
  *
  * @typedef {object} Instance
- * @property {Element} template The element whose content is drawn, which
- *   the walk up from that content stops at.
+ * @property {Element} template The element the walk up from the content
+ *   stops at: the `<marker>` or `<symbol>` whose children are drawn, or the
+ *   parent of an element a `<use>` draws.
  * @property {() => Chain} chain The matrix from the template's user space to
  *   the root's frame at this instance, the opacity above it, and the root.
  * @property {() => PaintSlot} slot The range of render orders the instance
  *   draws its content in.
+ * @property {Inheritance | null} inherit Where the content inherits from, for
+ *   a copy that inherits from where it is drawn: a `<use>`'s, and not a
+ *   marker's.
+ * @property {number} depth How many instances this one is inside, so that a
+ *   `<use>` that ends up drawing itself stops.
  */
+
+/**
+ * @typedef {object} Inheritance
+ * @property {Element} boundary The element just above the copied content.
+ *   A property no element between the content and this one changes is
+ *   inherited from outside the copy.
+ * @property {(name: string) => string} read The value there, at the `<use>`.
+ */
+
+/**
+ * The inherited properties a shape reads. Anything else a copy reads from
+ * its own element as it stands in the template.
+ */
+const INHERITED = new Set([
+  "fill",
+  "fill-opacity",
+  "fill-rule",
+  "stroke",
+  "stroke-opacity",
+  "stroke-width",
+  "stroke-linecap",
+  "stroke-linejoin",
+  "stroke-miterlimit",
+  "stroke-dasharray",
+  "stroke-dashoffset",
+  "marker-start",
+  "marker-mid",
+  "marker-end",
+]);
+
+/**
+ * A property of an element as it is drawn: its own computed value, or, in a
+ * copy made by a `<use>`, the `<use>`'s where the copy inherits it.
+ *
+ * A browser draws a `<use>` from a clone of the referenced content placed
+ * under the `<use>`, so the clone inherits the `<use>`'s styles. The mirror
+ * sees only the original, which inherits from wherever it is defined. What
+ * it can see is whether anything in the copied content sets the property:
+ * where each element's value is the same as its parent's all the way up to
+ * the boundary, the value was inherited from outside, and the `<use>`'s is
+ * taken instead. An element that sets the property to exactly the value it
+ * would have inherited reads as not setting it, which is the one case this
+ * gets wrong.
+ *
+ * @param {Element} element
+ * @param {string} name
+ * @param {Instance | null} instance
+ * @returns {string}
+ */
+export function readDrawnProperty(element, name, instance) {
+  const value = readProperty(getComputedStyleCached(element), element, name);
+  const inherit = instance?.inherit;
+  if (!inherit || !INHERITED.has(name)) {
+    return value;
+  }
+  let current = element;
+  let currentValue = value;
+  while (current !== inherit.boundary) {
+    const parent = getParentElement(current);
+    if (!parent) {
+      return value;
+    }
+    const parentValue = readProperty(getComputedStyleCached(parent), parent, name);
+    if (parentValue !== currentValue) {
+      return value;
+    }
+    current = parent;
+    currentValue = parentValue;
+  }
+  return inherit.read(name);
+}
 
 /**
  * Walk from the element to its root, composing the same matrices the
@@ -388,7 +465,7 @@ export const SHAPE_TAGS = new Set([
 ]);
 
 /** The elements that draw something, and so take a place in the paint order. */
-const PAINTED_TAGS = new Set([...SHAPE_TAGS, "image"]);
+const PAINTED_TAGS = new Set([...SHAPE_TAGS, "image", "use"]);
 
 /**
  * @typedef {object} PaintOrder
@@ -567,18 +644,18 @@ function strokeSpecEqual(a, b) {
 }
 
 /**
- * @param {CSSStyleDeclaration} style
- * @param {Element} element
+ * @param {(name: string) => string} read The element's value for a
+ *   property.
  * @returns {StrokeSpec}
  */
-function readStrokeSpec(style, element) {
+function readStrokeSpec(read) {
   return {
-    width: parseLength(readProperty(style, element, "stroke-width"), 1),
-    cap: parseLineCap(readProperty(style, element, "stroke-linecap")),
-    join: parseLineJoin(readProperty(style, element, "stroke-linejoin")),
-    miterLimit: parseNumber(readProperty(style, element, "stroke-miterlimit"), 4),
-    dash: parseDashArray(readProperty(style, element, "stroke-dasharray")),
-    dashOffset: parseLength(readProperty(style, element, "stroke-dashoffset"), 0),
+    width: parseLength(read("stroke-width"), 1),
+    cap: parseLineCap(read("stroke-linecap")),
+    join: parseLineJoin(read("stroke-linejoin")),
+    miterLimit: parseNumber(read("stroke-miterlimit"), 4),
+    dash: parseDashArray(read("stroke-dasharray")),
+    dashOffset: parseLength(read("stroke-dashoffset"), 0),
   };
 }
 
@@ -855,6 +932,8 @@ export function rayTarget(ctx, element, hittable) {
  * where in the draw order its marker layer is.
  *
  * @typedef {object} ShapeHost
+ * @property {(name: string) => string} read The shape's value for a
+ *   property, as `readDrawnProperty` gives it.
  * @property {() => ShapePath | null} path
  * @property {() => number} strokeWidth
  * @property {() => Chain} chain
@@ -907,14 +986,13 @@ export function shape(ctx, element, { instance = null, decorate } = {}) {
   const opacity = new Derived(() => chain.get().opacity);
   const scale = new Derived(() => samplingScale(matrixScale(chain.get().ctm)));
 
-  const fillPaint = new Derived(() => parsePaint(readProperty(style(), element, "fill")), {
-    isEqual: paintEqual,
-  });
-  const strokePaint = new Derived(() => parsePaint(readProperty(style(), element, "stroke")), {
-    isEqual: paintEqual,
-  });
-  const fillRule = new Derived(() => parseFillRule(readProperty(style(), element, "fill-rule")));
-  const strokeSpec = new Derived(() => readStrokeSpec(style(), element), {
+  /** @param {string} name */
+  const read = (name) => readDrawnProperty(element, name, instance);
+
+  const fillPaint = new Derived(() => parsePaint(read("fill")), { isEqual: paintEqual });
+  const strokePaint = new Derived(() => parsePaint(read("stroke")), { isEqual: paintEqual });
+  const fillRule = new Derived(() => parseFillRule(read("fill-rule")));
+  const strokeSpec = new Derived(() => readStrokeSpec(read), {
     isEqual: strokeSpecEqual,
   });
 
@@ -956,9 +1034,7 @@ export function shape(ctx, element, { instance = null, decorate } = {}) {
    * @returns {boolean}
    */
   const hits = (rule, name) =>
-    rule !== null &&
-    (!rule.painted || isPainted(readProperty(style(), element, name))) &&
-    (!rule.visible || !hidden.get());
+    rule !== null && (!rule.painted || isPainted(read(name))) && (!rule.visible || !hidden.get());
   const fillHit = new Derived(() => hits(hitRegions.get().fill, "fill"));
   const strokeHit = new Derived(() => hits(hitRegions.get().stroke, "stroke"));
 
@@ -1001,8 +1077,7 @@ export function shape(ctx, element, { instance = null, decorate } = {}) {
               paint: () => fillPaint.get(),
               hidden: () => hidden.get(),
               hit: () => !drawnOnly && fillHit.get(),
-              opacity: () =>
-                opacity.get() * parseNumber(readProperty(style(), element, "fill-opacity"), 1),
+              opacity: () => opacity.get() * parseNumber(read("fill-opacity"), 1),
               renderOrder: renderOrderOf(0),
               clip,
               clipMatrix,
@@ -1020,8 +1095,7 @@ export function shape(ctx, element, { instance = null, decorate } = {}) {
               paint: () => strokePaint.get(),
               hidden: () => hidden.get(),
               hit: () => !drawnOnly && strokeHit.get(),
-              opacity: () =>
-                opacity.get() * parseNumber(readProperty(style(), element, "stroke-opacity"), 1),
+              opacity: () => opacity.get() * parseNumber(read("stroke-opacity"), 1),
               renderOrder: renderOrderOf(1),
               clip,
               clipMatrix,
@@ -1031,6 +1105,7 @@ export function shape(ctx, element, { instance = null, decorate } = {}) {
       )(observable(() => strokePaint.get() !== null || strokeHit.get())),
     ),
     ...(decorate?.({
+      read,
       path: () => path.get(),
       strokeWidth: () => strokeSpec.get().width,
       chain: () => chain.get(),

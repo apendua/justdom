@@ -11,7 +11,6 @@ import { HANDLE_OPACITY_ACTIVE, HANDLE_OPACITY_NEAR } from "./keyboardHandles.js
 import { stubCanvas } from "../test/stubCanvas.js";
 import { rectGeometry } from "./sdfRect.js";
 import { CARET_BLINK_MS } from "./textInput.js";
-import { HAPTIC_ATTRIBUTE } from "./haptics.js";
 import { recordingSource } from "../test/rumble.js";
 
 /**
@@ -90,8 +89,7 @@ const ownKeyboard = (create) => ({ options: { keyboard: { gap: 20, create } } })
 
 /**
  * A panel with a field in it and a keyboard on offer. The keyboard's DOM
- * is one clickable key on a board marked `data-xr-haptic`, as justui's is;
- * what it is handed is recorded.
+ * is one clickable key; what it is handed is recorded.
  *
  * @param {Configure} [configure]
  * @param {import('./keyboardSlot.js').KeyboardSlot} [slot] The scene's
@@ -129,10 +127,7 @@ function keyboardPanel(configure = ownKeyboard, slot, room) {
   const created = [];
   const { panelOptions, options } = configure((target) => {
     created.push(target);
-    return $("div", [
-      attr(HAPTIC_ATTRIBUTE, () => ""),
-      children($("div", [attr("style", () => "cursor: pointer")])),
-    ]);
+    return $("div", [children($("div", [attr("style", () => "cursor: pointer")]))]);
   });
   if (panelOptions) {
     ctx = withPanelOptions(ctx, panelOptions);
@@ -530,7 +525,7 @@ describe("the keyboard from the panel options", () => {
       return played.map((effect) => effect.duration);
     };
 
-    assert.deepEqual(await pressedKey(ownKeyboard), [24], "a tick, as any marked button");
+    assert.deepEqual(await pressedKey(ownKeyboard), [24], "a tick, as any button");
     assert.deepEqual(
       await pressedKey((create) => ({
         panelOptions: { keyboard: { create }, haptics: { flavor: "knock" } },

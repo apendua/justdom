@@ -122,6 +122,54 @@ describe("pointer events", () => {
     subscription.unsubscribe();
   });
 
+  test("an enter says where the ray came from, and a leave where it went", () => {
+    const manager = new InteractionManager();
+    const controller = fakeController();
+    const loop = fakeFrameLoop();
+    const subscription = manager.addController(controller, loop.onAnimationFrame).subscribe();
+    const near = labelledButton();
+    const far = labelledButton();
+    far.background.position.z = -12;
+    far.label.position.z = -11;
+    far.button.updateMatrixWorld(true);
+    manager.add(near.button);
+    manager.add(far.button);
+
+    /** @type {string[]} */
+    const events = [];
+    for (const [name, { button }] of Object.entries({ near, far })) {
+      for (const type of /** @type {const} */ (["pointerenter", "pointerleave"])) {
+        button.addEventListener(type, (event) => {
+          const from =
+            event.relatedTarget === null
+              ? "nothing"
+              : event.relatedTarget === near.button
+                ? "near"
+                : "far";
+          events.push(`${name} ${type} ${from}`);
+        });
+      }
+    }
+
+    loop.run();
+    assert.deepEqual(events, ["near pointerenter nothing"]);
+
+    moveAside(near.button);
+    manager.updateIntersections();
+    loop.run();
+    assert.deepEqual(events, [
+      "near pointerenter nothing",
+      "near pointerleave far",
+      "far pointerenter near",
+    ]);
+
+    moveAside(far.button);
+    manager.updateIntersections();
+    loop.run();
+    assert.deepEqual(events.at(-1), "far pointerleave nothing");
+    subscription.unsubscribe();
+  });
+
   test("carry the input source the controller connected with", () => {
     const manager = new InteractionManager();
     const controller = fakeController();

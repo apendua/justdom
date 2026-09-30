@@ -5,7 +5,8 @@ import { InteractionContext } from "../interactions.js";
 import { createMirror, PORTAL_ATTRIBUTE } from "./mirror.js";
 import { div } from "./div.js";
 import { GRADIENT_LINEAR, rampAtlas } from "./gradient.js";
-import { createHaptics, HAPTIC_ATTRIBUTE, HapticsContext } from "./haptics.js";
+import { createHaptics, HapticsContext } from "./haptics.js";
+import { getContentGroup } from "./div.js";
 import { recordingSource } from "../test/rumble.js";
 
 /**
@@ -69,6 +70,15 @@ function setup(cursor, cssText = "", haptics = null) {
         }
       },
       stopPropagation: () => {},
+      /** The real manager's rule: the nearest registered object up the chain. */
+      getTarget: (/** @type {THREE.Object3D | undefined} */ object) => {
+        for (let node = object; node; node = node.parent ?? undefined) {
+          if (registered.includes(node)) {
+            return node;
+          }
+        }
+        return undefined;
+      },
     })
   );
 
@@ -111,10 +121,19 @@ function setup(cursor, cssText = "", haptics = null) {
     /**
      * @param {"pointerenter" | "pointerleave" | "selectstart" | "selectend"} type
      * @param {XRInputSource | null} [inputSource] The hand it came from.
+     * @param {THREE.Object3D | null} [relatedTarget] Where the ray was before.
+     * @param {THREE.Object3D} [originalTarget] The object the ray met, when
+     *   not this one: the event as it bubbles up from a nested target.
      */
-    dispatch: (type, inputSource = null) => {
+    dispatch: (type, inputSource = null, relatedTarget = null, originalTarget = object) => {
       object.dispatchEvent(
-        /** @type {any} */ ({ type, target: object, originalTarget: object, inputSource }),
+        /** @type {any} */ ({
+          type,
+          target: object,
+          originalTarget,
+          inputSource,
+          relatedTarget,
+        }),
       );
     },
   };
@@ -679,14 +698,9 @@ describe("div drag-to-scroll", () => {
 });
 
 describe("div haptics", () => {
-  test("a marked element is felt on hover, press and release, by the hand that did it", () => {
+  test("a control is felt on hover, press and release, by the hand that did it", () => {
     const { source, played } = recordingSource();
-    const { element, dispatch, subscription } = setup(
-      "pointer",
-      "",
-      createHaptics({ flavor: "key" }),
-    );
-    element.setAttribute(HAPTIC_ATTRIBUTE, "");
+    const { dispatch, subscription } = setup("pointer", "", createHaptics({ flavor: "key" }));
 
     dispatch("pointerenter", source);
     dispatch("selectstart", source);
@@ -704,16 +718,39 @@ describe("div haptics", () => {
     subscription.unsubscribe();
   });
 
-  test("an element that did not ask feels like nothing, as does one in a panel without haptics", () => {
+  test("a hover is one pulse per arrival, whatever is clickable inside the control", () => {
     const { source, played } = recordingSource();
-    const unmarked = setup("pointer", "", createHaptics({}));
-    unmarked.dispatch("pointerenter", source);
-    unmarked.dispatch("selectstart", source);
-    assert.deepEqual(played, []);
-    unmarked.subscription.unsubscribe();
+    const haptics = createHaptics({});
+    const button = setup("pointer", "", haptics);
+    // The label inside the button inherits its cursor, and so is a target
+    // of its own, under the button's object as the portal would put it.
+    const label = setup("pointer", "", haptics);
+    getContentGroup(button.object).add(label.object);
+    // Each `setup` records with a manager of its own; the button's has to
+    // know the label is registered, as the one manager of a scene would.
+    button.registered.push(label.object);
+    const other = new THREE.Object3D();
 
+    label.dispatch("pointerenter", source);
+    assert.equal(played.length, 1, "the ray arrives on the label from nothing");
+    button.dispatch("pointerenter", source, null, label.object);
+    assert.equal(played.length, 1, "the same enter bubbling up plays nothing more");
+
+    button.dispatch("pointerenter", source, label.object);
+    assert.equal(played.length, 1, "drifting from the label onto the button is not an arrival");
+    label.dispatch("pointerenter", source, button.object);
+    assert.equal(played.length, 1, "nor is drifting back");
+
+    button.dispatch("pointerenter", source, other);
+    assert.equal(played.length, 2, "coming from another control is");
+
+    label.subscription.unsubscribe();
+    button.subscription.unsubscribe();
+  });
+
+  test("a control in a panel without haptics feels like nothing", () => {
+    const { source, played } = recordingSource();
     const silent = setup("pointer");
-    silent.element.setAttribute(HAPTIC_ATTRIBUTE, "");
     silent.dispatch("pointerenter", source);
     silent.dispatch("selectstart", source);
     assert.deepEqual(played, []);

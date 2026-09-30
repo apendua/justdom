@@ -1,35 +1,34 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
-import { createHaptics, HAPTIC_ATTRIBUTE, HAPTIC_FLAVORS, wantsHaptics } from "./haptics.js";
+import * as THREE from "three";
+import { createHaptics, HAPTIC_FLAVORS, isArrival } from "./haptics.js";
 import { recordingSource } from "../test/rumble.js";
 
 /**
  * @import {HapticOptions} from './haptics.js';
  */
 
-/**
- * A button that asked to be felt, and one that did not.
- *
- * @returns {{ marked: HTMLElement, plain: HTMLElement }}
- */
-function buttons() {
-  const marked = document.createElement("button");
-  marked.setAttribute(HAPTIC_ATTRIBUTE, "");
-  const plain = document.createElement("button");
-  document.body.append(marked, plain);
-  return { marked, plain };
-}
+describe("isArrival", () => {
+  /**
+   * A row with a button in it, and a button beside the row, arranged as a
+   * panel arranges its objects: each element's object under its parent's.
+   */
+  const row = new THREE.Object3D();
+  const button = new THREE.Object3D();
+  const label = new THREE.Object3D();
+  row.add(button);
+  button.add(label);
+  const other = new THREE.Object3D();
 
-describe("wantsHaptics", () => {
-  test("is the attribute on the element, or on anything above it", () => {
-    const { marked, plain } = buttons();
-    assert.equal(wantsHaptics(marked), true);
-    assert.equal(wantsHaptics(plain), false);
+  test("is one from nothing, and from another control", () => {
+    assert.equal(isArrival(button, null), true);
+    assert.equal(isArrival(button, other), true);
+  });
 
-    const card = document.createElement("div");
-    card.setAttribute(HAPTIC_ATTRIBUTE, "");
-    card.appendChild(plain);
-    assert.equal(wantsHaptics(plain), true, "a card marks every button in it");
+  test("is not one from something nested in the control, nor onto it", () => {
+    assert.equal(isArrival(button, label), false, "the label is part of the button");
+    assert.equal(isArrival(label, button), false, "and going back onto it is the same");
+    assert.equal(isArrival(button, row), false, "a control inside a control is the price");
   });
 });
 
@@ -38,11 +37,10 @@ describe("createHaptics", () => {
     const haptics = createHaptics(undefined);
     assert.ok(haptics);
     const { source, played } = recordingSource();
-    const { marked } = buttons();
 
-    haptics.hover(source, marked);
-    haptics.press(source, marked);
-    haptics.release(source, marked);
+    haptics.hover(source);
+    haptics.press(source);
+    haptics.release(source);
     assert.deepEqual(played, [
       { type: "dual-rumble", duration: 12, strongMagnitude: 0, weakMagnitude: 0.4 },
       { type: "dual-rumble", duration: 24, strongMagnitude: 0.25, weakMagnitude: 0.8 },
@@ -55,28 +53,24 @@ describe("createHaptics", () => {
     assert.equal(createHaptics({ strength: 0 }), null);
   });
 
-  test("plays only on an element that asked, and only on the events that are on", () => {
+  test("plays only the events that are on", () => {
     const { source, played } = recordingSource();
-    const { marked, plain } = buttons();
 
     const hoverOnly = createHaptics({ active: false });
     assert.ok(hoverOnly);
-    hoverOnly.hover(source, plain);
-    hoverOnly.press(source, plain);
-    assert.equal(played.length, 0, "an unmarked element feels like nothing");
-    hoverOnly.press(source, marked);
-    hoverOnly.release(source, marked);
+    hoverOnly.press(source);
+    hoverOnly.release(source);
     assert.equal(played.length, 0, "a press is off");
-    hoverOnly.hover(source, marked);
+    hoverOnly.hover(source);
     assert.equal(played.length, 1);
 
     played.length = 0;
     const pressOnly = createHaptics({ hover: false, flavor: "key" });
     assert.ok(pressOnly);
-    pressOnly.hover(source, marked);
+    pressOnly.hover(source);
     assert.equal(played.length, 0, "a hover is off");
-    pressOnly.press(source, marked);
-    pressOnly.release(source, marked);
+    pressOnly.press(source);
+    pressOnly.release(source);
     assert.deepEqual(
       played.map((effect) => effect.duration),
       [30, 18],
@@ -86,11 +80,10 @@ describe("createHaptics", () => {
 
   test("scales every pulse by the strength, within the motors' range", () => {
     const { source, played } = recordingSource();
-    const { marked } = buttons();
 
     const half = createHaptics({ strength: 0.5, flavor: "knock" });
     assert.ok(half);
-    half.press(source, marked);
+    half.press(source);
     assert.deepEqual(played, [
       { type: "dual-rumble", duration: 48, strongMagnitude: 0.5, weakMagnitude: 0.2 },
     ]);
@@ -98,7 +91,7 @@ describe("createHaptics", () => {
     played.length = 0;
     const loud = createHaptics({ strength: 2, flavor: "knock" });
     assert.ok(loud);
-    loud.press(source, marked);
+    loud.press(source);
     assert.deepEqual(played, [
       { type: "dual-rumble", duration: 48, strongMagnitude: 1, weakMagnitude: 0.8 },
     ]);
@@ -106,13 +99,12 @@ describe("createHaptics", () => {
 
   test("takes a flavor spelled out", () => {
     const { source, played } = recordingSource();
-    const { marked } = buttons();
     const haptics = createHaptics({
       flavor: { ...HAPTIC_FLAVORS.tick, press: { duration: 40, strong: 0.5, weak: 1 } },
     });
     assert.ok(haptics);
-    haptics.press(source, marked);
-    haptics.release(source, marked);
+    haptics.press(source);
+    haptics.release(source);
     assert.deepEqual(played, [
       { type: "dual-rumble", duration: 40, strongMagnitude: 0.5, weakMagnitude: 1 },
     ]);
@@ -141,19 +133,17 @@ describe("createHaptics", () => {
     );
     const haptics = createHaptics({ flavor: "knock" });
     assert.ok(haptics);
-    haptics.press(source, buttons().marked);
+    haptics.press(source);
     assert.deepEqual(pulsed, [[1, 48]]);
   });
 
   test("is silent for no hand, a hand with no gamepad, and a gamepad with no motors", () => {
     const haptics = createHaptics({});
     assert.ok(haptics);
-    const { marked } = buttons();
-    haptics.hover(null, marked);
-    haptics.hover(/** @type {XRInputSource} */ (/** @type {unknown} */ ({})), marked);
+    haptics.hover(null);
+    haptics.hover(/** @type {XRInputSource} */ (/** @type {unknown} */ ({})));
     haptics.hover(
       /** @type {XRInputSource} */ (/** @type {unknown} */ ({ gamepad: { hapticActuators: [] } })),
-      marked,
     );
   });
 

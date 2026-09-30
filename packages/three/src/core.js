@@ -74,8 +74,17 @@ import { addDependency, batch, Derived } from "@apendua/signal";
  */
 
 /**
+ * An enter also says where the ray came from, as the web's `relatedTarget`
+ * does: the registered object it was on before, or null for nothing. A
+ * leave says where it went.
+ *
+ * @typedef {PointerEvent & { relatedTarget: Object3D<XREventMap> | null }} PointerEnterEvent
+ */
+
+/**
  * @typedef {object} PointerCancelEvent
  * @property {XRInputSource | null} inputSource
+ * @property {Object3D<XREventMap> | null} relatedTarget
  * @property {Object3D<XREventMap>} target
  * @property {Object3D<XREventMap>} originalTarget
  * @property {XRTargetRaySpace} controller
@@ -99,7 +108,7 @@ import { addDependency, batch, Derived } from "@apendua/signal";
  * @property {InputEvent} squeeze
  * @property {InputCancelEvent} squeezemissed
  * @property {PointerEvent} pointermove
- * @property {PointerEvent} pointerenter
+ * @property {PointerEnterEvent} pointerenter
  * @property {PointerCancelEvent} pointerleave
  */
 

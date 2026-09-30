@@ -37,7 +37,7 @@ import { isScrollable, scrollDrags } from "./scroll.js";
 import { place, placeAndScale } from "./place.js";
 import { BoxBatchContext } from "./boxBatch.js";
 import { TextBatchContext } from "./textBatch.js";
-import { HapticsContext } from "./haptics.js";
+import { HapticsContext, isArrival } from "./haptics.js";
 
 /**
  * The group that carries an element's projected DOM children, one per box.
@@ -210,13 +210,13 @@ export function box(ctx, element, options = {}) {
   object.add(contentGroup);
   contentGroups.set(object, contentGroup);
 
-  const { makeInteractive, stopPropagation } = interactions(ctx);
+  const { makeInteractive, stopPropagation, getTarget } = interactions(ctx);
   const drags = scrollDrags(ctx);
   const isPanelReady = PortalReadyContext.get(ctx);
   /**
-   * What the hand feels on this element, if it is marked `data-xr-haptic`
-   * and the panel has haptics at all. The handlers below hand it the hand
-   * each event came from; it decides the rest.
+   * What the hand feels on this element, if it is a control and the panel
+   * has haptics at all. The handlers below hand it the hand each event came
+   * from.
    */
   const haptics = HapticsContext.get(ctx);
 
@@ -452,7 +452,7 @@ export function box(ctx, element, options = {}) {
       });
       element.dispatchEvent(event);
       element.dataset.xrActive = "true";
-      haptics?.press(e.inputSource, element);
+      haptics?.press(e.inputSource);
       stopPropagation(e);
     }),
     on("selectend", (e) => {
@@ -466,7 +466,7 @@ export function box(ctx, element, options = {}) {
       });
       element.dispatchEvent(event);
       delete element.dataset.xrActive;
-      haptics?.release(e.inputSource, element);
+      haptics?.release(e.inputSource);
       stopPropagation(e);
     }),
     on("pointermove", () => {
@@ -477,7 +477,13 @@ export function box(ctx, element, options = {}) {
     }),
     on("pointerenter", (e) => {
       element.dataset.xrHover = "true";
-      haptics?.hover(e.inputSource, element);
+      // Once per arrival on this control. Not for an enter bubbling up from
+      // a target nested in this one, which plays its own; and not for the
+      // ray moving between this element and something clickable inside it,
+      // which `isArrival` says is not an arrival at all.
+      if (haptics && getTarget(e.originalTarget) === object && isArrival(object, e.relatedTarget)) {
+        haptics.hover(e.inputSource);
+      }
     }),
     on("pointerleave", () => {
       delete element.dataset.xrHover;

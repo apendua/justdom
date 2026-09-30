@@ -1,12 +1,8 @@
 import { createProperty } from "@apendua/signal";
 
 /**
- * The attribute that says an element is felt as well as seen. The ray
- * writes `data-xr-hover` and `data-xr-active` onto what it crosses; this
- * one the app writes, on a button or on a card whose every button should
- * buzz, and the handlers read it back when the ray arrives.
+ * @import {Object3D} from 'three';
  */
-export const HAPTIC_ATTRIBUTE = "data-xr-haptic";
 
 /**
  * One knock of a controller's motors: how long it runs, in milliseconds,
@@ -22,9 +18,9 @@ export const HAPTIC_ATTRIBUTE = "data-xr-haptic";
  */
 
 /**
- * What a button feels like: the pulse for the ray arriving on it, the pulse
- * for the trigger closing, and, for a flavor that has one, the pulse for
- * the trigger opening again.
+ * What a control feels like: the pulse for the ray arriving on it, the
+ * pulse for the trigger closing, and, for a flavor that has one, the pulse
+ * for the trigger opening again.
  *
  * @typedef {object} HapticFlavor
  * @property {HapticPulse} hover
@@ -69,16 +65,17 @@ export const HAPTIC_FLAVORS = Object.freeze({
 });
 
 /**
- * How the elements marked `data-xr-haptic` in a panel feel. Set for the
- * scene through `PanelOptions.haptics`, for one panel through
- * `PortalOptions.haptics`, and left out for the defaults: both events, at
- * full strength, as a `tick`.
+ * How the controls in a panel feel: every element with `cursor: pointer`,
+ * the rule that makes one a ray target. Set for the scene through
+ * `PanelOptions.haptics`, for one panel through `PortalOptions.haptics`,
+ * and left out for the defaults: both events, at full strength, as a
+ * `tick`.
  *
  * @typedef {object} HapticOptions
- * @property {boolean} [hover] Whether the ray arriving on a marked element
- *   is felt. True by default.
- * @property {boolean} [active] Whether a press on a marked element is felt,
- *   and its release where the flavor has one. True by default.
+ * @property {boolean} [hover] Whether the ray arriving on a control is
+ *   felt. True by default.
+ * @property {boolean} [active] Whether a press on a control is felt, and
+ *   its release where the flavor has one. True by default.
  * @property {number} [strength] What every pulse's magnitudes are multiplied
  *   by, clamped to the motors' range afterwards. 1 by default; 0 is the
  *   same as turning both events off.
@@ -98,13 +95,13 @@ export const HAPTIC_FLAVORS = Object.freeze({
  */
 
 /**
- * A panel's haptics, resolved: what to do with each of the three events
- * on an element, given the hand that caused it.
+ * A panel's haptics, resolved: what to play for each of the three events,
+ * given the hand that caused it.
  *
  * @typedef {object} Haptics
- * @property {(source: XRInputSource | null, element: Element) => void} hover
- * @property {(source: XRInputSource | null, element: Element) => void} press
- * @property {(source: XRInputSource | null, element: Element) => void} release
+ * @property {(source: XRInputSource | null) => void} hover
+ * @property {(source: XRInputSource | null) => void} press
+ * @property {(source: XRInputSource | null) => void} release
  */
 
 /**
@@ -130,15 +127,47 @@ export const HapticsContext = createProperty(
  */
 
 /**
- * Whether an element asked to be felt: it carries the attribute, or
- * something above it does. On an ancestor so that a card marks every
- * button in it once, rather than each button carrying the mark.
+ * Whether a ray arriving on a control's object from `relatedTarget`, the
+ * registered object it was on before, counts as arriving on the control at
+ * all, and so is worth one pulse.
  *
- * @param {Element} element
+ * `cursor` is inherited, so the label or the icon inside a button is a ray
+ * target of its own, and the ray crossing from it onto the button's own
+ * background is an enter as far as the manager can tell. It is not an
+ * arrival: the hand has been on the button the whole time. So a ray coming
+ * from something nested in the control, or from something the control is
+ * nested in, is moving within one control, and only a ray coming from
+ * another control, or from nothing, has arrived. What that gives up is a
+ * distinct control nested in another, a delete button inside a clickable
+ * row, whose hover from the row is not an arrival; its press still is.
+ *
+ * Containment is asked of the objects rather than the elements, since a
+ * panel's objects are arranged as its elements are.
+ *
+ * @param {Object3D} object
+ * @param {Object3D | null} relatedTarget
  * @returns {boolean}
  */
-export function wantsHaptics(element) {
-  return element.closest(`[${HAPTIC_ATTRIBUTE}]`) !== null;
+export function isArrival(object, relatedTarget) {
+  return (
+    relatedTarget === null || !(contains(relatedTarget, object) || contains(object, relatedTarget))
+  );
+}
+
+/**
+ * Whether `object` is `ancestor` or under it.
+ *
+ * @param {Object3D} ancestor
+ * @param {Object3D} object
+ * @returns {boolean}
+ */
+function contains(ancestor, object) {
+  for (let node = /** @type {Object3D | null} */ (object); node; node = node.parent) {
+    if (node === ancestor) {
+      return true;
+    }
+  }
+  return false;
 }
 
 /**
@@ -224,10 +253,10 @@ export function createHaptics(options) {
   }
   /**
    * @param {HapticEffect | null} effect
-   * @returns {(source: XRInputSource | null, element: Element) => void}
+   * @returns {(source: XRInputSource | null) => void}
    */
-  const feel = (effect) => (source, element) => {
-    if (effect && wantsHaptics(element)) {
+  const feel = (effect) => (source) => {
+    if (effect) {
       play(source, effect);
     }
   };

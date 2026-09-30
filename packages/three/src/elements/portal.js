@@ -294,12 +294,11 @@ function claimRoot(root) {
  *   would only throw away a frame the scene's `PanelOptions` had tuned.
  *   Pass `{}` to ask for the defaults outright.
  * @property {false | HapticOptions} [haptics] What the hand feels from the
- *   elements in this panel marked `data-xr-haptic`, on the element or on
- *   anything above it: a pulse of the controller's motors when the ray
- *   arrives on one and another when the trigger closes on it. On by
- *   default, as a `tick` at full strength, so marking a button is all a
- *   panel has to do; the mark is the opt-in, and an element without one
- *   feels like nothing whatever this says. An object turns either event
+ *   controls in this panel, every element with `cursor: pointer`, the rule
+ *   that makes one a ray target: a pulse of the controller's motors when
+ *   the ray arrives on one and another when the trigger closes on it. On
+ *   by default, as a `tick` at full strength, so a panel with buttons in
+ *   it is felt without saying anything. An object turns either event
  *   off (`hover`, `active`), scales every pulse (`strength`), or picks the
  *   pulses (`flavor`: `tick`, `knock`, `buzz`, `key`, or a `HapticFlavor`
  *   of your own), and is spread over the scene's `PanelOptions.haptics`;

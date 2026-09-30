@@ -102,7 +102,9 @@ hand drifting from the one onto the other gets a `pointermove`, not a
 background is a `select`. Every event says which `controller` it came from
 and which `inputSource` three connected to it, so what is pointed at can
 reach the hand's gamepad. A pointer event's is null until something
-connects, which is a controller under a test.
+connects, which is a controller under a test. `pointerenter` and
+`pointerleave` also carry `relatedTarget`, as the web's do: the registered
+object the ray was on before, or is on now, or null for nothing.
 
 **Hiding something takes it out of the raycast**, as it takes it out of the
 draw: `object.visible = false` on anything — the ray target itself, a group
@@ -649,20 +651,13 @@ is for content changes, which nobody's hand is resting on.
 
 A button on a page has a click to say it was pressed; a projected one is a
 quad at the end of a ray, and the hand holding the controller can be told.
-Mark an element `data-xr-haptic` and the controller's motors pulse when the
-ray arrives on it and again when the trigger closes on it. The mark on a
-card marks every button in it:
+Every control in a panel, which is every element with `cursor: pointer`,
+the rule that makes one a ray target, pulses the controller's motors when
+the ray arrives on it and again when the trigger closes on it. Nothing is
+marked: a panel with buttons in it is felt, and so is the keyboard.
 
-```html
-<div class="card" data-xr-haptic>
-  <button>One</button>
-  <button>Two</button>
-</div>
-```
-
-The mark is the opt-in, read when the ray arrives, so it can be put on and
-taken off at any time. What it feels like is the panel's, or the scene's
-(see **Panel defaults** below):
+What it feels like is the panel's, or the scene's (see **Panel defaults**
+below):
 
 ```js
 dom(ctx, menu, [set({ position })], {
@@ -684,15 +679,25 @@ there is no `true`, for the reason `loadingFrame` has none.
 What plays is the hand's own: the event carries the input source three
 connected to the controller, and every actuator of its gamepad gets a
 `dual-rumble` effect, or a `pulse` on a runtime that only has that. A
-tracked hand has no motors and feels nothing. A hover is one pulse per
-button, not per quad: the ray drifting from a label onto its background is
-a `pointermove`, as **Pointing at things** says. The pulses are worked out
+tracked hand has no motors and feels nothing. The pulses are worked out
 once per panel, so an element's handler pays for the call and nothing else.
 
+**A hover is one pulse per arrival on a control.** `cursor` is inherited,
+so the label or the icon inside a button is a ray target of its own, and
+the ray crossing from it onto the button's own background is an enter as
+far as the manager can tell. It is not an arrival: the hand has been on the
+button the whole time. So a pulse plays only when the ray comes onto a
+control from outside it, from another control or from nothing, which the
+enter's `relatedTarget` says (see **Pointing at things**). Coming from
+something clickable nested in the control, or going from the control onto
+that, is a move within one control and plays nothing; neither does the
+enter bubbling up from the nested element, which has played its own. What
+that gives up is a distinct control nested in another, a delete button
+inside a clickable row, whose hover from the row is not an arrival. Its
+press still is.
+
 The keyboard a field brings up is a panel of its own, and its keys follow
-the `haptics` of the panel it is typing for. `@apendua/justui`'s board marks
-itself, so its keys are felt without the app saying anything; a board of
-your own marks its root the same way.
+the `haptics` of the panel it is typing for.
 
 ## Baking a panel into a stamp
 

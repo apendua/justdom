@@ -118,9 +118,6 @@ const ButtonsPanel = component((ctx: WeakKey) => {
 
   return $("div", [
     set("className", classes(cardStyle, tiltableStyle)),
-    // Every button on the card is felt: the motors tick as the ray arrives
-    // on one and knock as the trigger closes, at the panel's defaults.
-    attr({ "data-xr-haptic": "" }),
     attr("data-tilted", () => (tilted.get() ? "true" : undefined)),
     children(
       $("h1", [set("className", classes(headingStyle, titleStyle)), children(text`Interactions`)]),

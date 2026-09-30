@@ -8,7 +8,6 @@ import { DomMirror, getComputedStyleCached, resetMeasuringRangeForTests } from "
 import { acquireImage, releaseImage } from "./image.js";
 import { createPortal as createHeldPortal, getPortalRoot, LOADING_ATTRIBUTE } from "./portal.js";
 import { withPanelOptions } from "./panelOptions.js";
-import { HAPTIC_ATTRIBUTE } from "./haptics.js";
 import { recordingSource } from "../test/rumble.js";
 
 /**
@@ -1967,15 +1966,15 @@ describe("createPortal", () => {
     await drain();
   });
 
-  test("a marked button is felt as the scene's haptics say, with the panel's own laid over", async () => {
+  test("a button is felt as the scene's haptics say, with the panel's own laid over", async () => {
     const manager = new InteractionManager();
     const scene = withPanelOptions(InteractionContext.set({}, manager), {
       haptics: { flavor: "knock", hover: false },
     });
 
     /**
-     * A panel under the scene with a marked button in it, and that button's
-     * object, ready to be pointed at.
+     * A panel under the scene with a button in it, and that button's object,
+     * ready to be pointed at.
      *
      * @param {import('./portal.js').PortalOptions} options
      */
@@ -1994,7 +1993,6 @@ describe("createPortal", () => {
       await settle(portal);
       const containers = document.querySelectorAll("[data-xr-portal]");
       const card = /** @type {HTMLElement} */ (containers[containers.length - 1].firstElementChild);
-      card.setAttribute(HAPTIC_ATTRIBUTE, "");
       const button = document.createElement("div");
       button.style.cursor = "pointer";
       card.appendChild(button);
@@ -2008,7 +2006,15 @@ describe("createPortal", () => {
       const { source, played } = recordingSource();
       const controller = new THREE.Object3D();
       for (const type of ["pointerenter", "selectstart", "selectend"]) {
-        object.dispatchEvent(/** @type {any} */ ({ type, controller, inputSource: source }));
+        object.dispatchEvent(
+          /** @type {any} */ ({
+            type,
+            controller,
+            inputSource: source,
+            originalTarget: object,
+            relatedTarget: null,
+          }),
+        );
       }
       subscription.unsubscribe();
       portal.disconnect();

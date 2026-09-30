@@ -35,7 +35,7 @@ export { createPortal, getPortalRoot } from "./elements/portal.js";
 export { isTextInput, typeIntoInput } from "./elements/typing.js";
 export { PortalPluginsContext } from "./elements/plugins.js";
 export { PanelOptionsContext, withPanelOptions } from "./elements/panelOptions.js";
-export { HAPTIC_ATTRIBUTE, HAPTIC_FLAVORS } from "./elements/haptics.js";
+export { HAPTIC_FLAVORS } from "./elements/haptics.js";
 export { box, getContentGroup } from "./elements/div.js";
 export { makeReveal, solveCut } from "./elements/reveal.js";
 export {

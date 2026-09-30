@@ -31,8 +31,8 @@ import { createProperty } from "@apendua/signal";
  * @property {false | LoadingFrameOptions} [loadingFrame] Two objects are
  *   spread one over the other; `false`, at either level, is no frame. There
  *   is no `true` (see `PortalOptions.loadingFrame`).
- * @property {false | HapticOptions} [haptics] What the elements marked
- *   `data-xr-haptic` feel like. Two objects are spread one over the other,
+ * @property {false | HapticOptions} [haptics] What the panel's controls
+ *   feel like. Two objects are spread one over the other,
  *   so a scene can pick the flavor and a panel only turn hover off;
  *   `false`, at either level, is no haptics. There is no `true` (see
  *   `PortalOptions.haptics`).

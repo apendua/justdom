@@ -382,6 +382,7 @@ export class InteractionManager {
               this.dispatch(targetedObject, {
                 type: "pointerleave",
                 inputSource,
+                relatedTarget: target ?? null,
                 target: targetedObject,
                 originalTarget: targetedObject,
                 controller,
@@ -390,6 +391,7 @@ export class InteractionManager {
             this.dispatch(intersection.object, {
               type: "pointerenter",
               inputSource,
+              relatedTarget: targetedTarget ?? null,
               target: intersection.object,
               originalTarget: intersection.object,
               controller,
@@ -402,6 +404,7 @@ export class InteractionManager {
           this.dispatch(targetedObject, {
             type: "pointerleave",
             inputSource,
+            relatedTarget: null,
             target: targetedObject,
             originalTarget: targetedObject,
             controller,
@@ -610,6 +613,10 @@ export function asReader(value) {
  * @typedef {object} Interactions
  * @property {(event: InteractionEvent) => void} stopPropagation
  * @property {<TEntity extends THREE.Object3D<XREventMap>>(enabled?: Reactive<boolean>) => import("@apendua/signal").EntityEffect<TEntity>} makeInteractive
+ * @property {(object: THREE.Object3D<XREventMap> | undefined) => THREE.Object3D<XREventMap> | undefined} getTarget
+ *   The registered object a hit belongs to; see `InteractionManager.getTarget`.
+ *   For a handler that wants to know whether an event bubbling through it
+ *   was its own object's, or a nested target's.
  */
 
 /**
@@ -622,6 +629,7 @@ export function interactions(ctx) {
     stopPropagation: (event) => {
       manager.stopPropagation(event);
     },
+    getTarget: (object) => manager.getTarget(object),
     /**
      * Registers the entity with the interaction manager for as long as the
      * operator stays subscribed. With no argument the entity is interactive the

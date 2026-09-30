@@ -1625,16 +1625,21 @@ into the `<use>`'s `width` and `height`, or the symbol's own, or else the
 whole of the nearest viewport, a percentage being of that viewport too.
 Anything else, a `<g>` or a shape drawn once already where it stands, is
 drawn again whole, its own `transform` included. The copy inherits the
-`<use>`'s styles, as a browser's clone
-does, so a sprite whose paths set no `fill` takes the `<use>`'s. The
-mirror sees only the original element, so a property counts as inherited
-when nothing between the copied element and the top of the copy changes
-it; an element that sets a property to exactly the value it would have
-inherited reads as not setting it. An edit inside the symbol reaches every
-copy, wherever in the document the symbol is. A copy is drawn where its
-`<use>` stands in the draw order, and is not a ray target. A `<use>` whose
-copy would draw it again stops there. An `href` changed after mounting is not followed,
-because the portal's observer does not watch that attribute.
+`<use>`'s styles, as a browser's clone does, so a sprite whose paths set
+no `fill` takes the `<use>`'s, `fill="currentColor"` takes the `<use>`'s
+`color`, and a hidden `<use>` hides its copy. The mirror sees only the
+original element, so a property counts as inherited when nothing between
+the copied element and the top of the copy sets it, by its attribute, its
+`style` or a different computed value; a stylesheet rule that sets a
+property to exactly the value it would have inherited reads as not setting
+it. An edit inside the symbol reaches every copy, wherever in the document
+the symbol is. A copy is drawn where its `<use>` stands in the draw order,
+and is not a ray target. A `<use>` whose copy would draw it again stops
+there. Two things are not followed: an `href` changed after mounting,
+because the portal's observer does not watch that attribute, and a target
+that appears only after the `<use>` mounted, such as a sprite fetched and
+injected later. The `<use>` looks its target up again when it is
+restyled.
 
 One print of the measuring tape. **Dashes are geometry, not a
 shader**, for the reason `svg/dash.js` gives, so a `stroke-dashoffset`

@@ -3,7 +3,7 @@ import { addDependency, Derived, effects, fromEvent, just, onCleanup, set } from
 import { $, children } from "../operators.js";
 import { applyClip, clipRaycast } from "../elements/clip.js";
 import { acquireImage, releaseImage } from "../elements/image.js";
-import { getComputedStyleCached, isVisibilityHidden } from "../elements/mirror.js";
+import { getComputedStyleCached } from "../elements/mirror.js";
 import { place } from "../elements/place.js";
 import { matrixEqual, parsePreserveAspectRatio, viewportMatrix } from "./geometry.js";
 import {
@@ -11,6 +11,7 @@ import {
   clipUniforms,
   commitMatrix,
   emptyGeometry,
+  isDrawnHidden,
   localMatrix,
   paintSlot,
   rayTarget,
@@ -279,7 +280,7 @@ export function image(ctx, element, instance = null) {
     { isEqual: quadEqual },
   );
 
-  const hidden = new Derived(() => isVisibilityHidden(element));
+  const hidden = new Derived(() => isDrawnHidden(element, instance));
 
   /**
    * Whether a ray can hit the picture. An image has one region, its area,

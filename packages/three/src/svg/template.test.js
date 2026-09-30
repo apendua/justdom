@@ -323,6 +323,7 @@ function scene(content, draw) {
     ),
   );
   return {
+    root,
     mirror,
     objects,
     teardown() {
@@ -388,6 +389,24 @@ describe("use", () => {
     s.teardown();
   });
 
+  test("a percentage on the use follows a new viewBox on the root", () => {
+    const symbol = svg("symbol", { id: "use-symbol-reflow", viewBox: "0 0 10 10" }, [
+      svg("rect", { width: "10", height: "10", fill: "red" }),
+    ]);
+    const use = svg("use", { href: "#use-symbol-reflow", y: "50%", width: "10", height: "10" });
+    const s = scene([svg("defs", {}, [symbol]), use], [use]);
+    s.root.setAttribute("preserveAspectRatio", "none");
+    s.mirror.attributeChanged(s.root);
+    const [mesh] = meshesUnder(s.objects[0]);
+    // 50% of 25 is 12.5, and the rect's foot 10 below it, doubled to px.
+    assert.deepEqual(toRoot(mesh, 0, 10), [0, 45]);
+    s.root.setAttribute("viewBox", "0 0 50 50");
+    s.mirror.attributeChanged(s.root);
+    // 50% of 50 is 25, and px are user units on y now.
+    assert.deepEqual(toRoot(meshesUnder(s.objects[0])[0], 0, 10), [0, 35]);
+    s.teardown();
+  });
+
   test("the copy inherits the use's paint where the symbol sets none", () => {
     const bare = svg("path", { d: "M0 0 L5 0 L5 5 z" });
     const own = svg("path", { d: "M0 0 L5 0 L5 5 z", fill: "blue" });
@@ -397,6 +416,28 @@ describe("use", () => {
     const [inherited, set] = meshesUnder(s.objects[0]);
     assert.equal(colourOf(inherited), "ff0000", "inherited from the use");
     assert.equal(colourOf(set), "0000ff", "its own");
+    s.teardown();
+  });
+
+  test("currentColor in a symbol is the use's colour, not where the symbol is defined", () => {
+    const symbol = svg("symbol", { id: "use-symbol-current" }, [
+      svg("path", { d: "M0 0 L5 0 L5 5 z", fill: "currentColor" }),
+    ]);
+    const defs = svg("defs", { style: "color: blue" }, [symbol]);
+    const use = svg("use", { href: "#use-symbol-current", style: "color: red" });
+    const s = scene([defs, use], [use]);
+    assert.equal(colourOf(meshesUnder(s.objects[0])[0]), "ff0000");
+    s.teardown();
+  });
+
+  test("a hidden use hides its copy", () => {
+    const symbol = svg("symbol", { id: "use-symbol-hidden" }, [
+      svg("rect", { width: "5", height: "5", fill: "red" }),
+    ]);
+    const use = svg("use", { href: "#use-symbol-hidden", style: "visibility: hidden" });
+    const s = scene([svg("defs", {}, [symbol]), use], [use]);
+    const [mesh] = meshesUnder(s.objects[0]);
+    assert.equal(/** @type {THREE.MeshBasicMaterial} */ (mesh.material).visible, false);
     s.teardown();
   });
 

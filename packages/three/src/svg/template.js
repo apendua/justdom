@@ -357,7 +357,9 @@ function symbolViewport(use, symbol) {
  * `readDrawnProperty`. It follows edits to the referenced content, since the
  * mirror follows that content wherever it is. It is drawn and never hit, as
  * a marker is. Not followed: an `href` changed after the copy was made,
- * which the portal's observer does not watch.
+ * which the portal's observer does not watch, and a target that appears
+ * only after the `<use>` mounted, which may be anywhere on the page. The
+ * `<use>` looks its target up again when it is restyled.
  *
  * @param {WeakKey} ctx
  * @param {Element} element

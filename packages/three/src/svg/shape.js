@@ -22,6 +22,7 @@ import {
   getComputedStyleCached,
   getInteriorClipBox,
   getParentElement,
+  hidesVisibility,
   isVisibilityHidden,
 } from "../elements/mirror.js";
 import { isSvgRoot, SVG_NAMESPACE } from "../elements/plugins.js";
@@ -442,7 +443,27 @@ const INHERITED = new Set([
   "marker-start",
   "marker-mid",
   "marker-end",
+  "color",
+  "visibility",
 ]);
+
+/** The properties whose value may be `currentColor`, the element's `color`. */
+const COLOR_VALUED = new Set(["fill", "stroke"]);
+
+/**
+ * What an element says about a property itself, through its presentation
+ * attribute or its `style` attribute, or null for nothing. A stylesheet rule
+ * is not seen here; the computed value comparison below catches those.
+ *
+ * @param {Element} element
+ * @param {string} name
+ * @returns {string | null}
+ */
+function declaredValue(element, name) {
+  const inline = /** @type {ElementCSSInlineStyle} */ (/** @type {unknown} */ (element)).style;
+  const value = inline?.getPropertyValue(name) || element.getAttribute(name);
+  return value ? value.trim() : null;
+}
 
 /**
  * A property of an element as it is drawn: its own computed value, or, in a
@@ -454,9 +475,15 @@ const INHERITED = new Set([
  * it can see is whether anything in the copied content sets the property:
  * where each element's value is the same as its parent's all the way up to
  * the boundary, the value was inherited from outside, and the `<use>`'s is
- * taken instead. An element that sets the property to exactly the value it
- * would have inherited reads as not setting it, which is the one case this
- * gets wrong.
+ * taken instead. An element whose attribute or `style` names the property
+ * sets it, whatever the value. One that sets it through a stylesheet rule to
+ * exactly the value it would have inherited reads as not setting it, which
+ * is the one case this gets wrong.
+ *
+ * A `fill` or `stroke` of `currentColor` is resolved against the copy's
+ * `color`, which is inherited from the `<use>` in turn. The computed value
+ * the mirror sees was resolved where the symbol is defined, against a
+ * `color` the drawing never has.
  *
  * @param {Element} element
  * @param {string} name
@@ -472,6 +499,12 @@ export function readDrawnProperty(element, name, instance) {
   let current = element;
   let currentValue = value;
   while (current !== inherit.boundary) {
+    const declared = declaredValue(current, name);
+    if (declared !== null) {
+      return COLOR_VALUED.has(name) && declared.toLowerCase() === "currentcolor"
+        ? readDrawnProperty(current, "color", instance)
+        : value;
+    }
     const parent = getParentElement(current);
     if (!parent) {
       return value;
@@ -484,6 +517,21 @@ export function readDrawnProperty(element, name, instance) {
     currentValue = parentValue;
   }
   return inherit.read(name);
+}
+
+/**
+ * Whether `visibility` hides what an element draws, as the element is drawn.
+ * In a copy made by a `<use>` that follows `readDrawnProperty`, so a hidden
+ * `<use>`, or one under a hidden `<g>`, hides its copy as a browser does.
+ *
+ * @param {Element} element
+ * @param {Instance | null} instance
+ * @returns {boolean}
+ */
+export function isDrawnHidden(element, instance) {
+  return instance?.inherit
+    ? hidesVisibility(readDrawnProperty(element, "visibility", instance))
+    : isVisibilityHidden(element);
 }
 
 /**
@@ -1090,7 +1138,7 @@ export function shape(ctx, element, { instance = null, decorate } = {}) {
    * under it — the reason this is asked per shape and never turned into a
    * group's `visible`, which would prune the subtree.
    */
-  const hidden = new Derived(() => isVisibilityHidden(element));
+  const hidden = new Derived(() => isDrawnHidden(element, instance));
 
   /**
    * Which regions a ray can hit, from `pointer-events`. Every shape asks,

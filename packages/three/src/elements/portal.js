@@ -296,10 +296,14 @@ function claimRoot(root) {
  * @property {false | HapticOptions} [haptics] What the hand feels from the
  *   controls in this panel, every element with `cursor: pointer`, the rule
  *   that makes one a ray target: a pulse of the controller's motors when
- *   the ray arrives on one and another when the trigger closes on it. On
- *   by default, as a `tick` at full strength, so a panel with buttons in
- *   it is felt without saying anything. An object turns either event
- *   off (`hover`, `active`), scales every pulse (`strength`), or picks the
+ *   the trigger closes on one and, with `hover`, another when the ray
+ *   arrives on it. The press is on by default, as a `tick` at full
+ *   strength, so a panel with buttons in it is felt without saying
+ *   anything; the hover is off, except on the keyboard a field brings up,
+ *   whose keys are aimed at one after another without looking and which
+ *   turns it on unless this panel's own `hover: false` says otherwise. An
+ *   object turns either event on or off (`hover`, `active`), scales every
+ *   pulse (`strength`), or picks the
  *   pulses (`flavor`: `tick`, `knock`, `buzz`, `key`, or a `HapticFlavor`
  *   of your own), and is spread over the scene's `PanelOptions.haptics`;
  *   `false` is no haptics whatever the scene says. There is no `true`,
@@ -738,8 +742,12 @@ function buildPortal(ctx, ownOptions = {}) {
           // the board a keyboard of its own. The one option that does go
           // through is this panel's haptics: the board types for this panel,
           // and the hand pressing its keys is the hand pressing the panel's
-          // buttons, which should feel the same.
-          ctx: PanelOptionsContext.set(baseCtx, { haptics }),
+          // buttons, which should feel the same. With the hover on unless
+          // the panel turned it off by name: a keyboard is where aiming at
+          // one small target after another without looking wants it.
+          ctx: PanelOptionsContext.set(baseCtx, {
+            haptics: haptics === false ? false : { hover: true, ...haptics },
+          }),
           options: keyboard,
           containerObject,
           containerElement,

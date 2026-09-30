@@ -1969,7 +1969,7 @@ describe("createPortal", () => {
   test("a button is felt as the scene's haptics say, with the panel's own laid over", async () => {
     const manager = new InteractionManager();
     const scene = withPanelOptions(InteractionContext.set({}, manager), {
-      haptics: { flavor: "knock", hover: false },
+      haptics: { flavor: "knock" },
     });
 
     /**
@@ -2025,8 +2025,8 @@ describe("createPortal", () => {
 
     assert.deepEqual(
       (await panel({})).map((effect) => [effect.duration, effect.strongMagnitude]),
-      [[60, 1]],
-      "the scene's knock, pressed and not hovered",
+      [[60, 0.5]],
+      "the scene's knock on the press, and no hover, since nobody asked for one",
     );
     assert.deepEqual(
       (await panel({ haptics: { hover: true, strength: 0.5 } })).map((effect) => [
@@ -2034,10 +2034,10 @@ describe("createPortal", () => {
         effect.strongMagnitude,
       ]),
       [
-        [30, 0.25],
-        [60, 0.5],
+        [30, 0.125],
+        [60, 0.25],
       ],
-      "the panel turns hover back on and halves the scene's knock",
+      "the panel turns the hover on and halves the scene's knock",
     );
     assert.deepEqual(await panel({ haptics: false }), [], "and can have none");
   });

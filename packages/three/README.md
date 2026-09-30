@@ -656,19 +656,28 @@ A button on a page has a click to say it was pressed; a projected one is a
 quad at the end of a ray, and the hand holding the controller can be told.
 Every control in a panel, which is every element with `cursor: pointer`,
 the rule that makes one a ray target, pulses the controller's motors when
-the ray arrives on it and again when the trigger closes on it. Nothing is
-marked: a panel with buttons in it is felt, and so is the keyboard.
+the trigger closes on it. Nothing is marked: a panel with buttons in it is
+felt, and so is the keyboard.
+
+A pulse when the ray arrives on a control is there too, and off unless a
+panel asks for it. A press is always worth telling the hand about. A hover
+is worth it where the player aims at one small target after another
+without looking, and elsewhere a ray sweeping across a panel on its way
+somewhere is a stutter of pulses nobody asked for. The keyboard a field
+brings up is the case it is for, and has it on (see the last paragraph
+below).
 
 What it feels like is the panel's, or the scene's (see **Panel defaults**
 below):
 
 ```js
-dom(ctx, menu, [set({ position })], {
-  haptics: { hover: false, strength: 0.6, flavor: "knock" },
+dom(ctx, numberPad, [set({ position })], {
+  haptics: { hover: true, strength: 0.6, flavor: "knock" },
 });
 ```
 
-`hover` and `active` turn either event off; both are on unless told.
+`hover` turns the arrival pulse on and `active` turns the press off; a
+press is felt and a hover is not unless told.
 `strength` multiplies every pulse, clamped to what the motors can do.
 `flavor` picks the pulses: `tick` (a light high-frequency click, the
 default), `knock` (the low motor, a thump), `buzz` (longer and softer) or
@@ -710,7 +719,9 @@ the rows passing under the ray were not aimed at, as `:hover` on a page
 does not fire on rows scrolling under a pressed pointer.
 
 The keyboard a field brings up is a panel of its own, and its keys follow
-the `haptics` of the panel it is typing for.
+the `haptics` of the panel it is typing for, with the hover on: a panel
+that does not want its keys felt on hover says `hover: false` by name, and
+one with `haptics: false` has a silent board too.
 
 ## Baking a panel into a stamp
 

@@ -509,39 +509,63 @@ describe("the keyboard from the panel options", () => {
     panel.cleanup();
   });
 
-  test("the board's keys feel the way the panel's own haptics say", async () => {
+  test("the board's keys feel the way the panel's own haptics say, hover included", async () => {
     /**
-     * The board of a panel configured so, brought up and pressed once by a
-     * hand that keeps a record.
+     * The board of a panel configured so, brought up, and one of its keys
+     * arrived on and pressed by a hand that keeps a record.
      *
      * @param {Configure} configure
      */
-    const pressedKey = async (configure) => {
+    const feltKey = async (configure) => {
       const panel = keyboardPanel(configure);
       await settle();
       panel.press(panel.fieldObject());
       await settle();
       const { source, played } = recordingSource();
-      panel.press(panel.keyObject(), source);
+      const key = panel.keyObject();
+      assert.ok(key, "a key to point at");
+      key.dispatchEvent(
+        /** @type {any} */ ({
+          type: "pointerenter",
+          controller: new THREE.Group(),
+          inputSource: source,
+          registeredTarget: key,
+          originalTarget: key,
+          relatedTarget: null,
+        }),
+      );
+      panel.press(key, source);
       panel.cleanup();
       return played.map((effect) => effect.duration);
     };
 
-    assert.deepEqual(await pressedKey(ownKeyboard), [40], "a tick, as any button");
     assert.deepEqual(
-      await pressedKey((create) => ({
+      await feltKey(ownKeyboard),
+      [30, 40],
+      "a tick on arriving and on the press: the board turns the hover on for itself",
+    );
+    assert.deepEqual(
+      await feltKey((create) => ({
         panelOptions: { keyboard: { create }, haptics: { flavor: "knock" } },
       })),
-      [60],
+      [30, 60],
       "the scene's flavor",
     );
     assert.deepEqual(
-      await pressedKey((create) => ({
+      await feltKey((create) => ({
+        panelOptions: { keyboard: { create } },
+        options: { haptics: { hover: false } },
+      })),
+      [40],
+      "no hover for a panel that turned it off by name",
+    );
+    assert.deepEqual(
+      await feltKey((create) => ({
         panelOptions: { keyboard: { create }, haptics: { flavor: "knock" } },
         options: { haptics: false },
       })),
       [],
-      "and none for a panel that turned them off",
+      "and nothing for a panel that turned them off",
     );
   });
 

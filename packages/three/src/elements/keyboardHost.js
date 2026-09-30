@@ -65,7 +65,7 @@ const DEFAULT_TILT = (24 * Math.PI) / 180;
  *   scene's panel options — the board is a panel of its own, with batches
  *   of its own, and none of the app's defaults — except the panel's
  *   `haptics`, which the board's keys follow, since the same hand presses
- *   both.
+ *   both, with the hover on unless the panel turned it off by name.
  * @property {THREE.Object3D} containerObject The panel's perimeter. The
  *   board hangs off the same parent, so it is placed and scaled with the
  *   panel.

@@ -38,8 +38,8 @@ import { createProperty } from "@apendua/signal";
  * No pulse is shorter than 30 ms or leaves either motor at nothing. A
  * controller with one actuator, which is what a Quest holds, folds the two
  * magnitudes into one drive, and a pulse that only named the weak motor
- * came out as nothing at all; and the light tick the games here already
- * play, 40 ms at 0.4, is about the least a hand notices.
+ * came out as nothing at all. The magnitudes are half of the first set a
+ * hand could feel, which on a headset was too strong for a button.
  *
  * @typedef {"tick" | "knock" | "buzz" | "key"} HapticFlavorName
  */
@@ -52,21 +52,21 @@ import { createProperty } from "@apendua/signal";
  */
 export const HAPTIC_FLAVORS = Object.freeze({
   tick: {
-    hover: { duration: 30, strong: 0.3, weak: 0.45 },
-    press: { duration: 40, strong: 0.6, weak: 1 },
+    hover: { duration: 30, strong: 0.15, weak: 0.225 },
+    press: { duration: 40, strong: 0.3, weak: 0.5 },
   },
   knock: {
-    hover: { duration: 30, strong: 0.5, weak: 0.2 },
-    press: { duration: 60, strong: 1, weak: 0.5 },
+    hover: { duration: 30, strong: 0.25, weak: 0.1 },
+    press: { duration: 60, strong: 0.5, weak: 0.25 },
   },
   buzz: {
-    hover: { duration: 60, strong: 0.2, weak: 0.4 },
-    press: { duration: 120, strong: 0.45, weak: 0.7 },
+    hover: { duration: 60, strong: 0.1, weak: 0.2 },
+    press: { duration: 120, strong: 0.225, weak: 0.35 },
   },
   key: {
-    hover: { duration: 30, strong: 0.3, weak: 0.4 },
-    press: { duration: 45, strong: 0.7, weak: 1 },
-    release: { duration: 30, strong: 0.3, weak: 0.6 },
+    hover: { duration: 30, strong: 0.15, weak: 0.2 },
+    press: { duration: 45, strong: 0.35, weak: 0.5 },
+    release: { duration: 30, strong: 0.15, weak: 0.3 },
   },
 });
 
@@ -74,12 +74,16 @@ export const HAPTIC_FLAVORS = Object.freeze({
  * How the controls in a panel feel: every element with `cursor: pointer`,
  * the rule that makes one a ray target. Set for the scene through
  * `PanelOptions.haptics`, for one panel through `PortalOptions.haptics`,
- * and left out for the defaults: both events, at full strength, as a
- * `tick`.
+ * and left out for the defaults: a press, at full strength, as a `tick`.
  *
  * @typedef {object} HapticOptions
  * @property {boolean} [hover] Whether the ray arriving on a control is
- *   felt. True by default.
+ *   felt. False by default: a press is always worth telling the hand
+ *   about, a hover only where the player aims at one small target after
+ *   another without looking, which is what a keyboard is, and the board a
+ *   field brings up turns it on for itself (see `PortalOptions.haptics`).
+ *   Elsewhere a ray sweeping across a panel on its way somewhere is a
+ *   stutter of pulses nobody asked for.
  * @property {boolean} [active] Whether a press on a control is felt, and
  *   its release where the flavor has one. True by default.
  * @property {number} [strength] What every pulse's magnitudes are multiplied
@@ -261,7 +265,7 @@ export function createHaptics(options) {
   if (options === false) {
     return null;
   }
-  const { hover = true, active = true, strength = 1, flavor = "tick" } = options ?? {};
+  const { hover = false, active = true, strength = 1, flavor = "tick" } = options ?? {};
   const recipe = typeof flavor === "string" ? HAPTIC_FLAVORS[flavor] : flavor;
   const onHover = hover ? scaled(recipe.hover, strength) : null;
   const onPress = active ? scaled(recipe.press, strength) : null;

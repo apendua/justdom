@@ -63,30 +63,30 @@ describe("playHaptic", () => {
 });
 
 describe("createHaptics", () => {
-  test("is a tick at full strength, on both events, when nothing is said", () => {
+  test("is a tick at full strength, on a press and not a hover, when nothing is said", () => {
     const haptics = createHaptics(undefined);
     assert.ok(haptics);
     const { source, played } = recordingSource();
 
     haptics.hover(source);
+    assert.equal(played.length, 0, "a hover is asked for, not assumed");
     haptics.press(source);
     haptics.release(source);
     assert.deepEqual(played, [
-      { type: "dual-rumble", duration: 30, strongMagnitude: 0.3, weakMagnitude: 0.45 },
-      { type: "dual-rumble", duration: 40, strongMagnitude: 0.6, weakMagnitude: 1 },
+      { type: "dual-rumble", duration: 40, strongMagnitude: 0.3, weakMagnitude: 0.5 },
     ]);
   });
 
   test("is nothing for `false`, for both events off, and for a strength of 0", () => {
     assert.equal(createHaptics(false), null);
-    assert.equal(createHaptics({ hover: false, active: false }), null);
+    assert.equal(createHaptics({ active: false }), null, "the hover is off unless asked for");
     assert.equal(createHaptics({ strength: 0 }), null);
   });
 
   test("plays only the events that are on", () => {
     const { source, played } = recordingSource();
 
-    const hoverOnly = createHaptics({ active: false });
+    const hoverOnly = createHaptics({ hover: true, active: false });
     assert.ok(hoverOnly);
     hoverOnly.press(source);
     hoverOnly.release(source);
@@ -95,7 +95,7 @@ describe("createHaptics", () => {
     assert.equal(played.length, 1);
 
     played.length = 0;
-    const pressOnly = createHaptics({ hover: false, flavor: "key" });
+    const pressOnly = createHaptics({ flavor: "key" });
     assert.ok(pressOnly);
     pressOnly.hover(source);
     assert.equal(played.length, 0, "a hover is off");
@@ -115,15 +115,15 @@ describe("createHaptics", () => {
     assert.ok(half);
     half.press(source);
     assert.deepEqual(played, [
-      { type: "dual-rumble", duration: 60, strongMagnitude: 0.5, weakMagnitude: 0.25 },
+      { type: "dual-rumble", duration: 60, strongMagnitude: 0.25, weakMagnitude: 0.125 },
     ]);
 
     played.length = 0;
-    const loud = createHaptics({ strength: 2, flavor: "knock" });
+    const loud = createHaptics({ strength: 3, flavor: "knock" });
     assert.ok(loud);
-    loud.hover(source);
+    loud.press(source);
     assert.deepEqual(played, [
-      { type: "dual-rumble", duration: 30, strongMagnitude: 1, weakMagnitude: 0.4 },
+      { type: "dual-rumble", duration: 60, strongMagnitude: 1, weakMagnitude: 0.75 },
     ]);
   });
 
@@ -164,15 +164,15 @@ describe("createHaptics", () => {
     const haptics = createHaptics({ flavor: "knock" });
     assert.ok(haptics);
     haptics.press(source);
-    assert.deepEqual(pulsed, [[1, 60]]);
+    assert.deepEqual(pulsed, [[0.5, 60]]);
   });
 
   test("is silent for no hand, a hand with no gamepad, and a gamepad with no motors", () => {
     const haptics = createHaptics({});
     assert.ok(haptics);
-    haptics.hover(null);
-    haptics.hover(/** @type {XRInputSource} */ (/** @type {unknown} */ ({})));
-    haptics.hover(
+    haptics.press(null);
+    haptics.press(/** @type {XRInputSource} */ (/** @type {unknown} */ ({})));
+    haptics.press(
       /** @type {XRInputSource} */ (/** @type {unknown} */ ({ gamepad: { hapticActuators: [] } })),
     );
   });

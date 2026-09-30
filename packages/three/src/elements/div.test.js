@@ -686,7 +686,11 @@ describe("div drag-to-scroll", () => {
 describe("div haptics", () => {
   test("a control is felt on hover, press and release, by the hand that did it", () => {
     const { source, played } = recordingSource();
-    const { dispatch, subscription } = setup("pointer", "", createHaptics({ flavor: "key" }));
+    const { dispatch, subscription } = setup(
+      "pointer",
+      "",
+      createHaptics({ hover: true, flavor: "key" }),
+    );
 
     dispatch("pointerenter", source);
     dispatch("selectstart", source);
@@ -706,7 +710,7 @@ describe("div haptics", () => {
 
   test("a hover is one pulse per arrival, whatever is clickable inside the control", () => {
     const { source, played } = recordingSource();
-    const haptics = createHaptics({});
+    const haptics = createHaptics({ hover: true });
     const button = setup("pointer", "", haptics);
     // The label inside the button inherits its cursor, and so is a target
     // of its own, under the button's object as the portal would put it.
@@ -733,7 +737,7 @@ describe("div haptics", () => {
 
   test("a button entered from the list it is in is entered, but not while the list scrolls", () => {
     const { source, played } = recordingSource();
-    const haptics = createHaptics({});
+    const haptics = createHaptics({ hover: true });
     // A list with more in it than fits, inside a panel: a ray target to be
     // dragged by, and the ancestor of every button in it, but no control.
     const root = document.createElement("div");

@@ -1906,6 +1906,60 @@ export function isVisibilityHidden(node) {
 }
 
 /**
+ * Forgotten with the node, since the product ends at whichever panel's top
+ * the node is under, and a node claimed again may be under another.
+ *
+ * @type {WeakMap<Element | Text, Derived<number>>}
+ */
+const opacityCache = nodeCache();
+
+/**
+ * How opaque this node is drawn: its own `opacity` times every ancestor's,
+ * up to and including the panel's top. For a text node it is its parent's,
+ * which is where a text node's style comes from.
+ *
+ * `opacity` does not inherit, but it fades everything inside the element
+ * all the same: a browser paints the subtree into a layer of its own and
+ * fades the layer. A panel has no layer to fade, so each box and each run
+ * of text is faded by the product instead. That is the page wherever what
+ * is inside does not overlap. Where it does, the two show through each
+ * other, which on the page they would not.
+ *
+ * Stops at the panel's top, as every root-scoped question here does: an
+ * opacity the page puts on a wrapper around the panel is the page's
+ * business, not the panel's.
+ *
+ * One signal per node, reading its own style and its parent's product, so
+ * the product is worked out once per element rather than once per element
+ * per ancestor. It is behind an equality gate like `isVisibilityHidden`:
+ * the computed style is invalidated by every hover, and a hover that does
+ * not change an opacity stops here rather than re-running the subtree.
+ *
+ * @param {Element | Text} node
+ * @returns {number}
+ */
+export function getOpacity(node) {
+  let signal = opacityCache.get(node);
+  if (!signal) {
+    signal = new Derived(() => {
+      if (node.nodeType === Node.TEXT_NODE) {
+        const parent = getParentElement(node);
+        return parent ? getOpacity(parent) : 1;
+      }
+      const own = parseFloat(getComputedStyleCached(node).opacity);
+      const opacity = Number.isNaN(own) ? 1 : own;
+      if (/** @type {Element} */ (node).hasAttribute(PORTAL_ATTRIBUTE)) {
+        return opacity;
+      }
+      const parent = getParentElement(node);
+      return parent ? opacity * getOpacity(parent) : opacity;
+    });
+    opacityCache.set(node, signal);
+  }
+  return signal.get();
+}
+
+/**
  * @typedef {object} BorderBoxSize
  * @property {number} width
  * @property {number} height

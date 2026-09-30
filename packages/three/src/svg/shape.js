@@ -22,6 +22,7 @@ import {
   getChildNodes,
   getComputedStyleCached,
   getInteriorClipBox,
+  getOpacity,
   getParentElement,
   isVisibilityHidden,
 } from "../elements/mirror.js";
@@ -338,14 +339,15 @@ function readChain(element) {
   /** @type {Element | null} */
   let current = element;
   while (current) {
-    const style = getComputedStyleCached(current);
-    // The root's own opacity is applied to its box by `div`; the shapes
-    // inside are drawn from materials of their own, so it is applied here
-    // too, or a faded-out icon would keep its picture at full strength.
-    opacity *= parseNumber(style.opacity, 1);
     if (isSvgRoot(current)) {
+      // The root's own opacity is applied to its box by `div`, with every
+      // element's around it (see `getOpacity`); the shapes inside are drawn
+      // from materials of their own, so it is applied here too, or a
+      // faded-out icon would keep its picture at full strength.
+      opacity *= getOpacity(current);
       return { ctm: multiply(rootMatrix(current), ctm), opacity, root: current };
     }
+    opacity *= parseNumber(getComputedStyleCached(current).opacity, 1);
     ctm = multiply(localMatrix(current), ctm);
     current = getParentElement(current);
   }

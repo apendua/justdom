@@ -10,7 +10,7 @@ import {
 } from "@apendua/signal";
 import { fromEvent, store } from "@apendua/signal";
 import { filtered, Subject } from "@apendua/signal";
-import { getBorderBoxSize, getComputedStyleCached } from "./mirror.js";
+import { getBorderBoxSize, getComputedStyleCached, getOpacity } from "./mirror.js";
 
 import { getElevation } from "./elevation.js";
 import { layoutGradient, parseBackground } from "./gradient.js";
@@ -159,22 +159,18 @@ export function parseColor(colorString) {
 }
 
 /**
+ * How deep the element is in the document, which orders a child's paint
+ * over its parent's (see `renderOrder`).
+ *
  * @param {HTMLElement} element
- * @returns {[number, number]}
+ * @returns {number}
  */
-function getInheritedOpacity(element) {
-  let opacity = 1.0;
-  /** @type {HTMLElement | null} */
-  let el = element.parentElement;
+function getDepth(element) {
   let layer = 0;
-  while (el) {
-    // const style = getComputedStyle(el);
-    // const op = parseFloat(style.opacity || "1");
-    // opacity *= isNaN(op) ? 1.0 : op;
-    el = el.parentElement;
+  for (let el = element.parentElement; el; el = el.parentElement) {
     layer++;
   }
-  return [opacity, layer];
+  return layer;
 }
 
 /**
@@ -318,8 +314,11 @@ export default class VisualProperties {
     // this when the layout moves it.
     const size = getBorderBoxSize(element);
     const fontSize = parseFloat(style.fontSize || "0");
-    const [inheritedOpacity, layerNo] = getInheritedOpacity(element);
-    const opacity = parseFloat(style.opacity || "1") * inheritedOpacity;
+    const layerNo = getDepth(element);
+    // The element's own and every ancestor's in the panel, as a page fades
+    // a subtree (see `getOpacity`). A pseudo-element is faded by its own
+    // opacity on top of its element's.
+    const opacity = getOpacity(element) * (pseudoElement ? parseFloat(style.opacity || "1") : 1);
     // Every box pays for reading `background-image`; only a box that has one
     // pays for the properties that lay it out. They are all left empty
     // otherwise, which is a value that does not change and so notifies

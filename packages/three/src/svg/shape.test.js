@@ -60,8 +60,13 @@ const SVG_NS = "http://www.w3.org/2000/svg";
  *   attributes.
  * @param {InteractionManager} [options.manager] What the shape registers
  *   itself with, if it is ever clickable.
+ * @param {HTMLElement} [options.inside] Where the `<svg>` goes on the page.
  */
-function setup(tag, attributes, { viewBox, width = 100, height = 50, manager } = {}) {
+function setup(
+  tag,
+  attributes,
+  { viewBox, width = 100, height = 50, manager, inside = document.body } = {},
+) {
   const root = document.createElementNS(SVG_NS, "svg");
   if (viewBox) {
     root.setAttribute("viewBox", viewBox);
@@ -83,7 +88,7 @@ function setup(tag, attributes, { viewBox, width = 100, height = 50, manager } =
     element.setAttribute(name, value);
   }
   root.appendChild(element);
-  document.body.appendChild(root);
+  inside.appendChild(root);
 
   const { mirror, flush, disconnect } = observedMirror(root);
   mirror.adopt(root);
@@ -447,6 +452,22 @@ describe("svg shape", () => {
     });
     assert.equal(material(s.meshes[0]).opacity, 0.25);
     s.teardown();
+  });
+
+  test("an element around the <svg> fades its shapes", () => {
+    const card = document.createElement("div");
+    card.style.opacity = "0.5";
+    document.body.appendChild(card);
+    const s = setup(
+      "rect",
+      { x: "0", y: "0", width: "10", height: "10", fill: "red" },
+      {
+        inside: card,
+      },
+    );
+    assert.equal(material(s.meshes[0]).opacity, 0.5);
+    s.teardown();
+    card.remove();
   });
 
   test("the even-odd rule leaves a hole", () => {

@@ -124,6 +124,9 @@ function planeOf(space, target) {
  * @property {(controller: THREE.XRTargetRaySpace, element: HTMLElement, object: THREE.Object3D) => void} begin
  * @property {(controller: THREE.XRTargetRaySpace) => void} end
  * @property {(controller: THREE.XRTargetRaySpace) => boolean} didScroll
+ * @property {(controller: THREE.XRTargetRaySpace) => boolean} scrolling Whether
+ *   the hand is moving a list right now: holding one, or gliding it after
+ *   letting go, until the glide retires.
  * @property {() => void} dispose
  */
 
@@ -263,6 +266,9 @@ export function createScrollDrags(requestFrames) {
     },
     didScroll(controller) {
       return scrolled.has(controller);
+    },
+    scrolling(controller) {
+      return drags.has(controller);
     },
     dispose() {
       drags.clear();

@@ -65,8 +65,15 @@ import { addDependency, batch, Derived } from "@apendua/signal";
  * a controller nothing has connected to yet, which is a controller under a
  * test; a select event's is never null, since a press is the source's own.
  *
+ * `registeredTarget` is the registered object the ray's hit belongs to (see
+ * `InteractionManager.getTarget`), which is what a handler on the way up
+ * needs to tell its own object's event from one bubbling out of a target
+ * nested in it. `originalTarget` is the mesh the ray met, and `target` is,
+ * as three's dispatcher writes it, the object whose listener is running.
+ *
  * @typedef {object} PointerEvent
  * @property {XRInputSource | null} inputSource
+ * @property {Object3D<XREventMap>} registeredTarget
  * @property {Object3D<XREventMap>} target
  * @property {Object3D<XREventMap>} originalTarget
  * @property {XRTargetRaySpace} controller
@@ -84,6 +91,7 @@ import { addDependency, batch, Derived } from "@apendua/signal";
 /**
  * @typedef {object} PointerCancelEvent
  * @property {XRInputSource | null} inputSource
+ * @property {Object3D<XREventMap>} registeredTarget
  * @property {Object3D<XREventMap> | null} relatedTarget
  * @property {Object3D<XREventMap>} target
  * @property {Object3D<XREventMap>} originalTarget

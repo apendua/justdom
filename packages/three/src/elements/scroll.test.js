@@ -3,31 +3,7 @@ import assert from "node:assert/strict";
 import * as THREE from "three";
 import { PORTAL_ATTRIBUTE } from "./mirror.js";
 import { createScrollDrags, findScroller, isScrollable } from "./scroll.js";
-
-/**
- * jsdom lays nothing out and never scrolls, so a scroller has to be
- * described: how much fits, how much there is, and where it currently sits.
- *
- * @param {HTMLElement} element
- * @param {{ client: number, scroll: number }} size
- */
-function describeScroller(element, { client, scroll }) {
-  let top = 0;
-  Object.defineProperties(element, {
-    clientHeight: { configurable: true, get: () => client },
-    scrollHeight: { configurable: true, get: () => scroll },
-    clientWidth: { configurable: true, get: () => client },
-    scrollWidth: { configurable: true, get: () => client },
-    scrollTop: {
-      configurable: true,
-      get: () => top,
-      // Browsers clamp, and so does the list at the ends of its travel.
-      set: (value) => {
-        top = Math.max(0, Math.min(value, scroll - client));
-      },
-    },
-  });
-}
+import { describeScroller } from "../test/scroller.js";
 
 /**
  * @param {string} style

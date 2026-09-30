@@ -177,9 +177,14 @@ export class InteractionManager {
    *   Puts the callback on the frame loop and hands back the way off again. It
    *   must run late — after everything that moves the scene, with world
    *   matrices already up to date — because that is when the ray is worked out.
+   * @param {() => XRInputSource | null} [inputSource] What is driving the
+   *   controller, for the pointer events to carry: a press already comes
+   *   with its own, a move does not. `render()` hands in the controller
+   *   handle's, which is the one copy of it; without one the events say
+   *   null, which is a controller under a test.
    * @returns {Source<void>}
    */
-  addController(controller, onAnimationFrame) {
+  addController(controller, onAnimationFrame, inputSource = () => null) {
     return new Stream(() => {
       /** @type {THREE.Object3D<XREventMap> | undefined} */
       let selectedObject;
@@ -206,15 +211,6 @@ export class InteractionManager {
        * @type {THREE.Object3D<XREventMap> | undefined}
        */
       let targetedTarget;
-      /**
-       * The source three connected to this controller, for the pointer
-       * events to carry: a press already comes with its own, a move does
-       * not. Null until the first `connected`, and again after
-       * `disconnected`.
-       *
-       * @type {XRInputSource | null}
-       */
-      let inputSource = null;
       // The hand has to be looked at once when it arrives; after that only
       // when it moves, or when somebody says the scene changed under it.
       let shouldUpdateIntersections = true;
@@ -366,12 +362,18 @@ export class InteractionManager {
         // fact about this frame, not something a listener gets to veto.
         this.#setPointer(controller, intersection);
         if (intersection) {
-          const target = this.getTarget(intersection.object);
+          // Always found: the raycast meets nothing but what is under a
+          // registered object.
+          const target = /** @type {THREE.Object3D<XREventMap>} */ (
+            this.getTarget(intersection.object)
+          );
+          const source = inputSource();
           if (target === targetedTarget) {
             // The same thing, whichever of its meshes the ray is on now.
             this.dispatch(intersection.object, {
               type: "pointermove",
-              inputSource,
+              inputSource: source,
+              registeredTarget: target,
               target: intersection.object,
               originalTarget: intersection.object,
               controller,
@@ -381,8 +383,10 @@ export class InteractionManager {
             if (targetedObject) {
               this.dispatch(targetedObject, {
                 type: "pointerleave",
-                inputSource,
-                relatedTarget: target ?? null,
+                inputSource: source,
+                // Set with `targetedObject`, so as defined as it is.
+                registeredTarget: /** @type {THREE.Object3D<XREventMap>} */ (targetedTarget),
+                relatedTarget: target,
                 target: targetedObject,
                 originalTarget: targetedObject,
                 controller,
@@ -390,7 +394,8 @@ export class InteractionManager {
             }
             this.dispatch(intersection.object, {
               type: "pointerenter",
-              inputSource,
+              inputSource: source,
+              registeredTarget: target,
               relatedTarget: targetedTarget ?? null,
               target: intersection.object,
               originalTarget: intersection.object,
@@ -403,7 +408,8 @@ export class InteractionManager {
         } else if (!intersection && targetedObject) {
           this.dispatch(targetedObject, {
             type: "pointerleave",
-            inputSource,
+            inputSource: inputSource(),
+            registeredTarget: /** @type {THREE.Object3D<XREventMap>} */ (targetedTarget),
             relatedTarget: null,
             target: targetedObject,
             originalTarget: targetedObject,
@@ -412,17 +418,6 @@ export class InteractionManager {
           targetedObject = undefined;
           targetedTarget = undefined;
         }
-      };
-
-      /**
-       * @param {THREE.WebXRSpaceEventMap['connected']} event
-       */
-      const onConnected = (event) => {
-        inputSource = event.data;
-      };
-
-      const onDisconnected = () => {
-        inputSource = null;
       };
 
       // three.js fires this while updating the controller from the XR frame,
@@ -443,8 +438,6 @@ export class InteractionManager {
       controller.addEventListener("squeezestart", onSqueezeStart);
       controller.addEventListener("squeezeend", onSqueezeEnd);
       controller.addEventListener("move", onMove);
-      controller.addEventListener("connected", onConnected);
-      controller.addEventListener("disconnected", onDisconnected);
 
       return () => {
         controller.removeEventListener("selectstart", onSelectStart);
@@ -452,8 +445,6 @@ export class InteractionManager {
         controller.removeEventListener("squeezestart", onSqueezeStart);
         controller.removeEventListener("squeezeend", onSqueezeEnd);
         controller.removeEventListener("move", onMove);
-        controller.removeEventListener("connected", onConnected);
-        controller.removeEventListener("disconnected", onDisconnected);
 
         this.#controllers.delete(controller);
         this.#invalidate.delete(invalidate);
@@ -613,10 +604,6 @@ export function asReader(value) {
  * @typedef {object} Interactions
  * @property {(event: InteractionEvent) => void} stopPropagation
  * @property {<TEntity extends THREE.Object3D<XREventMap>>(enabled?: Reactive<boolean>) => import("@apendua/signal").EntityEffect<TEntity>} makeInteractive
- * @property {(object: THREE.Object3D<XREventMap> | undefined) => THREE.Object3D<XREventMap> | undefined} getTarget
- *   The registered object a hit belongs to; see `InteractionManager.getTarget`.
- *   For a handler that wants to know whether an event bubbling through it
- *   was its own object's, or a nested target's.
  */
 
 /**
@@ -629,7 +616,6 @@ export function interactions(ctx) {
     stopPropagation: (event) => {
       manager.stopPropagation(event);
     },
-    getTarget: (object) => manager.getTarget(object),
     /**
      * Registers the entity with the interaction manager for as long as the
      * operator stays subscribed. With no argument the entity is interactive the

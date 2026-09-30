@@ -2012,6 +2012,7 @@ describe("createPortal", () => {
             controller,
             inputSource: source,
             originalTarget: object,
+            registeredTarget: object,
             relatedTarget: null,
           }),
         );

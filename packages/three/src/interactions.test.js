@@ -170,11 +170,15 @@ describe("pointer events", () => {
     subscription.unsubscribe();
   });
 
-  test("carry the input source the controller connected with", () => {
+  test("carry what is driving the controller, as read when they are sent", () => {
     const manager = new InteractionManager();
     const controller = fakeController();
     const loop = fakeFrameLoop();
-    const subscription = manager.addController(controller, loop.onAnimationFrame).subscribe();
+    /** @type {XRInputSource | null} */
+    let driving = null;
+    const subscription = manager
+      .addController(controller, loop.onAnimationFrame, () => driving)
+      .subscribe();
     const { button } = labelledButton();
     manager.add(button);
 
@@ -185,19 +189,44 @@ describe("pointer events", () => {
     }
 
     loop.run();
-    assert.deepEqual(sources, [null], "nothing has connected yet");
+    assert.deepEqual(sources, [null], "nothing is driving it yet");
 
     const source = /** @type {XRInputSource} */ (/** @type {unknown} */ ({ handedness: "left" }));
-    controller.dispatchEvent(/** @type {any} */ ({ type: "connected", data: source }));
+    driving = source;
     manager.updateIntersections();
     loop.run();
     assert.deepEqual(sources, [null, source]);
 
-    controller.dispatchEvent(/** @type {any} */ ({ type: "disconnected", data: source }));
+    driving = null;
     moveAside(button);
     manager.updateIntersections();
     loop.run();
     assert.deepEqual(sources, [null, source, null]);
+    subscription.unsubscribe();
+  });
+
+  test("name the registered object the hit belongs to, whichever mesh was met", () => {
+    const manager = new InteractionManager();
+    const controller = fakeController();
+    const loop = fakeFrameLoop();
+    const subscription = manager.addController(controller, loop.onAnimationFrame).subscribe();
+    const { button, label } = labelledButton();
+    manager.add(button);
+
+    /** @type {THREE.Object3D[]} */
+    const registered = [];
+    for (const type of /** @type {const} */ (["pointerenter", "pointermove", "pointerleave"])) {
+      button.addEventListener(type, (event) => registered.push(event.registeredTarget));
+    }
+
+    loop.run();
+    moveAside(label);
+    manager.updateIntersections();
+    loop.run();
+    moveAside(button);
+    manager.updateIntersections();
+    loop.run();
+    assert.deepEqual(registered, [button, button, button]);
     subscription.unsubscribe();
   });
 });

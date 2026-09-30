@@ -135,23 +135,34 @@ export const HapticsContext = createProperty(
  * target of its own, and the ray crossing from it onto the button's own
  * background is an enter as far as the manager can tell. It is not an
  * arrival: the hand has been on the button the whole time. So a ray coming
- * from something nested in the control, or from something the control is
- * nested in, is moving within one control, and only a ray coming from
- * another control, or from nothing, has arrived. What that gives up is a
- * distinct control nested in another, a delete button inside a clickable
- * row, whose hover from the row is not an arrival; its press still is.
+ * from something nested in the control is moving within it, and so is a
+ * ray coming from the thing the control's `cursor` was inherited from, the
+ * button the label is in. A ray coming from any other ancestor has
+ * arrived: a scrollable list registers itself to be dragged by and is not
+ * a control, so a button entered from the gap between its rows is entered.
+ * `cursorInherited` says which, asked only when it matters. What the rule
+ * gives up is a distinct control nested in another, a delete button inside
+ * a clickable row, whose hover from the row is not an arrival; its press
+ * still is.
  *
  * Containment is asked of the objects rather than the elements, since a
  * panel's objects are arranged as its elements are.
  *
  * @param {Object3D} object
  * @param {Object3D | null} relatedTarget
+ * @param {() => boolean} cursorInherited Whether the control's `cursor` is
+ *   its parent element's rather than its own, which is what makes it part
+ *   of the control above it.
  * @returns {boolean}
  */
-export function isArrival(object, relatedTarget) {
-  return (
-    relatedTarget === null || !(contains(relatedTarget, object) || contains(object, relatedTarget))
-  );
+export function isArrival(object, relatedTarget, cursorInherited) {
+  if (relatedTarget === null) {
+    return true;
+  }
+  if (contains(object, relatedTarget)) {
+    return false;
+  }
+  return !(contains(relatedTarget, object) && cursorInherited());
 }
 
 /**
@@ -216,18 +227,29 @@ function actuatorsOf(source) {
 const ignore = () => {};
 
 /**
+ * Play an effect on every motor of a hand. Nothing for a hand with no
+ * gamepad, which is what a tracked hand is, and nothing for an actuator
+ * that refuses, however it refuses: a rejection and a throw both leave the
+ * frame alone, since a hand that feels nothing is the worst a motor should
+ * cost. For a scene's own haptics as much as for a panel's, so that one
+ * place knows the two actuator interfaces.
+ *
  * @param {XRInputSource | null} source
  * @param {HapticEffect} effect
  * @returns {void}
  */
-function play(source, effect) {
+export function playHaptic(source, effect) {
   for (const actuator of actuatorsOf(source)) {
-    if (typeof actuator.playEffect === "function") {
-      Promise.resolve(actuator.playEffect("dual-rumble", effect)).catch(ignore);
-    } else if (typeof actuator.pulse === "function") {
-      Promise.resolve(
-        actuator.pulse(Math.max(effect.strongMagnitude, effect.weakMagnitude), effect.duration),
-      ).catch(ignore);
+    try {
+      if (typeof actuator.playEffect === "function") {
+        Promise.resolve(actuator.playEffect("dual-rumble", effect)).catch(ignore);
+      } else if (typeof actuator.pulse === "function") {
+        Promise.resolve(
+          actuator.pulse(Math.max(effect.strongMagnitude, effect.weakMagnitude), effect.duration),
+        ).catch(ignore);
+      }
+    } catch {
+      // Refused before a promise was made; the same silence.
     }
   }
 }
@@ -257,7 +279,7 @@ export function createHaptics(options) {
    */
   const feel = (effect) => (source) => {
     if (effect) {
-      play(source, effect);
+      playHaptic(source, effect);
     }
   };
   return { hover: feel(onHover), press: feel(onPress), release: feel(onRelease) };

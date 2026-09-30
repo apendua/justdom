@@ -102,8 +102,11 @@ hand drifting from the one onto the other gets a `pointermove`, not a
 background is a `select`. Every event says which `controller` it came from
 and which `inputSource` three connected to it, so what is pointed at can
 reach the hand's gamepad. A pointer event's is null until something
-connects, which is a controller under a test. `pointerenter` and
-`pointerleave` also carry `relatedTarget`, as the web's do: the registered
+connects, which is a controller under a test. A pointer event also names
+the registered object its hit belongs to, as `registeredTarget`, since
+`originalTarget` is the mesh and `target` is, as three's dispatcher writes
+it, the object whose listener is running; and `pointerenter` and
+`pointerleave` carry `relatedTarget`, as the web's do: the registered
 object the ray was on before, or is on now, or null for nothing.
 
 **Hiding something takes it out of the raycast**, as it takes it out of the
@@ -681,6 +684,9 @@ connected to the controller, and every actuator of its gamepad gets a
 `dual-rumble` effect, or a `pulse` on a runtime that only has that. A
 tracked hand has no motors and feels nothing. The pulses are worked out
 once per panel, so an element's handler pays for the call and nothing else.
+`playHaptic(source, effect)` is that driver on its own, for a scene with
+haptics of its own to play, so that one place knows both interfaces and
+what to do when a motor refuses.
 
 **A hover is one pulse per arrival on a control.** `cursor` is inherited,
 so the label or the icon inside a button is a ray target of its own, and
@@ -690,11 +696,16 @@ button the whole time. So a pulse plays only when the ray comes onto a
 control from outside it, from another control or from nothing, which the
 enter's `relatedTarget` says (see **Pointing at things**). Coming from
 something clickable nested in the control, or going from the control onto
-that, is a move within one control and plays nothing; neither does the
-enter bubbling up from the nested element, which has played its own. What
-that gives up is a distinct control nested in another, a delete button
-inside a clickable row, whose hover from the row is not an arrival. Its
-press still is.
+the thing its `cursor` was inherited from, is a move within one control and
+plays nothing; neither does the enter bubbling up from the nested element,
+which has played its own. Coming from any other ancestor is an arrival: a
+scrollable list is a ray target, to be dragged by, and not a control, so a
+button entered from the gap between its rows is entered. What the rule
+gives up is a distinct control nested in another, a delete button inside a
+clickable row, whose hover from the row is not an arrival. Its press still
+is. And nothing plays while the hand is scrolling a list, glide included:
+the rows passing under the ray were not aimed at, as `:hover` on a page
+does not fire on rows scrolling under a pressed pointer.
 
 The keyboard a field brings up is a panel of its own, and its keys follow
 the `haptics` of the panel it is typing for.

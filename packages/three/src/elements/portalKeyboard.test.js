@@ -1017,6 +1017,29 @@ describe("the keyboard's handles", () => {
     b.cleanup();
   });
 
+  test("go idle when the ray leaves, however far it drifted within a key first", async () => {
+    const b = await openBoard();
+    const key = b.anchor.children[0].children[0];
+    // A key is a background quad and a label quad, and a ray that arrived on
+    // the one and drifted onto the other leaves from the other: the manager
+    // says enter and leave per key, and names whichever mesh was met last.
+    const label = new THREE.Object3D();
+    key.add(label);
+
+    b.dispatch("pointerenter", key);
+    b.dispatch("pointermove", label);
+    b.dispatch("pointerleave", label);
+    try {
+      for (const side of SIDES) {
+        assert.equal(opacity(b.bar(side)), 0, `${side}, with the ray gone`);
+      }
+    } finally {
+      // A board left open holds the runner up, and hides which assertion
+      // it was that failed.
+      b.cleanup();
+    }
+  });
+
   test("show faintly with a ray on the board, and fully on the one it is on", async () => {
     const b = await openBoard();
     const onBoard = b.anchor.children[0].children[0];

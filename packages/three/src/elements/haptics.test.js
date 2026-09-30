@@ -1,7 +1,7 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
-import { createHaptics, HAPTIC_FLAVORS, isArrival } from "./haptics.js";
+import { createHaptics, HAPTIC_FLAVORS, isArrival, playHaptic } from "./haptics.js";
 import { recordingSource } from "../test/rumble.js";
 
 /**
@@ -10,25 +10,57 @@ import { recordingSource } from "../test/rumble.js";
 
 describe("isArrival", () => {
   /**
-   * A row with a button in it, and a button beside the row, arranged as a
-   * panel arranges its objects: each element's object under its parent's.
+   * A list with a button in it, whose label is a target of its own by the
+   * button's cursor, and a button beside the list, arranged as a panel
+   * arranges its objects: each element's object under its parent's.
    */
-  const row = new THREE.Object3D();
+  const list = new THREE.Object3D();
   const button = new THREE.Object3D();
   const label = new THREE.Object3D();
-  row.add(button);
+  list.add(button);
   button.add(label);
   const other = new THREE.Object3D();
+  const own = () => false;
+  const inherited = () => true;
 
   test("is one from nothing, and from another control", () => {
-    assert.equal(isArrival(button, null), true);
-    assert.equal(isArrival(button, other), true);
+    assert.equal(isArrival(button, null, own), true);
+    assert.equal(isArrival(button, other, own), true);
   });
 
   test("is not one from something nested in the control, nor onto it", () => {
-    assert.equal(isArrival(button, label), false, "the label is part of the button");
-    assert.equal(isArrival(label, button), false, "and going back onto it is the same");
-    assert.equal(isArrival(button, row), false, "a control inside a control is the price");
+    assert.equal(isArrival(button, label, own), false, "the label is part of the button");
+    assert.equal(isArrival(label, button, inherited), false, "and going back onto it is the same");
+  });
+
+  test("is one from an ancestor the control is not part of", () => {
+    // A scrollable list registers itself to be dragged by, and the gap
+    // between its rows is the list: a button entered from it is entered.
+    assert.equal(isArrival(button, list, own), true, "a button from the list it is in");
+    assert.equal(
+      isArrival(button, list, inherited),
+      false,
+      "a control inside a control is the price",
+    );
+  });
+});
+
+describe("playHaptic", () => {
+  test("leaves the frame alone when an actuator throws rather than rejects", () => {
+    const source = /** @type {XRInputSource} */ (
+      /** @type {unknown} */ ({
+        gamepad: {
+          hapticActuators: [
+            {
+              playEffect: () => {
+                throw new Error("no such effect");
+              },
+            },
+          ],
+        },
+      })
+    );
+    playHaptic(source, { duration: 10, strongMagnitude: 0, weakMagnitude: 1 });
   });
 });
 

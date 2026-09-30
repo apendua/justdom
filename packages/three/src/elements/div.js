@@ -216,7 +216,7 @@ export function box(ctx, element, options = {}) {
   object.add(contentGroup);
   contentGroups.set(object, contentGroup);
 
-  const { makeInteractive, stopPropagation, getTarget } = interactions(ctx);
+  const { makeInteractive, stopPropagation } = interactions(ctx);
   const drags = scrollDrags(ctx);
   const isPanelReady = PortalReadyContext.get(ctx);
   /**
@@ -225,6 +225,18 @@ export function box(ctx, element, options = {}) {
    * from.
    */
   const haptics = HapticsContext.get(ctx);
+
+  /**
+   * Whether this element is a control by its parent's `cursor` rather than
+   * its own, which is what a label inside a button is. Asked when a ray
+   * arrives from an ancestor; the computed style is cached.
+   *
+   * @returns {boolean}
+   */
+  const cursorInherited = () => {
+    const parent = element.parentElement;
+    return parent !== null && isClickable(parent);
+  };
 
   /**
    * Whether this element wants to be a ray target, as its own signal so that
@@ -484,10 +496,17 @@ export function box(ctx, element, options = {}) {
     on("pointerenter", (e) => {
       element.dataset.xrHover = "true";
       // Once per arrival on this control. Not for an enter bubbling up from
-      // a target nested in this one, which plays its own; and not for the
-      // ray moving between this element and something clickable inside it,
-      // which `isArrival` says is not an arrival at all.
-      if (haptics && getTarget(e.originalTarget) === object && isArrival(object, e.relatedTarget)) {
+      // a target nested in this one, which plays its own; not for the ray
+      // moving between this element and something clickable inside it,
+      // which `isArrival` says is not an arrival at all; and not while the
+      // hand is scrolling a list, when the rows pass under a ray that is
+      // aimed at none of them, glide included.
+      if (
+        haptics &&
+        e.registeredTarget === object &&
+        !drags.scrolling(e.controller) &&
+        isArrival(object, e.relatedTarget, cursorInherited)
+      ) {
         haptics.hover(e.inputSource);
       }
     }),

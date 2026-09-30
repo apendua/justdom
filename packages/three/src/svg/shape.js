@@ -47,6 +47,7 @@ import {
   parseDashArray,
   parseFillRule,
   parseLength,
+  parseLengthIn,
   parseLineCap,
   parseLineJoin,
   parseNumber,
@@ -306,13 +307,40 @@ export function viewportSize(element) {
       const box = rootContentBox(current);
       return { width: box.width, height: box.height };
     }
-    const style = getComputedStyleCached(current);
-    return {
-      width: parseLength(readProperty(style, current, "width"), 0),
-      height: parseLength(readProperty(style, current, "height"), 0),
-    };
+    const box = svgViewport(current);
+    return Number.isFinite(box.width) && Number.isFinite(box.height)
+      ? { width: box.width, height: box.height }
+      : null;
   }
   return null;
+}
+
+/**
+ * Where a nested `<svg>` puts its viewport, in its parent's user space: its
+ * `x`, `y`, `width` and `height`. A size left `auto` is the whole of the
+ * viewport around it, as a percentage is a share of it. A size that cannot
+ * be known, with no viewport around to measure, is NaN.
+ *
+ * @param {Element} svg
+ * @returns {{ x: number, y: number, width: number, height: number }}
+ */
+export function svgViewport(svg) {
+  const style = getComputedStyleCached(svg);
+  const outer = viewportSize(svg);
+  /**
+   * @param {string} name
+   * @param {"width" | "height"} axis
+   */
+  const size = (name, axis) => {
+    const value = parseLengthIn(readProperty(style, svg, name), outer?.[axis], Number.NaN);
+    return Number.isNaN(value) ? (outer?.[axis] ?? Number.NaN) : value;
+  };
+  return {
+    x: parseLengthIn(readProperty(style, svg, "x"), outer?.width, 0),
+    y: parseLengthIn(readProperty(style, svg, "y"), outer?.height, 0),
+    width: size("width", "width"),
+    height: size("height", "height"),
+  };
 }
 
 /**
@@ -320,7 +348,7 @@ export function viewportSize(element) {
  * user space to its parent's. That is its computed `transform` about its
  * `transform-origin`, and for a nested `<svg>` the viewport it establishes
  * first — placed at its `x`, `y`, its own `viewBox` fitted into the `width`
- * and `height` it names. Not yet clipped to that viewport
+ * and `height` it names (`svgViewport`). Not yet clipped to that viewport
  * (`docs/freedom-svg-plan.md`, S2b).
  *
  * @param {Element} element
@@ -331,17 +359,16 @@ export function localMatrix(element) {
   /** @type {Matrix2D} */
   let matrix = IDENTITY;
   if (element.localName === "svg") {
-    const width = parseLength(readProperty(style, element, "width"), 0);
-    const height = parseLength(readProperty(style, element, "height"), 0);
+    const box = svgViewport(element);
     const viewport = viewportMatrix(
       parseViewBox(element.getAttribute("viewBox")),
       parsePreserveAspectRatio(element.getAttribute("preserveAspectRatio")),
-      width,
-      height,
+      // A size nobody can know fits no `viewBox`: user units are the
+      // parent's, as for a size of 0.
+      Number.isFinite(box.width) ? box.width : 0,
+      Number.isFinite(box.height) ? box.height : 0,
     );
-    const x = parseLength(readProperty(style, element, "x"), 0);
-    const y = parseLength(readProperty(style, element, "y"), 0);
-    matrix = multiply(translation(x, y), viewport);
+    matrix = multiply(translation(box.x, box.y), viewport);
   }
   const own = ownTransform(element, style, nearestViewBoxOrigin(element));
   return own ? multiply(own, matrix) : matrix;

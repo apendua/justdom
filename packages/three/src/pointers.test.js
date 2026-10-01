@@ -143,6 +143,35 @@ describe("InteractionManager pointers", () => {
     assert.equal(manager.pointers.get(controller), undefined);
   });
 
+  test("has no entry for a hand three is not tracking", () => {
+    // three hides the target ray space of a controller that has not
+    // connected, and leaves it where it was made: at the origin, looking
+    // down -Z, straight at whatever a scene stands in front of the viewer.
+    const idle = fakeController();
+    idle.visible = false;
+    manager.addController(idle, loop.onAnimationFrame).subscribe();
+    manager.add(fakeTarget());
+    loop.run();
+    assert.equal(manager.pointers.get(idle), undefined);
+  });
+
+  test("drops the entry when three stops tracking the hand, with no move to say so", () => {
+    manager.add(fakeTarget());
+    loop.run();
+    assert.ok(manager.pointers.get(controller));
+
+    // What a session ending does to every controller, and a lost pose to
+    // one: the space is hidden where it stands, and no "move" follows.
+    controller.visible = false;
+    loop.run();
+    assert.equal(manager.pointers.get(controller), undefined);
+
+    // Tracked again, it is looked at again, before its first "move".
+    controller.visible = true;
+    loop.run();
+    assert.deepEqual(manager.pointers.get(controller)?.get().point.toArray(), [0, 0, -1.5]);
+  });
+
   test("updates both hands on the same frame", () => {
     const other = fakeController();
     other.position.set(0.25, 0, 0);

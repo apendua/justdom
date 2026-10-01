@@ -138,6 +138,16 @@ with the hit. `object` is cloned rather than added, so its geometry and
 materials are shared between hands; `scale` multiplies whatever scale it already
 carries.
 
+**A hand three is not tracking points at nothing.** three hides a
+controller's target ray space before it connects, after it disconnects —
+every one of them when a session ends — and for any frame it has lost the
+pose, and leaves the space where it last was. The manager casts no ray from a
+hidden space, and looks again the frame its visibility changes, since three
+sends no `move` to say so. Without that, a session's last hits stayed on
+the page after it ended, with a cursor on each and the hover still on
+whatever they were on, and a page drawn before any session had a cursor
+where the two idle controllers, at the origin, were looking.
+
 The ray each controller draws is cut at the same hit, so it stops at the
 surface instead of disappearing into it, and stretches back out to a fixed
 reach when the hand is pointing at nothing.

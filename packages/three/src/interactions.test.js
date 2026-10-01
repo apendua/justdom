@@ -229,6 +229,32 @@ describe("pointer events", () => {
     assert.deepEqual(registered, [button, button, button]);
     subscription.unsubscribe();
   });
+
+  test("a hand three stops tracking leaves what it was on", () => {
+    const manager = new InteractionManager();
+    const controller = fakeController();
+    const loop = fakeFrameLoop();
+    const subscription = manager.addController(controller, loop.onAnimationFrame).subscribe();
+    const { button } = labelledButton();
+    manager.add(button);
+
+    /** @type {string[]} */
+    const events = [];
+    for (const type of /** @type {const} */ (["pointerenter", "pointerleave"])) {
+      button.addEventListener(type, () => events.push(type));
+    }
+
+    loop.run();
+    assert.deepEqual(events, ["pointerenter"]);
+
+    // A session ending, or a controller put down: hidden where it stands,
+    // with no "move" after it. A hover left standing here is a button that
+    // stays lit for a hand that has gone.
+    controller.visible = false;
+    loop.run();
+    assert.deepEqual(events, ["pointerenter", "pointerleave"]);
+    subscription.unsubscribe();
+  });
 });
 
 describe("select", () => {

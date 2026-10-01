@@ -357,7 +357,13 @@ export class InteractionManager {
           return;
         }
         shouldUpdateIntersections = false;
-        const intersection = this.getIntersection(controller);
+        // A hand three is not tracking points at nothing, wherever its space
+        // was left. three hides the target ray space of a controller that has
+        // not connected yet, one that has disconnected — every one of them,
+        // when a session ends — and one whose pose it lost this frame, and
+        // what it hides keeps the pose it last had: casting from it would
+        // publish a hit, and draw a cursor, for a hand that is not there.
+        const intersection = controller.visible ? this.getIntersection(controller) : undefined;
         // Publish the hit before the handlers run: where the ray landed is a
         // fact about this frame, not something a listener gets to veto.
         this.#setPointer(controller, intersection);
@@ -426,7 +432,16 @@ export class InteractionManager {
       // So only note that the ray is stale, and cast it from the frame hook.
       const onMove = invalidate;
 
+      // Whether three is tracking the hand, as of the last frame. Going
+      // either way is a reason to look again: nothing else says so, since
+      // three stops sending `move` for a hand it has stopped tracking, and
+      // the first `move` of one that comes back may be frames away.
+      let tracked = controller.visible;
       const stopAnimating = onAnimationFrame(() => {
+        if (controller.visible !== tracked) {
+          tracked = controller.visible;
+          shouldUpdateIntersections = true;
+        }
         maybeUpdateIntersections();
       });
 

@@ -292,11 +292,19 @@ function rootContentBox(root) {
  * `viewBox`, or without one its own size, which for the root is its
  * content box in px. Null for an element that is in no `<svg>`.
  *
+ * In template content the walk stops at the template, whose content is in
+ * the viewport the instance gives it: a `<symbol>`'s, a `<marker>`'s, or
+ * the one around the `<use>` that draws a `<g>`.
+ *
  * @param {Element} element
+ * @param {Instance | null} [instance] The instance the element is part of.
  * @returns {{ width: number, height: number } | null}
  */
-export function viewportSize(element) {
+export function viewportSize(element, instance = null) {
   for (let current = getParentElement(element); current; current = getParentElement(current)) {
+    if (instance && current === instance.template) {
+      return instance.viewport();
+    }
     if (current.localName !== "svg" || current.namespaceURI !== SVG_NAMESPACE) {
       continue;
     }
@@ -308,7 +316,7 @@ export function viewportSize(element) {
       const box = rootContentBox(current);
       return { width: box.width, height: box.height };
     }
-    const box = svgViewport(current);
+    const box = svgViewport(current, instance);
     return Number.isFinite(box.width) && Number.isFinite(box.height)
       ? { width: box.width, height: box.height }
       : null;
@@ -323,11 +331,12 @@ export function viewportSize(element) {
  * be known, with no viewport around to measure, is NaN.
  *
  * @param {Element} svg
+ * @param {Instance | null} [instance] The instance the `<svg>` is part of.
  * @returns {{ x: number, y: number, width: number, height: number }}
  */
-export function svgViewport(svg) {
+export function svgViewport(svg, instance = null) {
   const style = getComputedStyleCached(svg);
-  const outer = viewportSize(svg);
+  const outer = viewportSize(svg, instance);
   /**
    * @param {string} name
    * @param {"width" | "height"} axis
@@ -353,14 +362,15 @@ export function svgViewport(svg) {
  * (`docs/freedom-svg-plan.md`, S2b).
  *
  * @param {Element} element
+ * @param {Instance | null} [instance] The instance the element is part of.
  * @returns {Matrix2D}
  */
-export function localMatrix(element) {
+export function localMatrix(element, instance = null) {
   const style = getComputedStyleCached(element);
   /** @type {Matrix2D} */
   let matrix = IDENTITY;
   if (element.localName === "svg") {
-    const box = svgViewport(element);
+    const box = svgViewport(element, instance);
     const viewport = viewportMatrix(
       parseViewBox(element.getAttribute("viewBox")),
       parsePreserveAspectRatio(element.getAttribute("preserveAspectRatio")),
@@ -406,6 +416,9 @@ export function commitMatrix(object, matrix) {
  *   the root's frame at this instance, the opacity above it, and the root.
  * @property {() => PaintSlot} slot The range of render orders the instance
  *   draws its content in.
+ * @property {() => { width: number, height: number } | null} viewport The
+ *   size of the viewport the template's content is in, in the template's
+ *   user units: what a percentage length there is a percentage of.
  * @property {Inheritance | null} inherit Where the content inherits from, for
  *   a copy that inherits from where it is drawn: a `<use>`'s, and not a
  *   marker's.
@@ -447,6 +460,13 @@ const INHERITED = new Set([
   "visibility",
 ]);
 
+/**
+ * The CSS-wide keywords that, on the inherited properties read here, take
+ * the parent's value. They name the property but set nothing, so in a copy
+ * the value still comes from the `<use>`.
+ */
+const INHERITING_KEYWORDS = new Set(["inherit", "unset", "revert", "revert-layer"]);
+
 /** The properties whose value may be `currentColor`, the element's `color`. */
 const COLOR_VALUED = new Set(["fill", "stroke"]);
 
@@ -476,9 +496,10 @@ function declaredValue(element, name) {
  * where each element's value is the same as its parent's all the way up to
  * the boundary, the value was inherited from outside, and the `<use>`'s is
  * taken instead. An element whose attribute or `style` names the property
- * sets it, whatever the value. One that sets it through a stylesheet rule to
- * exactly the value it would have inherited reads as not setting it, which
- * is the one case this gets wrong.
+ * sets it, whatever the value, unless the value is `inherit` or another of
+ * the `INHERITING_KEYWORDS`, which pass the walk on to its parent. One that
+ * sets it through a stylesheet rule to exactly the value it would have
+ * inherited reads as not setting it, which is the one case this gets wrong.
  *
  * A `fill` or `stroke` of `currentColor` is resolved against the copy's
  * `color`, which is inherited from the `<use>` in turn. The computed value
@@ -499,9 +520,10 @@ export function readDrawnProperty(element, name, instance) {
   let current = element;
   let currentValue = value;
   while (current !== inherit.boundary) {
-    const declared = declaredValue(current, name);
-    if (declared !== null) {
-      return COLOR_VALUED.has(name) && declared.toLowerCase() === "currentcolor"
+    const declared = declaredValue(current, name)?.toLowerCase() ?? null;
+    const inherits = declared !== null && INHERITING_KEYWORDS.has(declared);
+    if (declared !== null && !inherits) {
+      return COLOR_VALUED.has(name) && declared === "currentcolor"
         ? readDrawnProperty(current, "color", instance)
         : value;
     }
@@ -510,7 +532,9 @@ export function readDrawnProperty(element, name, instance) {
       return value;
     }
     const parentValue = readProperty(getComputedStyleCached(parent), parent, name);
-    if (parentValue !== currentValue) {
+    // A keyword takes the parent's value, whatever was computed for it
+    // where the content is defined.
+    if (!inherits && parentValue !== currentValue) {
       return value;
     }
     current = parent;
@@ -568,7 +592,7 @@ export function readChain(element, instance = null) {
     if (isSvgRoot(current)) {
       return { ctm: multiply(rootMatrix(current), ctm), opacity, root: current };
     }
-    ctm = multiply(localMatrix(current), ctm);
+    ctm = multiply(localMatrix(current, instance), ctm);
     current = getParentElement(current);
   }
   return { ctm, opacity, root: null };
@@ -1098,7 +1122,7 @@ export function shape(ctx, element, { instance = null, decorate } = {}) {
   });
 
   /** This shape's own transform, which its object carries. */
-  const own = new Derived(() => localMatrix(element), { isEqual: matrixEqual });
+  const own = new Derived(() => localMatrix(element, instance), { isEqual: matrixEqual });
 
   const chain = new Derived(() => readChain(element, instance), { isEqual: chainEqual });
 
@@ -1250,14 +1274,17 @@ export function shape(ctx, element, { instance = null, decorate } = {}) {
  *
  * @param {WeakKey} ctx
  * @param {Element} element
- * @param {EntityEffect<THREE.Object3D>[]} [decorate] More to hang off the
- *   group's object: in a template, its children, which the portal does not
- *   build there.
+ * @param {object} [options]
+ * @param {Instance | null} [options.instance] The instance the group is part
+ *   of, when it is template content drawn somewhere else.
+ * @param {EntityEffect<THREE.Object3D>[]} [options.decorate] More to hang off
+ *   the group's object: in a template, its children, which the portal does
+ *   not build there.
  * @returns {Source<THREE.Object3D>}
  */
-export function group(ctx, element, decorate = []) {
+export function group(ctx, element, { instance = null, decorate = [] } = {}) {
   const object = new THREE.Object3D();
-  const matrix = new Derived(() => localMatrix(element), { isEqual: matrixEqual });
+  const matrix = new Derived(() => localMatrix(element, instance), { isEqual: matrixEqual });
   return just(object, [
     effects((obj) => {
       commitMatrix(obj, matrix.get());

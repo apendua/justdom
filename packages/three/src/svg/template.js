@@ -113,7 +113,10 @@ function templateChildren(ctx, parent, instance) {
  */
 function drawInstanced(ctx, element, instance) {
   if (GROUP_TAGS.has(element.localName)) {
-    return group(ctx, element, [templateChildren(ctx, element, instance)]);
+    return group(ctx, element, {
+      instance,
+      decorate: [templateChildren(ctx, element, instance)],
+    });
   }
   if (SHAPE_TAGS.has(element.localName)) {
     return drawShape(ctx, element, instance);
@@ -250,6 +253,12 @@ function markers(ctx, element, host, hostInstance) {
           return { ctm: multiply(at.ctm, matrix.get()), opacity: at.opacity, root: at.root };
         },
         slot: host.markerSlot,
+        viewport: () => {
+          // Read for the invalidation, as for the matrix.
+          getComputedStyleCached(marker);
+          const spec = readMarkerSpec(marker);
+          return spec.viewBox ?? { width: spec.width, height: spec.height };
+        },
         // A marker's content inherits from where the marker is defined, not
         // from the path it is drawn on.
         inherit: null,
@@ -313,19 +322,20 @@ export function findReferenced(use) {
 }
 
 /**
- * The viewport size a `<use>` gives a `<symbol>`: its own `width` and
- * `height`, or the symbol's, or the whole of the nearest viewport, which is
- * what the initial `100%` comes to. A percentage is of that viewport too.
- * Null when none of them says, and the symbol's content is drawn in its own
- * units.
+ * The viewport size a `<use>` gives a `<symbol>` or an `<svg>`: its own
+ * `width` and `height`, or the target's, or the whole of the nearest
+ * viewport, which is what the initial `100%` comes to. A percentage is of
+ * that viewport too. Null when none of them says, and the target's content
+ * is drawn in its own units.
  *
  * @param {Element} use
  * @param {Element} symbol
+ * @param {Instance | null} instance The instance the `<use>` is part of.
  * @returns {{ width: number, height: number } | null}
  */
-function symbolViewport(use, symbol) {
+function symbolViewport(use, symbol, instance) {
   const style = getComputedStyleCached(use);
-  const viewport = viewportSize(use);
+  const viewport = viewportSize(use, instance);
   /**
    * @param {"width" | "height"} name
    */
@@ -349,10 +359,12 @@ function symbolViewport(use, symbol) {
  * A `<use>`: a copy of the element its `href` names, drawn at its `x`, `y`.
  *
  * The `<use>`'s object carries its own `transform`. Below it, one object
- * carries the move to `x`, `y` and, for a `<symbol>`, the symbol's viewport,
- * and the copy is drawn below that as an instance. A `<symbol>` is a
- * template whose children are drawn; anything else, a `<g>` or a `<path>`
- * drawn once already where it stands, is drawn whole.
+ * carries the move to `x`, `y` and, for a `<symbol>` or an `<svg>`, the
+ * viewport the `<use>` gives it, and the copy is drawn below that as an
+ * instance. A `<symbol>` or an `<svg>` is a template whose children are
+ * drawn; anything else, a `<g>` or a `<path>` drawn once already where it
+ * stands, is drawn whole. The `x`, `y` and `transform` of an `<svg>` target
+ * are not followed.
  *
  * The copy inherits from the `<use>`, as a browser's clone does, through
  * `readDrawnProperty`. It follows edits to the referenced content, since the
@@ -398,30 +410,35 @@ export function drawUse(ctx, element, instance = null) {
       if (!target || expanding.has(target)) {
         return;
       }
-      const isSymbol = target.localName === "symbol";
+      // An `<svg>`, a root elsewhere on the page included, is drawn as a
+      // `<symbol>` is: its children, in a viewport the `<use>` sizes.
+      const isViewport = target.localName === "symbol" || target.localName === "svg";
+      /** The target's `viewBox`, how it fits, and the viewport it fills. */
+      const frame = new Derived(() => {
+        if (!isViewport) {
+          return null;
+        }
+        // The target's attributes are not CSS; its computed style is what
+        // the mirror invalidates when one of them changes.
+        getComputedStyleCached(target);
+        return {
+          viewBox: parseViewBox(target.getAttribute("viewBox")),
+          aspect: parsePreserveAspectRatio(target.getAttribute("preserveAspectRatio")),
+          size: symbolViewport(element, target, instance),
+        };
+      });
       const placement = new Derived(
         () => {
           const current = style();
-          const viewport = viewportSize(element);
+          const viewport = viewportSize(element, instance);
           const x = parseLengthIn(readProperty(current, element, "x"), viewport?.width, 0);
           const y = parseLengthIn(readProperty(current, element, "y"), viewport?.height, 0);
           const moved = translation(x, y);
-          if (!isSymbol) {
-            return moved;
-          }
-          // The symbol's attributes are not CSS; its computed style is what
-          // the mirror invalidates when one of them changes.
-          getComputedStyleCached(target);
-          const size = symbolViewport(element, target);
-          return size
+          const fit = frame.get();
+          return fit?.size
             ? multiply(
                 moved,
-                viewportMatrix(
-                  parseViewBox(target.getAttribute("viewBox")),
-                  parsePreserveAspectRatio(target.getAttribute("preserveAspectRatio")),
-                  size.width,
-                  size.height,
-                ),
+                viewportMatrix(fit.viewBox, fit.aspect, fit.size.width, fit.size.height),
               )
             : moved;
         },
@@ -429,12 +446,18 @@ export function drawUse(ctx, element, instance = null) {
       );
       /** @type {Instance} */
       const copy = {
-        template: isSymbol ? target : /** @type {Element} */ (target.parentElement),
+        template: isViewport ? target : /** @type {Element} */ (target.parentElement),
         chain: () => {
           const at = chain.get();
           return { ctm: multiply(at.ctm, placement.get()), opacity: at.opacity, root: at.root };
         },
         slot: () => paintSlot(element, chain.get().root, instance, 0),
+        viewport: () => {
+          const fit = frame.get();
+          // Content drawn whole stands where the `<use>` does, in its
+          // viewport. A target's `viewBox` sets the units of its own.
+          return fit ? (fit.viewBox ?? fit.size) : viewportSize(element, instance);
+        },
         inherit: {
           boundary: /** @type {Element} */ (target.parentElement),
           read: (name) => readDrawnProperty(element, name, instance),
@@ -443,7 +466,7 @@ export function drawUse(ctx, element, instance = null) {
       };
       /** @type {EntityEffect<THREE.Object3D>[]} */
       const content = [];
-      if (isSymbol) {
+      if (isViewport) {
         content.push(templateChildren(ctx, target, copy));
       } else {
         const drawn = drawInstanced(ctx, target, copy);

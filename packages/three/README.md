@@ -1624,16 +1624,20 @@ A `<use>` draws a copy of the element its `href` (or `xlink:href`) names,
 at its `x` and `y`. A `<symbol>` is a viewport: its `viewBox` is fitted
 into the `<use>`'s `width` and `height`, or the symbol's own, or else the
 whole of the nearest viewport, a percentage being of that viewport too.
-Anything else, a `<g>` or a shape drawn once already where it stands, is
-drawn again whole, its own `transform` included. The copy inherits the
-`<use>`'s styles, as a browser's clone does, so a sprite whose paths set
-no `fill` takes the `<use>`'s, `fill="currentColor"` takes the `<use>`'s
-`color`, and a hidden `<use>` hides its copy. The mirror sees only the
-original element, so a property counts as inherited when nothing between
-the copied element and the top of the copy sets it, by its attribute, its
-`style` or a different computed value; a stylesheet rule that sets a
-property to exactly the value it would have inherited reads as not setting
-it. An edit inside the symbol reaches every copy, wherever in the document
+An `<svg>` is one in the same way, an inline icon elsewhere on the page
+included, though its own `x`, `y` and `transform` are not followed.
+Percentages inside the copy are of the viewport it is drawn in, so a
+`<use>` inside a symbol sizes against that symbol. Anything else, a `<g>`
+or a shape drawn once already where it stands, is drawn again whole, its
+own `transform` included. The copy inherits the `<use>`'s styles, as a
+browser's clone does, so a sprite whose paths set no `fill` takes the
+`<use>`'s, `fill="currentColor"` takes the `<use>`'s `color`, and a hidden
+`<use>` hides its copy. The mirror sees only the original element, so a
+property counts as inherited when nothing between the copied element and
+the top of the copy sets it, by its attribute, its `style` or a different
+computed value. A value of `inherit`, `unset` or `revert` sets nothing. A
+stylesheet rule that sets a property to exactly the value it would have
+inherited reads as not setting it. An edit inside the symbol reaches every copy, wherever in the document
 the symbol is. A copy is drawn where its `<use>` stands in the draw order,
 and is not a ray target. A `<use>` whose copy would draw it again stops
 there. Two things are not followed: an `href` changed after mounting,

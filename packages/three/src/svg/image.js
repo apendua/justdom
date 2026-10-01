@@ -226,7 +226,7 @@ export function image(ctx, element, instance = null) {
   const object = new THREE.Object3D();
   const style = () => getComputedStyleCached(element);
 
-  const own = new Derived(() => localMatrix(element), { isEqual: matrixEqual });
+  const own = new Derived(() => localMatrix(element, instance), { isEqual: matrixEqual });
   const chain = new Derived(() => readChain(element, instance), { isEqual: chainEqual });
   const root = new Derived(() => chain.get().root);
   const opacity = new Derived(() => chain.get().opacity);
@@ -258,7 +258,7 @@ export function image(ctx, element, instance = null) {
         return null;
       }
       const current = style();
-      const viewport = viewportSize(element);
+      const viewport = viewportSize(element, instance);
       /**
        * @param {string} name
        * @param {"width" | "height"} axis What a percentage is of.

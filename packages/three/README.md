@@ -795,10 +795,19 @@ on, so it stays under the ray on another panel however that one is turned.
 While the ray is on no panel, past a panel's edge or between the controls
 of one that stops no rays, it stays in the plane of the last panel the ray
 was on, the one the drag started on until it has been on another, and
-again if that one is taken down. The ghost is an outline, not a picture
-of the element as a browser draws it.
-Every panel in a scene knows a hand is carrying something, so the controls
-on any of them take no hover under a drag.
+again if that one is taken down. Every panel in a scene knows a hand is
+carrying something, so the controls on any of them take no hover under a
+drag.
+
+The ghost is a picture of the source, as a browser's drag image is, taken
+the same way: once, at `dragstart`, and not again while the drag goes on.
+The panel is rendered into a texture through a camera framed on the
+source's box, which costs one render pass per drag and nothing per frame.
+A panel draws its boxes and text in batches, so the source cannot be drawn
+on its own: whatever the panel draws behind it inside its box, the card it
+sits on, is in the picture too, where a browser's has the element and its
+descendants alone. Without a WebGL renderer, as under a test runner, the
+ghost is the source's outline instead.
 
 Three things differ from a browser. Only `draggable="true"` makes an
 element draggable. Images and links are draggable on a page without saying

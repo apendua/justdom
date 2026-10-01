@@ -63,7 +63,9 @@ function backdrop(): THREE.Mesh {
 export const Scene = (panel: HTMLElement) =>
   effectsOnly((ctx: WeakKey) => {
     // Portal px are a centimetre each; a tenth of that makes the 464px card
-    // about 46 cm wide, at half a metre — a tablet held out in front of you.
+    // about 46 cm wide. At 80 cm it spans about 32° of the view, which the
+    // eyes take in without turning the head; at half a metre it spanned 50°
+    // and filled the view.
     const scale = 0.1;
 
     // Kept across sessions, so a second session's chart starts from the
@@ -97,7 +99,7 @@ export const Scene = (panel: HTMLElement) =>
             o.scale.set(scale, scale, scale);
             // The XR button asks for a `local` reference space: the head sits
             // at the origin, so straight ahead is y = 0.
-            o.position.set(0, 0, -0.5);
+            o.position.set(0, 0, -0.8);
           }),
           children(
             component(() => {

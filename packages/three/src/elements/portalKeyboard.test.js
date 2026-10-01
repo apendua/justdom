@@ -405,6 +405,31 @@ describe("the portal's keyboard", () => {
     panel.cleanup();
   });
 
+  test("the caret is faded with the field and what it is in", async () => {
+    const panel = keyboardPanel();
+    panel.root.style.opacity = "0.5";
+    panel.input.style.opacity = "0.5";
+    panel.input.style.color = "rgb(0, 0, 0)";
+    try {
+      await settle();
+      panel.press(panel.fieldObject());
+      await settle();
+      /** @type {THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicMaterial> | undefined} */
+      let caret;
+      panel.parent.children[0].traverse((child) => {
+        if (child instanceof THREE.Mesh && child.geometry === rectGeometry) {
+          caret = /** @type {any} */ (child);
+        }
+      });
+      assert.ok(caret, "the caret is a mesh of its own");
+      assert.equal(caret.material.opacity, 0.25);
+    } finally {
+      // Taken down whatever the assertions said: a caret left blinking holds
+      // the runner open.
+      panel.cleanup();
+    }
+  });
+
   test("the caret blinks, and is solid again after a keystroke", async () => {
     const panel = keyboardPanel();
     await settle();

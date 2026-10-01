@@ -384,7 +384,7 @@ function markerRun(ctx, element, surface, marker) {
       text,
       // In right-to-left text the space is on the left, toward the content.
       x: rtl ? left + advance - run.width : left,
-      y: line ? line.top - getScrollOffset(element).top : box.y,
+      y: (line ? line.top : box.y) - getScrollOffset(element).top,
       width: run.width,
       height: line?.height || px(own.lineHeight) || run.ascent + run.descent,
     };
@@ -416,6 +416,11 @@ function markerRun(ctx, element, surface, marker) {
  * so it is the portal's ordinary box; an element with no marker builds no
  * run.
  *
+ * An item with no box draws no marker either. Its own `display` is still
+ * `list-item` under a `display: none` ancestor, in a closed `<details>` or
+ * in a hidden tab panel, but nothing of it is laid out, and the mirror's
+ * sign for that is a box measured at nothing, as it is for text.
+ *
  * @param {WeakKey} ctx
  * @param {HTMLElement} element
  * @returns {Source<THREE.Object3D>}
@@ -424,6 +429,10 @@ export function markedBox(ctx, element) {
   const marker = new Derived(
     () => {
       if (!isListItem(element)) {
+        return null;
+      }
+      const size = getBorderBoxSize(element);
+      if (size.width <= 0 && size.height <= 0) {
         return null;
       }
       const style = getComputedStyleCached(element);

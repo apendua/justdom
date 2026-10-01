@@ -1158,8 +1158,14 @@ numbers that row and leaves the rest of the list alone, however long it is.
 Inserting or removing a row renumbers the rows after it. A `reversed` list
 with no `start` renumbers every row on every append, because its first
 number is its length. An item with no marker builds no run, so a list of app
-rows styled `list-style: none` draws nothing it did not draw before; each
-row still keeps a small computation that asks whether it has a marker.
+rows styled `list-style: none` draws nothing it did not draw before. Every
+box the portal draws still keeps a small computation that asks whether it
+has a marker, a plain `<div>` as much as a row.
+
+An item that is not laid out has no marker, as on a page: one under a
+`display: none` ancestor, in a closed `<details>` or in a hidden tab panel
+still computes `display: list-item`, but its box measures nothing, and that
+is what the marker goes by.
 
 Three things a page can do are not drawn. A `list-style-image` is drawn as
 the `list-style-type` under it. A `content` in a `::marker` rule is not

@@ -441,6 +441,60 @@ describe("use", () => {
     s.teardown();
   });
 
+  test("a copy that inherits through a keyword inherits from the use", () => {
+    const hidden = svg("rect", {
+      width: "5",
+      height: "5",
+      fill: "red",
+      style: "visibility: inherit",
+    });
+    const painted = svg("rect", { width: "5", height: "5", fill: "inherit" });
+    const symbol = svg("symbol", { id: "use-symbol-keyword" }, [hidden, painted]);
+    const defs = svg("defs", {}, [symbol]);
+    const use = svg("use", {
+      href: "#use-symbol-keyword",
+      fill: "red",
+      style: "visibility: hidden",
+    });
+    const s = scene([defs, use], [use]);
+    const [first, second] = meshesUnder(s.objects[0]);
+    assert.equal(/** @type {THREE.MeshBasicMaterial} */ (first.material).visible, false);
+    assert.equal(colourOf(second), "ff0000");
+    s.teardown();
+  });
+
+  test("an svg root elsewhere is drawn in a viewport the use gives it", () => {
+    const other = svg("svg", { id: "use-other-root", viewBox: "0 0 10 10" }, [
+      svg("rect", { width: "10", height: "10", fill: "red" }),
+    ]);
+    document.body.appendChild(other);
+    const use = svg("use", { href: "#use-other-root", x: "20", width: "10", height: "10" });
+    const s = scene([use], [use]);
+    const [mesh] = meshesUnder(s.objects[0]);
+    // (10, 10) in the other root is (30, 10) in this one, twice that in px.
+    assert.deepEqual(toRoot(mesh, 0, 0), [40, 0]);
+    assert.deepEqual(toRoot(mesh, 10, 10), [60, 20]);
+    s.teardown();
+    other.remove();
+  });
+
+  test("a use inside a symbol sizes against that symbol's viewport", () => {
+    const dot = svg("symbol", { id: "use-symbol-dot", viewBox: "0 0 2 2" }, [
+      svg("rect", { width: "2", height: "2", fill: "red" }),
+    ]);
+    const badge = svg("symbol", { id: "use-symbol-badge", viewBox: "0 0 10 10" }, [
+      svg("use", { href: "#use-symbol-dot", x: "50%" }),
+    ]);
+    const use = svg("use", { href: "#use-symbol-badge", width: "10", height: "10" });
+    const s = scene([svg("defs", {}, [dot, badge]), use], [use]);
+    const [mesh] = meshesUnder(s.objects[0]);
+    // The dot fills the badge's 10 by 10, from 50% of its width: its
+    // corner (2, 2) is (15, 10) in the badge, and the badge is drawn at
+    // its own size, twice that in px.
+    assert.deepEqual(toRoot(mesh, 2, 2), [30, 20]);
+    s.teardown();
+  });
+
   test("an element that is drawn where it stands is drawn again at the use, own transform and all", () => {
     const original = svg("rect", {
       id: "use-original",
@@ -675,5 +729,19 @@ describe("viewport clips", () => {
     const s = scene([svg("defs", {}, [symbol]), use], [use]);
     assert.deepEqual(clipBoxOf(meshesUnder(s.objects[0])[0]), [40, 0, 50, 10]);
     s.teardown();
+  });
+  test("an svg the use names clips its content to the viewport the use gives it", () => {
+    const rect = svg("rect", { x: "-5", y: "-5", width: "20", height: "20", fill: "red" });
+    const other = svg(
+      "svg",
+      { id: "clip-other-root", viewBox: "0 0 10 10", style: "overflow: hidden" },
+      [rect],
+    );
+    document.body.appendChild(other);
+    const use = svg("use", { href: "#clip-other-root", x: "20", y: "0", width: "5", height: "5" });
+    const s = scene([use], [use]);
+    assert.deepEqual(clipBoxOf(meshesUnder(s.objects[0])[0]), [40, 0, 50, 10]);
+    s.teardown();
+    other.remove();
   });
 });

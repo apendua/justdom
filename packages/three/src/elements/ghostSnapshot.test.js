@@ -1,7 +1,7 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
-import { cameraFor, takeSnapshot } from "./ghostSnapshot.js";
+import { cameraFor, NO_SNAPSHOTS, snapshotsFor, takeSnapshot } from "./ghostSnapshot.js";
 
 /**
  * An element's object as a panel places one: in px, top-left origin, y
@@ -34,6 +34,7 @@ function recordingRenderer() {
   let clearColor = new THREE.Color(0x123456);
   let clearAlpha = 0.5;
   const renderer = {
+    isWebGLRenderer: true,
     xr: { enabled: true },
     getRenderTarget: () => target,
     /** @param {THREE.WebGLRenderTarget} next */
@@ -57,6 +58,14 @@ function recordingRenderer() {
      * @param {THREE.Camera} camera
      */
     render: (scene, camera) => calls.push(["render", scene, camera, target, renderer.xr.enabled]),
+    /**
+     * @param {THREE.Object3D} scene
+     * @param {THREE.Camera} camera
+     */
+    compileAsync: (scene, camera) => {
+      calls.push(["compile", scene, camera, target, renderer.xr.enabled]);
+      return Promise.resolve(scene);
+    },
   };
   return {
     renderer: /** @type {THREE.WebGLRenderer} */ (/** @type {unknown} */ (renderer)),
@@ -145,5 +154,49 @@ describe("takeSnapshot", () => {
     });
     assert.equal(target?.width, 1024);
     assert.equal(target?.height, 32);
+  });
+});
+
+describe("snapshotsFor", () => {
+  test("takes no pictures without a WebGL renderer", () => {
+    assert.equal(snapshotsFor(null), NO_SNAPSHOTS);
+    // What a test stands in for a renderer, and a renderer of another kind.
+    assert.equal(snapshotsFor({}), NO_SNAPSHOTS);
+  });
+
+  test("compiles a panel's programs once, as a snapshot would draw them", () => {
+    const { renderer, calls, previousTarget, state } = recordingRenderer();
+    const snapshots = snapshotsFor(renderer);
+    const panel = new THREE.Group();
+    snapshots.prepare(panel);
+    const compiles = calls.filter(([name]) => name === "compile");
+    assert.equal(compiles.length, 1);
+    assert.equal(compiles[0][1], panel);
+    assert.ok(compiles[0][3] instanceof THREE.WebGLRenderTarget, "into a target, as a snapshot");
+    assert.notEqual(compiles[0][3], previousTarget);
+    assert.equal(compiles[0][4], false, "with the headset's eyes off");
+    assert.deepEqual(state(), {
+      target: previousTarget,
+      clearColor: 0x123456,
+      clearAlpha: 0.5,
+      xr: true,
+    });
+    snapshots.prepare(panel);
+    assert.equal(calls.filter(([name]) => name === "compile").length, 1, "and only once");
+    snapshots.prepare(new THREE.Group());
+    assert.equal(calls.filter(([name]) => name === "compile").length, 2, "once per panel");
+  });
+
+  test("takes pictures with the renderer it was given", () => {
+    const { renderer, calls } = recordingRenderer();
+    const panel = new THREE.Group();
+    const target = snapshotsFor(renderer).take(panel, frame(), {
+      x: 0,
+      y: 0,
+      width: 10,
+      height: 10,
+    });
+    assert.ok(target);
+    assert.equal(calls.find(([name]) => name === "render")?.[1], panel);
   });
 });

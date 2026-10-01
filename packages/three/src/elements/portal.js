@@ -21,7 +21,7 @@ import { createMirror, getBorderBoxSize, LOADING_ATTRIBUTE, PORTAL_ATTRIBUTE } f
 import { createAnimationClock } from "./animationClock.js";
 import { watchDocumentStyles } from "./documentStyles.js";
 import { createBlocker, coverBox } from "./blocker.js";
-import { elementAt, registerPanel } from "./dragAndDrop.js";
+import { registerPanel } from "./dragAndDrop.js";
 import { BoxBatchContext, createBoxBatch } from "./boxBatch.js";
 import { TextBatchContext, createTextBatch } from "./textBatch.js";
 import { TextScaleContext, createTextScale } from "./textScale.js";
@@ -550,11 +550,12 @@ function buildPortal(ctx, ownOptions = {}) {
   nodeToObject.set(containerElement, containerObject);
   objectToNode.set(containerObject, containerElement);
 
-  // What a drag and drop asks when the ray is on this panel: which element
-  // is under it. Any element, not only the ray targets, since a list that
-  // takes drops is rarely a button; see `elementAt`.
-  const unregisterPanel = registerPanel(containerObject, (point, local) =>
-    elementAt(containerElement, (node) => nodeToObject.get(node), point, local),
+  // What a drag and drop asks of this panel: which element is under the
+  // ray, any element and not only the ray targets, since a list that takes
+  // drops is rarely a button (see `elementAt`), and which object draws an
+  // element, for a picture of what is dragged.
+  const unregisterPanel = registerPanel(containerObject, containerElement, (node) =>
+    nodeToObject.get(node),
   );
 
   // With only clickable elements as ray targets (see div.js), the portal

@@ -799,15 +799,19 @@ again if that one is taken down. Every panel in a scene knows a hand is
 carrying something, so the controls on any of them take no hover under a
 drag.
 
-The ghost is a picture of the source, as a browser's drag image is, taken
-the same way: once, at `dragstart`, and not again while the drag goes on.
-The panel is rendered into a texture through a camera framed on the
-source's box, which costs one render pass per drag and nothing per frame.
-A panel draws its boxes and text in batches, so the source cannot be drawn
-on its own: whatever the panel draws behind it inside its box, the card it
-sits on, is in the picture too, where a browser's has the element and its
-descendants alone. Without a WebGL renderer, as under a test runner, the
-ghost is the source's outline instead.
+The ghost is a picture of the source, or of what `setDragImage` named, as
+a browser's drag image is, taken the same way: once, at `dragstart`, and
+not again while the drag goes on. The source's panel is rendered into a
+texture through a camera framed on that element's box, which costs one
+render pass per drag and nothing per frame. The shaders that pass needs
+are compiled when the press begins, before it is a drag. A panel draws its
+boxes and text in batches, so the element cannot be drawn on its own:
+whatever the panel draws behind it inside its box, the card it sits on, is
+in the picture too, where a browser's has the element and its descendants
+alone. The ghost is the element's outline instead where there is nothing
+to take a picture of: without a WebGL renderer, as under a test runner,
+and for a drag image the source's panel does not draw, such as one off
+the page, in another panel, or hidden.
 
 Three things differ from a browser. Only `draggable="true"` makes an
 element draggable. Images and links are draggable on a page without saying

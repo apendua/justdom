@@ -5,6 +5,7 @@ import { InteractionContext, InteractionManager } from "../interactions.js";
 import { fakeFrameLoop } from "../test/frameLoop.js";
 import { drain, flushFrame, settle } from "../test/portalHarness.js";
 import { describeScroller } from "../test/scroller.js";
+import { createDragAndDrop } from "./dragAndDrop.js";
 import { createPortal } from "./portal.js";
 
 /**
@@ -174,6 +175,7 @@ async function sortableList({ accept = true, second = false, turned = false, fix
       flushFrame();
     };
     return {
+      controller,
       /**
        * Point the ray at a spot on a panel, in its px, and let a frame go
        * by: the manager's, which works out what the ray is on, and then the
@@ -201,12 +203,15 @@ async function sortableList({ accept = true, second = false, turned = false, fix
       },
     };
   };
-  const { aim, trigger, turnAway } = hand();
+  const { aim, trigger, turnAway, controller } = hand();
   const secondHand = hand();
 
   return {
     list: first.list,
     rows: first.rows,
+    manager,
+    controller,
+    portal: first.portal,
     other,
     events,
     seen,
@@ -563,6 +568,176 @@ describe("drag and drop in a panel", () => {
     s.aim(150, 60);
     assert.deepEqual(s.events, ["dragstart a", "drag a", "dragenter list", "dragover list"]);
     s.trigger("selectend");
+    s.teardown();
+  });
+});
+
+/**
+ * A gesture of the test's own over the scene `s` built, with snapshots that
+ * record what they are asked for and hand back a target with no WebGL
+ * behind it, and frames the test runs by hand.
+ *
+ * @param {Awaited<ReturnType<typeof sortableList>>} s
+ */
+function picturingGesture(s) {
+  /** @type {THREE.Object3D[]} */
+  const prepared = [];
+  /** @type {{ panel: THREE.Object3D, frame: THREE.Object3D, box: object, target: THREE.WebGLRenderTarget }[]} */
+  const taken = [];
+  let tick = () => {};
+  const gesture = createDragAndDrop(
+    (next) => {
+      tick = next;
+      return () => {};
+    },
+    (controller) => s.manager.pointers.get(controller)?.get(),
+    {
+      prepare: (panel) => prepared.push(panel),
+      take: (panel, frame, box) => {
+        const target = new THREE.WebGLRenderTarget(4, 4);
+        taken.push({ panel, frame, box, target });
+        return target;
+      },
+    },
+  );
+  return {
+    prepared,
+    taken,
+    /** Press on the first row where the ray is, then carry it below. */
+    press() {
+      s.aim(150, 20);
+      const hit = /** @type {THREE.Intersection} */ (s.manager.pointers.get(s.controller)?.get());
+      assert.ok(gesture.begin(s.controller, s.rows[0], hit.object, true));
+    },
+    carry() {
+      s.aim(150, 60);
+      tick();
+    },
+    release() {
+      s.controller.dispatchEvent(/** @type {never} */ ({ type: "selectend", data: null }));
+    },
+  };
+}
+
+/**
+ * Whether `object` is drawn in `panel`, rather than detached from it.
+ *
+ * @param {THREE.Object3D} object
+ * @param {THREE.Object3D} panel
+ */
+function isIn(object, panel) {
+  for (let node = object.parent; node; node = node.parent) {
+    if (node === panel) {
+      return true;
+    }
+  }
+  return false;
+}
+
+describe("the picture a drag carries", () => {
+  test("is taken of the source as its panel draws it, carried, and let go with the drag", async () => {
+    const s = await sortableList();
+    const g = picturingGesture(s);
+    g.press();
+    assert.deepEqual(g.prepared, [s.panel], "prepared while the press is still a press");
+    assert.equal(g.taken.length, 0);
+    g.carry();
+    assert.equal(g.taken.length, 1);
+    const { panel, frame, box, target } = g.taken[0];
+    assert.equal(panel, s.panel);
+    assert.ok(isIn(frame, s.panel), "framed on an object the panel draws");
+    assert.deepEqual(box, { x: 0, y: 0, width: 300, height: 40 });
+
+    const ghost = /** @type {THREE.Mesh} */ (s.panel.getObjectByName("drag-ghost"));
+    const material = /** @type {THREE.MeshBasicMaterial} */ (ghost.material);
+    assert.equal(material.map, target.texture);
+    assert.equal(material.opacity, 0.7);
+    assert.equal(material.color.r, 0.7, "colour scaled as alpha is, for a premultiplied texel");
+    assert.equal(material.premultipliedAlpha, false, "not premultiplied a second time");
+    assert.equal(material.blending, THREE.CustomBlending);
+    assert.equal(material.blendSrc, THREE.OneFactor);
+    assert.equal(material.blendDst, THREE.OneMinusSrcAlphaFactor);
+    assert.equal(material.toneMapped, false, "as the panel's own shaders are not");
+
+    let disposed = false;
+    target.addEventListener("dispose", () => {
+      disposed = true;
+    });
+    g.release();
+    assert.equal(disposed, true);
+    s.teardown();
+  });
+
+  test("is never of an object the mirror took down after the press", async () => {
+    // The page may re-render the row between the press and the drag, and
+    // the mirror take its object down; what is drawn now is what counts.
+    const s = await sortableList();
+    const g = picturingGesture(s);
+    g.press();
+    s.rows[0].remove();
+    for (let i = 0; i < 5; i++) {
+      flushFrame();
+      await settle(s.portal);
+    }
+    g.carry();
+    for (const { frame } of g.taken) {
+      assert.ok(isIn(frame, s.panel), "a picture of nothing, framed on a detached object");
+    }
+    g.release();
+    s.teardown();
+  });
+
+  test("is of what `setDragImage` named, where the panel draws it", async () => {
+    const s = await sortableList();
+    s.list.addEventListener("dragstart", (event) => {
+      /** @type {DragEvent} */ (event).dataTransfer?.setDragImage(s.rows[2], 10, 10);
+    });
+    const g = picturingGesture(s);
+    g.press();
+    g.carry();
+    assert.equal(g.taken.length, 1);
+    const { frame, box } = g.taken[0];
+    assert.ok(isIn(frame, s.panel));
+    assert.notEqual(frame, g.taken[0].panel);
+    assert.deepEqual(box, { x: 0, y: 0, width: 300, height: 40 });
+    g.release();
+    s.teardown();
+  });
+
+  test("is not taken of an image the panel does not draw, which is the outline instead", async () => {
+    // The common way to a custom drag image on the web: an element off the
+    // page, out of the panel altogether.
+    const s = await sortableList();
+    const offPage = document.createElement("div");
+    document.body.appendChild(offPage);
+    layOut(offPage, -9999, 0, 120, 30);
+    s.list.addEventListener("dragstart", (event) => {
+      /** @type {DragEvent} */ (event).dataTransfer?.setDragImage(offPage, 4, 4);
+    });
+    const g = picturingGesture(s);
+    g.press();
+    g.carry();
+    assert.equal(g.taken.length, 0);
+    const ghost = /** @type {THREE.Mesh} */ (s.panel.getObjectByName("drag-ghost"));
+    assert.ok(ghost.material instanceof THREE.ShaderMaterial, "the outline");
+    assert.equal(ghost.scale.x, 120, "the image's size");
+    g.release();
+    offPage.remove();
+    s.teardown();
+  });
+
+  test("is of the source when the image has no size", async () => {
+    const s = await sortableList();
+    const image = document.createElement("img");
+    s.list.addEventListener("dragstart", (event) => {
+      /** @type {DragEvent} */ (event).dataTransfer?.setDragImage(image, 4, 4);
+    });
+    const g = picturingGesture(s);
+    g.press();
+    g.carry();
+    assert.equal(g.taken.length, 1);
+    assert.deepEqual(g.taken[0].box, { x: 0, y: 0, width: 300, height: 40 });
+    g.release();
     s.teardown();
   });
 });

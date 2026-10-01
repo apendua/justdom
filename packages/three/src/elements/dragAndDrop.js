@@ -1,7 +1,6 @@
 import * as THREE from "three";
 import { withComputation } from "@apendua/signal";
 import { InteractionContext } from "../interactions.js";
-import { getParentObject } from "./contentGroup.js";
 import { initialDropEffect, PanelDataTransfer, resolveOperation } from "./dataTransfer.js";
 import { createFrameRequester } from "./frameRequester.js";
 import { RendererContext } from "../render.js";
@@ -17,7 +16,7 @@ import { placeAndScale } from "./place.js";
 import { isSvgRoot } from "./plugins.js";
 import { DRAG_THRESHOLD, planeOf } from "./scroll.js";
 import { createRectMaterial, rectGeometry } from "./sdfRect.js";
-import { snapshotGeometry, takeSnapshot } from "./ghostSnapshot.js";
+import { snapshotsFor } from "./ghostSnapshot.js";
 
 /**
  * @import {DropEffect} from './dataTransfer.js';
@@ -71,34 +70,35 @@ const GHOST_OPACITY = 0.7;
 const GHOST_RENDER_ORDER = 1e9;
 
 /**
- * What a panel answers when asked what is under a point: the deepest
- * element there and where on it the point is, or null.
+ * What a drag needs of a panel: its root element, and its own record of
+ * which object draws which element, which is also what says what is under
+ * the ray (see `elementAt`).
  *
- * @callback ElementAt
- * @param {THREE.Vector3} point In world space.
- * @param {THREE.Vector2} local Written with the point in the returned
- *   element's own px.
- * @returns {HTMLElement | null}
+ * @typedef {object} Panel
+ * @property {HTMLElement} element
+ * @property {(node: Node) => THREE.Object3D | undefined} objectOf
  */
 
 /**
  * The panels in the scene, by the object at the top of each, so that a ray
  * that lands anywhere in one can ask it what it landed on.
  *
- * @type {WeakMap<THREE.Object3D, ElementAt>}
+ * @type {WeakMap<THREE.Object3D, Panel>}
  */
 const panels = new WeakMap();
 
 /**
- * Let a drag ask this panel what is under the ray. The portal registers
- * each panel it builds, and unregisters it when it goes.
+ * Let a drag ask this panel what is under the ray and which object draws an
+ * element. The portal registers each panel it builds, and unregisters it
+ * when it goes.
  *
  * @param {THREE.Object3D} object The panel's container object.
- * @param {ElementAt} elementAt
+ * @param {HTMLElement} element The panel's root element.
+ * @param {(node: Node) => THREE.Object3D | undefined} objectOf
  * @returns {() => void} Unregisters.
  */
-export function registerPanel(object, elementAt) {
-  panels.set(object, elementAt);
+export function registerPanel(object, element, objectOf) {
+  panels.set(object, { element, objectOf });
   return () => {
     panels.delete(object);
   };
@@ -191,7 +191,7 @@ const scratch = new THREE.Vector3();
  *   element's px.
  * @returns {HTMLElement | null}
  */
-export function elementAt(element, objectOf, point, local) {
+function elementAt(element, objectOf, point, local) {
   const object = objectOf(element);
   if (!object || !object.visible) {
     return null;
@@ -233,20 +233,21 @@ export function elementAt(element, objectOf, point, local) {
 
 /**
  * The translucent card that follows the ray while a drag is under way, the
- * size of what is being dragged, drawn in the plane of the panel the ray is
- * on (see `placeGhost`). With a snapshot it is a picture of the element, as
- * a browser's drag image is (see `ghostSnapshot.js`); without one, where
- * there is no renderer to take it with, it is the element's outline, one
- * quad in the material every box already uses.
+ * size of the element it shows, the source or its drag image, drawn in the
+ * plane of the panel the ray is on (see `placeGhost`). With a snapshot it is
+ * a picture of the element, as a browser's drag image is (see
+ * `ghostSnapshot.js`); without one, where there is no renderer to take it
+ * with or the panel does not draw the element, it is the element's outline,
+ * one quad in the material every box already uses.
  *
- * @param {HTMLElement} source
+ * @param {Element} shown
  * @param {number} width
  * @param {number} height
  * @param {THREE.WebGLRenderTarget | null} snapshot
  * @returns {THREE.Mesh}
  */
-function createGhost(source, width, height, snapshot) {
-  const mesh = snapshot ? picturedGhost(snapshot) : outlineGhost(source, width, height);
+function createGhost(shown, width, height, snapshot) {
+  const mesh = snapshot ? picturedGhost(snapshot) : outlineGhost(shown, width, height);
   mesh.name = "drag-ghost";
   mesh.renderOrder = GHOST_RENDER_ORDER;
   // Never a ray target: it sits on the ray by construction, and would
@@ -262,28 +263,37 @@ function createGhost(source, width, height, snapshot) {
 function picturedGhost(snapshot) {
   const material = new THREE.MeshBasicMaterial({
     map: snapshot.texture,
-    transparent: true,
+    // What the panel blends into a transparent target is premultiplied, so
+    // it is composited once, as it is, with the opacity scaling colour and
+    // alpha alike: the colour is the opacity as a grey.
+    color: new THREE.Color(GHOST_OPACITY, GHOST_OPACITY, GHOST_OPACITY),
     opacity: GHOST_OPACITY,
-    // What the panel blends into a transparent target is premultiplied.
-    premultipliedAlpha: true,
+    transparent: true,
+    blending: THREE.CustomBlending,
+    blendSrc: THREE.OneFactor,
+    blendDst: THREE.OneMinusSrcAlphaFactor,
+    blendSrcAlpha: THREE.OneFactor,
+    blendDstAlpha: THREE.OneMinusSrcAlphaFactor,
+    // The panel's shaders are not tone-mapped, so its picture must not be.
+    toneMapped: false,
     depthTest: false,
     depthWrite: false,
     side: THREE.DoubleSide,
   });
-  return new THREE.Mesh(snapshotGeometry, material);
+  return new THREE.Mesh(rectGeometry, material);
 }
 
 /**
- * @param {HTMLElement} source
+ * @param {Element} shown
  * @param {number} width
  * @param {number} height
  * @returns {THREE.Mesh}
  */
-function outlineGhost(source, width, height) {
+function outlineGhost(shown, width, height) {
   const material = createRectMaterial();
   material.depthTest = false;
   material.depthWrite = false;
-  const radius = Number.parseFloat(getComputedStyleCached(source).borderTopLeftRadius) || 0;
+  const radius = Number.parseFloat(getComputedStyleCached(shown).borderTopLeftRadius) || 0;
   const { uSize, uRadii, uBorder, uFillColor, uBorderColor } = material.uniforms;
   uSize.value.set(width, height);
   uRadii.value.set(radius, radius, radius, radius);
@@ -310,8 +320,6 @@ function outlineGhost(source, width, height) {
  *   page's client coordinates.
  * @property {PanelDataTransfer | null} dataTransfer Null until the press
  *   has become a drag.
- * @property {THREE.Object3D} sourceObject The source's object, whose box
- *   the snapshot is framed on.
  * @property {THREE.Mesh | null} ghost
  * @property {THREE.WebGLRenderTarget | null} snapshot The picture the ghost
  *   carries, until the drag ends.
@@ -345,12 +353,11 @@ function outlineGhost(source, width, height) {
  * @param {(tick: () => void) => () => void} requestFrames
  * @param {(controller: THREE.XRTargetRaySpace) => THREE.Intersection | undefined} readHit
  *   Where the controller's ray lands this frame.
- * @param {(panel: THREE.Object3D, frame: THREE.Object3D, box: import('./ghostSnapshot.js').Box) => THREE.WebGLRenderTarget | null} snapshot
- *   A picture of `box` of `frame` as `panel` draws it, for the ghost, or
- *   null where none can be taken.
+ * @param {import('./ghostSnapshot.js').Snapshots} snapshots Pictures of
+ *   what is dragged, for the ghost.
  * @returns {DragAndDrop}
  */
-export function createDragAndDrop(requestFrames, readHit, snapshot) {
+export function createDragAndDrop(requestFrames, readHit, snapshots) {
   /** @type {Map<THREE.XRTargetRaySpace, Session>} */
   const sessions = new Map();
 
@@ -446,26 +453,34 @@ export function createDragAndDrop(requestFrames, readHit, snapshot) {
       return false;
     }
     dragged.add(session.controller);
+    // What the ghost shows: what `setDragImage` named, at its size, or the
+    // source. An image with no size, a detached `<img>`, is no image.
     const image = dataTransfer.getDragImage();
-    // What the ghost shows, in the source's px: the source's border box, or
-    // the box of what `setDragImage` named, placed by the two client rects.
-    const box = { x: 0, y: 0, width: 0, height: 0 };
-    if (image) {
-      const imageRect = image.element.getBoundingClientRect();
-      box.x = imageRect.left - rect.left;
-      box.y = imageRect.top - rect.top;
-      box.width = imageRect.width;
-      box.height = imageRect.height;
+    const imageRect = image?.element.getBoundingClientRect();
+    /** @type {Element} */
+    let shown = source;
+    let width = 0;
+    let height = 0;
+    if (image && imageRect && imageRect.width > 0 && imageRect.height > 0) {
+      shown = image.element;
+      width = imageRect.width;
+      height = imageRect.height;
       session.hold.set(image.x, image.y);
     } else {
-      const size = getBorderBoxSize(source);
-      box.width = size.width;
-      box.height = size.height;
+      ({ width, height } = getBorderBoxSize(source));
       session.hold.copy(grab);
     }
-    const { width, height } = box;
-    session.snapshot = snapshot(session.panel, session.sourceObject, box);
-    const ghost = createGhost(source, width, height, session.snapshot);
+    // A picture of it as the panel draws it now, through the object the
+    // panel has for it now: the page may have re-rendered it since the
+    // press, and the mirror taken down the object it had then. Only of an
+    // element the panel draws; one in another panel, culled or hidden would
+    // be a picture of nothing, and is the outline instead.
+    const object = /** @type {Panel} */ (panels.get(session.panel)).objectOf(shown);
+    session.snapshot =
+      object?.visible && !isVisibilityHidden(/** @type {HTMLElement} */ (shown))
+        ? snapshots.take(session.panel, object, { x: 0, y: 0, width, height })
+        : null;
+    const ghost = createGhost(shown, width, height, session.snapshot);
     placeAndScale(ghost, 0, 0, GHOST_Z, Math.max(width, 1e-6), Math.max(height, 1e-6), 1);
     session.panel.add(ghost);
     session.ghost = ghost;
@@ -491,7 +506,8 @@ export function createDragAndDrop(requestFrames, readHit, snapshot) {
     /** @type {HTMLElement | null} */
     let under = null;
     if (hit && panel) {
-      under = /** @type {ElementAt} */ (panels.get(panel))(hit.point, local);
+      const { element, objectOf } = /** @type {Panel} */ (panels.get(panel));
+      under = elementAt(element, objectOf, hit.point, local);
       if (under) {
         const rect = under.getBoundingClientRect();
         session.client.set(rect.left + local.x, rect.top + local.y);
@@ -673,17 +689,7 @@ export function createDragAndDrop(requestFrames, readHit, snapshot) {
       if (!source || !panel) {
         return false;
       }
-      // The source's object is one parent object up per element between the
-      // press and the source, as the scroll gesture walks to its scroller.
-      /** @type {THREE.Object3D | null} */
-      let sourceObject = object;
-      for (
-        let el = /** @type {HTMLElement | null} */ (element);
-        el && el !== source;
-        el = getParentElement(el)
-      ) {
-        sourceObject = sourceObject && getParentObject(sourceObject);
-      }
+      const sourceObject = /** @type {Panel} */ (panels.get(panel)).objectOf(source);
       if (!sourceObject) {
         return false;
       }
@@ -691,7 +697,6 @@ export function createDragAndDrop(requestFrames, readHit, snapshot) {
       const session = {
         controller,
         source,
-        sourceObject,
         panel,
         ghostPanel: panel,
         start: new THREE.Vector2(),
@@ -720,6 +725,7 @@ export function createDragAndDrop(requestFrames, readHit, snapshot) {
       controller.addEventListener("selectend", onSelectEnd);
       session.unlisten = () => controller.removeEventListener("selectend", onSelectEnd);
       sessions.set(controller, session);
+      snapshots.prepare(panel);
       if (!stopFrames) {
         stopFrames = requestFrames(tick);
       }
@@ -747,21 +753,16 @@ export function createDragAndDrop(requestFrames, readHit, snapshot) {
 const perScene = new WeakMap();
 
 /**
- * What the gesture's frames are asked for with: a context carrying the
- * renderer and nothing else. The gesture lives as long as the scene, and
- * the context it is first asked from is a portal's, with that portal's
- * batches, haptics and the rest on it; held for the scene's life, they
- * would outlive the portal. Frames need only the renderer (see `frames`),
- * and without one the requester falls back to the browser's frames.
+ * The scene's renderer, or null where there is none, as under a test runner.
  *
  * @param {WeakKey} ctx
- * @returns {WeakKey}
+ * @returns {THREE.WebGLRenderer | null}
  */
-function frameContext(ctx) {
+function rendererOf(ctx) {
   try {
-    return RendererContext.set({}, RendererContext.get(ctx));
+    return RendererContext.get(ctx);
   } catch {
-    return {};
+    return null;
   }
 }
 
@@ -773,29 +774,20 @@ export function dragAndDrop(ctx) {
   const manager = InteractionContext.get(ctx);
   let gesture = perScene.get(manager);
   if (!gesture) {
-    const frameCtx = frameContext(ctx);
+    // The gesture lives as long as the scene, and `ctx` is the context of
+    // whichever portal asked first, with its batches, haptics and the rest
+    // on it; held for the scene's life, they would outlive the portal. What
+    // the gesture keeps is the renderer alone: frames are asked with a
+    // context that carries it and nothing else, and without one fall back to
+    // the browser's.
+    const renderer = rendererOf(ctx);
     gesture = createDragAndDrop(
-      createFrameRequester(frameCtx),
+      createFrameRequester(renderer ? RendererContext.set({}, renderer) : {}),
       (controller) =>
         // Read from a frame, which may be inside somebody else's computation;
         // the hit is a fact about this frame, not a dependency.
         withComputation(null, () => manager.pointers.get(controller)?.get()),
-      (panel, frame, box) => {
-        // A picture needs a renderer to take it with, and only a real one:
-        // under a test runner there is none, and a test may stand an empty
-        // object in for one. Either way the ghost is the outline. Asked of
-        // the context frames are asked with, which holds the renderer and
-        // nothing of the portal's (see `frameContext`).
-        let renderer;
-        try {
-          renderer = RendererContext.get(frameCtx);
-        } catch {
-          return null;
-        }
-        return renderer instanceof THREE.WebGLRenderer
-          ? takeSnapshot(renderer, panel, frame, box)
-          : null;
-      },
+      snapshotsFor(renderer),
     );
     perScene.set(manager, gesture);
   }

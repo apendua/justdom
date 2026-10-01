@@ -54,8 +54,11 @@ export function svgElements() {
                 },
               })
             : group(ctx, element);
-        case "g":
         case "a":
+          // One inside a `<text>` is a run of it, drawn by the `<text>` as a
+          // `<tspan>` is, and declined for the same reason.
+          return element.closest("text") ? null : group(ctx, element);
+        case "g":
         case "switch":
           return group(ctx, element);
         case "path":
@@ -79,7 +82,8 @@ export function svgElements() {
           // `svg/template.js`. `<foreignObject>`: not drawn yet. Declined, and
           // so skipped by the portal with everything under them, which for a
           // template is the right answer in itself. A `<tspan>` is drawn by
-          // its `<text>`, and declined here for the same reason.
+          // its `<text>`, and declined here for the same reason: the portal
+          // adopts it as it adopts a template, and builds nothing for it.
           return null;
       }
     },

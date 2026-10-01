@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import * as THREE from "three";
 import { createMirror } from "../elements/mirror.js";
 import { PortalTemplatesContext } from "../elements/plugins.js";
+import { svgElements } from "./index.js";
 import { drawUse } from "./template.js";
 import { drawnRange, drawText } from "./text.js";
 
@@ -352,6 +353,27 @@ describe("svg text", () => {
     s.mirror.attributeChanged(text, { presentational: true, selfScoped: true });
     assert.equal(s.transforms.length, reads);
     s.teardown();
+  });
+
+  test("a hover that moves a font's axis measures the text again", () => {
+    const text = svg("text", { x: "0", y: "10", fill: "red" }, ["A"]);
+    const s = scene([text], text);
+    const reads = s.transforms.length;
+    // What a `[data-xr-hover]` rule on a variable font does, reported as the
+    // portal reports a hover.
+    /** @type {SVGElement} */ (text).style.setProperty("font-variation-settings", "'wght' 700");
+    s.mirror.attributeChanged(text, { presentational: true, selfScoped: true });
+    assert.equal(s.transforms.length, reads + 1);
+    s.teardown();
+  });
+
+  test("the plugin leaves an a inside a text to the text, and draws one outside", () => {
+    const plugin = svgElements();
+    const inside = svg("a", { href: "#somewhere" }, ["link"]);
+    const outside = svg("a", { href: "#somewhere" });
+    svg("svg", {}, [svg("text", {}, [inside]), outside]);
+    assert.equal(plugin.element({}, inside), null);
+    assert.notEqual(plugin.element({}, outside), null);
   });
 
   test("text inside an a is drawn like a tspan's", () => {

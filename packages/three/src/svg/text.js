@@ -68,35 +68,6 @@ const RUN_PARENTS = new Set(["text", "tspan", "a"]);
 const LAYOUT_ATTRIBUTES = ["x", "y", "dx", "dy", "rotate", "textLength", "lengthAdjust"];
 
 /**
- * The computed properties the layout of a `<text>` depends on, read through
- * a gate of their own, so a restyle that changes none of them, a hover
- * setting `data-xr-hover`, measures nothing.
- */
-const LAYOUT_PROPERTIES = [
-  "display",
-  "white-space",
-  "direction",
-  "writing-mode",
-  "dominant-baseline",
-  "alignment-baseline",
-  "baseline-shift",
-  "font-family",
-  "font-size",
-  "font-stretch",
-  "font-style",
-  "font-variant-caps",
-  "font-weight",
-  "font-kerning",
-  "letter-spacing",
-  "word-spacing",
-  "text-anchor",
-  "text-transform",
-];
-
-/** Where `white-space` is in `LAYOUT_PROPERTIES`. */
-const WHITE_SPACE = LAYOUT_PROPERTIES.indexOf("white-space");
-
-/**
  * The properties a run is laid out and drawn with. In a copy made by a
  * `<use>` they are read through `readDrawnProperty`, so the copy takes the
  * `<use>`'s font where the text sets none.
@@ -111,6 +82,38 @@ const FONT_PROPERTIES = [
   "word-spacing",
   "text-anchor",
 ];
+
+/**
+ * The computed properties the layout of a `<text>` depends on: the font's,
+ * and the rest the browser places glyphs by. Read through a gate of their
+ * own, so a restyle that changes none of them, a hover setting
+ * `data-xr-hover`, measures nothing.
+ */
+const LAYOUT_PROPERTIES = [
+  ...FONT_PROPERTIES,
+  "display",
+  "white-space",
+  "direction",
+  "unicode-bidi",
+  "writing-mode",
+  "dominant-baseline",
+  "alignment-baseline",
+  "baseline-shift",
+  "font-stretch",
+  "font-kerning",
+  "font-variation-settings",
+  "font-feature-settings",
+  "font-variant-ligatures",
+  "font-variant-numeric",
+  "font-variant-east-asian",
+  "font-size-adjust",
+  "font-optical-sizing",
+  "text-rendering",
+  "text-transform",
+];
+
+/** Where `white-space` is in `LAYOUT_PROPERTIES`. */
+const WHITE_SPACE = LAYOUT_PROPERTIES.indexOf("white-space");
 
 /**
  * One run of a `<text>`: the characters of one text node, where the browser
@@ -338,6 +341,12 @@ function measureRuns(element, found, viewport, fonts, layoutStyle) {
 }
 
 /**
+ * What `getTextRenderStyle` reads off a style to draw a run with: the font,
+ * and how its characters are transformed and decorated.
+ */
+const RENDER_PROPERTIES = [...FONT_PROPERTIES, "text-transform", "text-decoration-line"];
+
+/**
  * The style a run is rasterized with, white for a mask: the font and spacing
  * its parent is drawn with, as `getTextRenderStyle` reads them off a computed
  * style.
@@ -346,24 +355,13 @@ function measureRuns(element, found, viewport, fonts, layoutStyle) {
  * @returns {CSSStyleDeclaration}
  */
 function runStyle(read) {
-  return /** @type {CSSStyleDeclaration} */ (
-    /** @type {unknown} */ ({
-      fontFamily: read("font-family"),
-      fontSize: read("font-size"),
-      fontStyle: read("font-style"),
-      fontVariantCaps: read("font-variant-caps"),
-      fontWeight: read("font-weight"),
-      letterSpacing: read("letter-spacing"),
-      wordSpacing: read("word-spacing"),
-      textTransform: read("text-transform"),
-      textDecorationLine: read("text-decoration-line"),
-      textShadow: "none",
-      color: "#ffffff",
-      textDecorationColor: "#ffffff",
-    })
-  );
+  /** @type {Record<string, string>} */
+  const style = { textShadow: "none", color: "#ffffff", textDecorationColor: "#ffffff" };
+  for (const name of RENDER_PROPERTIES) {
+    style[name.replace(/-([a-z])/g, (_, letter) => letter.toUpperCase())] = read(name);
+  }
+  return /** @type {CSSStyleDeclaration} */ (/** @type {unknown} */ (style));
 }
-
 /**
  * @param {Record<string, unknown>} a
  * @param {Record<string, unknown>} b

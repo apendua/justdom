@@ -945,9 +945,10 @@ function buildPortal(ctx, ownOptions = {}) {
       }
     } else if (node.nodeType === Node.TEXT_NODE) {
       // The text of an SVG — the string in a `<text>`, the whitespace between
-      // shapes — has no CSS line boxes to measure and is nobody's yet
-      // (`docs/freedom-svg-plan.md`, S5). Skipped rather than measured as
-      // HTML text, which it would come out of as nothing at best.
+      // shapes — has no CSS line boxes to measure. A `<text>`'s is drawn by
+      // the SVG plugin through the element, which reads it from the mirror
+      // (adopted above); the rest is nothing to draw. Skipped rather than
+      // measured as HTML text, which it would come out of as nothing at best.
       const parent = node.parentNode;
       if (parent && isSvgElement(parent)) {
         return undefined;

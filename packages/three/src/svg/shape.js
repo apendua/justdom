@@ -7,6 +7,8 @@ import {
   observable,
   onCleanup,
   set,
+  Stream,
+  use,
   useEffects,
 } from "@apendua/signal";
 import { SVGLoader } from "three/addons/loaders/SVGLoader.js";
@@ -65,7 +67,7 @@ import {
 } from "./style.js";
 
 /**
- * @import {EntityEffect, Source} from '@apendua/signal';
+ * @import {EntityEffect, Source, Subscribable} from '@apendua/signal';
  * @import {ShapePath} from 'three';
  * @import {Component, XREventMap} from '../core.js';
  * @import {ClipBox} from '../elements/clip.js';
@@ -433,6 +435,28 @@ function withOwnTransform(element, matrix, instance) {
 }
 
 /**
+ * Keep `source`'s object a child of `parent` for as long as the surrounding
+ * computation stands.
+ *
+ * @param {THREE.Object3D} parent
+ * @param {Subscribable<THREE.Object3D>} source
+ * @returns {void}
+ */
+export function mountInto(parent, source) {
+  use(
+    flatMap(
+      (/** @type {THREE.Object3D} */ child) =>
+        new Stream(() => {
+          parent.add(child);
+          return () => {
+            parent.remove(child);
+          };
+        }),
+    )(source),
+  );
+}
+
+/**
  * Commit a 2D matrix as an object's local matrix, the way `place` commits a
  * position: the object stops recomposing its own, and its world matrix is
  * marked stale so the next walk carries the change to what is below it.
@@ -508,6 +532,15 @@ const INHERITED = new Set([
   "marker-end",
   "color",
   "visibility",
+  // What a `<text>` is laid out and drawn with.
+  "font-family",
+  "font-size",
+  "font-style",
+  "font-variant-caps",
+  "font-weight",
+  "letter-spacing",
+  "word-spacing",
+  "text-anchor",
 ]);
 
 /**
@@ -699,6 +732,21 @@ export function readChain(element, instance = null) {
   return { ctm, opacity, root: null, clip: null };
 }
 
+/**
+ * Whether a ray hits a region of an element under the rule `pointer-events`
+ * gives it: a region it names at all, painted where the rule asks for paint,
+ * and shown where it asks for visibility. Each is read only when the rule
+ * asks, so a shape under `pointer-events: all` follows neither.
+ *
+ * @param {HitRule | null} rule
+ * @param {() => string} paint The region's `fill` or `stroke`, as drawn.
+ * @param {() => boolean} hidden Whether `visibility` hides the element.
+ * @returns {boolean}
+ */
+export function regionHits(rule, paint, hidden) {
+  return rule !== null && (!rule.painted || isPainted(paint())) && (!rule.visible || !hidden());
+}
+
 /** The elements `shape` draws. */
 export const SHAPE_TAGS = new Set([
   "path",
@@ -711,7 +759,7 @@ export const SHAPE_TAGS = new Set([
 ]);
 
 /** The elements that draw something, and so take a place in the paint order. */
-const PAINTED_TAGS = new Set([...SHAPE_TAGS, "image", "use"]);
+const PAINTED_TAGS = new Set([...SHAPE_TAGS, "image", "use", "text"]);
 
 /**
  * @typedef {object} PaintOrder
@@ -1293,7 +1341,11 @@ export function shape(ctx, element, { instance = null, decorate } = {}) {
    * @returns {boolean}
    */
   const hits = (rule, name) =>
-    rule !== null && (!rule.painted || isPainted(read(name))) && (!rule.visible || !hidden.get());
+    regionHits(
+      rule,
+      () => read(name),
+      () => hidden.get(),
+    );
   const fillHit = new Derived(() => hits(hitRegions.get().fill, "fill"));
   const strokeHit = new Derived(() => hits(hitRegions.get().stroke, "stroke"));
 

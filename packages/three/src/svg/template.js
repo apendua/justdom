@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { Derived, effects, flatMap, just, Stream, use } from "@apendua/signal";
+import { Derived, effects, just } from "@apendua/signal";
 import { getAttributeCached, getChildNodes, getComputedStyleCached } from "../elements/mirror.js";
 import { isSvgElement, PortalTemplatesContext } from "../elements/plugins.js";
 import {
@@ -15,6 +15,7 @@ import {
   viewportMatrix,
 } from "./geometry.js";
 import { image } from "./image.js";
+import { drawText } from "./text.js";
 import {
   findMarker,
   MARKABLE_TAGS,
@@ -29,6 +30,7 @@ import {
   commitMatrix,
   group,
   localMatrix,
+  mountInto,
   nearestViewBoxOrigin,
   paintSlot,
   readChain,
@@ -60,28 +62,6 @@ import { clipsViewport, parseLengthIn, parseNumber, readProperty } from "./style
 
 /** Elements that only group, inside a template as outside one. */
 const GROUP_TAGS = new Set(["g", "a", "switch", "svg"]);
-
-/**
- * Keep `source`'s object a child of `parent` for as long as the surrounding
- * computation stands.
- *
- * @param {THREE.Object3D} parent
- * @param {Subscribable<THREE.Object3D>} source
- * @returns {void}
- */
-function mountInto(parent, source) {
-  use(
-    flatMap(
-      (/** @type {THREE.Object3D} */ child) =>
-        new Stream(() => {
-          parent.add(child);
-          return () => {
-            parent.remove(child);
-          };
-        }),
-    )(source),
-  );
-}
 
 /**
  * Draw the element children of `parent`, a template or an element inside
@@ -131,6 +111,9 @@ function drawInstanced(ctx, element, instance) {
   }
   if (element.localName === "use") {
     return drawUse(ctx, element, instance);
+  }
+  if (element.localName === "text") {
+    return drawText(ctx, element, instance);
   }
   return null;
 }

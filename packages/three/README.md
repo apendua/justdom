@@ -1761,6 +1761,30 @@ would draw it again stops there. Not followed: a target that appears only
 after the `<use>` mounted, such as a sprite fetched and injected later. The
 `<use>` looks its target up again when it is restyled.
 
+A `<text>` is drawn, `<tspan>`s and all. The browser lays it out: `x`, `y`,
+`dx`, `dy`, `text-anchor`, the font and its spacing are its business, a
+percentage being of the nearest viewport. It is measured as HTML text under
+a transform is, in a detached copy with the `<text>`'s own transform
+switched off, so what comes back is already in its user space, and each
+text node is drawn as one textured quad there, under the same matrices as a
+shape: a rotated `<g>` turns the text with it. The colour is `fill`, with
+`fill-opacity` and `opacity`, and a colour change is a uniform write, not a
+new texture. The texture is drawn at the scale the matrices above give it,
+redrawn only when that crosses a half-octave, so a zoomed label stays sharp
+and a zoom does not redraw it each frame. Text takes its place in the paint
+order, and is a ray target by its fill, `pointer-events` deciding as it
+does for a shape; the quads stand in for the glyphs. Text in a `<symbol>`
+or a `<marker>` is drawn in each copy, taking the `<use>`'s font and fill
+where it sets none. Not followed: `stroke` on text, `<textPath>`, vertical
+writing modes, and a text node placed one character at a time (`x` or
+`rotate` with a list of values), which is drawn as one run from where its
+characters start. As with HTML text, a stylesheet rule that reaches above
+the `<text>` to style a `<tspan>` does not apply to the measured copy.
+
+```html
+<text x="52" y="60" text-anchor="middle" fill="white">input</text>
+```
+
 One print of the measuring tape. **Dashes are geometry, not a
 shader**, for the reason `svg/dash.js` gives, so a `stroke-dashoffset`
 animation rebuilds the stroke each frame — a few hundred vertices, which the
@@ -1798,7 +1822,7 @@ the scene*). Where the button should be the target itself, put
 `<svg>` nor its shapes are then ray targets of their own, whatever `cursor`
 they inherit, and a press on the icon is a press on the button.
 
-Not drawn yet: `<text>`, gradients and patterns (a `url(#…)` paint reads
+Not drawn yet: gradients and patterns (a `url(#…)` paint reads
 as `none`, though it still counts as painted for a ray), `clip-path`,
 `mask`, filters, `<foreignObject>` and `vector-effect`.
 [`docs/freedom-svg-plan.md`](../../docs/freedom-svg-plan.md) has the order

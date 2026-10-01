@@ -18,8 +18,9 @@ import { cardStyle, captionStyle, classes, headingStyle, rowStyle } from "./pane
  * test of all of them.
  *
  * The diagram at the top is the case the whole thing exists for — boxes
- * joined by arrows, the arrows dashed and dotted, their heads markers, two
- * pictures above them through `<image>`, one turned by its group — and
+ * joined by arrows, the arrows dashed and dotted, their heads markers, the
+ * nodes labelled through `<text>`, two pictures above them through
+ * `<image>`, one turned by its group — and
  * it is styled the way a diagram on a page is styled, through classes and
  * a stylesheet rather than presentation attributes, because computed style
  * is what the plugin reads. Below it: the same icon through the same
@@ -89,6 +90,18 @@ const diagramStyle = stylesheet`
 
   .${CLASS_NAME} .node[data-xr-active] {
     fill: rgb(0, 118, 105);
+  }
+
+  /* The nodes' labels, laid out by the browser and drawn through <text>.
+     They let a press through to the node under them, as they would on a
+     page. */
+  .${CLASS_NAME} .label {
+    fill: rgb(255, 255, 255);
+    font-family: system-ui, sans-serif;
+    font-size: 13px;
+    font-weight: 600;
+    text-anchor: middle;
+    pointer-events: none;
   }
 
   .${CLASS_NAME} .port {
@@ -330,6 +343,9 @@ const VectorsPanel = component((_ctx: WeakKey) => {
           $$("rect", [attr({ class: "node", x: 16, y: 34, width: 72, height: 44, rx: 8 })]),
           $$("rect", [attr({ class: "node", x: 184, y: 34, width: 72, height: 44, rx: 8 })]),
           $$("circle", [attr({ class: "node", cx: 136, cy: 100, r: 12 })]),
+          // Their labels, centred on them by `text-anchor`.
+          $$("text", [attr({ class: "label", x: 52, y: 60 }), children(text`input`)]),
+          $$("text", [attr({ class: "label", x: 220, y: 60 }), children(text`output`)]),
           // Ports on the nodes' edges.
           $$("circle", [attr({ class: "port", cx: 88, cy: 56, r: 4 })]),
           $$("circle", [attr({ class: "port", cx: 184, cy: 56, r: 4 })]),

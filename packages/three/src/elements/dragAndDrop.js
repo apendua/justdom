@@ -4,6 +4,7 @@ import { InteractionContext } from "../interactions.js";
 import { getParentObject } from "./contentGroup.js";
 import { initialDropEffect, PanelDataTransfer, resolveOperation } from "./dataTransfer.js";
 import { createFrameRequester } from "./frameRequester.js";
+import { RendererContext } from "../render.js";
 import {
   getBorderBoxSize,
   getComputedStyleCached,
@@ -228,9 +229,10 @@ export function elementAt(element, objectOf, point, local) {
 
 /**
  * The translucent card that follows the ray while a drag is under way, the
- * size of what is being dragged, drawn in the plane of the panel it came
- * from. A browser's drag image is a picture of the element; this is its
- * outline, which costs one quad in the material every box already uses.
+ * size of what is being dragged, drawn in the plane of the panel the ray is
+ * on (see `placeGhost`). A browser's drag image is a picture of the
+ * element; this is its outline, which costs one quad in the material every
+ * box already uses.
  *
  * @param {HTMLElement} source
  * @param {number} width
@@ -263,8 +265,10 @@ function createGhost(source, width, height) {
  * @property {THREE.XRTargetRaySpace} controller
  * @property {HTMLElement} source
  * @property {THREE.Object3D} panel The container object of the source's
- *   panel, whose plane the hand is measured in and the ghost is drawn in.
- * @property {THREE.Plane} plane
+ *   panel, whose plane a press is measured in until it becomes a drag.
+ * @property {THREE.Object3D} ghostPanel The panel the ghost is drawn in:
+ *   the last one the ray was on, and the source's until it has been on
+ *   another or when that one is taken down.
  * @property {THREE.Vector2} start Where the press was, in the panel's px.
  * @property {THREE.Vector2} grab Where the press was, in the source's px.
  * @property {THREE.Vector2} client The last point under the ray, in the
@@ -315,6 +319,7 @@ export function createDragAndDrop(requestFrames, readHit) {
   let stopFrames = null;
 
   const raycaster = new THREE.Raycaster();
+  const plane = new THREE.Plane();
   const onPlane = new THREE.Vector3();
   const inPanel = new THREE.Vector2();
   const local = new THREE.Vector2();
@@ -329,7 +334,9 @@ export function createDragAndDrop(requestFrames, readHit) {
    */
   function sample(session) {
     raycaster.setFromXRController(session.controller);
-    if (!raycaster.ray.intersectPlane(session.plane, onPlane)) {
+    // Where the panel is now, not where it was at the press: a panel the
+    // scene lets a hand carry can move while it is pressed.
+    if (!raycaster.ray.intersectPlane(planeOf(session.panel, plane), onPlane)) {
       return false;
     }
     session.panel.worldToLocal(scratch.copy(onPlane));
@@ -427,14 +434,15 @@ export function createDragAndDrop(requestFrames, readHit) {
    * `dragover` is what says it takes the drop.
    *
    * @param {Session} session
+   * @param {THREE.Intersection | undefined} hit Where the ray lands this
+   *   frame.
+   * @param {THREE.Object3D | null} panel The panel `hit` is in, if any.
    * @returns {void}
    */
-  function step(session) {
+  function step(session, hit, panel) {
     const dataTransfer = /** @type {PanelDataTransfer} */ (session.dataTransfer);
     /** @type {HTMLElement | null} */
     let under = null;
-    const hit = readHit(session.controller);
-    const panel = hit ? panelOf(hit.object) : null;
     if (hit && panel) {
       under = /** @type {ElementAt} */ (panels.get(panel))(hit.point, local);
       if (under) {
@@ -520,20 +528,66 @@ export function createDragAndDrop(requestFrames, readHit) {
     });
   }
 
+  /**
+   * Put the ghost under the ray, in the panel the ray is on, so that it is
+   * under the ray on whatever panel the drag is over, however that one is
+   * turned. There it is where the ray landed, the point the drag's target
+   * is found at too. Where the ray is on no panel, between the controls of
+   * a panel that stops no rays or past a panel's edge, the ghost stays in
+   * the last panel the ray was on, the source's until it has been on
+   * another or once that one is taken down, where the ray crosses that
+   * panel's plane. Hidden when the ray
+   * points away from it.
+   *
+   * @param {Session} session
+   * @param {THREE.Intersection | undefined} hit
+   * @param {THREE.Object3D | null} panel The panel `hit` is in, if any.
+   * @returns {void}
+   */
+  function placeGhost(session, hit, panel) {
+    const ghost = /** @type {THREE.Mesh} */ (session.ghost);
+    if (panel) {
+      session.ghostPanel = panel;
+    } else if (!panels.has(session.ghostPanel)) {
+      // That panel was taken down, and nothing draws it any more.
+      session.ghostPanel = session.panel;
+    }
+    const target = session.ghostPanel;
+    if (ghost.parent !== target) {
+      target.add(ghost);
+    }
+    if (hit && panel) {
+      scratch.copy(hit.point);
+    } else {
+      raycaster.setFromXRController(session.controller);
+      if (!raycaster.ray.intersectPlane(planeOf(target, plane), onPlane)) {
+        ghost.visible = false;
+        return;
+      }
+      scratch.copy(onPlane);
+    }
+    target.worldToLocal(scratch);
+    ghost.visible = true;
+    placeAndScale(
+      ghost,
+      scratch.x - session.hold.x,
+      scratch.y - session.hold.y,
+      GHOST_Z,
+      ghost.scale.x,
+      ghost.scale.y,
+      1,
+    );
+  }
+
   function tick() {
     for (const session of sessions.values()) {
       if (!panels.has(session.panel)) {
         finish(session);
         continue;
       }
-      if (!sample(session)) {
-        if (session.ghost) {
-          session.ghost.visible = false;
-        }
-        continue;
-      }
       if (!session.dataTransfer) {
-        if (inPanel.distanceTo(session.start) < DRAG_THRESHOLD) {
+        // Still a press, measured in the plane of the panel it is on.
+        if (!sample(session) || inPanel.distanceTo(session.start) < DRAG_THRESHOLD) {
           continue;
         }
         if (!start(session)) {
@@ -544,18 +598,10 @@ export function createDragAndDrop(requestFrames, readHit) {
           continue;
         }
       }
-      const ghost = /** @type {THREE.Mesh} */ (session.ghost);
-      ghost.visible = true;
-      placeAndScale(
-        ghost,
-        inPanel.x - session.hold.x,
-        inPanel.y - session.hold.y,
-        GHOST_Z,
-        ghost.scale.x,
-        ghost.scale.y,
-        1,
-      );
-      step(session);
+      const hit = readHit(session.controller);
+      const panel = hit ? panelOf(hit.object) : null;
+      placeGhost(session, hit, panel);
+      step(session, hit, panel);
     }
     if (sessions.size === 0 && stopFrames) {
       stopFrames();
@@ -597,7 +643,7 @@ export function createDragAndDrop(requestFrames, readHit) {
         controller,
         source,
         panel,
-        plane: planeOf(panel, new THREE.Plane()),
+        ghostPanel: panel,
         start: new THREE.Vector2(),
         grab: new THREE.Vector2(),
         client: new THREE.Vector2(),
@@ -638,27 +684,50 @@ export function createDragAndDrop(requestFrames, readHit) {
 }
 
 /**
- * One drag-and-drop gesture per context, shared by every panel in the
- * scene, so a drag that starts in one panel can end in another.
+ * One drag-and-drop gesture per scene, shared by every panel in it, so a
+ * drag that starts in one panel can end in another and every panel knows a
+ * hand is carrying something. Keyed by the scene's interaction manager,
+ * not by the context: each portal derives a context of its own, and a
+ * gesture per context was a gesture per panel, whose controls went on
+ * being hovered under a drag from any other.
  *
- * @type {WeakMap<WeakKey, DragAndDrop>}
+ * @type {WeakMap<object, DragAndDrop>}
  */
-const perContext = new WeakMap();
+const perScene = new WeakMap();
+
+/**
+ * What the gesture's frames are asked for with: a context carrying the
+ * renderer and nothing else. The gesture lives as long as the scene, and
+ * the context it is first asked from is a portal's, with that portal's
+ * batches, haptics and the rest on it; held for the scene's life, they
+ * would outlive the portal. Frames need only the renderer (see `frames`),
+ * and without one the requester falls back to the browser's frames.
+ *
+ * @param {WeakKey} ctx
+ * @returns {WeakKey}
+ */
+function frameContext(ctx) {
+  try {
+    return RendererContext.set({}, RendererContext.get(ctx));
+  } catch {
+    return {};
+  }
+}
 
 /**
  * @param {WeakKey} ctx
  * @returns {DragAndDrop}
  */
 export function dragAndDrop(ctx) {
-  let gesture = perContext.get(ctx);
+  const manager = InteractionContext.get(ctx);
+  let gesture = perScene.get(manager);
   if (!gesture) {
-    const manager = InteractionContext.get(ctx);
-    gesture = createDragAndDrop(createFrameRequester(ctx), (controller) =>
+    gesture = createDragAndDrop(createFrameRequester(frameContext(ctx)), (controller) =>
       // Read from a frame, which may be inside somebody else's computation;
       // the hit is a fact about this frame, not a dependency.
       withComputation(null, () => manager.pointers.get(controller)?.get()),
     );
-    perContext.set(ctx, gesture);
+    perScene.set(manager, gesture);
   }
   return gesture;
 }

@@ -11,7 +11,7 @@ import {
 } from "@apendua/signal";
 import { SVGLoader } from "three/addons/loaders/SVGLoader.js";
 import { $, children, Nothing } from "../operators.js";
-import { applyClip, clipRaycast, UNCLIPPED } from "../elements/clip.js";
+import { applyClip, clipRaycast, intersectClipBoxes, UNCLIPPED } from "../elements/clip.js";
 import { PortalReadyContext } from "../elements/div.js";
 import { forwardPointerEvents, isClickable } from "../elements/pointerForwarding.js";
 import { place } from "../elements/place.js";
@@ -24,31 +24,38 @@ import {
   getInteriorClipBox,
   getOpacity,
   getParentElement,
+  hidesVisibility,
   isVisibilityHidden,
 } from "../elements/mirror.js";
 import { isSvgRoot, SVG_NAMESPACE } from "../elements/plugins.js";
 import {
   aboutOrigin,
   IDENTITY,
+  intersectRects,
+  invert,
   matrixEqual,
   matrixScale,
   multiply,
   parseCssMatrix,
   parsePreserveAspectRatio,
   parseViewBox,
+  rectEqual,
   samplingScale,
   toMatrix3,
   toMatrix4,
+  transformRect,
   translation,
   viewportMatrix,
 } from "./geometry.js";
 import { dashRuns } from "./dash.js";
 import {
+  clipsViewport,
   paintEqual,
   isPainted,
   parseDashArray,
   parseFillRule,
   parseLength,
+  parseLengthIn,
   parseLineCap,
   parseLineJoin,
   parseNumber,
@@ -59,11 +66,11 @@ import {
 } from "./style.js";
 
 /**
- * @import {Source} from '@apendua/signal';
+ * @import {EntityEffect, Source} from '@apendua/signal';
  * @import {ShapePath} from 'three';
  * @import {Component, XREventMap} from '../core.js';
  * @import {ClipBox} from '../elements/clip.js';
- * @import {Matrix2D} from './geometry.js';
+ * @import {Matrix2D, Rect} from './geometry.js';
  * @import {HitRule, Paint} from './style.js';
  */
 
@@ -217,6 +224,10 @@ function ownTransform(element, style, viewBoxOrigin) {
  * @property {number} opacity The product of the opacities below the root,
  *   the shape's own included and the root's not.
  * @property {Element | null} root
+ * @property {Rect | null} clip What the viewports above the element leave of
+ *   it, a nested `<svg>`, a `<symbol>` or a `<marker>`, in the root's frame.
+ *   Null for none. The root's own overflow is not in it: that is a box's,
+ *   and the portal's clip chain has it.
  */
 
 /**
@@ -224,19 +235,30 @@ function ownTransform(element, style, viewBoxOrigin) {
  * @param {Chain} b
  * @returns {boolean}
  */
-function chainEqual(a, b) {
-  return a.root === b.root && a.opacity === b.opacity && matrixEqual(a.ctm, b.ctm);
+export function chainEqual(a, b) {
+  return (
+    a.root === b.root &&
+    a.opacity === b.opacity &&
+    matrixEqual(a.ctm, b.ctm) &&
+    rectEqual(a.clip, b.clip)
+  );
 }
 
 /**
  * The `viewBox` origin of the nearest viewport above an element — the
- * offset a `view-box` transform origin is measured from.
+ * offset a `view-box` transform origin is measured from. In template
+ * content the walk stops at the template and takes the instance's, as
+ * `viewportSize` does.
  *
  * @param {Element} element
+ * @param {Instance | null} [instance] The instance the element is part of.
  * @returns {{ x: number, y: number }}
  */
-function nearestViewBoxOrigin(element) {
+export function nearestViewBoxOrigin(element, instance = null) {
   for (let current = element.parentElement; current; current = current.parentElement) {
+    if (instance && current === instance.template) {
+      return instance.viewBoxOrigin();
+    }
     if (current.localName === "svg" && current.namespaceURI === SVG_NAMESPACE) {
       const viewBox = parseViewBox(getAttributeCached(current, "viewBox"));
       return viewBox ? { x: viewBox.x, y: viewBox.y } : { x: 0, y: 0 };
@@ -256,23 +278,124 @@ function nearestViewBoxOrigin(element) {
  * @returns {Matrix2D}
  */
 export function rootMatrix(root) {
-  const style = getComputedStyleCached(root);
-  const size = getBorderBoxSize(asHtml(root));
-  const borderLeft = px(style.borderLeftWidth);
-  const borderTop = px(style.borderTopWidth);
-  const paddingLeft = px(style.paddingLeft);
-  const paddingTop = px(style.paddingTop);
-  const width =
-    size.width - borderLeft - px(style.borderRightWidth) - paddingLeft - px(style.paddingRight);
-  const height =
-    size.height - borderTop - px(style.borderBottomWidth) - paddingTop - px(style.paddingBottom);
+  const box = rootContentBox(root);
   const viewport = viewportMatrix(
     parseViewBox(getAttributeCached(root, "viewBox")),
     parsePreserveAspectRatio(getAttributeCached(root, "preserveAspectRatio")),
-    width,
-    height,
+    box.width,
+    box.height,
   );
-  return multiply(translation(borderLeft + paddingLeft, borderTop + paddingTop), viewport);
+  return multiply(translation(box.left, box.top), viewport);
+}
+
+/**
+ * An `<svg>` root's content box, the viewport its `viewBox` is fitted into:
+ * where it starts in the border-box frame, past the border and padding, and
+ * its size in px.
+ *
+ * @param {Element} root
+ * @returns {{ left: number, top: number, width: number, height: number }}
+ */
+function rootContentBox(root) {
+  const style = getComputedStyleCached(root);
+  const size = getBorderBoxSize(asHtml(root));
+  const left = px(style.borderLeftWidth) + px(style.paddingLeft);
+  const top = px(style.borderTopWidth) + px(style.paddingTop);
+  return {
+    left,
+    top,
+    width: size.width - left - px(style.borderRightWidth) - px(style.paddingRight),
+    height: size.height - top - px(style.borderBottomWidth) - px(style.paddingBottom),
+  };
+}
+
+/**
+ * The size of the viewport an element is in, in its user units: what a
+ * percentage length on it is a percentage of. That is the nearest `<svg>`'s
+ * `viewBox`, or without one its own size, which for the root is its
+ * content box in px. Null for an element that is in no `<svg>`.
+ *
+ * In template content the walk stops at the template, whose content is in
+ * the viewport the instance gives it: a `<symbol>`'s, a `<marker>`'s, or
+ * the one around the `<use>` that draws a `<g>`.
+ *
+ * @param {Element} element
+ * @param {Instance | null} [instance] The instance the element is part of.
+ * @returns {{ width: number, height: number } | null}
+ */
+export function viewportSize(element, instance = null) {
+  for (let current = getParentElement(element); current; current = getParentElement(current)) {
+    if (instance && current === instance.template) {
+      return instance.viewport();
+    }
+    if (current.localName !== "svg" || current.namespaceURI !== SVG_NAMESPACE) {
+      continue;
+    }
+    const viewBox = parseViewBox(getAttributeCached(current, "viewBox"));
+    if (viewBox) {
+      return { width: viewBox.width, height: viewBox.height };
+    }
+    if (isSvgRoot(current)) {
+      const box = rootContentBox(current);
+      return { width: box.width, height: box.height };
+    }
+    const box = svgViewport(current, instance);
+    return Number.isFinite(box.width) && Number.isFinite(box.height)
+      ? { width: box.width, height: box.height }
+      : null;
+  }
+  return null;
+}
+
+/**
+ * Where a nested `<svg>` puts its viewport, in its parent's user space: its
+ * `x`, `y`, `width` and `height`. A size left `auto` is the whole of the
+ * viewport around it, as a percentage is a share of it. A size that cannot
+ * be known, with no viewport around to measure, is NaN.
+ *
+ * @param {Element} svg
+ * @param {Instance | null} [instance] The instance the `<svg>` is part of.
+ * @returns {{ x: number, y: number, width: number, height: number }}
+ */
+export function svgViewport(svg, instance = null) {
+  const style = getComputedStyleCached(svg);
+  const outer = viewportSize(svg, instance);
+  /**
+   * @param {string} name
+   * @param {"width" | "height"} axis
+   */
+  const size = (name, axis) => {
+    const value = parseLengthIn(readProperty(style, svg, name), outer?.[axis], Number.NaN);
+    return Number.isNaN(value) ? (outer?.[axis] ?? Number.NaN) : value;
+  };
+  return {
+    x: parseLengthIn(readProperty(style, svg, "x"), outer?.width, 0),
+    y: parseLengthIn(readProperty(style, svg, "y"), outer?.height, 0),
+    width: size("width", "width"),
+    height: size("height", "height"),
+  };
+}
+
+/**
+ * The matrix a nested `<svg>`'s viewport puts its content under: its own
+ * `viewBox` fitted into its `width` and `height`, placed at its `x`, `y`.
+ * Its `transform`, if it has one, applies on top of this.
+ *
+ * @param {Element} svg
+ * @param {{ x: number, y: number, width: number, height: number }} box Its
+ *   `svgViewport`, read once by the caller.
+ * @returns {Matrix2D}
+ */
+function svgViewportMatrix(svg, box) {
+  const viewport = viewportMatrix(
+    parseViewBox(getAttributeCached(svg, "viewBox")),
+    parsePreserveAspectRatio(getAttributeCached(svg, "preserveAspectRatio")),
+    // A size nobody can know fits no `viewBox`: user units are the
+    // parent's, as for a size of 0.
+    Number.isFinite(box.width) ? box.width : 0,
+    Number.isFinite(box.height) ? box.height : 0,
+  );
+  return multiply(translation(box.x, box.y), viewport);
 }
 
 /**
@@ -280,30 +403,34 @@ export function rootMatrix(root) {
  * user space to its parent's. That is its computed `transform` about its
  * `transform-origin`, and for a nested `<svg>` the viewport it establishes
  * first — placed at its `x`, `y`, its own `viewBox` fitted into the `width`
- * and `height` it names. Not yet clipped to that viewport
- * (`docs/freedom-svg-plan.md`, S2b).
+ * and `height` it names (`svgViewport`). What the viewport clips is the
+ * chain's business, in `readChain`.
  *
  * @param {Element} element
+ * @param {Instance | null} [instance] The instance the element is part of.
  * @returns {Matrix2D}
  */
-export function localMatrix(element) {
+export function localMatrix(element, instance = null) {
+  return withOwnTransform(
+    element,
+    element.localName === "svg"
+      ? svgViewportMatrix(element, svgViewport(element, instance))
+      : IDENTITY,
+    instance,
+  );
+}
+
+/**
+ * An element's own `transform`, about its origin, on top of `matrix`.
+ *
+ * @param {Element} element
+ * @param {Matrix2D} matrix What applies first: a nested `<svg>`'s viewport.
+ * @param {Instance | null} instance
+ * @returns {Matrix2D}
+ */
+function withOwnTransform(element, matrix, instance) {
   const style = getComputedStyleCached(element);
-  /** @type {Matrix2D} */
-  let matrix = IDENTITY;
-  if (element.localName === "svg") {
-    const width = parseLength(readProperty(style, element, "width"), 0);
-    const height = parseLength(readProperty(style, element, "height"), 0);
-    const viewport = viewportMatrix(
-      parseViewBox(getAttributeCached(element, "viewBox")),
-      parsePreserveAspectRatio(getAttributeCached(element, "preserveAspectRatio")),
-      width,
-      height,
-    );
-    const x = parseLength(readProperty(style, element, "x"), 0);
-    const y = parseLength(readProperty(style, element, "y"), 0);
-    matrix = multiply(translation(x, y), viewport);
-  }
-  const own = ownTransform(element, style, nearestViewBoxOrigin(element));
+  const own = ownTransform(element, style, nearestViewBoxOrigin(element, instance));
   return own ? multiply(own, matrix) : matrix;
 }
 
@@ -316,10 +443,180 @@ export function localMatrix(element) {
  * @param {Matrix2D} matrix
  * @returns {void}
  */
-function commitMatrix(object, matrix) {
+export function commitMatrix(object, matrix) {
   object.matrixAutoUpdate = false;
   toMatrix4(matrix, object.matrix);
   object.matrixWorldNeedsUpdate = true;
+}
+
+/**
+ * A copy of a template's content drawn somewhere else: one instance of a
+ * `<marker>` at a vertex of a path. What is inside the template is drawn by
+ * the same `shape`, `group` and `image` as anything else, told by this where
+ * it stands. Its chain stops at the template and continues from the place
+ * the instance is drawn, and its draw order is a share of the slot the
+ * instance was given.
+ *
+ * @typedef {object} Instance
+ * @property {Element} template The element the walk up from the content
+ *   stops at: the `<marker>` or `<symbol>` whose children are drawn, or the
+ *   parent of an element a `<use>` draws.
+ * @property {() => Chain} chain The matrix from the template's user space to
+ *   the root's frame at this instance, the opacity above it, and the root.
+ * @property {() => PaintSlot} slot The range of render orders the instance
+ *   draws its content in.
+ * @property {() => { width: number, height: number } | null} viewport The
+ *   size of the viewport the template's content is in, in the template's
+ *   user units: what a percentage length there is a percentage of.
+ * @property {() => { x: number, y: number }} viewBoxOrigin Where that
+ *   viewport's `viewBox` starts, which a `view-box` transform origin is
+ *   measured from.
+ * @property {Inheritance | null} inherit Where the content inherits from, for
+ *   a copy that inherits from where it is drawn: a `<use>`'s, and not a
+ *   marker's.
+ * @property {ReadonlySet<Element>} expanding The templates whose content
+ *   this instance is inside, its own included. A template named again from
+ *   inside itself, a marker by its own content or a `<use>` by a symbol it
+ *   draws, is a cycle, which a browser draws nothing more for, and so is not
+ *   expanded again.
+ */
+
+/**
+ * @typedef {object} Inheritance
+ * @property {Element} boundary The element just above the copied content.
+ *   A property no element between the content and this one changes is
+ *   inherited from outside the copy.
+ * @property {(name: string) => string} read The value there, at the `<use>`.
+ */
+
+/**
+ * The inherited properties a shape reads. Anything else a copy reads from
+ * its own element as it stands in the template.
+ */
+const INHERITED = new Set([
+  "fill",
+  "fill-opacity",
+  "fill-rule",
+  "stroke",
+  "stroke-opacity",
+  "stroke-width",
+  "stroke-linecap",
+  "stroke-linejoin",
+  "stroke-miterlimit",
+  "stroke-dasharray",
+  "stroke-dashoffset",
+  "marker-start",
+  "marker-mid",
+  "marker-end",
+  "color",
+  "visibility",
+  // What a `<text>` is laid out and drawn with.
+  "font-family",
+  "font-size",
+  "font-style",
+  "font-variant-caps",
+  "font-weight",
+  "letter-spacing",
+  "word-spacing",
+  "text-anchor",
+]);
+
+/**
+ * The CSS-wide keywords that, on the inherited properties read here, take
+ * the parent's value. They name the property but set nothing, so in a copy
+ * the value still comes from the `<use>`.
+ */
+const INHERITING_KEYWORDS = new Set(["inherit", "unset", "revert", "revert-layer"]);
+
+/** The properties whose value may be `currentColor`, the element's `color`. */
+const COLOR_VALUED = new Set(["fill", "stroke"]);
+
+/**
+ * What an element says about a property itself, through its presentation
+ * attribute or its `style` attribute, or null for nothing. A stylesheet rule
+ * is not seen here; the computed value comparison below catches those.
+ *
+ * @param {Element} element
+ * @param {string} name
+ * @returns {string | null}
+ */
+function declaredValue(element, name) {
+  const inline = /** @type {ElementCSSInlineStyle} */ (/** @type {unknown} */ (element)).style;
+  const value = inline?.getPropertyValue(name) || element.getAttribute(name);
+  return value ? value.trim() : null;
+}
+
+/**
+ * A property of an element as it is drawn: its own computed value, or, in a
+ * copy made by a `<use>`, the `<use>`'s where the copy inherits it.
+ *
+ * A browser draws a `<use>` from a clone of the referenced content placed
+ * under the `<use>`, so the clone inherits the `<use>`'s styles. The mirror
+ * sees only the original, which inherits from wherever it is defined. What
+ * it can see is whether anything in the copied content sets the property:
+ * where each element's value is the same as its parent's all the way up to
+ * the boundary, the value was inherited from outside, and the `<use>`'s is
+ * taken instead. An element whose attribute or `style` names the property
+ * sets it, whatever the value, unless the value is `inherit` or another of
+ * the `INHERITING_KEYWORDS`, which pass the walk on to its parent. One that
+ * sets it through a stylesheet rule to exactly the value it would have
+ * inherited reads as not setting it, which is the one case this gets wrong.
+ *
+ * A `fill` or `stroke` of `currentColor` is resolved against the copy's
+ * `color`, which is inherited from the `<use>` in turn. The computed value
+ * the mirror sees was resolved where the symbol is defined, against a
+ * `color` the drawing never has.
+ *
+ * @param {Element} element
+ * @param {string} name
+ * @param {Instance | null} instance
+ * @returns {string}
+ */
+export function readDrawnProperty(element, name, instance) {
+  const value = readProperty(getComputedStyleCached(element), element, name);
+  const inherit = instance?.inherit;
+  if (!inherit || !INHERITED.has(name)) {
+    return value;
+  }
+  let current = element;
+  let currentValue = value;
+  while (current !== inherit.boundary) {
+    const declared = declaredValue(current, name)?.toLowerCase() ?? null;
+    const inherits = declared !== null && INHERITING_KEYWORDS.has(declared);
+    if (declared !== null && !inherits) {
+      return COLOR_VALUED.has(name) && declared === "currentcolor"
+        ? readDrawnProperty(current, "color", instance)
+        : value;
+    }
+    const parent = getParentElement(current);
+    if (!parent) {
+      return value;
+    }
+    const parentValue = readProperty(getComputedStyleCached(parent), parent, name);
+    // A keyword takes the parent's value, whatever was computed for it
+    // where the content is defined.
+    if (!inherits && parentValue !== currentValue) {
+      return value;
+    }
+    current = parent;
+    currentValue = parentValue;
+  }
+  return inherit.read(name);
+}
+
+/**
+ * Whether `visibility` hides what an element draws, as the element is drawn.
+ * In a copy made by a `<use>` that follows `readDrawnProperty`, so a hidden
+ * `<use>`, or one under a hidden `<g>`, hides its copy as a browser does.
+ *
+ * @param {Element} element
+ * @param {Instance | null} instance
+ * @returns {boolean}
+ */
+export function isDrawnHidden(element, instance) {
+  return instance?.inherit
+    ? hidesVisibility(readDrawnProperty(element, "visibility", instance))
+    : isVisibilityHidden(element);
 }
 
 /**
@@ -330,30 +627,133 @@ function commitMatrix(object, matrix) {
  * nothing else — and what a re-run costs is a uniform write and, at most, a
  * new sampling density.
  *
+ * Inside an instance the walk stops at the template, which is not drawn
+ * where it stands, and goes on from the instance's own chain.
+ *
  * @param {Element} element
+ * @param {Instance | null} [instance]
  * @returns {Chain}
  */
-function readChain(element) {
+export function readChain(element, instance = null) {
   /** @type {Matrix2D} */
   let ctm = IDENTITY;
   let opacity = 1;
+  /**
+   * Each clipping viewport passed on the way, in the user space of its
+   * parent, with the matrix from the element's user space to there. Where
+   * that space lands in the root's frame is known only at the top.
+   *
+   * @type {{ rect: Rect, below: Matrix2D }[]}
+   */
+  const viewports = [];
+  /**
+   * @param {Chain} top
+   * @returns {Chain}
+   */
+  const finish = (top) => {
+    let clip = top.clip;
+    for (const { rect, below } of viewports) {
+      const back = invert(below);
+      clip = intersectRects(clip, back ? transformRect(multiply(top.ctm, back), rect) : null);
+    }
+    return { ...top, clip };
+  };
   /** @type {Element | null} */
   let current = element;
   while (current) {
-    if (isSvgRoot(current)) {
-      // The opacity from the root up is not the chain's: see `opacity` in
-      // `shape`, which multiplies it in.
-      return { ctm: multiply(rootMatrix(current), ctm), opacity, root: current };
+    if (instance && current === instance.template) {
+      const at = instance.chain();
+      return finish({
+        ctm: multiply(at.ctm, ctm),
+        opacity: opacity * at.opacity,
+        root: at.root,
+        clip: at.clip,
+      });
     }
-    opacity *= parseNumber(getComputedStyleCached(current).opacity, 1);
-    ctm = multiply(localMatrix(current), ctm);
+    if (isSvgRoot(current)) {
+      // The opacity from the root up is not the chain's: see
+      // `drawnOpacity`, which multiplies it in.
+      return finish({
+        ctm: multiply(rootMatrix(current), ctm),
+        opacity,
+        root: current,
+        clip: null,
+      });
+    }
+    const style = getComputedStyleCached(current);
+    opacity *= parseNumber(style.opacity, 1);
+    /** @type {Matrix2D} */
+    let fit = IDENTITY;
+    if (current.localName === "svg") {
+      // Read once, for the matrix and the clip both.
+      const box = svgViewport(current, instance);
+      fit = svgViewportMatrix(current, box);
+      // The viewport is in the space the `<svg>`'s own `transform` then
+      // moves, so its clip moves with the content. A size nobody can know
+      // clips nothing.
+      if (
+        current !== element &&
+        clipsViewport(style.overflow) &&
+        Number.isFinite(box.width) &&
+        Number.isFinite(box.height)
+      ) {
+        viewports.push({
+          rect: { left: box.x, top: box.y, right: box.x + box.width, bottom: box.y + box.height },
+          below: multiply(fit, ctm),
+        });
+      }
+    }
+    ctm = multiply(withOwnTransform(current, fit, instance), ctm);
     current = getParentElement(current);
   }
-  return { ctm, opacity, root: null };
+  return { ctm, opacity, root: null, clip: null };
 }
 
+/**
+ * The opacity an element of the picture is drawn at: the chain's, inside the
+ * picture, times the root's own and every element's around it (see
+ * `getOpacity`). The root's own is applied to its box by `div`, but what is
+ * inside is drawn from materials of its own, so it is applied here too, or a
+ * faded-out icon would keep its picture at full strength. Multiplied here
+ * rather than in the chain, so an opacity animated on a button around the
+ * icon re-runs this and not a walk of the matrices, which allocates at
+ * every level.
+ *
+ * @param {Chain} chain
+ * @returns {number}
+ */
+export function drawnOpacity({ root, opacity }) {
+  return root ? opacity * getOpacity(root) : opacity;
+}
+
+/**
+ * Whether a ray hits a region of an element under the rule `pointer-events`
+ * gives it: a region it names at all, painted where the rule asks for paint,
+ * and shown where it asks for visibility. Each is read only when the rule
+ * asks, so a shape under `pointer-events: all` follows neither.
+ *
+ * @param {HitRule | null} rule
+ * @param {() => string} paint The region's `fill` or `stroke`, as drawn.
+ * @param {() => boolean} hidden Whether `visibility` hides the element.
+ * @returns {boolean}
+ */
+export function regionHits(rule, paint, hidden) {
+  return rule !== null && (!rule.painted || isPainted(paint())) && (!rule.visible || !hidden());
+}
+
+/** The elements `shape` draws. */
+export const SHAPE_TAGS = new Set([
+  "path",
+  "rect",
+  "circle",
+  "ellipse",
+  "line",
+  "polyline",
+  "polygon",
+]);
+
 /** The elements that draw something, and so take a place in the paint order. */
-const SHAPE_TAGS = new Set(["path", "rect", "circle", "ellipse", "line", "polyline", "polygon"]);
+const PAINTED_TAGS = new Set([...SHAPE_TAGS, "image", "use", "text"]);
 
 /**
  * @typedef {object} PaintOrder
@@ -383,9 +783,9 @@ function paintOrderEqual(a, b) {
 const paintOrders = new WeakMap();
 
 /**
- * The document order of the shapes under an `<svg>` root — SVG's painter
- * order — as one computation per root that every shape in it reads, rather
- * than a walk per shape. It follows the mirror's child-list signals, so a
+ * The document order of the shapes and images under an `<svg>` root, or
+ * under a template — SVG's painter order — as one computation per root that
+ * every shape in it reads, rather than a walk per shape. It follows the mirror's child-list signals, so a
  * shape arriving or leaving anywhere under the root renumbers the root once,
  * and the shapes whose place did not change stop there.
  *
@@ -406,7 +806,7 @@ function getPaintOrder(root) {
               continue;
             }
             const element = /** @type {Element} */ (child);
-            if (SHAPE_TAGS.has(element.localName)) {
+            if (PAINTED_TAGS.has(element.localName)) {
               index.set(element, index.size);
             }
             walk(element);
@@ -420,6 +820,63 @@ function getPaintOrder(root) {
     paintOrders.set(root, signal);
   }
   return signal.get();
+}
+
+/**
+ * A range of render orders: where something starts drawing, and how far it
+ * may go before the next thing in the draw order.
+ *
+ * @typedef {object} PaintSlot
+ * @property {number} start
+ * @property {number} span
+ */
+
+/**
+ * The layers an element draws in, in SVG's order: the fill, the stroke over
+ * it, and the markers over both. A shape without markers leaves the third
+ * one empty.
+ */
+const LAYERS = 3;
+
+/**
+ * Where one layer of an element belongs in the draw order. SVG paints in
+ * document order, and this says so explicitly rather than leaning on three's
+ * sort falling through to mesh id. That fallback is document order only for
+ * the initial build, and a fill switched on by a hover, or a shape inserted
+ * before its siblings, would otherwise jump the stack.
+ *
+ * An `<svg>` root's slot is its content render order and the step up to the
+ * next one. Each element in it gets an equal share of that slot by its place
+ * in the root's document order, split into its three layers. The content of
+ * an instance shares out the instance's slot the same way, by its place in
+ * the template, so the arrowheads on a path are drawn over its stroke and
+ * under whatever comes after it.
+ *
+ * @param {Element} element
+ * @param {Element | null} root The element's `<svg>` root, from its chain.
+ * @param {Instance | null} instance
+ * @param {0 | 1 | 2} layer 0 for a fill or an image, 1 for a stroke, 2 for
+ *   markers.
+ * @returns {PaintSlot} Where the layer starts, which is the render order of
+ *   what it draws, and its span, which an instance drawn there shares out.
+ */
+export function paintSlot(element, root, instance, layer) {
+  const scope = instance ? instance.template : root;
+  if (!scope) {
+    return { start: getContentRenderOrder(asHtml(element)), span: 0 };
+  }
+  const slot = instance
+    ? instance.slot()
+    : { start: getContentRenderOrder(asHtml(scope)), span: 1 };
+  const { index, count } = getPaintOrder(scope);
+  const at = index.get(element);
+  if (at === undefined) {
+    return { start: slot.start, span: 0 };
+  }
+  // One step more than there are layers, so the last one ends short of the
+  // next slot rather than on it.
+  const step = slot.span / (LAYERS * count + 1);
+  return { start: slot.start + step * (LAYERS * at + layer + 1), span: step };
 }
 
 /**
@@ -475,18 +932,18 @@ function strokeSpecEqual(a, b) {
 }
 
 /**
- * @param {CSSStyleDeclaration} style
- * @param {Element} element
+ * @param {(name: string) => string} read The element's value for a
+ *   property.
  * @returns {StrokeSpec}
  */
-function readStrokeSpec(style, element) {
+function readStrokeSpec(read) {
   return {
-    width: parseLength(readProperty(style, element, "stroke-width"), 1),
-    cap: parseLineCap(readProperty(style, element, "stroke-linecap")),
-    join: parseLineJoin(readProperty(style, element, "stroke-linejoin")),
-    miterLimit: parseNumber(readProperty(style, element, "stroke-miterlimit"), 4),
-    dash: parseDashArray(readProperty(style, element, "stroke-dasharray")),
-    dashOffset: parseLength(readProperty(style, element, "stroke-dashoffset"), 0),
+    width: parseLength(read("stroke-width"), 1),
+    cap: parseLineCap(read("stroke-linecap")),
+    join: parseLineJoin(read("stroke-linejoin")),
+    miterLimit: parseNumber(read("stroke-miterlimit"), 4),
+    dash: parseDashArray(read("stroke-dasharray")),
+    dashOffset: parseLength(read("stroke-dashoffset"), 0),
   };
 }
 
@@ -583,7 +1040,7 @@ export function buildStrokeGeometry(path, spec, scale) {
  * an empty buffer draws nothing and costs nothing. Shared and never
  * disposed, like the rect quad.
  */
-const emptyGeometry = new THREE.BufferGeometry();
+export const emptyGeometry = new THREE.BufferGeometry();
 emptyGeometry.setAttribute("position", new THREE.BufferAttribute(new Float32Array(0), 3));
 
 /**
@@ -694,11 +1151,115 @@ function paintedMesh({
 }
 
 /**
+ * The clip patch's two uniforms for what one element draws, and the effects
+ * that keep them current. Both are shared by every mesh the element has.
+ *
+ * `clip` is what the root's overflow, the scrollers above it and the
+ * viewports in the chain leave, in the root's frame, written in an effect of
+ * its own so a scroll writes four numbers and nothing else. `clipMatrix`
+ * goes from the element's user space, where its vertices are, to that
+ * frame: the composition of every matrix above the meshes, written when the
+ * chain moves.
+ *
+ * @param {() => Chain} chain
+ */
+export function clipUniforms(chain) {
+  const clip = { value: new THREE.Vector4(-1e6, -1e6, 1e6, 1e6) };
+  const clipMatrix = { value: new THREE.Matrix3() };
+  // Apart from the matrix, so a transform animated above the element is a
+  // matrix write and not a clip box read too.
+  const root = new Derived(() => chain().root);
+  const viewports = new Derived(() => chain().clip, { isEqual: rectEqual });
+  /** What `clip` holds, for the raycast, which reads it untracked. */
+  let current = UNCLIPPED;
+  return {
+    clip,
+    clipMatrix,
+    clipBox: () => current,
+    followClip: [
+      effects(() => {
+        const at = root.get();
+        let box = at ? getInteriorClipBox(asHtml(at)) : UNCLIPPED;
+        const rect = viewports.get();
+        if (rect) {
+          box = intersectClipBoxes(box, {
+            ...rect,
+            topLeft: 0,
+            topRight: 0,
+            bottomRight: 0,
+            bottomLeft: 0,
+          });
+        }
+        clip.value.set(box.left, box.top, box.right, box.bottom);
+        current = box;
+      }),
+      effects(() => {
+        toMatrix3(chain().ctm, clipMatrix.value);
+      }),
+    ],
+  };
+}
+
+/**
+ * Make an element's object a ray target of its own while it is clickable, by
+ * the rule a box follows, and a ray can hit some part of it.
+ *
+ * Whether it is clickable is a signal of its own for the reason a box's is.
+ * The handlers write `data-xr-*` onto the element, which invalidates its
+ * computed style, and a re-read must not remount them.
+ *
  * @param {WeakKey} ctx
  * @param {Element} element
+ * @param {() => boolean} hittable Whether a ray can hit any of it. One that
+ *   no ray can hit is not registered, even under `cursor: pointer`.
+ */
+export function rayTarget(ctx, element, hittable) {
+  const clickable = new Derived(() => isClickable(asHtml(element)));
+  return effects((/** @type {THREE.Object3D<XREventMap>} */ obj) => {
+    if (!clickable.get() || !hittable()) {
+      return;
+    }
+    // Built here and not up front, so that elements nobody can click, which
+    // is most of them, pay nothing for it.
+    useEffects(
+      obj,
+      forwardPointerEvents(ctx, asHtml(element), obj, { enabled: PortalReadyContext.get(ctx) }),
+    );
+  });
+}
+
+/**
+ * What a shape shows of itself to what decorates it: the markers drawn on
+ * its vertices need its geometry, its stroke width, where it stands and
+ * where in the draw order its marker layer is.
+ *
+ * @typedef {object} ShapeHost
+ * @property {(name: string) => string} read The shape's value for a
+ *   property, as `readDrawnProperty` gives it.
+ * @property {() => ShapePath | null} path
+ * @property {() => number} strokeWidth
+ * @property {() => Chain} chain
+ * @property {() => PaintSlot} markerSlot
+ * @property {() => boolean} hidden Whether `visibility` hides the shape, which
+ *   hides its markers too, as it does in a browser.
+ */
+
+/**
+ * @typedef {object} ShapeOptions
+ * @property {Instance | null} [instance] The instance this shape is part of,
+ *   when it is template content drawn somewhere else.
+ * @property {(host: ShapeHost) => EntityEffect<THREE.Object3D>[]} [decorate]
+ *   More to hang off the shape's object. It is how `svg/template.js` adds
+ *   markers without this module knowing about templates.
+ */
+
+/**
+ * @param {WeakKey} ctx
+ * @param {Element} element
+ * @param {ShapeOptions} [options]
  * @returns {Source<THREE.Object3D>}
  */
-export function shape(ctx, element) {
+export function shape(ctx, element, { instance = null, decorate } = {}) {
   /** @type {THREE.Object3D<XREventMap>} */
   const object = new THREE.Object3D();
 
@@ -718,78 +1279,34 @@ export function shape(ctx, element) {
   });
 
   /** This shape's own transform, which its object carries. */
-  const own = new Derived(() => localMatrix(element), { isEqual: matrixEqual });
+  const own = new Derived(() => localMatrix(element, instance), { isEqual: matrixEqual });
 
-  const chain = new Derived(() => readChain(element), { isEqual: chainEqual });
+  const chain = new Derived(() => readChain(element, instance), { isEqual: chainEqual });
 
   // What the chain decides, apart, so a transform animated above the shape
   // stops at the clip matrix and reaches neither the draw order, nor the
   // alpha, nor — until it crosses a rung — the geometry.
   const root = new Derived(() => chain.get().root);
-  // The opacity inside the picture, times the root's own and every element's
-  // around it (see `getOpacity`). The root's own is applied to its box by
-  // `div`, but the shapes are drawn from materials of their own, so it is
-  // applied here too, or a faded-out icon would keep its picture at full
-  // strength. Multiplied here rather than in the chain, so an opacity
-  // animated on a button around the icon re-runs this and not a walk of
-  // the matrices, which allocates at every level.
-  const opacity = new Derived(() => {
-    const { root, opacity } = chain.get();
-    return root ? opacity * getOpacity(root) : opacity;
-  });
+  const opacity = new Derived(() => drawnOpacity(chain.get()));
   const scale = new Derived(() => samplingScale(matrixScale(chain.get().ctm)));
 
-  const fillPaint = new Derived(() => parsePaint(readProperty(style(), element, "fill")), {
-    isEqual: paintEqual,
-  });
-  const strokePaint = new Derived(() => parsePaint(readProperty(style(), element, "stroke")), {
-    isEqual: paintEqual,
-  });
-  const fillRule = new Derived(() => parseFillRule(readProperty(style(), element, "fill-rule")));
-  const strokeSpec = new Derived(() => readStrokeSpec(style(), element), {
+  /** @param {string} name */
+  const read = (name) => readDrawnProperty(element, name, instance);
+
+  const fillPaint = new Derived(() => parsePaint(read("fill")), { isEqual: paintEqual });
+  const strokePaint = new Derived(() => parsePaint(read("stroke")), { isEqual: paintEqual });
+  const fillRule = new Derived(() => parseFillRule(read("fill-rule")));
+  const strokeSpec = new Derived(() => readStrokeSpec(read), {
     isEqual: strokeSpecEqual,
   });
 
   /**
-   * Where this shape's meshes belong in the draw order: the root's content
-   * order, plus a fraction from the shape's place in the root's document
-   * order — fill, then stroke, then the next shape — that keeps every
-   * shape of one `<svg>` strictly inside the root's own step. SVG paints
-   * in document order, and this says so explicitly rather than leaning on
-   * three's sort falling through to mesh id: that fallback is document
-   * order only for the initial build, and a fill switched on by a hover, or
-   * a shape inserted before its siblings, would otherwise jump the stack.
-   *
    * @param {0 | 1} layer 0 for the fill, 1 for the stroke drawn over it.
    * @returns {() => number}
    */
-  const renderOrderOf = (layer) => () => {
-    const current = root.get();
-    const base = getContentRenderOrder(asHtml(current ?? element));
-    if (!current) {
-      return base;
-    }
-    const { index, count } = getPaintOrder(current);
-    const at = index.get(element);
-    if (at === undefined) {
-      return base;
-    }
-    return base + (2 * at + layer + 1) / (2 * count + 2);
-  };
+  const renderOrderOf = (layer) => () => paintSlot(element, root.get(), instance, layer).start;
 
-  /**
-   * What the root's overflow and the scrollers above it leave of the shape,
-   * in the root's frame. One uniform, shared by both meshes, written in an
-   * effect of its own so a scroll writes four numbers here and nothing else.
-   */
-  const clip = { value: new THREE.Vector4(-1e6, -1e6, 1e6, 1e6) };
-
-  /**
-   * From the shape's user space, where its vertices are, to the root's
-   * frame, where the clip box is: the composition of every matrix above the
-   * meshes. Shared by both, and written when the chain moves.
-   */
-  const clipMatrix = { value: new THREE.Matrix3() };
+  const { clip, clipMatrix, clipBox, followClip } = clipUniforms(() => chain.get());
 
   /**
    * Whether `visibility` hides this shape, as a box's `hidden` does: its
@@ -799,10 +1316,7 @@ export function shape(ctx, element) {
    * under it — the reason this is asked per shape and never turned into a
    * group's `visible`, which would prune the subtree.
    */
-  const hidden = new Derived(() => isVisibilityHidden(element));
-
-  /** What `clip` holds, for the raycast, which reads it untracked. */
-  let currentClipBox = UNCLIPPED;
+  const hidden = new Derived(() => isDrawnHidden(element, instance));
 
   /**
    * Which regions a ray can hit, from `pointer-events`. Every shape asks,
@@ -821,9 +1335,11 @@ export function shape(ctx, element) {
    * @returns {boolean}
    */
   const hits = (rule, name) =>
-    rule !== null &&
-    (!rule.painted || isPainted(readProperty(style(), element, name))) &&
-    (!rule.visible || !hidden.get());
+    regionHits(
+      rule,
+      () => read(name),
+      () => hidden.get(),
+    );
   const fillHit = new Derived(() => hits(hitRegions.get().fill, "fill"));
   const strokeHit = new Derived(() => hits(hitRegions.get().stroke, "stroke"));
 
@@ -836,42 +1352,23 @@ export function shape(ctx, element) {
   const hittable = new Derived(() => fillHit.get() || strokeHit.get());
 
   /**
-   * Whether the shape is a ray target of its own, by the rule a box follows.
-   * It is a signal of its own for the reason a box's is. The handlers below
-   * write `data-xr-*` onto this element, which invalidates its computed
-   * style, and a re-read must not remount them.
+   * Template content is drawn and never hit. The element a press on it would
+   * be forwarded to is the one in the template, which is nowhere on the
+   * page, so a marker on a clickable path does not take the press either.
    */
-  const clickable = new Derived(() => isClickable(asHtml(element)));
+  const drawnOnly = instance !== null;
 
   return just(object, [
     effects((obj) => {
       commitMatrix(obj, own.get());
     }),
-    effects((obj) => {
-      if (!clickable.get() || !hittable.get()) {
-        return;
-      }
-      // Built here and not up front, so that shapes nobody can click, which
-      // is most of them, pay nothing for it.
-      useEffects(
-        obj,
-        forwardPointerEvents(ctx, asHtml(element), obj, { enabled: PortalReadyContext.get(ctx) }),
-      );
-    }),
+    rayTarget(ctx, element, () => !drawnOnly && hittable.get()),
     effects((obj) => {
       // `display: none` takes the shape out; `visibility` is the meshes'
       // business, below, the way it is a box's quad and not its object.
       obj.visible = style().display !== "none";
     }),
-    effects(() => {
-      const current = root.get();
-      const box = current ? getInteriorClipBox(asHtml(current)) : UNCLIPPED;
-      clip.value.set(box.left, box.top, box.right, box.bottom);
-      currentClipBox = box;
-    }),
-    effects(() => {
-      toMatrix3(chain.get().ctm, clipMatrix.value);
-    }),
+    ...followClip,
     children(
       // Fill before stroke: with equal render order and depth the sort
       // falls back to mesh id, and the stroke has to cover the fill's edge.
@@ -884,13 +1381,12 @@ export function shape(ctx, element) {
               },
               paint: () => fillPaint.get(),
               hidden: () => hidden.get(),
-              hit: () => fillHit.get(),
-              opacity: () =>
-                opacity.get() * parseNumber(readProperty(style(), element, "fill-opacity"), 1),
+              hit: () => !drawnOnly && fillHit.get(),
+              opacity: () => opacity.get() * parseNumber(read("fill-opacity"), 1),
               renderOrder: renderOrderOf(0),
               clip,
               clipMatrix,
-              clipBox: () => currentClipBox,
+              clipBox,
             })
           : Nothing(),
       )(observable(() => fillPaint.get() !== null || fillHit.get())),
@@ -903,17 +1399,24 @@ export function shape(ctx, element) {
               },
               paint: () => strokePaint.get(),
               hidden: () => hidden.get(),
-              hit: () => strokeHit.get(),
-              opacity: () =>
-                opacity.get() * parseNumber(readProperty(style(), element, "stroke-opacity"), 1),
+              hit: () => !drawnOnly && strokeHit.get(),
+              opacity: () => opacity.get() * parseNumber(read("stroke-opacity"), 1),
               renderOrder: renderOrderOf(1),
               clip,
               clipMatrix,
-              clipBox: () => currentClipBox,
+              clipBox,
             })
           : Nothing(),
       )(observable(() => strokePaint.get() !== null || strokeHit.get())),
     ),
+    ...(decorate?.({
+      read,
+      path: () => path.get(),
+      strokeWidth: () => strokeSpec.get().width,
+      chain: () => chain.get(),
+      markerSlot: () => paintSlot(element, root.get(), instance, 2),
+      hidden: () => hidden.get(),
+    }) ?? []),
   ]);
 }
 
@@ -929,11 +1432,17 @@ export function shape(ctx, element) {
  *
  * @param {WeakKey} ctx
  * @param {Element} element
+ * @param {object} [options]
+ * @param {Instance | null} [options.instance] The instance the group is part
+ *   of, when it is template content drawn somewhere else.
+ * @param {EntityEffect<THREE.Object3D>[]} [options.decorate] More to hang off
+ *   the group's object: in a template, its children, which the portal does
+ *   not build there.
  * @returns {Source<THREE.Object3D>}
  */
-export function group(ctx, element) {
+export function group(ctx, element, { instance = null, decorate = [] } = {}) {
   const object = new THREE.Object3D();
-  const matrix = new Derived(() => localMatrix(element), { isEqual: matrixEqual });
+  const matrix = new Derived(() => localMatrix(element, instance), { isEqual: matrixEqual });
   return just(object, [
     effects((obj) => {
       commitMatrix(obj, matrix.get());
@@ -941,5 +1450,6 @@ export function group(ctx, element) {
     effects((obj) => {
       obj.visible = getComputedStyleCached(element).display !== "none";
     }),
+    ...decorate,
   ]);
 }

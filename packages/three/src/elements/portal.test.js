@@ -2,7 +2,7 @@ import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
 import { Derived, Effect, Signal, toObservable, UpdateChannel, withChannel } from "@apendua/signal";
-import { $, attr, children, className, stylesheet } from "@apendua/justdom";
+import { $, $$, attr, children, className, stylesheet } from "@apendua/justdom";
 import { InteractionContext, InteractionManager } from "../interactions.js";
 import {
   DomMirror,
@@ -13,6 +13,8 @@ import {
 import { acquireImage, releaseImage } from "./image.js";
 import { createPortal as createHeldPortal, getPortalRoot } from "./portal.js";
 import { withPanelOptions } from "./panelOptions.js";
+import { DEFAULT_HANDLE_WIDTH } from "./panelHandles.js";
+import { RendererContext } from "../render.js";
 import { recordingSource } from "../test/rumble.js";
 
 /**
@@ -657,6 +659,105 @@ describe("createPortal", () => {
     await nextMacrotask();
     assert.equal(updates, before + 2, "nothing keeps asking for frames");
 
+    subscription.unsubscribe();
+    portal.disconnect();
+  });
+
+  test("a picture inside an svg is not announced, since nothing in the flow moves for it", async () => {
+    // An `<img>` that loads can take the picture's size and push its
+    // neighbours along. An `<image>` in an `<svg>` cannot: the root's box is
+    // laid out by the page whatever the picture is. Announcing it would
+    // re-measure the panel once per picture in a diagram full of them.
+    const manager = new InteractionManager();
+    let updates = 0;
+    const originalUpdate = manager.updateIntersections.bind(manager);
+    manager.updateIntersections = () => {
+      updates += 1;
+      originalUpdate();
+    };
+    const ctx = InteractionContext.set({}, manager);
+    const portal = createPortal(ctx, { budget: Infinity });
+    portal.addTo(new THREE.Group());
+
+    /** @type {import("@apendua/justdom").Mountable | undefined} */
+    let mountable;
+    const tree = $("div", [
+      children(
+        $$("svg", [
+          attr({ viewBox: "0 0 10 10" }),
+          children($$("image", [attr({ href: "data:image/gif;base64,a", width: 10, height: 10 })])),
+        ]),
+      ),
+    ]);
+    const subscription = tree.subscribe((value) => {
+      mountable = value;
+    });
+    assert.ok(mountable);
+    portal.mount(mountable);
+
+    await settle(portal);
+
+    const containers = document.querySelectorAll(`[${"data-xr-portal"}]`);
+    const image = containers[containers.length - 1].querySelector("image");
+    assert.ok(image, "the picture is in the panel");
+
+    const before = updates;
+    image.dispatchEvent(new Event("load"));
+    flushFrame();
+    await pump();
+    flushFrame();
+    await nextMacrotask();
+    assert.equal(updates, before, "an SVG picture's load re-measures nothing");
+
+    subscription.unsubscribe();
+    portal.disconnect();
+  });
+
+  test("an svg template the portal does not build is still followed", async () => {
+    // A `<marker>` in its `<defs>` is drawn where a path names it, not where
+    // it stands, so the portal builds nothing for it. Whatever draws it still
+    // has to hear an edit inside it, which only reaches nodes in the mirror.
+    const ctx = InteractionContext.set({}, new InteractionManager());
+    const portal = createPortal(ctx, { budget: Infinity });
+    portal.addTo(new THREE.Group());
+
+    /** @type {import("@apendua/justdom").Mountable | undefined} */
+    let mountable;
+    const tree = $("div", [
+      children(
+        $$("svg", [
+          children(
+            $$("defs", [
+              children($$("marker", [children($$("path", [attr({ d: "M0 0 L10 5 L0 10 z" })]))])),
+            ]),
+          ),
+        ]),
+      ),
+    ]);
+    const subscription = tree.subscribe((value) => {
+      mountable = value;
+    });
+    assert.ok(mountable);
+    portal.mount(mountable);
+    await settle(portal);
+
+    const containers = document.querySelectorAll(`[${"data-xr-portal"}]`);
+    const path = containers[containers.length - 1].querySelector("marker path");
+    assert.ok(path, "the marker's path is in the panel");
+    let reads = 0;
+    const style = new Derived(() => {
+      getComputedStyleCached(path);
+      reads += 1;
+      return reads;
+    });
+    const reader = style.subscribe({});
+    const before = style.get();
+
+    path.setAttribute("class", "edited");
+    await settle(portal);
+    assert.notEqual(style.get(), before, "the edit reached the marker's path");
+
+    reader.unsubscribe();
     subscription.unsubscribe();
     portal.disconnect();
   });
@@ -3310,5 +3411,179 @@ describe("an element the page owns, claimed a second time", () => {
       globalThis.requestAnimationFrame = raf;
       root.remove();
     }
+  });
+});
+
+describe("a draggable panel", () => {
+  /**
+   * A panel under a renderer that never draws, which is what a carry needs
+   * to be set up; the panel never mounts, and need not.
+   *
+   * @param {import('./portal.js').PortalOptions} options
+   * @param {{ renderer?: boolean }} [room]
+   */
+  function setup(options, { renderer = true } = {}) {
+    const { ctx, targets } = countingManager();
+    const portal = createPortal(
+      renderer ? RendererContext.set(ctx, /** @type {any} */ ({})) : ctx,
+      options,
+    );
+    const parent = new THREE.Group();
+    portal.addTo(parent);
+    return { portal, parent, targets };
+  }
+
+  test("hangs in a frame of its own, with the strips beside it", () => {
+    const { portal, parent, targets } = setup({ draggable: true });
+    const frame = parent.children[0];
+    const top = frame.getObjectByName("panel-handle-top");
+    assert.ok(top, "the strips are in the frame");
+    assert.ok(targets.has(top), "and ray targets");
+    assert.ok(
+      frame.children.some((child) => child.name !== "panel-handles"),
+      "so is the panel",
+    );
+    portal.disconnect();
+    assert.equal(parent.children.length, 0, "the frame goes with the panel");
+    assert.equal(targets.has(top), false);
+  });
+
+  test("lays the strips out with the panel while it mounts", async () => {
+    // A panel with nothing in it, which grows to 100 by 200 px as it
+    // mounts: the loading frame's ticks place it at the new size long
+    // before the commit, and the strips have to go with it.
+    let height = 0;
+    const originalRect = window.Element.prototype.getBoundingClientRect;
+    window.Element.prototype.getBoundingClientRect = function () {
+      const element = /** @type {HTMLElement} */ (this);
+      if (element.closest("[data-xr-portal]")) {
+        const width = height / 2;
+        return /** @type {DOMRect} */ (
+          /** @type {unknown} */ ({
+            x: 0,
+            y: 0,
+            top: 0,
+            left: 0,
+            right: width,
+            bottom: height,
+            width,
+            height,
+          })
+        );
+      }
+      return originalRect.call(this);
+    };
+    try {
+      const { ctx } = countingManager();
+      const renderer = /** @type {any} */ ({});
+      // One node a frame, so the mount takes frames.
+      const portal = createPortal(RendererContext.set(ctx, renderer), {
+        draggable: true,
+        budget: 0,
+      });
+      const parent = new THREE.Group();
+      portal.addTo(parent);
+      /** @type {import("@apendua/justdom").Mountable | undefined} */
+      let mountable;
+      const subscription = $("div", [children($("div"), $("div"), $("div"))]).subscribe((value) => {
+        mountable = value;
+      });
+      assert.ok(mountable);
+      portal.mount(mountable);
+      await nextMacrotask();
+      height = 200;
+
+      flushFrame(renderer);
+      await nextMacrotask();
+      assert.equal(portal.isLoading(), true, "still mounting");
+      const top = /** @type {THREE.Object3D} */ (parent.getObjectByName("panel-handle-top"));
+      const expected = (200 / 2 + DEFAULT_HANDLE_WIDTH / 2) * 0.01;
+      assert.ok(
+        Math.abs(top.position.y - expected) < 1e-9,
+        `along the top edge, ${top.position.y}`,
+      );
+      subscription.unsubscribe();
+      portal.disconnect();
+    } finally {
+      window.Element.prototype.getBoundingClientRect = originalRect;
+    }
+  });
+
+  test("does not show its strips for a ray on the keyboard below it", async () => {
+    const { ctx, manager, targets } = countingManager();
+    const renderer = /** @type {any} */ ({});
+    const root = document.createElement("div");
+    const input = document.createElement("input");
+    input.type = "text";
+    root.appendChild(input);
+    document.body.appendChild(root);
+    const portal = createPortal(RendererContext.set(ctx, renderer), {
+      root,
+      draggable: true,
+      // No scene to be in front of, so it hangs below the panel.
+      keyboard: { create: () => $("div", []) },
+    });
+    const parent = new THREE.Group();
+    portal.addTo(parent);
+    await settle(portal, renderer);
+    const frame = parent.children[0];
+    const field = [...targets].find(
+      (target) => !(target instanceof THREE.Mesh && target.geometry instanceof THREE.PlaneGeometry),
+    );
+    assert.ok(field, "the field is a ray target");
+    const controller = new THREE.Group();
+    for (const type of ["selectstart", "select", "selectend"]) {
+      field.dispatchEvent(/** @type {any} */ ({ type, controller, inputSource: null }));
+    }
+    await nextMacrotask();
+    // The board's anchor is the last thing hung in the panel's frame.
+    const anchor = frame.children[frame.children.length - 1];
+    assert.equal(anchor.getObjectByName("panel-handles"), undefined, "the board's anchor");
+
+    manager.dispatch(
+      /** @type {any} */ (anchor),
+      /** @type {any} */ ({
+        type: "pointerenter",
+        target: anchor,
+        originalTarget: anchor,
+        controller,
+      }),
+    );
+    for (const side of ["top", "bottom", "left", "right"]) {
+      const bar = /** @type {THREE.Object3D} */ (frame.getObjectByName(`panel-handle-${side}-bar`));
+      assert.equal(bar.visible, false, `the ${side} strip stays hidden`);
+    }
+    portal.disconnect();
+    root.remove();
+  });
+
+  test("is not by default, nor with nothing to follow the hand by", () => {
+    const fixed = setup({});
+    assert.equal(fixed.parent.getObjectByName("panel-handle-top"), undefined);
+    fixed.portal.disconnect();
+
+    const plain = setup({ draggable: true }, { renderer: false });
+    assert.equal(plain.parent.getObjectByName("panel-handle-top"), undefined);
+    plain.portal.disconnect();
+  });
+
+  test("hands its own options to the strips", () => {
+    let putDown = 0;
+    const { portal, parent } = setup({ draggable: { onPutDown: () => putDown++ } });
+    const top = /** @type {THREE.Object3D} */ (parent.getObjectByName("panel-handle-top"));
+    const controller = new THREE.Group();
+    const press = (/** @type {string} */ type) =>
+      top.dispatchEvent(
+        /** @type {any} */ ({
+          type,
+          controller,
+          inputSource: {},
+          intersection: { object: top, point: new THREE.Vector3() },
+        }),
+      );
+    press("selectstart");
+    press("selectend");
+    assert.equal(putDown, 1, "carried, and put down");
+    portal.disconnect();
   });
 });

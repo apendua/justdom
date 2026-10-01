@@ -6,7 +6,7 @@ import { parseColor } from "./VisualProperties.js";
 import { applyClip, toLocalClipBox } from "./clip.js";
 import { place } from "./place.js";
 import { TextBatchContext } from "./textBatch.js";
-import { TextScaleContext } from "./textScale.js";
+import { readTextScale, TextScaleContext } from "./textScale.js";
 
 /**
  * @import {EntityEffect} from '@apendua/signal';
@@ -59,7 +59,7 @@ export function surfaceRun(ctx, surface, source, extra = []) {
       lines,
       source.renderStyle(),
       bounds,
-      textScale ? textScale() : window.devicePixelRatio || 1,
+      readTextScale(textScale),
       source.tint().masked,
     );
   });

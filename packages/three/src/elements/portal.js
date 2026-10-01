@@ -30,9 +30,16 @@ import { createFrameRequester } from "./frameRequester.js";
 import { createLoadingFrame } from "./loadingFrame.js";
 import { createPortalPump } from "./portalPump.js";
 import { createPortalScheduler, PortalSchedulerContext } from "./portalScheduler.js";
-import { isSvgElement, isSvgRoot, PortalPluginsContext, projectWithPlugins } from "./plugins.js";
+import {
+  isSvgElement,
+  isSvgRoot,
+  PortalPluginsContext,
+  PortalTemplatesContext,
+  projectWithPlugins,
+} from "./plugins.js";
 import { mergePanelOptions, PanelOptionsContext, resolveKeyboard } from "./panelOptions.js";
 import { createHaptics, HapticsContext } from "./haptics.js";
+import { createPanelHandles } from "./panelHandles.js";
 import { CameraContext, frames, onLateFrame, RendererContext } from "../render.js";
 import { InteractionContext } from "../interactions.js";
 
@@ -45,6 +52,7 @@ import { InteractionContext } from "../interactions.js";
  * @import {PortalScheduler} from './portalScheduler.js';
  * @import {PortalKeyboardOptions} from './portalKeyboard.js';
  * @import {PortalPlugin} from './plugins.js';
+ * @import {PanelDragOptions} from './panelHandles.js';
  */
 
 /**
@@ -327,6 +335,22 @@ function claimRoot(root) {
  *   for the reason `loadingFrame` has none: pass `{}` for the defaults
  *   outright. A tracked hand has no motors and feels nothing either way.
  *   See `HapticOptions` in `haptics.js`.
+ * @property {boolean | PanelDragOptions} [draggable] Whether the player can
+ *   move the panel. Four strips along its edges are invisible until a ray
+ *   is on the panel, faint while one is, and full on the strip a ray is on.
+ *   A press on one picks the panel up with `carry()`, and the release puts
+ *   it down. Off by default. The carry moves a group the portal puts
+ *   between the parent and the panel, so the scene goes on placing the
+ *   parent and the player's move is added on top. By default the panel
+ *   turns only about the vertical and keeps the tilt the scene gave it, so
+ *   a panel standing up stays standing up. `level: false` gives it the
+ *   hand's whole rotation.
+ *   An object also sets the strips' width and what is carried; see
+ *   `PanelDragOptions`. A carry follows the hand in the renderer's frames,
+ *   so a portal on a plain page or under a test runner has no strips. Not
+ *   among the scene's `PanelOptions`, since each panel says for itself
+ *   that it can be moved. The keyboard a field brings up has the same
+ *   strips, always.
  * @property {readonly PortalPlugin[]} [plugins] Element plugins for this
  *   panel alone, asked before the ones the scene registered through
  *   `render()`'s `portalPlugins` and before the portal's own dispatch. For
@@ -368,6 +392,7 @@ function buildPortal(ctx, ownOptions = {}) {
     onLoadingChanged,
     loadingFrame = {},
     haptics = {},
+    draggable = false,
     plugins: ownPlugins = [],
   } = mergePanelOptions(PanelOptionsContext.get(ctx), ownOptions);
   const keyboard = resolveKeyboard(keyboardOption);
@@ -578,13 +603,26 @@ function buildPortal(ctx, ownOptions = {}) {
   // neither a renderer nor `requestAnimationFrame`, the sliced path would
   // wait forever on a frame that never comes, so the portal falls back to
   // mounting synchronously, exactly as it did before it learned to slice.
-  let hasFrames = false;
+  let hasRenderer = false;
   try {
     frames(ctx);
-    hasFrames = true;
+    hasRenderer = true;
   } catch {
-    hasFrames = typeof requestAnimationFrame === "function";
+    // Neither here nor below: a page's own loop is enough to slice by, but
+    // not to carry by, which follows the hand in the renderer's frames.
   }
+  const hasFrames = hasRenderer || typeof requestAnimationFrame === "function";
+
+  /**
+   * What a draggable panel is moved by. Its frame goes between the parent
+   * and the container, so the carry is on top of where the scene put the
+   * panel and `placeContainer` goes on centring it. Built with the context
+   * the panel was built from, whose interactions and frames are the scene's.
+   */
+  const handles =
+    draggable && hasRenderer
+      ? createPanelHandles(baseCtx, draggable === true ? {} : draggable)
+      : null;
 
   /**
    * What stands where the panel will be until the panel does: a frame its
@@ -774,6 +812,10 @@ function buildPortal(ctx, ownOptions = {}) {
           }),
           options: keyboard,
           containerObject,
+          // A draggable panel's frame, where the board moves with the panel
+          // and a ray on its keys is not a ray on the panel.
+          hangFrom: () =>
+            handles ? (handles.frame.parent ? handles.frame : null) : containerObject.parent,
           containerElement,
           scale: PANEL_SCALE,
           placeEffect: (fn, name) => withChannel(channel, () => new Effect(fn, { name })),
@@ -847,6 +889,39 @@ function buildPortal(ctx, ownOptions = {}) {
   }
 
   /**
+   * The nodes of SVG subtrees no plugin drew, which are templates: the
+   * contents of a `<defs>`, a `<marker>`, a `<symbol>`. The portal builds
+   * nothing for them, and a plugin draws them where something refers to
+   * them. They are adopted by the mirror all the same, so that an edit to a
+   * marker's path or a symbol's children reaches whatever draws it.
+   *
+   * @type {WeakSet<Node>}
+   */
+  const templateNodes = new WeakSet();
+
+  /**
+   * @param {Node} node
+   * @returns {void}
+   */
+  function adoptTemplate(node) {
+    mirror.adopt(node);
+    templateNodes.add(node);
+    node.childNodes.forEach(adoptTemplate);
+  }
+  // Only what is inside this panel: a marker another panel or the page
+  // owns is not this mirror's to follow, and its own portal adopts it. And
+  // only what the portal has not built: a `<use>` may name a `<g>` drawn
+  // where it stands, and a node taken for a template has children the
+  // portal does not build. A template adopted already stays adopted, its
+  // later children with it, so a plugin that asks again on every restyle
+  // walks nothing.
+  ctx = PortalTemplatesContext.set(ctx, (node) => {
+    if (!templateNodes.has(node) && containerElement.contains(node) && !nodeToObject.has(node)) {
+      adoptTemplate(node);
+    }
+  });
+
+  /**
    * Build the object for this one node and nothing below it. The recursion
    * over children is the caller's business, because the two callers want it
    * done differently: the synchronous path walks the subtree here and now,
@@ -857,6 +932,15 @@ function buildPortal(ctx, ownOptions = {}) {
    */
   function createObjectForNode(node) {
     mirror.adopt(node);
+    const parent = node.parentNode;
+    if (parent && templateNodes.has(parent)) {
+      // Inside an SVG subtree no plugin drew, such as a `<marker>` in its
+      // `<defs>`: a template, followed but never built on its own.
+      adoptTemplate(node);
+      return undefined;
+    }
+    // Built after all, having been moved out of a template.
+    templateNodes.delete(node);
     /** @type {import("@apendua/signal").Subscribable<THREE.Object3D> | undefined} */
     let object$;
     if (node.nodeType === Node.ELEMENT_NODE) {
@@ -873,6 +957,7 @@ function buildPortal(ctx, ownOptions = {}) {
         // object has nothing for its children to attach to. The `<svg>`
         // root is left to `div` below: it is a real box in the page's flow,
         // with a background and a border that were always drawn.
+        adoptTemplate(element);
         return undefined;
       } else {
         switch (element.tagName.toLowerCase()) {
@@ -897,9 +982,10 @@ function buildPortal(ctx, ownOptions = {}) {
       }
     } else if (node.nodeType === Node.TEXT_NODE) {
       // The text of an SVG — the string in a `<text>`, the whitespace between
-      // shapes — has no CSS line boxes to measure and is nobody's yet
-      // (`docs/freedom-svg-plan.md`, S5). Skipped rather than measured as
-      // HTML text, which it would come out of as nothing at best.
+      // shapes — has no CSS line boxes to measure. A `<text>`'s is drawn by
+      // the SVG plugin through the element, which reads it from the mirror
+      // (adopted above); the rest is nothing to draw. Skipped rather than
+      // measured as HTML text, which it would come out of as nothing at best.
       const parent = node.parentNode;
       if (parent && isSvgElement(parent)) {
         return undefined;
@@ -1306,6 +1392,9 @@ function buildPortal(ctx, ownOptions = {}) {
     // would hand the entire panel the work its boxes just opted out of.
     containerObject.rotation.set(Math.PI, 0, 0);
     placeAndScale(containerObject, -sizeX / 2, sizeY / 2, 0, scale, scale, scale);
+    // The strips go where the edges are, from the same writes: a mount's
+    // frame ticks move the panel as well as the commit does.
+    handles?.layout(width, height, scale);
   }
 
   function resizeCallback() {
@@ -1562,11 +1651,19 @@ function buildPortal(ctx, ownOptions = {}) {
    * URL rather than read off this element, and `image.js` hears the same event
    * for itself. This is only the layout half.
    *
+   * An `<image>` inside an `<svg>` has no layout half. Whatever size its
+   * picture turns out to be, nothing in the HTML flow moves for it, and the
+   * image node hears the event for itself. So its load is not announced, or
+   * a diagram of forty pictures would re-measure the panel once for each.
+   *
    * @param {Event} event
    */
   const loadCallback = (event) => {
     const target = event.target;
     if (!(target instanceof Node) || target.nodeType !== Node.ELEMENT_NODE) {
+      return;
+    }
+    if (isSvgElement(target)) {
       return;
     }
     loaded.add(target);
@@ -1702,6 +1799,7 @@ function buildPortal(ctx, ownOptions = {}) {
     if (containerObject.parent) {
       containerObject.parent.remove(containerObject);
     }
+    handles?.dispose();
     if (document.fonts) {
       document.fonts.removeEventListener("loadingdone", fontLoadingCallback);
     }
@@ -1724,7 +1822,12 @@ function buildPortal(ctx, ownOptions = {}) {
      * @param {Object3D} parent
      */
     addTo(parent) {
-      parent.add(containerObject);
+      if (handles) {
+        parent.add(handles.frame);
+        handles.face.add(containerObject);
+      } else {
+        parent.add(containerObject);
+      }
     },
     /**
      * Put a tree into the portal's own container, in place of whatever it

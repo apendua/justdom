@@ -2,6 +2,7 @@ import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
 import { InteractionContext, InteractionManager } from "../interactions.js";
+import { DomMirror } from "./mirror.js";
 import { createPortal } from "./portal.js";
 import { isSvgElement, isSvgRoot, PortalPluginsContext, projectWithPlugins } from "./plugins.js";
 import { svgElements } from "../svg/index.js";
@@ -69,12 +70,13 @@ function buildTree() {
  *
  * @param {WeakKey} ctx
  * @param {import('./portal.js').PortalOptions} [options]
+ * @param {() => { card: HTMLElement, svg: Element, rect: Element }} [build]
  */
-async function project(ctx, options = {}) {
+async function project(ctx, options = {}, build = buildTree) {
   const portal = createPortal(ctx, { loadingFrame: false, ...options });
   const parent = new THREE.Group();
   portal.addTo(parent);
-  const tree = buildTree();
+  const tree = build();
   portal.mount({
     replace([first, last]) {
       const container = first.parentNode;
@@ -191,6 +193,67 @@ describe("portal plugins", () => {
     portal.disconnect();
   });
 
+  test("a symbol defined after the use that draws it is followed by the copy", async () => {
+    // The defs last, as exported drawings often have them: the copy is built
+    // before the portal's walk reaches the symbol.
+    const build = () => {
+      const tree = buildTree();
+      tree.rect.remove();
+      const use = document.createElementNS(SVG_NS, "use");
+      use.setAttribute("href", "#late-symbol");
+      const defs = document.createElementNS(SVG_NS, "defs");
+      const symbol = document.createElementNS(SVG_NS, "symbol");
+      symbol.setAttribute("id", "late-symbol");
+      const rect = document.createElementNS(SVG_NS, "rect");
+      rect.setAttribute("width", "10");
+      rect.setAttribute("height", "10");
+      rect.setAttribute("fill", "red");
+      symbol.appendChild(rect);
+      defs.appendChild(symbol);
+      tree.svg.append(use, defs);
+      return { ...tree, rect };
+    };
+    const ctx = InteractionContext.set({}, new InteractionManager());
+    const { portal, parent, rect } = await project(ctx, { plugins: [svgElements()] }, build);
+    assert.equal(shapeMeshes(parent).length, 1, "the copy, and nothing for the symbol itself");
+    rect.setAttribute("style", "fill: blue");
+    await nextMacrotask();
+    const [mesh] = shapeMeshes(parent);
+    assert.equal(
+      /** @type {THREE.MeshBasicMaterial} */ (mesh.material).color.getHexString(),
+      "0000ff",
+    );
+    portal.disconnect();
+  });
+
+  test("a group a use draws is still built where it stands, children added later too", async () => {
+    const build = () => {
+      const tree = buildTree();
+      const group = document.createElementNS(SVG_NS, "g");
+      group.setAttribute("id", "drawn-group");
+      tree.rect.replaceWith(group);
+      group.appendChild(tree.rect);
+      const use = document.createElementNS(SVG_NS, "use");
+      use.setAttribute("href", "#drawn-group");
+      use.setAttribute("x", "50");
+      // After the group, so the portal has built it by the time the copy
+      // resolves it, and must not take it for a template then.
+      group.after(use);
+      return tree;
+    };
+    const ctx = InteractionContext.set({}, new InteractionManager());
+    const { portal, parent } = await project(ctx, { plugins: [svgElements()] }, build);
+    assert.equal(shapeMeshes(parent).length, 2, "the rect, and its copy");
+    const group = /** @type {Element} */ (document.getElementById("drawn-group"));
+    const circle = document.createElementNS(SVG_NS, "circle");
+    circle.setAttribute("r", "5");
+    circle.setAttribute("fill", "blue");
+    group.appendChild(circle);
+    await nextMacrotask();
+    assert.equal(shapeMeshes(parent).length, 4, "the circle, where it stands and in the copy");
+    portal.disconnect();
+  });
+
   test("a shape added later is drawn, and one removed is taken down", async () => {
     const ctx = InteractionContext.set({}, new InteractionManager());
     const { portal, parent, svg, rect } = await project(ctx, { plugins: [svgElements()] });
@@ -225,6 +288,44 @@ describe("portal plugins", () => {
       "00ff00",
       "the paint follows the fill attribute",
     );
+    portal.disconnect();
+  });
+
+  test("a marker is adopted once, not again on every restyle of its path", async () => {
+    const ctx = InteractionContext.set({}, new InteractionManager());
+    const { portal, svg, rect } = await project(ctx, { plugins: [svgElements()] });
+    const marker = document.createElementNS(SVG_NS, "marker");
+    marker.setAttribute("id", "plugins-arrow");
+    const head = document.createElementNS(SVG_NS, "path");
+    head.setAttribute("d", "M0 0 L10 5 L0 10 z");
+    marker.appendChild(head);
+    const defs = document.createElementNS(SVG_NS, "defs");
+    defs.appendChild(marker);
+    const line = document.createElementNS(SVG_NS, "line");
+    line.setAttribute("x2", "40");
+    line.setAttribute("stroke", "black");
+    line.setAttribute("marker-end", "url(#plugins-arrow)");
+    svg.replaceChild(line, rect);
+    svg.insertBefore(defs, line);
+    await nextMacrotask();
+
+    let adoptions = 0;
+    const original = DomMirror.prototype.adopt;
+    DomMirror.prototype.adopt = function adopt(node) {
+      if (node === marker || node === head) {
+        adoptions += 1;
+      }
+      return original.call(this, node);
+    };
+    try {
+      for (const width of ["2", "3", "4"]) {
+        line.setAttribute("stroke-width", width);
+        await nextMacrotask();
+      }
+    } finally {
+      DomMirror.prototype.adopt = original;
+    }
+    assert.equal(adoptions, 0);
     portal.disconnect();
   });
 

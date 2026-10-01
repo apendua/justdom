@@ -33,6 +33,26 @@ export const TextScaleContext = createProperty(
 );
 
 /**
+ * How finely a run is rasterized: what the panel it is on measures, or, for
+ * a run with no panel to measure against — text projected onto a plain page,
+ * or built under a test runner — what the page says a device pixel is worth.
+ * Read inside the computation that draws the run, so a panel the player walks
+ * up to re-draws its text at the step it has reached.
+ *
+ * @param {(() => number) | null} textScale The run's `TextScaleContext`.
+ * @returns {number}
+ */
+export function readTextScale(textScale) {
+  if (textScale) {
+    return textScale();
+  }
+  if (typeof window === "undefined") {
+    return 1;
+  }
+  return window.devicePixelRatio || 1;
+}
+
+/**
  * The nearest a panel is measured as being.
  *
  * A player can walk into a panel, and a panel around their ears is as much

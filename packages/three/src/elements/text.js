@@ -30,23 +30,8 @@ import {
 } from "./clip.js";
 import { place } from "./place.js";
 import { TextBatchContext } from "./textBatch.js";
-import { TextScaleContext } from "./textScale.js";
+import { readTextScale, TextScaleContext } from "./textScale.js";
 import { attachRevealNode, detachRevealNode, getRevealCut } from "./reveal.js";
-
-/**
- * What the page says a device pixel is worth, for a run with no panel to
- * measure against — text projected onto a plain page, or built under a test
- * runner. Where there *is* a scene the number means very little; `textScale`
- * says why, and is asked first.
- *
- * @returns {number}
- */
-function getViewportDpr() {
-  if (typeof window === "undefined") {
-    return 1;
-  }
-  return window.devicePixelRatio || 1;
-}
 
 /**
  * @param {WeakKey} ctx
@@ -113,7 +98,7 @@ export function text(ctx, textNode) {
       layout.lines,
       renderStyle,
       layout.bounds,
-      textScale ? textScale() : getViewportDpr(),
+      readTextScale(textScale),
       tint.masked,
     );
   });

@@ -18,12 +18,15 @@ import { cardStyle, captionStyle, classes, headingStyle, rowStyle } from "./pane
  * test of all of them.
  *
  * The diagram at the top is the case the whole thing exists for — boxes
- * joined by arrows, the arrows dashed and dotted, the heads polygons — and
+ * joined by arrows, the arrows dashed and dotted, their heads markers, the
+ * nodes labelled through `<text>`, two pictures above them through
+ * `<image>`, one turned by its group — and
  * it is styled the way a diagram on a page is styled, through classes and
  * a stylesheet rather than presentation attributes, because computed style
  * is what the plugin reads. Below it: the same icon through the same
- * `viewBox` at three sizes, a star spun by a CSS animation on its `<g>`, a
- * rotated group, the three line joins and caps, a `stroke-dashoffset`
+ * `viewBox` at three sizes, a star spun by a CSS animation on its `<g>`, one
+ * symbol drawn three times by `<use>` in three fills, a rotated group, the
+ * three line joins and caps, a `stroke-dashoffset`
  * animation (the marching ants every selection rectangle wears) and a stroke
  * colour animated by CSS keyframes. The three animations cost a matrix
  * write, a geometry rebuild and a uniform write respectively, which is worth
@@ -32,6 +35,31 @@ import { cardStyle, captionStyle, classes, headingStyle, rowStyle } from "./pane
  * The teal of the diagram's nodes is used nowhere else in the showcase, so
  * the visual suite can count it and know the shapes were drawn.
  */
+
+/**
+ * Two pictures for the diagram's `<image>` elements, as data URLs so no
+ * asset travels with the app. One is a bitmap, a 16px PNG of four squares,
+ * and one is an SVG file, which is drawn as a bitmap of itself as it would
+ * be in an `<img>`.
+ */
+const RASTER_PICTURE =
+  "data:image/png;base64," +
+  "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAIAAACQkWg2AAAAIUlEQVR42mP4sMoGKwrR6cGKGEY10EQDLglcBo1qoIkGAGorcRAqZXGIAAAAAElFTkSuQmCC";
+
+const VECTOR_PICTURE = `data:image/svg+xml,${encodeURIComponent(
+  `<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24">` +
+    `<circle cx="12" cy="12" r="11" fill="rgb(0,123,255)"/>` +
+    `<path d="M7 12.5l3.5 3.5 6.5-7.5" fill="none" stroke="white" stroke-width="2.5"` +
+    ` stroke-linecap="round" stroke-linejoin="round"/>` +
+    `</svg>`,
+)}`;
+
+/** The ids of the diagram's two arrowhead markers. */
+const DARK_HEAD = "vectors-dark-head";
+const PINK_HEAD = "vectors-pink-head";
+
+/** The id of the symbol the icon row draws three times. */
+const DOT = "vectors-dot";
 
 /** The nodes' fill: the colour the visual suite looks for. */
 export const NODE_COLOR = "rgb(0, 168, 150)";
@@ -62,6 +90,18 @@ const diagramStyle = stylesheet`
 
   .${CLASS_NAME} .node[data-xr-active] {
     fill: rgb(0, 118, 105);
+  }
+
+  /* The nodes' labels, laid out by the browser and drawn through <text>.
+     They let a press through to the node under them, as they would on a
+     page. */
+  .${CLASS_NAME} .label {
+    fill: rgb(255, 255, 255);
+    font-family: system-ui, sans-serif;
+    font-size: 13px;
+    font-weight: 600;
+    text-anchor: middle;
+    pointer-events: none;
   }
 
   .${CLASS_NAME} .port {
@@ -245,6 +285,42 @@ const VectorsPanel = component((_ctx: WeakKey) => {
         attr("class", diagramStyle),
         attr({ viewBox: "0 0 272 120" }),
         children(
+          // The arrowheads, drawn wherever a line names them. Sized in the
+          // diagram's own units rather than in stroke widths, so the dashed
+          // and the dotted arrows' heads keep the sizes they were drawn at.
+          // The pink one is twelve long by seven wide, since a head near
+          // equilateral reads as pointing whichever way its flattest edge
+          // faces away from.
+          $$("defs", [
+            children(
+              $$("marker", [
+                attr({
+                  id: DARK_HEAD,
+                  viewBox: "0 0 12 12",
+                  markerWidth: 12,
+                  markerHeight: 12,
+                  markerUnits: "userSpaceOnUse",
+                  refX: 0,
+                  refY: 6,
+                  orient: "auto",
+                }),
+                children($$("path", [attr({ class: "head", d: "M0 0 L12 6 L0 12 z" })])),
+              ]),
+              $$("marker", [
+                attr({
+                  id: PINK_HEAD,
+                  viewBox: "0 0 12 7",
+                  markerWidth: 12,
+                  markerHeight: 7,
+                  markerUnits: "userSpaceOnUse",
+                  refX: 12,
+                  refY: 3.5,
+                  orient: "auto",
+                }),
+                children($$("path", [attr({ class: "head pink", d: "M0 0 L12 3.5 L0 7 z" })])),
+              ]),
+            ),
+          ]),
           // A faint dotted grid behind everything, the kind a canvas draws.
           $$("g", [
             attr({ class: "grid" }),
@@ -253,28 +329,55 @@ const VectorsPanel = component((_ctx: WeakKey) => {
               $$("line", [attr({ x1: 0, y1: 80, x2: 272, y2: 80 })]),
             ),
           ]),
+          // Two pictures above the nodes, through `<image>`: the SVG file
+          // upright, the bitmap turned by its group, which an <img> in a box
+          // cannot be.
+          $$("image", [attr({ href: VECTOR_PICTURE, x: 40, y: 4, width: 26, height: 26 })]),
+          $$("g", [
+            attr({ transform: "rotate(-20 220 17)" }),
+            children(
+              $$("image", [attr({ href: RASTER_PICTURE, x: 207, y: 4, width: 26, height: 26 })]),
+            ),
+          ]),
           // Two nodes and a small third one.
           $$("rect", [attr({ class: "node", x: 16, y: 34, width: 72, height: 44, rx: 8 })]),
           $$("rect", [attr({ class: "node", x: 184, y: 34, width: 72, height: 44, rx: 8 })]),
           $$("circle", [attr({ class: "node", cx: 136, cy: 100, r: 12 })]),
+          // Their labels, centred on them by `text-anchor`.
+          $$("text", [attr({ class: "label", x: 52, y: 60 }), children(text`input`)]),
+          $$("text", [attr({ class: "label", x: 220, y: 60 }), children(text`output`)]),
           // Ports on the nodes' edges.
           $$("circle", [attr({ class: "port", cx: 88, cy: 56, r: 4 })]),
           $$("circle", [attr({ class: "port", cx: 184, cy: 56, r: 4 })]),
-          // A dashed arrow straight across, head and all.
-          $$("line", [attr({ class: "dashed", x1: 94, y1: 56, x2: 168, y2: 56 })]),
-          $$("polygon", [attr({ class: "head", points: "168,50 180,56 168,62" })]),
-          // A dotted arrow curving down to the small node and back up. Each
-          // head is aimed along the last nine units of its curve, which is
-          // the direction the dots are read as travelling, with its tip one
-          // unit short of the node — and is twelve long by seven wide, since
-          // a head near equilateral reads as pointing whichever way its
-          // flattest edge faces away from.
-          $$("path", [attr({ class: "dotted", d: "M52 80 C 52 112, 110 112, 122 104" })]),
-          $$("polygon", [
-            attr({ class: "head pink", points: "113.4,110.8 123.5,103.5 111,104.2" }),
+          // A dashed arrow straight across, its head a marker set on after
+          // the end of the line.
+          $$("line", [
+            attr({
+              class: "dashed",
+              x1: 94,
+              y1: 56,
+              x2: 168,
+              y2: 56,
+              "marker-end": `url(#${DARK_HEAD})`,
+            }),
           ]),
-          $$("path", [attr({ class: "dotted", d: "M150 96 C 170 84, 190 92, 220 80" })]),
-          $$("polygon", [attr({ class: "head pink", points: "212.7,86.3 222.9,79 210.4,79.7" })]),
+          // A dotted arrow curving down to the small node and back up. The
+          // markers point along each curve's end with the tip on it, which
+          // is the direction the dots are read as travelling.
+          $$("path", [
+            attr({
+              class: "dotted",
+              d: "M52 80 C 52 112, 110 112, 122 104",
+              "marker-end": `url(#${PINK_HEAD})`,
+            }),
+          ]),
+          $$("path", [
+            attr({
+              class: "dotted",
+              d: "M150 96 C 170 84, 190 92, 220 80",
+              "marker-end": `url(#${PINK_HEAD})`,
+            }),
+          ]),
         ),
       ]),
       $("p", [set("className", captionStyle), children(text`one icon, three sizes, currentColor`)]),
@@ -299,6 +402,52 @@ const VectorsPanel = component((_ctx: WeakKey) => {
                     }),
                   ]),
                 ),
+              ]),
+            ),
+          ]),
+          // One symbol drawn three times by <use>. The dot sets no fill of
+          // its own, so each copy takes the fill of the <use> that draws it.
+          $$("svg", [
+            attr("class", classes(iconStyle, iconLarge)),
+            attr({ viewBox: "0 0 24 24" }),
+            children(
+              $$("defs", [
+                children(
+                  $$("symbol", [
+                    attr({ id: DOT, viewBox: "0 0 10 10" }),
+                    children($$("circle", [attr({ cx: 5, cy: 5, r: 4.5 })])),
+                  ]),
+                ),
+              ]),
+              $$("use", [
+                attr({
+                  href: `#${DOT}`,
+                  x: 1,
+                  y: 2,
+                  width: 11,
+                  height: 11,
+                  fill: "rgb(221, 64, 104)",
+                }),
+              ]),
+              $$("use", [
+                attr({
+                  href: `#${DOT}`,
+                  x: 12,
+                  y: 2,
+                  width: 11,
+                  height: 11,
+                  fill: "rgb(240, 170, 60)",
+                }),
+              ]),
+              $$("use", [
+                attr({
+                  href: `#${DOT}`,
+                  x: 6.5,
+                  y: 11.5,
+                  width: 11,
+                  height: 11,
+                  fill: "rgb(0, 123, 255)",
+                }),
               ]),
             ),
           ]),

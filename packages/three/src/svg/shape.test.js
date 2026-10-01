@@ -941,6 +941,71 @@ describe("svg shape as a ray target", () => {
     root.remove();
   });
 
+  test("a clickable <g> is hovered and pressed with the shape the ray is on", () => {
+    // `.node:hover rect` on a page: the ray is on the `<rect>`, and the
+    // `<g>` around it is hovered too, as every clickable box around a
+    // hovered one is. jsdom inherits no `cursor`, so each says it itself.
+    const { manager, registered } = recordingManager();
+    const ctx = InteractionContext.set({}, manager);
+    const root = document.createElementNS(SVG_NS, "svg");
+    const g = document.createElementNS(SVG_NS, "g");
+    const rect = document.createElementNS(SVG_NS, "rect");
+    g.setAttribute("style", "cursor: pointer");
+    for (const [name, value] of Object.entries({ ...SQUARE, style: "cursor: pointer" })) {
+      rect.setAttribute(name, value);
+    }
+    g.appendChild(rect);
+    root.appendChild(g);
+    document.body.appendChild(root);
+    const { mirror, disconnect } = observedMirror(root);
+    for (const node of [root, g, rect]) {
+      mirror.adopt(node);
+    }
+    /** @type {Object3D | undefined} */
+    let gObject;
+    /** @type {Object3D | undefined} */
+    let rectObject;
+    const subscriptions = [
+      group(ctx, g).subscribe((value) => {
+        gObject = value;
+      }),
+      shape(ctx, rect).subscribe((value) => {
+        rectObject = value;
+      }),
+    ];
+    assert.ok(gObject && rectObject);
+    gObject.add(rectObject);
+
+    // Up the parent chain from the shape, as the manager dispatches.
+    const controller = new THREE.Object3D();
+    /** @param {string} type */
+    const dispatch = (type) => {
+      const event = { type, controller, target: rectObject, originalTarget: rectObject };
+      for (let node = /** @type {Object3D | null} */ (rectObject); node; node = node.parent) {
+        node.dispatchEvent(/** @type {never} */ (event));
+      }
+    };
+    const gData = /** @type {SVGElement} */ (g).dataset;
+    const rectData = /** @type {SVGElement} */ (rect).dataset;
+
+    dispatch("pointerenter");
+    assert.equal(rectData.xrHover, "true");
+    assert.equal(gData.xrHover, "true", "the <g> is hovered too");
+    dispatch("selectstart");
+    assert.equal(gData.xrActive, "true");
+    dispatch("selectend");
+    assert.equal(gData.xrActive, undefined);
+    dispatch("pointerleave");
+    assert.equal(gData.xrHover, undefined);
+    assert.ok(registered.includes(gObject), "the <g> is a ray target");
+
+    for (const subscription of subscriptions) {
+      subscription.unsubscribe();
+    }
+    disconnect();
+    root.remove();
+  });
+
   test("a press on a shape reaches its element as a box's does", () => {
     const { manager } = recordingManager();
     const s = setup("rect", { ...SQUARE, style: "cursor: pointer" }, { manager });

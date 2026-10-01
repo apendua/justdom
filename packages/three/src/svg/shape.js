@@ -1321,9 +1321,9 @@ export function shape(ctx, element, { instance = null, decorate } = {}) {
   /**
    * Which regions a ray can hit, from `pointer-events`. Every shape asks,
    * not only a clickable one, because a ray walks the meshes below whatever
-   * is registered. A shape inside a clickable `<svg>` or `<a>` decides by
-   * this whether a press on it reaches that ancestor or goes through to
-   * what is behind, as it does on a page.
+   * is registered. A shape inside a clickable `<svg>`, `<g>` or `<a>`
+   * decides by this whether a press on it reaches that ancestor or goes
+   * through to what is behind, as it does on a page.
    */
   const hitRegions = new Derived(() =>
     parsePointerEvents(readProperty(style(), element, "pointer-events")),
@@ -1430,6 +1430,11 @@ export function shape(ctx, element, { instance = null, decorate } = {}) {
  * into its own alpha. `display: none` is, since a hidden group's shapes
  * still compute a `display` of their own.
  *
+ * Under `cursor: pointer` it is a ray target, as a clickable box is, so a
+ * `.node[data-xr-hover] rect` rule restyles the shape under the ray. A hit
+ * on it is a hit on one of its shapes, and each shape keeps its own
+ * `pointer-events`.
+ *
  * @param {WeakKey} ctx
  * @param {Element} element
  * @param {object} [options]
@@ -1441,6 +1446,7 @@ export function shape(ctx, element, { instance = null, decorate } = {}) {
  * @returns {Source<THREE.Object3D>}
  */
 export function group(ctx, element, { instance = null, decorate = [] } = {}) {
+  /** @type {THREE.Object3D<XREventMap>} */
   const object = new THREE.Object3D();
   const matrix = new Derived(() => localMatrix(element, instance), { isEqual: matrixEqual });
   return just(object, [
@@ -1450,6 +1456,11 @@ export function group(ctx, element, { instance = null, decorate = [] } = {}) {
     effects((obj) => {
       obj.visible = getComputedStyleCached(element).display !== "none";
     }),
+    // A clickable group is hovered and pressed with the shape the ray is on,
+    // as `:hover` and `:active` reach the `<g>` around a shape on a page. It
+    // has no meshes of its own, so its hits are its shapes'. Template content
+    // is never hit, as a shape's is not.
+    rayTarget(ctx, element, () => instance === null),
     ...decorate,
   ]);
 }

@@ -67,10 +67,10 @@ and `drop` moves it. On the
 page that is a mouse drag. In a session it is the trigger closed on the
 handle, the ray carried down the list and the trigger opened, and freedom
 turns that into the same events, so the same handlers run. The marks are
-plain CSS, an `opacity` and a border colour, set by classes rather than
-data attributes because a class is what the panel follows. `node tests/drag-check.mjs` does both, the mouse on the page and
-the controller in the emulator, and prints the events and the order the
-todos ended up in; `SHOT=drag.png` photographs the drag half way.
+plain CSS, an `opacity` and a border colour, set by classes.
+`node tests/drag-check.mjs` does both, the mouse on the page and the
+controller in the emulator, and prints the events and the order the todos
+ended up in; `SHOT=drag.png` photographs the drag half way.
 
 **Two things are there only in a session.** The frame rate, from justui's
 `useDiagnostics`, hangs in the upper left of the view. And the card grows an

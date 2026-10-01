@@ -15,9 +15,7 @@ import { store, on, set, emit, Op, component } from "@apendua/signal";
 // until it is let go. Only a colour changes, so nothing moves under the ray.
 // The divider is the row's only border on purpose: a panel draws a box's
 // border in one colour, the colour of its first bordered side, so a row
-// with a top border as well would draw both in the top's. Classes rather
-// than data attributes, because a class is what a panel follows a restyle
-// by.
+// with a top border as well would draw both in the top's.
 const itemStyle = stylesheet`
   .${CLASS_NAME} {
     display: flex;

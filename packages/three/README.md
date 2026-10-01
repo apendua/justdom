@@ -396,10 +396,12 @@ fresh portal with the previous one taken down and its element released.
 for a scene that drives portals by hand.
 
 A box is drawn with a border width per side but one border colour: the
-colour of the first side that has a border, in the order top, right,
-bottom, left. A divider on one side, `border-bottom: 1px solid #eee`, is
-drawn in its own colour. Sides bordered in different colours are drawn in
-the first side's, and a dashed, dotted or double border is drawn solid.
+colour of the first side that draws a border, in the order top, right,
+bottom, left. A side with no width, or a transparent one, draws none. A
+divider on one side, `border-bottom: 1px solid #eee`, is drawn in its own
+colour, and so is a tab's underline under `border-top: 2px solid
+transparent`. Sides bordered in different colours are drawn in the first
+side's, and a dashed, dotted or double border is drawn solid.
 
 Two things about a portal are worth knowing before writing UI for one.
 

@@ -215,16 +215,13 @@ function getRelativeXHeightShared(fontFamily, fontWeight) {
 }
 
 /**
- * @implements {IVisualProperties}
- */
-/**
  * The sides of a box, in the order CSS lists them.
  */
 const BORDER_SIDES = /** @type {const} */ (["Top", "Right", "Bottom", "Left"]);
 
 /**
  * The one colour a box's border is drawn in: the colour of the first side
- * that has a border, top, right, bottom, left.
+ * that draws one, top, right, bottom, left.
  *
  * A box is drawn with a width per side but a single border colour, and the
  * computed `border-color` shorthand is no answer to which. It lists every
@@ -233,6 +230,9 @@ const BORDER_SIDES = /** @type {const} */ (["Top", "Right", "Bottom", "Left"]);
  * text colour of the top edge, which has no border, and a divider was drawn
  * in the colour of the text. A side whose computed width is 0 is one CSS
  * draws nothing on, `border-style: none` included, so it has no say here.
+ * Nor does a side that is there and transparent: a row of tabs keeps their
+ * heights equal with `border-top: 2px solid transparent` over a coloured
+ * `border-bottom`, and the underline is the border that is drawn.
  *
  * Borders on several sides in different colours still share the first of
  * them; drawing each in its own would need a colour per side in the shader.
@@ -242,13 +242,17 @@ const BORDER_SIDES = /** @type {const} */ (["Top", "Right", "Bottom", "Left"]);
  */
 function getDrawnBorderColor(style) {
   for (const side of BORDER_SIDES) {
-    if (parseFloat(style[`border${side}Width`]) > 0) {
-      return style[`border${side}Color`];
+    const color = style[`border${side}Color`];
+    if (parseFloat(style[`border${side}Width`]) > 0 && parseColor(color)[1] > 0) {
+      return color;
     }
   }
   return style.borderTopColor;
 }
 
+/**
+ * @implements {IVisualProperties}
+ */
 export default class VisualProperties {
   /** @type {RawVisualProperties | undefined} */
   #properties;

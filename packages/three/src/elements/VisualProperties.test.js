@@ -130,6 +130,18 @@ describe("VisualProperties border colour", () => {
     assert.equal(properties.borderColor.getHex(), asThreeWouldParse("rgb(255, 0, 0)"));
   });
 
+  test("a transparent side has no say either", () => {
+    // Tabs keep their heights equal with a transparent border over the
+    // underline that marks the chosen one.
+    const properties = propertiesOf({
+      color: "rgb(51, 51, 51)",
+      borderTop: "2px solid transparent",
+      borderBottom: "2px solid rgb(0, 123, 255)",
+    });
+    assert.equal(properties.borderColor.getHex(), asThreeWouldParse("rgb(0, 123, 255)"));
+    assert.equal(properties.borderAlpha, 1);
+  });
+
   test("a border all round is drawn in its colour", () => {
     const properties = propertiesOf({ border: "2px solid rgb(0, 123, 255)" });
     assert.equal(properties.borderColor.getHex(), asThreeWouldParse("rgb(0, 123, 255)"));

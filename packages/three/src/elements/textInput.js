@@ -4,7 +4,6 @@ import {
   Derived,
   effects,
   flatMap,
-  just,
   observable,
   onCleanup,
   selector,
@@ -12,23 +11,21 @@ import {
   Signal,
   withComputation,
 } from "@apendua/signal";
-import { $, children, Nothing } from "../operators.js";
+import { $, Nothing } from "../operators.js";
 import { box } from "./div.js";
 import { getBorderBoxSize, getComputedStyleCached } from "./mirror.js";
 import {
   createMarkMaterial,
-  generateTextTexture,
-  getTextRenderStyle,
+  getRunRenderStyle,
   isTintableText,
-  makeTextQuadGeometry,
   measureTextRun,
+  px,
 } from "./textHelpers.js";
 import { parseColor } from "./VisualProperties.js";
 import { applyClip, clipBoxEqual, intersectClipBoxes, toLocalClipBox } from "./clip.js";
 import { rectGeometry } from "./sdfRect.js";
-import { place, placeAndScale } from "./place.js";
-import { TextBatchContext } from "./textBatch.js";
-import { TextScaleContext } from "./textScale.js";
+import { placeAndScale } from "./place.js";
+import { surfaceRun } from "./surfaceRun.js";
 import { discardDraft, getCaretOffset, getShownValue, setCaretOffset } from "./typing.js";
 
 /**
@@ -308,15 +305,6 @@ function installValueHooks(element) {
 }
 
 /**
- * @param {string} value
- * @returns {number}
- */
-function px(value) {
-  const parsed = Number.parseFloat(value);
-  return Number.isFinite(parsed) ? parsed : 0;
-}
-
-/**
  * The placeholder's colour: what the page's `::placeholder` rule says, or
  * the browser's default for one, and failing both — a document with no
  * layout engine to ask, say — the text colour dimmed.
@@ -367,8 +355,6 @@ function pointEqual(a, b) {
  * @returns {import("@apendua/signal").Source<Component>[]}
  */
 function fieldContent(ctx, element, surface, focus, locator) {
-  const batch = TextBatchContext.get(ctx);
-  const textScale = TextScaleContext.get(ctx);
   const version = valueVersionOf(element);
 
   const style = selector(() => getComputedStyleCached(element));
@@ -399,13 +385,7 @@ function fieldContent(ctx, element, surface, focus, locator) {
 
   // As for a text node: the mask path pins the colour to white and tints
   // through the material, so a colour change re-draws nothing.
-  const renderStyle = selector(() => {
-    const renderStyle = getTextRenderStyle(style);
-    if (isTintableText(style)) {
-      return { ...renderStyle, color: "#ffffff", textDecorationColor: "#ffffff" };
-    }
-    return renderStyle;
-  });
+  const renderStyle = selector(() => getRunRenderStyle(style));
 
   const tint = selector(() => {
     const textColor = style.color || "#000000";
@@ -555,16 +535,6 @@ function fieldContent(ctx, element, surface, focus, locator) {
     };
   });
 
-  const textureData = selector(() => {
-    return generateTextTexture(
-      layout.lines,
-      renderStyle,
-      layout.bounds,
-      textScale ? textScale() : window.devicePixelRatio || 1,
-      tint.masked,
-    );
-  });
-
   /**
    * What the field lets its own content show: the content box, and no more
    * than the ancestors allow of the field. In the field's frame.
@@ -589,98 +559,33 @@ function fieldContent(ctx, element, surface, focus, locator) {
     { isEqual: clipBoxEqual },
   );
 
-  const runClipUniform = { value: new THREE.Vector4(-1e6, -1e6, 1e6, 1e6) };
-  const runMesh = new THREE.Mesh();
-  surface.clipMesh(runMesh);
-
-  const run = $(runMesh, [
-    // The value followed from here: an own effect so the tracking is up
-    // before the first read, and down with the mounting.
-    effects(() => {
-      const stop = trackValue(element);
-      onCleanup(stop);
-    }),
-    // And the ray told where the characters are, for as long as they are
-    // drawn.
-    effects(() => {
-      locator.offsetAt = offsetAt;
-      onCleanup(() => {
-        locator.offsetAt = null;
-      });
-    }),
-    set("material", () => {
-      const material = createMarkMaterial();
-      applyClip(material, runClipUniform);
-      onCleanup(() => {
-        material.dispose();
-      });
-      return material;
-    }),
-    effects((obj) => {
-      const material = /** @type {THREE.MeshBasicMaterial} */ (obj.material);
-      const { texture } = textureData;
-      const hadMap = !!material.map;
-      const hadAlphaMap = !!material.alphaMap;
-      if (tint.masked) {
-        material.alphaMap = texture;
-        material.map = null;
-      } else {
-        material.map = texture;
-        material.alphaMap = null;
-      }
-      if (hadMap !== !!material.map || hadAlphaMap !== !!material.alphaMap) {
-        material.needsUpdate = true;
-      }
-      batch?.invalidate();
-    }),
-    set("geometry", () => {
-      const { width, height } = textureData;
-      const geometry = makeTextQuadGeometry(width, height);
-      onCleanup(() => {
-        geometry.dispose();
-      });
-      return geometry;
-    }),
-    // Faded with the field, which is faded by every element it is in.
-    effects((obj) => {
-      const material = /** @type {THREE.MeshBasicMaterial} */ (obj.material);
-      const { opacity } = surface.properties;
-      if (tint.masked) {
-        const [color, alpha] = parseColor(tint.color);
-        material.color.copy(color);
-        material.opacity = alpha * opacity;
-      } else {
-        material.color.set("#ffffff");
-        material.opacity = opacity;
-      }
-      batch?.invalidate();
-    }),
-    // Where the run sits and what trims it, together: both move when the
-    // value scrolls under the caret.
-    effects((obj) => {
-      const at = origin.get();
-      place(obj, at.x, at.y, 0);
-      const clip = toLocalClipBox(contentClip.get(), at.x, at.y);
-      runClipUniform.value.set(clip.left, clip.top, clip.right, clip.bottom);
-      obj.renderOrder = surface.contentRenderOrder();
-      batch?.invalidate();
-    }),
-    // Painted by the field, so hidden with it — out of the draw, the batch's
-    // walk and the raycast, all of which follow the flag.
-    effects((obj) => {
-      obj.visible = !surface.hidden();
-      batch?.invalidate();
-    }),
-    effects(() => {
-      if (!batch) {
-        return;
-      }
-      batch.add(runMesh, runClipUniform);
-      onCleanup(() => {
-        batch.remove(runMesh);
-      });
-    }),
-  ]);
+  const run = surfaceRun(
+    ctx,
+    surface,
+    {
+      layout: () => layout,
+      renderStyle: () => renderStyle,
+      tint: () => tint,
+      origin: () => origin.get(),
+      clip: () => contentClip.get(),
+    },
+    [
+      // The value followed from here: an own effect so the tracking is up
+      // before the first read, and down with the mounting.
+      effects(() => {
+        const stop = trackValue(element);
+        onCleanup(stop);
+      }),
+      // And the ray told where the characters are, for as long as they are
+      // drawn.
+      effects(() => {
+        locator.offsetAt = offsetAt;
+        onCleanup(() => {
+          locator.offsetAt = null;
+        });
+      }),
+    ],
+  );
 
   const caret = () => {
     const caretMesh = new THREE.Mesh(rectGeometry);

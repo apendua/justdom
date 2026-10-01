@@ -265,12 +265,15 @@ let geometryGeneration = 0;
 const nodeCaches = [];
 
 /**
- * A cache keyed by node that `forgetNode` knows about.
+ * A cache keyed by node that `forgetNode` knows about. Exported for the
+ * cached reads that live beside the elements they serve, such as a list
+ * item's number in `listMarker.js`; anything kept per node has to be one of
+ * these, or a re-claimed node keeps the first mirror's signals under it.
  *
  * @template {WeakMap<any, any>} T
  * @returns {T}
  */
-function nodeCache() {
+export function nodeCache() {
   const cache = new WeakMap();
   nodeCaches.push(cache);
   return /** @type {T} */ (cache);

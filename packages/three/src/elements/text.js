@@ -5,7 +5,7 @@ import { $, children } from "../operators.js";
 import {
   createMarkMaterial,
   generateTextTexture,
-  getTextRenderStyle,
+  getRunRenderStyle,
   isTintableText,
   makeTextQuadGeometry,
 } from "./textHelpers.js";
@@ -94,18 +94,9 @@ export function text(ctx, textNode) {
     return getComputedStyleCached(textNode);
   });
 
-  // What actually reaches the rasterizer. For tintable text — almost every
-  // label — the colors are pinned to white here, so a color change leaves
-  // every key of this selector untouched and the texture is never re-drawn:
-  // the glyphs become a mask, and the color rides on the material below.
-  // Shadowed or explicitly-decorated text keeps its colors baked.
-  const renderStyle = selector(() => {
-    const renderStyle = getTextRenderStyle(style);
-    if (isTintableText(style)) {
-      return { ...renderStyle, color: "#ffffff", textDecorationColor: "#ffffff" };
-    }
-    return renderStyle;
-  });
+  // What actually reaches the rasterizer. Tintable text, which is almost
+  // every label, is drawn white and colored by the material below.
+  const renderStyle = selector(() => getRunRenderStyle(style));
 
   // The color the material paints the mask with. Kept as the raw string so
   // that the per-frame samples of an animating neighbourhood gate on string

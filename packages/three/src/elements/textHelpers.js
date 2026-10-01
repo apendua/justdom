@@ -93,6 +93,19 @@ function round(value, precision = 100) {
 }
 
 /**
+ * A computed length in px, and 0 for anything that is not one. Computed
+ * borders and paddings are always px, which is what the boxes that draw
+ * text inside themselves read with it.
+ *
+ * @param {string} value
+ * @returns {number}
+ */
+export function px(value) {
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+/**
  * @param {string} value
  * @param {number} fontSize
  * @returns {number}
@@ -244,6 +257,24 @@ export function isTintableText(style) {
   const line = style.textDecorationLine || "none";
   const color = style.textDecorationColor || "currentcolor";
   return line === "none" || color === "currentcolor";
+}
+
+/**
+ * What a run is actually rasterized with. For tintable text the colours are
+ * pinned to white, so a colour change leaves every key of the style alone
+ * and the texture is never re-drawn: the glyphs become a mask, and the
+ * colour rides on the material. Text that cannot be a mask keeps its
+ * colours baked.
+ *
+ * @param {CSSStyleDeclaration} style
+ * @returns {TextRenderStyle}
+ */
+export function getRunRenderStyle(style) {
+  const renderStyle = getTextRenderStyle(style);
+  if (isTintableText(style)) {
+    return { ...renderStyle, color: "#ffffff", textDecorationColor: "#ffffff" };
+  }
+  return renderStyle;
 }
 
 /**

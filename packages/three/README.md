@@ -1111,6 +1111,52 @@ A letter never gets in, since a page's number field filters it before
 anything else happens. The draft goes when the app writes the value, `""`
 after a submit included.
 
+## Lists
+
+An `<li>` is drawn with its marker, the bullet or number a page draws in
+front of it. The marker follows the item's computed style:
+
+- `list-style-type` says what it is. `disc`, `circle`, `square`,
+  `disclosure-open` and `disclosure-closed` are glyphs. `decimal`,
+  `decimal-leading-zero`, `lower-alpha`, `upper-alpha`, `lower-latin`,
+  `upper-latin`, `lower-roman`, `upper-roman` and `lower-greek` are numbers
+  with a full stop after them. A string, `list-style-type: "→ "`, is drawn
+  as written. Any other style is drawn in decimal, and that includes a
+  page's own `@counter-style`. `none` draws nothing.
+- `list-style-position: outside`, the default, hangs the marker in the
+  list's padding on the item's first line. `inside` puts it at the start of
+  that line, where the browser has already moved the text over for it. An
+  item with `direction: rtl` has its marker on the right.
+- A `::marker` rule sets its colour and font, as on a page. Its `content`
+  is not followed.
+- The numbers follow `start` and `reversed` on the `<ol>` and `value` on an
+  `<li>`. An item whose `display` is not `list-item` has no marker and is
+  not counted.
+
+```css
+ol.steps {
+  padding-left: 1.75rem;
+}
+
+ol.steps li::marker {
+  color: #007bff;
+  font-weight: 600;
+}
+```
+
+Each item's number is one more than the number of the item before it, so
+appending a row numbers that row and leaves the rest of the list alone,
+however long it is. Inserting or removing a row renumbers the rows after it.
+A `reversed` list with no `start` renumbers every row on every append,
+because its first number is its length. An item with no marker builds
+nothing for one, so a list of app rows styled `list-style: none` costs what
+the same rows in a `<div>` do.
+
+Two things a page can do are not drawn. A `list-style-image` is drawn as
+the `list-style-type` under it. And an element other than `<li>` that a
+stylesheet makes `display: list-item` is drawn as a plain box, because the
+portal decides how to draw an element by its tag.
+
 ## Transforms
 
 A CSS `transform` (with its `transform-origin`) is mirrored onto the

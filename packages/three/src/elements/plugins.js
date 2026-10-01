@@ -47,8 +47,9 @@ export function isSvgRoot(node) {
 /**
  * Something that knows how to project a kind of element the portal does not.
  *
- * The portal draws boxes, text and checkboxes; everything else in the DOM is
- * a box as far as it can tell. A plugin is asked first, for every element
+ * The portal draws boxes, text, checkboxes, text fields and list items with
+ * their markers. Everything else in the DOM is a box as far as it can tell.
+ * A plugin is asked first, for every element
  * the portal is about to build, and answers with the object tree to mirror
  * the element with — or `null`, to say it is not one of its. The portal
  * then falls back to its own dispatch, with one exception: an element in

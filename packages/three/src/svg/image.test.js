@@ -101,9 +101,12 @@ function withDeferredPictures(texture, body) {
  * @param {Record<string, string>} attributes
  * @param {object} [options]
  * @param {string} [options.viewBox]
- * @param {Record<string, string>} [options.wrap] A `<g>` to put the image in.
+ * @param {Record<string, string>} [options.wrap] An element to put the image
+ *   in, as its attributes.
+ * @param {string} [options.wrapTag] What that element is: a `<g>`, or a
+ *   nested `<svg>`.
  */
-function setup(attributes, { viewBox, wrap } = {}) {
+function setup(attributes, { viewBox, wrap, wrapTag = "g" } = {}) {
   const root = document.createElementNS(SVG_NS, "svg");
   if (viewBox) {
     root.setAttribute("viewBox", viewBox);
@@ -117,13 +120,13 @@ function setup(attributes, { viewBox, wrap } = {}) {
   const mirror = createMirror();
   mirror.adopt(root);
   if (wrap) {
-    const g = document.createElementNS(SVG_NS, "g");
+    const wrapper = document.createElementNS(SVG_NS, wrapTag);
     for (const [name, value] of Object.entries(wrap)) {
-      g.setAttribute(name, value);
+      wrapper.setAttribute(name, value);
     }
-    g.appendChild(element);
-    root.appendChild(g);
-    mirror.adopt(g);
+    wrapper.appendChild(element);
+    root.appendChild(wrapper);
+    mirror.adopt(wrapper);
   } else {
     root.appendChild(element);
   }
@@ -365,44 +368,13 @@ describe("svg image", () => {
 
   test("a percentage inside a nested svg of auto size is of the viewport around it", () => {
     withLoadedPictures(fakeTexture(10, 10), () => {
-      const root = document.createElementNS(SVG_NS, "svg");
-      root.setAttribute("viewBox", "0 0 10 5");
-      root.getBoundingClientRect = () =>
-        /** @type {DOMRect} */ ({
-          left: 0,
-          top: 0,
-          right: 100,
-          bottom: 50,
-          width: 100,
-          height: 50,
-        });
-      const nested = document.createElementNS(SVG_NS, "svg");
-      const element = document.createElementNS(SVG_NS, "image");
-      for (const [name, value] of Object.entries({
-        href: PICTURE,
-        width: "50%",
-        height: "100%",
-        preserveAspectRatio: "none",
-      })) {
-        element.setAttribute(name, value);
-      }
-      nested.appendChild(element);
-      root.appendChild(nested);
-      document.body.appendChild(root);
-      const mirror = createMirror();
-      for (const node of [root, nested, element]) {
-        mirror.adopt(node);
-      }
-      /** @type {Object3D | undefined} */
-      let object;
-      const subscription = image({}, element).subscribe((value) => {
-        object = value;
-      });
-      assert.ok(object);
+      const s = setup(
+        { href: PICTURE, width: "50%", height: "100%", preserveAspectRatio: "none" },
+        { viewBox: "0 0 10 5", wrap: {}, wrapTag: "svg" },
+      );
       // The nested svg names no size, so it is the whole 10 by 5.
-      assert.deepEqual(bounds(/** @type {Mesh} */ (object.children[0])), [0, 0, 5, 5]);
-      subscription.unsubscribe();
-      root.remove();
+      assert.deepEqual(bounds(s.mesh), [0, 0, 5, 5]);
+      s.teardown();
     });
   });
 

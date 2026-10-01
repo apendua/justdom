@@ -192,6 +192,7 @@ describe("carriedPose", () => {
     const turnedHand = hand(place, QUARTER, { angle: -0.6 });
     const pose = carriedPose(grip, turnedHand);
     close(pose.yaw, board.yaw + QUARTER);
+    close(pose.turned, QUARTER, "how far it turned");
     // The whole grip turned a quarter turn about the vertical through the
     // hand, and the board hangs off the grab point turned the same way.
     const turnedGrabPoint = reach(turnedHand, distance);

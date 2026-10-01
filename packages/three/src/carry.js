@@ -154,11 +154,12 @@ export function beginCarry(hand, grabPoint, pose) {
  * hand turns about the vertical, so a twist of the wrist pivots the board on
  * the spot the cursor is holding rather than sweeping it sideways. The wrist's
  * roll and pitch never tilt it: they only steer where the ray, and with it the
- * grab point, goes.
+ * grab point, goes. `turned` is how far the hand has turned about the
+ * vertical since it closed, which is how far the thing has turned too.
  *
  * @param {Grip} grip
  * @param {THREE.Matrix4} hand
- * @returns {LevelPose}
+ * @returns {LevelPose & { turned: number }}
  */
 export function carriedPose(grip, hand) {
   const ray = rayOf(hand);
@@ -168,6 +169,7 @@ export function carriedPose(grip, hand) {
   return {
     position: grabPoint.add(offset),
     yaw: grip.yaw + turned,
+    turned,
   };
 }
 
@@ -293,9 +295,10 @@ export function applyLevelPose(object, pose) {
  *
  * Where `drag()` hands the object the hand's whole pose, this takes from the
  * hand only where it has got to and how far it has turned about the
- * vertical, and steers the object by the grab point, the spot the ray landed on when the hand
- * closed: see the top of this file. The object is not reparented; it is
- * posed, once a frame, from where the hand has got to.
+ * vertical, and steers the object by the grab point, the spot the ray
+ * landed on when the hand closed: see the top of this file. The object is
+ * not reparented; it is posed, once a frame, from where the hand has got
+ * to.
  *
  * The presses are taken by handles rather than by the carried object as a
  * whole, so that only furniture starts a carry: a board by its floor, a tray
@@ -338,7 +341,12 @@ export function carry(ctx, options = {}) {
    * thing is in the hand's frame, which has both in it.
    *
    * @typedef {CarryHold & { handle: Object3D } & (
-   *   | { grip: Grip; rotation: THREE.Quaternion; scale: THREE.Vector3; offset?: never }
+   *   | {
+   *       grip: Grip;
+   *       rotation: THREE.Quaternion;
+   *       scale: THREE.Vector3;
+   *       offset?: never;
+   *     }
    *   | { offset: THREE.Matrix4; grip?: never }
    * )} Holding
    */
@@ -462,9 +470,7 @@ export function carry(ctx, options = {}) {
             // The rotation it was taken with, turned as far about the
             // vertical as the hand has turned since: whatever tilt it had,
             // it keeps.
-            _quaternion
-              .setFromAxisAngle(upAxis, pose.yaw - current.grip.yaw)
-              .multiply(current.rotation);
+            _quaternion.setFromAxisAngle(upAxis, pose.turned).multiply(current.rotation);
             setWorldMatrix(entity, _matrix.compose(pose.position, _quaternion, current.scale));
           }
         });

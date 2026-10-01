@@ -12,6 +12,7 @@
  * stop. The drivers below then spend those frames a portal at a time.
  */
 import { InteractionContext, InteractionManager } from "../interactions.js";
+import { runFrame } from "../render.js";
 
 if (typeof globalThis.MutationObserver === "undefined") {
   globalThis.MutationObserver = window.MutationObserver;
@@ -82,11 +83,18 @@ globalThis.requestAnimationFrame = (callback) => frameCallbacks.push(callback);
 globalThis.cancelAnimationFrame = () => {};
 
 /**
- * Deliver every frame asked for so far.
+ * Deliver every frame asked for so far. Given a renderer, run one of its
+ * frames instead, for a panel built under `RendererContext`, whose frames
+ * come from the renderer rather than `requestAnimationFrame`.
  *
+ * @param {object} [renderer]
  * @returns {void}
  */
-export function flushFrame() {
+export function flushFrame(renderer) {
+  if (renderer) {
+    runFrame(/** @type {any} */ (renderer), 0, /** @type {any} */ ({}));
+    return;
+  }
   for (const callback of frameCallbacks.splice(0, frameCallbacks.length)) {
     callback(0);
   }
@@ -111,14 +119,19 @@ export function nextMacrotask() {
  * Given no portal, drives until nothing asks for another frame — for a
  * panel reached through `dom()`, which hands out no handle to ask.
  *
+ * Given a renderer, its frames are the ones driven (see `flushFrame`). A
+ * renderer does not say whether anything is waiting on its next frame, so
+ * the rounds after the load are all run.
+ *
  * @param {{ isLoading: () => boolean }} [portal]
+ * @param {object} [renderer]
  * @returns {Promise<void>}
  */
-export async function settle(portal) {
+export async function settle(portal, renderer) {
   await nextMacrotask();
   if (portal) {
     for (let index = 0; index < 500 && portal.isLoading(); index++) {
-      flushFrame();
+      flushFrame(renderer);
       await nextMacrotask();
     }
   }
@@ -128,8 +141,8 @@ export async function settle(portal) {
   // frame with work left queues its successor. Drain until a frame queues
   // nothing, so a test starts from a genuinely quiet panel.
   const rounds = portal ? 20 : 500;
-  for (let index = 0; index < rounds && frameCallbacks.length > 0; index++) {
-    flushFrame();
+  for (let index = 0; index < rounds && (renderer || frameCallbacks.length > 0); index++) {
+    flushFrame(renderer);
     await nextMacrotask();
   }
 }

@@ -14,7 +14,7 @@ import { acquireImage, releaseImage } from "./image.js";
 import { createPortal as createHeldPortal, getPortalRoot } from "./portal.js";
 import { withPanelOptions } from "./panelOptions.js";
 import { DEFAULT_HANDLE_WIDTH } from "./panelHandles.js";
-import { RendererContext, runFrame } from "../render.js";
+import { RendererContext } from "../render.js";
 import { recordingSource } from "../test/rumble.js";
 
 /**
@@ -3394,7 +3394,7 @@ describe("a draggable panel", () => {
       await nextMacrotask();
       height = 200;
 
-      runFrame(renderer, 0, /** @type {any} */ ({}));
+      flushFrame(renderer);
       await nextMacrotask();
       assert.equal(portal.isLoading(), true, "still mounting");
       const top = /** @type {THREE.Object3D} */ (parent.getObjectByName("panel-handle-top"));
@@ -3426,16 +3426,7 @@ describe("a draggable panel", () => {
     });
     const parent = new THREE.Group();
     portal.addTo(parent);
-    // Until it has loaded, and a few more for what the load queues: the
-    // ray targets register a round after it.
-    const tick = async () => {
-      for (let index = 0, after = 0; index < 50 && after < 5; index++) {
-        runFrame(renderer, 0, /** @type {any} */ ({}));
-        await nextMacrotask();
-        after += portal.isLoading() ? 0 : 1;
-      }
-    };
-    await tick();
+    await settle(portal, renderer);
     const frame = parent.children[0];
     const field = [...targets].find(
       (target) => !(target instanceof THREE.Mesh && target.geometry instanceof THREE.PlaneGeometry),

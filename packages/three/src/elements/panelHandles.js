@@ -17,8 +17,8 @@ import { $ } from "../operators.js";
  * strips along its edges. It is never picked up by what is on it, since a
  * press there means something else. The strips are the portal's, drawn
  * beside the panel rather than in its DOM, so a panel an app wrote does not
- * have to know it can be moved. The keyboard a field brings up is a panel too, and is moved
- * by the same strips.
+ * have to know it can be moved. The keyboard a field brings up is a panel
+ * too, and is moved by the same strips.
  *
  * They are not there until they are wanted. With no ray on the panel they
  * are invisible, though a ray finds them all the same; with a ray anywhere

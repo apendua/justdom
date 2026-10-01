@@ -680,9 +680,7 @@ describe("the picture a drag carries", () => {
       await settle(s.portal);
     }
     g.carry();
-    for (const { frame } of g.taken) {
-      assert.ok(isIn(frame, s.panel), "a picture of nothing, framed on a detached object");
-    }
+    assert.equal(g.taken.length, 0, "no picture of what the panel no longer draws");
     g.release();
     s.teardown();
   });

@@ -179,7 +179,10 @@ export const NO_SNAPSHOTS = { prepare: () => {}, take: () => null };
  * Pictures taken with `renderer`, or none without a WebGL renderer, as under
  * a test runner; the ghost is then the outline. Asked by three's own flag
  * rather than `instanceof`, which a second copy of three in an app would
- * fail. Each panel is prepared once.
+ * fail. A panel is prepared at every press, since a kind of element it
+ * did not have at its first, an image or a caret, brings a program of its
+ * own; three keys programs by their parameters, so for a panel whose kinds
+ * are all compiled already that is a walk and some cache lookups.
  *
  * @param {unknown} renderer
  * @returns {Snapshots}
@@ -189,15 +192,8 @@ export function snapshotsFor(renderer) {
     return NO_SNAPSHOTS;
   }
   const webgl = /** @type {THREE.WebGLRenderer} */ (renderer);
-  /** @type {WeakSet<THREE.Object3D>} */
-  const prepared = new WeakSet();
   return {
-    prepare(panel) {
-      if (!prepared.has(panel)) {
-        prepared.add(panel);
-        prepareSnapshot(webgl, panel);
-      }
-    },
+    prepare: (panel) => prepareSnapshot(webgl, panel),
     take: (panel, frame, box) => takeSnapshot(webgl, panel, frame, box),
   };
 }

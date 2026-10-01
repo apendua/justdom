@@ -164,7 +164,7 @@ describe("snapshotsFor", () => {
     assert.equal(snapshotsFor({}), NO_SNAPSHOTS);
   });
 
-  test("compiles a panel's programs once, as a snapshot would draw them", () => {
+  test("compiles a panel's programs as a snapshot would draw them", () => {
     const { renderer, calls, previousTarget, state } = recordingRenderer();
     const snapshots = snapshotsFor(renderer);
     const panel = new THREE.Group();
@@ -181,10 +181,9 @@ describe("snapshotsFor", () => {
       clearAlpha: 0.5,
       xr: true,
     });
+    // At every press, for what the panel has come to draw since its last.
     snapshots.prepare(panel);
-    assert.equal(calls.filter(([name]) => name === "compile").length, 1, "and only once");
-    snapshots.prepare(new THREE.Group());
-    assert.equal(calls.filter(([name]) => name === "compile").length, 2, "once per panel");
+    assert.equal(calls.filter(([name]) => name === "compile").length, 2);
   });
 
   test("takes pictures with the renderer it was given", () => {

@@ -731,9 +731,21 @@ export function buildTextMipmaps(canvas) {
  *   upload rounds every partially covered texel's color back to full white,
  *   so a coverage read from a color channel comes out aliased. Painted onto
  *   black, the color channels *are* the coverage, gradient and all.
+ * @param {number} [unitScale] How many CSS pixels one unit of `lines` and
+ *   `bounds` is drawn at: 1 for HTML text, whose layout is in CSS pixels, and
+ *   the scale of the matrices above an SVG `<text>`, whose layout is in user
+ *   units. Multiplied in after `renderScale` is capped, since the cap is on
+ *   how finely a panel is painted, and a user unit may be many CSS pixels.
  * @returns {TextTexture}
  */
-export const generateTextTexture = (lines, style, bounds, renderScale, mask = false) => {
+export const generateTextTexture = (
+  lines,
+  style,
+  bounds,
+  renderScale,
+  mask = false,
+  unitScale = 1,
+) => {
   const measuring = getMeasuringContext();
   measuring.font = style.font;
   const ascent = measureFontExtent("Mg", measuring, style.fontSize * 0.8, "Ascent");
@@ -754,7 +766,7 @@ export const generateTextTexture = (lines, style, bounds, renderScale, mask = fa
   const shadow = parseTextShadow(style.textShadow);
   const renderBleed = getRenderBleed(shadow);
   const textureBounds = getTextureBounds(normalizedBounds, renderBleed);
-  const dpr = getEffectiveScale(renderScale);
+  const dpr = getEffectiveScale(renderScale) * unitScale;
   const maxDimension = Math.max(textureBounds.width, textureBounds.height, 1);
   const textureScale = Math.min(1, MAX_TEXTURE_SIZE / (maxDimension * dpr));
   const effectiveDpr = dpr * textureScale;

@@ -28,7 +28,7 @@ import { applyClip, clipBoxEqual, intersectClipBoxes, toLocalClipBox } from "./c
 import { rectGeometry } from "./sdfRect.js";
 import { place, placeAndScale } from "./place.js";
 import { TextBatchContext } from "./textBatch.js";
-import { TextScaleContext } from "./textScale.js";
+import { readTextScale, TextScaleContext } from "./textScale.js";
 import { discardDraft, getCaretOffset, getShownValue, setCaretOffset } from "./typing.js";
 
 /**
@@ -560,7 +560,7 @@ function fieldContent(ctx, element, surface, focus, locator) {
       layout.lines,
       renderStyle,
       layout.bounds,
-      textScale ? textScale() : window.devicePixelRatio || 1,
+      readTextScale(textScale),
       tint.masked,
     );
   });

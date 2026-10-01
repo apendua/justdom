@@ -2,6 +2,7 @@ import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
 import { createMirror } from "../elements/mirror.js";
+import { PortalTemplatesContext } from "../elements/plugins.js";
 import { drawUse } from "./template.js";
 import { drawnRange, drawText } from "./text.js";
 
@@ -109,10 +110,16 @@ function installLayout() {
  * A root twice the size of its `viewBox` holding `content`, every node
  * adopted, and `draw` drawn through the entry point for it.
  *
+ * With `portalOrder`, only the root and `draw` are adopted up front, and the
+ * rest only when the drawing asks the portal's `PortalTemplatesContext` to
+ * adopt it, which is the order a portal builds a `<text>` in: the element
+ * first, its children after it.
+ *
  * @param {Element[]} content
  * @param {Element} draw
+ * @param {{ portalOrder?: boolean }} [options]
  */
-function scene(content, draw) {
+function scene(content, draw, { portalOrder = false } = {}) {
   const layout = installLayout();
   const root = svg("svg", { viewBox: "0 0 50 25" }, content);
   root.getBoundingClientRect = () =>
@@ -125,11 +132,16 @@ function scene(content, draw) {
     mirror.adopt(node);
     node.childNodes.forEach(adopt);
   };
-  root.childNodes.forEach(adopt);
+  if (portalOrder) {
+    mirror.adopt(draw);
+  } else {
+    root.childNodes.forEach(adopt);
+  }
+  const ctx = PortalTemplatesContext.set({}, adopt);
   /** @type {Object3D | undefined} */
   let object;
   const subscription = (
-    draw.localName === "use" ? drawUse({}, draw) : drawText({}, draw)
+    draw.localName === "use" ? drawUse(ctx, draw) : drawText(ctx, draw)
   ).subscribe((value) => {
     object = value;
   });
@@ -139,6 +151,7 @@ function scene(content, draw) {
     root,
     mirror,
     object: drawn,
+    /** One entry per range read: the `transform` the `<text>` had then. */
     transforms: layout.transforms,
     /** @returns {Mesh[]} */
     get meshes() {
@@ -265,6 +278,23 @@ describe("svg text", () => {
     s.teardown();
   });
 
+  test("a ray hits a run by its own fill, not the text's", () => {
+    const shown = svg("tspan", { x: "0", fill: "red" }, ["shown"]);
+    const unpainted = svg("text", { x: "0", y: "10", fill: "none" }, [shown]);
+    const s = scene([unpainted], unpainted);
+    s.object.updateMatrixWorld(true);
+    const raycaster = new THREE.Raycaster(new THREE.Vector3(1, 8, 1), new THREE.Vector3(0, 0, -1));
+    assert.equal(raycaster.intersectObject(s.object).length, 1, "the painted tspan is hit");
+    s.teardown();
+
+    const hidden = svg("tspan", { x: "0", fill: "none" }, ["none"]);
+    const painted = svg("text", { x: "0", y: "10", fill: "red" }, [hidden]);
+    const t = scene([painted], painted);
+    t.object.updateMatrixWorld(true);
+    assert.equal(raycaster.intersectObject(t.object).length, 0, "the unpainted tspan is not");
+    t.teardown();
+  });
+
   test("a fill of none draws nothing", () => {
     const text = svg("text", { x: "0", y: "10", fill: "none" }, ["A"]);
     const s = scene([text], text);
@@ -272,15 +302,50 @@ describe("svg text", () => {
     s.teardown();
   });
 
-  test("an edit to the characters measures the text again", () => {
+  test("an edit to the characters redraws that run, in the order a portal builds", () => {
+    const text = svg("text", { x: "0", y: "10", fill: "red" }, [
+      "A",
+      svg("tspan", { x: "20" }, ["B"]),
+    ]);
+    const s = scene([text], text, { portalOrder: true });
+    const [first, second] = s.meshes;
+    const before = materialOf(first).alphaMap;
+    const untouched = materialOf(second).alphaMap;
+    // The same width, so nothing but the characters says it changed.
+    const node = /** @type {Text} */ (text.firstChild);
+    node.data = "C";
+    s.mirror.characterDataChanged(node);
+    assert.equal(s.meshes[0], first, "the same mesh");
+    assert.notEqual(materialOf(first).alphaMap, before, "drawn again");
+    assert.equal(materialOf(second).alphaMap, untouched, "the other run is left alone");
+
+    const tspan = /** @type {Element} */ (text.lastElementChild);
+    tspan.setAttribute("x", "30");
+    s.mirror.attributeChanged(tspan);
+    assert.deepEqual(cornerOf(s.meshes[1]), [30, 7], "a tspan's own attribute is heard");
+    assert.equal(materialOf(s.meshes[1]).alphaMap, untouched, "a move is not a redraw");
+    s.teardown();
+  });
+
+  test("a restyle that changes nothing the layout reads measures nothing", () => {
     const text = svg("text", { x: "0", y: "10", fill: "red" }, ["A"]);
     const s = scene([text], text);
-    const before = s.meshes[0];
-    const node = /** @type {Text} */ (text.firstChild);
-    node.data = "Again";
-    s.mirror.characterDataChanged(node);
-    assert.notEqual(s.meshes[0], before, "a new run");
-    assert.equal(s.meshes.length, 1);
+    const reads = s.transforms.length;
+    // As the portal reports a hover: a flag of its own, which moves no layout.
+    text.setAttribute("data-xr-hover", "");
+    s.mirror.attributeChanged(text, { presentational: true, selfScoped: true });
+    assert.equal(s.transforms.length, reads);
+    s.teardown();
+  });
+
+  test("text inside an a is drawn like a tspan's", () => {
+    const text = svg("text", { x: "0", y: "10", fill: "red" }, [
+      svg("a", { href: "#somewhere", x: "20", fill: "blue" }, ["link"]),
+    ]);
+    const s = scene([text], text);
+    const [mesh] = s.meshes;
+    assert.ok(mesh, "the link's run");
+    assert.equal(materialOf(mesh).color.getHexString(), "0000ff");
     s.teardown();
   });
 

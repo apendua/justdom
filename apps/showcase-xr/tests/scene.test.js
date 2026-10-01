@@ -139,7 +139,7 @@ describe("the showcase in an emulated headset", { timeout: 180_000 }, () => {
   });
 
   test("the panels are drawn", () => {
-    // Five panels of white cards against a dark room: if the session came up
+    // Six panels of white cards against a dark room: if the session came up
     // empty, or the portal drew nothing, this is what notices.
     const ink = inkRatio(scene);
     assert.ok(ink > 0.15, `expected the scene to be covered in panels, got ${ink.toFixed(3)}`);
@@ -256,6 +256,45 @@ describe("the showcase in an emulated headset", { timeout: 180_000 }, () => {
     assert.ok(
       comparePng(restored, before, BASELINE).same,
       "turning it back did not put the scene back",
+    );
+  });
+
+  test("list markers are drawn", async () => {
+    // A marker is not in the DOM, so the portal draws it from the item's
+    // computed style. Turning the outside markers off with
+    // `list-style-type: none` moves no box and no text, since an outside
+    // marker takes no room, so the only pixels that can change are the
+    // markers' own: a scene that stays the same never drew them. An inside
+    // marker is left alone, because taking it away moves its line's text.
+    const before = await photographScene(showcase.page, { freeze: true });
+    const toggle = (/** @type {boolean} */ off) =>
+      showcase.page.evaluate((off) => {
+        const items = [...document.querySelectorAll("[data-xr-portal] li")].filter(
+          (item) =>
+            item instanceof HTMLElement && getComputedStyle(item).listStylePosition === "outside",
+        );
+        if (items.length === 0) {
+          throw new Error("no list items to take the markers off");
+        }
+        for (const item of items) {
+          /** @type {HTMLElement} */ (item).style.listStyleType = off ? "none" : "";
+        }
+      }, off);
+
+    await toggle(true);
+    await nextFrames(showcase.page, 10);
+    const bare = await photographScene(showcase.page, { freeze: true });
+    assert.ok(
+      !comparePng(bare, before, MOVEMENT).same,
+      "taking the lists' markers off changed nothing in the scene: none were drawn",
+    );
+
+    await toggle(false);
+    await nextFrames(showcase.page, 10);
+    const restored = await photographScene(showcase.page, { freeze: true });
+    assert.ok(
+      comparePng(restored, before, BASELINE).same,
+      "putting the markers back did not put the scene back",
     );
   });
 });

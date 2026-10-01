@@ -426,7 +426,16 @@ export class InteractionManager {
       // So only note that the ray is stale, and cast it from the frame hook.
       const onMove = invalidate;
 
+      // Whether three is tracking the hand, as of the last frame. Going
+      // either way is a reason to look again: nothing else says so, since
+      // three stops sending `move` for a hand it has stopped tracking, and
+      // the first `move` of one that comes back may be frames away.
+      let tracked = controller.visible;
       const stopAnimating = onAnimationFrame(() => {
+        if (controller.visible !== tracked) {
+          tracked = controller.visible;
+          invalidate();
+        }
         maybeUpdateIntersections();
       });
 
@@ -456,10 +465,27 @@ export class InteractionManager {
   }
 
   /**
+   * What the controller's ray meets first, of everything registered and
+   * drawn, or nothing.
+   *
+   * **A hand three is not tracking points at nothing**, wherever its space
+   * was left. three hides the target ray space of a controller that has not
+   * connected yet, one that has disconnected — every one of them, when a
+   * session ends — and one whose pose it lost this frame, and what it hides
+   * keeps the pose it last had. Casting from it would publish a hit and draw
+   * a cursor for a hand that is not there, and a press three still reports
+   * for it — a trigger pulled with the hand behind the back, or under the
+   * system menu — would land on whatever the stale ray met. Every cast comes
+   * through here, the hover's and the presses' alike, so the rule is kept
+   * here once.
+   *
    * @param {THREE.XRTargetRaySpace} controller
    * @returns {THREE.Intersection<THREE.Object3D<XREventMap>> | undefined}
    */
   getIntersection(controller) {
+    if (!controller.visible) {
+      return undefined;
+    }
     const raycaster = new THREE.Raycaster().setFromXRController(controller);
     /** @type {THREE.Intersection<THREE.Object3D<XREventMap>>[]} */
     const intersections = [];
@@ -649,7 +675,14 @@ export function setLocalMatrix(object, matrix) {
   object.updateMatrix();
 }
 
+/** Scratch for `setWorldMatrix`, which a carry calls once a frame. */
+const _local = new THREE.Matrix4();
+
 /**
+ * Put an object at a world matrix: one walk up the ancestors, for the
+ * parent's world matrix that turns it into a local one. `matrix` is left as
+ * it was, and nothing is allocated, so it is fit for a frame callback.
+ *
  * @param {THREE.Object3D} object
  * @param {THREE.Matrix4} matrix
  */
@@ -657,7 +690,7 @@ export function setWorldMatrix(object, matrix) {
   const { parent } = object;
   if (parent) {
     parent.updateWorldMatrix(true, false);
-    setLocalMatrix(object, parent.matrixWorld.clone().invert().multiply(matrix));
+    setLocalMatrix(object, _local.copy(parent.matrixWorld).invert().multiply(matrix));
   } else {
     setLocalMatrix(object, matrix);
   }

@@ -730,18 +730,22 @@ describe("svg shape", () => {
     root.remove();
   });
 
-  test("a nested svg is a group whose matrix is its viewport", () => {
+  /**
+   * The matrix a nested `<svg>`'s group carries, inside a root drawn 100 by
+   * 50 px.
+   *
+   * @param {Record<string, string>} attributes The nested `<svg>`'s.
+   * @param {string} [rootViewBox]
+   */
+  function nestedSvgMatrix(attributes, rootViewBox) {
     const root = document.createElementNS(SVG_NS, "svg");
+    if (rootViewBox) {
+      root.setAttribute("viewBox", rootViewBox);
+    }
     root.getBoundingClientRect = () =>
       /** @type {DOMRect} */ ({ left: 0, top: 0, right: 100, bottom: 50, width: 100, height: 50 });
     const inner = document.createElementNS(SVG_NS, "svg");
-    for (const [name, value] of Object.entries({
-      x: "10",
-      y: "20",
-      width: "40",
-      height: "20",
-      viewBox: "0 0 4 2",
-    })) {
+    for (const [name, value] of Object.entries(attributes)) {
       inner.setAttribute(name, value);
     }
     root.appendChild(inner);
@@ -755,9 +759,28 @@ describe("svg shape", () => {
       object = value;
     });
     assert.ok(object);
-    assert.deepEqual(matrix2d(object), [10, 0, 0, 10, 10, 20]);
+    const matrix = matrix2d(object);
     subscription.unsubscribe();
     root.remove();
+    return matrix;
+  }
+
+  test("a nested svg is a group whose matrix is its viewport", () => {
+    assert.deepEqual(
+      nestedSvgMatrix({ x: "10", y: "20", width: "40", height: "20", viewBox: "0 0 4 2" }),
+      [10, 0, 0, 10, 10, 20],
+    );
+  });
+
+  test("a nested svg of auto or percentage size fits its viewBox to the viewport around it", () => {
+    // No size: the whole 10 by 5 of the root's viewBox, which a 4 by 2
+    // viewBox fills at 2.5 times.
+    assert.deepEqual(nestedSvgMatrix({ viewBox: "0 0 4 2" }, "0 0 10 5"), [2.5, 0, 0, 2.5, 0, 0]);
+    // Half the width, all the height: 5 by 5, met at 1.25 and centred on y.
+    assert.deepEqual(
+      nestedSvgMatrix({ width: "50%", viewBox: "0 0 4 2" }, "0 0 10 5"),
+      [1.25, 0, 0, 1.25, 0, 1.25],
+    );
   });
 
   test("teardown disposes what it made", () => {

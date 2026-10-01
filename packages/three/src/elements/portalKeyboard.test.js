@@ -7,7 +7,7 @@ import { createPortal as createHeldPortal } from "./portal.js";
 import { withPanelOptions } from "./panelOptions.js";
 import { createKeyboardSlot, disposeKeyboardSlot, KeyboardSlotContext } from "./keyboardSlot.js";
 import { CameraContext, RendererContext, SceneContext } from "../render.js";
-import { HANDLE_OPACITY_ACTIVE, HANDLE_OPACITY_NEAR } from "./keyboardHandles.js";
+import { HANDLE_OPACITY_ACTIVE, HANDLE_OPACITY_NEAR } from "./panelHandles.js";
 import { stubCanvas } from "../test/stubCanvas.js";
 import { rectGeometry } from "./sdfRect.js";
 import { CARET_BLINK_MS } from "./textInput.js";
@@ -998,11 +998,10 @@ describe("the keyboard's handles", () => {
     panel.press(panel.fieldObject());
     await settle();
     const anchor = scene.children[0];
-    const strip = (/** @type {string} */ side) =>
-      anchor?.getObjectByName(`keyboard-handle-${side}`);
+    const strip = (/** @type {string} */ side) => anchor?.getObjectByName(`panel-handle-${side}`);
     const bar = (/** @type {string} */ side) =>
       /** @type {THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicMaterial> | undefined} */ (
-        anchor?.getObjectByName(`keyboard-handle-${side}-bar`)
+        anchor?.getObjectByName(`panel-handle-${side}-bar`)
       );
     const controller = new THREE.Group();
     /**
@@ -1025,6 +1024,14 @@ describe("the keyboard's handles", () => {
         }),
       );
     };
+    /**
+     * The board's panel itself, beside the strips in the frame they carry
+     * it by.
+     */
+    const board = () =>
+      /** @type {THREE.Object3D} */ (
+        strip("top")?.parent?.parent?.children.find((child) => child.name !== "panel-handles")
+      );
     return {
       slot,
       scene,
@@ -1033,6 +1040,7 @@ describe("the keyboard's handles", () => {
       anchor,
       strip,
       bar,
+      board,
       dispatch,
       reopen: async () => {
         panel.created[panel.created.length - 1].onKey({ key: "Escape" });
@@ -1068,7 +1076,7 @@ describe("the keyboard's handles", () => {
 
   test("go idle when the ray leaves, however far it drifted within a key first", async () => {
     const b = await openBoard();
-    const key = b.anchor.children[0].children[0];
+    const key = b.board();
     // A key is a background quad and a label quad, and a ray that arrived on
     // the one and drifted onto the other leaves from the other: the manager
     // says enter and leave per key, and names whichever mesh was met last.
@@ -1091,7 +1099,7 @@ describe("the keyboard's handles", () => {
 
   test("show faintly with a ray on the board, and fully on the one it is on", async () => {
     const b = await openBoard();
-    const onBoard = b.anchor.children[0].children[0];
+    const onBoard = b.board();
 
     b.dispatch("pointerenter", onBoard);
     for (const side of SIDES) {
@@ -1161,14 +1169,15 @@ describe("the keyboard's handles", () => {
     b.cleanup();
   });
 
-  test("are not there with `draggable: false`, nor below a panel", async () => {
+  test("cannot be turned off, and are not there below a panel", async () => {
+    // @ts-expect-error The board is always draggable in the room.
     const fixed = await openBoard({ draggable: false });
-    assert.equal(fixed.strip("top"), undefined);
+    assert.ok(fixed.strip("top"), "still there");
     fixed.cleanup();
 
     const below = await openBoard({ placement: "panel" });
     assert.equal(below.anchor, undefined, "nothing in the room");
-    assert.equal(hinge(below.panel.parent).getObjectByName("keyboard-handle-top"), undefined);
+    assert.equal(hinge(below.panel.parent).getObjectByName("panel-handle-top"), undefined);
     below.cleanup();
   });
 

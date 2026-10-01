@@ -1621,7 +1621,7 @@ const reflowContextCache = nodeCache();
  * @param {Node} node
  * @returns {number}
  */
-function getReflowContext(node) {
+export function getReflowContext(node) {
   let signal = reflowContextCache.get(node);
   if (!signal) {
     signal = new Derived(() => {
@@ -1661,6 +1661,28 @@ function getReflowContext(node) {
       return sum;
     });
     reflowContextCache.set(node, signal);
+  }
+  return signal.get();
+}
+
+/** @type {WeakMap<Text, Derived<string>>} */
+const textDataCache = nodeCache();
+
+/**
+ * A text node's characters, as a dependency on its own character data, for a
+ * reader that measures the text some other way than `getTextLayout` does.
+ *
+ * @param {Text} text
+ * @returns {string}
+ */
+export function getTextDataCached(text) {
+  let signal = textDataCache.get(text);
+  if (!signal) {
+    signal = new Derived(() => {
+      recordOf(text)?.character.get();
+      return text.data;
+    });
+    textDataCache.set(text, signal);
   }
   return signal.get();
 }

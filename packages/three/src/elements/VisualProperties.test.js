@@ -142,6 +142,16 @@ describe("VisualProperties border colour", () => {
     assert.equal(properties.borderAlpha, 1);
   });
 
+  test("a box whose only border is transparent draws none", () => {
+    // The tab that is not chosen: the same underline, transparent.
+    const properties = propertiesOf({
+      color: "rgb(51, 51, 51)",
+      borderBottom: "2px solid transparent",
+    });
+    assert.equal(properties.borderBottomWidth, 2);
+    assert.equal(properties.borderAlpha, 0);
+  });
+
   test("a border all round is drawn in its colour", () => {
     const properties = propertiesOf({ border: "2px solid rgb(0, 123, 255)" });
     assert.equal(properties.borderColor.getHex(), asThreeWouldParse("rgb(0, 123, 255)"));
@@ -156,7 +166,7 @@ describe("VisualProperties colours", () => {
   });
 
   test("reads a border colour as sRGB, with its alpha", () => {
-    const properties = propertiesOf({ borderColor: "rgba(255, 210, 31, 0.5)" });
+    const properties = propertiesOf({ border: "2px solid rgba(255, 210, 31, 0.5)" });
     assert.equal(properties.borderColor.getHex(), asThreeWouldParse("rgb(255, 210, 31)"));
     assert.equal(properties.borderAlpha, 0.5);
   });

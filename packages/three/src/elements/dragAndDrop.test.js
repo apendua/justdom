@@ -297,6 +297,38 @@ describe("drag and drop in a panel", () => {
     s.teardown();
   });
 
+  test("a press after a drag is a click, even one whose mousedown is cancelled", async () => {
+    // A page cancels `mousedown` to keep the focus in a field; the press is
+    // still a click. The drag before it must not swallow it.
+    const s = await sortableList();
+    s.aim(150, 20);
+    s.trigger("selectstart");
+    s.aim(150, 160);
+    s.trigger("selectend");
+
+    s.rows[1].addEventListener("mousedown", (event) => event.preventDefault());
+    s.aim(150, 60);
+    s.events.length = 0;
+    s.trigger("selectstart");
+    s.trigger("selectend");
+    assert.deepEqual(s.events, ["mousedown b", "mouseup b", "click b"]);
+    s.teardown();
+  });
+
+  test("the control a drag ends on is hovered on the next move", async () => {
+    const s = await sortableList();
+    const b = s.rows[1];
+    s.aim(150, 20);
+    s.trigger("selectstart");
+    s.aim(150, 60);
+    s.trigger("selectend");
+    assert.equal(b.dataset.xrHover, undefined, "not under the drag");
+
+    s.aim(152, 61);
+    assert.equal(b.dataset.xrHover, "true", "as a page's :hover catches up on the next move");
+    s.teardown();
+  });
+
   test("a press that does not travel is a click", async () => {
     const s = await sortableList();
 

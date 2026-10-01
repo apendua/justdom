@@ -1428,9 +1428,10 @@ function buildPortal(ctx, ownOptions = {}) {
     // mounting would stay pointable until something else happened to restyle.
     // `draggable` is here for the same reason: it makes an element a ray
     // target (see `isDragSource`), and a page that lets a row be picked up
-    // only in an edit mode sets it after mounting. `value` and `placeholder` are for the text field, whose drawn text
-    // follows both; the `value` property, which the attribute stops
-    // reflecting once anything has been typed, is followed another way.
+    // only in an edit mode sets it after mounting. `value` and
+    // `placeholder` are for the text field, whose drawn text follows both;
+    // the `value` property, which the attribute stops reflecting once
+    // anything has been typed, is followed another way.
     attributeFilter: [
       "data-xr-hover",
       "data-xr-active",

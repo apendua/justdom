@@ -243,7 +243,8 @@ export function text(ctx, textNode) {
         // an element's `opacity` fades its text with the rest of it.
         effects((obj) => {
           const material = /** @type {THREE.MeshBasicMaterial} */ (obj.material);
-          const opacity = getOpacity(textNode);
+          const parentElement = getParentElement(textNode);
+          const opacity = parentElement ? getOpacity(parentElement) : 1;
           if (tint.masked) {
             const [color, alpha] = parseColor(tint.color);
             material.color.copy(color);

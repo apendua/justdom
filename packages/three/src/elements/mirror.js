@@ -1909,14 +1909,16 @@ export function isVisibilityHidden(node) {
  * Forgotten with the node, since the product ends at whichever panel's top
  * the node is under, and a node claimed again may be under another.
  *
- * @type {WeakMap<Element | Text, Derived<number>>}
+ * @type {WeakMap<Element, Derived<number>>}
  */
 const opacityCache = nodeCache();
 
 /**
- * How opaque this node is drawn: its own `opacity` times every ancestor's,
- * up to and including the panel's top. For a text node it is its parent's,
- * which is where a text node's style comes from.
+ * How opaque this element is drawn: its own `opacity` times every
+ * ancestor's, up to and including the panel's top. A run of text is drawn
+ * as opaque as its parent element, which is where its style comes from;
+ * `text.js` asks the parent rather than giving each run a signal of its
+ * own that would only forward the parent's.
  *
  * `opacity` does not inherit, but it fades everything inside the element
  * all the same: a browser paints the subtree into a layer of its own and
@@ -1929,32 +1931,28 @@ const opacityCache = nodeCache();
  * opacity the page puts on a wrapper around the panel is the page's
  * business, not the panel's.
  *
- * One signal per node, reading its own style and its parent's product, so
+ * One signal per element, reading its own style and its parent's product, so
  * the product is worked out once per element rather than once per element
  * per ancestor. It is behind an equality gate like `isVisibilityHidden`:
  * the computed style is invalidated by every hover, and a hover that does
  * not change an opacity stops here rather than re-running the subtree.
  *
- * @param {Element | Text} node
+ * @param {Element} element
  * @returns {number}
  */
-export function getOpacity(node) {
-  let signal = opacityCache.get(node);
+export function getOpacity(element) {
+  let signal = opacityCache.get(element);
   if (!signal) {
     signal = new Derived(() => {
-      if (node.nodeType === Node.TEXT_NODE) {
-        const parent = getParentElement(node);
-        return parent ? getOpacity(parent) : 1;
-      }
-      const own = parseFloat(getComputedStyleCached(node).opacity);
+      const own = parseFloat(getComputedStyleCached(element).opacity);
       const opacity = Number.isNaN(own) ? 1 : own;
-      if (/** @type {Element} */ (node).hasAttribute(PORTAL_ATTRIBUTE)) {
+      if (element.hasAttribute(PORTAL_ATTRIBUTE)) {
         return opacity;
       }
-      const parent = getParentElement(node);
+      const parent = getParentElement(element);
       return parent ? opacity * getOpacity(parent) : opacity;
     });
-    opacityCache.set(node, signal);
+    opacityCache.set(element, signal);
   }
   return signal.get();
 }

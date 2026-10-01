@@ -101,13 +101,15 @@ hand drifting from the one onto the other gets a `pointermove`, not a
 `pointerleave` and a `pointerenter`; a press on the label released on the
 background is a `select`. Every event says which `controller` it came from
 and which `inputSource` three connected to it, so what is pointed at can
-reach the hand's gamepad. A pointer event's is null until something
-connects, which is a controller under a test. A pointer event also names
-the registered object its hit belongs to, as `registeredTarget`, since
-`originalTarget` is the mesh and `target` is, as three's dispatcher writes
-it, the object whose listener is running; and `pointerenter` and
-`pointerleave` carry `relatedTarget`, as the web's do: the registered
-object the ray was on before, or is on now, or null for nothing.
+reach the hand's gamepad. A pointer event's `inputSource` is null while
+nothing is connected: a controller under a test, and the `pointerleave` a
+hand gets once three has disconnected it, which every hand gets when a
+session ends. A pointer event also names the registered object its hit
+belongs to, as `registeredTarget`, since `originalTarget` is the mesh and
+`target` is, as three's dispatcher writes it, the object whose listener is
+running; and `pointerenter` and `pointerleave` carry `relatedTarget`, as
+the web's do: the registered object the ray was on before, or is on now, or
+null for nothing.
 
 **Hiding something takes it out of the raycast**, as it takes it out of the
 draw: `object.visible = false` on anything — the ray target itself, a group
@@ -137,6 +139,18 @@ on. One appears per hand that is pointing at something interactive and goes away
 with the hit. `object` is cloned rather than added, so its geometry and
 materials are shared between hands; `scale` multiplies whatever scale it already
 carries.
+
+**A hand three is not tracking points at nothing.** three hides a
+controller's target ray space before it connects, after it disconnects —
+every one of them when a session ends — and for any frame it has lost the
+pose, and leaves the space where it last was. The manager casts no ray from a
+hidden space, for the hover or for a press, and looks again the frame its
+visibility changes, since three sends no `move` to say so. A trigger pulled
+by such a hand presses nothing, and one let go after the hand was lost is a
+`selectmissed`, as a release off the button is. Without that, a session's
+last hits stayed on the page after it ended, with a cursor on each and the
+hover still on whatever they were on, and a page drawn before any session
+had a cursor where the two idle controllers, at the origin, were looking.
 
 The ray each controller draws is cut at the same hit, so it stops at the
 surface instead of disappearing into it, and stretches back out to a fixed

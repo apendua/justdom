@@ -229,6 +229,32 @@ describe("pointer events", () => {
     assert.deepEqual(registered, [button, button, button]);
     subscription.unsubscribe();
   });
+
+  test("a hand three stops tracking leaves what it was on", () => {
+    const manager = new InteractionManager();
+    const controller = fakeController();
+    const loop = fakeFrameLoop();
+    const subscription = manager.addController(controller, loop.onAnimationFrame).subscribe();
+    const { button } = labelledButton();
+    manager.add(button);
+
+    /** @type {string[]} */
+    const events = [];
+    for (const type of /** @type {const} */ (["pointerenter", "pointerleave"])) {
+      button.addEventListener(type, () => events.push(type));
+    }
+
+    loop.run();
+    assert.deepEqual(events, ["pointerenter"]);
+
+    // A session ending, or a controller put down: hidden where it stands,
+    // with no "move" after it. A hover left standing here is a button that
+    // stays lit for a hand that has gone.
+    controller.visible = false;
+    loop.run();
+    assert.deepEqual(events, ["pointerenter", "pointerleave"]);
+    subscription.unsubscribe();
+  });
 });
 
 describe("select", () => {
@@ -254,6 +280,42 @@ describe("select", () => {
     controller.dispatchEvent(/** @type {any} */ ({ type: "selectend", data: {} }));
 
     assert.deepEqual(events, ["select"]);
+    subscription.unsubscribe();
+  });
+
+  test("a hand three is not tracking presses nothing, and a hand lost mid-press misses", () => {
+    const manager = new InteractionManager();
+    const controller = fakeController();
+    const subscription = connect(manager, controller);
+    const { button } = labelledButton();
+    manager.add(button);
+
+    /** @type {string[]} */
+    const events = [];
+    for (const type of /** @type {const} */ ([
+      "selectstart",
+      "selectend",
+      "select",
+      "selectmissed",
+    ])) {
+      button.addEventListener(type, () => events.push(type));
+    }
+
+    // three reports presses from the session's input sources whether or not
+    // the frame had a pose for the hand: a trigger pulled behind the back, or
+    // under the system menu. The ray it would be cast along is a stale one.
+    controller.visible = false;
+    controller.dispatchEvent(/** @type {any} */ ({ type: "selectstart", data: {} }));
+    controller.dispatchEvent(/** @type {any} */ ({ type: "selectend", data: {} }));
+    assert.deepEqual(events, []);
+
+    // Pressed while tracked, let go after the hand was lost: not a click from
+    // where the hand last was, but a release that went nowhere.
+    controller.visible = true;
+    controller.dispatchEvent(/** @type {any} */ ({ type: "selectstart", data: {} }));
+    controller.visible = false;
+    controller.dispatchEvent(/** @type {any} */ ({ type: "selectend", data: {} }));
+    assert.deepEqual(events, ["selectstart", "selectend", "selectmissed"]);
     subscription.unsubscribe();
   });
 

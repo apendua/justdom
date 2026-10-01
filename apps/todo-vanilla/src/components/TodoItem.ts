@@ -1,16 +1,66 @@
-import { className, text, $, children, style, stylesheet, CLASS_NAME } from "@apendua/justdom";
+import {
+  attr,
+  className,
+  text,
+  $,
+  children,
+  style,
+  stylesheet,
+  CLASS_NAME,
+} from "@apendua/justdom";
 import { store, on, set, emit, Op, component } from "@apendua/signal";
 
-const itemStyle = className`
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 0.5rem;
-  border-bottom: 1px solid #eee;
-  background: white;
-  margin-bottom: 0.25rem;
-  border-radius: 4px;
-  box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+// While a row is dragged, the row it would land next to shows a blue band
+// along the edge it would land on (see `TodoApp`), and the row being carried
+// greys out until it is let go. Both are drawn with what a panel mirrors:
+// a gradient for the band, since a panel draws one border colour for the
+// whole box, and colours for the carried row, since a panel's `opacity`
+// fades a box and not what is inside it. Classes rather than data
+// attributes, because a class is what a panel follows a restyle by.
+// `!important` because a row's hatch is an inline style.
+const itemStyle = stylesheet`
+  .${CLASS_NAME} {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.5rem;
+    border-bottom: 1px solid #eee;
+    background: white;
+    margin-bottom: 0.25rem;
+    border-radius: 4px;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+  }
+
+  .${CLASS_NAME}.drop-before {
+    background-image: linear-gradient(to bottom, #007bff 0 4px, transparent 4px) !important;
+  }
+
+  .${CLASS_NAME}.drop-after {
+    background-image: linear-gradient(to top, #007bff 0 4px, transparent 4px) !important;
+  }
+
+  .${CLASS_NAME}.dragging {
+    background-color: #dfe6ef;
+    color: #8a8f98;
+  }
+`;
+
+// What a row is picked up by: the browser's drag and drop on the page, and
+// the same events from a controller ray in a headset. A handle rather than
+// the whole row, so that a press anywhere else on a row still ticks it,
+// deletes it or scrolls the list.
+const handleStyle = stylesheet`
+  .${CLASS_NAME} {
+    flex-shrink: 0;
+    padding: 0 0.25rem;
+    color: #9aa3b0;
+    cursor: grab;
+    user-select: none;
+  }
+
+  .${CLASS_NAME}:hover, .${CLASS_NAME}[data-xr-hover] {
+    color: #007bff;
+  }
 `;
 
 /**
@@ -108,8 +158,14 @@ const TodoItem = component((_: WeakKey, id: string, operators: Op<TodoProps, Tod
 
   return $("li", [
     set("className", itemStyle),
+    attr({ "data-id": id }),
     style("backgroundImage", () => (props.completed ? completedBackground : "none")),
     children(
+      $("span", [
+        set("className", handleStyle),
+        set({ draggable: true, title: "Drag to reorder" }),
+        children(text`≡`),
+      ]),
       $("input", [
         set("className", checkboxStyle),
         set({

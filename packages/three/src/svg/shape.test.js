@@ -5,6 +5,7 @@ import { InteractionContext, intersectVisible } from "../interactions.js";
 import { createMirror } from "../elements/mirror.js";
 import { setContentGroup } from "../elements/contentGroup.js";
 import { getControlRoot } from "../elements/pointerForwarding.js";
+import { OBSERVER_OPTIONS } from "../elements/portal.js";
 import { group, shape } from "./shape.js";
 
 /**
@@ -19,12 +20,35 @@ if (typeof globalThis.DOMParser === "undefined") {
   globalThis.DOMParser = window.DOMParser;
 }
 
+/**
+ * A mirror fed by an observer watching `root` as a portal watches its
+ * container, so a write reaches the shapes only if a portal would have
+ * reported it. `flush` hands the observer's records to the mirror there and
+ * then, where a portal would wait for the observer's microtask.
+ *
+ * @param {Element} root
+ */
+function observedMirror(root) {
+  const mirror = createMirror();
+  const observer = new window.MutationObserver(() => {});
+  observer.observe(root, OBSERVER_OPTIONS);
+  return {
+    mirror,
+    flush() {
+      mirror.ingest(observer.takeRecords());
+    },
+    disconnect() {
+      observer.disconnect();
+    },
+  };
+}
+
 const SVG_NS = "http://www.w3.org/2000/svg";
 
 /**
  * A shape inside an `<svg>` root, wired the way the portal wires one: the
  * root's box measured by a stub, since jsdom lays nothing out, and a mirror
- * standing in for the portal's own so an attribute change can be announced.
+ * fed by an observer watching what a portal's watches.
  *
  * @param {string} tag
  * @param {Record<string, string>} attributes
@@ -61,7 +85,7 @@ function setup(tag, attributes, { viewBox, width = 100, height = 50, manager } =
   root.appendChild(element);
   document.body.appendChild(root);
 
-  const mirror = createMirror();
+  const { mirror, flush, disconnect } = observedMirror(root);
   mirror.adopt(root);
   mirror.adopt(element);
 
@@ -76,6 +100,7 @@ function setup(tag, attributes, { viewBox, width = 100, height = 50, manager } =
     root,
     element,
     mirror,
+    flush,
     subscription,
     get object() {
       return object;
@@ -94,10 +119,11 @@ function setup(tag, attributes, { viewBox, width = 100, height = 50, manager } =
       } else {
         element.setAttribute(name, value);
       }
-      mirror.attributeChanged(element);
+      flush();
     },
     teardown() {
       subscription.unsubscribe();
+      disconnect();
       root.remove();
     },
   };
@@ -471,7 +497,7 @@ describe("svg shape", () => {
     second.setAttribute("fill", "red");
     root.append(first, second);
     document.body.appendChild(root);
-    const mirror = createMirror();
+    const { mirror, flush, disconnect } = observedMirror(root);
     mirror.adopt(root);
     mirror.adopt(first);
     mirror.adopt(second);
@@ -486,7 +512,7 @@ describe("svg shape", () => {
       /** @type {Mesh[]} */ (object.children.filter((child) => child instanceof THREE.Mesh));
 
     first.setAttribute("fill", "blue");
-    mirror.attributeChanged(first);
+    flush();
     // The fill mesh arrived after the stroke's, so it is the later child;
     // tell them apart by colour rather than by position.
     const firstMeshes = meshesOf(objects[0]);
@@ -526,6 +552,7 @@ describe("svg shape", () => {
     for (const subscription of subscriptions) {
       subscription.unsubscribe();
     }
+    disconnect();
     root.remove();
   });
 
@@ -592,7 +619,7 @@ describe("svg shape", () => {
     g.appendChild(rect);
     root.appendChild(g);
     document.body.appendChild(root);
-    const mirror = createMirror();
+    const { mirror, flush, disconnect } = observedMirror(root);
     for (const node of [root, g, rect]) {
       mirror.adopt(node);
     }
@@ -618,7 +645,7 @@ describe("svg shape", () => {
     // Every frame of a transform animation on the group, in miniature.
     // `translate(20 5) rotate(90)`, as computed.
     g.setAttribute("style", "transform: matrix(0, 1, -1, 0, 20, 5)");
-    mirror.attributeChanged(g);
+    flush();
     assert.deepEqual(matrix2d(groupObject), [0, 1, -1, 0, 20, 5]);
     assert.deepEqual(
       meshes.map((mesh) => mesh.geometry),
@@ -644,6 +671,7 @@ describe("svg shape", () => {
     for (const subscription of subscriptions) {
       subscription.unsubscribe();
     }
+    disconnect();
     root.remove();
   });
 
@@ -969,7 +997,7 @@ describe("svg shape as a ray target", () => {
     // (60, 60) of a root 50px tall, so its lower part is outside the root.
     const s = setup("rect", SQUARE, { viewBox: "0 0 50 25", width: 100, height: 50 });
     s.root.style.overflow = "hidden";
-    s.mirror.attributeChanged(s.root);
+    s.flush();
     const [fill] = s.meshes;
     // The shape's object carries none of the viewport; place it as the
     // root's content group would.

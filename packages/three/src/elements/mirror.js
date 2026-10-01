@@ -98,6 +98,28 @@ import { clipBoxEqual, intersectClipBoxes, toLocalClipBox, UNCLIPPED } from "./c
 export const PORTAL_ATTRIBUTE = "data-xr-portal";
 
 /**
+ * Set on a portal's container element while its initial mount is running,
+ * from the first content the observer reports to the load, and taken off
+ * when it is done. `document.querySelector("[data-xr-loading]")` then asks
+ * whether any panel is still on its way, for a caller that has the page and
+ * not the handles. A portal that has been given nothing to mount never
+ * carries it: it is not on its way anywhere, and a harness waiting on the
+ * attribute must not wait on that.
+ */
+export const LOADING_ATTRIBUTE = "data-xr-loading";
+
+/**
+ * The portal's own markers on its container. The portal observes every
+ * attribute in its tree, and these are the two it writes there itself, to
+ * tell the page where a panel is and whether it has loaded. No stylesheet
+ * is meant to key on them, so the ingest drops them like a value written
+ * again unchanged. The container is an ancestor of every element in the
+ * panel, and treating either as an author's attribute would restyle and
+ * re-measure the whole panel, twice for every mount.
+ */
+const PORTAL_BOOKKEEPING_ATTRIBUTES = new Set([PORTAL_ATTRIBUTE, LOADING_ATTRIBUTE]);
+
+/**
  * The attributes the portal writes onto elements itself, to say what the ray
  * is doing to them: hovering, pressing, and — for a checkbox, whose state no
  * mutation would otherwise report — ticked.
@@ -664,7 +686,7 @@ export class DomMirror {
       let presentational = true;
       let selfScoped = true;
       for (const [name, oldValue] of names) {
-        if (element.getAttribute(name) === oldValue) {
+        if (element.getAttribute(name) === oldValue || PORTAL_BOOKKEEPING_ATTRIBUTES.has(name)) {
           continue;
         }
         changed = true;
@@ -1744,6 +1766,41 @@ export function getComputedStyleCached(element, pseudoElement = null) {
       },
     );
     signalMap.set(pseudoElement, signal);
+  }
+  return signal.get();
+}
+
+/** @type {WeakMap<Element, Map<string, Derived<string | null>>>} */
+const attributeCache = nodeCache();
+
+/**
+ * An attribute's value, as a dependency on the element's own attribute
+ * signal. Unlike computed style this is a plain string, so a write to some
+ * other attribute on the element re-reads it and stops here when the value
+ * did not change.
+ *
+ * For an attribute with no CSS form (`viewBox`, `preserveAspectRatio`,
+ * `points`, `x1` and the others the browser does not expose as a property),
+ * this is the only way to follow it: reading computed style would pick up
+ * the same signal, but only as a side effect.
+ *
+ * @param {Element} element
+ * @param {string} name
+ * @returns {string | null}
+ */
+export function getAttributeCached(element, name) {
+  let signalMap = attributeCache.get(element);
+  if (!signalMap) {
+    signalMap = new Map();
+    attributeCache.set(element, signalMap);
+  }
+  let signal = signalMap.get(name);
+  if (!signal) {
+    signal = new Derived(() => {
+      recordOf(element)?.self.get();
+      return element.getAttribute(name);
+    });
+    signalMap.set(name, signal);
   }
   return signal.get();
 }

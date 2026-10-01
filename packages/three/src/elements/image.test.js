@@ -187,9 +187,9 @@ describe("getImageSource", () => {
   });
 
   test("the URL is re-read when the image announces itself", () => {
-    // `src` is not in the portal's attributeFilter, so the load event is the
-    // whole invalidation story: swap the source and the element says so a
-    // moment later, with `currentSrc` settled.
+    // The load event is the whole invalidation story, with no portal and no
+    // observer: swap the source and the element says so a moment later, with
+    // `currentSrc` settled.
     const { node } = element("img");
     const image = /** @type {HTMLImageElement} */ (node);
     image.src = RED_DOT;

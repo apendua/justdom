@@ -1,9 +1,13 @@
 import * as THREE from "three";
-import { addDependency, Derived, effects, fromEvent, just, onCleanup, set } from "@apendua/signal";
+import { Derived, effects, just, onCleanup, set } from "@apendua/signal";
 import { $, children } from "../operators.js";
 import { applyClip, clipRaycast } from "../elements/clip.js";
 import { acquireImage, releaseImage } from "../elements/image.js";
-import { getComputedStyleCached, isVisibilityHidden } from "../elements/mirror.js";
+import {
+  getAttributeCached,
+  getComputedStyleCached,
+  isVisibilityHidden,
+} from "../elements/mirror.js";
 import { place } from "../elements/place.js";
 import { matrixEqual, parsePreserveAspectRatio, viewportMatrix } from "./geometry.js";
 import {
@@ -42,9 +46,6 @@ import { parseLengthIn, parsePointerEvents, readProperty } from "./style.js";
  * An `<image>` whose `href` is an SVG file is a bitmap of that file, as an
  * `<img>` is. Nothing inside it is reachable from CSS or from the portal.
  */
-
-/** The namespace of the legacy `xlink:href`. */
-const XLINK_NAMESPACE = "http://www.w3.org/1999/xlink";
 
 /**
  * Where a picture lands in user space and which part of it shows.
@@ -188,21 +189,16 @@ export function buildImageGeometry(quad) {
  * The URL an `<image>` shows, resolved against the document so that it
  * names the same cache entry an `<img>` with the same picture does.
  *
- * `href` is an attribute and not a CSS property, and it is not in the
- * portal's `attributeFilter`. An `<image>` announces a new picture the way
- * an `<img>` does, with `load` or `error`, so both events are dependencies
- * and a swapped `href` is re-read when the picture it names arrives.
+ * `href` is an attribute and not a CSS property, so it is read as one, a
+ * dependency of its own: a swapped `href` is re-read when it is written.
+ * The legacy `xlink:href` is read by its qualified name, as SVG files
+ * write it.
  *
  * @param {Element} element
  * @returns {string | null}
  */
 export function getSvgImageSource(element) {
-  // `fromEvent` is typed for the HTML elements it was written for; an SVG
-  // element dispatches `load` and `error` the same way.
-  const target = /** @type {HTMLElement} */ (element);
-  addDependency(fromEvent(target, "load"));
-  addDependency(fromEvent(target, "error"));
-  const href = element.getAttribute("href") ?? element.getAttributeNS(XLINK_NAMESPACE, "href");
+  const href = getAttributeCached(element, "href") ?? getAttributeCached(element, "xlink:href");
   if (!href) {
     return null;
   }
@@ -272,7 +268,7 @@ export function image(ctx, element, instance = null) {
           width: length("width", "width", Number.NaN),
           height: length("height", "height", Number.NaN),
         },
-        parsePreserveAspectRatio(element.getAttribute("preserveAspectRatio")),
+        parsePreserveAspectRatio(getAttributeCached(element, "preserveAspectRatio")),
         { width: state.width, height: state.height },
       );
     },

@@ -16,6 +16,7 @@ import { scrollable } from "@apendua/justui";
 import ProgressBar from "./ProgressBar.js";
 import { xrSession } from "../session.js";
 import TodoItem from "./TodoItem.js";
+import { slotBefore } from "./reorder.js";
 
 // Artificial delay used to demonstrate suspense. The progress bar is given the
 // same duration, so it fills up just as the content arrives.
@@ -311,6 +312,103 @@ const TodoApp = component((ctx: WeakKey) => {
     todos.set(todos.get().filter((t) => t.id !== id));
   };
 
+  /**
+   * Move a todo to just before another one, or to the end when there is no
+   * other one. The list is keyed by the todo, so the rows move with it
+   * rather than being built again.
+   */
+  const moveTodo = (id: string, beforeId: string | null) => {
+    const moved = todos.get().find((t) => t.id === id);
+    if (!moved || id === beforeId) {
+      return;
+    }
+    const rest = todos.get().filter((t) => t !== moved);
+    const index = beforeId === null ? -1 : rest.findIndex((t) => t.id === beforeId);
+    rest.splice(index < 0 ? rest.length : index, 0, moved);
+    todos.set(rest);
+  };
+
+  // Reordering by dragging a row's handle, written against the browser's
+  // drag and drop and nothing else. In a headset freedom sends the same
+  // events from the controller ray, so these handlers are the ones that
+  // run there too.
+  //
+  // `dragover` decides where the row would land from where the pointer is
+  // on the row under it, above or below its middle, and marks that edge
+  // with a class (see `TodoItem`).
+  // `drop` reads the row being carried from `dataTransfer`, as a page has
+  // to: during the drag its data is guarded and only its types can be read.
+  const TODO_TYPE = "application/x-todo-id";
+  let marked: HTMLElement | null = null;
+  const mark = (row: HTMLElement | null, where?: "before" | "after") => {
+    if (marked && (marked !== row || !marked.classList.contains(`drop-${where}`))) {
+      marked.classList.remove("drop-before", "drop-after");
+    }
+    marked = row;
+    if (row && where) {
+      row.classList.add(`drop-${where}`);
+    }
+  };
+  const rowOf = (target: EventTarget | null) =>
+    target instanceof Element ? target.closest<HTMLElement>("li[data-id]") : null;
+  /**
+   * Where a drop at this event would put the row: before which todo, and
+   * the row whose edge marks that slot, the one it goes before or the last.
+   */
+  const landing = (event: DragEvent): { row: HTMLElement | null; before: string | null } => {
+    const list = event.currentTarget as Element;
+    const rows = [...list.querySelectorAll<HTMLElement>("li[data-id]")];
+    const before = slotBefore(rows, event.clientY);
+    const row = before === null ? rows[rows.length - 1] : rows.find((r) => r.dataset.id === before);
+    return { row: row ?? null, before };
+  };
+  const reordering = [
+    on("dragstart", (event: DragEvent) => {
+      const row = rowOf(event.target);
+      if (!row || !event.dataTransfer) {
+        return;
+      }
+      event.dataTransfer.setData(TODO_TYPE, row.dataset.id ?? "");
+      event.dataTransfer.effectAllowed = "move";
+      // The handle is what was pressed; the row is what is carried.
+      const rect = row.getBoundingClientRect();
+      event.dataTransfer.setDragImage(row, event.clientX - rect.left, event.clientY - rect.top);
+      row.classList.add("dragging");
+    }),
+    on("dragover", (event: DragEvent) => {
+      if (!event.dataTransfer?.types.includes(TODO_TYPE)) {
+        return;
+      }
+      event.preventDefault();
+      event.dataTransfer.dropEffect = "move";
+      const { row, before } = landing(event);
+      mark(row, row && before === row.dataset.id ? "before" : "after");
+    }),
+    on("dragleave", (event: DragEvent) => {
+      // Only leaving the list for somewhere else clears the mark; moving
+      // between a row and what is inside it is a leave as well.
+      const to = event.relatedTarget;
+      if (!(to instanceof Node) || !(event.currentTarget as Node).contains(to)) {
+        mark(null);
+      }
+    }),
+    on("drop", (event: DragEvent) => {
+      event.preventDefault();
+      const id = event.dataTransfer?.getData(TODO_TYPE);
+      if (id) {
+        moveTodo(id, landing(event).before);
+      }
+      mark(null);
+    }),
+    on("dragend", (event: DragEvent) => {
+      const row = rowOf(event.target);
+      if (row) {
+        row.classList.remove("dragging");
+      }
+      mark(null);
+    }),
+  ];
+
   ctx = suspend(ctx, () => ProgressBar(LOADING_DELAY));
 
   // Add artificial delay to demonstrate suspense.
@@ -376,6 +474,7 @@ const TodoApp = component((ctx: WeakKey) => {
           content: [
             $("ul", [
               set("className", listStyle),
+              ...reordering,
               children(
                 list(toObservable(todos), (todo, i) => {
                   return TodoItem(ctx, todo.id, [

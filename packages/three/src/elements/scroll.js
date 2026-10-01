@@ -288,9 +288,13 @@ export function createScrollDrags(requestFrames) {
 }
 
 /**
- * One set of drags per context, so that every element in a scene shares the
- * gesture state a hand carries between them — a drag begins on a row and
- * goes on being that hand's drag wherever the ray travels next.
+ * One set of drags per context, so that the elements of a panel share the
+ * gesture state a hand carries between them: a drag begins on a row and
+ * goes on being that hand's drag wherever the ray travels next on the
+ * panel. Each portal derives a context of its own, so this is one set per
+ * panel, not per scene, and a list scrolled on one panel does not silence
+ * the arrival pulses on another (drag and drop keeps its gesture per scene
+ * for that reason; see `dragAndDrop`).
  *
  * @type {WeakMap<WeakKey, ScrollDrags>}
  */

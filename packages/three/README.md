@@ -757,12 +757,14 @@ down before the trigger opens is cancelled, with a `dragleave` and a
 `dragend` whose `dropEffect` is `"none"`.
 
 While the drag is under way a translucent card the size of the source, or
-of what `setDragImage` was given, follows the ray in the plane of the panel
-the ray is on, so it stays under the ray on another panel however that one
-is turned, and in the plane of the panel the drag started on while the ray
-is on none. The ghost is an outline, not a picture of the element as a
-browser draws it. Every panel in a scene knows a hand is carrying
-something, so the controls on any of them take no hover under a drag.
+of what `setDragImage` was given, follows the ray in the panel the ray is
+on, so it stays under the ray on another panel however that one is turned.
+While the ray is on no panel, past a panel's edge or between the controls
+of one that stops no rays, it stays in the plane of the last panel the ray
+was on, the one the drag started on until it has been on another. The
+ghost is an outline, not a picture of the element as a browser draws it.
+Every panel in a scene knows a hand is carrying something, so the controls
+on any of them take no hover under a drag.
 
 Three things differ from a browser. Only `draggable="true"` makes an
 element draggable. Images and links are draggable on a page without saying

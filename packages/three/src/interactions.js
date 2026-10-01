@@ -357,13 +357,7 @@ export class InteractionManager {
           return;
         }
         shouldUpdateIntersections = false;
-        // A hand three is not tracking points at nothing, wherever its space
-        // was left. three hides the target ray space of a controller that has
-        // not connected yet, one that has disconnected — every one of them,
-        // when a session ends — and one whose pose it lost this frame, and
-        // what it hides keeps the pose it last had: casting from it would
-        // publish a hit, and draw a cursor, for a hand that is not there.
-        const intersection = controller.visible ? this.getIntersection(controller) : undefined;
+        const intersection = this.getIntersection(controller);
         // Publish the hit before the handlers run: where the ray landed is a
         // fact about this frame, not something a listener gets to veto.
         this.#setPointer(controller, intersection);
@@ -440,7 +434,7 @@ export class InteractionManager {
       const stopAnimating = onAnimationFrame(() => {
         if (controller.visible !== tracked) {
           tracked = controller.visible;
-          shouldUpdateIntersections = true;
+          invalidate();
         }
         maybeUpdateIntersections();
       });
@@ -471,10 +465,27 @@ export class InteractionManager {
   }
 
   /**
+   * What the controller's ray meets first, of everything registered and
+   * drawn, or nothing.
+   *
+   * **A hand three is not tracking points at nothing**, wherever its space
+   * was left. three hides the target ray space of a controller that has not
+   * connected yet, one that has disconnected — every one of them, when a
+   * session ends — and one whose pose it lost this frame, and what it hides
+   * keeps the pose it last had. Casting from it would publish a hit and draw
+   * a cursor for a hand that is not there, and a press three still reports
+   * for it — a trigger pulled with the hand behind the back, or under the
+   * system menu — would land on whatever the stale ray met. Every cast comes
+   * through here, the hover's and the presses' alike, so the rule is kept
+   * here once.
+   *
    * @param {THREE.XRTargetRaySpace} controller
    * @returns {THREE.Intersection<THREE.Object3D<XREventMap>> | undefined}
    */
   getIntersection(controller) {
+    if (!controller.visible) {
+      return undefined;
+    }
     const raycaster = new THREE.Raycaster().setFromXRController(controller);
     /** @type {THREE.Intersection<THREE.Object3D<XREventMap>>[]} */
     const intersections = [];

@@ -61,9 +61,11 @@ import { addDependency, batch, Derived } from "@apendua/signal";
 /**
  * A pointer event's `inputSource` is the source three connected to the
  * controller, for what the ray lands on to reach the hand that is pointing:
- * its gamepad, with the motors a panel buzzes, and its handedness. Null for
- * a controller nothing has connected to yet, which is a controller under a
- * test; a select event's is never null, since a press is the source's own.
+ * its gamepad, with the motors a panel buzzes, and its handedness. Null
+ * while nothing is connected to the controller: one under a test, and the
+ * `pointerleave` a hand gets once three has disconnected it, which every
+ * hand gets when a session ends. A select event's is never null, since a
+ * press is the source's own.
  *
  * `registeredTarget` is the registered object the ray's hit belongs to (see
  * `InteractionManager.getTarget`), which is what a handler on the way up

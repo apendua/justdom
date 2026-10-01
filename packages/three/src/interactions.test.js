@@ -283,6 +283,42 @@ describe("select", () => {
     subscription.unsubscribe();
   });
 
+  test("a hand three is not tracking presses nothing, and a hand lost mid-press misses", () => {
+    const manager = new InteractionManager();
+    const controller = fakeController();
+    const subscription = connect(manager, controller);
+    const { button } = labelledButton();
+    manager.add(button);
+
+    /** @type {string[]} */
+    const events = [];
+    for (const type of /** @type {const} */ ([
+      "selectstart",
+      "selectend",
+      "select",
+      "selectmissed",
+    ])) {
+      button.addEventListener(type, () => events.push(type));
+    }
+
+    // three reports presses from the session's input sources whether or not
+    // the frame had a pose for the hand: a trigger pulled behind the back, or
+    // under the system menu. The ray it would be cast along is a stale one.
+    controller.visible = false;
+    controller.dispatchEvent(/** @type {any} */ ({ type: "selectstart", data: {} }));
+    controller.dispatchEvent(/** @type {any} */ ({ type: "selectend", data: {} }));
+    assert.deepEqual(events, []);
+
+    // Pressed while tracked, let go after the hand was lost: not a click from
+    // where the hand last was, but a release that went nowhere.
+    controller.visible = true;
+    controller.dispatchEvent(/** @type {any} */ ({ type: "selectstart", data: {} }));
+    controller.visible = false;
+    controller.dispatchEvent(/** @type {any} */ ({ type: "selectend", data: {} }));
+    assert.deepEqual(events, ["selectstart", "selectend", "selectmissed"]);
+    subscription.unsubscribe();
+  });
+
   test("a release on a different button is still a miss", () => {
     const manager = new InteractionManager();
     const controller = fakeController();

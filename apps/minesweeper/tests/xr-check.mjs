@@ -329,8 +329,22 @@ async function main() {
     // A count on the board when it is dealt again is what once broke the
     // scene: the counts' text nodes left the page before the portal heard.
     const counts = () => page.$$eval("#board svg text", (texts) => texts.length);
-    for (const point of covered.slice(1, -1).reverse()) {
-      if ((await counts()) > 0) {
+    // A press can find a mine, which ends the game with no count drawn, so
+    // a lost board is dealt again from the page; a few tries are plenty.
+    const lost = () =>
+      page.evaluate(() => document.querySelector("#menu")?.textContent?.includes("Game over"));
+    for (let tries = 0; tries < 8 && (await counts()) === 0; tries += 1) {
+      if (await lost()) {
+        await page.evaluate(() =>
+          [...document.querySelectorAll("#menu button")]
+            .find((button) => button.textContent === "Restart")
+            ?.click(),
+        );
+        await frames(page, 30);
+      }
+      const points = await coveredPoints();
+      const point = points[Math.floor(points.length / 2)];
+      if (!point) {
         break;
       }
       await aimAt(await onBoard(point.x, point.y));

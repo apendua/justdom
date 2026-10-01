@@ -1748,14 +1748,13 @@ property counts as inherited when nothing between the copied element and
 the top of the copy sets it, by its attribute, its `style` or a different
 computed value. A value of `inherit`, `unset` or `revert` sets nothing. A
 stylesheet rule that sets a property to exactly the value it would have
-inherited reads as not setting it. An edit inside the symbol reaches every copy, wherever in the document
-the symbol is. A copy is drawn where its `<use>` stands in the draw order,
-and is not a ray target. A `<use>` whose copy would draw it again stops
-there. Two things are not followed: an `href` changed after mounting,
-because the portal's observer does not watch that attribute, and a target
-that appears only after the `<use>` mounted, such as a sprite fetched and
-injected later. The `<use>` looks its target up again when it is
-restyled.
+inherited reads as not setting it. An edit inside the symbol reaches every
+copy, wherever in the document the symbol is, and a new `href` draws the
+target it names. A copy is drawn where its `<use>` stands in the draw
+order, and is not a ray target. A `<use>` whose copy would draw it again
+stops there. Not followed: a target that appears only after the `<use>`
+mounted, such as a sprite fetched and injected later. The `<use>` looks its
+target up again when it is restyled.
 
 One print of the measuring tape. **Dashes are geometry, not a
 shader**, for the reason `svg/dash.js` gives, so a `stroke-dashoffset`

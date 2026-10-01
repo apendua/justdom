@@ -10,36 +10,31 @@ import {
 } from "@apendua/justdom";
 import { store, on, set, emit, Op, component } from "@apendua/signal";
 
-// While a row is dragged, the row it would land next to shows a blue band
-// along the edge it would land on (see `TodoApp`), and the row being carried
-// greys out until it is let go. The band is a gradient, since a panel
-// draws one border colour for the whole box. Classes rather than data
-// attributes, because a class is what a panel follows a restyle by.
-// `!important` because a row's hatch is an inline style.
+// While a row is dragged, the slot it would land in is marked by turning
+// the divider above it blue (see `TodoApp`), and the row being carried fades
+// until it is let go. Only a colour changes, so nothing moves under the ray.
+// The divider is the row's only border on purpose: a panel draws a box's
+// border in one colour, the colour of its first bordered side, so a row
+// with a top border as well would draw both in the top's.
 const itemStyle = stylesheet`
   .${CLASS_NAME} {
     display: flex;
     justify-content: space-between;
     align-items: center;
     padding: 0.5rem;
-    border-bottom: 1px solid #eee;
+    border-bottom: 2px solid #eee;
     background: white;
     margin-bottom: 0.25rem;
     border-radius: 4px;
     box-shadow: 0 1px 2px rgba(0,0,0,0.1);
   }
 
-  .${CLASS_NAME}.drop-before {
-    background-image: linear-gradient(to bottom, #007bff 0 4px, transparent 4px) !important;
-  }
-
-  .${CLASS_NAME}.drop-after {
-    background-image: linear-gradient(to top, #007bff 0 4px, transparent 4px) !important;
+  .${CLASS_NAME}.drop-marker {
+    border-bottom-color: #007bff;
   }
 
   .${CLASS_NAME}.dragging {
-    background-color: #dfe6ef;
-    color: #8a8f98;
+    opacity: 0.4;
   }
 `;
 

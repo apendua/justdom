@@ -750,11 +750,11 @@ The rules are the browser's:
   the trigger opens takes it on the next move, as a page's `:hover`
   catches up on the next move after a drag.
 
-What a page draws while it drags has to be something a panel follows. It
-follows a class or an inline style changing, and not a data attribute of
-the page's own, so a drop marker is a class on the row it is next to, as in
-the todo app's list (`apps/todo-vanilla`). `draggable` is followed too: a
-row made draggable after the panel was built can be picked up.
+What a page draws while it drags is followed like any other restyle,
+whether it is a class, an inline style or an attribute of the page's own.
+The todo app's list (`apps/todo-vanilla`) marks the slot a row would land
+in with a class on the row above it. `draggable` is followed too: a row
+made draggable after the panel was built can be picked up.
 
 A drag can end on another panel in the scene, since every panel answers
 what is under the ray in its own px. It can also end on nothing: a ray on

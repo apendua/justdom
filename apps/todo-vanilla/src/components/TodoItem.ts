@@ -12,10 +12,8 @@ import { store, on, set, emit, Op, component } from "@apendua/signal";
 
 // While a row is dragged, the row it would land next to shows a blue band
 // along the edge it would land on (see `TodoApp`), and the row being carried
-// greys out until it is let go. Both are drawn with what a panel mirrors:
-// a gradient for the band, since a panel draws one border colour for the
-// whole box, and colours for the carried row, since a panel's `opacity`
-// fades a box and not what is inside it. Classes rather than data
+// greys out until it is let go. The band is a gradient, since a panel
+// draws one border colour for the whole box. Classes rather than data
 // attributes, because a class is what a panel follows a restyle by.
 // `!important` because a row's hatch is an inline style.
 const itemStyle = stylesheet`

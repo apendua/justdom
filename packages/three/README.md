@@ -1704,7 +1704,12 @@ as on a box's quad, so a shape that says `visible` is drawn under a hidden
 `transform-origin` on every element in the chain, the `transform`
 _attribute_ included, since the browser computes it as the same property;
 `viewBox` and `preserveAspectRatio`, with the viewport at the `<svg>`'s
-content box; a nested `<svg>` as a viewport. Geometry is read from the
+content box; a nested `<svg>` as a viewport, clipping what spills out of
+it unless its `overflow` is `visible` or `auto` (the browser's own
+stylesheet makes it `hidden`). A `<symbol>`, an `<svg>` drawn by a
+`<use>` and a `<marker>` clip their content to their viewports the same
+way. The clip box is axis-aligned in the `<svg>`'s frame, so a viewport
+under a rotation clips to its bounding box. Geometry is read from the
 computed style where the browser exposes it as CSS (`cx`, `r`, `x`,
 `width`, `d`) and from the attribute otherwise. A shape follows both, so
 one whose `d`, `points` or `fill` attribute is bound to data is redrawn when
@@ -1718,6 +1723,99 @@ nothing under it is rebuilt; the clip follows the shapes there through the
 clip patch's matrix. A scale change — animated, or the `<svg>` resizing —
 re-samples curves only when it crosses a half-octave, so a zoomed shape
 never shows its polygons and a slow zoom does not re-triangulate each frame.
+
+An `<image>` is a textured quad in its user space, under the same matrices
+as a shape, so a rotated `<g>` turns the picture with it. The texture comes
+from the cache an `<img>` uses, shared by URL. `href` is read, and the
+legacy `xlink:href` when there is no `href`. The box is `x`, `y`, `width`
+and `height`, a percentage is of the nearest viewport, and a size left
+`auto` takes the picture's. The picture is fitted into the box by
+`preserveAspectRatio`, as a `viewBox` is fitted: `meet` fits it inside,
+`slice` covers the box and cuts off what overhangs, and `none` stretches
+it. An `<image>` takes its place in the paint order among the shapes, fades
+with `opacity`, and is a ray target like a shape with a fill. Its load
+re-measures nothing, because nothing in the HTML flow moves for it. A
+picture that is itself an SVG file is a bitmap of that file, as it is in an
+`<img>`.
+
+Markers are drawn: `marker-start`, `marker-mid` and `marker-end` on a
+`<path>`, `<line>`, `<polyline>` or `<polygon>` name a `<marker>`, and a
+copy of its content is drawn at each vertex. The copy follows the marker's
+`viewBox`, `preserveAspectRatio`, `markerWidth`, `markerHeight`, `refX`,
+`refY` (with SVG 2's keywords), `markerUnits` and `orient` (`auto`,
+`auto-start-reverse` or an angle). Each copy is one object carrying one
+matrix, so a path that moves, or a `refX` edited, moves its markers without
+rebuilding them. They are drawn over the path's stroke and under whatever
+comes after the path, and styled by their own rules, not the path's. An
+edit inside the `<marker>` reaches every copy when the `<marker>` is inside
+the panel, wherever its `<defs>` sits there. A `<marker>` elsewhere on the
+page is drawn as it was first read: the portal observes only its own
+panel. A path hidden by `visibility` hides its markers. A marker whose
+content names the same marker is drawn once, where a browser also stops.
+Markers are not ray targets: a press on an arrowhead goes to what is
+behind it.
+
+```html
+<defs>
+  <marker id="arrow" viewBox="0 0 10 10" refX="10" refY="5" orient="auto">
+    <path d="M0 0 L10 5 L0 10 z" />
+  </marker>
+</defs>
+<line x1="0" y1="10" x2="40" y2="10" marker-end="url(#arrow)" />
+```
+
+A `<use>` draws a copy of the element its `href` (or `xlink:href`) names,
+at its `x` and `y`. A `<symbol>` is a viewport: its `viewBox` is fitted
+into the `<use>`'s `width` and `height`, or the symbol's own, or else the
+whole of the nearest viewport, a percentage being of that viewport too.
+An `<svg>` is one in the same way, an inline icon elsewhere on the page
+included, though its own `x`, `y` and `transform` are not followed.
+Percentages inside the copy are of the viewport it is drawn in, so a
+`<use>` inside a symbol sizes against that symbol. Anything else, a `<g>`
+or a shape drawn once already where it stands, is drawn again whole, its
+own `transform` included. The copy inherits the `<use>`'s styles, as a
+browser's clone does, so a sprite whose paths set no `fill` takes the
+`<use>`'s, `fill="currentColor"` takes the `<use>`'s `color`, and a hidden
+`<use>` hides its copy. The mirror sees only the original element, so a
+property counts as inherited when nothing between the copied element and
+the top of the copy sets it, by its attribute, its `style` or a different
+computed value. A value of `inherit`, `unset` or `revert` sets nothing. A
+stylesheet rule that sets a property to exactly the value it would have
+inherited reads as not setting it. An edit inside the symbol reaches every
+copy when the symbol is inside the panel, wherever it sits there; one
+elsewhere on the page is drawn as it was first read, as a `<marker>` is.
+A new `href` draws the target it names. A copy is drawn where its `<use>`
+stands in the draw order, and is not a ray target. A `<use>` whose copy
+would draw it again stops there. Not followed: a target that appears only
+after the `<use>` mounted, such as a sprite fetched and injected later. The
+`<use>` looks its target up again when it is restyled.
+
+A `<text>` is drawn, with the `<tspan>`s and `<a>`s in it. The browser lays
+it out: `x`, `y`, `dx`, `dy`, `text-anchor`, the font and its spacing are
+its business, a percentage being of the nearest viewport. It is measured as
+HTML text under a transform is, in a detached copy with the `<text>`'s own
+transform switched off, so what comes back is already in its user space, and
+each text node is drawn as one textured quad there, under the same matrices
+as a shape: a rotated `<g>` turns the text with it. The colour is `fill`,
+with `fill-opacity` and `opacity`, and a colour change is a uniform write,
+not a new texture. The texture is drawn at the scale the matrices above give
+it, redrawn only when that crosses a half-octave, so a zoomed label stays
+sharp and a zoom does not redraw it each frame. Text takes its place in the
+paint order, and each run is a ray target by its own fill, its `<tspan>`'s
+`pointer-events` deciding as it does for a shape; the quads stand in for the
+glyphs. A change to one run touches that run alone, a new place being a
+geometry write and new characters a new texture, and a hover on the text
+measures nothing. Text in a `<symbol>` or a `<marker>` is drawn in each
+copy, taking the `<use>`'s font and fill where it sets none. Not followed:
+`stroke` on text, `<textPath>`, vertical writing modes, and a text node
+placed one character at a time (`x` or `rotate` with a list of values),
+which is drawn as one run from where its characters start. As with HTML
+text, a stylesheet rule that reaches above the `<text>` to style a `<tspan>`
+does not apply to the measured copy.
+
+```html
+<text x="52" y="60" text-anchor="middle" fill="white">input</text>
+```
 
 One print of the measuring tape. **Dashes are geometry, not a
 shader**, for the reason `svg/dash.js` gives, so a `stroke-dashoffset`
@@ -1756,11 +1854,9 @@ the scene*). Where the button should be the target itself, put
 `<svg>` nor its shapes are then ray targets of their own, whatever `cursor`
 they inherit, and a press on the icon is a press on the button.
 
-Not drawn yet: `<text>`, markers (so an arrowhead is a `<polygon>` of its
-own for now), `<use>` and `<symbol>`, gradients and patterns (a `url(#…)`
-paint reads as `none`, though it still counts as painted for a ray),
-`clip-path`, `mask`, filters, `<image>`, `<foreignObject>` and
-`vector-effect`.
+Not drawn yet: gradients and patterns (a `url(#…)` paint reads
+as `none`, though it still counts as painted for a ray), `clip-path`,
+`mask`, filters, `<foreignObject>` and `vector-effect`.
 [`docs/freedom-svg-plan.md`](../../docs/freedom-svg-plan.md) has the order
 they are coming in and why.
 

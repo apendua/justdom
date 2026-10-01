@@ -1,8 +1,10 @@
 import { after, before, describe, test } from "node:test";
 import assert from "node:assert/strict";
+import { Derived } from "@apendua/signal";
 import {
   buildTextMipmaps,
   createTextCanvas,
+  generateTextTexture,
   getRenderBleed,
   getTextRenderStyle,
   isTintableText,
@@ -385,5 +387,51 @@ describe("getTextRenderStyle", () => {
     );
     assert.equal(style.font, "normal normal 600 32px sans-serif");
     assert.equal(style.fontVariant, "normal");
+  });
+});
+
+describe("generateTextTexture", () => {
+  // `textHelpers` resolves colours through a bare `getComputedStyle`, which
+  // jsdom-env installs on `window` and not on the global.
+  before(() => {
+    if (typeof globalThis.getComputedStyle === "undefined") {
+      globalThis.getComputedStyle = window.getComputedStyle;
+    }
+  });
+
+  /**
+   * How wide a canvas one short run is drawn on.
+   *
+   * @param {number} renderScale
+   * @param {number} [unitScale]
+   */
+  const canvasWidth = (renderScale, unitScale) => {
+    const style = getTextRenderStyle(
+      styleOf({ fontSize: "10px", fontFamily: "sans-serif", color: "#ffffff" }),
+    );
+    const drawn = new Derived(() =>
+      generateTextTexture(
+        [{ text: "A", left: 0, top: 0, width: 10, height: 12 }],
+        style,
+        { width: 10, height: 12 },
+        renderScale,
+        true,
+        unitScale,
+      ),
+    );
+    const subscription = drawn.subscribe({});
+    const width = /** @type {HTMLCanvasElement} */ (drawn.get().texture.image).width;
+    subscription.unsubscribe();
+    return width;
+  };
+
+  test("a panel's scale is capped, and a unit's size is multiplied in after it", () => {
+    // The cap is MAX_TEXT_SCALE, 4: a panel asking for 64 gets 4.
+    assert.equal(canvasWidth(64), canvasWidth(4));
+    // A user unit eight CSS pixels wide is drawn eight times as finely,
+    // however the cap stands.
+    const base = canvasWidth(4);
+    const scaled = canvasWidth(4, 8);
+    assert.ok(scaled >= base * 8 - 8 && scaled <= base * 8, `${scaled} is about ${base} * 8`);
   });
 });

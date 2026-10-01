@@ -2,7 +2,7 @@ import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
 import { Derived, Effect, Signal, toObservable, UpdateChannel, withChannel } from "@apendua/signal";
-import { $, attr, children, className, stylesheet } from "@apendua/justdom";
+import { $, $$, attr, children, className, stylesheet } from "@apendua/justdom";
 import { InteractionContext, InteractionManager } from "../interactions.js";
 import {
   DomMirror,
@@ -657,6 +657,105 @@ describe("createPortal", () => {
     await nextMacrotask();
     assert.equal(updates, before + 2, "nothing keeps asking for frames");
 
+    subscription.unsubscribe();
+    portal.disconnect();
+  });
+
+  test("a picture inside an svg is not announced, since nothing in the flow moves for it", async () => {
+    // An `<img>` that loads can take the picture's size and push its
+    // neighbours along. An `<image>` in an `<svg>` cannot: the root's box is
+    // laid out by the page whatever the picture is. Announcing it would
+    // re-measure the panel once per picture in a diagram full of them.
+    const manager = new InteractionManager();
+    let updates = 0;
+    const originalUpdate = manager.updateIntersections.bind(manager);
+    manager.updateIntersections = () => {
+      updates += 1;
+      originalUpdate();
+    };
+    const ctx = InteractionContext.set({}, manager);
+    const portal = createPortal(ctx, { budget: Infinity });
+    portal.addTo(new THREE.Group());
+
+    /** @type {import("@apendua/justdom").Mountable | undefined} */
+    let mountable;
+    const tree = $("div", [
+      children(
+        $$("svg", [
+          attr({ viewBox: "0 0 10 10" }),
+          children($$("image", [attr({ href: "data:image/gif;base64,a", width: 10, height: 10 })])),
+        ]),
+      ),
+    ]);
+    const subscription = tree.subscribe((value) => {
+      mountable = value;
+    });
+    assert.ok(mountable);
+    portal.mount(mountable);
+
+    await settle(portal);
+
+    const containers = document.querySelectorAll(`[${"data-xr-portal"}]`);
+    const image = containers[containers.length - 1].querySelector("image");
+    assert.ok(image, "the picture is in the panel");
+
+    const before = updates;
+    image.dispatchEvent(new Event("load"));
+    flushFrame();
+    await pump();
+    flushFrame();
+    await nextMacrotask();
+    assert.equal(updates, before, "an SVG picture's load re-measures nothing");
+
+    subscription.unsubscribe();
+    portal.disconnect();
+  });
+
+  test("an svg template the portal does not build is still followed", async () => {
+    // A `<marker>` in its `<defs>` is drawn where a path names it, not where
+    // it stands, so the portal builds nothing for it. Whatever draws it still
+    // has to hear an edit inside it, which only reaches nodes in the mirror.
+    const ctx = InteractionContext.set({}, new InteractionManager());
+    const portal = createPortal(ctx, { budget: Infinity });
+    portal.addTo(new THREE.Group());
+
+    /** @type {import("@apendua/justdom").Mountable | undefined} */
+    let mountable;
+    const tree = $("div", [
+      children(
+        $$("svg", [
+          children(
+            $$("defs", [
+              children($$("marker", [children($$("path", [attr({ d: "M0 0 L10 5 L0 10 z" })]))])),
+            ]),
+          ),
+        ]),
+      ),
+    ]);
+    const subscription = tree.subscribe((value) => {
+      mountable = value;
+    });
+    assert.ok(mountable);
+    portal.mount(mountable);
+    await settle(portal);
+
+    const containers = document.querySelectorAll(`[${"data-xr-portal"}]`);
+    const path = containers[containers.length - 1].querySelector("marker path");
+    assert.ok(path, "the marker's path is in the panel");
+    let reads = 0;
+    const style = new Derived(() => {
+      getComputedStyleCached(path);
+      reads += 1;
+      return reads;
+    });
+    const reader = style.subscribe({});
+    const before = style.get();
+
+    path.setAttribute("class", "edited");
+    await settle(portal);
+    assert.notEqual(style.get(), before, "the edit reached the marker's path");
+
+    reader.unsubscribe();
     subscription.unsubscribe();
     portal.disconnect();
   });

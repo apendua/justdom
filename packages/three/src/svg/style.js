@@ -52,6 +52,26 @@ export function parseLength(value, fallback = 0) {
 }
 
 /**
+ * A length in user units that may be a percentage of `reference`, the
+ * viewport's width or height. Anything else reads as `parseLength` reads it.
+ *
+ * @param {string} value
+ * @param {number | undefined} reference What 100% is, or undefined when there
+ *   is no viewport to measure against, which reads a percentage as the
+ *   fallback.
+ * @param {number} [fallback]
+ * @returns {number}
+ */
+export function parseLengthIn(value, reference, fallback = 0) {
+  const trimmed = value.trim();
+  if (trimmed.endsWith("%") && reference !== undefined) {
+    const percent = Number.parseFloat(trimmed);
+    return Number.isFinite(percent) ? (reference * percent) / 100 : fallback;
+  }
+  return parseLength(trimmed, fallback);
+}
+
+/**
  * @param {string} value
  * @param {number} fallback
  * @returns {number}
@@ -173,6 +193,19 @@ export function parsePointerEvents(value) {
   return Object.hasOwn(HIT_REGIONS, value.trim())
     ? HIT_REGIONS[value.trim()]
     : HIT_REGIONS.visiblePainted;
+}
+
+/**
+ * Whether a viewport's `overflow` clips its content: a nested `<svg>`, a
+ * `<symbol>` or a `<marker>`, all `hidden` by the browser's own stylesheet.
+ * Not the mirror's `clipsOverflow`, because in SVG `auto` means `visible`.
+ *
+ * @param {string} value Computed `overflow`.
+ * @returns {boolean}
+ */
+export function clipsViewport(value) {
+  const first = value.trim().split(/\s+/)[0];
+  return first === "hidden" || first === "scroll" || first === "clip";
 }
 
 /**

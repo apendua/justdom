@@ -13,7 +13,8 @@ import {
 import { acquireImage, releaseImage } from "./image.js";
 import { createPortal as createHeldPortal, getPortalRoot } from "./portal.js";
 import { withPanelOptions } from "./panelOptions.js";
-import { RendererContext } from "../render.js";
+import { DEFAULT_HANDLE_WIDTH } from "./panelHandles.js";
+import { RendererContext, runFrame } from "../render.js";
 import { recordingSource } from "../test/rumble.js";
 
 /**
@@ -3346,6 +3347,124 @@ describe("a draggable panel", () => {
     portal.disconnect();
     assert.equal(parent.children.length, 0, "the frame goes with the panel");
     assert.equal(targets.has(top), false);
+  });
+
+  test("lays the strips out with the panel while it mounts", async () => {
+    // A panel with nothing in it, which grows to 100 by 200 px as it
+    // mounts: the loading frame's ticks place it at the new size long
+    // before the commit, and the strips have to go with it.
+    let height = 0;
+    const originalRect = window.Element.prototype.getBoundingClientRect;
+    window.Element.prototype.getBoundingClientRect = function () {
+      const element = /** @type {HTMLElement} */ (this);
+      if (element.closest("[data-xr-portal]")) {
+        const width = height / 2;
+        return /** @type {DOMRect} */ (
+          /** @type {unknown} */ ({
+            x: 0,
+            y: 0,
+            top: 0,
+            left: 0,
+            right: width,
+            bottom: height,
+            width,
+            height,
+          })
+        );
+      }
+      return originalRect.call(this);
+    };
+    try {
+      const { ctx } = countingManager();
+      const renderer = /** @type {any} */ ({});
+      // One node a frame, so the mount takes frames.
+      const portal = createPortal(RendererContext.set(ctx, renderer), {
+        draggable: true,
+        budget: 0,
+      });
+      const parent = new THREE.Group();
+      portal.addTo(parent);
+      /** @type {import("@apendua/justdom").Mountable | undefined} */
+      let mountable;
+      const subscription = $("div", [children($("div"), $("div"), $("div"))]).subscribe((value) => {
+        mountable = value;
+      });
+      assert.ok(mountable);
+      portal.mount(mountable);
+      await nextMacrotask();
+      height = 200;
+
+      runFrame(renderer, 0, /** @type {any} */ ({}));
+      await nextMacrotask();
+      assert.equal(portal.isLoading(), true, "still mounting");
+      const top = /** @type {THREE.Object3D} */ (parent.getObjectByName("panel-handle-top"));
+      const expected = (200 / 2 + DEFAULT_HANDLE_WIDTH / 2) * 0.01;
+      assert.ok(
+        Math.abs(top.position.y - expected) < 1e-9,
+        `along the top edge, ${top.position.y}`,
+      );
+      subscription.unsubscribe();
+      portal.disconnect();
+    } finally {
+      window.Element.prototype.getBoundingClientRect = originalRect;
+    }
+  });
+
+  test("does not show its strips for a ray on the keyboard below it", async () => {
+    const { ctx, manager, targets } = countingManager();
+    const renderer = /** @type {any} */ ({});
+    const root = document.createElement("div");
+    const input = document.createElement("input");
+    input.type = "text";
+    root.appendChild(input);
+    document.body.appendChild(root);
+    const portal = createPortal(RendererContext.set(ctx, renderer), {
+      root,
+      draggable: true,
+      // No scene to be in front of, so it hangs below the panel.
+      keyboard: { create: () => $("div", []) },
+    });
+    const parent = new THREE.Group();
+    portal.addTo(parent);
+    // Until it has loaded, and a few more for what the load queues: the
+    // ray targets register a round after it.
+    const tick = async () => {
+      for (let index = 0, after = 0; index < 50 && after < 5; index++) {
+        runFrame(renderer, 0, /** @type {any} */ ({}));
+        await nextMacrotask();
+        after += portal.isLoading() ? 0 : 1;
+      }
+    };
+    await tick();
+    const frame = parent.children[0];
+    const field = [...targets].find(
+      (target) => !(target instanceof THREE.Mesh && target.geometry instanceof THREE.PlaneGeometry),
+    );
+    assert.ok(field, "the field is a ray target");
+    const controller = new THREE.Group();
+    for (const type of ["selectstart", "select", "selectend"]) {
+      field.dispatchEvent(/** @type {any} */ ({ type, controller, inputSource: null }));
+    }
+    await nextMacrotask();
+    // The board's anchor is the last thing hung in the panel's frame.
+    const anchor = frame.children[frame.children.length - 1];
+    assert.equal(anchor.getObjectByName("panel-handles"), undefined, "the board's anchor");
+
+    manager.dispatch(
+      /** @type {any} */ (anchor),
+      /** @type {any} */ ({
+        type: "pointerenter",
+        target: anchor,
+        originalTarget: anchor,
+        controller,
+      }),
+    );
+    for (const side of ["top", "bottom", "left", "right"]) {
+      const bar = /** @type {THREE.Object3D} */ (frame.getObjectByName(`panel-handle-${side}-bar`));
+      assert.equal(bar.visible, false, `the ${side} strip stays hidden`);
+    }
+    portal.disconnect();
+    root.remove();
   });
 
   test("is not by default, nor with nothing to follow the hand by", () => {

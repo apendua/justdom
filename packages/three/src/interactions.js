@@ -649,7 +649,14 @@ export function setLocalMatrix(object, matrix) {
   object.updateMatrix();
 }
 
+/** Scratch for `setWorldMatrix`, which a carry calls once a frame. */
+const _local = new THREE.Matrix4();
+
 /**
+ * Put an object at a world matrix: one walk up the ancestors, for the
+ * parent's world matrix that turns it into a local one. `matrix` is left as
+ * it was, and nothing is allocated, so it is fit for a frame callback.
+ *
  * @param {THREE.Object3D} object
  * @param {THREE.Matrix4} matrix
  */
@@ -657,7 +664,7 @@ export function setWorldMatrix(object, matrix) {
   const { parent } = object;
   if (parent) {
     parent.updateWorldMatrix(true, false);
-    setLocalMatrix(object, parent.matrixWorld.clone().invert().multiply(matrix));
+    setLocalMatrix(object, _local.copy(parent.matrixWorld).invert().multiply(matrix));
   } else {
     setLocalMatrix(object, matrix);
   }

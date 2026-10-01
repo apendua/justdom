@@ -15,9 +15,9 @@ import { $ } from "../operators.js";
  * A panel is where the scene guessed the player would want it; it is the
  * player who knows. So a panel with `draggable` can be picked up by four
  * strips along its edges. It is never picked up by what is on it, since a
- * press there means something else. The strips are the portal's, drawn beside the panel
- * rather than in its DOM, so a panel an app wrote does not have to know it
- * can be moved. The keyboard a field brings up is a panel too, and is moved
+ * press there means something else. The strips are the portal's, drawn
+ * beside the panel rather than in its DOM, so a panel an app wrote does not
+ * have to know it can be moved. The keyboard a field brings up is a panel too, and is moved
  * by the same strips.
  *
  * They are not there until they are wanted. With no ray on the panel they
@@ -25,9 +25,16 @@ import { $ } from "../operators.js";
  * on it they show faintly, so there is something to find; the one a ray is
  * on, and all of them while the panel is being carried, show in full.
  *
- * The carry is `carry()`'s, so by default the panel is kept level and
- * turns only about the vertical: a panel standing up stays standing up.
- * `level: false` gives it the hand's whole rotation instead.
+ * The carry is `carry()`'s, so by default the panel turns only about the
+ * vertical and keeps whatever tilt the scene gave it: a panel standing up
+ * stays standing up, and one reclined stays reclined. `level: false` gives
+ * it the hand's whole rotation instead.
+ *
+ * Two groups, one inside the other. The frame is what is carried, and what
+ * moves with the panel goes in it: a keyboard hung below the panel. The
+ * face, inside it, is the panel and its strips, and only a ray on the face
+ * shows them, so typing on a board below the panel does not light up the
+ * panel's strips.
  */
 
 /**
@@ -56,9 +63,11 @@ const SIDES = ["top", "bottom", "left", "right"];
 
 /**
  * @typedef {object} PanelHandles
- * @property {THREE.Group} frame Where the panel goes, centred on its origin:
- *   the strips are laid out around it, a ray on anything in it shows them,
- *   and it is what is carried unless `carried` says otherwise.
+ * @property {THREE.Group} frame What is carried, unless `carried` says
+ *   otherwise, and what goes with the panel without being part of it.
+ * @property {THREE.Group} face In the frame, where the panel goes, centred
+ *   on its origin: the strips are laid out around it, and a ray on anything
+ *   in it shows them.
  * @property {(width: number, height: number, units: number) => void} layout
  *   Fit the strips to a panel this many px across and down, at `units` per
  *   px.
@@ -72,14 +81,15 @@ const SIDES = ["top", "bottom", "left", "right"];
  * @typedef {object} PanelDragOptions
  * @property {number} [handleWidth] The strips' width, in the panel's px. 14
  *   by default.
- * @property {boolean} [level] Whether the panel is kept level while carried,
- *   turning only about the vertical, so that a panel standing up stays
- *   standing up. True by default; false gives it the hand's whole
- *   rotation, tilt included (see `CarryOptions.level`).
+ * @property {boolean} [level] Whether the hand's tilt is kept from the
+ *   panel while carried: it turns only about the vertical and keeps the
+ *   tilt it had, so a panel standing up stays standing up. True by
+ *   default; false gives it the hand's whole rotation, tilt included (see
+ *   `CarryOptions.level`).
  * @property {THREE.Object3D} [carried] What a hand on the strips moves. The
  *   panel by default, or an ancestor of it to move the panel together with
- *   what it hangs from. The keyboard carries the anchor its recline hangs
- *   off, so the recline is kept.
+ *   what it hangs from. The keyboard carries the anchor it hangs from,
+ *   whose pose is where the next board opens.
  * @property {() => void} [onPutDown] Told when a carry ends, with the panel
  *   where the player left it.
  */
@@ -91,8 +101,10 @@ const SIDES = ["top", "bottom", "left", "right"];
  * @returns {PanelHandles}
  */
 export function createPanelHandles(ctx, options = {}) {
-  /** @type {THREE.Group<XREventMap>} */
   const frame = new THREE.Group();
+  /** @type {THREE.Group<XREventMap>} */
+  const face = new THREE.Group();
+  frame.add(face);
   const {
     handleWidth = DEFAULT_HANDLE_WIDTH,
     level,
@@ -107,7 +119,7 @@ export function createPanelHandles(ctx, options = {}) {
   // Out of the raycast until it is laid out: a strip is a metre-wide plane
   // until then.
   group.visible = false;
-  frame.add(group);
+  face.add(group);
   const plane = new THREE.PlaneGeometry(1, 1);
   // Never drawn, always hit: the manager leaves out what is not `visible`,
   // and three's raycast does not ask the material.
@@ -138,7 +150,7 @@ export function createPanelHandles(ctx, options = {}) {
   /**
    * What each ray is on, among the panel's things: its controls, its
    * background, the strips. A pointer event bubbles from what the ray met up
-   * to the frame, and `originalTarget` is what it met.
+   * to the face, and `originalTarget` is what it met.
    *
    * @type {Map<unknown, THREE.Object3D>}
    */
@@ -177,8 +189,8 @@ export function createPanelHandles(ctx, options = {}) {
       refresh();
     }
   };
-  frame.addEventListener("pointerenter", onEnter);
-  frame.addEventListener("pointerleave", onLeave);
+  face.addEventListener("pointerenter", onEnter);
+  face.addEventListener("pointerleave", onLeave);
 
   /** @type {Unsubscribable[]} */
   const subscriptions = [
@@ -205,6 +217,7 @@ export function createPanelHandles(ctx, options = {}) {
 
   return {
     frame,
+    face,
     layout(panelWidth, panelHeight, units) {
       const w = panelWidth;
       const h = panelHeight;
@@ -234,8 +247,8 @@ export function createPanelHandles(ctx, options = {}) {
       for (const subscription of subscriptions) {
         subscription.unsubscribe();
       }
-      frame.removeEventListener("pointerenter", onEnter);
-      frame.removeEventListener("pointerleave", onLeave);
+      face.removeEventListener("pointerenter", onEnter);
+      face.removeEventListener("pointerleave", onLeave);
       group.removeFromParent();
       frame.removeFromParent();
       plane.dispose();

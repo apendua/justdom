@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import * as THREE from "three";
 import { Signal } from "@apendua/signal";
 import { InteractionContext, InteractionManager } from "./interactions.js";
-import { RendererContext } from "./render.js";
+import { RendererContext, runFrame } from "./render.js";
 import { $, children } from "./operators.js";
 import {
   applyLevelPose,
@@ -304,7 +304,8 @@ function setup(options) {
     manager.addController(left, () => () => {}).subscribe(),
     manager.addController(right, () => () => {}).subscribe(),
   ];
-  const ctx = RendererContext.set(InteractionContext.set({}, manager), /** @type {any} */ ({}));
+  const renderer = /** @type {any} */ ({});
+  const ctx = RendererContext.set(InteractionContext.set({}, manager), renderer);
   const board = carry(ctx, options);
 
   const room = /** @type {THREE.Object3D<XREventMap>} */ (
@@ -351,7 +352,13 @@ function setup(options) {
     left,
     right,
     board,
+    group,
     panel,
+    /** One frame of the loop, which is when a carry follows the hand. */
+    frame: () => {
+      runFrame(renderer, 0, /** @type {any} */ ({}));
+      group.updateWorldMatrix(true, false);
+    },
     events,
     unmountHandle: () => handleSubscription.unsubscribe(),
     dispose: () => {
@@ -383,11 +390,38 @@ describe("carry", () => {
     dispose();
   });
 
-  test("not kept level, it is taken and put down the same way", () => {
-    const { left, board, panel, events, dispose } = setup({ level: false });
+  test("keeps the tilt the board was taken with, and turns it only about the vertical", () => {
+    const { left, group, panel, frame, dispose } = setup();
+    moveAside(panel);
+    // Rolled about the ray, so the floor is still where the ray meets it.
+    group.rotation.set(0, 0, 0.4);
+    group.updateMatrixWorld(true);
+    press(left, "selectstart");
+    // The hand turns about the vertical, and tips over as well.
+    left.quaternion.copy(turned(0.3, { axis: rightAxis, angle: 0.5 }));
+    left.updateMatrixWorld();
+    frame();
+    const quaternion = new THREE.Quaternion();
+    group.matrixWorld.decompose(new THREE.Vector3(), quaternion, new THREE.Vector3());
+    const expected = new THREE.Quaternion()
+      .setFromAxisAngle(upAxis, 0.3)
+      .multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), 0.4));
+    close(Math.abs(quaternion.dot(expected)), 1);
+    press(left, "selectend");
+    dispose();
+  });
+
+  test("not kept level, it goes with the hand, tilt and all", () => {
+    const { left, board, group, panel, frame, events, dispose } = setup({ level: false });
     moveAside(panel);
     press(left, "selectstart");
     assert.strictEqual(board.held()?.controller, left);
+    // The board was where the hand was, so now it is wherever the hand is.
+    left.position.set(0.2, 1, -0.3);
+    left.quaternion.copy(turned(0.3, { axis: rightAxis, angle: 0.5 }));
+    left.updateMatrixWorld();
+    frame();
+    group.matrixWorld.elements.forEach((value, i) => close(value, left.matrixWorld.elements[i]));
     press(left, "selectend");
     assert.equal(board.held(), null);
     assert.deepEqual(events, []);

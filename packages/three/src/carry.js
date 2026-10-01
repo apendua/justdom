@@ -8,7 +8,7 @@ import {
   useEffect,
   withComputation,
 } from "@apendua/signal";
-import { asReader, InteractionContext, interactions, setLocalMatrix } from "./interactions.js";
+import { asReader, InteractionContext, interactions, setWorldMatrix } from "./interactions.js";
 import { $ } from "./operators.js";
 import { useFrame } from "./render.js";
 
@@ -26,16 +26,19 @@ import { useFrame } from "./render.js";
  * what `drag()` does, by parenting the object to the controller — passes on
  * the wrist's roll and pitch as well as where the hand has got to. That is
  * right for a brick, which is being aimed; it is wrong for a board, which has
- * a floor and things standing on it. So a carry keeps only what a level thing
- * can have: where it is, and which way round it faces.
+ * a floor and things standing on it. So a carry takes only two things from
+ * the hand: where it has got to, and how far it has turned about the
+ * vertical. The wrist's roll and pitch never reach the board. A board that
+ * was tilted when the hand closed on it keeps that tilt, and only turns
+ * about the vertical on top of it.
  *
  * The point the ray landed on when the hand closed — the grab point — is the
  * reference for everything that follows. It stays pinned to the ray, the same
  * distance out along it, and the board turns *about it* rather than about the
  * hand or its own centre. A board grabbed by its far corner is steered by that
  * corner, and the corner never slides out from under the cursor: tipping the
- * wrist moves the board where the ray now points, while the board itself stays
- * level throughout.
+ * wrist moves the board where the ray now points, while the board itself never
+ * tips.
  */
 
 const upAxis = new THREE.Vector3(0, 1, 0);
@@ -50,7 +53,6 @@ const _direction = new THREE.Vector3();
 const _scale = new THREE.Vector3();
 const _offset = new THREE.Vector3();
 const _matrix = new THREE.Matrix4();
-const _inverse = new THREE.Matrix4();
 
 /**
  * A pose with no tilt in it: somewhere to stand, and which way round to face.
@@ -184,24 +186,6 @@ export function beginFreeCarry(hand, object) {
 }
 
 /**
- * Puts an object at a world matrix, through `_matrix`, which it overwrites.
- * One walk up the ancestors, for the parent's world matrix that turns it
- * into a local one.
- *
- * @param {THREE.Object3D} object
- * @param {THREE.Matrix4} world
- * @returns {void}
- */
-function placeWorld(object, world) {
-  const { parent } = object;
-  if (parent) {
-    parent.updateWorldMatrix(true, false);
-    world.premultiply(_inverse.copy(parent.matrixWorld).invert());
-  }
-  setLocalMatrix(object, world);
-}
-
-/**
  * Puts an object at a level pose given in world coordinates, at the world
  * scale given.
  *
@@ -211,10 +195,26 @@ function placeWorld(object, world) {
  * @returns {void}
  */
 function placeLevel(object, pose, scale) {
-  placeWorld(
+  setWorldMatrix(
     object,
     _matrix.compose(pose.position, _quaternion.setFromAxisAngle(upAxis, pose.yaw), scale),
   );
+}
+
+/**
+ * Takes hold of something to be kept from tipping: the grip, and the
+ * rotation and size it has in the room, which the carry turns and keeps.
+ *
+ * @param {THREE.Matrix4} hand
+ * @param {THREE.Vector3} grabPoint
+ * @param {THREE.Matrix4} object The carried thing's world matrix.
+ * @returns {{ grip: Grip, rotation: THREE.Quaternion, scale: THREE.Vector3 }}
+ */
+function takeLevel(hand, grabPoint, object) {
+  const rotation = new THREE.Quaternion();
+  const scale = new THREE.Vector3();
+  object.decompose(_position, rotation, scale);
+  return { grip: beginCarry(hand, grabPoint.clone(), levelPose(object)), rotation, scale };
 }
 
 /**
@@ -260,9 +260,10 @@ export function applyLevelPose(object, pose) {
  *   under way is put down where it is: nothing was reparented, so there is
  *   nothing to undo, and a board left hanging off a hand that can no longer
  *   steer it is worse than one set down.
- * @property {boolean} [level] Whether the carried thing is kept level. True
- *   by default, which is the point of a carry: it turns only about the
- *   vertical, about the grab point, as the top of this file says. False
+ * @property {boolean} [level] Whether the hand's tilt is kept from the
+ *   carried thing. True by default, which is the point of a carry: it turns
+ *   only about the vertical, about the grab point, and keeps whatever tilt
+ *   it had when taken, as the top of this file says. False
  *   gives it the hand's whole rotation, tilt included, as `drag()` does. It
  *   is still posed once a frame rather than reparented, and still taken by
  *   handles. For a panel the player wants to lay flat or tip toward them,
@@ -287,11 +288,12 @@ export function applyLevelPose(object, pose) {
  */
 
 /**
- * Carrying an object about the room with a hand, level unless `level: false`.
+ * Carrying an object about the room with a hand, never tipped by it unless
+ * `level: false`.
  *
- * Where `drag()` hands the object the hand's whole pose, this keeps only what
- * a level thing can have — where it is, and which way round it faces — and
- * steers it by the grab point, the spot the ray landed on when the hand
+ * Where `drag()` hands the object the hand's whole pose, this takes from the
+ * hand only where it has got to and how far it has turned about the
+ * vertical, and steers the object by the grab point, the spot the ray landed on when the hand
  * closed: see the top of this file. The object is not reparented; it is
  * posed, once a frame, from where the hand has got to.
  *
@@ -330,13 +332,13 @@ export function carry(ctx, options = {}) {
   const isEnabled = asReader(enabled);
   /**
    * The hand, what it took hold through, and how it took hold. Kept level,
-   * that is a grip and the size the carried thing is in the room, read once
-   * here rather than once a frame, since nothing about a carry changes it.
-   * Not kept level, it is where the thing is in the hand's frame, which has
-   * the size in it.
+   * that is a grip, and the rotation and size the carried thing had in the
+   * room, read once here rather than once a frame, since a carry only turns
+   * the one and never changes the other. Not kept level, it is where the
+   * thing is in the hand's frame, which has both in it.
    *
    * @typedef {CarryHold & { handle: Object3D } & (
-   *   | { grip: Grip; scale: THREE.Vector3; offset?: never }
+   *   | { grip: Grip; rotation: THREE.Quaternion; scale: THREE.Vector3; offset?: never }
    *   | { offset: THREE.Matrix4; grip?: never }
    * )} Holding
    */
@@ -360,29 +362,18 @@ export function carry(ctx, options = {}) {
       const { controller, inputSource } = event;
       controller.updateWorldMatrix(true, false);
       object.updateWorldMatrix(true, false);
+      const hand = controller.matrixWorld;
       // A press from the other hand while carried is a handover, and takes the
       // grip afresh from where its own ray lands; the same hand pressing again
       // cannot happen without a release in between.
-      hold.set(
-        level
-          ? {
-              controller,
-              inputSource,
-              handle,
-              grip: beginCarry(
-                controller.matrixWorld,
-                event.intersection.point.clone(),
-                levelPose(object.matrixWorld),
-              ),
-              scale: worldScale(object),
-            }
-          : {
-              controller,
-              inputSource,
-              handle,
-              offset: beginFreeCarry(controller.matrixWorld, object.matrixWorld),
-            },
-      );
+      hold.set({
+        controller,
+        inputSource,
+        handle,
+        ...(level
+          ? takeLevel(hand, event.intersection.point, object.matrixWorld)
+          : { offset: beginFreeCarry(hand, object.matrixWorld) }),
+      });
     },
   );
 
@@ -463,17 +454,18 @@ export function carry(ctx, options = {}) {
           // three.js has written the hand's new pose by now, but only into
           // its local matrix; the world one is still last frame's.
           current.controller.updateWorldMatrix(true, false);
+          const hand = current.controller.matrixWorld;
           if (current.offset) {
-            placeWorld(
-              entity,
-              _matrix.multiplyMatrices(current.controller.matrixWorld, current.offset),
-            );
+            setWorldMatrix(entity, _matrix.multiplyMatrices(hand, current.offset));
           } else {
-            placeLevel(
-              entity,
-              carriedPose(current.grip, current.controller.matrixWorld),
-              current.scale,
-            );
+            const pose = carriedPose(current.grip, hand);
+            // The rotation it was taken with, turned as far about the
+            // vertical as the hand has turned since: whatever tilt it had,
+            // it keeps.
+            _quaternion
+              .setFromAxisAngle(upAxis, pose.yaw - current.grip.yaw)
+              .multiply(current.rotation);
+            setWorldMatrix(entity, _matrix.compose(pose.position, _quaternion, current.scale));
           }
         });
       },

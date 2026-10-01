@@ -334,9 +334,10 @@ function claimRoot(root) {
  *   A press on one picks the panel up with `carry()`, and the release puts
  *   it down. Off by default. The carry moves a group the portal puts
  *   between the parent and the panel, so the scene goes on placing the
- *   parent and the player's move is added on top. The panel is kept level
- *   by default, so a panel standing up stays standing up and turns only
- *   about the vertical. `level: false` gives it the hand's whole rotation.
+ *   parent and the player's move is added on top. By default the panel
+ *   turns only about the vertical and keeps the tilt the scene gave it, so
+ *   a panel standing up stays standing up. `level: false` gives it the
+ *   hand's whole rotation.
  *   An object also sets the strips' width and what is carried; see
  *   `PanelDragOptions`. A carry follows the hand in the renderer's frames,
  *   so a portal on a plain page or under a test runner has no strips. Not
@@ -804,6 +805,10 @@ function buildPortal(ctx, ownOptions = {}) {
           }),
           options: keyboard,
           containerObject,
+          // A draggable panel's frame, where the board moves with the panel
+          // and a ray on its keys is not a ray on the panel.
+          hangFrom: () =>
+            handles ? (handles.frame.parent ? handles.frame : null) : containerObject.parent,
           containerElement,
           scale: PANEL_SCALE,
           placeEffect: (fn, name) => withChannel(channel, () => new Effect(fn, { name })),
@@ -1336,6 +1341,9 @@ function buildPortal(ctx, ownOptions = {}) {
     // would hand the entire panel the work its boxes just opted out of.
     containerObject.rotation.set(Math.PI, 0, 0);
     placeAndScale(containerObject, -sizeX / 2, sizeY / 2, 0, scale, scale, scale);
+    // The strips go where the edges are, from the same writes: a mount's
+    // frame ticks move the panel as well as the commit does.
+    handles?.layout(width, height, scale);
   }
 
   function resizeCallback() {
@@ -1351,7 +1359,6 @@ function buildPortal(ctx, ownOptions = {}) {
     if (blocker) {
       coverBox(blocker, size.width, size.height, 1);
     }
-    handles?.layout(size.width, size.height, PANEL_SCALE);
   }
 
   // An `Effect` and not `observable(resizeCallback).subscribe()`, which it
@@ -1758,7 +1765,7 @@ function buildPortal(ctx, ownOptions = {}) {
     addTo(parent) {
       if (handles) {
         parent.add(handles.frame);
-        handles.frame.add(containerObject);
+        handles.face.add(containerObject);
       } else {
         parent.add(containerObject);
       }

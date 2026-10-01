@@ -9,6 +9,7 @@ export {
   getXRSession,
   controllers,
   RendererContext,
+  runFrame,
 } from "./render.js";
 export {
   InteractionContext,

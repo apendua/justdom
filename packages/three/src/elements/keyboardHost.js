@@ -66,9 +66,11 @@ const DEFAULT_TILT = (24 * Math.PI) / 180;
  *   of its own, and none of the app's defaults — except the panel's
  *   `haptics`, which the board's keys follow, since the same hand presses
  *   both, with the hover on unless the panel turned it off by name.
- * @property {THREE.Object3D} containerObject The panel's perimeter. The
- *   board hangs off the same parent, so it is placed and scaled with the
- *   panel.
+ * @property {THREE.Object3D} containerObject The panel's perimeter.
+ * @property {() => THREE.Object3D | null} hangFrom Where a board below the
+ *   panel hangs, so it is placed and scaled with the panel: what the panel
+ *   is in, centred on the panel and moved with it, but not part of it.
+ *   Null while the panel is not in the scene.
  * @property {HTMLElement} containerElement The panel's DOM root, whose size
  *   says where the panel's bottom edge is.
  * @property {number} scale The panel's units per px, so the board's
@@ -106,8 +108,8 @@ const DEFAULT_TILT = (24 * Math.PI) / 180;
  * built again for another panel's `create` comes up where the last one was.
  *
  * In the room, the anchor is in the scene, posed once, and scaled to the
- * board's own size. On a panel, it is hung off the parent of the panel
- * being typed for, with nothing of its own, and moves to the next one.
+ * board's own size. On a panel, it is hung where that panel says
+ * (`hangFrom`), with nothing of its own, and moves to the next one.
  *
  * @typedef {object} Frame
  * @property {THREE.Group} anchor
@@ -120,8 +122,8 @@ const DEFAULT_TILT = (24 * Math.PI) / 180;
  *   on a panel.
  * @property {Effect | null} placement
  * @property {PanelHandles | null} handles What the player moves it by, in
- *   the room: the strips any draggable panel has, carrying the anchor, so
- *   the recline below it is kept. The board hangs in their frame.
+ *   the room: the strips any draggable panel has, carrying the anchor,
+ *   whose pose is what `putDown` remembers. The board hangs in their face.
  */
 
 /**
@@ -355,7 +357,7 @@ export function createKeyboardHost({ createPortal, ctx: sceneCtx = null }) {
         loadingFrame: false,
       },
     );
-    panel.addTo(current.handles?.frame ?? current.drop);
+    panel.addTo(current.handles?.face ?? current.drop);
     if (preview) {
       panel.mount(preview.mountable);
     }
@@ -455,7 +457,8 @@ export function createKeyboardHost({ createPortal, ctx: sceneCtx = null }) {
   return {
     field: () => target.get()?.element ?? null,
     focus(element, binding) {
-      if (!binding.containerObject.parent) {
+      const hangFrom = binding.hangFrom();
+      if (!hangFrom) {
         // A panel not in the scene has nowhere to hang a board.
         return;
       }
@@ -478,7 +481,7 @@ export function createKeyboardHost({ createPortal, ctx: sceneCtx = null }) {
         if (current.mode === "panel" && current.attachedTo !== binding) {
           // On a panel, the board goes to the panel of the field being
           // typed into; in the room, it stays where it was put.
-          /** @type {THREE.Object3D} */ (binding.containerObject.parent).add(current.anchor);
+          hangFrom.add(current.anchor);
           current.attachedTo = binding;
           changed = true;
         }

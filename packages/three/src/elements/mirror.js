@@ -68,10 +68,12 @@ import { clipBoxEqual, intersectClipBoxes, toLocalClipBox, UNCLIPPED } from "./c
  *     out from the space it was given, so a box that came out the size it
  *     was has not moved anything inside it. `#settleLayout` climbs from
  *     each change telling every level's children they moved, and stops at
- *     the first level that kept its own size. Everything below an unchanged
- *     box hears nothing at all, and what it is spared is mostly text: a
- *     `Range` measurement is the most expensive read in this file, and on a
- *     list there is one per row.
+ *     the first level that kept its own size, an inline box excepted: its
+ *     size is the union of its line fragments, which text rewritten on its
+ *     last line can leave alone while moving what follows it. Everything
+ *     below an unchanged box hears nothing at all, and what it is spared is
+ *     mostly text: a `Range` measurement is the most expensive read in this
+ *     file, and on a list there is one per row.
  *
  *     Two things reach past that. `readParentBox` is how a box that *did*
  *     resize reaches its own contents, one level per settling and no
@@ -352,6 +354,25 @@ function resized(element) {
   }
   lastSettledSize.set(element, { width: rect.width, height: rect.height });
   return true;
+}
+
+/**
+ * Whether the element's box is laid out in pieces across line boxes, so that
+ * its size is no measure of what it moved. An inline box's border box is the
+ * union of its fragments, and text rewritten on its last line moves where it
+ * ends, and the inline content after it, without changing that union. A box
+ * with `display: contents` has no box at all. Either way the change belongs
+ * to the element the line boxes are in, and the climb goes on to it.
+ *
+ * Read defensively, as `getFlowMode` reads: an engine that reports no
+ * `display` is reporting the initial value, `inline`.
+ *
+ * @param {Element} element
+ * @returns {boolean}
+ */
+function splitsAcrossLines(element) {
+  const display = getComputedStyleCached(element).display;
+  return display === "" || display === "inline" || display === "contents";
 }
 
 /**
@@ -1095,7 +1116,11 @@ export class DomMirror {
    * level. From the container, each level has its children told and then is
    * asked whether it kept its own size; the first one that did ends the
    * climb, because a box that did not move cannot have moved anything it
-   * sits among. A list of a fixed height can have rows added to it all day
+   * sits among. An inline box is the exception (`splitsAcrossLines`): it
+   * is not one box but its fragments on each line, and a prompt as wide as
+   * its widest line keeps that width while the caret after it moves on with
+   * every key. So the climb goes on past it to the box the lines are in.
+   * A list of a fixed height can have rows added to it all day
    * without the panel around it hearing a word — and so can a list that
    * merely happens not to have changed height, which is the case the
    * overflow test could not see.
@@ -1173,7 +1198,7 @@ export class DomMirror {
             }
             break;
           }
-          if (!resized(current)) {
+          if (!splitsAcrossLines(current) && !resized(current)) {
             break;
           }
           // Climbing one level, the box that changed is the one we came from,

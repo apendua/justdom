@@ -1651,6 +1651,59 @@ describe("layout boundaries", () => {
     }
   });
 
+  test("an inline box that kept its size still moves what follows it", () => {
+    // A terminal: a prompt several lines long, with a caret after it. Typing
+    // on the last line moves where the prompt ends, and so the caret, without
+    // changing the prompt's bounding box, which is as wide as its widest line
+    // and as tall as its line count. An inline box flows across line boxes,
+    // so its size says nothing about where its neighbour starts.
+    let caretLeft = 20;
+
+    const container = document.createElement("div");
+    container.setAttribute(PORTAL_ATTRIBUTE, "");
+    const pre = document.createElement("pre");
+    const prompt = document.createElement("span");
+    const promptText = document.createTextNode("READY.\n> H");
+    const caret = document.createElement("span");
+    caret.style.display = "inline-block";
+    prompt.appendChild(promptText);
+    pre.appendChild(prompt);
+    pre.appendChild(caret);
+    container.appendChild(pre);
+    document.body.appendChild(container);
+
+    const mirror = createMirror();
+    for (const node of [container, pre, prompt, promptText, caret]) {
+      mirror.adopt(node);
+    }
+
+    layout(container, () => [0, 0, 200, 200]);
+    layout(pre, () => [0, 0, 200, 40]);
+    layout(prompt, () => [0, 0, 60, 40]);
+    layout(caret, () => [caretLeft, 20, caretLeft + 10, 40]);
+
+    try {
+      const position = new Derived(() => getContentPosition(caret));
+      const subscription = position.subscribe({ next: () => position.get() });
+      assert.equal(position.get().x, 20);
+
+      // Prime the ledger, as above: a first settle reads as changed.
+      promptText.data = "READY.\n> HE";
+      caretLeft = 30;
+      mirror.characterDataChanged(promptText);
+      assert.equal(position.get().x, 30);
+
+      promptText.data = "READY.\n> HEL";
+      caretLeft = 40;
+      mirror.characterDataChanged(promptText);
+      assert.equal(position.get().x, 40, "the caret followed the text before it");
+
+      subscription.unsubscribe();
+    } finally {
+      container.remove();
+    }
+  });
+
   test("churn outside a scroller does not re-measure a single row inside it", () => {
     // The optimization, and the reason for it: an element that hides its
     // overflow establishes a block formatting context, so nothing out in the

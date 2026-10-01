@@ -1,0 +1,246 @@
+/* The page: a 1600x1000 desk scaled to fit the window, and the feature
+   notes the button in the corner lays over it. */
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: #111; overflow: hidden; }
+.stage { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; }
+.desk { position: relative; width: 1600px; height: 1000px; flex: none; transform-origin: center center; overflow: hidden; }
+.zone { position: absolute; }
+.notes-toggle { position: fixed; top: 10px; left: 10px; z-index: 50; }
+.notes-toggle button {
+  color: #fff; background: rgba(0,0,0,.55); border: 1px solid rgba(255,255,255,.25);
+  padding: 7px 10px; border-radius: 6px; cursor: pointer; font: 600 12px/1 system-ui, sans-serif;
+}
+.tag {
+  display: none; position: absolute; z-index: 40; max-width: 260px;
+  background: #fffbe6; color: #222; border: 1px solid #d4a017; border-radius: 6px;
+  padding: 6px 8px; font: 500 11px/1.35 system-ui, sans-serif; pointer-events: none;
+}
+.tag b { display: block; font-size: 11px; color: #8a5a00; margin-bottom: 2px; letter-spacing: .04em; text-transform: uppercase; }
+body.tags .tag { display: block; }
+
+/* While a session runs every zone is a panel of its own, posed by the scene
+   (src/components/Scene.ts). The staging goes: the desk is not scaled and
+   no zone is tilted, so each one is measured flat and at its own size, and
+   the notes are not mirrored with the zone they sit in. The page is under
+   the session's canvas meanwhile, so none of this is seen. The desk's own
+   scale is an inline style, which src/stage.ts sets to one. */
+html[data-presenting] .zone { transform: none; }
+html[data-presenting] .tag { display: none; }
+/* The cursor sits after the text, and in a session the whole program is in
+   the text from the start, revealed by the scene: while it is being typed
+   the cursor would blink at its end rather than at the cut. */
+html[data-presenting] .screen[data-typing] .cursor { visibility: hidden; }
+
+.krow { display: flex; gap: 5px; }
+.key { position: relative; display: flex; align-items: center; justify-content: center; flex: 1 1 0; min-width: 0; cursor: pointer; user-select: none; }
+.key.w15 { flex-grow: 1.5; } .key.w18 { flex-grow: 1.8; } .key.w2 { flex-grow: 2; }
+.key.w22 { flex-grow: 2.2; } .key.w23 { flex-grow: 2.3; } .key.w27 { flex-grow: 2.7; }
+.key.space { flex-grow: 7; }
+[draggable=true] { cursor: grab; }
+[data-dragging] { opacity: .45; }
+.crt { margin: 0; white-space: pre-wrap; }
+.cursor { display: inline-block; width: .6em; height: 1em; vertical-align: -.12em; animation: blink 1s steps(1) infinite; }
+@keyframes blink { 50% { opacity: 0; } }
+@keyframes march { to { stroke-dashoffset: -20; } }
+@keyframes steam { 0% { transform: translateY(10px) scaleX(.8); opacity: 0; } 30% { opacity: .55; } 100% { transform: translateY(-46px) scaleX(1.3); opacity: 0; } }
+@keyframes busy { 50% { opacity: .25; } }
+
+
+/* ======================================================================
+   Beige Box '84
+   Rules every box below keeps, so the desk mirrors as written:
+   no box-shadow, no filter, one background layer per box, one solid
+   border colour per box (widths may differ per side), hover and press
+   restyle only the element's own subtree and never its size.
+   `perspective()` on the zones is staging for the flat page only: in the
+   scene each zone is its own panel and the scene poses it.
+   ====================================================================== */
+
+.wall { position: absolute; inset: 0 0 380px 0; background: linear-gradient(180deg, #23413f 0%, #1b3331 70%, #142625 100%); }
+.wainscot { position: absolute; left: 0; right: 0; bottom: 380px; height: 40px; background: repeating-linear-gradient(90deg, #172b2a 0 2px, transparent 2px 64px); }
+.tabletop { position: absolute; left: 0; right: 0; bottom: 0; height: 380px;
+  background: repeating-linear-gradient(178deg, #8a5a33 0 7px, #94633a 7px 11px, #81532f 11px 19px, #8f5e36 19px 26px);
+  border-top: 10px solid #5e3a1e; }
+
+/* ---------- wall clock: repeating-conic ticks, hands by inline transform */
+#clock { left: 742px; top: 14px; width: 116px; height: 116px; }
+.clock { position: relative; width: 116px; height: 116px; border-radius: 50%; background: #2b2b28; padding: 7px; }
+.face { position: relative; width: 100%; height: 100%; border-radius: 50%;
+  background: repeating-conic-gradient(from -1deg, #2b2b28 0 2deg, #f2ead6 2deg 30deg); }
+.face-inner { position: absolute; inset: 9px; border-radius: 50%; background: #f2ead6; display: flex; align-items: center; justify-content: center; }
+.face-inner span { position: absolute; top: 22px; font: 7px/1 "Zen Dots", sans-serif; color: #8b7d5f; letter-spacing: .1em; }
+.hand { position: absolute; left: 50%; bottom: 50%; transform-origin: 50% 100%; border-radius: 2px; }
+.hand.h { width: 5px; height: 26px; margin-left: -2.5px; background: #2b2b28; }
+.hand.m { width: 3px; height: 38px; margin-left: -1.5px; background: #2b2b28; }
+.hand.s { width: 1.5px; height: 42px; margin-left: -.75px; background: #d0402b; }
+.hub { position: absolute; left: 50%; top: 50%; width: 9px; height: 9px; margin: -4.5px 0 0 -4.5px; border-radius: 50%; background: #d0402b; }
+
+/* ---------- the monitor ---------------------------------------------- */
+#monitor { left: 492px; top: 142px; width: 616px; }
+.case { background: linear-gradient(180deg, #ece4cf 0%, #ddd3b9 100%); border: 2px solid #a79c80; border-radius: 22px 22px 14px 14px; padding: 26px 30px 0; }
+.bezel { position: relative; background: #34322c; border-radius: 26px; padding: 20px; border: 3px solid #26241f; }
+.screen { position: relative; height: 330px; overflow: hidden; border-radius: 22px; padding: 18px 22px;
+  background: radial-gradient(ellipse at 50% 42%, #133420 0%, #08180e 62%, #030805 100%); }
+.screen[data-phosphor=amber] { background: radial-gradient(ellipse at 50% 42%, #3a2408 0%, #1a0f03 62%, #070401 100%); }
+.screen[data-phosphor=white] { background: radial-gradient(ellipse at 50% 42%, #24282c 0%, #101214 62%, #050606 100%); }
+.crt { font: 22px/1.02 "VT323", monospace; color: #6dff8f; text-shadow: 0 0 5px rgba(109, 255, 143, .55); transition: color .6s; }
+.screen[data-phosphor=amber] .crt { color: #ffb43a; text-shadow: 0 0 5px rgba(255, 180, 58, .55); }
+.screen[data-phosphor=white] .crt { color: #e6f0f2; text-shadow: 0 0 5px rgba(230, 240, 242, .45); }
+.cursor { background: #6dff8f; }
+.screen[data-phosphor=amber] .cursor { background: #ffb43a; }
+.screen[data-phosphor=white] .cursor { background: #e6f0f2; }
+.scanlines { position: absolute; z-index: 1; left: 20px; right: 20px; top: 20px; bottom: 20px; border-radius: 22px; pointer-events: none;
+  background: repeating-linear-gradient(180deg, transparent 0 2px, rgba(0, 0, 0, .28) 2px 3px); }
+.glare { position: absolute; z-index: 2; left: 20px; right: 20px; top: 20px; bottom: 20px; border-radius: 22px; pointer-events: none;
+  background: radial-gradient(ellipse 60% 45% at 28% 18%, rgba(255, 255, 255, .09), transparent 70%); }
+.chin { position: relative; display: flex; align-items: center; gap: 16px; height: 64px; }
+.badge { font: 15px/1 "Zen Dots", sans-serif; color: #6d6450; letter-spacing: .02em; }
+.badge b { color: #c6512b; font-weight: 400; margin-left: 3px; }
+.vents { flex: 1; height: 18px; background: repeating-linear-gradient(90deg, #b9ae93 0 3px, transparent 3px 8px); border-radius: 3px; }
+.knob-wrap { position: relative; }
+.knob { cursor: pointer; font: 600 10px/1 "IBM Plex Mono", monospace; color: #514939; letter-spacing: .06em;
+  background: linear-gradient(180deg, #f6f0de, #d8ceb3); border: 1px solid #9e937a; border-bottom-width: 3px; border-radius: 6px; padding: 7px 9px; transition: transform .1s, background-color .2s; }
+.knob:hover, .knob[data-xr-hover] { transform: translateY(-1px); }
+.knob:active, .knob[data-xr-active] { transform: translateY(1px); }
+.menu { position: absolute; z-index: 3; bottom: 100%; right: 0; margin-bottom: 6px; width: 150px; background: #2d2a24; border: 1px solid #14120f; border-radius: 8px; padding: 5px; }
+.menu div { cursor: pointer; display: flex; align-items: center; gap: 8px; padding: 7px 8px; border-radius: 5px; font: 600 11px/1 "IBM Plex Mono", monospace; color: #e8dfc8; transition: background-color .15s; }
+.menu div:hover, .menu div[data-xr-hover] { background: #4a453b; }
+.menu i { width: 12px; height: 12px; border-radius: 50%; }
+.drive { position: relative; width: 132px; height: 34px; border-radius: 5px; background: linear-gradient(180deg, #d3c8ac, #e6dec8); border: 1px solid #a1967b; display: flex; align-items: center; padding: 0 10px; gap: 10px; transition: background-color .2s; }
+.drive[data-over] { background: linear-gradient(180deg, #f6e9a8, #fff6cc); border-color: #c79b1f; }
+.slot { flex: 1; height: 6px; border-radius: 3px; background: #2a2620; }
+.led { width: 8px; height: 8px; border-radius: 50%; background: #4a2a1a; }
+.led[data-busy] { background: radial-gradient(circle, #ffd27a, #ff6a1a 70%); animation: busy .18s steps(1) infinite; }
+.power { width: 22px; height: 22px; border-radius: 50%; background: #cfc4a8; border: 1px solid #9e937a; display: flex; align-items: center; justify-content: center; }
+.pled { width: 6px; height: 6px; border-radius: 50%; background: radial-gradient(circle, #b8ff9a, #2fb83a 70%); }
+.neck { width: 150px; height: 26px; margin: 0 auto; background: linear-gradient(90deg, #b9ae93, #d8ceb3 40%, #b9ae93); }
+.foot { width: 300px; height: 18px; margin: 0 auto; border-radius: 10px 10px 4px 4px; background: linear-gradient(180deg, #e2d9c1, #c2b79b); border: 1px solid #a1967b; }
+
+/* ---------- the charts panel (left) ---------------------------------- */
+#charts { left: 42px; top: 60px; width: 390px; transform: perspective(1600px) rotateY(20deg); transform-origin: 100% 50%; }
+.rack { background: linear-gradient(180deg, #e9e1cb, #d6cbb0); border: 2px solid #a59a7e; border-radius: 14px; padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+.rack h3 { margin: 0; display: flex; justify-content: space-between; align-items: baseline; font: 13px/1 "Zen Dots", sans-serif; color: #4a4232; }
+.rack h3 small { font: 600 10px/1 "IBM Plex Mono", monospace; color: #8b7f63; letter-spacing: .08em; }
+.inset { background: #1b211c; border: 2px solid #0e120f; border-radius: 8px; padding: 10px; color: #b8f5c4; font: 11px/1.3 "IBM Plex Mono", monospace; }
+.inset .row { display: flex; justify-content: space-between; color: #79b88a; font-size: 10px; letter-spacing: .06em; }
+.inset .row b { color: #c9ffd5; font-size: 13px; }
+svg.chart { display: block; width: 100%; height: 118px; overflow: visible; }
+svg.chart .grid { stroke: #2f4a37; stroke-width: 1; stroke-dasharray: 3 4; }
+svg.chart .area { fill: #6dff8f; fill-opacity: .14; stroke: none; }
+svg.chart .line { fill: none; stroke: #6dff8f; stroke-width: 2; stroke-linejoin: round; }
+svg.chart .dots circle { fill: #1b211c; stroke: #6dff8f; stroke-width: 1.5; }
+svg.chart text { fill: #4f7a5b; font: 9px "IBM Plex Mono", monospace; }
+.bars { display: flex; flex-direction: column; gap: 7px; }
+.bar { display: grid; grid-template-columns: 62px 1fr 34px; align-items: center; gap: 8px; font: 600 10px/1 "IBM Plex Mono", monospace; color: #5b5240; }
+.track { height: 12px; border-radius: 6px; background: #c2b79b; overflow: hidden; }
+.fill { height: 100%; border-radius: 6px; transform-origin: 0 50%; transition: transform .9s cubic-bezier(.3, 1.4, .5, 1); background: linear-gradient(90deg, #2f8f4e, #8fdc5a); }
+.bar:nth-child(2) .fill { background: linear-gradient(90deg, #b06a12, #f4b942); }
+.bar:nth-child(3) .fill { background: linear-gradient(90deg, #9b2f2f, #e9735a); }
+.bar:nth-child(4) .fill { background: repeating-linear-gradient(45deg, #3b5f9a 0 6px, #5a80be 6px 12px); }
+.split { display: grid; grid-template-columns: 112px 1fr; gap: 10px; }
+.donut-wrap { display: flex; flex-direction: column; align-items: center; gap: 6px; font: 600 10px/1 "IBM Plex Mono", monospace; color: #5b5240; }
+.donut { --a: 42%; --b: 71%; position: relative; width: 100px; height: 100px; border-radius: 50%;
+  background: conic-gradient(#2f8f4e 0 var(--a), #f4b942 var(--a) var(--b), #c2b79b var(--b) 100%); }
+.donut-hole { position: absolute; inset: 22px; border-radius: 50%; background: #e2d9c1; display: flex; align-items: center; justify-content: center; font: 15px/1 "Zen Dots", sans-serif; color: #3d3628; }
+svg.flow { display: block; width: 100%; height: 118px; }
+svg.flow .node rect { fill: #f6f0de; stroke: #6d6450; stroke-width: 1.5; }
+svg.flow .node { cursor: pointer; }
+svg.flow .node:hover rect, svg.flow .node[data-xr-hover] rect { fill: #ffe9a3; }
+svg.flow .node text { fill: #3d3628; font: 600 9px "IBM Plex Mono", monospace; text-anchor: middle; }
+svg.flow .edge { fill: none; stroke: #6d6450; stroke-width: 1.5; }
+svg.flow .edge.live { stroke: #c6512b; stroke-dasharray: 5 5; animation: march .8s linear infinite; }
+svg.flow .edge.dotted { stroke-dasharray: 0 5; stroke-linecap: round; stroke-width: 2.5; }
+svg.flow marker path { fill: #6d6450; }
+.log { height: 96px; overflow: hidden; border-radius: 6px; border: 2px solid #0e120f; background: #1b211c; }
+.log-row { display: flex; gap: 10px; padding: 3px 8px; font: 10px/1.25 "IBM Plex Mono", monospace; color: #9fdcae; }
+.log-row:nth-child(even) { background: #222a24; }
+.log-row .ts { color: #4f7a5b; }
+
+/* ---------- the cork board (right) ----------------------------------- */
+#board { left: 1168px; top: 60px; width: 400px; transform: perspective(1600px) rotateY(-20deg); transform-origin: 0 50%; }
+.frame { background: linear-gradient(180deg, #7b5532, #5e3f22); border-radius: 8px; padding: 14px; border: 1px solid #3e2914; }
+.cork { position: relative; height: 470px; border-radius: 3px; overflow: hidden;
+  background: #c08d57 radial-gradient(circle at 2px 2px, rgba(92, 54, 20, .35) 1.2px, transparent 1.8px) 0 0 / 7px 9px; }
+.card { position: absolute; transform: rotate(var(--tilt, 0deg)); transition: transform .2s; padding: 16px 12px 12px; }
+.card:hover, .card[data-xr-hover] { transform: rotate(var(--tilt, 0deg)) translateZ(8px) scale(1.04); }
+.pin { position: absolute; z-index: 1; left: 50%; top: -5px; width: 16px; height: 16px; margin-left: -8px; border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #ff9a8a 0%, #d63a2a 45%, #7a160c 100%); pointer-events: none; }
+.pin.blue { background: radial-gradient(circle at 35% 30%, #a8c8ff 0%, #2a5fd6 45%, #0c2a7a 100%); }
+.pin.yellow { background: radial-gradient(circle at 35% 30%, #fff3a8 0%, #e2b21a 45%, #7a5a0c 100%); }
+.note { width: 150px; min-height: 130px; background: linear-gradient(180deg, #fff59a, #f6e56a); font: 700 22px/1.05 "Caveat", cursive; color: #3a3420; }
+.note.pink { background: linear-gradient(180deg, #ffc8dc, #f7a8c4); }
+.note.green { background: linear-gradient(180deg, #c9f7b4, #a8e88e); }
+.note small { display: block; font-size: 16px; font-weight: 500; color: #6b5e2a; margin-top: 6px; }
+.checklist { width: 176px; background: #fbfaf5; border-top: 6px solid #2a5fd6; font: 13px/1.25 "Libre Baskerville", serif; color: #2a2a2a; }
+.checklist h4 { margin: 0 0 6px; font: 700 18px/1 "Caveat", cursive; color: #2a5fd6; }
+.checklist label { display: flex; align-items: center; gap: 6px; padding: 2px 0; cursor: pointer; font-size: 11px; }
+.checklist input { appearance: none; width: 13px; height: 13px; border: 1.5px solid #6a6a6a; border-radius: 3px; background: #fff; color: #fff; margin: 0; flex: none; }
+.checklist input:checked, .checklist input[data-xr-checked] { background: #2a5fd6; border-color: #2a5fd6; }
+.checklist input:checked + span, .checklist input[data-xr-checked] + span { text-decoration: line-through; color: #8a8a8a; }
+.polaroid { width: 148px; background: #fbfbf8; padding: 10px 10px 8px; border: 1px solid #ddd; }
+.polaroid img { display: block; width: 128px; height: 104px; object-fit: cover; object-position: 50% 70%; }
+.polaroid p { margin: 6px 0 0; text-align: center; font: 700 17px/1 "Caveat", cursive; color: #444; }
+.index { width: 190px; height: 118px; padding: 18px 12px 8px;
+  background: #fffdf6 repeating-linear-gradient(180deg, transparent 0 15px, #b9d3f0 15px 16px) 0 26px / 100% 100% no-repeat;
+  font: 600 16px/16px "Caveat", cursive; color: #233a7a; }
+.index h4 { margin: -12px 0 4px; font: 700 13px/1 "IBM Plex Mono", monospace; color: #c0392b; letter-spacing: .08em; border-bottom: 1.5px solid #e88a8a; padding-bottom: 4px; }
+.index ul { margin: 0; padding-left: 16px; list-style-type: "→ "; }
+.index li::marker { color: #c0392b; }
+.newnote input { width: 100%; margin-top: 6px; font: 600 18px/1 "Caveat", cursive; color: #3a3420; background: rgba(255, 255, 255, .55); border: 1px solid #c9a8b4; border-radius: 4px; padding: 5px 6px; }
+.newnote input::placeholder { color: #9a7a86; }
+
+/* ---------- the keyboard --------------------------------------------- */
+#keyboard { left: 470px; top: 640px; width: 660px; transform: perspective(1400px) rotateX(30deg); transform-origin: 50% 0; }
+.keyboard { background: linear-gradient(180deg, #e7dfc8, #d2c7ab); border: 2px solid #9e937a; border-radius: 12px 12px 18px 18px; padding: 10px 14px 16px; }
+.kb-top { display: flex; justify-content: space-between; align-items: center; padding: 0 2px 8px; }
+.kb-top .brand { font: 11px/1 "Zen Dots", sans-serif; color: #8b7f63; }
+.kb-leds { display: flex; gap: 8px; }
+.kb-leds i { width: 7px; height: 7px; border-radius: 50%; background: #8f8670; }
+.kb-leds i:first-child { background: radial-gradient(circle, #b8ff9a, #2fb83a 70%); }
+.keys { display: flex; flex-direction: column; gap: 5px; background: #a99e83; border-radius: 6px; padding: 6px; }
+.key { height: 36px; border-radius: 5px; background: linear-gradient(180deg, #faf6ea, #dfd6c0); border: 1px solid #8c836c; border-bottom-width: 5px; transition: transform .07s, background-color .15s; }
+.key .cap { font: 600 11px/1 "IBM Plex Mono", monospace; color: #4a4232; }
+.key.mod { background: linear-gradient(180deg, #cfc4a7, #b6ab8e); }
+.key.accent { background: linear-gradient(180deg, #e88a5a, #c6512b); border-color: #7d2e14; }
+.key.accent .cap { color: #fff3e6; }
+.key:hover, .key[data-xr-hover] { transform: translateY(-1px); }
+.key:active, .key[data-xr-active], .key[data-down] { transform: translateY(3px) scale(.98); }
+
+/* ---------- floppies -------------------------------------------------- */
+#floppies { left: 110px; top: 690px; width: 300px; height: 220px; transform: perspective(1400px) rotateX(30deg); }
+.floppy { position: absolute; width: 120px; height: 124px; border-radius: 4px 14px 4px 4px; background: #2b2d33; padding: 0 12px; transform: rotate(var(--tilt)); transition: transform .2s; }
+.floppy:hover, .floppy[data-xr-hover] { transform: rotate(var(--tilt)) translateY(-6px); }
+.floppy.blue { background: #234a8a; } .floppy.red { background: #9a2a22; }
+.shutter { width: 64px; height: 38px; margin: 0 auto; border-radius: 0 0 3px 3px; background: linear-gradient(90deg, #a9adb4, #e8eaee 45%, #9ca0a8); display: flex; justify-content: flex-end; padding: 7px 10px; }
+.shutter i { width: 12px; height: 22px; background: #2b2d33; border-radius: 2px; }
+.label { margin-top: 12px; height: 62px; border-radius: 3px 3px 0 0; background: #fbfaf3 repeating-linear-gradient(180deg, transparent 0 13px, #c9d6ea 13px 14px) 0 18px / 100% 100% no-repeat; padding: 2px 6px; }
+.label b { display: block; font: 700 17px/1 "Caveat", cursive; color: #1d2a6a; border-bottom: 3px solid #e2b21a; padding-bottom: 2px; }
+.label span { font: 600 13px/14px "Caveat", cursive; color: #555; }
+
+/* ---------- the memo (lying beside the keyboard) --------------------- */
+#memo { left: 1148px; top: 618px; width: 300px; transform: perspective(1400px) rotateX(30deg) rotate(-6deg); transform-origin: 50% 0; }
+.paper { position: relative; height: 400px; overflow: hidden; background: #fbf8ef; border: 1px solid #d8d0bb; padding: 20px 22px; color: #26241f; font: 9px/1.5 "Libre Baskerville", serif; }
+.letterhead { display: flex; align-items: center; gap: 10px; border-bottom: 2px solid #1d3b6e; padding-bottom: 8px; }
+.letterhead svg { width: 38px; height: 38px; flex: none; }
+.letterhead h1 { margin: 0; font: 700 16px/1 "Cinzel", serif; color: #1d3b6e; letter-spacing: .06em; }
+.letterhead p { margin: 3px 0 0; font: 7px/1.2 "IBM Plex Mono", monospace; color: #7a7464; letter-spacing: .12em; text-transform: uppercase; }
+.memo-title { margin: 10px 0 6px; font: 700 10px/1 "Cinzel", serif; letter-spacing: .4em; color: #1d3b6e; }
+.meta { display: grid; grid-template-columns: 34px 1fr; gap: 1px 6px; font-size: 8px; margin-bottom: 8px; }
+.meta dt { font-weight: 700; color: #7a7464; } .meta dd { margin: 0; }
+.paper p { margin: 0 0 6px; text-align: justify; hyphens: auto; }
+.paper em { color: #1d3b6e; } .paper u { text-decoration-color: #c0392b; }
+.paper ol { margin: 0 0 6px; padding-left: 16px; } .paper ol li::marker { color: #1d3b6e; font-weight: 700; }
+.sig { font: 700 22px/1 "Caveat", cursive; color: #1d3b6e; margin-top: 4px; }
+.stamp { position: absolute; right: 18px; bottom: 34px; width: 86px; height: 86px; border-radius: 50%; border: 3px solid #c0392b; color: #c0392b; opacity: .78; transform: rotate(-16deg);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; font: 700 12px/1.1 "Cinzel", serif; letter-spacing: .08em; text-align: center; }
+.stamp small { font: 600 7px/1 "IBM Plex Mono", monospace; letter-spacing: .1em; margin-top: 3px; }
+.ring { position: absolute; left: -30px; top: 190px; width: 120px; height: 120px; border-radius: 50%; pointer-events: none;
+  background: radial-gradient(circle, transparent 0 58%, rgba(130, 84, 34, .18) 60% 64%, rgba(130, 84, 34, .06) 66%, transparent 70%); }
+.foot-note { position: absolute; left: 22px; right: 22px; bottom: 10px; display: flex; justify-content: space-between; font: 6.5px/1 "IBM Plex Mono", monospace; color: #9a937f; letter-spacing: .12em; }
+
+/* ---------- mug -------------------------------------------------------- */
+#mug { left: 1462px; top: 640px; width: 120px; height: 160px; }
+.mug { position: absolute; top: 40px; left: 6px; width: 92px; height: 92px; border-radius: 50%; background: radial-gradient(circle, #3b2414 0 52%, #5a3a22 56%, #f3efe6 60% 82%, #d9d2c2 86%); }
+.mug-handle { position: absolute; top: 70px; left: 88px; width: 28px; height: 30px; border: 8px solid #e8e2d6; border-left-width: 0; border-radius: 0 14px 14px 0; }
+.wisp { position: absolute; left: 34px; top: 30px; width: 18px; height: 40px; border-radius: 50%; border: 3px solid rgba(255, 255, 255, .6); border-left-width: 0; border-bottom-width: 0; animation: steam 3.2s ease-out infinite; }
+.wisp:nth-child(2) { left: 52px; animation-delay: 1.4s; }

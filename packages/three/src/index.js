@@ -28,6 +28,7 @@ export {
   yawOf,
   levelPose,
   beginCarry,
+  beginFreeCarry,
   carriedPose,
   applyLevelPose,
 } from "./carry.js";

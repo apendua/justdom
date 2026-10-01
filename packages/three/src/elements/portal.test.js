@@ -13,6 +13,7 @@ import {
 import { acquireImage, releaseImage } from "./image.js";
 import { createPortal as createHeldPortal, getPortalRoot } from "./portal.js";
 import { withPanelOptions } from "./panelOptions.js";
+import { RendererContext } from "../render.js";
 import { recordingSource } from "../test/rumble.js";
 
 /**
@@ -3310,5 +3311,70 @@ describe("an element the page owns, claimed a second time", () => {
       globalThis.requestAnimationFrame = raf;
       root.remove();
     }
+  });
+});
+
+describe("a draggable panel", () => {
+  /**
+   * A panel under a renderer that never draws, which is what a carry needs
+   * to be set up; the panel never mounts, and need not.
+   *
+   * @param {import('./portal.js').PortalOptions} options
+   * @param {{ renderer?: boolean }} [room]
+   */
+  function setup(options, { renderer = true } = {}) {
+    const { ctx, targets } = countingManager();
+    const portal = createPortal(
+      renderer ? RendererContext.set(ctx, /** @type {any} */ ({})) : ctx,
+      options,
+    );
+    const parent = new THREE.Group();
+    portal.addTo(parent);
+    return { portal, parent, targets };
+  }
+
+  test("hangs in a frame of its own, with the strips beside it", () => {
+    const { portal, parent, targets } = setup({ draggable: true });
+    const frame = parent.children[0];
+    const top = frame.getObjectByName("panel-handle-top");
+    assert.ok(top, "the strips are in the frame");
+    assert.ok(targets.has(top), "and ray targets");
+    assert.ok(
+      frame.children.some((child) => child.name !== "panel-handles"),
+      "so is the panel",
+    );
+    portal.disconnect();
+    assert.equal(parent.children.length, 0, "the frame goes with the panel");
+    assert.equal(targets.has(top), false);
+  });
+
+  test("is not by default, nor with nothing to follow the hand by", () => {
+    const fixed = setup({});
+    assert.equal(fixed.parent.getObjectByName("panel-handle-top"), undefined);
+    fixed.portal.disconnect();
+
+    const plain = setup({ draggable: true }, { renderer: false });
+    assert.equal(plain.parent.getObjectByName("panel-handle-top"), undefined);
+    plain.portal.disconnect();
+  });
+
+  test("hands its own options to the strips", () => {
+    let putDown = 0;
+    const { portal, parent } = setup({ draggable: { onPutDown: () => putDown++ } });
+    const top = /** @type {THREE.Object3D} */ (parent.getObjectByName("panel-handle-top"));
+    const controller = new THREE.Group();
+    const press = (/** @type {string} */ type) =>
+      top.dispatchEvent(
+        /** @type {any} */ ({
+          type,
+          controller,
+          inputSource: {},
+          intersection: { object: top, point: new THREE.Vector3() },
+        }),
+      );
+    press("selectstart");
+    press("selectend");
+    assert.equal(putDown, 1, "carried, and put down");
+    portal.disconnect();
   });
 });

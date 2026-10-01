@@ -32,6 +32,7 @@ import { createPortalScheduler, PortalSchedulerContext } from "./portalScheduler
 import { isSvgElement, isSvgRoot, PortalPluginsContext, projectWithPlugins } from "./plugins.js";
 import { mergePanelOptions, PanelOptionsContext, resolveKeyboard } from "./panelOptions.js";
 import { createHaptics, HapticsContext } from "./haptics.js";
+import { createPanelHandles } from "./panelHandles.js";
 import { CameraContext, frames, onLateFrame, RendererContext } from "../render.js";
 import { InteractionContext } from "../interactions.js";
 
@@ -44,6 +45,7 @@ import { InteractionContext } from "../interactions.js";
  * @import {PortalScheduler} from './portalScheduler.js';
  * @import {PortalKeyboardOptions} from './portalKeyboard.js';
  * @import {PortalPlugin} from './plugins.js';
+ * @import {PanelDragOptions} from './panelHandles.js';
  */
 
 /**
@@ -326,6 +328,21 @@ function claimRoot(root) {
  *   for the reason `loadingFrame` has none: pass `{}` for the defaults
  *   outright. A tracked hand has no motors and feels nothing either way.
  *   See `HapticOptions` in `haptics.js`.
+ * @property {boolean | PanelDragOptions} [draggable] Whether the player can
+ *   move the panel. Four strips along its edges are invisible until a ray
+ *   is on the panel, faint while one is, and full on the strip a ray is on.
+ *   A press on one picks the panel up with `carry()`, and the release puts
+ *   it down. Off by default. The carry moves a group the portal puts
+ *   between the parent and the panel, so the scene goes on placing the
+ *   parent and the player's move is added on top. The panel is kept level
+ *   by default, so a panel standing up stays standing up and turns only
+ *   about the vertical. `level: false` gives it the hand's whole rotation.
+ *   An object also sets the strips' width and what is carried; see
+ *   `PanelDragOptions`. A carry follows the hand in the renderer's frames,
+ *   so a portal on a plain page or under a test runner has no strips. Not
+ *   among the scene's `PanelOptions`, since each panel says for itself
+ *   that it can be moved. The keyboard a field brings up has the same
+ *   strips, always.
  * @property {readonly PortalPlugin[]} [plugins] Element plugins for this
  *   panel alone, asked before the ones the scene registered through
  *   `render()`'s `portalPlugins` and before the portal's own dispatch. For
@@ -367,6 +384,7 @@ function buildPortal(ctx, ownOptions = {}) {
     onLoadingChanged,
     loadingFrame = {},
     haptics = {},
+    draggable = false,
     plugins: ownPlugins = [],
   } = mergePanelOptions(PanelOptionsContext.get(ctx), ownOptions);
   const keyboard = resolveKeyboard(keyboardOption);
@@ -577,13 +595,26 @@ function buildPortal(ctx, ownOptions = {}) {
   // neither a renderer nor `requestAnimationFrame`, the sliced path would
   // wait forever on a frame that never comes, so the portal falls back to
   // mounting synchronously, exactly as it did before it learned to slice.
-  let hasFrames = false;
+  let hasRenderer = false;
   try {
     frames(ctx);
-    hasFrames = true;
+    hasRenderer = true;
   } catch {
-    hasFrames = typeof requestAnimationFrame === "function";
+    // Neither here nor below: a page's own loop is enough to slice by, but
+    // not to carry by, which follows the hand in the renderer's frames.
   }
+  const hasFrames = hasRenderer || typeof requestAnimationFrame === "function";
+
+  /**
+   * What a draggable panel is moved by. Its frame goes between the parent
+   * and the container, so the carry is on top of where the scene put the
+   * panel and `placeContainer` goes on centring it. Built with the context
+   * the panel was built from, whose interactions and frames are the scene's.
+   */
+  const handles =
+    draggable && hasRenderer
+      ? createPanelHandles(baseCtx, draggable === true ? {} : draggable)
+      : null;
 
   /**
    * What stands where the panel will be until the panel does: a frame its
@@ -1320,6 +1351,7 @@ function buildPortal(ctx, ownOptions = {}) {
     if (blocker) {
       coverBox(blocker, size.width, size.height, 1);
     }
+    handles?.layout(size.width, size.height, PANEL_SCALE);
   }
 
   // An `Effect` and not `observable(resizeCallback).subscribe()`, which it
@@ -1701,6 +1733,7 @@ function buildPortal(ctx, ownOptions = {}) {
     if (containerObject.parent) {
       containerObject.parent.remove(containerObject);
     }
+    handles?.dispose();
     if (document.fonts) {
       document.fonts.removeEventListener("loadingdone", fontLoadingCallback);
     }
@@ -1723,7 +1756,12 @@ function buildPortal(ctx, ownOptions = {}) {
      * @param {Object3D} parent
      */
     addTo(parent) {
-      parent.add(containerObject);
+      if (handles) {
+        parent.add(handles.frame);
+        handles.frame.add(containerObject);
+      } else {
+        parent.add(containerObject);
+      }
     },
     /**
      * Put a tree into the portal's own container, in place of whatever it

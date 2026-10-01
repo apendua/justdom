@@ -6,7 +6,7 @@ import { moveCaretToEnd, typeIntoInput } from "./typing.js";
 import { InputFocusContext, touchValue } from "./textInput.js";
 import { createKeyboardPreview } from "./keyboardPreview.js";
 import { DEFAULT_KEYBOARD_SCALE, shouldReuse, viewerPose } from "./keyboardPlacement.js";
-import { createKeyboardHandles } from "./keyboardHandles.js";
+import { createPanelHandles } from "./panelHandles.js";
 import { levelPose } from "../carry.js";
 import { CameraContext, RendererContext, SceneContext } from "../render.js";
 
@@ -15,8 +15,8 @@ import { CameraContext, RendererContext, SceneContext } from "../render.js";
  * @import {Mountable} from '../core.js';
  * @import {KeyPress} from './typing.js';
  * @import {KeyboardTarget, PortalKeyboardOptions} from './portalKeyboard.js';
- * @import {KeyboardHandles} from './keyboardHandles.js';
  * @import {KeyboardPreview} from './keyboardPreview.js';
+ * @import {PanelHandles} from './panelHandles.js';
  * @import {LevelPose} from '../carry.js';
  */
 
@@ -119,8 +119,9 @@ const DEFAULT_TILT = (24 * Math.PI) / 180;
  * @property {KeyboardBinding | null} attachedTo The panel it hangs off,
  *   on a panel.
  * @property {Effect | null} placement
- * @property {KeyboardHandles | null} handles What the player moves it by,
- *   in the room.
+ * @property {PanelHandles | null} handles What the player moves it by, in
+ *   the room: the strips any draggable panel has, carrying the anchor, so
+ *   the recline below it is kept. The board hangs in their frame.
  */
 
 /**
@@ -273,19 +274,22 @@ export function createKeyboardHost({ createPortal, ctx: sceneCtx = null }) {
       anchor.rotation.set(0, pose.yaw, 0);
     }
 
-    const { draggable = true } = binding.options;
-    const handles =
-      draggable && room.frames
-        ? createKeyboardHandles(sceneCtx ?? binding.ctx, {
-            anchor,
-            pivot,
-            width: typeof draggable === "object" ? draggable.handleWidth : undefined,
-            onPutDown: () => {
-              anchor.updateWorldMatrix(true, false);
-              putDown = { board: levelPose(anchor.matrixWorld), head: headOf(room.camera) };
-            },
-          })
-        : null;
+    // Always, where there are frames to carry it by: it opened where the
+    // host guessed the player would want it, and only they know better. With
+    // the scene's context, which the room is in; the board's own is the
+    // panel's.
+    const handles = room.frames
+      ? createPanelHandles(sceneCtx ?? binding.ctx, {
+          carried: anchor,
+          onPutDown: () => {
+            anchor.updateWorldMatrix(true, false);
+            putDown = { board: levelPose(anchor.matrixWorld), head: headOf(room.camera) };
+          },
+        })
+      : null;
+    if (handles) {
+      drop.add(handles.frame);
+    }
 
     return {
       anchor,
@@ -351,7 +355,7 @@ export function createKeyboardHost({ createPortal, ctx: sceneCtx = null }) {
         loadingFrame: false,
       },
     );
-    panel.addTo(current.drop);
+    panel.addTo(current.handles?.frame ?? current.drop);
     if (preview) {
       panel.mount(preview.mountable);
     }

@@ -5,7 +5,15 @@ import { Signal } from "@apendua/signal";
 import { InteractionContext, InteractionManager } from "./interactions.js";
 import { RendererContext } from "./render.js";
 import { $, children } from "./operators.js";
-import { applyLevelPose, beginCarry, carriedPose, carry, levelPose, yawOf } from "./carry.js";
+import {
+  applyLevelPose,
+  beginCarry,
+  beginFreeCarry,
+  carriedPose,
+  carry,
+  levelPose,
+  yawOf,
+} from "./carry.js";
 
 /**
  * @import { XREventMap } from "./core.js";
@@ -234,6 +242,32 @@ describe("applyLevelPose", () => {
   });
 });
 
+describe("beginFreeCarry", () => {
+  test("keeps the thing where it was in the hand, tilt and all", () => {
+    const start = hand(new THREE.Vector3(0, 1, 0));
+    const board = new THREE.Matrix4().compose(
+      new THREE.Vector3(0, 1, -0.5),
+      new THREE.Quaternion(),
+      new THREE.Vector3(0.1, 0.1, 0.1),
+    );
+    const offset = beginFreeCarry(start, board);
+    close(new THREE.Matrix4().multiplyMatrices(start, offset).elements[14], -0.5);
+
+    // The wrist pitched up a quarter turn: the board goes up with the ray,
+    // and turns over with the hand, which a level carry would not do.
+    const tipped = hand(new THREE.Vector3(0, 1, 0), 0, { axis: rightAxis, angle: QUARTER });
+    const world = new THREE.Matrix4().multiplyMatrices(tipped, offset);
+    const position = new THREE.Vector3();
+    const quaternion = new THREE.Quaternion();
+    const scale = new THREE.Vector3();
+    world.decompose(position, quaternion, scale);
+    // Where the ray now points.
+    close(position.distanceTo(new THREE.Vector3(0, 1.5, 0)), 0);
+    close(upAxis.clone().applyQuaternion(quaternion).y, 0);
+    close(scale.x, 0.1);
+  });
+});
+
 /**
  * A hand at the origin, looking down -Z, which is all
  * `Raycaster.setFromXRController` reads off it.
@@ -345,6 +379,17 @@ describe("carry", () => {
     press(left, "selectend");
     assert.equal(board.held(), null);
     // Neither press reached the room behind.
+    assert.deepEqual(events, []);
+    dispose();
+  });
+
+  test("not kept level, it is taken and put down the same way", () => {
+    const { left, board, panel, events, dispose } = setup({ level: false });
+    moveAside(panel);
+    press(left, "selectstart");
+    assert.strictEqual(board.held()?.controller, left);
+    press(left, "selectend");
+    assert.equal(board.held(), null);
     assert.deepEqual(events, []);
     dispose();
   });

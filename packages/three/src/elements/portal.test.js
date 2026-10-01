@@ -4,9 +4,14 @@ import * as THREE from "three";
 import { Derived, Effect, Signal, toObservable, UpdateChannel, withChannel } from "@apendua/signal";
 import { $, $$, attr, children, className, stylesheet } from "@apendua/justdom";
 import { InteractionContext, InteractionManager } from "../interactions.js";
-import { DomMirror, getComputedStyleCached, resetMeasuringRangeForTests } from "./mirror.js";
+import {
+  DomMirror,
+  getComputedStyleCached,
+  LOADING_ATTRIBUTE,
+  resetMeasuringRangeForTests,
+} from "./mirror.js";
 import { acquireImage, releaseImage } from "./image.js";
-import { createPortal as createHeldPortal, getPortalRoot, LOADING_ATTRIBUTE } from "./portal.js";
+import { createPortal as createHeldPortal, getPortalRoot } from "./portal.js";
 import { withPanelOptions } from "./panelOptions.js";
 import { recordingSource } from "../test/rumble.js";
 
@@ -2553,6 +2558,105 @@ describe("createPortal", () => {
     element.dataset.xrHover = "true";
     await pump();
     assert.equal(reads, 2, "the second is not");
+
+    dependentSubscription.unsubscribe();
+    subscription.unsubscribe();
+    portal.disconnect();
+  });
+
+  test("an attribute the app's own stylesheet selects on restyles the element", async () => {
+    // A button greyed out through `[data-off]`: an attribute no part of the
+    // portal knows the name of, written after the mount.
+    const style = document.createElement("style");
+    style.textContent = "#switch[data-off] { cursor: not-allowed; }";
+    document.head.appendChild(style);
+    const manager = new InteractionManager();
+    const ctx = InteractionContext.set({}, manager);
+    const portal = createPortal(ctx);
+    portal.addTo(new THREE.Group());
+
+    /** @type {import("@apendua/justdom").Mountable | undefined} */
+    let mountable;
+    const tree = $("div", [children($("div", [attr("id", () => "switch")]))]);
+    const subscription = tree.subscribe((value) => {
+      mountable = value;
+    });
+    assert.ok(mountable);
+    portal.mount(mountable);
+
+    await settle(portal);
+
+    const element = /** @type {HTMLElement} */ (document.getElementById("switch"));
+    assert.ok(element);
+    const observing = new UpdateChannel({ name: "observing", order: 1 });
+    const dependent = withChannel(
+      observing,
+      () => new Derived(() => getComputedStyleCached(element).cursor),
+    );
+    const dependentSubscription = dependent.subscribe({ next: () => dependent.get() });
+    assert.notEqual(dependent.get(), "not-allowed");
+
+    element.setAttribute("data-off", "");
+    await pump();
+    assert.equal(dependent.get(), "not-allowed", "switched off");
+
+    element.removeAttribute("data-off");
+    await pump();
+    assert.notEqual(dependent.get(), "not-allowed", "and on again");
+
+    dependentSubscription.unsubscribe();
+    subscription.unsubscribe();
+    portal.disconnect();
+    style.remove();
+  });
+
+  test("the portal's loading flag on its container restyles nothing", async () => {
+    // The container is above every element in the panel, so an author's
+    // attribute there would restyle all of them. The portal writes this one
+    // twice a mount, and no stylesheet is meant to select on it.
+    const manager = new InteractionManager();
+    const ctx = InteractionContext.set({}, manager);
+    const portal = createPortal(ctx);
+    portal.addTo(new THREE.Group());
+
+    /** @type {import("@apendua/justdom").Mountable | undefined} */
+    let mountable;
+    const tree = $("div", [children($("div", [attr("id", () => "inside")]))]);
+    const subscription = tree.subscribe((value) => {
+      mountable = value;
+    });
+    assert.ok(mountable);
+    portal.mount(mountable);
+
+    await settle(portal);
+
+    const element = /** @type {HTMLElement} */ (document.getElementById("inside"));
+    const containerElement = getPortalRoot(element);
+    assert.ok(containerElement);
+
+    let reads = 0;
+    const observing = new UpdateChannel({ name: "observing", order: 1 });
+    const dependent = withChannel(
+      observing,
+      () =>
+        new Derived(() => {
+          reads += 1;
+          return getComputedStyleCached(element).cursor;
+        }),
+    );
+    const dependentSubscription = dependent.subscribe({ next: () => dependent.get() });
+    dependent.get();
+    assert.equal(reads, 1);
+
+    containerElement.setAttribute(LOADING_ATTRIBUTE, "");
+    await pump();
+    containerElement.removeAttribute(LOADING_ATTRIBUTE);
+    await pump();
+    assert.equal(reads, 1, "neither write reached the element");
+
+    containerElement.setAttribute("data-anything-else", "");
+    await pump();
+    assert.equal(reads, 2, "where any other attribute there does");
 
     dependentSubscription.unsubscribe();
     subscription.unsubscribe();

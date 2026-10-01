@@ -322,21 +322,30 @@ describe("scrollable", () => {
     }
   });
 
-  test("an arrow mounted before its element became a panel listens to the panel's releases", async () => {
+  test("an arrow mounted before its element became a panel listens to the panel's releases", (t) => {
     // A flat page already showing this widget, mirrored when a session begins:
     // the portal marks the element `data-xr-portal` then, long after the arrow
     // was mounted, and takes the mark off when the session ends. Set by hand
     // here because the mark is all the widget looks at; which releases count
     // is the question, not how the portal gets there.
+    //
+    // The repeat runs on the clock, so the clock is the test's: waiting on a
+    // real one made "the arrow kept repeating" depend on the runner finding
+    // time for a 5ms timer within 30ms, which a loaded CI machine sometimes
+    // did not. It moves a millisecond at a time, because Node 22's `tick`
+    // does not fire a timer scheduled by another one it fires: the repeat's
+    // interval, started when the delay runs, would wait for the next call.
+    t.mock.timers.enable({ apis: ["setTimeout", "setInterval"] });
+    const wait = (/** @type {number} */ ms) => {
+      for (let elapsed = 0; elapsed < ms; elapsed++) {
+        t.mock.timers.tick(1);
+      }
+    };
     const view = mount({
       window: 100,
       content: 400,
       props: { step: 10, repeatDelay: 5, repeatInterval: 5 },
     });
-    const wait = (/** @type {number} */ ms) =>
-      new Promise((resolve) => {
-        setTimeout(resolve, ms);
-      });
     try {
       const down = view.find(".bar > .button:last-child");
       assert.ok(down);
@@ -349,13 +358,13 @@ describe("scrollable", () => {
       // still holding the arrow. Not this panel's release: the arrow keeps
       // repeating.
       document.body.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
-      await wait(30);
+      wait(30);
       assert.ok(view.scrollTop > 10, "a release off the panel did not stop the repeat");
 
       // The ray's own release, landing on the panel wherever the hand drifted.
       const before = view.scrollTop;
       view.host.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
-      await wait(30);
+      wait(30);
       assert.equal(view.scrollTop, before, "the panel's release stopped it");
 
       // The session over, the mark off: the page's releases count again.
@@ -363,7 +372,7 @@ describe("scrollable", () => {
       down.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
       const pressed = view.scrollTop;
       document.body.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
-      await wait(30);
+      wait(30);
       assert.equal(view.scrollTop, pressed, "off a panel, any release stops the repeat");
     } finally {
       view.subscription.unsubscribe();

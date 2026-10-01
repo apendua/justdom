@@ -2,6 +2,7 @@ import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
 import { InteractionContext, InteractionManager } from "../interactions.js";
+import { DomMirror } from "./mirror.js";
 import { createPortal } from "./portal.js";
 import { isSvgElement, isSvgRoot, PortalPluginsContext, projectWithPlugins } from "./plugins.js";
 import { svgElements } from "../svg/index.js";
@@ -115,6 +116,19 @@ function shapeMeshes(root) {
     }
   });
   return meshes;
+}
+
+/**
+ * How wide the one shape under `root` is drawn, in user units.
+ *
+ * @param {THREE.Object3D} root
+ * @returns {number}
+ */
+function drawnWidth(root) {
+  const [mesh] = shapeMeshes(root);
+  mesh.geometry.computeBoundingBox();
+  const box = /** @type {THREE.Box3} */ (mesh.geometry.boundingBox);
+  return box.max.x - box.min.x;
 }
 
 describe("portal plugins", () => {
@@ -256,5 +270,78 @@ describe("portal plugins", () => {
     assert.equal(shapeMeshes(parent).length, 1);
     portal.disconnect();
     assert.deepEqual(shapeMeshes(parent), [], "disconnecting takes the shapes with it");
+  });
+
+  test("a shape follows its attributes when they are written after mount", async () => {
+    const ctx = InteractionContext.set({}, new InteractionManager());
+    const { portal, parent, rect } = await project(ctx, { plugins: [svgElements()] });
+    assert.equal(drawnWidth(parent), 40);
+
+    rect.setAttribute("width", "80");
+    await nextMacrotask();
+    assert.equal(drawnWidth(parent), 80, "the geometry follows the width attribute");
+
+    rect.setAttribute("fill", "#00ff00");
+    await nextMacrotask();
+    assert.equal(
+      /** @type {THREE.MeshBasicMaterial} */ (shapeMeshes(parent)[0].material).color.getHexString(),
+      "00ff00",
+      "the paint follows the fill attribute",
+    );
+    portal.disconnect();
+  });
+
+  test("a marker is adopted once, not again on every restyle of its path", async () => {
+    const ctx = InteractionContext.set({}, new InteractionManager());
+    const { portal, svg, rect } = await project(ctx, { plugins: [svgElements()] });
+    const marker = document.createElementNS(SVG_NS, "marker");
+    marker.setAttribute("id", "plugins-arrow");
+    const head = document.createElementNS(SVG_NS, "path");
+    head.setAttribute("d", "M0 0 L10 5 L0 10 z");
+    marker.appendChild(head);
+    const defs = document.createElementNS(SVG_NS, "defs");
+    defs.appendChild(marker);
+    const line = document.createElementNS(SVG_NS, "line");
+    line.setAttribute("x2", "40");
+    line.setAttribute("stroke", "black");
+    line.setAttribute("marker-end", "url(#plugins-arrow)");
+    svg.replaceChild(line, rect);
+    svg.insertBefore(defs, line);
+    await nextMacrotask();
+
+    let adoptions = 0;
+    const original = DomMirror.prototype.adopt;
+    DomMirror.prototype.adopt = function adopt(node) {
+      if (node === marker || node === head) {
+        adoptions += 1;
+      }
+      return original.call(this, node);
+    };
+    try {
+      for (const width of ["2", "3", "4"]) {
+        line.setAttribute("stroke-width", width);
+        await nextMacrotask();
+      }
+    } finally {
+      DomMirror.prototype.adopt = original;
+    }
+    assert.equal(adoptions, 0);
+    portal.disconnect();
+  });
+
+  test("a path follows its d attribute when it is written after mount", async () => {
+    const ctx = InteractionContext.set({}, new InteractionManager());
+    const { portal, parent, svg, rect } = await project(ctx, { plugins: [svgElements()] });
+    const path = document.createElementNS(SVG_NS, "path");
+    path.setAttribute("fill", "blue");
+    path.setAttribute("d", "M0 0 H20 V10 H0 Z");
+    svg.replaceChild(path, rect);
+    await nextMacrotask();
+    assert.equal(drawnWidth(parent), 20);
+
+    path.setAttribute("d", "M0 0 H40 V10 H0 Z");
+    await nextMacrotask();
+    assert.equal(drawnWidth(parent), 40);
+    portal.disconnect();
   });
 });

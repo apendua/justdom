@@ -106,6 +106,42 @@ after(() => {
 });
 
 /**
+ * What jsdom cannot say about layout. It measures every box at nothing,
+ * and a marker is drawn only for an item that has a box, so a list item
+ * measures 100 by 20 here, as a browser lays an empty one out, unless an
+ * element around it is `display: none` and nothing inside is laid out at
+ * all. A test that gives an element a rect of its own still wins.
+ */
+const realGetBoundingClientRect = HTMLElement.prototype.getBoundingClientRect;
+before(() => {
+  HTMLElement.prototype.getBoundingClientRect = function boundingClientRect() {
+    const real = realGetBoundingClientRect.call(this);
+    if (window.getComputedStyle(this).display !== "list-item") {
+      return real;
+    }
+    for (let at = /** @type {Element | null} */ (this); at; at = at.parentElement) {
+      if (window.getComputedStyle(at).display === "none") {
+        return real;
+      }
+    }
+    return /** @type {DOMRect} */ ({
+      left: 0,
+      top: 0,
+      right: 100,
+      bottom: 20,
+      width: 100,
+      height: 20,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    });
+  };
+});
+after(() => {
+  HTMLElement.prototype.getBoundingClientRect = realGetBoundingClientRect;
+});
+
+/**
  * A page-owned root with a list in it, and a portal over it. The items are
  * empty: jsdom lays out no text, and a marker is drawn for an empty item as
  * for any other.
@@ -526,6 +562,38 @@ describe("a list in a panel", () => {
     } finally {
       list.remove();
     }
+  });
+
+  test("an item with no text that scrolls carries its marker with the scroll", async () => {
+    const panel = listPanel(`<ul><li style="list-style-type: disc; overflow: auto"></li></ul>`);
+    const item = /** @type {HTMLElement} */ (panel.list().firstElementChild);
+    item.scrollTop = 5;
+    await settle(panel.portal);
+
+    // The marker is on the box's object, not in the scrolled content, so it
+    // is drawn where the content box's top has scrolled to.
+    assert.equal(panel.runs()[0].position.y, -5);
+
+    panel.cleanup();
+  });
+
+  test("an item that is not laid out has no marker", async () => {
+    const hidden = listPanel(`<ul style="display: none"><li ${BULLET}></li></ul>`);
+    canvas.drawn.length = 0;
+    await settle(hidden.portal);
+    assert.deepEqual(canvas.drawn, []);
+    assert.equal(hidden.runs().length, 0);
+
+    // Shown, it is laid out and draws its bullet; hidden again, it goes.
+    hidden.list().style.display = "";
+    await pump();
+    assert.deepEqual(canvas.drawn, ["•"]);
+    assert.equal(hidden.runs().length, 1);
+
+    hidden.list().style.display = "none";
+    await pump();
+    assert.equal(hidden.runs().length, 0);
+    hidden.cleanup();
   });
 
   test("a reversed list renumbers every item when one is appended", async () => {

@@ -39,13 +39,12 @@ function round(value) {
 }
 
 /**
- * The clip patch's matrix, read by letting the material patch a shader: from
- * a mesh's vertices to the root's frame.
+ * The clip patch's uniforms, read by letting the material patch a shader.
  *
  * @param {Mesh} mesh
- * @returns {THREE.Matrix3}
+ * @returns {Record<string, { value: unknown }>}
  */
-function clipMatrixOf(mesh) {
+function clipUniformsOf(mesh) {
   const shader = {
     uniforms: /** @type {Record<string, { value: unknown }>} */ ({}),
     vertexShader: "void main() {\n#include <begin_vertex>\n}",
@@ -55,7 +54,17 @@ function clipMatrixOf(mesh) {
     /** @type {never} */ (shader),
     /** @type {never} */ (null),
   );
-  return /** @type {THREE.Matrix3} */ (shader.uniforms.clipMatrix.value);
+  return shader.uniforms;
+}
+
+/**
+ * The clip patch's matrix: from a mesh's vertices to the root's frame.
+ *
+ * @param {Mesh} mesh
+ * @returns {THREE.Matrix3}
+ */
+function clipMatrixOf(mesh) {
+  return /** @type {THREE.Matrix3} */ (clipUniformsOf(mesh).clipMatrix.value);
 }
 
 /**
@@ -575,16 +584,7 @@ describe("use", () => {
  * @param {Mesh} mesh
  */
 function clipBoxOf(mesh) {
-  const shader = {
-    uniforms: /** @type {Record<string, { value: unknown }>} */ ({}),
-    vertexShader: "void main() {\n#include <begin_vertex>\n}",
-    fragmentShader: "void main() {\n#include <alphatest_fragment>\n}",
-  };
-  /** @type {THREE.Material} */ (mesh.material).onBeforeCompile(
-    /** @type {never} */ (shader),
-    /** @type {never} */ (null),
-  );
-  const box = /** @type {THREE.Vector4} */ (shader.uniforms.clipBox.value);
+  const box = /** @type {THREE.Vector4} */ (clipUniformsOf(mesh).clipBox.value);
   return [box.x, box.y, box.z, box.w].map(round);
 }
 
@@ -714,6 +714,49 @@ describe("viewport clips", () => {
       .filter((child) => !(child instanceof THREE.Mesh))
       .flatMap(meshesUnder)[0];
     // The box is 4×2 at the line's end, (20, 10), not turned (orient 0).
+    assert.deepEqual(clipBoxOf(markerMesh), [40, 20, 48, 24]);
+    s.teardown();
+  });
+
+  test("a nested svg in a symbol sizes against the symbol's viewport", () => {
+    const rect = svg("rect", { width: "1000", height: "1000", fill: "red" });
+    const symbol = svg("symbol", { id: "clip-symbol-sized", viewBox: "0 0 1000 1000" }, [
+      svg("svg", { style: "overflow: hidden" }, [rect]),
+    ]);
+    const use = svg("use", { href: "#clip-symbol-sized", width: "50", height: "25" });
+    const s = scene([svg("defs", {}, [symbol]), use], [use]);
+    // The symbol's 1000 square fits 25 square in the middle of 50 by 25,
+    // and the nested svg fills it: (12.5, 0)–(37.5, 25), twice that in px.
+    assert.deepEqual(clipBoxOf(meshesUnder(s.objects[0])[0]), [25, 0, 75, 50]);
+    s.teardown();
+  });
+
+  test("a nested svg in a marker sizes against the marker's viewBox", () => {
+    const head = svg("rect", { x: "-100", y: "-100", width: "1000", height: "1000", fill: "red" });
+    const marker = svg(
+      "marker",
+      {
+        id: "clip-marker-nested",
+        viewBox: "0 0 40 20",
+        markerWidth: "4",
+        markerHeight: "2",
+        markerUnits: "userSpaceOnUse",
+      },
+      [svg("svg", { width: "100%", height: "100%", style: "overflow: hidden" }, [head])],
+    );
+    const line = svg("line", {
+      x1: "0",
+      y1: "10",
+      x2: "20",
+      y2: "10",
+      stroke: "black",
+      "marker-end": "url(#clip-marker-nested)",
+    });
+    const s = scene([svg("defs", {}, [marker]), line], [line]);
+    const markerMesh = s.objects[0].children
+      .filter((child) => !(child instanceof THREE.Mesh))
+      .flatMap(meshesUnder)[0];
+    // 100% of the 40 by 20 viewBox is the marker's 4 by 2 box at (20, 10).
     assert.deepEqual(clipBoxOf(markerMesh), [40, 20, 48, 24]);
     s.teardown();
   });

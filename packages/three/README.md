@@ -221,7 +221,10 @@ leaves the hand too.
 `RendererContext` is the property behind the once-a-frame `dragmove`, and
 `useFrame`; it is exported so a test can mount a draggable object without a
 renderer — `RendererContext.set(ctx, {})` is enough for the frame callback to
-be registered and never called.
+be registered and never called. `runFrame(renderer, time, frame)` runs one
+frame for such a renderer: what `frames(ctx)` emits, then every `useFrame`
+callback, as `render()`'s loop does before the late callbacks and the draw.
+A test calls it to see a carry follow the hand, or a panel mount.
 
 ## Carrying things level
 
@@ -229,9 +232,11 @@ be registered and never called.
 board with a floor and things standing on it, which a drag would tip over. A
 hand reaching out across a board rolls and pitches far more than it feels like
 it does, and a board handed the wrist's whole pose arrives on its side with
-everything sliding off it. So a carry keeps only what a level thing can have —
-where it is, and which way round it faces — and poses the object once a frame
-from where the hand has got to, rather than reparenting it.
+everything sliding off it. So a carry takes only two things from the hand:
+where it has got to, and how far it has turned about the vertical. The board
+keeps whatever tilt it had when it was taken, a level board stays level, and
+the carry poses it once a frame from where the hand has got to, rather than
+reparenting it.
 
 ```js
 const board = carry(ctx, { enabled: () => phase.get() === "build" });
@@ -266,6 +271,13 @@ that already are. A scene that does want any unclaimed press to carry puts
 handle — a floor slab, a rail — `carryHandle(ctx, carried, geometry, material,
 position)` is the mesh, pointable and listening, ready to be a child of the
 carried group.
+
+`carry(ctx, { level: false })` keeps the hand's whole rotation instead,
+tilt included, the way `drag()` does. The object is still posed once a
+frame and still taken by handles, so it is not reparented. Its place in the
+hand is `beginFreeCarry(hand, object)`, the hand's world matrix inverted
+times the object's, and each frame puts it at the hand's matrix times that.
+A draggable panel with `level: false` is carried this way.
 
 The bookkeeping is `drag()`'s: a press from the other hand mid-carry is a
 handover, taking the grip afresh from wherever its own ray lands, and only the
@@ -1042,13 +1054,14 @@ the panel's scale, and a function poses it yourself when it opens. On a
 plain page, or under a test runner, where there is no camera to be in front
 of, it hangs below the panel.
 
-**It can be moved.** Four strips along its edges are invisible until a ray
-is on the board, show faintly while one is, and fully on the strip a ray is
-on; pressing one picks the board up with `carry()`, level, and releasing
-puts it down. It opens there again next time, unless the player has since
-walked more than a metre or turned more than 60° away. `draggable: false`
-turns this off; `draggable: { handleWidth }` changes how wide the strips
-are.
+**It can be moved.** A board in the room has the strips a draggable panel
+has (see [Letting the player move a panel](#letting-the-player-move-a-panel)),
+and always has them. The carry takes the anchor the board hangs from, so
+where the player puts it down is the anchor's pose, and the next board
+opens there, unless they have since walked more than a metre or turned
+more than 60° away. A board below a panel has no strips, because it moves
+with the panel. Below a draggable panel it goes with the panel when the
+panel is carried, and a ray on its keys does not show the panel's strips.
 
 **It shows what is being typed.** The board is where the hands are, and the
 field it types into is wherever its panel is — a glance up and back down
@@ -1575,6 +1588,42 @@ One print of the measuring tape, on a static panel of 800 mirrored rows at
 | three's defaults | none | 10.0 ms/frame |
 | every ancestor placed | none | 3.6 ms/frame |
 | three's defaults | declines the recompute | 3.6 ms/frame |
+
+### Letting the player move a panel
+
+A panel can say that the player may move it:
+
+```js
+dom(ctx, Settings(ctx), [], { draggable: true });
+dom(ctx, Map(ctx), [], { draggable: { level: false, handleWidth: 20 } });
+```
+
+Four strips along its edges are invisible until a ray is on the panel. They
+show faintly while a ray is anywhere on it, and fully on the strip the ray
+is on and on all four while the panel is held. A press on a strip picks the
+panel up with `carry()`, and the release puts it down. A press on the panel
+itself means what it always meant, so a button on a draggable panel is
+still a button. This moves the panel about the room; dragging elements
+within a panel is [Dragging and dropping](#dragging-and-dropping).
+
+The portal puts a group of its own between the parent and the panel, and
+the carry moves that group. Whatever the scene does to place the parent
+still applies, and the player's move is added on top of it.
+
+By default the panel turns only about the vertical and keeps the tilt the
+scene gave it, so a panel standing up stays standing up and one reclined
+stays reclined. `level: false` gives it the hand's
+whole rotation instead, for a panel the player wants to lay flat or tip
+toward them. `handleWidth` is the strips' width in the panel's px, 14 by
+default. `carried` names an ancestor to move instead of the panel, so the
+panel moves together with whatever it hangs from. `onPutDown` is called
+when a carry ends, which is where a scene saves the panel's new place.
+
+Dragging is off unless a panel asks for it, and it is not one of the
+scene's [panel defaults](#panel-defaults). A carry follows the hand in the
+renderer's frames, so a portal without a renderer, on a plain page or
+under a test runner, has no strips. The [keyboard](#text-fields-and-the-keyboard)
+uses the same strips and always has them in the room.
 
 ### How sharp the text comes out
 

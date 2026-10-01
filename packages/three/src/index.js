@@ -9,6 +9,7 @@ export {
   getXRSession,
   controllers,
   RendererContext,
+  runFrame,
 } from "./render.js";
 export {
   InteractionContext,
@@ -28,6 +29,7 @@ export {
   yawOf,
   levelPose,
   beginCarry,
+  beginFreeCarry,
   carriedPose,
   applyLevelPose,
 } from "./carry.js";

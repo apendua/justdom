@@ -10,28 +10,36 @@ import { $ } from "../operators.js";
  */
 
 /**
- * The handles a keyboard in the room is moved by.
+ * The handles a panel is moved by, when it says it can be.
  *
- * A board opened in front of the player is where the host guessed they
- * would want it; it is the player who knows. So it can be picked up, by
- * four strips along its edges — never by its keys, which a press means
- * something else on. The strips are the host's, drawn beside the board
- * rather than in its DOM, so a keyboard an app wrote does not have to know
- * it can be moved.
+ * A panel is where the scene guessed the player would want it; it is the
+ * player who knows. So a panel with `draggable` can be picked up by four
+ * strips along its edges. It is never picked up by what is on it, since a
+ * press there means something else. The strips are the portal's, drawn
+ * beside the panel rather than in its DOM, so a panel an app wrote does not
+ * have to know it can be moved. The keyboard a field brings up is a panel
+ * too, and is moved by the same strips.
  *
- * They are not there until they are wanted. With no ray on the board they
+ * They are not there until they are wanted. With no ray on the panel they
  * are invisible, though a ray finds them all the same; with a ray anywhere
  * on it they show faintly, so there is something to find; the one a ray is
- * on, and all of them while the board is being carried, show in full.
+ * on, and all of them while the panel is being carried, show in full.
  *
- * A carry keeps the board level and turns it only about the vertical,
- * which is `carry()`'s whole point: the recline is under the anchor it
- * poses, on the hinge, and is left as it was.
+ * The carry is `carry()`'s, so by default the panel turns only about the
+ * vertical and keeps whatever tilt the scene gave it: a panel standing up
+ * stays standing up, and one reclined stays reclined. `level: false` gives
+ * it the hand's whole rotation instead.
+ *
+ * Two groups, one inside the other. The frame is what is carried, and what
+ * moves with the panel goes in it: a keyboard hung below the panel. The
+ * face, inside it, is the panel and its strips, and only a ray on the face
+ * shows them, so typing on a board below the panel does not light up the
+ * panel's strips.
  */
 
 /**
- * How wide the strips are, in the board's px: a fingertip, at a millimetre
- * a px.
+ * How wide the strips are, in the panel's px: a fingertip, on a keyboard at
+ * a millimetre a px.
  */
 export const DEFAULT_HANDLE_WIDTH = 14;
 
@@ -54,35 +62,64 @@ const BAR_LENGTH = 0.4;
 const SIDES = ["top", "bottom", "left", "right"];
 
 /**
- * @typedef {object} KeyboardHandles
+ * @typedef {object} PanelHandles
+ * @property {THREE.Group} frame What is carried, unless `carried` says
+ *   otherwise, and what goes with the panel without being part of it.
+ * @property {THREE.Group} face In the frame, where the panel goes, centred
+ *   on its origin: the strips are laid out around it, and a ray on anything
+ *   in it shows them.
  * @property {(width: number, height: number, units: number) => void} layout
- *   Fit the strips to a board this many px across and down, hanging from
- *   the hinge, at `units` per px.
- * @property {() => void} dispose
+ *   Fit the strips to a panel this many px across and down, at `units` per
+ *   px.
+ * @property {() => void} dispose Take the strips down, and the frame out of
+ *   its parent.
+ */
+
+/**
+ * How a panel is moved, for one that can be: `PortalOptions.draggable`.
+ *
+ * @typedef {object} PanelDragOptions
+ * @property {number} [handleWidth] The strips' width, in the panel's px. 14
+ *   by default.
+ * @property {boolean} [level] Whether the hand's tilt is kept from the
+ *   panel while carried: it turns only about the vertical and keeps the
+ *   tilt it had, so a panel standing up stays standing up. True by
+ *   default; false gives it the hand's whole rotation, tilt included (see
+ *   `CarryOptions.level`).
+ * @property {THREE.Object3D} [carried] What a hand on the strips moves. The
+ *   panel by default, or an ancestor of it to move the panel together with
+ *   what it hangs from. The keyboard carries the anchor it hangs from,
+ *   whose pose is where the next board opens.
+ * @property {() => void} [onPutDown] Told when a carry ends, with the panel
+ *   where the player left it.
  */
 
 /**
  * @param {WeakKey} ctx A context with interactions and a renderer: the
  *   carry follows the hand once a frame.
- * @param {object} options
- * @param {THREE.Object3D} options.anchor What is carried: the board's anchor
- *   in the room.
- * @param {THREE.Object3D} options.pivot The hinge, whose frame the board and
- *   the strips are laid out in.
- * @param {number} [options.width] The strips' width, in the board's px.
- * @param {() => void} options.onPutDown Told when a carry ends, with the
- *   board where the player left it.
- * @returns {KeyboardHandles}
+ * @param {PanelDragOptions} [options]
+ * @returns {PanelHandles}
  */
-export function createKeyboardHandles(
-  ctx,
-  { anchor, pivot, width = DEFAULT_HANDLE_WIDTH, onPutDown },
-) {
+export function createPanelHandles(ctx, options = {}) {
+  const frame = new THREE.Group();
+  /** @type {THREE.Group<XREventMap>} */
+  const face = new THREE.Group();
+  frame.add(face);
+  const {
+    handleWidth = DEFAULT_HANDLE_WIDTH,
+    level,
+    carried: carriedObject = frame,
+    onPutDown,
+  } = options;
   const { makeInteractive } = interactions(ctx);
-  const carried = carry(ctx);
+  const carried = carry(ctx, { level });
 
   const group = new THREE.Group();
-  pivot.add(group);
+  group.name = "panel-handles";
+  // Out of the raycast until it is laid out: a strip is a metre-wide plane
+  // until then.
+  group.visible = false;
+  face.add(group);
   const plane = new THREE.PlaneGeometry(1, 1);
   // Never drawn, always hit: the manager leaves out what is not `visible`,
   // and three's raycast does not ask the material.
@@ -92,7 +129,7 @@ export function createKeyboardHandles(
     const hit = /** @type {THREE.Mesh<THREE.PlaneGeometry, THREE.Material, XREventMap>} */ (
       new THREE.Mesh(plane, hitMaterial)
     );
-    hit.name = `keyboard-handle-${side}`;
+    hit.name = `panel-handle-${side}`;
     const bar = new THREE.Mesh(
       plane,
       new THREE.MeshBasicMaterial({
@@ -102,7 +139,7 @@ export function createKeyboardHandles(
         depthWrite: false,
       }),
     );
-    bar.name = `keyboard-handle-${side}-bar`;
+    bar.name = `panel-handle-${side}-bar`;
     bar.visible = false;
     // Beside the strip rather than under it, so the ray tests the strip
     // alone.
@@ -111,9 +148,9 @@ export function createKeyboardHandles(
   });
 
   /**
-   * What each ray is on, among the board's things: its keys, its
+   * What each ray is on, among the panel's things: its controls, its
    * background, the strips. A pointer event bubbles from what the ray met up
-   * to the anchor, and `originalTarget` is what it met.
+   * to the face, and `originalTarget` is what it met.
    *
    * @type {Map<unknown, THREE.Object3D>}
    */
@@ -142,8 +179,8 @@ export function createKeyboardHandles(
   /**
    * A hand's leave always clears it: the manager sends one leave per hand
    * before that hand's next enter, and what it names as left is whichever
-   * mesh the ray was on last, which after a drift from a key's label onto
-   * its background is not the mesh the enter named.
+   * mesh the ray was on last, which after a drift from a button's label
+   * onto its background is not the mesh the enter named.
    *
    * @param {PointerCancelEvent} event
    */
@@ -152,13 +189,12 @@ export function createKeyboardHandles(
       refresh();
     }
   };
-  const target = /** @type {THREE.Object3D<XREventMap>} */ (anchor);
-  target.addEventListener("pointerenter", onEnter);
-  target.addEventListener("pointerleave", onLeave);
+  face.addEventListener("pointerenter", onEnter);
+  face.addEventListener("pointerleave", onLeave);
 
   /** @type {Unsubscribable[]} */
   const subscriptions = [
-    $(target, [
+    $(/** @type {THREE.Object3D<XREventMap>} */ (carriedObject), [
       carried.carriable(),
       () => {
         useEffect(
@@ -166,13 +202,13 @@ export function createKeyboardHandles(
             const held = carried.held() !== null;
             withComputation(null, () => {
               if (carrying && !held) {
-                onPutDown();
+                onPutDown?.();
               }
               carrying = held;
               refresh();
             });
           },
-          { name: "keyboard-handles:held" },
+          { name: "panel-handles:held" },
         );
       },
     ]).subscribe({}),
@@ -180,16 +216,19 @@ export function createKeyboardHandles(
   ];
 
   return {
-    layout(boardWidth, boardHeight, units) {
-      const w = boardWidth;
-      const h = boardHeight;
-      const hw = width;
+    frame,
+    face,
+    layout(panelWidth, panelHeight, units) {
+      const w = panelWidth;
+      const h = panelHeight;
+      const hw = handleWidth;
+      group.visible = true;
       /** @type {Record<Side, [number, number, number, number]>} */
       const boxes = {
-        top: [0, hw / 2, w, hw],
-        bottom: [0, -h - hw / 2, w, hw],
-        left: [-(w + hw) / 2, -h / 2, hw, h],
-        right: [(w + hw) / 2, -h / 2, hw, h],
+        top: [0, (h + hw) / 2, w, hw],
+        bottom: [0, -(h + hw) / 2, w, hw],
+        left: [-(w + hw) / 2, 0, hw, h],
+        right: [(w + hw) / 2, 0, hw, h],
       };
       for (const { side, hit, bar } of strips) {
         const [x, y, sx, sy] = boxes[side];
@@ -208,9 +247,10 @@ export function createKeyboardHandles(
       for (const subscription of subscriptions) {
         subscription.unsubscribe();
       }
-      target.removeEventListener("pointerenter", onEnter);
-      target.removeEventListener("pointerleave", onLeave);
+      face.removeEventListener("pointerenter", onEnter);
+      face.removeEventListener("pointerleave", onLeave);
       group.removeFromParent();
+      frame.removeFromParent();
       plane.dispose();
       hitMaterial.dispose();
       for (const { bar } of strips) {

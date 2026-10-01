@@ -362,6 +362,28 @@ function frameSubjectFor(renderer) {
 }
 
 /**
+ * A frame's ordinary work for a renderer: what `frames(ctx)` emits, then
+ * every `useFrame` callback, in that order. `render()`'s loop runs it before
+ * the late callbacks and the draw. Exported so that a test can run a frame
+ * for a renderer it made up, which is all a carry or a panel's pump needs to
+ * see one.
+ *
+ * @param {THREE.WebGLRenderer} renderer
+ * @param {number} time
+ * @param {XRFrame} frame
+ * @returns {void}
+ */
+export function runFrame(renderer, time, frame) {
+  frameSubjectFor(renderer).next({ time, frame });
+  const set = listeners.get(renderer);
+  if (set) {
+    for (const fn of set) {
+      fn(time, frame);
+    }
+  }
+}
+
+/**
  * Run `fn` on every frame, for as long as the surrounding computation stands.
  *
  * This used to be a pair — an `animate(ctx, fn)` observable handed to `use`,
@@ -680,11 +702,6 @@ export function render(fn, options = {}) {
     // down with the renderer.
     subscriber.add(fn(ctx).subscribe({}));
 
-    // The same subject anything built above already holds: the scene was
-    // constructed before this line, and whatever asked it for frames is
-    // waiting on this one.
-    const subject = frameSubjectFor(renderer);
-
     let previousFrameTime = 0;
 
     /**
@@ -747,13 +764,7 @@ export function render(fn, options = {}) {
       }
       previousFrameTime = time;
       options.onBeforeRender?.(renderer);
-      subject.next({ time, frame });
-      const set = listeners.get(renderer);
-      if (set) {
-        for (const fn of set) {
-          fn(time, frame);
-        }
-      }
+      runFrame(renderer, time, frame);
       const lateSet = lateListeners.get(renderer);
       if (lateSet) {
         // Everything that moves this frame has now moved — three.js has written

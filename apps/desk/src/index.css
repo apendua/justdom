@@ -23,8 +23,11 @@ body.tags .tag { display: block; }
    no zone is tilted, so each one is measured flat and at its own size, and
    the notes are not mirrored with the zone they sit in. The page is under
    the session's canvas meanwhile, so none of this is seen. The desk's own
-   scale is an inline style, which src/stage.ts sets to one. */
-html[data-presenting] .zone { transform: none; }
+   scale is an inline style, which src/stage.ts sets to one. Important,
+   because each tilt is set by the zone's id, which no rule for `.zone` can
+   outrank; without it the tilted zones were mirrored measured under their
+   tilt, and the text in them was drawn out of place. */
+html[data-presenting] .zone { transform: none !important; }
 html[data-presenting] .tag { display: none; }
 /* The cursor sits after the text, and in a session the whole program is in
    the text from the start, revealed by the scene: while it is being typed

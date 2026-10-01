@@ -11,7 +11,7 @@ import { div, PortalReadyContext } from "./div.js";
 import { getContentGroup } from "./contentGroup.js";
 import { text } from "./text.js";
 import { checkbox } from "./checkbox.js";
-import { listItem } from "./listMarker.js";
+import { markedBox } from "./listMarker.js";
 import { InputFocusContext, textInput } from "./textInput.js";
 import { isTextInput } from "./typing.js";
 import { bindPortalKeyboard } from "./portalKeyboard.js";
@@ -890,12 +890,8 @@ function buildPortal(ctx, ownOptions = {}) {
                   : div(ctx, element);
             break;
           }
-          case "li": {
-            object$ = listItem(ctx, element);
-            break;
-          }
           default: {
-            object$ = div(ctx, element);
+            object$ = markedBox(ctx, element);
           }
         }
       }

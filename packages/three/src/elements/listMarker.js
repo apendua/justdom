@@ -6,10 +6,20 @@ import {
   getBorderBoxSize,
   getChildNodes,
   getComputedStyleCached,
+  getFirstLine,
+  getInteriorClipBox,
   getParentElement,
+  getScrollOffset,
   nodeCache,
 } from "./mirror.js";
-import { getRunRenderStyle, isTintableText, measureTextRun, px } from "./textHelpers.js";
+import {
+  contentBox,
+  getRunRenderStyle,
+  isTintableText,
+  measureTextAdvance,
+  measureTextRun,
+  px,
+} from "./textHelpers.js";
 import { surfaceRun } from "./surfaceRun.js";
 
 /**
@@ -19,19 +29,31 @@ import { surfaceRun } from "./surfaceRun.js";
  * @import * as THREE from 'three';
  */
 
+/** @typedef {"ltr" | "rtl"} Direction */
+
+/**
+ * What a marker draws: its glyphs, and the space between them and the
+ * item's text, which is part of the marker's box and takes no ink.
+ *
+ * @typedef {object} MarkerText
+ * @property {string} text
+ * @property {string} space
+ */
+
 /**
  * The glyph each symbolic `list-style-type` draws, as CSS Counter Styles
- * defines them. A marker is its glyph and a space, which is what keeps it
- * clear of the item's text.
+ * defines them, for left-to-right and right-to-left text. A closed
+ * disclosure triangle points the way the text runs; the rest are the same
+ * either way.
  *
- * @type {Readonly<Record<string, string>>}
+ * @type {Readonly<Record<string, Readonly<Record<Direction, string>>>>}
  */
 const SYMBOLS = {
-  disc: "•",
-  circle: "◦",
-  square: "▪",
-  "disclosure-open": "▾",
-  "disclosure-closed": "▸",
+  disc: { ltr: "•", rtl: "•" },
+  circle: { ltr: "◦", rtl: "◦" },
+  square: { ltr: "▪", rtl: "▪" },
+  "disclosure-open": { ltr: "▾", rtl: "▾" },
+  "disclosure-closed": { ltr: "▸", rtl: "◂" },
 };
 
 const LATIN = "abcdefghijklmnopqrstuvwxyz";
@@ -134,29 +156,45 @@ function unquote(type) {
 }
 
 /**
- * What a list item's marker says, with its suffix and the space after it,
- * such as `"• "`, `"3. "` or `"iv. "`. Null for `none`.
+ * What a list item's marker draws, such as `•`, `3.` or `iv.`, with the
+ * space after it kept apart. Null for `none`.
+ *
+ * In right-to-left text a number's full stop is on the side of the item's
+ * text, as a browser draws it: `.3`. A string is drawn as it is written,
+ * whichever way the text runs; its trailing whitespace is its space.
  *
  * The number is asked for only by a numbered style, so a bulleted list
  * never counts its items.
  *
  * @param {string} type The computed `list-style-type`.
  * @param {() => number} ordinal The item's number in its list.
- * @returns {string | null}
+ * @param {Direction} [direction]
+ * @returns {MarkerText | null}
  */
-export function listMarkerText(type, ordinal) {
+export function listMarkerText(type, ordinal, direction = "ltr") {
   if (!type || type === "none") {
     return null;
   }
   const string = unquote(type);
   if (string !== null) {
-    return string || null;
+    const text = string.trimEnd();
+    return text ? { text, space: string.slice(text.length) } : null;
   }
   const symbol = SYMBOLS[type];
   if (symbol) {
-    return `${symbol} `;
+    return { text: symbol[direction], space: " " };
   }
-  return `${formatCounter(type, ordinal())}. `;
+  const counter = formatCounter(type, ordinal());
+  return { text: direction === "rtl" ? `.${counter}` : `${counter}.`, space: " " };
+}
+
+/**
+ * @param {MarkerText | null} a
+ * @param {MarkerText | null} b
+ * @returns {boolean}
+ */
+function markerEqual(a, b) {
+  return a === b || (!!a && !!b && a.text === b.text && a.space === b.space);
 }
 
 /**
@@ -239,6 +277,15 @@ function firstOrdinal(list, reversed) {
   return count;
 }
 
+/**
+ * How many items an ordinal walks back over before it asks the item there
+ * for its number instead. Counting back keeps each item's dependencies
+ * near it; the limit keeps a long list from nesting one evaluation per item
+ * on the stack when every item is dirty at once and the last is read
+ * first. Ten thousand rows nest about three hundred deep.
+ */
+const ORDINAL_REACH = 32;
+
 /** @type {WeakMap<Element, Derived<number>>} */
 const ordinalCache = nodeCache();
 
@@ -246,12 +293,14 @@ const ordinalCache = nodeCache();
  * The number a list item's marker shows: its own `value`, or one on from
  * the item before it (one back, in a `reversed` list), or the list's first.
  *
- * Each item asks only the item before it, so appending a row numbers that
- * row and nobody else, however long the list. What tells an item that the
- * item before it is a different one now is its own computed style: a
- * change to a child list restyles every child from the change to the end
+ * An item counts back over the items before it to the nearest one with a
+ * `value` or to the start of the list, and past `ORDINAL_REACH` of them
+ * asks the item it reached instead. Appending a row is that row's walk and
+ * nobody else's, however long the list. What tells an item that the items
+ * before it are different ones now is its own computed style: a change to
+ * a child list restyles every child from the change to the end
  * (`#restyleAround` in mirror.js), which is exactly the run of items whose
- * predecessor can have changed. The one list that does renumber on every
+ * predecessors can have changed. The one list that does renumber on every
  * append is a `reversed` one with no `start`, whose first number is its
  * length; every number in it has changed.
  *
@@ -263,17 +312,24 @@ export function getListItemOrdinal(element) {
   if (!signal) {
     signal = new Derived(() => {
       getComputedStyleCached(element);
-      const own = parseInteger(getAttributeCached(element, "value"));
-      if (own !== null) {
-        return own;
-      }
       const list = getParentElement(element);
       const reversed = list?.localName === "ol" && getAttributeCached(list, "reversed") !== null;
-      const previous = previousListItem(element);
-      if (previous) {
-        return getListItemOrdinal(previous) + (reversed ? -1 : 1);
+      const step = reversed ? -1 : 1;
+      let item = element;
+      for (let back = 0; ; back++) {
+        const own = parseInteger(getAttributeCached(item, "value"));
+        if (own !== null) {
+          return own + back * step;
+        }
+        const previous = previousListItem(item);
+        if (!previous) {
+          return firstOrdinal(list, reversed) + back * step;
+        }
+        if (back + 1 === ORDINAL_REACH) {
+          return getListItemOrdinal(previous) + ORDINAL_REACH * step;
+        }
+        item = previous;
       }
-      return firstOrdinal(list, reversed);
     });
     ordinalCache.set(element, signal);
   }
@@ -286,12 +342,13 @@ export function getListItemOrdinal(element) {
  * of that line for `list-style-position: inside`, where the browser has
  * already moved the item's text over to make room. In the colour and font
  * the page gives `::marker`, which are the item's unless a rule says
- * otherwise.
+ * otherwise, and cut by the item's own `overflow` as well as its
+ * ancestors', as an outside marker is on a page.
  *
  * @param {WeakKey} ctx
  * @param {HTMLElement} element
  * @param {BoxSurface} surface
- * @param {Derived<string | null>} marker
+ * @param {Derived<MarkerText | null>} marker
  * @returns {Source<Component>}
  */
 function markerRun(ctx, element, surface, marker) {
@@ -306,32 +363,30 @@ function markerRun(ctx, element, surface, marker) {
   });
 
   const placed = selector(() => {
-    const text = marker.get() ?? "";
-    const drawn = text.trimEnd();
+    const { text, space } = marker.get() ?? { text: "", space: "" };
+    const run = measureTextRun(text, renderStyle);
     // The whole marker, its space included, is what stands between the
     // content box and where the glyphs start.
-    const advance = measureTextRun(text, renderStyle);
-    const width = measureTextRun(drawn, renderStyle).width;
-    const size = getBorderBoxSize(element);
-    const start = px(own.borderLeftWidth) + px(own.paddingLeft);
-    const end = size.width - px(own.borderRightWidth) - px(own.paddingRight);
+    const advance = run.width + measureTextAdvance(space, renderStyle);
+    const box = contentBox(own, getBorderBoxSize(element));
+    const end = box.x + box.width;
     const rtl = own.direction === "rtl";
     const left =
       own.listStylePosition === "inside"
         ? rtl
-          ? end - advance.width
-          : start
+          ? end - advance
+          : box.x
         : rtl
           ? end
-          : start - advance.width;
+          : box.x - advance;
+    const line = getFirstLine(element);
     return {
-      text: drawn,
+      text,
       // In right-to-left text the space is on the left, toward the content.
-      x: rtl ? left + advance.width - width : left,
-      y: px(own.borderTopWidth) + px(own.paddingTop),
-      width,
-      // The item's line, which is the one the marker sits on.
-      height: px(own.lineHeight) || advance.ascent + advance.descent,
+      x: rtl ? left + advance - run.width : left,
+      y: line ? line.top - getScrollOffset(element).top : box.y,
+      width: run.width,
+      height: line?.height || px(own.lineHeight) || run.ascent + run.descent,
     };
   });
 
@@ -348,34 +403,38 @@ function markerRun(ctx, element, surface, marker) {
     renderStyle: () => renderStyle,
     tint: () => tint,
     origin: () => ({ x: placed.x, y: placed.y }),
-    clip: () => surface.clipBox(),
+    clip: () => getInteriorClipBox(element),
   });
 }
 
 /**
- * An `<li>`: its box, and the marker in front of it for as long as its
- * computed style gives it one. That takes `display: list-item` and a
- * `list-style-type` that is not `none`. An item with no marker builds no
- * run, so a list styled `list-style: none`, the usual thing for a list of
- * rows in an app, costs what a list of divs does.
- *
- * Decided by the tag, which never changes, as the portal decides every
- * element: another element made `display: list-item` by a stylesheet is
- * drawn as the box it is, with no marker.
+ * An element's box, and in front of it the list marker its computed style
+ * gives it, for as long as it gives it one: `display: list-item` and a
+ * `list-style-type` that is not `none`. That is every `<li>` a page has not
+ * restyled, a `<summary>` with its disclosure triangle, and anything a
+ * stylesheet makes a list item. Decided reactively rather than by the tag,
+ * so it is the portal's ordinary box; an element with no marker builds no
+ * run.
  *
  * @param {WeakKey} ctx
  * @param {HTMLElement} element
  * @returns {Source<THREE.Object3D>}
  */
-export function listItem(ctx, element) {
-  const marker = new Derived(() => {
-    if (!isListItem(element)) {
-      return null;
-    }
-    return listMarkerText(getComputedStyleCached(element).listStyleType, () =>
-      getListItemOrdinal(element),
-    );
-  });
+export function markedBox(ctx, element) {
+  const marker = new Derived(
+    () => {
+      if (!isListItem(element)) {
+        return null;
+      }
+      const style = getComputedStyleCached(element);
+      return listMarkerText(
+        style.listStyleType,
+        () => getListItemOrdinal(element),
+        style.direction === "rtl" ? "rtl" : "ltr",
+      );
+    },
+    { isEqual: markerEqual },
+  );
   return box(ctx, element, {
     content: (surface) => [
       // No equality gate between the two: `Derived` already stops a

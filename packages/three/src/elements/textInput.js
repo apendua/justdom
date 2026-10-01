@@ -18,8 +18,8 @@ import {
   createMarkMaterial,
   getRunRenderStyle,
   isTintableText,
+  contentBox,
   measureTextRun,
-  px,
 } from "./textHelpers.js";
 import { parseColor } from "./VisualProperties.js";
 import { applyClip, clipBoxEqual, intersectClipBoxes, toLocalClipBox } from "./clip.js";
@@ -401,20 +401,10 @@ function fieldContent(ctx, element, surface, focus, locator) {
 
   // The field's content box in its own frame: the border box less the
   // border and the padding, which is where a browser draws the value.
-  const frame = selector(() => {
-    const size = getBorderBoxSize(element);
-    const left = px(style.borderLeftWidth) + px(style.paddingLeft);
-    const top = px(style.borderTopWidth) + px(style.paddingTop);
-    const right = px(style.borderRightWidth) + px(style.paddingRight);
-    const bottom = px(style.borderBottomWidth) + px(style.paddingBottom);
-    return {
-      x: left,
-      y: top,
-      width: Math.max(size.width - left - right, 0),
-      height: Math.max(size.height - top - bottom, 0),
-      align: style.textAlign || "start",
-    };
-  });
+  const frame = selector(() => ({
+    ...contentBox(style, getBorderBoxSize(element)),
+    align: style.textAlign || "start",
+  }));
 
   const metrics = selector(() => measureTextRun(shown.text, renderStyle));
 

@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import * as THREE from "three";
 import { InteractionContext, InteractionManager } from "../interactions.js";
 import { createPortal as createHeldPortal } from "./portal.js";
-import { listMarkerText } from "./listMarker.js";
+import { getListItemOrdinal, listMarkerText } from "./listMarker.js";
+import { resetMeasuringRangeForTests } from "./mirror.js";
 import { stubCanvas, STUB_GLYPH_WIDTH } from "../test/stubCanvas.js";
 
 /**
@@ -145,15 +146,92 @@ function listPanel(markup) {
   };
 }
 
+/**
+ * The clip a run was drawn with, in the run's own frame: what `applyClip`
+ * hands the shader, read by compiling a stand-in for one.
+ *
+ * @param {THREE.Mesh} run
+ * @returns {THREE.Vector4}
+ */
+function clipOf(run) {
+  const material = /** @type {THREE.Material} */ (run.material);
+  const shader = /** @type {any} */ ({
+    uniforms: {},
+    vertexShader: "void main() {\n#include <begin_vertex>\n}",
+    fragmentShader: "void main() {\n}",
+  });
+  material.onBeforeCompile(shader, /** @type {any} */ (null));
+  return shader.uniforms.clipBox.value;
+}
+
+/**
+ * A range that lays text out the way the stand-in canvas measures it: one
+ * line, ten px a character and sixteen tall, at `top` on the page. jsdom
+ * has no layout to measure a range against.
+ *
+ * @param {number} top
+ * @returns {() => void} Put the real range back.
+ */
+function installRange(top) {
+  const original = document.createRange;
+  resetMeasuringRangeForTests();
+  document.createRange = () => {
+    let start = 0;
+    let end = 0;
+    const rect = () =>
+      /** @type {DOMRect} */ ({
+        left: start * 10,
+        top,
+        right: end * 10,
+        bottom: top + 16,
+        width: (end - start) * 10,
+        height: 16,
+      });
+    return /** @type {Range} */ (
+      /** @type {unknown} */ ({
+        selectNodeContents: (/** @type {Node} */ node) => {
+          start = 0;
+          end = (node.textContent || "").length;
+        },
+        setStart: (/** @type {Node} */ _node, /** @type {number} */ offset) => {
+          start = offset;
+        },
+        setEnd: (/** @type {Node} */ _node, /** @type {number} */ offset) => {
+          end = offset;
+        },
+        getBoundingClientRect: rect,
+        getClientRects: () => /** @type {DOMRectList} */ (/** @type {unknown} */ ([rect()])),
+      })
+    );
+  };
+  return () => {
+    document.createRange = original;
+    resetMeasuringRangeForTests();
+  };
+}
+
 describe("listMarkerText", () => {
   const never = () => {
     throw new Error("a bullet asked for its number");
   };
 
+  /**
+   * The marker's glyphs and its space, run together, so a table of them
+   * reads as the marker would.
+   *
+   * @param {Parameters<typeof listMarkerText>} args
+   */
+  const say = (...args) => {
+    const marker = listMarkerText(...args);
+    return marker && `${marker.text}${marker.space}`;
+  };
+
   test("a bullet is its glyph and a space, and never counts", () => {
-    assert.equal(listMarkerText("disc", never), "• ");
-    assert.equal(listMarkerText("circle", never), "◦ ");
-    assert.equal(listMarkerText("square", never), "▪ ");
+    assert.equal(say("disc", never), "• ");
+    assert.equal(say("circle", never), "◦ ");
+    assert.equal(say("square", never), "▪ ");
+    assert.equal(say("disclosure-open", never), "▾ ");
+    assert.equal(say("disclosure-closed", never), "▸ ");
   });
 
   test("a number is written in its style, with a full stop", () => {
@@ -168,7 +246,7 @@ describe("listMarkerText", () => {
       ["lower-greek", 2, "β. "],
     ])) {
       assert.equal(
-        listMarkerText(type, () => n),
+        say(type, () => n),
         text,
         `${type} ${n}`,
       );
@@ -182,7 +260,7 @@ describe("listMarkerText", () => {
       ["my-own-counter-style", 5, "5. "],
     ])) {
       assert.equal(
-        listMarkerText(type, () => n),
+        say(type, () => n),
         text,
         `${type} ${n}`,
       );
@@ -190,10 +268,25 @@ describe("listMarkerText", () => {
   });
 
   test("a string is the marker as written, and none is no marker", () => {
-    assert.equal(listMarkerText('"→ "', never), "→ ");
-    assert.equal(listMarkerText('"\\"q\\" "', never), '"q" ');
+    assert.deepEqual(listMarkerText('"→ "', never), { text: "→", space: " " });
+    assert.deepEqual(listMarkerText('"\\"q\\""', never), { text: '"q"', space: "" });
     assert.equal(listMarkerText('""', never), null);
+    assert.equal(listMarkerText('"  "', never), null);
     assert.equal(listMarkerText("none", never), null);
+  });
+
+  test("right to left, a number's full stop and a closed triangle face the text", () => {
+    assert.deepEqual(
+      listMarkerText("decimal", () => 3, "rtl"),
+      { text: ".3", space: " " },
+    );
+    assert.deepEqual(
+      listMarkerText("upper-roman", () => 4, "rtl"),
+      { text: ".IV", space: " " },
+    );
+    assert.equal(say("disclosure-closed", never, "rtl"), "◂ ");
+    assert.equal(say("disclosure-open", never, "rtl"), "▾ ");
+    assert.equal(say("disc", never, "rtl"), "• ");
   });
 });
 
@@ -339,6 +432,100 @@ describe("a list in a panel", () => {
     assert.deepEqual([...canvas.drawn].sort(), ["1.", "2."]);
 
     panel.cleanup();
+  });
+
+  test("an item inserted or removed in the middle renumbers the items after it", async () => {
+    const panel = listPanel(`<ol><li ${NUMBER}></li><li ${NUMBER}></li></ol>`);
+    await settle(panel.portal);
+
+    canvas.drawn.length = 0;
+    const item = document.createElement("li");
+    item.style.listStyleType = "decimal";
+    panel.list().insertBefore(item, panel.list().children[1]);
+    await pump();
+    // The new second item, and the old second, now third. The first is
+    // before the change and is not drawn again.
+    assert.deepEqual([...canvas.drawn].sort(), ["2.", "3."]);
+
+    canvas.drawn.length = 0;
+    item.remove();
+    await pump();
+    // The old third item is second again. The item that left can be drawn
+    // once more as the first of no list before its object goes, which is
+    // why this does not ask for exactly one redraw.
+    assert.ok(canvas.drawn.includes("2."), `drawn: ${canvas.drawn}`);
+    assert.ok(!canvas.drawn.includes("3."), `drawn: ${canvas.drawn}`);
+    assert.equal(panel.runs().length, 2);
+
+    panel.cleanup();
+  });
+
+  test("draws the marker of any element laid out as a list item", async () => {
+    const panel = listPanel(
+      `<details><summary style="display: list-item; list-style-type: disclosure-closed; list-style-position: inside"></summary></details>`,
+    );
+    canvas.drawn.length = 0;
+    await settle(panel.portal);
+    assert.deepEqual(canvas.drawn, ["▸"]);
+    panel.cleanup();
+
+    const block = listPanel(
+      `<div><div style="display: list-item; list-style-type: square"></div></div>`,
+    );
+    canvas.drawn.length = 0;
+    await settle(block.portal);
+    assert.deepEqual(canvas.drawn, ["▪"]);
+    block.cleanup();
+  });
+
+  test("an item that clips its overflow cuts its outside marker off", async () => {
+    const panel = listPanel(
+      `<ul><li style="list-style-type: decimal; overflow: hidden"></li></ul>`,
+    );
+    const item = /** @type {HTMLElement} */ (panel.list().firstElementChild);
+    item.getBoundingClientRect = () =>
+      /** @type {DOMRect} */ ({ left: 0, top: 0, right: 100, bottom: 20, width: 100, height: 20 });
+    await settle(panel.portal);
+
+    const [run] = panel.runs();
+    // The marker hangs off the item's left edge, so in the run's frame the
+    // item's own window starts at or past the glyphs' right edge.
+    assert.ok(
+      clipOf(run).x >= 2 * STUB_GLYPH_WIDTH,
+      `the clip starts at ${clipOf(run).x}, inside the marker`,
+    );
+
+    panel.cleanup();
+  });
+
+  test("sits on the item's first line, below a block's margin", async () => {
+    const restore = installRange(12);
+    const panel = listPanel(`<ul><li style="list-style-type: disc"><p>Point</p></li></ul>`);
+    const paragraph = /** @type {HTMLElement} */ (panel.root.querySelector("p"));
+    paragraph.getBoundingClientRect = () =>
+      /** @type {DOMRect} */ ({ left: 0, top: 12, right: 100, bottom: 28, width: 100, height: 16 });
+    try {
+      await settle(panel.portal);
+      const marker = panel.runs().find((run) => run.position.x < 0);
+      assert.ok(marker, "the marker is drawn, off the item's left edge");
+      assert.equal(marker.position.y, 12);
+    } finally {
+      panel.cleanup();
+      restore();
+    }
+  });
+
+  test("numbers a long list read from the end without nesting an item per frame", () => {
+    const list = document.createElement("ol");
+    for (let index = 0; index < 20000; index++) {
+      list.appendChild(document.createElement("li"));
+    }
+    document.body.appendChild(list);
+    try {
+      assert.equal(getListItemOrdinal(/** @type {Element} */ (list.lastElementChild)), 20000);
+    } finally {
+      list.remove();
+    }
   });
 
   test("a reversed list renumbers every item when one is appended", async () => {

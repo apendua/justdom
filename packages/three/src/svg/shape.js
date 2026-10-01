@@ -422,6 +422,23 @@ export function readChain(element) {
   return { ctm, opacity, root: null };
 }
 
+/**
+ * The opacity an element of the picture is drawn at: the chain's, inside the
+ * picture, times the root's own and every element's around it (see
+ * `getOpacity`). The root's own is applied to its box by `div`, but what is
+ * inside is drawn from materials of its own, so it is applied here too, or a
+ * faded-out icon would keep its picture at full strength. Multiplied here
+ * rather than in the chain, so an opacity animated on a button around the
+ * icon re-runs this and not a walk of the matrices, which allocates at
+ * every level.
+ *
+ * @param {Chain} chain
+ * @returns {number}
+ */
+export function drawnOpacity({ root, opacity }) {
+  return root ? opacity * getOpacity(root) : opacity;
+}
+
 /** The elements that draw something, and so take a place in the paint order. */
 const PAINTED_TAGS = new Set([
   "path",
@@ -897,17 +914,7 @@ export function shape(ctx, element) {
   // stops at the clip matrix and reaches neither the draw order, nor the
   // alpha, nor — until it crosses a rung — the geometry.
   const root = new Derived(() => chain.get().root);
-  // The opacity inside the picture, times the root's own and every element's
-  // around it (see `getOpacity`). The root's own is applied to its box by
-  // `div`, but the shapes are drawn from materials of their own, so it is
-  // applied here too, or a faded-out icon would keep its picture at full
-  // strength. Multiplied here rather than in the chain, so an opacity
-  // animated on a button around the icon re-runs this and not a walk of
-  // the matrices, which allocates at every level.
-  const opacity = new Derived(() => {
-    const { root, opacity } = chain.get();
-    return root ? opacity * getOpacity(root) : opacity;
-  });
+  const opacity = new Derived(() => drawnOpacity(chain.get()));
   const scale = new Derived(() => samplingScale(matrixScale(chain.get().ctm)));
 
   const fillPaint = new Derived(() => parsePaint(readProperty(style(), element, "fill")), {

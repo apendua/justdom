@@ -14,6 +14,7 @@ import {
   chainEqual,
   clipUniforms,
   commitMatrix,
+  drawnOpacity,
   emptyGeometry,
   localMatrix,
   paintRenderOrder,
@@ -221,7 +222,7 @@ export function image(ctx, element) {
   const own = new Derived(() => localMatrix(element), { isEqual: matrixEqual });
   const chain = new Derived(() => readChain(element), { isEqual: chainEqual });
   const root = new Derived(() => chain.get().root);
-  const opacity = new Derived(() => chain.get().opacity);
+  const opacity = new Derived(() => drawnOpacity(chain.get()));
 
   const source = new Derived(() => getSvgImageSource(element));
 

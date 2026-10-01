@@ -440,8 +440,8 @@ export function readChain(element, instance = null) {
       return { ctm: multiply(at.ctm, ctm), opacity: opacity * at.opacity, root: at.root };
     }
     if (isSvgRoot(current)) {
-      // The opacity from the root up is not the chain's: see `opacity` in
-      // `shape`, which multiplies it in.
+      // The opacity from the root up is not the chain's: see
+      // `drawnOpacity`, which multiplies it in.
       return { ctm: multiply(rootMatrix(current), ctm), opacity, root: current };
     }
     opacity *= parseNumber(getComputedStyleCached(current).opacity, 1);

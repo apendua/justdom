@@ -117,10 +117,12 @@ async function mirroredList(ctx, { id, rowIds, accept, fixed, seen }) {
  * @param {boolean} [options.accept] Whether the lists take drops.
  * @param {boolean} [options.second] Whether there is a second list, a
  *   panel of its own four metres to the right of the first.
+ * @param {boolean} [options.turned] Whether the second panel is turned
+ *   about the vertical, rather than facing the same way as the first.
  * @param {string[]} [options.fixed] The rows that are not draggable when
  *   the panel is built.
  */
-async function sortableList({ accept = true, second = false, fixed = [] } = {}) {
+async function sortableList({ accept = true, second = false, turned = false, fixed = [] } = {}) {
   /** @type {string[]} */
   const events = [];
   /** @type {Record<string, unknown>} */
@@ -148,12 +150,15 @@ async function sortableList({ accept = true, second = false, fixed = [] } = {}) 
     ? await mirroredList(ctx, { id: "other", rowIds: ["d", "e", "f"], accept, fixed, seen })
     : null;
   other?.parent.position.set(4, 0, 0);
+  if (turned) {
+    other?.parent.rotation.set(0, 0.6, 0);
+  }
 
   /** @type {{ unsubscribe: () => void }[]} */
   const subscriptions = [];
 
   /**
-   * A controller in the scene, and the two things a test does with it.
+   * A controller in the scene, and the things a test does with it.
    */
   const hand = () => {
     const controller = /** @type {THREE.XRTargetRaySpace} */ (
@@ -161,6 +166,13 @@ async function sortableList({ accept = true, second = false, fixed = [] } = {}) 
     );
     const loop = fakeFrameLoop();
     subscriptions.push(manager.addController(controller, loop.onAnimationFrame).subscribe());
+    /** The hand moved: the manager's frame, and then the page's. */
+    const moved = () => {
+      controller.updateMatrixWorld(true);
+      controller.dispatchEvent(/** @type {never} */ ({ type: "move" }));
+      loop.run();
+      flushFrame();
+    };
     return {
       /**
        * Point the ray at a spot on a panel, in its px, and let a frame go
@@ -175,10 +187,13 @@ async function sortableList({ accept = true, second = false, fixed = [] } = {}) 
         on.parent.updateMatrixWorld(true);
         const point = on.panel.localToWorld(new THREE.Vector3(x, y, 0));
         controller.position.set(point.x, point.y, point.z + 1);
-        controller.updateMatrixWorld(true);
-        controller.dispatchEvent(/** @type {never} */ ({ type: "move" }));
-        loop.run();
-        flushFrame();
+        controller.rotation.set(0, 0, 0);
+        moved();
+      },
+      /** Turn the hand round, so that its ray points away from the panels. */
+      turnAway: () => {
+        controller.rotation.set(0, Math.PI, 0);
+        moved();
       },
       /** @param {"selectstart" | "selectend"} type */
       trigger: (type) => {
@@ -186,7 +201,7 @@ async function sortableList({ accept = true, second = false, fixed = [] } = {}) 
       },
     };
   };
-  const { aim, trigger } = hand();
+  const { aim, trigger, turnAway } = hand();
   const secondHand = hand();
 
   return {
@@ -197,8 +212,11 @@ async function sortableList({ accept = true, second = false, fixed = [] } = {}) 
     seen,
     aim,
     trigger,
+    turnAway,
     secondHand,
-    ghost: () => first.panel.getObjectByName("drag-ghost"),
+    panel: first.panel,
+    ghost: () =>
+      first.panel.getObjectByName("drag-ghost") ?? other?.panel.getObjectByName("drag-ghost"),
     disconnect: () => first.portal.disconnect(),
     teardown() {
       for (const type of [...types, ...dragTypes]) {
@@ -426,6 +444,110 @@ describe("drag and drop in a panel", () => {
     s.trigger("selectstart");
     s.aim(150, 60);
     assert.deepEqual(s.events.slice(0, 2), ["mousedown a", "dragstart a"]);
+    s.trigger("selectend");
+    s.teardown();
+  });
+
+  test("the other panel's controls are not hovered under a drag from this one", async () => {
+    const s = await sortableList({ second: true });
+    const other = /** @type {NonNullable<typeof s.other>} */ (s.other);
+    s.aim(150, 20);
+    s.trigger("selectstart");
+    s.aim(150, 60);
+    s.aim(150, 50, other);
+    s.aim(152, 52, other);
+    assert.equal(other.rows[1].dataset.xrHover, undefined, "as on this panel, and on a page");
+    s.trigger("selectend");
+    s.teardown();
+  });
+
+  test("the ghost is in the panel the ray is on, however it is turned", async () => {
+    const s = await sortableList({ second: true, turned: true });
+    const other = /** @type {NonNullable<typeof s.other>} */ (s.other);
+    // Picked up 150 px in and 20 px down the row, and held there.
+    s.aim(150, 20);
+    s.trigger("selectstart");
+    s.aim(150, 60);
+    s.aim(150, 50, other);
+    const ghost = /** @type {THREE.Object3D} */ (s.ghost());
+    assert.equal(ghost.parent, other.panel, "on the panel the drag is over");
+    // Where the ray landed, on the row's own quad a few px in front of the
+    // panel's plane; on a panel this far turned that is a few px across.
+    assert.ok(Math.abs(ghost.position.x) < 5, `held at x 0, got ${ghost.position.x}`);
+    assert.ok(Math.abs(ghost.position.y - 30) < 5, `held at y 30, got ${ghost.position.y}`);
+
+    s.aim(150, 60);
+    assert.equal(ghost.parent, s.panel, "and back on this one with the ray");
+    s.trigger("selectend");
+    s.teardown();
+  });
+
+  test("the ghost stays on the last panel the ray was on while it is on none", async () => {
+    // The ray is on no panel past a panel's edge, and between the controls
+    // of a panel that stops no rays.
+    const s = await sortableList({ second: true, turned: true });
+    const other = /** @type {NonNullable<typeof s.other>} */ (s.other);
+    s.aim(150, 20);
+    s.trigger("selectstart");
+    s.aim(150, 60);
+    s.aim(150, 50, other);
+    const ghost = /** @type {THREE.Object3D} */ (s.ghost());
+    assert.equal(ghost.parent, other.panel);
+    s.aim(320, 50, other);
+    assert.equal(ghost.parent, other.panel, "not back to the panel the drag came from");
+    assert.equal(ghost.visible, true);
+    assert.ok(
+      Math.abs(ghost.position.x - 170) < 0.5,
+      `under the ray in that panel's plane, got ${ghost.position.x}`,
+    );
+    s.trigger("selectend");
+    s.teardown();
+  });
+
+  test("the ghost goes back to the source panel when the one it is on is taken down", async () => {
+    const s = await sortableList({ second: true });
+    const other = /** @type {NonNullable<typeof s.other>} */ (s.other);
+    s.aim(150, 20);
+    s.trigger("selectstart");
+    s.aim(150, 60);
+    s.aim(150, 50, other);
+    const ghost = /** @type {THREE.Object3D} */ (s.ghost());
+    assert.equal(ghost.parent, other.panel);
+    other.portal.disconnect();
+    // Off both panels, in the source panel's plane.
+    s.aim(150, 600);
+    assert.equal(ghost.parent, s.panel, "not left in a panel nothing draws");
+    assert.equal(ghost.visible, true);
+    s.trigger("selectend");
+    s.teardown();
+  });
+
+  test("the ghost waits in the source panel while the ray is on none, and hides facing away", async () => {
+    const s = await sortableList();
+    s.aim(150, 20);
+    s.trigger("selectstart");
+    s.aim(150, 60);
+    // Off the panel altogether, in its plane.
+    s.aim(150, 600);
+    const ghost = /** @type {THREE.Object3D} */ (s.ghost());
+    assert.equal(ghost.parent, s.panel);
+    assert.equal(ghost.visible, true);
+    s.turnAway();
+    assert.equal(ghost.visible, false, "a ray that never meets the plane has nowhere to put it");
+    s.trigger("selectend");
+    s.teardown();
+  });
+
+  test("a press is measured where its panel is now, not where it was", async () => {
+    // A panel a hand can carry moves under a press; the same spot on it is
+    // not travel.
+    const s = await sortableList();
+    // Near the left edge, well off the axis the panel turns about.
+    s.aim(20, 20);
+    s.trigger("selectstart");
+    s.panel.parent?.rotation.set(0, 0.6, 0);
+    s.aim(20, 20);
+    assert.equal(s.events.includes("dragstart a"), false);
     s.trigger("selectend");
     s.teardown();
   });

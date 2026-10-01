@@ -87,12 +87,12 @@ globalThis.cancelAnimationFrame = () => {};
  * frames instead, for a panel built under `RendererContext`, whose frames
  * come from the renderer rather than `requestAnimationFrame`.
  *
- * @param {object} [renderer]
+ * @param {import("three").WebGLRenderer} [renderer]
  * @returns {void}
  */
 export function flushFrame(renderer) {
   if (renderer) {
-    runFrame(/** @type {any} */ (renderer), 0, /** @type {any} */ ({}));
+    runFrame(renderer, 0, /** @type {any} */ ({}));
     return;
   }
   for (const callback of frameCallbacks.splice(0, frameCallbacks.length)) {
@@ -124,7 +124,7 @@ export function nextMacrotask() {
  * the rounds after the load are all run.
  *
  * @param {{ isLoading: () => boolean }} [portal]
- * @param {object} [renderer]
+ * @param {import("three").WebGLRenderer} [renderer]
  * @returns {Promise<void>}
  */
 export async function settle(portal, renderer) {

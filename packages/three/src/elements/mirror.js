@@ -3048,3 +3048,57 @@ export function getTextLayout(text) {
   }
   return signal.get();
 }
+
+/**
+ * Where an element's first line box is: the top of the first line of text
+ * inside it, in the element's content space, and that line's height. Null
+ * for an element with no text in it, or whose text is laid out somewhere
+ * else (an absolutely positioned child, an SVG).
+ *
+ * It is what a list item's marker sits on. A browser puts the marker on
+ * the item's first line, which is below the top of the content box
+ * whenever the item opens with a block that has a margin or padding of its
+ * own, as `<li><p>` does in a loose list.
+ *
+ * The walk reaches nodes the portal has not built yet: a marker is placed
+ * when its item is built, and the item's children come after. A cached
+ * read of a node no mirror has adopted reads the DOM with no dependencies,
+ * and the node's own run would later be handed that cache, deaf to
+ * everything that should invalidate it. So the walk adopts what it visits,
+ * into the mirror its element belongs to, which is what the portal does
+ * when it gets there.
+ *
+ * @param {HTMLElement} element
+ * @returns {{ top: number, height: number } | null}
+ */
+export function getFirstLine(element) {
+  const mirror = recordOf(element)?.mirror;
+  for (const child of getChildNodes(element)) {
+    mirror?.adopt(child);
+    if (child.nodeType === Node.TEXT_NODE) {
+      const { top, lines } = getTextLayout(/** @type {Text} */ (child));
+      if (lines.length > 0) {
+        return { top: top + lines[0].top, height: lines[0].height };
+      }
+      continue;
+    }
+    if (child.nodeType !== Node.ELEMENT_NODE) {
+      continue;
+    }
+    const childElement = /** @type {HTMLElement} */ (child);
+    if (childElement.namespaceURI !== "http://www.w3.org/1999/xhtml") {
+      continue;
+    }
+    const position = getPositionStyle(childElement);
+    if (position === "absolute" || position === "fixed") {
+      continue;
+    }
+    const inner = getFirstLine(childElement);
+    if (inner) {
+      const at = getObjectPosition(childElement);
+      const scroll = getScrollOffset(childElement);
+      return { top: at.y + inner.top - scroll.top, height: inner.height };
+    }
+  }
+  return null;
+}

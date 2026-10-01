@@ -106,6 +106,28 @@ export function px(value) {
 }
 
 /**
+ * An element's content box in its own border-box frame: the border box
+ * less the border and the padding, which is where a browser puts what the
+ * element holds.
+ *
+ * @param {CSSStyleDeclaration} style The element's computed style.
+ * @param {{ width: number, height: number }} size Its border box.
+ * @returns {{ x: number, y: number, width: number, height: number }}
+ */
+export function contentBox(style, size) {
+  const left = px(style.borderLeftWidth) + px(style.paddingLeft);
+  const top = px(style.borderTopWidth) + px(style.paddingTop);
+  const right = px(style.borderRightWidth) + px(style.paddingRight);
+  const bottom = px(style.borderBottomWidth) + px(style.paddingBottom);
+  return {
+    x: left,
+    y: top,
+    width: Math.max(size.width - left - right, 0),
+    height: Math.max(size.height - top - bottom, 0),
+  };
+}
+
+/**
  * @param {string} value
  * @param {number} fontSize
  * @returns {number}
@@ -621,6 +643,22 @@ export function createMarkMaterial() {
 }
 
 /**
+ * How far one line of text advances in this style, and nothing else: the
+ * width `measureTextRun` gives, without the two measurements of the font's
+ * height that come with it.
+ *
+ * @param {string} text
+ * @param {TextRenderStyle} style
+ * @returns {number}
+ */
+export function measureTextAdvance(text, style) {
+  const context = getMeasuringContext();
+  context.font = style.font;
+  const drawn = applyTextTransform(text, style.textTransform);
+  return measureTextWidth(context, drawn, style.letterSpacing, style.wordSpacing);
+}
+
+/**
  * What one line of text would measure in this style, for a run the browser
  * laid out nowhere — an `<input>`'s value, which is not a text node and has
  * no line boxes to read back. The width is the canvas's, kerned the way
@@ -635,12 +673,7 @@ export function measureTextRun(text, style) {
   context.font = style.font;
   const ascent = measureFontExtent("Mg", context, style.fontSize * 0.8, "Ascent");
   const descent = measureFontExtent("Mg", context, style.fontSize * 0.2, "Descent");
-  const drawn = applyTextTransform(text, style.textTransform);
-  return {
-    width: measureTextWidth(context, drawn, style.letterSpacing, style.wordSpacing),
-    ascent,
-    descent,
-  };
+  return { width: measureTextAdvance(text, style), ascent, descent };
 }
 
 /**

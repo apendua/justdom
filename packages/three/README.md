@@ -1113,8 +1113,11 @@ after a submit included.
 
 ## Lists
 
-An `<li>` is drawn with its marker, the bullet or number a page draws in
-front of it. The marker follows the item's computed style:
+An element laid out as a list item is drawn with its marker, the bullet or
+number a page draws in front of it. That is every `<li>` a page has not
+restyled, a `<summary>` with its disclosure triangle, and anything a
+stylesheet gives `display: list-item`. The marker follows the item's
+computed style:
 
 - `list-style-type` says what it is. `disc`, `circle`, `square`,
   `disclosure-open` and `disclosure-closed` are glyphs. `decimal`,
@@ -1124,14 +1127,20 @@ front of it. The marker follows the item's computed style:
   as written. Any other style is drawn in decimal, and that includes a
   page's own `@counter-style`. `none` draws nothing.
 - `list-style-position: outside`, the default, hangs the marker in the
-  list's padding on the item's first line. `inside` puts it at the start of
-  that line, where the browser has already moved the text over for it. An
-  item with `direction: rtl` has its marker on the right.
-- A `::marker` rule sets its colour and font, as on a page. Its `content`
-  is not followed.
-- The numbers follow `start` and `reversed` on the `<ol>` and `value` on an
-  `<li>`. An item whose `display` is not `list-item` has no marker and is
-  not counted.
+  list's padding. `inside` puts it at the start of the line, where the
+  browser has already moved the text over for it. Either way it sits on the
+  item's first line of text, which is below the top of the item when the
+  item opens with a block that has a margin or padding of its own, as
+  `<li><p>` does.
+- An item with `direction: rtl` has its marker on the right, a number's
+  full stop on the side of the text (`.3`) and a closed disclosure
+  triangle pointing left.
+- A `::marker` rule sets its colour and font, as on a page.
+- The numbers follow `start` and `reversed` on the `<ol>` and `value` on
+  the item. An element whose `display` is not `list-item` has no marker and
+  is not counted.
+- An item that clips its overflow cuts its outside marker off, as a page
+  does.
 
 ```css
 ol.steps {
@@ -1144,18 +1153,18 @@ ol.steps li::marker {
 }
 ```
 
-Each item's number is one more than the number of the item before it, so
-appending a row numbers that row and leaves the rest of the list alone,
-however long it is. Inserting or removing a row renumbers the rows after it.
-A `reversed` list with no `start` renumbers every row on every append,
-because its first number is its length. An item with no marker builds
-nothing for one, so a list of app rows styled `list-style: none` costs what
-the same rows in a `<div>` do.
+Each item's number counts on from the items before it, so appending a row
+numbers that row and leaves the rest of the list alone, however long it is.
+Inserting or removing a row renumbers the rows after it. A `reversed` list
+with no `start` renumbers every row on every append, because its first
+number is its length. An item with no marker builds no run, so a list of app
+rows styled `list-style: none` draws nothing it did not draw before; each
+row still keeps a small computation that asks whether it has a marker.
 
-Two things a page can do are not drawn. A `list-style-image` is drawn as
-the `list-style-type` under it. And an element other than `<li>` that a
-stylesheet makes `display: list-item` is drawn as a plain box, because the
-portal decides how to draw an element by its tag.
+Three things a page can do are not drawn. A `list-style-image` is drawn as
+the `list-style-type` under it. A `content` in a `::marker` rule is not
+followed. And a string marker in right-to-left text is drawn as written,
+where a browser would reorder it by the bidirectional rules.
 
 ## Transforms
 

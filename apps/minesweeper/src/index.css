@@ -11,3 +11,28 @@ code {
   font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
     monospace;
 }
+
+/*
+ * The two places the game is mounted, one for the board and one for the
+ * menu, kept apart because a session mirrors each into a panel of its own.
+ * The board fills the window, as it always has; the menu floats over its
+ * top-left corner, sized by the card inside it.
+ */
+#board {
+  position: fixed;
+  inset: 0;
+}
+
+#menu {
+  position: fixed;
+  top: 12px;
+  left: 12px;
+}
+
+@media (max-width: 600px) {
+  #menu {
+    top: 8px;
+    left: 8px;
+    right: 8px;
+  }
+}

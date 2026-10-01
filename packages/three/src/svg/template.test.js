@@ -138,6 +138,15 @@ function setup() {
 }
 
 describe("markers", () => {
+  test("the marker's own opacity fades its copies", () => {
+    const s = setup();
+    s.marker.setAttribute("style", "opacity: 0.5");
+    s.mirror.attributeChanged(s.marker);
+    const [mesh] = s.markerMeshes;
+    assert.equal(/** @type {THREE.MeshBasicMaterial} */ (mesh.material).opacity, 0.5);
+    s.teardown();
+  });
+
   test("an arrowhead is drawn at the end of the line, tip on the vertex, turned along it", () => {
     const s = setup();
     const [mesh] = s.markerMeshes;

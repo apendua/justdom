@@ -213,7 +213,11 @@ export class PanelDataTransfer {
 
   /**
    * What the drag is shown as, and where the hand holds it. The ghost takes
-   * the element's size and holds it at `x`, `y` px from its corner.
+   * the element's size and holds it at `x`, `y` px from its corner. It is a
+   * picture of the element as the source's panel draws it, so only of an
+   * element that panel draws; of any other, one off the page, in another
+   * panel or hidden, it is the element's outline. An element with no size,
+   * such as an `<img>` not in the document, leaves the source as the image.
    *
    * @param {Element} element
    * @param {number} x

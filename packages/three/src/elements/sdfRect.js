@@ -35,6 +35,12 @@ rectGeometry.setAttribute(
   new THREE.BufferAttribute(new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 1, 0]), 3),
 );
 rectGeometry.setIndex([0, 1, 2, 2, 1, 3]);
+// Texture coordinates, which the rect shader does not read: for a quad that
+// shows a picture, a drag's ghost, with the picture's top row at its top.
+rectGeometry.setAttribute(
+  "uv",
+  new THREE.BufferAttribute(new Float32Array([0, 1, 1, 1, 0, 0, 1, 0]), 2),
+);
 
 // Shader strings ship verbatim in bundles — comments and all — so the
 // explanations live out here, in comments the minifier strips.

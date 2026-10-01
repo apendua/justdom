@@ -1602,13 +1602,14 @@ copy of its content is drawn at each vertex. The copy follows the marker's
 matrix, so a path that moves, or a `refX` edited, moves its markers without
 rebuilding them. They are drawn over the path's stroke and under whatever
 comes after the path, and styled by their own rules, not the path's. An
-edit inside the `<marker>` reaches every copy, wherever in the document
-the `<defs>` is. A path hidden by `visibility` hides its markers. A marker
-whose content names the same marker is drawn once, where a browser also
-stops. Markers are not ray targets: a press on an arrowhead goes to what
-is behind it. A marker's
-content is not clipped to its `markerWidth` and `markerHeight` box, which
-the default `overflow: hidden` asks for.
+edit inside the `<marker>` reaches every copy when the `<marker>` is inside
+the panel, wherever its `<defs>` sits there. A `<marker>` elsewhere on the
+page is drawn as it was first read: the portal observes only its own
+panel. A path hidden by `visibility` hides its markers. A marker whose
+content names the same marker is drawn once, where a browser also stops.
+Markers are not ray targets: a press on an arrowhead goes to what is
+behind it. A marker's content is not clipped to its `markerWidth` and
+`markerHeight` box, which the default `overflow: hidden` asks for.
 
 ```html
 <defs>

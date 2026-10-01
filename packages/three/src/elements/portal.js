@@ -20,6 +20,7 @@ import { createMirror, getBorderBoxSize, PORTAL_ATTRIBUTE } from "./mirror.js";
 import { createAnimationClock } from "./animationClock.js";
 import { watchDocumentStyles } from "./documentStyles.js";
 import { createBlocker, coverBox } from "./blocker.js";
+import { elementAt, registerPanel } from "./dragAndDrop.js";
 import { BoxBatchContext, createBoxBatch } from "./boxBatch.js";
 import { TextBatchContext, createTextBatch } from "./textBatch.js";
 import { TextScaleContext, createTextScale } from "./textScale.js";
@@ -508,6 +509,13 @@ function buildPortal(ctx, ownOptions = {}) {
   mirror.adopt(containerElement);
   nodeToObject.set(containerElement, containerObject);
   objectToNode.set(containerObject, containerElement);
+
+  // What a drag and drop asks when the ray is on this panel: which element
+  // is under it. Any element, not only the ray targets, since a list that
+  // takes drops is rarely a button; see `elementAt`.
+  const unregisterPanel = registerPanel(containerObject, (point, local) =>
+    elementAt(containerElement, (node) => nodeToObject.get(node), point, local),
+  );
 
   // With only clickable elements as ray targets (see div.js), the portal
   // still has to be opaque to rays as a whole — a panel should block the
@@ -1418,7 +1426,9 @@ function buildPortal(ctx, ownOptions = {}) {
     // it, and it is a reflected attribute, so watching it catches the property
     // assignment as well as setAttribute. Without it a control disabled after
     // mounting would stay pointable until something else happened to restyle.
-    // `value` and `placeholder` are for the text field, whose drawn text
+    // `draggable` is here for the same reason: it makes an element a ray
+    // target (see `isDragSource`), and a page that lets a row be picked up
+    // only in an edit mode sets it after mounting. `value` and `placeholder` are for the text field, whose drawn text
     // follows both; the `value` property, which the attribute stops
     // reflecting once anything has been typed, is followed another way.
     attributeFilter: [
@@ -1427,6 +1437,7 @@ function buildPortal(ctx, ownOptions = {}) {
       "data-xr-checked",
       FOCUS_ATTRIBUTE,
       "disabled",
+      "draggable",
       "class",
       "style",
       "value",
@@ -1678,6 +1689,7 @@ function buildPortal(ctx, ownOptions = {}) {
     portalKeyboard?.dispose();
     ownKeyboardHost?.dispose();
     pump?.dispose();
+    unregisterPanel();
     // A panel closed before it finished mounting still had a frame up.
     stopLoadingFrame();
     // Nothing is waiting for a commit that is not going to come. Both lists

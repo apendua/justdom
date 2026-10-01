@@ -3,17 +3,26 @@
  * have, in one place rather than a copy per test file.
  *
  * Importing this module installs the stand-ins: `MutationObserver`, which
- * jsdom-env leaves off the globals; `getComputedStyle` as a bare global,
- * which the text helpers call as a browser lets them; a `document.fonts`
- * that keeps real listeners, so a test can close a font-loading period by
- * hand; and a `requestAnimationFrame` that queues rather than runs, which is
- * both a frame source and a clock the tests can stop. The drivers below then
- * spend those frames a portal at a time.
+ * jsdom-env leaves off the globals; `DragEvent`, which jsdom does not
+ * implement, as the `MouseEvent` it extends; `getComputedStyle` as a bare
+ * global, which the text helpers call as a browser lets them; a
+ * `document.fonts` that keeps real listeners, so a test can close a
+ * font-loading period by hand; and a `requestAnimationFrame` that queues
+ * rather than runs, which is both a frame source and a clock the tests can
+ * stop. The drivers below then spend those frames a portal at a time.
  */
 import { InteractionContext, InteractionManager } from "../interactions.js";
 
 if (typeof globalThis.MutationObserver === "undefined") {
   globalThis.MutationObserver = window.MutationObserver;
+}
+
+if (typeof globalThis.DragEvent === "undefined") {
+  // A drag's own `dataTransfer` is put on each event it sends (see
+  // `dataTransfer.js`), so the stand-in needs nothing a `MouseEvent` lacks.
+  globalThis.DragEvent = /** @type {typeof DragEvent} */ (
+    /** @type {unknown} */ (class DragEvent extends window.MouseEvent {})
+  );
 }
 
 if (typeof globalThis.getComputedStyle === "undefined") {

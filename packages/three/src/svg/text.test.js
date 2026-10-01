@@ -296,6 +296,15 @@ describe("svg text", () => {
     t.teardown();
   });
 
+  test("the root's own opacity, and its surroundings', fade the text", () => {
+    const text = svg("text", { x: "0", y: "10", fill: "red" }, ["A"]);
+    const s = scene([text], text);
+    /** @type {SVGElement} */ (s.root).style.opacity = "0.5";
+    s.mirror.attributeChanged(s.root);
+    assert.equal(materialOf(s.meshes[0]).opacity, 0.5);
+    s.teardown();
+  });
+
   test("a fill of none draws nothing", () => {
     const text = svg("text", { x: "0", y: "10", fill: "none" }, ["A"]);
     const s = scene([text], text);

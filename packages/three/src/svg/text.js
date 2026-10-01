@@ -21,6 +21,7 @@ import {
   chainEqual,
   clipUniforms,
   commitMatrix,
+  drawnOpacity,
   isDrawnHidden,
   localMatrix,
   paintSlot,
@@ -410,7 +411,7 @@ export function drawText(ctx, element, instance = null) {
   const own = new Derived(() => localMatrix(element, instance), { isEqual: matrixEqual });
   const chain = new Derived(() => readChain(element, instance), { isEqual: chainEqual });
   const root = new Derived(() => chain.get().root);
-  const opacity = new Derived(() => chain.get().opacity);
+  const opacity = new Derived(() => drawnOpacity(chain.get()));
   /**
    * CSS pixels per user unit, in steps. Apart from the panel's own scale,
    * which `generateTextTexture` caps for HTML text; this part is not capped,

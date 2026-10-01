@@ -61,13 +61,14 @@ also be grabbed and pulled with the trigger.
 
 **The rows can be reordered by dragging.** Each row has a handle at its
 left, `draggable="true"`, and the list listens for the browser's drag and
-drop: `dragstart` on the handle says which todo is carried, `dragover`
-marks the edge of the row it would land on, and `drop` moves it. On the
+drop: `dragstart` on the handle says which todo is carried and fades its
+row, `dragover` turns the divider above the slot it would land in blue,
+and `drop` moves it. On the
 page that is a mouse drag. In a session it is the trigger closed on the
 handle, the ray carried down the list and the trigger opened, and freedom
 turns that into the same events, so the same handlers run. The marks are
-classes rather than data attributes because a class is what the panel
-follows. `node tests/drag-check.mjs` does both, the mouse on the page and
+plain CSS, an `opacity` and a border colour, set by classes rather than
+data attributes because a class is what the panel follows. `node tests/drag-check.mjs` does both, the mouse on the page and
 the controller in the emulator, and prints the events and the order the
 todos ended up in; `SHOT=drag.png` photographs the drag half way.
 

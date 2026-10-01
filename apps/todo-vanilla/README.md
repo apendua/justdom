@@ -61,15 +61,16 @@ also be grabbed and pulled with the trigger.
 
 **The rows can be reordered by dragging.** Each row has a handle at its
 left, `draggable="true"`, and the list listens for the browser's drag and
-drop: `dragstart` on the handle says which todo is carried, `dragover`
-marks the edge of the row it would land on, and `drop` moves it. On the
+drop: `dragstart` on the handle says which todo is carried and fades its
+row, `dragover` turns the divider above the slot it would land in blue,
+and `drop` moves it. On the
 page that is a mouse drag. In a session it is the trigger closed on the
 handle, the ray carried down the list and the trigger opened, and freedom
 turns that into the same events, so the same handlers run. The marks are
-classes rather than data attributes because a class is what the panel
-follows. `node tests/drag-check.mjs` does both, the mouse on the page and
-the controller in the emulator, and prints the events and the order the
-todos ended up in; `SHOT=drag.png` photographs the drag half way.
+plain CSS, an `opacity` and a border colour, set by classes.
+`node tests/drag-check.mjs` does both, the mouse on the page and the
+controller in the emulator, and prints the events and the order the todos
+ended up in; `SHOT=drag.png` photographs the drag half way.
 
 **Two things are there only in a session.** The frame rate, from justui's
 `useDiagnostics`, hangs in the upper left of the view. And the card grows an
@@ -94,7 +95,9 @@ panel in the scene gets it without asking. When the board appears, where it
 opens, what a key does to the field and when the board goes are decided by
 freedom. Press the field and it opens in front of you, below eye level and
 reclined toward the hands; point at it and handles show along its edges to
-move it by. It behaves like focus on the page: `Enter` adds the todo and
+move it by. `xr.ts` sets three things about it: the board is three quarters
+of freedom's default size, it reclines 34° so that its face looks at the
+eyes, and the copy of the field above the keys lies in the keys' plane. It behaves like focus on the page: `Enter` adds the todo and
 keeps the field, so the next one can be typed straight in, while pressing
 Add, or anything else in the card, puts the keyboard away as a click would
 blur the field. `Escape` puts it away too.

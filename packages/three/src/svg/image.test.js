@@ -421,6 +421,16 @@ describe("svg image", () => {
     });
   });
 
+  test("the root's own opacity, and its surroundings', fade the picture", () => {
+    withLoadedPictures(fakeTexture(10, 10), () => {
+      const s = setup({ href: PICTURE, width: "10", height: "10" });
+      s.root.style.opacity = "0.5";
+      s.mirror.attributeChanged(s.root);
+      assert.equal(s.material.opacity, 0.5);
+      s.teardown();
+    });
+  });
+
   test("an image takes its place in the paint order among the shapes", () => {
     withLoadedPictures(fakeTexture(10, 10), () => {
       const root = document.createElementNS(SVG_NS, "svg");

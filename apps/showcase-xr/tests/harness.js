@@ -208,7 +208,7 @@ export async function enterSession(page, { freeze = true } = {}) {
   // matches the one before — and the freeze does not stop it, because the
   // timestamps it counts come from the emulated session rather than from the
   // page's own animation frames. Put it down before anything is measured or
-  // photographed; what these baselines are for is the four panels.
+  // photographed; what these baselines are for is the six panels.
   await page.waitForFunction(() => !!window.__diagnostics, undefined, { timeout: 30_000 });
   await page.evaluate(() => {
     window.__diagnostics?.visible.set(false);

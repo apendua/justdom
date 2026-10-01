@@ -8,6 +8,7 @@ import MotionPanel from "./MotionPanel.js";
 import BoxesPanel from "./BoxesPanel.js";
 import ImagesPanel from "./ImagesPanel.js";
 import VectorsPanel from "./VectorsPanel.js";
+import ListsPanel from "./ListsPanel.js";
 
 declare global {
   interface Window {
@@ -16,7 +17,7 @@ declare global {
      * photographs the scene. The reading is a live number and the chart is a
      * minute of live numbers, so a photograph with the panel in it is a
      * photograph that never matches the one before — and what these baselines
-     * are for is the five panels, not the instrument in front of them.
+     * are for is the six panels, not the instrument in front of them.
      */
     __diagnostics?: DiagnosticsControls;
   }
@@ -24,7 +25,7 @@ declare global {
 
 export interface SceneOptions {
   /**
-   * Whether the vector panel is in the scene. Off, the other four stay exactly
+   * Whether the vector panel is in the scene. Off, the other five stay exactly
    * where they are — the columns keep the room the panel was given — so the
    * two versions differ by the panel and by nothing else, which is what a
    * comparison of what the panel costs needs.
@@ -33,12 +34,13 @@ export interface SceneOptions {
 }
 
 /**
- * Five panels: four in a two-by-two grid, each column turned in towards the
- * middle so the set reads as a shallow cockpit rather than a flat wall —
- * interactions and pictures along the top, self-running motion and the box
- * path along the bottom — and the vector panel square on between them, a
- * step further back where the cockpit's curve puts its middle. Each is
- * ordinary DOM projected through its own portal.
+ * Six panels in three columns and two rows. The outer columns are turned in
+ * towards the middle so the set reads as a shallow cockpit rather than a flat
+ * wall: interactions and pictures along the top, self-running motion and the
+ * box path along the bottom. The middle column is square on and a step
+ * further back, where the cockpit's curve puts its middle, with the vector
+ * panel above the lists. Each is ordinary DOM projected through its own
+ * portal.
  *
  * Panels are positioned by their centres — a portal puts its object's origin
  * there — so the two rows are separated by more than half of the tallest one
@@ -132,11 +134,16 @@ const createScene = ({ vectors }: SceneOptions) =>
                     effects((obj) => {
                       // Square on, half a step back from the columns: where the
                       // cockpit's curve puts its middle.
-                      obj.position.set(0, 0, depth / 2);
+                      obj.position.set(0, row, depth / 2);
                     }),
                   ]),
                 ]
               : []),
+            dom(ctx, ListsPanel(ctx), [
+              effects((obj) => {
+                obj.position.set(0, -row, depth / 2);
+              }),
+            ]),
           ),
         ]),
         cursors(ctx, { color: "#ff0000" }),

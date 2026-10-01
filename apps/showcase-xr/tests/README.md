@@ -49,7 +49,7 @@ scene that cannot be photographed, and it is switched off through
 a minute of live numbers, so it is a rectangle that never matches the one
 before — and the freeze does not reach it, because the timestamps it counts
 come from the emulated session rather than from the page's animation frames.
-What these baselines are for is the five panels.
+What these baselines are for is the six panels.
 
 ## The two kinds of check, and which one can fail on your machine
 

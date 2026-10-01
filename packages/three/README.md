@@ -1811,13 +1811,14 @@ This package drives several full apps in this monorepo —
 [`apps/todo-vanilla`](../../apps/todo-vanilla) — worth reading for realistic scenes
 combining lighting, keyed lists (`list`/`keyedList`), controller/hand input,
 and DOM panels projected into 3D space.
-[`apps/showcase-xr`](../../apps/showcase-xr) is the sampler: five panels in a
+[`apps/showcase-xr`](../../apps/showcase-xr) is the sampler: six panels in a
 grid demonstrating hover/press transitions, CSS keyframes, a Web Animations
 API animation, a `useFrame(ctx, fn)` loop writing inline styles, animated
 text colour, a paragraph revealed to a moving cursor, static transforms, a
 layout-tier width transition, every `object-fit` an image can be drawn
-with, and a card of inline SVG — a diagram with dashed and dotted arrows,
-icons through a `viewBox`, marching ants.
+with, a card of inline SVG (a diagram with dashed and dotted arrows,
+icons through a `viewBox`, marching ants), and a card of bulleted and
+numbered lists whose steps are numbered as they arrive.
 
 ## License
 

@@ -511,6 +511,26 @@ describe("use", () => {
     s.teardown();
   });
 
+  test("a transform in a copy turns about the symbol's viewBox origin", () => {
+    const rect = svg("rect", {
+      x: "10",
+      y: "10",
+      width: "5",
+      height: "5",
+      fill: "red",
+      // A quarter turn, as computed: jsdom does not resolve `rotate`.
+      style: "transform: matrix(0, 1, -1, 0, 0, 0)",
+    });
+    const symbol = svg("symbol", { id: "use-symbol-origin", viewBox: "10 10 20 20" }, [rect]);
+    const use = svg("use", { href: "#use-symbol-origin", width: "20", height: "20" });
+    const s = scene([svg("defs", {}, [symbol]), use], [use]);
+    // The turn is about (10, 10), the symbol's viewBox origin, which stays
+    // put and lands at the use's corner; about the root's (0, 0) it would
+    // swing out to (-20, 0) in user space.
+    assert.deepEqual(toRoot(meshesUnder(s.objects[0])[0], 10, 10), [0, 0]);
+    s.teardown();
+  });
+
   test("a new href draws the target it names", () => {
     const red = svg("symbol", { id: "use-symbol-red" }, [
       svg("rect", { width: "5", height: "5", fill: "red" }),

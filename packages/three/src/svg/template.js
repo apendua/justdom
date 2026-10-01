@@ -25,6 +25,7 @@ import {
   commitMatrix,
   group,
   localMatrix,
+  nearestViewBoxOrigin,
   paintSlot,
   readChain,
   readDrawnProperty,
@@ -254,6 +255,10 @@ function markers(ctx, element, host, hostInstance) {
           const spec = readMarkerSpec(marker);
           return spec.viewBox ?? { width: spec.width, height: spec.height };
         },
+        viewBoxOrigin: () => {
+          const viewBox = readMarkerSpec(marker).viewBox;
+          return { x: viewBox?.x ?? 0, y: viewBox?.y ?? 0 };
+        },
         // A marker's content inherits from where the marker is defined, not
         // from the path it is drawn on.
         inherit: null,
@@ -363,11 +368,12 @@ function symbolViewport(use, symbol, instance) {
  * are not followed.
  *
  * The copy inherits from the `<use>`, as a browser's clone does, through
- * `readDrawnProperty`. It follows edits to the referenced content, since the
- * mirror follows that content wherever it is. It is drawn and never hit, as
- * a marker is. A new `href` draws the target it names. Not followed: a
- * target that appears only after the `<use>` mounted, which may be anywhere
- * on the page. The `<use>` looks its target up again when it is restyled.
+ * `readDrawnProperty`. It follows edits to the referenced content when that
+ * content is inside the panel, which is all the portal observes. It is
+ * drawn and never hit, as a marker is. A new `href` draws the target it
+ * names. Not followed: a target that appears only after the `<use>`
+ * mounted, which may be anywhere on the page. The `<use>` looks its target
+ * up again when it is restyled.
  *
  * @param {WeakKey} ctx
  * @param {Element} element
@@ -449,6 +455,12 @@ export function drawUse(ctx, element, instance = null) {
           // Content drawn whole stands where the `<use>` does, in its
           // viewport. A target's `viewBox` sets the units of its own.
           return fit ? (fit.viewBox ?? fit.size) : viewportSize(element, instance);
+        },
+        viewBoxOrigin: () => {
+          const fit = frame.get();
+          return fit
+            ? { x: fit.viewBox?.x ?? 0, y: fit.viewBox?.y ?? 0 }
+            : nearestViewBoxOrigin(element, instance);
         },
         inherit: {
           boundary: /** @type {Element} */ (target.parentElement),

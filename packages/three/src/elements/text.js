@@ -13,6 +13,7 @@ import { parseColor } from "./VisualProperties.js";
 import {
   getComputedStyleCached,
   getInteriorClipBox,
+  getOpacity,
   getParentElement,
   getScrollOffset,
   getTextLayout,
@@ -223,15 +224,19 @@ export function text(ctx, textNode) {
           return geometry;
         }),
         // After the map effect, so a re-drawn texture's material stays tinted.
+        // Faded by the opacity of every element it is in, as on a page, where
+        // an element's `opacity` fades its text with the rest of it.
         effects((obj) => {
           const material = /** @type {THREE.MeshBasicMaterial} */ (obj.material);
+          const parentElement = getParentElement(textNode);
+          const opacity = parentElement ? getOpacity(parentElement) : 1;
           if (tint.masked) {
             const [color, alpha] = parseColor(tint.color);
             material.color.copy(color);
-            material.opacity = alpha;
+            material.opacity = alpha * opacity;
           } else {
             material.color.set("#ffffff");
-            material.opacity = 1;
+            material.opacity = opacity;
           }
           batchChanged();
         }),

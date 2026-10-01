@@ -641,15 +641,17 @@ function fieldContent(ctx, element, surface, focus, locator) {
       });
       return geometry;
     }),
+    // Faded with the field, which is faded by every element it is in.
     effects((obj) => {
       const material = /** @type {THREE.MeshBasicMaterial} */ (obj.material);
+      const { opacity } = surface.properties;
       if (tint.masked) {
         const [color, alpha] = parseColor(tint.color);
         material.color.copy(color);
-        material.opacity = alpha;
+        material.opacity = alpha * opacity;
       } else {
         material.color.set("#ffffff");
-        material.opacity = 1;
+        material.opacity = opacity;
       }
       batch?.invalidate();
     }),
@@ -697,7 +699,7 @@ function fieldContent(ctx, element, surface, focus, locator) {
         const material = /** @type {THREE.MeshBasicMaterial} */ (obj.material);
         const [color, alpha] = parseColor(tint.textColor);
         material.color.copy(color);
-        material.opacity = alpha;
+        material.opacity = alpha * surface.properties.opacity;
       }),
       effects((obj) => {
         const at = origin.get();

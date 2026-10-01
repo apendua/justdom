@@ -7,7 +7,8 @@ import { fontFamily } from "./TodoApp.js";
 /**
  * The board's own surface. The width is the panel's 464px minus the 0.5rem
  * inset the board keeps on each side, so it spans the panel edge to edge —
- * which, at ten columns to the phone-style row, makes each key about 4 cm
+ * which, at ten columns to the phone-style row and the three quarters of a
+ * millimetre per px `xr.ts` gives the board, makes each key about 3 cm
  * across in the scene: bigger than a real key, which a target at the end
  * of a ray wants to be.
  */

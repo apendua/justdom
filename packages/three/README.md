@@ -469,6 +469,13 @@ a hundred rows. Narrowing it would save two elements a click, and would cost
 `input:checked + label` — the idiom the flat web has always used to strike
 through a completed item, and the reason the flag exists at all.
 
+`opacity` fades the element and everything inside it, as on a page, but
+not quite in the same way. A browser paints the subtree into a layer and
+fades the layer once; a panel fades each box and each run of text by the
+product of its own opacity and every ancestor's, up to the panel's top.
+The two agree wherever what is inside does not overlap. Where it does, a
+child shows through the one under it, which on a page it would not.
+
 `transform` is the one to reach for, exactly as on the web — it costs a
 matrix write, and it is mirrored on hover like anything else:
 
@@ -743,11 +750,11 @@ The rules are the browser's:
   the trigger opens takes it on the next move, as a page's `:hover`
   catches up on the next move after a drag.
 
-What a page draws while it drags has to be something a panel follows. It
-follows a class or an inline style changing, and not a data attribute of
-the page's own, so a drop marker is a class on the row it is next to, as in
-the todo app's list (`apps/todo-vanilla`). `draggable` is followed too: a
-row made draggable after the panel was built can be picked up.
+What a page draws while it drags is followed like any other restyle,
+whether it is a class, an inline style or an attribute of the page's own.
+The todo app's list (`apps/todo-vanilla`) marks the slot a row would land
+in with a class on the row above it. `draggable` is followed too: a row
+made draggable after the panel was built can be picked up.
 
 A drag can end on another panel in the scene, since every panel answers
 what is under the ray in its own px. It can also end on nothing: a ray on
@@ -1150,10 +1157,12 @@ animating element. Text is no exception — glyphs are rasterized once as a
 mask and coloured by the material, so animating `color` re-draws nothing.
 (The mask needs one colour: text with a `text-shadow`, or a decoration
 explicitly coloured something other than the text, keeps its colours baked
-into the texture and pays a re-draw per change.) Animating a _layout_
-property — `height`, `padding`, `font-size` — re-measures the panel every
-frame, because a growing element moves neighbours no one named. It works;
-save it for moments, not idle loops.
+into the texture and pays a re-draw per change.) `opacity` fades everything
+inside the element, as on a page, so animating it on a container costs that
+write for every box and run of text inside, not for the container alone.
+Animating a _layout_ property — `height`, `padding`, `font-size` —
+re-measures the panel every frame, because a growing element moves
+neighbours no one named. It works; save it for moments, not idle loops.
 
 All of that holds inside an immersive session too, which takes some doing:
 once the headset has the display, the page behind it stops being rendered,

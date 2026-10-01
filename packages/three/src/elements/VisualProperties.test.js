@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import * as THREE from "three";
 import { Derived } from "@apendua/signal";
 import VisualProperties from "./VisualProperties.js";
+import { PORTAL_ATTRIBUTE } from "./mirror.js";
 
 // Same stub as div.test.js: jsdom has no Font Loading API, and
 // `VisualProperties` will not measure text until `document.fonts` says the
@@ -177,5 +178,47 @@ describe("VisualProperties colours", () => {
     const properties = propertiesOf({ backgroundColor: "rgb(18, 22, 28)" });
     const { r, g, b } = properties.backgroundColor;
     assert.ok(Math.max(r, g, b) < 0.02, `expected a dark colour, got ${r}, ${g}, ${b}`);
+  });
+});
+
+describe("VisualProperties opacity", () => {
+  /**
+   * An element in two others, each with an opacity of its own.
+   *
+   * @param {string} outer
+   * @param {string} middle
+   * @param {string} inner
+   */
+  function nested(outer, middle, inner) {
+    const elements = [outer, middle, inner].map((opacity) => {
+      const element = document.createElement("div");
+      element.style.opacity = opacity;
+      return element;
+    });
+    elements[0].append(elements[1]);
+    elements[1].append(elements[2]);
+    elements[2].style.backgroundColor = "rgb(255, 0, 0)";
+    document.body.appendChild(elements[0]);
+    return elements;
+  }
+
+  test("an element is faded by the opacity of every element it is in", () => {
+    // On a page `opacity` fades the element's whole subtree, so a box two
+    // levels inside two half-faded elements is drawn at a quarter.
+    const [outer, , inner] = nested("0.5", "0.5", "1");
+    const properties = new VisualProperties();
+    properties.setFromElement(inner);
+    assert.equal(properties.opacity, 0.25);
+    assert.equal(properties.backgroundAlpha, 0.25);
+    outer.remove();
+  });
+
+  test("goes no further than the panel's top", () => {
+    const [wrapper, root, inner] = nested("0.5", "0.8", "1");
+    root.setAttribute(PORTAL_ATTRIBUTE, "");
+    const properties = new VisualProperties();
+    properties.setFromElement(inner);
+    assert.equal(properties.opacity, 0.8, "the root's counts, the page's wrapper does not");
+    wrapper.remove();
   });
 });

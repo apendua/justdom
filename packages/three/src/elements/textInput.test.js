@@ -217,6 +217,22 @@ describe("a text field in a panel", () => {
     panel.cleanup();
   });
 
+  test("draws the value faded with the elements it is in", async () => {
+    const panel = fieldPanel((input) => {
+      input.value = "Buy milk";
+      input.style.color = "rgb(0, 0, 0)";
+      input.style.opacity = "0.5";
+    });
+    panel.root.style.opacity = "0.5";
+    await settle(panel.portal);
+
+    const run = panel.run();
+    assert.ok(run);
+    assert.equal(/** @type {THREE.MeshBasicMaterial} */ (run.material).opacity, 0.25);
+
+    panel.cleanup();
+  });
+
   test("follows typing, and a value written from script", async () => {
     const panel = fieldPanel();
     await settle(panel.portal);

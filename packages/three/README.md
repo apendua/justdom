@@ -1160,10 +1160,9 @@ explicitly coloured something other than the text, keeps its colours baked
 into the texture and pays a re-draw per change.) `opacity` fades everything
 inside the element, as on a page, so animating it on a container costs that
 write for every box and run of text inside, not for the container alone.
-Animating a _layout_
-property — `height`, `padding`, `font-size` — re-measures the panel every
-frame, because a growing element moves neighbours no one named. It works;
-save it for moments, not idle loops.
+Animating a _layout_ property — `height`, `padding`, `font-size` —
+re-measures the panel every frame, because a growing element moves
+neighbours no one named. It works; save it for moments, not idle loops.
 
 All of that holds inside an immersive session too, which takes some doing:
 once the headset has the display, the page behind it stops being rendered,

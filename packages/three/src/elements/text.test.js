@@ -152,4 +152,43 @@ describe("text opacity", () => {
       outer.remove();
     }
   });
+
+  test("a run with its colours baked in is faded all the same", () => {
+    // A shadow turns the mask off: the run's colours are in its texture,
+    // and the material carries the fade alone.
+    const restore = installRange();
+    const outer = document.createElement("div");
+    outer.style.opacity = "0.5";
+    const inner = document.createElement("span");
+    inner.style.opacity = "0.5";
+    inner.style.textShadow = "1px 1px 0 rgb(255, 0, 0)";
+    outer.append(inner);
+    inner.append("shadowed");
+    document.body.appendChild(outer);
+    const mirror = createMirror();
+    mirror.adopt(outer);
+    mirror.adopt(inner);
+    const node = /** @type {Text} */ (inner.firstChild);
+    mirror.adopt(node);
+
+    try {
+      /** @type {THREE.Object3D | undefined} */
+      let object;
+      const subscription = text({}, node).subscribe({
+        next: (value) => {
+          object = value;
+        },
+      });
+      assert.ok(object);
+      const mesh = /** @type {THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicMaterial>} */ (
+        object.children[0]
+      );
+      assert.equal(mesh.material.alphaMap, null, "baked, not masked");
+      assert.equal(mesh.material.opacity, 0.25);
+      subscription.unsubscribe();
+    } finally {
+      restore();
+      outer.remove();
+    }
+  });
 });

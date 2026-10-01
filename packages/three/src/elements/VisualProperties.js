@@ -316,9 +316,8 @@ export default class VisualProperties {
     const fontSize = parseFloat(style.fontSize || "0");
     const layerNo = getDepth(element);
     // The element's own and every ancestor's in the panel, as a page fades
-    // a subtree (see `getOpacity`). A pseudo-element is faded by its own
-    // opacity on top of its element's.
-    const opacity = getOpacity(element) * (pseudoElement ? parseFloat(style.opacity || "1") : 1);
+    // a subtree (see `getOpacity`).
+    const opacity = getOpacity(element);
     // Every box pays for reading `background-image`; only a box that has one
     // pays for the properties that lay it out. They are all left empty
     // otherwise, which is a value that does not change and so notifies

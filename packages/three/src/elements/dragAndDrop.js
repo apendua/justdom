@@ -228,9 +228,10 @@ export function elementAt(element, objectOf, point, local) {
 
 /**
  * The translucent card that follows the ray while a drag is under way, the
- * size of what is being dragged, drawn in the plane of the panel it came
- * from. A browser's drag image is a picture of the element; this is its
- * outline, which costs one quad in the material every box already uses.
+ * size of what is being dragged, drawn in the plane of the panel the ray is
+ * on (see `placeGhost`). A browser's drag image is a picture of the
+ * element; this is its outline, which costs one quad in the material every
+ * box already uses.
  *
  * @param {HTMLElement} source
  * @param {number} width
@@ -263,7 +264,8 @@ function createGhost(source, width, height) {
  * @property {THREE.XRTargetRaySpace} controller
  * @property {HTMLElement} source
  * @property {THREE.Object3D} panel The container object of the source's
- *   panel, whose plane the hand is measured in and the ghost is drawn in.
+ *   panel, whose plane a press is measured in until it becomes a drag, and
+ *   which holds the ghost while the ray is on no panel.
  * @property {THREE.Plane} plane
  * @property {THREE.Vector2} start Where the press was, in the panel's px.
  * @property {THREE.Vector2} grab Where the press was, in the source's px.
@@ -315,6 +317,7 @@ export function createDragAndDrop(requestFrames, readHit) {
   let stopFrames = null;
 
   const raycaster = new THREE.Raycaster();
+  const ghostPlane = new THREE.Plane();
   const onPlane = new THREE.Vector3();
   const inPanel = new THREE.Vector2();
   const local = new THREE.Vector2();
@@ -427,14 +430,15 @@ export function createDragAndDrop(requestFrames, readHit) {
    * `dragover` is what says it takes the drop.
    *
    * @param {Session} session
+   * @param {THREE.Intersection | undefined} hit Where the ray lands this
+   *   frame.
+   * @param {THREE.Object3D | null} panel The panel `hit` is in, if any.
    * @returns {void}
    */
-  function step(session) {
+  function step(session, hit, panel) {
     const dataTransfer = /** @type {PanelDataTransfer} */ (session.dataTransfer);
     /** @type {HTMLElement | null} */
     let under = null;
-    const hit = readHit(session.controller);
-    const panel = hit ? panelOf(hit.object) : null;
     if (hit && panel) {
       under = /** @type {ElementAt} */ (panels.get(panel))(hit.point, local);
       if (under) {
@@ -520,20 +524,49 @@ export function createDragAndDrop(requestFrames, readHit) {
     });
   }
 
+  /**
+   * Put the ghost where the ray crosses this panel's plane, in the panel.
+   * The panel the ray is on, so that the ghost is under the ray on whatever
+   * panel the drag is over, however that one is turned; the panel the drag
+   * started on when the ray is on none. Hidden when the ray points away
+   * from the plane.
+   *
+   * @param {Session} session
+   * @param {THREE.Object3D} panel
+   * @returns {void}
+   */
+  function placeGhost(session, panel) {
+    const ghost = /** @type {THREE.Mesh} */ (session.ghost);
+    if (ghost.parent !== panel) {
+      panel.add(ghost);
+    }
+    raycaster.setFromXRController(session.controller);
+    if (!raycaster.ray.intersectPlane(planeOf(panel, ghostPlane), onPlane)) {
+      ghost.visible = false;
+      return;
+    }
+    panel.worldToLocal(scratch.copy(onPlane));
+    ghost.visible = true;
+    placeAndScale(
+      ghost,
+      scratch.x - session.hold.x,
+      scratch.y - session.hold.y,
+      GHOST_Z,
+      ghost.scale.x,
+      ghost.scale.y,
+      1,
+    );
+  }
+
   function tick() {
     for (const session of sessions.values()) {
       if (!panels.has(session.panel)) {
         finish(session);
         continue;
       }
-      if (!sample(session)) {
-        if (session.ghost) {
-          session.ghost.visible = false;
-        }
-        continue;
-      }
       if (!session.dataTransfer) {
-        if (inPanel.distanceTo(session.start) < DRAG_THRESHOLD) {
+        // Still a press, measured in the plane of the panel it is on.
+        if (!sample(session) || inPanel.distanceTo(session.start) < DRAG_THRESHOLD) {
           continue;
         }
         if (!start(session)) {
@@ -544,18 +577,10 @@ export function createDragAndDrop(requestFrames, readHit) {
           continue;
         }
       }
-      const ghost = /** @type {THREE.Mesh} */ (session.ghost);
-      ghost.visible = true;
-      placeAndScale(
-        ghost,
-        inPanel.x - session.hold.x,
-        inPanel.y - session.hold.y,
-        GHOST_Z,
-        ghost.scale.x,
-        ghost.scale.y,
-        1,
-      );
-      step(session);
+      const hit = readHit(session.controller);
+      const panel = hit ? panelOf(hit.object) : null;
+      placeGhost(session, panel ?? session.panel);
+      step(session, hit, panel);
     }
     if (sessions.size === 0 && stopFrames) {
       stopFrames();
@@ -638,27 +663,31 @@ export function createDragAndDrop(requestFrames, readHit) {
 }
 
 /**
- * One drag-and-drop gesture per context, shared by every panel in the
- * scene, so a drag that starts in one panel can end in another.
+ * One drag-and-drop gesture per scene, shared by every panel in it, so a
+ * drag that starts in one panel can end in another and every panel knows a
+ * hand is carrying something. Keyed by the scene's interaction manager,
+ * not by the context: each portal derives a context of its own, and a
+ * gesture per context was a gesture per panel, whose controls went on
+ * being hovered under a drag from any other.
  *
- * @type {WeakMap<WeakKey, DragAndDrop>}
+ * @type {WeakMap<object, DragAndDrop>}
  */
-const perContext = new WeakMap();
+const perScene = new WeakMap();
 
 /**
  * @param {WeakKey} ctx
  * @returns {DragAndDrop}
  */
 export function dragAndDrop(ctx) {
-  let gesture = perContext.get(ctx);
+  const manager = InteractionContext.get(ctx);
+  let gesture = perScene.get(manager);
   if (!gesture) {
-    const manager = InteractionContext.get(ctx);
     gesture = createDragAndDrop(createFrameRequester(ctx), (controller) =>
       // Read from a frame, which may be inside somebody else's computation;
       // the hit is a fact about this frame, not a dependency.
       withComputation(null, () => manager.pointers.get(controller)?.get()),
     );
-    perContext.set(ctx, gesture);
+    perScene.set(manager, gesture);
   }
   return gesture;
 }

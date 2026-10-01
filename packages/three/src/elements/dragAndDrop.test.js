@@ -117,10 +117,12 @@ async function mirroredList(ctx, { id, rowIds, accept, fixed, seen }) {
  * @param {boolean} [options.accept] Whether the lists take drops.
  * @param {boolean} [options.second] Whether there is a second list, a
  *   panel of its own four metres to the right of the first.
+ * @param {boolean} [options.turned] Whether the second panel is turned
+ *   about the vertical, rather than facing the same way as the first.
  * @param {string[]} [options.fixed] The rows that are not draggable when
  *   the panel is built.
  */
-async function sortableList({ accept = true, second = false, fixed = [] } = {}) {
+async function sortableList({ accept = true, second = false, turned = false, fixed = [] } = {}) {
   /** @type {string[]} */
   const events = [];
   /** @type {Record<string, unknown>} */
@@ -148,6 +150,9 @@ async function sortableList({ accept = true, second = false, fixed = [] } = {}) 
     ? await mirroredList(ctx, { id: "other", rowIds: ["d", "e", "f"], accept, fixed, seen })
     : null;
   other?.parent.position.set(4, 0, 0);
+  if (turned) {
+    other?.parent.rotation.set(0, 0.6, 0);
+  }
 
   /** @type {{ unsubscribe: () => void }[]} */
   const subscriptions = [];
@@ -198,7 +203,9 @@ async function sortableList({ accept = true, second = false, fixed = [] } = {}) 
     aim,
     trigger,
     secondHand,
-    ghost: () => first.panel.getObjectByName("drag-ghost"),
+    panel: first.panel,
+    ghost: () =>
+      first.panel.getObjectByName("drag-ghost") ?? other?.panel.getObjectByName("drag-ghost"),
     disconnect: () => first.portal.disconnect(),
     teardown() {
       for (const type of [...types, ...dragTypes]) {
@@ -426,6 +433,38 @@ describe("drag and drop in a panel", () => {
     s.trigger("selectstart");
     s.aim(150, 60);
     assert.deepEqual(s.events.slice(0, 2), ["mousedown a", "dragstart a"]);
+    s.trigger("selectend");
+    s.teardown();
+  });
+
+  test("the other panel's controls are not hovered under a drag from this one", async () => {
+    const s = await sortableList({ second: true });
+    const other = /** @type {NonNullable<typeof s.other>} */ (s.other);
+    s.aim(150, 20);
+    s.trigger("selectstart");
+    s.aim(150, 60);
+    s.aim(150, 50, other);
+    s.aim(152, 52, other);
+    assert.equal(other.rows[1].dataset.xrHover, undefined, "as on this panel, and on a page");
+    s.trigger("selectend");
+    s.teardown();
+  });
+
+  test("the ghost is in the panel the ray is on, however it is turned", async () => {
+    const s = await sortableList({ second: true, turned: true });
+    const other = /** @type {NonNullable<typeof s.other>} */ (s.other);
+    // Picked up 150 px in and 20 px down the row, and held there.
+    s.aim(150, 20);
+    s.trigger("selectstart");
+    s.aim(150, 60);
+    s.aim(150, 50, other);
+    const ghost = /** @type {THREE.Object3D} */ (s.ghost());
+    assert.equal(ghost.parent, other.panel, "on the panel the drag is over");
+    assert.ok(Math.abs(ghost.position.x) < 0.5, `held at x 0, got ${ghost.position.x}`);
+    assert.ok(Math.abs(ghost.position.y - 30) < 0.5, `held at y 30, got ${ghost.position.y}`);
+
+    s.aim(150, 60);
+    assert.equal(ghost.parent, s.panel, "and back on this one with the ray");
     s.trigger("selectend");
     s.teardown();
   });

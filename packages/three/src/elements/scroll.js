@@ -90,9 +90,13 @@ export function findScroller(element) {
   return null;
 }
 
+const planeOrigin = new THREE.Vector3();
+const planeNormal = new THREE.Vector3();
+
 /**
  * The plane a scroller's content lies in, in world space, taken from the
- * object's own orientation.
+ * object's own orientation. Written into `target` and allocating nothing,
+ * since a drag asks it of the panel under the ray every frame.
  *
  * @param {THREE.Object3D} space
  * @param {THREE.Plane} target
@@ -100,9 +104,9 @@ export function findScroller(element) {
  */
 export function planeOf(space, target) {
   space.updateWorldMatrix(true, false);
-  const origin = new THREE.Vector3().setFromMatrixPosition(space.matrixWorld);
-  const normal = new THREE.Vector3(0, 0, 1).transformDirection(space.matrixWorld).normalize();
-  return target.setFromNormalAndCoplanarPoint(normal, origin);
+  planeOrigin.setFromMatrixPosition(space.matrixWorld);
+  planeNormal.set(0, 0, 1).transformDirection(space.matrixWorld);
+  return target.setFromNormalAndCoplanarPoint(planeNormal, planeOrigin);
 }
 
 /**

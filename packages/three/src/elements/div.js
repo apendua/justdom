@@ -36,7 +36,7 @@ import { isScrollable, scrollDrags } from "./scroll.js";
 import { place, placeAndScale } from "./place.js";
 import { BoxBatchContext } from "./boxBatch.js";
 import { TextBatchContext } from "./textBatch.js";
-import { forwardPointerEvents, isClickable, isGone } from "./pointerForwarding.js";
+import { forwardPointerEvents, isGone, isRayTarget } from "./pointerForwarding.js";
 import { setContentGroup } from "./contentGroup.js";
 
 /** Scratch for composing a scroll onto a content group's matrix. */
@@ -120,9 +120,10 @@ const BLOCKER_OFFSET = 2;
 /**
  * @typedef {object} BoxOptions
  * @property {(element: HTMLElement) => boolean} [clickable] Whether the element
- *   is a ray target, read reactively. Defaults to the `cursor: pointer` rule
- *   every ordinary box follows, which is there to tell a button from the card
- *   it sits on; a control needs no such telling and can answer for itself.
+ *   is a ray target, read reactively. Defaults to the rule every ordinary box
+ *   follows, `cursor: pointer` or `draggable="true"`, which is there to tell
+ *   a button, or a card to pick up, from the panel it sits on; a control
+ *   needs no such telling and can answer for itself.
  * @property {(surface: BoxSurface) => Subscribable<Component>[]} [content] What
  *   else belongs inside the box, on top of its background — the tick in a
  *   checkbox, and nothing at all for an element whose contents are its own
@@ -162,7 +163,7 @@ const BLOCKER_OFFSET = 2;
  */
 export function box(ctx, element, options = {}) {
   const {
-    clickable: isRayTarget = isClickable,
+    clickable: isTarget = isRayTarget,
     content = () => [],
     contentMatrix,
     onPress,
@@ -184,13 +185,13 @@ export function box(ctx, element, options = {}) {
   /**
    * Whether this element wants to be a ray target, as its own signal so that
    * the group below is attached and detached only when the answer actually
-   * flips. Reading `isClickable` straight from the effect would rebuild the
+   * flips. Reading `isRayTarget` straight from the effect would rebuild the
    * group far more often than that: the computed style is deliberately
    * invalidated by every attribute mutation, and the handlers write
    * `data-xr-*` back onto this very element, so each pointer event they
    * handled would tear down the listeners that handled it.
    */
-  const clickable = new Derived(() => isRayTarget(element));
+  const clickable = new Derived(() => isTarget(element));
 
   /**
    * Whether this element floats above what it overlaps, as its own signal for

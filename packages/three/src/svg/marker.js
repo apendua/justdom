@@ -1,4 +1,5 @@
 import { EllipseCurve, LineCurve } from "three";
+import { getAttributeCached } from "../elements/mirror.js";
 import { SVG_NAMESPACE } from "../elements/plugins.js";
 import {
   apply,
@@ -218,36 +219,36 @@ function parseReference(value, start, end, origin, length) {
 
 /**
  * The `<marker>`'s attributes as a `MarkerSpec`. None of them is a CSS
- * property, so they are read as attributes.
+ * property, so each is read as an attribute, a dependency of its own.
  *
  * @param {Element} marker
  * @returns {MarkerSpec}
  */
 export function readMarkerSpec(marker) {
-  const viewBox = parseViewBox(marker.getAttribute("viewBox"));
-  const width = number(marker.getAttribute("markerWidth"), 3);
-  const height = number(marker.getAttribute("markerHeight"), 3);
+  const viewBox = parseViewBox(getAttributeCached(marker, "viewBox"));
+  const width = number(getAttributeCached(marker, "markerWidth"), 3);
+  const height = number(getAttributeCached(marker, "markerHeight"), 3);
   return {
     viewBox,
-    aspect: parsePreserveAspectRatio(marker.getAttribute("preserveAspectRatio")),
+    aspect: parsePreserveAspectRatio(getAttributeCached(marker, "preserveAspectRatio")),
     width,
     height,
     refX: parseReference(
-      marker.getAttribute("refX"),
+      getAttributeCached(marker, "refX"),
       "left",
       "right",
       viewBox?.x ?? 0,
       viewBox?.width ?? width,
     ),
     refY: parseReference(
-      marker.getAttribute("refY"),
+      getAttributeCached(marker, "refY"),
       "top",
       "bottom",
       viewBox?.y ?? 0,
       viewBox?.height ?? height,
     ),
-    strokeUnits: marker.getAttribute("markerUnits") !== "userSpaceOnUse",
-    orient: parseOrient(marker.getAttribute("orient")),
+    strokeUnits: getAttributeCached(marker, "markerUnits") !== "userSpaceOnUse",
+    orient: parseOrient(getAttributeCached(marker, "orient")),
   };
 }
 

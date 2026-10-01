@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { Derived, effects, flatMap, just, Stream, use } from "@apendua/signal";
-import { getChildNodes, getComputedStyleCached } from "../elements/mirror.js";
+import { getAttributeCached, getChildNodes, getComputedStyleCached } from "../elements/mirror.js";
 import { isSvgElement, PortalTemplatesContext } from "../elements/plugins.js";
 import {
   IDENTITY,
@@ -239,9 +239,6 @@ function markers(ctx, element, host, hostInstance) {
     for (const { marker, index } of placements.get()) {
       const matrix = new Derived(
         () => {
-          // The marker's attributes are not CSS, but its computed style is
-          // what the mirror invalidates when one of them changes.
-          getComputedStyleCached(marker);
           const vertex = vertices.get()[index];
           return vertex
             ? markerMatrix(readMarkerSpec(marker), vertex, host.strokeWidth())
@@ -291,8 +288,6 @@ function markers(ctx, element, host, hostInstance) {
         },
         slot: host.markerSlot,
         viewport: () => {
-          // Read for the invalidation, as for the matrix.
-          getComputedStyleCached(marker);
           const spec = readMarkerSpec(marker);
           return spec.viewBox ?? { width: spec.width, height: spec.height };
         },
@@ -335,9 +330,6 @@ export function drawShape(ctx, element, instance = null) {
   });
 }
 
-/** The legacy namespace of `xlink:href`. */
-const XLINK_NAMESPACE = "http://www.w3.org/1999/xlink";
-
 /**
  * The element a `<use>` draws, or null for none: a missing id, a reference
  * to another document, and a reference to the `<use>` itself or to anything
@@ -347,7 +339,7 @@ const XLINK_NAMESPACE = "http://www.w3.org/1999/xlink";
  * @returns {Element | null}
  */
 export function findReferenced(use) {
-  const href = use.getAttribute("href") ?? use.getAttributeNS(XLINK_NAMESPACE, "href") ?? "";
+  const href = getAttributeCached(use, "href") ?? getAttributeCached(use, "xlink:href") ?? "";
   if (!href.startsWith("#") || href.length < 2) {
     return null;
   }
@@ -381,7 +373,11 @@ function symbolViewport(use, symbol, instance) {
     if (!Number.isNaN(own)) {
       return own;
     }
-    const symbols = parseLengthIn(symbol.getAttribute(name) ?? "", viewport?.[name], Number.NaN);
+    const symbols = parseLengthIn(
+      getAttributeCached(symbol, name) ?? "",
+      viewport?.[name],
+      Number.NaN,
+    );
     if (!Number.isNaN(symbols)) {
       return symbols;
     }
@@ -423,10 +419,9 @@ function useOrigin(use, instance) {
  * The copy inherits from the `<use>`, as a browser's clone does, through
  * `readDrawnProperty`. It follows edits to the referenced content, since the
  * mirror follows that content wherever it is. It is drawn and never hit, as
- * a marker is. Not followed: an `href` changed after the copy was made,
- * which the portal's observer does not watch, and a target that appears
- * only after the `<use>` mounted, which may be anywhere on the page. The
- * `<use>` looks its target up again when it is restyled.
+ * a marker is. A new `href` draws the target it names. Not followed: a
+ * target that appears only after the `<use>` mounted, which may be anywhere
+ * on the page. The `<use>` looks its target up again when it is restyled.
  *
  * @param {WeakKey} ctx
  * @param {Element} element
@@ -472,12 +467,9 @@ export function drawUse(ctx, element, instance = null) {
         if (!isViewport) {
           return null;
         }
-        // The target's attributes are not CSS; its computed style is what
-        // the mirror invalidates when one of them changes.
-        getComputedStyleCached(target);
         return {
-          viewBox: parseViewBox(target.getAttribute("viewBox")),
-          aspect: parsePreserveAspectRatio(target.getAttribute("preserveAspectRatio")),
+          viewBox: parseViewBox(getAttributeCached(target, "viewBox")),
+          aspect: parsePreserveAspectRatio(getAttributeCached(target, "preserveAspectRatio")),
           size: symbolViewport(element, target, instance),
         };
       });

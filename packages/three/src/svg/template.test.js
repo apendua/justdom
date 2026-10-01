@@ -520,6 +520,24 @@ describe("use", () => {
     s.teardown();
   });
 
+  test("a new href draws the target it names", () => {
+    const red = svg("symbol", { id: "use-symbol-red" }, [
+      svg("rect", { width: "5", height: "5", fill: "red" }),
+    ]);
+    const blue = svg("symbol", { id: "use-symbol-blue" }, [
+      svg("rect", { width: "5", height: "5", fill: "blue" }),
+    ]);
+    const use = svg("use", { href: "#use-symbol-red" });
+    const s = scene([svg("defs", {}, [red, blue]), use], [use]);
+    assert.equal(colourOf(meshesUnder(s.objects[0])[0]), "ff0000");
+    use.setAttribute("href", "#use-symbol-blue");
+    s.mirror.attributeChanged(use);
+    const meshes = meshesUnder(s.objects[0]);
+    assert.equal(meshes.length, 1, "the old copy is taken down");
+    assert.equal(colourOf(meshes[0]), "0000ff");
+    s.teardown();
+  });
+
   test("an edit inside the symbol reaches the copy", () => {
     const rect = svg("rect", { width: "5", height: "5", fill: "red" });
     const symbol = svg("symbol", { id: "use-symbol-e" }, [rect]);

@@ -38,9 +38,10 @@ import { sampleRenderingUpdates, scrollElementBy } from "./renderingUpdates.js";
  * How far a drag has to travel before it counts as scrolling rather than as
  * a slightly unsteady press. In px of the panel's own scale: a few px is a
  * fraction of a row, well under the tremor of an outstretched arm, and far
- * below the size of anything worth pressing.
+ * below the size of anything worth pressing. A press on something draggable
+ * becomes a drag at the same distance (see `dragAndDrop.js`).
  */
-const DRAG_THRESHOLD = 6;
+export const DRAG_THRESHOLD = 6;
 
 /**
  * How much of its speed a flick keeps per frame once released. Settles in
@@ -97,7 +98,7 @@ export function findScroller(element) {
  * @param {THREE.Plane} target
  * @returns {THREE.Plane}
  */
-function planeOf(space, target) {
+export function planeOf(space, target) {
   space.updateWorldMatrix(true, false);
   const origin = new THREE.Vector3().setFromMatrixPosition(space.matrixWorld);
   const normal = new THREE.Vector3(0, 0, 1).transformDirection(space.matrixWorld).normalize();

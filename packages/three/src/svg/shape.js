@@ -17,6 +17,7 @@ import { forwardPointerEvents, isClickable } from "../elements/pointerForwarding
 import { place } from "../elements/place.js";
 import { getContentRenderOrder } from "../elements/elevation.js";
 import {
+  getAttributeCached,
   getBorderBoxSize,
   getChildNodes,
   getComputedStyleCached,
@@ -251,7 +252,7 @@ export function chainEqual(a, b) {
 function nearestViewBoxOrigin(element) {
   for (let current = element.parentElement; current; current = current.parentElement) {
     if (current.localName === "svg" && current.namespaceURI === SVG_NAMESPACE) {
-      const viewBox = parseViewBox(current.getAttribute("viewBox"));
+      const viewBox = parseViewBox(getAttributeCached(current, "viewBox"));
       return viewBox ? { x: viewBox.x, y: viewBox.y } : { x: 0, y: 0 };
     }
   }
@@ -271,8 +272,8 @@ function nearestViewBoxOrigin(element) {
 export function rootMatrix(root) {
   const box = rootContentBox(root);
   const viewport = viewportMatrix(
-    parseViewBox(root.getAttribute("viewBox")),
-    parsePreserveAspectRatio(root.getAttribute("preserveAspectRatio")),
+    parseViewBox(getAttributeCached(root, "viewBox")),
+    parsePreserveAspectRatio(getAttributeCached(root, "preserveAspectRatio")),
     box.width,
     box.height,
   );
@@ -322,7 +323,7 @@ export function viewportSize(element, instance = null) {
     if (current.localName !== "svg" || current.namespaceURI !== SVG_NAMESPACE) {
       continue;
     }
-    const viewBox = parseViewBox(current.getAttribute("viewBox"));
+    const viewBox = parseViewBox(getAttributeCached(current, "viewBox"));
     if (viewBox) {
       return { width: viewBox.width, height: viewBox.height };
     }
@@ -379,8 +380,8 @@ export function svgViewport(svg, instance = null) {
 function svgViewportMatrix(svg, instance) {
   const box = svgViewport(svg, instance);
   const viewport = viewportMatrix(
-    parseViewBox(svg.getAttribute("viewBox")),
-    parsePreserveAspectRatio(svg.getAttribute("preserveAspectRatio")),
+    parseViewBox(getAttributeCached(svg, "viewBox")),
+    parsePreserveAspectRatio(getAttributeCached(svg, "preserveAspectRatio")),
     // A size nobody can know fits no `viewBox`: user units are the
     // parent's, as for a size of 0.
     Number.isFinite(box.width) ? box.width : 0,

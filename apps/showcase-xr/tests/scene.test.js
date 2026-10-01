@@ -28,9 +28,9 @@ import { BASELINE, MOVEMENT, comparePng, countNear, inkRatio } from "./pixels.js
  *    worse than none.
  *  - Everything else asks a question about the frame that has one answer
  *    anywhere: that the panels are there, that they are wearing the colours
- *    their stylesheets asked for, that animation moves and that a style
- *    written into the mirrored DOM reaches the scene. These are the ones that
- *    can go in front of a pull request on any machine.
+ *    their stylesheets asked for, that animation moves and that a style or
+ *    an SVG attribute written into the mirrored DOM reaches the scene. These
+ *    are the ones that can go in front of a pull request on any machine.
  */
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -220,6 +220,42 @@ describe("the showcase in an emulated headset", { timeout: 180_000 }, () => {
     assert.ok(
       comparePng(restored, before, BASELINE).same,
       "taking the transform away did not put the scene back",
+    );
+  });
+
+  test("an SVG attribute written into the mirrored DOM reaches the scene", async () => {
+    // The same claim for an attribute rather than a style: the diamond on the
+    // vector panel is a square turned by a `transform` attribute on its
+    // `<g>`. Unturning it by attribute has to show up in the headset, which
+    // it did not while the portal observed a fixed list of attribute names.
+    const before = await photographScene(showcase.page, { freeze: true });
+    // Writes the group's transform and hands back the one it replaced, so
+    // the panel stays the only place the diamond's angle is written down.
+    const rewrite = (/** @type {string} */ transform) =>
+      showcase.page.evaluate((transform) => {
+        const group = document.querySelector("[data-xr-portal] svg g[transform]");
+        if (!group) {
+          throw new Error("no group to turn");
+        }
+        const previous = group.getAttribute("transform") ?? "";
+        group.setAttribute("transform", transform);
+        return previous;
+      }, transform);
+
+    const original = await rewrite("");
+    await nextFrames(showcase.page, 10);
+    const after = await photographScene(showcase.page, { freeze: true });
+    assert.ok(
+      !comparePng(after, before, MOVEMENT).same,
+      "turning a group by its transform attribute changed nothing in the scene",
+    );
+
+    await rewrite(original);
+    await nextFrames(showcase.page, 10);
+    const restored = await photographScene(showcase.page, { freeze: true });
+    assert.ok(
+      comparePng(restored, before, BASELINE).same,
+      "turning it back did not put the scene back",
     );
   });
 });

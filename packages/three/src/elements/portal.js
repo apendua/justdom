@@ -872,9 +872,11 @@ function buildPortal(ctx, ownOptions = {}) {
     node.childNodes.forEach(adoptTemplate);
   }
   // Only what is inside this panel: a marker another panel or the page
-  // owns is not this mirror's to follow, and its own portal adopts it.
+  // owns is not this mirror's to follow, and its own portal adopts it. A
+  // template adopted already stays adopted, its later children with it, so
+  // a plugin that asks again on every restyle walks nothing.
   ctx = PortalTemplatesContext.set(ctx, (node) => {
-    if (containerElement.contains(node)) {
+    if (!templateNodes.has(node) && containerElement.contains(node)) {
       adoptTemplate(node);
     }
   });

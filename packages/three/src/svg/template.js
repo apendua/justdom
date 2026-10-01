@@ -211,9 +211,6 @@ function markers(ctx, element, host, hostInstance) {
     for (const { marker, index } of placements.get()) {
       const matrix = new Derived(
         () => {
-          // The marker's attributes are not CSS, but its computed style is
-          // what the mirror invalidates when one of them changes.
-          getComputedStyleCached(marker);
           const vertex = vertices.get()[index];
           return vertex
             ? markerMatrix(readMarkerSpec(marker), vertex, host.strokeWidth())

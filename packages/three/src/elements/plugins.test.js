@@ -2,6 +2,7 @@ import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
 import { InteractionContext, InteractionManager } from "../interactions.js";
+import { DomMirror } from "./mirror.js";
 import { createPortal } from "./portal.js";
 import { isSvgElement, isSvgRoot, PortalPluginsContext, projectWithPlugins } from "./plugins.js";
 import { svgElements } from "../svg/index.js";
@@ -225,6 +226,44 @@ describe("portal plugins", () => {
       "00ff00",
       "the paint follows the fill attribute",
     );
+    portal.disconnect();
+  });
+
+  test("a marker is adopted once, not again on every restyle of its path", async () => {
+    const ctx = InteractionContext.set({}, new InteractionManager());
+    const { portal, svg, rect } = await project(ctx, { plugins: [svgElements()] });
+    const marker = document.createElementNS(SVG_NS, "marker");
+    marker.setAttribute("id", "plugins-arrow");
+    const head = document.createElementNS(SVG_NS, "path");
+    head.setAttribute("d", "M0 0 L10 5 L0 10 z");
+    marker.appendChild(head);
+    const defs = document.createElementNS(SVG_NS, "defs");
+    defs.appendChild(marker);
+    const line = document.createElementNS(SVG_NS, "line");
+    line.setAttribute("x2", "40");
+    line.setAttribute("stroke", "black");
+    line.setAttribute("marker-end", "url(#plugins-arrow)");
+    svg.replaceChild(line, rect);
+    svg.insertBefore(defs, line);
+    await nextMacrotask();
+
+    let adoptions = 0;
+    const original = DomMirror.prototype.adopt;
+    DomMirror.prototype.adopt = function adopt(node) {
+      if (node === marker || node === head) {
+        adoptions += 1;
+      }
+      return original.call(this, node);
+    };
+    try {
+      for (const width of ["2", "3", "4"]) {
+        line.setAttribute("stroke-width", width);
+        await nextMacrotask();
+      }
+    } finally {
+      DomMirror.prototype.adopt = original;
+    }
+    assert.equal(adoptions, 0);
     portal.disconnect();
   });
 

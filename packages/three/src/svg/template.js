@@ -13,7 +13,7 @@ import {
   readMarkerSpec,
 } from "./marker.js";
 import { commitMatrix, group, shape, SHAPE_TAGS } from "./shape.js";
-import { readProperty } from "./style.js";
+import { parseNumber, readProperty } from "./style.js";
 
 /**
  * Templates: SVG content defined in one place and drawn in others. A
@@ -223,7 +223,13 @@ function markers(ctx, element, host, hostInstance) {
         template: marker,
         chain: () => {
           const at = host.chain();
-          return { ctm: multiply(at.ctm, matrix.get()), opacity: at.opacity, root: at.root };
+          return {
+            ctm: multiply(at.ctm, matrix.get()),
+            // The marker is a container its content is drawn in, so its own
+            // opacity fades the copy; the walk stops below it.
+            opacity: at.opacity * parseNumber(getComputedStyleCached(marker).opacity, 1),
+            root: at.root,
+          };
         },
         slot: host.markerSlot,
         expanding: new Set([...expanding, marker]),

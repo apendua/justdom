@@ -37,7 +37,7 @@ import {
   shape,
   SHAPE_TAGS,
 } from "./shape.js";
-import { clipsViewport, parseLengthIn, readProperty } from "./style.js";
+import { clipsViewport, parseLengthIn, parseNumber, readProperty } from "./style.js";
 
 /**
  * Templates: SVG content defined in one place and drawn in others. A
@@ -277,7 +277,9 @@ function markers(ctx, element, host, hostInstance) {
           const current = box.get();
           return {
             ctm: multiply(at.ctm, matrix.get()),
-            opacity: at.opacity,
+            // The marker is a container its content is drawn in, so its own
+            // opacity fades the copy; the walk stops below it.
+            opacity: at.opacity * parseNumber(getComputedStyleCached(marker).opacity, 1),
             root: at.root,
             clip: current
               ? intersectRects(
@@ -521,7 +523,12 @@ export function drawUse(ctx, element, instance = null) {
           const rect = viewport.get();
           return {
             ctm: multiply(at.ctm, placement.get()),
-            opacity: at.opacity,
+            // A `<symbol>` or `<svg>` is a container in the copy, so its own
+            // opacity fades it; the walk stops below it. The parent of an
+            // element drawn whole is not in the copy, and adds nothing.
+            opacity: isViewport
+              ? at.opacity * parseNumber(getComputedStyleCached(target).opacity, 1)
+              : at.opacity,
             root: at.root,
             clip: rect ? intersectRects(at.clip, transformRect(at.ctm, rect)) : at.clip,
           };

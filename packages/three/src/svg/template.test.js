@@ -147,6 +147,15 @@ function setup() {
 }
 
 describe("markers", () => {
+  test("the marker's own opacity fades its copies", () => {
+    const s = setup();
+    s.marker.setAttribute("style", "opacity: 0.5");
+    s.mirror.attributeChanged(s.marker);
+    const [mesh] = s.markerMeshes;
+    assert.equal(/** @type {THREE.MeshBasicMaterial} */ (mesh.material).opacity, 0.5);
+    s.teardown();
+  });
+
   test("an arrowhead is drawn at the end of the line, tip on the vertex, turned along it", () => {
     const s = setup();
     const [mesh] = s.markerMeshes;
@@ -564,6 +573,25 @@ describe("use", () => {
     const corner = new THREE.Vector3(0, 0, 0).applyMatrix4(mesh.matrixWorld);
     assert.deepEqual([round(corner.x), round(corner.y)], [0, 0]);
     s.teardown();
+  });
+
+  test("a symbol's or an svg target's own opacity fades the copy", () => {
+    const symbol = svg("symbol", { id: "use-symbol-faded", style: "opacity: 0.5" }, [
+      svg("rect", { width: "5", height: "5", fill: "red" }),
+    ]);
+    const other = svg("svg", { id: "use-other-faded", style: "opacity: 0.5" }, [
+      svg("rect", { width: "5", height: "5", fill: "red" }),
+    ]);
+    document.body.appendChild(other);
+    const first = svg("use", { href: "#use-symbol-faded" });
+    const second = svg("use", { href: "#use-other-faded" });
+    const s = scene([svg("defs", {}, [symbol]), first, second], [first, second]);
+    for (const object of s.objects) {
+      const [mesh] = meshesUnder(object);
+      assert.equal(/** @type {THREE.MeshBasicMaterial} */ (mesh.material).opacity, 0.5);
+    }
+    s.teardown();
+    other.remove();
   });
 
   test("a new href draws the target it names", () => {

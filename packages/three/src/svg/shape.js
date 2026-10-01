@@ -411,8 +411,8 @@ export function readChain(element) {
   let current = element;
   while (current) {
     if (isSvgRoot(current)) {
-      // The opacity from the root up is not the chain's: see `opacity` in
-      // `shape`, which multiplies it in.
+      // The opacity from the root up is not the chain's: see
+      // `drawnOpacity`, which multiplies it in.
       return { ctm: multiply(rootMatrix(current), ctm), opacity, root: current };
     }
     opacity *= parseNumber(getComputedStyleCached(current).opacity, 1);

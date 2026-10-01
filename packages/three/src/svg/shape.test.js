@@ -60,8 +60,14 @@ const SVG_NS = "http://www.w3.org/2000/svg";
  *   attributes.
  * @param {InteractionManager} [options.manager] What the shape registers
  *   itself with, if it is ever clickable.
+ * @param {HTMLElement} [options.inside] Where the `<svg>` goes on the page,
+ *   adopted with it unless it is the body.
  */
-function setup(tag, attributes, { viewBox, width = 100, height = 50, manager } = {}) {
+function setup(
+  tag,
+  attributes,
+  { viewBox, width = 100, height = 50, manager, inside = document.body } = {},
+) {
   const root = document.createElementNS(SVG_NS, "svg");
   if (viewBox) {
     root.setAttribute("viewBox", viewBox);
@@ -83,9 +89,12 @@ function setup(tag, attributes, { viewBox, width = 100, height = 50, manager } =
     element.setAttribute(name, value);
   }
   root.appendChild(element);
-  document.body.appendChild(root);
+  inside.appendChild(root);
 
   const { mirror, flush, disconnect } = observedMirror(root);
+  if (inside !== document.body) {
+    mirror.adopt(inside);
+  }
   mirror.adopt(root);
   mirror.adopt(element);
 
@@ -447,6 +456,52 @@ describe("svg shape", () => {
     });
     assert.equal(material(s.meshes[0]).opacity, 0.25);
     s.teardown();
+  });
+
+  test("an element around the <svg> fades its shapes", () => {
+    const card = document.createElement("div");
+    card.style.opacity = "0.5";
+    document.body.appendChild(card);
+    const s = setup(
+      "rect",
+      { x: "0", y: "0", width: "10", height: "10", fill: "red" },
+      {
+        inside: card,
+      },
+    );
+    assert.equal(material(s.meshes[0]).opacity, 0.5);
+    s.teardown();
+    card.remove();
+  });
+
+  test("an opacity animated around the <svg> does not re-walk the matrices", () => {
+    // The clock reports an opacity animation as the element's own, which
+    // restyles nothing under it; only the product it fades by moves.
+    const card = document.createElement("div");
+    document.body.appendChild(card);
+    const s = setup(
+      "rect",
+      { x: "0", y: "0", width: "10", height: "10", fill: "red" },
+      {
+        inside: card,
+      },
+    );
+    assert.equal(material(s.meshes[0]).opacity, 1);
+    let walks = 0;
+    const getAttribute = s.root.getAttribute.bind(s.root);
+    s.root.getAttribute = (name) => {
+      if (name === "viewBox") {
+        walks += 1;
+      }
+      return getAttribute(name);
+    };
+
+    card.style.opacity = "0.5";
+    s.mirror.animatedStyles([card], { subtree: false });
+    assert.equal(material(s.meshes[0]).opacity, 0.5, "the shape fades");
+    assert.equal(walks, 0, "and the chain up to the root is not walked again");
+    s.teardown();
+    card.remove();
   });
 
   test("the even-odd rule leaves a hole", () => {

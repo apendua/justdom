@@ -187,11 +187,20 @@ const remainingStyle = className`
   color: #333;
 `;
 
-const listStyle = className`
-  list-style: none;
-  padding: 0;
-  margin: 0;
-  width: 100%;
+// The list's own top border is the divider above the first row, marked
+// when a row would be dropped first (see `TodoItem`).
+const listStyle = stylesheet`
+  .${CLASS_NAME} {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    width: 100%;
+    border-top: 2px solid transparent;
+  }
+
+  .${CLASS_NAME}.drop-marker {
+    border-top-color: #007bff;
+  }
 `;
 
 // A window onto the list rather than the whole of it. On the page it is a
@@ -334,33 +343,34 @@ const TodoApp = component((ctx: WeakKey) => {
   // run there too.
   //
   // `dragover` decides where the row would land from where the pointer is
-  // on the row under it, above or below its middle, and marks that edge
-  // with a class (see `TodoItem`).
+  // against the rows (see `slotBefore`), and marks the divider above that
+  // slot with a class: the bottom border of the row above it, or the list's
+  // top border for the first slot (see `TodoItem`).
   // `drop` reads the row being carried from `dataTransfer`, as a page has
   // to: during the drag its data is guarded and only its types can be read.
   const TODO_TYPE = "application/x-todo-id";
-  let marked: HTMLElement | null = null;
-  const mark = (row: HTMLElement | null, where?: "before" | "after") => {
-    if (marked && (marked !== row || !marked.classList.contains(`drop-${where}`))) {
-      marked.classList.remove("drop-before", "drop-after");
+  let marked: Element | null = null;
+  const mark = (divider: Element | null) => {
+    if (marked !== divider) {
+      marked?.classList.remove("drop-marker");
+      divider?.classList.add("drop-marker");
+      marked = divider;
     }
-    marked = row;
-    if (row && where) {
-      row.classList.add(`drop-${where}`);
-    }
+  };
+  /** What draws the divider above the slot before `before`, or the last. */
+  const dividerAbove = (list: Element, before: string | null) => {
+    const row = before === null ? null : list.querySelector(`li[data-id="${before}"]`);
+    return (row ? row.previousElementSibling : list.lastElementChild) ?? list;
   };
   const rowOf = (target: EventTarget | null) =>
     target instanceof Element ? target.closest<HTMLElement>("li[data-id]") : null;
   /**
-   * Where a drop at this event would put the row: before which todo, and
-   * the row whose edge marks that slot, the one it goes before or the last.
+   * Where a drop at this event would put the row: before which todo, or
+   * null for last (see `slotBefore`).
    */
-  const landing = (event: DragEvent): { row: HTMLElement | null; before: string | null } => {
+  const landing = (event: DragEvent): string | null => {
     const list = event.currentTarget as Element;
-    const rows = [...list.querySelectorAll<HTMLElement>("li[data-id]")];
-    const before = slotBefore(rows, event.clientY);
-    const row = before === null ? rows[rows.length - 1] : rows.find((r) => r.dataset.id === before);
-    return { row: row ?? null, before };
+    return slotBefore(list.querySelectorAll<HTMLElement>("li[data-id]"), event.clientY);
   };
   const reordering = [
     on("dragstart", (event: DragEvent) => {
@@ -381,8 +391,7 @@ const TodoApp = component((ctx: WeakKey) => {
       }
       event.preventDefault();
       event.dataTransfer.dropEffect = "move";
-      const { row, before } = landing(event);
-      mark(row, row && before === row.dataset.id ? "before" : "after");
+      mark(dividerAbove(event.currentTarget as Element, landing(event)));
     }),
     on("dragleave", (event: DragEvent) => {
       // Only leaving the list for somewhere else clears the mark; moving
@@ -396,7 +405,7 @@ const TodoApp = component((ctx: WeakKey) => {
       event.preventDefault();
       const id = event.dataTransfer?.getData(TODO_TYPE);
       if (id) {
-        moveTodo(id, landing(event).before);
+        moveTodo(id, landing(event));
       }
       mark(null);
     }),

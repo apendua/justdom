@@ -61,7 +61,21 @@ export async function offerXR(panel: HTMLElement): Promise<void> {
     // `TodoKeyboard`'s, and where it opens, when it goes and how it is
     // moved are freedom's.
     panelOptions: {
-      keyboard: { create: ({ onKey, field }) => TodoKeyboard({ onKey, field }) },
+      keyboard: {
+        create: ({ onKey, field }) => TodoKeyboard({ onKey, field }),
+        // Three quarters of a millimetre per px: the board is 34 cm wide
+        // rather than freedom's 45, which is still wider than a ray needs.
+        scale: 0.00075,
+        // Reclined 34° rather than freedom's 24°. The board opens 20 cm
+        // under the eyes and hangs below that, so the line from its middle
+        // up to the eyes is about 34° above level, and a face reclined by
+        // as much looks straight at them.
+        tilt: (34 * Math.PI) / 180,
+        // The copy of the field in the plane of the keys, not leaning out
+        // of it, so the board reads as one surface. It wears the field's
+        // own look, which is freedom's default.
+        preview: { tilt: 0 },
+      },
     },
   }).subscribe({
     next: (renderer) => {

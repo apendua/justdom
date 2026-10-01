@@ -490,6 +490,26 @@ describe("svg image", () => {
     });
   });
 
+  test("a new href is read when it is written, before any picture loads", () => {
+    const other = `${PICTURE}#other`;
+    /** @type {string[]} */
+    const requested = [];
+    const original = THREE.TextureLoader.prototype.load;
+    THREE.TextureLoader.prototype.load = function (url) {
+      requested.push(url);
+      return fakeTexture(10, 10);
+    };
+    try {
+      const s = setup({ href: PICTURE, width: "10", height: "10" });
+      s.element.setAttribute("href", other);
+      s.mirror.attributeChanged(s.element);
+      assert.deepEqual(requested, [PICTURE, other]);
+      s.teardown();
+    } finally {
+      THREE.TextureLoader.prototype.load = original;
+    }
+  });
+
   test("teardown gives the picture back and disposes what it made", () => {
     const texture = fakeTexture(10, 10);
     withLoadedPictures(texture, () => {

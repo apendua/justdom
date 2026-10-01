@@ -7,8 +7,6 @@ import {
   observable,
   onCleanup,
   set,
-  Stream,
-  use,
   useEffects,
 } from "@apendua/signal";
 import { SVGLoader } from "three/addons/loaders/SVGLoader.js";
@@ -67,7 +65,7 @@ import {
 } from "./style.js";
 
 /**
- * @import {EntityEffect, Source, Subscribable} from '@apendua/signal';
+ * @import {EntityEffect, Source} from '@apendua/signal';
  * @import {ShapePath} from 'three';
  * @import {Component, XREventMap} from '../core.js';
  * @import {ClipBox} from '../elements/clip.js';
@@ -432,28 +430,6 @@ function withOwnTransform(element, matrix, instance) {
   const style = getComputedStyleCached(element);
   const own = ownTransform(element, style, nearestViewBoxOrigin(element, instance));
   return own ? multiply(own, matrix) : matrix;
-}
-
-/**
- * Keep `source`'s object a child of `parent` for as long as the surrounding
- * computation stands.
- *
- * @param {THREE.Object3D} parent
- * @param {Subscribable<THREE.Object3D>} source
- * @returns {void}
- */
-export function mountInto(parent, source) {
-  use(
-    flatMap(
-      (/** @type {THREE.Object3D} */ child) =>
-        new Stream(() => {
-          parent.add(child);
-          return () => {
-            parent.remove(child);
-          };
-        }),
-    )(source),
-  );
 }
 
 /**

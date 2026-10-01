@@ -327,6 +327,22 @@ describe("svg text", () => {
     s.teardown();
   });
 
+  test("a tspan added mounts its own run and leaves the others as they were", () => {
+    const text = svg("text", { x: "0", y: "10", fill: "red" }, ["A"]);
+    const s = scene([text], text);
+    const [first] = s.meshes;
+    const texture = materialOf(first).alphaMap;
+    const tspan = svg("tspan", { x: "20" }, ["B"]);
+    text.appendChild(tspan);
+    s.mirror.adopt(tspan);
+    s.mirror.adopt(/** @type {Node} */ (tspan.firstChild));
+    s.mirror.childListChanged(text, tspan);
+    assert.equal(s.meshes.length, 2);
+    assert.equal(s.meshes[0], first, "the first run's mesh stays mounted");
+    assert.equal(materialOf(first).alphaMap, texture, "and is not drawn again");
+    s.teardown();
+  });
+
   test("a restyle that changes nothing the layout reads measures nothing", () => {
     const text = svg("text", { x: "0", y: "10", fill: "red" }, ["A"]);
     const s = scene([text], text);

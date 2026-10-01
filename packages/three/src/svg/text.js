@@ -1,5 +1,7 @@
 import * as THREE from "three";
 import { Derived, effects, just, onCleanup, set } from "@apendua/signal";
+import { keyedList } from "../core.js";
+import { $, children } from "../operators.js";
 import { applyClip, clipRaycast } from "../elements/clip.js";
 import {
   getAttributeCached,
@@ -21,7 +23,6 @@ import {
   commitMatrix,
   isDrawnHidden,
   localMatrix,
-  mountInto,
   paintSlot,
   rayTarget,
   readChain,
@@ -53,7 +54,7 @@ import { parseNumber, parsePaint, parsePointerEvents, readProperty } from "./sty
  * not redraw it every frame.
  *
  * @import {Source} from '@apendua/signal';
- * @import {XREventMap} from '../core.js';
+ * @import {Component, XREventMap} from '../core.js';
  * @import {Instance} from './shape.js';
  */
 
@@ -458,23 +459,19 @@ export function drawText(ctx, element, instance = null) {
     { isEqual: runsEqual },
   );
 
-  /**
-   * The text nodes drawn, apart from where they are, so a run that moves or
-   * changes its characters is redrawn alone, and only a node added or taken
-   * away mounts the runs again.
-   */
-  const nodes = new Derived(() => runs.get().map((run) => run.node), { isEqual: arraysEqual });
-
   /** Whether a ray can hit any run, which is what makes the text a target. */
   const hittable = new Derived(() => runs.get().some((run) => runHits(run.parent, instance)));
 
   const { clip, clipMatrix, clipBox, followClip } = clipUniforms(() => chain.get());
 
   /**
-   * The mesh of the run for one text node.
+   * The mesh of the run for one text node. Mounted once per node by
+   * `keyedList`, and following the node's run from then on, so a run that
+   * moves or changes its characters is redrawn alone, and a node added or
+   * taken away mounts or unmounts its own run and no other.
    *
    * @param {Text} node
-   * @returns {Source<THREE.Object3D>}
+   * @returns {Source<Component>}
    */
   const drawRun = (node) => {
     /** @type {TextRun | undefined} */
@@ -534,7 +531,7 @@ export function drawText(ctx, element, instance = null) {
       }
     };
 
-    return just(mesh, [
+    return $(mesh, [
       set("material", () => {
         const material = new THREE.MeshBasicMaterial({
           side: THREE.DoubleSide,
@@ -607,10 +604,11 @@ export function drawText(ctx, element, instance = null) {
       obj.visible = style().display !== "none";
     }),
     ...followClip,
-    effects((obj) => {
-      for (const node of nodes.get()) {
-        mountInto(obj, drawRun(node));
-      }
-    }),
+    children(
+      keyedList(
+        () => runs.get().map((run) => /** @type {[Text, TextRun]} */ ([run.node, run])),
+        (_run, node) => drawRun(node),
+      ),
+    ),
   ]);
 }

@@ -149,33 +149,45 @@ async function sortableList({ accept = true, second = false, fixed = [] } = {}) 
     : null;
   other?.parent.position.set(4, 0, 0);
 
-  const controller = /** @type {THREE.XRTargetRaySpace} */ (
-    /** @type {unknown} */ (new THREE.Object3D())
-  );
-  const loop = fakeFrameLoop();
-  const subscription = manager.addController(controller, loop.onAnimationFrame).subscribe();
+  /** @type {{ unsubscribe: () => void }[]} */
+  const subscriptions = [];
 
   /**
-   * Point the ray at a spot on a panel, in its px, and let a frame go by:
-   * the manager's, which works out what the ray is on, and then the page's.
-   *
-   * @param {number} x
-   * @param {number} y
-   * @param {typeof first} [on] The first list's panel unless given.
+   * A controller in the scene, and the two things a test does with it.
    */
-  const aim = (x, y, on = first) => {
-    on.parent.updateMatrixWorld(true);
-    const point = on.panel.localToWorld(new THREE.Vector3(x, y, 0));
-    controller.position.set(point.x, point.y, point.z + 1);
-    controller.updateMatrixWorld(true);
-    controller.dispatchEvent(/** @type {never} */ ({ type: "move" }));
-    loop.run();
-    flushFrame();
+  const hand = () => {
+    const controller = /** @type {THREE.XRTargetRaySpace} */ (
+      /** @type {unknown} */ (new THREE.Object3D())
+    );
+    const loop = fakeFrameLoop();
+    subscriptions.push(manager.addController(controller, loop.onAnimationFrame).subscribe());
+    return {
+      /**
+       * Point the ray at a spot on a panel, in its px, and let a frame go
+       * by: the manager's, which works out what the ray is on, and then the
+       * page's.
+       *
+       * @param {number} x
+       * @param {number} y
+       * @param {typeof first} [on] The first list's panel unless given.
+       */
+      aim: (x, y, on = first) => {
+        on.parent.updateMatrixWorld(true);
+        const point = on.panel.localToWorld(new THREE.Vector3(x, y, 0));
+        controller.position.set(point.x, point.y, point.z + 1);
+        controller.updateMatrixWorld(true);
+        controller.dispatchEvent(/** @type {never} */ ({ type: "move" }));
+        loop.run();
+        flushFrame();
+      },
+      /** @param {"selectstart" | "selectend"} type */
+      trigger: (type) => {
+        controller.dispatchEvent(/** @type {never} */ ({ type, data: null }));
+      },
+    };
   };
-  /** @param {"selectstart" | "selectend"} type */
-  const trigger = (type) => {
-    controller.dispatchEvent(/** @type {never} */ ({ type, data: null }));
-  };
+  const { aim, trigger } = hand();
+  const secondHand = hand();
 
   return {
     list: first.list,
@@ -185,13 +197,14 @@ async function sortableList({ accept = true, second = false, fixed = [] } = {}) 
     seen,
     aim,
     trigger,
+    secondHand,
     ghost: () => first.panel.getObjectByName("drag-ghost"),
     disconnect: () => first.portal.disconnect(),
     teardown() {
       for (const type of [...types, ...dragTypes]) {
         document.removeEventListener(type, record);
       }
-      subscription.unsubscribe();
+      subscriptions.forEach((subscription) => subscription.unsubscribe());
       for (const { portal, root } of other ? [first, other] : [first]) {
         portal.disconnect();
         root.remove();
@@ -326,6 +339,23 @@ describe("drag and drop in a panel", () => {
 
     s.aim(152, 61);
     assert.equal(b.dataset.xrHover, "true", "as a page's :hover catches up on the next move");
+    s.teardown();
+  });
+
+  test("the other hand crossing the control does not lose the hover it is owed", async () => {
+    const s = await sortableList();
+    const b = s.rows[1];
+    s.secondHand.aim(150, 180);
+    s.aim(150, 20);
+    s.trigger("selectstart");
+    s.aim(150, 60);
+    // The other hand's ray crosses the row the drag is resting on.
+    s.secondHand.aim(150, 62);
+    s.secondHand.aim(150, 180);
+    s.trigger("selectend");
+
+    s.aim(152, 61);
+    assert.equal(b.dataset.xrHover, "true", "the hand that came onto it decides");
     s.teardown();
   });
 

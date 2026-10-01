@@ -8,7 +8,7 @@ import { scrollDrags } from "./scroll.js";
 
 /**
  * @import {EntityEffect} from '@apendua/signal';
- * @import {Object3D} from 'three';
+ * @import {Object3D, XRTargetRaySpace} from 'three';
  * @import {Reactive} from '../interactions.js';
  * @import {InteractionEvent, XREventMap} from '../core.js';
  */
@@ -209,12 +209,14 @@ export function forwardPointerEvents(ctx, element, object, { enabled, onPress })
   };
 
   /**
-   * An enter that came while the hand held a press, kept until the hold is
-   * over; see `pointerenter` below.
+   * The enters that came while a hand held a press, kept until that hand's
+   * hold is over; see `pointerenter` below. One per hand, as the manager
+   * tracks enter and leave per hand: the other hand crossing this element
+   * neither drops the enter nor lands it.
    *
-   * @type {XREventMap["pointerenter"] | null}
+   * @type {Map<XRTargetRaySpace, XREventMap["pointerenter"]>}
    */
-  let heldEnter = null;
+  const heldEnters = new Map();
 
   /**
    * Send the DOM event for a ray event, unless an element inside this one
@@ -250,6 +252,7 @@ export function forwardPointerEvents(ctx, element, object, { enabled, onPress })
       forwarding.add(object);
       onCleanup(() => {
         forwarding.delete(object);
+        heldEnters.clear();
         delete element.dataset.xrHover;
         delete element.dataset.xrActive;
       });
@@ -329,9 +332,10 @@ export function forwardPointerEvents(ctx, element, object, { enabled, onPress })
       }
       // The first move after a hold on a control the ray came onto during
       // it, which is when a page's `:hover` catches up after a drag.
-      if (heldEnter) {
-        enter(heldEnter);
-        heldEnter = null;
+      const held = heldEnters.get(e.controller);
+      if (held) {
+        heldEnters.delete(e.controller);
+        enter(held);
       }
       const event = new MouseEvent("mousemove", {
         bubbles: false,
@@ -346,13 +350,13 @@ export function forwardPointerEvents(ctx, element, object, { enabled, onPress })
       // hold, or the control the drag ended on would show no hover until
       // the ray left it and came back.
       if (dnd.holding(e.controller)) {
-        heldEnter = e;
+        heldEnters.set(e.controller, e);
         return;
       }
       enter(e);
     }),
-    on("pointerleave", () => {
-      heldEnter = null;
+    on("pointerleave", (e) => {
+      heldEnters.delete(e.controller);
       delete element.dataset.xrHover;
     }),
   ];

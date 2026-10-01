@@ -380,11 +380,11 @@ export function svgViewport(svg, instance = null) {
  * Its `transform`, if it has one, applies on top of this.
  *
  * @param {Element} svg
- * @param {Instance | null} instance The instance the `<svg>` is part of.
+ * @param {{ x: number, y: number, width: number, height: number }} box Its
+ *   `svgViewport`, read once by the caller.
  * @returns {Matrix2D}
  */
-function svgViewportMatrix(svg, instance) {
-  const box = svgViewport(svg, instance);
+function svgViewportMatrix(svg, box) {
   const viewport = viewportMatrix(
     parseViewBox(getAttributeCached(svg, "viewBox")),
     parsePreserveAspectRatio(getAttributeCached(svg, "preserveAspectRatio")),
@@ -409,12 +409,25 @@ function svgViewportMatrix(svg, instance) {
  * @returns {Matrix2D}
  */
 export function localMatrix(element, instance = null) {
+  return withOwnTransform(
+    element,
+    element.localName === "svg"
+      ? svgViewportMatrix(element, svgViewport(element, instance))
+      : IDENTITY,
+    instance,
+  );
+}
+
+/**
+ * An element's own `transform`, about its origin, on top of `matrix`.
+ *
+ * @param {Element} element
+ * @param {Matrix2D} matrix What applies first: a nested `<svg>`'s viewport.
+ * @param {Instance | null} instance
+ * @returns {Matrix2D}
+ */
+function withOwnTransform(element, matrix, instance) {
   const style = getComputedStyleCached(element);
-  /** @type {Matrix2D} */
-  let matrix = IDENTITY;
-  if (element.localName === "svg") {
-    matrix = svgViewportMatrix(element, instance);
-  }
   const own = ownTransform(element, style, nearestViewBoxOrigin(element, instance));
   return own ? multiply(own, matrix) : matrix;
 }
@@ -659,19 +672,28 @@ export function readChain(element, instance = null) {
         clip: null,
       });
     }
-    if (current !== element && current.localName === "svg" && clipsViewport(style.overflow)) {
+    /** @type {Matrix2D} */
+    let fit = IDENTITY;
+    if (current.localName === "svg") {
+      // Read once, for the matrix and the clip both.
+      const box = svgViewport(current, instance);
+      fit = svgViewportMatrix(current, box);
       // The viewport is in the space the `<svg>`'s own `transform` then
       // moves, so its clip moves with the content. A size nobody can know
       // clips nothing.
-      const box = svgViewport(current, instance);
-      if (Number.isFinite(box.width) && Number.isFinite(box.height)) {
+      if (
+        current !== element &&
+        clipsViewport(style.overflow) &&
+        Number.isFinite(box.width) &&
+        Number.isFinite(box.height)
+      ) {
         viewports.push({
           rect: { left: box.x, top: box.y, right: box.x + box.width, bottom: box.y + box.height },
-          below: multiply(svgViewportMatrix(current, instance), ctm),
+          below: multiply(fit, ctm),
         });
       }
     }
-    ctm = multiply(localMatrix(current, instance), ctm);
+    ctm = multiply(withOwnTransform(current, fit, instance), ctm);
     current = getParentElement(current);
   }
   return { ctm, opacity, root: null, clip: null };

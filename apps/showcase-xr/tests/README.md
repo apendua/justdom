@@ -83,8 +83,8 @@ in a directory of its own and does not disturb CI's.
 
 **Everything else** asks a question with one answer anywhere: that the panels
 are drawn at all, that they wear the colours their stylesheets asked for, that
-a style written into the mirrored DOM reaches the scene, and that animation
-plays. These run and mean something on any machine.
+a style or an SVG attribute written into the mirrored DOM reaches the scene,
+and that animation plays. These run and mean something on any machine.
 
 ## Crashing on purpose
 

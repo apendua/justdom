@@ -13,13 +13,14 @@ import { text } from "./text.js";
 import { checkbox } from "./checkbox.js";
 import { InputFocusContext, textInput } from "./textInput.js";
 import { isTextInput } from "./typing.js";
-import { bindPortalKeyboard, FOCUS_ATTRIBUTE } from "./portalKeyboard.js";
+import { bindPortalKeyboard } from "./portalKeyboard.js";
 import { createKeyboardHost } from "./keyboardHost.js";
 import { KeyboardSlotContext } from "./keyboardSlot.js";
-import { createMirror, getBorderBoxSize, PORTAL_ATTRIBUTE } from "./mirror.js";
+import { createMirror, getBorderBoxSize, LOADING_ATTRIBUTE, PORTAL_ATTRIBUTE } from "./mirror.js";
 import { createAnimationClock } from "./animationClock.js";
 import { watchDocumentStyles } from "./documentStyles.js";
 import { createBlocker, coverBox } from "./blocker.js";
+import { elementAt, registerPanel } from "./dragAndDrop.js";
 import { BoxBatchContext, createBoxBatch } from "./boxBatch.js";
 import { TextBatchContext, createTextBatch } from "./textBatch.js";
 import { TextScaleContext, createTextScale } from "./textScale.js";
@@ -79,15 +80,29 @@ export function getPortalRoot(node) {
 }
 
 /**
- * Set on a portal's container element while its initial mount is running —
- * from the first content the observer reports to the load — and taken off
- * when it is done. `document.querySelector("[data-xr-loading]")` is then "is
- * any panel still on its way", for a caller that has the page and not the
- * handles. A portal that has been given nothing to mount never carries it:
- * it is not on its way anywhere, and a harness waiting on the attribute
- * must not wait on that.
+ * What a portal's `MutationObserver` watches in its tree. Exported for the
+ * tests that stand a mirror up without a portal, so what they announce is
+ * what a portal would.
+ *
+ * @type {MutationObserverInit}
  */
-export const LOADING_ATTRIBUTE = "data-xr-loading";
+export const OBSERVER_OPTIONS = {
+  childList: true,
+  subtree: true,
+  // Every attribute, because any of them can restyle: an SVG shape's `d`,
+  // `fill` or `transform`, and an app's own `[data-off]` selector. What
+  // keeps the ray's hover and press cheap is not a filter here but the
+  // ingest, which tells those flags apart by name (see
+  // `PRESENTATIONAL_ATTRIBUTES` in mirror.js) and drops the portal's own
+  // markers on the container.
+  attributes: true,
+  // The old values are what let the mirror tell a write from a change: the
+  // hover handlers re-assert `data-xr-*` on every pointer event, and a
+  // value that merely got written again invalidates nothing at all.
+  attributeOldValue: true,
+  characterDataOldValue: true,
+  characterData: true,
+};
 
 /**
  * The portal's own container: an element parked off-screen on the body for
@@ -508,6 +523,13 @@ function buildPortal(ctx, ownOptions = {}) {
   mirror.adopt(containerElement);
   nodeToObject.set(containerElement, containerObject);
   objectToNode.set(containerObject, containerElement);
+
+  // What a drag and drop asks when the ray is on this panel: which element
+  // is under it. Any element, not only the ray targets, since a list that
+  // takes drops is rarely a button; see `elementAt`.
+  const unregisterPanel = registerPanel(containerObject, (point, local) =>
+    elementAt(containerElement, (node) => nodeToObject.get(node), point, local),
+  );
 
   // With only clickable elements as ray targets (see div.js), the portal
   // still has to be opaque to rays as a whole — a panel should block the
@@ -1331,7 +1353,6 @@ function buildPortal(ctx, ownOptions = {}) {
           continue;
         }
         sawContent = true;
-        const parentObject = nodeToObject.get(mutation.target);
         mutation.addedNodes.forEach((node) => {
           alreadySeen.add(node);
           // A node the portal has never seen goes to the queue and gets
@@ -1387,9 +1408,13 @@ function buildPortal(ctx, ownOptions = {}) {
     interactionManager.updateIntersections();
     if (sawContent && loading.get()) {
       // The mount is under way: say so where the DOM can see it, and start
-      // placing the panel and the frame that may stand in for it. Both are
-      // idempotent, and both end with `markLoaded`.
-      containerElement.setAttribute(LOADING_ATTRIBUTE, "");
+      // placing the panel and the frame that may stand in for it. Both end
+      // with `markLoaded`. The flag is written once: the observer reports
+      // every write, even one of the value already there, and the flush that
+      // reports it comes back here.
+      if (!containerElement.hasAttribute(LOADING_ATTRIBUTE)) {
+        containerElement.setAttribute(LOADING_ATTRIBUTE, "");
+      }
       startLoadingFrame();
     }
     if (pump) {
@@ -1403,37 +1428,7 @@ function buildPortal(ctx, ownOptions = {}) {
   };
 
   const mutationObserver = new MutationObserver(mutationCallback);
-  mutationObserver.observe(containerElement, {
-    childList: true,
-    subtree: true,
-    attributes: true,
-    // The old values are what let the mirror tell a write from a change: the
-    // hover handlers re-assert `data-xr-*` on every pointer event, and a
-    // value that merely got written again invalidates nothing at all.
-    attributeOldValue: true,
-    characterDataOldValue: true,
-    // `style` makes rAF-driven inline-style animation just work: each write
-    // is a mutation scoped to the element that moved.
-    // `disabled` is here for the checkbox: whether one is a ray target follows
-    // it, and it is a reflected attribute, so watching it catches the property
-    // assignment as well as setAttribute. Without it a control disabled after
-    // mounting would stay pointable until something else happened to restyle.
-    // `value` and `placeholder` are for the text field, whose drawn text
-    // follows both; the `value` property, which the attribute stops
-    // reflecting once anything has been typed, is followed another way.
-    attributeFilter: [
-      "data-xr-hover",
-      "data-xr-active",
-      "data-xr-checked",
-      FOCUS_ATTRIBUTE,
-      "disabled",
-      "class",
-      "style",
-      "value",
-      "placeholder",
-    ],
-    characterData: true,
-  });
+  mutationObserver.observe(containerElement, OBSERVER_OPTIONS);
 
   /**
    * What the animation clock's batches mean in the mirror's vocabulary:
@@ -1686,6 +1681,7 @@ function buildPortal(ctx, ownOptions = {}) {
     portalKeyboard?.dispose();
     ownKeyboardHost?.dispose();
     pump?.dispose();
+    unregisterPanel();
     // A panel closed before it finished mounting still had a frame up.
     stopLoadingFrame();
     // Nothing is waiting for a commit that is not going to come. Both lists

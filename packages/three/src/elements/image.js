@@ -217,11 +217,11 @@ export function isImageElement(element) {
 /**
  * The URL an `<img>` is currently showing.
  *
- * `src` is not in the portal's `attributeFilter` and does not need to be: an
- * image announces its own arrival, and a `src` swap announces itself the same
- * way a moment later. Both events are dependencies here, so this is re-read
- * when either fires and `currentSrc` — which is what a `srcset` actually
- * resolved to — has settled.
+ * The portal observes a `src` write like any attribute, but the write comes
+ * before the picture does: an image announces its own arrival, and a `src`
+ * swap announces itself the same way a moment later. Both events are
+ * dependencies here, so this is re-read when either fires and `currentSrc` —
+ * which is what a `srcset` actually resolved to — has settled.
  *
  * @param {HTMLElement} element
  * @returns {string | null}

@@ -13,6 +13,12 @@
  * Read the "+1 row" and "hover" columns against `rows`: if they grow with the
  * panel, then mounting a panel one flush at a time is quadratic in its size.
  *
+ * The "app attr" column is an attribute the portal does not know the name
+ * of, toggled on the first row. It costs what a class swap on the row costs,
+ * since a stylesheet may select on it through `+` or `~`. The "loading"
+ * column is the portal's own flag toggled on its container, above every
+ * element in the panel, and should cost nothing: the mirror drops it.
+ *
  * Run with:
  *   node --import ./src/test/setup-jsdom.js src/elements/mirror.bench.js
  */
@@ -21,7 +27,7 @@ import * as THREE from "three";
 import { Derived, Signal } from "@apendua/signal";
 import { InteractionContext, InteractionManager } from "../interactions.js";
 import { createPortal } from "./portal.js";
-import { PORTAL_ATTRIBUTE } from "./mirror.js";
+import { LOADING_ATTRIBUTE, PORTAL_ATTRIBUTE } from "./mirror.js";
 import { makeReveal } from "./reveal.js";
 
 // --- jsdom stand-ins for the pieces of a browser the portal reaches for ----
@@ -307,9 +313,19 @@ async function measure({ rows, clipped = false, perFlush = false }) {
     /** @type {HTMLElement} */ (list.firstChild).dataset.xrHover = "true";
   });
 
+  const appAttribute = await sample(() => {
+    /** @type {HTMLElement} */ (list.firstChild).dataset.on = "true";
+  });
+
+  const loadingFlag = await sample(async () => {
+    containerElement.setAttribute(LOADING_ATTRIBUTE, "");
+    await nextMacrotask();
+    containerElement.removeAttribute(LOADING_ATTRIBUTE);
+  });
+
   portal.disconnect();
   containerElement.remove();
-  return { mount, one, hover };
+  return { mount, one, hover, appAttribute, loadingFlag };
 }
 
 const SIZES = [100, 200, 400, 800];
@@ -323,13 +339,18 @@ for (const clipped of [false, true]) {
       ? "\n=== the list inside a fixed-height overflow:hidden box ==="
       : "=== the list in normal flow ===",
   );
-  console.log("rows\t| mount: evals\trects\tms\t| +1 row: evals\trects\tms\t| hover: evals\trects");
+  console.log(
+    "rows\t| mount: evals\trects\tms\t| +1 row: evals\trects\tms\t| hover: evals\trects" +
+      "\t| app attr: evals\trects\t| loading: evals\trects",
+  );
   for (const rows of SIZES) {
-    const { mount, one, hover } = await measure({ rows, clipped });
+    const { mount, one, hover, appAttribute, loadingFlag } = await measure({ rows, clipped });
     console.log(
       `${rows}\t| ${mount.evaluations}\t${mount.rectReads}\t${mount.ms.toFixed(0)}\t| ` +
         `${one.evaluations}\t${one.rectReads}\t${one.ms.toFixed(1)}\t| ` +
-        `${hover.evaluations}\t${hover.rectReads}`,
+        `${hover.evaluations}\t${hover.rectReads}\t| ` +
+        `${appAttribute.evaluations}\t${appAttribute.rectReads}\t| ` +
+        `${loadingFlag.evaluations}\t${loadingFlag.rectReads}`,
     );
   }
 }

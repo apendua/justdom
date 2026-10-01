@@ -119,6 +119,19 @@ function parseSize(value, units) {
 const COLOR_PATTERN = /rgba?\(([^,]+),([^,]+),([^,]+)(?:,\s*([\d.]+))?\)/;
 
 /**
+ * The alpha of a computed CSS colour alone, as `parseColor` reads it, for
+ * the callers that want nothing else: it builds no `THREE.Color` and does
+ * not convert one to linear.
+ *
+ * @param {string} colorString
+ * @returns {number}
+ */
+export function parseAlpha(colorString) {
+  const match = COLOR_PATTERN.exec(colorString);
+  return match?.[4] !== undefined ? parseFloat(match[4]) : 1.0;
+}
+
+/**
  * A computed CSS colour, as the colour three.js should draw and the alpha it
  * should draw it with.
  *
@@ -143,19 +156,6 @@ export function parseColor(colorString) {
   const a = match[4] !== undefined ? parseFloat(match[4]) : 1.0;
   const color = new THREE.Color().setRGB(r, g, b, THREE.SRGBColorSpace);
   return [color, a];
-}
-
-/**
- * The alpha of a computed CSS colour alone, as `parseColor` reads it, for
- * the callers that want nothing else: it builds no `THREE.Color` and does
- * not convert one to linear.
- *
- * @param {string} colorString
- * @returns {number}
- */
-export function parseAlpha(colorString) {
-  const match = COLOR_PATTERN.exec(colorString);
-  return match?.[4] !== undefined ? parseFloat(match[4]) : 1.0;
 }
 
 /**

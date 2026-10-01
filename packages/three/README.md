@@ -1232,6 +1232,10 @@ element _behind_ its own surface — up to half its width deep — and the depth
 buffer will honestly clip it into the panel. Give anything 3D-rotated enough
 `translateZ` to keep the swing in front.
 
+A transformed element paints over the earlier siblings it overlaps, the way
+a positioned one does, so a rotated hand stays on top of the dial under it.
+**Layers** below says how far in front it goes.
+
 One print of the measuring tape to know about: a transformed element (and
 everything under it) is measured off the layout — whole-pixel offsets —
 rather than the subpixel client rects untransformed content enjoys, because
@@ -1425,6 +1429,19 @@ is two layers up, `z-index: 1000` is still one. Keep an overlay within the
 silhouette of the panel it belongs to where you can, and keep it out of the
 flow — a menu that grew the panel would re-center it, sliding the whole thing
 out from under the ray that opened it.
+
+Siblings that a page paints over one another are stacked in depth in the same
+order. An element that is positioned (`position` other than `static`) or has
+a `transform` of its own is drawn in front of every earlier such sibling whose
+box overlaps its own. It sits one content step (2 px) in front of the farthest
+thing that sibling draws, its pins and badges included. That keeps a clock's
+hands on its dial, and a card laid over another card in front of the first
+card's text and pin. Siblings that do not overlap stay at the ordinary step,
+so a board of separate cards stays flat however many it holds. Tree order
+decides, not `z-index`: to bring a card to the front, append it to the end of
+its parent again. A transformed element counts as covering the axis-aligned
+box around its corners, and a descendant that overflows its parent's box does
+not count towards what the parent overlaps.
 
 A native `<select>` cannot work here, layers or not: `<option>` has no CSS box
 to mirror, and the list the browser pops up is chrome rather than DOM, so none

@@ -42,9 +42,16 @@ Object.defineProperty(document, "fonts", {
  * @param {string} [cssText] Anything else the element should be styled with.
  * @param {import('./haptics.js').Haptics | null} [haptics] What the panel
  *   the element is in feels like; none, as outside a panel, unless given.
- * @param {HTMLElement} [parent] Where the element goes; the body unless given.
+ * @param {HTMLElement} [parent] Where the element goes. Unless given, a
+ *   fresh container of its own, so that what earlier tests left behind is
+ *   never a sibling it could be stacked against.
  */
-function setup(cursor, cssText = "", haptics = null, parent = document.body) {
+function setup(
+  cursor,
+  cssText = "",
+  haptics = null,
+  parent = document.body.appendChild(document.createElement("div")),
+) {
   const element = document.createElement("div");
   element.style.cssText = cssText;
   element.style.cursor = cursor;
@@ -489,6 +496,184 @@ describe("div elevation", () => {
 });
 
 /**
+ * Siblings under one positioned parent, each drawn by `div` under one
+ * mirror, the way a portal draws a panel. The parent is 400 px square at the
+ * page origin, so a child's rect in page px is also its rect in the parent.
+ */
+function setupSiblings() {
+  const parent = document.createElement("div");
+  parent.style.position = "relative";
+  document.body.appendChild(parent);
+  layout(parent, () => [0, 0, 400, 400]);
+
+  const mirror = createMirror();
+  mirror.adopt(parent);
+  const manager = /** @type {InteractionManager} */ (
+    /** @type {unknown} */ ({ add: () => {}, remove: () => {}, stopPropagation: () => {} })
+  );
+  const ctx = InteractionContext.set({}, manager);
+
+  /** @type {Map<Element, THREE.Object3D>} */
+  const objects = new Map();
+  /** @type {{ unsubscribe(): void }[]} */
+  const subscriptions = [];
+
+  return {
+    parent,
+    mirror,
+    /**
+     * @param {string} cssText
+     * @param {[number, number, number, number]} rect
+     * @param {HTMLElement} [into]
+     */
+    add(cssText, rect, into = parent) {
+      const element = document.createElement("div");
+      element.style.cssText = cssText;
+      into.appendChild(element);
+      layout(element, () => rect);
+      mirror.adopt(element);
+      subscriptions.push(
+        div(ctx, element).subscribe((value) => {
+          objects.set(element, value);
+        }),
+      );
+      return element;
+    },
+    /**
+     * How far the element's origin sits from its parent's content along
+     * local z, read off the committed matrix. Negative is toward the viewer.
+     *
+     * @param {Element} element
+     */
+    z(element) {
+      const object = objects.get(element);
+      assert.ok(object);
+      return new THREE.Vector3().setFromMatrixPosition(object.matrix).z;
+    },
+    teardown() {
+      for (const subscription of subscriptions) {
+        subscription.unsubscribe();
+      }
+      parent.remove();
+    },
+  };
+}
+
+describe("div sibling stacking", () => {
+  test("a rotated hand over a positioned dial is drawn in front of the dial", () => {
+    const clock = setupSiblings();
+    const dial = clock.add("position: absolute; border-radius: 50%", [0, 0, 100, 100]);
+    // Half a radian past twelve, turning about its foot.
+    const [cos, sin] = [Math.cos(0.5), Math.sin(0.5)];
+    const hand = clock.add(
+      "position: absolute; transform-origin: 50% 100%; " +
+        `transform: matrix(${cos}, ${sin}, ${-sin}, ${cos}, 0, 0)`,
+      [0, 0, 0, 0],
+    );
+    // A transformed box is measured off the layout, which jsdom leaves at
+    // zero: a 4 by 40 hand standing on the dial's centre.
+    for (const [name, value] of /** @type {const} */ ([
+      ["offsetLeft", 48],
+      ["offsetTop", 10],
+      ["offsetWidth", 4],
+      ["offsetHeight", 40],
+    ])) {
+      Object.defineProperty(hand, name, { configurable: true, value });
+    }
+    clock.mirror.reflowed([hand]);
+
+    // The hand's quad is 1 px behind its origin, and has to be in front of
+    // the dial's own content, which sits at the dial's origin.
+    assert.ok(
+      clock.z(hand) + 1 < clock.z(dial),
+      `hand at ${clock.z(hand)} is not in front of the dial at ${clock.z(dial)}`,
+    );
+    clock.teardown();
+  });
+
+  test("a later card covers the pin an earlier card floats over itself", () => {
+    const board = setupSiblings();
+    const first = board.add("position: absolute", [0, 0, 100, 100]);
+    const pin = board.add("position: absolute; z-index: 1", [45, -5, 55, 5], first);
+    const second = board.add("position: absolute", [50, 50, 150, 150]);
+
+    // The pin's origin, where its text is drawn, against the second card's
+    // quad, both in the board's frame.
+    const pinZ = board.z(first) + board.z(pin);
+    assert.ok(
+      board.z(second) + 1 < pinZ,
+      `the second card's quad at ${board.z(second) + 1} is behind the pin at ${pinZ}`,
+    );
+    board.teardown();
+  });
+
+  test("cards that do not overlap stay level, however many there are", () => {
+    const board = setupSiblings();
+    const cards = [
+      // Edge to edge with the next one, which is touching, not overlapping.
+      board.add("position: absolute", [0, 0, 100, 100]),
+      board.add("position: absolute", [100, 0, 200, 100]),
+      board.add("position: absolute; transform: matrix(1, 0, 0, 1, 0, 0)", [0, 0, 0, 0]),
+      board.add("position: absolute", [300, 300, 400, 400]),
+    ];
+    // Layout offsets for the transformed one, below the first two.
+    Object.defineProperty(cards[2], "offsetTop", { configurable: true, value: 150 });
+    Object.defineProperty(cards[2], "offsetWidth", { configurable: true, value: 100 });
+    Object.defineProperty(cards[2], "offsetHeight", { configurable: true, value: 100 });
+    board.add("position: absolute; z-index: 1", [45, -5, 55, 5], cards[0]);
+    board.mirror.reflowed([cards[2]]);
+
+    assert.deepEqual(
+      cards.map((card) => board.z(card)),
+      [-2, -2, -2, -2],
+    );
+    board.teardown();
+  });
+
+  test("re-appending a card brings it in front of the card it overlaps", () => {
+    const board = setupSiblings();
+    const first = board.add("position: absolute", [0, 0, 100, 100]);
+    const second = board.add("position: absolute", [50, 50, 150, 150]);
+    assert.ok(board.z(second) < board.z(first), "the later card starts in front");
+
+    // The records a portal's observer would hand the mirror. jsdom-env does
+    // not expose `MutationObserver` as a global.
+    const observer = new window.MutationObserver(() => {});
+    observer.observe(board.parent, { childList: true });
+    board.parent.appendChild(first);
+    board.mirror.ingest(observer.takeRecords());
+    observer.disconnect();
+
+    assert.ok(
+      board.z(first) + 1 < board.z(second),
+      `the re-appended card at ${board.z(first)} is not in front of ${board.z(second)}`,
+    );
+    board.teardown();
+  });
+});
+
+/**
+ * Give an element the client rect jsdom does not compute: left, top, right
+ * and bottom in page px, read each time the rect is asked for.
+ *
+ * @param {Element} element
+ * @param {() => [number, number, number, number]} rect
+ */
+function layout(element, rect) {
+  element.getBoundingClientRect = () => {
+    const [left, top, right, bottom] = rect();
+    return /** @type {DOMRect} */ ({
+      left,
+      top,
+      right,
+      bottom,
+      width: right - left,
+      height: bottom - top,
+    });
+  };
+}
+
+/**
  * A clickable row inside something that hides its overflow, with the layout
  * jsdom does not have: a window that stays put and a 40px row that slides
  * through it, starting 10px into a 100px scroller.
@@ -514,23 +699,6 @@ function setupScrolledRow() {
     mirror.adopt(node);
   }
 
-  /**
-   * @param {Element} element
-   * @param {() => [number, number, number, number]} rect
-   */
-  const layout = (element, rect) => {
-    element.getBoundingClientRect = () => {
-      const [left, top, right, bottom] = rect();
-      return /** @type {DOMRect} */ ({
-        left,
-        top,
-        right,
-        bottom,
-        width: right - left,
-        height: bottom - top,
-      });
-    };
-  };
   layout(container, () => [0, 0, 200, 100]);
   layout(scroller, () => [0, 0, 200, 100]);
   layout(row, () => [0, 10 - scrollTop, 200, 50 - scrollTop]);

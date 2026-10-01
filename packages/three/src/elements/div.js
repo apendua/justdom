@@ -20,18 +20,12 @@ import { createBlocker, coverBox } from "./blocker.js";
 import {
   getBorderBoxSize,
   getLocalClipBox,
-  getObjectPosition,
   getScrollOffset,
   isVisibilityHidden,
 } from "./mirror.js";
 import { clipBoxShows, clipRaycast, UNCLIPPED } from "./clip.js";
-import {
-  composeTransform,
-  getOwnTransform,
-  isTransformed,
-  untransformedOffset,
-} from "./cssTransform.js";
-import { getContentRenderOrder, isOverlay } from "./elevation.js";
+import { composeTransform, getBoxOffset, getOwnTransform, isTransformed } from "./cssTransform.js";
+import { getContentRenderOrder, getLift, isOverlay } from "./elevation.js";
 import { isScrollable, scrollDrags } from "./scroll.js";
 import { place, placeAndScale } from "./place.js";
 import { BoxBatchContext } from "./boxBatch.js";
@@ -64,22 +58,6 @@ export const PortalReadyContext = createProperty(
  * @import {ClipBox} from './clip.js';
  * @import {EntityEffect, Subscribable} from '@apendua/signal';
  */
-
-/**
- * How far in front of its parent each box sits, in the container's local px.
- * Small enough to read as one surface, large enough that a child never fights
- * its parent's background for the same pixels.
- */
-const CONTENT_STEP = 2;
-
-/**
- * The extra distance an overlay puts between itself and the surface it floats
- * above. A few times the ordinary step: enough that stereo reads it as
- * hovering rather than as one more nested box, and enough room underneath for
- * the tree it covers, however deep that happens to be. At the scale panels are
- * usually mounted at this is a matter of millimetres.
- */
-const ELEVATION_STEP = 8;
 
 /**
  * Where an overlay's blocker sits, relative to the overlay's own origin. Local
@@ -426,16 +404,14 @@ export function box(ctx, element, options = {}) {
       useEffects(obj, draggability);
     }),
     effects((obj) => {
-      // Only the element that opens a layer pays for it. Everything inside the
-      // overlay is positioned against the overlay, so it comes along.
-      const z = -CONTENT_STEP - (overlay.get() ? ELEVATION_STEP : 0);
+      // How far in front of the parent this box sits. An overlay's subtree
+      // is positioned against the overlay, so it comes along with the lift.
+      const z = -getLift(element);
+      const offset = getBoxOffset(element);
       if (isTransformed(element)) {
-        // Client rects are transformed bounds — useless for a box that has to
-        // come out untransformed and then carry the CSS transform as its own
-        // matrix — so the position falls back to layout offsets. Layout moves
-        // still re-run this: `setFromElement` below reads the element's rect,
-        // and every structural mutation invalidates it.
-        const offset = untransformedOffset(element, element.parentElement);
+        // The offset here is layout offsets (see `getBoxOffset`). Layout
+        // moves still re-run this: `setFromElement` below reads the
+        // element's rect, and every structural mutation invalidates it.
         const own = getOwnTransform(element);
         obj.matrixAutoUpdate = false;
         if (own) {
@@ -456,8 +432,7 @@ export function box(ctx, element, options = {}) {
         // what makes this the way back out of the transformed branch above:
         // that branch writes `matrix` without ever disturbing the three, so
         // they are still the identity a plain box wants.
-        const position = getObjectPosition(element);
-        place(obj, position.x, position.y, z);
+        place(obj, offset.x, offset.y, z);
       }
       properties.setFromElement(element);
       batchChanged();

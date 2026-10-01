@@ -504,6 +504,24 @@ describe("drag and drop in a panel", () => {
     s.teardown();
   });
 
+  test("the ghost goes back to the source panel when the one it is on is taken down", async () => {
+    const s = await sortableList({ second: true });
+    const other = /** @type {NonNullable<typeof s.other>} */ (s.other);
+    s.aim(150, 20);
+    s.trigger("selectstart");
+    s.aim(150, 60);
+    s.aim(150, 50, other);
+    const ghost = /** @type {THREE.Object3D} */ (s.ghost());
+    assert.equal(ghost.parent, other.panel);
+    other.portal.disconnect();
+    // Off both panels, in the source panel's plane.
+    s.aim(150, 600);
+    assert.equal(ghost.parent, s.panel, "not left in a panel nothing draws");
+    assert.equal(ghost.visible, true);
+    s.trigger("selectend");
+    s.teardown();
+  });
+
   test("the ghost waits in the source panel while the ray is on none, and hides facing away", async () => {
     const s = await sortableList();
     s.aim(150, 20);

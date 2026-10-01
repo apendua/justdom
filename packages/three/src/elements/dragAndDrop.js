@@ -268,7 +268,7 @@ function createGhost(source, width, height) {
  *   panel, whose plane a press is measured in until it becomes a drag.
  * @property {THREE.Object3D} ghostPanel The panel the ghost is drawn in:
  *   the last one the ray was on, and the source's until it has been on
- *   another.
+ *   another or when that one is taken down.
  * @property {THREE.Vector2} start Where the press was, in the panel's px.
  * @property {THREE.Vector2} grab Where the press was, in the source's px.
  * @property {THREE.Vector2} client The last point under the ray, in the
@@ -535,7 +535,8 @@ export function createDragAndDrop(requestFrames, readHit) {
    * is found at too. Where the ray is on no panel, between the controls of
    * a panel that stops no rays or past a panel's edge, the ghost stays in
    * the last panel the ray was on, the source's until it has been on
-   * another, where the ray crosses that panel's plane. Hidden when the ray
+   * another or once that one is taken down, where the ray crosses that
+   * panel's plane. Hidden when the ray
    * points away from it.
    *
    * @param {Session} session
@@ -547,6 +548,9 @@ export function createDragAndDrop(requestFrames, readHit) {
     const ghost = /** @type {THREE.Mesh} */ (session.ghost);
     if (panel) {
       session.ghostPanel = panel;
+    } else if (!panels.has(session.ghostPanel)) {
+      // That panel was taken down, and nothing draws it any more.
+      session.ghostPanel = session.panel;
     }
     const target = session.ghostPanel;
     if (ghost.parent !== target) {

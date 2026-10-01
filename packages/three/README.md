@@ -761,8 +761,9 @@ of what `setDragImage` was given, follows the ray in the panel the ray is
 on, so it stays under the ray on another panel however that one is turned.
 While the ray is on no panel, past a panel's edge or between the controls
 of one that stops no rays, it stays in the plane of the last panel the ray
-was on, the one the drag started on until it has been on another. The
-ghost is an outline, not a picture of the element as a browser draws it.
+was on, the one the drag started on until it has been on another, and
+again if that one is taken down. The ghost is an outline, not a picture
+of the element as a browser draws it.
 Every panel in a scene knows a hand is carrying something, so the controls
 on any of them take no hover under a drag.
 

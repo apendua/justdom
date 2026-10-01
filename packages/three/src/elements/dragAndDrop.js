@@ -282,10 +282,12 @@ function createGhost(source, width, height) {
 
 /**
  * @typedef {object} DragAndDrop
- * @property {(controller: THREE.XRTargetRaySpace, element: HTMLElement, object: THREE.Object3D) => boolean} begin
- *   Offer a press to the gesture. Taken, and true, when there is something
- *   draggable at or above the element; the press then belongs to it until
- *   the controller's own `selectend`.
+ * @property {(controller: THREE.XRTargetRaySpace, element: HTMLElement, object: THREE.Object3D, allowed: boolean) => boolean} begin
+ *   Tell the gesture about a press, every press, since a new press is what
+ *   ends the last one's say over `didDrag`. Taken, and true, when the page
+ *   allowed it, which is `false` when it cancelled the press's `mousedown`,
+ *   and there is something draggable at or above the element; the press
+ *   then belongs to it until the controller's own `selectend`.
  * @property {(controller: THREE.XRTargetRaySpace) => boolean} holding
  *   Whether the hand is holding something draggable: carrying it, or
  *   pressing it and not yet far enough from where it started for that to
@@ -562,11 +564,14 @@ export function createDragAndDrop(requestFrames, readHit) {
   }
 
   return {
-    begin(controller, element, object) {
+    begin(controller, element, object, allowed) {
       dragged.delete(controller);
       const previous = sessions.get(controller);
       if (previous) {
         finish(previous);
+      }
+      if (!allowed) {
+        return false;
       }
       const source = findDragSource(element);
       const panel = panelOf(object);

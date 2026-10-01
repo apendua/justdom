@@ -725,7 +725,9 @@ The rules are the browser's:
   gets the answer it gets under a mouse.
 - `:hover` does not change under a drag. From a press on a draggable
   element until the trigger opens, the elements the ray crosses take no
-  `data-xr-hover` and hear no `mousemove`.
+  `data-xr-hover` and hear no `mousemove`. The control the ray is on when
+  the trigger opens takes it on the next move, as a page's `:hover`
+  catches up on the next move after a drag.
 
 What a page draws while it drags has to be something a panel follows. It
 follows a class or an inline style changing, and not a data attribute of

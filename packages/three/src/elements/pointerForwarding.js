@@ -8,7 +8,7 @@ import { scrollDrags } from "./scroll.js";
 
 /**
  * @import {EntityEffect} from '@apendua/signal';
- * @import {Object3D} from 'three';
+ * @import {Object3D, XRTargetRaySpace} from 'three';
  * @import {Reactive} from '../interactions.js';
  * @import {InteractionEvent, XREventMap} from '../core.js';
  */
@@ -184,6 +184,41 @@ export function forwardPointerEvents(ctx, element, object, { enabled, onPress })
   const haptics = HapticsContext.get(ctx);
 
   /**
+   * The ray arriving on this element: the hover flag, and the pulse an
+   * arrival on a control plays.
+   *
+   * @param {XREventMap["pointerenter"]} e
+   * @returns {void}
+   */
+  const enter = (e) => {
+    element.dataset.xrHover = "true";
+    // Once per arrival on this control. Not for an enter bubbling up from
+    // a target nested in this one, which plays its own; not for the ray
+    // moving between this element and something clickable inside it,
+    // which `isArrival` says is not an arrival at all; and not while the
+    // hand is scrolling a list, when the rows pass under a ray that is
+    // aimed at none of them, glide included.
+    if (
+      haptics &&
+      e.registeredTarget === object &&
+      !drags.scrolling(e.controller) &&
+      isArrival(getControlRoot(element, object), e.relatedTarget)
+    ) {
+      haptics.hover(e.inputSource);
+    }
+  };
+
+  /**
+   * The enters that came while a hand held a press, kept until that hand's
+   * hold is over; see `pointerenter` below. One per hand, as the manager
+   * tracks enter and leave per hand: the other hand crossing this element
+   * neither drops the enter nor lands it.
+   *
+   * @type {Map<XRTargetRaySpace, XREventMap["pointerenter"]>}
+   */
+  const heldEnters = new Map();
+
+  /**
    * Send the DOM event for a ray event, unless an element inside this one
    * already has.
    *
@@ -217,6 +252,7 @@ export function forwardPointerEvents(ctx, element, object, { enabled, onPress })
       forwarding.add(object);
       onCleanup(() => {
         forwarding.delete(object);
+        heldEnters.clear();
         delete element.dataset.xrHover;
         delete element.dataset.xrActive;
       });
@@ -255,7 +291,7 @@ export function forwardPointerEvents(ctx, element, object, { enabled, onPress })
         // under a mouse, where dragging a row drags the row and not the
         // list. Once, by the element the press landed on, since a second
         // `begin` for the same hand would start the gesture over.
-        if (!(pressed && dnd.begin(e.controller, element, object))) {
+        if (!dnd.begin(e.controller, element, object, pressed)) {
           drags.begin(e.controller, element, object);
         }
         // Felt once, however many clickable elements the press holds.
@@ -294,6 +330,13 @@ export function forwardPointerEvents(ctx, element, object, { enabled, onPress })
       if (dnd.holding(e.controller)) {
         return;
       }
+      // The first move after a hold on a control the ray came onto during
+      // it, which is when a page's `:hover` catches up after a drag.
+      const held = heldEnters.get(e.controller);
+      if (held) {
+        heldEnters.delete(e.controller);
+        enter(held);
+      }
       const event = new MouseEvent("mousemove", {
         bubbles: false,
       });
@@ -303,27 +346,17 @@ export function forwardPointerEvents(ctx, element, object, { enabled, onPress })
       // Nothing is hovered under a drag, as `:hover` holds still under one
       // on a page; the targets the drag passes over hear `dragenter`. From
       // the press, since the ray has already moved in the frame the press
-      // becomes a drag.
+      // becomes a drag. The enter is kept for the first move after the
+      // hold, or the control the drag ended on would show no hover until
+      // the ray left it and came back.
       if (dnd.holding(e.controller)) {
+        heldEnters.set(e.controller, e);
         return;
       }
-      element.dataset.xrHover = "true";
-      // Once per arrival on this control. Not for an enter bubbling up from
-      // a target nested in this one, which plays its own; not for the ray
-      // moving between this element and something clickable inside it,
-      // which `isArrival` says is not an arrival at all; and not while the
-      // hand is scrolling a list, when the rows pass under a ray that is
-      // aimed at none of them, glide included.
-      if (
-        haptics &&
-        e.registeredTarget === object &&
-        !drags.scrolling(e.controller) &&
-        isArrival(getControlRoot(element, object), e.relatedTarget)
-      ) {
-        haptics.hover(e.inputSource);
-      }
+      enter(e);
     }),
-    on("pointerleave", () => {
+    on("pointerleave", (e) => {
+      heldEnters.delete(e.controller);
       delete element.dataset.xrHover;
     }),
   ];

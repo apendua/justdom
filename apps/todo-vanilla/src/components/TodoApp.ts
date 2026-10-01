@@ -16,6 +16,7 @@ import { scrollable } from "@apendua/justui";
 import ProgressBar from "./ProgressBar.js";
 import { xrSession } from "../session.js";
 import TodoItem from "./TodoItem.js";
+import { slotBefore } from "./reorder.js";
 
 // Artificial delay used to demonstrate suspense. The progress bar is given the
 // same duration, so it fills up just as the content arrives.
@@ -350,18 +351,16 @@ const TodoApp = component((ctx: WeakKey) => {
   };
   const rowOf = (target: EventTarget | null) =>
     target instanceof Element ? target.closest<HTMLElement>("li[data-id]") : null;
-  /** Where a drop at this event would put the row: before which todo. */
+  /**
+   * Where a drop at this event would put the row: before which todo, and
+   * the row whose edge marks that slot, the one it goes before or the last.
+   */
   const landing = (event: DragEvent): { row: HTMLElement | null; before: string | null } => {
-    const row = rowOf(event.target);
-    if (!row) {
-      return { row: null, before: null };
-    }
-    const rect = row.getBoundingClientRect();
-    if (event.clientY < rect.top + rect.height / 2) {
-      return { row, before: row.dataset.id ?? null };
-    }
-    const next = row.nextElementSibling as HTMLElement | null;
-    return { row, before: next?.dataset.id ?? null };
+    const list = event.currentTarget as Element;
+    const rows = [...list.querySelectorAll<HTMLElement>("li[data-id]")];
+    const before = slotBefore(rows, event.clientY);
+    const row = before === null ? rows[rows.length - 1] : rows.find((r) => r.dataset.id === before);
+    return { row: row ?? null, before };
   };
   const reordering = [
     on("dragstart", (event: DragEvent) => {

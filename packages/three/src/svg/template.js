@@ -436,7 +436,7 @@ function useOrigin(use, instance) {
  */
 export function drawUse(ctx, element, instance = null) {
   const style = () => getComputedStyleCached(element);
-  const own = new Derived(() => localMatrix(element), { isEqual: matrixEqual });
+  const own = new Derived(() => localMatrix(element, instance), { isEqual: matrixEqual });
   const chain = new Derived(() => readChain(element, instance), { isEqual: chainEqual });
   const adopt = PortalTemplatesContext.get(ctx);
   const referenced = new Derived(() => {

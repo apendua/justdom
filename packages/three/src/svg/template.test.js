@@ -540,6 +540,32 @@ describe("use", () => {
     s.teardown();
   });
 
+  test("a use in a copy turns about the enclosing symbol's viewBox origin", () => {
+    const dot = svg("symbol", { id: "use-symbol-turned-dot" }, [
+      svg("rect", { width: "5", height: "5", fill: "red" }),
+    ]);
+    const outer = svg("symbol", { id: "use-symbol-turned", viewBox: "10 10 20 20" }, [
+      svg("use", {
+        href: "#use-symbol-turned-dot",
+        x: "10",
+        y: "10",
+        // A quarter turn, as computed: jsdom does not resolve `rotate`.
+        style: "transform: matrix(0, 1, -1, 0, 0, 0)",
+      }),
+    ]);
+    const use = svg("use", { href: "#use-symbol-turned", width: "20", height: "20" });
+    const s = scene([svg("defs", {}, [dot, outer]), use], [use]);
+    // The dot's corner is moved to (10, 10), the outer symbol's viewBox
+    // origin, which the turn leaves in place: at the outer use's corner,
+    // in the clip matrix and in the objects' matrices alike.
+    const [mesh] = meshesUnder(s.objects[0]);
+    assert.deepEqual(toRoot(mesh, 0, 0), [0, 0]);
+    s.objects[0].updateMatrixWorld(true);
+    const corner = new THREE.Vector3(0, 0, 0).applyMatrix4(mesh.matrixWorld);
+    assert.deepEqual([round(corner.x), round(corner.y)], [0, 0]);
+    s.teardown();
+  });
+
   test("a new href draws the target it names", () => {
     const red = svg("symbol", { id: "use-symbol-red" }, [
       svg("rect", { width: "5", height: "5", fill: "red" }),

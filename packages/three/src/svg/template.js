@@ -453,7 +453,16 @@ export function drawUse(ctx, element, instance = null) {
         template: isViewport ? target : /** @type {Element} */ (target.parentElement),
         chain: () => {
           const at = chain.get();
-          return { ctm: multiply(at.ctm, placement.get()), opacity: at.opacity, root: at.root };
+          return {
+            ctm: multiply(at.ctm, placement.get()),
+            // A `<symbol>` or `<svg>` is a container in the copy, so its own
+            // opacity fades it; the walk stops below it. The parent of an
+            // element drawn whole is not in the copy, and adds nothing.
+            opacity: isViewport
+              ? at.opacity * parseNumber(getComputedStyleCached(target).opacity, 1)
+              : at.opacity,
+            root: at.root,
+          };
         },
         slot: () => paintSlot(element, chain.get().root, instance, 0),
         viewport: () => {

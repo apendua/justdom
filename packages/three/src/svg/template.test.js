@@ -566,6 +566,25 @@ describe("use", () => {
     s.teardown();
   });
 
+  test("a symbol's or an svg target's own opacity fades the copy", () => {
+    const symbol = svg("symbol", { id: "use-symbol-faded", style: "opacity: 0.5" }, [
+      svg("rect", { width: "5", height: "5", fill: "red" }),
+    ]);
+    const other = svg("svg", { id: "use-other-faded", style: "opacity: 0.5" }, [
+      svg("rect", { width: "5", height: "5", fill: "red" }),
+    ]);
+    document.body.appendChild(other);
+    const first = svg("use", { href: "#use-symbol-faded" });
+    const second = svg("use", { href: "#use-other-faded" });
+    const s = scene([svg("defs", {}, [symbol]), first, second], [first, second]);
+    for (const object of s.objects) {
+      const [mesh] = meshesUnder(object);
+      assert.equal(/** @type {THREE.MeshBasicMaterial} */ (mesh.material).opacity, 0.5);
+    }
+    s.teardown();
+    other.remove();
+  });
+
   test("a new href draws the target it names", () => {
     const red = svg("symbol", { id: "use-symbol-red" }, [
       svg("rect", { width: "5", height: "5", fill: "red" }),

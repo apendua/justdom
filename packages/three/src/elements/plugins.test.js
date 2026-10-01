@@ -116,6 +116,19 @@ function shapeMeshes(root) {
   return meshes;
 }
 
+/**
+ * How wide the one shape under `root` is drawn, in user units.
+ *
+ * @param {THREE.Object3D} root
+ * @returns {number}
+ */
+function drawnWidth(root) {
+  const [mesh] = shapeMeshes(root);
+  mesh.geometry.computeBoundingBox();
+  const box = /** @type {THREE.Box3} */ (mesh.geometry.boundingBox);
+  return box.max.x - box.min.x;
+}
+
 describe("portal plugins", () => {
   test("isSvgRoot tells the outermost <svg> from a nested one", () => {
     const outer = document.createElementNS(SVG_NS, "svg");
@@ -194,5 +207,40 @@ describe("portal plugins", () => {
     assert.equal(shapeMeshes(parent).length, 1);
     portal.disconnect();
     assert.deepEqual(shapeMeshes(parent), [], "disconnecting takes the shapes with it");
+  });
+
+  test("a shape follows its attributes when they are written after mount", async () => {
+    const ctx = InteractionContext.set({}, new InteractionManager());
+    const { portal, parent, rect } = await project(ctx, { plugins: [svgElements()] });
+    assert.equal(drawnWidth(parent), 40);
+
+    rect.setAttribute("width", "80");
+    await nextMacrotask();
+    assert.equal(drawnWidth(parent), 80, "the geometry follows the width attribute");
+
+    rect.setAttribute("fill", "#00ff00");
+    await nextMacrotask();
+    assert.equal(
+      /** @type {THREE.MeshBasicMaterial} */ (shapeMeshes(parent)[0].material).color.getHexString(),
+      "00ff00",
+      "the paint follows the fill attribute",
+    );
+    portal.disconnect();
+  });
+
+  test("a path follows its d attribute when it is written after mount", async () => {
+    const ctx = InteractionContext.set({}, new InteractionManager());
+    const { portal, parent, svg, rect } = await project(ctx, { plugins: [svgElements()] });
+    const path = document.createElementNS(SVG_NS, "path");
+    path.setAttribute("fill", "blue");
+    path.setAttribute("d", "M0 0 H20 V10 H0 Z");
+    svg.replaceChild(path, rect);
+    await nextMacrotask();
+    assert.equal(drawnWidth(parent), 20);
+
+    path.setAttribute("d", "M0 0 H40 V10 H0 Z");
+    await nextMacrotask();
+    assert.equal(drawnWidth(parent), 40);
+    portal.disconnect();
   });
 });

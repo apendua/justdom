@@ -401,11 +401,14 @@ Two things about a portal are worth knowing before writing UI for one.
 **Sizes are re-measured when the tree changes, not when an attribute does.**
 The hover handlers write `data-xr-*` back onto the element they fired on, so
 re-measuring the panel on every attribute mutation would mean re-laying-out
-the whole thing on every twitch of the ray. A class swap restyles and
-repaints; the one thing it re-measures is the mutated element's own subtree,
-which is what a toggled `transform` moves (see below) — nothing outside it.
-So anything that changes _layout_ — a menu opening, a section expanding —
-has to be mounted and unmounted rather than hidden and shown.
+the whole thing on every twitch of the ray. Every attribute is followed: a
+class, an inline style, an app's own `data-*` or `aria-*` flag, an SVG
+shape's `d` or `fill`. Changing one restyles the element, its subtree and
+its siblings, and repaints; the one thing it re-measures is the element's
+own subtree, which is what a toggled `transform` moves (see below), and
+nothing outside it. So anything that changes _layout_ — a menu opening, a
+section expanding — has to be mounted and unmounted rather than hidden and
+shown.
 
 **Hover and press are presentational, by contract.** The three attributes
 the portal writes itself — `data-xr-hover`, `data-xr-active` and
@@ -590,7 +593,10 @@ the load — its container element carries `data-xr-loading`, so a page — a
 test harness about to photograph the scene, say — can ask whether any panel
 is still on its way without holding the handles:
 `document.querySelector("[data-xr-loading]")`. A panel given nothing to
-mount is not on its way anywhere and never carries it.
+mount is not on its way anywhere and never carries it. It is a flag for the
+page and not for a stylesheet: the container is above every element in the
+panel, so the mirror ignores this flag and `data-xr-portal`, and a rule that
+selects on either is not followed.
 
 **An update lands whole, however many frames it took.** A visible panel
 cannot hide while it changes, and a change too big for one frame's budget
@@ -1663,8 +1669,9 @@ _attribute_ included, since the browser computes it as the same property;
 `viewBox` and `preserveAspectRatio`, with the viewport at the `<svg>`'s
 content box; a nested `<svg>` as a viewport. Geometry is read from the
 computed style where the browser exposes it as CSS (`cx`, `r`, `x`,
-`width`, `d`) and from the attribute otherwise, so a shape animated by
-either follows.
+`width`, `d`) and from the attribute otherwise. A shape follows both, so
+one whose `d`, `points` or `fill` attribute is bound to data is redrawn when
+the data changes.
 
 Transforms are matrices, as they are for boxes: a shape's vertices stay in
 its own user space, the `<svg>`'s content group carries the viewport, and

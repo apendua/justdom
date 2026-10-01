@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { parseColor } from "../elements/VisualProperties.js";
+import { getAttributeCached } from "../elements/mirror.js";
 import { normalizeDashArray } from "./dash.js";
 
 /**
@@ -28,7 +29,7 @@ export function readProperty(style, element, name) {
   if (computed !== "") {
     return computed;
   }
-  return element.getAttribute(name) ?? "";
+  return getAttributeCached(element, name) ?? "";
 }
 
 /**
@@ -239,10 +240,10 @@ function escapeAttribute(value) {
  *
  * Geometry comes from the computed style where the browser exposes it as
  * CSS — Chromium reports `cx`, `r`, `x`, `width` and the rest in px, and a
- * `<path>`'s `d` as `path("…")` — and from the attribute otherwise. Reading
- * the computed style first is also what makes the attribute reactive: the
- * style is invalidated by every attribute mutation on the element, and this
- * runs inside a computation that reads it.
+ * `<path>`'s `d` as `path("…")` — and from the attribute otherwise. Both
+ * reads are dependencies of the computation this runs in: the portal
+ * observes every attribute, and a write to one invalidates the element's
+ * computed style and its cached attribute reads alike.
  *
  * @param {CSSStyleDeclaration} style
  * @param {Element} element
@@ -314,7 +315,7 @@ export function readShapeMarkup(style, element) {
     case "path": {
       const computed = style.getPropertyValue("d").trim();
       const match = /^path\((["'])([\s\S]*)\1\)$/.exec(computed);
-      const d = (match ? match[2] : (element.getAttribute("d") ?? "")).trim();
+      const d = (match ? match[2] : (getAttributeCached(element, "d") ?? "")).trim();
       return d ? tag({ d }) : null;
     }
     default:

@@ -3,7 +3,7 @@ import { children, cursors, $, dom, getScene, getXRSession, placeAndScale } from
 import type { PortalOptions } from "@apendua/freedom";
 import { createDiagnostics, useDiagnostics } from "@apendua/justui";
 import { component, effects, effectsOnly, Stream, useEffects } from "@apendua/signal";
-import { presenting } from "../session.js";
+import { xrSession } from "../session.js";
 
 /** The height of the desk's top, below the eyes, in metres. */
 const DESK_TOP = -0.42;
@@ -200,7 +200,7 @@ function pose(group: THREE.Group, placement: Placement): void {
  * a mirrored key is a click on the real one and a card dragged in the room
  * is dragged on the page. The panels exist only while a session presents:
  * a session that starts builds them from the page as it is then, and one
- * that ends takes them down. `presenting` tells the page first, so that it
+ * that ends takes them down. `xrSession` tells the page first, so that it
  * takes its staging off before anything is measured.
  */
 export const Scene = (elements: ReadonlyMap<string, HTMLElement>) =>
@@ -217,7 +217,7 @@ export const Scene = (elements: ReadonlyMap<string, HTMLElement>) =>
       }),
       effects(() => {
         const session = getXRSession(ctx);
-        presenting.set(session !== null);
+        xrSession.set(session);
         if (session) {
           useDiagnostics(ctx, diagnostics);
         }

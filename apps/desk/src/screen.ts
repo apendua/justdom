@@ -1,6 +1,6 @@
 import { children, text } from "@apendua/justdom";
 import { component, effect, just, observable } from "@apendua/signal";
-import type { Signal } from "@apendua/signal";
+import type { Readable } from "./session.js";
 import { makeReveal, scrollElementBy } from "@apendua/freedom";
 import { revealedCount, type Terminal } from "./terminal.js";
 
@@ -14,7 +14,11 @@ import { revealedCount, type Terminal } from "./terminal.js";
  * is the same for both; only the node the listing is in changes, when a
  * session starts or ends.
  */
-export function mountScreen(screen: HTMLElement, terminal: Terminal, presenting: Signal<boolean>) {
+export function mountScreen(
+  screen: HTMLElement,
+  terminal: Terminal,
+  presenting: Readable<boolean>,
+) {
   const program = screen.querySelector<HTMLElement>("[data-program]");
   const prompt = screen.querySelector<HTMLElement>("[data-prompt]");
   if (!program || !prompt) {

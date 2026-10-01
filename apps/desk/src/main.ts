@@ -5,7 +5,8 @@ import { mountKeyboard } from "./keyboard.js";
 import { mountPhosphorMenu } from "./phosphorMenu.js";
 import { BOOT_PROGRAM } from "./programs.js";
 import { mountScreen } from "./screen.js";
-import { presenting } from "./session.js";
+import { mountPowerButton } from "./power.js";
+import { presenting, xrSession } from "./session.js";
 import { mountStage } from "./stage.js";
 import { Terminal } from "./terminal.js";
 import { offerXR } from "./xr.js";
@@ -30,6 +31,7 @@ mountPhosphorMenu(
   find<HTMLTemplateElement>("#phosphor-menu"),
   terminal,
 );
+mountPowerButton(find("[data-power]"), xrSession);
 mountKeyboard(find("[data-keys]"), { onKey: (key) => terminal.key(key) });
 mountDragAndDrop({
   board: find("[data-board]"),

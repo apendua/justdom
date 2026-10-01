@@ -30,6 +30,22 @@ html[data-presenting] .tag { display: none; }
    the text from the start, revealed by the scene: while it is being typed
    the cursor would blink at its end rather than at the cut. */
 html[data-presenting] .screen[data-typing] .cursor { visibility: hidden; }
+/* A key pressed on the page moves down the screen, which is how a keycap
+   going down looks from above. In the room the keyboard lies on the desk,
+   and down the screen is along the desk, so there the caps stand proud of
+   the board and a press pushes them into it, as a real one would. The
+   phosphor knob stands on the monitor and is pressed the same way. */
+html[data-presenting] .key { transform: translateZ(4px); }
+html[data-presenting] .key:hover, html[data-presenting] .key[data-xr-hover] { transform: translateZ(5px); }
+html[data-presenting] .key:active, html[data-presenting] .key[data-xr-active], html[data-presenting] .key[data-down] { transform: translateZ(1px); }
+html[data-presenting] .knob { transform: translateZ(3px); }
+html[data-presenting] .knob:hover, html[data-presenting] .knob[data-xr-hover] { transform: translateZ(4px); }
+html[data-presenting] .knob:active, html[data-presenting] .knob[data-xr-active] { transform: translateZ(1px); }
+/* The power button ends the session (src/power.ts), and only there is it a
+   control: pointable, and big enough to aim a ray at across the desk. */
+html[data-presenting] .power { cursor: pointer; width: 34px; height: 34px; transition: background-color .15s; }
+html[data-presenting] .power:hover, html[data-presenting] .power[data-xr-hover] { background: #e88a5a; }
+html[data-presenting] .power:hover .pled, html[data-presenting] .power[data-xr-hover] .pled { background: radial-gradient(circle, #ffd0b8, #c6512b 70%); }
 
 .krow { display: flex; gap: 5px; }
 .key { position: relative; display: flex; align-items: center; justify-content: center; flex: 1 1 0; min-width: 0; cursor: pointer; user-select: none; }

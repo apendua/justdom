@@ -41,7 +41,8 @@ the keys are pressed with the ray, the floppies are dragged from their
 panel onto the monitor's, and the board's field opens a keyboard of its own
 in front of you, since the desk's keyboard is the monitor's. The charts,
 the board and the memo can be picked up by their edges; the memo takes the
-hand's whole rotation, so it can be tipped up to read.
+hand's whole rotation, so it can be tipped up to read. The power button
+under the screen ends the session.
 
 ## How it is put together
 
@@ -60,8 +61,9 @@ The desk is the markup in `index.html` and the stylesheet in
 | `src/dragAndDrop.ts` | Floppies into the drive, cards about the board, new notes from the field. |
 | `src/charts.ts` | Keeps the charts panel moving. |
 | `src/clock.ts` | The wall clock's hands. |
+| `src/power.ts` | The power button, which ends a session. |
 | `src/stage.ts` | Scales the desk to the window, and takes the staging off during a session. |
-| `src/session.ts` | Whether a session is showing the desk, written by the scene. |
+| `src/session.ts` | The session showing the desk, if one is, written by the scene. |
 | `src/xr.ts` | The offer: the renderer, the Enter button, the SVG plugin and the note field's keyboard. |
 | `src/components/Scene.ts` | The room, and where each object stands in it. |
 | `src/components/NoteKeyboard.ts` | What the note field's keyboard looks like in a session. |
@@ -74,7 +76,10 @@ the side panels, the keyboard, the floppies and the memo are tilted with
 session the scene poses each object in the room, so `html[data-presenting]`
 turns the scale and the tilts off and hides the feature notes, and every
 zone is measured flat and at its own size. The page is under the session's
-canvas meanwhile.
+canvas meanwhile. Two controls change with it. A key pressed on the page
+moves down the screen, which in the room would be along the desk, so there
+the caps stand proud of the board and a press pushes them into it. And the
+power button becomes a control, big enough to aim a ray at.
 
 **The monitor reveals its program instead of typing it.** On the page the
 listing is the typed part of the program, rewritten every tick. In a

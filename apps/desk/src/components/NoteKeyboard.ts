@@ -44,11 +44,14 @@ const keyStyle = stylesheet`
     border-bottom-width: 4px;
     border-radius: 5px;
     cursor: pointer;
+    /* Proud of the board, and pushed into it by a press: the board is only
+       ever in a session, where a press goes along z. */
+    transform: translateZ(3px);
     transition: transform 0.07s;
   }
 
   .${CLASS_NAME}:active, .${CLASS_NAME}[data-xr-active] {
-    transform: translateY(2px);
+    transform: translateZ(0.5px);
   }
 `;
 

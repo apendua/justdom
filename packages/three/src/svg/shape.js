@@ -244,13 +244,19 @@ export function chainEqual(a, b) {
 
 /**
  * The `viewBox` origin of the nearest viewport above an element — the
- * offset a `view-box` transform origin is measured from.
+ * offset a `view-box` transform origin is measured from. In template
+ * content the walk stops at the template and takes the instance's, as
+ * `viewportSize` does.
  *
  * @param {Element} element
+ * @param {Instance | null} [instance] The instance the element is part of.
  * @returns {{ x: number, y: number }}
  */
-function nearestViewBoxOrigin(element) {
+export function nearestViewBoxOrigin(element, instance = null) {
   for (let current = element.parentElement; current; current = current.parentElement) {
+    if (instance && current === instance.template) {
+      return instance.viewBoxOrigin();
+    }
     if (current.localName === "svg" && current.namespaceURI === SVG_NAMESPACE) {
       const viewBox = parseViewBox(getAttributeCached(current, "viewBox"));
       return viewBox ? { x: viewBox.x, y: viewBox.y } : { x: 0, y: 0 };
@@ -409,7 +415,7 @@ export function localMatrix(element, instance = null) {
   if (element.localName === "svg") {
     matrix = svgViewportMatrix(element, instance);
   }
-  const own = ownTransform(element, style, nearestViewBoxOrigin(element));
+  const own = ownTransform(element, style, nearestViewBoxOrigin(element, instance));
   return own ? multiply(own, matrix) : matrix;
 }
 
@@ -447,6 +453,9 @@ export function commitMatrix(object, matrix) {
  * @property {() => { width: number, height: number } | null} viewport The
  *   size of the viewport the template's content is in, in the template's
  *   user units: what a percentage length there is a percentage of.
+ * @property {() => { x: number, y: number }} viewBoxOrigin Where that
+ *   viewport's `viewBox` starts, which a `view-box` transform origin is
+ *   measured from.
  * @property {Inheritance | null} inherit Where the content inherits from, for
  *   a copy that inherits from where it is drawn: a `<use>`'s, and not a
  *   marker's.

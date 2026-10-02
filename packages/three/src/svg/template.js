@@ -204,8 +204,9 @@ function markers(ctx, element, host, hostInstance) {
     }
     // Before anything reads it: a `<defs>` later in the panel than this
     // path, or in another `<svg>` in it, is not in the mirror yet, and a
-    // read cached now would never hear an edit inside the marker. One
-    // outside the panel is not this portal's to follow, and stays as read.
+    // read cached now would be read again only once the portal's walk got
+    // there (`readRecordOf` in `mirror.js`). One outside the panel is not
+    // this portal's to follow, and stays as read.
     adopt(marker);
     return marker;
   };

@@ -15,7 +15,7 @@ import { useFrame } from "./render.js";
 /**
  * @import { EntityEffect, Source } from "@apendua/signal";
  * @import { Object3D, XRTargetRaySpace } from "three";
- * @import { Component, InputEvent, InputCancelEvent, XREventMap } from "./core.js";
+ * @import { Component, InputEvent, InputCancelEvent, PressEnd, XREventMap } from "./core.js";
  * @import { Reactive } from "./interactions.js";
  */
 
@@ -387,7 +387,7 @@ export function carry(ctx, options = {}) {
 
   const drop = makeNonReactive(
     /**
-     * @param {InputCancelEvent} event
+     * @param {InputCancelEvent & PressEnd} event
      */
     (event) => {
       const current = hold.get();

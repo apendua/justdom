@@ -862,8 +862,10 @@ A button on a page has a click to say it was pressed; a projected one is a
 quad at the end of a ray, and the hand holding the controller can be told.
 Every control in a panel, which is every element the ray-target rule
 covers (`cursor: pointer` or `draggable="true"`), pulses the controller's
-motors when the trigger closes on it. Nothing is marked: a panel with
-buttons in it is felt, and so is the keyboard.
+motors when the trigger closes on it, and the grip as well, as it closes
+and as it opens, unless something above the panel took the grip as a grab
+(see **Projecting DOM into the scene** above). Nothing is marked: a panel
+with buttons in it is felt, and so is the keyboard.
 
 A pulse when the ray arrives on a control is there too, and off unless a
 panel asks for it. A press is always worth telling the hand about. A hover

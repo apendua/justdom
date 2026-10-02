@@ -483,9 +483,10 @@ class NodeRecord {
 /**
  * One registry for every portal: which mirror a node belongs to, and its
  * record. Module-level so the cached reads below can be called with a node
- * alone — the way `div`/`text` and the tests want to call them — and nodes
- * that no portal adopted simply read the DOM with no dependencies, exactly
- * as they did before there was a mirror.
+ * alone — the way `div`/`text` and the tests want to call them. A node
+ * that no portal adopted reads as the DOM has it, and a cache of that read
+ * follows the node's adoption (`readRecordOf`), so it is read again once
+ * a portal does adopt it.
  *
  * @type {WeakMap<Node, NodeRecord>}
  */
@@ -493,18 +494,31 @@ const records = new WeakMap();
 
 /**
  * The nodes read before any portal adopted them, each with a signal the
- * adoption sets. See `recordOf`.
+ * adoption sets. See `readRecordOf`.
  *
  * @type {WeakMap<Node, Signal<boolean>>}
  */
 const adoptions = new WeakMap();
 
 /**
- * The node's record, or none for a node no portal has adopted, which reads
- * the DOM with no dependencies.
+ * The node's record, or none for a node no portal has adopted. A lookup
+ * and nothing else, for the writers: the mirror's own methods, which bump
+ * what a record has when there is one and have nothing to do when there
+ * is not.
  *
- * Not none for good, though, and a read is cached. A portal builds what it
- * mirrors a budget at a time, so something drawn early can read a node
+ * @param {Node} node
+ * @returns {NodeRecord | undefined}
+ */
+function recordOf(node) {
+  return records.get(node);
+}
+
+/**
+ * The node's record for a cached read, or none for a node no portal has
+ * adopted, which then reads the DOM as it is.
+ *
+ * Not none for good, though, and the read is cached. A portal builds what
+ * it mirrors a budget at a time, so something drawn early can read a node
  * that is built, and adopted, a few frames later: a `<text>`'s runs asked
  * for its children before the `<text>` had a record. A cache made then
  * depended on nothing and stayed as it was read, and whatever the page did
@@ -512,12 +526,13 @@ const adoptions = new WeakMap();
  * as it tore a board down was measured with the run it had taken out, and
  * threw. So a read with no record depends on the node's adoption instead,
  * and comes round again once there is a record to depend on, for every
- * cache that reads through here.
+ * cache that reads through here. Only the caches do: a writer looks a
+ * record up with `recordOf` and hangs nothing on a node it finds none for.
  *
  * @param {Node} node
  * @returns {NodeRecord | undefined}
  */
-function recordOf(node) {
+function readRecordOf(node) {
   const record = records.get(node);
   if (record) {
     return record;
@@ -594,7 +609,7 @@ export class DomMirror {
     if (!records.has(node)) {
       records.set(node, new NodeRecord(this, node));
       // Whatever read the node before it had a record reads it again (see
-      // `recordOf`).
+      // `readRecordOf`).
       adoptions.get(node)?.set(true);
       adoptions.delete(node);
     }
@@ -1508,7 +1523,7 @@ export function getParentElement(node) {
   let signal = parentElementCache.get(node);
   if (!signal) {
     signal = new Derived(() => {
-      const record = recordOf(node);
+      const record = readRecordOf(node);
       if (record) {
         record.reparented.get();
       }
@@ -1534,7 +1549,7 @@ export function getChildNodes(node) {
   let signal = childNodesCache.get(node);
   if (!signal) {
     signal = new Derived(() => {
-      const record = recordOf(node);
+      const record = readRecordOf(node);
       if (record) {
         record.childList.get();
       }
@@ -1584,7 +1599,7 @@ function getStyleContext(node) {
   if (!signal) {
     signal = new Derived(() => {
       let sum = 0;
-      const record = recordOf(node);
+      const record = readRecordOf(node);
       if (record) {
         sum += record.mirror.restyle.get();
       }
@@ -1593,7 +1608,7 @@ function getStyleContext(node) {
         current;
         current = getParentElement(current), depth += 1
       ) {
-        const currentRecord = recordOf(current);
+        const currentRecord = readRecordOf(current);
         if (currentRecord) {
           sum += currentRecord.self.get();
           if (depth > 0) {
@@ -1662,7 +1677,7 @@ export function getReflowContext(node) {
   if (!signal) {
     signal = new Derived(() => {
       let sum = 0;
-      const record = recordOf(node);
+      const record = readRecordOf(node);
       if (record) {
         sum += record.moved.get();
         sum += record.mirror.globalLayout.get();
@@ -1683,7 +1698,7 @@ export function getReflowContext(node) {
         current;
         current = getParentElement(current)
       ) {
-        const currentRecord = recordOf(current);
+        const currentRecord = readRecordOf(current);
         if (currentRecord) {
           sum += currentRecord.reflow.get();
         }
@@ -1715,7 +1730,7 @@ export function getTextDataCached(text) {
   let signal = textDataCache.get(text);
   if (!signal) {
     signal = new Derived(() => {
-      recordOf(text)?.character.get();
+      readRecordOf(text)?.character.get();
       return text.data;
     });
     textDataCache.set(text, signal);
@@ -1777,7 +1792,8 @@ function getBorderBoxInlineSize(element) {
 function readParentBox(node) {
   const parent = getParentElement(node);
   // A parent no portal adopted is the page around the scene, whose layout is
-  // none of a panel's business — and has no signal to hang a dependency on.
+  // none of a panel's business. Looked up and not read: nothing adopts the
+  // page later, so there is nothing to follow.
   if (!parent || !recordOf(parent)) {
     return;
   }
@@ -1858,7 +1874,7 @@ export function getAttributeCached(element, name) {
   let signal = signalMap.get(name);
   if (!signal) {
     signal = new Derived(() => {
-      recordOf(element)?.self.get();
+      readRecordOf(element)?.self.get();
       return element.getAttribute(name);
     });
     signalMap.set(name, signal);
@@ -2178,7 +2194,7 @@ const ZERO_SCROLL = Object.freeze({ left: 0, top: 0 });
  * @returns {ScrollOffset}
  */
 export function getScrollOffset(element) {
-  const record = recordOf(element);
+  const record = readRecordOf(element);
   if (!record) {
     return element.scrollLeft || element.scrollTop
       ? { left: element.scrollLeft, top: element.scrollTop }
@@ -3086,7 +3102,7 @@ export function getTextLayout(text) {
   let signal = textLayoutCache.get(text);
   if (!signal) {
     signal = new Derived(() => {
-      const record = recordOf(text);
+      const record = readRecordOf(text);
       if (record) {
         record.character.get();
       }
@@ -3120,17 +3136,18 @@ export function getTextLayout(text) {
  *
  * The walk reaches nodes the portal has not built yet: a marker is placed
  * when its item is built, and the item's children come after. A cached
- * read of a node no mirror has adopted reads the DOM with no dependencies,
- * and the node's own run would later be handed that cache, deaf to
- * everything that should invalidate it. So the walk adopts what it visits,
- * into the mirror its element belongs to, which is what the portal does
- * when it gets there.
+ * read of a node no mirror has adopted follows its adoption
+ * (`readRecordOf`), so the node's own run, handed that cache later, would
+ * have it read again once the portal got there. The walk adopts what it
+ * visits instead, into the mirror its element belongs to, which is what
+ * the portal does when it gets there, so the cache has its record from
+ * the first read.
  *
  * @param {HTMLElement} element
  * @returns {{ top: number, height: number } | null}
  */
 export function getFirstLine(element) {
-  const mirror = recordOf(element)?.mirror;
+  const mirror = readRecordOf(element)?.mirror;
   for (const child of getChildNodes(element)) {
     mirror?.adopt(child);
     if (child.nodeType === Node.TEXT_NODE) {

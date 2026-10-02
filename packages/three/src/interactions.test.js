@@ -361,7 +361,7 @@ describe("select", () => {
     subscription.unsubscribe();
   });
 
-  test("a squeeze carries the squeezestart it began with, and says whether it was taken", () => {
+  test("the events that end a press carry its start, and say whether it was taken", () => {
     const manager = new InteractionManager();
     const controller = fakeController();
     const subscription = connect(manager, controller);
@@ -370,21 +370,40 @@ describe("select", () => {
     /** @type {any[]} */
     const starts = [];
     /** @type {any[]} */
-    const squeezes = [];
+    const ends = [];
     button.addEventListener("squeezestart", (event) => starts.push(event));
-    button.addEventListener("squeeze", (event) => squeezes.push(event));
+    for (const type of /** @type {const} */ (["squeezeend", "squeeze", "squeezemissed"])) {
+      button.addEventListener(type, (event) => ends.push(event));
+    }
 
     controller.dispatchEvent(/** @type {any} */ ({ type: "squeezestart", data: {} }));
     controller.dispatchEvent(/** @type {any} */ ({ type: "squeezeend", data: {} }));
-    assert.equal(squeezes[0].start, starts[0], "the press it completes");
-    assert.equal(manager.isStopped(squeezes[0].start), false);
+    assert.deepEqual(
+      ends.map((event) => event.type),
+      ["squeezeend", "squeeze"],
+    );
+    assert.ok(
+      ends.every((event) => event.start === starts[0]),
+      "the press they end",
+    );
+    assert.equal(manager.isStopped(starts[0]), false);
 
     // Something above takes the next grip, as a carry does.
     button.addEventListener("squeezestart", (event) => manager.stopPropagation(event));
     controller.dispatchEvent(/** @type {any} */ ({ type: "squeezestart", data: {} }));
     controller.dispatchEvent(/** @type {any} */ ({ type: "squeezeend", data: {} }));
-    assert.equal(squeezes[1].start, starts[1]);
-    assert.equal(manager.isStopped(squeezes[1].start), true);
+    assert.ok(ends.slice(2).every((event) => event.start === starts[1]));
+    assert.equal(manager.isStopped(starts[1]), true);
+
+    // Let go off the button: the miss carries it too.
+    controller.dispatchEvent(/** @type {any} */ ({ type: "squeezestart", data: {} }));
+    moveAside(button);
+    controller.dispatchEvent(/** @type {any} */ ({ type: "squeezeend", data: {} }));
+    assert.deepEqual(
+      ends.slice(4).map((event) => event.type),
+      ["squeezeend", "squeezemissed"],
+    );
+    assert.ok(ends.slice(4).every((event) => event.start === starts[2]));
     subscription.unsubscribe();
   });
 

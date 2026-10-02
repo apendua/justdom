@@ -302,8 +302,8 @@ export class InteractionManager {
        * press completes: the completing event goes along the path the press
        * went through, so a click reaches the same elements that have been
        * wearing the pressed styling since the start, even if the one pressed
-       * has since been re-rendered. Anywhere else, it misses. Both the end and
-       * the completion carry the start.
+       * has since been re-rendered. Anywhere else, it misses. The end, the
+       * completion and the miss each carry the start.
        *
        * @param {"select" | "squeeze"} button
        * @param {Press | undefined} press
@@ -343,6 +343,7 @@ export class InteractionManager {
             target: object,
             originalTarget: object,
             controller,
+            start,
           });
         }
       };

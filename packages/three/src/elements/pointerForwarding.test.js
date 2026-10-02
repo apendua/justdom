@@ -41,7 +41,7 @@ const SVG_NS = "http://www.w3.org/2000/svg";
  * The ray events `nest` can dispatch.
  *
  * @typedef {"selectstart" | "selectend" | "select"
- *   | "squeezestart" | "squeezeend" | "squeeze"
+ *   | "squeezestart" | "squeezeend" | "squeeze" | "squeezemissed"
  *   | "pointermove" | "pointerenter" | "pointerleave"} RayEventType
  */
 
@@ -173,7 +173,8 @@ function nest({ outer, inner, build, haptics = null }) {
         registeredTarget: of,
         relatedTarget: from,
         ...(point && { intersection: { point, object: on ?? mesh } }),
-        ...(!type.endsWith("start") && !type.startsWith("pointer") && { start: starts.get(button) }),
+        ...(!type.endsWith("start") &&
+          !type.startsWith("pointer") && { start: starts.get(button) }),
       };
       if (type.endsWith("start")) {
         starts.set(button, event);
@@ -323,7 +324,7 @@ describe("a press on nested clickable elements", () => {
     s.teardown();
   });
 
-  test("of the grip is felt as it closes and as it opens, once each", () => {
+  test("of the grip is felt as it closes and as it opens, once each", async () => {
     const outer = html("button", "cursor: pointer");
     const inner = html("span", "cursor: pointer");
     outer.appendChild(inner);
@@ -336,10 +337,14 @@ describe("a press on nested clickable elements", () => {
     });
 
     s.press("squeezestart", source);
+    // Once the dispatch has run, which is when the panel knows the grip is
+    // its own.
+    await Promise.resolve();
     assert.equal(played.length, 1, "one pulse as the grip closes");
     s.press("squeezeend", source);
-    s.press("squeeze", source);
-    assert.equal(played.length, 2, "and one as it opens on the right-click");
+    assert.equal(played.length, 2, "and one as it opens");
+    s.press("squeezemissed", source);
+    assert.equal(played.length, 2, "whether or not the right-click lands");
     s.teardown();
   });
 
@@ -499,42 +504,69 @@ describe("a press on nested clickable elements", () => {
     s.teardown();
   });
 
-  test("of the grip on an element that has gone, is nobody's", () => {
+  test("of the grip on an element that has gone, is nobody's", async () => {
     const outer = html("ul", "cursor: pointer");
     const inner = html("li", "cursor: pointer");
     outer.appendChild(inner);
+    const { source, played } = recordingSource();
     const s = nest({
       outer,
       inner,
       build: (ctx, element) => box(ctx, /** @type {HTMLElement} */ (element)),
+      haptics: createHaptics({ flavor: "key" }),
     });
 
-    s.press("squeezestart");
+    // Gone while the grip is held: the list behind the row feels the grip
+    // open and sends nothing, as it does for the trigger.
+    s.press("squeezestart", source);
+    await Promise.resolve();
     inner.remove();
-    s.press("squeeze");
+    s.press("squeezeend", source);
+    s.press("squeeze", source);
     assert.deepEqual(s.events, [], "not the list's behind the row either");
+    assert.deepEqual(played.length, 2, "felt closing on the row and opening on the list");
     assert.deepEqual(s.escaped, ["squeezestart"]);
+
+    // Gone before the grip closes: swallowed, so that nothing behind the
+    // row, the scene included, takes a grip on a row the page let go of,
+    // and its end stops at the panel as its start did.
+    outer.appendChild(inner);
+    inner.remove();
+    s.press("squeezestart", source);
+    await Promise.resolve();
+    s.press("squeezeend", source);
+    s.press("squeeze", source);
+    assert.deepEqual(s.events, []);
+    assert.deepEqual(played.length, 3, "the list feels the grip open, not the row close");
+    assert.deepEqual(s.escaped, ["squeezestart"], "nothing of it leaves the panel");
     s.teardown();
   });
 
-  test("of the grip that something above took, is that carry's", () => {
+  test("of the grip that something above took, is that carry's", async () => {
     const outer = html("button", "cursor: pointer");
     const inner = html("span", "cursor: pointer");
     outer.appendChild(inner);
+    const { source, played } = recordingSource();
     const s = nest({
       outer,
       inner,
       build: (ctx, element) => box(ctx, /** @type {HTMLElement} */ (element)),
+      haptics: createHaptics({ flavor: "key" }),
     });
     // What `drag()` with the grip among its buttons does with the press.
     s.panel.addEventListener(/** @type {never} */ ("squeezestart"), (event) =>
       s.manager.stopPropagation(/** @type {never} */ (event)),
     );
 
-    s.press("squeezestart");
-    s.press("squeezeend");
-    s.press("squeeze");
+    s.press("squeezestart", source);
+    await Promise.resolve();
+    // The button is taken out while the hand carries the panel by it: the
+    // carry still gets its end.
+    inner.remove();
+    s.press("squeezeend", source);
+    s.press("squeeze", source);
     assert.deepEqual(s.events, [], "no contextmenu for a grab");
+    assert.equal(played.length, 0, "and nothing felt for one, closing or opening");
     assert.deepEqual(
       s.escaped,
       ["squeezestart", "squeezeend", "squeeze"],

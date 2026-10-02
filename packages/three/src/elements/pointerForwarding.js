@@ -118,6 +118,16 @@ const forwarding = new WeakSet();
 const delivered = new WeakSet();
 
 /**
+ * The grip starts a panel swallowed, on an element that had gone (see
+ * `isGone`). The events that end such a press ask whether something took
+ * its start, and the manager's `isStopped` alone cannot tell a start the
+ * panel stopped from one the scene took; this can.
+ *
+ * @type {WeakSet<object>}
+ */
+const swallowed = new WeakSet();
+
+/**
  * Whether another forwarding object is above this one, which makes this
  * one not the outermost of a nest of clickable elements.
  *
@@ -171,8 +181,10 @@ function hasForwardingAncestor(object) {
  * hears its own `onPress`. The ray event stops at the outermost of them,
  * so nothing outside the panel sees a press the panel took. The one ray
  * event let past is the grip's start, so that a scene can pick up with the
- * grip what the panel hangs from; a grip nothing took is the panel's, and
- * its end and its completion stop at the outermost element too.
+ * grip what the panel hangs from, a `drag()` with `squeeze` among its
+ * buttons. A grip something above took that way is that grab's, and the
+ * panel neither sends nor feels it; a grip nothing took is the panel's,
+ * and its end and its completion stop at the outermost element too.
  *
  * These belong together: an element that stops being clickable has to lose
  * the handlers too, not just the registration. The interaction manager
@@ -292,6 +304,20 @@ export function forwardPointerEvents(ctx, element, object, { enabled, onPress })
     }
   };
 
+  /**
+   * Whether something above the panel took the grip's start, a `drag()`
+   * that picks things up with the grip. Then the press was a grab, and the
+   * events that end it are the carry's, whatever became of this element
+   * in the meantime: a row the page took out while the hand carried the
+   * panel by it still has to hand the carry its end. Asked of the start
+   * itself, which the manager hands over, so the answer does not depend on
+   * this element's handlers having been up when the grip closed.
+   *
+   * @param {InteractionEvent} start
+   * @returns {boolean}
+   */
+  const taken = (start) => isStopped(start) && !swallowed.has(start);
+
   return [
     makeInteractive(enabled),
     () => {
@@ -326,38 +352,55 @@ export function forwardPointerEvents(ctx, element, object, { enabled, onPress })
       // a menu of its own, so that is what the grip sends: on what the ray
       // is on, once however many clickable elements the press holds, and
       // only for a press let go where it started, as a click is.
+      if (taken(e.start)) {
+        return;
+      }
       if (isGone(element)) {
         stopPropagation(e);
         return;
       }
-      // A grip that something above took when it closed, a `drag()` that
-      // picks things up with the grip, was a grab, and its release is that
-      // carry's and not a right-click. Asked of the press itself, which
-      // the manager hands over, so the answer does not depend on this
-      // element's handlers having been up when the grip closed.
-      if (isStopped(e.start)) {
-        return;
-      }
       deliverOnce(e, () => {
         element.dispatchEvent(new MouseEvent("contextmenu", pressInit(panel(), e, true, 2)));
-        haptics?.release(e.inputSource);
       });
       passOn(e);
     }),
     on("squeezestart", (e) => {
+      // Swallowed as a trigger's press on such an element is, and before
+      // the scene can grab the panel by a row the page has let go of.
+      if (isGone(element)) {
+        swallowed.add(e);
+        stopPropagation(e);
+        return;
+      }
       // Felt once as the grip closes on a control, as a trigger's press is,
-      // however many clickable elements it holds.
-      deliverOnce(e, () => {
-        haptics?.press(e.inputSource);
-      });
+      // but only once the dispatch has run, since the start goes on past
+      // the panel and only then is it known whether something above took
+      // it. A grab is felt by nothing here.
+      if (haptics) {
+        deliverOnce(e, () => {
+          queueMicrotask(() => {
+            if (!isStopped(e)) {
+              haptics.press(e.inputSource);
+            }
+          });
+        });
+      }
     }),
     on("squeezeend", (e) => {
-      // The grip's start is left to go on past the panel, so that a scene
-      // can pick up with it what the panel hangs from. A grip nothing took
-      // is the panel's, and its end stops where a press's does.
-      if (!isStopped(e.start)) {
-        passOn(e);
+      // A grab's end goes on up to the carry.
+      if (taken(e.start)) {
+        return;
       }
+      // Felt once as the grip opens, on a hit and a miss alike, as a
+      // trigger's release is. Not by an element that has gone, whose
+      // release the next clickable element up feels in its stead, as it
+      // sends a trigger's; the outermost stops it, as a press's.
+      if (!isGone(element)) {
+        deliverOnce(e, () => {
+          haptics?.release(e.inputSource);
+        });
+      }
+      passOn(e);
     }),
     on("selectstart", (e) => {
       if (isGone(element)) {

@@ -62,9 +62,10 @@ import { addDependency, batch, Derived } from "@apendua/signal";
  */
 
 /**
- * What the events that end a press carry besides: the `…start` the press
- * began with, so that a handler can ask the manager whether something took
- * it (`isStopped`). That is a question for the grip. A panel takes every
+ * What the events that end a press carry besides, the `…end`, the
+ * completion and the `…missed` alike: the `…start` the press began with,
+ * so that a handler can ask the manager whether something took it
+ * (`isStopped`). That is a question for the grip. A panel takes every
  * trigger press on what it can click, so on a panel a `select`'s start has
  * always been taken; it leaves a grip's start alone, so that a scene can
  * pick up with the grip what the panel hangs from.
@@ -127,11 +128,11 @@ import { addDependency, batch, Derived } from "@apendua/signal";
  * @property {InputEvent} selectstart
  * @property {InputCancelEvent & PressEnd} selectend
  * @property {InputEvent & PressEnd} select
- * @property {InputCancelEvent} selectmissed
+ * @property {InputCancelEvent & PressEnd} selectmissed
  * @property {InputEvent} squeezestart
  * @property {InputCancelEvent & PressEnd} squeezeend
  * @property {InputEvent & PressEnd} squeeze
- * @property {InputCancelEvent} squeezemissed
+ * @property {InputCancelEvent & PressEnd} squeezemissed
  * @property {PointerEvent} pointermove
  * @property {PointerEnterEvent} pointerenter
  * @property {PointerCancelEvent} pointerleave

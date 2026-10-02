@@ -11,6 +11,7 @@ import { scrollDrags } from "./scroll.js";
 import { createHaptics, HapticsContext } from "./haptics.js";
 import { recordingSource } from "../test/rumble.js";
 import { clientRect } from "../test/clientRect.js";
+import { describeScroller } from "../test/scroller.js";
 
 /**
  * @import { XREventMap } from "../core.js";
@@ -77,7 +78,7 @@ function nest({ outer, inner, build, haptics = null }) {
   const [outerObject, innerObject] = objects;
   panel.add(outerObject);
   getContentGroup(outerObject).add(innerObject);
-  const unregister = registerPanel(outerObject, /** @type {HTMLElement} */ (outer), (node) =>
+  const { unregister } = registerPanel(outerObject, /** @type {HTMLElement} */ (outer), (node) =>
     node === outer ? outerObject : node === inner ? innerObject : undefined,
   );
 
@@ -137,8 +138,10 @@ function nest({ outer, inner, build, haptics = null }) {
      *   the event says.
      * @param {THREE.Object3D} [on] What the ray is on at `point`: the mesh
      *   it was dispatched to unless said otherwise.
+     * @param {THREE.Object3D | null} [from] On a `pointerenter`, the
+     *   registered object the ray was on before, if any.
      */
-    press(type, inputSource = null, point, on) {
+    press(type, inputSource = null, point, on, from = null) {
       const mesh = innerObject.children.find((child) => child instanceof THREE.Mesh) ?? innerObject;
       const event = {
         type,
@@ -147,6 +150,7 @@ function nest({ outer, inner, build, haptics = null }) {
         target: mesh,
         originalTarget: mesh,
         registeredTarget: innerObject,
+        relatedTarget: from,
         ...(point && { intersection: { point, object: on ?? mesh } }),
       };
       manager.dispatch(
@@ -480,6 +484,66 @@ describe("a press on nested clickable elements", () => {
       "mousemove at 212,47 button 0",
       "mousemove at 212,47 button 0",
     ]);
+    s.teardown();
+  });
+
+  test("an arrival from within the same control reads no layout", () => {
+    // A ray resting on a button and trembling across its label's edge
+    // leaves and enters the label each time, and has arrived on nothing.
+    const outer = html("button", "cursor: pointer");
+    const inner = html("span", "cursor: pointer");
+    outer.appendChild(inner);
+    let left = 100;
+    let reads = 0;
+    outer.getBoundingClientRect = () => {
+      reads += 1;
+      return clientRect(left, 40, 80, 30);
+    };
+    const s = nest({
+      outer,
+      inner,
+      build: (ctx, element) => box(ctx, /** @type {HTMLElement} */ (element)),
+    });
+    s.outerObject.updateMatrixWorld(true);
+    const point = s.outerObject.localToWorld(new THREE.Vector3(12, 7, 0));
+
+    s.press("pointerenter", null, point);
+    const before = reads;
+    s.press("pointerleave", null, point);
+    s.press("pointerenter", null, point, undefined, s.outerObject);
+    assert.equal(reads, before, "from the button onto its label is no arrival");
+    left = 200;
+    s.press("pointermove", null, point);
+    assert.deepEqual(s.points, ["mousemove at 112,47 button 0", "mousemove at 112,47 button 0"]);
+    s.teardown();
+  });
+
+  test("an arrival on a scrolling list inside a control reads the panel's layout", () => {
+    // The list is a ray target of its own, for the scroll, and forwards
+    // nothing; the clickable element around it sends the moves, from the
+    // corner this arrival reads.
+    const outer = html("button", "cursor: pointer");
+    const inner = html("div", "overflow: hidden");
+    describeScroller(inner, { client: 100, scroll: 400 });
+    outer.appendChild(inner);
+    let reads = 0;
+    outer.getBoundingClientRect = () => {
+      reads += 1;
+      return clientRect(100, 40, 80, 30);
+    };
+    const s = nest({
+      outer,
+      inner,
+      build: (ctx, element) => box(ctx, /** @type {HTMLElement} */ (element)),
+    });
+    s.outerObject.updateMatrixWorld(true);
+    const point = s.outerObject.localToWorld(new THREE.Vector3(12, 7, 0));
+
+    const before = reads;
+    s.press("pointerenter", null, point);
+    assert.equal(reads, before + 1, "the arrival reads where the panel is, once");
+    s.press("pointermove", null, point);
+    assert.deepEqual(s.points, ["mousemove at 112,47 button 0"]);
     s.teardown();
   });
 });

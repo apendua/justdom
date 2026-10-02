@@ -470,7 +470,7 @@ describe("div elevation", () => {
     // The overlay as the panel's top, laid out by the page at 100,40, so
     // that the click can say where on the page it landed.
     element.getBoundingClientRect = () => clientRect(100, 40, 200, 100);
-    const unregister = registerPanel(object, element, (node) =>
+    const { unregister } = registerPanel(object, element, (node) =>
       node === element ? object : undefined,
     );
     object.updateMatrixWorld(true);
@@ -694,7 +694,7 @@ describe("div drag-to-scroll", () => {
     // with the point the ray met, as that click carries it. The list as the
     // panel's top, laid out by the page at 100,40.
     element.getBoundingClientRect = () => clientRect(100, 40, 300, 100);
-    const unregister = registerPanel(object, element, (node) =>
+    const { unregister } = registerPanel(object, element, (node) =>
       node === element ? object : undefined,
     );
     object.updateMatrixWorld(true);

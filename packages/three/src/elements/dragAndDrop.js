@@ -100,17 +100,23 @@ const panels = new WeakMap();
  * @param {THREE.Object3D} object The panel's container object.
  * @param {HTMLElement} element The panel's root element.
  * @param {(node: Node) => THREE.Object3D | undefined} objectOf
- * @returns {() => void} Unregisters.
+ * @returns {{ panel: Panel, unregister: () => void }} The record, as
+ *   `getPanel` would find it, and what unregisters it.
  */
 export function registerPanel(object, element, objectOf) {
-  panels.set(object, {
+  /** @type {Panel} */
+  const panel = {
     object,
     element,
     objectOf,
     origin: new THREE.Vector2(),
-  });
-  return () => {
-    panels.delete(object);
+  };
+  panels.set(object, panel);
+  return {
+    panel,
+    unregister: () => {
+      panels.delete(object);
+    },
   };
 }
 
@@ -319,6 +325,21 @@ function clientPointAt(panel, x, y, client) {
 export function getPanel(object) {
   const panel = panelOf(object);
   return panel ? (panels.get(panel) ?? null) : null;
+}
+
+/**
+ * `getPanel` for an object whose panel is asked for on every event: the
+ * panel an object is in does not change over its life, so it is found
+ * once, on the first ask rather than up front, since the portal registers
+ * the panel after the object is built.
+ *
+ * @param {THREE.Object3D} object
+ * @returns {() => Panel | null}
+ */
+export function lazyPanel(object) {
+  /** @type {Panel | null} */
+  let panel = null;
+  return () => (panel ??= getPanel(object));
 }
 
 /** Scratch for where a ray event is on the page. */

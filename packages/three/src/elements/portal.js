@@ -21,7 +21,7 @@ import { createMirror, getBorderBoxSize, LOADING_ATTRIBUTE, PORTAL_ATTRIBUTE } f
 import { createAnimationClock } from "./animationClock.js";
 import { watchDocumentStyles } from "./documentStyles.js";
 import { createBlocker, coverBox } from "./blocker.js";
-import { getPanel, pressInit, registerPanel } from "./dragAndDrop.js";
+import { pressInit, registerPanel } from "./dragAndDrop.js";
 import { BoxBatchContext, createBoxBatch } from "./boxBatch.js";
 import { TextBatchContext, createTextBatch } from "./textBatch.js";
 import { TextScaleContext, createTextScale } from "./textScale.js";
@@ -53,7 +53,6 @@ import { InteractionContext } from "../interactions.js";
  * @import {PortalKeyboardOptions} from './portalKeyboard.js';
  * @import {PortalPlugin} from './plugins.js';
  * @import {PanelDragOptions} from './panelHandles.js';
- * @import {Panel} from './dragAndDrop.js';
  */
 
 /**
@@ -556,10 +555,11 @@ function buildPortal(ctx, ownOptions = {}) {
   // takes drops is rarely a button (see `elementAt`), and which object draws
   // an element, for a picture of what is dragged. A press asks where the
   // ray is on the page (see `pressInit`).
-  const unregisterPanel = registerPanel(containerObject, containerElement, (node) =>
-    nodeToObject.get(node),
+  const { panel, unregister: unregisterPanel } = registerPanel(
+    containerObject,
+    containerElement,
+    (node) => nodeToObject.get(node),
   );
-  const panel = /** @type {Panel} */ (getPanel(containerObject));
 
   // With only clickable elements as ray targets (see div.js), the portal
   // still has to be opaque to rays as a whole — a panel should block the

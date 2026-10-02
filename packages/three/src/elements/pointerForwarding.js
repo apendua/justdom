@@ -3,8 +3,8 @@ import { interactions } from "../interactions.js";
 import { getParentObject } from "./contentGroup.js";
 import {
   dragAndDrop,
-  getPanel,
   isDragSource,
+  lazyPanel,
   moveInit,
   pressInit,
   probePanel,
@@ -19,7 +19,6 @@ import { scrollDrags } from "./scroll.js";
  * @import {Object3D, XRTargetRaySpace} from 'three';
  * @import {Reactive} from '../interactions.js';
  * @import {InteractionEvent, XREventMap} from '../core.js';
- * @import {Panel} from './dragAndDrop.js';
  */
 
 /**
@@ -195,16 +194,8 @@ export function forwardPointerEvents(ctx, element, object, { enabled, onPress })
    */
   const haptics = HapticsContext.get(ctx);
 
-  /**
-   * The panel the object is in, which does not change over its life, so
-   * that an event does not walk up to it each time. Found on the first
-   * event rather than here, since the portal registers the panel after the
-   * object is built.
-   *
-   * @type {Panel | null}
-   */
-  let panel = null;
-  const panelOf = () => (panel ??= getPanel(object));
+  /** The panel the object is in, for where its events are on the page. */
+  const panel = lazyPanel(object);
 
   /**
    * The ray arriving on this element: the hover flag, and the pulse an
@@ -292,7 +283,7 @@ export function forwardPointerEvents(ctx, element, object, { enabled, onPress })
         return;
       }
       deliverOnce(e, () => {
-        element.dispatchEvent(new MouseEvent("click", pressInit(panelOf(), e, false)));
+        element.dispatchEvent(new MouseEvent("click", pressInit(panel(), e, false)));
       });
       onPress?.();
       passOn(e);
@@ -306,7 +297,7 @@ export function forwardPointerEvents(ctx, element, object, { enabled, onPress })
         // Cancelable, as a real one is: a page that cancels its `mousedown`
         // is saying that nothing is to be dragged from here.
         const pressed = element.dispatchEvent(
-          new MouseEvent("mousedown", pressInit(panelOf(), e, true)),
+          new MouseEvent("mousedown", pressInit(panel(), e, true)),
         );
         // A press on something draggable may become a drag and drop, and
         // otherwise a press over a list may become a scroll; only holding
@@ -343,7 +334,7 @@ export function forwardPointerEvents(ctx, element, object, { enabled, onPress })
         // A drag's release is its `drop` and its `dragend`, which the drag
         // sends from the controller's own `selectend`.
         if (!dnd.didDrag(e.controller)) {
-          element.dispatchEvent(new MouseEvent("mouseup", releaseInit(panelOf(), e)));
+          element.dispatchEvent(new MouseEvent("mouseup", releaseInit(panel(), e)));
         }
         haptics?.release(e.inputSource);
       });
@@ -360,7 +351,7 @@ export function forwardPointerEvents(ctx, element, object, { enabled, onPress })
         heldEnters.delete(e.controller);
         enter(held);
       }
-      element.dispatchEvent(new MouseEvent("mousemove", moveInit(panelOf(), e)));
+      element.dispatchEvent(new MouseEvent("mousemove", moveInit(panel(), e)));
     }),
     on("pointerenter", (e) => {
       // Nothing is hovered under a drag, as `:hover` holds still under one
@@ -373,18 +364,28 @@ export function forwardPointerEvents(ctx, element, object, { enabled, onPress })
         heldEnters.set(e.controller, e);
         return;
       }
-      // An arrival is one event, so it is where the moves that follow take
-      // their point from: the panel is asked where the page lays it out
-      // now, and a hover starts exact. Once per arrival, by the element
-      // the ray met, not again by each clickable element around it. Not
-      // under a drag, which probes the panels it crosses itself and whose
-      // drop reads the one it ends on again.
-      if (e.registeredTarget === object) {
-        const own = panelOf();
-        if (own) {
-          probePanel(own);
+      // An arrival on a control is one event, so it is where the moves
+      // that follow take their point from: the panel is asked where the
+      // page lays it out now, and a hover starts exact. Once per ray
+      // event, by the innermost forwarding element, whatever was
+      // registered under it, which may be a scrolling list or an overlay's
+      // blocker that forwards nothing. Only for an arrival, by the rule
+      // `enter` plays its pulse by: a ray crossing from a button onto its
+      // label has not arrived, and the rows passing under a scroll glide
+      // move nothing the root's rect depends on. Not under a drag, which
+      // probes the panels it crosses itself and whose drop reads the one
+      // it ends on again.
+      deliverOnce(e, () => {
+        if (
+          !drags.scrolling(e.controller) &&
+          isArrival(getControlRoot(element, object), e.relatedTarget)
+        ) {
+          const own = panel();
+          if (own) {
+            probePanel(own);
+          }
         }
-      }
+      });
       enter(e);
     }),
     on("pointerleave", (e) => {

@@ -452,6 +452,11 @@ describe("drag and drop in a panel", () => {
       [550, 50],
       "at the point under the ray, where the page lays the other list out",
     );
+    // The page moves the other list's root while the drag is over it: the
+    // frames take the corner read as the drag arrived, not the row's rect.
+    other.layOutAt(400, 100);
+    s.aim(150, 52, other);
+    assert.deepEqual(s.seen.overPoint, [550, 52], "a frame reads no layout");
     s.trigger("selectend");
     assert.deepEqual(
       [...other.list.children].map((row) => row.id),

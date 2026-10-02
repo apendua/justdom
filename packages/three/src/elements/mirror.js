@@ -1144,8 +1144,8 @@ export class DomMirror {
    *
    * The second saving is *which* children hear it. Where the container lays
    * its children out in document order from a fixed start edge — see
-   * `laysOutChildrenInOrder` — a change at one child cannot have moved the
-   * children before it, so the news starts there and runs to the end. That is
+   * `getFlowMode` — a change at one child cannot have moved the children
+   * before it, so the news starts there and runs to the end. That is
    * what makes appending to a list cost the same whether the list has ten
    * rows or a thousand: the arriving row is the last child, and there is
    * nothing after it to tell. Prepending still costs the whole list, which is

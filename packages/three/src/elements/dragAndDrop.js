@@ -80,8 +80,8 @@ const GHOST_RENDER_ORDER = 1e9;
  * @property {HTMLElement} element
  * @property {(node: Node) => THREE.Object3D | undefined} objectOf
  * @property {THREE.Vector2} origin The root element's client rect's top
- *   left corner, as last probed; 0,0 until the ray has arrived on the panel
- *   or pressed it (see `probePanel`).
+ *   left corner, as last probed; 0,0 until one of the events `probePanel`
+ *   names has read it.
  */
 
 /**

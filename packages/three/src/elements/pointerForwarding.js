@@ -199,8 +199,11 @@ export function forwardPointerEvents(ctx, element, object, { enabled, onPress })
   const panel = lazyPanel(object);
 
   /**
-   * The enter `arrived` last answered for, and its answer. The pulse and
-   * the panel read ask about the same enter, so the walks are done once.
+   * The enter `arrived` last answered for, and its answer. The panel read
+   * and the pulse ask about the same enter, so the walks are done once;
+   * `enter`, the last to ask, lets it go, since the memo has to span one
+   * dispatch only and an enter holds the mesh the ray met and the object
+   * it came from.
    *
    * @type {object | null}
    */
@@ -242,6 +245,7 @@ export function forwardPointerEvents(ctx, element, object, { enabled, onPress })
     if (haptics && e.registeredTarget === object && arrived(e)) {
       haptics.hover(e.inputSource);
     }
+    arrivalOf = null;
   };
 
   /**
@@ -395,8 +399,10 @@ export function forwardPointerEvents(ctx, element, object, { enabled, onPress })
       // blocker that forwards nothing. Only for an arrival by `arrived`'s
       // rule, the pulse's: the rows passing under a scroll move nothing
       // the root's rect depends on, and the press that began the scroll
-      // read it (see `div.js`). Not under a drag, which probes the panels
-      // it crosses itself and whose drop reads the one it ends on again.
+      // read it (a row's `mousedown` above, or the list's own
+      // `selectstart` in `div.js`). Not under a drag, which probes the
+      // panels it crosses itself and whose drop reads the one it ends on
+      // again.
       deliverOnce(e, () => {
         const own = arrived(e) ? panel() : null;
         if (own) {

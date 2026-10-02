@@ -140,42 +140,21 @@ function nest({ outer, inner, build, haptics = null }) {
      *   it was dispatched to unless said otherwise.
      * @param {THREE.Object3D | null} [from] On a `pointerenter`, the
      *   registered object the ray was on before, if any.
+     * @param {THREE.Object3D} [of] The registered object whose mesh the
+     *   ray met: the inner's unless said otherwise, the outer's for the
+     *   part of it the inner does not cover.
      */
-    press(type, inputSource = null, point, on, from = null) {
-      const mesh = innerObject.children.find((child) => child instanceof THREE.Mesh) ?? innerObject;
+    press(type, inputSource = null, point, on, from = null, of = innerObject) {
+      const mesh = of.children.find((child) => child instanceof THREE.Mesh) ?? of;
       const event = {
         type,
         controller,
         inputSource,
         target: mesh,
         originalTarget: mesh,
-        registeredTarget: innerObject,
+        registeredTarget: of,
         relatedTarget: from,
         ...(point && { intersection: { point, object: on ?? mesh } }),
-      };
-      manager.dispatch(
-        /** @type {THREE.Object3D<XREventMap>} */ (mesh),
-        /** @type {never} */ (event),
-      );
-    },
-    /**
-     * A ray event on the outer element's own mesh, the part of it the
-     * inner does not cover.
-     *
-     * @param {RayEventType} type
-     * @param {THREE.Vector3} [point] Where the ray is, in world space.
-     */
-    pressOuter(type, point) {
-      const mesh = outerObject.children.find((child) => child instanceof THREE.Mesh) ?? outerObject;
-      const event = {
-        type,
-        controller,
-        inputSource: null,
-        target: mesh,
-        originalTarget: mesh,
-        registeredTarget: outerObject,
-        relatedTarget: null,
-        ...(point && { intersection: { point, object: mesh } }),
       };
       manager.dispatch(
         /** @type {THREE.Object3D<XREventMap>} */ (mesh),
@@ -593,14 +572,14 @@ describe("a press on nested clickable elements", () => {
     const point = s.outerObject.localToWorld(new THREE.Vector3(12, 7, 0));
 
     let before = reads;
-    s.pressOuter("selectstart", point);
+    s.press("selectstart", null, point, undefined, null, s.outerObject);
     assert.equal(reads, before + 1, "the press on the list reads where the panel is");
     before = reads;
     s.press("pointerenter", null, point, undefined, s.outerObject);
     assert.equal(reads, before, "the control reached under the scroll reads nothing");
     s.press("pointermove", null, point);
     assert.deepEqual(s.points, ["mousemove at 112,47 button 0"]);
-    s.pressOuter("selectend", point);
+    s.press("selectend", null, point, undefined, null, s.outerObject);
     s.teardown();
   });
 });

@@ -39,7 +39,7 @@ const SVG_NS = "http://www.w3.org/2000/svg";
 /**
  * The ray events `nest` can dispatch.
  *
- * @typedef {"selectstart" | "selectend" | "select" | "pointermove"} RayEventType
+ * @typedef {"selectstart" | "selectend" | "select" | "pointermove" | "pointerenter" | "pointerleave"} RayEventType
  */
 
 /**
@@ -146,6 +146,7 @@ function nest({ outer, inner, build, haptics = null }) {
         inputSource,
         target: mesh,
         originalTarget: mesh,
+        registeredTarget: innerObject,
         ...(point && { intersection: { point, object: on ?? mesh } }),
       };
       manager.dispatch(
@@ -362,6 +363,8 @@ describe("a press on nested clickable elements", () => {
     s.outerObject.updateMatrixWorld(true);
     const point = s.outerObject.localToWorld(new THREE.Vector3(12, 7, 0));
 
+    // As the manager sends them: an arrival, then a move a frame.
+    s.press("pointerenter", null, point);
     s.press("pointermove", null, point);
     s.press("selectstart", null, point);
     s.press("selectend", null, point);
@@ -433,6 +436,49 @@ describe("a press on nested clickable elements", () => {
       "mousemove at 112,47 button 0",
       "mousemove at 112,47 button 0",
       "mouseup at 212,47 button 0",
+    ]);
+    s.teardown();
+  });
+
+  test("of an arrival is where the panel is now, and the moves after it read no layout", () => {
+    // A hover that a page answers from the point, the way it finds what was
+    // pressed, is exact as the ray arrives, and drifts only by what the page
+    // moves while the ray stays; the next arrival is exact again.
+    const outer = html("button", "cursor: pointer");
+    const inner = html("span", "cursor: pointer");
+    outer.appendChild(inner);
+    let left = 100;
+    let reads = 0;
+    outer.getBoundingClientRect = () => {
+      reads += 1;
+      return clientRect(left, 40, 80, 30);
+    };
+    const s = nest({
+      outer,
+      inner,
+      build: (ctx, element) => box(ctx, /** @type {HTMLElement} */ (element)),
+    });
+    s.outerObject.updateMatrixWorld(true);
+    const point = s.outerObject.localToWorld(new THREE.Vector3(12, 7, 0));
+
+    let before = reads;
+    s.press("pointerenter", null, point);
+    assert.equal(reads, before + 1, "an arrival reads where the panel is, once");
+    before = reads;
+    s.press("pointermove", null, point);
+    left = 200;
+    s.press("pointermove", null, point);
+    assert.equal(reads, before, "a move reads no layout");
+    s.press("pointerleave", null, point);
+    s.press("pointerenter", null, point);
+    s.press("pointermove", null, point);
+    assert.deepEqual(s.points, [
+      "mousemove at 112,47 button 0",
+      "mousemove at 112,47 button 0",
+      "mousemove at 112,47 button 0",
+      "mousemove at 112,47 button 0",
+      "mousemove at 212,47 button 0",
+      "mousemove at 212,47 button 0",
     ]);
     s.teardown();
   });

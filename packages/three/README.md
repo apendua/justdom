@@ -350,13 +350,16 @@ Each of these events, and the `mousemove` a ray moving over the element
 sends, carries the point the ray met as `clientX` and `clientY`, mapped
 onto the page's own layout, so a page that finds what was pressed from
 where it was pressed, a board drawn as one `<svg>` path, reads the place a
-mouse over the same spot would have given it. A press, its release and its
-click each read where the page lays the panel out; a move, sent every
-frame, reads no layout and takes its point where the panel was last read.
-The point is on screen only for a panel mirroring an element the page
-shows. A panel built from a tree lives in a container the portal parks off
-screen, so its points are right against the page's own rects but
-`elementFromPoint` finds nothing at them.
+mouse over the same spot would have given it. A press, its release, its
+click and the ray's arrival on the element each read where the page lays
+the panel out; a move, sent every frame, reads no layout and takes its
+point where the panel was last read, so a hover starts exact and drifts
+only by what the page moves while the ray stays. The point is on screen
+only for a panel mirroring an element the page shows. A panel built from a
+tree lives in a container the portal parks off screen, so its points are
+right against the page's own rects but `elementFromPoint` finds nothing at
+them. The one thing the mapping leaves out is a transform on the mirrored
+root itself, which the mirror leaves out too.
 Clickable elements nest, if only because `cursor` is inherited, and a press
 inside several of them goes where it goes on a page. The innermost one is the
 target, its DOM events are sent once and bubble from there, and every
@@ -563,6 +566,11 @@ to.** A ray that lands on the panel but on none of its buttons hits the blocker
 spanning the container, which dispatches a bubbling `click` on the portal's
 root element. That is what "clicked outside" means to a menu that wants to
 close itself; there is no other way for the tree inside to learn it happened.
+The click carries the point the ray met, as a click on a button does, so a
+`<canvas>` board, which is not `cursor: pointer` and takes its clicks this
+way, finds the square from `clientX` and `clientY`. So does the click a
+press on a scrolling list's own padding sends when it became no scroll, and
+the one a press on an overlay's own background sends the overlay.
 
 Count only the panel's own clicks as elsewhere, via `getPortalRoot(node)`,
 and ask it when the click arrives rather than when the listener goes up:
@@ -784,7 +792,9 @@ The rules are the browser's:
 - The events carry `clientX` and `clientY`: the point under the ray, mapped
   back onto the page's own layout. A list that compares them with a row's
   `getBoundingClientRect()` to decide whether a card goes above or below it
-  gets the answer it gets under a mouse.
+  gets the answer it gets under a mouse. `dragstart` and `drop` read where
+  the page lays the panel out; the frames between take the corner last
+  read, as a `mousemove` does.
 - `:hover` does not change under a drag. From a press on a draggable
   element until the trigger opens, the elements the ray crosses take no
   `data-xr-hover` and hear no `mousemove`. The control the ray is on when
@@ -1964,14 +1974,14 @@ A shape with `cursor: pointer` is a ray target of its own, by the rule a
 box follows. It forwards the ray to its element exactly as a box does:
 `mousedown`, `mouseup` and `click` for a press, `mousemove` while the ray
 moves over it, each with the point on the page, and `data-xr-hover` and
-`data-xr-active` on the element for a stylesheet to answer. A press that turns into a drag scrolls the list the
-`<svg>` sits in. `pointer-events` decides which of the fill and the stroke
-a ray can hit, with SVG's values: the default `visiblePainted` hits
-whatever is painted and visible, `none` lets the ray through to what is
-behind, `fill` and `stroke` pick one region, and `all` hits a region with
-no paint, which is drawn as nothing and hit all the same. The `<svg>`'s
-clip trims the hits as it trims the drawing, so a node scrolled out of
-view takes no press.
+`data-xr-active` on the element for a stylesheet to answer. A press that
+turns into a drag scrolls the list the `<svg>` sits in. `pointer-events`
+decides which of the fill and the stroke a ray can hit, with SVG's values:
+the default `visiblePainted` hits whatever is painted and visible, `none`
+lets the ray through to what is behind, `fill` and `stroke` pick one
+region, and `all` hits a region with no paint, which is drawn as nothing
+and hit all the same. The `<svg>`'s clip trims the hits as it trims the
+drawing, so a node scrolled out of view takes no press.
 
 ```css
 .diagram .node {

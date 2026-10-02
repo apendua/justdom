@@ -1,17 +1,25 @@
-import * as THREE from "three";
 import { on, onCleanup } from "@apendua/signal";
 import { interactions } from "../interactions.js";
 import { getParentObject } from "./contentGroup.js";
-import { clientPointOf, dragAndDrop, getPanel, isDragSource, probePanel } from "./dragAndDrop.js";
+import {
+  dragAndDrop,
+  getPanel,
+  isDragSource,
+  moveInit,
+  pressInit,
+  probePanel,
+  releaseInit,
+} from "./dragAndDrop.js";
 import { HapticsContext, isArrival } from "./haptics.js";
 import { getComputedStyleCached } from "./mirror.js";
 import { scrollDrags } from "./scroll.js";
 
 /**
  * @import {EntityEffect} from '@apendua/signal';
- * @import {Intersection, Object3D, XRTargetRaySpace} from 'three';
+ * @import {Object3D, XRTargetRaySpace} from 'three';
  * @import {Reactive} from '../interactions.js';
  * @import {InteractionEvent, XREventMap} from '../core.js';
+ * @import {Panel} from './dragAndDrop.js';
  */
 
 /**
@@ -125,98 +133,6 @@ function hasForwardingAncestor(object) {
   return false;
 }
 
-/** Scratch for where a ray event is on the page. */
-const client = new THREE.Vector2();
-
-/**
- * The init every mouse event a ray sends is made from, written in place for
- * each. `MouseEvent` copies what it is given, so one object serves them
- * all, and a ray resting on a button, sending `mousemove` every frame,
- * allocates nothing for it.
- *
- * @type {MouseEventInit}
- */
-const init = {
-  bubbles: false,
-  cancelable: false,
-  clientX: 0,
-  clientY: 0,
-  screenX: 0,
-  screenY: 0,
-};
-
-/**
- * Write where on the page a ray event happened into `init`: the point the
- * ray met, in client coordinates, as `clientX` and `clientY`, and as
- * `screenX` and `screenY` too, since a panel has no screen of its own. A
- * page that finds what was pressed from where it was pressed, rather than
- * from the event's target, reads them.
- *
- * Only a point on the element's own panel is anywhere on its page. A
- * release whose ray has wandered off the panel, onto nothing, onto another
- * panel or onto the scene, leaves them at 0, as they are on any event a
- * script dispatches. The point is in the page's layout, which is on screen
- * only for a panel mirroring an element the page shows; `clientPointOf`
- * says what that means for a panel built from a tree.
- *
- * @param {Object3D} object
- * @param {{ intersection?: Intersection }} e
- * @param {boolean} probe Whether to read where the page lays the panel out
- *   first; see `probePanel`.
- * @returns {void}
- */
-function writePoint(object, e, probe) {
-  let x = 0;
-  let y = 0;
-  const panel = getPanel(object);
-  if (e.intersection && panel && getPanel(e.intersection.object) === panel) {
-    if (probe) {
-      probePanel(panel);
-    }
-    clientPointOf(panel, e.intersection.point, client);
-    x = client.x;
-    y = client.y;
-  }
-  init.clientX = x;
-  init.clientY = y;
-  init.screenX = x;
-  init.screenY = y;
-}
-
-/**
- * The init for the mouse event sent for a press, its release or its click:
- * one event each, so the point is taken against the panel where the page
- * lays it out now. Valid until the next call: the event is to be made from
- * it at once.
- *
- * @param {Object3D} object
- * @param {{ intersection?: Intersection }} e
- * @param {boolean} cancelable
- * @returns {MouseEventInit}
- */
-function pressInit(object, e, cancelable) {
-  init.bubbles = true;
-  init.cancelable = cancelable;
-  writePoint(object, e, true);
-  return init;
-}
-
-/**
- * The init for the `mousemove` sent for a ray moving over an element: one
- * a frame, so the point is taken against where the panel was last probed,
- * and reads no layout. Valid until the next call.
- *
- * @param {Object3D} object
- * @param {{ intersection?: Intersection }} e
- * @returns {MouseEventInit}
- */
-function moveInit(object, e) {
-  init.bubbles = false;
-  init.cancelable = false;
-  writePoint(object, e, false);
-  return init;
-}
-
 /**
  * @typedef {object} ForwardingOptions
  * @property {Reactive<boolean>} enabled Whether rays can hit the object at
@@ -230,15 +146,15 @@ function moveInit(object, e) {
  * Being a ray target, and forwarding what happens there back to the DOM. A
  * press arrives as `mousedown`, `mouseup` and `click`, and a ray moving over
  * the object as `mousemove`, each carrying the point the ray met, on the
- * page, as its `clientX` and `clientY`. While the ray is on it the element
- * carries
+ * page, as its `clientX` and `clientY` (see `pressInit` in
+ * `dragAndDrop.js`). While the ray is on it the element carries
  * `data-xr-hover`, and while it is held, `data-xr-active`. A stylesheet
- * answers those flags where a page would use `:hover` and `:active`.
- * Where the panel has haptics, the hand feels a press and its release, and
- * an arrival on a control where the panel asks for one. A press on
- * something draggable that the hand carries away is a drag and drop
- * instead, and its release is a `drop` and a `dragend` rather than a
- * `mouseup` and a `click` (see `dragAndDrop.js`).
+ * answers those flags where a page would use `:hover` and `:active`. Where
+ * the panel has haptics, the hand feels a press and its release, and an
+ * arrival on a control where the panel asks for one. A press on something
+ * draggable that the hand carries away is a drag and drop instead, and its
+ * release is a `drop` and a `dragend` rather than a `mouseup` and a `click`
+ * (see `dragAndDrop.js`).
  *
  * Boxes, SVG shapes and clickable SVG groups all forward rays through this
  * function, so a panel's stylesheet and its click handlers see the same
@@ -278,6 +194,17 @@ export function forwardPointerEvents(ctx, element, object, { enabled, onPress })
    * from.
    */
   const haptics = HapticsContext.get(ctx);
+
+  /**
+   * The panel the object is in, which does not change over its life, so
+   * that an event does not walk up to it each time. Found on the first
+   * event rather than here, since the portal registers the panel after the
+   * object is built.
+   *
+   * @type {Panel | null}
+   */
+  let panel = null;
+  const panelOf = () => (panel ??= getPanel(object));
 
   /**
    * The ray arriving on this element: the hover flag, and the pulse an
@@ -365,7 +292,7 @@ export function forwardPointerEvents(ctx, element, object, { enabled, onPress })
         return;
       }
       deliverOnce(e, () => {
-        element.dispatchEvent(new MouseEvent("click", pressInit(object, e, false)));
+        element.dispatchEvent(new MouseEvent("click", pressInit(panelOf(), e, false)));
       });
       onPress?.();
       passOn(e);
@@ -379,7 +306,7 @@ export function forwardPointerEvents(ctx, element, object, { enabled, onPress })
         // Cancelable, as a real one is: a page that cancels its `mousedown`
         // is saying that nothing is to be dragged from here.
         const pressed = element.dispatchEvent(
-          new MouseEvent("mousedown", pressInit(object, e, true)),
+          new MouseEvent("mousedown", pressInit(panelOf(), e, true)),
         );
         // A press on something draggable may become a drag and drop, and
         // otherwise a press over a list may become a scroll; only holding
@@ -416,7 +343,7 @@ export function forwardPointerEvents(ctx, element, object, { enabled, onPress })
         // A drag's release is its `drop` and its `dragend`, which the drag
         // sends from the controller's own `selectend`.
         if (!dnd.didDrag(e.controller)) {
-          element.dispatchEvent(new MouseEvent("mouseup", pressInit(object, e, false)));
+          element.dispatchEvent(new MouseEvent("mouseup", releaseInit(panelOf(), e)));
         }
         haptics?.release(e.inputSource);
       });
@@ -433,8 +360,7 @@ export function forwardPointerEvents(ctx, element, object, { enabled, onPress })
         heldEnters.delete(e.controller);
         enter(held);
       }
-      const event = new MouseEvent("mousemove", moveInit(object, e));
-      element.dispatchEvent(event);
+      element.dispatchEvent(new MouseEvent("mousemove", moveInit(panelOf(), e)));
     }),
     on("pointerenter", (e) => {
       // Nothing is hovered under a drag, as `:hover` holds still under one
@@ -446,6 +372,18 @@ export function forwardPointerEvents(ctx, element, object, { enabled, onPress })
       if (dnd.holding(e.controller)) {
         heldEnters.set(e.controller, e);
         return;
+      }
+      // An arrival is one event, so it is where the moves that follow take
+      // their point from: the panel is asked where the page lays it out
+      // now, and a hover starts exact. Once per arrival, by the element
+      // the ray met, not again by each clickable element around it. Not
+      // under a drag, which probes the panels it crosses itself and whose
+      // drop reads the one it ends on again.
+      if (e.registeredTarget === object) {
+        const own = panelOf();
+        if (own) {
+          probePanel(own);
+        }
       }
       enter(e);
     }),

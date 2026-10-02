@@ -35,26 +35,38 @@ function layOut(element, left, top, width, height) {
  * @param {boolean} options.accept Whether the list takes drops.
  * @param {string[]} options.fixed The rows that are not draggable.
  * @param {Record<string, unknown>} options.seen What its handlers saw.
+ * @param {[number, number]} [options.at] Where the page lays the root out,
+ *   its top left corner; the page's top left corner unless given.
  */
-async function mirroredList(ctx, { id, rowIds, accept, fixed, seen }) {
+async function mirroredList(ctx, { id, rowIds, accept, fixed, seen, at = [0, 0] }) {
   const root = document.createElement("div");
   const list = document.createElement("div");
   list.id = id;
   list.style.overflow = "hidden";
   root.appendChild(list);
-  layOut(root, 0, 0, 300, 200);
-  layOut(list, 0, 0, 300, 200);
   describeScroller(list, { client: 200, scroll: 400 });
-  const rows = rowIds.map((rowId, index) => {
+  const rows = rowIds.map((rowId) => {
     const row = document.createElement("div");
     row.id = rowId;
     if (!fixed.includes(rowId)) {
       row.setAttribute("draggable", "true");
     }
-    layOut(row, 0, index * 40, 300, 40);
     list.appendChild(row);
     return row;
   });
+  /**
+   * Lay the root out at a corner of the page, and everything in it where it
+   * is in the root.
+   *
+   * @param {number} left
+   * @param {number} top
+   */
+  const layOutAt = (left, top) => {
+    layOut(root, left, top, 300, 200);
+    layOut(list, left, top, 300, 200);
+    rows.forEach((row, index) => layOut(row, left, top + index * 40, 300, 40));
+  };
+  layOutAt(...at);
   document.body.appendChild(root);
 
   list.addEventListener("dragstart", (event) => {
@@ -81,7 +93,8 @@ async function mirroredList(ctx, { id, rowIds, accept, fixed, seen }) {
   });
   list.addEventListener("drop", (event) => {
     event.preventDefault();
-    const { dataTransfer } = /** @type {DragEvent} */ (event);
+    const { dataTransfer, clientX, clientY } = /** @type {DragEvent} */ (event);
+    seen.dropPoint = [Math.round(clientX), Math.round(clientY)];
     const row = document.getElementById(dataTransfer?.getData("text/plain") ?? "");
     const target = /** @type {HTMLElement} */ (event.target);
     if (row) {
@@ -89,20 +102,23 @@ async function mirroredList(ctx, { id, rowIds, accept, fixed, seen }) {
     }
   });
   list.addEventListener("dragend", (event) => {
-    seen.dropEffect = /** @type {DragEvent} */ (event).dataTransfer?.dropEffect;
+    const { dataTransfer, clientX, clientY } = /** @type {DragEvent} */ (event);
+    seen.dropEffect = dataTransfer?.dropEffect;
+    seen.endPoint = [Math.round(clientX), Math.round(clientY)];
   });
 
   const portal = createPortal(ctx, { root, budget: 0 });
   const parent = new THREE.Group();
   portal.addTo(parent);
   await settle(portal);
-  return { root, list, rows, portal, parent, panel: parent.children[0] };
+  return { root, list, rows, portal, parent, panel: parent.children[0], layOutAt };
 }
 
 /**
  * One sortable list in a panel, or two side by side, with a controller
  * aimed at them and every mouse and drag event on the page recorded as
- * `type id`.
+ * `type id`. The page lays the second list's root out 400 px to the right
+ * of the first's.
  *
  * @param {object} [options]
  * @param {boolean} [options.accept] Whether the lists take drops.
@@ -112,8 +128,16 @@ async function mirroredList(ctx, { id, rowIds, accept, fixed, seen }) {
  *   about the vertical, rather than facing the same way as the first.
  * @param {string[]} [options.fixed] The rows that are not draggable when
  *   the panel is built.
+ * @param {[number, number]} [options.at] Where the page lays the first
+ *   list's root out; see `mirroredList`.
  */
-async function sortableList({ accept = true, second = false, turned = false, fixed = [] } = {}) {
+async function sortableList({
+  accept = true,
+  second = false,
+  turned = false,
+  fixed = [],
+  at = [0, 0],
+} = {}) {
   /** @type {string[]} */
   const events = [];
   /** @type {Record<string, unknown>} */
@@ -136,9 +160,17 @@ async function sortableList({ accept = true, second = false, turned = false, fix
     accept,
     fixed,
     seen,
+    at,
   });
   const other = second
-    ? await mirroredList(ctx, { id: "other", rowIds: ["d", "e", "f"], accept, fixed, seen })
+    ? await mirroredList(ctx, {
+        id: "other",
+        rowIds: ["d", "e", "f"],
+        accept,
+        fixed,
+        seen,
+        at: [400, 0],
+      })
     : null;
   other?.parent.position.set(4, 0, 0);
   if (turned) {
@@ -210,6 +242,8 @@ async function sortableList({ accept = true, second = false, turned = false, fix
     turnAway,
     secondHand,
     panel: first.panel,
+    /** The page moves the first list's root: a window scroll, say. */
+    moveTo: first.layOutAt,
     ghost: () =>
       first.panel.getObjectByName("drag-ghost") ?? other?.panel.getObjectByName("drag-ghost"),
     disconnect: () => first.portal.disconnect(),
@@ -413,6 +447,11 @@ describe("drag and drop in a panel", () => {
     s.events.length = 0;
     s.aim(150, 50, other);
     assert.deepEqual(s.events, ["drag a", "dragenter e", "dragleave b", "dragover e"]);
+    assert.deepEqual(
+      s.seen.overPoint,
+      [550, 50],
+      "at the point under the ray, where the page lays the other list out",
+    );
     s.trigger("selectend");
     assert.deepEqual(
       [...other.list.children].map((row) => row.id),
@@ -530,6 +569,33 @@ describe("drag and drop in a panel", () => {
     s.turnAway();
     assert.equal(ghost.visible, false, "a ray that never meets the plane has nowhere to put it");
     s.trigger("selectend");
+    s.teardown();
+  });
+
+  test("its points are where the page lays the panel out, read at the start and the drop", async () => {
+    // A root laid out away from the page's corner, which the page moves
+    // while the trigger is held: its window scrolls. The start and the drop
+    // are one event each and read where the root is then; the frames
+    // between take the corner the start read.
+    const s = await sortableList({ at: [40, 300] });
+
+    s.aim(150, 20);
+    s.trigger("selectstart");
+    s.moveTo(40, 400);
+    s.aim(150, 50);
+    assert.deepEqual(
+      s.seen.startPoint,
+      [190, 420],
+      "picked up where the root is as the drag starts",
+    );
+    assert.deepEqual(s.seen.overPoint, [190, 450], "and the frame after it takes that corner");
+
+    s.moveTo(40, 500);
+    s.aim(150, 60);
+    assert.deepEqual(s.seen.overPoint, [190, 460], "a frame reads no layout");
+    s.trigger("selectend");
+    assert.deepEqual(s.seen.dropPoint, [190, 560], "the drop reads where the root is now");
+    assert.deepEqual(s.seen.endPoint, [190, 560], "and the end of the drag says the same");
     s.teardown();
   });
 

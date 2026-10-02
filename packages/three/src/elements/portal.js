@@ -21,7 +21,7 @@ import { createMirror, getBorderBoxSize, LOADING_ATTRIBUTE, PORTAL_ATTRIBUTE } f
 import { createAnimationClock } from "./animationClock.js";
 import { watchDocumentStyles } from "./documentStyles.js";
 import { createBlocker, coverBox } from "./blocker.js";
-import { registerPanel } from "./dragAndDrop.js";
+import { getPanel, pressInit, registerPanel } from "./dragAndDrop.js";
 import { BoxBatchContext, createBoxBatch } from "./boxBatch.js";
 import { TextBatchContext, createTextBatch } from "./textBatch.js";
 import { TextScaleContext, createTextScale } from "./textScale.js";
@@ -53,6 +53,7 @@ import { InteractionContext } from "../interactions.js";
  * @import {PortalKeyboardOptions} from './portalKeyboard.js';
  * @import {PortalPlugin} from './plugins.js';
  * @import {PanelDragOptions} from './panelHandles.js';
+ * @import {Panel} from './dragAndDrop.js';
  */
 
 /**
@@ -554,10 +555,11 @@ function buildPortal(ctx, ownOptions = {}) {
   // under it, any element and not only the ray targets, since a list that
   // takes drops is rarely a button (see `elementAt`), and which object draws
   // an element, for a picture of what is dragged. A press asks where the
-  // ray is on the page (see `clientPointOf`).
+  // ray is on the page (see `pressInit`).
   const unregisterPanel = registerPanel(containerObject, containerElement, (node) =>
     nodeToObject.get(node),
   );
+  const panel = /** @type {Panel} */ (getPanel(containerObject));
 
   // With only clickable elements as ray targets (see div.js), the portal
   // still has to be opaque to rays as a whole — a panel should block the
@@ -589,8 +591,12 @@ function buildPortal(ctx, ownOptions = {}) {
     //
     // The keyboard hears it the same way: a click in the panel that is not
     // on a field is focus leaving the field (see `bindPortalKeyboard`).
-    blocker.addEventListener("select", () => {
-      containerElement.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    //
+    // With the point the ray met, as a click on a button carries it: a page
+    // with a `<canvas>` board, which is not `cursor: pointer`, takes its
+    // clicks through here and finds the square from the point.
+    blocker.addEventListener("select", (e) => {
+      containerElement.dispatchEvent(new MouseEvent("click", pressInit(panel, e, false)));
     });
   }
 

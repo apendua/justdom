@@ -37,6 +37,7 @@ import { place, placeAndScale } from "./place.js";
 import { BoxBatchContext } from "./boxBatch.js";
 import { TextBatchContext } from "./textBatch.js";
 import { forwardPointerEvents, isGone, isRayTarget } from "./pointerForwarding.js";
+import { getPanel, pressInit } from "./dragAndDrop.js";
 import { setContentGroup } from "./contentGroup.js";
 
 /** Scratch for composing a scroll onto a content group's matrix. */
@@ -62,6 +63,7 @@ export const PortalReadyContext = createProperty(
 /**
  * @import {Component, XREventMap} from '../core.js';
  * @import {ClipBox} from './clip.js';
+ * @import {Panel} from './dragAndDrop.js';
  * @import {EntityEffect, Subscribable} from '@apendua/signal';
  */
 
@@ -180,6 +182,15 @@ export function box(ctx, element, options = {}) {
   setContentGroup(object, contentGroup);
 
   const { makeInteractive, stopPropagation } = interactions(ctx);
+  /**
+   * The panel the box is in, for where a click on it is on the page (see
+   * `pressInit`). Found on the first click, as `forwardPointerEvents` finds
+   * its own, since the portal registers the panel after the box is built.
+   *
+   * @type {Panel | null}
+   */
+  let panel = null;
+  const panelOf = () => (panel ??= getPanel(object));
   const drags = scrollDrags(ctx);
   const isPanelReady = PortalReadyContext.get(ctx);
   /**
@@ -398,7 +409,7 @@ export function box(ctx, element, options = {}) {
     }),
     on("select", (e) => {
       if (!isGone(element) && !drags.didScroll(e.controller)) {
-        element.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        element.dispatchEvent(new MouseEvent("click", pressInit(panelOf(), e, false)));
       }
       stopPropagation(e);
     }),
@@ -527,7 +538,7 @@ export function box(ctx, element, options = {}) {
         return $(blocker, [
           makeInteractive(isPanelReady),
           on("select", (e) => {
-            element.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+            element.dispatchEvent(new MouseEvent("click", pressInit(panelOf(), e, false)));
             // Unlike the portal's own blocker, which lets the scene
             // behind a panel see the click as well, an overlay is a
             // layer: what happens on it does not reach what it covers.

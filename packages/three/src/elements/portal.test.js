@@ -16,6 +16,7 @@ import { withPanelOptions } from "./panelOptions.js";
 import { DEFAULT_HANDLE_WIDTH } from "./panelHandles.js";
 import { RendererContext } from "../render.js";
 import { recordingSource } from "../test/rumble.js";
+import { clientRect } from "../test/clientRect.js";
 
 /**
  * `createPortal`, with the loading frame's delay and minimum time off. A
@@ -246,6 +247,56 @@ describe("createPortal", () => {
     document.removeEventListener("click", listener);
     subscription.unsubscribe();
     portal.disconnect();
+  });
+
+  test("a click on the panel background carries the point the ray met", async () => {
+    // A `<canvas>` board is not `cursor: pointer`, so its clicks come
+    // through the blocker, and it finds the square from the point as it
+    // would under a mouse: where the ray met the panel, in the page's
+    // layout of the mirrored root.
+    const manager = new InteractionManager();
+    /** @type {THREE.Object3D[]} */
+    const added = [];
+    const originalAdd = manager.add.bind(manager);
+    manager.add = (object) => {
+      added.push(object);
+      originalAdd(object);
+    };
+    const ctx = InteractionContext.set({}, manager);
+    // A card the page shows, laid out 30 px in and 50 down.
+    const { root } = pageCard();
+    root.getBoundingClientRect = () => clientRect(30, 50, 300, 200);
+    const portal = createPortal(ctx, { root });
+    const parent = new THREE.Group();
+    portal.addTo(parent);
+    await settle(portal);
+
+    /** @type {string[]} */
+    const clicks = [];
+    /** @param {Event} event */
+    const listener = (event) => {
+      const { clientX, clientY } = /** @type {MouseEvent} */ (event);
+      // Rounded: the point is worked back out of the panel's world matrix.
+      const at = `${Math.round(clientX)},${Math.round(clientY)}`;
+      clicks.push(`${event.target === root ? "root" : "elsewhere"} at ${at}`);
+    };
+    document.addEventListener("click", listener);
+
+    const blocker = added.find(
+      (object) => object instanceof THREE.Mesh && object.geometry instanceof THREE.PlaneGeometry,
+    );
+    assert.ok(blocker);
+    // 12 px in and 7 down from the panel's top left corner, in its px.
+    parent.updateMatrixWorld(true);
+    const point = parent.children[0].localToWorld(new THREE.Vector3(12, 7, 0));
+    blocker.dispatchEvent(
+      /** @type {any} */ ({ type: "select", intersection: { point, object: blocker } }),
+    );
+    assert.deepEqual(clicks, ["root at 42,57"]);
+
+    document.removeEventListener("click", listener);
+    portal.disconnect();
+    root.remove();
   });
 
   test("a panel that is not opaque to rays keeps none of the background out of their way", async () => {

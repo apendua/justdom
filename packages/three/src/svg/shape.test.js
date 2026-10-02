@@ -1,7 +1,7 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
-import { InteractionContext, intersectVisible } from "../interactions.js";
+import { InteractionContext, InteractionManager, intersectVisible } from "../interactions.js";
 import { createMirror } from "../elements/mirror.js";
 import { setContentGroup } from "../elements/contentGroup.js";
 import { getControlRoot } from "../elements/pointerForwarding.js";
@@ -10,7 +10,6 @@ import { group, shape } from "./shape.js";
 
 /**
  * @import { Mesh, MeshBasicMaterial, Object3D } from "three";
- * @import { InteractionManager } from "../interactions.js";
  * @import { XREventMap } from "../core.js";
  */
 
@@ -998,6 +997,66 @@ describe("svg shape as a ray target", () => {
     dispatch("pointerleave");
     assert.equal(gData.xrHover, undefined);
     assert.ok(registered.includes(gObject), "the <g> is a ray target");
+
+    for (const subscription of subscriptions) {
+      subscription.unsubscribe();
+    }
+    disconnect();
+    root.remove();
+  });
+
+  test("a hit through a clickable <g> is a hit on a shape a ray can hit", () => {
+    // A clickable `<g>` is registered, so the manager walks its subtree. What
+    // that walk meets is still decided by each shape: its own
+    // `pointer-events`, and a shape that is not clickable itself (a
+    // `cursor: default` label) is reached through the group, as on a page.
+    const manager = new InteractionManager();
+    const ctx = InteractionContext.set({}, manager);
+    const root = document.createElementNS(SVG_NS, "svg");
+    const g = document.createElementNS(SVG_NS, "g");
+    const rect = document.createElementNS(SVG_NS, "rect");
+    g.setAttribute("style", "cursor: pointer");
+    for (const [name, value] of Object.entries(SQUARE)) {
+      rect.setAttribute(name, value);
+    }
+    g.appendChild(rect);
+    root.appendChild(g);
+    document.body.appendChild(root);
+    const { mirror, flush, disconnect } = observedMirror(root);
+    for (const node of [root, g, rect]) {
+      mirror.adopt(node);
+    }
+    /** @type {Object3D | undefined} */
+    let gObject;
+    /** @type {Object3D | undefined} */
+    let rectObject;
+    const subscriptions = [
+      group(ctx, g).subscribe((value) => {
+        gObject = value;
+      }),
+      shape(ctx, rect).subscribe((value) => {
+        rectObject = value;
+      }),
+    ];
+    assert.ok(gObject && rectObject);
+    gObject.add(rectObject);
+    const g3 = /** @type {Object3D<XREventMap>} */ (gObject);
+    const rect3 = /** @type {Object3D<XREventMap>} */ (rectObject);
+
+    // The label is not clickable itself: the hit belongs to the group.
+    const [fill] = hitsAt(g3, 20, 20);
+    assert.ok(fill && fill.parent === rect3, "the walk from the group meets the rect");
+    assert.equal(manager.getTarget(/** @type {Object3D<XREventMap>} */ (fill)), g3);
+
+    // Clickable itself, the rect is the innermost registered object.
+    rect.setAttribute("style", "cursor: pointer");
+    flush();
+    assert.equal(manager.getTarget(/** @type {Object3D<XREventMap>} */ (fill)), rect3);
+
+    // And it still decides whether it can be hit at all.
+    rect.setAttribute("style", "cursor: pointer; pointer-events: none");
+    flush();
+    assert.deepEqual(hitsAt(g3, 20, 20), [], "pointer-events: none under a clickable <g>");
 
     for (const subscription of subscriptions) {
       subscription.unsubscribe();

@@ -255,6 +255,42 @@ describe("pointer events", () => {
     assert.deepEqual(events, ["pointerenter", "pointerleave"]);
     subscription.unsubscribe();
   });
+  test("a leave reaches what the enter went through, even once the hit is taken out", () => {
+    // A clickable `<g>` around a clickable `<text>`, both registered. The app
+    // re-renders the label: the portal takes the old label's object out and
+    // drops its registration, and the ray, which was on it, is now on
+    // nothing. Walked up from the old mesh, the leave would stop at the
+    // detached label and the group would stay hovered.
+    const manager = new InteractionManager();
+    const controller = fakeController();
+    const loop = fakeFrameLoop();
+    const subscription = manager.addController(controller, loop.onAnimationFrame).subscribe();
+    const group = /** @type {THREE.Object3D<XREventMap>} */ (
+      /** @type {unknown} */ (new THREE.Object3D())
+    );
+    const label = /** @type {THREE.Object3D<XREventMap>} */ (
+      /** @type {unknown} */ (new THREE.Object3D())
+    );
+    label.add(targetMesh(5));
+    group.add(label);
+    group.updateMatrixWorld(true);
+    manager.add(group);
+    manager.add(label);
+
+    /** @type {string[]} */
+    const events = [];
+    group.addEventListener("pointerenter", () => events.push("enter"));
+    group.addEventListener("pointerleave", () => events.push("leave"));
+    loop.run();
+    assert.deepEqual(events, ["enter"]);
+
+    group.remove(label);
+    manager.remove(label);
+    manager.updateIntersections();
+    loop.run();
+    assert.deepEqual(events, ["enter", "leave"], "the group was told the ray left it");
+    subscription.unsubscribe();
+  });
 });
 
 describe("select", () => {
@@ -601,5 +637,41 @@ describe("getIntersection", () => {
 
     inner.visible = false;
     assert.equal(manager.getIntersection(controller), undefined, "one level up does it too");
+  });
+
+  test("an object under a registered ancestor is cast once, by the ancestor's walk", () => {
+    // A clickable `<g>` around clickable shapes, or a button around an icon:
+    // the ancestor's walk reaches every mesh below it, so the shape's own
+    // registration would cast the same meshes a second time.
+    const manager = new InteractionManager();
+    const group = /** @type {THREE.Object3D<XREventMap>} */ (
+      /** @type {unknown} */ (new THREE.Object3D())
+    );
+    const shape = /** @type {THREE.Object3D<XREventMap>} */ (
+      /** @type {unknown} */ (new THREE.Object3D())
+    );
+    const mesh = targetMesh(5);
+    shape.add(mesh);
+    group.add(shape);
+    group.updateMatrixWorld(true);
+    manager.add(group);
+    manager.add(shape);
+
+    let casts = 0;
+    const raycast = mesh.raycast.bind(mesh);
+    mesh.raycast = (raycaster, intersections) => {
+      casts += 1;
+      raycast(raycaster, intersections);
+    };
+    const controller = fakeController();
+
+    assert.equal(manager.getIntersection(controller)?.object, mesh);
+    assert.equal(casts, 1, "the mesh is cast once, not once per registration above it");
+
+    // Taken out from under the group, the shape is its own walk again.
+    group.remove(shape);
+    casts = 0;
+    assert.equal(manager.getIntersection(controller)?.object, mesh);
+    assert.equal(casts, 1);
   });
 });

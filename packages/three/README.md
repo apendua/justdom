@@ -353,7 +353,9 @@ clickable element around it takes `data-xr-hover` and `data-xr-active` as
 well, as `:hover` and `:active` would. Only the clickable ones do: an
 ancestor that is not a ray target takes neither, where on a page it would
 match `:hover`. The ray event stops at the outermost of them, so nothing
-outside the panel hears a press the panel took.
+outside the panel hears a press the panel took. Nesting costs no extra ray
+tests: a registered object inside another is reached by the outer one's
+walk and is not cast again on its own.
 
 It does that without depending on `justdom`. What `dom()` takes is a
 `Mountable` — a tree that has not been put anywhere yet, exposing one method

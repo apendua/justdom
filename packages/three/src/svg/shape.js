@@ -1211,7 +1211,12 @@ export function clipUniforms(chain) {
  * @param {WeakKey} ctx
  * @param {Element} element
  * @param {() => boolean} hittable Whether a ray can hit any of it. One that
- *   no ray can hit is not registered, even under `cursor: pointer`.
+ *   no ray can hit is not registered, even under `cursor: pointer`. A group
+ *   passes true: it is registered on `cursor` alone, whatever it holds, and
+ *   its walk is the one its shapes would otherwise have had (the manager
+ *   casts a registered object under a registered ancestor once, from the
+ *   ancestor), so a group with nothing a ray can hit costs no more than
+ *   its shapes would have cost on their own.
  */
 export function rayTarget(ctx, element, hittable) {
   const clickable = new Derived(() => isClickable(asHtml(element)));
@@ -1433,7 +1438,9 @@ export function shape(ctx, element, { instance = null, decorate } = {}) {
  * Under `cursor: pointer` it is a ray target, as a clickable box is, so a
  * `.node[data-xr-hover] rect` rule restyles the shape under the ray. A hit
  * on it is a hit on one of its shapes, and each shape keeps its own
- * `pointer-events`.
+ * `pointer-events`. A shape that is not clickable itself, a label under
+ * `cursor: default`, is reached through the group. Template content is not
+ * a ray target.
  *
  * @param {WeakKey} ctx
  * @param {Element} element
@@ -1459,8 +1466,9 @@ export function group(ctx, element, { instance = null, decorate = [] } = {}) {
     // A clickable group is hovered and pressed with the shape the ray is on,
     // as `:hover` and `:active` reach the `<g>` around a shape on a page. It
     // has no meshes of its own, so its hits are its shapes'. Template content
-    // is never hit, as a shape's is not.
-    rayTarget(ctx, element, () => instance === null),
+    // is never hit, as a shape's is not, and a copy does not even read the
+    // template's style to find that out.
+    ...(instance === null ? [rayTarget(ctx, element, () => true)] : []),
     ...decorate,
   ]);
 }

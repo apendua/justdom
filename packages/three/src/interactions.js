@@ -130,15 +130,35 @@ export class InteractionManager {
    * @param {XREventMap[TEvent] & THREE.BaseEvent<TEvent>} event
    */
   dispatch(object, event) {
+    this.#dispatchAlong(this.#path(object), event);
+  }
+
+  /**
+   * The objects an event sent to `object` goes through: the object and its
+   * parents, up to the controller.
+   *
+   * @param {THREE.Object3D<XREventMap>} object
+   * @returns {THREE.Object3D<XREventMap>[]}
+   */
+  #path(object) {
     /** @type {THREE.Object3D<XREventMap>[]} */
-    const allTargets = [];
+    const path = [];
     while (object && !this.#controllers.has(object)) {
-      allTargets.push(object);
+      path.push(object);
       // This is a little bit naive because we cannot really guarantee that
       // the parent is of the same type as the object.
       object = /** @type {THREE.Object3D<XREventMap>} */ (object.parent);
     }
-    for (const target of allTargets) {
+    return path;
+  }
+
+  /**
+   * @template {InteractionEventType} TEvent
+   * @param {THREE.Object3D<XREventMap>[]} path
+   * @param {XREventMap[TEvent] & THREE.BaseEvent<TEvent>} event
+   */
+  #dispatchAlong(path, event) {
+    for (const target of path) {
       target.dispatchEvent(event);
       if (this.#done.get(event)) {
         return;
@@ -202,6 +222,17 @@ export class InteractionManager {
       let squeezedTarget;
       /** @type {THREE.Object3D<XREventMap> | undefined} */
       let targetedObject;
+      /**
+       * The objects the enter went through, which are the ones the leave
+       * has to reach. Not walked again from `targetedObject` when the ray
+       * leaves: by then the object it met may have been taken out of the
+       * scene (a label re-rendered), and a walk from a detached object stops
+       * at it, leaving every hovered ancestor hovered. Taken when the mesh
+       * under the ray changes, not every frame.
+       *
+       * @type {THREE.Object3D<XREventMap>[]}
+       */
+      let targetedPath = [];
       /**
        * What the ray is on, as opposed to which of its meshes it met: a
        * hand drifting from a button's label onto its background has not
@@ -381,7 +412,7 @@ export class InteractionManager {
             });
           } else {
             if (targetedObject) {
-              this.dispatch(targetedObject, {
+              this.#dispatchAlong(targetedPath, {
                 type: "pointerleave",
                 inputSource: source,
                 // Set with `targetedObject`, so as defined as it is.
@@ -403,10 +434,13 @@ export class InteractionManager {
               intersection,
             });
           }
+          if (intersection.object !== targetedObject) {
+            targetedPath = this.#path(intersection.object);
+          }
           targetedObject = intersection.object;
           targetedTarget = target;
         } else if (!intersection && targetedObject) {
-          this.dispatch(targetedObject, {
+          this.#dispatchAlong(targetedPath, {
             type: "pointerleave",
             inputSource: inputSource(),
             registeredTarget: /** @type {THREE.Object3D<XREventMap>} */ (targetedTarget),
@@ -417,6 +451,7 @@ export class InteractionManager {
           });
           targetedObject = undefined;
           targetedTarget = undefined;
+          targetedPath = [];
         }
       };
 
@@ -490,13 +525,43 @@ export class InteractionManager {
     /** @type {THREE.Intersection<THREE.Object3D<XREventMap>>[]} */
     const intersections = [];
     for (const object of this.#objects) {
-      if (!drawn(object)) {
+      if (!this.#castsOwnWalk(object)) {
         continue;
       }
       intersectVisible(raycaster, object, intersections);
     }
     intersections.sort(byDistance);
     return intersections[0];
+  }
+
+  /**
+   * Whether a registered object is cast from itself: drawn, and not under
+   * another registered object. One walk up the parents answers both.
+   *
+   * Drawn, because `intersectVisible` reads `visible` from the registered
+   * object downwards and cannot see what is above it. The registration set
+   * is flat, so a scene that hides a whole card the way the renderer
+   * expects, one flag on the group it hangs off, used to hide it from the
+   * draw and from nothing else: the buttons and the backing plane a
+   * projected panel registers for itself went on answering rays.
+   *
+   * Not under another registered object, because that one's walk recurses
+   * every child and prunes on the same `visible` flags, so it already meets
+   * every mesh below. A clickable `<g>` around clickable shapes, or a button
+   * around an icon, would otherwise cast each of them once per registration
+   * above it. The hits are the same set without the duplicates, and
+   * `getTarget` still resolves each to the innermost registered object.
+   *
+   * @param {THREE.Object3D<XREventMap>} object
+   * @returns {boolean}
+   */
+  #castsOwnWalk(object) {
+    for (let node = object.parent; node; node = node.parent) {
+      if (!node.visible || this.#objects.has(/** @type {THREE.Object3D<XREventMap>} */ (node))) {
+        return false;
+      }
+    }
+    return true;
   }
 
   cleanup() {
@@ -515,36 +580,6 @@ function byDistance(a, b) {
 }
 
 /**
- * Whether anything *above* a registered object has culled it out of the
- * draw.
- *
- * `intersectVisible` reads `visible` from the registered object downwards,
- * which is everything three's own recursion would have looked at. What it
- * cannot see is everything upwards, and the registration set is flat — each
- * entry is the root of its own walk, and nothing ever asks who its parents
- * are. So a scene that hides a whole card the way the renderer expects, by
- * dropping one flag on the group it hangs off, hid it from the draw and from
- * nothing else: every button and every backing plane registered inside it
- * went on answering rays, and the cursor went on landing on a card that was
- * not there. A projected panel is the case that bites, since its blocker and
- * its buttons register themselves and an app has no way to reach them.
- *
- * One walk up the parents per registered object per cast, against a subtree
- * of ray tests saved whenever it answers no.
- *
- * @param {THREE.Object3D<XREventMap>} object
- * @returns {boolean}
- */
-function drawn(object) {
-  for (let node = object.parent; node; node = node.parent) {
-    if (!node.visible) {
-      return false;
-    }
-  }
-  return true;
-}
-
-/**
  * Three's own `intersectObjects` recursion, minus the one thing it refuses
  * to consult: `visible`. The raycaster deliberately ignores visibility — a
  * defensible default for a scene tool — but here it made every hidden row
@@ -553,9 +588,9 @@ function drawn(object) {
  * per controller per frame to hit nothing anyone could see. The mirror's
  * contract is the renderer's: an object culled out of the draw is out of
  * the raycast, and its subtree with it — which is what `div()` already
- * promises when it drops a hidden row's registration. `drawn` above is the
- * other half of the same contract, for what hangs over a registered object
- * rather than under it.
+ * promises when it drops a hidden row's registration. The manager's
+ * `#castsOwnWalk` is the other half of the same contract, for what hangs
+ * over a registered object rather than under it.
  *
  * @param {THREE.Raycaster} raycaster
  * @param {THREE.Object3D<XREventMap>} object

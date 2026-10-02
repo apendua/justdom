@@ -46,7 +46,8 @@ export function svgElements() {
           // clip chain — and is drawn as exactly that. Its shapes hang off
           // its content group like any children, and the content group
           // carries the viewport, so they are in user space below it. One
-          // nested inside another is a group whose matrix is its viewport.
+          // nested inside another is a group whose matrix is its viewport,
+          // and a ray target under `cursor: pointer` as any group is.
           return isSvgRoot(element)
             ? box(ctx, /** @type {HTMLElement} */ (element), {
                 contentMatrix: (target) => {

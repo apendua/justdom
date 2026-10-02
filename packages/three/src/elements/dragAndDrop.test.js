@@ -7,6 +7,7 @@ import { drain, flushFrame, settle } from "../test/portalHarness.js";
 import { describeScroller } from "../test/scroller.js";
 import { createDragAndDrop } from "./dragAndDrop.js";
 import { createPortal } from "./portal.js";
+import { clientRect } from "../test/clientRect.js";
 
 /**
  * @param {Element} element
@@ -16,18 +17,7 @@ import { createPortal } from "./portal.js";
  * @param {number} height
  */
 function layOut(element, left, top, width, height) {
-  element.getBoundingClientRect = () =>
-    /** @type {DOMRect} */ ({
-      left,
-      top,
-      width,
-      height,
-      right: left + width,
-      bottom: top + height,
-      x: left,
-      y: top,
-      toJSON: () => ({}),
-    });
+  element.getBoundingClientRect = () => clientRect(left, top, width, height);
 }
 
 /**

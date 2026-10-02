@@ -5,10 +5,12 @@ import { InteractionContext, InteractionManager } from "../interactions.js";
 import { shape } from "../svg/shape.js";
 import { getContentGroup } from "./contentGroup.js";
 import { box } from "./div.js";
+import { registerPanel } from "./dragAndDrop.js";
 import { createMirror } from "./mirror.js";
 import { scrollDrags } from "./scroll.js";
 import { createHaptics, HapticsContext } from "./haptics.js";
 import { recordingSource } from "../test/rumble.js";
+import { clientRect } from "../test/clientRect.js";
 
 /**
  * @import { XREventMap } from "../core.js";
@@ -35,10 +37,18 @@ if (typeof globalThis.DOMParser === "undefined") {
 const SVG_NS = "http://www.w3.org/2000/svg";
 
 /**
+ * The ray events `nest` can dispatch.
+ *
+ * @typedef {"selectstart" | "selectend" | "select" | "pointermove"} RayEventType
+ */
+
+/**
  * An outer element with an inner one in it, projected the way the portal
  * projects them: the inner object in the outer's content group, and the
  * outer under an object standing for the panel. The manager is a real one,
- * because what is under test is where its dispatch stops.
+ * because what is under test is where its dispatch stops. The outer is
+ * registered as the panel's top, as the portal registers its container, so
+ * that a press can ask where on the page it landed.
  *
  * @param {object} options
  * @param {Element} options.outer
@@ -67,16 +77,25 @@ function nest({ outer, inner, build, haptics = null }) {
   const [outerObject, innerObject] = objects;
   panel.add(outerObject);
   getContentGroup(outerObject).add(innerObject);
+  const unregister = registerPanel(outerObject, /** @type {HTMLElement} */ (outer), (node) =>
+    node === outer ? outerObject : node === inner ? innerObject : undefined,
+  );
 
   /** @type {string[]} */
   const events = [];
-  for (const type of ["mousedown", "mouseup", "click"]) {
-    document.addEventListener(type, record);
+  /** @type {string[]} */
+  const points = [];
+  // `mousemove` does not bubble, so everything is heard on the way down.
+  const types = ["mousedown", "mouseup", "click", "mousemove"];
+  for (const type of types) {
+    document.addEventListener(type, record, true);
   }
   /** @param {Event} event */
   function record(event) {
     const target = /** @type {Element} */ (event.target);
     events.push(`${event.type} on ${target.localName}`);
+    const { clientX, clientY, button } = /** @type {MouseEvent} */ (event);
+    points.push(`${event.type} at ${clientX},${clientY} button ${button}`);
   }
 
   /** @type {string[]} */
@@ -100,6 +119,10 @@ function nest({ outer, inner, build, haptics = null }) {
 
   return {
     events,
+    /** Where each of `events` happened on the page, and with which button. */
+    points,
+    /** The outer element's object, whose frame is the panel's px. */
+    outerObject,
     escaped,
     controller,
     /** The hands whose drag gesture was told the press is over. */
@@ -108,26 +131,33 @@ function nest({ outer, inner, build, haptics = null }) {
      * A ray event, dispatched the way the manager dispatches one: to the
      * mesh the ray met, and up from there.
      *
-     * @param {"selectstart" | "selectend" | "select"} type
+     * @param {RayEventType} type
      * @param {XRInputSource | null} [inputSource] The hand it came from.
+     * @param {THREE.Vector3} [point] Where the ray is, in world space, if
+     *   the event says.
+     * @param {THREE.Object3D} [on] What the ray is on at `point`: the mesh
+     *   it was dispatched to unless said otherwise.
      */
-    press(type, inputSource = null) {
+    press(type, inputSource = null, point, on) {
       const mesh = innerObject.children.find((child) => child instanceof THREE.Mesh) ?? innerObject;
+      const event = {
+        type,
+        controller,
+        inputSource,
+        target: mesh,
+        originalTarget: mesh,
+        ...(point && { intersection: { point, object: on ?? mesh } }),
+      };
       manager.dispatch(
         /** @type {THREE.Object3D<XREventMap>} */ (mesh),
-        /** @type {never} */ ({
-          type,
-          controller,
-          inputSource,
-          target: mesh,
-          originalTarget: mesh,
-        }),
+        /** @type {never} */ (event),
       );
     },
     teardown() {
-      for (const type of ["mousedown", "mouseup", "click"]) {
-        document.removeEventListener(type, record);
+      for (const type of types) {
+        document.removeEventListener(type, record, true);
       }
+      unregister();
       subscriptions.forEach((subscription) => subscription.unsubscribe());
       outer.remove();
     },
@@ -284,18 +314,7 @@ describe("a press on nested clickable elements", () => {
   test("on a shape inside a clickable <svg>, is the shape's and presses the <svg>", () => {
     const root = document.createElementNS(SVG_NS, "svg");
     root.setAttribute("style", "cursor: pointer");
-    root.getBoundingClientRect = () =>
-      /** @type {DOMRect} */ ({
-        left: 0,
-        top: 0,
-        right: 100,
-        bottom: 50,
-        width: 100,
-        height: 50,
-        x: 0,
-        y: 0,
-        toJSON: () => ({}),
-      });
+    root.getBoundingClientRect = () => clientRect(0, 0, 100, 50);
     const rect = document.createElementNS(SVG_NS, "rect");
     for (const [name, value] of Object.entries({
       x: "10",
@@ -325,6 +344,96 @@ describe("a press on nested clickable elements", () => {
     s.press("select");
     assert.deepEqual(s.events, ["mousedown on rect", "mouseup on rect", "click on rect"]);
     assert.deepEqual(s.escaped, []);
+    s.teardown();
+  });
+
+  test("carries the point the ray met, on the page", () => {
+    const outer = html("button", "cursor: pointer");
+    const inner = html("span", "cursor: pointer");
+    outer.appendChild(inner);
+    outer.getBoundingClientRect = () => clientRect(100, 40, 80, 30);
+    const s = nest({
+      outer,
+      inner,
+      build: (ctx, element) => box(ctx, /** @type {HTMLElement} */ (element)),
+    });
+    // Wherever the scene hangs the panel: what counts is where the point is
+    // in the frame of the panel's top element, here 12 px in and 7 down.
+    s.outerObject.updateMatrixWorld(true);
+    const point = s.outerObject.localToWorld(new THREE.Vector3(12, 7, 0));
+
+    s.press("pointermove", null, point);
+    s.press("selectstart", null, point);
+    s.press("selectend", null, point);
+    s.press("select", null, point);
+    assert.deepEqual(s.points, [
+      // One for each of the two, since a move is sent to each element the
+      // ray is over and does not bubble.
+      "mousemove at 112,47 button 0",
+      "mousemove at 112,47 button 0",
+      "mousedown at 112,47 button 0",
+      "mouseup at 112,47 button 0",
+      "click at 112,47 button 0",
+    ]);
+    s.teardown();
+  });
+
+  test("released with the ray off its panel, says nowhere on the page", () => {
+    const outer = html("button", "cursor: pointer");
+    const inner = html("span", "cursor: pointer");
+    outer.appendChild(inner);
+    outer.getBoundingClientRect = () => clientRect(100, 40, 80, 30);
+    const s = nest({
+      outer,
+      inner,
+      build: (ctx, element) => box(ctx, /** @type {HTMLElement} */ (element)),
+    });
+    s.outerObject.updateMatrixWorld(true);
+    const point = s.outerObject.localToWorld(new THREE.Vector3(12, 7, 0));
+    // Another panel, or anything else in the scene: what the ray is on as
+    // the trigger opens. Its point means nothing on this panel's page.
+    const elsewhere = new THREE.Object3D();
+
+    s.press("selectstart", null, point);
+    s.press("selectend", null, point, elsewhere);
+    assert.deepEqual(s.points, ["mousedown at 112,47 button 0", "mouseup at 0,0 button 0"]);
+    s.teardown();
+  });
+
+  test("of a move is taken where the panel was last probed, and a press probes again", () => {
+    // A move is sent every frame and reads no layout; a press is one event
+    // and reads it, so it is exact however the page has moved since.
+    const outer = html("button", "cursor: pointer");
+    const inner = html("span", "cursor: pointer");
+    outer.appendChild(inner);
+    let left = 100;
+    let reads = 0;
+    outer.getBoundingClientRect = () => {
+      reads += 1;
+      return clientRect(left, 40, 80, 30);
+    };
+    const s = nest({
+      outer,
+      inner,
+      build: (ctx, element) => box(ctx, /** @type {HTMLElement} */ (element)),
+    });
+    s.outerObject.updateMatrixWorld(true);
+    const point = s.outerObject.localToWorld(new THREE.Vector3(12, 7, 0));
+
+    s.press("selectstart", null, point);
+    // The page scrolls the panel's element 100 px along while the trigger
+    // is held, which no move hears of.
+    left = 200;
+    const before = reads;
+    s.press("pointermove", null, point);
+    assert.equal(reads, before, "a move reads no layout");
+    s.press("selectend", null, point);
+    assert.deepEqual(s.points, [
+      "mousedown at 112,47 button 0",
+      "mousemove at 112,47 button 0",
+      "mousemove at 112,47 button 0",
+      "mouseup at 212,47 button 0",
+    ]);
     s.teardown();
   });
 });

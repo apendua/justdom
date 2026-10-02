@@ -1,5 +1,6 @@
 import { after, before, describe, test } from "node:test";
 import assert from "node:assert/strict";
+import { clientRect } from "../test/clientRect.js";
 import * as THREE from "three";
 import { InteractionContext, InteractionManager } from "../interactions.js";
 import { createPortal as createHeldPortal } from "./portal.js";
@@ -124,17 +125,7 @@ before(() => {
         return real;
       }
     }
-    return /** @type {DOMRect} */ ({
-      left: 0,
-      top: 0,
-      right: 100,
-      bottom: 20,
-      width: 100,
-      height: 20,
-      x: 0,
-      y: 0,
-      toJSON: () => ({}),
-    });
+    return clientRect(0, 0, 100, 20);
   };
 });
 after(() => {

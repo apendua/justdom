@@ -1,5 +1,6 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
+import { clientRect } from "../test/clientRect.js";
 import * as THREE from "three";
 import { InteractionContext, intersectVisible } from "../interactions.js";
 import { createMirror } from "../elements/mirror.js";
@@ -72,18 +73,7 @@ function setup(
   if (viewBox) {
     root.setAttribute("viewBox", viewBox);
   }
-  root.getBoundingClientRect = () =>
-    /** @type {DOMRect} */ ({
-      left: 0,
-      top: 0,
-      right: width,
-      bottom: height,
-      width,
-      height,
-      x: 0,
-      y: 0,
-      toJSON: () => ({}),
-    });
+  root.getBoundingClientRect = () => clientRect(0, 0, width, height);
   const element = document.createElementNS(SVG_NS, tag);
   for (const [name, value] of Object.entries(attributes)) {
     element.setAttribute(name, value);

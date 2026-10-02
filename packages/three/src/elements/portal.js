@@ -550,10 +550,11 @@ function buildPortal(ctx, ownOptions = {}) {
   nodeToObject.set(containerElement, containerObject);
   objectToNode.set(containerObject, containerElement);
 
-  // What a drag and drop asks of this panel: which element is under the
-  // ray, any element and not only the ray targets, since a list that takes
-  // drops is rarely a button (see `elementAt`), and which object draws an
-  // element, for a picture of what is dragged.
+  // What a ray asks of this panel. A drag and drop asks which element is
+  // under it, any element and not only the ray targets, since a list that
+  // takes drops is rarely a button (see `elementAt`), and which object draws
+  // an element, for a picture of what is dragged. A press asks where the
+  // ray is on the page (see `clientPointOf`).
   const unregisterPanel = registerPanel(containerObject, containerElement, (node) =>
     nodeToObject.get(node),
   );

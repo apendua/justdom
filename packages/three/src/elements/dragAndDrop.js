@@ -70,13 +70,18 @@ const GHOST_OPACITY = 0.7;
 const GHOST_RENDER_ORDER = 1e9;
 
 /**
- * What a drag needs of a panel: its root element, and its own record of
- * which object draws which element, which is also what says what is under
- * the ray (see `elementAt`).
+ * What a ray needs of a panel: its container object, its root element, its
+ * own record of which object draws which element, which is also what says
+ * what is under the ray (see `elementAt`), and where the page last laid the
+ * root element out (see `probePanel`).
  *
  * @typedef {object} Panel
+ * @property {THREE.Object3D} object
  * @property {HTMLElement} element
  * @property {(node: Node) => THREE.Object3D | undefined} objectOf
+ * @property {THREE.Vector2} origin The root element's client rect's top
+ *   left corner, as last probed.
+ * @property {boolean} probed Whether `origin` has been probed at all.
  */
 
 /**
@@ -89,8 +94,8 @@ const panels = new WeakMap();
 
 /**
  * Let a drag ask this panel what is under the ray and which object draws an
- * element. The portal registers each panel it builds, and unregisters it
- * when it goes.
+ * element, and a press where the ray is on the page. The portal registers
+ * each panel it builds, and unregisters it when it goes.
  *
  * @param {THREE.Object3D} object The panel's container object.
  * @param {HTMLElement} element The panel's root element.
@@ -98,7 +103,13 @@ const panels = new WeakMap();
  * @returns {() => void} Unregisters.
  */
 export function registerPanel(object, element, objectOf) {
-  panels.set(object, { element, objectOf });
+  panels.set(object, {
+    object,
+    element,
+    objectOf,
+    origin: new THREE.Vector2(),
+    probed: false,
+  });
   return () => {
     panels.delete(object);
   };
@@ -187,11 +198,9 @@ const scratch = new THREE.Vector3();
  * @param {(node: Node) => THREE.Object3D | undefined} objectOf The panel's
  *   own record of which object draws which element.
  * @param {THREE.Vector3} point In world space.
- * @param {THREE.Vector2} local Written with the point in the found
- *   element's px.
  * @returns {HTMLElement | null}
  */
-function elementAt(element, objectOf, point, local) {
+function elementAt(element, objectOf, point) {
   const object = objectOf(element);
   if (!object || !object.visible) {
     return null;
@@ -200,7 +209,7 @@ function elementAt(element, objectOf, point, local) {
   // not boxes; the `<svg>` is the target, as it is for a click.
   if (!isSvgRoot(element)) {
     for (let child = element.lastElementChild; child; child = child.previousElementSibling) {
-      const hit = elementAt(/** @type {HTMLElement} */ (child), objectOf, point, local);
+      const hit = elementAt(/** @type {HTMLElement} */ (child), objectOf, point);
       if (hit) {
         return hit;
       }
@@ -227,8 +236,85 @@ function elementAt(element, objectOf, point, local) {
   ) {
     return null;
   }
-  local.set(scratch.x, scratch.y);
   return element;
+}
+
+/**
+ * Where a point on a panel is on the page, in client coordinates: the point
+ * taken into the frame of the element at the panel's top, its border box
+ * with the origin at the top left and y down, and moved by where the page
+ * lays that element out. The panel draws what is inside the element where
+ * the page lays it out, scrolls and transforms included, so the point is
+ * where a mouse over the same spot on the page would be.
+ *
+ * It is what the mouse events a ray sends carry as `clientX` and `clientY`
+ * (see `pointerForwarding.js`), so that a page which works out what was
+ * pressed from where it was pressed, a board drawn as one `<svg>` path or
+ * a canvas, reads the place the ray met; and what a drag's events carry.
+ * One matrix and a corner of the root element's client rect, whatever the
+ * panel holds. The corner is the one last read by `probePanel`, so a caller
+ * asking for a point that has to be exact probes first.
+ *
+ * The point is in the page's layout, so it is right for arithmetic against
+ * the page's own rects, which is what a page that hit-tests by position
+ * does. It is on screen only where the page shows the panel's element. A
+ * panel built from a tree lives in a container the portal parks off
+ * screen, so its points are off the viewport, and `elementFromPoint` finds
+ * nothing at them.
+ *
+ * @param {Panel} panel As `getPanel` finds it.
+ * @param {THREE.Vector3} point In world space, on the panel.
+ * @param {THREE.Vector2} client Written with the point.
+ * @returns {void}
+ */
+export function clientPointOf(panel, point, client) {
+  panel.object.worldToLocal(scratch.copy(point));
+  clientPointAt(panel, scratch.x, scratch.y, client);
+}
+
+/**
+ * Read where the page lays the panel's root element out, for the points
+ * taken from then on. A client rect is a layout read, and a forced one
+ * whenever the page has touched the DOM since the last, so it is not taken
+ * for every point: a ray moving over a panel sends a point every frame, and
+ * reads the corner it was last given. A press, its release, its click and
+ * the start of a drag are each one event, probe first, and are exact
+ * however the page has moved since; a move is as exact as the last of them.
+ *
+ * @param {Panel} panel
+ * @returns {void}
+ */
+export function probePanel(panel) {
+  const rect = panel.element.getBoundingClientRect();
+  panel.origin.set(rect.left, rect.top);
+  panel.probed = true;
+}
+
+/**
+ * `clientPointOf` for a point already in the panel's own px.
+ *
+ * @param {Panel} panel
+ * @param {number} x
+ * @param {number} y
+ * @param {THREE.Vector2} client
+ * @returns {void}
+ */
+function clientPointAt(panel, x, y, client) {
+  if (!panel.probed) {
+    probePanel(panel);
+  }
+  client.set(panel.origin.x + x, panel.origin.y + y);
+}
+
+/**
+ * The panel an object is in, if it is in one.
+ *
+ * @param {THREE.Object3D | null} object
+ * @returns {Panel | null}
+ */
+export function getPanel(object) {
+  const panel = panelOf(object);
+  return panel ? (panels.get(panel) ?? null) : null;
 }
 
 /**
@@ -371,7 +457,6 @@ export function createDragAndDrop(requestFrames, readHit, snapshots) {
   const plane = new THREE.Plane();
   const onPlane = new THREE.Vector3();
   const inPanel = new THREE.Vector2();
-  const local = new THREE.Vector2();
 
   /**
    * Where the hand's ray crosses the source panel's plane, in world space in
@@ -443,8 +528,11 @@ export function createDragAndDrop(requestFrames, readHit, snapshots) {
    */
   function start(session) {
     const { source, grab } = session;
-    const rect = source.getBoundingClientRect();
-    session.client.set(rect.left + grab.x, rect.top + grab.y);
+    // Still up: `tick` finishes a session whose panel has gone before it
+    // gets here.
+    const panel = /** @type {Panel} */ (panels.get(session.panel));
+    probePanel(panel);
+    clientPointAt(panel, session.start.x, session.start.y, session.client);
     const dataTransfer = new PanelDataTransfer();
     session.dataTransfer = dataTransfer;
     if (fire(session, "dragstart", source, { cancelable: true, mode: "readwrite" })) {
@@ -475,7 +563,7 @@ export function createDragAndDrop(requestFrames, readHit, snapshots) {
     // press, and the mirror taken down the object it had then. Only of an
     // element the panel draws; one in another panel, culled or hidden would
     // be a picture of nothing, and is the outline instead.
-    const object = /** @type {Panel} */ (panels.get(session.panel)).objectOf(shown);
+    const object = panel.objectOf(shown);
     session.snapshot =
       object?.visible && !isVisibilityHidden(/** @type {HTMLElement} */ (shown))
         ? snapshots.take(session.panel, object, { x: 0, y: 0, width, height })
@@ -506,12 +594,10 @@ export function createDragAndDrop(requestFrames, readHit, snapshots) {
     /** @type {HTMLElement | null} */
     let under = null;
     if (hit && panel) {
-      const { element, objectOf } = /** @type {Panel} */ (panels.get(panel));
-      under = elementAt(element, objectOf, hit.point, local);
-      if (under) {
-        const rect = under.getBoundingClientRect();
-        session.client.set(rect.left + local.x, rect.top + local.y);
-      }
+      const registered = /** @type {Panel} */ (panels.get(panel));
+      under = elementAt(registered.element, registered.objectOf, hit.point);
+      // Once a frame, as a move is, so against the corner last probed.
+      clientPointOf(registered, hit.point, session.client);
     }
     if (fire(session, "drag", session.source, { cancelable: true })) {
       session.operation = "none";

@@ -258,6 +258,7 @@ export class InteractionManager {
             target: selectedObject,
             originalTarget: selectedObject,
             controller,
+            intersection,
           });
           this.dispatch(selectedObject, {
             type: "select",
@@ -274,6 +275,7 @@ export class InteractionManager {
             target: selectedObject,
             originalTarget: selectedObject,
             controller,
+            intersection,
           });
           this.dispatch(selectedObject, {
             type: "selectmissed",

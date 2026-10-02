@@ -142,7 +142,7 @@ async function sortableList({
   const events = [];
   /** @type {Record<string, unknown>} */
   const seen = {};
-  const types = ["mousedown", "mouseup", "mousemove", "click"];
+  const types = ["mousedown", "mouseup", "mousemove", "click", "contextmenu"];
   const dragTypes = ["dragstart", "drag", "dragenter", "dragover", "dragleave", "drop", "dragend"];
   /** @param {Event} event */
   const record = (event) => {
@@ -219,7 +219,7 @@ async function sortableList({
         controller.rotation.set(0, Math.PI, 0);
         moved();
       },
-      /** @param {"selectstart" | "selectend"} type */
+      /** @param {"selectstart" | "selectend" | "squeezestart" | "squeezeend"} type */
       trigger: (type) => {
         controller.dispatchEvent(/** @type {never} */ ({ type, data: null }));
       },
@@ -305,6 +305,25 @@ describe("drag and drop in a panel", () => {
     s.aim(150, 170);
     flushFrame();
     assert.deepEqual(s.events, [], "the drag is over");
+    s.teardown();
+  });
+
+  test("the grip sends no contextmenu while the hand carries a row", async () => {
+    // A page in the middle of a drag hears no other button from a mouse.
+    const s = await sortableList();
+
+    s.aim(150, 20);
+    s.trigger("selectstart");
+    s.aim(150, 60);
+    s.events.length = 0;
+    s.trigger("squeezestart");
+    s.trigger("squeezeend");
+    assert.deepEqual(
+      s.events.filter((event) => event.startsWith("contextmenu")),
+      [],
+      "the row under the ray hears no right-click",
+    );
+    s.trigger("selectend");
     s.teardown();
   });
 

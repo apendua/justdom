@@ -2460,6 +2460,30 @@ describe("a node read before any portal adopted it", () => {
     parent.remove();
   });
 
+  test("has its style read again too, not only what has a new value", async () => {
+    // The style context is a sum of counters, and the fresh record's all
+    // read 0: the adoption has to move the sum on its own, or a style cached
+    // before the record stays as it was read, deaf to what the page did to
+    // the node in between.
+    const element = document.createElement("div");
+    document.body.appendChild(element);
+    /** @type {string[]} */
+    const seen = [];
+    const subscription = toObservable(
+      new Derived(() => getComputedStyleCached(element).position || "static"),
+    ).subscribe((position) => seen.push(position));
+    assert.deepEqual(seen, ["static"]);
+
+    // Restyled before any portal adopts it, which no mirror hears.
+    element.style.position = "absolute";
+    const mirror = createMirror();
+    mirror.adopt(element);
+    await Promise.resolve();
+    assert.equal(seen.at(-1), "absolute", "the style cached before the record is read again");
+    subscription.unsubscribe();
+    element.remove();
+  });
+
   test("is told from a microtask, so a reader that adopts is not re-entered", async () => {
     // The SVG plugin adopts a template, and the list marker an item's
     // children, from inside a `Derived`. A frame callback evaluating such a

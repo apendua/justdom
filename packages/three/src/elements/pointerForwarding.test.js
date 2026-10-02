@@ -584,8 +584,40 @@ describe("a press on nested clickable elements", () => {
     assert.deepEqual(
       s.escaped,
       ["squeezestart", "squeezeend", "squeezemissed"],
-      "and the grab's end reaches whatever took its start",
+      "and the grab's end reaches whatever took its start, its miss let past with it",
     );
+    s.teardown();
+  });
+
+  test("of the grip while the hand scrolls a list is no press on a row", async () => {
+    // The trigger is held on the list's own padding and scrolling it; the
+    // grip closing and opening meanwhile is no right-click on the row that
+    // happens to be under the ray, as a mouse's other button would not be
+    // heard mid-drag on a page.
+    const outer = html("div", "overflow: hidden");
+    describeScroller(outer, { client: 100, scroll: 400 });
+    const inner = html("button", "cursor: pointer");
+    outer.appendChild(inner);
+    const { source, played } = recordingSource();
+    const s = nest({
+      outer,
+      inner,
+      build: (ctx, element) => box(ctx, /** @type {HTMLElement} */ (element)),
+      haptics: createHaptics({ flavor: "key" }),
+    });
+    s.outerObject.updateMatrixWorld(true);
+    const point = s.outerObject.localToWorld(new THREE.Vector3(12, 7, 0));
+
+    s.press("selectstart", source, point, undefined, null, s.outerObject);
+    const before = played.length;
+    s.press("squeezestart", source, point);
+    await Promise.resolve();
+    s.press("squeezeend", source, point);
+    s.press("squeeze", source, point);
+    assert.deepEqual(s.events, [], "no contextmenu on the row passing under the ray");
+    assert.equal(played.length, before, "and nothing felt for it");
+    assert.deepEqual(s.escaped, ["squeezestart"], "the panel keeps it, as it keeps the scroll");
+    s.press("selectend", source, point, undefined, null, s.outerObject);
     s.teardown();
   });
 

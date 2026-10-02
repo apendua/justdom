@@ -1256,7 +1256,7 @@ export class DomMirror {
           }
           settled.set(current, from);
           this.#childrenMoved(current, from);
-          if (current.hasAttribute(PORTAL_ATTRIBUTE)) {
+          if (isPortalRoot(current)) {
             // The top of what this portal mirrors. Nothing above is projected
             // and there is nobody to tell, but the panel's own size follows
             // its contents and the scene has to hear about that.
@@ -1623,6 +1623,14 @@ const styleContextCache = nodeCache();
  * move a selector's verdict on a sibling can pay for the subtree alone: see
  * `#restyleScope`, and its callers for which changes those are.
  *
+ * One more is added for every record the walk finds. A node read before any
+ * portal adopted it (`readRecordOf`) is walked again once one does, and its
+ * fresh record's signals all read 0, so without the one the sum would come
+ * out as it was and the style cached on it would stay as read before the
+ * record, deaf to what the page did to the node in between. A node that has
+ * its records at creation has them at flush too, so the sum stays flat for
+ * the reason below.
+ *
  * The sum reads the ancestors' *signals* directly rather than chaining
  * through their memoized contexts, and the flatness is load-bearing, not a
  * style choice. A node created inside the very batch that bumped an epoch
@@ -1652,6 +1660,7 @@ function getStyleContext(node) {
       ) {
         const currentRecord = readRecordOf(current);
         if (currentRecord) {
+          sum += 1;
           sum += currentRecord.self.get();
           if (depth > 0) {
             sum += currentRecord.members.get();
@@ -1675,7 +1684,8 @@ function getStyleContext(node) {
  * Whether the node is the top of what a portal mirrors: the container the
  * portal made, or the page's element it claimed, either of which carries
  * `PORTAL_ATTRIBUTE`. Above it is the page around the scene, which no portal
- * adopts and no walk up from a panel node goes on into.
+ * adopts and no walk up from a panel node goes on into. The one check for
+ * it in this file.
  *
  * @param {Node} node
  * @returns {boolean}
@@ -1722,7 +1732,8 @@ const reflowContextCache = nodeCache();
  *
  * A scroll is absent from all of it: every measurement that depends on this
  * is expressed relative to something that scrolls along with it. Flat for
- * the reason `getStyleContext` gives.
+ * the reason `getStyleContext` gives, and one more per record found for the
+ * reason it gives too.
  *
  * @param {Node} node
  * @returns {number}
@@ -1755,6 +1766,7 @@ export function getReflowContext(node) {
       ) {
         const currentRecord = readRecordOf(current);
         if (currentRecord) {
+          sum += 1;
           sum += currentRecord.reflow.get();
         }
         if (isPortalRoot(current)) {
@@ -1961,7 +1973,7 @@ export function isTransformed(element) {
   let signal = transformedCache.get(element);
   if (!signal) {
     signal = new Derived(() => {
-      if (element.hasAttribute(PORTAL_ATTRIBUTE)) {
+      if (isPortalRoot(element)) {
         return false;
       }
       if (hasTransform(getComputedStyleCached(element).transform)) {
@@ -2080,7 +2092,7 @@ export function getOpacity(element) {
     signal = new Derived(() => {
       const own = parseFloat(getComputedStyleCached(element).opacity);
       const opacity = Number.isNaN(own) ? 1 : own;
-      if (element.hasAttribute(PORTAL_ATTRIBUTE)) {
+      if (isPortalRoot(element)) {
         return opacity;
       }
       const parent = getParentElement(element);
@@ -2244,8 +2256,9 @@ const ZERO_SCROLL = Object.freeze({ left: 0, top: 0 });
 
 /**
  * How far the element is scrolled, as a dependency. For an element no portal
- * adopted this is a plain DOM read with nothing to invalidate it, the same
- * non-answer every other cached read gives outside a portal.
+ * adopted this is a DOM read that follows the element's adoption, as every
+ * other cached read does (`readRecordOf`), and is read again once a portal
+ * adopts it.
  *
  * @param {Element} element
  * @returns {ScrollOffset}
@@ -2279,7 +2292,7 @@ function getAnchorElement(element) {
   if (!signal) {
     signal = new Derived(() => {
       let holder = getParentElement(element);
-      while (holder && !holder.hasAttribute(PORTAL_ATTRIBUTE)) {
+      while (holder && !isPortalRoot(holder)) {
         if (getPositionStyle(holder) !== "static") {
           return holder;
         }
@@ -2302,7 +2315,7 @@ function getAnchorElement(element) {
 function getPortalContainer(element) {
   /** @type {HTMLElement | null} */
   let holder = element;
-  while (holder && !holder.hasAttribute(PORTAL_ATTRIBUTE)) {
+  while (holder && !isPortalRoot(holder)) {
     holder = getParentElement(holder);
   }
   return holder;
@@ -2614,7 +2627,7 @@ function getClipPair(element) {
  * @returns {ClipBox}
  */
 function evaluateLocalClip(element) {
-  if (element.hasAttribute(PORTAL_ATTRIBUTE)) {
+  if (isPortalRoot(element)) {
     return UNCLIPPED;
   }
   const position = getPositionStyle(element);
@@ -2624,7 +2637,7 @@ function evaluateLocalClip(element) {
   if (position === "absolute") {
     const anchored = getAnchoredOffset(element);
     const anchor = anchored.anchor;
-    if (!anchor || anchor.hasAttribute(PORTAL_ATTRIBUTE)) {
+    if (!anchor || isPortalRoot(anchor)) {
       return UNCLIPPED;
     }
     const base = getClipPair(anchor).interior;
@@ -2635,7 +2648,7 @@ function evaluateLocalClip(element) {
     return toLocalClipBox(base, anchored.x - scroll.left, anchored.y - scroll.top);
   }
   const holder = getParentElement(element);
-  if (!holder || holder.hasAttribute(PORTAL_ATTRIBUTE)) {
+  if (!holder || isPortalRoot(holder)) {
     return UNCLIPPED;
   }
   const base = getClipPair(holder).interior;

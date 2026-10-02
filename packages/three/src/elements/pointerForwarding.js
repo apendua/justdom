@@ -319,6 +319,18 @@ export function forwardPointerEvents(ctx, element, object, { enabled, onPress })
    */
   const taken = (start) => isStopped(start) && !swallowed.has(start);
 
+  /**
+   * Whether the hand is carrying something, or scrolling a list, with its
+   * trigger, when a press of its grip is a press on nothing: a page in the
+   * middle of a drag hears no other button, and a list being scrolled is
+   * not a row being pressed. The trigger's own completion asks the same of
+   * a press that became one of these before it sends a click.
+   *
+   * @param {XRTargetRaySpace} controller
+   * @returns {boolean}
+   */
+  const busy = (controller) => dnd.holding(controller) || drags.scrolling(controller);
+
   return [
     makeInteractive(enabled),
     () => {
@@ -356,7 +368,7 @@ export function forwardPointerEvents(ctx, element, object, { enabled, onPress })
       if (taken(e.start)) {
         return;
       }
-      if (isGone(element)) {
+      if (isGone(element) || busy(e.controller)) {
         stopPropagation(e);
         return;
       }
@@ -376,8 +388,9 @@ export function forwardPointerEvents(ctx, element, object, { enabled, onPress })
       // Felt once as the grip closes on a control, as a trigger's press is,
       // but only once the dispatch has run, since the start goes on past
       // the panel and only then is it known whether something above took
-      // it. A grab is felt by nothing here.
-      if (haptics) {
+      // it. A grab is felt by nothing here, and neither is a grip closing
+      // while the hand carries or scrolls with its trigger.
+      if (haptics && !busy(e.controller)) {
         deliverOnce(e, () => {
           queueMicrotask(() => {
             if (!isStopped(e)) {
@@ -388,8 +401,10 @@ export function forwardPointerEvents(ctx, element, object, { enabled, onPress })
       }
     }),
     on("squeezemissed", (e) => {
-      // A grab's miss goes on up to the carry, as its end does; the panel's
-      // stops where a press's does.
+      // Let past for a grab, as its end is, so that every event of a taken
+      // grip leaves the panel alike; nothing above listens for a miss
+      // today, `drag()` and `carry()` taking the start and the end alone.
+      // The panel's own miss stops where a press's does.
       if (!taken(e.start)) {
         passOn(e);
       }
@@ -402,8 +417,9 @@ export function forwardPointerEvents(ctx, element, object, { enabled, onPress })
       // Felt once as the grip opens, on a hit and a miss alike, as a
       // trigger's release is. Not by an element that has gone, whose
       // release the next clickable element up feels in its stead, as it
-      // sends a trigger's; the outermost stops it, as a press's.
-      if (!isGone(element)) {
+      // sends a trigger's; the outermost stops it, as a press's. Not while
+      // the hand carries or scrolls, when the closing was not felt either.
+      if (!isGone(element) && !busy(e.controller)) {
         deliverOnce(e, () => {
           haptics?.release(e.inputSource);
         });

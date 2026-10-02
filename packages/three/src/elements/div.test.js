@@ -535,14 +535,7 @@ function setupScrolledRow() {
   const layout = (element, rect) => {
     element.getBoundingClientRect = () => {
       const [left, top, right, bottom] = rect();
-      return /** @type {DOMRect} */ ({
-        left,
-        top,
-        right,
-        bottom,
-        width: right - left,
-        height: bottom - top,
-      });
+      return clientRect(left, top, right - left, bottom - top);
     };
   };
   layout(container, () => [0, 0, 200, 100]);
@@ -841,15 +834,7 @@ describe("div gradients", () => {
   function sized(cssText) {
     const element = document.createElement("div");
     element.style.cssText = cssText;
-    element.getBoundingClientRect = () =>
-      /** @type {DOMRect} */ ({
-        left: 0,
-        top: 0,
-        right: 200,
-        bottom: 100,
-        width: 200,
-        height: 100,
-      });
+    element.getBoundingClientRect = () => clientRect(0, 0, 200, 100);
     document.body.appendChild(element);
     const mirror = createMirror();
     mirror.adopt(element);

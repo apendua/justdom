@@ -528,8 +528,7 @@ describe("svg shape", () => {
     // three would fall back to mesh id and draw it on top; the fraction from
     // document order keeps it underneath.
     const root = document.createElementNS(SVG_NS, "svg");
-    root.getBoundingClientRect = () =>
-      /** @type {DOMRect} */ ({ left: 0, top: 0, right: 100, bottom: 50, width: 100, height: 50 });
+    root.getBoundingClientRect = () => clientRect(0, 0, 100, 50);
     const first = document.createElementNS(SVG_NS, "rect");
     first.setAttribute("width", "10");
     first.setAttribute("height", "10");
@@ -612,8 +611,7 @@ describe("svg shape", () => {
 
     // Inherited from a group, and overridden by the shape.
     const root = document.createElementNS(SVG_NS, "svg");
-    root.getBoundingClientRect = () =>
-      /** @type {DOMRect} */ ({ left: 0, top: 0, right: 100, bottom: 50, width: 100, height: 50 });
+    root.getBoundingClientRect = () => clientRect(0, 0, 100, 50);
     const group = document.createElementNS(SVG_NS, "g");
     group.setAttribute("style", "visibility: hidden");
     const inherits = document.createElementNS(SVG_NS, "rect");
@@ -651,8 +649,7 @@ describe("svg shape", () => {
   test("a <g> that moves leaves its shapes' geometry alone", () => {
     const root = document.createElementNS(SVG_NS, "svg");
     root.setAttribute("viewBox", "0 0 50 25");
-    root.getBoundingClientRect = () =>
-      /** @type {DOMRect} */ ({ left: 0, top: 0, right: 100, bottom: 50, width: 100, height: 50 });
+    root.getBoundingClientRect = () => clientRect(0, 0, 100, 50);
     const g = document.createElementNS(SVG_NS, "g");
     g.setAttribute("style", "transform: matrix(1, 0, 0, 1, 10, 0)");
     const rect = document.createElementNS(SVG_NS, "rect");
@@ -731,8 +728,7 @@ describe("svg shape", () => {
     if (rootViewBox) {
       root.setAttribute("viewBox", rootViewBox);
     }
-    root.getBoundingClientRect = () =>
-      /** @type {DOMRect} */ ({ left: 0, top: 0, right: 100, bottom: 50, width: 100, height: 50 });
+    root.getBoundingClientRect = () => clientRect(0, 0, 100, 50);
     const inner = document.createElementNS(SVG_NS, "svg");
     for (const [name, value] of Object.entries(attributes)) {
       inner.setAttribute(name, value);

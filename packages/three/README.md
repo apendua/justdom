@@ -793,9 +793,9 @@ The rules are the browser's:
 - The events carry `clientX` and `clientY`: the point under the ray, mapped
   back onto the page's own layout. A list that compares them with a row's
   `getBoundingClientRect()` to decide whether a card goes above or below it
-  gets the answer it gets under a mouse. `dragstart` and `drop` read where
-  the page lays the panel out; the frames between take the corner last
-  read, as a `mousemove` does.
+  gets the answer it gets under a mouse. `dragstart`, a drag's arrival on
+  another panel and `drop` read where the page lays the panel out; the
+  other frames take the corner last read, as a `mousemove` does.
 - `:hover` does not change under a drag. From a press on a draggable
   element until the trigger opens, the elements the ray crosses take no
   `data-xr-hover` and hear no `mousemove`. The control the ray is on when

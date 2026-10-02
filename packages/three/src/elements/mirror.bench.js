@@ -86,7 +86,10 @@ window.Range.prototype.getClientRects = function () {
  * would produce.
  *
  * Block flow, top to bottom: a leaf is 20px tall, a container is as tall as
- * its children, everything is 200px wide. Recomputed by `relayout` after each
+ * its children, and a box is 200px wide unless its style gives a width in px.
+ * A `position: absolute` box is out of the flow: it adds nothing to its
+ * parent's height and sits at its `left` and `top` inside its parent, which
+ * is all the board of cards below needs. Recomputed by `relayout` after each
  * mutation — outside the counters, since a browser does this work in its own
  * layout pass rather than in the reads the mirror is charged for.
  *
@@ -100,12 +103,31 @@ const BOX_WIDTH = 200;
 
 /**
  * @param {Element} element
+ * @returns {boolean}
+ */
+function isAbsolute(element) {
+  return /** @type {HTMLElement} */ (element).style?.position === "absolute";
+}
+
+/**
+ * @param {string | undefined} length
+ * @returns {number | undefined}
+ */
+function pxOf(length) {
+  return length?.endsWith("px") ? parseFloat(length) : undefined;
+}
+
+/**
+ * @param {Element} element
  * @returns {number}
  */
 function measureSubtree(element) {
   let height = 0;
   for (let child = element.firstElementChild; child; child = child.nextElementSibling) {
-    height += measureSubtree(child);
+    const childHeight = measureSubtree(child);
+    if (!isAbsolute(child)) {
+      height += childHeight;
+    }
   }
   const box = layoutOf.get(element) ?? { left: 0, top: 0, width: BOX_WIDTH, height: 0 };
   // A box given a height keeps it, whatever is inside: the clipped table
@@ -119,27 +141,33 @@ function measureSubtree(element) {
   // growth, on top of the twenty-five the open list paid: clipping never
   // cost anything extra, and the fixture was the entire difference. A
   // clipped figure from an older run is not comparable with one from here.
-  const fixed = /** @type {HTMLElement} */ (element).style?.height ?? "";
-  box.height = fixed.endsWith("px") ? parseFloat(fixed) : height || LEAF_HEIGHT;
-  box.width = BOX_WIDTH;
+  const style = /** @type {HTMLElement} */ (element).style;
+  box.height = pxOf(style?.height) ?? (height || LEAF_HEIGHT);
+  box.width = pxOf(style?.width) ?? BOX_WIDTH;
   layoutOf.set(element, box);
   return box.height;
 }
 
 /**
  * @param {Element} element
+ * @param {number} left
  * @param {number} top
  * @returns {void}
  */
-function placeSubtree(element, top) {
+function placeSubtree(element, left, top) {
   const box = /** @type {{ left: number, top: number, width: number, height: number }} */ (
     layoutOf.get(element)
   );
-  box.left = 0;
+  box.left = left;
   box.top = top;
   let offset = top;
   for (let child = element.firstElementChild; child; child = child.nextElementSibling) {
-    placeSubtree(child, offset);
+    if (isAbsolute(child)) {
+      const style = /** @type {HTMLElement} */ (child).style;
+      placeSubtree(child, left + (pxOf(style.left) ?? 0), top + (pxOf(style.top) ?? 0));
+      continue;
+    }
+    placeSubtree(child, left, offset);
     offset += /** @type {{ height: number }} */ (layoutOf.get(child)).height;
   }
 }
@@ -150,7 +178,7 @@ function placeSubtree(element, top) {
  */
 function relayout(root) {
   measureSubtree(root);
-  placeSubtree(root, 0);
+  placeSubtree(root, 0, 0);
 }
 
 window.Element.prototype.getBoundingClientRect = function () {
@@ -360,6 +388,119 @@ console.log("rows\tevals\trects\tms");
 for (const rows of SIZES) {
   const { mount } = await measure({ rows, perFlush: true });
   console.log(`${rows}\t${mount.evaluations}\t${mount.rectReads}\t${mount.ms.toFixed(0)}`);
+}
+
+/**
+ * A board of absolutely positioned cards, the case a list in flow never
+ * reaches. A page paints positioned siblings over each other in tree order,
+ * and the scene has to step a later card in front of each earlier one it
+ * overlaps, which is a scan of the earlier siblings per card. This table is
+ * what that scan costs.
+ *
+ * Two boards of the same cards. "apart" lays them out on a grid with a gap
+ * between neighbours, so no card covers another and the scan finds nothing.
+ * "piled" puts every card within a few px of the first, so each covers all
+ * the cards before it. That is the worst case, where every comparison finds
+ * an overlap.
+ *
+ * The columns are one more card appended on top; the first card moved by a
+ * pixel, which every later card's scan has read; the first card re-appended,
+ * which is how a page brings a card to the front; and a hover flag on the
+ * last card, which moves nothing. Read them against `cards`: a column that
+ * grows with the board is the scan.
+ *
+ * @param {object} options
+ * @param {number} options.cards
+ * @param {boolean} options.piled
+ */
+async function measureBoard({ cards, piled }) {
+  const manager = new InteractionManager();
+  const ctx = InteractionContext.set({}, manager);
+  const portal = createPortal(ctx);
+  portal.addTo(new THREE.Group());
+  const containers = document.querySelectorAll(`[${PORTAL_ATTRIBUTE}]`);
+  const containerElement = /** @type {HTMLElement} */ (containers[containers.length - 1]);
+
+  const board = document.createElement("div");
+  board.style.position = "relative";
+  board.style.width = "1000px";
+  board.style.height = "1000px";
+  containerElement.appendChild(board);
+  relayout(containerElement);
+  await nextMacrotask();
+
+  /**
+   * @param {number} index
+   * @returns {HTMLElement}
+   */
+  const makeCard = (index) => {
+    const card = document.createElement("div");
+    card.style.position = "absolute";
+    card.style.width = "40px";
+    card.style.height = "40px";
+    const left = piled ? (index % 10) * 2 : (index % 20) * 50;
+    const top = piled ? (index % 10) * 2 : Math.floor(index / 20) * 50;
+    card.style.left = `${left}px`;
+    card.style.top = `${top}px`;
+    const label = document.createElement("span");
+    label.textContent = `card ${index}`;
+    card.appendChild(label);
+    return card;
+  };
+
+  const mount = await sample(() => {
+    for (let i = 0; i < cards; i++) {
+      board.appendChild(makeCard(i));
+    }
+    relayout(containerElement);
+  });
+
+  const one = await sample(() => {
+    board.appendChild(makeCard(cards));
+    relayout(containerElement);
+  });
+
+  const first = /** @type {HTMLElement} */ (board.firstElementChild);
+  const move = await sample(() => {
+    first.style.left = `${(pxOf(first.style.left) ?? 0) + 1}px`;
+    relayout(containerElement);
+  });
+
+  const raise = await sample(() => {
+    board.appendChild(first);
+    relayout(containerElement);
+  });
+
+  const hover = await sample(() => {
+    /** @type {HTMLElement} */ (board.lastElementChild?.previousElementSibling).dataset.xrHover =
+      "true";
+  });
+
+  portal.disconnect();
+  containerElement.remove();
+  return { mount, one, move, raise, hover };
+}
+
+for (const piled of [false, true]) {
+  console.log(
+    piled
+      ? "\n=== a board of positioned cards, piled on each other ==="
+      : "\n=== a board of positioned cards, apart ===",
+  );
+  console.log(
+    "cards\t| mount: evals\trects\tms\t| +1 card: evals\trects\tms" +
+      "\t| move first: evals\trects\tms\t| raise first: evals\trects\tms\t| hover: evals\trects",
+  );
+  for (const cards of [25, 50, 100, 200]) {
+    const { mount, one, move, raise, hover } = await measureBoard({ cards, piled });
+    console.log(
+      `${cards}\t| ${mount.evaluations}\t${mount.rectReads}\t${mount.ms.toFixed(0)}\t| ` +
+        `${one.evaluations}\t${one.rectReads}\t${one.ms.toFixed(1)}\t| ` +
+        `${move.evaluations}\t${move.rectReads}\t${move.ms.toFixed(1)}\t| ` +
+        `${raise.evaluations}\t${raise.rectReads}\t${raise.ms.toFixed(1)}\t| ` +
+        `${hover.evaluations}\t${hover.rectReads}`,
+    );
+  }
 }
 
 /**

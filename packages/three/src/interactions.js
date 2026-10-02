@@ -306,6 +306,7 @@ export class InteractionManager {
             target: selectedObject,
             originalTarget: selectedObject,
             controller,
+            intersection,
           });
           this.#dispatchAlong(selectedPath, {
             type: "select",
@@ -322,6 +323,7 @@ export class InteractionManager {
             target: selectedObject,
             originalTarget: selectedObject,
             controller,
+            intersection,
           });
           this.#dispatchAlong(selectedPath, {
             type: "selectmissed",

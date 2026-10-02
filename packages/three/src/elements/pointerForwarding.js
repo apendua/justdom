@@ -1,7 +1,15 @@
 import { on, onCleanup } from "@apendua/signal";
 import { interactions } from "../interactions.js";
 import { getParentObject } from "./contentGroup.js";
-import { dragAndDrop, isDragSource } from "./dragAndDrop.js";
+import {
+  dragAndDrop,
+  isDragSource,
+  lazyPanel,
+  moveInit,
+  pressInit,
+  probePanel,
+  releaseInit,
+} from "./dragAndDrop.js";
 import { HapticsContext, isArrival } from "./haptics.js";
 import { getComputedStyleCached } from "./mirror.js";
 import { scrollDrags } from "./scroll.js";
@@ -100,9 +108,10 @@ export function isGone(element) {
 const forwarding = new WeakSet();
 
 /**
- * The ray events whose DOM events have already been sent. The manager hands
- * one event object to every object up the chain, so the first handler to
- * see it sends the DOM event and the ones above only follow it.
+ * The ray events already acted on once: the DOM event sent, or the panel
+ * read for an arrival. The manager hands one event object to every object
+ * up the chain, so the first handler to see it, the innermost forwarding
+ * element's, does the thing and the ones above only follow it.
  *
  * @type {WeakSet<object>}
  */
@@ -136,14 +145,16 @@ function hasForwardingAncestor(object) {
 /**
  * Being a ray target, and forwarding what happens there back to the DOM. A
  * press arrives as `mousedown`, `mouseup` and `click`, and a ray moving over
- * the object as `mousemove`. While the ray is on it the element carries
+ * the object as `mousemove`, each carrying the point the ray met, on the
+ * page, as its `clientX` and `clientY` (see `pressInit` in
+ * `dragAndDrop.js`). While the ray is on it the element carries
  * `data-xr-hover`, and while it is held, `data-xr-active`. A stylesheet
- * answers those flags where a page would use `:hover` and `:active`.
- * Where the panel has haptics, the hand feels a press and its release, and
- * an arrival on a control where the panel asks for one. A press on
- * something draggable that the hand carries away is a drag and drop
- * instead, and its release is a `drop` and a `dragend` rather than a
- * `mouseup` and a `click` (see `dragAndDrop.js`).
+ * answers those flags where a page would use `:hover` and `:active`. Where
+ * the panel has haptics, the hand feels a press and its release, and an
+ * arrival on a control where the panel asks for one. A press on something
+ * draggable that the hand carries away is a drag and drop instead, and its
+ * release is a `drop` and a `dragend` rather than a `mouseup` and a `click`
+ * (see `dragAndDrop.js`).
  *
  * Boxes, SVG shapes and clickable SVG groups all forward rays through this
  * function, so a panel's stylesheet and its click handlers see the same
@@ -184,6 +195,42 @@ export function forwardPointerEvents(ctx, element, object, { enabled, onPress })
    */
   const haptics = HapticsContext.get(ctx);
 
+  /** The panel the object is in, for where its events are on the page. */
+  const panel = lazyPanel(object);
+
+  /**
+   * The enter `arrived` last answered for, and its answer. The panel read
+   * and the pulse ask about the same enter, so the walks are done once;
+   * `enter`, the last to ask, lets it go, since the memo has to span one
+   * dispatch only and an enter holds the mesh the ray met and the object
+   * it came from.
+   *
+   * @type {object | null}
+   */
+  let arrivalOf = null;
+  let arrival = false;
+
+  /**
+   * Whether an enter is the ray arriving on this control, which is what
+   * plays the pulse and reads where the page lays the panel out. Not the
+   * ray moving between this element and something clickable inside it,
+   * which `isArrival` says is not an arrival at all; and not while the
+   * hand is scrolling a list, when the rows pass under a ray that is aimed
+   * at none of them, glide included.
+   *
+   * @param {XREventMap["pointerenter"]} e
+   * @returns {boolean}
+   */
+  const arrived = (e) => {
+    if (e !== arrivalOf) {
+      arrivalOf = e;
+      arrival =
+        !drags.scrolling(e.controller) &&
+        isArrival(getControlRoot(element, object), e.relatedTarget);
+    }
+    return arrival;
+  };
+
   /**
    * The ray arriving on this element: the hover flag, and the pulse an
    * arrival on a control plays.
@@ -193,20 +240,12 @@ export function forwardPointerEvents(ctx, element, object, { enabled, onPress })
    */
   const enter = (e) => {
     element.dataset.xrHover = "true";
-    // Once per arrival on this control. Not for an enter bubbling up from
-    // a target nested in this one, which plays its own; not for the ray
-    // moving between this element and something clickable inside it,
-    // which `isArrival` says is not an arrival at all; and not while the
-    // hand is scrolling a list, when the rows pass under a ray that is
-    // aimed at none of them, glide included.
-    if (
-      haptics &&
-      e.registeredTarget === object &&
-      !drags.scrolling(e.controller) &&
-      isArrival(getControlRoot(element, object), e.relatedTarget)
-    ) {
+    // Once per arrival on this control: not for an enter bubbling up from
+    // a target nested in this one, which plays its own.
+    if (haptics && e.registeredTarget === object && arrived(e)) {
       haptics.hover(e.inputSource);
     }
+    arrivalOf = null;
   };
 
   /**
@@ -220,8 +259,9 @@ export function forwardPointerEvents(ctx, element, object, { enabled, onPress })
   const heldEnters = new Map();
 
   /**
-   * Send the DOM event for a ray event, unless an element inside this one
-   * already has.
+   * Act on a ray event once, by the innermost forwarding element: send its
+   * DOM event, or read the panel for an arrival, unless an element inside
+   * this one already has.
    *
    * @param {object} e
    * @param {() => void} send
@@ -270,7 +310,7 @@ export function forwardPointerEvents(ctx, element, object, { enabled, onPress })
         return;
       }
       deliverOnce(e, () => {
-        element.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        element.dispatchEvent(new MouseEvent("click", pressInit(panel(), e, false)));
       });
       onPress?.();
       passOn(e);
@@ -284,7 +324,7 @@ export function forwardPointerEvents(ctx, element, object, { enabled, onPress })
         // Cancelable, as a real one is: a page that cancels its `mousedown`
         // is saying that nothing is to be dragged from here.
         const pressed = element.dispatchEvent(
-          new MouseEvent("mousedown", { bubbles: true, cancelable: true }),
+          new MouseEvent("mousedown", pressInit(panel(), e, true)),
         );
         // A press on something draggable may become a drag and drop, and
         // otherwise a press over a list may become a scroll; only holding
@@ -321,7 +361,7 @@ export function forwardPointerEvents(ctx, element, object, { enabled, onPress })
         // A drag's release is its `drop` and its `dragend`, which the drag
         // sends from the controller's own `selectend`.
         if (!dnd.didDrag(e.controller)) {
-          element.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+          element.dispatchEvent(new MouseEvent("mouseup", releaseInit(panel(), e)));
         }
         haptics?.release(e.inputSource);
       });
@@ -338,10 +378,7 @@ export function forwardPointerEvents(ctx, element, object, { enabled, onPress })
         heldEnters.delete(e.controller);
         enter(held);
       }
-      const event = new MouseEvent("mousemove", {
-        bubbles: false,
-      });
-      element.dispatchEvent(event);
+      element.dispatchEvent(new MouseEvent("mousemove", moveInit(panel(), e)));
     }),
     on("pointerenter", (e) => {
       // Nothing is hovered under a drag, as `:hover` holds still under one
@@ -354,6 +391,24 @@ export function forwardPointerEvents(ctx, element, object, { enabled, onPress })
         heldEnters.set(e.controller, e);
         return;
       }
+      // An arrival on a control is one event, so it is where the moves
+      // that follow take their point from: the panel is asked where the
+      // page lays it out now, and a hover starts exact. Once per ray
+      // event, by the innermost forwarding element, whatever was
+      // registered under it, which may be a scrolling list or an overlay's
+      // blocker that forwards nothing. Only for an arrival by `arrived`'s
+      // rule, the pulse's: the rows passing under a scroll move nothing
+      // the root's rect depends on, and the press that began the scroll
+      // read it (a row's `mousedown` above, or the list's own
+      // `selectstart` in `div.js`). Not under a drag, which probes the
+      // panels it crosses itself and whose drop reads the one it ends on
+      // again.
+      deliverOnce(e, () => {
+        const own = arrived(e) ? panel() : null;
+        if (own) {
+          probePanel(own);
+        }
+      });
       enter(e);
     }),
     on("pointerleave", (e) => {

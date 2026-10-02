@@ -360,9 +360,13 @@ screen, so its points are right against the page's own rects but
 Clickable elements nest, if only because `cursor` is inherited, and a press
 inside several of them goes where it goes on a page. The innermost one is the
 target, its DOM events are sent once and bubble from there, and every
-clickable element around it takes `data-xr-active` as well, as `:active`
-would. The ray event stops at the outermost of them, so nothing outside the
-panel hears a press the panel took.
+clickable element around it takes `data-xr-hover` and `data-xr-active` as
+well, as `:hover` and `:active` would. Only the clickable ones do: an
+ancestor that is not a ray target takes neither, where on a page it would
+match `:hover`. The ray event stops at the outermost of them, so nothing
+outside the panel hears a press the panel took. Nesting costs no extra ray
+tests: a registered object inside another is reached by the outer one's
+walk and is not cast again on its own.
 
 It does that without depending on `justdom`. What `dom()` takes is a
 `Mountable` — a tree that has not been put anywhere yet, exposing one method
@@ -1987,6 +1991,23 @@ the scene*). Where the button should be the target itself, put
 `pointer-events: none` on the icon's `<svg>`, as a page would. Neither the
 `<svg>` nor its shapes are then ray targets of their own, whatever `cursor`
 they inherit, and a press on the icon is a press on the button.
+
+A `<g>` under `cursor: pointer` is a ray target too, as a clickable box
+is, so it is hovered and pressed with whichever of its shapes the ray is
+on. That is what lets a diagram style a node by its group:
+
+```css
+.diagram .node {
+  cursor: pointer;
+}
+
+.diagram .node[data-xr-hover] rect {
+  fill: #ffe9a3; /* the ray may be on the rect or on the label beside it */
+}
+```
+
+A hit on the group is a hit on one of its shapes, so each shape's own
+`pointer-events` still decides whether it can be hit.
 
 Not drawn yet: gradients and patterns (a `url(#…)` paint reads
 as `none`, though it still counts as painted for a ray), `clip-path`,

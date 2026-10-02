@@ -20,8 +20,9 @@ import { scrollDrags } from "./scroll.js";
  * buttons opt in through their stylesheet with no extra attribute. Everything
  * else — cards, labels, layout wrappers — stays out of the raycast set; the
  * portal's blocker plane keeps the panel as a whole opaque to rays. SVG
- * shapes follow the same rule, and `cursor` is inherited into them from the
- * page around the `<svg>`.
+ * shapes, and the `<g>`, `<a>` and nested `<svg>` that group them, follow
+ * the same rule, and `cursor` is inherited into them from the page around
+ * the `<svg>`.
  *
  * `pointer-events: none` says the opposite, as it does on a page, and wins.
  * `cursor` is inherited, so an icon's `<svg>` inside a button computes
@@ -239,9 +240,9 @@ function moveInit(object, e) {
  * instead, and its release is a `drop` and a `dragend` rather than a
  * `mouseup` and a `click` (see `dragAndDrop.js`).
  *
- * Boxes and SVG shapes both forward rays through this function, so a
- * panel's stylesheet and its click handlers see the same events whichever
- * of the two the ray met.
+ * Boxes, SVG shapes and clickable SVG groups all forward rays through this
+ * function, so a panel's stylesheet and its click handlers see the same
+ * events whichever of them the ray met.
  *
  * Clickable elements nest, if only because `cursor` is inherited: the label
  * in a button, the icon in it, a button on a clickable card. A press goes

@@ -308,21 +308,24 @@ describe("drag and drop in a panel", () => {
     s.teardown();
   });
 
-  test("the grip sends no contextmenu while the hand carries a row", async () => {
-    // A page in the middle of a drag hears no other button from a mouse.
+  test("the grip sends no contextmenu while the hand carries a row, and does before", async () => {
+    // A mouse sends `contextmenu` for its other button while the main one is
+    // held still on a row; a page in the middle of a drag hears no other
+    // button from it.
     const s = await sortableList();
+    const rightClicks = () => s.events.filter((event) => event.startsWith("contextmenu"));
 
     s.aim(150, 20);
     s.trigger("selectstart");
+    s.trigger("squeezestart");
+    s.trigger("squeezeend");
+    assert.deepEqual(rightClicks(), ["contextmenu a"], "pressed and not yet dragged");
+
     s.aim(150, 60);
     s.events.length = 0;
     s.trigger("squeezestart");
     s.trigger("squeezeend");
-    assert.deepEqual(
-      s.events.filter((event) => event.startsWith("contextmenu")),
-      [],
-      "the row under the ray hears no right-click",
-    );
+    assert.deepEqual(rightClicks(), [], "the row under the ray hears no right-click");
     s.trigger("selectend");
     s.teardown();
   });

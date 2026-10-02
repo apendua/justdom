@@ -414,6 +414,11 @@ export function box(ctx, element, options = {}) {
       }
       stopPropagation(e);
     }),
+    // The list took the press at its start, so its miss is the list's as
+    // its end is, and goes no further than a forwarding element's does.
+    on("selectmissed", (e) => {
+      stopPropagation(e);
+    }),
   ];
 
   return just(object, [

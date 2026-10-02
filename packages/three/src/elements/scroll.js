@@ -1,10 +1,6 @@
 import * as THREE from "three";
-import {
-  clipsOverflow,
-  getComputedStyleCached,
-  getParentElement,
-  PORTAL_ATTRIBUTE,
-} from "./mirror.js";
+import { InteractionContext } from "../interactions.js";
+import { clipsOverflow, getComputedStyleCached, getParentElement, isPortalRoot } from "./mirror.js";
 import { getParentObject } from "./contentGroup.js";
 import { createFrameRequester } from "./frameRequester.js";
 import { sampleRenderingUpdates, scrollElementBy } from "./renderingUpdates.js";
@@ -81,7 +77,7 @@ export function isScrollable(element) {
 export function findScroller(element) {
   /** @type {HTMLElement | null} */
   let el = element;
-  while (el && !el.hasAttribute(PORTAL_ATTRIBUTE)) {
+  while (el && !isPortalRoot(el)) {
     if (isScrollable(el)) {
       return el;
     }
@@ -123,6 +119,18 @@ export function planeOf(space, target) {
  *   separates a drag from a press.
  * @property {THREE.Vector2} velocity Local px per frame, for the glide.
  * @property {boolean} released Whether this is now a glide rather than a hold.
+ * @property {boolean} moving Whether it has gone past `DRAG_THRESHOLD` and
+ *   moved the list, which is when it counts in the scene's `MovingHands`.
+ */
+
+/**
+ * The hands moving a list anywhere in one scene, each with how many lists
+ * it is moving: one it holds and has dragged past `DRAG_THRESHOLD`, and any
+ * still gliding after it let go. Every panel's gesture writes to its
+ * scene's, so a question about the hand rather than about a panel can be
+ * asked of any of them (see `movesList`).
+ *
+ * @typedef {Map<THREE.XRTargetRaySpace, number>} MovingHands
  */
 
 /**
@@ -138,11 +146,36 @@ export function planeOf(space, target) {
 
 /**
  * @param {(tick: () => void) => () => void} requestFrames
+ * @param {MovingHands} [moving] The scene's, which this gesture adds its
+ *   hands to once they move a list; one of its own when it has no scene.
  * @returns {ScrollDrags}
  */
-export function createScrollDrags(requestFrames) {
+export function createScrollDrags(requestFrames, moving = new Map()) {
   /** @type {Map<THREE.XRTargetRaySpace, Drag>} */
   const drags = new Map();
+
+  /**
+   * Let go of a hand's drag, and of its place in the scene's `moving` if
+   * the drag had one.
+   *
+   * @param {THREE.XRTargetRaySpace} controller
+   * @returns {void}
+   */
+  function drop(controller) {
+    const drag = drags.get(controller);
+    if (!drag) {
+      return;
+    }
+    drags.delete(controller);
+    if (drag.moving) {
+      const count = (moving.get(controller) ?? 1) - 1;
+      if (count > 0) {
+        moving.set(controller, count);
+      } else {
+        moving.delete(controller);
+      }
+    }
+  }
 
   /** @type {WeakSet<THREE.XRTargetRaySpace>} */
   const scrolled = new WeakSet();
@@ -178,7 +211,7 @@ export function createScrollDrags(requestFrames) {
       if (drag.released) {
         drag.velocity.multiplyScalar(INERTIA_DECAY);
         if (drag.velocity.length() < INERTIA_CUTOFF) {
-          drags.delete(controller);
+          drop(controller);
           continue;
         }
         scrollElementBy(drag.scroller, drag.velocity.x, drag.velocity.y);
@@ -202,6 +235,10 @@ export function createScrollDrags(requestFrames) {
         continue;
       }
       scrolled.add(controller);
+      if (!drag.moving) {
+        drag.moving = true;
+        moving.set(controller, (moving.get(controller) ?? 0) + 1);
+      }
       // The content follows the hand, so the viewport goes the other way.
       drag.velocity.set(-dx, -dy);
       scrollElementBy(drag.scroller, -dx, -dy);
@@ -220,7 +257,7 @@ export function createScrollDrags(requestFrames) {
 
   return {
     begin(controller, element, object) {
-      drags.delete(controller);
+      drop(controller);
       scrolled.delete(controller);
       const scroller = findScroller(element);
       if (!scroller) {
@@ -253,6 +290,7 @@ export function createScrollDrags(requestFrames) {
         travelled: 0,
         velocity: new THREE.Vector2(0, 0),
         released: false,
+        moving: false,
       };
       drag.last = sample(drag);
       drags.set(controller, drag);
@@ -264,7 +302,7 @@ export function createScrollDrags(requestFrames) {
         return;
       }
       if (!scrolled.has(controller) || drag.velocity.length() < INERTIA_CUTOFF) {
-        drags.delete(controller);
+        drop(controller);
         return;
       }
       // Hand the speed it was let go at to the glide, which the same loop
@@ -278,7 +316,9 @@ export function createScrollDrags(requestFrames) {
       return drags.has(controller);
     },
     dispose() {
-      drags.clear();
+      for (const controller of [...drags.keys()]) {
+        drop(controller);
+      }
       if (stopFrames) {
         stopFrames();
         stopFrames = null;
@@ -294,11 +334,34 @@ export function createScrollDrags(requestFrames) {
  * panel. Each portal derives a context of its own, so this is one set per
  * panel, not per scene, and a list scrolled on one panel does not silence
  * the arrival pulses on another (drag and drop keeps its gesture per scene
- * for that reason; see `dragAndDrop`).
+ * for that reason; see `dragAndDrop`). What is per scene is `movesList`'s
+ * answer, which every panel's set writes to.
  *
  * @type {WeakMap<WeakKey, ScrollDrags>}
  */
 const perContext = new WeakMap();
+
+/**
+ * The hands moving a list in each scene, by the scene's interaction
+ * manager, as drag and drop keeps its gesture.
+ *
+ * @type {WeakMap<object, MovingHands>}
+ */
+const perScene = new WeakMap();
+
+/**
+ * @param {WeakKey} ctx
+ * @returns {MovingHands}
+ */
+function movingHands(ctx) {
+  const manager = InteractionContext.get(ctx);
+  let moving = perScene.get(manager);
+  if (!moving) {
+    moving = new Map();
+    perScene.set(manager, moving);
+  }
+  return moving;
+}
 
 /**
  * @param {WeakKey} ctx
@@ -307,8 +370,23 @@ const perContext = new WeakMap();
 export function scrollDrags(ctx) {
   let drags = perContext.get(ctx);
   if (!drags) {
-    drags = createScrollDrags(createFrameRequester(ctx));
+    drags = createScrollDrags(createFrameRequester(ctx), movingHands(ctx));
     perContext.set(ctx, drags);
   }
   return drags;
+}
+
+/**
+ * Whether the hand is moving a list right now, on any panel of the scene:
+ * holding one it has dragged past `DRAG_THRESHOLD`, or one still gliding
+ * after it let go. Not a press resting on a list that has not moved yet,
+ * which may still become a click. Where `scrolling` asks about one panel
+ * and counts that pending press, this asks about the hand.
+ *
+ * @param {WeakKey} ctx
+ * @param {THREE.XRTargetRaySpace} controller
+ * @returns {boolean}
+ */
+export function movesList(ctx, controller) {
+  return movingHands(ctx).has(controller);
 }

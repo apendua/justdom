@@ -17,7 +17,13 @@ import { isTextInput } from "./typing.js";
 import { bindPortalKeyboard } from "./portalKeyboard.js";
 import { createKeyboardHost } from "./keyboardHost.js";
 import { KeyboardSlotContext } from "./keyboardSlot.js";
-import { createMirror, getBorderBoxSize, LOADING_ATTRIBUTE, PORTAL_ATTRIBUTE } from "./mirror.js";
+import {
+  createMirror,
+  getBorderBoxSize,
+  isPortalRoot,
+  LOADING_ATTRIBUTE,
+  PORTAL_ATTRIBUTE,
+} from "./mirror.js";
 import { createAnimationClock } from "./animationClock.js";
 import { watchDocumentStyles } from "./documentStyles.js";
 import { createBlocker, coverBox } from "./blocker.js";
@@ -192,7 +198,7 @@ function claimRoot(root) {
   if (!root.isConnected) {
     throw new Error("A portal can only mirror an element that is in the document.");
   }
-  if (root.hasAttribute(PORTAL_ATTRIBUTE)) {
+  if (isPortalRoot(root)) {
     throw new Error("This element is already being mirrored by a portal.");
   }
   if (root.parentElement?.closest(`[${PORTAL_ATTRIBUTE}]`)) {

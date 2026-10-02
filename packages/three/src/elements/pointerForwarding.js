@@ -12,7 +12,7 @@ import {
 } from "./dragAndDrop.js";
 import { HapticsContext, isArrival } from "./haptics.js";
 import { getComputedStyleCached } from "./mirror.js";
-import { scrollDrags } from "./scroll.js";
+import { movesList, scrollDrags } from "./scroll.js";
 
 /**
  * @import {EntityEffect} from '@apendua/signal';
@@ -128,6 +128,16 @@ const delivered = new WeakSet();
 const swallowed = new WeakSet();
 
 /**
+ * The grip starts the hand felt close, so that its opening is felt exactly
+ * when its closing was. The two are decided at different moments, and what
+ * decides them can change in between: a hand that starts scrolling a list
+ * while the grip is held, or a glide that retires.
+ *
+ * @type {WeakSet<object>}
+ */
+const felt = new WeakSet();
+
+/**
  * Whether another forwarding object is above this one, which makes this
  * one not the outermost of a nest of clickable elements.
  *
@@ -166,7 +176,9 @@ function hasForwardingAncestor(object) {
  * where the panel asks for one. A press on something draggable that the
  * hand carries away is a drag and drop instead, and its release is a
  * `drop` and a `dragend` rather than a `mouseup` and a `click` (see
- * `dragAndDrop.js`).
+ * `dragAndDrop.js`). While the trigger carries something that way, or
+ * moves a list, on this panel or another, the grip is no press on
+ * anything: it sends no `contextmenu` and is not felt.
  *
  * Boxes, SVG shapes and clickable SVG groups all forward rays through this
  * function, so a panel's stylesheet and its click handlers see the same
@@ -320,16 +332,24 @@ export function forwardPointerEvents(ctx, element, object, { enabled, onPress })
   const taken = (start) => isStopped(start) && !swallowed.has(start);
 
   /**
-   * Whether the hand is carrying something, or scrolling a list, with its
-   * trigger, when a press of its grip is a press on nothing: a page in the
-   * middle of a drag hears no other button, and a list being scrolled is
-   * not a row being pressed. The trigger's own completion asks the same of
-   * a press that became one of these before it sends a click.
+   * Whether the hand's trigger is, right now, carrying something or moving
+   * a list, anywhere in the scene: a drag whose `dragstart` went out and
+   * that has not dropped, or a list dragged past the threshold and still
+   * held or gliding. A press of the grip meanwhile is a press on nothing: a
+   * page in the middle of a drag hears no other button, and a list being
+   * scrolled is not a row being pressed. A trigger only resting on a row or
+   * a card, which may yet become a click, is neither, and a grip under it
+   * is a right-click as a mouse's would be.
+   *
+   * The trigger's own completion asks something else, in another tense:
+   * whether its press turned into one of these (`didScroll`, `didDrag`).
+   * This is a second press asking about the trigger's, so it asks about
+   * now.
    *
    * @param {XRTargetRaySpace} controller
    * @returns {boolean}
    */
-  const busy = (controller) => dnd.holding(controller) || drags.scrolling(controller);
+  const busy = (controller) => dnd.carrying(controller) || movesList(ctx, controller);
 
   return [
     makeInteractive(enabled),
@@ -389,11 +409,13 @@ export function forwardPointerEvents(ctx, element, object, { enabled, onPress })
       // but only once the dispatch has run, since the start goes on past
       // the panel and only then is it known whether something above took
       // it. A grab is felt by nothing here, and neither is a grip closing
-      // while the hand carries or scrolls with its trigger.
+      // while the hand carries or scrolls with its trigger. What is felt
+      // is remembered, for the opening.
       if (haptics && !busy(e.controller)) {
         deliverOnce(e, () => {
           queueMicrotask(() => {
             if (!isStopped(e)) {
+              felt.add(e);
               haptics.press(e.inputSource);
             }
           });
@@ -415,11 +437,10 @@ export function forwardPointerEvents(ctx, element, object, { enabled, onPress })
         return;
       }
       // Felt once as the grip opens, on a hit and a miss alike, as a
-      // trigger's release is. Not by an element that has gone, whose
-      // release the next clickable element up feels in its stead, as it
-      // sends a trigger's; the outermost stops it, as a press's. Not while
-      // the hand carries or scrolls, when the closing was not felt either.
-      if (!isGone(element) && !busy(e.controller)) {
+      // trigger's release is, and only if its closing was: a grip swallowed
+      // on a gone row, or closed while the hand carried or scrolled, is felt
+      // neither way, whatever the hand is doing as it opens.
+      if (felt.has(e.start)) {
         deliverOnce(e, () => {
           haptics?.release(e.inputSource);
         });

@@ -12,23 +12,11 @@ import { createHaptics, HapticsContext } from "./haptics.js";
 import { recordingSource } from "../test/rumble.js";
 import { clientRect } from "../test/clientRect.js";
 import { describeScroller } from "../test/scroller.js";
+import { flushFrame } from "../test/portalHarness.js";
 
 /**
  * @import { XREventMap } from "../core.js";
  */
-
-// jsdom implements no Font Loading API, and `VisualProperties` refuses to
-// measure text until `document.fonts` says the fonts are in. The div tests
-// say why at length; nothing here measures text.
-Object.defineProperty(document, "fonts", {
-  configurable: true,
-  value: {
-    status: "loaded",
-    ready: Promise.resolve(),
-    addEventListener: () => {},
-    removeEventListener: () => {},
-  },
-});
 
 // three's SVGLoader parses with DOMParser, which jsdom-env does not install.
 if (typeof globalThis.DOMParser === "undefined") {
@@ -551,7 +539,7 @@ describe("a press on nested clickable elements", () => {
     s.press("squeezeend", source);
     s.press("squeezemissed", source);
     assert.deepEqual(s.events, []);
-    assert.deepEqual(played.length, 5, "the list feels the grip open, not the row close");
+    assert.deepEqual(played.length, 4, "felt neither closing nor opening");
     assert.deepEqual(s.escaped, ["squeezestart", "squeezestart"], "nothing of it leaves the panel");
     s.teardown();
   });
@@ -589,11 +577,10 @@ describe("a press on nested clickable elements", () => {
     s.teardown();
   });
 
-  test("of the grip while the hand scrolls a list is no press on a row", async () => {
-    // The trigger is held on the list's own padding and scrolling it; the
-    // grip closing and opening meanwhile is no right-click on the row that
-    // happens to be under the ray, as a mouse's other button would not be
-    // heard mid-drag on a page.
+  test("of the grip under the trigger is a right-click until the trigger moves a list", async () => {
+    // A mouse sends `contextmenu` for its other button while the main one is
+    // held still. Once the main one drags a list, a page hears no other
+    // button, and the row passing under the ray is not being pressed.
     const outer = html("div", "overflow: hidden");
     describeScroller(outer, { client: 100, scroll: 400 });
     const inner = html("button", "cursor: pointer");
@@ -606,18 +593,69 @@ describe("a press on nested clickable elements", () => {
       haptics: createHaptics({ flavor: "key" }),
     });
     s.outerObject.updateMatrixWorld(true);
-    const point = s.outerObject.localToWorld(new THREE.Vector3(12, 7, 0));
+    /**
+     * Point the hand's ray at a spot on the list, in its px.
+     *
+     * @param {number} x
+     * @param {number} y
+     */
+    const aim = (x, y) => {
+      const point = s.outerObject.localToWorld(new THREE.Vector3(x, y, 0));
+      s.controller.position.set(point.x, point.y, point.z + 1);
+      s.controller.updateMatrixWorld(true);
+      return point;
+    };
+    /** @param {THREE.Vector3} at */
+    const grip = async (at) => {
+      s.press("squeezestart", source, at);
+      await Promise.resolve();
+      s.press("squeezeend", source, at);
+      s.press("squeeze", source, at);
+    };
 
+    // The trigger rests on the list's padding: a press that may yet be a
+    // click, and nothing has moved.
+    let point = aim(12, 40);
     s.press("selectstart", source, point, undefined, null, s.outerObject);
-    const before = played.length;
+    await grip(point);
+    assert.deepEqual(s.events, ["contextmenu on button"], "a right-click on the row");
+    assert.equal(played.length, 2, "felt closing and opening");
+
+    // The grip closes on the row, and then the trigger drags the list.
     s.press("squeezestart", source, point);
     await Promise.resolve();
+    point = aim(12, 7);
+    flushFrame();
+    assert.ok(outer.scrollTop > 0, "the list moved");
     s.press("squeezeend", source, point);
     s.press("squeeze", source, point);
-    assert.deepEqual(s.events, [], "no contextmenu on the row passing under the ray");
-    assert.equal(played.length, before, "and nothing felt for it");
-    assert.deepEqual(s.escaped, ["squeezestart"], "the panel keeps it, as it keeps the scroll");
+    assert.deepEqual(s.events, ["contextmenu on button"], "no right-click mid-scroll");
+    assert.equal(played.length, 4, "but the opening is felt, as its closing was");
+
+    // A grip while the list moves is no press at all.
+    await grip(point);
+    assert.deepEqual(s.events, ["contextmenu on button"]);
+    assert.equal(played.length, 4, "and is felt neither way");
+    assert.deepEqual(s.escaped, ["squeezestart", "squeezestart", "squeezestart"]);
     s.press("selectend", source, point, undefined, null, s.outerObject);
+    s.teardown();
+  });
+
+  test("of the trigger on a list's own padding, let go off the panel, keeps its miss", () => {
+    const outer = html("div", "overflow: hidden");
+    describeScroller(outer, { client: 100, scroll: 400 });
+    const inner = html("button", "cursor: pointer");
+    outer.appendChild(inner);
+    const s = nest({
+      outer,
+      inner,
+      build: (ctx, element) => box(ctx, /** @type {HTMLElement} */ (element)),
+    });
+
+    s.press("selectstart", null, undefined, undefined, null, s.outerObject);
+    s.press("selectend", null, undefined, undefined, null, s.outerObject);
+    s.press("selectmissed", null, undefined, undefined, null, s.outerObject);
+    assert.deepEqual(s.escaped, [], "the list's press, its end and its miss are the list's");
     s.teardown();
   });
 

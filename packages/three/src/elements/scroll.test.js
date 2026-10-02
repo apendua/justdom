@@ -1,10 +1,12 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
+import { InteractionContext, InteractionManager } from "../interactions.js";
 import { PORTAL_ATTRIBUTE } from "./mirror.js";
 import { setContentGroup } from "./contentGroup.js";
-import { createScrollDrags, findScroller, isScrollable } from "./scroll.js";
+import { createScrollDrags, findScroller, isScrollable, movesList, scrollDrags } from "./scroll.js";
 import { describeScroller } from "../test/scroller.js";
+import { flushFrame } from "../test/portalHarness.js";
 
 /**
  * @param {string} style
@@ -122,6 +124,35 @@ describe("findScroller", () => {
     root.setAttribute(PORTAL_ATTRIBUTE, "");
     const row = el("", root);
     assert.equal(findScroller(row), null);
+  });
+});
+
+describe("a hand moving a list", () => {
+  test("is a fact about the scene, once the list has moved, until its glide retires", () => {
+    const { row, rowObject, controller, aimAt } = setup();
+    // Two panels of one scene, each with a context and a gesture of its own.
+    const manager = new InteractionManager();
+    const here = InteractionContext.set({}, manager);
+    const there = InteractionContext.set({}, manager);
+    const drags = scrollDrags(here);
+
+    drags.begin(controller, row, rowObject);
+    assert.equal(drags.scrolling(controller), true, "the panel's gesture holds the press");
+    assert.equal(movesList(there, controller), false, "but a resting press moves nothing");
+
+    aimAt(0, -40);
+    flushFrame();
+    assert.equal(movesList(there, controller), true, "seen from the other panel");
+    assert.equal(scrollDrags(there).scrolling(controller), false, "whose gesture has no say");
+
+    drags.end(controller);
+    flushFrame();
+    assert.equal(movesList(there, controller), true, "gliding");
+    for (let frame = 0; frame < 300 && drags.scrolling(controller); frame += 1) {
+      flushFrame();
+    }
+    assert.equal(drags.scrolling(controller), false, "the glide retired");
+    assert.equal(movesList(there, controller), false, "and the hand moves nothing");
   });
 });
 

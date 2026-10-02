@@ -578,12 +578,12 @@ function readRecordOf(node) {
   if (record) {
     return record;
   }
-  let adopted = adoptions.get(node);
-  if (!adopted) {
-    adopted = Signal.of(false);
-    adoptions.set(node, adopted);
+  let adoption = adoptions.get(node);
+  if (!adoption) {
+    adoption = Signal.of(false);
+    adoptions.set(node, adoption);
   }
-  adopted.get();
+  adoption.get();
   return undefined;
 }
 
@@ -1685,12 +1685,14 @@ function getStyleContext(node) {
  * portal made, or the page's element it claimed, either of which carries
  * `PORTAL_ATTRIBUTE`. Above it is the page around the scene, which no portal
  * adopts and no walk up from a panel node goes on into. The one check for
- * it in this file.
+ * it: the walks here, `findScroller`, `findDragSource` and the portal's
+ * claim all ask it. Only the portal's selectors, which find a root rather
+ * than test one, spell the attribute themselves.
  *
  * @param {Node} node
  * @returns {boolean}
  */
-function isPortalRoot(node) {
+export function isPortalRoot(node) {
   return (
     node.nodeType === Node.ELEMENT_NODE &&
     /** @type {Element} */ (node).hasAttribute(PORTAL_ATTRIBUTE)

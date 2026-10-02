@@ -9,8 +9,8 @@ import {
   getComputedStyleCached,
   getLocalClipBox,
   getParentElement,
+  isPortalRoot,
   isVisibilityHidden,
-  PORTAL_ATTRIBUTE,
 } from "./mirror.js";
 import { placeAndScale } from "./place.js";
 import { isSvgRoot } from "./plugins.js";
@@ -173,7 +173,7 @@ export function findDragSource(element) {
     if (isDragSource(el)) {
       return el;
     }
-    if (el.hasAttribute(PORTAL_ATTRIBUTE)) {
+    if (isPortalRoot(el)) {
       return null;
     }
     el = getParentElement(el);
@@ -600,6 +600,10 @@ function outlineGhost(shown, width, height) {
  * @property {(controller: THREE.XRTargetRaySpace) => boolean} didDrag
  *   Whether the hand's last press became a drag, which is what keeps the
  *   release from being a `mouseup` and a `click` as well.
+ * @property {(controller: THREE.XRTargetRaySpace) => boolean} carrying
+ *   Whether the hand is carrying something right now: its press became a
+ *   drag, with a `dragstart` the page let through, and has not dropped.
+ *   Not a press still short of being a drag, which `holding` counts.
  */
 
 /**
@@ -1013,6 +1017,9 @@ export function createDragAndDrop(requestFrames, readHit, snapshots) {
     },
     didDrag(controller) {
       return dragged.has(controller);
+    },
+    carrying(controller) {
+      return sessions.has(controller) && dragged.has(controller);
     },
   };
 }

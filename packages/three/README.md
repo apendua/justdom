@@ -351,6 +351,10 @@ it started on, arrives as `contextmenu`, which is where a page already
 flags a tile or opens a menu of its own. A grip that something above the
 panel took as it closed, a `drag()` that picks up what the panel hangs
 from with `squeeze` among its `buttons`, is that grab and sends nothing.
+Nor does a grip while the trigger carries a row (see **Dragging and
+dropping**) or moves a list, gliding included, on any panel: a page in the
+middle of a drag hears no other button. A trigger only resting on a row
+moves nothing yet, and a grip under it is a right-click as a mouse's is.
 Each of these events, and the `mousemove` a ray moving over the element
 sends, carries the point the ray met as `clientX` and `clientY`, mapped
 onto the page's own layout, so a page that finds what was pressed from
@@ -864,9 +868,11 @@ quad at the end of a ray, and the hand holding the controller can be told.
 Every control in a panel, which is every element the ray-target rule
 covers (`cursor: pointer` or `draggable="true"`), pulses the controller's
 motors when the trigger closes on it, and the grip as well, as it closes
-and as it opens, unless something above the panel took the grip as a grab
-(see **Projecting DOM into the scene** above). Nothing is marked: a panel
-with buttons in it is felt, and so is the keyboard.
+and as it opens. Not a grip that something above the panel took as a grab,
+nor one closed while the trigger carries a row or moves a list (see
+**Projecting DOM into the scene** above); a grip not felt closing is not
+felt opening either. Nothing is marked: a panel with buttons in it is
+felt, and so is the keyboard.
 
 A pulse when the ray arrives on a control is there too, and off unless a
 panel asks for it. A press is always worth telling the hand about. A hover

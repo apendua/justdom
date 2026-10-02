@@ -284,6 +284,11 @@ export class InteractionManager {
         }
         const object = intersection.object;
         const path = this.#path(object);
+        // Before the start goes out, as the path is: a handler of it may
+        // change what is registered or where the object hangs, and the
+        // release is matched against what was pressed, not against what
+        // the press made of it.
+        const target = this.getTarget(object);
         const start = {
           type: /** @type {const} */ (`${button}start`),
           inputSource,
@@ -293,7 +298,7 @@ export class InteractionManager {
           intersection,
         };
         this.#dispatchAlong(path, start);
-        return { object, target: this.getTarget(object), path, start };
+        return { object, target, path, start };
       };
 
       /**

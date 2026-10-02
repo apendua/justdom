@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { batch, Derived, Effect, selector, toObservable } from "@apendua/signal";
 import {
   createMirror,
+  getChildNodes,
   getBorderBoxSize,
   getComputedStyleCached,
   getContentPosition,
@@ -2431,5 +2432,29 @@ describe("two layout changes settled in one flush", () => {
       }
       container.remove();
     }
+  });
+});
+
+describe("a node read before any portal adopted it", () => {
+  test("is read again once one does, and follows its record from then on", () => {
+    // A portal builds a budget at a time, so something drawn early can read
+    // a node that is built, and adopted, a frame or two later.
+    const parent = document.createElement("div");
+    parent.appendChild(document.createElement("span"));
+    document.body.appendChild(parent);
+    /** @type {number[]} */
+    const seen = [];
+    const subscription = toObservable(new Derived(() => getChildNodes(parent).length)).subscribe(
+      (count) => seen.push(count),
+    );
+    assert.deepEqual(seen, [1]);
+
+    const mirror = createMirror();
+    mirror.adopt(parent);
+    parent.appendChild(document.createElement("span"));
+    mirror.childListChanged(parent);
+    assert.equal(seen.at(-1), 2, "the change reaches what read the node before");
+    subscription.unsubscribe();
+    parent.remove();
   });
 });

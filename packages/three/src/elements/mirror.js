@@ -492,11 +492,43 @@ class NodeRecord {
 const records = new WeakMap();
 
 /**
+ * The nodes read before any portal adopted them, each with a signal the
+ * adoption sets. See `recordOf`.
+ *
+ * @type {WeakMap<Node, Signal<boolean>>}
+ */
+const adoptions = new WeakMap();
+
+/**
+ * The node's record, or none for a node no portal has adopted, which reads
+ * the DOM with no dependencies.
+ *
+ * Not none for good, though, and a read is cached. A portal builds what it
+ * mirrors a budget at a time, so something drawn early can read a node
+ * that is built, and adopted, a few frames later: a `<text>`'s runs asked
+ * for its children before the `<text>` had a record. A cache made then
+ * depended on nothing and stayed as it was read, and whatever the page did
+ * to the node afterwards never reached it, so a `<text>` the page emptied
+ * as it tore a board down was measured with the run it had taken out, and
+ * threw. So a read with no record depends on the node's adoption instead,
+ * and comes round again once there is a record to depend on, for every
+ * cache that reads through here.
+ *
  * @param {Node} node
  * @returns {NodeRecord | undefined}
  */
 function recordOf(node) {
-  return records.get(node);
+  const record = records.get(node);
+  if (record) {
+    return record;
+  }
+  let adopted = adoptions.get(node);
+  if (!adopted) {
+    adopted = Signal.of(false);
+    adoptions.set(node, adopted);
+  }
+  adopted.get();
+  return undefined;
 }
 
 /**
@@ -561,6 +593,10 @@ export class DomMirror {
   adopt(node) {
     if (!records.has(node)) {
       records.set(node, new NodeRecord(this, node));
+      // Whatever read the node before it had a record reads it again (see
+      // `recordOf`).
+      adoptions.get(node)?.set(true);
+      adoptions.delete(node);
     }
   }
 

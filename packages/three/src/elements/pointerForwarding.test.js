@@ -40,7 +40,9 @@ const SVG_NS = "http://www.w3.org/2000/svg";
 /**
  * The ray events `nest` can dispatch.
  *
- * @typedef {"selectstart" | "selectend" | "select" | "pointermove" | "pointerenter" | "pointerleave"} RayEventType
+ * @typedef {"selectstart" | "selectend" | "select"
+ *   | "squeezestart" | "squeezeend" | "squeeze"
+ *   | "pointermove" | "pointerenter" | "pointerleave"} RayEventType
  */
 
 /**
@@ -87,7 +89,7 @@ function nest({ outer, inner, build, haptics = null }) {
   /** @type {string[]} */
   const points = [];
   // `mousemove` does not bubble, so everything is heard on the way down.
-  const types = ["mousedown", "mouseup", "click", "mousemove"];
+  const types = ["mousedown", "mouseup", "click", "contextmenu", "mousemove"];
   for (const type of types) {
     document.addEventListener(type, record, true);
   }
@@ -101,7 +103,14 @@ function nest({ outer, inner, build, haptics = null }) {
 
   /** @type {string[]} */
   const escaped = [];
-  for (const type of ["selectstart", "selectend", "select"]) {
+  for (const type of [
+    "selectstart",
+    "selectend",
+    "select",
+    "squeezestart",
+    "squeezeend",
+    "squeeze",
+  ]) {
     panel.addEventListener(/** @type {never} */ (type), () => escaped.push(type));
   }
 
@@ -118,12 +127,17 @@ function nest({ outer, inner, build, haptics = null }) {
     end(hand);
   };
 
+  /** The last start of each button, for the events that end its press. */
+  const starts = new Map();
+
   return {
     events,
     /** Where each of `events` happened on the page, and with which button. */
     points,
     /** The outer element's object, whose frame is the panel's px. */
     outerObject,
+    panel,
+    manager,
     escaped,
     controller,
     /** The hands whose drag gesture was told the press is over. */
@@ -143,9 +157,13 @@ function nest({ outer, inner, build, haptics = null }) {
      * @param {THREE.Object3D} [of] The registered object whose mesh the
      *   ray met: the inner's unless said otherwise, the outer's for the
      *   part of it the inner does not cover.
+     * @returns {object} The event, as the manager handed it out. The events
+     *   that end a press carry the start it began with, as the manager's
+     *   do.
      */
     press(type, inputSource = null, point, on, from = null, of = innerObject) {
       const mesh = of.children.find((child) => child instanceof THREE.Mesh) ?? of;
+      const button = type.startsWith("squeeze") ? "squeeze" : "select";
       const event = {
         type,
         controller,
@@ -155,11 +173,16 @@ function nest({ outer, inner, build, haptics = null }) {
         registeredTarget: of,
         relatedTarget: from,
         ...(point && { intersection: { point, object: on ?? mesh } }),
+        ...(!type.endsWith("start") && !type.startsWith("pointer") && { start: starts.get(button) }),
       };
+      if (type.endsWith("start")) {
+        starts.set(button, event);
+      }
       manager.dispatch(
         /** @type {THREE.Object3D<XREventMap>} */ (mesh),
         /** @type {never} */ (event),
       );
+      return event;
     },
     teardown() {
       for (const type of types) {
@@ -300,6 +323,26 @@ describe("a press on nested clickable elements", () => {
     s.teardown();
   });
 
+  test("of the grip is felt as it closes and as it opens, once each", () => {
+    const outer = html("button", "cursor: pointer");
+    const inner = html("span", "cursor: pointer");
+    outer.appendChild(inner);
+    const { source, played } = recordingSource();
+    const s = nest({
+      outer,
+      inner,
+      build: (ctx, element) => box(ctx, /** @type {HTMLElement} */ (element)),
+      haptics: createHaptics({ flavor: "key" }),
+    });
+
+    s.press("squeezestart", source);
+    assert.equal(played.length, 1, "one pulse as the grip closes");
+    s.press("squeezeend", source);
+    s.press("squeeze", source);
+    assert.equal(played.length, 2, "and one as it opens on the right-click");
+    s.teardown();
+  });
+
   test("inside an element that is not clickable, stops where it did", () => {
     const outer = html("div", "");
     const inner = html("span", "cursor: pointer");
@@ -407,6 +450,96 @@ describe("a press on nested clickable elements", () => {
     s.press("selectstart", null, point);
     s.press("selectend", null, point, elsewhere);
     assert.deepEqual(s.points, ["mousedown at 112,47 button 0", "mouseup at 0,0 button 0"]);
+    s.teardown();
+  });
+
+  test("of the grip on a shape is the page's contextmenu, at the point", () => {
+    // A board drawn as one shape, which is how a page with its own hit test
+    // draws one: what was pressed is told by where, not by the target.
+    const root = document.createElementNS(SVG_NS, "svg");
+    root.setAttribute("style", "cursor: pointer");
+    root.getBoundingClientRect = () => clientRect(20, 30, 100, 50);
+    const board = document.createElementNS(SVG_NS, "rect");
+    for (const [name, value] of Object.entries({
+      width: "100",
+      height: "50",
+      fill: "green",
+      style: "cursor: pointer",
+    })) {
+      board.setAttribute(name, value);
+    }
+    root.appendChild(board);
+    const s = nest({
+      outer: root,
+      inner: board,
+      build: (ctx, element) =>
+        element === root
+          ? box(ctx, /** @type {HTMLElement} */ (/** @type {Element} */ (root)))
+          : shape(ctx, element),
+    });
+    /** @type {boolean[]} */
+    const cancelable = [];
+    const listen = (/** @type {Event} */ event) => cancelable.push(event.cancelable);
+    document.addEventListener("contextmenu", listen);
+    s.outerObject.updateMatrixWorld(true);
+
+    const point = s.outerObject.localToWorld(new THREE.Vector3(60, 25, 0));
+    s.press("squeezestart", null, point);
+    s.press("squeezeend", null, point);
+    s.press("squeeze", null, point);
+    assert.deepEqual(s.events, ["contextmenu on rect"], "sent once, from the innermost");
+    assert.deepEqual(s.points, ["contextmenu at 80,55 button 2"]);
+    assert.deepEqual(cancelable, [true], "and a page can cancel it, as it can a real one");
+    assert.deepEqual(
+      s.escaped,
+      ["squeezestart"],
+      "only the start goes on past the panel, for a scene that grabs with the grip",
+    );
+    document.removeEventListener("contextmenu", listen);
+    s.teardown();
+  });
+
+  test("of the grip on an element that has gone, is nobody's", () => {
+    const outer = html("ul", "cursor: pointer");
+    const inner = html("li", "cursor: pointer");
+    outer.appendChild(inner);
+    const s = nest({
+      outer,
+      inner,
+      build: (ctx, element) => box(ctx, /** @type {HTMLElement} */ (element)),
+    });
+
+    s.press("squeezestart");
+    inner.remove();
+    s.press("squeeze");
+    assert.deepEqual(s.events, [], "not the list's behind the row either");
+    assert.deepEqual(s.escaped, ["squeezestart"]);
+    s.teardown();
+  });
+
+  test("of the grip that something above took, is that carry's", () => {
+    const outer = html("button", "cursor: pointer");
+    const inner = html("span", "cursor: pointer");
+    outer.appendChild(inner);
+    const s = nest({
+      outer,
+      inner,
+      build: (ctx, element) => box(ctx, /** @type {HTMLElement} */ (element)),
+    });
+    // What `drag()` with the grip among its buttons does with the press.
+    s.panel.addEventListener(/** @type {never} */ ("squeezestart"), (event) =>
+      s.manager.stopPropagation(/** @type {never} */ (event)),
+    );
+
+    s.press("squeezestart");
+    s.press("squeezeend");
+    s.press("squeeze");
+    assert.deepEqual(s.events, [], "no contextmenu for a grab");
+    assert.deepEqual(
+      s.escaped,
+      ["squeezestart", "squeezeend", "squeeze"],
+      "and the grab's end reaches whatever took its start",
+    );
     s.teardown();
   });
 

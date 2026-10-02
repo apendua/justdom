@@ -358,6 +358,7 @@ const client = new THREE.Vector2();
 const init = {
   bubbles: false,
   cancelable: false,
+  button: 0,
   clientX: 0,
   clientY: 0,
   screenX: 0,
@@ -402,21 +403,25 @@ function writePoint(panel, e, on) {
 
 /**
  * The init for the `mousedown` or `click` sent for a press on an element,
- * or for the `click` a press on a background sends, the panel's, an
- * overlay's or a scrolling list's own. One event each, so the panel is
- * probed first and the point is taken against where the page lays it out
- * now. Valid until the next call: the event is to be made from it at once.
+ * for the `contextmenu` the grip sends, or for the `click` a press on a
+ * background sends, the panel's, an overlay's or a scrolling list's own.
+ * One event each, so the panel is probed first and the point is taken
+ * against where the page lays it out now. Valid until the next call: the
+ * event is to be made from it at once.
  *
  * @param {Panel | null} panel The panel the element is in, as `getPanel`
  *   finds it.
- * @param {{ intersection?: THREE.Intersection }} e The `selectstart` or
- *   `select`, whose intersection is on the element.
+ * @param {{ intersection?: THREE.Intersection }} e The `selectstart`,
+ *   `select` or `squeeze`, whose intersection is on the element.
  * @param {boolean} cancelable
+ * @param {number} [button] The mouse button the event says was pressed: the
+ *   main one unless said otherwise, the secondary one (2) for the grip.
  * @returns {MouseEventInit}
  */
-export function pressInit(panel, e, cancelable) {
+export function pressInit(panel, e, cancelable, button = 0) {
   init.bubbles = true;
   init.cancelable = cancelable;
+  init.button = button;
   if (panel) {
     probePanel(panel);
   }
@@ -436,6 +441,7 @@ export function pressInit(panel, e, cancelable) {
 export function releaseInit(panel, e) {
   init.bubbles = true;
   init.cancelable = false;
+  init.button = 0;
   const on = !!e.intersection && getPanel(e.intersection.object) === panel;
   if (panel && on) {
     probePanel(panel);
@@ -467,6 +473,7 @@ export function moveInit(panel, e) {
     lastMove = e;
     init.bubbles = false;
     init.cancelable = false;
+    init.button = 0;
     writePoint(panel, e, true);
   }
   return init;

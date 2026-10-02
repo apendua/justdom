@@ -144,17 +144,19 @@ function hasForwardingAncestor(object) {
 
 /**
  * Being a ray target, and forwarding what happens there back to the DOM. A
- * press arrives as `mousedown`, `mouseup` and `click`, and a ray moving over
- * the object as `mousemove`, each carrying the point the ray met, on the
- * page, as its `clientX` and `clientY` (see `pressInit` in
- * `dragAndDrop.js`). While the ray is on it the element carries
- * `data-xr-hover`, and while it is held, `data-xr-active`. A stylesheet
- * answers those flags where a page would use `:hover` and `:active`. Where
- * the panel has haptics, the hand feels a press and its release, and an
- * arrival on a control where the panel asks for one. A press on something
- * draggable that the hand carries away is a drag and drop instead, and its
- * release is a `drop` and a `dragend` rather than a `mouseup` and a `click`
- * (see `dragAndDrop.js`).
+ * press arrives as `mousedown`, `mouseup` and `click`, a ray moving over
+ * the object as `mousemove`, and a press of the grip as `contextmenu`,
+ * which is the grip standing in for the mouse's other button. Each carries
+ * the point the ray met, on the page, as its `clientX` and `clientY` (see
+ * `pressInit` in `dragAndDrop.js`). While the ray is on it the element
+ * carries `data-xr-hover`, and while it is held, `data-xr-active`. A
+ * stylesheet answers those flags where a page would use `:hover` and
+ * `:active`. Where the panel has haptics, the hand feels a press and its
+ * release, of the grip as of the trigger, and an arrival on a control
+ * where the panel asks for one. A press on something draggable that the
+ * hand carries away is a drag and drop instead, and its release is a
+ * `drop` and a `dragend` rather than a `mouseup` and a `click` (see
+ * `dragAndDrop.js`).
  *
  * Boxes, SVG shapes and clickable SVG groups all forward rays through this
  * function, so a panel's stylesheet and its click handlers see the same
@@ -167,7 +169,10 @@ function hasForwardingAncestor(object) {
  * clickable element around it is pressed too, the way `:active` applies to
  * the ancestors of what is pressed, so each one takes `data-xr-active` and
  * hears its own `onPress`. The ray event stops at the outermost of them,
- * so nothing outside the panel sees a press the panel took.
+ * so nothing outside the panel sees a press the panel took. The one ray
+ * event let past is the grip's start, so that a scene can pick up with the
+ * grip what the panel hangs from; a grip nothing took is the panel's, and
+ * its end and its completion stop at the outermost element too.
  *
  * These belong together: an element that stops being clickable has to lose
  * the handlers too, not just the registration. The interaction manager
@@ -185,7 +190,7 @@ function hasForwardingAncestor(object) {
  * @returns {EntityEffect<Object3D<XREventMap>>[]}
  */
 export function forwardPointerEvents(ctx, element, object, { enabled, onPress }) {
-  const { makeInteractive, stopPropagation } = interactions(ctx);
+  const { makeInteractive, stopPropagation, isStopped } = interactions(ctx);
   const drags = scrollDrags(ctx);
   const dnd = dragAndDrop(ctx);
   /**
@@ -314,6 +319,45 @@ export function forwardPointerEvents(ctx, element, object, { enabled, onPress })
       });
       onPress?.();
       passOn(e);
+    }),
+    on("squeeze", (e) => {
+      // The grip is the ray's other button. A page hears the mouse's other
+      // button as `contextmenu`, and that is where it flags a tile or opens
+      // a menu of its own, so that is what the grip sends: on what the ray
+      // is on, once however many clickable elements the press holds, and
+      // only for a press let go where it started, as a click is.
+      if (isGone(element)) {
+        stopPropagation(e);
+        return;
+      }
+      // A grip that something above took when it closed, a `drag()` that
+      // picks things up with the grip, was a grab, and its release is that
+      // carry's and not a right-click. Asked of the press itself, which
+      // the manager hands over, so the answer does not depend on this
+      // element's handlers having been up when the grip closed.
+      if (isStopped(e.start)) {
+        return;
+      }
+      deliverOnce(e, () => {
+        element.dispatchEvent(new MouseEvent("contextmenu", pressInit(panel(), e, true, 2)));
+        haptics?.release(e.inputSource);
+      });
+      passOn(e);
+    }),
+    on("squeezestart", (e) => {
+      // Felt once as the grip closes on a control, as a trigger's press is,
+      // however many clickable elements it holds.
+      deliverOnce(e, () => {
+        haptics?.press(e.inputSource);
+      });
+    }),
+    on("squeezeend", (e) => {
+      // The grip's start is left to go on past the panel, so that a scene
+      // can pick up with it what the panel hangs from. A grip nothing took
+      // is the panel's, and its end stops where a press's does.
+      if (!isStopped(e.start)) {
+        passOn(e);
+      }
     }),
     on("selectstart", (e) => {
       if (isGone(element)) {

@@ -361,6 +361,33 @@ describe("select", () => {
     subscription.unsubscribe();
   });
 
+  test("a squeeze carries the squeezestart it began with, and says whether it was taken", () => {
+    const manager = new InteractionManager();
+    const controller = fakeController();
+    const subscription = connect(manager, controller);
+    const { button } = labelledButton();
+    manager.add(button);
+    /** @type {any[]} */
+    const starts = [];
+    /** @type {any[]} */
+    const squeezes = [];
+    button.addEventListener("squeezestart", (event) => starts.push(event));
+    button.addEventListener("squeeze", (event) => squeezes.push(event));
+
+    controller.dispatchEvent(/** @type {any} */ ({ type: "squeezestart", data: {} }));
+    controller.dispatchEvent(/** @type {any} */ ({ type: "squeezeend", data: {} }));
+    assert.equal(squeezes[0].start, starts[0], "the press it completes");
+    assert.equal(manager.isStopped(squeezes[0].start), false);
+
+    // Something above takes the next grip, as a carry does.
+    button.addEventListener("squeezestart", (event) => manager.stopPropagation(event));
+    controller.dispatchEvent(/** @type {any} */ ({ type: "squeezestart", data: {} }));
+    controller.dispatchEvent(/** @type {any} */ ({ type: "squeezeend", data: {} }));
+    assert.equal(squeezes[1].start, starts[1]);
+    assert.equal(manager.isStopped(squeezes[1].start), true);
+    subscription.unsubscribe();
+  });
+
   test("a hand three is not tracking presses nothing, and a hand lost mid-press misses", () => {
     const manager = new InteractionManager();
     const controller = fakeController();

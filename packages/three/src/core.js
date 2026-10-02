@@ -56,6 +56,9 @@ import { addDependency, batch, Derived } from "@apendua/signal";
  * @property {Object3D<XREventMap>} target
  * @property {Object3D<XREventMap>} originalTarget
  * @property {XRTargetRaySpace} controller
+ * @property {Intersection<Object3D<XREventMap>>} [intersection] On a
+ *   `selectend`, where the ray is as the trigger opens, which need not be on
+ *   the target. Absent when the ray is on nothing, and on the other events.
  */
 
 /**

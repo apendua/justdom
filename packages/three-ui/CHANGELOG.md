@@ -1,6 +1,17 @@
 # Change Log - @apendua/justui
 
-This log was last generated on Sat, 26 Sep 2026 15:05:41 GMT and should not be manually modified.
+This log was last generated on Fri, 02 Oct 2026 14:14:43 GMT and should not be manually modified.
+
+## 0.3.0
+Fri, 02 Oct 2026 14:14:43 GMT
+
+### Minor changes
+
+- keyboard() takes the field it types into and follows it: a number field (or inputmode numeric/decimal) gets the new NUMERIC_LAYOUT, overridable with numericLayout. isNumericField and NUMERIC_LAYOUT are exported.
+
+### Patches
+
+- dropdown and scrollable ask which panel they are in when a click or release arrives rather than once when they mount, so a widget whose element a portal takes or releases while it is open is scoped correctly.
 
 ## 0.2.8
 Sat, 26 Sep 2026 15:05:41 GMT

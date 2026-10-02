@@ -1,5 +1,6 @@
 import { after, before, describe, test } from "node:test";
 import assert from "node:assert/strict";
+import { clientRect } from "../test/clientRect.js";
 import * as THREE from "three";
 import { InteractionContext, InteractionManager } from "../interactions.js";
 import { createPortal as createHeldPortal } from "./portal.js";
@@ -124,17 +125,7 @@ before(() => {
         return real;
       }
     }
-    return /** @type {DOMRect} */ ({
-      left: 0,
-      top: 0,
-      right: 100,
-      bottom: 20,
-      width: 100,
-      height: 20,
-      x: 0,
-      y: 0,
-      toJSON: () => ({}),
-    });
+    return clientRect(0, 0, 100, 20);
   };
 });
 after(() => {
@@ -214,15 +205,7 @@ function installRange(top) {
   document.createRange = () => {
     let start = 0;
     let end = 0;
-    const rect = () =>
-      /** @type {DOMRect} */ ({
-        left: start * 10,
-        top,
-        right: end * 10,
-        bottom: top + 16,
-        width: (end - start) * 10,
-        height: 16,
-      });
+    const rect = () => clientRect(start * 10, top, (end - start) * 10, 16);
     return /** @type {Range} */ (
       /** @type {unknown} */ ({
         selectNodeContents: (/** @type {Node} */ node) => {
@@ -381,8 +364,7 @@ describe("a list in a panel", () => {
       `<ul><li style="list-style-type: decimal; direction: rtl; padding-right: 4px"></li></ul>`,
     );
     const item = /** @type {HTMLElement} */ (panel.list().firstElementChild);
-    item.getBoundingClientRect = () =>
-      /** @type {DOMRect} */ ({ left: 0, top: 0, right: 100, bottom: 20, width: 100, height: 20 });
+    item.getBoundingClientRect = () => clientRect(0, 0, 100, 20);
     await settle(panel.portal);
 
     // The content box ends at 96, and the space is on its side of the
@@ -519,8 +501,7 @@ describe("a list in a panel", () => {
       `<ul><li style="list-style-type: decimal; overflow: hidden"></li></ul>`,
     );
     const item = /** @type {HTMLElement} */ (panel.list().firstElementChild);
-    item.getBoundingClientRect = () =>
-      /** @type {DOMRect} */ ({ left: 0, top: 0, right: 100, bottom: 20, width: 100, height: 20 });
+    item.getBoundingClientRect = () => clientRect(0, 0, 100, 20);
     await settle(panel.portal);
 
     const [run] = panel.runs();
@@ -538,8 +519,7 @@ describe("a list in a panel", () => {
     const restore = installRange(12);
     const panel = listPanel(`<ul><li style="list-style-type: disc"><p>Point</p></li></ul>`);
     const paragraph = /** @type {HTMLElement} */ (panel.root.querySelector("p"));
-    paragraph.getBoundingClientRect = () =>
-      /** @type {DOMRect} */ ({ left: 0, top: 12, right: 100, bottom: 28, width: 100, height: 16 });
+    paragraph.getBoundingClientRect = () => clientRect(0, 12, 100, 16);
     try {
       await settle(panel.portal);
       const marker = panel.runs().find((run) => run.position.x < 0);

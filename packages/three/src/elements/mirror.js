@@ -501,6 +501,46 @@ const records = new WeakMap();
 const adoptions = new WeakMap();
 
 /**
+ * The adoption signals set since the last microtask, to be set in one batch
+ * (see `announceAdoption`).
+ *
+ * @type {Signal<boolean>[] | null}
+ */
+let adopted = null;
+
+/**
+ * Tell whatever read the node before it had a record to read it again (see
+ * `readRecordOf`): from a microtask, and all the nodes adopted since the
+ * last one together. `adopt` is called from readers' computations, by the
+ * SVG plugin for a `<text>`'s runs and for a template, and by the list
+ * marker for an item's first line, and a signal written with no batch open
+ * drains the queue then and there, which would run the effects that depend
+ * on the adoption in the middle of the computation that adopted, with the
+ * `Derived` it is evaluating still empty: a reader of it would meet a
+ * cycle. A microtask runs once the stack is empty, so nothing is computing,
+ * and the one batch lets a template's subtree, adopted node by node, come
+ * round as one update.
+ *
+ * @param {Signal<boolean>} signal
+ * @returns {void}
+ */
+function announceAdoption(signal) {
+  if (!adopted) {
+    adopted = [];
+    queueMicrotask(() => {
+      const signals = /** @type {Signal<boolean>[]} */ (adopted);
+      adopted = null;
+      batch(() => {
+        for (const adoption of signals) {
+          adoption.set(true);
+        }
+      });
+    });
+  }
+  adopted.push(signal);
+}
+
+/**
  * The node's record, or none for a node no portal has adopted. A lookup
  * and nothing else, for the writers: the mirror's own methods, which bump
  * what a record has when there is one and have nothing to do when there
@@ -525,9 +565,10 @@ function recordOf(node) {
  * to the node afterwards never reached it, so a `<text>` the page emptied
  * as it tore a board down was measured with the run it had taken out, and
  * threw. So a read with no record depends on the node's adoption instead,
- * and comes round again once there is a record to depend on, for every
- * cache that reads through here. Only the caches do: a writer looks a
- * record up with `recordOf` and hangs nothing on a node it finds none for.
+ * and comes round again once there is a record to depend on, a microtask
+ * after the adoption (see `announceAdoption`), for every cache that reads
+ * through here. Only the caches do: a writer looks a record up with
+ * `recordOf` and hangs nothing on a node it finds none for.
  *
  * @param {Node} node
  * @returns {NodeRecord | undefined}
@@ -608,10 +649,11 @@ export class DomMirror {
   adopt(node) {
     if (!records.has(node)) {
       records.set(node, new NodeRecord(this, node));
-      // Whatever read the node before it had a record reads it again (see
-      // `readRecordOf`).
-      adoptions.get(node)?.set(true);
-      adoptions.delete(node);
+      const adoption = adoptions.get(node);
+      if (adoption) {
+        adoptions.delete(node);
+        announceAdoption(adoption);
+      }
     }
   }
 
@@ -1618,10 +1660,7 @@ function getStyleContext(node) {
             sum += currentRecord.own.get();
           }
         }
-        if (
-          current.nodeType === Node.ELEMENT_NODE &&
-          /** @type {Element} */ (current).hasAttribute(PORTAL_ATTRIBUTE)
-        ) {
+        if (isPortalRoot(current)) {
           break;
         }
       }
@@ -1630,6 +1669,22 @@ function getStyleContext(node) {
     styleContextCache.set(node, signal);
   }
   return signal.get();
+}
+
+/**
+ * Whether the node is the top of what a portal mirrors: the container the
+ * portal made, or the page's element it claimed, either of which carries
+ * `PORTAL_ATTRIBUTE`. Above it is the page around the scene, which no portal
+ * adopts and no walk up from a panel node goes on into.
+ *
+ * @param {Node} node
+ * @returns {boolean}
+ */
+function isPortalRoot(node) {
+  return (
+    node.nodeType === Node.ELEMENT_NODE &&
+    /** @type {Element} */ (node).hasAttribute(PORTAL_ATTRIBUTE)
+  );
 }
 
 /**
@@ -1702,10 +1757,7 @@ export function getReflowContext(node) {
         if (currentRecord) {
           sum += currentRecord.reflow.get();
         }
-        if (
-          current.nodeType === Node.ELEMENT_NODE &&
-          /** @type {Element} */ (current).hasAttribute(PORTAL_ATTRIBUTE)
-        ) {
+        if (isPortalRoot(current)) {
           break;
         }
       }
@@ -1790,11 +1842,16 @@ function getBorderBoxInlineSize(element) {
  * @returns {void}
  */
 function readParentBox(node) {
+  // The top of what the portal mirrors has the page around the scene for a
+  // parent, whose layout is none of a panel's business.
+  if (isPortalRoot(node)) {
+    return;
+  }
+  // Below it, a parent with no record yet is one the portal has not reached
+  // or that a plugin's child was adopted ahead of, and the read follows its
+  // adoption as every cached read does.
   const parent = getParentElement(node);
-  // A parent no portal adopted is the page around the scene, whose layout is
-  // none of a panel's business. Looked up and not read: nothing adopts the
-  // page later, so there is nothing to follow.
-  if (!parent || !recordOf(parent)) {
+  if (!parent || !readRecordOf(parent)) {
     return;
   }
   if (getFlowMode(parent) === "block") {

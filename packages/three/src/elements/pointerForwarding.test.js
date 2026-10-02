@@ -40,7 +40,7 @@ const SVG_NS = "http://www.w3.org/2000/svg";
 /**
  * The ray events `nest` can dispatch.
  *
- * @typedef {"selectstart" | "selectend" | "select"
+ * @typedef {"selectstart" | "selectend" | "select" | "selectmissed"
  *   | "squeezestart" | "squeezeend" | "squeeze" | "squeezemissed"
  *   | "pointermove" | "pointerenter" | "pointerleave"} RayEventType
  */
@@ -107,9 +107,11 @@ function nest({ outer, inner, build, haptics = null }) {
     "selectstart",
     "selectend",
     "select",
+    "selectmissed",
     "squeezestart",
     "squeezeend",
     "squeeze",
+    "squeezemissed",
   ]) {
     panel.addEventListener(/** @type {never} */ (type), () => escaped.push(type));
   }
@@ -156,10 +158,8 @@ function nest({ outer, inner, build, haptics = null }) {
      *   registered object the ray was on before, if any.
      * @param {THREE.Object3D} [of] The registered object whose mesh the
      *   ray met: the inner's unless said otherwise, the outer's for the
-     *   part of it the inner does not cover.
-     * @returns {object} The event, as the manager handed it out. The events
-     *   that end a press carry the start it began with, as the manager's
-     *   do.
+     *   part of it the inner does not cover. The events that end a press
+     *   carry the start it began with, as the manager's do.
      */
     press(type, inputSource = null, point, on, from = null, of = innerObject) {
       const mesh = of.children.find((child) => child instanceof THREE.Mesh) ?? of;
@@ -183,7 +183,6 @@ function nest({ outer, inner, build, haptics = null }) {
         /** @type {THREE.Object3D<XREventMap>} */ (mesh),
         /** @type {never} */ (event),
       );
-      return event;
     },
     teardown() {
       for (const type of types) {
@@ -345,6 +344,11 @@ describe("a press on nested clickable elements", () => {
     assert.equal(played.length, 2, "and one as it opens");
     s.press("squeezemissed", source);
     assert.equal(played.length, 2, "whether or not the right-click lands");
+    assert.deepEqual(
+      s.escaped,
+      ["squeezestart"],
+      "and the miss stays in the panel, as the end does",
+    );
     s.teardown();
   });
 
@@ -527,6 +531,16 @@ describe("a press on nested clickable elements", () => {
     assert.deepEqual(played.length, 2, "felt closing on the row and opening on the list");
     assert.deepEqual(s.escaped, ["squeezestart"]);
 
+    // Or let go off the row: the miss is the panel's too.
+    outer.appendChild(inner);
+    s.press("squeezestart", source);
+    await Promise.resolve();
+    inner.remove();
+    s.press("squeezeend", source);
+    s.press("squeezemissed", source);
+    assert.deepEqual(played.length, 4, "felt the same way");
+    assert.deepEqual(s.escaped, ["squeezestart", "squeezestart"], "nothing of it leaves the panel");
+
     // Gone before the grip closes: swallowed, so that nothing behind the
     // row, the scene included, takes a grip on a row the page let go of,
     // and its end stops at the panel as its start did.
@@ -535,10 +549,10 @@ describe("a press on nested clickable elements", () => {
     s.press("squeezestart", source);
     await Promise.resolve();
     s.press("squeezeend", source);
-    s.press("squeeze", source);
+    s.press("squeezemissed", source);
     assert.deepEqual(s.events, []);
-    assert.deepEqual(played.length, 3, "the list feels the grip open, not the row close");
-    assert.deepEqual(s.escaped, ["squeezestart"], "nothing of it leaves the panel");
+    assert.deepEqual(played.length, 5, "the list feels the grip open, not the row close");
+    assert.deepEqual(s.escaped, ["squeezestart", "squeezestart"], "nothing of it leaves the panel");
     s.teardown();
   });
 
@@ -564,12 +578,12 @@ describe("a press on nested clickable elements", () => {
     // carry still gets its end.
     inner.remove();
     s.press("squeezeend", source);
-    s.press("squeeze", source);
+    s.press("squeezemissed", source);
     assert.deepEqual(s.events, [], "no contextmenu for a grab");
     assert.equal(played.length, 0, "and nothing felt for one, closing or opening");
     assert.deepEqual(
       s.escaped,
-      ["squeezestart", "squeezeend", "squeeze"],
+      ["squeezestart", "squeezeend", "squeezemissed"],
       "and the grab's end reaches whatever took its start",
     );
     s.teardown();

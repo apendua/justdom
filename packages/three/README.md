@@ -377,7 +377,8 @@ match `:hover`. The ray event stops at the outermost of them, so nothing
 outside the panel hears a press the panel took. The grip's start is the one
 exception: it goes on past the panel, so that a scene can pick up with the
 grip what the panel hangs from. A grip nothing took is the panel's, and its
-end and its completion stop at the outermost element as a press's do.
+end, its completion and its miss stop at the outermost element as a
+press's do.
 Nesting costs no extra ray tests: a registered object inside another is
 reached by the outer one's walk and is not cast again on its own.
 

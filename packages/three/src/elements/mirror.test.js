@@ -1,6 +1,6 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
-import { batch, Derived, Effect, selector, toObservable } from "@apendua/signal";
+import { batch, Computation, Derived, Effect, selector, toObservable } from "@apendua/signal";
 import {
   createMirror,
   getChildNodes,
@@ -2436,7 +2436,7 @@ describe("two layout changes settled in one flush", () => {
 });
 
 describe("a node read before any portal adopted it", () => {
-  test("is read again once one does, and follows its record from then on", () => {
+  test("is read again once one does, and follows its record from then on", async () => {
     // A portal builds a budget at a time, so something drawn early can read
     // a node that is built, and adopted, a frame or two later.
     const parent = document.createElement("div");
@@ -2453,7 +2453,49 @@ describe("a node read before any portal adopted it", () => {
     mirror.adopt(parent);
     parent.appendChild(document.createElement("span"));
     mirror.childListChanged(parent);
+    // The adoption is announced from a microtask (see `announceAdoption`).
+    await Promise.resolve();
     assert.equal(seen.at(-1), 2, "the change reaches what read the node before");
+    subscription.unsubscribe();
+    parent.remove();
+  });
+
+  test("is told from a microtask, so a reader that adopts is not re-entered", async () => {
+    // The SVG plugin adopts a template, and the list marker an item's
+    // children, from inside a `Derived`. A frame callback evaluating such a
+    // `Derived` runs under no batch, so the adoption, written then and there,
+    // would drain the queue in the middle of its computation; an effect that
+    // had read the node before, and reads the `Derived` too, would meet it
+    // still empty.
+    const parent = document.createElement("div");
+    parent.appendChild(document.createElement("span"));
+    document.body.appendChild(parent);
+    const mirror = createMirror();
+    const adopting = new Derived(() => {
+      mirror.adopt(parent);
+      return getChildNodes(parent).length;
+    });
+    /** @type {number[]} */
+    const seen = [];
+    let readsAdopting = false;
+    const subscription = toObservable(
+      new Derived(() => {
+        const count = getChildNodes(parent).length;
+        return readsAdopting ? adopting.get() + count : count;
+      }),
+    ).subscribe((count) => seen.push(count));
+    assert.deepEqual(seen, [1]);
+    readsAdopting = true;
+
+    // As `useFrame` evaluates it: a computation of its own, under no batch.
+    const frame = new Computation();
+    assert.equal(
+      frame.track(() => adopting.get()),
+      1,
+    );
+    assert.deepEqual(seen, [1], "nothing re-ran inside the frame's computation");
+    await Promise.resolve();
+    assert.deepEqual(seen, [1, 2], "and the early read came round after it");
     subscription.unsubscribe();
     parent.remove();
   });

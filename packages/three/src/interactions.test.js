@@ -365,7 +365,7 @@ describe("select", () => {
     const manager = new InteractionManager();
     const controller = fakeController();
     const subscription = connect(manager, controller);
-    const { button } = labelledButton();
+    const { button, label } = labelledButton();
     manager.add(button);
     /** @type {any[]} */
     const starts = [];
@@ -385,6 +385,10 @@ describe("select", () => {
     assert.ok(
       ends.every((event) => event.start === starts[0]),
       "the press they end",
+    );
+    assert.ok(
+      ends.every((event) => event.intersection?.object === label),
+      "and, let go on the button, where the ray is as the grip opens",
     );
     assert.equal(manager.isStopped(starts[0]), false);
 

@@ -184,7 +184,8 @@ function hasForwardingAncestor(object) {
  * grip what the panel hangs from, a `drag()` with `squeeze` among its
  * buttons. A grip something above took that way is that grab's, and the
  * panel neither sends nor feels it; a grip nothing took is the panel's,
- * and its end and its completion stop at the outermost element too.
+ * and its end, its completion and its miss stop at the outermost element
+ * too, as a trigger's do.
  *
  * These belong together: an element that stops being clickable has to lose
  * the handlers too, not just the registration. The interaction manager
@@ -386,6 +387,13 @@ export function forwardPointerEvents(ctx, element, object, { enabled, onPress })
         });
       }
     }),
+    on("squeezemissed", (e) => {
+      // A grab's miss goes on up to the carry, as its end does; the panel's
+      // stops where a press's does.
+      if (!taken(e.start)) {
+        passOn(e);
+      }
+    }),
     on("squeezeend", (e) => {
       // A grab's end goes on up to the carry.
       if (taken(e.start)) {
@@ -426,6 +434,11 @@ export function forwardPointerEvents(ctx, element, object, { enabled, onPress })
         haptics?.press(e.inputSource);
       });
       element.dataset.xrActive = "true";
+      passOn(e);
+    }),
+    on("selectmissed", (e) => {
+      // The panel took the press at its start, so its miss is the panel's as
+      // its end is.
       passOn(e);
     }),
     on("selectend", (e) => {

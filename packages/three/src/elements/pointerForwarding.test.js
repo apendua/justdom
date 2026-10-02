@@ -158,6 +158,30 @@ function nest({ outer, inner, build, haptics = null }) {
         /** @type {never} */ (event),
       );
     },
+    /**
+     * A ray event on the outer element's own mesh, the part of it the
+     * inner does not cover.
+     *
+     * @param {RayEventType} type
+     * @param {THREE.Vector3} [point] Where the ray is, in world space.
+     */
+    pressOuter(type, point) {
+      const mesh = outerObject.children.find((child) => child instanceof THREE.Mesh) ?? outerObject;
+      const event = {
+        type,
+        controller,
+        inputSource: null,
+        target: mesh,
+        originalTarget: mesh,
+        registeredTarget: outerObject,
+        relatedTarget: null,
+        ...(point && { intersection: { point, object: mesh } }),
+      };
+      manager.dispatch(
+        /** @type {THREE.Object3D<XREventMap>} */ (mesh),
+        /** @type {never} */ (event),
+      );
+    },
     teardown() {
       for (const type of types) {
         document.removeEventListener(type, record, true);
@@ -544,6 +568,39 @@ describe("a press on nested clickable elements", () => {
     assert.equal(reads, before + 1, "the arrival reads where the panel is, once");
     s.press("pointermove", null, point);
     assert.deepEqual(s.points, ["mousemove at 112,47 button 0"]);
+    s.teardown();
+  });
+
+  test("a control reached while a list scrolls takes the point the scroll's press read", () => {
+    // A press on the list's own padding is `drags.begin` alone, no
+    // `mousedown`, and a control the ray reaches while the hand scrolls
+    // reads nothing on arrival: the press is what reads the panel.
+    const outer = html("div", "overflow: hidden");
+    describeScroller(outer, { client: 100, scroll: 400 });
+    const inner = html("button", "cursor: pointer");
+    outer.appendChild(inner);
+    let reads = 0;
+    outer.getBoundingClientRect = () => {
+      reads += 1;
+      return clientRect(100, 40, 80, 30);
+    };
+    const s = nest({
+      outer,
+      inner,
+      build: (ctx, element) => box(ctx, /** @type {HTMLElement} */ (element)),
+    });
+    s.outerObject.updateMatrixWorld(true);
+    const point = s.outerObject.localToWorld(new THREE.Vector3(12, 7, 0));
+
+    let before = reads;
+    s.pressOuter("selectstart", point);
+    assert.equal(reads, before + 1, "the press on the list reads where the panel is");
+    before = reads;
+    s.press("pointerenter", null, point, undefined, s.outerObject);
+    assert.equal(reads, before, "the control reached under the scroll reads nothing");
+    s.press("pointermove", null, point);
+    assert.deepEqual(s.points, ["mousemove at 112,47 button 0"]);
+    s.pressOuter("selectend", point);
     s.teardown();
   });
 });

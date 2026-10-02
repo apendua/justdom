@@ -108,9 +108,10 @@ export function isGone(element) {
 const forwarding = new WeakSet();
 
 /**
- * The ray events whose DOM events have already been sent. The manager hands
- * one event object to every object up the chain, so the first handler to
- * see it sends the DOM event and the ones above only follow it.
+ * The ray events already acted on once: the DOM event sent, or the panel
+ * read for an arrival. The manager hands one event object to every object
+ * up the chain, so the first handler to see it, the innermost forwarding
+ * element's, does the thing and the ones above only follow it.
  *
  * @type {WeakSet<object>}
  */
@@ -198,6 +199,36 @@ export function forwardPointerEvents(ctx, element, object, { enabled, onPress })
   const panel = lazyPanel(object);
 
   /**
+   * The enter `arrived` last answered for, and its answer. The pulse and
+   * the panel read ask about the same enter, so the walks are done once.
+   *
+   * @type {object | null}
+   */
+  let arrivalOf = null;
+  let arrival = false;
+
+  /**
+   * Whether an enter is the ray arriving on this control, which is what
+   * plays the pulse and reads where the page lays the panel out. Not the
+   * ray moving between this element and something clickable inside it,
+   * which `isArrival` says is not an arrival at all; and not while the
+   * hand is scrolling a list, when the rows pass under a ray that is aimed
+   * at none of them, glide included.
+   *
+   * @param {XREventMap["pointerenter"]} e
+   * @returns {boolean}
+   */
+  const arrived = (e) => {
+    if (e !== arrivalOf) {
+      arrivalOf = e;
+      arrival =
+        !drags.scrolling(e.controller) &&
+        isArrival(getControlRoot(element, object), e.relatedTarget);
+    }
+    return arrival;
+  };
+
+  /**
    * The ray arriving on this element: the hover flag, and the pulse an
    * arrival on a control plays.
    *
@@ -206,18 +237,9 @@ export function forwardPointerEvents(ctx, element, object, { enabled, onPress })
    */
   const enter = (e) => {
     element.dataset.xrHover = "true";
-    // Once per arrival on this control. Not for an enter bubbling up from
-    // a target nested in this one, which plays its own; not for the ray
-    // moving between this element and something clickable inside it,
-    // which `isArrival` says is not an arrival at all; and not while the
-    // hand is scrolling a list, when the rows pass under a ray that is
-    // aimed at none of them, glide included.
-    if (
-      haptics &&
-      e.registeredTarget === object &&
-      !drags.scrolling(e.controller) &&
-      isArrival(getControlRoot(element, object), e.relatedTarget)
-    ) {
+    // Once per arrival on this control: not for an enter bubbling up from
+    // a target nested in this one, which plays its own.
+    if (haptics && e.registeredTarget === object && arrived(e)) {
       haptics.hover(e.inputSource);
     }
   };
@@ -233,8 +255,9 @@ export function forwardPointerEvents(ctx, element, object, { enabled, onPress })
   const heldEnters = new Map();
 
   /**
-   * Send the DOM event for a ray event, unless an element inside this one
-   * already has.
+   * Act on a ray event once, by the innermost forwarding element: send its
+   * DOM event, or read the panel for an arrival, unless an element inside
+   * this one already has.
    *
    * @param {object} e
    * @param {() => void} send
@@ -369,21 +392,15 @@ export function forwardPointerEvents(ctx, element, object, { enabled, onPress })
       // page lays it out now, and a hover starts exact. Once per ray
       // event, by the innermost forwarding element, whatever was
       // registered under it, which may be a scrolling list or an overlay's
-      // blocker that forwards nothing. Only for an arrival, by the rule
-      // `enter` plays its pulse by: a ray crossing from a button onto its
-      // label has not arrived, and the rows passing under a scroll glide
-      // move nothing the root's rect depends on. Not under a drag, which
-      // probes the panels it crosses itself and whose drop reads the one
-      // it ends on again.
+      // blocker that forwards nothing. Only for an arrival by `arrived`'s
+      // rule, the pulse's: the rows passing under a scroll move nothing
+      // the root's rect depends on, and the press that began the scroll
+      // read it (see `div.js`). Not under a drag, which probes the panels
+      // it crosses itself and whose drop reads the one it ends on again.
       deliverOnce(e, () => {
-        if (
-          !drags.scrolling(e.controller) &&
-          isArrival(getControlRoot(element, object), e.relatedTarget)
-        ) {
-          const own = panel();
-          if (own) {
-            probePanel(own);
-          }
+        const own = arrived(e) ? panel() : null;
+        if (own) {
+          probePanel(own);
         }
       });
       enter(e);

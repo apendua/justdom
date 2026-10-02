@@ -351,15 +351,16 @@ sends, carries the point the ray met as `clientX` and `clientY`, mapped
 onto the page's own layout, so a page that finds what was pressed from
 where it was pressed, a board drawn as one `<svg>` path, reads the place a
 mouse over the same spot would have given it. A press, its release, its
-click and the ray's arrival on the element each read where the page lays
-the panel out; a move, sent every frame, reads no layout and takes its
-point where the panel was last read, so a hover starts exact and drifts
-only by what the page moves while the ray stays. The point is on screen
-only for a panel mirroring an element the page shows. A panel built from a
-tree lives in a container the portal parks off screen, so its points are
-right against the page's own rects but `elementFromPoint` finds nothing at
-them. The one thing the mapping leaves out is a transform on the mirrored
-root itself, which the mirror leaves out too.
+click, a press on a scrolling list and the ray's arrival on a control, by
+the rule the hover pulse follows (see **Haptics**), each read where the
+page lays the panel out; a move, sent every frame, reads no layout and
+takes its point where the panel was last read, so a hover starts exact
+and drifts only by what the page moves while the ray stays. The point is
+on screen only for a panel mirroring an element the page shows. A panel
+built from a tree lives in a container the portal parks off screen, so its
+points are right against the page's own rects but `elementFromPoint` finds
+nothing at them. The one thing the mapping leaves out is a transform on
+the mirrored root itself, which the mirror leaves out too.
 Clickable elements nest, if only because `cursor` is inherited, and a press
 inside several of them goes where it goes on a page. The innermost one is the
 target, its DOM events are sent once and bubble from there, and every

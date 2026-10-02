@@ -290,10 +290,11 @@ function clientPointOf(panel, point, client) {
  * for every point: a ray moving over a panel sends a point every frame, and
  * reads the corner it was last given. The events that are one each probe
  * first, and are exact however the page has moved since: a press, its
- * release and its click, the ray's arrival on an element, a drag's start,
- * and its drop. A move, and a drag's frames, are as exact as the last of
- * them, so a hover starts exact and drifts only by what the page moves
- * while the ray stays.
+ * release and its click, a press on a scrolling list, the ray's arrival
+ * on a control by the rule the hover pulse follows (see
+ * `forwardPointerEvents`), a drag's start, and its drop. A move, and a
+ * drag's frames, are as exact as the last of them, so a hover starts
+ * exact and drifts only by what the page moves while the ray stays.
  *
  * @param {Panel} panel
  * @returns {void}

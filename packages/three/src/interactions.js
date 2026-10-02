@@ -216,10 +216,25 @@ export class InteractionManager {
        * @type {THREE.Object3D<XREventMap> | undefined}
        */
       let selectedTarget;
+      /**
+       * The objects the press went through, which its release has to reach,
+       * for the reason `targetedPath` gives: the object pressed may have
+       * been taken out of the scene while the trigger was held, and a walk
+       * from it would leave every pressed ancestor pressed.
+       *
+       * @type {THREE.Object3D<XREventMap>[]}
+       */
+      let selectedPath = [];
       /** @type {THREE.Object3D<XREventMap> | undefined} */
       let squeezedObject;
       /** @type {THREE.Object3D<XREventMap> | undefined} */
       let squeezedTarget;
+      /**
+       * The grip's own `selectedPath`.
+       *
+       * @type {THREE.Object3D<XREventMap>[]}
+       */
+      let squeezedPath = [];
       /** @type {THREE.Object3D<XREventMap> | undefined} */
       let targetedObject;
       /**
@@ -259,7 +274,8 @@ export class InteractionManager {
         if (intersection) {
           selectedObject = intersection.object;
           selectedTarget = this.getTarget(selectedObject);
-          this.dispatch(selectedObject, {
+          selectedPath = this.#path(selectedObject);
+          this.#dispatchAlong(selectedPath, {
             type: "selectstart",
             inputSource,
             target: selectedObject,
@@ -278,19 +294,20 @@ export class InteractionManager {
         const intersection = this.getIntersection(controller);
         const { data: inputSource } = event;
         // Still on what was pressed, even if the ray has wandered from its
-        // label to its background in the meantime. `select` is dispatched from
-        // the mesh the press landed on, so the click reaches the same element
-        // that has been wearing the pressed styling since `selectstart`.
+        // label to its background in the meantime. `select` is dispatched
+        // along the path the press went through, so the click reaches the
+        // same elements that have been wearing the pressed styling since
+        // `selectstart`, even if the one pressed has since been re-rendered.
         const releasedOn = intersection && this.getTarget(intersection.object);
         if (intersection && selectedObject && selectedTarget && releasedOn === selectedTarget) {
-          this.dispatch(selectedObject, {
+          this.#dispatchAlong(selectedPath, {
             type: "selectend",
             inputSource,
             target: selectedObject,
             originalTarget: selectedObject,
             controller,
           });
-          this.dispatch(selectedObject, {
+          this.#dispatchAlong(selectedPath, {
             type: "select",
             inputSource,
             target: selectedObject,
@@ -299,14 +316,14 @@ export class InteractionManager {
             intersection,
           });
         } else if (selectedObject) {
-          this.dispatch(selectedObject, {
+          this.#dispatchAlong(selectedPath, {
             type: "selectend",
             inputSource,
             target: selectedObject,
             originalTarget: selectedObject,
             controller,
           });
-          this.dispatch(selectedObject, {
+          this.#dispatchAlong(selectedPath, {
             type: "selectmissed",
             inputSource,
             target: selectedObject,
@@ -316,6 +333,7 @@ export class InteractionManager {
         }
         selectedObject = undefined;
         selectedTarget = undefined;
+        selectedPath = [];
       };
 
       /**
@@ -327,7 +345,8 @@ export class InteractionManager {
         if (intersection) {
           squeezedObject = intersection.object;
           squeezedTarget = this.getTarget(squeezedObject);
-          this.dispatch(intersection.object, {
+          squeezedPath = this.#path(squeezedObject);
+          this.#dispatchAlong(squeezedPath, {
             type: "squeezestart",
             inputSource,
             target: squeezedObject,
@@ -348,14 +367,14 @@ export class InteractionManager {
         // ray met, for the same reason a press and its release are.
         const releasedOn = intersection && this.getTarget(intersection.object);
         if (intersection && squeezedObject && squeezedTarget && releasedOn === squeezedTarget) {
-          this.dispatch(squeezedObject, {
+          this.#dispatchAlong(squeezedPath, {
             type: "squeezeend",
             inputSource,
             target: squeezedObject,
             originalTarget: squeezedObject,
             controller,
           });
-          this.dispatch(squeezedObject, {
+          this.#dispatchAlong(squeezedPath, {
             type: "squeeze",
             inputSource,
             target: squeezedObject,
@@ -364,14 +383,14 @@ export class InteractionManager {
             intersection,
           });
         } else if (squeezedObject) {
-          this.dispatch(squeezedObject, {
+          this.#dispatchAlong(squeezedPath, {
             type: "squeezeend",
             inputSource,
             target: squeezedObject,
             originalTarget: squeezedObject,
             controller,
           });
-          this.dispatch(squeezedObject, {
+          this.#dispatchAlong(squeezedPath, {
             type: "squeezemissed",
             inputSource,
             target: squeezedObject,
@@ -381,6 +400,7 @@ export class InteractionManager {
         }
         squeezedObject = undefined;
         squeezedTarget = undefined;
+        squeezedPath = [];
       };
 
       const maybeUpdateIntersections = () => {

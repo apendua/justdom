@@ -319,6 +319,48 @@ describe("select", () => {
     subscription.unsubscribe();
   });
 
+  test("a release reaches what the press went through, even once the hit is taken out", () => {
+    // A clickable `<g>` around a clickable `<text>`. The app re-renders the
+    // label while the trigger is held: the portal takes the old label's
+    // object out, and a release walked up from its mesh would stop at the
+    // detached label, leaving the group pressed. The same for a grip.
+    const manager = new InteractionManager();
+    const controller = fakeController();
+    const subscription = connect(manager, controller);
+
+    for (const [start, end, done, missed] of /** @type {const} */ ([
+      ["selectstart", "selectend", "select", "selectmissed"],
+      ["squeezestart", "squeezeend", "squeeze", "squeezemissed"],
+    ])) {
+      const group = /** @type {THREE.Object3D<XREventMap>} */ (
+        /** @type {unknown} */ (new THREE.Object3D())
+      );
+      const label = /** @type {THREE.Object3D<XREventMap>} */ (
+        /** @type {unknown} */ (new THREE.Object3D())
+      );
+      label.add(targetMesh(5));
+      group.add(label);
+      group.updateMatrixWorld(true);
+      manager.add(group);
+      manager.add(label);
+
+      /** @type {string[]} */
+      const events = [];
+      for (const type of [start, end, done, missed]) {
+        group.addEventListener(type, () => events.push(type));
+      }
+      controller.dispatchEvent(/** @type {any} */ ({ type: start, data: {} }));
+      assert.deepEqual(events, [start]);
+
+      group.remove(label);
+      manager.remove(label);
+      controller.dispatchEvent(/** @type {any} */ ({ type: end, data: {} }));
+      assert.deepEqual(events, [start, end, missed], `the group was told the ${start} ended`);
+      manager.remove(group);
+    }
+    subscription.unsubscribe();
+  });
+
   test("a hand three is not tracking presses nothing, and a hand lost mid-press misses", () => {
     const manager = new InteractionManager();
     const controller = fakeController();

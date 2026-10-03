@@ -9,6 +9,7 @@ import {
   preservesWhitespace,
   trimLineRange,
 } from "./textLines.js";
+import { isSvgElement } from "./plugins.js";
 import { clipBoxEqual, intersectClipBoxes, toLocalClipBox, UNCLIPPED } from "./clip.js";
 
 /**
@@ -357,6 +358,26 @@ function resized(element) {
 }
 
 /**
+ * HTML elements whose inline box is atomic whatever their computed `display`
+ * says. Replaced elements and form controls are laid out as one box on one
+ * line, so their size is a true measure of what they moved, and their DOM
+ * children are fallback content or options rather than lines.
+ */
+const ATOMIC_INLINE_TAGS = new Set([
+  "audio",
+  "button",
+  "canvas",
+  "embed",
+  "iframe",
+  "img",
+  "input",
+  "object",
+  "select",
+  "textarea",
+  "video",
+]);
+
+/**
  * Whether the element's box is laid out in pieces across line boxes, so that
  * its size is no measure of what it moved. An inline box's border box is the
  * union of its fragments, and text rewritten on its last line moves where it
@@ -367,10 +388,20 @@ function resized(element) {
  * Read defensively, as `getFlowMode` reads: an engine that reports no
  * `display` is reporting the initial value, `inline`.
  *
+ * An atomic inline box computes to `inline` too and never splits. That is
+ * every element in `ATOMIC_INLINE_TAGS`, and every SVG element: an `<svg>`
+ * root is one box in the HTML flow, and what is inside it is placed in user
+ * space rather than on lines. A label rewritten every frame inside an SVG
+ * gauge ends the climb at the `<svg>`, as it would at any box that kept its
+ * size.
+ *
  * @param {Element} element
  * @returns {boolean}
  */
 function splitsAcrossLines(element) {
+  if (isSvgElement(element) || ATOMIC_INLINE_TAGS.has(element.localName)) {
+    return false;
+  }
   const display = getComputedStyleCached(element).display;
   return display === "" || display === "inline" || display === "contents";
 }
@@ -467,7 +498,9 @@ class NodeRecord {
    * per node rather than per portal. `#settleLayout` bumps it on exactly
    * the nodes whose boxes the change could have disturbed: the children of
    * every container the change happened inside, climbing only as far as the
-   * first container that kept its own size. Everything *below* those nodes
+   * first container that kept its own size. An inline or `contents` box does
+   * not end the climb, since its size says nothing about where what follows
+   * it starts (see `splitsAcrossLines`). Everything *below* those nodes
    * hears nothing, because a box's interior is a function of its own
    * content box and its own subtree — see `readParentBox`.
    *
@@ -1116,14 +1149,13 @@ export class DomMirror {
    * level. From the container, each level has its children told and then is
    * asked whether it kept its own size; the first one that did ends the
    * climb, because a box that did not move cannot have moved anything it
-   * sits among. An inline box is the exception (`splitsAcrossLines`): it
-   * is not one box but its fragments on each line, and a prompt as wide as
-   * its widest line keeps that width while the caret after it moves on with
-   * every key. So the climb goes on past it to the box the lines are in.
-   * A list of a fixed height can have rows added to it all day
-   * without the panel around it hearing a word — and so can a list that
-   * merely happens not to have changed height, which is the case the
-   * overflow test could not see.
+   * sits among. An inline box is the exception (`splitsAcrossLines`): it is
+   * not one box but its fragments on each line, and a prompt as wide as its
+   * widest line keeps that width while the caret after it moves on with every
+   * key. So the climb goes on past it to the box the lines are in. A list of
+   * a fixed height can have rows added to it all day without the panel around
+   * it hearing a word — and so can a list that merely happens not to have
+   * changed height, which is the case the overflow test could not see.
    *
    * What the children hear is `moved`, and what they do with it is the other
    * half: they re-measure, and — being plain values behind equality gates —

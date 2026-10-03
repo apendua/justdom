@@ -17,6 +17,7 @@ import {
   tracksCharacterEdges,
 } from "./mirror.js";
 import { UNCLIPPED } from "./clip.js";
+import { SVG_NAMESPACE } from "./plugins.js";
 
 /**
  * @param {Element} element
@@ -1651,58 +1652,141 @@ describe("layout boundaries", () => {
     }
   });
 
-  test("an inline box that kept its size still moves what follows it", () => {
-    // A terminal: a prompt several lines long, with a caret after it. Typing
-    // on the last line moves where the prompt ends, and so the caret, without
-    // changing the prompt's bounding box, which is as wide as its widest line
-    // and as tall as its line count. An inline box flows across line boxes,
-    // so its size says nothing about where its neighbour starts.
-    let caretLeft = 20;
+  for (const [display, promptRect] of /** @type {const} */ ([
+    ["inline", [0, 0, 60, 40]],
+    // No box at all, so it measures 0x0 and, after its first settle, always
+    // reads as having kept its size.
+    ["contents", [0, 0, 0, 0]],
+  ])) {
+    test(`a box with display: ${display} that kept its size still moves what follows it`, () => {
+      // A terminal: a prompt several lines long, with a caret after it.
+      // Typing on the last line moves where the prompt ends, and so the
+      // caret, without changing the prompt's bounding box, which is as wide
+      // as its widest line and as tall as its line count. An inline box
+      // flows across line boxes, so its size says nothing about where its
+      // neighbour starts.
+      let caretLeft = 20;
 
-    const container = document.createElement("div");
-    container.setAttribute(PORTAL_ATTRIBUTE, "");
-    const pre = document.createElement("pre");
-    const prompt = document.createElement("span");
-    const promptText = document.createTextNode("READY.\n> H");
-    const caret = document.createElement("span");
-    caret.style.display = "inline-block";
-    prompt.appendChild(promptText);
-    pre.appendChild(prompt);
-    pre.appendChild(caret);
-    container.appendChild(pre);
-    document.body.appendChild(container);
+      const container = document.createElement("div");
+      container.setAttribute(PORTAL_ATTRIBUTE, "");
+      const pre = document.createElement("pre");
+      const prompt = document.createElement("span");
+      prompt.style.display = display;
+      const promptText = document.createTextNode("READY.\n> H");
+      const caret = document.createElement("span");
+      caret.style.display = "inline-block";
+      prompt.appendChild(promptText);
+      pre.appendChild(prompt);
+      pre.appendChild(caret);
+      container.appendChild(pre);
+      document.body.appendChild(container);
 
-    const mirror = createMirror();
-    for (const node of [container, pre, prompt, promptText, caret]) {
-      mirror.adopt(node);
-    }
+      const mirror = createMirror();
+      for (const node of [container, pre, prompt, promptText, caret]) {
+        mirror.adopt(node);
+      }
 
-    layout(container, () => [0, 0, 200, 200]);
-    layout(pre, () => [0, 0, 200, 40]);
-    layout(prompt, () => [0, 0, 60, 40]);
-    layout(caret, () => [caretLeft, 20, caretLeft + 10, 40]);
+      layout(container, () => [0, 0, 200, 200]);
+      layout(pre, () => [0, 0, 200, 40]);
+      layout(prompt, () => [...promptRect]);
+      layout(caret, () => [caretLeft, 20, caretLeft + 10, 40]);
 
-    try {
-      const position = new Derived(() => getContentPosition(caret));
-      const subscription = position.subscribe({ next: () => position.get() });
-      assert.equal(position.get().x, 20);
+      try {
+        const position = new Derived(() => getContentPosition(caret));
+        const subscription = position.subscribe({ next: () => position.get() });
+        assert.equal(position.get().x, 20);
 
-      // Prime the ledger, as above: a first settle reads as changed.
-      promptText.data = "READY.\n> HE";
-      caretLeft = 30;
-      mirror.characterDataChanged(promptText);
-      assert.equal(position.get().x, 30);
+        // Prime the ledger, as above: a first settle reads as changed.
+        promptText.data = "READY.\n> HE";
+        caretLeft = 30;
+        mirror.characterDataChanged(promptText);
+        assert.equal(position.get().x, 30);
 
-      promptText.data = "READY.\n> HEL";
-      caretLeft = 40;
-      mirror.characterDataChanged(promptText);
-      assert.equal(position.get().x, 40, "the caret followed the text before it");
+        promptText.data = "READY.\n> HEL";
+        caretLeft = 40;
+        mirror.characterDataChanged(promptText);
+        assert.equal(position.get().x, 40, "the caret followed the text before it");
 
-      subscription.unsubscribe();
-    } finally {
-      container.remove();
-    }
-  });
+        subscription.unsubscribe();
+      } finally {
+        container.remove();
+      }
+    });
+  }
+
+  for (const [name, build] of /** @type {const} */ ([
+    [
+      "an <svg>",
+      () => {
+        const svg = document.createElementNS(SVG_NAMESPACE, "svg");
+        const label = document.createElementNS(SVG_NAMESPACE, "text");
+        svg.appendChild(label);
+        return { atomic: svg, inner: [label], textParent: label };
+      },
+    ],
+    [
+      "a <canvas>",
+      () => {
+        const canvas = document.createElement("canvas");
+        return { atomic: canvas, inner: [], textParent: canvas };
+      },
+    ],
+  ])) {
+    test(`text rewritten inside ${name} that kept its size does not move what follows it`, () => {
+      // A gauge whose label is rewritten every frame. An SVG element, a
+      // replaced element and a form control all compute to `inline`, but each
+      // is one atomic box that never splits across lines, so the climb stops
+      // at it like at any other box that kept its size. Climbing on would
+      // re-measure everything after the gauge on every frame.
+      let reads = 0;
+
+      const container = document.createElement("div");
+      container.setAttribute(PORTAL_ATTRIBUTE, "");
+      const card = document.createElement("div");
+      const { atomic, inner, textParent } = build();
+      const text = document.createTextNode("10");
+      textParent.appendChild(text);
+      const after = document.createElement("div");
+      card.appendChild(atomic);
+      card.appendChild(after);
+      container.appendChild(card);
+      document.body.appendChild(container);
+
+      const mirror = createMirror();
+      for (const node of [container, card, atomic, ...inner, text, after]) {
+        mirror.adopt(node);
+      }
+
+      layout(container, () => [0, 0, 200, 200]);
+      layout(card, () => [0, 0, 200, 120]);
+      layout(atomic, () => [0, 0, 100, 100]);
+      for (const element of inner) {
+        layout(element, () => [10, 10, 40, 30]);
+      }
+      layout(after, () => [0, 100, 200, 120], { count: () => reads++ });
+
+      try {
+        const position = new Derived(() => getContentPosition(after));
+        const subscription = position.subscribe({ next: () => position.get() });
+        position.get();
+
+        // Prime the ledger: a first settle reads as changed.
+        text.data = "11";
+        mirror.characterDataChanged(text);
+        const before = reads;
+
+        for (let value = 12; value < 16; value++) {
+          text.data = String(value);
+          mirror.characterDataChanged(text);
+        }
+        assert.equal(reads, before, "what follows the gauge was not measured");
+
+        subscription.unsubscribe();
+      } finally {
+        container.remove();
+      }
+    });
+  }
 
   test("churn outside a scroller does not re-measure a single row inside it", () => {
     // The optimization, and the reason for it: an element that hides its

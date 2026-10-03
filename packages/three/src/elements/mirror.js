@@ -360,8 +360,9 @@ function resized(element) {
 /**
  * HTML elements whose inline box is atomic whatever their computed `display`
  * says. Replaced elements and form controls are laid out as one box on one
- * line, so their size is a true measure of what they moved, and their DOM
- * children are fallback content or options rather than lines.
+ * line, so their size is a true measure of what they moved, and whatever is
+ * inside them is laid out inside that box rather than on the lines around
+ * it.
  */
 const ATOMIC_INLINE_TAGS = new Set([
   "audio",
@@ -388,22 +389,31 @@ const ATOMIC_INLINE_TAGS = new Set([
  * Read defensively, as `getFlowMode` reads: an engine that reports no
  * `display` is reporting the initial value, `inline`.
  *
- * An atomic inline box computes to `inline` too and never splits. That is
- * every element in `ATOMIC_INLINE_TAGS`, and every SVG element: an `<svg>`
- * root is one box in the HTML flow, and what is inside it is placed in user
- * space rather than on lines. A label rewritten every frame inside an SVG
- * gauge ends the climb at the `<svg>`, as it would at any box that kept its
- * size.
+ * An atomic inline box never splits, and some compute to `inline` all the
+ * same. Every SVG element does: an `<svg>` root is one box in the HTML flow,
+ * and what is inside it is placed in user space rather than on lines. So do
+ * the replaced elements in `ATOMIC_INLINE_TAGS`. A browser gives the form
+ * controls there `inline-block`, so they need the list only where an engine
+ * reports no `display` or the page sets `display: inline` on one. A label
+ * rewritten every frame inside an SVG gauge ends the climb at the `<svg>`,
+ * as it would at any box that kept its size.
+ *
+ * `display: contents` is read first, because it removes the box from any of
+ * those. Its children flow in the parent's line boxes, as a `<button>`'s do,
+ * and on the other tags it renders as `none`, with no box to measure.
  *
  * @param {Element} element
  * @returns {boolean}
  */
 function splitsAcrossLines(element) {
+  const display = getComputedStyleCached(element).display;
+  if (display === "contents") {
+    return true;
+  }
   if (isSvgElement(element) || ATOMIC_INLINE_TAGS.has(element.localName)) {
     return false;
   }
-  const display = getComputedStyleCached(element).display;
-  return display === "" || display === "inline" || display === "contents";
+  return display === "" || display === "inline";
 }
 
 /**

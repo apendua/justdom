@@ -1652,13 +1652,16 @@ describe("layout boundaries", () => {
     }
   });
 
-  for (const [display, promptRect] of /** @type {const} */ ([
-    ["inline", [0, 0, 60, 40]],
+  for (const [tag, display, promptRect] of /** @type {const} */ ([
+    ["span", "inline", [0, 0, 60, 40]],
     // No box at all, so it measures 0x0 and, after its first settle, always
     // reads as having kept its size.
-    ["contents", [0, 0, 0, 0]],
+    ["span", "contents", [0, 0, 0, 0]],
+    // A form control's box is atomic, but `display: contents` takes the box
+    // away and its children flow in the parent's lines like any other.
+    ["button", "contents", [0, 0, 0, 0]],
   ])) {
-    test(`a box with display: ${display} that kept its size still moves what follows it`, () => {
+    test(`a <${tag}> with display: ${display} that kept its size still moves what follows it`, () => {
       // A terminal: a prompt several lines long, with a caret after it.
       // Typing on the last line moves where the prompt ends, and so the
       // caret, without changing the prompt's bounding box, which is as wide
@@ -1670,7 +1673,7 @@ describe("layout boundaries", () => {
       const container = document.createElement("div");
       container.setAttribute(PORTAL_ATTRIBUTE, "");
       const pre = document.createElement("pre");
-      const prompt = document.createElement("span");
+      const prompt = document.createElement(tag);
       prompt.style.display = display;
       const promptText = document.createTextNode("READY.\n> H");
       const caret = document.createElement("span");
@@ -1733,11 +1736,11 @@ describe("layout boundaries", () => {
     ],
   ])) {
     test(`text rewritten inside ${name} that kept its size does not move what follows it`, () => {
-      // A gauge whose label is rewritten every frame. An SVG element, a
-      // replaced element and a form control all compute to `inline`, but each
-      // is one atomic box that never splits across lines, so the climb stops
-      // at it like at any other box that kept its size. Climbing on would
-      // re-measure everything after the gauge on every frame.
+      // A gauge whose label is rewritten every frame. SVG elements and
+      // replaced elements compute to `inline`, but each is one atomic box
+      // that never splits across lines, so the climb stops at it like at any
+      // other box that kept its size. Climbing on would re-measure
+      // everything after the gauge on every frame.
       let reads = 0;
 
       const container = document.createElement("div");

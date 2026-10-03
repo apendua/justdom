@@ -49,8 +49,12 @@ import { isSvgElement } from "./plugins.js";
  *   transformed clears its siblings, and only those that are too. A box
  *   pulled over a neighbour by a negative margin, or a positioned box over a
  *   flow sibling, stays on the same plane as what it covers.
- * - Only the sign of `z-index` counts. Two overlays, or two boxes with a
- *   negative `z-index`, stack in tree order, whatever their numbers.
+ * - Only the sign of `z-index` counts. Two overlays stack in tree order,
+ *   whatever their numbers.
+ * - Boxes with a negative `z-index` are not stepped against each other.
+ *   Flow siblings sit at the plain step and a page paints them over every
+ *   negative `z-index`, so a step there would lift a backdrop through the
+ *   text over it. Two overlapping backdrops stay on one plane.
  * - An overlay takes the larger of its two lifts, not the sum. Over a
  *   sibling it overlaps, it sits `CONTENT_STEP` in front of what that
  *   sibling draws rather than `ELEVATION_STEP` beyond it, so it does not
@@ -352,7 +356,9 @@ const liftCache = nodeCache();
  * front of its own quad, shows through a later card that covers it, and a
  * later `position: relative` page covers a modal before it. Siblings that
  * do not overlap stay at the ordinary step, so a board of separate cards
- * stays flat however many cards it holds.
+ * stays flat however many cards it holds. A box with a negative `z-index`
+ * clears nothing and stays at the ordinary step too, under its flow
+ * siblings' content.
  *
  * Reactive: it follows the style, layout and child list of the parent's
  * children and the reach of the siblings it clears. Nothing here runs per
@@ -373,7 +379,10 @@ export function getLift(element) {
         : CONTENT_STEP;
       // The portal's root has no siblings inside the portal.
       const layer = element.hasAttribute(PORTAL_ATTRIBUTE) ? null : getPaintLayer(element);
-      if (layer === null) {
+      // A box with a negative `z-index` is not stepped either: anything it
+      // cleared would also lift it past its flow siblings, which a page
+      // paints over it.
+      if (layer === null || layer === -1) {
         return own;
       }
       const parent = getParentElement(element);

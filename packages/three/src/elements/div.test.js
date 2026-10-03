@@ -694,6 +694,23 @@ describe("div sibling stacking", () => {
     board.teardown();
   });
 
+  test("overlapping backdrops with a negative z-index stay under the flow", () => {
+    const page = setupSiblings();
+    page.add("position: absolute; z-index: -1", [0, 0, 200, 200]);
+    const backdrop = page.add("position: absolute; z-index: -1", [100, 0, 300, 200]);
+    // A paragraph in the flow, over the second backdrop. A page paints the
+    // flow over every negative `z-index`.
+    const paragraph = page.add("", [150, 50, 250, 100]);
+
+    // The paragraph's text sits level with its origin; the backdrop's quad
+    // is 1 px behind the backdrop's.
+    assert.ok(
+      page.z(paragraph) < page.z(backdrop) + 1,
+      `the text at ${page.z(paragraph)} is behind the backdrop at ${page.z(backdrop) + 1}`,
+    );
+    page.teardown();
+  });
+
   test("cards that do not overlap stay level, however many there are", () => {
     const board = setupSiblings();
     const cards = [

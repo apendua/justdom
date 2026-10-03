@@ -1461,17 +1461,19 @@ order. An element that is positioned (`position` other than `static`) or has
 a `transform` of its own is drawn in front of every such sibling it overlaps
 and a page paints under it. It sits one content step (2 px) in front of the
 farthest thing that sibling draws, its pins and badges included. A pin with a
-positive `z-index` inside a card that is no stacking context (no `z-index`
-and no transform of its own) is the exception, as on a page: it stays over
-the later card, which is stepped past the rest of the first card. That keeps a
+positive `z-index` inside a card that is no stacking context (no `z-index`,
+no transform of its own, `opacity` 1 and `position` other than `fixed` or
+`sticky`) is the exception, as on a page: it stays over the later card, which
+is stepped past the rest of the first card. That keeps a
 clock's hands on its dial, a card laid over another card in front of the
 first card's text and pin, and a modal in front of a later
 `position: relative` page that covers it. Siblings that do not overlap stay
 at the ordinary step, so a board of separate cards stays flat however many it
 holds. The order is the page's: a negative `z-index` under the rest, a
-positive one over it, and tree order within each. Only the sign of `z-index`
-counts, so to bring a card to the front, append it to the end of its parent
-again. A transformed element counts as covering the axis-aligned box around
+positive one over it, and tree order within each, except that boxes with a
+negative `z-index` stay on one plane, since a step would lift them through
+the flow content a page paints over them. Only the sign of `z-index` counts,
+so to bring a card to the front, append it to the end of its parent again. A transformed element counts as covering the axis-aligned box around
 its corners, and a descendant that overflows its parent's box does not count
 towards what the parent overlaps. A translucent card stepped over another
 hides the other card's content where it covers it, rather than tinting it,

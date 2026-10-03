@@ -13,26 +13,45 @@ code {
 }
 
 /*
- * The two places the game is mounted, one for the board and one for the
- * menu, kept apart because a session mirrors each into a panel of its own.
- * The board fills the window, as it always has; the menu floats over its
- * top-left corner, sized by the card inside it.
+ * The two places the game is mounted, one for the menu and one for the
+ * board, kept apart because a session mirrors each into a panel of its own.
+ * The menu is set beside the board, or above it in a window taller than it
+ * is wide, and the board takes the rest: it is fitted to its own element,
+ * so no tile is ever under the card.
  */
-#board {
-  position: fixed;
-  inset: 0;
+html,
+body {
+  height: 100%;
+}
+
+body {
+  display: flex;
 }
 
 #menu {
-  position: fixed;
-  top: 12px;
-  left: 12px;
+  flex: none;
+  align-self: flex-start;
+  margin: 12px;
 }
 
+/* What the board's `<svg>`, absolutely placed at 0,0, is placed against. */
+#board {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+@media (orientation: portrait), (max-width: 600px) {
+  body {
+    flex-direction: column;
+  }
+}
+
+/* On a phone the card is a bar across the top. */
 @media (max-width: 600px) {
   #menu {
-    top: 8px;
-    left: 8px;
-    right: 8px;
+    align-self: stretch;
+    margin: 8px;
   }
 }

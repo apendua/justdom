@@ -7,9 +7,9 @@
  */
 
 /**
- * How tall the board stands, whatever size the window the page was laid
- * out in. The board is fitted to the shorter side of that window, so this
- * is the height of the hexes, not of the window.
+ * How tall the board stands, whatever size its element was laid out at.
+ * The board is fitted to the shorter side of that element, so this is the
+ * height of the hexes, not of the element.
  */
 export const BOARD_SIZE = 0.6;
 

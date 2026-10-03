@@ -1,8 +1,8 @@
 # Hex Minesweeper
 
 Minesweeper on a hexagonal grid, with no framework under it. On a page the
-board is one `<svg>` wired to signals and the menu is a card floating over
-its corner. On a headset it is the very same DOM: the page keeps it, and
+board is one `<svg>` wired to signals and the menu is a card beside it, or
+above it in a tall window. On a headset it is the very same DOM: the page keeps it, and
 `@apendua/freedom` mirrors the board and the menu into two panels in front
 of the viewer, the way `todo-vanilla` mirrors its list.
 
@@ -26,7 +26,8 @@ panels.
 its service worker precaches the headset's chunks, since the worker is
 installed on every visit. It then loads the page alone in headless
 Chromium, which can present nothing, and fails if the headset scene is
-fetched. Then it plays a session on the emulated headset, which takes about
+fetched, or if any covered tile or any of the card is under something else
+in a wide window, a tall one or a phone's. Then it plays a session on the emulated headset, which takes about
 a minute: it flags a tile with the grip, uncovers tiles with the trigger,
 deals a new board and restarts it from the menu panel, turns the
 passthrough on and leaves by the ×, and fails if any of that does not
@@ -53,11 +54,14 @@ points it at one installed elsewhere.
 | `src/emulator.ts` | IWER, behind `?emulator`. |
 
 The board and the menu are mounted in two places because a panel is the
-element it mirrors, and the two hang apart in a session. The board's element
-fills the window, as it always has, so its panel is mostly empty: it is
-made transparent to rays, and only the covered tiles, the one shape with
+element it mirrors, and the two hang apart in a session. On the page the
+menu sits beside the board, or above it in a window taller than it is wide,
+and the board's element takes the rest of the window. The board is fitted to
+that element, not to the window, so no tile is ever under the card. Its
+panel is the element's whole box, mostly empty around the hexes: it is made
+transparent to rays, and only the covered tiles, the one shape with
 `cursor: pointer`, stop one. It is scaled as the session starts so that the
-board stands 60 cm tall whatever window the page was laid out in. The menu
+board stands 60 cm tall whatever size its element was laid out at. The menu
 hangs to its left, turned to face the viewer, and can be moved by its edges.
 
 The board needs nothing from the headset. A trigger press on a tile is a

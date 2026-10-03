@@ -59,8 +59,9 @@ const Backdrop = component(() =>
  * mouse's other button, so it flags a tile through the board's own
  * `contextmenu` handler.
  *
- * The board's panel is the window's size, since the page fits the board to
- * the window, so most of it is empty: it is made transparent to rays, and
+ * The board's panel is the size of its element, the part of the window the
+ * menu leaves, and the page fits the board to that, so most of the panel is
+ * empty around the hexes: it is made transparent to rays, and
  * only the covered tiles, the one shape with `cursor: pointer`, stop one.
  * The menu is draggable by its edges.
  *

@@ -65,8 +65,7 @@ const card = stylesheet`
     color: ${INK};
   }
 
-  /* On a phone the card is a bar across the top, where a board fitted to a
-     narrow window leaves room. */
+  /* On a phone the card is a bar across the top, with the board below it. */
   @media (max-width: 600px) {
     .${CLASS_NAME} {
       width: auto;
@@ -253,7 +252,7 @@ const inSession = (render: () => Subscribable<Mountable>) =>
 
 /**
  * The menu: the board's size, the mines left, how the game stands, and a
- * restart. It is ordinary DOM on the page, floating over the board's corner,
+ * restart. It is ordinary DOM on the page, set beside the board or above it,
  * and a headset session mirrors this very card into a panel of its own
  * beside the board.
  *

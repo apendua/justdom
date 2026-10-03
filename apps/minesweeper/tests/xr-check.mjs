@@ -13,7 +13,8 @@
  * that the ray is on the element it was aimed at before it presses
  * anything. First, a production build must not precache the headset's
  * chunks in its service worker, and the page alone, with no emulator, must
- * not fetch the headset scene. Then, in a session, in order:
+ * not fetch the headset scene, and no tile may be under the menu, in a wide
+ * window, a tall one or a phone's. Then, in a session, in order:
  *
  * - the grip on a covered tile flags that tile, through the board's own
  *   `contextmenu` handler, at the place the ray met;
@@ -163,6 +164,70 @@ async function main() {
         "a browser that cannot present does not load the headset scene",
       );
       check(!(await plain.$("#ARButton, #VRButton")), "and shows no Enter button");
+
+      // The menu is laid out beside the board, or above it in a window
+      // taller than it is wide, and the board is fitted to what is left:
+      // a press anywhere on the covered tiles reaches the board, never the
+      // card. The first two are windows where a card floating over the
+      // board's corner, as it once did, hid some of its tiles; the third is
+      // a phone's, where the card is a bar.
+      for (const [width, height] of [
+        [1024, 640],
+        [768, 1024],
+        [390, 844],
+      ]) {
+        await plain.setViewportSize({ width, height });
+        await plain.waitForFunction(() => {
+          const board = /** @type {HTMLElement} */ (document.querySelector("#board"));
+          const svg = board.querySelector("svg");
+          return (
+            svg?.getAttribute("width") === String(board.clientWidth) &&
+            svg.getAttribute("height") === String(board.clientHeight)
+          );
+        });
+        const hidden = await plain.evaluate(() => {
+          const board = /** @type {HTMLElement} */ (document.querySelector("#board"));
+          const svg = /** @type {SVGSVGElement} */ (board.querySelector("svg"));
+          const path = /** @type {SVGPathElement} */ (svg.querySelector("path"));
+          const rect = svg.getBoundingClientRect();
+          let covered = 0;
+          let missed = 0;
+          for (let y = 0; y < rect.height; y += 6) {
+            for (let x = 0; x < rect.width; x += 6) {
+              if (path.isPointInFill(new DOMPoint(x, y))) {
+                covered += 1;
+                if (!board.contains(document.elementFromPoint(rect.left + x, rect.top + y))) {
+                  missed += 1;
+                }
+              }
+            }
+          }
+          return { covered, missed };
+        });
+        check(
+          hidden.covered > 0 && hidden.missed === 0,
+          `at ${width}x${height} every covered tile can be pressed ` +
+            `(${hidden.missed} of ${hidden.covered} points are under something else)`,
+        );
+        // And the other way round: the board is not laid over the card.
+        const menuMissed = await plain.evaluate(() => {
+          const menu = /** @type {HTMLElement} */ (document.querySelector("#menu"));
+          const rect = menu.getBoundingClientRect();
+          let missed = 0;
+          for (let y = rect.top + 2; y < rect.bottom - 2; y += 6) {
+            for (let x = rect.left + 2; x < rect.right - 2; x += 6) {
+              if (!menu.contains(document.elementFromPoint(x, y))) {
+                missed += 1;
+              }
+            }
+          }
+          return missed;
+        });
+        check(
+          menuMissed === 0,
+          `and all of the card can be pressed (${menuMissed} points are not)`,
+        );
+      }
       await plain.close();
     }
 
@@ -376,8 +441,17 @@ async function main() {
     console.log("  heard:", JSON.stringify(heard));
     const menuEvent = heard.find((/** @type {any} */ e) => e.type === "contextmenu");
     check(!!menuEvent, "the grip was heard as a contextmenu");
+    // The board is laid out beside the menu, so a point of it is that far
+    // across the page.
+    const boardAt = await page.evaluate(() =>
+      /** @type {Element} */ (document.querySelector("#board")).getBoundingClientRect().toJSON(),
+    );
     check(
-      !!menuEvent && Math.hypot(menuEvent.clientX - flagAt.x, menuEvent.clientY - flagAt.y) < 12,
+      !!menuEvent &&
+        Math.hypot(
+          menuEvent.clientX - (boardAt.left + flagAt.x),
+          menuEvent.clientY - (boardAt.top + flagAt.y),
+        ) < 12,
       "at the place on the page the ray was aimed at",
     );
     check((await flags()) === flagsBefore + 1, "and it planted a flag");

@@ -248,7 +248,7 @@ function pixels(value) {
  *
  * The insets are read straight off the computed style in px rather than
  * through `VisualProperties`' unit-aware getters — the same choice
- * `getOwnClipBox` makes, and for the same reason: a browser resolves every
+ * `getOwnClipWindow` makes, and for the same reason: a browser resolves every
  * padding and border to px before a computed style is handed over, so the
  * unit machinery buys nothing here. It also costs something. Resolving `ex`
  * means measuring the font, which cannot be answered until the fonts have

@@ -128,14 +128,26 @@ const delivered = new WeakSet();
 const swallowed = new WeakSet();
 
 /**
- * The grip starts the hand felt close, so that its opening is felt exactly
- * when its closing was. The two are decided at different moments, and what
- * decides them can change in between: a hand that starts scrolling a list
- * while the grip is held, or a glide that retires.
+ * The grip starts a panel may own: closed on a control that was there, by
+ * a hand neither carrying nor moving a list. Decided once, as the grip
+ * closes, and asked by everything that follows the grip, the right-click
+ * and both pulses, so that they follow one decision whatever the hand does
+ * before it opens. The panel owns such a start when, besides, nothing above
+ * took it, which is settled by the time anything asks (see `owns`).
  *
  * @type {WeakSet<object>}
  */
-const felt = new WeakSet();
+const owned = new WeakSet();
+
+/**
+ * The owned grip starts whose closing pulse has played. It waits for the
+ * start's dispatch to finish, in a microtask, and the grip's end plays it
+ * first if it comes sooner, as it does where a runtime sends both in one
+ * task; either way it plays once, before the opening.
+ *
+ * @type {WeakSet<object>}
+ */
+const pressed = new WeakSet();
 
 /**
  * Whether another forwarding object is above this one, which makes this
@@ -332,6 +344,28 @@ export function forwardPointerEvents(ctx, element, object, { enabled, onPress })
   const taken = (start) => isStopped(start) && !swallowed.has(start);
 
   /**
+   * Whether the panel owns the grip that began with this start: the start
+   * was `owned` as it closed, and nothing above took it.
+   *
+   * @param {InteractionEvent} start
+   * @returns {boolean}
+   */
+  const owns = (start) => owned.has(start) && !isStopped(start);
+
+  /**
+   * The closing pulse of an owned grip, once.
+   *
+   * @param {InteractionEvent} start
+   * @returns {void}
+   */
+  const feelClosing = (start) => {
+    if (haptics && !pressed.has(start)) {
+      pressed.add(start);
+      haptics.press(start.inputSource);
+    }
+  };
+
+  /**
    * Whether the hand's trigger is, right now, carrying something or moving
    * a list, anywhere in the scene: a drag whose `dragstart` went out and
    * that has not dropped, or a list dragged past the threshold and still
@@ -388,7 +422,9 @@ export function forwardPointerEvents(ctx, element, object, { enabled, onPress })
       if (taken(e.start)) {
         return;
       }
-      if (isGone(element) || busy(e.controller)) {
+      // Nothing for a grip that closed while the hand carried or moved a
+      // list, whatever it does now, nor for one that opens while it does.
+      if (isGone(element) || !owns(e.start) || busy(e.controller)) {
         stopPropagation(e);
         return;
       }
@@ -405,18 +441,19 @@ export function forwardPointerEvents(ctx, element, object, { enabled, onPress })
         stopPropagation(e);
         return;
       }
+      if (busy(e.controller)) {
+        return;
+      }
+      owned.add(e);
       // Felt once as the grip closes on a control, as a trigger's press is,
       // but only once the dispatch has run, since the start goes on past
       // the panel and only then is it known whether something above took
-      // it. A grab is felt by nothing here, and neither is a grip closing
-      // while the hand carries or scrolls with its trigger. What is felt
-      // is remembered, for the opening.
-      if (haptics && !busy(e.controller)) {
+      // it. A grab is felt by nothing here.
+      if (haptics) {
         deliverOnce(e, () => {
           queueMicrotask(() => {
-            if (!isStopped(e)) {
-              felt.add(e);
-              haptics.press(e.inputSource);
+            if (owns(e)) {
+              feelClosing(e);
             }
           });
         });
@@ -437,12 +474,15 @@ export function forwardPointerEvents(ctx, element, object, { enabled, onPress })
         return;
       }
       // Felt once as the grip opens, on a hit and a miss alike, as a
-      // trigger's release is, and only if its closing was: a grip swallowed
-      // on a gone row, or closed while the hand carried or scrolled, is felt
-      // neither way, whatever the hand is doing as it opens.
-      if (felt.has(e.start)) {
+      // trigger's release is, for exactly the grips whose closing is felt:
+      // a grip swallowed on a gone row, or closed while the hand carried or
+      // moved a list, is felt neither way, whatever the hand is doing as it
+      // opens. A closing not felt yet, its microtask still to come, is felt
+      // first.
+      if (haptics && owns(e.start)) {
         deliverOnce(e, () => {
-          haptics?.release(e.inputSource);
+          feelClosing(e.start);
+          haptics.release(e.inputSource);
         });
       }
       passOn(e);

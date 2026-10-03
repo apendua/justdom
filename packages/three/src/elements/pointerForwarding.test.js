@@ -7,7 +7,7 @@ import { getContentGroup } from "./contentGroup.js";
 import { box } from "./div.js";
 import { registerPanel } from "./dragAndDrop.js";
 import { createMirror } from "./mirror.js";
-import { scrollDrags } from "./scroll.js";
+import { movesList, scrollDrags } from "./scroll.js";
 import { createHaptics, HapticsContext } from "./haptics.js";
 import { recordingSource } from "../test/rumble.js";
 import { clientRect } from "../test/clientRect.js";
@@ -337,6 +337,14 @@ describe("a press on nested clickable elements", () => {
       ["squeezestart"],
       "and the miss stays in the panel, as the end does",
     );
+
+    // Opened in the same task as it closed, as a runtime driven from script
+    // may send them: the closing is still felt first, and once.
+    s.press("squeezestart", source);
+    s.press("squeezeend", source);
+    s.press("squeezemissed", source);
+    await Promise.resolve();
+    assert.deepEqual(played.slice(2), played.slice(0, 2), "closing, then opening");
     s.teardown();
   });
 
@@ -637,7 +645,59 @@ describe("a press on nested clickable elements", () => {
     assert.deepEqual(s.events, ["contextmenu on button"]);
     assert.equal(played.length, 4, "and is felt neither way");
     assert.deepEqual(s.escaped, ["squeezestart", "squeezestart", "squeezestart"]);
+
+    // Nor is one that closed while the list moved and opens once it has
+    // stopped: the trigger lets go and the glide retires in between.
+    s.press("squeezestart", source, point);
+    await Promise.resolve();
     s.press("selectend", source, point, undefined, null, s.outerObject);
+    const ctx = InteractionContext.set({}, s.manager);
+    for (let frame = 0; frame < 300 && movesList(ctx, s.controller); frame += 1) {
+      flushFrame();
+    }
+    assert.equal(movesList(ctx, s.controller), false, "the list has stopped");
+    s.press("squeezeend", source, point);
+    s.press("squeeze", source, point);
+    assert.deepEqual(s.events, ["contextmenu on button"], "no right-click for it");
+    assert.equal(played.length, 4, "and nothing felt");
+    s.teardown();
+  });
+
+  test("of the trigger dragging a list the page takes down lets the hand go", () => {
+    const outer = html("div", "overflow: hidden");
+    describeScroller(outer, { client: 100, scroll: 400 });
+    const inner = html("button", "cursor: pointer");
+    outer.appendChild(inner);
+    const s = nest({
+      outer,
+      inner,
+      build: (ctx, element) => box(ctx, /** @type {HTMLElement} */ (element)),
+    });
+    s.outerObject.updateMatrixWorld(true);
+    const ctx = InteractionContext.set({}, s.manager);
+    /**
+     * @param {number} x
+     * @param {number} y
+     */
+    const aim = (x, y) => {
+      const point = s.outerObject.localToWorld(new THREE.Vector3(x, y, 0));
+      s.controller.position.set(point.x, point.y, point.z + 1);
+      s.controller.updateMatrixWorld(true);
+      return point;
+    };
+
+    let point = aim(12, 40);
+    s.press("selectstart", null, point, undefined, null, s.outerObject);
+    point = aim(12, 7);
+    flushFrame();
+    assert.equal(movesList(ctx, s.controller), true, "the list moves");
+
+    // Taken down mid-drag, and the trigger let go on what is left of it.
+    outer.remove();
+    s.press("selectend", null, point, undefined, null, s.outerObject);
+    flushFrame();
+    assert.equal(movesList(ctx, s.controller), false, "the hand moves nothing any more");
+    document.body.appendChild(outer);
     s.teardown();
   });
 

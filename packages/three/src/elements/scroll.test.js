@@ -154,6 +154,47 @@ describe("a hand moving a list", () => {
     assert.equal(drags.scrolling(controller), false, "the glide retired");
     assert.equal(movesList(there, controller), false, "and the hand moves nothing");
   });
+
+  test("ends however the press does, with no element left to hear it", () => {
+    const { list, row, rowObject, controller, aimAt } = setup();
+    const manager = new InteractionManager();
+    const ctx = InteractionContext.set({}, manager);
+    const drags = scrollDrags(ctx);
+    const hold = () => {
+      aimAt(0, 0);
+      drags.begin(controller, row, rowObject);
+      aimAt(0, -40);
+      flushFrame();
+      assert.equal(movesList(ctx, controller), true);
+    };
+
+    // The controller's own release, which the pressed element would have
+    // passed on: the glide it starts retires.
+    hold();
+    controller.dispatchEvent(/** @type {never} */ ({ type: "selectend" }));
+    for (let frame = 0; frame < 300 && drags.scrolling(controller); frame += 1) {
+      flushFrame();
+    }
+    assert.equal(movesList(ctx, controller), false, "released by the controller");
+
+    // The controller lost, at the end of a session: no glide.
+    hold();
+    controller.dispatchEvent(/** @type {never} */ ({ type: "disconnected" }));
+    assert.equal(movesList(ctx, controller), false, "lost with the controller");
+
+    // The list taken out of the document while held.
+    hold();
+    const parent = /** @type {HTMLElement} */ (list.parentElement);
+    list.remove();
+    flushFrame();
+    assert.equal(movesList(ctx, controller), false, "gone with the list");
+    parent.appendChild(list);
+
+    // The panel taken down while held.
+    hold();
+    drags.dispose();
+    assert.equal(movesList(ctx, controller), false, "gone with the panel");
+  });
 });
 
 describe("dragging a list", () => {

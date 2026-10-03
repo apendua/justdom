@@ -403,9 +403,9 @@ export function box(ctx, element, options = {}) {
       stopPropagation(e);
     }),
     on("selectend", (e) => {
-      if (!isGone(element)) {
-        drags.end(e.controller);
-      }
+      // Whether or not the list is still in the document: the hand's drag
+      // is over either way, as a forwarding element's outermost ends it.
+      drags.end(e.controller);
       stopPropagation(e);
     }),
     on("select", (e) => {

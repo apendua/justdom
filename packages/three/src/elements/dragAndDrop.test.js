@@ -6,6 +6,7 @@ import { fakeFrameLoop } from "../test/frameLoop.js";
 import { drain, flushFrame, settle } from "../test/portalHarness.js";
 import { describeScroller } from "../test/scroller.js";
 import { createDragAndDrop } from "./dragAndDrop.js";
+import { movesList } from "./scroll.js";
 import { createPortal } from "./portal.js";
 import { clientRect } from "../test/clientRect.js";
 
@@ -326,6 +327,21 @@ describe("drag and drop in a panel", () => {
     s.trigger("squeezestart");
     s.trigger("squeezeend");
     assert.deepEqual(rightClicks(), [], "the row under the ray hears no right-click");
+    s.trigger("selectend");
+    s.teardown();
+  });
+
+  test("a list moving on a panel taken down moves nothing any more", async () => {
+    // A row that does not drag: the press on it scrolls the list.
+    const s = await sortableList({ fixed: ["a"] });
+    const ctx = InteractionContext.set({}, s.manager);
+
+    s.aim(150, 20);
+    s.trigger("selectstart");
+    s.aim(150, 60);
+    assert.equal(movesList(ctx, s.controller), true, "the list moves with the hand");
+    s.disconnect();
+    assert.equal(movesList(ctx, s.controller), false, "and stops with its panel");
     s.trigger("selectend");
     s.teardown();
   });

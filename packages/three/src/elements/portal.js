@@ -32,6 +32,7 @@ import { BoxBatchContext, createBoxBatch } from "./boxBatch.js";
 import { TextBatchContext, createTextBatch } from "./textBatch.js";
 import { TextScaleContext, createTextScale } from "./textScale.js";
 import { keepSubtreeMatrices, placeAndScale } from "./place.js";
+import { scrollDrags } from "./scroll.js";
 import { createFrameRequester } from "./frameRequester.js";
 import { createLoadingFrame } from "./loadingFrame.js";
 import { createPortalPump } from "./portalPump.js";
@@ -936,6 +937,14 @@ function buildPortal(ctx, ownOptions = {}) {
   });
 
   /**
+   * The scroll gesture every node of this panel shares, the context being
+   * final here. Disposed with the panel, so that a hand that was moving a
+   * list on it is let go of and the scene stops counting it (see
+   * `movesList`).
+   */
+  const panelScrolls = scrollDrags(ctx);
+
+  /**
    * Build the object for this one node and nothing below it. The recursion
    * over children is the caller's business, because the two callers want it
    * done differently: the synchronous path walks the subtree here and now,
@@ -1785,6 +1794,7 @@ function buildPortal(ctx, ownOptions = {}) {
     portalKeyboard?.dispose();
     ownKeyboardHost?.dispose();
     pump?.dispose();
+    panelScrolls.dispose();
     unregisterPanel();
     // A panel closed before it finished mounting still had a frame up.
     stopLoadingFrame();

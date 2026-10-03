@@ -29,20 +29,20 @@ async function canPresent(): Promise<boolean> {
  * known to be possible. This module imports nothing from three.js, so on a
  * laptop the page is the page and nothing else is fetched.
  *
- * If the scene cannot be fetched because the page came from the service
- * worker's precache and a deploy has replaced the chunks it names, the page
- * reloads once the new worker has taken it over.
- *
  * `?emulator` installs a headset in the browser first, which is what makes
  * the session drivable by hand without one; `?emulator=bare` installs the
  * runtime without the panels that drive it, for a harness photographing the
  * scene.
+ *
+ * If either chunk cannot be fetched because the page came from the service
+ * worker's precache and a deploy has replaced the chunks it names, the page
+ * reloads once the new worker has taken it over (see `fetched`).
  */
 export async function offerHeadset(board: HTMLElement, menu: HTMLElement): Promise<void> {
   const query = new URLSearchParams(location.search);
   if (query.has("emulator")) {
     try {
-      const { install } = await import("./emulator");
+      const { install } = await fetched(import("./emulator"));
       install({ devUI: query.get("emulator") !== "bare" });
     } catch (err) {
       console.error("Could not install the XR emulator:", err);
@@ -51,23 +51,38 @@ export async function offerHeadset(board: HTMLElement, menu: HTMLElement): Promi
   if (!(await canPresent())) {
     return;
   }
-  const worker = navigator.serviceWorker;
-  let scene: typeof import("./xr");
+  const { offerXR } = await fetched(import("./xr"));
+  offerXR(board, menu);
+}
+
+/**
+ * A chunk this page imports lazily, which the service worker does not
+ * precache: the emulator and the scene. A page the worker serves after a
+ * deploy names them by hashes the new deployment no longer has, so the
+ * import fails. The new worker takes the page over as it activates
+ * (`autoUpdate`), and reloading then gets the page that names the chunks
+ * the server has. A page whose worker has not been replaced has no newer
+ * page to reload into, so it waits rather than loops.
+ */
+async function fetched<T>(chunk: Promise<T>): Promise<T> {
   try {
-    scene = await import("./xr");
+    return await chunk;
   } catch (err) {
-    // The service worker precaches the page but not the scene, so a page it
-    // serves after a deploy names the scene by a hash the new deployment no
-    // longer has. The new worker takes over the page as it activates
-    // (`autoUpdate`); reloading then gets the page that names the chunks
-    // the server has. A page whose worker has not been replaced has no
-    // newer page to reload into, so it waits rather than loops.
-    if (worker) {
-      void replacedWorker(worker).then(() => location.reload());
-    }
+    reloadWhenReplaced();
     throw err;
   }
-  scene.offerXR(board, menu);
+}
+
+/** Whether a reload is already waiting on a newer worker. */
+let reloading = false;
+
+function reloadWhenReplaced(): void {
+  const worker = navigator.serviceWorker;
+  if (!worker || reloading) {
+    return;
+  }
+  reloading = true;
+  void replacedWorker(worker).then(() => location.reload());
 }
 
 /**

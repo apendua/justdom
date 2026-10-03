@@ -119,4 +119,30 @@ describe("offerHeadset", () => {
       expect(reload).not.toHaveBeenCalled();
     });
   });
+
+  describe("when the emulator's chunk is gone after a deploy", () => {
+    beforeEach(() => {
+      // As on a laptop: no WebXR until the emulator installs one, which it
+      // cannot.
+      platform(null);
+      vi.stubGlobal("location", { search: "?emulator", reload });
+      vi.doMock("./emulator", () => {
+        throw new Error("Failed to fetch dynamically imported module");
+      });
+    });
+    afterEach(() => {
+      vi.doUnmock("./emulator");
+    });
+
+    it("reloads once the new worker has taken the page over", async () => {
+      const replace = workers({});
+      const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+      await offer();
+      logged.mockRestore();
+      expect(reload).not.toHaveBeenCalled();
+      replace({});
+      await Promise.resolve();
+      expect(reload).toHaveBeenCalledTimes(1);
+    });
+  });
 });

@@ -820,6 +820,80 @@ describe("div sibling stacking", () => {
     board.teardown();
   });
 
+  test("a label with no background stepped over a card that climbed draws after it", () => {
+    // `second` climbs past the label under it. `label` paints nothing of
+    // its own, but its text is stepped in front of `second` and has to
+    // draw after it, or `second` blends behind the glyphs it should tint.
+    const board = setupSiblings();
+    const first = board.add("position: absolute; background: white", [0, 0, 100, 100]);
+    board.add("", [10, 10, 90, 30], first);
+    const second = board.add(
+      "position: absolute; background: rgba(255, 255, 255, 0.5)",
+      [50, 0, 150, 100],
+    );
+    const label = board.add("position: absolute", [100, 10, 140, 30]);
+
+    assert.ok(board.z(label) < board.z(second), "the label is stepped over the card");
+    assert.ok(
+      getContentRenderOrder(label) > board.boxOrder(second),
+      `the label's text at ${getContentRenderOrder(label)} draws before the card at ` +
+        `${board.boxOrder(second)}`,
+    );
+    board.teardown();
+  });
+
+  test("a translucent child of an empty card over a card that climbed draws after it", () => {
+    const board = setupSiblings();
+    const first = board.add("position: absolute; background: white", [0, 0, 100, 100]);
+    board.add("", [10, 10, 90, 30], first);
+    const second = board.add(
+      "position: absolute; background: rgba(255, 255, 255, 0.5)",
+      [50, 0, 150, 100],
+    );
+    const tip = board.add("position: absolute", [100, 40, 140, 60]);
+    const tipCard = board.add("background: rgba(0, 0, 255, 0.5)", [100, 40, 140, 60], tip);
+
+    assert.ok(
+      board.boxOrder(tipCard) > board.boxOrder(second),
+      `the half-blue card at ${board.boxOrder(tipCard)} draws before the card behind it ` +
+        `at ${board.boxOrder(second)}`,
+    );
+    board.teardown();
+  });
+
+  test("an empty card over one whose content climbed draws after that content", () => {
+    // Nothing on `holder` itself climbs, but the translucent card inside it
+    // does, so what is stepped in front of `holder` has to wait for it.
+    const board = setupSiblings();
+    const holder = board.add("position: absolute", [0, 0, 150, 100]);
+    const first = board.add("position: absolute; background: white", [0, 0, 100, 100], holder);
+    board.add("", [10, 10, 90, 30], first);
+    const climbed = board.add(
+      "position: absolute; background: rgba(255, 255, 255, 0.5)",
+      [50, 0, 150, 100],
+      holder,
+    );
+    const tip = board.add("position: absolute", [100, 40, 140, 60]);
+    const tipCard = board.add("background: rgba(0, 0, 255, 0.5)", [100, 40, 140, 60], tip);
+
+    assert.ok(board.boxOrder(tipCard) > board.boxOrder(climbed));
+    board.teardown();
+  });
+
+  test("an opaque card over a card that climbed keeps the order of its siblings", () => {
+    // Its own quad hides the climbed card wherever it covers it, so it can
+    // draw first, and a pile of opaque cards on a translucent one adds no
+    // bucket.
+    const board = setupSiblings();
+    const first = board.add("position: absolute; background: white", [0, 0, 100, 100]);
+    board.add("", [10, 10, 90, 30], first);
+    board.add("position: absolute; background: rgba(255, 255, 255, 0.5)", [50, 0, 150, 100]);
+    const third = board.add("position: absolute; background: white", [60, 0, 160, 100]);
+
+    assert.equal(board.boxOrder(third), board.boxOrder(first));
+    board.teardown();
+  });
+
   test("a pile of translucent cards stays under an overlay drawn before it", () => {
     // Every translucent card draws after the one under it, so a pile climbs
     // the order by a few levels a card. An overlay is a band of its own, and

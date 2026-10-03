@@ -1523,8 +1523,10 @@ and a descendant that overflows its parent's box does not count towards what the
 parent overlaps. A translucent card stepped over another, by its background, its
 border, a background image or an `opacity` of its own or an ancestor's, is also
 drawn after everything the other card draws, so the other card's content shows
-through it tinted, as on a page. Only the card that is stepped is asked: a
-positioned wrapper with nothing to paint, around a translucent card, still lets
+through it tinted, as on a page. A box with no background of its own that is
+stepped over such a card is drawn after it too, with its text and children.
+Only the box that is stepped is asked: a positioned wrapper with nothing to
+paint, around a translucent card, over a card drawn in tree order, still lets
 that card hide what the wrapper covers. A box anchored above a scroller that its
 siblings scroll in counts as covering all of them, so its lift and theirs stay
 put while the list scrolls.

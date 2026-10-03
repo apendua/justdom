@@ -7,7 +7,7 @@ import { getContentGroup } from "./contentGroup.js";
 import { box } from "./div.js";
 import { registerPanel } from "./dragAndDrop.js";
 import { createMirror } from "./mirror.js";
-import { movesList, scrollDrags } from "./scroll.js";
+import { movesList } from "./scroll.js";
 import { createHaptics, HapticsContext } from "./haptics.js";
 import { recordingSource } from "../test/rumble.js";
 import { clientRect } from "../test/clientRect.js";
@@ -108,15 +108,6 @@ function nest({ outer, inner, build, haptics = null }) {
     /** @type {unknown} */ (new THREE.Object3D())
   );
 
-  /** @type {THREE.Object3D[]} */
-  const ended = [];
-  const drags = scrollDrags(ctx);
-  const end = drags.end;
-  drags.end = (hand) => {
-    ended.push(hand);
-    end(hand);
-  };
-
   /** The last start of each button, for the events that end its press. */
   const starts = new Map();
 
@@ -130,8 +121,6 @@ function nest({ outer, inner, build, haptics = null }) {
     manager,
     escaped,
     controller,
-    /** The hands whose drag gesture was told the press is over. */
-    ended,
     /**
      * A ray event, dispatched the way the manager dispatches one: to the
      * mesh the ray met, and up from there.
@@ -171,6 +160,11 @@ function nest({ outer, inner, build, haptics = null }) {
         /** @type {THREE.Object3D<XREventMap>} */ (mesh),
         /** @type {never} */ (event),
       );
+      if (type === "selectend") {
+        // The controller's own release, which the manager's listener
+        // passed on as the above and which a scroll drag hears directly.
+        controller.dispatchEvent(/** @type {never} */ ({ type, data: inputSource }));
+      }
     },
     teardown() {
       for (const type of types) {
@@ -242,12 +236,11 @@ describe("a press on nested clickable elements", () => {
     assert.equal(inner.dataset.xrActive, undefined);
     // Where a page sends a release whose target has gone: to what is left.
     assert.deepEqual(s.events, ["mousedown on span", "mouseup on button"]);
-    assert.deepEqual(s.ended, [s.controller], "and the hand's drag is over");
     assert.deepEqual(s.escaped, []);
     s.teardown();
   });
 
-  test("released after a lone pressed element has gone, still ends the drag", () => {
+  test("released after a lone pressed element has gone, keeps the release", () => {
     const outer = html("div", "");
     const inner = html("span", "cursor: pointer");
     outer.appendChild(inner);
@@ -262,8 +255,7 @@ describe("a press on nested clickable elements", () => {
     s.press("selectend");
     assert.equal(inner.dataset.xrActive, undefined);
     assert.deepEqual(s.events, ["mousedown on span"], "nothing is left to take the release");
-    assert.deepEqual(s.ended, [s.controller]);
-    assert.deepEqual(s.escaped, []);
+    assert.deepEqual(s.escaped, [], "and it goes no further");
     s.teardown();
   });
 

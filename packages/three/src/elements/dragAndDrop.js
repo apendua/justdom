@@ -1001,10 +1001,20 @@ export function createDragAndDrop(requestFrames, readHit, snapshots) {
       // The release is the controller's own, heard here rather than through
       // the source's object: a page that moves the source while it is
       // dragged, which is how a list shows where the row will land, may
-      // take its object down and the listeners on it with it.
+      // take its object down and the listeners on it with it. A controller
+      // lost, at the end of a session, sends no release: the drag is
+      // cancelled, as a browser cancels one it can no longer finish.
       const onSelectEnd = () => finish(session);
+      const onDisconnected = () => {
+        session.operation = "none";
+        finish(session);
+      };
       controller.addEventListener("selectend", onSelectEnd);
-      session.unlisten = () => controller.removeEventListener("selectend", onSelectEnd);
+      controller.addEventListener("disconnected", onDisconnected);
+      session.unlisten = () => {
+        controller.removeEventListener("selectend", onSelectEnd);
+        controller.removeEventListener("disconnected", onDisconnected);
+      };
       sessions.set(controller, session);
       snapshots.prepare(panel);
       if (!stopFrames) {

@@ -118,36 +118,30 @@ const forwarding = new WeakSet();
 const delivered = new WeakSet();
 
 /**
- * The grip starts a panel swallowed, on an element that had gone (see
- * `isGone`). The events that end such a press ask whether something took
- * its start, and the manager's `isStopped` alone cannot tell a start the
- * panel stopped from one the scene took; this can.
+ * What became of each grip start a panel's elements heard, one state per
+ * grip, decided as it closes:
  *
- * @type {WeakSet<object>}
- */
-const swallowed = new WeakSet();
-
-/**
- * The grip starts a panel may own: closed on a control that was there, by
- * a hand neither carrying nor moving a list. Decided once, as the grip
- * closes, and asked by everything that follows the grip, the right-click
- * and both pulses, so that they follow one decision whatever the hand does
- * before it opens. The panel owns such a start when, besides, nothing above
- * took it, which is settled by the time anything asks (see `owns`).
+ * - `"swallowed"`: it closed on an element that had gone (see `isGone`),
+ *   and the panel stopped it. The events that end it ask whether something
+ *   took its start, and the manager's `isStopped` alone cannot tell a start
+ *   the panel stopped from one the scene took; this can.
+ * - `"owned"`: it closed on a control that was there, by a hand neither
+ *   carrying nor moving a list. Asked by everything that follows the grip,
+ *   the right-click and both pulses, so that they follow one decision
+ *   whatever the hand does before it opens. The panel owns it when,
+ *   besides, nothing above took it, which is settled by the time anything
+ *   asks (see `owns`).
+ * - `"felt"`: owned, and its closing pulse has played. That waits for the
+ *   start's dispatch to finish, in a microtask, and the grip's end plays it
+ *   first if it comes sooner, as it does where a runtime sends both in one
+ *   task; either way it plays once, before the opening.
  *
- * @type {WeakSet<object>}
- */
-const owned = new WeakSet();
-
-/**
- * The owned grip starts whose closing pulse has played. It waits for the
- * start's dispatch to finish, in a microtask, and the grip's end plays it
- * first if it comes sooner, as it does where a runtime sends both in one
- * task; either way it plays once, before the opening.
+ * A start in none of them closed while the hand was busy: nothing of it is
+ * the panel's but the stopping of its end.
  *
- * @type {WeakSet<object>}
+ * @type {WeakMap<object, "swallowed" | "owned" | "felt">}
  */
-const pressed = new WeakSet();
+const grips = new WeakMap();
 
 /**
  * Whether another forwarding object is above this one, which makes this
@@ -188,9 +182,12 @@ function hasForwardingAncestor(object) {
  * where the panel asks for one. A press on something draggable that the
  * hand carries away is a drag and drop instead, and its release is a
  * `drop` and a `dragend` rather than a `mouseup` and a `click` (see
- * `dragAndDrop.js`). While the trigger carries something that way, or
- * moves a list, on this panel or another, the grip is no press on
- * anything: it sends no `contextmenu` and is not felt.
+ * `dragAndDrop.js`). A grip that closes while the trigger carries
+ * something that way, or moves a list, on this panel or another, is no
+ * press on anything: it sends no `contextmenu` and is not felt, closing or
+ * opening. One that closed before and opens while the hand is busy sends
+ * no `contextmenu` either, but is felt opening, as its closing was: the
+ * pulses follow the closing, and the right-click asks again as it opens.
  *
  * Boxes, SVG shapes and clickable SVG groups all forward rays through this
  * function, so a panel's stylesheet and its click handlers see the same
@@ -341,7 +338,7 @@ export function forwardPointerEvents(ctx, element, object, { enabled, onPress })
    * @param {InteractionEvent} start
    * @returns {boolean}
    */
-  const taken = (start) => isStopped(start) && !swallowed.has(start);
+  const taken = (start) => isStopped(start) && grips.get(start) !== "swallowed";
 
   /**
    * Whether the panel owns the grip that began with this start: the start
@@ -350,7 +347,10 @@ export function forwardPointerEvents(ctx, element, object, { enabled, onPress })
    * @param {InteractionEvent} start
    * @returns {boolean}
    */
-  const owns = (start) => owned.has(start) && !isStopped(start);
+  const owns = (start) => {
+    const state = grips.get(start);
+    return (state === "owned" || state === "felt") && !isStopped(start);
+  };
 
   /**
    * The closing pulse of an owned grip, once.
@@ -359,8 +359,8 @@ export function forwardPointerEvents(ctx, element, object, { enabled, onPress })
    * @returns {void}
    */
   const feelClosing = (start) => {
-    if (haptics && !pressed.has(start)) {
-      pressed.add(start);
+    if (haptics && grips.get(start) === "owned") {
+      grips.set(start, "felt");
       haptics.press(start.inputSource);
     }
   };
@@ -369,11 +369,12 @@ export function forwardPointerEvents(ctx, element, object, { enabled, onPress })
    * Whether the hand's trigger is, right now, carrying something or moving
    * a list, anywhere in the scene: a drag whose `dragstart` went out and
    * that has not dropped, or a list dragged past the threshold and still
-   * held or gliding. A press of the grip meanwhile is a press on nothing: a
-   * page in the middle of a drag hears no other button, and a list being
-   * scrolled is not a row being pressed. A trigger only resting on a row or
-   * a card, which may yet become a click, is neither, and a grip under it
-   * is a right-click as a mouse's would be.
+   * held or gliding. A grip meanwhile is no right-click: a page in the
+   * middle of a drag hears no other button, and a list being scrolled is
+   * not a row being pressed. Asked as the grip closes, for the grip's
+   * whole state, and again as it opens, for the right-click alone. A
+   * trigger only resting on a row or a card, which may yet become a click,
+   * is neither, and a grip under it is a right-click as a mouse's would be.
    *
    * The trigger's own completion asks something else, in another tense:
    * whether its press turned into one of these (`didScroll`, `didDrag`).
@@ -437,14 +438,16 @@ export function forwardPointerEvents(ctx, element, object, { enabled, onPress })
       // Swallowed as a trigger's press on such an element is, and before
       // the scene can grab the panel by a row the page has let go of.
       if (isGone(element)) {
-        swallowed.add(e);
+        grips.set(e, "swallowed");
         stopPropagation(e);
         return;
       }
       if (busy(e.controller)) {
         return;
       }
-      owned.add(e);
+      if (!grips.has(e)) {
+        grips.set(e, "owned");
+      }
       // Felt once as the grip closes on a control, as a trigger's press is,
       // but only once the dispatch has run, since the start goes on past
       // the panel and only then is it known whether something above took
@@ -524,17 +527,16 @@ export function forwardPointerEvents(ctx, element, object, { enabled, onPress })
         // A release is owed to whatever still holds the press. An element
         // that has left the document sends no `mouseup` of its own, and the
         // next clickable element up sends it on itself, which is where a
-        // page sends a release whose target has gone. The outermost ends the
-        // hand's drag when none is left to.
+        // page sends a release whose target has gone. The scroll a press
+        // may have become ends with the controller's own release (see
+        // `begin` in `scroll.js`), whatever became of the element.
         if (hasForwardingAncestor(object)) {
           return;
         }
-        drags.end(e.controller);
         stopPropagation(e);
         return;
       }
       deliverOnce(e, () => {
-        drags.end(e.controller);
         // A drag's release is its `drop` and its `dragend`, which the drag
         // sends from the controller's own `selectend`.
         if (!dnd.didDrag(e.controller)) {

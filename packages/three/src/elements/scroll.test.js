@@ -4,7 +4,15 @@ import * as THREE from "three";
 import { InteractionContext, InteractionManager } from "../interactions.js";
 import { PORTAL_ATTRIBUTE } from "./mirror.js";
 import { setContentGroup } from "./contentGroup.js";
-import { createScrollDrags, findScroller, isScrollable, movesList, scrollDrags } from "./scroll.js";
+import {
+  createPanelScrollDrags,
+  createScrollDrags,
+  findScroller,
+  isScrollable,
+  movesList,
+  scrollDrags,
+  ScrollDragsContext,
+} from "./scroll.js";
 import { describeScroller } from "../test/scroller.js";
 import { flushFrame } from "../test/portalHarness.js";
 
@@ -130,10 +138,12 @@ describe("findScroller", () => {
 describe("a hand moving a list", () => {
   test("is a fact about the scene, once the list has moved, until its glide retires", () => {
     const { row, rowObject, controller, aimAt } = setup();
-    // Two panels of one scene, each with a context and a gesture of its own.
+    // Two panels of one scene, each with a gesture of its own, as a portal
+    // sets one.
     const manager = new InteractionManager();
-    const here = InteractionContext.set({}, manager);
-    const there = InteractionContext.set({}, manager);
+    const scene = InteractionContext.set({}, manager);
+    const here = ScrollDragsContext.set(scene, createPanelScrollDrags(scene));
+    const there = ScrollDragsContext.set(scene, createPanelScrollDrags(scene));
     const drags = scrollDrags(here);
 
     drags.begin(controller, row, rowObject);

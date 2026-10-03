@@ -5,7 +5,7 @@ import { InteractionContext, InteractionManager } from "../interactions.js";
 import { fakeFrameLoop } from "../test/frameLoop.js";
 import { drain, flushFrame, settle } from "../test/portalHarness.js";
 import { describeScroller } from "../test/scroller.js";
-import { createDragAndDrop } from "./dragAndDrop.js";
+import { createDragAndDrop, dragAndDrop } from "./dragAndDrop.js";
 import { movesList } from "./scroll.js";
 import { createPortal } from "./portal.js";
 import { clientRect } from "../test/clientRect.js";
@@ -328,6 +328,25 @@ describe("drag and drop in a panel", () => {
     s.trigger("squeezeend");
     assert.deepEqual(rightClicks(), [], "the row under the ray hears no right-click");
     s.trigger("selectend");
+    s.teardown();
+  });
+
+  test("is cancelled when the controller is lost mid-carry", async () => {
+    // At the end of a session three disconnects every controller without a
+    // release: a browser cancels a drag it can no longer finish.
+    const s = await sortableList();
+    const gesture = dragAndDrop(InteractionContext.set({}, s.manager));
+
+    s.aim(150, 20);
+    s.trigger("selectstart");
+    s.aim(150, 160);
+    assert.equal(gesture.carrying(s.controller), true);
+    s.events.length = 0;
+    s.controller.dispatchEvent(/** @type {never} */ ({ type: "disconnected" }));
+    assert.equal(gesture.carrying(s.controller), false, "the carry is over");
+    assert.deepEqual(s.events, ["dragleave list", "dragend a"], "cancelled, not dropped");
+    assert.equal(s.seen.dropEffect, "none");
+    assert.equal(s.ghost(), undefined, "and the ghost goes with it");
     s.teardown();
   });
 

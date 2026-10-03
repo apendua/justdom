@@ -827,7 +827,8 @@ what is under the ray in its own px. It can also end on nothing: a ray on
 something in the scene that is not a panel, or on nothing at all, is over no
 element, and letting go there drops nothing. A drag whose panel is taken
 down before the trigger opens is cancelled, with a `dragleave` and a
-`dragend` whose `dropEffect` is `"none"`.
+`dragend` whose `dropEffect` is `"none"`, and so is one whose controller
+is lost, as every controller is when the session ends.
 
 While the drag is under way a translucent card the size of the source, or
 of what `setDragImage` was given, follows the ray in the panel the ray is

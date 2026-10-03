@@ -32,7 +32,7 @@ import { BoxBatchContext, createBoxBatch } from "./boxBatch.js";
 import { TextBatchContext, createTextBatch } from "./textBatch.js";
 import { TextScaleContext, createTextScale } from "./textScale.js";
 import { keepSubtreeMatrices, placeAndScale } from "./place.js";
-import { scrollDrags } from "./scroll.js";
+import { createPanelScrollDrags, ScrollDragsContext } from "./scroll.js";
 import { createFrameRequester } from "./frameRequester.js";
 import { createLoadingFrame } from "./loadingFrame.js";
 import { createPortalPump } from "./portalPump.js";
@@ -464,6 +464,14 @@ function buildPortal(ctx, ownOptions = {}) {
   // Resolved once for the panel: the pulses are worked out here, and an
   // element's handler pays for the call and nothing else.
   ctx = HapticsContext.set(ctx, createHaptics(haptics));
+  /**
+   * The scroll gesture every node of this panel shares, set here with the
+   * batches so that there is one per panel however the context is derived
+   * below. Disposed with the panel, so that a hand that was moving a list on
+   * it is let go of and the scene stops asking it (see `movesList`).
+   */
+  const panelScrolls = createPanelScrollDrags(ctx);
+  ctx = ScrollDragsContext.set(ctx, panelScrolls);
 
   /**
    * How finely this panel's text is worth rasterizing, measured off what the
@@ -935,14 +943,6 @@ function buildPortal(ctx, ownOptions = {}) {
       adoptTemplate(node);
     }
   });
-
-  /**
-   * The scroll gesture every node of this panel shares, the context being
-   * final here. Disposed with the panel, so that a hand that was moving a
-   * list on it is let go of and the scene stops counting it (see
-   * `movesList`).
-   */
-  const panelScrolls = scrollDrags(ctx);
 
   /**
    * Build the object for this one node and nothing below it. The recursion

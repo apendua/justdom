@@ -402,10 +402,10 @@ export function box(ctx, element, options = {}) {
       }
       stopPropagation(e);
     }),
+    // The drag a press here began ends with the controller's own release,
+    // whatever became of the list (see `begin` in `scroll.js`); the list's
+    // part is only to keep the release from going on past the panel.
     on("selectend", (e) => {
-      // Whether or not the list is still in the document: the hand's drag
-      // is over either way, as a forwarding element's outermost ends it.
-      drags.end(e.controller);
       stopPropagation(e);
     }),
     on("select", (e) => {

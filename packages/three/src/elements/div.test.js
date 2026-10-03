@@ -4,6 +4,7 @@ import * as THREE from "three";
 import { InteractionContext } from "../interactions.js";
 import { createMirror, PORTAL_ATTRIBUTE } from "./mirror.js";
 import { div } from "./div.js";
+import { getContentRenderOrder } from "./elevation.js";
 import { GRADIENT_LINEAR, rampAtlas } from "./gradient.js";
 import { createHaptics, HapticsContext } from "./haptics.js";
 import { getContentGroup } from "./contentGroup.js";
@@ -44,9 +45,16 @@ Object.defineProperty(document, "fonts", {
  * @param {string} [cssText] Anything else the element should be styled with.
  * @param {import('./haptics.js').Haptics | null} [haptics] What the panel
  *   the element is in feels like; none, as outside a panel, unless given.
- * @param {HTMLElement} [parent] Where the element goes; the body unless given.
+ * @param {HTMLElement} [parent] Where the element goes. Unless given, a
+ *   fresh container of its own, so that what earlier tests left behind is
+ *   never a sibling it could be stacked against.
  */
-function setup(cursor, cssText = "", haptics = null, parent = document.body) {
+function setup(
+  cursor,
+  cssText = "",
+  haptics = null,
+  parent = document.body.appendChild(document.createElement("div")),
+) {
   const element = document.createElement("div");
   element.style.cssText = cssText;
   element.style.cursor = cursor;
@@ -503,6 +511,368 @@ describe("div elevation", () => {
 });
 
 /**
+ * Siblings under one positioned parent, each drawn by `div` under one
+ * mirror, the way a portal draws a panel. The parent is 400 px square at the
+ * page origin, so a child's rect in page px is also its rect in the parent.
+ */
+function setupSiblings() {
+  const parent = document.createElement("div");
+  parent.style.position = "relative";
+  document.body.appendChild(parent);
+  layout(parent, () => [0, 0, 400, 400]);
+
+  const mirror = createMirror();
+  mirror.adopt(parent);
+  const manager = /** @type {InteractionManager} */ (
+    /** @type {unknown} */ ({ add: () => {}, remove: () => {}, stopPropagation: () => {} })
+  );
+  const ctx = InteractionContext.set({}, manager);
+
+  /** @type {Map<Element, THREE.Object3D>} */
+  const objects = new Map();
+  /** @type {{ unsubscribe(): void }[]} */
+  const subscriptions = [];
+
+  return {
+    parent,
+    mirror,
+    /**
+     * @param {string} cssText
+     * @param {[number, number, number, number]} rect
+     * @param {HTMLElement} [into]
+     */
+    add(cssText, rect, into = parent) {
+      const element = document.createElement("div");
+      element.style.cssText = cssText;
+      into.appendChild(element);
+      layout(element, () => rect);
+      mirror.adopt(element);
+      subscriptions.push(
+        div(ctx, element).subscribe((value) => {
+          objects.set(element, value);
+        }),
+      );
+      return element;
+    },
+    /**
+     * How far the element's origin sits from its parent's content along
+     * local z, read off the committed matrix. Negative is toward the viewer.
+     *
+     * @param {Element} element
+     */
+    z(element) {
+      const object = objects.get(element);
+      assert.ok(object);
+      return new THREE.Vector3().setFromMatrixPosition(object.matrix).z;
+    },
+    teardown() {
+      for (const subscription of subscriptions) {
+        subscription.unsubscribe();
+      }
+      parent.remove();
+    },
+  };
+}
+
+describe("div sibling stacking", () => {
+  test("a rotated hand over a positioned dial is drawn in front of the dial", () => {
+    const clock = setupSiblings();
+    const dial = clock.add("position: absolute; border-radius: 50%", [0, 0, 100, 100]);
+    // Half a radian past twelve, turning about its foot.
+    const [cos, sin] = [Math.cos(0.5), Math.sin(0.5)];
+    const hand = clock.add(
+      "position: absolute; transform-origin: 50% 100%; " +
+        `transform: matrix(${cos}, ${sin}, ${-sin}, ${cos}, 0, 0)`,
+      [0, 0, 0, 0],
+    );
+    // A transformed box is measured off the layout, which jsdom leaves at
+    // zero: a 4 by 40 hand standing on the dial's centre.
+    for (const [name, value] of /** @type {const} */ ([
+      ["offsetLeft", 48],
+      ["offsetTop", 10],
+      ["offsetWidth", 4],
+      ["offsetHeight", 40],
+    ])) {
+      Object.defineProperty(hand, name, { configurable: true, value });
+    }
+    clock.mirror.reflowed([hand]);
+
+    // The hand's quad is 1 px behind its origin, and has to be in front of
+    // the dial's own content, which sits at the dial's origin.
+    assert.ok(
+      clock.z(hand) + 1 < clock.z(dial),
+      `hand at ${clock.z(hand)} is not in front of the dial at ${clock.z(dial)}`,
+    );
+    clock.teardown();
+  });
+
+  test("a later card covers the pin an earlier card floats over itself", () => {
+    const board = setupSiblings();
+    // `z-index: 0` makes the card a stacking context, as the desk's tilted
+    // cards are, so a page paints the pin with the card, under the next one.
+    const first = board.add("position: absolute; z-index: 0", [0, 0, 100, 100]);
+    const pin = board.add("position: absolute; z-index: 1", [45, -5, 55, 5], first);
+    const second = board.add("position: absolute", [50, 50, 150, 150]);
+
+    // The pin's origin, where its text is drawn, against the second card's
+    // quad, both in the board's frame.
+    const pinZ = board.z(first) + board.z(pin);
+    assert.ok(
+      board.z(second) + 1 < pinZ,
+      `the second card's quad at ${board.z(second) + 1} is behind the pin at ${pinZ}`,
+    );
+    board.teardown();
+  });
+
+  test("a pin escapes a card that is no stacking context and stays over the next", () => {
+    const board = setupSiblings();
+    // No `z-index` and no transform: the pin's `z-index: 1` is compared with
+    // the second card's, and a page paints it over the second card.
+    const first = board.add("position: absolute", [0, 0, 100, 100]);
+    const pin = board.add("position: absolute; z-index: 1", [45, -5, 55, 5], first);
+    const second = board.add("position: absolute", [50, 50, 150, 150]);
+
+    const pinZ = board.z(first) + board.z(pin);
+    assert.ok(
+      pinZ + 1 < board.z(second),
+      `the pin's quad at ${pinZ + 1} is behind the second card at ${board.z(second)}`,
+    );
+    board.teardown();
+  });
+
+  test("a box held still while its siblings scroll past keeps every lift", () => {
+    const panel = setupSiblings();
+    let scrollTop = 0;
+    const scroller = panel.add("overflow: auto", [0, 0, 400, 200]);
+    Object.defineProperty(scroller, "scrollTop", { configurable: true, get: () => scrollTop });
+    // Anchored to the panel, not to the scroller, so the scroll does not
+    // move it while the row slides under it.
+    panel.add("position: absolute", [0, 0, 100, 50], scroller);
+    const row = panel.add("position: relative", [0, 0, 0, 0], scroller);
+    row.getBoundingClientRect = () => clientRect(0, 100 - scrollTop, 400, 40);
+    panel.mirror.reflowed([row]);
+    const before = panel.z(row);
+
+    scrollTop = 80;
+    panel.mirror.scrolled(scroller);
+
+    assert.equal(panel.z(row), before, "the row's lift followed the scroll");
+    panel.teardown();
+  });
+
+  test("cards anchored to a scroller above their wrapper stay level", () => {
+    const panel = setupSiblings();
+    // The scroller is the cards' anchor, so its scroll moves them and the
+    // wrapper's other children together, never one against another.
+    const scroller = panel.add("position: relative; overflow: auto", [0, 0, 400, 400]);
+    const wrapper = panel.add("", [0, 0, 400, 100], scroller);
+    const first = panel.add("position: absolute", [0, 0, 100, 100], wrapper);
+    const second = panel.add("position: absolute", [300, 0, 400, 100], wrapper);
+
+    assert.deepEqual([panel.z(first), panel.z(second)], [-2, -2]);
+    panel.teardown();
+  });
+
+  test("a translucent card stepped over a label is still drawn before it", () => {
+    // A stated limit (see the `elevation.js` header): the step is in depth
+    // only. When the draw order learns to follow it, this test flips.
+    const board = setupSiblings();
+    const first = board.add("position: absolute", [0, 0, 100, 100]);
+    const label = board.add("", [10, 10, 90, 30], first);
+    const second = board.add(
+      "position: absolute; background: rgba(255, 255, 255, 0.3)",
+      [50, 0, 150, 100],
+    );
+
+    const labelZ = board.z(first) + board.z(label);
+    assert.ok(board.z(second) + 1 < labelZ, "the translucent card is stepped over the label");
+    // A box is drawn one order before its content (`getContentRenderOrder`).
+    assert.ok(
+      getContentRenderOrder(label) - 1 > getContentRenderOrder(second) - 1,
+      "the label's box is drawn after the card that covers it",
+    );
+    board.teardown();
+  });
+
+  test("overlapping backdrops with a negative z-index stay under the flow", () => {
+    const page = setupSiblings();
+    page.add("position: absolute; z-index: -1", [0, 0, 200, 200]);
+    const backdrop = page.add("position: absolute; z-index: -1", [100, 0, 300, 200]);
+    // A paragraph in the flow, over the second backdrop. A page paints the
+    // flow over every negative `z-index`.
+    const paragraph = page.add("", [150, 50, 250, 100]);
+
+    // The paragraph's text sits level with its origin; the backdrop's quad
+    // is 1 px behind the backdrop's.
+    assert.ok(
+      page.z(paragraph) < page.z(backdrop) + 1,
+      `the text at ${page.z(paragraph)} is behind the backdrop at ${page.z(backdrop) + 1}`,
+    );
+    page.teardown();
+  });
+
+  test("cards that do not overlap stay level, however many there are", () => {
+    const board = setupSiblings();
+    const cards = [
+      // Edge to edge with the next one, which is touching, not overlapping.
+      board.add("position: absolute", [0, 0, 100, 100]),
+      board.add("position: absolute", [100, 0, 200, 100]),
+      board.add("position: absolute; transform: matrix(1, 0, 0, 1, 0, 0)", [0, 0, 0, 0]),
+      board.add("position: absolute", [300, 300, 400, 400]),
+    ];
+    // Layout offsets for the transformed one, below the first two.
+    Object.defineProperty(cards[2], "offsetTop", { configurable: true, value: 150 });
+    Object.defineProperty(cards[2], "offsetWidth", { configurable: true, value: 100 });
+    Object.defineProperty(cards[2], "offsetHeight", { configurable: true, value: 100 });
+    board.add("position: absolute; z-index: 1", [45, -5, 55, 5], cards[0]);
+    board.mirror.reflowed([cards[2]]);
+
+    assert.deepEqual(
+      cards.map((card) => board.z(card)),
+      [-2, -2, -2, -2],
+    );
+    board.teardown();
+  });
+
+  test("re-appending a card brings it in front of the card it overlaps", () => {
+    const board = setupSiblings();
+    const first = board.add("position: absolute", [0, 0, 100, 100]);
+    const second = board.add("position: absolute", [50, 50, 150, 150]);
+    assert.ok(board.z(second) < board.z(first), "the later card starts in front");
+
+    // The records a portal's observer would hand the mirror. jsdom-env does
+    // not expose `MutationObserver` as a global.
+    const observer = new window.MutationObserver(() => {});
+    observer.observe(board.parent, { childList: true });
+    board.parent.appendChild(first);
+    board.mirror.ingest(observer.takeRecords());
+    observer.disconnect();
+
+    assert.ok(
+      board.z(first) + 1 < board.z(second),
+      `the re-appended card at ${board.z(first)} is not in front of ${board.z(second)}`,
+    );
+    board.teardown();
+  });
+
+  test("an earlier overlay stays in front of a later sibling that covers it", () => {
+    const page = setupSiblings();
+    const modal = page.add("position: fixed; z-index: 10", [100, 100, 300, 300]);
+    const main = page.add("position: relative", [0, 0, 400, 400]);
+    // A pile inside `main` that reaches farther out than the modal's own
+    // lift, so leaving `main` where it is would not be enough.
+    let card = page.add("position: absolute", [150, 150, 250, 250], main);
+    for (let i = 1; i < 5; i += 1) {
+      card = page.add("position: absolute", [150 + i, 150, 250 + i, 250], main);
+    }
+
+    // The modal's quad, 1 px behind its origin, against the farthest thing
+    // `main` draws: its top card's origin, in the page's frame.
+    const cardZ = page.z(main) + page.z(card);
+    assert.ok(
+      page.z(modal) + 1 < cardZ,
+      `the modal's quad at ${page.z(modal) + 1} is behind main's card at ${cardZ}`,
+    );
+    page.teardown();
+  });
+
+  test("a transformed card that moves onto another without resizing is stepped", () => {
+    const column = setupSiblings();
+    /**
+     * A card on layout offsets, which is how a transformed box is placed.
+     *
+     * @param {number} top
+     */
+    const card = (top) => {
+      const element = column.add(
+        "position: relative; transform: matrix(1, 0, 0, 1, 0, 0)",
+        [0, 0, 0, 0],
+      );
+      for (const [name, value] of /** @type {const} */ ([
+        ["offsetTop", top],
+        ["offsetWidth", 100],
+        ["offsetHeight", 100],
+      ])) {
+        Object.defineProperty(element, name, { configurable: true, value });
+      }
+      return element;
+    };
+    const first = card(0);
+    const second = card(200);
+    column.mirror.reflowed([first, second]);
+    assert.equal(column.z(second), column.z(first), "the cards start apart");
+
+    // Text above wraps onto one more line and the second card slides up
+    // onto the first, the same size as before.
+    Object.defineProperty(second, "offsetTop", { configurable: true, value: 50 });
+    column.mirror.reflowed([second]);
+
+    assert.ok(
+      column.z(second) + 1 < column.z(first),
+      `the moved card at ${column.z(second)} is not in front of ${column.z(first)}`,
+    );
+    column.teardown();
+  });
+
+  test("a card whose perspective sends a corner behind the eye covers everything", () => {
+    const board = setupSiblings();
+    // w = 1 - 0.02 x about the card's centre: the right edge, 100 px out,
+    // is at w = -1, behind the eye.
+    const card = board.add(
+      "position: absolute; transform: matrix3d(1, 0, 0, -0.02, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1)",
+      [0, 0, 0, 0],
+    );
+    for (const [name, value] of /** @type {const} */ ([
+      ["offsetWidth", 200],
+      ["offsetHeight", 100],
+    ])) {
+      Object.defineProperty(card, name, { configurable: true, value });
+    }
+    board.mirror.reflowed([card]);
+    // Over the right half of the card's layout box, which dividing the
+    // corners behind the eye by w would mirror away from it.
+    const later = board.add("position: absolute", [150, 0, 250, 100]);
+
+    // The card's own matrix scales its origin by w, so it is the later
+    // card's lift that says whether it was stepped: past the plain step.
+    assert.ok(board.z(later) < -2, `the later card at ${board.z(later)} was not stepped`);
+    board.teardown();
+  });
+
+  test("a later backdrop with a negative z-index stays behind what it covers", () => {
+    const page = setupSiblings();
+    const card = page.add("position: absolute", [100, 100, 300, 300]);
+    // The card is already built, so it hears of the backdrop through the
+    // records a portal's observer would hand the mirror.
+    const observer = new window.MutationObserver(() => {});
+    observer.observe(page.parent, { childList: true });
+    const backdrop = page.add("position: absolute; z-index: -1", [0, 0, 400, 400]);
+    page.mirror.ingest(observer.takeRecords());
+    observer.disconnect();
+
+    assert.ok(
+      page.z(card) + 1 < page.z(backdrop),
+      `the card's quad at ${page.z(card) + 1} is behind the backdrop at ${page.z(backdrop)}`,
+    );
+    page.teardown();
+  });
+});
+
+/**
+ * Give an element the client rect jsdom does not compute: left, top, right
+ * and bottom in page px, read each time the rect is asked for.
+ *
+ * @param {Element} element
+ * @param {() => [number, number, number, number]} rect
+ */
+function layout(element, rect) {
+  element.getBoundingClientRect = () => {
+    const [left, top, right, bottom] = rect();
+    return clientRect(left, top, right - left, bottom - top);
+  };
+}
+
+/**
  * A clickable row inside something that hides its overflow, with the layout
  * jsdom does not have: a window that stays put and a 40px row that slides
  * through it, starting 10px into a 100px scroller.
@@ -528,16 +898,6 @@ function setupScrolledRow() {
     mirror.adopt(node);
   }
 
-  /**
-   * @param {Element} element
-   * @param {() => [number, number, number, number]} rect
-   */
-  const layout = (element, rect) => {
-    element.getBoundingClientRect = () => {
-      const [left, top, right, bottom] = rect();
-      return clientRect(left, top, right - left, bottom - top);
-    };
-  };
   layout(container, () => [0, 0, 200, 100]);
   layout(scroller, () => [0, 0, 200, 100]);
   layout(row, () => [0, 10 - scrollTop, 200, 50 - scrollTop]);

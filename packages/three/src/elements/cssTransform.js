@@ -1,5 +1,11 @@
 import * as THREE from "three";
-import { getComputedStyleCached, hasTransform, isTransformed } from "./mirror.js";
+import {
+  getComputedStyleCached,
+  getObjectPosition,
+  getReflowContext,
+  hasTransform,
+  isTransformed,
+} from "./mirror.js";
 
 /**
  * CSS transforms, read off the computed style and turned into the matrices
@@ -224,4 +230,28 @@ export function untransformedOffset(element, from) {
   }
   const base = pageOffset(from);
   return { x: position.x - base.x, y: position.y - base.y };
+}
+
+/**
+ * Where the element's object sits in its parent's content group, before its
+ * own transform is applied. Client rects are transformed bounds, useless for
+ * a box that has to come out untransformed and then carry the CSS transform
+ * as its own matrix, so a box on a transformed chain falls back to layout
+ * offsets. Everything else takes `getObjectPosition`, which is
+ * scroll-invariant.
+ *
+ * The layout offsets are plain DOM reads with no dependency of their own,
+ * so that branch reads `getReflowContext`, which a layout move bumps. The
+ * element's size is no stand-in: it is gated on equality, so a move that
+ * keeps the size stops there.
+ *
+ * @param {HTMLElement} element
+ * @returns {{ x: number, y: number }}
+ */
+export function getBoxOffset(element) {
+  if (!isTransformed(element)) {
+    return getObjectPosition(element);
+  }
+  getReflowContext(element);
+  return untransformedOffset(element, element.parentElement);
 }

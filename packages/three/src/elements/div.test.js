@@ -686,6 +686,69 @@ describe("div sibling stacking", () => {
     page.teardown();
   });
 
+  test("a transformed card that moves onto another without resizing is stepped", () => {
+    const column = setupSiblings();
+    /**
+     * A card on layout offsets, which is how a transformed box is placed.
+     *
+     * @param {number} top
+     */
+    const card = (top) => {
+      const element = column.add(
+        "position: relative; transform: matrix(1, 0, 0, 1, 0, 0)",
+        [0, 0, 0, 0],
+      );
+      for (const [name, value] of /** @type {const} */ ([
+        ["offsetTop", top],
+        ["offsetWidth", 100],
+        ["offsetHeight", 100],
+      ])) {
+        Object.defineProperty(element, name, { configurable: true, value });
+      }
+      return element;
+    };
+    const first = card(0);
+    const second = card(200);
+    column.mirror.reflowed([first, second]);
+    assert.equal(column.z(second), column.z(first), "the cards start apart");
+
+    // Text above wraps onto one more line and the second card slides up
+    // onto the first, the same size as before.
+    Object.defineProperty(second, "offsetTop", { configurable: true, value: 50 });
+    column.mirror.reflowed([second]);
+
+    assert.ok(
+      column.z(second) + 1 < column.z(first),
+      `the moved card at ${column.z(second)} is not in front of ${column.z(first)}`,
+    );
+    column.teardown();
+  });
+
+  test("a card whose perspective sends a corner behind the eye covers everything", () => {
+    const board = setupSiblings();
+    // w = 1 - 0.02 x about the card's centre: the right edge, 100 px out,
+    // is at w = -1, behind the eye.
+    const card = board.add(
+      "position: absolute; transform: matrix3d(1, 0, 0, -0.02, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1)",
+      [0, 0, 0, 0],
+    );
+    for (const [name, value] of /** @type {const} */ ([
+      ["offsetWidth", 200],
+      ["offsetHeight", 100],
+    ])) {
+      Object.defineProperty(card, name, { configurable: true, value });
+    }
+    board.mirror.reflowed([card]);
+    // Over the right half of the card's layout box, which dividing the
+    // corners behind the eye by w would mirror away from it.
+    const later = board.add("position: absolute", [150, 0, 250, 100]);
+
+    // The card's own matrix scales its origin by w, so it is the later
+    // card's lift that says whether it was stepped: past the plain step.
+    assert.ok(board.z(later) < -2, `the later card at ${board.z(later)} was not stepped`);
+    board.teardown();
+  });
+
   test("a later backdrop with a negative z-index stays behind what it covers", () => {
     const page = setupSiblings();
     const card = page.add("position: absolute", [100, 100, 300, 300]);

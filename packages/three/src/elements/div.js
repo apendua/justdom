@@ -421,9 +421,9 @@ export function box(ctx, element, options = {}) {
       const z = -getLift(element);
       const offset = getBoxOffset(element);
       if (isTransformed(element)) {
-        // The offset here is layout offsets (see `getBoxOffset`). Layout
-        // moves still re-run this: `setFromElement` below reads the
-        // element's rect, and every structural mutation invalidates it.
+        // The offset here is layout offsets (see `getBoxOffset`), and
+        // `getBoxOffset` reads the reflow context, so layout moves re-run
+        // this.
         const own = getOwnTransform(element);
         obj.matrixAutoUpdate = false;
         if (own) {

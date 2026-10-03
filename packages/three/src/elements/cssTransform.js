@@ -2,6 +2,7 @@ import * as THREE from "three";
 import {
   getComputedStyleCached,
   getObjectPosition,
+  getReflowContext,
   hasTransform,
   isTransformed,
 } from "./mirror.js";
@@ -239,15 +240,18 @@ export function untransformedOffset(element, from) {
  * offsets. Everything else takes `getObjectPosition`, which is
  * scroll-invariant.
  *
- * The layout offsets are plain DOM reads with no dependency of their own. A
- * caller that has to hear about layout moves also reads the element's size
- * or rect, which every structural mutation invalidates.
+ * The layout offsets are plain DOM reads with no dependency of their own,
+ * so that branch reads `getReflowContext`, which a layout move bumps. The
+ * element's size is no stand-in: it is gated on equality, so a move that
+ * keeps the size stops there.
  *
  * @param {HTMLElement} element
  * @returns {{ x: number, y: number }}
  */
 export function getBoxOffset(element) {
-  return isTransformed(element)
-    ? untransformedOffset(element, element.parentElement)
-    : getObjectPosition(element);
+  if (!isTransformed(element)) {
+    return getObjectPosition(element);
+  }
+  getReflowContext(element);
+  return untransformedOffset(element, element.parentElement);
 }

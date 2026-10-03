@@ -250,8 +250,10 @@ const paintedBoundsCache = nodeCache();
  * object is placed in: its border box at `getBoxOffset`. For an element with
  * a transform of its own this is the axis-aligned box around the four
  * transformed corners, so a rotated card is taken to cover every point its
- * corners span, which can be more than it does. Descendants that overflow
- * the border box are not counted.
+ * corners span, which can be more than it does. A perspective that puts a
+ * corner at or behind the eye gives no such box, and the element is taken
+ * to cover everything. Descendants that overflow the border box are not
+ * counted.
  *
  * @param {HTMLElement} element
  * @returns {PaintedBounds}
@@ -261,8 +263,6 @@ function getPaintedBounds(element) {
   if (!signal) {
     signal = new Derived(
       () => {
-        // The size first: it carries the layout dependency, and
-        // `getBoxOffset` may be plain DOM reads.
         const { width, height } = getBorderBoxSize(element);
         const offset = getBoxOffset(element);
         const own = getOwnTransform(element);
@@ -275,21 +275,25 @@ function getPaintedBounds(element) {
           };
         }
         composeTransform(cornerMatrix, offset.x, offset.y, 0, own.matrix, own.origin);
+        const e = cornerMatrix.elements;
         let left = Infinity;
         let top = Infinity;
         let right = -Infinity;
         let bottom = -Infinity;
         for (let i = 0; i < 4; i += 1) {
-          corner.set(i & 1 ? width : 0, i & 2 ? height : 0, 0).applyMatrix4(cornerMatrix);
+          const x = i & 1 ? width : 0;
+          const y = i & 2 ? height : 0;
+          // A perspective that sends a corner to or behind the eye has no
+          // finite box to give: dividing by a w at or below zero would
+          // mirror that corner to the wrong side rather than fail.
+          if (e[3] * x + e[7] * y + e[15] <= 0) {
+            return EVERYWHERE;
+          }
+          corner.set(x, y, 0).applyMatrix4(cornerMatrix);
           left = Math.min(left, corner.x);
           top = Math.min(top, corner.y);
           right = Math.max(right, corner.x);
           bottom = Math.max(bottom, corner.y);
-        }
-        // A perspective that sends a corner behind the eye has no finite
-        // box to give.
-        if (!Number.isFinite(left + top + right + bottom)) {
-          return EVERYWHERE;
         }
         return { left, top, right, bottom };
       },

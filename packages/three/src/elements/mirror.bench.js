@@ -397,23 +397,29 @@ for (const rows of SIZES) {
  * overlaps, which is a scan of the earlier siblings per card. This table is
  * what that scan costs.
  *
- * Two boards of the same cards. "apart" lays them out on a grid with a gap
+ * Three boards of the same cards. "apart" lays them out on a grid with a gap
  * between neighbours, so no card covers another and the scan finds nothing.
  * "piled" puts every card within a few px of the first, so each covers all
  * the cards before it. That is the worst case, where every comparison finds
- * an overlap.
+ * an overlap. "translucent" is the same pile with a half-transparent
+ * background on every card, so each one also draws after every card under it
+ * (`getDrawLevel` in elevation.js), a bucket of its own per card.
  *
  * The columns are one more card appended on top; the first card moved by a
  * pixel, which every later card's scan has read; the first card re-appended,
- * which is how a page brings a card to the front; and a hover flag on the
- * last card, which by then is the raised one. The flag moves nothing. Read
- * them against `cards`: a column that grows with the board is the scan.
+ * which is how a page brings a card to the front; a hover flag on the last
+ * card, which by then is the raised one; and the press flag on the same card,
+ * which a stylesheet fades to half opacity. The hover moves nothing. The fade
+ * moves the card's draw level on the boards where it covers something, which
+ * a fading transition pays on every frame it runs. Read them against
+ * `cards`: a column that grows with the board is the scan.
  *
  * @param {object} options
  * @param {number} options.cards
  * @param {boolean} options.piled
+ * @param {boolean} [options.translucent]
  */
-async function measureBoard({ cards, piled }) {
+async function measureBoard({ cards, piled, translucent = false }) {
   const manager = new InteractionManager();
   const ctx = InteractionContext.set({}, manager);
   const portal = createPortal(ctx);
@@ -422,6 +428,7 @@ async function measureBoard({ cards, piled }) {
   const containerElement = /** @type {HTMLElement} */ (containers[containers.length - 1]);
 
   const board = document.createElement("div");
+  board.className = "board";
   board.style.position = "relative";
   board.style.width = "1000px";
   board.style.height = "1000px";
@@ -442,6 +449,9 @@ async function measureBoard({ cards, piled }) {
     const top = piled ? (index % 10) * 2 : Math.floor(index / 20) * 50;
     card.style.left = `${left}px`;
     card.style.top = `${top}px`;
+    if (translucent) {
+      card.style.background = "rgba(255, 255, 255, 0.5)";
+    }
     const label = document.createElement("span");
     label.textContent = `card ${index}`;
     card.appendChild(label);
@@ -475,29 +485,43 @@ async function measureBoard({ cards, piled }) {
     first.dataset.xrHover = "true";
   });
 
+  const fade = await sample(() => {
+    // The declaration a browser hands back is live; the snapshot above is
+    // not, so it is dropped for the one element whose style moves.
+    styleCache.delete(first);
+    first.dataset.xrActive = "true";
+  });
+
   portal.disconnect();
   containerElement.remove();
-  return { mount, one, move, raise, hover };
+  return { mount, one, move, raise, hover, fade };
 }
 
-for (const piled of [false, true]) {
-  console.log(
-    piled
-      ? "\n=== a board of positioned cards, piled on each other ==="
-      : "\n=== a board of positioned cards, apart ===",
-  );
+// What the fade column toggles, on a board's cards and nowhere else.
+const fadeRule = document.createElement("style");
+fadeRule.textContent = ".board > [data-xr-active] { opacity: 0.5; }";
+document.head.appendChild(fadeRule);
+
+for (const [title, options] of /** @type {const} */ ([
+  ["a board of positioned cards, apart", { piled: false }],
+  ["a board of positioned cards, piled on each other", { piled: true }],
+  ["a board of translucent cards, piled on each other", { piled: true, translucent: true }],
+])) {
+  console.log(`\n=== ${title} ===`);
   console.log(
     "cards\t| mount: evals\trects\tms\t| +1 card: evals\trects\tms" +
-      "\t| move first: evals\trects\tms\t| raise first: evals\trects\tms\t| hover: evals\trects",
+      "\t| move first: evals\trects\tms\t| raise first: evals\trects\tms\t| hover: evals\trects" +
+      "\t| fade: evals\trects",
   );
   for (const cards of [25, 50, 100, 200]) {
-    const { mount, one, move, raise, hover } = await measureBoard({ cards, piled });
+    const { mount, one, move, raise, hover, fade } = await measureBoard({ cards, ...options });
     console.log(
       `${cards}\t| ${mount.evaluations}\t${mount.rectReads}\t${mount.ms.toFixed(0)}\t| ` +
         `${one.evaluations}\t${one.rectReads}\t${one.ms.toFixed(1)}\t| ` +
         `${move.evaluations}\t${move.rectReads}\t${move.ms.toFixed(1)}\t| ` +
         `${raise.evaluations}\t${raise.rectReads}\t${raise.ms.toFixed(1)}\t| ` +
-        `${hover.evaluations}\t${hover.rectReads}`,
+        `${hover.evaluations}\t${hover.rectReads}\t| ` +
+        `${fade.evaluations}\t${fade.rectReads}`,
     );
   }
 }

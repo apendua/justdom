@@ -12,7 +12,7 @@ import { fromEvent, store } from "@apendua/signal";
 import { filtered, Subject } from "@apendua/signal";
 import { getBorderBoxSize, getComputedStyleCached, getOpacity } from "./mirror.js";
 
-import { getElevation } from "./elevation.js";
+import { ELEVATION_BAND, getDrawLevel, getElevation } from "./elevation.js";
 import { layoutGradient, parseBackground } from "./gradient.js";
 
 /**
@@ -49,7 +49,7 @@ import { layoutGradient, parseBackground } from "./gradient.js";
  * @property {string} paddingLeft
  * @property {string} borderColor
  * @property {string} textColor
- * @property {number} layerNo
+ * @property {number} drawLevel
  * @property {number} elevation
  */
 
@@ -75,7 +75,7 @@ import { layoutGradient, parseBackground } from "./gradient.js";
  * @property {number} borderAlpha
  * @property {THREE.Color} textColor
  * @property {number} textAlpha
- * @property {number} layerNo
+ * @property {number} drawLevel
  * @property {number} elevation
  */
 
@@ -156,21 +156,6 @@ export function parseColor(colorString) {
   const a = match[4] !== undefined ? parseFloat(match[4]) : 1.0;
   const color = new THREE.Color().setRGB(r, g, b, THREE.SRGBColorSpace);
   return [color, a];
-}
-
-/**
- * How deep the element is in the document, which orders a child's paint
- * over its parent's (see `renderOrder`).
- *
- * @param {HTMLElement} element
- * @returns {number}
- */
-function getDepth(element) {
-  let layer = 0;
-  for (let el = element.parentElement; el; el = el.parentElement) {
-    layer++;
-  }
-  return layer;
 }
 
 /**
@@ -269,7 +254,7 @@ const NO_BORDER = "rgba(0, 0, 0, 0)";
  * @param {CSSStyleDeclaration} style
  * @returns {string}
  */
-function getDrawnBorderColor(style) {
+export function getDrawnBorderColor(style) {
   for (const [width, color] of BORDER_SIDES) {
     if (parseFloat(style[width]) > 0) {
       const value = style[color];
@@ -314,7 +299,6 @@ export default class VisualProperties {
     // this when the layout moves it.
     const size = getBorderBoxSize(element);
     const fontSize = parseFloat(style.fontSize || "0");
-    const layerNo = getDepth(element);
     // The element's own and every ancestor's in the panel, as a page fades
     // a subtree (see `getOpacity`).
     const opacity = getOpacity(element);
@@ -354,7 +338,7 @@ export default class VisualProperties {
       paddingLeft: hasImage ? style.paddingLeft : "",
       borderColor: getDrawnBorderColor(style),
       textColor: style.color,
-      layerNo,
+      drawLevel: getDrawLevel(element),
       elevation: getElevation(element),
     };
     batch(() => {
@@ -553,8 +537,8 @@ export default class VisualProperties {
     return parseAlpha(this.#props.textColor) * this.#props.opacity;
   }
 
-  get layerNo() {
-    return this.#props.layerNo;
+  get drawLevel() {
+    return this.#props.drawLevel;
   }
 
   get elevation() {
@@ -564,14 +548,15 @@ export default class VisualProperties {
   /**
    * Where this element's meshes belong in the scene's draw order.
    *
-   * Depth in the tree decides it within a layer — a child paints over its
-   * parent, which is what the nesting already means. Between layers it does
-   * not decide anything: an overlay is above everything below it however
-   * shallow the overlay happens to be, so each layer takes a band of its own
-   * wide enough that no plausible tree can climb out of one.
+   * The draw level decides it within a layer (`getDrawLevel`): a child
+   * paints over its parent, which is what the nesting already means, and a
+   * translucent box draws after the siblings it is stepped over. Between
+   * layers it does not decide anything: an overlay is above everything below
+   * it however shallow the overlay happens to be, so each layer takes a band
+   * of its own (`ELEVATION_BAND`).
    */
   get renderOrder() {
-    return this.elevation * 1000 + this.layerNo;
+    return this.elevation * ELEVATION_BAND + this.drawLevel;
   }
 }
 

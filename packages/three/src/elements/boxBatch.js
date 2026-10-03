@@ -29,6 +29,9 @@ import { rampUniforms } from "./gradient.js";
  *     boxes of one `renderOrder`, and carrying that `renderOrder` itself,
  *     takes the place its boxes held. Depth is what makes the count small —
  *     a panel nests a handful deep, so a few hundred draws become a few.
+ *     The exception is a translucent card stepped over a sibling, which
+ *     draws after that sibling's subtree at a level of its own
+ *     (`getDrawLevel`): a pile of them is a bucket per card.
  *
  *     Getting this wrong is not subtle in the one case that matters. An
  *     overlay drawn before the text it covers is hidden by the depth buffer
@@ -193,9 +196,10 @@ function batchMaterial() {
  * `renderOrder` draws first and the boxes composite over it.
  *
  * The scheme makes that collision structural rather than unlucky. An element's
- * box carries `elevation * 1000 + depth` and its text carries
- * `getContentRenderOrder`, which is `elevation * 1000 + (depth + 1)` — the
- * same integer as the box of anything nested one level inside it. Drawing a
+ * box carries `elevation * ELEVATION_BAND + level`, its draw level from
+ * elevation.js, and its text carries `getContentRenderOrder`, which is one
+ * level more. That is the same integer as the box of anything nested one
+ * level inside it. Drawing a
  * panel a mesh at a time, three broke the tie by view-space depth and got it
  * right for nothing: a nested box sits `CONTENT_STEP` toward the viewer of
  * its parent's content while a run of text sits level with it, so the text

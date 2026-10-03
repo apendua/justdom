@@ -287,8 +287,9 @@ export function text(ctx, textNode) {
           });
         }),
         // One step past the parent's own box in the draw order. Boxes carry
-        // `elevation * 1000 + layer` and text meshes defaulted to 0, so every
-        // glyph drew *before* the surface it sits on: its antialiased edges
+        // a draw level within their elevation's band (see elevation.js) and
+        // text meshes defaulted to 0, so every glyph drew *before* the
+        // surface it sits on: its antialiased edges
         // blended with whatever was behind the panel — usually the scene's
         // dark background — and wrote depth that then kept the surface from
         // filling in behind them. A thin dark border around every letter, and

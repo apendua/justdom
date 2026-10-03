@@ -13,6 +13,7 @@ import { describeScroller } from "../test/scroller.js";
 import { recordingSource } from "../test/rumble.js";
 import { clientRect } from "../test/clientRect.js";
 import { registerPanel } from "./dragAndDrop.js";
+import { rectGeometry } from "./sdfRect.js";
 
 /**
  * @import { InteractionManager } from "../interactions.js";
@@ -537,22 +538,40 @@ function setupSiblings() {
     parent,
     mirror,
     /**
+     * An element laid out and mirrored, but not drawn: what `add` does
+     * before `draw`. Nothing reads it until something drawn does.
+     *
      * @param {string} cssText
      * @param {[number, number, number, number]} rect
      * @param {HTMLElement} [into]
      */
-    add(cssText, rect, into = parent) {
+    place(cssText, rect, into = parent) {
       const element = document.createElement("div");
       element.style.cssText = cssText;
       into.appendChild(element);
       layout(element, () => rect);
       mirror.adopt(element);
+      // As the portal's observer would, or every sibling read after the
+      // first goes on seeing the child list from before it.
+      mirror.childListChanged(into);
+      return element;
+    },
+    /** @param {HTMLElement} element */
+    draw(element) {
       subscriptions.push(
         div(ctx, element).subscribe((value) => {
           objects.set(element, value);
         }),
       );
       return element;
+    },
+    /**
+     * @param {string} cssText
+     * @param {[number, number, number, number]} rect
+     * @param {HTMLElement} [into]
+     */
+    add(cssText, rect, into = parent) {
+      return this.draw(this.place(cssText, rect, into));
     },
     /**
      * How far the element's origin sits from its parent's content along
@@ -564,6 +583,19 @@ function setupSiblings() {
       const object = objects.get(element);
       assert.ok(object);
       return new THREE.Vector3().setFromMatrixPosition(object.matrix).z;
+    },
+    /**
+     * Where the element's own quad is in the draw order, read off the mesh
+     * `div` built for it. Its text draws at `getContentRenderOrder`.
+     *
+     * @param {Element} element
+     */
+    boxOrder(element) {
+      const box = objects
+        .get(element)
+        ?.children.find((child) => /** @type {THREE.Mesh} */ (child).geometry === rectGeometry);
+      assert.ok(box, "expected a box mesh");
+      return box.renderOrder;
     },
     teardown() {
       for (const subscription of subscriptions) {
@@ -673,9 +705,10 @@ describe("div sibling stacking", () => {
     panel.teardown();
   });
 
-  test("a translucent card stepped over a label is still drawn before it", () => {
-    // A stated limit (see the `elevation.js` header): the step is in depth
-    // only. When the draw order learns to follow it, this test flips.
+  test("a translucent card stepped over a label is drawn after it", () => {
+    // The card's quad writes depth in front of the label. Drawn first, it
+    // would keep the label out where it covers it; drawn after, it blends
+    // over the label as a page tints it.
     const board = setupSiblings();
     const first = board.add("position: absolute", [0, 0, 100, 100]);
     const label = board.add("", [10, 10, 90, 30], first);
@@ -686,10 +719,137 @@ describe("div sibling stacking", () => {
 
     const labelZ = board.z(first) + board.z(label);
     assert.ok(board.z(second) + 1 < labelZ, "the translucent card is stepped over the label");
-    // A box is drawn one order before its content (`getContentRenderOrder`).
     assert.ok(
-      getContentRenderOrder(label) - 1 > getContentRenderOrder(second) - 1,
+      board.boxOrder(second) > board.boxOrder(label),
       "the label's box is drawn after the card that covers it",
+    );
+    assert.ok(
+      board.boxOrder(second) > getContentRenderOrder(label),
+      "the label's text is drawn after the card that covers it",
+    );
+    board.teardown();
+  });
+
+  test("a card faded by its opacity is drawn after the label it covers", () => {
+    const board = setupSiblings();
+    const first = board.add("position: absolute; background: white", [0, 0, 100, 100]);
+    const label = board.add("", [10, 10, 90, 30], first);
+    const second = board.add(
+      "position: absolute; background: white; opacity: 0.8",
+      [50, 0, 150, 100],
+    );
+
+    assert.ok(board.boxOrder(second) > getContentRenderOrder(label));
+    board.teardown();
+  });
+
+  test("a card in a faded parent is drawn after the label it covers", () => {
+    const board = setupSiblings();
+    // The opacity is the wrapper's, not the card's: the card's quad is
+    // drawn with the product, so it blends all the same.
+    const wrapper = board.add("position: relative; opacity: 0.5", [0, 0, 400, 400]);
+    const first = board.add("position: absolute; background: white", [0, 0, 100, 100], wrapper);
+    const label = board.add("", [10, 10, 90, 30], first);
+    const second = board.add("position: absolute; background: white", [50, 0, 150, 100], wrapper);
+
+    assert.ok(board.boxOrder(second) > getContentRenderOrder(label));
+    board.teardown();
+  });
+
+  test("a translucent card brings its own content with it", () => {
+    const board = setupSiblings();
+    const first = board.add("position: absolute", [0, 0, 100, 100]);
+    const label = board.add("", [10, 10, 90, 30], first);
+    const second = board.add(
+      "position: absolute; background: rgba(255, 255, 255, 0.3)",
+      [50, 0, 150, 100],
+    );
+    const inner = board.add("background: white", [60, 10, 140, 30], second);
+
+    assert.ok(
+      board.boxOrder(inner) > board.boxOrder(second),
+      "the card's child is drawn after the card",
+    );
+    assert.ok(
+      getContentRenderOrder(second) > getContentRenderOrder(label),
+      "the card's text is drawn after the label's",
+    );
+    board.teardown();
+  });
+
+  test("an opaque card stepped over a label keeps the order of its siblings", () => {
+    // An opaque card hides the label wherever it is drawn, so it needs no
+    // later order, and a pile of them shares one bucket.
+    const board = setupSiblings();
+    const first = board.add("position: absolute; background: white", [0, 0, 100, 100]);
+    board.add("", [10, 10, 90, 30], first);
+    const second = board.add("position: absolute; background: white", [50, 0, 150, 100]);
+    // A border is drawn in the same quad; an opaque one changes nothing.
+    const third = board.add(
+      "position: absolute; background: white; border: 1px solid black",
+      [60, 0, 160, 100],
+    );
+
+    assert.equal(board.boxOrder(second), board.boxOrder(first));
+    assert.equal(board.boxOrder(third), board.boxOrder(first));
+    board.teardown();
+  });
+
+  test("an empty positioned wrapper keeps the order of its siblings", () => {
+    // A fragment with nothing to paint is discarded, writing no depth, so a
+    // wrapper with no background or border hides nothing it is stepped over.
+    const board = setupSiblings();
+    const first = board.add("position: absolute; background: white", [0, 0, 100, 100]);
+    board.add("", [10, 10, 90, 30], first);
+    const wrapper = board.add("position: absolute; background: transparent", [50, 0, 150, 100]);
+
+    assert.equal(board.boxOrder(wrapper), board.boxOrder(first));
+    board.teardown();
+  });
+
+  test("a translucent border is drawn after the label it covers", () => {
+    const board = setupSiblings();
+    const first = board.add("position: absolute; background: white", [0, 0, 100, 100]);
+    const label = board.add("", [10, 10, 90, 30], first);
+    const second = board.add(
+      "position: absolute; background: white; border: 4px solid rgba(0, 0, 0, 0.5)",
+      [50, 0, 150, 100],
+    );
+
+    assert.ok(board.boxOrder(second) > getContentRenderOrder(label));
+    board.teardown();
+  });
+
+  test("a pile of translucent cards stays under an overlay drawn before it", () => {
+    // Every translucent card draws after the one under it, so a pile climbs
+    // the order by a few levels a card. An overlay is a band of its own, and
+    // the pile has to stay below it however high it climbs.
+    const board = setupSiblings();
+    const menu = board.place("position: absolute; z-index: 1", [300, 300, 400, 400]);
+    /** @type {HTMLElement[]} */
+    const cards = [];
+    // Placed first and drawn once the pile is complete, as a portal commits
+    // a panel: drawn as they arrive, every card drawn so far would re-scan
+    // the board on each one.
+    for (let i = 0; i < 400; i += 1) {
+      const card = board.place("position: absolute; background: rgba(255, 255, 255, 0.5)", [
+        i % 10,
+        i % 10,
+        100 + (i % 10),
+        100 + (i % 10),
+      ]);
+      board.place("", [10, 10, 90, 30], card);
+      cards.push(card);
+    }
+    board.draw(menu);
+    const bottom = board.draw(cards[0]);
+    const top = board.draw(cards[cards.length - 1]);
+
+    assert.ok(board.boxOrder(top) > board.boxOrder(bottom), "the pile climbs the order");
+    assert.ok(
+      board.boxOrder(menu) > getContentRenderOrder(top),
+      `the overlay at ${board.boxOrder(menu)} is drawn under the pile at ` +
+        `${getContentRenderOrder(top)}`,
     );
     board.teardown();
   });

@@ -2,7 +2,12 @@ import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
 import { createBoxBatch } from "./boxBatch.js";
-import { batchedBoxMaterial, createRectUniforms, rectGeometry } from "./sdfRect.js";
+import {
+  batchedBoxMaterial,
+  createRectMaterial,
+  createRectUniforms,
+  rectGeometry,
+} from "./sdfRect.js";
 import { rampUniforms } from "./gradient.js";
 import { place } from "./place.js";
 
@@ -442,6 +447,26 @@ describe("the material a batched box wears", () => {
     const material = /** @type {THREE.ShaderMaterial} */ (bucket.material);
     assert.equal(material.uniforms.uRamp, rampUniforms.uRamp);
     assert.equal(material.uniforms.uRampHeight, rampUniforms.uRampHeight);
+  });
+
+  test("a fragment with nothing to paint is discarded, so it writes no depth", () => {
+    // What the draw order leans on (see `isTranslucent` in elevation.js): a
+    // box with no background and no border writes neither colour nor depth,
+    // so stepping it over a sibling's label hides nothing and it needs no
+    // later order. Both materials a box can wear make the same promise.
+    const p = panel();
+    const bucket = /** @type {THREE.InstancedMesh} */ (
+      p.container.children.find(
+        (child) => /** @type {THREE.InstancedMesh} */ (child).isInstancedMesh,
+      )
+    );
+    assert.ok(bucket);
+    const discard = /if \(alpha < 0\.001\) \{\s*discard;\s*\}/;
+    for (const material of [bucket.material, createRectMaterial()]) {
+      const shader = /** @type {THREE.ShaderMaterial} */ (material);
+      assert.equal(shader.depthWrite, true, "a box writes depth where it paints");
+      assert.match(shader.fragmentShader, discard);
+    }
   });
 
   test("a box's description stays within the attribute slots WebGL promises", () => {

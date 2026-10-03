@@ -5,7 +5,7 @@ import { mkdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { enterSession, fingerprint, nextFrames, openShowcase, photographScene } from "./harness.js";
-import { BASELINE, MOVEMENT, comparePng, countNear, inkRatio } from "./pixels.js";
+import { BASELINE, MOVEMENT, comparePng, countNear, countWhere, inkRatio } from "./pixels.js";
 
 /**
  * What the showcase looks like once it is a scene, checked by photographing
@@ -295,6 +295,59 @@ describe("the showcase in an emulated headset", { timeout: 180_000 }, () => {
     assert.ok(
       comparePng(restored, before, BASELINE).same,
       "putting the markers back did not put the scene back",
+    );
+  });
+
+  test("a label under a translucent card is tinted, not hidden", async () => {
+    // Two positioned cards on the boxes panel: a white one with a blue label,
+    // and a half-transparent white one over the whole label. A page shows the
+    // label pale blue through the second card. The second card is stepped in
+    // front of the first in depth, and drawn before the label it would keep
+    // out of the depth test, so nothing blue showed at all.
+    const pale = (/** @type {number} */ r, /** @type {number} */ g, /** @type {number} */ b) =>
+      b - r > 40 && b - g > 40 && Math.abs(r - g) < 30;
+    const before = await photographScene(showcase.page, { freeze: true });
+    const toggle = (/** @type {boolean} */ on) =>
+      showcase.page.evaluate((on) => {
+        if (!on) {
+          document.querySelector("[data-test-translucent]")?.remove();
+          return;
+        }
+        const heading = [...document.querySelectorAll("[data-xr-portal] h1")].find(
+          (h1) => h1.textContent === "Boxes",
+        );
+        const card = heading?.parentElement;
+        if (!card) {
+          throw new Error("no boxes card to lay the cards on");
+        }
+        const board = document.createElement("div");
+        board.dataset.testTranslucent = "";
+        board.style.cssText =
+          "position: absolute; left: 16px; top: 16px; width: 160px; height: 90px";
+        board.innerHTML =
+          '<div style="position: absolute; left: 0; top: 0; width: 120px; height: 80px; ' +
+          'background: white"><div style="margin: 20px; height: 40px; ' +
+          'background: rgb(0, 0, 255)"></div></div>' +
+          '<div style="position: absolute; left: 10px; top: 10px; width: 140px; ' +
+          'height: 80px; background: rgba(255, 255, 255, 0.5)"></div>';
+        card.appendChild(board);
+      }, on);
+
+    await toggle(true);
+    await nextFrames(showcase.page, 10);
+    const covered = await photographScene(showcase.page, { freeze: true });
+    const tinted = countWhere(covered, pale) - countWhere(before, pale);
+    assert.ok(
+      tinted > 200,
+      `expected the label pale blue through the card, found ${tinted} more pale blue pixels`,
+    );
+
+    await toggle(false);
+    await nextFrames(showcase.page, 10);
+    const restored = await photographScene(showcase.page, { freeze: true });
+    assert.ok(
+      comparePng(restored, before, BASELINE).same,
+      "taking the cards away did not put the scene back",
     );
   });
 });

@@ -1520,11 +1520,14 @@ flow content a page paints over them. Only the sign of `z-index` counts, so to
 bring a card to the front, append it to the end of its parent again. A
 transformed element counts as covering the axis-aligned box around its corners,
 and a descendant that overflows its parent's box does not count towards what the
-parent overlaps. A translucent card stepped over another hides the other card's
-content where it covers it, rather than tinting it, because the draw order does
-not follow the step. A box anchored above a scroller that its siblings scroll in
-counts as covering all of them, so its lift and theirs stay put while the list
-scrolls.
+parent overlaps. A translucent card stepped over another, by its background, its
+border, a background image or an `opacity` of its own or an ancestor's, is also
+drawn after everything the other card draws, so the other card's content shows
+through it tinted, as on a page. Only the card that is stepped is asked: a
+positioned wrapper with nothing to paint, around a translucent card, still lets
+that card hide what the wrapper covers. A box anchored above a scroller that its
+siblings scroll in counts as covering all of them, so its lift and theirs stay
+put while the list scrolls.
 
 A native `<select>` cannot work here, layers or not: `<option>` has no CSS box
 to mirror, and the list the browser pops up is chrome rather than DOM, so none

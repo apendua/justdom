@@ -69,8 +69,8 @@ const ballMaterial = memoizeWithTTL(
 
 /**
  * Above every figure a panel gives its quads. Panels draw at
- * `elevation * 1000 + depth` (see elevation.js), so anything past a few
- * thousand already clears them; the margin is for a scene that orders
+ * `elevation * ELEVATION_BAND + level` (see elevation.js), so anything past
+ * a few bands already clears them; the margin is for a scene that orders
  * something of its own.
  */
 const CURSOR_RENDER_ORDER = 1e9;

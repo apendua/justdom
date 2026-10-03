@@ -124,15 +124,32 @@ export function inkRatio(png, { background = [20, 22, 29], tolerance = 12 } = {}
  * @returns {number} A count, not a ratio: an accent is meant to be rare.
  */
 export function countNear(png, colour, tolerance = 40) {
+  return countWhere(png, (r, g, b) => {
+    const drift = Math.max(
+      Math.abs(r - colour[0]),
+      Math.abs(g - colour[1]),
+      Math.abs(b - colour[2]),
+    );
+    return drift <= tolerance;
+  });
+}
+
+/**
+ * How many pixels of an image pass a test of their colour.
+ *
+ * For a colour that is only known by its hue: a label seen through a
+ * translucent card is the label's colour mixed with the card's, in whichever
+ * space the renderer blends in.
+ *
+ * @param {Buffer} png
+ * @param {(r: number, g: number, b: number) => boolean} test
+ * @returns {number}
+ */
+export function countWhere(png, test) {
   const image = PNG.sync.read(png);
   let found = 0;
   for (let index = 0; index < image.data.length; index += 4) {
-    const drift = Math.max(
-      Math.abs(image.data[index] - colour[0]),
-      Math.abs(image.data[index + 1] - colour[1]),
-      Math.abs(image.data[index + 2] - colour[2]),
-    );
-    if (drift <= tolerance) {
+    if (test(image.data[index], image.data[index + 1], image.data[index + 2])) {
       found += 1;
     }
   }

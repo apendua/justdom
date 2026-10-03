@@ -133,9 +133,10 @@ nothing goes on passing.
 ## When it fails
 
 `tests/output/` holds what this run photographed, and a `.diff.png` beside a
-photograph, such as `scene.diff.png`, marks in magenta what moved. Read it before re-recording: the tint regression above shows
-up there as every line of text lighting up at once, which is unmistakable, and
-a re-record would have quietly blessed it.
+photograph, such as `scene.diff.png`, marks in magenta what moved. Read it
+before re-recording: the tint regression above shows up there as every line of
+text lighting up at once, which is unmistakable, and a re-record would have
+quietly blessed it.
 
 ## In CI
 

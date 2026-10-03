@@ -450,6 +450,19 @@ describe("event-sequence goldens", () => {
     g.teardown();
   });
 
+  test("a move over an element removed before the commit", async () => {
+    // The removed icon is still drawn until the commit, so the ray is still
+    // on it. The move is the next clickable element's to send, as a press's
+    // release is.
+    const g = await page(NEST);
+    await g.step("aim at #icon", () => g.aim(g.on("icon")));
+    await g.step("page removes #icon", () => g.elements.get("icon")?.remove());
+    await g.step("hand moves on #icon", () => g.aim(g.on("icon", 25, 20)));
+    await g.step("panel commits", () => drain());
+    matches("a move over an element removed before the commit", g.lines);
+    g.teardown();
+  });
+
   test("an element removed after the commit", async () => {
     const g = await page(SCROLLER);
     await g.step("aim at #b", () => g.aim(g.on("b")));

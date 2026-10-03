@@ -229,5 +229,16 @@
     "mouseup #p2 bubbles - button 0 at 60,50",
     "click #p2 bubbles - button 0 at 60,50",
     "= #p2 hover"
+  ],
+  "a move over an element removed before the commit": [
+    "> aim at #icon",
+    "= #card hover, #icon hover",
+    "> page removes #icon",
+    "= #card hover, #icon hover",
+    "> hand moves on #icon",
+    "mousemove #card bubbles - button 0 at 65,60",
+    "= #card hover, #icon hover",
+    "> panel commits",
+    "= #card hover"
   ]
 }

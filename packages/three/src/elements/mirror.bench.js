@@ -406,8 +406,8 @@ for (const rows of SIZES) {
  * The columns are one more card appended on top; the first card moved by a
  * pixel, which every later card's scan has read; the first card re-appended,
  * which is how a page brings a card to the front; and a hover flag on the
- * last card, which moves nothing. Read them against `cards`: a column that
- * grows with the board is the scan.
+ * last card, which by then is the raised one. The flag moves nothing. Read
+ * them against `cards`: a column that grows with the board is the scan.
  *
  * @param {object} options
  * @param {number} options.cards
@@ -472,8 +472,7 @@ async function measureBoard({ cards, piled }) {
   });
 
   const hover = await sample(() => {
-    /** @type {HTMLElement} */ (board.lastElementChild?.previousElementSibling).dataset.xrHover =
-      "true";
+    first.dataset.xrHover = "true";
   });
 
   portal.disconnect();

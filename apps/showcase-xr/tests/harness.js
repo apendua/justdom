@@ -332,3 +332,56 @@ export async function fingerprint(page, browser) {
     viewport: `${VIEWPORT.width}x${VIEWPORT.height}`,
   };
 }
+
+/**
+ * Put the emulated right controller a little below the head and aim it, by
+ * yaw to the left and pitch upwards, in degrees, then let the scene catch up.
+ *
+ * Aimed by angle rather than at an element, because the page cannot say
+ * where in the room a panel's button is drawn: that is the scene's to know.
+ * A test that aims at a control asserts that the control took the hover
+ * before it trusts the photograph, so that a layout which moved the control
+ * fails by name instead of photographing the ray on nothing.
+ *
+ * @param {Page} page
+ * @param {number} yaw
+ * @param {number} pitch
+ * @returns {Promise<void>}
+ */
+export async function aimController(page, yaw, pitch) {
+  await page.evaluate(
+    ([y, p]) => {
+      const controller = /** @type {any} */ (window).xrDevice.controllers.right;
+      controller.position.x = 0.05;
+      controller.position.y = 1.4;
+      controller.position.z = -0.05;
+      const cy = Math.cos(y / 2);
+      const sy = Math.sin(y / 2);
+      const cx = Math.cos(p / 2);
+      const sx = Math.sin(p / 2);
+      controller.quaternion.x = cy * sx;
+      controller.quaternion.y = sy * cx;
+      controller.quaternion.z = -sy * sx;
+      controller.quaternion.w = cy * cx;
+    },
+    [(yaw * Math.PI) / 180, (pitch * Math.PI) / 180],
+  );
+  await nextFrames(page, 10);
+}
+
+/**
+ * Close or open the emulated right controller's trigger, and let the scene
+ * catch up.
+ *
+ * @param {Page} page
+ * @param {boolean} held
+ * @returns {Promise<void>}
+ */
+export async function holdTrigger(page, held) {
+  await page.evaluate(
+    (value) =>
+      /** @type {any} */ (window).xrDevice.controllers.right.updateButtonValue("trigger", value),
+    held ? 1 : 0,
+  );
+  await nextFrames(page, 10);
+}

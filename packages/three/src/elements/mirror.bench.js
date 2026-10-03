@@ -21,6 +21,10 @@
  *
  * Run with:
  *   node --import ./src/test/setup-jsdom.js src/elements/mirror.bench.js
+ *
+ * `bench/mirror.baseline.txt` is what it printed on `develop` when the
+ * architecture plan's regression net landed. Its counts are exact and can be
+ * compared from any machine; its milliseconds only from the same one.
  */
 
 import * as THREE from "three";

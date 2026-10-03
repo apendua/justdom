@@ -2396,8 +2396,8 @@ export function getObjectPosition(element) {
 
 /**
  * Whether a scroll moves the element against its siblings: it is anchored to
- * a block above its parent, and something from the parent up to that block
- * clips its overflow, so `getObjectPosition` holds the element still while
+ * a block above its parent, and something from the parent up to, but not
+ * including, that block clips its overflow, so `getObjectPosition` holds the element still while
  * the content around it scrolls. The same anchor `getAnchoredOffset` takes,
  * read without the layout or any scroll offset, so the answer does not
  * change while the scroll does.
@@ -2420,11 +2420,13 @@ export function movesAgainstScroll(element) {
     ancestor;
     ancestor = getParentElement(ancestor)
   ) {
-    if (clipsOverflow(getComputedStyleCached(ancestor))) {
-      return true;
-    }
+    // The anchor's own scroll moves the element and its siblings together,
+    // so only scrollers strictly between the parent and the anchor count.
     if (ancestor === anchor) {
       break;
+    }
+    if (clipsOverflow(getComputedStyleCached(ancestor))) {
+      return true;
     }
   }
   return false;

@@ -659,6 +659,19 @@ describe("div sibling stacking", () => {
     panel.teardown();
   });
 
+  test("cards anchored to a scroller above their wrapper stay level", () => {
+    const panel = setupSiblings();
+    // The scroller is the cards' anchor, so its scroll moves them and the
+    // wrapper's other children together, never one against another.
+    const scroller = panel.add("position: relative; overflow: auto", [0, 0, 400, 400]);
+    const wrapper = panel.add("", [0, 0, 400, 100], scroller);
+    const first = panel.add("position: absolute", [0, 0, 100, 100], wrapper);
+    const second = panel.add("position: absolute", [300, 0, 400, 100], wrapper);
+
+    assert.deepEqual([panel.z(first), panel.z(second)], [-2, -2]);
+    panel.teardown();
+  });
+
   test("cards that do not overlap stay level, however many there are", () => {
     const board = setupSiblings();
     const cards = [

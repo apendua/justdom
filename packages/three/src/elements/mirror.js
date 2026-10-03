@@ -2397,10 +2397,10 @@ export function getObjectPosition(element) {
 /**
  * Whether a scroll moves the element against its siblings: it is anchored to
  * a block above its parent, and something from the parent up to, but not
- * including, that block clips its overflow, so `getObjectPosition` holds the element still while
- * the content around it scrolls. The same anchor `getAnchoredOffset` takes,
- * read without the layout or any scroll offset, so the answer does not
- * change while the scroll does.
+ * including, that block clips its overflow, so `getObjectPosition` holds
+ * the element still while the content around it scrolls. The same anchor
+ * `getAnchoredOffset` takes, read without the layout or any scroll offset,
+ * so the answer does not change while the scroll does.
  *
  * @param {HTMLElement} element
  * @returns {boolean}

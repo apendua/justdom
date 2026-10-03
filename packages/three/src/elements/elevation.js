@@ -75,6 +75,12 @@ import { isSvgElement } from "./plugins.js";
  *   position, rather than only those passing under it now.
  * - Stacking contexts are modelled for `z-index`, `position: fixed` and
  *   `sticky`, transforms and `opacity` only (`formsStackingContext`).
+ * - Draw order does not follow the step. `renderOrder` is still the
+ *   elevation and the tree depth, so the content of a card that a later
+ *   sibling clears is drawn after that sibling's box, which has already
+ *   written depth in front of it. Where the later card is translucent, a
+ *   page shows the earlier card's label tinted through it, and the scene
+ *   leaves a hole showing only the earlier card's own background.
  */
 
 /**

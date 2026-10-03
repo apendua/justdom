@@ -4,6 +4,7 @@ import * as THREE from "three";
 import { InteractionContext } from "../interactions.js";
 import { createMirror, PORTAL_ATTRIBUTE } from "./mirror.js";
 import { div } from "./div.js";
+import { getContentRenderOrder } from "./elevation.js";
 import { GRADIENT_LINEAR, rampAtlas } from "./gradient.js";
 import { createHaptics, HapticsContext } from "./haptics.js";
 import { getContentGroup } from "./contentGroup.js";
@@ -670,6 +671,27 @@ describe("div sibling stacking", () => {
 
     assert.deepEqual([panel.z(first), panel.z(second)], [-2, -2]);
     panel.teardown();
+  });
+
+  test("a translucent card stepped over a label is still drawn before it", () => {
+    // A stated limit (see the `elevation.js` header): the step is in depth
+    // only. When the draw order learns to follow it, this test flips.
+    const board = setupSiblings();
+    const first = board.add("position: absolute", [0, 0, 100, 100]);
+    const label = board.add("", [10, 10, 90, 30], first);
+    const second = board.add(
+      "position: absolute; background: rgba(255, 255, 255, 0.3)",
+      [50, 0, 150, 100],
+    );
+
+    const labelZ = board.z(first) + board.z(label);
+    assert.ok(board.z(second) + 1 < labelZ, "the translucent card is stepped over the label");
+    // A box is drawn one order before its content (`getContentRenderOrder`).
+    assert.ok(
+      getContentRenderOrder(label) - 1 > getContentRenderOrder(second) - 1,
+      "the label's box is drawn after the card that covers it",
+    );
+    board.teardown();
   });
 
   test("cards that do not overlap stay level, however many there are", () => {

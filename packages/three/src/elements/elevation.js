@@ -612,10 +612,12 @@ const drawLevelCache = nodeCache();
  * - A translucent one waits for every sibling it clears. Drawn first, it
  *   would leave a hole where a page shows the sibling's label tinted.
  * - An empty one waits for the siblings that climbed (`hasClimbed`). Its
- *   quad hides nothing, but its text and children do, and a sibling at its
- *   tree depth already draws its subtree before theirs. One that climbed
- *   does not, so a translucent card that climbed would blend behind the
- *   glyphs it should tint.
+ *   quad hides nothing, but its text and children do. A sibling at its tree
+ *   depth draws its own box before them, and that is all the tree order
+ *   guarantees: what is inside that sibling can still draw after a child of
+ *   this one, which is the wrapper limit in the header. One that climbed
+ *   draws even its own box after them, so a translucent card that climbed
+ *   would blend behind the glyphs it should tint.
  * - An opaque one waits for none. It hides what it covers in either order,
  *   so it keeps its tree depth and adds no bucket of its own.
  *

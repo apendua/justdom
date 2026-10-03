@@ -40,11 +40,11 @@ const scrollTranslation = new THREE.Matrix4();
 /**
  * Whether the panel these elements belong to is ready to be interacted with,
  * as a reactive getter. The portal sets it while a panel is still building
- * its initial mount: the panel is hidden for those frames, and a hidden
- * panel must not be a ray target either — the raycast set is a flat list of
- * registered objects, so an ancestor's `visible` flag shields none of them,
- * and an invisible button that still takes clicks is worse than a visible
- * half-built one. Elements built outside any portal get the default and
+ * its initial mount: nothing the panel built is attached under its container
+ * until the commit that ends the mount, and the raycast set is the
+ * registered objects rather than the scene, so a registered button would be
+ * cast from wherever its loose object stands and take presses before the
+ * panel is anywhere. Elements built outside any portal get the default and
  * are pointable whenever they are shown, exactly as before.
  */
 export const PortalReadyContext = createProperty(
@@ -494,7 +494,9 @@ export function box(ctx, element, options = {}) {
             contentGroup.matrixWorldNeedsUpdate = true;
             // The batches copy instance matrices by walking the panel, and
             // re-walk only when told; anything batched under this group
-            // (SVG text, batched shapes) would otherwise stay where it was.
+            // would otherwise stay where it was. Nothing SVG is batched
+            // today, so this is for what a plugin may put under a content
+            // matrix of its own.
             batchChanged();
           }),
         ]

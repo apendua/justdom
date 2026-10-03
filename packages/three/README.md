@@ -4,7 +4,7 @@ A reactive Three.js scene graph, built on [`@apendua/signal`](../signal) with
 the same operator vocabulary as [`@apendua/justdom`](../justdom) — `$`, `set`,
 `children`, `effects`, `on` — except targeting `THREE.Object3D` instead of DOM
 nodes. No VDOM, no diffing: every reactive value is wired directly to a
-Three.js mutation through an RxJS subscription.
+Three.js mutation through a signal effect.
 
 ## Installation
 
@@ -215,14 +215,16 @@ one `dragstart` and one `dragend` for the whole of it — and only the holding
 hand's release, of the button it is holding with, ends the drag. **It swallows
 the presses it takes:** the press that picks the object up and the release
 that lets it go never reach whatever is behind, so picking up a brick never
-also picks up the board it sits on. An object taken out of the scene mid-drag
-leaves the hand too.
+also picks up the board it sits on. While `enabled`, a release is swallowed
+whether or not its press was taken, so an object made carriable during a
+press keeps that release from whatever took the press. An object taken out
+of the scene mid-drag leaves the hand too.
 
 `RendererContext` is the property behind the once-a-frame `dragmove`, and
 `useFrame`; it is exported so a test can mount a draggable object without a
 renderer — `RendererContext.set(ctx, {})` is enough for the frame callback to
 be registered and never called. `runFrame(renderer, time, frame)` runs one
-frame for such a renderer: what `frames(ctx)` emits, then every `useFrame`
+frame for such a renderer: the renderer's frame stream, then every `useFrame`
 callback, as `render()`'s loop does before the late callbacks and the draw.
 A test calls it to see a carry follow the hand, or a panel mount.
 
@@ -449,6 +451,16 @@ own view of the element out of the way while a session runs hides it with
 container has always been, or covers it — the todo app puts the renderer's
 canvas over the page for exactly as long as a session is presenting.
 
+**And neither it nor anything above it may be transformed.** Every box
+inside the element is measured through its client rect, which the browser
+reports with every transform above the box applied, while the element
+itself is placed as though it had none. A root with a `transform` on it,
+a card tilted by `rotateY` say, or a page that scales itself to fit the
+window, has every offset, size and baseline inside the panel slightly
+wrong, and nothing says why. Mirror an untransformed wrapper and transform
+what is inside it, or take the transforms off for as long as a session
+runs, which is what the desk app does.
+
 Which element is up to the app, and it can change: `dom()` takes a
 subscribable of elements as readily as one of trees, and each emission is a
 fresh portal with the previous one taken down and its element released.
@@ -477,9 +489,10 @@ nothing outside it. So anything that changes _layout_ — a menu opening, a
 section expanding — has to be mounted and unmounted rather than hidden and
 shown.
 
-**Hover and press are presentational, by contract.** The three attributes
-the portal writes itself — `data-xr-hover`, `data-xr-active` and
-`data-xr-checked` — restyle the panel but are declared unable to move it.
+**Hover and press are presentational, by contract.** The four attributes
+the portal writes itself — `data-xr-hover`, `data-xr-active`,
+`data-xr-checked` and `data-xr-focus` — restyle the panel but are declared
+unable to move it.
 Colour, background, border colour, opacity and `transform` all work; a
 width, a padding or a font size that changes under the ray is not mirrored,
 and the boxes stay the size they were.
@@ -930,9 +943,11 @@ a control, so a button entered from the gap between its rows is entered
 whether the ray meets its background or its label first. What the rule
 gives up is a distinct control nested in another, a delete button inside a
 clickable row, whose hover from the row is not an arrival. Its press still
-is. And nothing plays while the hand is scrolling a list, glide included:
-the rows passing under the ray were not aimed at, as `:hover` on a page
-does not fire on rows scrolling under a pressed pointer.
+is. And nothing on the panel being scrolled plays while the hand is
+scrolling it, glide included: the rows passing under the ray were not
+aimed at, as `:hover` on a page does not fire on rows scrolling under a
+pressed pointer. A control on another panel the ray crosses meanwhile is
+entered as usual.
 
 The keyboard a field brings up is a panel of its own, and its keys follow
 the `haptics` of the panel it is typing for, with the hover on: a panel
@@ -1110,7 +1125,10 @@ size is its own, `scale` metres per CSS px of it — a millimetre by default
 of the field being typed into instead, `gap` px under its bottom edge and at
 the panel's scale, and a function poses it yourself when it opens. On a
 plain page, or under a test runner, where there is no camera to be in front
-of, it hangs below the panel.
+of, it hangs below the panel. The `placement`, `scale`, `gap` and `tilt`
+the board opens with are the opening panel's, and hold until the board
+goes: a field pressed in a panel that asks for another placement types into
+the board where it already is.
 
 **It can be moved.** A board in the room has the strips a draggable panel
 has (see [Letting the player move a panel](#letting-the-player-move-a-panel)),
@@ -1147,12 +1165,14 @@ one. While the board is up the field carries `data-xr-focus`, a
 presentational flag like `data-xr-hover` for a stylesheet to draw a focus
 ring with, and a caret, at the end of the text until it is moved.
 
-The board follows focus the way a page does. `Enter` submits and leaves the
+The board follows focus the way a page does. `Enter` submits and keeps the
 field being typed into, so an app that clears the field after a submit can
 take the next entry straight away. A press anywhere in a panel other than
 on a field — a button, a row, the background — is focus leaving the field,
 and the board goes, as the field would blur on a page; a press on another
-field moves the typing there instead. It also goes on `Escape`, which a
+field moves the typing there instead. Only a panel with a keyboard listens
+for that press, so one in a panel with `keyboard: false`, or on the scene
+outside every panel, leaves the board up. It also goes on `Escape`, which a
 board can offer as its "done" key, when the field being typed into leaves
 the document or its panel goes, and with the scene; `dismiss` on the target
 closes it for any other reason a board might have.
@@ -1178,7 +1198,8 @@ caret at the end of the entry, where a tap on a phone puts it; once the
 field is being typed into, the ray moves it — a press puts it between the
 two characters nearest where the ray landed, and holding the trigger while
 the ray slides along the field drags it, the way a finger drags a phone's
-caret. The next key goes in there. A password is measured by its bullets,
+caret, for as long as the ray is on the field. The next key goes in there.
+A password is measured by its bullets,
 and the keyboard's preview places the caret in the field it copies. The
 mirror scrolls the value as a page does, only when the caret would leave the
 field and only as far as it takes to bring it back, so a caret dragged
@@ -1280,6 +1301,11 @@ buffer will honestly clip it into the panel. Give anything 3D-rotated enough
 A transformed element paints over the earlier siblings it overlaps, the way
 a positioned one does, so a rotated hand stays on top of the dial under it.
 **Layers** below says how far in front it goes.
+
+The same holds for a panel laid flat. Its y axis runs along the surface it
+lies on, so a key pressed with the page's `translateY(3px)` slides sideways
+across the desk instead of going down. An effect that should move toward
+the viewer is `translateZ`, whatever the page uses for the same press.
 
 One print of the measuring tape to know about: a transformed element (and
 everything under it) is measured off the layout — whole-pixel offsets —
@@ -2072,8 +2098,20 @@ A hit on the group is a hit on one of its shapes, so each shape's own
 Not drawn yet: gradients and patterns (a `url(#…)` paint reads
 as `none`, though it still counts as painted for a ray), `clip-path`,
 `mask`, filters, `<foreignObject>` and `vector-effect`.
-[`docs/freedom-svg-plan.md`](../../docs/freedom-svg-plan.md) has the order
-they are coming in and why.
+[`docs/freedom-svg-plan.md`](../../docs/freedom-svg-plan.md) says what each
+would take; they go in when a panel needs one.
+
+Followed, and not said above: `<switch>` and an `<a>` outside a `<text>`,
+drawn as a `<g>` is; `transform-box: fill-box`; and `revert-layer` beside
+the other keywords that set nothing. Not followed, and staying so until a
+panel needs it: `paint-order` (a shape is its fill and then its stroke); a
+`<switch>` choosing, which draws every child where a browser draws the
+first that applies; and `text-shadow` on SVG text, since a run is always
+drawn as a mask coloured by its `fill`. Two costs to know. SVG text runs
+draw themselves, one draw each, and are not batched with the panel's HTML
+text. And a shape's curves are sampled for the scale inside the `<svg>`,
+not for how sharply the panel is drawn, so an icon on a panel held close
+can show its polygons where the label beside it does not.
 
 ## Element plugins
 
@@ -2087,6 +2125,39 @@ for a scene with `render()`'s `portalPlugins` or for one panel with
 `PortalOptions.plugins`; a panel's are asked first. `box(ctx, element,
 options)` is exported for a plugin that wants the CSS box drawn and
 something of its own inside it, which is how the checkbox is built.
+
+## Also exported
+
+Named here so that nothing public goes unmentioned; each has its JSDoc.
+
+- `fragment(...sources)` mounts several components as one. `copy(key,
+  value)` writes a subscribable's values into a property that has a `copy`
+  method, a `Vector3` or a `Color`, the way `set` assigns a plain one.
+  `layoutEffects(fn)` runs an effect once the object is in the scene, and
+  not again when `attach` moves it.
+- `size(ctx)` is the renderer's size as a source. `InteractionContext` and
+  `InteractionManager` are the manager behind `interactions(ctx)`, for a
+  test or a scene that drives one by hand. `setLocalMatrix` and
+  `setWorldMatrix` put an object at a matrix without allocating.
+- `PortalPluginsContext`, `PanelOptionsContext` and `PortalSchedulerContext`
+  are the properties `render()` sets from `portalPlugins`, `panelOptions`
+  and `portalBudget`, for a scene built without `render()`;
+  `createPortalScheduler` and `createFrameShareBudget` are what it installs
+  there.
+- `getContentGroup(object)` is where a node's projected children hang, and
+  where a plugin attaches its own. `isTextInput(node)` is the rule the
+  portal draws a field by. `solveCut(layout, cursor)` is the arithmetic
+  behind `makeReveal`.
+- `sampleRenderingUpdates(now)` and `isRenderingSuspended()` are the reading
+  the animation clock takes of whether the page's rendering step has
+  stopped, for a scene that wants the same answer.
+- `requestFrameRate(renderer, preference)`, `anchorToViewer(renderer)`,
+  `installCrashPanel(renderer)` with `CRASH_PANEL_ID`, and
+  `createUnsupportedButton(mode)` are the parts of `createXRButton`, for an
+  app that builds its own button.
+- From `@apendua/freedom/svg`: `shape`, `group`, `image` and `drawText` are
+  the builders `svgElements()` dispatches to, for a plugin that draws one
+  SVG element its own way and hands the rest to them.
 
 ## Real examples
 

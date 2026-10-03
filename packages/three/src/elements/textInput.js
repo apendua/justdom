@@ -43,8 +43,7 @@ import { discardDraft, getCaretOffset, getShownValue, setCaretOffset } from "./t
  * drawn here — the placeholder in its place while the value is empty, in
  * the colour the page gives placeholders, and a blinking caret in the text
  * while the portal's keyboard is typing into the field. What it
- * cannot mirror is the browser's own editing: the selection, and the
- * scrolling of a value longer than the field. The value is scrolled so
+ * cannot mirror is the browser's own selection. The value is scrolled so
  * that the caret shows while the field is being typed into, and shown from
  * its start otherwise, which is what a field does on a page.
  *
@@ -628,9 +627,9 @@ function fieldContent(ctx, element, surface, focus, locator) {
         };
         restart();
         // And so does every key, including those that change neither —
-        // Backspace in an empty field, a key at `maxlength`, a letter a
-        // number field refuses. `typeIntoInput` dispatches a `keydown` for
-        // each of them, as a page's keyboard would.
+        // Backspace in an empty field, a letter a number field refuses.
+        // `typeIntoInput` dispatches a `keydown` for each of them, as a
+        // page's keyboard would.
         element.addEventListener("keydown", restart);
         onCleanup(() => {
           clearInterval(timer);

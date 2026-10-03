@@ -547,20 +547,108 @@ class NodeRecord {
 /**
  * One registry for every portal: which mirror a node belongs to, and its
  * record. Module-level so the cached reads below can be called with a node
- * alone — the way `div`/`text` and the tests want to call them — and nodes
- * that no portal adopted simply read the DOM with no dependencies, exactly
- * as they did before there was a mirror.
+ * alone — the way `div`/`text` and the tests want to call them. A node
+ * that no portal adopted reads as the DOM has it, and a cache of that read
+ * follows the node's adoption (`readRecordOf`), so it is read again once
+ * a portal does adopt it.
  *
  * @type {WeakMap<Node, NodeRecord>}
  */
 const records = new WeakMap();
 
 /**
+ * The nodes read before any portal adopted them, each with a signal the
+ * adoption sets. See `readRecordOf`.
+ *
+ * @type {WeakMap<Node, Signal<boolean>>}
+ */
+const adoptions = new WeakMap();
+
+/**
+ * The adoption signals set since the last microtask, to be set in one batch
+ * (see `announceAdoption`).
+ *
+ * @type {Signal<boolean>[] | null}
+ */
+let adopted = null;
+
+/**
+ * Tell whatever read the node before it had a record to read it again (see
+ * `readRecordOf`): from a microtask, and all the nodes adopted since the
+ * last one together. `adopt` is called from readers' computations, by the
+ * SVG plugin for a `<text>`'s runs and for a template, and by the list
+ * marker for an item's first line, and a signal written with no batch open
+ * drains the queue then and there, which would run the effects that depend
+ * on the adoption in the middle of the computation that adopted, with the
+ * `Derived` it is evaluating still empty: a reader of it would meet a
+ * cycle. A microtask runs once the stack is empty, so nothing is computing,
+ * and the one batch lets a template's subtree, adopted node by node, come
+ * round as one update.
+ *
+ * @param {Signal<boolean>} signal
+ * @returns {void}
+ */
+function announceAdoption(signal) {
+  if (!adopted) {
+    adopted = [];
+    queueMicrotask(() => {
+      const signals = /** @type {Signal<boolean>[]} */ (adopted);
+      adopted = null;
+      batch(() => {
+        for (const adoption of signals) {
+          adoption.set(true);
+        }
+      });
+    });
+  }
+  adopted.push(signal);
+}
+
+/**
+ * The node's record, or none for a node no portal has adopted. A lookup
+ * and nothing else, for the writers: the mirror's own methods, which bump
+ * what a record has when there is one and have nothing to do when there
+ * is not.
+ *
  * @param {Node} node
  * @returns {NodeRecord | undefined}
  */
 function recordOf(node) {
   return records.get(node);
+}
+
+/**
+ * The node's record for a cached read, or none for a node no portal has
+ * adopted, which then reads the DOM as it is.
+ *
+ * Not none for good, though, and the read is cached. A portal builds what
+ * it mirrors a budget at a time, so something drawn early can read a node
+ * that is built, and adopted, a few frames later: a `<text>`'s runs asked
+ * for its children before the `<text>` had a record. A cache made then
+ * depended on nothing and stayed as it was read, and whatever the page did
+ * to the node afterwards never reached it, so a `<text>` the page emptied
+ * as it tore a board down was measured with the run it had taken out, and
+ * threw. So a read with no record depends on the node's adoption instead,
+ * and comes round again once there is a record to depend on, a microtask
+ * after the adoption (see `announceAdoption`), for every cache that reads
+ * through here. Only the caches do: a writer looks a record up with
+ * `recordOf` and hangs nothing on a node it finds none for.
+ *
+ * @param {Node} node
+ * @returns {NodeRecord | undefined}
+ */
+function readRecordOf(node) {
+  const record = records.get(node);
+  if (record) {
+    return record;
+  }
+  let adoption = adoptions.get(node);
+  if (!adoption) {
+    adoption = Signal.of(false);
+    adoptions.set(node, adoption);
+  }
+  adoption.get();
+  return undefined;
 }
 
 /**
@@ -625,6 +713,11 @@ export class DomMirror {
   adopt(node) {
     if (!records.has(node)) {
       records.set(node, new NodeRecord(this, node));
+      const adoption = adoptions.get(node);
+      if (adoption) {
+        adoptions.delete(node);
+        announceAdoption(adoption);
+      }
     }
   }
 
@@ -1230,7 +1323,7 @@ export class DomMirror {
           }
           settled.set(current, from);
           this.#childrenMoved(current, from);
-          if (current.hasAttribute(PORTAL_ATTRIBUTE)) {
+          if (isPortalRoot(current)) {
             // The top of what this portal mirrors. Nothing above is projected
             // and there is nobody to tell, but the panel's own size follows
             // its contents and the scene has to hear about that.
@@ -1539,7 +1632,7 @@ export function getParentElement(node) {
   let signal = parentElementCache.get(node);
   if (!signal) {
     signal = new Derived(() => {
-      const record = recordOf(node);
+      const record = readRecordOf(node);
       if (record) {
         record.reparented.get();
       }
@@ -1565,7 +1658,7 @@ export function getChildNodes(node) {
   let signal = childNodesCache.get(node);
   if (!signal) {
     signal = new Derived(() => {
-      const record = recordOf(node);
+      const record = readRecordOf(node);
       if (record) {
         record.childList.get();
       }
@@ -1597,6 +1690,14 @@ const styleContextCache = nodeCache();
  * move a selector's verdict on a sibling can pay for the subtree alone: see
  * `#restyleScope`, and its callers for which changes those are.
  *
+ * One more is added for every record the walk finds. A node read before any
+ * portal adopted it (`readRecordOf`) is walked again once one does, and its
+ * fresh record's signals all read 0, so without the one the sum would come
+ * out as it was and the style cached on it would stay as read before the
+ * record, deaf to what the page did to the node in between. A node that has
+ * its records at creation has them at flush too, so the sum stays flat for
+ * the reason below.
+ *
  * The sum reads the ancestors' *signals* directly rather than chaining
  * through their memoized contexts, and the flatness is load-bearing, not a
  * style choice. A node created inside the very batch that bumped an epoch
@@ -1615,7 +1716,7 @@ function getStyleContext(node) {
   if (!signal) {
     signal = new Derived(() => {
       let sum = 0;
-      const record = recordOf(node);
+      const record = readRecordOf(node);
       if (record) {
         sum += record.mirror.restyle.get();
       }
@@ -1624,8 +1725,9 @@ function getStyleContext(node) {
         current;
         current = getParentElement(current), depth += 1
       ) {
-        const currentRecord = recordOf(current);
+        const currentRecord = readRecordOf(current);
         if (currentRecord) {
+          sum += 1;
           sum += currentRecord.self.get();
           if (depth > 0) {
             sum += currentRecord.members.get();
@@ -1634,10 +1736,7 @@ function getStyleContext(node) {
             sum += currentRecord.own.get();
           }
         }
-        if (
-          current.nodeType === Node.ELEMENT_NODE &&
-          /** @type {Element} */ (current).hasAttribute(PORTAL_ATTRIBUTE)
-        ) {
+        if (isPortalRoot(current)) {
           break;
         }
       }
@@ -1646,6 +1745,25 @@ function getStyleContext(node) {
     styleContextCache.set(node, signal);
   }
   return signal.get();
+}
+
+/**
+ * Whether the node is the top of what a portal mirrors: the container the
+ * portal made, or the page's element it claimed, either of which carries
+ * `PORTAL_ATTRIBUTE`. Above it is the page around the scene, which no portal
+ * adopts and no walk up from a panel node goes on into. The one check for
+ * it: the walks here, `findScroller`, `findDragSource` and the portal's
+ * claim all ask it. Only the portal's selectors, which find a root rather
+ * than test one, spell the attribute themselves.
+ *
+ * @param {Node} node
+ * @returns {boolean}
+ */
+export function isPortalRoot(node) {
+  return (
+    node.nodeType === Node.ELEMENT_NODE &&
+    /** @type {Element} */ (node).hasAttribute(PORTAL_ATTRIBUTE)
+  );
 }
 
 /**
@@ -1683,7 +1801,8 @@ const reflowContextCache = nodeCache();
  *
  * A scroll is absent from all of it: every measurement that depends on this
  * is expressed relative to something that scrolls along with it. Flat for
- * the reason `getStyleContext` gives.
+ * the reason `getStyleContext` gives, and one more per record found for the
+ * reason it gives too.
  *
  * @param {Node} node
  * @returns {number}
@@ -1693,7 +1812,7 @@ export function getReflowContext(node) {
   if (!signal) {
     signal = new Derived(() => {
       let sum = 0;
-      const record = recordOf(node);
+      const record = readRecordOf(node);
       if (record) {
         sum += record.moved.get();
         sum += record.mirror.globalLayout.get();
@@ -1714,14 +1833,12 @@ export function getReflowContext(node) {
         current;
         current = getParentElement(current)
       ) {
-        const currentRecord = recordOf(current);
+        const currentRecord = readRecordOf(current);
         if (currentRecord) {
+          sum += 1;
           sum += currentRecord.reflow.get();
         }
-        if (
-          current.nodeType === Node.ELEMENT_NODE &&
-          /** @type {Element} */ (current).hasAttribute(PORTAL_ATTRIBUTE)
-        ) {
+        if (isPortalRoot(current)) {
           break;
         }
       }
@@ -1746,7 +1863,7 @@ export function getTextDataCached(text) {
   let signal = textDataCache.get(text);
   if (!signal) {
     signal = new Derived(() => {
-      recordOf(text)?.character.get();
+      readRecordOf(text)?.character.get();
       return text.data;
     });
     textDataCache.set(text, signal);
@@ -1806,10 +1923,16 @@ function getBorderBoxInlineSize(element) {
  * @returns {void}
  */
 function readParentBox(node) {
+  // The top of what the portal mirrors has the page around the scene for a
+  // parent, whose layout is none of a panel's business.
+  if (isPortalRoot(node)) {
+    return;
+  }
+  // Below it, a parent with no record yet is one the portal has not reached
+  // or that a plugin's child was adopted ahead of, and the read follows its
+  // adoption as every cached read does.
   const parent = getParentElement(node);
-  // A parent no portal adopted is the page around the scene, whose layout is
-  // none of a panel's business — and has no signal to hang a dependency on.
-  if (!parent || !recordOf(parent)) {
+  if (!parent || !readRecordOf(parent)) {
     return;
   }
   if (getFlowMode(parent) === "block") {
@@ -1889,7 +2012,7 @@ export function getAttributeCached(element, name) {
   let signal = signalMap.get(name);
   if (!signal) {
     signal = new Derived(() => {
-      recordOf(element)?.self.get();
+      readRecordOf(element)?.self.get();
       return element.getAttribute(name);
     });
     signalMap.set(name, signal);
@@ -1919,7 +2042,7 @@ export function isTransformed(element) {
   let signal = transformedCache.get(element);
   if (!signal) {
     signal = new Derived(() => {
-      if (element.hasAttribute(PORTAL_ATTRIBUTE)) {
+      if (isPortalRoot(element)) {
         return false;
       }
       if (hasTransform(getComputedStyleCached(element).transform)) {
@@ -2038,7 +2161,7 @@ export function getOpacity(element) {
     signal = new Derived(() => {
       const own = parseFloat(getComputedStyleCached(element).opacity);
       const opacity = Number.isNaN(own) ? 1 : own;
-      if (element.hasAttribute(PORTAL_ATTRIBUTE)) {
+      if (isPortalRoot(element)) {
         return opacity;
       }
       const parent = getParentElement(element);
@@ -2202,14 +2325,15 @@ const ZERO_SCROLL = Object.freeze({ left: 0, top: 0 });
 
 /**
  * How far the element is scrolled, as a dependency. For an element no portal
- * adopted this is a plain DOM read with nothing to invalidate it, the same
- * non-answer every other cached read gives outside a portal.
+ * adopted this is a DOM read that follows the element's adoption, as every
+ * other cached read does (`readRecordOf`), and is read again once a portal
+ * adopts it.
  *
  * @param {Element} element
  * @returns {ScrollOffset}
  */
 export function getScrollOffset(element) {
-  const record = recordOf(element);
+  const record = readRecordOf(element);
   if (!record) {
     return element.scrollLeft || element.scrollTop
       ? { left: element.scrollLeft, top: element.scrollTop }
@@ -2237,7 +2361,7 @@ function getAnchorElement(element) {
   if (!signal) {
     signal = new Derived(() => {
       let holder = getParentElement(element);
-      while (holder && !holder.hasAttribute(PORTAL_ATTRIBUTE)) {
+      while (holder && !isPortalRoot(holder)) {
         if (getPositionStyle(holder) !== "static") {
           return holder;
         }
@@ -2260,7 +2384,7 @@ function getAnchorElement(element) {
 function getPortalContainer(element) {
   /** @type {HTMLElement | null} */
   let holder = element;
-  while (holder && !holder.hasAttribute(PORTAL_ATTRIBUTE)) {
+  while (holder && !isPortalRoot(holder)) {
     holder = getParentElement(holder);
   }
   return holder;
@@ -2572,7 +2696,7 @@ function getClipPair(element) {
  * @returns {ClipBox}
  */
 function evaluateLocalClip(element) {
-  if (element.hasAttribute(PORTAL_ATTRIBUTE)) {
+  if (isPortalRoot(element)) {
     return UNCLIPPED;
   }
   const position = getPositionStyle(element);
@@ -2582,7 +2706,7 @@ function evaluateLocalClip(element) {
   if (position === "absolute") {
     const anchored = getAnchoredOffset(element);
     const anchor = anchored.anchor;
-    if (!anchor || anchor.hasAttribute(PORTAL_ATTRIBUTE)) {
+    if (!anchor || isPortalRoot(anchor)) {
       return UNCLIPPED;
     }
     const base = getClipPair(anchor).interior;
@@ -2593,7 +2717,7 @@ function evaluateLocalClip(element) {
     return toLocalClipBox(base, anchored.x - scroll.left, anchored.y - scroll.top);
   }
   const holder = getParentElement(element);
-  if (!holder || holder.hasAttribute(PORTAL_ATTRIBUTE)) {
+  if (!holder || isPortalRoot(holder)) {
     return UNCLIPPED;
   }
   const base = getClipPair(holder).interior;
@@ -3117,7 +3241,7 @@ export function getTextLayout(text) {
   let signal = textLayoutCache.get(text);
   if (!signal) {
     signal = new Derived(() => {
-      const record = recordOf(text);
+      const record = readRecordOf(text);
       if (record) {
         record.character.get();
       }
@@ -3151,17 +3275,18 @@ export function getTextLayout(text) {
  *
  * The walk reaches nodes the portal has not built yet: a marker is placed
  * when its item is built, and the item's children come after. A cached
- * read of a node no mirror has adopted reads the DOM with no dependencies,
- * and the node's own run would later be handed that cache, deaf to
- * everything that should invalidate it. So the walk adopts what it visits,
- * into the mirror its element belongs to, which is what the portal does
- * when it gets there.
+ * read of a node no mirror has adopted follows its adoption
+ * (`readRecordOf`), so the node's own run, handed that cache later, would
+ * have it read again once the portal got there. The walk adopts what it
+ * visits instead, into the mirror its element belongs to, which is what
+ * the portal does when it gets there, so the cache has its record from
+ * the first read.
  *
  * @param {HTMLElement} element
  * @returns {{ top: number, height: number } | null}
  */
 export function getFirstLine(element) {
-  const mirror = recordOf(element)?.mirror;
+  const mirror = readRecordOf(element)?.mirror;
   for (const child of getChildNodes(element)) {
     mirror?.adopt(child);
     if (child.nodeType === Node.TEXT_NODE) {

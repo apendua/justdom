@@ -1,10 +1,7 @@
 import * as THREE from "three";
-import {
-  clipsOverflow,
-  getComputedStyleCached,
-  getParentElement,
-  PORTAL_ATTRIBUTE,
-} from "./mirror.js";
+import { createProperty } from "@apendua/signal";
+import { InteractionContext } from "../interactions.js";
+import { clipsOverflow, getComputedStyleCached, getParentElement, isPortalRoot } from "./mirror.js";
 import { getParentObject } from "./contentGroup.js";
 import { createFrameRequester } from "./frameRequester.js";
 import { sampleRenderingUpdates, scrollElementBy } from "./renderingUpdates.js";
@@ -81,7 +78,7 @@ export function isScrollable(element) {
 export function findScroller(element) {
   /** @type {HTMLElement | null} */
   let el = element;
-  while (el && !el.hasAttribute(PORTAL_ATTRIBUTE)) {
+  while (el && !isPortalRoot(el)) {
     if (isScrollable(el)) {
       return el;
     }
@@ -123,26 +120,52 @@ export function planeOf(space, target) {
  *   separates a drag from a press.
  * @property {THREE.Vector2} velocity Local px per frame, for the glide.
  * @property {boolean} released Whether this is now a glide rather than a hold.
+ * @property {() => void} unlisten Stop hearing the controller (see `begin`).
  */
 
 /**
  * @typedef {object} ScrollDrags
  * @property {(controller: THREE.XRTargetRaySpace, element: HTMLElement, object: THREE.Object3D) => void} begin
- * @property {(controller: THREE.XRTargetRaySpace) => void} end
+ * @property {(controller: THREE.XRTargetRaySpace) => void} end The hand
+ *   let go: a glide, if the list was moving fast enough, or nothing. Called
+ *   from the controller's own release, which every drag hears (see
+ *   `begin`).
  * @property {(controller: THREE.XRTargetRaySpace) => boolean} didScroll
  * @property {(controller: THREE.XRTargetRaySpace) => boolean} scrolling Whether
- *   the hand is moving a list right now: holding one, or gliding it after
- *   letting go, until the glide retires.
- * @property {() => void} dispose
+ *   the hand has hold of a list on this panel right now: pressing it, even
+ *   before it has moved, or gliding it after letting go, until the glide
+ *   retires.
+ * @property {(controller: THREE.XRTargetRaySpace) => boolean} moves Whether
+ *   the hand is moving a list on this panel right now: one it holds and has
+ *   dragged past `DRAG_THRESHOLD`, or one still gliding after it let go.
+ * @property {() => void} dispose Let go of every hand, for a panel taken
+ *   down.
  */
 
 /**
  * @param {(tick: () => void) => () => void} requestFrames
+ * @param {Set<ScrollDrags>} [scene] The gestures of the scene this one is
+ *   a panel of, which it joins, and leaves when disposed, so that
+ *   `movesList` can ask all of them.
  * @returns {ScrollDrags}
  */
-export function createScrollDrags(requestFrames) {
+export function createScrollDrags(requestFrames, scene) {
   /** @type {Map<THREE.XRTargetRaySpace, Drag>} */
   const drags = new Map();
+
+  /**
+   * Let go of a hand's drag, and of the controller it was listening on.
+   *
+   * @param {THREE.XRTargetRaySpace} controller
+   * @returns {void}
+   */
+  function drop(controller) {
+    const drag = drags.get(controller);
+    if (drag) {
+      drags.delete(controller);
+      drag.unlisten();
+    }
+  }
 
   /** @type {WeakSet<THREE.XRTargetRaySpace>} */
   const scrolled = new WeakSet();
@@ -175,10 +198,18 @@ export function createScrollDrags(requestFrames) {
     // below have to announce themselves.
     sampleRenderingUpdates();
     for (const [controller, drag] of drags) {
+      if (!drag.scroller.isConnected) {
+        // The page took the list down, held or gliding. Its listeners went
+        // with it, so no release of the press will come by them: the hand
+        // is let go of here, as drag and drop lets go of a session whose
+        // panel has gone.
+        drop(controller);
+        continue;
+      }
       if (drag.released) {
         drag.velocity.multiplyScalar(INERTIA_DECAY);
         if (drag.velocity.length() < INERTIA_CUTOFF) {
-          drags.delete(controller);
+          drop(controller);
           continue;
         }
         scrollElementBy(drag.scroller, drag.velocity.x, drag.velocity.y);
@@ -218,9 +249,10 @@ export function createScrollDrags(requestFrames) {
     }
   }
 
-  return {
+  /** @type {ScrollDrags} */
+  const gesture = {
     begin(controller, element, object) {
-      drags.delete(controller);
+      drop(controller);
       scrolled.delete(controller);
       const scroller = findScroller(element);
       if (!scroller) {
@@ -244,15 +276,29 @@ export function createScrollDrags(requestFrames) {
       if (!space) {
         return;
       }
+      // The release is the controller's own, heard here as drag and drop
+      // hears it, and not through the pressed element: the page may take
+      // the element down mid-drag, and its listeners with it, and a portal
+      // taken down takes all of them. A controller lost, at the end of a
+      // session, ends the drag without a glide, as drag and drop cancels.
+      const onSelectEnd = () => gesture.end(controller);
+      const onDisconnected = () => drop(controller);
+      controller.addEventListener("selectend", onSelectEnd);
+      controller.addEventListener("disconnected", onDisconnected);
+      /** @type {Drag} */
       const drag = {
         scroller,
         space,
         controller,
         plane: planeOf(space, new THREE.Plane()),
-        last: /** @type {THREE.Vector2 | null} */ (null),
+        last: null,
         travelled: 0,
         velocity: new THREE.Vector2(0, 0),
         released: false,
+        unlisten: () => {
+          controller.removeEventListener("selectend", onSelectEnd);
+          controller.removeEventListener("disconnected", onDisconnected);
+        },
       };
       drag.last = sample(drag);
       drags.set(controller, drag);
@@ -264,7 +310,7 @@ export function createScrollDrags(requestFrames) {
         return;
       }
       if (!scrolled.has(controller) || drag.velocity.length() < INERTIA_CUTOFF) {
-        drags.delete(controller);
+        drop(controller);
         return;
       }
       // Hand the speed it was let go at to the glide, which the same loop
@@ -277,38 +323,121 @@ export function createScrollDrags(requestFrames) {
     scrolling(controller) {
       return drags.has(controller);
     },
+    moves(controller) {
+      return drags.has(controller) && scrolled.has(controller);
+    },
     dispose() {
-      drags.clear();
+      for (const controller of [...drags.keys()]) {
+        drop(controller);
+      }
       if (stopFrames) {
         stopFrames();
         stopFrames = null;
       }
+      scene?.delete(gesture);
     },
   };
+  scene?.add(gesture);
+  return gesture;
 }
 
 /**
- * One set of drags per context, so that the elements of a panel share the
- * gesture state a hand carries between them: a drag begins on a row and
- * goes on being that hand's drag wherever the ray travels next on the
- * panel. Each portal derives a context of its own, so this is one set per
- * panel, not per scene, and a list scrolled on one panel does not silence
- * the arrival pulses on another (drag and drop keeps its gesture per scene
- * for that reason; see `dragAndDrop`).
+ * The panels' gestures of each scene, by the scene's interaction manager,
+ * as drag and drop keeps its gesture.
  *
- * @type {WeakMap<WeakKey, ScrollDrags>}
+ * @type {WeakMap<object, Set<ScrollDrags>>}
  */
-const perContext = new WeakMap();
+const perScene = new WeakMap();
 
 /**
+ * @param {WeakKey} ctx
+ * @returns {Set<ScrollDrags>}
+ */
+function sceneOf(ctx) {
+  const manager = InteractionContext.get(ctx);
+  let scene = perScene.get(manager);
+  if (!scene) {
+    scene = new Set();
+    perScene.set(manager, scene);
+  }
+  return scene;
+}
+
+/**
+ * The scroll gesture a panel's elements share, so that a hand carries its
+ * gesture state between them: a drag begins on a row and goes on being
+ * that hand's drag wherever the ray travels next on the panel. The portal
+ * makes one (`createPanelScrollDrags`) and sets it as it sets its batches
+ * and its haptics, so there is one per panel by construction, and disposes
+ * it as the panel is taken down. One per panel, not per scene, so that a
+ * list scrolled on one panel does not silence the arrival pulses on
+ * another (drag and drop keeps its gesture per scene for that reason; see
+ * `dragAndDrop`); `movesList` is what asks about the scene.
+ */
+export const ScrollDragsContext = createProperty(
+  /**
+   * @returns {ScrollDrags | null}
+   */
+  () => null,
+);
+
+/**
+ * A panel's scroll gesture, in its scene, for `ScrollDragsContext`.
+ *
+ * @param {WeakKey} ctx
+ * @returns {ScrollDrags}
+ */
+export function createPanelScrollDrags(ctx) {
+  return createScrollDrags(createFrameRequester(ctx), sceneOf(ctx));
+}
+
+/**
+ * The gesture of the elements built outside any portal, one per scene:
+ * there is no panel to share one or to dispose it, and they live as long
+ * as the scene does.
+ *
+ * @type {WeakMap<object, ScrollDrags>}
+ */
+const unparented = new WeakMap();
+
+/**
+ * The scroll gesture an element built with this context shares: its
+ * panel's, or the scene's for an element built outside any portal.
+ *
  * @param {WeakKey} ctx
  * @returns {ScrollDrags}
  */
 export function scrollDrags(ctx) {
-  let drags = perContext.get(ctx);
+  const own = ScrollDragsContext.get(ctx);
+  if (own) {
+    return own;
+  }
+  const manager = InteractionContext.get(ctx);
+  let drags = unparented.get(manager);
   if (!drags) {
-    drags = createScrollDrags(createFrameRequester(ctx));
-    perContext.set(ctx, drags);
+    drags = createPanelScrollDrags(ctx);
+    unparented.set(manager, drags);
   }
   return drags;
+}
+
+/**
+ * Whether the hand is moving a list right now, on any panel of the scene:
+ * holding one it has dragged past `DRAG_THRESHOLD`, or one still gliding
+ * after it let go. Not a press resting on a list that has not moved yet,
+ * which may still become a click. Where `scrolling` asks about one panel
+ * and counts that pending press, this asks about the hand, of every
+ * panel's gesture.
+ *
+ * @param {WeakKey} ctx
+ * @param {THREE.XRTargetRaySpace} controller
+ * @returns {boolean}
+ */
+export function movesList(ctx, controller) {
+  for (const drags of sceneOf(ctx)) {
+    if (drags.moves(controller)) {
+      return true;
+    }
+  }
+  return false;
 }

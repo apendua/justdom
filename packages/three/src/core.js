@@ -56,9 +56,22 @@ import { addDependency, batch, Derived } from "@apendua/signal";
  * @property {Object3D<XREventMap>} target
  * @property {Object3D<XREventMap>} originalTarget
  * @property {XRTargetRaySpace} controller
- * @property {Intersection<Object3D<XREventMap>>} [intersection] On a
- *   `selectend`, where the ray is as the trigger opens, which need not be on
- *   the target. Absent when the ray is on nothing, and on the other events.
+ * @property {Intersection<Object3D<XREventMap>>} [intersection] On an
+ *   `…end`, where the ray is as the button opens, which need not be on the
+ *   target. Absent when the ray is on nothing, and on a `…missed`.
+ */
+
+/**
+ * What the events that end a press carry besides, the `…end`, the
+ * completion and the `…missed` alike: the `…start` the press began with,
+ * so that a handler can ask the manager whether something took it
+ * (`isStopped`). That is a question for the grip. A panel takes every
+ * trigger press on what it can click, so on a panel a `select`'s start has
+ * always been taken; it leaves a grip's start alone, so that a scene can
+ * pick up with the grip what the panel hangs from.
+ *
+ * @typedef {object} PressEnd
+ * @property {InputEvent} start
  */
 
 /**
@@ -113,13 +126,13 @@ import { addDependency, batch, Derived } from "@apendua/signal";
 /**
  * @typedef {object} InteractionEventMap
  * @property {InputEvent} selectstart
- * @property {InputCancelEvent} selectend
- * @property {InputEvent} select
- * @property {InputCancelEvent} selectmissed
+ * @property {InputCancelEvent & PressEnd} selectend
+ * @property {InputEvent & PressEnd} select
+ * @property {InputCancelEvent & PressEnd} selectmissed
  * @property {InputEvent} squeezestart
- * @property {InputCancelEvent} squeezeend
- * @property {InputEvent} squeeze
- * @property {InputCancelEvent} squeezemissed
+ * @property {InputCancelEvent & PressEnd} squeezeend
+ * @property {InputEvent & PressEnd} squeeze
+ * @property {InputCancelEvent & PressEnd} squeezemissed
  * @property {PointerEvent} pointermove
  * @property {PointerEnterEvent} pointerenter
  * @property {PointerCancelEvent} pointerleave

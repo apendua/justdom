@@ -346,21 +346,31 @@ An element is a ray target of its own when its computed `cursor` is
 `pointer-events` is not `none`. A press on it arrives as
 `mousedown`, `mouseup` and `click` on the element, and the element carries
 `data-xr-hover` while the ray is on it and `data-xr-active` while it is held.
+The grip is the mouse's other button: a press of it, let go on the element
+it started on, arrives as `contextmenu`, which is where a page already
+flags a tile or opens a menu of its own. A grip that something above the
+panel took as it closed, a `drag()` that picks up what the panel hangs
+from with `squeeze` among its `buttons`, is that grab and sends nothing.
+Nor does a grip while the trigger carries a row (see **Dragging and
+dropping**) or moves a list, gliding included, on any panel: a page in the
+middle of a drag hears no other button. A trigger only resting on a row
+moves nothing yet, and a grip under it is a right-click as a mouse's is.
 Each of these events, and the `mousemove` a ray moving over the element
 sends, carries the point the ray met as `clientX` and `clientY`, mapped
 onto the page's own layout, so a page that finds what was pressed from
 where it was pressed, a board drawn as one `<svg>` path, reads the place a
 mouse over the same spot would have given it. A press, its release, its
-click, a press on a scrolling list and the ray's arrival on a control, by
-the rule the hover pulse follows (see **Haptics**), each read where the
-page lays the panel out; a move, sent every frame, reads no layout and
-takes its point where the panel was last read, so a hover starts exact
-and drifts only by what the page moves while the ray stays. The point is
-on screen only for a panel mirroring an element the page shows. A panel
-built from a tree lives in a container the portal parks off screen, so its
-points are right against the page's own rects but `elementFromPoint` finds
-nothing at them. The one thing the mapping leaves out is a transform on
-the mirrored root itself, which the mirror leaves out too.
+click, a right-click, a press on a scrolling list and the ray's arrival on
+a control, by the rule the hover pulse follows (see **Haptics**), each
+read where the page lays the panel out; a move, sent every frame, reads no
+layout and takes its point where the panel was last read, so a hover
+starts exact and drifts only by what the page moves while the ray stays.
+The point is on screen only for a panel mirroring an element the page
+shows. A panel built from a tree lives in a container the portal parks off
+screen, so its points are right against the page's own rects but
+`elementFromPoint` finds nothing at them. The one thing the mapping leaves
+out is a transform on the mirrored root itself, which the mirror leaves
+out too.
 Clickable elements nest, if only because `cursor` is inherited, and a press
 inside several of them goes where it goes on a page. The innermost one is the
 target, its DOM events are sent once and bubble from there, and every
@@ -368,9 +378,13 @@ clickable element around it takes `data-xr-hover` and `data-xr-active` as
 well, as `:hover` and `:active` would. Only the clickable ones do: an
 ancestor that is not a ray target takes neither, where on a page it would
 match `:hover`. The ray event stops at the outermost of them, so nothing
-outside the panel hears a press the panel took. Nesting costs no extra ray
-tests: a registered object inside another is reached by the outer one's
-walk and is not cast again on its own.
+outside the panel hears a press the panel took. The grip's start is the one
+exception: it goes on past the panel, so that a scene can pick up with the
+grip what the panel hangs from. A grip nothing took is the panel's, and its
+end, its completion and its miss stop at the outermost element as a
+press's do.
+Nesting costs no extra ray tests: a registered object inside another is
+reached by the outer one's walk and is not cast again on its own.
 
 It does that without depending on `justdom`. What `dom()` takes is a
 `Mountable` — a tree that has not been put anywhere yet, exposing one method
@@ -813,7 +827,8 @@ what is under the ray in its own px. It can also end on nothing: a ray on
 something in the scene that is not a panel, or on nothing at all, is over no
 element, and letting go there drops nothing. A drag whose panel is taken
 down before the trigger opens is cancelled, with a `dragleave` and a
-`dragend` whose `dropEffect` is `"none"`.
+`dragend` whose `dropEffect` is `"none"`, and so is one whose controller
+is lost, as every controller is when the session ends.
 
 While the drag is under way a translucent card the size of the source, or
 of what `setDragImage` was given, follows the ray in the panel the ray is
@@ -853,8 +868,12 @@ A button on a page has a click to say it was pressed; a projected one is a
 quad at the end of a ray, and the hand holding the controller can be told.
 Every control in a panel, which is every element the ray-target rule
 covers (`cursor: pointer` or `draggable="true"`), pulses the controller's
-motors when the trigger closes on it. Nothing is marked: a panel with
-buttons in it is felt, and so is the keyboard.
+motors when the trigger closes on it, and the grip as well, as it closes
+and as it opens. Not a grip that something above the panel took as a grab,
+nor one closed while the trigger carries a row or moves a list (see
+**Projecting DOM into the scene** above); a grip not felt closing is not
+felt opening either. Nothing is marked: a panel with buttons in it is
+felt, and so is the keyboard.
 
 A pulse when the ray arrives on a control is there too, and off unless a
 panel asks for it. A press is always worth telling the hand about. A hover
@@ -1973,16 +1992,17 @@ marching ants in the showcase spend without noticing.
 
 A shape with `cursor: pointer` is a ray target of its own, by the rule a
 box follows. It forwards the ray to its element exactly as a box does:
-`mousedown`, `mouseup` and `click` for a press, `mousemove` while the ray
-moves over it, each with the point on the page, and `data-xr-hover` and
-`data-xr-active` on the element for a stylesheet to answer. A press that
-turns into a drag scrolls the list the `<svg>` sits in. `pointer-events`
-decides which of the fill and the stroke a ray can hit, with SVG's values:
-the default `visiblePainted` hits whatever is painted and visible, `none`
-lets the ray through to what is behind, `fill` and `stroke` pick one
-region, and `all` hits a region with no paint, which is drawn as nothing
-and hit all the same. The `<svg>`'s clip trims the hits as it trims the
-drawing, so a node scrolled out of view takes no press.
+`mousedown`, `mouseup` and `click` for a press, `contextmenu` for the
+grip, `mousemove` while the ray moves over it, each with the point on the
+page, and `data-xr-hover` and `data-xr-active` on the element for a
+stylesheet to answer. A press that turns into a drag scrolls the list the
+`<svg>` sits in. `pointer-events` decides which of the fill and the stroke
+a ray can hit, with SVG's values: the default `visiblePainted` hits
+whatever is painted and visible, `none` lets the ray through to what is
+behind, `fill` and `stroke` pick one region, and `all` hits a region with
+no paint, which is drawn as nothing and hit all the same. The `<svg>`'s
+clip trims the hits as it trims the drawing, so a node scrolled out of
+view takes no press.
 
 ```css
 .diagram .node {

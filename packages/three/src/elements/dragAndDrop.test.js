@@ -5,7 +5,8 @@ import { InteractionContext, InteractionManager } from "../interactions.js";
 import { fakeFrameLoop } from "../test/frameLoop.js";
 import { drain, flushFrame, settle } from "../test/portalHarness.js";
 import { describeScroller } from "../test/scroller.js";
-import { createDragAndDrop } from "./dragAndDrop.js";
+import { createDragAndDrop, dragAndDrop } from "./dragAndDrop.js";
+import { movesList } from "./scroll.js";
 import { createPortal } from "./portal.js";
 import { clientRect } from "../test/clientRect.js";
 
@@ -142,7 +143,7 @@ async function sortableList({
   const events = [];
   /** @type {Record<string, unknown>} */
   const seen = {};
-  const types = ["mousedown", "mouseup", "mousemove", "click"];
+  const types = ["mousedown", "mouseup", "mousemove", "click", "contextmenu"];
   const dragTypes = ["dragstart", "drag", "dragenter", "dragover", "dragleave", "drop", "dragend"];
   /** @param {Event} event */
   const record = (event) => {
@@ -219,7 +220,7 @@ async function sortableList({
         controller.rotation.set(0, Math.PI, 0);
         moved();
       },
-      /** @param {"selectstart" | "selectend"} type */
+      /** @param {"selectstart" | "selectend" | "squeezestart" | "squeezeend"} type */
       trigger: (type) => {
         controller.dispatchEvent(/** @type {never} */ ({ type, data: null }));
       },
@@ -305,6 +306,62 @@ describe("drag and drop in a panel", () => {
     s.aim(150, 170);
     flushFrame();
     assert.deepEqual(s.events, [], "the drag is over");
+    s.teardown();
+  });
+
+  test("the grip sends no contextmenu while the hand carries a row, and does before", async () => {
+    // A mouse sends `contextmenu` for its other button while the main one is
+    // held still on a row; a page in the middle of a drag hears no other
+    // button from it.
+    const s = await sortableList();
+    const rightClicks = () => s.events.filter((event) => event.startsWith("contextmenu"));
+
+    s.aim(150, 20);
+    s.trigger("selectstart");
+    s.trigger("squeezestart");
+    s.trigger("squeezeend");
+    assert.deepEqual(rightClicks(), ["contextmenu a"], "pressed and not yet dragged");
+
+    s.aim(150, 60);
+    s.events.length = 0;
+    s.trigger("squeezestart");
+    s.trigger("squeezeend");
+    assert.deepEqual(rightClicks(), [], "the row under the ray hears no right-click");
+    s.trigger("selectend");
+    s.teardown();
+  });
+
+  test("is cancelled when the controller is lost mid-carry", async () => {
+    // At the end of a session three disconnects every controller without a
+    // release: a browser cancels a drag it can no longer finish.
+    const s = await sortableList();
+    const gesture = dragAndDrop(InteractionContext.set({}, s.manager));
+
+    s.aim(150, 20);
+    s.trigger("selectstart");
+    s.aim(150, 160);
+    assert.equal(gesture.carrying(s.controller), true);
+    s.events.length = 0;
+    s.controller.dispatchEvent(/** @type {never} */ ({ type: "disconnected" }));
+    assert.equal(gesture.carrying(s.controller), false, "the carry is over");
+    assert.deepEqual(s.events, ["dragleave list", "dragend a"], "cancelled, not dropped");
+    assert.equal(s.seen.dropEffect, "none");
+    assert.equal(s.ghost(), undefined, "and the ghost goes with it");
+    s.teardown();
+  });
+
+  test("a list moving on a panel taken down moves nothing any more", async () => {
+    // A row that does not drag: the press on it scrolls the list.
+    const s = await sortableList({ fixed: ["a"] });
+    const ctx = InteractionContext.set({}, s.manager);
+
+    s.aim(150, 20);
+    s.trigger("selectstart");
+    s.aim(150, 60);
+    assert.equal(movesList(ctx, s.controller), true, "the list moves with the hand");
+    s.disconnect();
+    assert.equal(movesList(ctx, s.controller), false, "and stops with its panel");
+    s.trigger("selectend");
     s.teardown();
   });
 

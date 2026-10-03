@@ -194,11 +194,11 @@ function arraysEqual(a, b) {
 /**
  * The text nodes a `<text>` draws, in document order, each with its parent.
  * Each node is adopted as a template is before anything reads it, since the
- * portal adopts a `<text>`'s children only after the `<text>` is built, and a
- * read cached before that would never hear an edit. Every element and text
- * node on the way is then read as a dependency, and so is every attribute
- * that places characters, so the runs are measured again when any of them
- * changes.
+ * portal adopts a `<text>`'s children only after the `<text>` is built, and
+ * a read cached before that would be read again only once it did
+ * (`readRecordOf` in `mirror.js`). Every element and text node on the way
+ * is then read as a dependency, and so is every attribute that places
+ * characters, so the runs are measured again when any of them changes.
  *
  * @param {Element} element
  * @param {(node: Node) => void} adopt The portal's `PortalTemplatesContext`.

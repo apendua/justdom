@@ -402,16 +402,21 @@ export function box(ctx, element, options = {}) {
       }
       stopPropagation(e);
     }),
+    // The drag a press here began ends with the controller's own release,
+    // whatever became of the list (see `begin` in `scroll.js`); the list's
+    // part is only to keep the release from going on past the panel.
     on("selectend", (e) => {
-      if (!isGone(element)) {
-        drags.end(e.controller);
-      }
       stopPropagation(e);
     }),
     on("select", (e) => {
       if (!isGone(element) && !drags.didScroll(e.controller)) {
         element.dispatchEvent(new MouseEvent("click", pressInit(panel(), e, false)));
       }
+      stopPropagation(e);
+    }),
+    // The list took the press at its start, so its miss is the list's as
+    // its end is, and goes no further than a forwarding element's does.
+    on("selectmissed", (e) => {
       stopPropagation(e);
     }),
   ];

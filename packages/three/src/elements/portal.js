@@ -17,7 +17,13 @@ import { isTextInput } from "./typing.js";
 import { bindPortalKeyboard } from "./portalKeyboard.js";
 import { createKeyboardHost } from "./keyboardHost.js";
 import { KeyboardSlotContext } from "./keyboardSlot.js";
-import { createMirror, getBorderBoxSize, LOADING_ATTRIBUTE, PORTAL_ATTRIBUTE } from "./mirror.js";
+import {
+  createMirror,
+  getBorderBoxSize,
+  isPortalRoot,
+  LOADING_ATTRIBUTE,
+  PORTAL_ATTRIBUTE,
+} from "./mirror.js";
 import { createAnimationClock } from "./animationClock.js";
 import { watchDocumentStyles } from "./documentStyles.js";
 import { createBlocker, coverBox } from "./blocker.js";
@@ -26,6 +32,7 @@ import { BoxBatchContext, createBoxBatch } from "./boxBatch.js";
 import { TextBatchContext, createTextBatch } from "./textBatch.js";
 import { TextScaleContext, createTextScale } from "./textScale.js";
 import { keepSubtreeMatrices, placeAndScale } from "./place.js";
+import { createPanelScrollDrags, ScrollDragsContext } from "./scroll.js";
 import { createFrameRequester } from "./frameRequester.js";
 import { createLoadingFrame } from "./loadingFrame.js";
 import { createPortalPump } from "./portalPump.js";
@@ -192,7 +199,7 @@ function claimRoot(root) {
   if (!root.isConnected) {
     throw new Error("A portal can only mirror an element that is in the document.");
   }
-  if (root.hasAttribute(PORTAL_ATTRIBUTE)) {
+  if (isPortalRoot(root)) {
     throw new Error("This element is already being mirrored by a portal.");
   }
   if (root.parentElement?.closest(`[${PORTAL_ATTRIBUTE}]`)) {
@@ -457,6 +464,14 @@ function buildPortal(ctx, ownOptions = {}) {
   // Resolved once for the panel: the pulses are worked out here, and an
   // element's handler pays for the call and nothing else.
   ctx = HapticsContext.set(ctx, createHaptics(haptics));
+  /**
+   * The scroll gesture every node of this panel shares, set here with the
+   * batches so that there is one per panel however the context is derived
+   * below. Disposed with the panel, so that a hand that was moving a list on
+   * it is let go of and the scene stops asking it (see `movesList`).
+   */
+  const panelScrolls = createPanelScrollDrags(ctx);
+  ctx = ScrollDragsContext.set(ctx, panelScrolls);
 
   /**
    * How finely this panel's text is worth rasterizing, measured off what the
@@ -1779,6 +1794,7 @@ function buildPortal(ctx, ownOptions = {}) {
     portalKeyboard?.dispose();
     ownKeyboardHost?.dispose();
     pump?.dispose();
+    panelScrolls.dispose();
     unregisterPanel();
     // A panel closed before it finished mounting still had a frame up.
     stopLoadingFrame();

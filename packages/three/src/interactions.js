@@ -12,7 +12,7 @@ import {
 
 /**
  * @import { Source, Subscribable } from "@apendua/signal";
- * @import { XREventMap, InteractionEvent, InteractionEventType, InteractionEventMap } from "./core.js";
+ * @import { XREventMap, InteractionEvent, InteractionEventType, InteractionEventMap, InputEvent } from "./core.js";
  */
 
 /**
@@ -97,6 +97,17 @@ export class InteractionManager {
    */
   stopPropagation(event) {
     this.#done.set(event, true);
+  }
+
+  /**
+   * Whether a handler has stopped the event: something along the way took
+   * it, and it went no further.
+   *
+   * @param {InteractionEvent} event
+   * @returns {boolean}
+   */
+  isStopped(event) {
+    return this.#done.get(event) ?? false;
   }
 
   /**
@@ -206,35 +217,28 @@ export class InteractionManager {
    */
   addController(controller, onAnimationFrame, inputSource = () => null) {
     return new Stream(() => {
-      /** @type {THREE.Object3D<XREventMap> | undefined} */
-      let selectedObject;
       /**
-       * What was pressed, as opposed to which of its meshes the ray met. The
-       * release is matched against this: a hand that drifts from a button's
-       * label onto its background has not left the button.
+       * A press under way. `target` is what was pressed, as opposed to the
+       * mesh the ray met (`object`), and the release is matched against it:
+       * a hand that drifts from a button's label onto its background has not
+       * left the button. `path` is the objects the press went through, which
+       * its release has to reach, for the reason `targetedPath` gives: the
+       * object pressed may have been taken out of the scene while the button
+       * was held, and a walk from it would leave every pressed ancestor
+       * pressed. `start` is the event the press began with, handed to the
+       * events that end it.
        *
-       * @type {THREE.Object3D<XREventMap> | undefined}
+       * @typedef {{
+       *   object: THREE.Object3D<XREventMap>,
+       *   target: THREE.Object3D<XREventMap> | undefined,
+       *   path: THREE.Object3D<XREventMap>[],
+       *   start: InputEvent,
+       * }} Press
        */
-      let selectedTarget;
-      /**
-       * The objects the press went through, which its release has to reach,
-       * for the reason `targetedPath` gives: the object pressed may have
-       * been taken out of the scene while the trigger was held, and a walk
-       * from it would leave every pressed ancestor pressed.
-       *
-       * @type {THREE.Object3D<XREventMap>[]}
-       */
-      let selectedPath = [];
-      /** @type {THREE.Object3D<XREventMap> | undefined} */
-      let squeezedObject;
-      /** @type {THREE.Object3D<XREventMap> | undefined} */
-      let squeezedTarget;
-      /**
-       * The grip's own `selectedPath`.
-       *
-       * @type {THREE.Object3D<XREventMap>[]}
-       */
-      let squeezedPath = [];
+      /** @type {Press | undefined} The trigger's press, while one is held. */
+      let selected;
+      /** @type {Press | undefined} The grip's, as `selected` is the trigger's. */
+      let squeezed;
       /** @type {THREE.Object3D<XREventMap> | undefined} */
       let targetedObject;
       /**
@@ -266,143 +270,119 @@ export class InteractionManager {
       };
 
       /**
-       * @param {THREE.WebXRSpaceEventMap['selectstart']} event
+       * Begin a press of one button: the event goes along the path from the
+       * mesh the ray met, and the press is remembered for its release.
+       *
+       * @param {"select" | "squeeze"} button
+       * @param {XRInputSource} inputSource
+       * @returns {Press | undefined}
        */
-      const onSelectStart = (event) => {
+      const begin = (button, inputSource) => {
         const intersection = this.getIntersection(controller);
-        const { data: inputSource } = event;
-        if (intersection) {
-          selectedObject = intersection.object;
-          selectedTarget = this.getTarget(selectedObject);
-          selectedPath = this.#path(selectedObject);
-          this.#dispatchAlong(selectedPath, {
-            type: "selectstart",
+        if (!intersection) {
+          return undefined;
+        }
+        const object = intersection.object;
+        const path = this.#path(object);
+        // Before the start goes out, as the path is: a handler of it may
+        // change what is registered or where the object hangs, and the
+        // release is matched against what was pressed, not against what
+        // the press made of it.
+        const target = this.getTarget(object);
+        const start = {
+          type: /** @type {const} */ (`${button}start`),
+          inputSource,
+          target: object,
+          originalTarget: object,
+          controller,
+          intersection,
+        };
+        this.#dispatchAlong(path, start);
+        return { object, target, path, start };
+      };
+
+      /**
+       * End a press of one button. Still on what was pressed, even if the ray
+       * has wandered from its label to its background in the meantime, the
+       * press completes: the completing event goes along the path the press
+       * went through, so a click reaches the same elements that have been
+       * wearing the pressed styling since the start, even if the one pressed
+       * has since been re-rendered. Anywhere else, it misses. The end, the
+       * completion and the miss each carry the start.
+       *
+       * @param {"select" | "squeeze"} button
+       * @param {Press | undefined} press
+       * @param {XRInputSource} inputSource
+       * @returns {void}
+       */
+      const end = (button, press, inputSource) => {
+        if (!press) {
+          return;
+        }
+        const intersection = this.getIntersection(controller);
+        const { object, path, start } = press;
+        const releasedOn = intersection && this.getTarget(intersection.object);
+        this.#dispatchAlong(path, {
+          type: /** @type {const} */ (`${button}end`),
+          inputSource,
+          target: object,
+          originalTarget: object,
+          controller,
+          intersection,
+          start,
+        });
+        if (intersection && press.target && releasedOn === press.target) {
+          this.#dispatchAlong(path, {
+            type: button,
             inputSource,
-            target: selectedObject,
-            originalTarget: selectedObject,
+            target: object,
+            originalTarget: object,
             controller,
             intersection,
+            start,
+          });
+        } else {
+          this.#dispatchAlong(path, {
+            type: /** @type {const} */ (`${button}missed`),
+            inputSource,
+            target: object,
+            originalTarget: object,
+            controller,
+            start,
           });
         }
       };
 
       /**
+       * @param {THREE.WebXRSpaceEventMap['selectstart']} event
+       */
+      const onSelectStart = (event) => {
+        selected = begin("select", event.data);
+      };
+
+      /**
        * @param {THREE.WebXRSpaceEventMap['selectend']} event
        */
-
       const onSelectEnd = (event) => {
-        const intersection = this.getIntersection(controller);
-        const { data: inputSource } = event;
-        // Still on what was pressed, even if the ray has wandered from its
-        // label to its background in the meantime. `select` is dispatched
-        // along the path the press went through, so the click reaches the
-        // same elements that have been wearing the pressed styling since
-        // `selectstart`, even if the one pressed has since been re-rendered.
-        const releasedOn = intersection && this.getTarget(intersection.object);
-        if (intersection && selectedObject && selectedTarget && releasedOn === selectedTarget) {
-          this.#dispatchAlong(selectedPath, {
-            type: "selectend",
-            inputSource,
-            target: selectedObject,
-            originalTarget: selectedObject,
-            controller,
-            intersection,
-          });
-          this.#dispatchAlong(selectedPath, {
-            type: "select",
-            inputSource,
-            target: selectedObject,
-            originalTarget: selectedObject,
-            controller,
-            intersection,
-          });
-        } else if (selectedObject) {
-          this.#dispatchAlong(selectedPath, {
-            type: "selectend",
-            inputSource,
-            target: selectedObject,
-            originalTarget: selectedObject,
-            controller,
-            intersection,
-          });
-          this.#dispatchAlong(selectedPath, {
-            type: "selectmissed",
-            inputSource,
-            target: selectedObject,
-            originalTarget: selectedObject,
-            controller,
-          });
-        }
-        selectedObject = undefined;
-        selectedTarget = undefined;
-        selectedPath = [];
+        const press = selected;
+        selected = undefined;
+        end("select", press, event.data);
       };
 
       /**
        * @param {THREE.WebXRSpaceEventMap['squeezestart']} event
        */
       const onSqueezeStart = (event) => {
-        const intersection = this.getIntersection(controller);
-        const { data: inputSource } = event;
-        if (intersection) {
-          squeezedObject = intersection.object;
-          squeezedTarget = this.getTarget(squeezedObject);
-          squeezedPath = this.#path(squeezedObject);
-          this.#dispatchAlong(squeezedPath, {
-            type: "squeezestart",
-            inputSource,
-            target: squeezedObject,
-            originalTarget: squeezedObject,
-            controller,
-            intersection,
-          });
-        }
+        squeezed = begin("squeeze", event.data);
       };
 
       /**
        * @param {THREE.WebXRSpaceEventMap['squeezeend']} event
        */
       const onSqueezeEnd = (event) => {
-        const intersection = this.getIntersection(controller);
-        const { data: inputSource } = event;
-        // Matched by what was grabbed rather than by which of its meshes the
-        // ray met, for the same reason a press and its release are.
-        const releasedOn = intersection && this.getTarget(intersection.object);
-        if (intersection && squeezedObject && squeezedTarget && releasedOn === squeezedTarget) {
-          this.#dispatchAlong(squeezedPath, {
-            type: "squeezeend",
-            inputSource,
-            target: squeezedObject,
-            originalTarget: squeezedObject,
-            controller,
-          });
-          this.#dispatchAlong(squeezedPath, {
-            type: "squeeze",
-            inputSource,
-            target: squeezedObject,
-            originalTarget: squeezedObject,
-            controller,
-            intersection,
-          });
-        } else if (squeezedObject) {
-          this.#dispatchAlong(squeezedPath, {
-            type: "squeezeend",
-            inputSource,
-            target: squeezedObject,
-            originalTarget: squeezedObject,
-            controller,
-          });
-          this.#dispatchAlong(squeezedPath, {
-            type: "squeezemissed",
-            inputSource,
-            target: squeezedObject,
-            originalTarget: squeezedObject,
-            controller,
-          });
-        }
-        squeezedObject = undefined;
-        squeezedTarget = undefined;
-        squeezedPath = [];
+        const press = squeezed;
+        squeezed = undefined;
+        end("squeeze", press, event.data);
       };
 
       const maybeUpdateIntersections = () => {
@@ -686,6 +666,8 @@ export function asReader(value) {
 /**
  * @typedef {object} Interactions
  * @property {(event: InteractionEvent) => void} stopPropagation
+ * @property {(event: InteractionEvent) => boolean} isStopped Whether a
+ *   handler has stopped the event.
  * @property {<TEntity extends THREE.Object3D<XREventMap>>(enabled?: Reactive<boolean>) => import("@apendua/signal").EntityEffect<TEntity>} makeInteractive
  */
 
@@ -699,6 +681,7 @@ export function interactions(ctx) {
     stopPropagation: (event) => {
       manager.stopPropagation(event);
     },
+    isStopped: (event) => manager.isStopped(event),
     /**
      * Registers the entity with the interaction manager for as long as the
      * operator stays subscribed. With no argument the entity is interactive the

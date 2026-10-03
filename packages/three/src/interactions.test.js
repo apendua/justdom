@@ -361,6 +361,81 @@ describe("select", () => {
     subscription.unsubscribe();
   });
 
+  test("the events that end a press carry its start, and say whether it was taken", () => {
+    const manager = new InteractionManager();
+    const controller = fakeController();
+    const subscription = connect(manager, controller);
+    const { button, label } = labelledButton();
+    manager.add(button);
+    /** @type {any[]} */
+    const starts = [];
+    /** @type {any[]} */
+    const ends = [];
+    button.addEventListener("squeezestart", (event) => starts.push(event));
+    for (const type of /** @type {const} */ (["squeezeend", "squeeze", "squeezemissed"])) {
+      button.addEventListener(type, (event) => ends.push(event));
+    }
+
+    controller.dispatchEvent(/** @type {any} */ ({ type: "squeezestart", data: {} }));
+    controller.dispatchEvent(/** @type {any} */ ({ type: "squeezeend", data: {} }));
+    assert.deepEqual(
+      ends.map((event) => event.type),
+      ["squeezeend", "squeeze"],
+    );
+    assert.ok(
+      ends.every((event) => event.start === starts[0]),
+      "the press they end",
+    );
+    assert.ok(
+      ends.every((event) => event.intersection?.object === label),
+      "and, let go on the button, where the ray is as the grip opens",
+    );
+    assert.equal(manager.isStopped(starts[0]), false);
+
+    // Something above takes the next grip, as a carry does.
+    button.addEventListener("squeezestart", (event) => manager.stopPropagation(event));
+    controller.dispatchEvent(/** @type {any} */ ({ type: "squeezestart", data: {} }));
+    controller.dispatchEvent(/** @type {any} */ ({ type: "squeezeend", data: {} }));
+    assert.ok(ends.slice(2).every((event) => event.start === starts[1]));
+    assert.equal(manager.isStopped(starts[1]), true);
+
+    // Let go off the button: the miss carries it too.
+    controller.dispatchEvent(/** @type {any} */ ({ type: "squeezestart", data: {} }));
+    moveAside(button);
+    controller.dispatchEvent(/** @type {any} */ ({ type: "squeezeend", data: {} }));
+    assert.deepEqual(
+      ends.slice(4).map((event) => event.type),
+      ["squeezeend", "squeezemissed"],
+    );
+    assert.ok(ends.slice(4).every((event) => event.start === starts[2]));
+    subscription.unsubscribe();
+  });
+
+  test("a release is matched against what was registered when the press began", () => {
+    // A handler of the start that registers what the ray met, the label,
+    // must not change what the press is a press of: the hand that drifts
+    // onto the button's background has still not left the button.
+    const manager = new InteractionManager();
+    const controller = fakeController();
+    const subscription = connect(manager, controller);
+    const { button, label } = labelledButton();
+    manager.add(button);
+
+    /** @type {string[]} */
+    const events = [];
+    button.addEventListener("selectstart", () => manager.add(label));
+    button.addEventListener("select", () => events.push("select"));
+    button.addEventListener("selectmissed", () => events.push("selectmissed"));
+
+    assert.strictEqual(manager.getIntersection(controller)?.object, label);
+    controller.dispatchEvent(/** @type {any} */ ({ type: "selectstart", data: {} }));
+    moveAside(label);
+    controller.dispatchEvent(/** @type {any} */ ({ type: "selectend", data: {} }));
+
+    assert.deepEqual(events, ["select"]);
+    subscription.unsubscribe();
+  });
+
   test("a hand three is not tracking presses nothing, and a hand lost mid-press misses", () => {
     const manager = new InteractionManager();
     const controller = fakeController();

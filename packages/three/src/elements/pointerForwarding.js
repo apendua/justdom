@@ -12,7 +12,7 @@ import {
 } from "./dragAndDrop.js";
 import { HapticsContext, isArrival } from "./haptics.js";
 import { getComputedStyleCached } from "./mirror.js";
-import { scrollDrags } from "./scroll.js";
+import { movesList, scrollDrags } from "./scroll.js";
 
 /**
  * @import {EntityEffect} from '@apendua/signal';
@@ -118,6 +118,32 @@ const forwarding = new WeakSet();
 const delivered = new WeakSet();
 
 /**
+ * What became of each grip start a panel's elements heard, one state per
+ * grip, decided as it closes:
+ *
+ * - `"swallowed"`: it closed on an element that had gone (see `isGone`),
+ *   and the panel stopped it. The events that end it ask whether something
+ *   took its start, and the manager's `isStopped` alone cannot tell a start
+ *   the panel stopped from one the scene took; this can.
+ * - `"owned"`: it closed on a control that was there, by a hand neither
+ *   carrying nor moving a list. Asked by everything that follows the grip,
+ *   the right-click and both pulses, so that they follow one decision
+ *   whatever the hand does before it opens. The panel owns it when,
+ *   besides, nothing above took it, which is settled by the time anything
+ *   asks (see `owns`).
+ * - `"felt"`: owned, and its closing pulse has played. That waits for the
+ *   start's dispatch to finish, in a microtask, and the grip's end plays it
+ *   first if it comes sooner, as it does where a runtime sends both in one
+ *   task; either way it plays once, before the opening.
+ *
+ * A start in none of them closed while the hand was busy: nothing of it is
+ * the panel's but the stopping of its end.
+ *
+ * @type {WeakMap<object, "swallowed" | "owned" | "felt">}
+ */
+const grips = new WeakMap();
+
+/**
  * Whether another forwarding object is above this one, which makes this
  * one not the outermost of a nest of clickable elements.
  *
@@ -144,17 +170,24 @@ function hasForwardingAncestor(object) {
 
 /**
  * Being a ray target, and forwarding what happens there back to the DOM. A
- * press arrives as `mousedown`, `mouseup` and `click`, and a ray moving over
- * the object as `mousemove`, each carrying the point the ray met, on the
- * page, as its `clientX` and `clientY` (see `pressInit` in
- * `dragAndDrop.js`). While the ray is on it the element carries
- * `data-xr-hover`, and while it is held, `data-xr-active`. A stylesheet
- * answers those flags where a page would use `:hover` and `:active`. Where
- * the panel has haptics, the hand feels a press and its release, and an
- * arrival on a control where the panel asks for one. A press on something
- * draggable that the hand carries away is a drag and drop instead, and its
- * release is a `drop` and a `dragend` rather than a `mouseup` and a `click`
- * (see `dragAndDrop.js`).
+ * press arrives as `mousedown`, `mouseup` and `click`, a ray moving over
+ * the object as `mousemove`, and a press of the grip as `contextmenu`,
+ * which is the grip standing in for the mouse's other button. Each carries
+ * the point the ray met, on the page, as its `clientX` and `clientY` (see
+ * `pressInit` in `dragAndDrop.js`). While the ray is on it the element
+ * carries `data-xr-hover`, and while it is held, `data-xr-active`. A
+ * stylesheet answers those flags where a page would use `:hover` and
+ * `:active`. Where the panel has haptics, the hand feels a press and its
+ * release, of the grip as of the trigger, and an arrival on a control
+ * where the panel asks for one. A press on something draggable that the
+ * hand carries away is a drag and drop instead, and its release is a
+ * `drop` and a `dragend` rather than a `mouseup` and a `click` (see
+ * `dragAndDrop.js`). A grip that closes while the trigger carries
+ * something that way, or moves a list, on this panel or another, is no
+ * press on anything: it sends no `contextmenu` and is not felt, closing or
+ * opening. One that closed before and opens while the hand is busy sends
+ * no `contextmenu` either, but is felt opening, as its closing was: the
+ * pulses follow the closing, and the right-click asks again as it opens.
  *
  * Boxes, SVG shapes and clickable SVG groups all forward rays through this
  * function, so a panel's stylesheet and its click handlers see the same
@@ -167,7 +200,13 @@ function hasForwardingAncestor(object) {
  * clickable element around it is pressed too, the way `:active` applies to
  * the ancestors of what is pressed, so each one takes `data-xr-active` and
  * hears its own `onPress`. The ray event stops at the outermost of them,
- * so nothing outside the panel sees a press the panel took.
+ * so nothing outside the panel sees a press the panel took. The one ray
+ * event let past is the grip's start, so that a scene can pick up with the
+ * grip what the panel hangs from, a `drag()` with `squeeze` among its
+ * buttons. A grip something above took that way is that grab's, and the
+ * panel neither sends nor feels it; a grip nothing took is the panel's,
+ * and its end, its completion and its miss stop at the outermost element
+ * too, as a trigger's do.
  *
  * These belong together: an element that stops being clickable has to lose
  * the handlers too, not just the registration. The interaction manager
@@ -185,7 +224,7 @@ function hasForwardingAncestor(object) {
  * @returns {EntityEffect<Object3D<XREventMap>>[]}
  */
 export function forwardPointerEvents(ctx, element, object, { enabled, onPress }) {
-  const { makeInteractive, stopPropagation } = interactions(ctx);
+  const { makeInteractive, stopPropagation, isStopped } = interactions(ctx);
   const drags = scrollDrags(ctx);
   const dnd = dragAndDrop(ctx);
   /**
@@ -287,6 +326,66 @@ export function forwardPointerEvents(ctx, element, object, { enabled, onPress })
     }
   };
 
+  /**
+   * Whether something above the panel took the grip's start, a `drag()`
+   * that picks things up with the grip. Then the press was a grab, and the
+   * events that end it are the carry's, whatever became of this element
+   * in the meantime: a row the page took out while the hand carried the
+   * panel by it still has to hand the carry its end. Asked of the start
+   * itself, which the manager hands over, so the answer does not depend on
+   * this element's handlers having been up when the grip closed.
+   *
+   * @param {InteractionEvent} start
+   * @returns {boolean}
+   */
+  const taken = (start) => isStopped(start) && grips.get(start) !== "swallowed";
+
+  /**
+   * Whether the panel owns the grip that began with this start: the start
+   * was `owned` as it closed, and nothing above took it.
+   *
+   * @param {InteractionEvent} start
+   * @returns {boolean}
+   */
+  const owns = (start) => {
+    const state = grips.get(start);
+    return (state === "owned" || state === "felt") && !isStopped(start);
+  };
+
+  /**
+   * The closing pulse of an owned grip, once.
+   *
+   * @param {InteractionEvent} start
+   * @returns {void}
+   */
+  const feelClosing = (start) => {
+    if (haptics && grips.get(start) === "owned") {
+      grips.set(start, "felt");
+      haptics.press(start.inputSource);
+    }
+  };
+
+  /**
+   * Whether the hand's trigger is, right now, carrying something or moving
+   * a list, anywhere in the scene: a drag whose `dragstart` went out and
+   * that has not dropped, or a list dragged past the threshold and still
+   * held or gliding. A grip meanwhile is no right-click: a page in the
+   * middle of a drag hears no other button, and a list being scrolled is
+   * not a row being pressed. Asked as the grip closes, for the grip's
+   * whole state, and again as it opens, for the right-click alone. A
+   * trigger only resting on a row or a card, which may yet become a click,
+   * is neither, and a grip under it is a right-click as a mouse's would be.
+   *
+   * The trigger's own completion asks something else, in another tense:
+   * whether its press turned into one of these (`didScroll`, `didDrag`).
+   * This is a second press asking about the trigger's, so it asks about
+   * now.
+   *
+   * @param {XRTargetRaySpace} controller
+   * @returns {boolean}
+   */
+  const busy = (controller) => dnd.carrying(controller) || movesList(ctx, controller);
+
   return [
     makeInteractive(enabled),
     () => {
@@ -315,6 +414,82 @@ export function forwardPointerEvents(ctx, element, object, { enabled, onPress })
       onPress?.();
       passOn(e);
     }),
+    on("squeeze", (e) => {
+      // The grip is the ray's other button. A page hears the mouse's other
+      // button as `contextmenu`, and that is where it flags a tile or opens
+      // a menu of its own, so that is what the grip sends: on what the ray
+      // is on, once however many clickable elements the press holds, and
+      // only for a press let go where it started, as a click is.
+      if (taken(e.start)) {
+        return;
+      }
+      // Nothing for a grip that closed while the hand carried or moved a
+      // list, whatever it does now, nor for one that opens while it does.
+      if (isGone(element) || !owns(e.start) || busy(e.controller)) {
+        stopPropagation(e);
+        return;
+      }
+      deliverOnce(e, () => {
+        element.dispatchEvent(new MouseEvent("contextmenu", pressInit(panel(), e, true, 2)));
+      });
+      passOn(e);
+    }),
+    on("squeezestart", (e) => {
+      // Swallowed as a trigger's press on such an element is, and before
+      // the scene can grab the panel by a row the page has let go of.
+      if (isGone(element)) {
+        grips.set(e, "swallowed");
+        stopPropagation(e);
+        return;
+      }
+      if (busy(e.controller)) {
+        return;
+      }
+      if (!grips.has(e)) {
+        grips.set(e, "owned");
+      }
+      // Felt once as the grip closes on a control, as a trigger's press is,
+      // but only once the dispatch has run, since the start goes on past
+      // the panel and only then is it known whether something above took
+      // it. A grab is felt by nothing here.
+      if (haptics) {
+        deliverOnce(e, () => {
+          queueMicrotask(() => {
+            if (owns(e)) {
+              feelClosing(e);
+            }
+          });
+        });
+      }
+    }),
+    on("squeezemissed", (e) => {
+      // Let past for a grab, as its end is, so that every event of a taken
+      // grip leaves the panel alike; nothing above listens for a miss
+      // today, `drag()` and `carry()` taking the start and the end alone.
+      // The panel's own miss stops where a press's does.
+      if (!taken(e.start)) {
+        passOn(e);
+      }
+    }),
+    on("squeezeend", (e) => {
+      // A grab's end goes on up to the carry.
+      if (taken(e.start)) {
+        return;
+      }
+      // Felt once as the grip opens, on a hit and a miss alike, as a
+      // trigger's release is, for exactly the grips whose closing is felt:
+      // a grip swallowed on a gone row, or closed while the hand carried or
+      // moved a list, is felt neither way, whatever the hand is doing as it
+      // opens. A closing not felt yet, its microtask still to come, is felt
+      // first.
+      if (haptics && owns(e.start)) {
+        deliverOnce(e, () => {
+          feelClosing(e.start);
+          haptics.release(e.inputSource);
+        });
+      }
+      passOn(e);
+    }),
     on("selectstart", (e) => {
       if (isGone(element)) {
         stopPropagation(e);
@@ -341,23 +516,27 @@ export function forwardPointerEvents(ctx, element, object, { enabled, onPress })
       element.dataset.xrActive = "true";
       passOn(e);
     }),
+    on("selectmissed", (e) => {
+      // The panel took the press at its start, so its miss is the panel's as
+      // its end is.
+      passOn(e);
+    }),
     on("selectend", (e) => {
       delete element.dataset.xrActive;
       if (isGone(element)) {
         // A release is owed to whatever still holds the press. An element
         // that has left the document sends no `mouseup` of its own, and the
         // next clickable element up sends it on itself, which is where a
-        // page sends a release whose target has gone. The outermost ends the
-        // hand's drag when none is left to.
+        // page sends a release whose target has gone. The scroll a press
+        // may have become ends with the controller's own release (see
+        // `begin` in `scroll.js`), whatever became of the element.
         if (hasForwardingAncestor(object)) {
           return;
         }
-        drags.end(e.controller);
         stopPropagation(e);
         return;
       }
       deliverOnce(e, () => {
-        drags.end(e.controller);
         // A drag's release is its `drop` and its `dragend`, which the drag
         // sends from the controller's own `selectend`.
         if (!dnd.didDrag(e.controller)) {

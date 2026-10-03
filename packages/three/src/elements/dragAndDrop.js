@@ -9,8 +9,8 @@ import {
   getComputedStyleCached,
   getLocalClipBox,
   getParentElement,
+  isPortalRoot,
   isVisibilityHidden,
-  PORTAL_ATTRIBUTE,
 } from "./mirror.js";
 import { placeAndScale } from "./place.js";
 import { isSvgRoot } from "./plugins.js";
@@ -173,7 +173,7 @@ export function findDragSource(element) {
     if (isDragSource(el)) {
       return el;
     }
-    if (el.hasAttribute(PORTAL_ATTRIBUTE)) {
+    if (isPortalRoot(el)) {
       return null;
     }
     el = getParentElement(el);
@@ -358,6 +358,7 @@ const client = new THREE.Vector2();
 const init = {
   bubbles: false,
   cancelable: false,
+  button: 0,
   clientX: 0,
   clientY: 0,
   screenX: 0,
@@ -402,21 +403,25 @@ function writePoint(panel, e, on) {
 
 /**
  * The init for the `mousedown` or `click` sent for a press on an element,
- * or for the `click` a press on a background sends, the panel's, an
- * overlay's or a scrolling list's own. One event each, so the panel is
- * probed first and the point is taken against where the page lays it out
- * now. Valid until the next call: the event is to be made from it at once.
+ * for the `contextmenu` the grip sends, or for the `click` a press on a
+ * background sends, the panel's, an overlay's or a scrolling list's own.
+ * One event each, so the panel is probed first and the point is taken
+ * against where the page lays it out now. Valid until the next call: the
+ * event is to be made from it at once.
  *
  * @param {Panel | null} panel The panel the element is in, as `getPanel`
  *   finds it.
- * @param {{ intersection?: THREE.Intersection }} e The `selectstart` or
- *   `select`, whose intersection is on the element.
+ * @param {{ intersection?: THREE.Intersection }} e The `selectstart`,
+ *   `select` or `squeeze`, whose intersection is on the element.
  * @param {boolean} cancelable
+ * @param {number} [button] The mouse button the event says was pressed: the
+ *   main one unless said otherwise, the secondary one (2) for the grip.
  * @returns {MouseEventInit}
  */
-export function pressInit(panel, e, cancelable) {
+export function pressInit(panel, e, cancelable, button = 0) {
   init.bubbles = true;
   init.cancelable = cancelable;
+  init.button = button;
   if (panel) {
     probePanel(panel);
   }
@@ -436,6 +441,7 @@ export function pressInit(panel, e, cancelable) {
 export function releaseInit(panel, e) {
   init.bubbles = true;
   init.cancelable = false;
+  init.button = 0;
   const on = !!e.intersection && getPanel(e.intersection.object) === panel;
   if (panel && on) {
     probePanel(panel);
@@ -467,6 +473,7 @@ export function moveInit(panel, e) {
     lastMove = e;
     init.bubbles = false;
     init.cancelable = false;
+    init.button = 0;
     writePoint(panel, e, true);
   }
   return init;
@@ -593,6 +600,10 @@ function outlineGhost(shown, width, height) {
  * @property {(controller: THREE.XRTargetRaySpace) => boolean} didDrag
  *   Whether the hand's last press became a drag, which is what keeps the
  *   release from being a `mouseup` and a `click` as well.
+ * @property {(controller: THREE.XRTargetRaySpace) => boolean} carrying
+ *   Whether the hand is carrying something right now: its press became a
+ *   drag, with a `dragstart` the page let through, and has not dropped.
+ *   Not a press still short of being a drag, which `holding` counts.
  */
 
 /**
@@ -990,10 +1001,20 @@ export function createDragAndDrop(requestFrames, readHit, snapshots) {
       // The release is the controller's own, heard here rather than through
       // the source's object: a page that moves the source while it is
       // dragged, which is how a list shows where the row will land, may
-      // take its object down and the listeners on it with it.
+      // take its object down and the listeners on it with it. A controller
+      // lost, at the end of a session, sends no release: the drag is
+      // cancelled, as a browser cancels one it can no longer finish.
       const onSelectEnd = () => finish(session);
+      const onDisconnected = () => {
+        session.operation = "none";
+        finish(session);
+      };
       controller.addEventListener("selectend", onSelectEnd);
-      session.unlisten = () => controller.removeEventListener("selectend", onSelectEnd);
+      controller.addEventListener("disconnected", onDisconnected);
+      session.unlisten = () => {
+        controller.removeEventListener("selectend", onSelectEnd);
+        controller.removeEventListener("disconnected", onDisconnected);
+      };
       sessions.set(controller, session);
       snapshots.prepare(panel);
       if (!stopFrames) {
@@ -1006,6 +1027,9 @@ export function createDragAndDrop(requestFrames, readHit, snapshots) {
     },
     didDrag(controller) {
       return dragged.has(controller);
+    },
+    carrying(controller) {
+      return sessions.has(controller) && dragged.has(controller);
     },
   };
 }

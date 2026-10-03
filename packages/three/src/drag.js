@@ -5,7 +5,7 @@ import { useFrame } from "./render.js";
 /**
  * @import { EntityEffect } from "@apendua/signal";
  * @import { Matrix4, Object3D, XRTargetRaySpace } from "three";
- * @import { DragButton, InputEvent, InputCancelEvent, XREventMap } from "./core.js";
+ * @import { DragButton, InputEvent, InputCancelEvent, PressEnd, XREventMap } from "./core.js";
  * @import { Reactive } from "./interactions.js";
  */
 
@@ -157,7 +157,7 @@ export function drag(ctx, options = {}) {
   const release = makeNonReactive(
     /**
      * @param {Object3D<XREventMap>} object
-     * @param {InputCancelEvent} event
+     * @param {InputCancelEvent & PressEnd} event
      * @param {DragButton} button
      */
     (object, event, button) => {
@@ -210,7 +210,7 @@ export function drag(ctx, options = {}) {
       const end = /** @type {"selectend" | "squeezeend"} */ (`${button}end`);
       /** @param {InputEvent} event */
       const onStart = (event) => take(object, event, button);
-      /** @param {InputCancelEvent} event */
+      /** @param {InputCancelEvent & PressEnd} event */
       const onEnd = (event) => release(object, event, button);
       object.addEventListener(start, onStart);
       object.addEventListener(end, onEnd);

@@ -10,7 +10,8 @@
  * The right controller is aimed at a point on a panel from the figures the
  * scene places the panels by (`src/placement.ts`), and the script checks
  * that the ray is on the element it was aimed at before it presses
- * anything. Then, in order:
+ * anything. First, with no emulator, the page alone must not fetch the
+ * headset scene. Then, in a session, in order:
  *
  * - the grip on a covered tile flags that tile, through the board's own
  *   `contextmenu` handler, at the place the ray met;
@@ -104,6 +105,26 @@ async function main() {
     args: ["--use-gl=angle", "--use-angle=swiftshader", "--enable-unsafe-swiftshader"],
   });
   try {
+    console.log("\n== the page alone");
+    {
+      // Headless Chromium has a `navigator.xr` that supports no session,
+      // which is a laptop's browser: the page is all there is, and the
+      // headset scene, with three.js under it, is never fetched.
+      const plain = await browser.newPage({ viewport: { width: 1024, height: 640 } });
+      /** @type {string[]} */
+      const fetched = [];
+      plain.on("request", (request) => fetched.push(new URL(request.url()).pathname));
+      await plain.goto(url, { waitUntil: "load" });
+      await plain.waitForSelector("#board svg path");
+      await plain.waitForLoadState("networkidle");
+      check(
+        !fetched.some((path) => path.endsWith("/src/xr.ts")),
+        "a browser that cannot present does not load the headset scene",
+      );
+      check(!(await plain.$("#ARButton, #VRButton")), "and shows no Enter button");
+      await plain.close();
+    }
+
     const page = await browser.newPage({ viewport: { width: 1024, height: 640 } });
     /** @type {string[]} */
     const errors = [];

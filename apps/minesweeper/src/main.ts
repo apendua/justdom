@@ -1,6 +1,7 @@
 import { just } from "@apendua/signal";
 import { children } from "@apendua/justdom";
 import Game from "./components/Game";
+import { offerHeadset } from "./offer";
 import "./index.css";
 
 const board = document.querySelector<HTMLDivElement>("#board");
@@ -24,10 +25,9 @@ for (const [element, tree] of [
 }
 
 // And the headset, offered to a page that can open one: the scene mirrors
-// the very elements the game was just mounted into. Loaded on its own, so a
-// page that is only ever a page does not fetch three.js.
-import("./xr")
-  .then(({ offerXR }) => offerXR(board, menu))
-  .catch((err) => {
-    console.error("Could not offer an XR session:", err);
-  });
+// the very elements the game was just mounted into. It is loaded only once
+// a session is known to be possible, so a page that is only ever a page
+// does not fetch three.js.
+offerHeadset(board, menu).catch((err) => {
+  console.error("Could not offer an XR session:", err);
+});

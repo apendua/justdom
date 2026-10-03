@@ -6,49 +6,12 @@ import type { XRHandSpace } from "three";
 import Scene from "./components/Scene";
 
 /**
- * Whether this platform can open an immersive session at all. Asked before
- * a renderer is made: a page that cannot go anywhere should not run a
- * render loop or wear a button that says so.
- */
-async function canPresent(): Promise<boolean> {
-  const xr = navigator.xr;
-  if (!xr) {
-    return false;
-  }
-  for (const mode of ["immersive-ar", "immersive-vr"] as const) {
-    if (await xr.isSessionSupported(mode).catch(() => false)) {
-      return true;
-    }
-  }
-  return false;
-}
-
-/**
  * Offer the page a headset: a scene that mirrors `board` and `menu`, the
  * elements the game is mounted in, into two panels, and freedom's Enter
  * button, which starts a session and is the way back in after one ends.
- * Nothing happens on a platform that cannot present, so on a laptop the
- * page is the page and nothing else.
- *
- * `?emulator` installs a headset in the browser first, which is what makes
- * the session drivable by hand without one; `?emulator=bare` installs the
- * runtime without the panels that drive it, for a harness photographing the
- * scene.
+ * Loaded by `offerHeadset` only on a platform that can present.
  */
-export async function offerXR(board: HTMLElement, menu: HTMLElement): Promise<void> {
-  const query = new URLSearchParams(location.search);
-  if (query.has("emulator")) {
-    try {
-      const { install } = await import("./emulator");
-      install({ devUI: query.get("emulator") !== "bare" });
-    } catch (err) {
-      console.error("Could not install the XR emulator:", err);
-    }
-  }
-  if (!(await canPresent())) {
-    return;
-  }
-
+export function offerXR(board: HTMLElement, menu: HTMLElement): void {
   const controllerModelFactory = new XRControllerModelFactory();
   const createControllerModel =
     controllerModelFactory.createControllerModel.bind(controllerModelFactory);

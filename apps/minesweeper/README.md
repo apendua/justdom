@@ -20,9 +20,10 @@ the **Enter** button appears at the bottom; press it and the emulated session
 is drawn over the page. `?emulator=bare` installs the runtime without the
 panels.
 
-`node tests/xr-check.mjs` plays a session on the emulated headset in
-headless Chromium, which takes about a minute: it flags a tile with the
-grip, uncovers tiles with the trigger, deals a new board and restarts it
+`node tests/xr-check.mjs` first loads the page alone in headless Chromium,
+which can present nothing, and fails if the headset scene is fetched. Then
+it plays a session on the emulated headset, which takes about a minute: it
+flags a tile with the grip, uncovers tiles with the trigger, deals a new board and restarts it
 from the menu panel, turns the passthrough on and leaves by the ×, and fails
 if any of that does not happen or the page throws. `SHOTS=<dir>` also
 photographs the page and the session, and `STACKS=1` prints a stack for
@@ -37,7 +38,8 @@ that project has to have been installed.
 | `src/components/Game.ts` | The state, and the two trees over it: the board, rebuilt for each new game, and the menu, built once. |
 | `src/components/Minefield.ts` | The board: one `<svg>`, its covered tiles one traced path, finding the tile under a press from where it was pressed. |
 | `src/components/Menu.ts` | The card: the size, the mines left, how the game stands, Restart, and the × and Passthrough a session adds. |
-| `src/xr.ts` | The offer: checks the platform can present, makes the renderer with freedom's SVG plugin, and the Enter button. |
+| `src/offer.ts` | The offer: installs the emulator behind `?emulator`, checks the platform can present, and only then loads `xr.ts`. Imports nothing from three.js. |
+| `src/xr.ts` | The session: makes the renderer with freedom's SVG plugin, and the Enter button. |
 | `src/components/Scene.ts` | The scene: the two panels, a backdrop, lights, the cursors and the frame rate. |
 | `src/placement.ts` | Where the panels hang, in plain numbers, shared with `tests/xr-check.mjs`. |
 | `src/session.ts` | The session the page is shown in and the passthrough switch, written by the scene and read by the menu. |

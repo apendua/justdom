@@ -12,6 +12,54 @@ import {
 import { composeTransform, getBoxOffset, getOwnTransform } from "./cssTransform.js";
 import { isSvgElement } from "./plugins.js";
 
+/*
+ * How a panel keeps one thing in front of another. A page decides that by
+ * paint order alone; in the scene everything is a flat quad, so the depth
+ * of each quad has to say it, and two quads on one plane are separated only
+ * by draw order and rounding. The model has two halves.
+ *
+ * Boxes are stepped in geometry, here. Each element's object sits
+ * `getLift` in front of its parent's content: `CONTENT_STEP` for an
+ * ordinary box, `ELEVATION_STEP` more for an overlay (`isOverlay`), and for
+ * an element that paints over its siblings (`paintsOver`) far enough to
+ * clear every earlier such sibling it overlaps, subtree included. The box's
+ * own quad is 1 px behind its object. `getElevation` puts overlays later in
+ * `renderOrder` as well, since depth alone does not order transparent
+ * quads.
+ *
+ * Marks are not stepped. Text, carets and list markers are drawn level with
+ * the object of the box they belong to, so 1 px in front of its quad, with
+ * no depth write and the polygon offset of `MARK_MATERIAL_SETTINGS` in
+ * `textHelpers.js`, the offset a decal is drawn with. A mark therefore
+ * always reaches the reader in front of its own box and behind anything
+ * stepped in front of that box.
+ *
+ * SVG content is on neither side. The shapes, images and text inside an
+ * `<svg>` are drawn level with it (`getReach` gives it none) and their
+ * materials, in `svg/`, write no depth and take no polygon offset, so draw
+ * order alone keeps them over the box behind them.
+ *
+ * The model's limits, each a place where the scene and the page can
+ * disagree:
+ *
+ * - Flow siblings are not stepped. Only an element that is positioned or
+ *   transformed clears the siblings before it, and only those that are too.
+ *   A box pulled over a neighbour by a negative margin, or a positioned box
+ *   over a flow sibling, stays on the same plane as what it covers.
+ * - An overlay takes the larger of its two lifts, not the sum. Over a
+ *   sibling it overlaps, it sits `CONTENT_STEP` in front of what that
+ *   sibling draws rather than `ELEVATION_STEP` beyond it, so it does not
+ *   read as hovering above that sibling. Its `renderOrder` still puts it
+ *   last.
+ * - A child that overflows its parent is not counted. Overlap is tested on
+ *   border boxes (`getPaintedBounds`), so a later sibling that covers only
+ *   a pin sticking out of an earlier card is not stepped past the pin, and
+ *   the pin is drawn over it where a page would draw it under.
+ * - A pile grows. Every card in a stack of overlapping cards clears all the
+ *   ones under it, so the lift grows with the pile: on the bench's board of
+ *   cards with labels, by 4 px a card, 402 px at 100 cards.
+ */
+
 /**
  * How far in front of its parent each box sits, in the container's local px.
  * Small enough to read as one surface, large enough that a child never fights

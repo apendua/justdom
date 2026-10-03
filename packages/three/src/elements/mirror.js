@@ -2395,6 +2395,42 @@ export function getObjectPosition(element) {
 }
 
 /**
+ * Whether a scroll moves the element against its siblings: it is anchored to
+ * a block above its parent, and something from the parent up to that block
+ * clips its overflow, so `getObjectPosition` holds the element still while
+ * the content around it scrolls. The same anchor `getAnchoredOffset` takes,
+ * read without the layout or any scroll offset, so the answer does not
+ * change while the scroll does.
+ *
+ * @param {HTMLElement} element
+ * @returns {boolean}
+ */
+export function movesAgainstScroll(element) {
+  const parent = getParentElement(element);
+  const position = getPositionStyle(element);
+  if (!parent || (position !== "absolute" && position !== "fixed")) {
+    return false;
+  }
+  const anchor = position === "fixed" ? getPortalContainer(element) : getAnchorElement(element);
+  if (!anchor || anchor === parent) {
+    return false;
+  }
+  for (
+    let ancestor = /** @type {HTMLElement | null} */ (parent);
+    ancestor;
+    ancestor = getParentElement(ancestor)
+  ) {
+    if (clipsOverflow(getComputedStyleCached(ancestor))) {
+      return true;
+    }
+    if (ancestor === anchor) {
+      break;
+    }
+  }
+  return false;
+}
+
+/**
  * @param {string} value
  * @returns {number}
  */

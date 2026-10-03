@@ -6,6 +6,8 @@ import {
   getComputedStyleCached,
   getParentElement,
   hasTransform,
+  isTransformed,
+  movesAgainstScroll,
   nodeCache,
   PORTAL_ATTRIBUTE,
 } from "./mirror.js";
@@ -61,6 +63,18 @@ import { isSvgElement } from "./plugins.js";
  * - A pile grows. Every card in a stack of overlapping cards clears all the
  *   ones under it, so the lift grows with the pile: on the bench's board of
  *   cards with labels, by 4 px a card, 402 px at 100 cards.
+ * - An overlay that escapes its box is not stepped past that box's later
+ *   siblings. Inside a box that is no stacking context, a pin with
+ *   `z-index: 1` is painted over a later card, and the later card leaves it
+ *   out of what it clears (`getContainedReach`). The pin still sits where
+ *   its own box puts it, so a later card stepped past a deep box can reach
+ *   in front of it.
+ * - A box the scroll moves against its siblings, one anchored above a
+ *   scroller its siblings scroll in, counts as covering everything. Every
+ *   sibling a page paints over it is stepped past it, at every scroll
+ *   position, rather than only those passing under it now.
+ * - Stacking contexts are modelled for `z-index`, `position: fixed` and
+ *   `sticky`, transforms and `opacity` only (`formsStackingContext`).
  */
 
 /**
@@ -263,6 +277,13 @@ function getPaintedBounds(element) {
   if (!signal) {
     signal = new Derived(
       () => {
+        // A box the scroll moves against its siblings overlaps different
+        // ones at every step of the scroll. Taken to cover everything, it
+        // keeps the lifts, and the sibling scans behind them, out of the
+        // scroll's frames.
+        if (!isTransformed(element) && movesAgainstScroll(element)) {
+          return EVERYWHERE;
+        }
         const { width, height } = getBorderBoxSize(element);
         const offset = getBoxOffset(element);
         const own = getOwnTransform(element);
@@ -316,8 +337,10 @@ const liftCache = nodeCache();
  * `ELEVATION_STEP` on top of that. An element in a painting layer (see
  * `getPaintLayer`) also clears every sibling it overlaps that a page paints
  * under it: the earlier siblings in its own layer and every sibling in a
- * lower one. It goes `CONTENT_STEP` in front of the farthest thing that
- * sibling draws, which is the sibling's lift plus its reach (`getReach`).
+ * lower one. It goes `CONTENT_STEP` in front of the farthest thing a page
+ * paints of that sibling under it, which is the sibling's lift plus its
+ * reach: `getReach`, or `getContainedReach` when overlays inside the
+ * sibling escape it and are painted over this element.
  * Without that, a clock hand and the dial under it are coplanar and the
  * depth test picks between them by rounding, the text of one card, 1 px in
  * front of its own quad, shows through a later card that covers it, and a
@@ -367,9 +390,17 @@ export function getLift(element) {
         if (below === null || below > layer || (below === layer && !earlier)) {
           continue;
         }
-        if (overlaps(bounds, getPaintedBounds(sibling))) {
-          lift = Math.max(lift, getLift(sibling) + getReach(sibling) + CONTENT_STEP);
+        if (!overlaps(bounds, getPaintedBounds(sibling))) {
+          continue;
         }
+        // The overlays that escape a sibling are painted in the overlay
+        // layer at the sibling's place in the tree: under this element only
+        // if it is an overlay that comes later.
+        const reach =
+          formsStackingContext(sibling) || (layer === 1 && earlier)
+            ? getReach(sibling)
+            : getContainedReach(sibling);
+        lift = Math.max(lift, getLift(sibling) + reach + CONTENT_STEP);
       }
       return lift;
     });
@@ -380,6 +411,9 @@ export function getLift(element) {
 
 /** @type {WeakMap<Element, Derived<number>>} */
 const reachCache = nodeCache();
+
+/** @type {WeakMap<Element, Derived<number>>} */
+const containedReachCache = nodeCache();
 
 /**
  * How far in front of the element's own origin its descendants reach: the
@@ -393,20 +427,79 @@ const reachCache = nodeCache();
 function getReach(element) {
   let signal = reachCache.get(element);
   if (!signal) {
-    signal = new Derived(() => {
-      if (isSvgElement(element)) {
-        return 0;
-      }
-      let reach = 0;
-      for (const node of getChildNodes(element)) {
-        if (node.nodeType === Node.ELEMENT_NODE) {
-          const child = /** @type {Element} */ (node);
-          reach = Math.max(reach, getLift(child) + getReach(child));
-        }
-      }
-      return reach;
-    });
+    signal = new Derived(() => measureReach(element, false));
     reachCache.set(element, signal);
   }
   return signal.get();
+}
+
+/**
+ * `getReach` without the overlays that escape the element. An element that
+ * is no stacking context (see `formsStackingContext`) does not paint its
+ * subtree as one: an overlay inside it is painted in the stacking context
+ * above, in front of the element's later siblings that are not overlays,
+ * and so is an overlay inside a descendant that is no stacking context
+ * either. What is left is what a page paints at the element's own place.
+ *
+ * @param {Element} element
+ * @returns {number}
+ */
+function getContainedReach(element) {
+  let signal = containedReachCache.get(element);
+  if (!signal) {
+    signal = new Derived(() => measureReach(element, true));
+    containedReachCache.set(element, signal);
+  }
+  return signal.get();
+}
+
+/**
+ * @param {Element} element
+ * @param {boolean} contained Whether to leave out the overlays that escape.
+ * @returns {number}
+ */
+function measureReach(element, contained) {
+  if (isSvgElement(element)) {
+    return 0;
+  }
+  let reach = 0;
+  for (const node of getChildNodes(element)) {
+    if (node.nodeType !== Node.ELEMENT_NODE) {
+      continue;
+    }
+    const child = /** @type {Element} */ (node);
+    if (contained && getPaintLayer(child) === 1) {
+      continue;
+    }
+    const inner =
+      contained && !formsStackingContext(child) ? getContainedReach(child) : getReach(child);
+    reach = Math.max(reach, getLift(child) + inner);
+  }
+  return reach;
+}
+
+/**
+ * Whether a page paints the element and its subtree as one unit among its
+ * siblings: a stacking context. A positioned element with a `z-index`, a
+ * `fixed` or `sticky` one, one with a transform of its own, and one with an
+ * `opacity` below 1 are. The rarer triggers (`filter`, `isolation`,
+ * `will-change` and the like) are not modelled, and such an element is
+ * taken to be none.
+ *
+ * @param {Element} element
+ * @returns {boolean}
+ */
+function formsStackingContext(element) {
+  const style = getComputedStyleCached(element);
+  if (style.position === "fixed" || style.position === "sticky") {
+    return true;
+  }
+  if (
+    !!style.position &&
+    style.position !== "static" &&
+    Number.isFinite(parseInt(style.zIndex, 10))
+  ) {
+    return true;
+  }
+  return hasTransform(style.transform) || parseFloat(style.opacity) < 1;
 }

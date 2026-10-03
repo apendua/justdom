@@ -607,7 +607,9 @@ describe("div sibling stacking", () => {
 
   test("a later card covers the pin an earlier card floats over itself", () => {
     const board = setupSiblings();
-    const first = board.add("position: absolute", [0, 0, 100, 100]);
+    // `z-index: 0` makes the card a stacking context, as the desk's tilted
+    // cards are, so a page paints the pin with the card, under the next one.
+    const first = board.add("position: absolute; z-index: 0", [0, 0, 100, 100]);
     const pin = board.add("position: absolute; z-index: 1", [45, -5, 55, 5], first);
     const second = board.add("position: absolute", [50, 50, 150, 150]);
 
@@ -619,6 +621,42 @@ describe("div sibling stacking", () => {
       `the second card's quad at ${board.z(second) + 1} is behind the pin at ${pinZ}`,
     );
     board.teardown();
+  });
+
+  test("a pin escapes a card that is no stacking context and stays over the next", () => {
+    const board = setupSiblings();
+    // No `z-index` and no transform: the pin's `z-index: 1` is compared with
+    // the second card's, and a page paints it over the second card.
+    const first = board.add("position: absolute", [0, 0, 100, 100]);
+    const pin = board.add("position: absolute; z-index: 1", [45, -5, 55, 5], first);
+    const second = board.add("position: absolute", [50, 50, 150, 150]);
+
+    const pinZ = board.z(first) + board.z(pin);
+    assert.ok(
+      pinZ + 1 < board.z(second),
+      `the pin's quad at ${pinZ + 1} is behind the second card at ${board.z(second)}`,
+    );
+    board.teardown();
+  });
+
+  test("a box held still while its siblings scroll past keeps every lift", () => {
+    const panel = setupSiblings();
+    let scrollTop = 0;
+    const scroller = panel.add("overflow: auto", [0, 0, 400, 200]);
+    Object.defineProperty(scroller, "scrollTop", { configurable: true, get: () => scrollTop });
+    // Anchored to the panel, not to the scroller, so the scroll does not
+    // move it while the row slides under it.
+    panel.add("position: absolute", [0, 0, 100, 50], scroller);
+    const row = panel.add("position: relative", [0, 0, 0, 0], scroller);
+    row.getBoundingClientRect = () => clientRect(0, 100 - scrollTop, 400, 40);
+    panel.mirror.reflowed([row]);
+    const before = panel.z(row);
+
+    scrollTop = 80;
+    panel.mirror.scrolled(scroller);
+
+    assert.equal(panel.z(row), before, "the row's lift followed the scroll");
+    panel.teardown();
   });
 
   test("cards that do not overlap stay level, however many there are", () => {

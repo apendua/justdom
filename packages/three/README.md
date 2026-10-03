@@ -1460,7 +1460,10 @@ Siblings that a page paints over one another are stacked in depth in the same
 order. An element that is positioned (`position` other than `static`) or has
 a `transform` of its own is drawn in front of every such sibling it overlaps
 and a page paints under it. It sits one content step (2 px) in front of the
-farthest thing that sibling draws, its pins and badges included. That keeps a
+farthest thing that sibling draws, its pins and badges included. A pin with a
+positive `z-index` inside a card that is no stacking context (no `z-index`
+and no transform of its own) is the exception, as on a page: it stays over
+the later card, which is stepped past the rest of the first card. That keeps a
 clock's hands on its dial, a card laid over another card in front of the
 first card's text and pin, and a modal in front of a later
 `position: relative` page that covers it. Siblings that do not overlap stay
@@ -1470,7 +1473,9 @@ positive one over it, and tree order within each. Only the sign of `z-index`
 counts, so to bring a card to the front, append it to the end of its parent
 again. A transformed element counts as covering the axis-aligned box around
 its corners, and a descendant that overflows its parent's box does not count
-towards what the parent overlaps.
+towards what the parent overlaps. A box anchored above a scroller that its
+siblings scroll in counts as covering all of them, so its lift and theirs
+stay put while the list scrolls.
 
 A native `<select>` cannot work here, layers or not: `<option>` has no CSS box
 to mirror, and the list the browser pops up is chrome rather than DOM, so none

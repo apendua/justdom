@@ -2,6 +2,40 @@
   "name": "@apendua/freedom",
   "entries": [
     {
+      "version": "0.26.0",
+      "tag": "@apendua/freedom_v0.26.0",
+      "date": "Sat, 03 Oct 2026 19:51:46 GMT",
+      "comments": {
+        "none": [
+          {
+            "comment": "Correct the README and source comments that had drifted from the code: the signal effects rather than RxJS, the four portal attributes, Enter keeping the field, and the limits of a transformed mirror root, a flat panel's press effects, the keyboard's placement, the SVG plugin and the exports the README never named"
+          },
+          {
+            "comment": "Benchmark the cost of a board of positioned cards in mirror.bench.js"
+          }
+        ],
+        "minor": [
+          {
+            "comment": "Mouse events a ray sends to a mirrored page carry the point it met as clientX and clientY"
+          },
+          {
+            "comment": "The grip on a mirrored element sends the page a contextmenu, and a mirror cache read before its node was adopted follows the node once it is"
+          },
+          {
+            "comment": "Positioned and transformed siblings are now stepped in depth in front of the earlier siblings they overlap, so a clock hand no longer vanishes into its dial and an earlier card's text and pin no longer show through a card laid over it; siblings that do not overlap stay level."
+          }
+        ],
+        "patch": [
+          {
+            "comment": "Text rewritten inside an inline element re-measures what follows it, so a caret after a prompt moves with every key even when the prompt keeps its size"
+          },
+          {
+            "comment": "A translucent card laid over another card now draws after it, so the other card's label shows through it tinted, as on a page, rather than disappearing where the card covers it"
+          }
+        ]
+      }
+    },
+    {
       "version": "0.25.0",
       "tag": "@apendua/freedom_v0.25.0",
       "date": "Fri, 02 Oct 2026 14:14:43 GMT",

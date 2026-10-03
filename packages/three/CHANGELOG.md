@@ -1,6 +1,20 @@
 # Change Log - @apendua/freedom
 
-This log was last generated on Fri, 02 Oct 2026 14:14:43 GMT and should not be manually modified.
+This log was last generated on Sat, 03 Oct 2026 19:51:46 GMT and should not be manually modified.
+
+## 0.26.0
+Sat, 03 Oct 2026 19:51:46 GMT
+
+### Minor changes
+
+- Mouse events a ray sends to a mirrored page carry the point it met as clientX and clientY
+- The grip on a mirrored element sends the page a contextmenu, and a mirror cache read before its node was adopted follows the node once it is
+- Positioned and transformed siblings are now stepped in depth in front of the earlier siblings they overlap, so a clock hand no longer vanishes into its dial and an earlier card's text and pin no longer show through a card laid over it; siblings that do not overlap stay level.
+
+### Patches
+
+- Text rewritten inside an inline element re-measures what follows it, so a caret after a prompt moves with every key even when the prompt keeps its size
+- A translucent card laid over another card now draws after it, so the other card's label shows through it tinted, as on a page, rather than disappearing where the card covers it
 
 ## 0.25.0
 Fri, 02 Oct 2026 14:14:43 GMT

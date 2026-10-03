@@ -14,7 +14,10 @@ interface Carried {
 }
 
 export interface DeskDragOptions {
-  /** The board the cards are pinned to. */
+  /**
+   * The board: cards (`[data-card]`) pinned anywhere on it, or tickets
+   * (`[data-ticket]`) stacked in its columns (`[data-column]`).
+   */
   board: HTMLElement;
   /** The drive a disk is dropped into. */
   drive: HTMLElement;
@@ -40,8 +43,20 @@ export function mountDragAndDrop({ board, drive, load, scale }: DeskDragOptions)
   const onDragEnd = () => {
     carried?.element.removeAttribute("data-dragging");
     drive.removeAttribute("data-over");
+    lightColumn(null);
     carried = null;
   };
+
+  /** The column a ticket would land in, lit; or none. */
+  const lightColumn = (column: Element | null) => {
+    board.querySelectorAll("[data-column]").forEach((element) => {
+      element.toggleAttribute("data-over", element === column);
+    });
+  };
+  const columnAt = (event: DragEvent) =>
+    carried?.element.hasAttribute("data-ticket")
+      ? (event.target as Element).closest("[data-column]")
+      : null;
 
   // A disk goes in the drive.
   const onDriveOver = (event: DragEvent) => {
@@ -62,9 +77,12 @@ export function mountDragAndDrop({ board, drive, load, scale }: DeskDragOptions)
     }
   };
 
-  // A card goes wherever on the board it is let go.
+  // A card goes wherever on the board it is let go, and a ticket into the
+  // column it is let go over.
   const onBoardOver = (event: DragEvent) => {
-    if (!carried?.element.hasAttribute("data-card") || !event.dataTransfer) {
+    const column = columnAt(event);
+    lightColumn(column);
+    if (!(column || carried?.element.hasAttribute("data-card")) || !event.dataTransfer) {
       return;
     }
     event.preventDefault();
@@ -72,6 +90,12 @@ export function mountDragAndDrop({ board, drive, load, scale }: DeskDragOptions)
   };
   const onBoardDrop = (event: DragEvent) => {
     event.preventDefault();
+    const column = columnAt(event);
+    lightColumn(null);
+    if (carried && column) {
+      dropTicket(carried.element, column, event.clientY);
+      return;
+    }
     if (!carried?.element.hasAttribute("data-card")) {
       return;
     }
@@ -107,6 +131,34 @@ export function mountDragAndDrop({ board, drive, load, scale }: DeskDragOptions)
     board.removeEventListener("dragover", onBoardOver);
     board.removeEventListener("drop", onBoardDrop);
   };
+}
+
+/**
+ * Put a ticket in a column's `[data-tickets]`, in front of the first ticket
+ * whose middle is below where it was let go.
+ */
+function dropTicket(ticket: HTMLElement, column: Element, y: number) {
+  const tickets = column.querySelector("[data-tickets]");
+  if (!tickets) {
+    return;
+  }
+  const others = [...tickets.querySelectorAll<HTMLElement>("[data-ticket]")].filter(
+    (other) => other !== ticket,
+  );
+  const middles = others.map((other) => {
+    const rect = other.getBoundingClientRect();
+    return rect.top + rect.height / 2;
+  });
+  tickets.insertBefore(ticket, others[insertionIndex(middles, y)] ?? null);
+}
+
+/**
+ * Where in a column a ticket let go at `y` goes: before the first of the
+ * tickets, by the middles of their rects, that is below it, or at the end.
+ */
+export function insertionIndex(middles: readonly number[], y: number): number {
+  const index = middles.findIndex((middle) => y < middle);
+  return index === -1 ? middles.length : index;
 }
 
 /**

@@ -1,16 +1,9 @@
-import { mountCharts } from "./charts.js";
-import { mountClock } from "./clock.js";
-import { mountDragAndDrop, mountNewNotes } from "./dragAndDrop.js";
-import { mountKeyboard } from "./keyboard.js";
-import { mountPhosphorMenu } from "./phosphorMenu.js";
-import { BOOT_PROGRAM } from "./programs.js";
-import { mountScreen } from "./screen.js";
-import { mountPowerButton } from "./power.js";
-import { presenting, xrSession } from "./session.js";
+import { Signal } from "@apendua/signal";
+import { mountDesk, type MountedDesk } from "./desk.js";
+import { LOOKS, lookFromSearch, type Look } from "./looks.js";
+import { presenting } from "./session.js";
 import { mountStage } from "./stage.js";
-import { Terminal } from "./terminal.js";
 import { offerXR } from "./xr.js";
-import { PLACEMENTS } from "./components/Scene.js";
 import "./index.css";
 
 function find<T extends Element = HTMLElement>(selector: string): T {
@@ -21,41 +14,48 @@ function find<T extends Element = HTMLElement>(selector: string): T {
   return element;
 }
 
-// The desk is the page's markup, index.html. What follows makes it move.
-const stage = mountStage(find(".stage"), find(".desk"), presenting);
-const terminal = new Terminal();
+const desk = find("[data-desk]");
+const stage = mountStage(find(".stage"), desk, presenting);
+const fonts = find<HTMLLinkElement>("[data-look-fonts]");
+const style = document.createElement("style");
+document.head.appendChild(style);
 
-mountScreen(find("[data-screen]"), terminal, presenting);
-mountPhosphorMenu(
-  find("[data-phosphor-knob]"),
-  find<HTMLTemplateElement>("#phosphor-menu"),
-  terminal,
-);
-mountPowerButton(find("[data-power]"), xrSession);
-mountKeyboard(find("[data-keys]"), { onKey: (key) => terminal.key(key) });
-mountDragAndDrop({
-  board: find("[data-board]"),
-  drive: find("[data-drive]"),
-  load: (name) => terminal.load(name),
-  scale: stage.scale,
+/** Put `look` up, in place of whichever was up. */
+function show(look: Look): MountedDesk {
+  fonts.href = look.fonts;
+  return mountDesk(desk, style, look, stage.scale);
+}
+
+// The desk on the page is whichever look the address names. The scene reads
+// this as a session starts, so a session mirrors the look the page is
+// showing.
+const current = Signal.of(show(lookFromSearch(location.search)));
+
+// The picker swaps one look for another in place, and writes the choice into
+// the address so that a reload or a shared link opens the same desk. Not
+// during a session, which mirrors the elements of the look it started with.
+const picker = find<HTMLSelectElement>("[data-look-picker]");
+for (const look of LOOKS) {
+  picker.add(new Option(look.name, look.id, false, look === current.get().look));
+}
+picker.addEventListener("change", () => {
+  const look = LOOKS.find(({ id }) => id === picker.value);
+  if (!look || presenting.get()) {
+    return;
+  }
+  current.get().dispose();
+  current.set(show(look));
+  const url = new URL(location.href);
+  url.searchParams.set("look", look.id);
+  history.replaceState(null, "", url);
 });
-mountNewNotes(
-  find("[data-board]"),
-  find<HTMLInputElement>("[data-new-note]"),
-  find<HTMLTemplateElement>("#note-template"),
-);
-mountCharts(find("#charts"));
-mountClock(find("#clock"));
 
 find("[data-notes-toggle]").addEventListener("click", () => {
   document.body.classList.toggle("tags");
 });
 
-// A moment's pause before the disk spins up, as there was on the real thing.
-setTimeout(() => terminal.load(BOOT_PROGRAM), 400);
-
 // And the headset, offered to a page that can open one: the scene mirrors
 // the very elements the page is showing.
-offerXR(new Map(PLACEMENTS.map(({ id }) => [id, find(`#${id}`)]))).catch((err) => {
+offerXR(current).catch((err) => {
   console.error("Could not offer an XR session:", err);
 });

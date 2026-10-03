@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { dropPosition, mountDragAndDrop, mountNewNotes } from "./dragAndDrop.js";
+import { dropPosition, insertionIndex, mountDragAndDrop, mountNewNotes } from "./dragAndDrop.js";
 
 describe("dropPosition", () => {
   it("moves a card by the drag", () => {
@@ -96,6 +96,76 @@ describe("mountDragAndDrop", () => {
     expect(card.style.top).toBe("20px");
     expect(board.lastElementChild).toBe(card);
     expect(card.hasAttribute("data-dragging")).toBe(false);
+    dispose();
+  });
+});
+
+describe("insertionIndex", () => {
+  it("goes before the first ticket below the drop", () => {
+    expect(insertionIndex([10, 30, 50], 25)).toBe(1);
+    expect(insertionIndex([10, 30, 50], 5)).toBe(0);
+  });
+
+  it("goes at the end below every ticket, and in an empty column", () => {
+    expect(insertionIndex([10, 30, 50], 60)).toBe(3);
+    expect(insertionIndex([], 60)).toBe(0);
+  });
+});
+
+describe("mountDragAndDrop on a kanban board", () => {
+  /** Two columns; each ticket's rect is 20 px tall, stacked from its index. */
+  function kanban() {
+    document.body.innerHTML = `
+      <div data-board>
+        <div id="todo" data-column><div data-tickets>
+          <div id="a" data-ticket draggable="true"><b>A</b></div>
+          <div id="b" data-ticket draggable="true">B</div>
+        </div></div>
+        <div id="done" data-column><div data-tickets>
+          <div id="c" data-ticket draggable="true">C</div>
+          <div id="d" data-ticket draggable="true">D</div>
+        </div></div>
+      </div>
+      <div data-drive></div>`;
+    for (const tickets of document.querySelectorAll("[data-tickets]")) {
+      [...tickets.children].forEach((ticket, index) => {
+        ticket.getBoundingClientRect = () => ({ top: index * 20, height: 20 }) as DOMRect;
+      });
+    }
+    return {
+      board: document.querySelector<HTMLElement>("[data-board]")!,
+      drive: document.querySelector<HTMLElement>("[data-drive]")!,
+    };
+  }
+
+  it("puts a ticket in the column it is let go over, by where it is let go", () => {
+    const { board, drive } = kanban();
+    const dispose = mountDragAndDrop({ board, drive, load: vi.fn(), scale: () => 1 });
+    const done = document.querySelector<HTMLElement>("#done")!;
+    const data = new Map<string, string>();
+    drag("dragstart", document.querySelector("#a b")!, data);
+    const over = drag("dragover", done.querySelector("#d")!, data, 0, 25);
+    expect(over.defaultPrevented, "the column should take the ticket").toBe(true);
+    expect(done.hasAttribute("data-over")).toBe(true);
+    expect(document.querySelector("#todo")!.hasAttribute("data-over")).toBe(false);
+    // Below C's middle and above D's: between them.
+    drag("drop", done.querySelector("#d")!, data, 0, 25);
+    const order = [...done.querySelectorAll("[data-ticket]")].map((ticket) => ticket.id);
+    expect(order).toEqual(["c", "a", "d"]);
+    expect(done.hasAttribute("data-over")).toBe(false);
+    dispose();
+  });
+
+  it("does not take a disk in a column", () => {
+    const { board, drive } = kanban();
+    document.body.insertAdjacentHTML(
+      "beforeend",
+      '<div id="disk" draggable="true" data-floppy="PLOT.BAS"></div>',
+    );
+    const dispose = mountDragAndDrop({ board, drive, load: vi.fn(), scale: () => 1 });
+    const data = new Map<string, string>();
+    drag("dragstart", document.querySelector("#disk")!, data);
+    expect(drag("dragover", document.querySelector("#c")!, data).defaultPrevented).toBe(false);
     dispose();
   });
 });

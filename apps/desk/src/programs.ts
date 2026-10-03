@@ -44,5 +44,3 @@ void main() {
   fragColor = texture(uGlyphs, vUv) * uColor;
 }`,
 };
-
-export const BOOT_PROGRAM = "DESK.JS";

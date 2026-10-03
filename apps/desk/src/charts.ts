@@ -36,47 +36,57 @@ const EVENTS = [
 /** Rows the log keeps; the oldest goes as a new one arrives. */
 const LOG_ROWS = 40;
 
+/** Where a gauge's needle points for a reading from 0 to 100, in degrees. */
+export function needleAngle(value: number): number {
+  return -120 + value * 2.4;
+}
+
 /**
- * The charts panel, kept moving: a line chart whose `points` are rebound
- * every tick, bars that spring to new lengths on `transform`, a conic donut
- * whose stops move, and a log that streams rows in at the end.
+ * The charts panel, kept moving: line charts whose `points` are rebound every
+ * tick, bars that spring to new lengths on `transform` (`data-bar="y"` grows
+ * up rather than across), conic donuts whose stops move, gauge needles that
+ * swing, and a log that streams rows in at the end. Each look has its own
+ * mix of these, and draws only what it has.
+ *
+ * The parts are looked up on every tick rather than once, because a look can
+ * swap them out: the notebook's tabs mount one page at a time. `draw` puts
+ * the latest readings on whatever is mounted now, for a page that has just
+ * been.
  *
  * All of it on timers rather than animation frames. Once a headset has the
  * display the page's animation frames stop, and timers do not.
  */
 export function mountCharts(panel: HTMLElement) {
-  const line = panel.querySelector("[data-line]");
-  const area = panel.querySelector("[data-area]");
-  const dots = panel.querySelector("[data-line-dots]");
-  const lasts = panel.querySelectorAll("[data-last]");
   const series = Array.from({ length: WEEKS }, (_, t) => sample(t));
   let t = series.length;
-
-  const circles = Array.from({ length: WEEKS }, () => {
-    const circle = document.createElementNS(SVG, "circle");
-    circle.setAttribute("r", "2.6");
-    dots?.append(circle);
-    return circle;
-  });
 
   const drawLine = () => {
     const points = chartPoints(series);
     const listed = points.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(" ");
-    line?.setAttribute("points", listed);
-    area?.setAttribute("points", `0,${HEIGHT} ${listed} ${WIDTH},${HEIGHT}`);
-    circles.forEach((circle, index) => {
-      circle.setAttribute("cx", points[index][0].toFixed(1));
-      circle.setAttribute("cy", points[index][1].toFixed(1));
+    panel.querySelectorAll("[data-line]").forEach((line) => line.setAttribute("points", listed));
+    panel
+      .querySelectorAll("[data-area]")
+      .forEach((area) => area.setAttribute("points", `0,${HEIGHT} ${listed} ${WIDTH},${HEIGHT}`));
+    panel.querySelectorAll("[data-line-dots]").forEach((dots) => {
+      while (dots.children.length < points.length) {
+        const circle = document.createElementNS(SVG, "circle");
+        circle.setAttribute("r", "2.6");
+        dots.append(circle);
+      }
+      [...dots.children].forEach((circle, index) => {
+        circle.setAttribute("cx", points[index][0].toFixed(1));
+        circle.setAttribute("cy", points[index][1].toFixed(1));
+      });
     });
     const last = series[series.length - 1].toFixed(1);
-    lasts.forEach((element) => (element.textContent = last));
+    panel.querySelectorAll("[data-last]").forEach((element) => (element.textContent = last));
   };
 
-  const bars = panel.querySelectorAll<HTMLElement>("[data-bar]");
   const drawBars = () => {
-    bars.forEach((bar) => {
+    panel.querySelectorAll<HTMLElement>("[data-bar]").forEach((bar) => {
       const value = Math.round(25 + Math.random() * 75);
-      bar.style.transform = `scaleX(${value / 100})`;
+      const axis = bar.dataset.bar === "y" ? "Y" : "X";
+      bar.style.transform = `scale${axis}(${value / 100})`;
       const label = bar.closest("[data-bar-row]")?.querySelector("[data-bar-value]");
       if (label) {
         label.textContent = `${value}%`;
@@ -84,21 +94,27 @@ export function mountCharts(panel: HTMLElement) {
     });
   };
 
-  const donut = panel.querySelector<HTMLElement>("[data-donut]");
-  const donutValue = panel.querySelector("[data-donut-value]");
   const drawDonut = () => {
     const a = 20 + Math.random() * 40;
     const b = a + 10 + Math.random() * 30;
-    donut?.style.setProperty("--a", `${a.toFixed(0)}%`);
-    donut?.style.setProperty("--b", `${b.toFixed(0)}%`);
-    if (donutValue) {
-      donutValue.textContent = `${a.toFixed(0)}%`;
-    }
+    panel.querySelectorAll<HTMLElement>("[data-donut]").forEach((donut) => {
+      donut.style.setProperty("--a", `${a.toFixed(0)}%`);
+      donut.style.setProperty("--b", `${b.toFixed(0)}%`);
+    });
+    panel
+      .querySelectorAll("[data-donut-value]")
+      .forEach((element) => (element.textContent = `${a.toFixed(0)}%`));
   };
 
-  const log = panel.querySelector<HTMLElement>("[data-log]");
+  const drawGauges = () => {
+    panel.querySelectorAll<HTMLElement>("[data-gauge]").forEach((needle) => {
+      needle.style.transform = `rotate(${needleAngle(15 + Math.random() * 70)}deg)`;
+    });
+  };
+
   let logged = 0;
   const logRow = () => {
+    const log = panel.querySelector<HTMLElement>("[data-log]");
     if (!log) {
       return;
     }
@@ -132,7 +148,11 @@ export function mountCharts(panel: HTMLElement) {
     }, 1400),
     setInterval(drawBars, 2600),
     setInterval(drawDonut, 3100),
+    setInterval(drawGauges, 1700),
     setInterval(logRow, 2200),
   ];
-  return () => timers.forEach((timer) => clearInterval(timer));
+  return {
+    draw: drawLine,
+    dispose: () => timers.forEach((timer) => clearInterval(timer)),
+  };
 }

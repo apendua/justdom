@@ -2,6 +2,8 @@ import { render, createXRButton } from "@apendua/freedom";
 import { XRControllerModelFactory } from "three/examples/jsm/webxr/XRControllerModelFactory.js";
 import Scene from "./components/Scene.js";
 import NoteKeyboard from "./components/NoteKeyboard.js";
+import type { MountedDesk } from "./desk.js";
+import type { Readable } from "./session.js";
 
 /**
  * Whether this platform can open an immersive session at all. Asked before
@@ -22,15 +24,15 @@ async function canPresent(): Promise<boolean> {
 }
 
 /**
- * Offer the page a headset: a scene that mirrors the desk's objects, and
- * freedom's Enter button. Nothing happens on a platform that cannot
+ * Offer the page a headset: a scene that mirrors the objects of whichever
+ * look `desk` holds when a session starts, and freedom's Enter button. Nothing happens on a platform that cannot
  * present, so on a laptop the page is the page and nothing else.
  *
  * `?emulator` installs a headset in the browser first, so that a session
  * can be driven by hand without one; `?emulator=bare` installs it without
  * the panels that drive it, for a harness photographing the scene.
  */
-export async function offerXR(elements: ReadonlyMap<string, HTMLElement>): Promise<void> {
+export async function offerXR(desk: Readable<MountedDesk>): Promise<void> {
   const query = new URLSearchParams(location.search);
   if (query.has("emulator")) {
     try {
@@ -44,9 +46,9 @@ export async function offerXR(elements: ReadonlyMap<string, HTMLElement>): Promi
     return;
   }
 
-  // The charts and the memo are inline SVG, which a portal draws only with
-  // the plugin that does. It is a separate entry point, so it is loaded
-  // only once a session can be offered.
+  // The charts, the memo and the plant are inline SVG, which a portal draws
+  // only with the plugin that does. It is a separate entry point, so it is
+  // loaded only once a session can be offered.
   const { svgElements } = await import("@apendua/freedom/svg");
 
   // A tracked hand points and pinches without a model of its own, so there
@@ -60,7 +62,7 @@ export async function offerXR(elements: ReadonlyMap<string, HTMLElement>): Promi
   const createControllerModel =
     controllerModelFactory.createControllerModel.bind(controllerModelFactory);
 
-  render(Scene(elements), {
+  render(Scene(desk), {
     createControllerModel,
     presentingOnly: true,
     portalPlugins: [svgElements()],

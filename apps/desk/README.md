@@ -1,16 +1,23 @@
 # Desk
 
-A 1984 desk drawn in HTML and CSS: a beige computer typing out its program
-in green phosphor, a keyboard that types on it, an instrument panel of live
-charts, a cork board of cards, floppy disks, a memo on letterhead, a clock
-and a mug. On a page it is a page. In a headset `@apendua/freedom` mirrors
-each object into a panel of its own and sets them out on a desk in a room.
+A desk drawn in HTML and CSS, in three looks: a computer typing out its
+program on its screen, a keyboard that types on it, a panel of live charts,
+a board of cards, something to load programs from, and a paper to read. On
+a page it is a page. In a headset `@apendua/freedom` mirrors each object into
+a panel of its own and sets them out on a desk in a room.
 
 It is the sampler for what freedom can mirror, written as one scene rather
 than a grid of specimens. `apps/showcase-xr` stays as it is, because its
 visual suite is a regression test for freedom and needs a scene that holds
-still. The design is variant A of the mockups in
-[`docs/showcase-desk`](../../docs/showcase-desk), unchanged.
+still. The three looks are the mockups in
+[`docs/showcase-desk`](../../docs/showcase-desk), each picked from the
+"Look" menu in the corner:
+
+| Look | `?look=` | The desk |
+| --- | --- | --- |
+| Beige Box '84 | `beige` | A beige computer in green phosphor, an instrument rack, a cork board, floppy disks, a memo on letterhead, a wall clock and a mug. |
+| Night Ops | `ops` | A control room at night: amber phosphor, needle gauges and a radar, a whiteboard run as a kanban, cassettes, a green-bar printout and three world clocks. |
+| Paper Studio | `paper` | A 1-bit desktop with the terminal in a window, a notebook with tabs, a linen pinboard whose swatches recolour the desk, cartridges, a letter with a wax seal and a plant. |
 
 ## Running it
 
@@ -20,6 +27,13 @@ npm run build      # what `rush build` runs
 ```
 
 The page needs the network for its fonts, which come from Google Fonts.
+Each look loads its own.
+
+The page opens on the look its address names, `?look=ops` for example, and
+on Beige Box '84 without one. Picking another from the menu swaps it in
+place and writes it into the address, so a reload or a link opens the same
+desk. The menu is hidden while a session runs, which mirrors the look it
+started with.
 
 On a laptop there is no session to offer, so there is no button and no
 renderer. `?emulator` installs a headset in the browser (IWER, with its dev
@@ -30,10 +44,18 @@ installs the runtime without the panels.
 
 - Type on your own keyboard, or click the keys. The monitor takes commands
   at its prompt; `HELP` lists them.
-- Drag a floppy onto the drive under the screen to load what is on it.
-- Drag the cards about the board. The pink card's field pins a new note on
-  Enter; while the field has focus the desk's keyboard types into it.
-- Open the PHOSPHOR menu under the screen to change the screen's colour.
+- Drag a floppy, cassette or cartridge onto the drive, deck or slot under
+  the screen to load what is on it.
+- Change the screen's colour from the phosphor control: the PHOSPHOR or
+  AMBER button under the screen, or the desktop's Terminal menu.
+- Beige Box '84: drag the cards about the board. The pink card's field pins
+  a new note on Enter; while the field has focus the desk's keyboard types
+  into it.
+- Night Ops: drag tickets between the whiteboard's columns. A ticket lands
+  above or below the others by where it is let go.
+- Paper Studio: the notebook's tabs change its page, the swatches on the
+  pinboard recolour the whole desk, and the scrap of paper on the pinboard
+  takes notes as the pink card does.
 - "Feature notes", top left, labels each object with what it exercises.
 
 In a session the same things work with a controller's trigger or a pinch:
@@ -42,44 +64,51 @@ panel onto the monitor's, and the board's field opens a keyboard of its own
 in front of you, since the desk's keyboard is the monitor's. The charts,
 the board and the memo can be picked up by their edges; the memo takes the
 hand's whole rotation, so it can be tipped up to read. The power button
-under the screen ends the session.
+under the screen ends the session; on Night Ops it is PWR, and on Paper
+Studio the terminal window's close box.
 
 ## How it is put together
 
-The desk is the markup in `index.html` and the stylesheet in
-`src/index.css`. Each object is a `.zone` with an id, and the modules in
-`src/` make them move:
+Each look is its markup and its stylesheet in `src/looks/`, and an entry in
+`src/looks.ts` that says how a session sets it out. `src/index.css` holds
+what every look shares: the page's chrome and the rules for a session. Each
+object is a `.zone` with an id, and the modules in `src/` make them move:
 
 | File | What it is |
 | --- | --- |
-| `src/main.ts` | Finds the elements and mounts everything below onto them, then offers a session. |
+| `src/main.ts` | Puts up the look the address names, runs the menu that swaps it, and offers a session. |
+| `src/looks.ts` | The three looks: markup, stylesheet, fonts, boot program, room colours, and where each zone stands in the room. |
+| `src/desk.ts` | Mounts a look and everything below that its markup asks for, and takes it all down again. |
 | `src/terminal.ts` | The monitor's state: the listing, how much of it is typed, the prompt, the phosphor, and the commands. No DOM. |
 | `src/programs.ts` | What the disks hold. |
 | `src/screen.ts` | Draws the terminal on the screen, one way on the page and another in a session (below). |
 | `src/keyboard.ts` | Builds the keycaps and types with them, and with a real keyboard. |
 | `src/phosphorMenu.ts` | The menu under the screen. |
-| `src/dragAndDrop.ts` | Floppies into the drive, cards about the board, new notes from the field. |
-| `src/charts.ts` | Keeps the charts panel moving. |
-| `src/clock.ts` | The wall clock's hands. |
-| `src/power.ts` | The power button, which ends a session. |
+| `src/dragAndDrop.ts` | Disks into the drive, cards about the board, tickets between columns, new notes from the field. |
+| `src/charts.ts` | Keeps the charts panel moving: lines, bars, donuts, gauges and the log. |
+| `src/clock.ts` | The wall clock's hands, and the digital clocks. |
+| `src/tabs.ts` | The notebook's tabs, which mount one page at a time. |
+| `src/swatches.ts` | The swatches that recolour the desk. |
+| `src/power.ts` | The control that ends a session. |
 | `src/stage.ts` | Scales the desk to the window, and takes the staging off during a session. |
 | `src/session.ts` | The session showing the desk, if one is, written by the scene. |
 | `src/xr.ts` | The offer: the renderer, the Enter button, the SVG plugin and the note field's keyboard. |
-| `src/components/Scene.ts` | The room, and where each object stands in it. |
+| `src/components/Scene.ts` | The room in the look's colours, and each zone posed where the look places it. |
 | `src/components/NoteKeyboard.ts` | What the note field's keyboard looks like in a session. |
 
 Four things the page does differently while it is mirrored.
 
 **The staging comes off.** On the page the desk is scaled to the window and
-the side panels, the keyboard, the floppies and the memo are tilted with
+the side panels and everything lying on the desk are tilted with
 `perspective()` transforms, to look like a desk seen from a chair. In a
 session the scene poses each object in the room, so `html[data-presenting]`
 turns the scale and the tilts off and hides the feature notes, and every
 zone is measured flat and at its own size. The page is under the session's
 canvas meanwhile. Two controls change with it. A key pressed on the page
 moves down the screen, which in the room would be along the desk, so there
-the caps stand proud of the board and a press pushes them into it. And the
-power button becomes a control, big enough to aim a ray at.
+the caps stand proud of the board and a press pushes them into it; a disk
+lifted by the ray rises off the desk the same way. And the control that
+ends the session becomes one, big enough to aim a ray at.
 
 **The monitor reveals its program instead of typing it.** On the page the
 listing is the typed part of the program, rewritten every tick. In a
@@ -91,16 +120,16 @@ typing in a session the screen scrolls to the last character typed rather
 than to the bottom, since everything is in the node from the start.
 
 **Only the objects are mirrored.** The page's wall, tabletop and backdrop
-are not; the room has a wall, a desk and a floor of its own, in the page's
-colours. The mug is a mesh rather than a panel, because the page draws it
-from above and its steam rises across the page, which lying on a desk in
-the room it could not do.
+are not, nor its lamplight; the room has a wall, a desk and a floor of its
+own, in the look's colours. Beige Box '84's mug is a mesh rather than a
+panel, because the page draws it from above and its steam rises across the
+page, which lying on a desk in the room it could not do.
 
 **Nothing runs until a session does.** The renderer is made with
-`presentingOnly`, and the panels are built when a session starts and taken
-down when it ends.
+`presentingOnly`, and the room and the panels are built when a session
+starts, from the look the page is showing, and taken down when it ends.
 
-Three things to know about it.
+Four things to know about it.
 
 - Everything that moves moves on timers, not animation frames. A headset
   that has the display stops the page's animation frames, and timers keep
@@ -114,3 +143,9 @@ Three things to know about it.
   frames a second the whole desk takes about a minute to come up. The
   charts come last, because their live updates keep arriving while they
   mount.
+- Under the emulator, Night Ops' telemetry panel does not finish loading.
+  A panel leaves its loading frame on a frame with nothing left to do, and
+  the radar's sweep, its blips and the status lights blink without end, so
+  at a few frames a second that frame does not come. With the three stopped
+  it loads in about a minute. This is freedom's to fix; it has not been
+  tried on a headset.

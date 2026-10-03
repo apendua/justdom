@@ -1,9 +1,10 @@
 import * as THREE from "three";
 import { children, cursors, $, dom, getScene, getXRSession, placeAndScale } from "@apendua/freedom";
-import type { PortalOptions } from "@apendua/freedom";
 import { createDiagnostics, useDiagnostics } from "@apendua/justui";
 import { component, effects, effectsOnly, Stream, useEffects } from "@apendua/signal";
-import { xrSession } from "../session.js";
+import type { MountedDesk } from "../desk.js";
+import type { Placement, Room } from "../looks.js";
+import { type Readable, xrSession } from "../session.js";
 
 /** The height of the desk's top, below the eyes, in metres. */
 const DESK_TOP = -0.42;
@@ -15,98 +16,6 @@ const DESK_TOP = -0.42;
  */
 const PX = 0.00065;
 
-/** The colours of the page's wall and desk, so the room is the same room. */
-const WALL = "#1b3331";
-const WOOD = "#8a5a33";
-const BACKDROP = "#0f1716";
-
-/**
- * Where one object of the page stands in the room. `x`, `y` and `z` are
- * the middle of the panel; `y` is measured up from the desk's top. `facing`
- * turns it about the vertical to face the viewer from where it stands, and
- * `lying` lays it down on the desk, tipped up toward the viewer by `tilt`.
- */
-interface Placement {
-  id: string;
-  x: number;
-  y: number;
-  z: number;
-  facing?: boolean;
-  lying?: boolean;
-  tilt?: number;
-  /** A turn about the panel's own normal, for something lying askew. */
-  roll?: number;
-  /** Metres per desk px, if not `PX`. */
-  px?: number;
-  options?: Omit<PortalOptions, "root">;
-}
-
-const degrees = (value: number) => (value * Math.PI) / 180;
-
-/**
- * The objects that are mirrored, and where. The page's backdrop, its wall
- * and its tabletop are not among them: the room has a wall and a desk of
- * its own, and what stands on the desk is the page's.
- */
-export const PLACEMENTS: readonly Placement[] = [
-  // The monitor stands on the desk, its foot on the top.
-  { id: "monitor", x: 0, y: 0.168, z: -0.78 },
-  // The keyboard lies in front of it, raised at the back as keyboards are.
-  { id: "keyboard", x: 0, y: 0.014, z: -0.47, lying: true, tilt: degrees(9) },
-  // The charts and the board stand either side, turned in toward the chair.
-  // They are read rather than used, so they are drawn bigger than the
-  // monitor's px, about the size of a poster each.
-  {
-    id: "charts",
-    x: -0.58,
-    y: 0.3,
-    z: -0.62,
-    px: 0.00095,
-    facing: true,
-    options: { draggable: true },
-  },
-  {
-    id: "board",
-    x: 0.58,
-    y: 0.25,
-    z: -0.62,
-    px: 0.00095,
-    facing: true,
-    options: { draggable: true },
-  },
-  // The floppies lie to the left of the keyboard; between them is the
-  // desk, which a ray should reach.
-  {
-    id: "floppies",
-    x: -0.4,
-    y: 0.002,
-    z: -0.44,
-    lying: true,
-    options: { opaqueToRays: false, loadingFrame: false },
-  },
-  // The memo lies askew to the right, and can be picked up and tipped to
-  // read: `level: false` hands it the hand's whole rotation.
-  {
-    id: "memo",
-    x: 0.37,
-    y: 0.003,
-    z: -0.44,
-    lying: true,
-    roll: degrees(6),
-    options: { draggable: { level: false } },
-  },
-  // The clock hangs on the wall above the monitor, bigger than on the
-  // page, where it is a long way off.
-  {
-    id: "clock",
-    x: 0,
-    y: 0.68,
-    z: -1.19,
-    px: 0.0015,
-    options: { opaqueToRays: false, loadingFrame: false },
-  },
-];
-
 /**
  * A source that says nothing and never finishes: what a mounting is handed
  * while there is nothing to mount.
@@ -114,33 +23,37 @@ export const PLACEMENTS: readonly Placement[] = [
 const NOTHING = new Stream<never>(() => {});
 
 /**
- * The room the desk is set in: a wall behind, a desk on legs, a floor, and
- * a sky in one dark colour all the way round, which is what an AR session
- * clears to rather than the passthrough.
+ * The room the desk is set in, in the look's colours: a wall behind, a desk
+ * on legs, a floor, and a sky in one colour all the way round, which is what
+ * an AR session clears to rather than the passthrough.
  */
-function room(): THREE.Object3D {
+function room(colors: Room): THREE.Object3D {
   const group = new THREE.Group();
   const matte = (color: string) => new THREE.MeshStandardMaterial({ color, roughness: 0.9 });
 
   const sky = new THREE.Mesh(
     new THREE.SphereGeometry(10, 32, 16),
-    new THREE.MeshBasicMaterial({ color: BACKDROP, side: THREE.BackSide, depthWrite: false }),
+    new THREE.MeshBasicMaterial({
+      color: colors.backdrop,
+      side: THREE.BackSide,
+      depthWrite: false,
+    }),
   );
   sky.renderOrder = -1;
   sky.frustumCulled = false;
 
-  const top = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.03, 0.85), matte(WOOD));
+  const top = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.03, 0.85), matte(colors.top));
   top.position.set(0, DESK_TOP - 0.015, -0.6);
   const legs = [-0.8, 0.8].flatMap((x) =>
     [-0.22, -0.98].map((z) => {
-      const leg = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.7, 0.05), matte("#5e3a1e"));
+      const leg = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.7, 0.05), matte(colors.legs));
       leg.position.set(x, DESK_TOP - 0.38, z);
       return leg;
     }),
   );
-  const wall = new THREE.Mesh(new THREE.PlaneGeometry(4, 3), matte(WALL));
+  const wall = new THREE.Mesh(new THREE.PlaneGeometry(4, 3), matte(colors.wall));
   wall.position.set(0, 0.4, -1.2);
-  const floor = new THREE.Mesh(new THREE.PlaneGeometry(4, 4), matte("#141c1b"));
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(4, 4), matte(colors.floor));
   floor.rotation.x = -Math.PI / 2;
   floor.position.set(0, DESK_TOP - 0.73, -0.6);
 
@@ -195,26 +108,22 @@ function pose(group: THREE.Group, placement: Placement): void {
  * The scene: the page's desk, object by object, set out on a desk in a
  * room.
  *
- * Nothing here builds UI. Each element named in `PLACEMENTS` is one the page
- * is showing; `dom(ctx, element)` mirrors it where it stands, so a press on
- * a mirrored key is a click on the real one and a card dragged in the room
- * is dragged on the page. The panels exist only while a session presents:
- * a session that starts builds them from the page as it is then, and one
- * that ends takes them down. `xrSession` tells the page first, so that it
- * takes its staging off before anything is measured.
+ * Nothing here builds UI. Each element the look places is one the page is
+ * showing; `dom(ctx, element)` mirrors it where it stands, so a press on a
+ * mirrored key is a click on the real one and a card dragged in the room is
+ * dragged on the page. The room and the panels exist only while a session
+ * presents: a session that starts builds them from the look the page is
+ * showing then, and one that ends takes them down. `xrSession` tells the
+ * page first, so that it takes its staging off before anything is
+ * measured.
  */
-export const Scene = (elements: ReadonlyMap<string, HTMLElement>) =>
+export const Scene = (desk: Readable<MountedDesk>) =>
   effectsOnly((ctx: WeakKey) => {
     // Kept across sessions, so a second session's chart starts from the
     // first one's scale.
     const diagnostics = createDiagnostics();
 
     useEffects(getScene(ctx), [
-      effects((scene) => {
-        // For a VR session, where three honours it; the sky in `room` is
-        // for AR, where it does not.
-        scene.background = new THREE.Color(BACKDROP);
-      }),
       effects(() => {
         const session = getXRSession(ctx);
         xrSession.set(session);
@@ -223,8 +132,6 @@ export const Scene = (elements: ReadonlyMap<string, HTMLElement>) =>
         }
       }),
       children(
-        $(room()),
-        $(mug()),
         $(new THREE.AmbientLight(0xffffff, 1.6)),
         $(new THREE.PointLight(0xfff1d6, 6, 4), [
           effects((light) => {
@@ -235,9 +142,17 @@ export const Scene = (elements: ReadonlyMap<string, HTMLElement>) =>
           if (!getXRSession(ctx)) {
             return NOTHING;
           }
+          const { look, elements } = desk.get();
           return $(new THREE.Group(), [
+            effects(() => {
+              // For a VR session, where three honours it; the sky in `room`
+              // is for AR, where it does not.
+              getScene(ctx).background = new THREE.Color(look.room.backdrop);
+            }),
             children(
-              ...PLACEMENTS.flatMap((placement) => {
+              $(room(look.room)),
+              ...(look.mug ? [$(mug())] : []),
+              ...look.placements.flatMap((placement) => {
                 const element = elements.get(placement.id);
                 if (!element) {
                   return [];

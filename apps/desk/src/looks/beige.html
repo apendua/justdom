@@ -1,0 +1,130 @@
+  <div class="wall"></div><div class="wainscot"></div><div class="tabletop"></div>
+
+  <div class="zone" id="clock">
+    <div class="clock"><div class="face"><div class="face-inner"><span>APENDUA</span></div>
+      <div class="hand h" data-hand="h"></div><div class="hand m" data-hand="m"></div><div class="hand s" data-hand="s"></div><div class="hub"></div>
+    </div></div>
+    <div class="tag" style="left:124px;top:10px"><b>Clock</b>repeating-conic-gradient ticks; hands are inline <code>transform</code> written from <code>useFrame</code>.</div>
+  </div>
+
+  <!-- ===================== charts ===================== -->
+  <div class="zone" id="charts">
+    <div class="rack">
+      <h3>SIGNAL <small>Q3 · LIVE <span data-last></span></small></h3>
+      <div class="inset">
+        <div class="row"><span>THROUGHPUT / 13 WK</span><b data-last></b></div>
+        <svg class="chart" viewBox="0 -4 300 118" preserveAspectRatio="none">
+          <line class="grid" x1="0" y1="27" x2="300" y2="27" /><line class="grid" x1="0" y1="55" x2="300" y2="55" /><line class="grid" x1="0" y1="83" x2="300" y2="83" />
+          <polygon class="area" data-area points="" />
+          <polyline class="line" data-line points="" />
+          <g class="dots" data-line-dots></g>
+          <text x="2" y="24">75</text><text x="2" y="52">50</text><text x="2" y="80">25</text>
+        </svg>
+      </div>
+      <div class="bars">
+        <div class="bar" data-bar-row><span>PANELS</span><div class="track"><div class="fill" data-bar style="transform:scaleX(.72)"></div></div><span data-bar-value>72%</span></div>
+        <div class="bar" data-bar-row><span>GLYPHS</span><div class="track"><div class="fill" data-bar style="transform:scaleX(.48)"></div></div><span data-bar-value>48%</span></div>
+        <div class="bar" data-bar-row><span>RAYS</span><div class="track"><div class="fill" data-bar style="transform:scaleX(.86)"></div></div><span data-bar-value>86%</span></div>
+        <div class="bar" data-bar-row><span>FRAMES</span><div class="track"><div class="fill" data-bar style="transform:scaleX(.61)"></div></div><span data-bar-value>61%</span></div>
+      </div>
+      <div class="split">
+        <div class="donut-wrap"><div class="donut" data-donut><div class="donut-hole" data-donut-value>42%</div></div>SHARE</div>
+        <div class="inset" style="background:#f3ecd9;border-color:#b9ae93;padding:6px">
+          <svg class="flow" viewBox="0 0 220 118">
+            <defs><marker id="a-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10 z" /></marker></defs>
+            <path class="edge live" d="M62 59 C 90 59, 92 26, 128 26" marker-end="url(#a-arrow)" />
+            <path class="edge" d="M62 59 C 90 59, 92 92, 128 92" marker-end="url(#a-arrow)" />
+            <path class="edge dotted" d="M170 38 L170 78" marker-end="url(#a-arrow)" />
+            <g class="node"><rect x="6" y="44" width="56" height="30" rx="5" /><text x="34" y="62">DOM</text></g>
+            <g class="node"><rect x="128" y="10" width="84" height="30" rx="5" /><text x="170" y="28">MIRROR</text></g>
+            <g class="node"><rect x="128" y="78" width="84" height="30" rx="5" /><text x="170" y="96">THREE</text></g>
+          </svg>
+        </div>
+      </div>
+      <div class="log" data-log></div>
+    </div>
+    <div class="tag" style="left:20px;top:-6px"><b>Charts</b>SVG polyline whose <code>points</code> are rebound every tick; dashed grid; markers; marching ants on <code>stroke-dashoffset</code>; bars on <code>transform: scaleX</code> with an overshooting transition; a conic-gradient donut; a log that streams rows at the end, striped with <code>:nth-child(even)</code>, scrolled with <code>scrollTop</code>.</div>
+  </div>
+
+  <!-- ===================== monitor ===================== -->
+  <div class="zone" id="monitor">
+    <div class="case">
+      <div class="bezel">
+        <div class="screen" data-screen data-phosphor="green" data-boot="DESK.JS">
+          <pre class="crt"><span data-program></span><span data-prompt></span><span class="cursor"></span></pre>
+        </div>
+        <div class="scanlines"></div><div class="glare"></div>
+      </div>
+      <div class="chin">
+        <div class="badge">apendua<b>PC</b></div>
+        <div class="vents"></div>
+        <div class="knob-wrap"><div class="knob" data-phosphor-knob>PHOSPHOR · <span data-phosphor-label>GREEN</span> ▾</div></div>
+        <div class="drive" data-drive><div class="slot"></div><div class="led" data-led></div></div>
+        <div class="power" data-power title="End the session"><div class="pled"></div></div>
+      </div>
+    </div>
+    <div class="neck"></div><div class="foot"></div>
+    <div class="tag" style="left:30px;top:40px"><b>Monitor</b>The program is revealed with <code>makeReveal</code> (sliced here). Scanlines and glare are layers over the scroller. The phosphor knob opens a layer menu; colour is a transition. Drop a floppy on the drive to load it; type <code>HELP</code>. In a session the power button ends it.</div>
+  </div>
+
+  <!-- ===================== board ===================== -->
+  <div class="zone" id="board">
+    <div class="frame"><div class="cork" data-board>
+      <div class="card note" data-card draggable="true" style="left:18px;top:20px;--tilt:-4deg"><div class="pin"></div>Mirror the whole desk into 3D<small>— by Friday?</small></div>
+      <div class="card checklist" data-card draggable="true" style="left:196px;top:14px;--tilt:3deg"><div class="pin blue"></div>
+        <h4>Ship list</h4>
+        <label><input type="checkbox" checked /><span>CRT reveal</span></label>
+        <label><input type="checkbox" checked /><span>Draggable cards</span></label>
+        <label><input type="checkbox" /><span>Floppy → drive</span></label>
+        <label><input type="checkbox" /><span>Phosphor menu</span></label>
+        <label><input type="checkbox" /><span>Pick up the memo</span></label>
+      </div>
+      <div class="card polaroid" data-card draggable="true" style="left:28px;top:186px;--tilt:5deg"><div class="pin yellow"></div><img src="photo.svg" alt="" /><p>labs offsite '84</p></div>
+      <div class="card index" data-card draggable="true" style="left:184px;top:212px;--tilt:-2deg"><div class="pin"></div>
+        <h4>IDEAS</h4><ul><li>clock = useFrame</li><li>mug steam = keyframes</li><li>memo you can pick up</li></ul></div>
+      <div class="card note pink newnote" data-card draggable="true" style="left:214px;top:344px;--tilt:2deg"><div class="pin blue"></div>New note<input data-new-note placeholder="type, then ⏎" /></div>
+    </div></div>
+    <template id="note-template"><div class="card note green" data-card draggable="true"><div class="pin"></div><span data-note-text></span></div></template>
+    <div class="tag" style="left:30px;top:-8px"><b>Board</b>Cards are <code>draggable="true"</code> and move by HTML drag and drop. Pins are layers. Checkboxes strike their label through <code>input[data-xr-checked] + span</code>. Polaroid is an <code>&lt;img&gt;</code> with <code>object-fit: cover</code>. The pink note is a text field: it opens freedom's keyboard in the headset, and here the desk keyboard types into it.</div>
+  </div>
+
+  <!-- ===================== floppies ===================== -->
+  <div class="zone" id="floppies">
+    <div class="floppy" draggable="true" data-floppy="PLOT.BAS" style="left:0;top:40px;--tilt:-10deg"><div class="shutter"><i></i></div><div class="label"><b>PLOT.BAS</b><span>quarterly</span></div></div>
+    <div class="floppy blue" draggable="true" data-floppy="SNAKE.ASM" style="left:92px;top:18px;--tilt:4deg"><div class="shutter"><i></i></div><div class="label"><b>SNAKE.ASM</b><span>do not lose</span></div></div>
+    <div class="floppy red" draggable="true" data-floppy="REVEAL.FRAG" style="left:176px;top:50px;--tilt:12deg"><div class="shutter"><i></i></div><div class="label"><b>REVEAL.FRAG</b><span>how it types</span></div></div>
+    <div class="tag" style="left:0;top:-30px"><b>Floppies</b>Drag one out of this panel and drop it on the monitor's drive: drag and drop across two panels.</div>
+  </div>
+
+  <!-- ===================== keyboard ===================== -->
+  <div class="zone" id="keyboard">
+    <div class="keyboard">
+      <div class="kb-top"><span class="brand">apendua · model 84</span><span class="kb-leds"><i></i><i></i><i></i></span></div>
+      <div class="keys" data-keys></div>
+    </div>
+    <div class="tag" style="left:20px;top:-8px"><b>Keyboard</b>Every key is a <code>cursor: pointer</code> box; press is a <code>transform</code> on <code>[data-xr-active]</code>, felt with the <code>key</code> haptic flavour. Your real keyboard drives it too.</div>
+  </div>
+
+  <!-- ===================== memo ===================== -->
+  <div class="zone" id="memo">
+    <div class="paper">
+      <div class="ring"></div>
+      <div class="letterhead">
+        <svg viewBox="0 0 40 40"><defs><symbol id="a-mark" viewBox="0 0 40 40"><circle cx="20" cy="20" r="17" fill="none" stroke="#1d3b6e" stroke-width="2.5" /><path d="M11 29 L20 9 L29 29 M14.5 22 H25.5" fill="none" stroke="#1d3b6e" stroke-width="3" stroke-linejoin="round" /><circle cx="33" cy="9" r="3.5" fill="#c0392b" /></symbol></defs><use href="#a-mark" width="40" height="40" /></svg>
+        <div><h1>Apendua Labs</h1><p>Panels · Pixels · Presence — est. 1984</p></div>
+      </div>
+      <div class="memo-title">MEMORANDUM</div>
+      <dl class="meta"><dt>TO</dt><dd>Everyone at the desk</dd><dt>FROM</dt><dd>The Showcase Committee</dd><dt>RE</dt><dd>Moving into three dimensions</dd></dl>
+      <p>Effective immediately, every object on this desk is to be written as <em>ordinary HTML and CSS</em>, and mirrored into the room <u>without a second copy</u>.</p>
+      <ol><li>The screen types; it does not rewrite.</li><li>Cards travel by drag and drop.</li><li>This page may be picked up and read.</li></ol>
+      <p>Proportional type, justified, with the letterhead drawn once and <em>used</em> twice.</p>
+      <div class="sig">A. Pendua</div>
+      <div class="stamp">APPROVED<small>1 OCT 1984</small></div>
+      <div class="foot-note"><span>REF 84/117</span><span>PAGE 1 OF 1</span></div>
+    </div>
+    <div class="tag" style="left:10px;top:-34px"><b>Memo</b>Proportional serif and display faces, justified text, <code>::marker</code>, a <code>&lt;symbol&gt;</code> logo drawn through <code>&lt;use&gt;</code>, a hard-stop radial coffee ring. A draggable panel with <code>level: false</code>: pick it up and tilt it to read.</div>
+  </div>
+
+  <div class="zone" id="mug"><div class="wisp"></div><div class="wisp"></div><div class="mug-handle"></div><div class="mug"></div>
+    <div class="tag" style="left:-150px;top:0"><b>Mug</b>Steam is a CSS keyframe on transform and opacity: the cheap tier.</div></div>
+<template id="phosphor-menu"><div class="menu"><div data-pick="green"><i style="background:#6dff8f"></i>GREEN P1</div><div data-pick="amber"><i style="background:#ffb43a"></i>AMBER P3</div><div data-pick="white"><i style="background:#e6f0f2"></i>WHITE P4</div></div></template>

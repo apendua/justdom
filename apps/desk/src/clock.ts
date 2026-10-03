@@ -27,3 +27,31 @@ export function mountClock(clock: HTMLElement) {
   const timer = setInterval(tick, 1000);
   return () => clearInterval(timer);
 }
+
+/** What a digital clock in `timeZone` reads at `date`, as `HH:MM:SS`. */
+export function digitalTime(date: Date, timeZone: string): string {
+  return date.toLocaleTimeString("en-GB", {
+    timeZone,
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+}
+
+/**
+ * Every `[data-time-zone]` under `root`, rewritten once a second: one short
+ * run re-rasterized a tick, the counterpart to the screen, which reveals
+ * rather than rewrites.
+ */
+export function mountDigitalClocks(root: HTMLElement) {
+  const clocks = root.querySelectorAll<HTMLElement>("[data-time-zone]");
+  const tick = () => {
+    const now = new Date();
+    clocks.forEach((clock) => {
+      clock.textContent = digitalTime(now, clock.dataset.timeZone ?? "UTC");
+    });
+  };
+  tick();
+  const timer = setInterval(tick, 1000);
+  return () => clearInterval(timer);
+}

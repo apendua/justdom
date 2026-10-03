@@ -346,12 +346,31 @@ An element is a ray target of its own when its computed `cursor` is
 `pointer-events` is not `none`. A press on it arrives as
 `mousedown`, `mouseup` and `click` on the element, and the element carries
 `data-xr-hover` while the ray is on it and `data-xr-active` while it is held.
+Each of these events, and the `mousemove` a ray moving over the element
+sends, carries the point the ray met as `clientX` and `clientY`, mapped
+onto the page's own layout, so a page that finds what was pressed from
+where it was pressed, a board drawn as one `<svg>` path, reads the place a
+mouse over the same spot would have given it. A press, its release, its
+click, a press on a scrolling list and the ray's arrival on a control, by
+the rule the hover pulse follows (see **Haptics**), each read where the
+page lays the panel out; a move, sent every frame, reads no layout and
+takes its point where the panel was last read, so a hover starts exact
+and drifts only by what the page moves while the ray stays. The point is
+on screen only for a panel mirroring an element the page shows. A panel
+built from a tree lives in a container the portal parks off screen, so its
+points are right against the page's own rects but `elementFromPoint` finds
+nothing at them. The one thing the mapping leaves out is a transform on
+the mirrored root itself, which the mirror leaves out too.
 Clickable elements nest, if only because `cursor` is inherited, and a press
 inside several of them goes where it goes on a page. The innermost one is the
 target, its DOM events are sent once and bubble from there, and every
-clickable element around it takes `data-xr-active` as well, as `:active`
-would. The ray event stops at the outermost of them, so nothing outside the
-panel hears a press the panel took.
+clickable element around it takes `data-xr-hover` and `data-xr-active` as
+well, as `:hover` and `:active` would. Only the clickable ones do: an
+ancestor that is not a ray target takes neither, where on a page it would
+match `:hover`. The ray event stops at the outermost of them, so nothing
+outside the panel hears a press the panel took. Nesting costs no extra ray
+tests: a registered object inside another is reached by the outer one's
+walk and is not cast again on its own.
 
 It does that without depending on `justdom`. What `dom()` takes is a
 `Mountable` — a tree that has not been put anywhere yet, exposing one method
@@ -548,6 +567,11 @@ to.** A ray that lands on the panel but on none of its buttons hits the blocker
 spanning the container, which dispatches a bubbling `click` on the portal's
 root element. That is what "clicked outside" means to a menu that wants to
 close itself; there is no other way for the tree inside to learn it happened.
+The click carries the point the ray met, as a click on a button does, so a
+`<canvas>` board, which is not `cursor: pointer` and takes its clicks this
+way, finds the square from `clientX` and `clientY`. So does the click a
+press on a scrolling list's own padding sends when it became no scroll, and
+the one a press on an overlay's own background sends the overlay.
 
 Count only the panel's own clicks as elsewhere, via `getPortalRoot(node)`,
 and ask it when the click arrives rather than when the listener goes up:
@@ -769,7 +793,9 @@ The rules are the browser's:
 - The events carry `clientX` and `clientY`: the point under the ray, mapped
   back onto the page's own layout. A list that compares them with a row's
   `getBoundingClientRect()` to decide whether a card goes above or below it
-  gets the answer it gets under a mouse.
+  gets the answer it gets under a mouse. `dragstart`, a drag's arrival on
+  another panel and `drop` read where the page lays the panel out; the
+  other frames take the corner last read, as a `mousemove` does.
 - `:hover` does not change under a drag. From a press on a draggable
   element until the trigger opens, the elements the ray crosses take no
   `data-xr-hover` and hear no `mousemove`. The control the ray is on when
@@ -1965,15 +1991,15 @@ marching ants in the showcase spend without noticing.
 A shape with `cursor: pointer` is a ray target of its own, by the rule a
 box follows. It forwards the ray to its element exactly as a box does:
 `mousedown`, `mouseup` and `click` for a press, `mousemove` while the ray
-moves over it, and `data-xr-hover` and `data-xr-active` on the element for
-a stylesheet to answer. A press that turns into a drag scrolls the list the
-`<svg>` sits in. `pointer-events` decides which of the fill and the stroke
-a ray can hit, with SVG's values: the default `visiblePainted` hits
-whatever is painted and visible, `none` lets the ray through to what is
-behind, `fill` and `stroke` pick one region, and `all` hits a region with
-no paint, which is drawn as nothing and hit all the same. The `<svg>`'s
-clip trims the hits as it trims the drawing, so a node scrolled out of
-view takes no press.
+moves over it, each with the point on the page, and `data-xr-hover` and
+`data-xr-active` on the element for a stylesheet to answer. A press that
+turns into a drag scrolls the list the `<svg>` sits in. `pointer-events`
+decides which of the fill and the stroke a ray can hit, with SVG's values:
+the default `visiblePainted` hits whatever is painted and visible, `none`
+lets the ray through to what is behind, `fill` and `stroke` pick one
+region, and `all` hits a region with no paint, which is drawn as nothing
+and hit all the same. The `<svg>`'s clip trims the hits as it trims the
+drawing, so a node scrolled out of view takes no press.
 
 ```css
 .diagram .node {
@@ -1993,6 +2019,23 @@ the scene*). Where the button should be the target itself, put
 `pointer-events: none` on the icon's `<svg>`, as a page would. Neither the
 `<svg>` nor its shapes are then ray targets of their own, whatever `cursor`
 they inherit, and a press on the icon is a press on the button.
+
+A `<g>` under `cursor: pointer` is a ray target too, as a clickable box
+is, so it is hovered and pressed with whichever of its shapes the ray is
+on. That is what lets a diagram style a node by its group:
+
+```css
+.diagram .node {
+  cursor: pointer;
+}
+
+.diagram .node[data-xr-hover] rect {
+  fill: #ffe9a3; /* the ray may be on the rect or on the label beside it */
+}
+```
+
+A hit on the group is a hit on one of its shapes, so each shape's own
+`pointer-events` still decides whether it can be hit.
 
 Not drawn yet: gradients and patterns (a `url(#…)` paint reads
 as `none`, though it still counts as painted for a ray), `clip-path`,

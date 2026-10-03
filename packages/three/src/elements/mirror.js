@@ -9,6 +9,7 @@ import {
   preservesWhitespace,
   trimLineRange,
 } from "./textLines.js";
+import { isSvgElement } from "./plugins.js";
 import { clipBoxEqual, intersectClipBoxes, toLocalClipBox, UNCLIPPED } from "./clip.js";
 
 /**
@@ -68,10 +69,12 @@ import { clipBoxEqual, intersectClipBoxes, toLocalClipBox, UNCLIPPED } from "./c
  *     out from the space it was given, so a box that came out the size it
  *     was has not moved anything inside it. `#settleLayout` climbs from
  *     each change telling every level's children they moved, and stops at
- *     the first level that kept its own size. Everything below an unchanged
- *     box hears nothing at all, and what it is spared is mostly text: a
- *     `Range` measurement is the most expensive read in this file, and on a
- *     list there is one per row.
+ *     the first level that kept its own size, an inline box excepted: its
+ *     size is the union of its line fragments, which text rewritten on its
+ *     last line can leave alone while moving what follows it. Everything
+ *     below an unchanged box hears nothing at all, and what it is spared is
+ *     mostly text: a `Range` measurement is the most expensive read in this
+ *     file, and on a list there is one per row.
  *
  *     Two things reach past that. `readParentBox` is how a box that *did*
  *     resize reaches its own contents, one level per settling and no
@@ -355,6 +358,65 @@ function resized(element) {
 }
 
 /**
+ * HTML elements whose inline box is atomic whatever their computed `display`
+ * says. Replaced elements and form controls are laid out as one box on one
+ * line, so their size is a true measure of what they moved, and whatever is
+ * inside them is laid out inside that box rather than on the lines around
+ * it.
+ */
+const ATOMIC_INLINE_TAGS = new Set([
+  "audio",
+  "button",
+  "canvas",
+  "embed",
+  "iframe",
+  "img",
+  "input",
+  "object",
+  "select",
+  "textarea",
+  "video",
+]);
+
+/**
+ * Whether the element's box is laid out in pieces across line boxes, so that
+ * its size is no measure of what it moved. An inline box's border box is the
+ * union of its fragments, and text rewritten on its last line moves where it
+ * ends, and the inline content after it, without changing that union. A box
+ * with `display: contents` has no box at all. Either way the change belongs
+ * to the element the line boxes are in, and the climb goes on to it.
+ *
+ * Read defensively, as `getFlowMode` reads: an engine that reports no
+ * `display` is reporting the initial value, `inline`.
+ *
+ * An atomic inline box never splits, and some compute to `inline` all the
+ * same. Every SVG element does: an `<svg>` root is one box in the HTML flow,
+ * and what is inside it is placed in user space rather than on lines. So do
+ * the replaced elements in `ATOMIC_INLINE_TAGS`. A browser gives the form
+ * controls there `inline-block`, so they need the list only where an engine
+ * reports no `display` or the page sets `display: inline` on one. A label
+ * rewritten every frame inside an SVG gauge ends the climb at the `<svg>`,
+ * as it would at any box that kept its size.
+ *
+ * `display: contents` is read first, because it removes the box from any of
+ * those. Its children flow in the parent's line boxes, as a `<button>`'s do,
+ * and on the other tags it renders as `none`, with no box to measure.
+ *
+ * @param {Element} element
+ * @returns {boolean}
+ */
+function splitsAcrossLines(element) {
+  const display = getComputedStyleCached(element).display;
+  if (display === "contents") {
+    return true;
+  }
+  if (isSvgElement(element) || ATOMIC_INLINE_TAGS.has(element.localName)) {
+    return false;
+  }
+  return display === "" || display === "inline";
+}
+
+/**
  * @param {Signal<number>} signal
  */
 function bump(signal) {
@@ -446,7 +508,9 @@ class NodeRecord {
    * per node rather than per portal. `#settleLayout` bumps it on exactly
    * the nodes whose boxes the change could have disturbed: the children of
    * every container the change happened inside, climbing only as far as the
-   * first container that kept its own size. Everything *below* those nodes
+   * first container that kept its own size. An inline or `contents` box does
+   * not end the climb, since its size says nothing about where what follows
+   * it starts (see `splitsAcrossLines`). Everything *below* those nodes
    * hears nothing, because a box's interior is a function of its own
    * content box and its own subtree — see `readParentBox`.
    *
@@ -1095,10 +1159,13 @@ export class DomMirror {
    * level. From the container, each level has its children told and then is
    * asked whether it kept its own size; the first one that did ends the
    * climb, because a box that did not move cannot have moved anything it
-   * sits among. A list of a fixed height can have rows added to it all day
-   * without the panel around it hearing a word — and so can a list that
-   * merely happens not to have changed height, which is the case the
-   * overflow test could not see.
+   * sits among. An inline box is the exception (`splitsAcrossLines`): it is
+   * not one box but its fragments on each line, and a prompt as wide as its
+   * widest line keeps that width while the caret after it moves on with every
+   * key. So the climb goes on past it to the box the lines are in. A list of
+   * a fixed height can have rows added to it all day without the panel around
+   * it hearing a word — and so can a list that merely happens not to have
+   * changed height, which is the case the overflow test could not see.
    *
    * What the children hear is `moved`, and what they do with it is the other
    * half: they re-measure, and — being plain values behind equality gates —
@@ -1119,8 +1186,8 @@ export class DomMirror {
    *
    * The second saving is *which* children hear it. Where the container lays
    * its children out in document order from a fixed start edge — see
-   * `laysOutChildrenInOrder` — a change at one child cannot have moved the
-   * children before it, so the news starts there and runs to the end. That is
+   * `getFlowMode` — a change at one child cannot have moved the children
+   * before it, so the news starts there and runs to the end. That is
    * what makes appending to a list cost the same whether the list has ten
    * rows or a thousand: the arriving row is the last child, and there is
    * nothing after it to tell. Prepending still costs the whole list, which is
@@ -1173,7 +1240,7 @@ export class DomMirror {
             }
             break;
           }
-          if (!resized(current)) {
+          if (!splitsAcrossLines(current) && !resized(current)) {
             break;
           }
           // Climbing one level, the box that changed is the one we came from,

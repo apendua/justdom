@@ -1,6 +1,47 @@
 # Change Log - @apendua/freedom
 
-This log was last generated on Sat, 26 Sep 2026 15:05:41 GMT and should not be manually modified.
+This log was last generated on Fri, 02 Oct 2026 14:14:43 GMT and should not be manually modified.
+
+## 0.25.0
+Fri, 02 Oct 2026 14:14:43 GMT
+
+### Minor changes
+
+- Draw CSS gradient backgrounds in panels: linear, radial and conic gradients and their repeating forms, laid out by background-size, -position, -repeat and -origin, baked into a shared ramp atlas so gradient boxes stay in the batch
+- The caret of the field being typed into blinks, solid again after each keystroke.
+- dom() and createPortal mirror an element the page already has: pass an HTMLElement (or a subscribable of them) to dom(), or root to createPortal, and the portal watches it where it stands instead of mounting into a container of its own, so an app with a flat interface adds an immersive session without building its UI twice.
+- Panels speak HTML drag and drop: a draggable="true" element picked up with the trigger sends dragstart, dragenter, dragover, dragleave, drop and dragend as a browser would, across panels, with a DataTransfer that honours dropEffect and effectAllowed
+- The drag ghost is a picture of what is dragged, rendered once at dragstart, where it was an outline
+- Panels can opt into being moved by the player with `draggable`; `carry()` keeps the tilt an object was taken with and takes `level: false` for the hand's whole rotation; `runFrame` runs a renderer's frame callbacks for tests; the keyboard is always draggable and its `draggable` option is gone.
+- An element's opacity now fades everything inside it, as on a page: boxes, text, a field's value and caret, and SVG shapes are drawn at the product of their own opacity and every ancestor's up to the panel's top
+- Draw list markers in panels for any element laid out as a list item, <li> and <summary> included: bullets and disclosure triangles, numbers in every common list-style-type, start, value and reversed, inside and outside positions on the item's first line, right-to-left markers, ::marker colour and font, and the item's own overflow clip
+- A panel follows every attribute written inside it, not a fixed list: an SVG shape's d, fill, points or transform bound to data is redrawn when it changes, and an app's own attribute selectors restyle. The portal's own data-xr-loading and data-xr-portal flags on the container are ignored.
+- The keyboard a field brings up follows the haptics of the panel it types for, with the hover on for its keys unless that panel turned it off by name, and silent for a panel with haptics: false.
+- Panels are felt: every control (an element with cursor: pointer) pulses the controller's motors when the trigger closes on it, and, where a panel asks for it with haptics.hover, when the ray arrives on it, once per arrival and not while the hand scrolls a list. PanelOptions and PortalOptions take haptics (hover, off by default; active; strength; flavor: tick, knock, buzz, key or a HapticFlavor of your own; false for none), spread one over the other like keyboard and loadingFrame; playHaptic drives a hand's motors for a scene's own haptics. Pointer events now carry the controller's inputSource and the registeredTarget their hit belongs to; enter and leave are per registered target (a ray drifting from a button's label onto its background is a pointermove, not a leave and an enter) and carry relatedTarget, the registered object the ray came from or went to. InteractionManager.addController takes a reader for what is driving the controller.
+- Add PanelOptions: scene-wide panel defaults (keyboard, loadingFrame, maxTextScale, atomic, opaqueToRays, priority, budget) set through render()'s panelOptions or withPanelOptions, with each panel's own options laid over them. A panel's keyboard option may now be partial or false. loadingFrame no longer accepts true: leave it out for the default frame, or pass false or an options object.
+- A press on nested clickable elements works as on a page: the innermost element is the target of the DOM events, sent once, every clickable element around it takes data-xr-active and hears its onPress, and the ray event stops at the outermost of them
+- A <g> under cursor: pointer is a ray target, so it is hovered and pressed with the shape the ray is on, and a .node[data-xr-hover] rect rule restyles the node. A registered object inside another is cast once, by the outer one's walk, and a pointerleave, a release and a grip's release reach every object their start went through, even once the object under the ray was taken out of the scene.
+- One keyboard for every panel in a render() scene, set once through panelOptions: it opens in front of the player at a constant size (placement, reach, drop, scale), stays put while typing moves between panels, can be moved by handles along its edges that show on hover (draggable), and follows focus like a page, staying up on Enter and going on a press anywhere but a field. KeyboardTarget gains field().
+- Restyle only the animating element for non-inherited animated properties, and add a createPortal atomic option to opt a panel out of whole-or-nothing updates
+- Portals now respect CSS visibility: a hidden element draws nothing of its own and takes no rays, while a descendant can show itself with visibility: visible. The portal container is kept out of sight by translating it off-screen rather than with visibility: hidden, which every element inside used to inherit; it is inert and aria-hidden, and says visibility: visible for itself so a page hiding its own content does not hide the panels.
+- Inline SVG in a portal, as a plugin: a new @apendua/freedom/svg entry point whose svgElements() draws <path>, <rect>, <circle>, <ellipse>, <line>, <polyline> and <polygon> from their computed style -- fills with fill-rule, strokes with caps, joins, dashes and dash offsets (dots included), transforms, viewBox and preserveAspectRatio, opacity, display and visibility, clipping by the panel -- behind a general element-plugin seam (PortalOptions.plugins, RenderOptions.portalPlugins, PortalPluginsContext). An <svg> without the plugin is its CSS box and nothing inside it. The animation clock now follows SVG elements and classifies SVG paint properties, so a stroke-dashoffset animation samples one element rather than re-measuring the panel.
+- freedom/svg: an <image> inside inline SVG is drawn, as a textured quad under the shape's matrices
+- freedom/svg: markers on paths are drawn, and the portal follows SVG templates it does not build
+- freedom/svg: <use> and <symbol> are drawn, and a copy inherits the <use>'s styles
+- freedom/svg: a nested <svg>, a <symbol> and a <marker> clip their content to their viewports
+- SVG shapes under cursor: pointer are ray targets of their own: they forward hover, press and click to their element as a box does, follow pointer-events for which of fill and stroke a ray hits, and are clipped for rays as for drawing
+- SVG in portals, S4b: shapes keep their geometry in user space and transforms move onto the scene graph — the <svg> root's content group carries the viewport, each <g>, nested <svg> and shape its own transform — so a transform animation or a root resize is a matrix write; the clip follows through the clip matrix. box() gains a contentMatrix option.
+- SVG in portals, S4a: the clip patch (applyClip) takes an optional mesh-to-frame clipMatrix uniform, applied in the vertex shader; everything passes the identity for now, so nothing moves.
+- Draw SVG <text> and <tspan> in a portal, laid out by the browser in an untransformed copy and drawn as textured quads in user space
+- Text fields are mirrored: the value or placeholder drawn in the box, followed through input events and the value setter, with a caret while typed into. PortalOptions.keyboard takes a factory for the board's DOM; the portal mounts it below the panel when a field is pressed, types into the field through the exported typeIntoInput, and dismisses it on Enter, Escape, a background press or the field leaving. The portal handle gains size(), and fields carry data-xr-focus while typed into. RenderOptions.presentingOnly draws only while an immersive session is presenting, for a page that offers a session as an extra.
+- The keyboard in the room previews the field being typed into just above its keys: unmasked, in the field's own look (or preview.className), leaning toward the player by preview.tilt (15°), preview: false to leave it off. The caret of a field being typed into is placed by the ray's select press and dragged with it, the preview's going into the field; number and email fields keep a caret too. BoxOptions gain interactions; InputFocus gains placeCaret; PREVIEW_ATTRIBUTE is exported.
+
+### Patches
+
+- A box's border is drawn in the colour of the first side that has a border, so a one-sided border such as a bottom divider is drawn in its own colour rather than the text colour
+- A drag from one panel to another keeps the other panel's controls unhovered, and its ghost follows the ray onto whichever panel it is over
+- A press whose mousedown is cancelled after a drag is a click again, and the control a drag ends on is hovered on the next move
+- A controller three is not tracking (not yet connected, disconnected, or with its pose lost) points at nothing: getIntersection casts no ray from a hidden target ray space, for the hover and for presses, and the manager looks again when its visibility changes, so cursors and hovers go when a session ends and a press from a lost hand lands nowhere
 
 ## 0.24.0
 Sat, 26 Sep 2026 15:05:41 GMT

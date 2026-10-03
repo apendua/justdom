@@ -31,6 +31,7 @@ import { place, placeAndScale } from "./place.js";
 import { BoxBatchContext } from "./boxBatch.js";
 import { TextBatchContext } from "./textBatch.js";
 import { forwardPointerEvents, isGone, isRayTarget } from "./pointerForwarding.js";
+import { lazyPanel, pressInit, probePanel } from "./dragAndDrop.js";
 import { setContentGroup } from "./contentGroup.js";
 
 /** Scratch for composing a scroll onto a content group's matrix. */
@@ -158,6 +159,8 @@ export function box(ctx, element, options = {}) {
   setContentGroup(object, contentGroup);
 
   const { makeInteractive, stopPropagation } = interactions(ctx);
+  /** The panel the box is in, for where a click on it is on the page. */
+  const panel = lazyPanel(object);
   const drags = scrollDrags(ctx);
   const isPanelReady = PortalReadyContext.get(ctx);
   /**
@@ -364,6 +367,15 @@ export function box(ctx, element, options = {}) {
     makeInteractive(() => isPanelReady() && shown.get()),
     on("selectstart", (e) => {
       if (!isGone(element)) {
+        // The press is one event, so it reads where the page lays the
+        // panel out, as a press on a button does through its `mousedown`.
+        // The controls the ray reaches while the list scrolls, and while
+        // it glides after, read nothing on arrival (see `arrived` in
+        // `forwardPointerEvents`), and their moves take this corner.
+        const own = panel();
+        if (own) {
+          probePanel(own);
+        }
         drags.begin(e.controller, element, object);
       }
       stopPropagation(e);
@@ -376,7 +388,7 @@ export function box(ctx, element, options = {}) {
     }),
     on("select", (e) => {
       if (!isGone(element) && !drags.didScroll(e.controller)) {
-        element.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        element.dispatchEvent(new MouseEvent("click", pressInit(panel(), e, false)));
       }
       stopPropagation(e);
     }),
@@ -502,7 +514,7 @@ export function box(ctx, element, options = {}) {
         return $(blocker, [
           makeInteractive(isPanelReady),
           on("select", (e) => {
-            element.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+            element.dispatchEvent(new MouseEvent("click", pressInit(panel(), e, false)));
             // Unlike the portal's own blocker, which lets the scene
             // behind a panel see the click as well, an overlay is a
             // layer: what happens on it does not reach what it covers.

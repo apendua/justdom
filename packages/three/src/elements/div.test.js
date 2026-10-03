@@ -10,6 +10,8 @@ import { getContentGroup } from "./contentGroup.js";
 import { scrollDrags } from "./scroll.js";
 import { describeScroller } from "../test/scroller.js";
 import { recordingSource } from "../test/rumble.js";
+import { clientRect } from "../test/clientRect.js";
+import { registerPanel } from "./dragAndDrop.js";
 
 /**
  * @import { InteractionManager } from "../interactions.js";
@@ -468,29 +470,41 @@ describe("div elevation", () => {
   });
 
   test("clicking an overlay's own background is reported to the element", () => {
-    const { element, registered, subscription } = setup(
+    const { element, object, registered, subscription } = setup(
       "default",
       "position: absolute; z-index: 1",
     );
+    // The overlay as the panel's top, laid out by the page at 100,40, so
+    // that the click can say where on the page it landed.
+    element.getBoundingClientRect = () => clientRect(100, 40, 200, 100);
+    const { unregister } = registerPanel(object, element, (node) =>
+      node === element ? object : undefined,
+    );
+    object.updateMatrixWorld(true);
+    const point = object.localToWorld(new THREE.Vector3(12, 7, 0));
 
-    /** @type {EventTarget[]} */
+    /** @type {string[]} */
     const clicked = [];
     /** @param {Event} event */
     const listener = (event) => {
-      if (event.target) {
-        clicked.push(event.target);
-      }
+      const { target, clientX, clientY } = /** @type {MouseEvent} */ (event);
+      clicked.push(`${/** @type {Element} */ (target).localName} at ${clientX},${clientY}`);
     };
     document.addEventListener("click", listener);
 
-    registered[0].dispatchEvent(/** @type {any} */ ({ type: "select" }));
+    const [blocker] = registered;
+    blocker.dispatchEvent(
+      /** @type {any} */ ({ type: "select", intersection: { point, object: blocker } }),
+    );
 
     // The menu's own padding is not a miss to be passed through to whatever is
     // behind it; it is a click on the menu, and "did the click land inside the
     // menu" is exactly the question a dismiss-on-outside-click handler asks.
-    assert.deepEqual(clicked, [element]);
+    // With the point the ray met, as a click on a button carries it.
+    assert.deepEqual(clicked, ["div at 112,47"]);
 
     document.removeEventListener("click", listener);
+    unregister();
     subscription.unsubscribe();
   });
 });
@@ -662,14 +676,7 @@ describe("div sibling stacking", () => {
 function layout(element, rect) {
   element.getBoundingClientRect = () => {
     const [left, top, right, bottom] = rect();
-    return /** @type {DOMRect} */ ({
-      left,
-      top,
-      right,
-      bottom,
-      width: right - left,
-      height: bottom - top,
-    });
+    return clientRect(left, top, right - left, bottom - top);
   };
 }
 
@@ -844,22 +851,31 @@ describe("div drag-to-scroll", () => {
     assert.equal(element.dataset.xrHover, undefined);
 
     // A press that never became a drag still reports a click, which is what
-    // the panel background would have reported had the list not been there.
-    /** @type {EventTarget[]} */
+    // the panel background would have reported had the list not been there,
+    // with the point the ray met, as that click carries it. The list as the
+    // panel's top, laid out by the page at 100,40.
+    element.getBoundingClientRect = () => clientRect(100, 40, 300, 100);
+    const { unregister } = registerPanel(object, element, (node) =>
+      node === element ? object : undefined,
+    );
+    object.updateMatrixWorld(true);
+    const point = object.localToWorld(new THREE.Vector3(12, 7, 0));
+    /** @type {string[]} */
     const clicked = [];
     const listener = (/** @type {Event} */ event) => {
-      if (event.target) {
-        clicked.push(event.target);
-      }
+      const { target, clientX, clientY } = /** @type {MouseEvent} */ (event);
+      clicked.push(`${/** @type {Element} */ (target).localName} at ${clientX},${clientY}`);
     };
     document.addEventListener("click", listener);
     const controller = new THREE.Object3D();
-    object.dispatchEvent(/** @type {any} */ ({ type: "selectstart", controller }));
-    object.dispatchEvent(/** @type {any} */ ({ type: "selectend", controller }));
-    object.dispatchEvent(/** @type {any} */ ({ type: "select", controller }));
-    assert.deepEqual(clicked, [element]);
+    const intersection = { point, object };
+    object.dispatchEvent(/** @type {any} */ ({ type: "selectstart", controller, intersection }));
+    object.dispatchEvent(/** @type {any} */ ({ type: "selectend", controller, intersection }));
+    object.dispatchEvent(/** @type {any} */ ({ type: "select", controller, intersection }));
+    assert.deepEqual(clicked, ["div at 112,47"]);
 
     document.removeEventListener("click", listener);
+    unregister();
     subscription.unsubscribe();
   });
 });
@@ -986,15 +1002,7 @@ describe("div gradients", () => {
   function sized(cssText) {
     const element = document.createElement("div");
     element.style.cssText = cssText;
-    element.getBoundingClientRect = () =>
-      /** @type {DOMRect} */ ({
-        left: 0,
-        top: 0,
-        right: 200,
-        bottom: 100,
-        width: 200,
-        height: 100,
-      });
+    element.getBoundingClientRect = () => clientRect(0, 0, 200, 100);
     document.body.appendChild(element);
     const mirror = createMirror();
     mirror.adopt(element);

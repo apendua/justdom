@@ -109,9 +109,8 @@ Three things to know about it.
   dispatches the `scroll` event the browser does not send while a session
   has the display. Without it the screen and the log would scroll on the
   page while their panels stayed put.
-- Under the emulator in a browser without a GPU the charts panel can stay
-  on its loading frame. A panel stops loading on a frame where nothing is
-  left to do, and at a few frames a second the charts change faster than
-  freedom's five milliseconds a frame can keep up with. With
-  `portalBudget` raised to 60 ms a frame, which is nearer what a headset
-  spends in a second, the same session has every panel up in five seconds.
+- The panels load slowly under the emulator in a browser without a GPU.
+  Freedom gives the panels a share of each frame to mount in, and at a few
+  frames a second the whole desk takes about a minute to come up. The
+  charts come last, because their live updates keep arriving while they
+  mount.

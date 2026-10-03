@@ -2,9 +2,9 @@
 
 Minesweeper on a hexagonal grid, with no framework under it. On a page the
 board is one `<svg>` wired to signals and the menu is a card beside it, or
-above it in a tall window. On a headset it is the very same DOM: the page keeps it, and
-`@apendua/freedom` mirrors the board and the menu into two panels in front
-of the viewer, the way `todo-vanilla` mirrors its list.
+above it in a tall window. On a headset it is the very same DOM: the page
+keeps it, and `@apendua/freedom` mirrors the board and the menu into two
+panels in front of the viewer, the way `todo-vanilla` mirrors its list.
 
 ## Running it
 
@@ -22,19 +22,20 @@ the **Enter** button appears at the bottom; press it and the emulated session
 is drawn over the page. `?emulator=bare` installs the runtime without the
 panels.
 
-`node tests/xr-check.mjs` first builds the app for production and fails if
-its service worker precaches the headset's chunks, since the worker is
-installed on every visit. It then loads the page alone in headless
-Chromium, which can present nothing, and fails if the headset scene is
-fetched, or if any covered tile or any of the card is under something else
-in a wide window, a tall one or a phone's. Then it plays a session on the emulated headset, which takes about
-a minute: it flags a tile with the grip, uncovers tiles with the trigger,
-deals a new board and restarts it from the menu panel, turns the
-passthrough on and leaves by the ×, and fails if any of that does not
-happen or the page throws. `SHOTS=<dir>` also photographs the page and the
-session, and `STACKS=1` prints a stack for anything the page throws. It
-borrows Playwright from `apps/showcase-xr`, so that project has to have
-been installed. It launches the Chromium at
+`node tests/xr-check.mjs` first builds the app for production and fails
+unless its service worker precaches exactly the JS the page loads: the entry
+chunk and what it imports, and none of the chunks only a headset or the
+emulator imports, since the worker is installed on every visit. It then loads
+the page alone in headless Chromium, which can present nothing, and fails if
+the headset scene is fetched, or if any covered tile or any of the card is
+under something else in a wide window, a tall one or a phone's. Then it plays
+a session on the emulated headset, which takes about a minute: it flags a
+tile with the grip, uncovers tiles with the trigger, deals a new board and
+restarts it from the menu panel, turns the passthrough on and leaves by the
+×, and fails if any of that does not happen or the page throws. `SHOTS=<dir>`
+also photographs the page and the session, and `STACKS=1` prints a stack for
+anything the page throws. It borrows Playwright from `apps/showcase-xr`, so
+that project has to have been installed. It launches the Chromium at
 `/opt/pw-browsers/chromium-1194/chrome-linux/chrome`; `CHROMIUM=<path>`
 points it at one installed elsewhere.
 
@@ -46,7 +47,7 @@ points it at one installed elsewhere.
 | `src/components/Game.ts` | The state, and the two trees over it: the board, rebuilt for each new game, and the menu, built once. |
 | `src/components/Minefield.ts` | The board: one `<svg>`, its covered tiles one traced path, finding the tile under a press from where it was pressed. |
 | `src/components/Menu.ts` | The card: the size, the mines left, how the game stands, Restart, and the × and Passthrough a session adds. |
-| `src/offer.ts` | The offer: installs the emulator behind `?emulator`, checks the platform can present, and only then loads `xr.ts`. Imports nothing from three.js. |
+| `src/offer.ts` | The offer: installs the emulator behind `?emulator`, checks the platform can present, and only then loads `xr.ts`, reloading once a newer service worker has the page if a deploy took that chunk away. Imports nothing from three.js. |
 | `src/xr.ts` | The session: makes the renderer with freedom's SVG plugin, and the Enter button. |
 | `src/components/Scene.ts` | The scene: the two panels, a backdrop, lights, the cursors and the frame rate. |
 | `src/placement.ts` | Where the panels hang, in plain numbers, shared with `tests/xr-check.mjs`. |

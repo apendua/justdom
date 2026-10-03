@@ -14,21 +14,28 @@ npm run build      # what `rush build` runs
 ```
 
 On a laptop the page is the page and nothing else: no session can be opened,
-so no button is shown, no renderer is made and three.js is never fetched.
+so no button is shown, no renderer is made and three.js is never fetched,
+not even by the service worker, which leaves the headset's chunks out of
+its precache.
 `?emulator` installs a headset in the browser (IWER, with its dev panels) and
 the **Enter** button appears at the bottom; press it and the emulated session
 is drawn over the page. `?emulator=bare` installs the runtime without the
 panels.
 
-`node tests/xr-check.mjs` first loads the page alone in headless Chromium,
-which can present nothing, and fails if the headset scene is fetched. Then
-it plays a session on the emulated headset, which takes about a minute: it
-flags a tile with the grip, uncovers tiles with the trigger, deals a new board and restarts it
-from the menu panel, turns the passthrough on and leaves by the ×, and fails
-if any of that does not happen or the page throws. `SHOTS=<dir>` also
-photographs the page and the session, and `STACKS=1` prints a stack for
-anything the page throws. It borrows Playwright from `apps/showcase-xr`, so
-that project has to have been installed.
+`node tests/xr-check.mjs` first builds the app for production and fails if
+its service worker precaches the headset's chunks, since the worker is
+installed on every visit. It then loads the page alone in headless
+Chromium, which can present nothing, and fails if the headset scene is
+fetched. Then it plays a session on the emulated headset, which takes about
+a minute: it flags a tile with the grip, uncovers tiles with the trigger,
+deals a new board and restarts it from the menu panel, turns the
+passthrough on and leaves by the ×, and fails if any of that does not
+happen or the page throws. `SHOTS=<dir>` also photographs the page and the
+session, and `STACKS=1` prints a stack for anything the page throws. It
+borrows Playwright from `apps/showcase-xr`, so that project has to have
+been installed. It launches the Chromium at
+`/opt/pw-browsers/chromium-1194/chrome-linux/chrome`; `CHROMIUM=<path>`
+points it at one installed elsewhere.
 
 ## How it is put together
 

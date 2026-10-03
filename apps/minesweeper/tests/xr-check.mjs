@@ -6,12 +6,14 @@
  *   node tests/xr-check.mjs
  *   SHOTS=out node tests/xr-check.mjs   # and photograph the page and the session
  *   STACKS=1 node tests/xr-check.mjs    # with a stack for anything the page throws
+ *   CHROMIUM=<path> node tests/xr-check.mjs  # with a Chromium found elsewhere
  *
  * The right controller is aimed at a point on a panel from the figures the
  * scene places the panels by (`src/placement.ts`), and the script checks
  * that the ray is on the element it was aimed at before it presses
- * anything. First, with no emulator, the page alone must not fetch the
- * headset scene. Then, in a session, in order:
+ * anything. First, a production build must not precache the headset's
+ * chunks in its service worker, and the page alone, with no emulator, must
+ * not fetch the headset scene. Then, in a session, in order:
  *
  * - the grip on a covered tile flags that tile, through the board's own
  *   `contextmenu` handler, at the place the ray met;
@@ -28,14 +30,17 @@
  * under SwiftShader.
  */
 import { join, resolve, dirname } from "node:path";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
-import { createServer } from "vite";
+import { build, createServer } from "vite";
 
 const HERE = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const { chromium } = await import(
   resolve(HERE, "../showcase-xr/node_modules/playwright-core/index.mjs")
 );
+
+const CHROMIUM = process.env.CHROMIUM ?? "/opt/pw-browsers/chromium-1194/chrome-linux/chrome";
 
 const SHOTS = process.env.SHOTS;
 if (SHOTS) {
@@ -87,7 +92,43 @@ function rotate([x, y, z], pitch, yaw) {
   return [x * Math.cos(yaw) + z1 * Math.sin(yaw), y1, -x * Math.sin(yaw) + z1 * Math.cos(yaw)];
 }
 
+/**
+ * Build the app for production into a scratch directory and list what its
+ * service worker precaches: the worker is installed on every visit, so
+ * whatever it lists is downloaded by every visitor.
+ *
+ * @returns {Promise<string[]>}
+ */
+async function precached() {
+  const outDir = mkdtempSync(join(tmpdir(), "minesweeper-"));
+  try {
+    await build({
+      root: HERE,
+      configFile: join(HERE, "vite.config.mts"),
+      logLevel: "warn",
+      build: { outDir, emptyOutDir: true, sourcemap: false },
+    });
+    const worker = readFileSync(join(outDir, "sw.js"), "utf8");
+    return [...worker.matchAll(/url:"([^"]+)"/g)].map((match) => match[1]);
+  } finally {
+    rmSync(outDir, { recursive: true, force: true });
+  }
+}
+
 async function main() {
+  console.log("\n== the precache");
+  {
+    const urls = await precached();
+    check(
+      urls.some((url) => /^assets\/index-.*\.js$/.test(url)),
+      "the service worker precaches the page's own chunk",
+    );
+    check(
+      !urls.some((url) => /^assets\/(xr|three\.module|emulator)-.*\.js$/.test(url)),
+      "and none of the chunks only a headset or the emulator loads",
+    );
+  }
+
   const server = await createServer({
     root: HERE,
     configFile: join(HERE, "vite.config.mts"),
@@ -101,7 +142,7 @@ async function main() {
   const placement = /** @type {any} */ (await server.ssrLoadModule("/src/placement.ts"));
 
   const browser = await chromium.launch({
-    executablePath: "/opt/pw-browsers/chromium-1194/chrome-linux/chrome",
+    executablePath: CHROMIUM,
     args: ["--use-gl=angle", "--use-angle=swiftshader", "--enable-unsafe-swiftshader"],
   });
   try {

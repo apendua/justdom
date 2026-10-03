@@ -1458,16 +1458,19 @@ out from under the ray that opened it.
 
 Siblings that a page paints over one another are stacked in depth in the same
 order. An element that is positioned (`position` other than `static`) or has
-a `transform` of its own is drawn in front of every earlier such sibling whose
-box overlaps its own. It sits one content step (2 px) in front of the farthest
-thing that sibling draws, its pins and badges included. That keeps a clock's
-hands on its dial, and a card laid over another card in front of the first
-card's text and pin. Siblings that do not overlap stay at the ordinary step,
-so a board of separate cards stays flat however many it holds. Tree order
-decides, not `z-index`: to bring a card to the front, append it to the end of
-its parent again. A transformed element counts as covering the axis-aligned
-box around its corners, and a descendant that overflows its parent's box does
-not count towards what the parent overlaps.
+a `transform` of its own is drawn in front of every such sibling it overlaps
+and a page paints under it. It sits one content step (2 px) in front of the
+farthest thing that sibling draws, its pins and badges included. That keeps a
+clock's hands on its dial, a card laid over another card in front of the
+first card's text and pin, and a modal in front of a later
+`position: relative` page that covers it. Siblings that do not overlap stay
+at the ordinary step, so a board of separate cards stays flat however many it
+holds. The order is the page's: a negative `z-index` under the rest, a
+positive one over it, and tree order within each. Only the sign of `z-index`
+counts, so to bring a card to the front, append it to the end of its parent
+again. A transformed element counts as covering the axis-aligned box around
+its corners, and a descendant that overflows its parent's box does not count
+towards what the parent overlaps.
 
 A native `<select>` cannot work here, layers or not: `<option>` has no CSS box
 to mirror, and the list the browser pops up is chrome rather than DOM, so none

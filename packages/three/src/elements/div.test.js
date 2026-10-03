@@ -664,6 +664,45 @@ describe("div sibling stacking", () => {
     );
     board.teardown();
   });
+
+  test("an earlier overlay stays in front of a later sibling that covers it", () => {
+    const page = setupSiblings();
+    const modal = page.add("position: fixed; z-index: 10", [100, 100, 300, 300]);
+    const main = page.add("position: relative", [0, 0, 400, 400]);
+    // A pile inside `main` that reaches farther out than the modal's own
+    // lift, so leaving `main` where it is would not be enough.
+    let card = page.add("position: absolute", [150, 150, 250, 250], main);
+    for (let i = 1; i < 5; i += 1) {
+      card = page.add("position: absolute", [150 + i, 150, 250 + i, 250], main);
+    }
+
+    // The modal's quad, 1 px behind its origin, against the farthest thing
+    // `main` draws: its top card's origin, in the page's frame.
+    const cardZ = page.z(main) + page.z(card);
+    assert.ok(
+      page.z(modal) + 1 < cardZ,
+      `the modal's quad at ${page.z(modal) + 1} is behind main's card at ${cardZ}`,
+    );
+    page.teardown();
+  });
+
+  test("a later backdrop with a negative z-index stays behind what it covers", () => {
+    const page = setupSiblings();
+    const card = page.add("position: absolute", [100, 100, 300, 300]);
+    // The card is already built, so it hears of the backdrop through the
+    // records a portal's observer would hand the mirror.
+    const observer = new window.MutationObserver(() => {});
+    observer.observe(page.parent, { childList: true });
+    const backdrop = page.add("position: absolute; z-index: -1", [0, 0, 400, 400]);
+    page.mirror.ingest(observer.takeRecords());
+    observer.disconnect();
+
+    assert.ok(
+      page.z(card) + 1 < page.z(backdrop),
+      `the card's quad at ${page.z(card) + 1} is behind the backdrop at ${page.z(backdrop)}`,
+    );
+    page.teardown();
+  });
 });
 
 /**

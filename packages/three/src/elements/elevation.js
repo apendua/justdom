@@ -21,8 +21,9 @@ import { isSvgElement } from "./plugins.js";
  * Boxes are stepped in geometry, here. Each element's object sits
  * `getLift` in front of its parent's content: `CONTENT_STEP` for an
  * ordinary box, `ELEVATION_STEP` more for an overlay (`isOverlay`), and for
- * an element that paints over its siblings (`paintsOver`) far enough to
- * clear every earlier such sibling it overlaps, subtree included. The box's
+ * an element in a painting layer (`getPaintLayer`) far enough to clear
+ * every sibling it overlaps that a page paints under it, subtree included.
+ * Within a layer, tree order decides. The box's
  * own quad is 1 px behind its object. `getElevation` puts overlays later in
  * `renderOrder` as well, since depth alone does not order transparent
  * quads.
@@ -43,9 +44,11 @@ import { isSvgElement } from "./plugins.js";
  * disagree:
  *
  * - Flow siblings are not stepped. Only an element that is positioned or
- *   transformed clears the siblings before it, and only those that are too.
- *   A box pulled over a neighbour by a negative margin, or a positioned box
- *   over a flow sibling, stays on the same plane as what it covers.
+ *   transformed clears its siblings, and only those that are too. A box
+ *   pulled over a neighbour by a negative margin, or a positioned box over a
+ *   flow sibling, stays on the same plane as what it covers.
+ * - Only the sign of `z-index` counts. Two overlays, or two boxes with a
+ *   negative `z-index`, stack in tree order, whatever their numbers.
  * - An overlay takes the larger of its two lifts, not the sum. Over a
  *   sibling it overlaps, it sits `CONTENT_STEP` in front of what that
  *   sibling draws rather than `ELEVATION_STEP` beyond it, so it does not
@@ -175,6 +178,8 @@ const EVERYWHERE = Object.freeze({
   bottom: Infinity,
 });
 
+/** @typedef {-1 | 0 | 1 | null} PaintLayer */
+
 /**
  * @param {PaintedBounds} a
  * @param {PaintedBounds} b
@@ -196,29 +201,39 @@ function overlaps(a, b) {
   return a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
 }
 
-/** @type {WeakMap<Element, Derived<boolean>>} */
-const paintsOverCache = nodeCache();
+/** @type {WeakMap<Element, Derived<PaintLayer>>} */
+const paintLayerCache = nodeCache();
 
 /**
- * Whether a page paints this element over its earlier siblings wherever the
- * two overlap. CSS paints a positioned element (`position` other than
- * `static`) and one with a `transform` of its own after the flow, in tree
- * order, so a later one covers an earlier one.
+ * Which of a page's painting layers an element is in, among the siblings a
+ * page paints over one another, or `null` for a box in the flow. CSS paints
+ * a positioned element (`position` other than `static`) and one with a
+ * `transform` of its own after the flow. Within that, a negative `z-index`
+ * goes under everything else (-1), a positive one over it (1, which is
+ * `isOverlay`), and the rest are one layer (0). A later element covers an
+ * earlier one in the same layer, and a higher layer covers a lower one
+ * whatever the tree order. As with `isOverlay`, the number itself is not
+ * modelled, only its sign.
  *
  * Behind its own signal, so that a restyle which leaves the answer alone
- * does not re-run the sibling scan in `getLift` for every later sibling.
+ * does not re-run the sibling scan in `getLift` for every other sibling.
  *
  * @param {Element} element
- * @returns {boolean}
+ * @returns {PaintLayer}
  */
-function paintsOver(element) {
-  let signal = paintsOverCache.get(element);
+function getPaintLayer(element) {
+  let signal = paintLayerCache.get(element);
   if (!signal) {
     signal = new Derived(() => {
       const style = getComputedStyleCached(element);
-      return (!!style.position && style.position !== "static") || hasTransform(style.transform);
+      const positioned = !!style.position && style.position !== "static";
+      if (!positioned) {
+        return hasTransform(style.transform) ? 0 : null;
+      }
+      const zIndex = parseInt(style.zIndex, 10);
+      return zIndex < 0 ? -1 : zIndex > 0 ? 1 : 0;
     });
-    paintsOverCache.set(element, signal);
+    paintLayerCache.set(element, signal);
   }
   return signal.get();
 }
@@ -294,22 +309,24 @@ const liftCache = nodeCache();
  * is level with it.
  *
  * An ordinary box sits `CONTENT_STEP` in front, and an overlay another
- * `ELEVATION_STEP` on top of that. An element that paints over (see
- * `paintsOver`) also clears every earlier sibling that paints over and
- * overlaps it: it goes `CONTENT_STEP` in front of the farthest thing that
+ * `ELEVATION_STEP` on top of that. An element in a painting layer (see
+ * `getPaintLayer`) also clears every sibling it overlaps that a page paints
+ * under it: the earlier siblings in its own layer and every sibling in a
+ * lower one. It goes `CONTENT_STEP` in front of the farthest thing that
  * sibling draws, which is the sibling's lift plus its reach (`getReach`).
  * Without that, a clock hand and the dial under it are coplanar and the
- * depth test picks between them by rounding, and the text of one card, 1 px
- * in front of its own quad, shows through a later card that covers it.
- * Siblings that do not overlap stay at the ordinary step, so a board of
- * separate cards stays flat however many cards it holds.
+ * depth test picks between them by rounding, the text of one card, 1 px in
+ * front of its own quad, shows through a later card that covers it, and a
+ * later `position: relative` page covers a modal before it. Siblings that
+ * do not overlap stay at the ordinary step, so a board of separate cards
+ * stays flat however many cards it holds.
  *
  * Reactive: it follows the style, layout and child list of the parent's
  * children and the reach of the siblings it clears. Nothing here runs per
- * frame. The scan reads every earlier sibling once per recompute, so a
- * parent with n positioned children costs O(n²) cached reads when it is
- * built, and again when its first child moves, since every later child's
- * scan read that child's bounds.
+ * frame. The scan reads every sibling's layer once per recompute, and the
+ * bounds of those painted under it, so a parent with n positioned children
+ * costs O(n²) cached reads when it is built, and again when its first child
+ * moves, since every later child's scan read that child's bounds.
  *
  * @param {Element} element
  * @returns {number}
@@ -322,7 +339,8 @@ export function getLift(element) {
         ? CONTENT_STEP + ELEVATION_STEP
         : CONTENT_STEP;
       // The portal's root has no siblings inside the portal.
-      if (element.hasAttribute(PORTAL_ATTRIBUTE) || !paintsOver(element)) {
+      const layer = element.hasAttribute(PORTAL_ATTRIBUTE) ? null : getPaintLayer(element);
+      if (layer === null) {
         return own;
       }
       const parent = getParentElement(element);
@@ -331,15 +349,21 @@ export function getLift(element) {
       }
       const bounds = getPaintedBounds(/** @type {HTMLElement} */ (element));
       let lift = own;
+      let earlier = true;
       for (const node of getChildNodes(parent)) {
         if (node === element) {
-          break;
+          earlier = false;
+          continue;
         }
         if (node.nodeType !== Node.ELEMENT_NODE) {
           continue;
         }
         const sibling = /** @type {HTMLElement} */ (node);
-        if (paintsOver(sibling) && overlaps(bounds, getPaintedBounds(sibling))) {
+        const below = getPaintLayer(sibling);
+        if (below === null || below > layer || (below === layer && !earlier)) {
+          continue;
+        }
+        if (overlaps(bounds, getPaintedBounds(sibling))) {
           lift = Math.max(lift, getLift(sibling) + getReach(sibling) + CONTENT_STEP);
         }
       }

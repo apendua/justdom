@@ -300,14 +300,22 @@ const MOUSE_EVENT = /** @type {const} */ ({
  *   while the hand held something draggable, kept for the first move after
  *   the hold, or the control the drag ended on would show no hover until
  *   the ray left it and came back.
- * @property {Object3D[]} select
- * @property {Target | null} pressed The innermost target the trigger's
- *   last press went through as it began, control or list, which decides
- *   how its release, its click and its miss finish. Not asked again of what
- *   is registered on the path by then: a row removed during the hold, and
- *   its update committed, has let go of its registration, and the list
- *   under it would otherwise finish a press that was the row's.
- * @property {Object3D[]} squeeze
+ * @property {Press} select The trigger's last press.
+ * @property {Press} squeeze The grip's, as `select` is the trigger's.
+ */
+
+/**
+ * A press of one button, as it began: the objects it went through, and the
+ * innermost target among them, which decides how the events that end it
+ * finish. That target is not asked again of what is registered on the path
+ * by then: a row removed during the hold, and its update committed, has
+ * let go of its registration, and the list under it, or nothing, would
+ * otherwise finish a press that was the row's.
+ *
+ * @typedef {object} Press
+ * @property {Object3D[]} path
+ * @property {Target | null} target A control or a list for the trigger, a
+ *   control alone for the grip, which no list takes.
  */
 
 /**
@@ -451,7 +459,13 @@ export function createPanelForwarder(ctx, container) {
   const panelHand = (controller) => {
     let hand = panelHands.get(controller);
     if (!hand) {
-      hand = { hover: [], hovered: null, held: null, select: [], pressed: null, squeeze: [] };
+      hand = {
+        hover: [],
+        hovered: null,
+        held: null,
+        select: { path: [], target: null },
+        squeeze: { path: [], target: null },
+      };
       panelHands.set(controller, hand);
     }
     return hand;
@@ -474,10 +488,10 @@ export function createPanelForwarder(ctx, container) {
   };
 
   /**
-   * The path an event that ends a press or a hover went through: the one
-   * recorded as it began, which reaches the objects it went through even
-   * after the one it began on has left the scene. One that began before
-   * this forwarder heard it is walked from where it began.
+   * The path a leave goes through: the one the hover recorded, which
+   * reaches the objects it went through even after the one it began on has
+   * left the scene. A hover that began before this forwarder heard it is
+   * walked from where it began. A press keeps its own (see `pressOf`).
    *
    * @param {Object3D[]} path
    * @param {{ originalTarget: Object3D }} e
@@ -491,21 +505,34 @@ export function createPanelForwarder(ctx, container) {
   };
 
   /**
-   * The hand whose trigger an event ends a press of, with the press's path
-   * and what it was pressed on, as its `selectstart` recorded them. A press
-   * that began before this forwarder heard it is walked from where it
+   * Record a press as it begins, from what the ray met.
+   *
+   * @param {Press} press
+   * @param {Object3D} object
+   * @param {boolean} controlsOnly Whether a list can take the press.
+   * @returns {Target | null}
+   */
+  const begin = (press, object, controlsOnly) => {
+    walk(object, press.path);
+    press.target = innermost(press.path, controlsOnly) ?? null;
+    return press.target;
+  };
+
+  /**
+   * The press an event of one button ends, as its start recorded it. A
+   * press that began before this forwarder heard it is walked from where it
    * began, and was pressed on what is registered there now.
    *
    * @param {{ controller: XRTargetRaySpace, originalTarget: Object3D }} e
-   * @returns {PanelHand}
+   * @param {"select" | "squeeze"} button
+   * @returns {Press}
    */
-  const pressOf = (e) => {
-    const hand = panelHand(e.controller);
-    if (hand.select[0] !== e.originalTarget) {
-      walk(e.originalTarget, hand.select);
-      hand.pressed = innermost(hand.select) ?? null;
+  const pressOf = (e, button) => {
+    const press = panelHand(e.controller)[button];
+    if (press.path[0] !== e.originalTarget) {
+      begin(press, e.originalTarget, button === "squeeze");
     }
-    return hand;
+    return press;
   };
 
   /**
@@ -708,10 +735,8 @@ export function createPanelForwarder(ctx, container) {
       hand.hovered = null;
     },
     selectstart(e) {
-      const hand = panelHand(e.controller);
-      walk(e.originalTarget, hand.select);
-      const first = innermost(hand.select);
-      hand.pressed = first ?? null;
+      const { select } = panelHand(e.controller);
+      const first = begin(select, e.originalTarget, false);
       if (!first) {
         return;
       }
@@ -755,7 +780,7 @@ export function createPanelForwarder(ctx, container) {
         drags.begin(e.controller, first.element, first.object);
       }
       haptics?.press(e.inputSource);
-      for (const object of hand.select) {
+      for (const object of select.path) {
         const target = targets.get(object);
         if (target && !target.list) {
           target.element.dataset.xrActive = "true";
@@ -764,7 +789,7 @@ export function createPanelForwarder(ctx, container) {
       stopPropagation(e);
     },
     selectend(e) {
-      const { select: path, pressed } = pressOf(e);
+      const { path, target: pressed } = pressOf(e, "select");
       if (!pressed) {
         return;
       }
@@ -804,7 +829,7 @@ export function createPanelForwarder(ctx, container) {
       stopPropagation(e);
     },
     select(e) {
-      const { select: path, pressed } = pressOf(e);
+      const { path, target: pressed } = pressOf(e, "select");
       if (!pressed) {
         return;
       }
@@ -842,14 +867,12 @@ export function createPanelForwarder(ctx, container) {
     selectmissed(e) {
       // The panel took the press at its start, so its miss is the panel's
       // as its end is.
-      if (pressOf(e).pressed) {
+      if (pressOf(e, "select").target) {
         stopPropagation(e);
       }
     },
     squeezestart(e) {
-      const hand = panelHand(e.controller);
-      walk(e.originalTarget, hand.squeeze);
-      const first = innermost(hand.squeeze, true);
+      const first = begin(panelHand(e.controller).squeeze, e.originalTarget, true);
       if (!first) {
         return;
       }
@@ -877,9 +900,9 @@ export function createPanelForwarder(ctx, container) {
       }
     },
     squeeze(e) {
-      const first = innermost(recorded(panelHand(e.controller).squeeze, e), true);
+      const { path, target: gripped } = pressOf(e, "squeeze");
       // A grab's completion goes on up to the carry.
-      if (!first || taken(e.start)) {
+      if (!gripped || taken(e.start)) {
         return;
       }
       // The grip is the ray's other button. A page hears the mouse's other
@@ -889,7 +912,8 @@ export function createPanelForwarder(ctx, container) {
       // press let go where it started, as a click is. Nothing for a grip
       // that closed while the hand carried or moved a list, whatever it
       // does now, nor for one that opens while it does.
-      if (!isGone(first.element) && owns(e.start) && !busy(e.controller)) {
+      const first = innermost(path, true);
+      if (first && !isGone(gripped.element) && owns(e.start) && !busy(e.controller)) {
         first.element.dispatchEvent(new MouseEvent("contextmenu", pressInit(panel(), e, true, 2)));
       }
       stopPropagation(e);
@@ -899,13 +923,13 @@ export function createPanelForwarder(ctx, container) {
       // grip leaves the panel alike; nothing above listens for a miss
       // today, `drag()` and `carry()` taking the start and the end alone.
       // The panel's own miss stops where a press's does.
-      if (innermost(recorded(panelHand(e.controller).squeeze, e), true) && !taken(e.start)) {
+      if (pressOf(e, "squeeze").target && !taken(e.start)) {
         stopPropagation(e);
       }
     },
     squeezeend(e) {
       // A grab's end goes on up to the carry.
-      if (!innermost(recorded(panelHand(e.controller).squeeze, e), true) || taken(e.start)) {
+      if (!pressOf(e, "squeeze").target || taken(e.start)) {
         return;
       }
       // Felt once as the grip opens, on a hit and a miss alike, as a

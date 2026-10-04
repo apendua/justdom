@@ -83,7 +83,7 @@ object is a `.zone` with an id, and the modules in `src/` make them move:
 | `src/terminal.ts` | The monitor's state: the listing, how much of it is typed, the prompt, the phosphor, and the commands. No DOM. |
 | `src/programs.ts` | What the disks hold. |
 | `src/screen.ts` | Draws the terminal on the screen, one way on the page and another in a session (below). |
-| `src/keyboard.ts` | Builds the keycaps and types with them, and with a real keyboard. A key the monitor takes is not also acted on by a focused control, so the Look menu does not take a letter as type-ahead. |
+| `src/keyboard.ts` | Builds the keycaps and types with them, and with a real keyboard. A character the monitor takes is not also acted on by a focused control, so the Look menu does not take it as type-ahead. |
 | `src/phosphorMenu.ts` | The menu under the screen. |
 | `src/dragAndDrop.ts` | Disks into the drive, cards about the board, tickets between columns, new notes from the field. |
 | `src/charts.ts` | Keeps the charts panel moving: lines, bars, donuts, gauges and the log. |

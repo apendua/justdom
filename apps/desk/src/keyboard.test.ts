@@ -111,6 +111,21 @@ describe("mountKeyboard", () => {
     expect(event.defaultPrevented, "the select would jump to Paper Studio").toBe(true);
   });
 
+  it("leaves a key that types nothing to the browser while the select has focus", () => {
+    // F5 reloads, Alt+Left goes back and the arrows step through the menu:
+    // none of them is a character the select would take as type-ahead.
+    document.body.innerHTML = `<div data-keys></div><select><option>Night Ops</option></select>`;
+    const keys = document.querySelector<HTMLElement>("[data-keys]")!;
+    dispose = mountKeyboard(keys, { onKey: vi.fn() });
+    const select = document.querySelector("select")!;
+    select.focus();
+    for (const key of ["F5", "ArrowDown", "ArrowLeft"]) {
+      const event = new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true });
+      select.dispatchEvent(event);
+      expect(event.defaultPrevented, `${key} should be the browser's`).toBe(false);
+    }
+  });
+
   it("leaves a letter to the browser as well when nothing has focus", () => {
     const keys = board();
     const onKey = vi.fn();

@@ -146,9 +146,10 @@ export function mountKeyboard(keys: HTMLElement, { onKey }: KeyboardOptions) {
     if (focusedField()) {
       return; // the browser types into it
     }
-    // A control with focus, the Look menu say, would act on the key as well:
-    // a select takes a letter as type-ahead and changes its choice.
-    if (OWNED_KEYS.has(event.key) || controlFocused()) {
+    // A control with focus, the Look menu say, would act on a character as
+    // well: a select takes it as type-ahead and changes its choice. Other
+    // keys, F5 or the arrows, are left to the browser and the control.
+    if (OWNED_KEYS.has(event.key) || (event.key.length === 1 && controlFocused())) {
       event.preventDefault();
     }
     onKey(event.key);

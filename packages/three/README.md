@@ -415,7 +415,10 @@ such pointer. Once a hand has one, the three capture methods on `Element`
 are wrapped: a capture the browser refuses for a hand is kept here instead,
 and while it holds, the hand's moves and its release go to the capturing
 element, whichever control on the panels the ray is over, until the
-release or `releasePointerCapture`. Not sent: `gotpointercapture`,
+release, `releasePointerCapture`, or a drag and drop the press becomes.
+Releasing a hand's pointer that holds no capture does nothing, as for a
+pointer the browser knows, so a page's `pointerup` handler may release what
+the release already ended. Not sent: `gotpointercapture`,
 `lostpointercapture`, `pointerover`, `pointerenter`, `pointerout`,
 `pointerleave` and `pointercancel`, and a move carries no `buttons`. The
 grip's `contextmenu` comes alone, as before.
@@ -2105,8 +2108,9 @@ A shape with `cursor: pointer` is a ray target of its own, by the rule a
 box follows. It forwards the ray to its element exactly as a box does:
 `pointerdown` and `mousedown`, `pointerup` and `mouseup`, and `click` for
 a press, `contextmenu` for the grip, `pointermove` and `mousemove` while
-the ray moves over it, each with the point on the page, and `data-xr-hover` and `data-xr-active` on the element for a
-stylesheet to answer. A press that turns into a drag scrolls the list the
+the ray moves over it, each with the point on the page, and
+`data-xr-hover` and `data-xr-active` on the element for a stylesheet to
+answer. A press that turns into a drag scrolls the list the
 `<svg>` sits in. `pointer-events` decides which of the fill and the stroke
 a ray can hit, with SVG's values: the default `visiblePainted` hits
 whatever is painted and visible, `none` lets the ray through to what is

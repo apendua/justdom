@@ -81,8 +81,8 @@ export function setupJsdom({ ignoreCss = false, html = DEFAULT_HTML } = {}) {
  * `PointerEvent`, as a `MouseEvent` that carries a pointer's id, type and
  * whether it is the primary one, and the three pointer capture methods on
  * `Element`. The only pointer a browser knows of here is the mouse's, whose
- * id is 1, so capturing any other throws a `NotFoundError`, as a browser
- * refuses a pointer it has no record of.
+ * id is 1, so capturing or releasing any other throws a `NotFoundError`, as
+ * a browser refuses a pointer it has no record of.
  *
  * @param {import("jsdom").DOMWindow} window
  */
@@ -124,9 +124,13 @@ function standInForPointers(window) {
     },
     /** @param {number} id */
     releasePointerCapture(id) {
-      if (id === 1) {
-        mouseCaptures.delete(this);
+      if (id !== 1) {
+        throw new window.DOMException(
+          "No active pointer with the given id is found.",
+          "NotFoundError",
+        );
       }
+      mouseCaptures.delete(this);
     },
     /** @param {number} id */
     hasPointerCapture(id) {

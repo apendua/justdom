@@ -104,10 +104,12 @@ const RAY_TYPES = [
  * Build the page, mirror it into a panel, and record what it hears.
  *
  * @param {Spec[]} children Under a 400 by 300 root at the page's corner.
- * @param {{ accept?: boolean }} [options] Whether a list takes what is
- *   dropped on it; every scrolling list sorts its rows by drag and drop.
+ * @param {{ accept?: boolean, capture?: boolean }} [options] Whether a
+ *   list takes what is dropped on it, since every scrolling list sorts its
+ *   rows by drag and drop, and whether an element captures the pointer
+ *   that presses it, as a page that drags by capture does.
  */
-async function page(children, { accept = true } = {}) {
+async function page(children, { accept = true, capture = false } = {}) {
   const root = document.createElement("div");
   root.id = "root";
   /** @type {Map<string, HTMLElement>} */
@@ -144,6 +146,12 @@ async function page(children, { accept = true } = {}) {
     build(root, child);
   }
   document.body.appendChild(root);
+  if (capture) {
+    root.addEventListener("pointerdown", (event) => {
+      const { pointerId } = /** @type {PointerEvent} */ (event);
+      /** @type {Element} */ (event.target).setPointerCapture(pointerId);
+    });
+  }
 
   const manager = new InteractionManager();
   const ctx = InteractionContext.set({}, manager);
@@ -434,6 +442,18 @@ describe("event-sequence goldens", () => {
     await g.step("hand carries it onto #d", () => g.aim(g.on("d")));
     await g.step("trigger opens", () => g.hands[0].trigger("selectend"));
     matches("a press that becomes a drag and drop, refused", g.lines);
+    g.teardown();
+  });
+
+  test("a captured press that becomes a drag and drop", async () => {
+    const g = await page(LISTS, { accept: false, capture: true });
+    await g.step("aim at #a", () => g.aim(g.on("a")));
+    await g.step("trigger closes", () => g.hands[0].trigger("selectstart"));
+    await g.step("hand carries it onto #d", () => g.aim(g.on("d")));
+    await g.step("trigger opens", () => g.hands[0].trigger("selectend"));
+    await g.step("aim at #b", () => g.aim(g.on("b")));
+    await g.step("ray stays", () => g.hands[0].frame());
+    matches("a captured press that becomes a drag and drop", g.lines);
     g.teardown();
   });
 

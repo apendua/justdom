@@ -29,6 +29,7 @@ test("only the mouse's pointer can be captured", () => {
   element.releasePointerCapture(1);
   assert.equal(element.hasPointerCapture(1), false);
   assert.throws(() => element.setPointerCapture(2), { name: "NotFoundError" });
+  assert.throws(() => element.releasePointerCapture(2), { name: "NotFoundError" });
   assert.equal(element.hasPointerCapture(2), false);
 });
 

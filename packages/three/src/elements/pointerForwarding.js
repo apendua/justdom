@@ -174,9 +174,12 @@ let capturing = false;
  * panels the ray is over, as a browser sends a captured pointer's. A
  * pointer the browser knows is the browser's, as before.
  *
- * Capture ends as a browser ends it, with the release, or with
- * `releasePointerCapture`. Neither `gotpointercapture` nor
- * `lostpointercapture` is sent.
+ * Capture ends as a browser ends it: with the release, or with
+ * `releasePointerCapture`, or when the press becomes a drag and drop, which
+ * sends no `pointerup` (see `endPress`). Releasing a hand's pointer that
+ * holds no capture does nothing, as it does for a pointer a browser knows,
+ * so a page's own `pointerup` handler may release what the release already
+ * ended. Neither `gotpointercapture` nor `lostpointercapture` is sent.
  */
 function acceptPointerCapture() {
   if (capturing || typeof Element === "undefined") {
@@ -198,15 +201,33 @@ function acceptPointerCapture() {
     }
   };
   proto.releasePointerCapture = function (id) {
-    if (captures.get(id) === this) {
+    if (!isHand(id)) {
+      releasePointerCapture.call(this, id);
+    } else if (captures.get(id) === this) {
       captures.delete(id);
-      return;
     }
-    releasePointerCapture.call(this, id);
   };
   proto.hasPointerCapture = function (id) {
     return captures.get(id) === this || hasPointerCapture.call(this, id);
   };
+}
+
+/**
+ * End what a hand's press asked for, as its trigger opens: the mouse events
+ * a cancelled `pointerdown` held back come back, and a capture ends. The
+ * release's `pointerup` ends the capture itself, but a press that became a
+ * drag and drop, or whose element left the page, sends none, and the
+ * capture would otherwise take the hand's moves over every other control
+ * until its next press.
+ *
+ * @param {XRTargetRaySpace} controller
+ */
+function endPress(controller) {
+  pointerOnly.delete(controller);
+  const id = pointerIds.get(controller);
+  if (id !== undefined) {
+    captures.delete(id);
+  }
 }
 
 /**
@@ -683,7 +704,7 @@ export function forwardPointerEvents(ctx, element, object, { enabled, onPress })
         if (hasForwardingAncestor(object)) {
           return;
         }
-        pointerOnly.delete(e.controller);
+        endPress(e.controller);
         stopPropagation(e);
         return;
       }
@@ -695,7 +716,7 @@ export function forwardPointerEvents(ctx, element, object, { enabled, onPress })
         }
         haptics?.release(e.inputSource);
       });
-      pointerOnly.delete(e.controller);
+      endPress(e.controller);
       passOn(e);
     }),
     on("pointermove", (e) => {

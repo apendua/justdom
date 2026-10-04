@@ -1048,6 +1048,30 @@ describe("a ray's pointer events", () => {
     teardown();
   });
 
+  test("let the page release a hand's capture in its own pointerup", () => {
+    /** @type {string[]} */
+    const handled = [];
+    const { s, point, outer, teardown } = label((event) => {
+      if (event.type === "pointerdown") {
+        outer.setPointerCapture(/** @type {PointerEvent} */ (event).pointerId);
+      }
+    });
+    outer.addEventListener("pointerup", (event) => {
+      // What a page that drags by capture writes on its captor, which by
+      // now finds the capture gone with the release, as a browser's is.
+      outer.releasePointerCapture(/** @type {PointerEvent} */ (event).pointerId);
+      handled.push("released");
+    });
+    s.press("selectstart", null, point);
+    s.press("selectend", null, point);
+    s.press("select", null, point);
+    const span = /** @type {HTMLElement} */ (outer.firstElementChild);
+    span.releasePointerCapture(2);
+    handled.push("released one never captured");
+    assert.deepEqual(handled, ["released", "released one never captured"]);
+    teardown();
+  });
+
   test("leave the mouse's own capture to the browser", () => {
     const element = document.createElement("div");
     document.body.appendChild(element);
@@ -1057,6 +1081,7 @@ describe("a ray's pointer events", () => {
     element.releasePointerCapture(1);
     assert.equal(element.hasPointerCapture(1), false);
     assert.throws(() => element.setPointerCapture(99), { name: "NotFoundError" });
+    assert.throws(() => element.releasePointerCapture(99), { name: "NotFoundError" });
     element.remove();
   });
 });

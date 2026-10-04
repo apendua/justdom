@@ -18,9 +18,9 @@ jsdom has no pointer events, so the window gets a stand-in for them: a
 `PointerEvent` that is a `MouseEvent` with the `pointerId`, `pointerType` and
 `isPrimary` it was made with, and `setPointerCapture`,
 `releasePointerCapture` and `hasPointerCapture` on `Element`. The one pointer
-the window knows of is the mouse's, whose id is 1, so capturing any other
-throws a `NotFoundError`, as a browser does for a pointer it has no record
-of.
+the window knows of is the mouse's, whose id is 1, so capturing or releasing
+any other throws a `NotFoundError`, as a browser does for a pointer it has no
+record of.
 
 ## Usage
 

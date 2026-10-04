@@ -20,7 +20,8 @@
  *   pointer handlers, at the place the ray met;
  * - Line, then the trigger on `A` and on `B`, writes a `line(A, B)`;
  * - Select, then the trigger held on `B` while the ray moves, drags `B`
- *   and rewrites its coordinates; held on empty paper, it pans the view;
+ *   and rewrites its coordinates, without the program taking the keyboard;
+ *   held on empty paper, it pans the view;
  * - the construction picker opens and loads another construction;
  * - the × ends the session.
  *
@@ -320,6 +321,10 @@ async function main() {
       const moved = /B=point\(([^)]*)\)/.exec(await code())?.[1];
       console.log(`  B is now at (${moved})`);
       check(moved !== undefined && moved !== "4, 0", "holding the trigger on B dragged it");
+      check(
+        await page.evaluate(() => document.activeElement?.tagName !== "TEXTAREA"),
+        "and selecting B left the keyboard to the headset, not the program",
+      );
     }
     {
       const before = await pointOnPage("A");

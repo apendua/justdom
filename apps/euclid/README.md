@@ -102,7 +102,11 @@ wheel, so the toolbar zooms with **+** and **−**.
 The program is read in a session, not typed: a `<textarea>` is drawn as the
 box it is, and the highlighted copy under it is what shows. That copy is
 also where the statement of the object selected in the drawing is grounded
-in blue, since a panel draws no browser selection.
+in blue, since a panel draws no browser selection. So while a session runs
+the textarea is read-only, gives up the focus as the session starts, and is
+not focused when a press selects an object. The keyboard is the headset's,
+and under `?emulator` the keys that drive the emulated headset would
+otherwise go into the program.
 
 Two controls are there only in a session: Passthrough, which takes down the
 dark sphere the session is set against and shows the room, and the × at the

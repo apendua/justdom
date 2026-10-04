@@ -1,5 +1,9 @@
-import { describe, expect, it } from "vitest";
-import { renderHighlight } from "./Editor";
+import { afterEach, describe, expect, it } from "vitest";
+import { children } from "@apendua/justdom";
+import { just } from "@apendua/signal";
+import { xrSession } from "@apendua.dev/headset/session";
+import AppStore from "../store/App";
+import Editor, { renderHighlight } from "./Editor";
 
 /** The text of every span carrying `style`, in order. */
 function marked(html: string, style: string): string[] {
@@ -38,5 +42,56 @@ describe("renderHighlight", () => {
     const pre = document.createElement("pre");
     pre.innerHTML = renderHighlight(code, { start: 2, end: 7 }, { start: 15, end: 30 });
     expect(pre.textContent).toBe(`${code}\n`);
+  });
+});
+
+describe("the program's textarea", () => {
+  afterEach(() => {
+    xrSession.set(null);
+    document.body.replaceChildren();
+  });
+
+  /** The editor, mounted as the page mounts it, and its textarea. */
+  function mount() {
+    const store = new AppStore();
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const subscription = just(host, [children(Editor(store))]).subscribe({});
+    const textarea = host.querySelector("textarea") as HTMLTextAreaElement;
+    return { store, textarea, subscription };
+  }
+
+  /** What a press on a point of the drawing asks of the editor. */
+  function selectFirstPoint(store: AppStore) {
+    const item = store.scene.get().items[0];
+    store.select(item);
+  }
+
+  it("takes the focus on a page, so the selected statement can be edited", () => {
+    const { store, textarea, subscription } = mount();
+    selectFirstPoint(store);
+    expect(document.activeElement).toBe(textarea);
+    expect(textarea.readOnly).toBe(false);
+    subscription.unsubscribe();
+  });
+
+  it("leaves the keyboard alone in a session, where a press selects a point", () => {
+    const { store, textarea, subscription } = mount();
+    xrSession.set({} as XRSession);
+    selectFirstPoint(store);
+    expect(document.activeElement).not.toBe(textarea);
+    expect(textarea.readOnly).toBe(true);
+    subscription.unsubscribe();
+  });
+
+  it("gives the focus up as a session starts", () => {
+    const { textarea, subscription } = mount();
+    textarea.focus();
+    expect(document.activeElement).toBe(textarea);
+    xrSession.set({} as XRSession);
+    expect(document.activeElement).not.toBe(textarea);
+    xrSession.set(null);
+    expect(textarea.readOnly).toBe(false);
+    subscription.unsubscribe();
   });
 });

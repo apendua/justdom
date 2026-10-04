@@ -1,6 +1,7 @@
 import { $, children, className, on, set } from "@apendua/justdom";
 import { component, effects } from "@apendua/signal";
 import { tokenize, KEYWORDS, BUILTINS } from "@apendua.dev/euclid-lang";
+import { xrSession } from "@apendua.dev/headset/session";
 import type AppStore from "../store/App";
 
 const editorStyle = className`
@@ -255,6 +256,12 @@ const Editor = component((store: AppStore) => {
               get value() {
                 return store.code.get();
               },
+              // A panel cannot type into a textarea, and in a session the
+              // keyboard belongs to the headset, the emulator's controls
+              // included, so the program is read-only while one runs.
+              get readOnly() {
+                return xrSession.get() !== null;
+              },
             }),
             on("input", (e) => {
               const textarea = e.target as HTMLTextAreaElement;
@@ -265,6 +272,14 @@ const Editor = component((store: AppStore) => {
             on("click", (e) => updateCursor(e.target as HTMLTextAreaElement)),
             on("select", (e) => updateCursor(e.target as HTMLTextAreaElement)),
             on("scroll", (e) => syncScroll(e.target as HTMLTextAreaElement)),
+            // Gives the keyboard up as a session starts, so that a focus
+            // the page had does not keep taking the keys the emulator's
+            // controls are driven by.
+            effects((textarea: HTMLTextAreaElement) => {
+              if (xrSession.get() && document.activeElement === textarea) {
+                textarea.blur();
+              }
+            }),
             // Applies "select this statement" requests coming from clicks on
             // the drawing.
             effects((textarea: HTMLTextAreaElement) => {
@@ -272,9 +287,13 @@ const Editor = component((store: AppStore) => {
               if (request) {
                 // An unfocused textarea does not keep a programmatic
                 // selection, and focusing also lets the user edit the
-                // highlighted statement right away.
-                textarea.focus();
-                textarea.setSelectionRange(request.start, request.end);
+                // highlighted statement right away. Not in a session, where
+                // the highlighted copy grounds the statement instead and
+                // the focus would take the headset's keyboard.
+                if (!xrSession.peek()) {
+                  textarea.focus();
+                  textarea.setSelectionRange(request.start, request.end);
+                }
                 store.cursorOffset.set(request.start);
               }
             }),

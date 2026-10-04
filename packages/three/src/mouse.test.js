@@ -1,25 +1,47 @@
 import { describe, test, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
-import { InteractionManager } from "./interactions.js";
-import { followMouse } from "./mouse.js";
+import { InteractionContext, InteractionManager } from "./interactions.js";
+import { followMouse, mouse } from "./mouse.js";
+import { CameraContext, RendererContext, runFrame } from "./render.js";
+import { clientRect } from "./test/clientRect.js";
+import { fakeFrameLoop } from "./test/frameLoop.js";
 
 /**
  * @import { XREventMap } from './core.js';
  */
 
 /**
- * A canvas 100 px square at the page's corner. An element of the test's
+ * The page's canvas, 100 px square at its corner. An element of the test's
  * document rather than a bare `EventTarget`, since Node's own refuses the
  * document's events.
  *
  * @returns {HTMLElement}
  */
-function stubCanvas() {
+function pageCanvas() {
   const canvas = document.createElement("canvas");
-  canvas.getBoundingClientRect = () =>
-    /** @type {DOMRect} */ ({ left: 0, top: 0, width: 100, height: 100 });
+  canvas.getBoundingClientRect = () => clientRect(0, 0, 100, 100);
   return canvas;
+}
+
+/**
+ * A box straight ahead of the camera, under the middle of the canvas,
+ * registered with `manager`, and the events it hears.
+ *
+ * @param {InteractionManager} manager
+ */
+function modelAhead(manager) {
+  const model = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1));
+  model.position.set(0, 0, -5);
+  model.updateMatrixWorld();
+  const target = /** @type {THREE.Object3D<XREventMap>} */ (/** @type {unknown} */ (model));
+  manager.add(target);
+  /** @type {string[]} */
+  const events = [];
+  for (const type of /** @type {const} */ (["pointerenter", "select", "selectmissed"])) {
+    target.addEventListener(type, () => events.push(type));
+  }
+  return events;
 }
 
 /**
@@ -45,7 +67,7 @@ describe("the mouse's stand-in controller", () => {
   let stop;
 
   beforeEach(() => {
-    canvas = stubCanvas();
+    canvas = pageCanvas();
     view = document.createElement("div");
     group = /** @type {THREE.Group<XREventMap>} */ (new THREE.Group());
     stop = followMouse(
@@ -96,38 +118,53 @@ describe("the mouse's stand-in controller", () => {
   });
 
   test("misses when a press on a model is let go over the panel", () => {
-    // Through the manager the pages use: a model straight ahead of the
-    // camera, under the middle of the canvas.
+    // Through the manager the pages use.
     const manager = new InteractionManager();
-    /** @type {Set<() => void>} */
-    const frames = new Set();
+    const loop = fakeFrameLoop();
     manager
       .addController(
         /** @type {THREE.XRTargetRaySpace} */ (/** @type {unknown} */ (group)),
-        (fn) => {
-          const frame = /** @type {() => void} */ (fn);
-          frames.add(frame);
-          return () => frames.delete(frame);
-        },
+        loop.onAnimationFrame,
       )
       .subscribe();
-    const model = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1));
-    model.position.set(0, 0, -5);
-    model.updateMatrixWorld();
-    const target = /** @type {THREE.Object3D<XREventMap>} */ (/** @type {unknown} */ (model));
-    manager.add(target);
-    /** @type {string[]} */
-    const events = [];
-    for (const type of /** @type {const} */ (["select", "selectmissed"])) {
-      target.addEventListener(type, () => events.push(type));
-    }
+    const events = modelAhead(manager);
 
     canvas.dispatchEvent(pointer("pointermove"));
-    frames.forEach((fn) => fn());
+    loop.run();
     canvas.dispatchEvent(pointer("pointerdown"));
     canvas.dispatchEvent(pointer("pointerleave"));
     view.dispatchEvent(pointer("pointerup"));
 
-    assert.deepEqual(events, ["selectmissed"]);
+    assert.deepEqual(events, ["pointerenter", "selectmissed"]);
+  });
+});
+
+describe("mouse(ctx)", () => {
+  test("casts in the late phase, after what moves the scene in useFrame", () => {
+    const manager = new InteractionManager();
+    const canvas = pageCanvas();
+    // A renderer with no session, which is all `mouse` reads of one.
+    const xr = Object.assign(document.createElement("div"), { getSession: () => null });
+    const renderer = /** @type {THREE.WebGLRenderer} */ (
+      /** @type {unknown} */ ({ domElement: canvas, xr })
+    );
+    const ctx = RendererContext.set(
+      CameraContext.set(InteractionContext.set({}, manager), new THREE.PerspectiveCamera()),
+      renderer,
+    );
+    const events = modelAhead(manager);
+    const scene = new THREE.Scene();
+    const subscription = mouse(ctx).subscribe((component) => {
+      component.addTo(scene);
+    });
+
+    canvas.dispatchEvent(pointer("pointermove"));
+    // Mounted, and following the mouse.
+    assert.equal(scene.children[0]?.visible, true);
+    // The early phase only: what `useFrame` callbacks are run in. A cast
+    // here would read the matrices before this frame's moves.
+    runFrame(renderer, 0, /** @type {XRFrame} */ (/** @type {unknown} */ ({})));
+    assert.deepEqual(events, []);
+    subscription.unsubscribe();
   });
 });

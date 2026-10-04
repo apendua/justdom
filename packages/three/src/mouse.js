@@ -2,7 +2,7 @@ import * as THREE from "three";
 import { effects } from "@apendua/signal";
 import { $ } from "./operators.js";
 import { InteractionContext } from "./interactions.js";
-import { getCamera, getXRSession, RendererContext, useFrame } from "./render.js";
+import { getCamera, getXRSession, onLateFrame, RendererContext } from "./render.js";
 
 /**
  * @import { XREventMap } from './core.js';
@@ -140,17 +140,14 @@ export function mouse(ctx) {
       const renderer = RendererContext.get(ctx);
       const camera = getCamera(ctx);
       const manager = InteractionContext.get(ctx);
-      // The manager casts when its frame hook says to, once per frame after
-      // the last move; `useFrame` is that hook here. It ties the callback's
-      // life to this effect, which is the registration's life too, so the
-      // stop the manager is handed has nothing left to do.
+      // The manager casts in the late phase, as it does for a controller
+      // `render()` registers: after everything that moves the scene this
+      // frame has moved it, so the hover and the cursor land on where things
+      // are drawn rather than where they were a frame ago.
       const registration = manager
         .addController(
           /** @type {THREE.XRTargetRaySpace} */ (/** @type {unknown} */ (pointer)),
-          (fn) => {
-            useFrame(ctx, fn);
-            return () => {};
-          },
+          (fn) => onLateFrame(ctx, fn),
         )
         .subscribe();
       const stop = followMouse(pointer, camera, renderer.domElement);

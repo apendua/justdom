@@ -177,7 +177,7 @@ so anything that answers a ray answers the mouse, and `cursors(ctx)` puts
 the hover mark on the page too.
 
 ```js
-children(scene, mouse(ctx), cursors(ctx));
+useEffects(getScene(ctx), [children(mouse(ctx), cursors(ctx))]);
 ```
 
 It writes its pose as its own, so it hangs straight off the scene. It is

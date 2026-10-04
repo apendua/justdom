@@ -108,7 +108,12 @@ export function flushFrame(renderer) {
  * the call, so they all read this. Give it back with `restore`, in a
  * `finally`.
  *
- * @returns {{ now: () => number, set: (ms: number) => void, advance: (ms: number) => void, restore: () => void }}
+ * @returns {{
+ *   now: () => number,
+ *   set: (ms: number) => void,
+ *   advance: (ms: number) => void,
+ *   restore: () => void,
+ * }}
  */
 export function fakeClock() {
   const originalNow = performance.now;

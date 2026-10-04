@@ -63,20 +63,20 @@ import { batch, Effect, withChannel } from "@apendua/signal";
 
 /**
  * How long, in milliseconds, a pump waits on a channel that will not empty
- * before it empties it in one go. What counts is the time spent in ticks
- * that find no node left to build and the channel still holding work the
- * commit waits for. A tick that ends with nodes still queued, a build
- * spanning frames, pauses the count from its own start, and the build's
- * reading gets what is left of the bound afterwards; it does not start the count again, or rows that
- * keep arriving would hold the panel for as long as they came. The count
- * ends only when a commit is taken, or the portal commits without the
- * channel (`commitsEarly`). A commit the portal declines, holding a
- * finished mount for its loading frame's minimum time, leaves it running,
- * so past the bound the pump sweeps unbudgeted on every tick until the
- * commit is taken: one long frame per frame for that stretch, which ends
- * when the loading frame is due, against a second of waiting begun again.
- * Otherwise, on the first tick past the bound, the pump sweeps the channel
- * unbudgeted, and the panel takes one long frame and lands.
+ * before it empties it in one go. What counts is the time spent in ticks that
+ * find no node left to build and the channel still holding work the commit
+ * waits for. A tick that ends with nodes still queued, a build spanning frames,
+ * pauses the count from its own start, and the build's reading gets what is
+ * left of the bound afterwards; it does not start the count again, or rows that
+ * keep arriving would hold the panel for as long as they came. The count ends
+ * only when a commit is taken, or the portal commits without the channel
+ * (`commitsEarly`). A commit the portal declines, holding a finished mount for
+ * its loading frame's minimum time, leaves it running, so past the bound the
+ * pump sweeps unbudgeted on every tick until the commit is taken: one long
+ * frame per frame for that stretch, which ends when the loading frame is due,
+ * against a second of waiting begun again. Otherwise, on the first tick past
+ * the bound, the pump sweeps the channel unbudgeted, and the panel takes one
+ * long frame and lands.
  *
  * An atomic channel holds every effect until the pass that finds nothing
  * left to read. Anything that invalidates the panel every frame, such as an

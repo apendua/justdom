@@ -717,6 +717,78 @@ describe("animation clock with rendering updates suspended", () => {
     });
   });
 
+  test("a held clock still takes the one more look a mutation asks for", () => {
+    // The mutation that starts a transition can reach the clock before the
+    // style recalc has made the animation, and the look a frame later is
+    // the only one coming. A hold must not drop it.
+    const { container, element, frames, clock, cleanup } = setup({ held: () => true });
+    withStalledClocks(() => {
+      let clockTime = 0;
+      performance.now = () => clockTime;
+      setDocumentTime(500);
+
+      try {
+        /** @type {ReturnType<typeof fakeAnimation>[]} */
+        let running = [];
+        // @ts-expect-error -- a minimal stand-in for the real thing.
+        container.getAnimations = () => running;
+        clock.sweep();
+        clockTime = 16;
+        frames.step();
+        // Long enough that the rendering step has stopped, and the mutation
+        // comes now, with the transition not made yet.
+        clockTime = PAST_THE_TIMEOUT;
+        clock.sweep();
+        running = [fakeAnimation(element, 1000)];
+        clockTime = PAST_THE_TIMEOUT + 16;
+        frames.step();
+        assert.equal(frames.running, true, "the look found the transition");
+      } finally {
+        cleanup();
+      }
+    });
+  });
+
+  test("an animation that starts during a hold is advanced from its start", () => {
+    // One account covers the hold, so without a note of when each animation
+    // joined, one that started late in the hold would be advanced by all of
+    // it and land past where the page would have it.
+    let held = true;
+    const { container, element, frames, clock, cleanup } = setup({ held: () => held });
+    const late = document.createElement("div");
+    container.appendChild(late);
+    withStalledClocks(() => {
+      let clockTime = 0;
+      performance.now = () => clockTime;
+      setDocumentTime(500);
+
+      try {
+        const early = fakeAnimation(element, 10_000);
+        const joined = fakeAnimation(late, 10_000);
+        /** @type {ReturnType<typeof fakeAnimation>[]} */
+        let running = [early];
+        // @ts-expect-error -- a minimal stand-in for the real thing.
+        container.getAnimations = () => running;
+        clock.sweep();
+        clockTime = 16;
+        frames.step();
+        clockTime = PAST_THE_TIMEOUT;
+        frames.step();
+        // Driving starts, held; then a second animation starts 300 ms in.
+        clockTime = PAST_THE_TIMEOUT + 300;
+        running = [early, joined];
+        clock.sweep();
+        clockTime = PAST_THE_TIMEOUT + 500;
+        held = false;
+        frames.step();
+        assert.equal(early.currentTime, 500, "the first by the whole hold");
+        assert.equal(joined.currentTime, 200, "the second from when it started");
+      } finally {
+        cleanup();
+      }
+    });
+  });
+
   test("leaves animations alone while the document is still rendering", () => {
     const { container, element, frames, clock, cleanup } = setup();
     withStalledClocks(() => {

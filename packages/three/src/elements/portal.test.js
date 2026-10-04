@@ -1239,10 +1239,10 @@ describe("createPortal", () => {
     // The trade the option is for. An atomic panel under an update that
     // lands on every frame — a layout transition — re-reads everything each
     // frame, and when that does not fit the budget it does not move until
-    // the animation ends. Not atomic, the budget runs effects rather than
-    // resolving for them: the rows change a few at a time, as they did
-    // before there were atomic channels, and the first of them changes in
-    // the first frame.
+    // the animation ends or the pump's bound passes. Not atomic, the budget
+    // runs effects rather than resolving for them: the rows change a few at
+    // a time, as they did before there were atomic channels, and the first
+    // of them changes in the first frame.
     const manager = new InteractionManager();
     const ctx = InteractionContext.set({}, manager);
     const portal = createPortal(ctx, { budget: 0, atomic: false });
@@ -3655,23 +3655,33 @@ describe("a panel that is always busy", () => {
    * A panel of a few rows, mounted at a zero budget, so that one frame
    * resolves one read and anything that invalidates the panel every frame
    * keeps its channel from ever emptying. It takes `performance.now` with
-   * `fakeClock` before it builds anything, and gives it back in `dispose`,
-   * or at once if building the panel throws, so that one failing test does
-   * not leave a frozen clock to every test after it.
+   * `fakeClock` before it builds anything, and gives it back in `dispose`.
+   * If building the panel throws, it disposes of what it built at once, so
+   * that one failing test leaves neither a frozen clock nor a connected
+   * portal to every test after it.
    *
    * @param {Parameters<typeof createPortal>[1]} [options]
    */
   const busyPanel = (options = {}) => {
     const clock = fakeClock();
+    /** @type {ReturnType<typeof createPortal> | undefined} */
+    let portal;
+    /** @type {{ unsubscribe: () => void } | undefined} */
+    let subscription;
+    const dispose = () => {
+      subscription?.unsubscribe();
+      portal?.disconnect();
+      clock.restore();
+    };
     try {
       const { ctx } = countingManager();
-      const portal = createPortal(ctx, { budget: 0, ...options });
+      portal = createPortal(ctx, { budget: 0, ...options });
       const parent = new THREE.Group();
       portal.addTo(parent);
       const containerObject = parent.children[0];
       /** @type {import("@apendua/justdom").Mountable | undefined} */
       let mountable;
-      const subscription = $("div", [
+      subscription = $("div", [
         children(...Array.from({ length: 4 }, () => $("div", [children($("div", []))]))),
       ]).subscribe((value) => {
         mountable = value;
@@ -3687,19 +3697,9 @@ describe("a panel that is always busy", () => {
         );
         return rootObject ? rootObject.children[0].children.length : 0;
       };
-      return {
-        portal,
-        list,
-        rows,
-        clock,
-        dispose: () => {
-          subscription.unsubscribe();
-          portal.disconnect();
-          clock.restore();
-        },
-      };
+      return { portal, list, rows, clock, dispose };
     } catch (error) {
-      clock.restore();
+      dispose();
       throw error;
     }
   };

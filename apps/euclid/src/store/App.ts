@@ -472,6 +472,12 @@ export default class AppStore {
     });
   }
 
+  /** Zoom about the middle of the view, for a pointer that has no wheel. */
+  zoomBy(factor: number): void {
+    const { width, height } = this.viewSize.get();
+    this.zoomAt(width / 2, height / 2, factor);
+  }
+
   fitView(): void {
     const bbox = this.scene.get().bbox;
     const { width, height } = this.viewSize.get();

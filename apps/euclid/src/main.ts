@@ -2,11 +2,14 @@ import { children } from "@apendua/justdom";
 import { just } from "@apendua/signal";
 import "./index.css";
 import EuclidApp from "./components/EuclidApp";
+import { offerHeadset } from "./offer";
 import AppStore from "./store/App";
 
-const root = document.querySelector<HTMLDivElement>("#root");
-if (!root) {
-  throw new Error("Root element not found");
+const toolbar = document.querySelector<HTMLDivElement>("#toolbar");
+const editor = document.querySelector<HTMLDivElement>("#editor");
+const canvas = document.querySelector<HTMLDivElement>("#canvas");
+if (!toolbar || !editor || !canvas) {
+  throw new Error("Mount points not found");
 }
 
 const store = new AppStore();
@@ -26,13 +29,30 @@ document.addEventListener("keydown", (e) => {
   }
 });
 
-just(root, [children(EuclidApp(store))]).subscribe({
-  error: (err) => {
-    console.error("Error mounting the app:", err);
-  },
-});
+// The app, mounted into the page exactly as a flat app is, in three places
+// the page lays out as one editor.
+const app = EuclidApp(store);
+for (const [element, tree] of [
+  [toolbar, app.toolbar],
+  [editor, app.editor],
+  [canvas, app.canvas],
+] as const) {
+  just(element, [children(tree)]).subscribe({
+    error: (err) => {
+      console.error("Error mounting the app:", err);
+    },
+  });
+}
 
 // Frame the initial example once the layout has settled.
 requestAnimationFrame(() => {
   store.fitView();
+});
+
+// And the headset, offered to a page that can open one: the scene mirrors
+// the very elements the app was just mounted into. It is loaded only once a
+// session is known to be possible, so a page that is only ever a page does
+// not fetch three.js.
+offerHeadset({ toolbar, editor, canvas }).catch((err) => {
+  console.error("Could not offer an XR session:", err);
 });

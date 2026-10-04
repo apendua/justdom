@@ -105,45 +105,62 @@ function tokenColor(type: string, text: string): string | null {
   return null;
 }
 
-interface ErrorSpan {
+interface Span {
   start: number;
   end: number;
 }
 
+/** What marks a run of code: an error's underline, a selection's ground. */
+const ERROR_STYLE = "text-decoration:underline wavy #dc2626 1px; text-underline-offset: 3px";
+const SELECTED_STYLE = "background:#dbeafe";
+
 /**
  * Renders the code as highlighted HTML. The error span (if any) gets a wavy
- * red underline.
+ * red underline, and the selected statement (if any) a pale blue ground,
+ * which shows where the textarea's own selection cannot: a headset draws
+ * the highlighted copy of the code, and not the browser's selection over
+ * it.
  */
-export function renderHighlight(code: string, error: ErrorSpan | null): string {
+export function renderHighlight(code: string, error: Span | null, selected: Span | null): string {
   const tokens = tokenize(code);
   let html = "";
   let offset = 0;
   const errorStart = error ? Math.min(error.start, code.length) : -1;
   const errorEnd = error ? Math.max(Math.min(error.end, code.length), errorStart + 1) : -1;
+  const selectedStart = selected ? Math.min(selected.start, code.length) : -1;
+  const selectedEnd = selected ? Math.min(selected.end, code.length) : -1;
 
   const emit = (start: number, end: number, color: string | null, italic = false) => {
     if (end <= start) {
       return;
     }
-    // Split the run around the error boundaries so the underline is exact.
-    const boundaries = [start, end];
-    if (error) {
-      if (errorStart > start && errorStart < end) {
-        boundaries.splice(1, 0, errorStart);
-      }
-      if (errorEnd > start && errorEnd < end) {
-        boundaries.splice(boundaries.length - 1, 0, errorEnd);
+    // Split the run around the marks' boundaries so each mark is exact,
+    // and at each line break, so that no marked span runs across lines.
+    const boundaries = new Set([start, end]);
+    for (const boundary of [errorStart, errorEnd, selectedStart, selectedEnd]) {
+      if (boundary > start && boundary < end) {
+        boundaries.add(boundary);
       }
     }
-    for (let i = 0; i < boundaries.length - 1; i += 1) {
-      const from = boundaries[i];
-      const to = boundaries[i + 1];
-      const inError = error !== null && from >= errorStart && to <= errorEnd;
+    for (let i = code.indexOf("\n", start); i !== -1 && i < end; i = code.indexOf("\n", i + 1)) {
+      boundaries.add(i);
+      if (i + 1 < end) {
+        boundaries.add(i + 1);
+      }
+    }
+    const cuts = [...boundaries].sort((a, b) => a - b);
+    for (let i = 0; i < cuts.length - 1; i += 1) {
+      const from = cuts[i];
+      const to = cuts[i + 1];
       const text = escapeHtml(code.slice(from, to));
+      const marked = text !== "\n";
       const styles = [
         color ? `color:${color}` : "",
         italic ? "font-style:italic" : "",
-        inError ? "text-decoration:underline wavy #dc2626 1px; text-underline-offset: 3px" : "",
+        marked && error !== null && from >= errorStart && to <= errorEnd ? ERROR_STYLE : "",
+        marked && selected !== null && from >= selectedStart && to <= selectedEnd
+          ? SELECTED_STYLE
+          : "",
       ]
         .filter(Boolean)
         .join(";");
@@ -174,7 +191,7 @@ const Editor = component((store: AppStore) => {
   let gutterRef: HTMLPreElement | undefined;
   let highlightRef: HTMLPreElement | undefined;
 
-  const errorSpan = (): ErrorSpan | null => {
+  const errorSpan = (): Span | null => {
     const parseError = store.parsed.get().error;
     if (parseError) {
       return { start: parseError.start, end: parseError.end };
@@ -184,6 +201,13 @@ const Editor = component((store: AppStore) => {
       return { start: runtimeError.start, end: runtimeError.end };
     }
     return null;
+  };
+
+  /** The statement defining the object selected in the drawing. */
+  const selectedStatement = (): Span | null => {
+    const id = store.selection.get();
+    const item = id === null ? undefined : store.itemById.get().get(id);
+    return item ? item.statement : null;
   };
 
   const updateCursor = (textarea: HTMLTextAreaElement) => {
@@ -215,7 +239,9 @@ const Editor = component((store: AppStore) => {
         children(
           $("pre", [
             set("className", highlightStyle),
-            set("innerHTML", () => renderHighlight(store.code.get(), errorSpan())),
+            set("innerHTML", () =>
+              renderHighlight(store.code.get(), errorSpan(), selectedStatement()),
+            ),
             (el: HTMLPreElement) => {
               highlightRef = el;
             },

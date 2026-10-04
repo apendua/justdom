@@ -2,6 +2,7 @@ import { $, $$, attr, children, className, keyedList, on } from "@apendua/justdo
 import { Signal, component, observable, set } from "@apendua/signal";
 import { Circle, Line, Point } from "@apendua.dev/euclid-core";
 import type { SceneItem } from "@apendua.dev/euclid-lang";
+import { xrSession } from "@apendua.dev/headset/session";
 import type AppStore from "../store/App";
 
 const INK = "#1f1d1a";
@@ -449,6 +450,11 @@ const Canvas = component((store: AppStore) => {
       $$("svg", [
         attr("class", svgStyle),
         attr("cursor", () => {
+          // A ray presses only what says it is pressable, and every point
+          // of the drawing is: a place for a point, a crossing, a pan.
+          if (xrSession.get()) {
+            return "pointer";
+          }
           if (grabbing.get()) {
             return "grabbing";
           }

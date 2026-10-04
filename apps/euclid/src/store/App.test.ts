@@ -164,4 +164,13 @@ describe("AppStore", () => {
     expect(after.y).toBeCloseTo(fixedWorld.y);
     expect(store.viewport.get().scale).toBeCloseTo(100);
   });
+
+  it("zooms by a factor about the middle of the view", () => {
+    const store = makeStore("");
+    store.viewport.set({ centerX: 3, centerY: -2, scale: 50 });
+    store.zoomBy(1.25);
+    expect(store.viewport.get().scale).toBeCloseTo(62.5);
+    expect(store.viewport.get().centerX).toBeCloseTo(3);
+    expect(store.viewport.get().centerY).toBeCloseTo(-2);
+  });
 });

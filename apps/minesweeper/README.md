@@ -47,12 +47,11 @@ points it at one installed elsewhere.
 | `src/components/Game.ts` | The state, and the two trees over it: the board, rebuilt for each new game, and the menu, built once. |
 | `src/components/Minefield.ts` | The board: one `<svg>`, its covered tiles one traced path, finding the tile under a press from where it was pressed. |
 | `src/components/Menu.ts` | The card: the size, the mines left, how the game stands, Restart, and the × and Passthrough a session adds. |
-| `src/offer.ts` | The offer: installs the emulator behind `?emulator`, checks the platform can present, and only then loads `xr.ts`. If a deploy took either chunk away, it reloads once a newer service worker has the page. Imports nothing from three.js. |
+| `src/offer.ts` | The offer: installs `@apendua.dev/headset`'s emulator behind `?emulator`, checks the platform can present, and only then loads `xr.ts`. If a deploy took either chunk away, it reloads once a newer service worker has the page. Imports nothing from three.js. |
 | `src/xr.ts` | The session: makes the renderer with freedom's SVG plugin, and the Enter button. |
 | `src/components/Scene.ts` | The scene: the two panels, a backdrop, lights, the cursors and the frame rate. |
 | `src/placement.ts` | Where the panels hang, in plain numbers, shared with `tests/xr-check.mjs`. |
-| `src/session.ts` | The session the page is shown in and the passthrough switch, written by the scene and read by the menu. |
-| `src/emulator.ts` | IWER, behind `?emulator`. |
+| `@apendua.dev/headset` | Not a file here, but shared with the other headset apps: `canPresent`, the session the page is shown in and the passthrough switch, written by the scene and read by the menu, and IWER behind `?emulator`. |
 
 The board and the menu are mounted in two places because a panel is the
 element it mirrors, and the two hang apart in a session. On the page the

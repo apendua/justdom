@@ -126,12 +126,12 @@ describe("offerHeadset", () => {
       // cannot.
       platform(null);
       vi.stubGlobal("location", { search: "?emulator", reload });
-      vi.doMock("./emulator", () => {
+      vi.doMock("@apendua.dev/headset/emulator", () => {
         throw new Error("Failed to fetch dynamically imported module");
       });
     });
     afterEach(() => {
-      vi.doUnmock("./emulator");
+      vi.doUnmock("@apendua.dev/headset/emulator");
     });
 
     it("reloads once the new worker has taken the page over", async () => {

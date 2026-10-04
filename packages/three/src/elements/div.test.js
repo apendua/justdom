@@ -14,6 +14,7 @@ import { describeScroller } from "../test/scroller.js";
 import { recordingSource } from "../test/rumble.js";
 import { clientRect } from "../test/clientRect.js";
 import { registerPanel } from "./dragAndDrop.js";
+import { createPanelForwarder, PointerForwarderContext } from "./pointerForwarding.js";
 import { rectGeometry } from "./sdfRect.js";
 
 /**
@@ -37,6 +38,20 @@ Object.defineProperty(document, "fonts", {
 });
 
 /**
+ * A ray event sent the way the manager sends one: to the object the ray
+ * met, and up through its parents, each told what it went through.
+ *
+ * @param {THREE.Object3D} object
+ * @param {object} event
+ */
+function bubble(object, event) {
+  const sent = /** @type {any} */ ({ ...event, originalTarget: object });
+  for (let node = /** @type {THREE.Object3D | null} */ (object); node; node = node.parent) {
+    node.dispatchEvent(sent);
+  }
+}
+
+/**
  * An element wired the way the portal wires one: a mirror standing in for the
  * portal's own, so a style change can be announced the way a real one is.
  *
@@ -50,12 +65,18 @@ Object.defineProperty(document, "fonts", {
  * @param {HTMLElement} [parent] Where the element goes. Unless given, a
  *   fresh container of its own, so that what earlier tests left behind is
  *   never a sibling it could be stacked against.
+ * @param {{ ctx: WeakKey, panel: THREE.Object3D }} [within] An element set
+ *   up earlier whose panel this one is in, sharing its forwarder; the test
+ *   puts this one's object under that one's. Unless given, the element's
+ *   object is put under a panel of its own, whose container carries a
+ *   forwarder as the portal's does.
  */
 function setup(
   cursor,
   cssText = "",
   haptics = null,
   parent = document.body.appendChild(document.createElement("div")),
+  within,
 ) {
   const element = document.createElement("div");
   element.style.cssText = cssText;
@@ -88,16 +109,22 @@ function setup(
     })
   );
 
-  const ctx = HapticsContext.set(InteractionContext.set({}, manager), haptics);
+  const panel = within?.panel ?? new THREE.Object3D();
+  const base = HapticsContext.set(InteractionContext.set({}, manager), haptics);
+  const ctx = within?.ctx ?? PointerForwarderContext.set(base, createPanelForwarder(base, panel));
 
   /** @type {THREE.Object3D<XREventMap>} */
   let object;
   const subscription = div(ctx, element).subscribe((value) => {
     object = /** @type {THREE.Object3D<XREventMap>} */ (value);
+    if (!within) {
+      panel.add(value);
+    }
   });
 
   return {
     ctx,
+    panel,
     element,
     mirror,
     registrations,
@@ -126,12 +153,14 @@ function setup(
       mirror.attributeChanged(element, { presentational: true, selfScoped: true });
     },
     /**
+     * A ray event on this element's object, sent up through its parents as
+     * the manager sends one.
+     *
      * @param {"pointerenter" | "pointerleave" | "selectstart" | "selectend"} type
      * @param {XRInputSource | null} [inputSource] The hand it came from.
      * @param {THREE.Object3D | null} [relatedTarget] Where the ray was before.
      * @param {THREE.Object3D} [registeredTarget] What the hit belongs to,
-     *   when not this object: the event as it bubbles up from a nested
-     *   target.
+     *   when not this object.
      * @param {THREE.Object3D} [controller] The hand, for what it is doing.
      */
     dispatch: (
@@ -141,17 +170,7 @@ function setup(
       registeredTarget = object,
       controller = new THREE.Object3D(),
     ) => {
-      object.dispatchEvent(
-        /** @type {any} */ ({
-          type,
-          target: object,
-          originalTarget: registeredTarget,
-          registeredTarget,
-          inputSource,
-          relatedTarget,
-          controller,
-        }),
-      );
+      bubble(object, { type, registeredTarget, inputSource, relatedTarget, controller });
     },
   };
 }
@@ -1263,7 +1282,9 @@ describe("div drag-to-scroll", () => {
         stopPropagation: () => {},
       })
     );
-    const ctx = InteractionContext.set({}, manager);
+    const base = InteractionContext.set({}, manager);
+    const panel = new THREE.Object3D();
+    const ctx = PointerForwarderContext.set(base, createPanelForwarder(base, panel));
 
     /** @type {THREE.Object3D<XREventMap> | undefined} */
     let object;
@@ -1272,6 +1293,7 @@ describe("div drag-to-scroll", () => {
     });
 
     assert.ok(object);
+    panel.add(object);
     // A plain list is not clickable and carries no hover styling, but it is
     // draggable — otherwise a list of text could not be scrolled at all.
     assert.ok(registered.includes(object), "the list itself is a ray target");
@@ -1296,9 +1318,9 @@ describe("div drag-to-scroll", () => {
     document.addEventListener("click", listener);
     const controller = new THREE.Object3D();
     const intersection = { point, object };
-    object.dispatchEvent(/** @type {any} */ ({ type: "selectstart", controller, intersection }));
-    object.dispatchEvent(/** @type {any} */ ({ type: "selectend", controller, intersection }));
-    object.dispatchEvent(/** @type {any} */ ({ type: "select", controller, intersection }));
+    bubble(object, { type: "selectstart", controller, intersection });
+    bubble(object, { type: "selectend", controller, intersection });
+    bubble(object, { type: "select", controller, intersection });
     assert.deepEqual(clicked, ["div at 112,47"]);
 
     document.removeEventListener("click", listener);
@@ -1338,14 +1360,16 @@ describe("div haptics", () => {
     const button = setup("pointer", "", haptics);
     // The label inside the button inherits its cursor, and so is a target
     // of its own, under the button's object as the portal would put it.
-    const label = setup("pointer", "", haptics, button.element);
+    const label = setup("pointer", "", haptics, button.element, button);
     getContentGroup(button.object).add(label.object);
     const other = new THREE.Object3D();
 
     label.dispatch("pointerenter", source);
-    assert.equal(played.length, 1, "the ray arrives on the label from nothing");
-    button.dispatch("pointerenter", source, null, label.object);
-    assert.equal(played.length, 1, "the same enter bubbling up plays nothing more");
+    assert.equal(
+      played.length,
+      1,
+      "the ray arrives on the label from nothing, and the button it is in adds nothing",
+    );
 
     button.dispatch("pointerenter", source, label.object);
     assert.equal(played.length, 1, "drifting from the label onto the button is not an arrival");
@@ -1376,6 +1400,7 @@ describe("div haptics", () => {
     listObject.add(listContent);
 
     const button = setup("pointer", "", haptics, list);
+    button.panel.add(listObject);
     listContent.add(button.object);
     const controller = /** @type {THREE.XRTargetRaySpace} */ (
       /** @type {unknown} */ (new THREE.Object3D())
@@ -1387,7 +1412,7 @@ describe("div haptics", () => {
     // The ray crossing the gap may meet the button's label first, which is
     // a target of its own by the button's cursor: still the button, still
     // an arrival.
-    const label = setup("pointer", "", haptics, button.element);
+    const label = setup("pointer", "", haptics, button.element, button);
     getContentGroup(button.object).add(label.object);
     label.dispatch("pointerenter", source, listObject, label.object, controller);
     assert.equal(played.length, 2, "onto the label from the list is an arrival");

@@ -420,7 +420,10 @@ describe("createPortal", () => {
       (object) => !(object instanceof THREE.Mesh && object.geometry instanceof THREE.PlaneGeometry),
     );
     assert.ok(control);
-    control.dispatchEvent(/** @type {any} */ ({ type: "select", target: control }));
+    manager.dispatch(
+      /** @type {any} */ (control),
+      /** @type {any} */ ({ type: "select", originalTarget: control }),
+    );
 
     // The click the ray sends is a click, so the DOM does the toggling and the
     // scene follows the DOM — the same order of events the page sees. The DOM
@@ -2256,7 +2259,8 @@ describe("createPortal", () => {
       const { source, played } = recordingSource();
       const controller = new THREE.Object3D();
       for (const type of ["pointerenter", "selectstart", "selectend"]) {
-        object.dispatchEvent(
+        manager.dispatch(
+          object,
           /** @type {any} */ ({
             type,
             controller,
@@ -2333,9 +2337,12 @@ describe("createPortal", () => {
     });
     const controller = new THREE.Object3D();
     const press = () => {
-      rowObject.dispatchEvent(/** @type {any} */ ({ type: "selectstart", controller }));
-      rowObject.dispatchEvent(/** @type {any} */ ({ type: "selectend", controller }));
-      rowObject.dispatchEvent(/** @type {any} */ ({ type: "select", controller }));
+      for (const type of ["selectstart", "selectend", "select"]) {
+        manager.dispatch(
+          rowObject,
+          /** @type {any} */ ({ type, controller, originalTarget: rowObject }),
+        );
+      }
     };
     press();
     assert.equal(clicks, 1, "a press on a row that is there is a click");
@@ -3725,7 +3732,10 @@ describe("a draggable panel", () => {
     assert.ok(field, "the field is a ray target");
     const controller = new THREE.Group();
     for (const type of ["selectstart", "select", "selectend"]) {
-      field.dispatchEvent(/** @type {any} */ ({ type, controller, inputSource: null }));
+      manager.dispatch(
+        /** @type {any} */ (field),
+        /** @type {any} */ ({ type, controller, inputSource: null, originalTarget: field }),
+      );
     }
     await nextMacrotask();
     // The board's anchor is the last thing hung in the panel's frame.

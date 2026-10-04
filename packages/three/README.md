@@ -429,14 +429,20 @@ target, its DOM events are sent once and bubble from there, and every
 clickable element around it takes `data-xr-hover` and `data-xr-active` as
 well, as `:hover` and `:active` would. Only the clickable ones do: an
 ancestor that is not a ray target takes neither, where on a page it would
-match `:hover`. The ray event stops at the outermost of them, so nothing
-outside the panel hears a press the panel took. The grip's start is the one
-exception: it goes on past the panel, so that a scene can pick up with the
-grip what the panel hangs from. A grip nothing took is the panel's, and its
-end, its completion and its miss stop at the outermost element as a
-press's do.
+match `:hover`. The ray event stops at the panel, so nothing outside it
+hears a press the panel took. The grip's start is the one exception: it
+goes on past the panel, so that a scene can pick up with the grip what the
+panel hangs from. A grip nothing took is the panel's, and its end, its
+completion and its miss stop at the panel as a press's do.
 Nesting costs no extra ray tests: a registered object inside another is
 reached by the outer one's walk and is not cast again on its own.
+The panel does all of this once, for every element in it. Each element a ray
+acts on registers with its panel's forwarder, which listens on the portal's
+container object. Every ray event in the panel passes the container on its
+way up, and the forwarder reads which of its elements the event went
+through (`createPanelForwarder` in `elements/pointerForwarding.js`). A
+clickable element built outside any portal has no panel to forward it, so
+it is a ray target and nothing more.
 
 It does that without depending on `justdom`. What `dom()` takes is a
 `Mountable` — a tree that has not been put anywhere yet, exposing one method
@@ -539,16 +545,16 @@ side's, and a dashed, dotted or double border is drawn solid.
 Two things about a portal are worth knowing before writing UI for one.
 
 **Sizes are re-measured when the tree changes, not when an attribute does.**
-The hover handlers write `data-xr-*` back onto the element they fired on, so
-re-measuring the panel on every attribute mutation would mean re-laying-out
-the whole thing on every twitch of the ray. Every attribute is followed: a
-class, an inline style, an app's own `data-*` or `aria-*` flag, an SVG
-shape's `d` or `fill`. Changing one restyles the element, its subtree and
-its siblings, and repaints; the one thing it re-measures is the element's
-own subtree, which is what a toggled `transform` moves (see below), and
-nothing outside it. So anything that changes _layout_ — a menu opening, a
-section expanding — has to be mounted and unmounted rather than hidden and
-shown.
+The panel's forwarder writes `data-xr-*` back onto the elements the ray is
+on, so re-measuring the panel on every attribute mutation would mean
+re-laying-out the whole thing on every twitch of the ray. Every attribute is
+followed: a class, an inline style, an app's own `data-*` or `aria-*` flag,
+an SVG shape's `d` or `fill`. Changing one restyles the element, its subtree
+and its siblings, and repaints; the one thing it re-measures is the
+element's own subtree, which is what a toggled `transform` moves (see
+below), and nothing outside it. So anything that changes _layout_ — a menu
+opening, a section expanding — has to be mounted and unmounted rather than
+hidden and shown.
 
 **Hover and press are presentational, by contract.** The four attributes
 the portal writes itself — `data-xr-hover`, `data-xr-active`,
@@ -1017,7 +1023,7 @@ What plays is the hand's own: the event carries the input source three
 connected to the controller, and every actuator of its gamepad gets a
 `dual-rumble` effect, or a `pulse` on a runtime that only has that. A
 tracked hand has no motors and feels nothing. The pulses are worked out
-once per panel, so an element's handler pays for the call and nothing else.
+once per panel, so the panel's forwarder pays for the call and nothing else.
 `playHaptic(source, effect)` is that driver on its own, for a scene with
 haptics of its own to play, so that one place knows both interfaces and
 what to do when a motor refuses.

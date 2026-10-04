@@ -49,6 +49,7 @@ import {
 } from "./plugins.js";
 import { mergePanelOptions, PanelOptionsContext, resolveKeyboard } from "./panelOptions.js";
 import { createHaptics, HapticsContext } from "./haptics.js";
+import { createPanelForwarder, PointerForwarderContext } from "./pointerForwarding.js";
 import { createPanelHandles } from "./panelHandles.js";
 import { CameraContext, frames, onLateFrame, RendererContext } from "../render.js";
 import { InteractionContext } from "../interactions.js";
@@ -451,6 +452,14 @@ function buildPortal(ctx, ownOptions = {}) {
    */
   const panelScrolls = createPanelScrollDrags(ctx);
   ctx = ScrollDragsContext.set(ctx, panelScrolls);
+  /**
+   * What sends the rays' events back to the page, one per panel, listening
+   * on its container: every element a ray acts on registers with it, and
+   * nothing else listens (see `createPanelForwarder`). After the scroll
+   * gesture and the haptics, which it reads from the context.
+   */
+  const forwarder = createPanelForwarder(ctx, containerObject);
+  ctx = PointerForwarderContext.set(ctx, forwarder);
 
   /**
    * How finely this panel's text is worth rasterizing, measured off what the
@@ -1848,6 +1857,7 @@ function buildPortal(ctx, ownOptions = {}) {
     ownKeyboardHost?.dispose();
     pump?.dispose();
     panelScrolls.dispose();
+    forwarder.dispose();
     unregisterPanel();
     // A panel closed before it finished mounting still had a frame up.
     stopLoadingFrame();

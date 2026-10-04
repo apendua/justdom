@@ -681,15 +681,19 @@ describe("projecting a keyboard", () => {
     const keys = MOBILE_LAYOUT.flat().filter((entry) => !entry.spacer);
     assert.equal(added.length, keys.length + 1, "one blocker plane, then a mesh per key");
 
-    // A ray landing on a key is a `select` on the mesh, which the portal turns
-    // back into a click on the element it was mirrored from. Pointing at all
-    // of them in turn is the whole board being usable in a headset, which is
-    // the only claim here that a flat-page test cannot make. The toggle among
-    // them flips the view mid-walk and the modifiers flip their state — the
-    // codes still come back one per typing key, which is the point: the
-    // position reports itself whatever face it is wearing.
+    // A ray landing on a key is a `select` sent from the mesh up through the
+    // panel, which the portal turns back into a click on the element it was
+    // mirrored from. Pointing at all of them in turn is the whole board being
+    // usable in a headset, which is the only claim here that a flat-page test
+    // cannot make. The toggle among them flips the view mid-walk and the
+    // modifiers flip their state — the codes still come back one per typing
+    // key, which is the point: the position reports itself whatever face it
+    // is wearing.
     for (const target of added.slice(1)) {
-      target.dispatchEvent(/** @type {any} */ ({ type: "select" }));
+      manager.dispatch(
+        /** @type {any} */ (target),
+        /** @type {any} */ ({ type: "select", originalTarget: target }),
+      );
     }
 
     assert.deepEqual(

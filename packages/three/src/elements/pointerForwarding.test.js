@@ -7,12 +7,14 @@ import { getContentGroup } from "./contentGroup.js";
 import { box } from "./div.js";
 import { registerPanel } from "./dragAndDrop.js";
 import { createMirror } from "./mirror.js";
+import { createPanelForwarder, PointerForwarderContext } from "./pointerForwarding.js";
 import { movesList } from "./scroll.js";
 import { createHaptics, HapticsContext } from "./haptics.js";
 import { recordingSource } from "../test/rumble.js";
 import { clientRect } from "../test/clientRect.js";
 import { describeScroller } from "../test/scroller.js";
-import { flushFrame } from "../test/portalHarness.js";
+import { countingManager, flushFrame, settle } from "../test/portalHarness.js";
+import { createPortal } from "./portal.js";
 
 /**
  * @import { XREventMap } from "../core.js";
@@ -36,10 +38,11 @@ const SVG_NS = "http://www.w3.org/2000/svg";
 /**
  * An outer element with an inner one in it, projected the way the portal
  * projects them: the inner object in the outer's content group, and the
- * outer under an object standing for the panel. The manager is a real one,
- * because what is under test is where its dispatch stops. The outer is
- * registered as the panel's top, as the portal registers its container, so
- * that a press can ask where on the page it landed.
+ * outer under an object standing for the panel's container, which carries
+ * the panel's forwarder, in a scene. The manager is a real one, because
+ * what is under test is where its dispatch stops. The outer is registered
+ * as the panel's top, as the portal registers its container, so that a
+ * press can ask where on the page it landed.
  *
  * @param {object} options
  * @param {Element} options.outer
@@ -55,8 +58,11 @@ function nest({ outer, inner, build, haptics = null }) {
   mirror.adopt(inner);
 
   const manager = new InteractionManager();
-  const ctx = HapticsContext.set(InteractionContext.set({}, manager), haptics);
+  const scene = new THREE.Object3D();
   const panel = new THREE.Object3D();
+  scene.add(panel);
+  const base = HapticsContext.set(InteractionContext.set({}, manager), haptics);
+  const ctx = PointerForwarderContext.set(base, createPanelForwarder(base, panel));
 
   /** @type {THREE.Object3D<XREventMap>[]} */
   const objects = [];
@@ -102,7 +108,7 @@ function nest({ outer, inner, build, haptics = null }) {
     "squeeze",
     "squeezemissed",
   ]) {
-    panel.addEventListener(/** @type {never} */ (type), () => escaped.push(type));
+    scene.addEventListener(/** @type {never} */ (type), () => escaped.push(type));
   }
 
   const controller = /** @type {THREE.XRTargetRaySpace} */ (
@@ -118,7 +124,7 @@ function nest({ outer, inner, build, haptics = null }) {
     points,
     /** The outer element's object, whose frame is the panel's px. */
     outerObject,
-    panel,
+    scene,
     manager,
     escaped,
     controller,
@@ -557,7 +563,7 @@ describe("a press on nested clickable elements", () => {
       haptics: createHaptics({ flavor: "key" }),
     });
     // What `drag()` with the grip among its buttons does with the press.
-    s.panel.addEventListener(/** @type {never} */ ("squeezestart"), (event) =>
+    s.scene.addEventListener(/** @type {never} */ ("squeezestart"), (event) =>
       s.manager.stopPropagation(/** @type {never} */ (event)),
     );
 
@@ -1083,5 +1089,66 @@ describe("a ray's pointer events", () => {
     assert.throws(() => element.setPointerCapture(99), { name: "NotFoundError" });
     assert.throws(() => element.releasePointerCapture(99), { name: "NotFoundError" });
     element.remove();
+  });
+});
+
+describe("a panel's ray events", () => {
+  test("are heard by its container, and by nothing in it but the background", async () => {
+    // A clickable card with a clickable icon in it, and a list that scrolls,
+    // of clickable rows: every kind of element a ray acts on in a panel
+    // that has no field and no overlay, which listen for their own reasons.
+    const root = document.createElement("div");
+    const card = html("div", "cursor: pointer");
+    card.appendChild(html("span", "cursor: pointer"));
+    const list = html("div", "overflow: hidden");
+    describeScroller(list, { client: 50, scroll: 400 });
+    list.appendChild(html("div", "cursor: pointer"));
+    list.appendChild(html("div", "cursor: pointer"));
+    root.append(card, list);
+    document.body.appendChild(root);
+    const { ctx, targets } = countingManager();
+    const portal = createPortal(ctx, { root, budget: 0 });
+    const scene = new THREE.Group();
+    portal.addTo(scene);
+    await settle(portal);
+    const container = scene.children[0];
+    assert.equal(targets.size, 6, "the background, the card, the icon, the list and its rows");
+
+    const types = /** @type {const} */ ([
+      "selectstart",
+      "selectend",
+      "select",
+      "selectmissed",
+      "squeezestart",
+      "squeezeend",
+      "squeeze",
+      "squeezemissed",
+      "pointermove",
+      "pointerenter",
+      "pointerleave",
+    ]);
+    /**
+     * The ray events an object listens for.
+     *
+     * @param {THREE.Object3D} object
+     */
+    const heard = (object) => {
+      const { _listeners: listeners } = /** @type {{ _listeners?: Record<string, unknown[]> }} */ (
+        /** @type {unknown} */ (object)
+      );
+      return types.filter((type) => (listeners?.[type]?.length ?? 0) > 0);
+    };
+    assert.deepEqual(heard(container), types, "the container hears every one");
+    /** @type {string[][]} */
+    const inside = [];
+    container.traverse((object) => {
+      if (object !== container && heard(object).length > 0) {
+        inside.push(heard(object));
+      }
+    });
+    assert.deepEqual(inside, [["select"]], "and in it only the background's click");
+
+    portal.disconnect();
+    root.remove();
   });
 });

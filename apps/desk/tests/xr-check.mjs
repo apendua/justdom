@@ -17,20 +17,27 @@
  * - the trigger there ends the session and takes the panels down;
  * - the page throws nothing along the way.
  *
- * A manual check rather than part of `npm test`: it needs a browser, and
- * takes a few minutes under SwiftShader, most of it the panels mounting.
+ * It is kept out of `npm test` because it needs a browser and takes a few
+ * minutes under SwiftShader, most of it the panels mounting;
+ * `.github/workflows/driven.yml` runs it on pull requests. The browser and
+ * the controller are driven through `@apendua.dev/headset/driver`.
  */
 import { join, resolve, dirname } from "node:path";
 import { mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
+import {
+  aimAt,
+  check,
+  closeAll,
+  finish,
+  frames,
+  headPosition,
+  launch,
+  press,
+} from "@apendua.dev/headset/driver";
 
 const HERE = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const { chromium } = await import(
-  resolve(HERE, "../showcase-xr/node_modules/playwright-core/index.mjs")
-);
-
-const CHROMIUM = process.env.CHROMIUM ?? "/opt/pw-browsers/chromium-1194/chrome-linux/chrome";
 
 const SHOTS = process.env.SHOTS;
 if (SHOTS) {
@@ -42,36 +49,6 @@ if (SHOTS) {
  * under a minute; the margin is for a slow runner.
  */
 const LOAD_TIMEOUT = 240_000;
-
-/**
- * @param {import("playwright-core").Page} page
- * @param {number} count
- */
-async function frames(page, count) {
-  await page.evaluate(
-    (n) =>
-      new Promise((done) => {
-        let left = n;
-        const step = () => (--left <= 0 ? done(undefined) : requestAnimationFrame(step));
-        requestAnimationFrame(step);
-      }),
-    count,
-  );
-}
-
-/** @type {string[]} */
-const failures = [];
-
-/**
- * @param {boolean} ok
- * @param {string} what
- */
-function check(ok, what) {
-  console.log(`  ${ok ? "OK" : "FAIL"}: ${what}`);
-  if (!ok) {
-    failures.push(what);
-  }
-}
 
 async function main() {
   const server = await createServer({
@@ -86,10 +63,7 @@ async function main() {
   /** @type {typeof import("../src/looks.ts")} */
   const looks = /** @type {any} */ (await server.ssrLoadModule("/src/looks.ts"));
 
-  const browser = await chromium.launch({
-    executablePath: CHROMIUM,
-    args: ["--use-gl=angle", "--use-angle=swiftshader", "--enable-unsafe-swiftshader"],
-  });
+  const browser = await launch();
   try {
     for (const look of looks.LOOKS) {
       const { id } = look;
@@ -147,10 +121,7 @@ async function main() {
 
       // Where the head was as the session started, which is the origin of
       // the `local` space the room is laid out in.
-      const head = await page.evaluate(() => {
-        const { x, y, z } = /** @type {any} */ (window).xrDevice.position;
-        return [x, y, z];
-      });
+      const head = await headPosition(page);
 
       // The power control is on the monitor in every look, and the monitor
       // stands upright, square to the viewer, at its placement. A session
@@ -172,35 +143,13 @@ async function main() {
         };
       });
       const metres = monitor.px ?? looks.PX;
+      /** @type {[number, number, number]} */
       const target = [
         monitor.x + offset.x * metres,
         looks.DESK_TOP + monitor.y - offset.y * metres,
         monitor.z,
       ];
-
-      // The right controller below the head, its ray through the target.
-      const from = [head[0] + 0.05, head[1] - 0.2, head[2] - 0.05];
-      const d = target.map((v, i) => v + head[i] - from[i]);
-      const yaw = Math.atan2(-d[0], -d[2]);
-      const pitch = Math.atan2(d[1], Math.hypot(d[0], d[2]));
-      await page.evaluate(
-        ([p, y, f]) => {
-          const c = /** @type {any} */ (window).xrDevice.controllers.right;
-          c.position.x = f[0];
-          c.position.y = f[1];
-          c.position.z = f[2];
-          const cy = Math.cos(y / 2);
-          const sy = Math.sin(y / 2);
-          const cx = Math.cos(p / 2);
-          const sx = Math.sin(p / 2);
-          c.quaternion.x = cy * sx;
-          c.quaternion.y = sy * cx;
-          c.quaternion.z = -sy * sx;
-          c.quaternion.w = cy * cx;
-        },
-        [pitch, yaw, from],
-      );
-      await frames(page, 5);
+      await aimAt(page, head, target);
       check(
         await page.evaluate(
           () => document.querySelector("[data-power]")?.hasAttribute("data-xr-hover") ?? false,
@@ -208,14 +157,7 @@ async function main() {
         "the ray is on the power control",
       );
 
-      for (const value of [1, 0]) {
-        await page.evaluate(
-          (v) =>
-            /** @type {any} */ (window).xrDevice.controllers.right.updateButtonValue("trigger", v),
-          value,
-        );
-        await frames(page, 4);
-      }
+      await press(page, "trigger");
       const ended = await page
         .waitForFunction(() => !document.querySelector("[data-xr-portal]"), undefined, {
           timeout: 10_000,
@@ -229,16 +171,9 @@ async function main() {
       await page.close();
     }
   } finally {
-    // Chromium under SwiftShader now and then never answers a close. Every
-    // check has been made by then, so it is given a few seconds and left.
-    const giveUp = new Promise((done) => setTimeout(done, 10_000));
-    await Promise.race([browser.close(), giveUp]);
-    await Promise.race([server.close(), giveUp]);
+    await closeAll(browser, server);
   }
-  if (failures.length) {
-    console.log(`\n${failures.length} failed`);
-  }
-  process.exit(failures.length ? 1 : 0);
+  finish();
 }
 
 main().catch((error) => {

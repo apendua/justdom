@@ -44,11 +44,13 @@ bottom; `?emulator=bare` installs the runtime without the panels.
 emulated headset in headless Chromium. It fails unless every zone the look
 places becomes a panel and loads, the ray aimed at the power control is on
 it, and the trigger there ends the session, or if the page throws. It takes
-about two minutes. `SHOTS=<dir>` also photographs each session, and `STACKS=1` prints a stack for anything the
-page throws. It borrows Playwright from `apps/showcase-xr` and launches the
-Chromium at `/opt/pw-browsers/chromium-1194/chrome-linux/chrome`;
-`CHROMIUM=<path>` points it at one installed elsewhere. A pull request that
-touches `packages/freedom` or this app runs it, with minesweeper's, from
+about two minutes. `SHOTS=<dir>` also photographs each session, and
+`STACKS=1` prints a stack for anything the page throws. It drives the
+browser and the controller through `@apendua.dev/headset/driver`, which
+borrows Playwright from `apps/showcase-xr` and launches the Chromium at
+`/opt/pw-browsers/chromium-1194/chrome-linux/chrome`; `CHROMIUM=<path>`
+points it at one installed elsewhere. A pull request that touches this app
+or a package it imports runs it, with minesweeper's, from
 `.github/workflows/driven.yml`.
 
 ## What you can do

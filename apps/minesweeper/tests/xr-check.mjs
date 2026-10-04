@@ -26,56 +26,32 @@
  * - the × ends the session.
  *
  * The script fails if any of them does not happen, or if the page throws
- * along the way. A manual check rather
- * than part of `npm test`: it needs a browser, and takes about a minute
- * under SwiftShader.
+ * along the way. It is kept out of `npm test` because it needs a browser
+ * and takes about half a minute under SwiftShader;
+ * `.github/workflows/driven.yml` runs it on pull requests. The browser and
+ * the controller are driven through `@apendua.dev/headset/driver`.
  */
 import { join, resolve, dirname } from "node:path";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { build, createServer } from "vite";
+import {
+  aimAt,
+  check,
+  closeAll,
+  finish,
+  frames,
+  headPosition,
+  launch,
+  press,
+} from "@apendua.dev/headset/driver";
 
 const HERE = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const { chromium } = await import(
-  resolve(HERE, "../showcase-xr/node_modules/playwright-core/index.mjs")
-);
-
-const CHROMIUM = process.env.CHROMIUM ?? "/opt/pw-browsers/chromium-1194/chrome-linux/chrome";
 
 const SHOTS = process.env.SHOTS;
 if (SHOTS) {
   mkdirSync(SHOTS, { recursive: true });
-}
-
-/**
- * @param {import("playwright-core").Page} page
- * @param {number} count
- */
-async function frames(page, count) {
-  await page.evaluate(
-    (n) =>
-      new Promise((done) => {
-        let left = n;
-        const step = () => (--left <= 0 ? done(undefined) : requestAnimationFrame(step));
-        requestAnimationFrame(step);
-      }),
-    count,
-  );
-}
-
-/** @type {string[]} */
-const failures = [];
-
-/**
- * @param {boolean} ok
- * @param {string} what
- */
-function check(ok, what) {
-  console.log(`  ${ok ? "OK" : "FAIL"}: ${what}`);
-  if (!ok) {
-    failures.push(what);
-  }
 }
 
 /**
@@ -171,10 +147,7 @@ async function main() {
   /** @type {typeof import("../src/placement.ts")} */
   const placement = /** @type {any} */ (await server.ssrLoadModule("/src/placement.ts"));
 
-  const browser = await chromium.launch({
-    executablePath: CHROMIUM,
-    args: ["--use-gl=angle", "--use-angle=swiftshader", "--enable-unsafe-swiftshader"],
-  });
+  const browser = await launch();
   try {
     console.log("\n== the page alone");
     {
@@ -297,41 +270,7 @@ async function main() {
 
     // Where the head was as the session started, which is the origin of the
     // `local` space the scene is laid out in.
-    const head = await page.evaluate(() => {
-      const { x, y, z } = /** @type {any} */ (window).xrDevice.position;
-      return [x, y, z];
-    });
-
-    /**
-     * The right controller below the head, its ray through a point in the
-     * scene.
-     *
-     * @param {[number, number, number]} target
-     */
-    const aimAt = async (target) => {
-      const from = [head[0] + 0.05, head[1] - 0.2, head[2] - 0.05];
-      const d = target.map((v, i) => v + head[i] - from[i]);
-      const yaw = Math.atan2(-d[0], -d[2]);
-      const pitch = Math.atan2(d[1], Math.hypot(d[0], d[2]));
-      await page.evaluate(
-        ([p, y, f]) => {
-          const c = /** @type {any} */ (window).xrDevice.controllers.right;
-          c.position.x = f[0];
-          c.position.y = f[1];
-          c.position.z = f[2];
-          const cy = Math.cos(y / 2);
-          const sy = Math.sin(y / 2);
-          const cx = Math.cos(p / 2);
-          const sx = Math.sin(p / 2);
-          c.quaternion.x = cy * sx;
-          c.quaternion.y = sy * cx;
-          c.quaternion.z = -sy * sx;
-          c.quaternion.w = cy * cx;
-        },
-        [pitch, yaw, from],
-      );
-      await frames(page, 3);
-    };
+    const head = await headPosition(page);
 
     /**
      * Where a point of the board element, in its own px, is in the scene.
@@ -400,23 +339,11 @@ async function main() {
         selector,
       );
 
-    /** @param {"trigger" | "squeeze"} button */
-    const press = async (button) => {
-      for (const value of [1, 0]) {
-        await page.evaluate(
-          ([b, v]) =>
-            /** @type {any} */ (window).xrDevice.controllers.right.updateButtonValue(b, v),
-          /** @type {const} */ ([button, value]),
-        );
-        await frames(page, 4);
-      }
-    };
-
     /** Press the menu's button with this text, by the ray. */
     const pressInMenu = async (/** @type {string} */ label) => {
-      await aimAt(await onMenu(label));
+      await aimAt(page, head, await onMenu(label));
       check(await flagged(label, "data-xr-hover"), `the ray is on ${label}`);
-      await press("trigger");
+      await press(page, "trigger");
       await frames(page, 10);
     };
 
@@ -461,10 +388,10 @@ async function main() {
     const covered = await coveredPoints();
     if (covered.length < 2) throw new Error("no covered tiles to aim at");
     const flagAt = covered[0];
-    await aimAt(await onBoard(flagAt.x, flagAt.y));
+    await aimAt(page, head, await onBoard(flagAt.x, flagAt.y));
     check(await hovered("#board svg path"), "the ray is on the covered tiles");
     const flagsBefore = await flags();
-    await press("squeeze");
+    await press(page, "squeeze");
     await frames(page, 10);
     const heard = await page.evaluate(() => /** @type {any} */ (window).__heard);
     console.log("  heard:", JSON.stringify(heard));
@@ -486,9 +413,9 @@ async function main() {
     check((await flags()) === flagsBefore + 1, "and it planted a flag");
 
     const uncoverAt = covered[covered.length - 1];
-    await aimAt(await onBoard(uncoverAt.x, uncoverAt.y));
+    await aimAt(page, head, await onBoard(uncoverAt.x, uncoverAt.y));
     const before = await coveredPath();
-    await press("trigger");
+    await press(page, "trigger");
     await frames(page, 20);
     check((await coveredPath()) !== before, "the trigger uncovered a tile");
     // A count on the board when it is dealt again is what once broke the
@@ -512,8 +439,8 @@ async function main() {
       if (!point) {
         break;
       }
-      await aimAt(await onBoard(point.x, point.y));
-      await press("trigger");
+      await aimAt(page, head, await onBoard(point.x, point.y));
+      await press(page, "trigger");
       await frames(page, 10);
     }
     check((await counts()) > 0, "a count is drawn on the board");
@@ -549,16 +476,9 @@ async function main() {
     check(ended, "the × ended the session and took the panels down");
     check(errors.length === 0, `the page threw nothing (${errors.length} errors)`);
   } finally {
-    // Chromium under SwiftShader now and then never answers a close. Every
-    // check has been made by then, so it is given a few seconds and left.
-    const giveUp = new Promise((done) => setTimeout(done, 10_000));
-    await Promise.race([browser.close(), giveUp]);
-    await Promise.race([server.close(), giveUp]);
+    await closeAll(browser, server);
   }
-  if (failures.length) {
-    console.log(`\n${failures.length} failed`);
-  }
-  process.exit(failures.length ? 1 : 0);
+  finish();
 }
 
 main().catch((error) => {

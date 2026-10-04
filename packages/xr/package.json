@@ -13,10 +13,12 @@
     "./session": {
       "types": "./lib-types/session.d.ts",
       "import": "./src/session.js"
-    }
+    },
+    "./driver": "./driver/index.mjs"
   },
   "files": [
     "src",
+    "driver",
     "lib-types"
   ],
   "scripts": {

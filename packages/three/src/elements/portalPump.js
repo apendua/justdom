@@ -63,16 +63,20 @@ import { batch, Effect, withChannel } from "@apendua/signal";
 
 /**
  * How long, in milliseconds, a pump waits on a channel that will not empty
- * before it empties it in one go. The wait starts on the first tick that
- * finds no node left to build and the channel still holding work the commit
- * waits for. It ends on a tick that finds the channel empty, or the portal
- * committing without it (`commitsEarly`), or nodes still queued once its
- * slice is spent: that is a build spanning frames, and its reading gets the
- * whole second after it. A row built within its own tick leaves the wait
- * running, or a timer adding rows more often than this would hold the
- * panel as long as the timer ran. On the first tick past the bound, the
- * pump sweeps the channel unbudgeted, so the panel takes one long frame and
- * lands.
+ * before it empties it in one go. What counts is the time spent in ticks
+ * that find no node left to build and the channel still holding work the
+ * commit waits for. A tick that ends with nodes still queued, a build
+ * spanning frames, pauses the count, and its reading gets what is left of
+ * the bound afterwards; it does not start the count again, or rows that
+ * keep arriving would hold the panel for as long as they came. The count
+ * ends only when a commit is taken, or the portal commits without the
+ * channel (`commitsEarly`). A commit the portal declines, holding a
+ * finished mount for its loading frame's minimum time, leaves it running,
+ * so past the bound the pump sweeps unbudgeted on every tick until the
+ * commit is taken: one long frame per frame for that stretch, which ends
+ * when the loading frame is due, against a second of waiting begun again.
+ * Otherwise, on the first tick past the bound, the pump sweeps the channel
+ * unbudgeted, and the panel takes one long frame and lands.
  *
  * An atomic channel holds every effect until the pass that finds nothing
  * left to read. Anything that invalidates the panel every frame, such as an
@@ -135,11 +139,14 @@ export function createPortalPump({
   const pendingSet = new Set();
 
   /**
-   * When this pump started waiting on a channel that has not emptied, by the
-   * channel's clock, or null while it is not waiting. See `MAX_COMMIT_WAIT`.
-   *
-   * @type {number | null}
+   * How long this pump has waited on a channel that has not emptied, in
+   * ticks with nothing left to build, before the current stretch of them;
+   * and when the current stretch began, by the channel's clock, or null
+   * while a build is under way or nothing is waited for. See
+   * `MAX_COMMIT_WAIT`.
    */
+  let waited = 0;
+  /** @type {number | null} */
   let waitingSince = null;
 
   /**
@@ -205,7 +212,7 @@ export function createPortalPump({
         const budget = Math.max(deadline - now(), 0);
         if (pendingNodes.length > 0) {
           channel.warm({ budget });
-        } else if (waitingSince !== null && now() - waitingSince >= MAX_COMMIT_WAIT) {
+        } else if (waited + (waitingSince === null ? 0 : now() - waitingSince) >= MAX_COMMIT_WAIT) {
           channel.flush({ budget: Infinity });
         } else {
           channel.flush({ budget });
@@ -216,23 +223,27 @@ export function createPortalPump({
       const built = pendingNodes.length === 0;
       const drained = built && channel.pendingCount === 0;
       const early = commitsEarly();
-      if (drained || (built && early)) {
-        // Nothing is waiting on the channel: it is empty, or the portal
-        // takes its commit without it.
-        waitingSince = null;
-      } else if (built) {
-        waitingSince ??= now();
-      } else {
-        // Still building. The second of budgeted reading the bound promises
-        // counts from when the build is done, not from before it started.
-        waitingSince = null;
-      }
       let settled = drained && onCommit();
       if (!drained && built && hasPendingCommit() && early) {
         // Committed, but not settled: the channel still has work, and the
         // tick comes round for it.
         onCommit();
         settled = false;
+      }
+      if (settled || (built && early)) {
+        // Nothing is waiting on the channel any more: the commit was
+        // taken, or the portal takes it without the channel.
+        waited = 0;
+        waitingSince = null;
+      } else if (!built) {
+        // Still building. The frames a build spans do not count towards
+        // the bound, so its reading gets what is left of it afterwards.
+        if (waitingSince !== null) {
+          waited += now() - waitingSince;
+          waitingSince = null;
+        }
+      } else if (!drained) {
+        waitingSince ??= now();
       }
       afterTick(settled);
       if (!settled) {

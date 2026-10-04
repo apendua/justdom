@@ -101,6 +101,34 @@ export function flushFrame(renderer) {
 }
 
 /**
+ * Stand in for `performance.now` with a clock the test moves, so that how
+ * long a panel has waited, and when its loading frame is due, is up to the
+ * test and not to how fast the machine runs it. The portal's scheduler, its
+ * channel and its loading frame all read `performance.now` at the time of
+ * the call, so they all read this. Give it back with `restore`, in a
+ * `finally`.
+ *
+ * @returns {{ now: () => number, set: (ms: number) => void, advance: (ms: number) => void, restore: () => void }}
+ */
+export function fakeClock() {
+  const originalNow = performance.now;
+  let clock = 0;
+  performance.now = () => clock;
+  return {
+    now: () => clock,
+    set: (ms) => {
+      clock = ms;
+    },
+    advance: (ms) => {
+      clock += ms;
+    },
+    restore: () => {
+      performance.now = originalNow;
+    },
+  };
+}
+
+/**
  * @returns {Promise<void>}
  */
 export function nextMacrotask() {

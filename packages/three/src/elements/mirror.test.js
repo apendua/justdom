@@ -1,5 +1,6 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { batch, Computation, Derived, Effect, selector, toObservable } from "@apendua/signal";
 import {
   createMirror,
@@ -2731,5 +2732,49 @@ describe("a node read before any portal adopted it", () => {
     assert.deepEqual(seen, [1, 2], "and the early read came round after it");
     subscription.unsubscribe();
     parent.remove();
+  });
+});
+
+describe("the module graph", () => {
+  /**
+   * The relative modules a source file imports or re-exports statically.
+   * Type-only `import("…")` in JSDoc is not a statement and is not matched.
+   *
+   * @param {URL} url
+   * @returns {URL[]}
+   */
+  function staticImports(url) {
+    const source = readFileSync(url, "utf8");
+    const statement = /^(?:import|export)\s(?:[^;"']*?\sfrom\s*)?["'](\.[^"']+)["']/gm;
+    return [...source.matchAll(statement)].map((match) => new URL(match[1], url));
+  }
+
+  test("nothing mirror.js imports leads back to it", () => {
+    // The header calls `mirror.js` the leaf module everything on both
+    // sides of the portal imports. A path back to it is a cycle, which
+    // runs only while every module on it uses the others' exports at call
+    // time, and the next top-level use reads an uninitialised binding.
+    const root = new URL("./mirror.js", import.meta.url);
+    /** @type {string[]} */
+    const cycles = [];
+    const visited = new Set();
+    /**
+     * @param {URL} url
+     * @param {string[]} path
+     */
+    function walk(url, path) {
+      for (const next of staticImports(url)) {
+        const name = next.pathname.split("/").pop() ?? next.pathname;
+        if (next.href === root.href) {
+          cycles.push([...path, name].join(" -> "));
+        } else if (!visited.has(next.href)) {
+          visited.add(next.href);
+          walk(next, [...path, name]);
+        }
+      }
+    }
+    walk(root, ["mirror.js"]);
+    assert.ok(visited.size > 0, "the walk found mirror.js's own imports");
+    assert.deepEqual(cycles, []);
   });
 });

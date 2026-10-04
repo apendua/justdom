@@ -2,6 +2,7 @@ import * as THREE from "three";
 import { Derived } from "@apendua/signal";
 import {
   getBorderBoxSize,
+  getBoxOffset,
   getChildNodes,
   getComputedStyleCached,
   getOpacity,
@@ -12,7 +13,7 @@ import {
   nodeCache,
   PORTAL_ATTRIBUTE,
 } from "./mirror.js";
-import { composeTransform, getBoxOffset, getOwnTransform } from "./cssTransform.js";
+import { composeTransform, getOwnTransform } from "./cssTransform.js";
 import { isSvgElement } from "./plugins.js";
 import { getDrawnBorderColor, parseAlpha } from "./VisualProperties.js";
 

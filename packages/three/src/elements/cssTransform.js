@@ -1,11 +1,5 @@
 import * as THREE from "three";
-import {
-  getComputedStyleCached,
-  getObjectPosition,
-  getReflowContext,
-  hasTransform,
-  isTransformed,
-} from "./mirror.js";
+import { getComputedStyleCached, hasTransform, isTransformed } from "./mirror.js";
 
 /**
  * CSS transforms, read off the computed style and turned into the matrices
@@ -15,8 +9,10 @@ import {
  * reports the transformed axis-aligned bounds, and a box that will get the
  * transform applied as its own object matrix has to be measured *without*
  * it. So transformed elements are measured off their layout offsets instead,
- * and text — which has no offsets — is measured with the transforms briefly
- * switched off, against a detached clone (see `mirror.js`).
+ * by `getBoxOffset`. Text has no offsets, so it is measured with the
+ * transforms briefly switched off, against a detached clone. Both live in
+ * `mirror.js` beside the client-rect readers they stand in for, and this
+ * module keeps the matrices.
  */
 
 /**
@@ -161,97 +157,3 @@ export function getOwnTransform(element) {
 // anyway, since the rect it guards now depends on it. Re-exported here
 // because this is where the rest of the transform vocabulary is.
 export { isTransformed };
-
-/**
- * @param {HTMLElement} element
- * @returns {{ x: number, y: number }}
- */
-function pageOffset(element) {
-  let x = 0;
-  let y = 0;
-  /** @type {Element | null} */
-  let el = element;
-  if (!(el instanceof HTMLElement)) {
-    // An `<svg>` root has no offset box to read, though the HTML around it
-    // does. Its place is taken from the client rects instead — its own
-    // against its parent's, the difference added to the parent's layout
-    // offset. Under a transformed ancestor those rects carry the transform,
-    // so this is the transformed-bounds approximation an `<svg>` viewport's
-    // clip makes under a rotation, rather than the exact layout offset an
-    // HTML element gets; an `<svg>` in an untransformed chain never comes
-    // through here at all.
-    const parent = el.parentElement;
-    if (!parent) {
-      return { x, y };
-    }
-    const rect = el.getBoundingClientRect();
-    const parentRect = parent.getBoundingClientRect();
-    x = rect.left - parentRect.left;
-    y = rect.top - parentRect.top;
-    el = parent;
-  }
-  while (el instanceof HTMLElement) {
-    x += el.offsetLeft;
-    y += el.offsetTop;
-    /** @type {Element | null} */
-    const parent = el.offsetParent;
-    if (parent instanceof HTMLElement) {
-      // Offsets are measured to the offset parent's padding edge; crossing
-      // into it adds its border.
-      x += parent.clientLeft;
-      y += parent.clientTop;
-    }
-    el = parent;
-  }
-  return { x, y };
-}
-
-/**
- * Where the element's border box sits relative to `from`, in layout terms —
- * the offsets the browser worked out before any transform was applied, which
- * is the position a transformed box needs since its object carries the
- * transform itself. Whole px only, and blind to scrolled ancestors (overflow
- * is not mirrored yet); the untransformed path keeps its subpixel client
- * rects.
- *
- * The two offset chains need not run through each other — an absolutely
- * positioned child offsets against an ancestor further up than its parent —
- * so both sides resolve to page coordinates and the difference is taken
- * there.
- *
- * @param {HTMLElement} element
- * @param {HTMLElement | null} from
- * @returns {{ x: number, y: number }}
- */
-export function untransformedOffset(element, from) {
-  const position = pageOffset(element);
-  if (!from) {
-    return position;
-  }
-  const base = pageOffset(from);
-  return { x: position.x - base.x, y: position.y - base.y };
-}
-
-/**
- * Where the element's object sits in its parent's content group, before its
- * own transform is applied. Client rects are transformed bounds, useless for
- * a box that has to come out untransformed and then carry the CSS transform
- * as its own matrix, so a box on a transformed chain falls back to layout
- * offsets. Everything else takes `getObjectPosition`, which is
- * scroll-invariant.
- *
- * The layout offsets are plain DOM reads with no dependency of their own,
- * so that branch reads `getReflowContext`, which a layout move bumps. The
- * element's size is no stand-in: it is gated on equality, so a move that
- * keeps the size stops there.
- *
- * @param {HTMLElement} element
- * @returns {{ x: number, y: number }}
- */
-export function getBoxOffset(element) {
-  if (!isTransformed(element)) {
-    return getObjectPosition(element);
-  }
-  getReflowContext(element);
-  return untransformedOffset(element, element.parentElement);
-}

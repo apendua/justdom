@@ -115,13 +115,14 @@ export function followMouse(pointer, camera, canvas, view = window) {
  * too, which is the hover.
  *
  * The manager reads a controller's ray off its world matrix, so the group is
- * posed on every mouse move and the cast happens on the next frame, the same
- * one frame behind a controller's own pose is read at. While the mouse is
- * off the canvas, and until it first moves onto it, the group is hidden
- * (`followMouse`), which is how the manager is told the mouse points at
- * nothing. The whole thing stands down for as long as a session is
- * presenting: the headset's canvas is the session's own, and a click on it
- * while the emulator is drawing a session is not a click in the room.
+ * posed on every mouse move and the ray is cast in the late phase of the next
+ * frame, as a controller's is, after everything that moves the scene has
+ * moved it. While the mouse is off the canvas, and until it first moves onto
+ * it, the group is hidden (`followMouse`), which is how the manager is told
+ * the mouse points at nothing. The whole thing stands down for as long as a
+ * session is presenting: the headset's canvas is the session's own, and a
+ * click on it while the emulator is drawing a session is not a click in the
+ * room.
  *
  * It goes straight into the scene's children, since its pose is written as
  * its own, and the camera is expected to stand still between sessions:

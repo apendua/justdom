@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { $, children, cursors, dom, getScene, getXRSession } from "@apendua/freedom";
+import type { PortalOptions } from "@apendua/freedom";
 import { createDiagnostics, useDiagnostics } from "@apendua/justui";
 import { component, effects, effectsOnly, Stream, useEffects } from "@apendua/signal";
 import { backdropShown, enterSession } from "@apendua.dev/headset/session";
@@ -62,22 +63,37 @@ const Backdrop = component(() =>
  * face the head and scaled by `scale`, which is asked for as the session
  * starts, from the size the page laid the element out at. There only while
  * a session is presenting.
+ *
+ * Every panel can be picked up by its edges and put somewhere else, the
+ * player's move added on top of where it is placed here. `options` is laid
+ * over that, for a panel that needs more.
  */
 const Panel = component(
-  (ctx: WeakKey, element: HTMLElement, at: Vec3, scale: (rect: DOMRect) => number) => {
+  (
+    ctx: WeakKey,
+    element: HTMLElement,
+    at: Vec3,
+    scale: (rect: DOMRect) => number,
+    options: PortalOptions = {},
+  ) => {
     if (!getXRSession(ctx)) {
       return NOTHING;
     }
     // Measured once, as the session starts.
     const scalar = scale(element.getBoundingClientRect());
     const { pitch, yaw } = facing(at);
-    return dom(ctx, element, [
-      effects((o) => {
-        o.scale.setScalar(scalar);
-        o.position.set(...at);
-        o.rotation.set(pitch, yaw, 0, "YXZ");
-      }),
-    ]);
+    return dom(
+      ctx,
+      element,
+      [
+        effects((o) => {
+          o.scale.setScalar(scalar);
+          o.position.set(...at);
+          o.rotation.set(pitch, yaw, 0, "YXZ");
+        }),
+      ],
+      { draggable: true, ...options },
+    );
   },
 );
 
@@ -130,7 +146,14 @@ export const Scene = ({ toolbar, editor, canvas }: Mounts) =>
         $(new THREE.AmbientLight(0xffffff, 2)),
         Panel(ctx, toolbar, TOOLBAR_AT, (rect) => toolbarScale(rect.width)),
         Panel(ctx, editor, EDITOR_AT, (rect) => editorScale(rect.width, rect.height)),
-        Panel(ctx, canvas, BOARD_AT, (rect) => boardScale(rect.width, rect.height)),
+        // Not atomic: a drag or a pan changes the drawing on every move, and
+        // an atomic panel holds each change back until a frame finds nothing
+        // left to resolve, so the drawing would stand still under the hand
+        // until the trigger opened. A torn frame of a drawing in motion is
+        // the lesser harm.
+        Panel(ctx, canvas, BOARD_AT, (rect) => boardScale(rect.width, rect.height), {
+          atomic: false,
+        }),
         // The mark at the end of each ray. Half the default size: a drawn
         // point is a few millimetres across, and the mark aiming at one
         // should not hide it.

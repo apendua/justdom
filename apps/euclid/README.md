@@ -88,7 +88,14 @@ mirrors, and the three hang apart in a session: the drawing straight ahead,
 the program to its left, turned to face the viewer, and the toolbar over
 both and nearer than either, so that the picker's menu, which opens
 downwards, hangs in front of the drawing. Each is scaled as the session
-starts from the size the page laid it out at.
+starts from the size the page laid it out at. Each can also be picked up by
+its edges, whose strips show while a ray is on the panel, and put somewhere
+else for the rest of the session.
+
+The drawing's panel is not atomic, unlike the other two. freedom holds an
+atomic panel's change back until a frame finds nothing left to resolve,
+and a point dragged or a paper panned changes the drawing on every move,
+so held back it would stand still under the hand until the trigger opened.
 
 The drawing needs nothing from the headset. freedom sends a ray's press, its
 moves and its release as the pointer events a browser sends for a mouse,

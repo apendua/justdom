@@ -397,6 +397,28 @@ screen, so its points are right against the page's own rects but
 `elementFromPoint` finds nothing at them. The one thing the mapping leaves
 out is a transform on the mirrored root itself, which the mirror leaves
 out too.
+
+A press, its release and a move each send, ahead of their mouse event, the
+pointer event a browser sends ahead of it: `pointerdown`, `pointerup` and
+`pointermove`, at the same point. A page written for pointers, which is how
+a page takes a mouse, a pen and a finger with one set of handlers, hears the
+ray as well, a drawing board that drags and pans on `pointermove` included.
+They say `pointerType` `"mouse"`, as the mouse events after them do, but
+each hand is a pointer of its own, with a `pointerId` of its own from 2 on,
+since 1 is the mouse's: a page that follows a drag by its pointer is not
+thrown when the other hand's ray crosses the same element. A page that
+cancels `pointerdown` hears no `mousedown`, `mousemove` or `mouseup` from
+that hand until its trigger opens, and hears the `click` all the same, which
+is a browser's rule. A browser knows nothing of the hands' pointers, so
+`setPointerCapture` with a hand's `pointerId` would throw that there is no
+such pointer. Once a hand has one, the three capture methods on `Element`
+are wrapped: a capture the browser refuses for a hand is kept here instead,
+and while it holds, the hand's moves and its release go to the capturing
+element, whichever control on the panels the ray is over, until the
+release or `releasePointerCapture`. Not sent: `gotpointercapture`,
+`lostpointercapture`, `pointerover`, `pointerenter`, `pointerout`,
+`pointerleave` and `pointercancel`, and a move carries no `buttons`. The
+grip's `contextmenu` comes alone, as before.
 Clickable elements nest, if only because `cursor` is inherited, and a press
 inside several of them goes where it goes on a page. The innermost one is the
 target, its DOM events are sent once and bubble from there, and every
@@ -2081,9 +2103,9 @@ marching ants in the showcase spend without noticing.
 
 A shape with `cursor: pointer` is a ray target of its own, by the rule a
 box follows. It forwards the ray to its element exactly as a box does:
-`mousedown`, `mouseup` and `click` for a press, `contextmenu` for the
-grip, `mousemove` while the ray moves over it, each with the point on the
-page, and `data-xr-hover` and `data-xr-active` on the element for a
+`pointerdown` and `mousedown`, `pointerup` and `mouseup`, and `click` for
+a press, `contextmenu` for the grip, `pointermove` and `mousemove` while
+the ray moves over it, each with the point on the page, and `data-xr-hover` and `data-xr-active` on the element for a
 stylesheet to answer. A press that turns into a drag scrolls the list the
 `<svg>` sits in. `pointer-events` decides which of the fill and the stroke
 a ray can hit, with SVG's values: the default `visiblePainted` hits

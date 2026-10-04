@@ -118,6 +118,147 @@ const forwarding = new WeakSet();
 const delivered = new WeakSet();
 
 /**
+ * The hands whose `pointerdown` the page cancelled, until their trigger
+ * opens. A page that cancels `pointerdown` is saying it handles the press
+ * as a pointer, and a browser then sends none of the mouse events that
+ * would otherwise follow it, `mousedown`, `mousemove` and `mouseup`, until
+ * the button is let go. The `click` still goes.
+ *
+ * @type {WeakSet<XRTargetRaySpace>}
+ */
+const pointerOnly = new WeakSet();
+
+/**
+ * Each hand's `pointerId`, given out as a hand first sends a pointer event:
+ * a page that follows a press by its pointer, as a drag does, follows that
+ * hand, and the other ray moving over the same element is another pointer
+ * hovering, not the press wandering off. 1 is the mouse's in a browser, so
+ * the hands count on from 2.
+ *
+ * @type {WeakMap<XRTargetRaySpace, number>}
+ */
+const pointerIds = new WeakMap();
+
+/** @param {XRTargetRaySpace} controller */
+function pointerIdOf(controller) {
+  let id = pointerIds.get(controller);
+  if (id === undefined) {
+    id = nextPointerId;
+    nextPointerId += 1;
+    pointerIds.set(controller, id);
+    acceptPointerCapture();
+  }
+  return id;
+}
+
+let nextPointerId = 2;
+
+/**
+ * The element each hand's pointer is captured by, by its `pointerId`.
+ *
+ * @type {Map<number, Element>}
+ */
+const captures = new Map();
+
+/** Whether `acceptPointerCapture` has run. */
+let capturing = false;
+
+/**
+ * Let the page capture a hand's pointer. A browser knows nothing of the
+ * hands' pointers, so `setPointerCapture` with a hand's `pointerId` throws
+ * that there is no such pointer, from the `pointerdown` handler of every
+ * page that drags by capture. So, once a hand has a pointer, the three
+ * capture methods are wrapped: a call the browser refuses for a hand's
+ * pointer is kept here instead, and while it holds, the hand's moves and
+ * its release are sent to the capturing element, whichever control on the
+ * panels the ray is over, as a browser sends a captured pointer's. A
+ * pointer the browser knows is the browser's, as before.
+ *
+ * Capture ends as a browser ends it, with the release, or with
+ * `releasePointerCapture`. Neither `gotpointercapture` nor
+ * `lostpointercapture` is sent.
+ */
+function acceptPointerCapture() {
+  if (capturing || typeof Element === "undefined") {
+    return;
+  }
+  capturing = true;
+  const proto = Element.prototype;
+  const { setPointerCapture, releasePointerCapture, hasPointerCapture } = proto;
+  /** @param {number} id */
+  const isHand = (id) => id >= 2 && id < nextPointerId;
+  proto.setPointerCapture = function (id) {
+    try {
+      setPointerCapture.call(this, id);
+    } catch (err) {
+      if (!isHand(id)) {
+        throw err;
+      }
+      captures.set(id, this);
+    }
+  };
+  proto.releasePointerCapture = function (id) {
+    if (captures.get(id) === this) {
+      captures.delete(id);
+      return;
+    }
+    releasePointerCapture.call(this, id);
+  };
+  proto.hasPointerCapture = function (id) {
+    return captures.get(id) === this || hasPointerCapture.call(this, id);
+  };
+}
+
+/**
+ * Send a pointer event and the mouse event a browser sends after it, as
+ * one: both made before either is sent, from the one init `pressInit` and
+ * its siblings write in place, which a handler that the first runs may
+ * write again. The mouse event is left out for a hand whose `pointerdown`
+ * was cancelled (see `pointerOnly`), and both events are sent only where
+ * the page has `PointerEvent` at all. A move's pointer event names no
+ * button, as a browser's says `-1` for a move that changes none.
+ *
+ * @param {HTMLElement} element
+ * @param {"pointerdown" | "pointermove" | "pointerup"} type
+ * @param {PointerEventInit} init
+ * @param {XRTargetRaySpace} controller
+ * @returns {boolean} Whether the mouse event, if it was sent, was not
+ *   cancelled.
+ */
+function sendPointerAndMouse(element, type, init, controller) {
+  const button = init.button;
+  if (type === "pointermove") {
+    init.button = -1;
+  }
+  const id = pointerIdOf(controller);
+  init.pointerId = id;
+  const pointer = typeof PointerEvent === "function" ? new PointerEvent(type, init) : null;
+  init.button = button;
+  const mouse = new MouseEvent(MOUSE_EVENT[type], init);
+  if (type === "pointerdown") {
+    // A press of its own, whatever became of the last one's release.
+    pointerOnly.delete(controller);
+    captures.delete(id);
+  }
+  const captor = captures.get(id);
+  const target = captor?.isConnected ? captor : element;
+  if (type === "pointerup") {
+    captures.delete(id);
+  }
+  if (pointer && !target.dispatchEvent(pointer) && type === "pointerdown") {
+    pointerOnly.add(controller);
+  }
+  return pointerOnly.has(controller) || target.dispatchEvent(mouse);
+}
+
+/** The mouse event a browser sends after each pointer event a ray sends. */
+const MOUSE_EVENT = /** @type {const} */ ({
+  pointerdown: "mousedown",
+  pointermove: "mousemove",
+  pointerup: "mouseup",
+});
+
+/**
  * What became of each grip start a panel's elements heard, one state per
  * grip, decided as it closes:
  *
@@ -172,7 +313,10 @@ function hasForwardingAncestor(object) {
  * Being a ray target, and forwarding what happens there back to the DOM. A
  * press arrives as `mousedown`, `mouseup` and `click`, a ray moving over
  * the object as `mousemove`, and a press of the grip as `contextmenu`,
- * which is the grip standing in for the mouse's other button. Each carries
+ * which is the grip standing in for the mouse's other button. Each
+ * `mousedown`, `mouseup` and `mousemove` has the pointer event a browser
+ * sends ahead of it, from the hand's own pointer (see
+ * `sendPointerAndMouse`). Each carries
  * the point the ray met, on the page, as its `clientX` and `clientY` (see
  * `pressInit` in `dragAndDrop.js`). While the ray is on it the element
  * carries `data-xr-hover`, and while it is held, `data-xr-active`. A
@@ -497,9 +641,14 @@ export function forwardPointerEvents(ctx, element, object, { enabled, onPress })
       }
       deliverOnce(e, () => {
         // Cancelable, as a real one is: a page that cancels its `mousedown`
-        // is saying that nothing is to be dragged from here.
-        const pressed = element.dispatchEvent(
-          new MouseEvent("mousedown", pressInit(panel(), e, true)),
+        // is saying that nothing is to be dragged from here. A cancelled
+        // `pointerdown` says something else, that the page takes the
+        // press as a pointer, and holds no drag back on a page either.
+        const pressed = sendPointerAndMouse(
+          element,
+          "pointerdown",
+          pressInit(panel(), e, true),
+          e.controller,
         );
         // A press on something draggable may become a drag and drop, and
         // otherwise a press over a list may become a scroll; only holding
@@ -533,6 +682,7 @@ export function forwardPointerEvents(ctx, element, object, { enabled, onPress })
         if (hasForwardingAncestor(object)) {
           return;
         }
+        pointerOnly.delete(e.controller);
         stopPropagation(e);
         return;
       }
@@ -540,10 +690,11 @@ export function forwardPointerEvents(ctx, element, object, { enabled, onPress })
         // A drag's release is its `drop` and its `dragend`, which the drag
         // sends from the controller's own `selectend`.
         if (!dnd.didDrag(e.controller)) {
-          element.dispatchEvent(new MouseEvent("mouseup", releaseInit(panel(), e)));
+          sendPointerAndMouse(element, "pointerup", releaseInit(panel(), e), e.controller);
         }
         haptics?.release(e.inputSource);
       });
+      pointerOnly.delete(e.controller);
       passOn(e);
     }),
     on("pointermove", (e) => {
@@ -567,7 +718,7 @@ export function forwardPointerEvents(ctx, element, object, { enabled, onPress })
         return;
       }
       deliverOnce(e, () => {
-        element.dispatchEvent(new MouseEvent("mousemove", moveInit(panel(), e)));
+        sendPointerAndMouse(element, "pointermove", moveInit(panel(), e), e.controller);
       });
     }),
     on("pointerenter", (e) => {

@@ -11,6 +11,7 @@ import {
 } from "./textLines.js";
 import { isSvgElement } from "./plugins.js";
 import { clipBoxEqual, intersectClipBoxes, toLocalClipBox, UNCLIPPED } from "./clip.js";
+import { PORTAL_ATTRIBUTE } from "./portalRoot.js";
 
 /**
  * @import {RevealLayout, RevealLine, TextLine} from './textLines.js';
@@ -91,14 +92,6 @@ import { clipBoxEqual, intersectClipBoxes, toLocalClipBox, UNCLIPPED } from "./c
  * elements asked to re-measure proportional to the change rather than to
  * the panel.
  */
-
-/**
- * The attribute a portal marks its container element with. It lives here —
- * the leaf module everything on both sides of the portal already imports —
- * so that helpers which need to know where a portal's tree ends (ancestor
- * walks, `getPortalRoot`) can share it without importing each other.
- */
-export const PORTAL_ATTRIBUTE = "data-xr-portal";
 
 /**
  * Set on a portal's container element while its initial mount is running,

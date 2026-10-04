@@ -2219,6 +2219,12 @@ Named here so that nothing public goes unmentioned; each has its JSDoc.
   `anchorToViewer` measures upright in it, and in a session without it the
   anchor falls back to `local`, which IWER leaves tilted when a session is
   entered with the head tipped.
+- From `@apendua/freedom/page`: `getPortalRoot` and `scrollElementBy`
+  again, the two functions a widget on a page asks of a portal, from an
+  entry point that imports nothing from three.js. A widget a page shows
+  before any session, and a panel may mirror during one, imports them from
+  there, so that the page's own bundle does not carry the renderer; the
+  dropdown and the scrolling list in `@apendua/justui` do.
 - From `@apendua/freedom/svg`: `shape`, `group`, `image` and `drawText` are
   the builders `svgElements()` dispatches to, for a plugin that draws one
   SVG element its own way and hands the rest to them.

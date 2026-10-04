@@ -19,6 +19,7 @@
   },
   "license": "MIT",
   "author": "apendua",
+  "sideEffects": false,
   "type": "module",
   "exports": {
     ".": {

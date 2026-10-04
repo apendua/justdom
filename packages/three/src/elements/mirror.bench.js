@@ -31,7 +31,8 @@ import * as THREE from "three";
 import { Derived, Signal } from "@apendua/signal";
 import { InteractionContext, InteractionManager } from "../interactions.js";
 import { createPortal } from "./portal.js";
-import { LOADING_ATTRIBUTE, PORTAL_ATTRIBUTE } from "./mirror.js";
+import { LOADING_ATTRIBUTE } from "./mirror.js";
+import { PORTAL_ATTRIBUTE } from "./portalRoot.js";
 import { makeReveal } from "./reveal.js";
 
 // --- jsdom stand-ins for the pieces of a browser the portal reaches for ----

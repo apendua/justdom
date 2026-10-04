@@ -1,7 +1,7 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
-import { PORTAL_ATTRIBUTE } from "./mirror.js";
+import { PORTAL_ATTRIBUTE } from "./portalRoot.js";
 import {
   composeTransform,
   isTransformed,

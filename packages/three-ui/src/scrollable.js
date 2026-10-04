@@ -1,6 +1,6 @@
 import { $, children, list, set, style, text } from "@apendua/justdom";
 import { Derived, effects, onCleanup, Signal } from "@apendua/signal";
-import { getPortalRoot, scrollElementBy } from "@apendua/freedom";
+import { getPortalRoot, scrollElementBy } from "@apendua/freedom/page";
 
 /**
  * @import {Mountable} from "@apendua/justdom";

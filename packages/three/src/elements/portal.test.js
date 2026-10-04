@@ -11,7 +11,8 @@ import {
   resetMeasuringRangeForTests,
 } from "./mirror.js";
 import { acquireImage, releaseImage } from "./image.js";
-import { createPortal as createHeldPortal, getPortalRoot } from "./portal.js";
+import { createPortal as createHeldPortal } from "./portal.js";
+import { getPortalRoot } from "./portalRoot.js";
 import { withPanelOptions } from "./panelOptions.js";
 import { DEFAULT_HANDLE_WIDTH } from "./panelHandles.js";
 import { RendererContext } from "../render.js";

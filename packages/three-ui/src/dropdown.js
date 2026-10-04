@@ -1,6 +1,6 @@
 import { $, attr, children, list, on, renderText, set, text } from "@apendua/justdom";
 import { effects, flatMap, observable, onCleanup, Signal } from "@apendua/signal";
-import { getPortalRoot } from "@apendua/freedom";
+import { getPortalRoot } from "@apendua/freedom/page";
 
 /**
  * @import {Mountable} from "@apendua/justdom";

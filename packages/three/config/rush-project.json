@@ -5,6 +5,11 @@
 {
   "$schema": "https://developer.microsoft.com/json-schemas/rush/v5/rush-project.schema.json",
 
+  // Markdown is read by nothing the build runs, so an edit to a README or
+  // the changelog leaves this project's cache key, and every key downstream
+  // of it, as it was.
+  "incrementalBuildIgnoredGlobs": ["**/*.md"],
+
   "operationSettings": [
     {
       "operationName": "build",

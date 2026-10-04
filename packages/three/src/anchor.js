@@ -15,6 +15,22 @@ import * as THREE from "three";
 const TRACKING_PATIENCE = 60;
 
 const UP = new THREE.Vector3(0, 1, 0);
+const ONE = new THREE.Vector3(1, 1, 1);
+
+/**
+ * A pose's transform as a matrix.
+ *
+ * @param {XRPose} pose
+ * @returns {THREE.Matrix4}
+ */
+function poseMatrix(pose) {
+  const { position, orientation } = pose.transform;
+  return new THREE.Matrix4().compose(
+    new THREE.Vector3(position.x, position.y, position.z),
+    new THREE.Quaternion(orientation.x, orientation.y, orientation.z, orientation.w),
+    ONE,
+  );
+}
 
 /**
  * The transform that carries the reference space's origin to the viewer: the
@@ -23,19 +39,31 @@ const UP = new THREE.Vector3(0, 1, 0);
  * looking down would be built into the floor — so the new origin stands
  * upright, facing where the player faces.
  *
- * @param {XRViewerPose} pose
+ * Upright is measured in `level`, a space whose up is gravity's, when the
+ * session has one, and in `base` when it does not (see `anchorToViewer`).
+ *
+ * @param {XRViewerPose} viewer The viewer in `level`, or in `base` without it.
+ * @param {XRPose | null} baseInLevel `base` in `level`, or null without it.
  * @returns {XRRigidTransform}
  */
-function anchorTransform(pose) {
-  const { position, orientation } = pose.transform;
-  const yaw = new THREE.Euler().setFromQuaternion(
-    new THREE.Quaternion(orientation.x, orientation.y, orientation.z, orientation.w),
-    "YXZ",
-  ).y;
-  const upright = new THREE.Quaternion().setFromAxisAngle(UP, yaw);
+function anchorTransform(viewer, baseInLevel) {
+  const position = new THREE.Vector3();
+  const orientation = new THREE.Quaternion();
+  poseMatrix(viewer).decompose(position, orientation, new THREE.Vector3());
+  const yaw = new THREE.Euler().setFromQuaternion(orientation, "YXZ").y;
+  const anchor = new THREE.Matrix4().compose(
+    position,
+    new THREE.Quaternion().setFromAxisAngle(UP, yaw),
+    ONE,
+  );
+  if (baseInLevel) {
+    // The anchor is handed over as an offset from `base`.
+    anchor.premultiply(poseMatrix(baseInLevel).invert());
+  }
+  anchor.decompose(position, orientation, new THREE.Vector3());
   return new XRRigidTransform(
     { x: position.x, y: position.y, z: position.z },
-    { x: upright.x, y: upright.y, z: upright.z, w: upright.w },
+    { x: orientation.x, y: orientation.y, z: orientation.z, w: orientation.w },
   );
 }
 
@@ -60,6 +88,12 @@ function anchorTransform(pose) {
  * few millimetres and nobody notices; when it was not, this is the difference
  * between the board in front of the player and the board across the room.
  *
+ * Upright means upright to gravity. The `local` origin keeps whatever tilt
+ * the head had when the session was created, on a runtime that keeps it
+ * (IWER does, and a second session entered with the head tipped down came
+ * up tipped), so the yaw is measured in the session's `local-floor` space
+ * when it has one, and in `local` when it does not.
+ *
  * The runtime's `reset` event — tracking recovered, the player recentered —
  * re-runs the same wait, so a system recenter puts the scene back in front of
  * the player instead of requiring the page refresh it used to. The override
@@ -69,7 +103,8 @@ function anchorTransform(pose) {
  * Meant for scenes laid out around the `local` origin, which is what
  * `createXRButton` sets up — it installs this itself. An app that builds its
  * own button (or uses three's `VRButton` directly) calls this once alongside
- * `renderer.xr.setReferenceSpaceType("local")`.
+ * `renderer.xr.setReferenceSpaceType("local")`, and asks for `local-floor`
+ * as an optional feature so that there is a space to measure upright in.
  *
  * @param {WebGLRenderer} renderer
  * @returns {() => void} Uninstalls the anchor and clears any override.
@@ -87,16 +122,37 @@ export function anchorToViewer(renderer) {
     let patience = TRACKING_PATIENCE;
     let handle = 0;
 
+    // The space upright is measured in: `local-floor`, whose up is gravity's,
+    // undefined until the session answers and null if it will not.
+    /** @type {XRReferenceSpace | null | undefined} */
+    let level = undefined;
+    if (session.requestReferenceSpace) {
+      session.requestReferenceSpace("local-floor").then(
+        (space) => (level = space),
+        () => (level = null),
+      );
+    } else {
+      level = null;
+    }
+
     /** @type {XRFrameRequestCallback} */
     const settle = (_time, frame) => {
       handle = 0;
       // Always against `base`, the space three.js requested, never against a
       // previously offset one — each anchor is absolute, so re-anchoring
       // after a reset cannot stack offsets on offsets.
-      const pose = frame.getViewerPose(base);
+      const pose = level === undefined ? null : frame.getViewerPose(level ?? base);
+      const baseInLevel = level ? frame.getPose(base, level) : null;
       const visible = !session.visibilityState || session.visibilityState === "visible";
-      if (pose && visible && (!pose.emulatedPosition || patience-- <= 0)) {
-        renderer.xr.setReferenceSpace(base.getOffsetReferenceSpace(anchorTransform(pose)));
+      if (
+        pose &&
+        (!level || baseInLevel) &&
+        visible &&
+        (!pose.emulatedPosition || patience-- <= 0)
+      ) {
+        renderer.xr.setReferenceSpace(
+          base.getOffsetReferenceSpace(anchorTransform(pose, baseInLevel ?? null)),
+        );
         return;
       }
       handle = session.requestAnimationFrame(settle);

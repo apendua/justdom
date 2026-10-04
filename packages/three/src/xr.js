@@ -178,8 +178,10 @@ function withOptionalFeature(init, feature) {
  * stale tracking, the origin lands somewhere arbitrary and the scene with it.
  * So the viewer anchor is installed alongside the button: every session's
  * origin is re-derived from the first trustworthy viewer pose instead of
- * being trusted blindly (see `anchorToViewer`). `anchor: false` opts out,
- * for an app that wants to manage the reference space itself.
+ * being trusted blindly (see `anchorToViewer`). The anchor measures upright
+ * in `local-floor`, so an AR session asks for that too, as an optional
+ * feature. `anchor: false` opts out of both, for an app that wants to manage
+ * the reference space itself.
  *
  * The session is also asked to run at the headset's fastest frame rate, which
  * is not what it does by default; see `requestFrameRate` for the trade, and
@@ -251,6 +253,8 @@ export async function createXRButton(renderer, sessionInit = {}) {
   }
   renderer.xr.setReferenceSpaceType("local");
   if (sessionInit.anchor !== false) {
+    // What the anchor measures upright in. A VR session asks for it anyway.
+    sessionInit = { ...sessionInit, ar: withOptionalFeature(sessionInit.ar, "local-floor") };
     anchorToViewer(renderer);
   }
   if (sessionInit.frameRate !== false) {

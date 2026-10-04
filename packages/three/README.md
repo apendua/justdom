@@ -1716,10 +1716,6 @@ hides its overflow. It scrolls through `scrollElementBy`, which is exported here
 and is the write above plus the `scroll` event the browser will not dispatch
 while the session has the display.
 
-One print of the measuring tape: the clip is placed from the element's client
-rect, which is exact for untransformed and translated content, and falls back
-to transformed bounds for anything rotated or scaled inside a scroller.
-
 ## Placing a panel
 
 Everything a portal draws composes its local matrix once, in the effect that

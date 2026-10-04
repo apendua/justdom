@@ -717,7 +717,13 @@ export function createAnimationClock(container, emit, requestFrames, { held = ()
         // Nothing driven and nothing read: each `currentTime` write dirties
         // a style the mount would read again. The account keeps running
         // from when driving started, so the first frame after the hold
-        // advances by all of it, and settles whatever ended meanwhile.
+        // advances by all of it, and settles whatever ended meanwhile. An
+        // empty membership, an element that left the tree, holds no frames
+        // here either.
+        if (!animating.size) {
+          stop();
+          return;
+        }
         if (lastDrivenAt === null) {
           lastDrivenAt = performance.now();
           lastDocumentTime = documentTime();

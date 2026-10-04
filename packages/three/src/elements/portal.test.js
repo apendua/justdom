@@ -3658,8 +3658,9 @@ describe("a panel that is always busy", () => {
    * `fakeClock` before it builds anything, and gives it back in `dispose`,
    * or at once if building the panel throws, so that one failing test does
    * not leave a frozen clock to every test after it.
+   *
+   * @param {Parameters<typeof createPortal>[1]} [options]
    */
-  /** @param {Parameters<typeof createPortal>[1]} [options] */
   const busyPanel = (options = {}) => {
     const clock = fakeClock();
     try {
@@ -3898,7 +3899,8 @@ describe("a panel that is always busy", () => {
         frames * 16 >= MAX_COMMIT_WAIT - 2 * 16,
         `held until the bound, so the animation kept the channel busy, took ${frames}`,
       );
-      // One frame in ten builds, and a build's frames do not count.
+      // A row builds over two ticks, and the frame between them, with a
+      // node still queued, does not count: one frame in ten.
       assert.ok(
         frames * 16 <= (MAX_COMMIT_WAIT * 10) / 9 + 10 * 16,
         `and landed by the bound, less the frames spent building, took ${frames}`,
@@ -3935,7 +3937,8 @@ describe("a panel that is always busy", () => {
       // The frame goes up on the first tick past its delay, and is due a
       // minimum time after that.
       const due = 250 + 16 + 1000;
-      assert.ok(frames * 16 <= due + 3 * 16, `on the frame it was due, took ${frames}`);
+      assert.ok(frames * 16 >= due - 2 * 16, `held until the frame was due, took ${frames}`);
+      assert.ok(frames * 16 <= due + 3 * 16, `and no longer, took ${frames}`);
     } finally {
       clearInterval(timer);
       await drain();

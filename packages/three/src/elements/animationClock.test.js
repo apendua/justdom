@@ -687,6 +687,36 @@ describe("animation clock with rendering updates suspended", () => {
     });
   });
 
+  test("a held clock lets go of the frames once nothing animates", () => {
+    // An element that leaves the tree during the hold empties the
+    // membership, and an empty membership holds no frames, held or not.
+    const { container, element, frames, clock, cleanup } = setup({ held: () => true });
+    withStalledClocks(() => {
+      let clockTime = 0;
+      performance.now = () => clockTime;
+      setDocumentTime(500);
+
+      try {
+        const animation = fakeAnimation(element, 1000);
+        // @ts-expect-error -- a minimal stand-in for the real thing.
+        container.getAnimations = () => [animation];
+        clock.sweep();
+        clockTime = 16;
+        frames.step();
+        clockTime = PAST_THE_TIMEOUT;
+        frames.step();
+        assert.equal(frames.running, true, "driving, and held");
+
+        element.remove();
+        clockTime = PAST_THE_TIMEOUT + 16;
+        frames.step();
+        assert.equal(frames.running, false, "nothing animates, so no frames");
+      } finally {
+        cleanup();
+      }
+    });
+  });
+
   test("leaves animations alone while the document is still rendering", () => {
     const { container, element, frames, clock, cleanup } = setup();
     withStalledClocks(() => {

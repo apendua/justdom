@@ -66,8 +66,8 @@ import { batch, Effect, withChannel } from "@apendua/signal";
  * before it empties it in one go. What counts is the time spent in ticks
  * that find no node left to build and the channel still holding work the
  * commit waits for. A tick that ends with nodes still queued, a build
- * spanning frames, pauses the count, and its reading gets what is left of
- * the bound afterwards; it does not start the count again, or rows that
+ * spanning frames, pauses the count from its own start, and the build's
+ * reading gets what is left of the bound afterwards; it does not start the count again, or rows that
  * keep arriving would hold the panel for as long as they came. The count
  * ends only when a commit is taken, or the portal commits without the
  * channel (`commitsEarly`). A commit the portal declines, holding a
@@ -186,6 +186,7 @@ export function createPortalPump({
     priority,
     tick: (deadline) => {
       const now = channel.now;
+      const tickStart = now();
       beforeTick();
       if (pendingNodes.length > 0) {
         batch(() => {
@@ -239,7 +240,7 @@ export function createPortalPump({
         // Still building. The frames a build spans do not count towards
         // the bound, so its reading gets what is left of it afterwards.
         if (waitingSince !== null) {
-          waited += now() - waitingSince;
+          waited += tickStart - waitingSince;
           waitingSince = null;
         }
       } else if (!drained) {

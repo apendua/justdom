@@ -762,10 +762,13 @@ So the wait has a bound: once a panel has nothing left to build and has
 waited a second (`MAX_COMMIT_WAIT` in `portalPump.js`) for its reading to
 finish, the next frame reads everything at once, whatever the budget, and
 the update lands. Under input that never stops, that means one long frame
-about once a second, loading or loaded. A panel that has to follow the hand
-on every frame wants `atomic: false` instead, which runs the update's writes
-under the budget and lets the panel change in instalments; `atomic` in
-`PortalOptions` says what that trades.
+about once a second, loading or loaded. A loading frame still up for its
+minimum time holds the panel past the second, and until it is due every
+frame reads everything at once; the panel lands on the frame it is due.
+A panel that has to follow the hand on every frame wants `atomic: false`
+instead, which runs the update's writes under the budget and lets the
+panel change in instalments; `atomic` in `PortalOptions` says what that
+trades.
 
 ```js
 dom(ctx, panel, [set({ position })], {

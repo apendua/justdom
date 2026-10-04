@@ -642,6 +642,51 @@ describe("animation clock with rendering updates suspended", () => {
     });
   });
 
+  test("a held clock drives nothing, and its first frame after makes up the hold", () => {
+    // Driving is a `getAnimations()` and a `currentTime` write per running
+    // animation, and every write dirties a style the mount then reads again.
+    // None of it is needed while the panel loads: the first frame after the
+    // hold advances by all of it and lands where the animation is.
+    let held = true;
+    const { container, element, emitted, frames, clock, cleanup } = setup({ held: () => held });
+    withStalledClocks(() => {
+      let clockTime = 0;
+      performance.now = () => clockTime;
+      setDocumentTime(500);
+
+      try {
+        const animation = fakeAnimation(element, 1000);
+        let reads = 0;
+        // @ts-expect-error -- a minimal stand-in for the real thing.
+        container.getAnimations = () => {
+          reads += 1;
+          return [animation];
+        };
+        clock.sweep();
+        clockTime = 16;
+        frames.step();
+        clockTime = PAST_THE_TIMEOUT;
+        frames.step();
+        const before = reads;
+        clockTime = PAST_THE_TIMEOUT + 16;
+        frames.step();
+        clockTime = PAST_THE_TIMEOUT + 32;
+        frames.step();
+        assert.equal(animation.currentTime, 0, "nothing driven while held");
+        assert.equal(reads, before, "and nothing read");
+        assert.equal(emitted.length, 0, "or emitted");
+
+        held = false;
+        clockTime = PAST_THE_TIMEOUT + 48;
+        frames.step();
+        assert.equal(animation.currentTime, 48, "the first frame after makes up the hold");
+        assert.equal(emitted.length, 1, "and samples");
+      } finally {
+        cleanup();
+      }
+    });
+  });
+
   test("leaves animations alone while the document is still rendering", () => {
     const { container, element, frames, clock, cleanup } = setup();
     withStalledClocks(() => {

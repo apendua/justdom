@@ -335,7 +335,10 @@ const SWEEP_INTERVAL = 60;
  *   its panel loads, since nobody sees the panel yet and the mount reads
  *   each style as it builds it; a sample per frame would only undo what the
  *   mount had read, and under an endless animation the mount would never
- *   finish. Membership is kept up all the while, so the first frame after
+ *   finish. Where the clock drives the animations itself, with the page's
+ *   rendering suspended, a held frame drives and reads nothing, and the
+ *   first frame after the hold advances them by the whole of it. Elsewhere
+ *   membership is kept up all the while. Either way the first frame after
  *   the hold names every element still animating, and an animation that
  *   ends is still settled, since an end is said once and not every frame.
  */
@@ -710,6 +713,17 @@ export function createAnimationClock(container, emit, requestFrames, { held = ()
       }
     }
     if (sampleRenderingUpdates()) {
+      if (held()) {
+        // Nothing driven and nothing read: each `currentTime` write dirties
+        // a style the mount would read again. The account keeps running
+        // from when driving started, so the first frame after the hold
+        // advances by all of it, and settles whatever ended meanwhile.
+        if (lastDrivenAt === null) {
+          lastDrivenAt = performance.now();
+          lastDocumentTime = documentTime();
+        }
+        return;
+      }
       // No event will say when an animation starts or stops, so every frame
       // is a sweep: make up whatever of the elapsed time the document's own
       // timeline did not cover, then read back what is still running.

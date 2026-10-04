@@ -65,12 +65,14 @@ import { batch, Effect, withChannel } from "@apendua/signal";
  * How long, in milliseconds, a pump waits on a channel that will not empty
  * before it empties it in one go. The wait starts on the first tick that
  * finds no node left to build and the channel still holding work the commit
- * waits for, and ends on a tick that finds the channel empty, or the portal
- * committing without it (`commitsEarly`). A node arriving meanwhile does
- * not restart it, or a timer adding a row more often than this would hold
- * the panel as long as the timer runs; on the first tick past it with no
- * node queued, the pump sweeps the channel unbudgeted, so the panel takes
- * one long frame and lands.
+ * waits for. It ends on a tick that finds the channel empty, or the portal
+ * committing without it (`commitsEarly`), or nodes still queued once its
+ * slice is spent: that is a build spanning frames, and its reading gets the
+ * whole second after it. A row built within its own tick leaves the wait
+ * running, or a timer adding rows more often than this would hold the
+ * panel as long as the timer ran. On the first tick past the bound, the
+ * pump sweeps the channel unbudgeted, so the panel takes one long frame and
+ * lands.
  *
  * An atomic channel holds every effect until the pass that finds nothing
  * left to read. Anything that invalidates the panel every frame, such as an
@@ -220,6 +222,10 @@ export function createPortalPump({
         waitingSince = null;
       } else if (built) {
         waitingSince ??= now();
+      } else {
+        // Still building. The second of budgeted reading the bound promises
+        // counts from when the build is done, not from before it started.
+        waitingSince = null;
       }
       let settled = drained && onCommit();
       if (!drained && built && hasPendingCommit() && early) {

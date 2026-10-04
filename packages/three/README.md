@@ -2209,6 +2209,12 @@ layout-tier width transition, every `object-fit` an image can be drawn
 with, a card of inline SVG (a diagram with dashed and dotted arrows,
 icons through a `viewBox`, marching ants), and a card of bulleted and
 numbered lists whose steps are numbered as they arrive.
+[`apps/desk`](../../apps/desk) is the same features in one scene, and
+mirrors a page that already exists rather than building panels for the
+scene: a desk whose monitor reveals its program, whose keys are pressed
+with the ray, whose floppies are dragged from one panel onto another, with
+a layer menu, live SVG charts, draggable cards, a text field with the
+scene's keyboard and a memo that can be picked up and tipped to read.
 
 ## License
 

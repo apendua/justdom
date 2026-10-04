@@ -1,0 +1,156 @@
+  <div class="wall"></div><div class="tabletop"></div>
+
+  <!-- ===================== notebook ===================== -->
+  <div class="zone" id="charts">
+    <div class="notebook" data-tabs data-accentable data-accent="tomato">
+      <div class="spiral"></div>
+      <div class="tabs"><div class="tab" data-tab="growth">GROWTH</div><div class="tab" data-tab="mix">MIX</div><div class="tab" data-tab="flow">FLOW</div></div>
+      <div data-tab-host></div>
+      <template data-page="growth"><div class="page">
+        <h2>Panels shipped</h2><p class="sub">weekly, <span class="mark">still climbing</span> — last <span data-last></span></p>
+        <svg class="chart" viewBox="0 -4 300 118" preserveAspectRatio="none">
+          <path class="axis" d="M0 0 V110 H300" />
+          <polygon class="area" data-area points="" /><polyline class="line" data-line points="" /><g class="dots" data-line-dots></g>
+        </svg>
+        <div class="cols">
+          <div class="colbar" data-bar-row><div class="hatch" data-bar="y" style="transform:scaleY(.45)"></div><span>Q1</span></div>
+          <div class="colbar" data-bar-row><div class="hatch" data-bar="y" style="transform:scaleY(.62)"></div><span>Q2</span></div>
+          <div class="colbar" data-bar-row><div class="hatch" data-bar="y" style="transform:scaleY(.38)"></div><span>Q3</span></div>
+          <div class="colbar" data-bar-row><div class="hatch" data-bar="y" style="transform:scaleY(.8)"></div><span>Q4</span></div>
+          <div class="colbar" data-bar-row><div class="hatch" data-bar="y" style="transform:scaleY(.7)"></div><span>Q5</span></div>
+          <div class="colbar" data-bar-row><div class="hatch" data-bar="y" style="transform:scaleY(.92)"></div><span>Q6</span></div>
+        </div>
+      </div></template>
+      <template data-page="mix"><div class="page">
+        <h2>Where the frame goes</h2><p class="sub">one 13.8 ms frame, roughly</p>
+        <div class="pie-row">
+          <div class="pie" data-donut></div>
+          <ol class="legend"><li>Text <small>glyph masks</small></li><li>Boxes <small>one batch</small></li><li>Rays <small>once a frame</small></li></ol>
+        </div>
+        <div class="big"><span data-donut-value>40%</span><small>is text</small></div>
+      </div></template>
+      <template data-page="flow"><div class="page">
+        <h2>How a div gets here</h2><p class="sub">hover the boxes</p>
+        <svg class="flow" viewBox="0 0 330 300">
+          <defs><marker id="c-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0 L10 5 L0 10 z" /></marker></defs>
+          <path class="edge live" d="M70 60 C 120 60, 130 60, 180 60" marker-end="url(#c-arrow)" />
+          <path class="edge" d="M232 82 C 232 120, 232 120, 232 150" marker-end="url(#c-arrow)" />
+          <path class="edge" d="M190 178 C 140 178, 120 230, 90 230" marker-end="url(#c-arrow)" />
+          <path class="edge dotted" d="M40 82 L40 200" marker-end="url(#c-arrow)" />
+          <g class="node"><rect x="6" y="38" width="64" height="44" rx="8" /><text x="38" y="66">DOM</text></g>
+          <g class="node"><rect x="182" y="38" width="100" height="44" rx="8" /><text x="232" y="66">mirror</text></g>
+          <g class="node"><rect x="182" y="152" width="100" height="50" rx="8" /><text x="232" y="183">batches</text></g>
+          <g class="node"><circle cx="50" cy="230" r="38" /><text x="50" y="236">pixels</text></g>
+          <text class="note" x="92" y="40">observed</text><text class="note" x="244" y="124">measured once</text><text class="note" x="104" y="272">one draw per panel</text>
+        </svg>
+      </div></template>
+    </div>
+    <div class="tag" style="left:20px;top:-14px"><b>Notebook</b>Tabs mount one page from a <code>&lt;template&gt;</code> and unmount the last (layout changes are mounted, never toggled). Graph paper is one conic-gradient tile; hatched bars on <code>scaleY</code>; a highlighter <code>mark</code> as a hard-stop gradient; <code>::marker</code> coloured per <code>:nth-child</code>; an SVG flow with markers, dotted and marching edges.</div>
+  </div>
+
+  <!-- ===================== all-in-one ===================== -->
+  <div class="zone" id="monitor">
+    <div class="aio" data-accentable data-accent="tomato">
+      <div class="glass">
+        <div class="desktop">
+          <div class="menubar">
+            <svg class="logo" viewBox="0 0 14 14"><circle cx="4" cy="4" r="3.5" fill="#000" /><rect x="7.5" y="1" width="6" height="6" fill="#000" /><polygon points="7,8 13,13.5 1,13.5" fill="#000" /></svg>
+            <span class="item">File</span><span class="item">Edit</span>
+            <span style="position:relative"><span class="item" data-phosphor-knob>Terminal ▾</span></span>
+            <span class="clock" data-time-zone="Europe/Warsaw"></span>
+          </div>
+          <div class="icons">
+            <div class="icon"><svg viewBox="0 0 30 30"><rect x="3" y="6" width="24" height="18" fill="#fff" stroke="#000" stroke-width="1.5" /><line x1="6" y1="19" x2="12" y2="19" stroke="#000" stroke-width="1.5" /><circle cx="23" cy="19" r="1.5" fill="#000" /></svg><span>Studio HD</span></div>
+            <div class="icon"><svg viewBox="0 0 30 30"><rect x="8" y="8" width="14" height="18" fill="#fff" stroke="#000" stroke-width="1.5" /><rect x="6" y="5" width="18" height="3" fill="#fff" stroke="#000" stroke-width="1.5" /><line x1="12" y1="11" x2="12" y2="23" stroke="#000" /><line x1="15" y1="11" x2="15" y2="23" stroke="#000" /><line x1="18" y1="11" x2="18" y2="23" stroke="#000" /></svg><span>Trash</span></div>
+          </div>
+          <div class="window">
+            <div class="titlebar"><div class="box" data-power title="End the session"></div><b>desk.js — Terminal</b></div>
+            <div class="screen" data-screen data-phosphor="green">
+              <pre class="crt"><span data-program></span><span data-prompt></span><span class="cursor"></span></pre>
+            </div>
+            <div class="grow"></div>
+          </div>
+        </div>
+      </div>
+      <div class="chin">
+        <div class="bauhaus"><i></i><i></i><i></i><b>STUDIO</b></div>
+        <div class="slot" data-drive><div class="mouth"></div><div class="led" data-led></div></div>
+      </div>
+    </div>
+    <div class="stand"></div>
+    <div class="tag" style="left:40px;top:60px"><b>All-in-one</b>A 1-bit desktop: dither from a 4px repeating-conic tile, a striped title bar from one gradient, a menu bar whose <em>Terminal</em> item opens a layer menu, SVG icons, a live clock. The terminal inside still reveals its program. Drop a cartridge in the slot. In a session the window's close box ends it.</div>
+  </div>
+
+  <!-- ===================== pinboard ===================== -->
+  <div class="zone" id="board">
+    <div class="linen" data-board data-accentable data-accent="tomato">
+      <div class="card swatches" data-card draggable="true" style="left:16px;top:22px;--tilt:-3deg"><div class="washi"></div>
+        <div class="swatch" data-swatch="tomato" data-selected><i style="background:#e4572e"></i><span>APD 032 · TOMATO</span></div>
+        <div class="swatch" data-swatch="cobalt"><i style="background:#2a5fd6"></i><span>APD 286 · COBALT</span></div>
+        <div class="swatch" data-swatch="saffron"><i style="background:#f2b134"></i><span>APD 123 · SAFFRON</span></div>
+        <div class="swatch" data-swatch="teal"><i style="background:#17a398"></i><span>APD 3275 · TEAL</span></div>
+      </div>
+      <div class="card calendar" data-card draggable="true" style="left:180px;top:18px;--tilt:3deg"><div class="washi b"></div>
+        <header>October<small>2026</small></header>
+        <div class="days">
+          <span class="dow">M</span><span class="dow">T</span><span class="dow">W</span><span class="dow">T</span><span class="dow">F</span><span class="dow">S</span><span class="dow">S</span>
+          <span class="off">28</span><span class="off">29</span><span class="off">30</span><span>1</span><span>2</span><span>3</span><span>4</span>
+          <span>5</span><span>6</span><span>7</span><span>8</span><span>9</span><span>10</span><span>11</span>
+          <span>12</span><span>13</span><span>14</span><span>15</span><span>16</span><span>17</span><span>18</span>
+          <span>19</span><span>20</span><span>21</span><span>22</span><span>23</span><span>24</span><span>25</span>
+          <svg viewBox="0 0 170 120" preserveAspectRatio="none"><ellipse cx="86" cy="33" rx="13" ry="10" transform="rotate(-8 86 33)" /></svg>
+        </div>
+      </div>
+      <div class="card photo" data-card draggable="true" style="left:20px;top:268px;--tilt:4deg"><div class="washi y"></div><img src="data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20256%20208%22%3E%3Crect%20width%3D%22256%22%20height%3D%22208%22%20fill%3D%22%23f6b26b%22%2F%3E%3Crect%20width%3D%22256%22%20height%3D%22110%22%20fill%3D%22%23f9cb8b%22%2F%3E%3Ccircle%20cx%3D%22170%22%20cy%3D%2296%22%20r%3D%2234%22%20fill%3D%22%23fff1c4%22%2F%3E%3Cpath%20d%3D%22M0%20120%20L50%2080%20L92%20112%20L140%2066%20L200%20118%20L256%2090%20L256%20208%20L0%20208%20Z%22%20fill%3D%22%236a4c7a%22%2F%3E%3Cpath%20d%3D%22M0%20150%20L70%20118%20L130%20146%20L190%20120%20L256%20140%20L256%20208%20L0%20208%20Z%22%20fill%3D%22%233d3460%22%2F%3E%3Crect%20y%3D%22168%22%20width%3D%22256%22%20height%3D%2240%22%20fill%3D%22%232a6f8f%22%2F%3E%3Cpath%20d%3D%22M0%20176%20H256%20M0%20188%20H256%20M0%20198%20H256%22%20stroke%3D%22%237fc1d8%22%20stroke-width%3D%222%22%20stroke-dasharray%3D%2214%2010%22%2F%3E%3Ccircle%20cx%3D%2260%22%20cy%3D%22160%22%20r%3D%229%22%20fill%3D%22%23e0573a%22%2F%3E%3Crect%20x%3D%2256%22%20y%3D%22160%22%20width%3D%228%22%20height%3D%2218%22%20fill%3D%22%23e0573a%22%2F%3E%3Ccircle%20cx%3D%2284%22%20cy%3D%22158%22%20r%3D%229%22%20fill%3D%22%232a5fd6%22%2F%3E%3Crect%20x%3D%2280%22%20y%3D%22158%22%20width%3D%228%22%20height%3D%2220%22%20fill%3D%22%232a5fd6%22%2F%3E%3C%2Fsvg%3E" alt="" /><p>studio trip</p></div>
+      <div class="card stub" data-card draggable="true" style="left:208px;top:196px;--tilt:-6deg"><div><b>Labs Expo</b><small>ADMIT ONE · HALL B</small></div><div class="no">№<br />0117</div></div>
+      <div class="card scrap" data-card draggable="true" style="left:214px;top:300px;--tilt:2deg"><div class="washi b"></div>Leave a note<input data-new-note placeholder="type, then ⏎" /></div>
+    </div>
+    <template id="note-template"><div class="card note" data-card draggable="true"><div class="washi y"></div><span data-note-text></span></div></template>
+    <div class="tag" style="left:30px;top:-14px"><b>Pinboard</b>Washi tape is a translucent striped layer. Swatches are buttons: one sets <code>data-accent</code> on every panel, and the desk recolours through CSS custom properties. The calendar's ring is an SVG ellipse over a grid; the ticket's notch is a radial-gradient hole. Cards drag; the scrap is a text field.</div>
+  </div>
+
+  <!-- ===================== cartridges ===================== -->
+  <div class="zone" id="carts">
+    <div class="cart" draggable="true" data-floppy="PLOT.BAS" style="left:0;top:40px;--tilt:-9deg"><div class="art"><b>PLOT</b></div></div>
+    <div class="cart c2" draggable="true" data-floppy="SNAKE.ASM" style="left:100px;top:10px;--tilt:2deg"><div class="art"><b>SNAKE</b></div></div>
+    <div class="cart c3" draggable="true" data-floppy="REVEAL.FRAG" style="left:200px;top:46px;--tilt:11deg"><div class="art"><b>REVEAL</b></div></div>
+    <div class="tag" style="left:0;top:-30px"><b>Cartridges</b>Drag one into the slot under the screen: drag and drop between panels.</div>
+  </div>
+
+  <!-- ===================== keyboard ===================== -->
+  <div class="zone" id="keyboard">
+    <div class="keyboard" data-accentable data-accent="tomato"><div class="keys" data-keys></div></div>
+    <div class="tag" style="left:20px;top:-8px"><b>Keyboard</b>Bauhaus modifiers; RETURN wears the accent the swatches choose.</div>
+  </div>
+
+  <!-- ===================== letter ===================== -->
+  <div class="zone" id="memo">
+    <div class="envelope"><svg viewBox="0 0 300 190" preserveAspectRatio="none"><polyline points="0,0 150,105 300,0" /></svg><div class="postage"><div></div></div></div>
+    <div class="letter" data-accentable data-accent="tomato">
+      <div class="lhead">
+        <svg viewBox="0 0 42 42"><circle cx="12" cy="12" r="10" fill="#e4572e" /><rect x="22" y="2" width="18" height="18" fill="#2a5fd6" /><polygon points="21,22 40,40 2,40" fill="#f2b134" /></svg>
+        <div><h1>Studio Apendua</h1><p>Form · Function · Freedom</p></div>
+      </div>
+      <div class="date">Warsaw, 1 October 2026</div>
+      <p><span class="drop">D</span>ear reader, everything on this desk is a page you could open in a browser: a notebook, a pinboard, this letter. In the headset they are the same elements, measured once and drawn as they are.</p>
+      <ul><li>Set in proportional faces, justified, hyphenated.</li><li>Lists keep their markers, coloured by <em>::marker</em>.</li></ul>
+      <div class="rtl"><p>שלום! השולחן הזה נכתב ב־HTML.</p><ol><li>ימין לשמאל</li><li>גם המספרים</li></ol></div>
+      <p>With warm regards from the studio,</p>
+      <div class="sign">Ada Pendua</div>
+      <svg class="seal" viewBox="0 0 64 64"><path class="wax" d="M32 3 C 42 4, 46 8, 52 11 C 60 16, 61 24, 60 32 C 62 41, 57 48, 51 54 C 44 60, 37 61, 30 60 C 21 61, 14 57, 9 51 C 3 44, 3 37, 4 30 C 3 21, 8 14, 14 9 C 20 4, 26 3, 32 3 Z" /><circle class="rim" cx="32" cy="32" r="20" /><text x="32" y="40">A</text></svg>
+    </div>
+    <div class="tag" style="left:10px;top:-34px"><b>Letter</b>Fraunces and Newsreader, a drop cap, square markers in the accent, a Hebrew paragraph and numbered list set <code>direction: rtl</code> (markers on the right). The wax seal is an SVG path; the postage stamp's perforations are a radial-gradient tile.</div>
+  </div>
+
+  <div class="zone" id="plant">
+    <svg viewBox="0 0 130 150"><g class="leaves">
+      <path d="M65 150 C 60 110, 30 90, 8 70 C 30 70, 58 92, 65 150 Z" /><path d="M65 150 C 70 100, 100 80, 124 62 C 104 86, 76 104, 65 150 Z" />
+      <path d="M65 150 C 50 100, 40 50, 52 6 C 66 44, 70 100, 65 150 Z" /><path d="M65 150 C 78 110, 92 60, 88 20 C 74 60, 70 110, 65 150 Z" />
+      <path d="M65 150 C 56 120, 40 112, 20 110 C 40 124, 56 132, 65 150 Z" />
+    </g></svg>
+    <div class="pot"></div>
+    <div class="tag" style="left:-160px;top:0"><b>Plant</b>An SVG <code>&lt;g&gt;</code> swaying on a CSS keyframe: a matrix write a frame, nothing rebuilt.</div>
+  </div>
+
+  <div class="sun"></div>
+<template id="phosphor-menu"><div class="menu"><div data-pick="green"><i style="background:#7dff9b"></i>Green phosphor</div><div data-pick="amber"><i style="background:#ffb84a"></i>Amber phosphor</div><div data-pick="white"><i style="background:#eef2f3"></i>Paper white</div></div></template>

@@ -1,0 +1,28 @@
+{
+  "name": "@apendua.dev/desk",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build": "npm run test && npm run compile && vite build",
+    "build:watch": "",
+    "compile": "tsc",
+    "dev": "vite",
+    "preview": "vite preview",
+    "test": "vitest run --environment jsdom",
+    "test:watch": "vitest --environment jsdom"
+  },
+  "dependencies": {
+    "@apendua.dev/headset": "workspace:*",
+    "@apendua.dev/media": "workspace:*",
+    "@apendua/freedom": "workspace:*",
+    "@apendua/justdom": "workspace:*",
+    "@apendua/justui": "workspace:*",
+    "@apendua/signal": "workspace:*",
+    "@types/three": "~0.185.0",
+    "jsdom": "^26.1.0",
+    "three": "~0.185.0",
+    "typescript": "^7.0.2",
+    "vite": "^7.1.9",
+    "vitest": "^3.2.4"
+  }
+}

@@ -28,9 +28,8 @@ export function stagedRoot({ at = [0, 0], claimed = false } = {}) {
   root.appendChild(child);
   stage.appendChild(root);
   document.body.appendChild(stage);
-  /** @type {Map<HTMLElement, number>} */
-  const scales = new Map();
-  const scale = () => (scales.get(stage) ?? 1) * (scales.get(root) ?? 1);
+  const scales = { stage: 1, root: 1 };
+  const scale = () => scales.stage * scales.root;
   return {
     stage,
     root,
@@ -53,14 +52,16 @@ export function stagedRoot({ at = [0, 0], claimed = false } = {}) {
       };
     },
     /**
-     * Draw `element`, the stage or the root, at `value` in both directions,
-     * in place of the scale it was drawn at before.
+     * Draw the stage or the root at `value` in both directions, in place of
+     * the scale it was drawn at before. Only those two: a scale on the
+     * child is not one the rects `place` gives out follow.
      *
-     * @param {HTMLElement} element
+     * @param {"stage" | "root"} which
      * @param {number} value
      */
-    setScale(element, value) {
-      scales.set(element, value);
+    setScale(which, value) {
+      scales[which] = value;
+      const element = which === "stage" ? stage : root;
       element.style.transform = `matrix(${value}, 0, 0, ${value}, 0, 0)`;
     },
     /** A fresh mirror that has adopted the root and the child. */

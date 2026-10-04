@@ -822,7 +822,7 @@ describe("a panel measured through a scale", () => {
    */
   function scaledPanel(scale) {
     const staged = stagedRoot({ at: [10, 20], claimed: true });
-    staged.setScale(staged.stage, scale);
+    staged.setScale("stage", scale);
     staged.place(staged.root, 0, 0, 300, 200);
     return { ...staged, mirror: staged.adopt() };
   }

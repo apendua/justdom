@@ -56,6 +56,19 @@ function staged({ root: rootTransform = "", stage: stageTransform = "" } = {}) {
   return { stage, root };
 }
 
+/**
+ * `stagedRoot` with a root 300 by 200 holding one child laid out 100 px
+ * across and 40 down, adopted by a mirror with no portal: the root, or what
+ * is above it, changes by hand through `setScale`, and the test says which
+ * event the mirror hears.
+ */
+function measuredRoot() {
+  const staged = stagedRoot({ claimed: true });
+  staged.place(staged.root, 0, 0, 300, 200);
+  staged.place(staged.child, 100, 40, 50, 20);
+  return { ...staged, mirror: staged.adopt() };
+}
+
 describe("a panel's root on a transformed chain", () => {
   const TURNED = "matrix(0.866, 0.5, -0.5, 0.866, 0, 0)";
 
@@ -209,12 +222,13 @@ describe("a frame's scale", () => {
   });
 
   test("is the product of a scaled root on a scaled page", () => {
-    const { stage, root, child, place, setScale, adopt } = stagedRoot({ claimed: true });
-    place(root, 0, 0, 300, 200);
-    place(child, 100, 40, 50, 20);
-    setScale(stage, 0.5);
-    setScale(root, 1.2);
-    adopt();
+    const { stage, child, setScale } = measuredRoot();
+    setScale("stage", 0.5);
+    setScale("root", 1.2);
+    // A scale on the child is one no rect follows, so the fixture refuses
+    // it by its type.
+    // @ts-expect-error -- only the stage and the root are drawn at a scale.
+    void (() => setScale("child", 2));
     try {
       assert.deepEqual(getContentPosition(child), { x: 100, y: 40 });
     } finally {
@@ -225,7 +239,7 @@ describe("a frame's scale", () => {
   test("is not refused for a rotation of zero", () => {
     // An element at rest after a `rotate` animation computes to `0deg`.
     const { stage, root, setScale } = stagedRoot({ claimed: true });
-    setScale(stage, 0.5);
+    setScale("stage", 0.5);
     const original = window.getComputedStyle;
     const warn = console.warn;
     /** @type {unknown[]} */
@@ -262,26 +276,13 @@ describe("a frame's scale", () => {
 });
 
 describe("a frame read again", () => {
-  /**
-   * A root holding one child laid out 100 px across and 40 down, inside a
-   * stage, adopted by a mirror with no portal: the root, or what is above
-   * it, changes by hand through `setScale`, and the test says which event
-   * the mirror hears.
-   */
-  function measuredRoot() {
-    const staged = stagedRoot({ claimed: true });
-    staged.place(staged.root, 0, 0, 300, 200);
-    staged.place(staged.child, 100, 40, 50, 20);
-    return { ...staged, mirror: staged.adopt() };
-  }
-
   test("by a transition on the root's own transform, sampled by the clock", () => {
     // The clock reports a transform moving as a reflow of the element it
     // runs on, with no attribute changed.
     const { stage, root, child, mirror, setScale } = measuredRoot();
     try {
       assert.deepEqual(getContentPosition(child), { x: 100, y: 40 });
-      setScale(root, 1.2);
+      setScale("root", 1.2);
       mirror.reflowed([root]);
       assert.deepEqual(getContentPosition(child), { x: 100, y: 40 });
     } finally {
@@ -293,7 +294,7 @@ describe("a frame read again", () => {
     const { stage, child, mirror, setScale } = measuredRoot();
     try {
       assert.deepEqual(getContentPosition(child), { x: 100, y: 40 });
-      setScale(stage, 0.5);
+      setScale("stage", 0.5);
       mirror.documentStylesChanged();
       assert.deepEqual(getContentPosition(child), { x: 100, y: 40 });
     } finally {

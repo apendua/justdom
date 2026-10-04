@@ -1,6 +1,23 @@
 # Change Log - @apendua/freedom
 
-This log was last generated on Sat, 03 Oct 2026 19:51:46 GMT and should not be manually modified.
+This log was last generated on Sun, 04 Oct 2026 19:35:47 GMT and should not be manually modified.
+
+## 0.27.0
+Sun, 04 Oct 2026 19:35:47 GMT
+
+### Minor changes
+
+- Add mouse(ctx) and followMouse, a stand-in controller that points at the scene with the mouse on a page, moved here from turntable
+- Add the @apendua/freedom/page entry point, getPortalRoot and scrollElementBy without three.js, for widgets a page shows before any session
+- A ray's press, release and moves now send pointerdown, pointerup and pointermove ahead of their mouse events, each hand with a pointerId of its own, and setPointerCapture with a hand's pointerId is kept and honoured instead of throwing
+
+### Patches
+
+- SVG curves are sampled at twice as many segments: 24 per curve at unit scale, at least 16 and at most 128, so a circle on a panel no longer shows as a polygon
+- anchorToViewer stands the origin upright to gravity, measured in local-floor, when the local space keeps the head's tilt
+- Move the layout-offset readers getBoxOffset, untransformedOffset and pageOffset from cssTransform.js into mirror.js, so mirror.js no longer imports from a module that imports it. No behaviour changes.
+- A ray moving over nested clickable elements now sends one bubbling mousemove from the innermost element, instead of one non-bubbling mousemove from each
+- Clip a transformed element where its layout puts it, so a rotating element in a clipping parent is no longer cut differently at each angle
 
 ## 0.26.0
 Sat, 03 Oct 2026 19:51:46 GMT

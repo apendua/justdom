@@ -2,6 +2,40 @@
   "name": "@apendua/justui",
   "entries": [
     {
+      "version": "0.3.2",
+      "tag": "@apendua/justui_v0.3.2",
+      "date": "Sun, 04 Oct 2026 19:35:47 GMT",
+      "comments": {
+        "none": [
+          {
+            "comment": "READMEs and changelogs no longer feed the build cache key, so a docs edit does not rebuild every dependent project"
+          }
+        ],
+        "patch": [
+          {
+            "comment": "The dropdown and the scrolling list take what they need of freedom from @apendua/freedom/page, and the package is marked free of side effects, so a page that bundles them no longer carries three.js"
+          }
+        ],
+        "dependency": [
+          {
+            "comment": "Updating dependency \"@apendua/freedom\" to `0.27.0`"
+          },
+          {
+            "comment": "Updating dependency \"@apendua/jsdom-env\" to `0.2.0`"
+          },
+          {
+            "comment": "Updating dependency \"@apendua/justdom\" to `0.3.6`"
+          },
+          {
+            "comment": "Updating dependency \"@apendua/freedom\" to `0.27.0`"
+          },
+          {
+            "comment": "Updating dependency \"@apendua/justdom\" to `0.3.6`"
+          }
+        ]
+      }
+    },
+    {
       "version": "0.3.1",
       "tag": "@apendua/justui_v0.3.1",
       "date": "Sat, 03 Oct 2026 19:51:46 GMT",

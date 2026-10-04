@@ -2,6 +2,29 @@
   "name": "@apendua/jsdom-env",
   "entries": [
     {
+      "version": "0.2.0",
+      "tag": "@apendua/jsdom-env_v0.2.0",
+      "date": "Sun, 04 Oct 2026 19:35:47 GMT",
+      "comments": {
+        "none": [
+          {
+            "comment": "READMEs and changelogs no longer feed the build cache key, so a docs edit does not rebuild every dependent project"
+          },
+          {
+            "comment": "The build now checks that every file under src parses as native JavaScript"
+          },
+          {
+            "comment": "The package no longer ships a compiled lib directory, which nothing imported; main points at src like the exports do"
+          }
+        ],
+        "minor": [
+          {
+            "comment": "Give the window a PointerEvent stand-in and the pointer capture methods, which jsdom lacks, so a test of code that sends pointer events need not keep its own copy"
+          }
+        ]
+      }
+    },
+    {
       "version": "0.1.1",
       "tag": "@apendua/jsdom-env_v0.1.1",
       "date": "Thu, 06 Aug 2026 07:34:16 GMT",

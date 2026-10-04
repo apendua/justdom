@@ -44,7 +44,10 @@ function syntheticEvent(type, fields) {
   return Object.assign(new Event(type, { bubbles: true }), fields);
 }
 
-function setup() {
+/**
+ * @param {Parameters<typeof createAnimationClock>[3]} [options]
+ */
+function setup(options) {
   const container = document.createElement("div");
   const element = document.createElement("div");
   container.appendChild(element);
@@ -59,6 +62,7 @@ function setup() {
       emitted.push(batches);
     },
     frames.requestFrames,
+    options,
   );
 
   return {
@@ -439,6 +443,45 @@ describe("animation clock", () => {
       frames.step();
       assert.equal(emitted.length, 0);
       assert.equal(frames.running, false);
+    } finally {
+      cleanup();
+    }
+  });
+
+  test("a held clock samples nothing, and its first frame after covers everything", () => {
+    // A panel still loading is not seen, and its mount reads each style as
+    // it builds; a sample per frame would only undo what the mount read.
+    let held = true;
+    const { container, element, emitted, frames, cleanup } = setup({ held: () => held });
+    const other = document.createElement("div");
+    container.appendChild(other);
+    try {
+      element.dispatchEvent(syntheticEvent("transitionrun", { propertyName: "opacity" }));
+      other.dispatchEvent(syntheticEvent("transitionrun", { propertyName: "color" }));
+      frames.step();
+      frames.step();
+      assert.equal(emitted.length, 0, "nothing while held");
+      assert.equal(frames.running, true, "though it keeps its membership up");
+
+      held = false;
+      frames.step();
+      assert.equal(emitted.length, 1, "one emission on the first frame after");
+      const targets = new Set(emitted[0].flatMap((batch) => [...(batch.targets ?? [])]));
+      assert.deepEqual(targets, new Set([element, other]), "naming every animating element");
+    } finally {
+      cleanup();
+    }
+  });
+
+  test("a held clock still settles an animation that ends", () => {
+    // An end is said once, not every frame, so holding it back saves no
+    // frame anything; and an element built mid-flight would keep the value
+    // it was built with, since no sample after the load names it.
+    const { element, emitted, cleanup } = setup({ held: () => true });
+    try {
+      element.dispatchEvent(syntheticEvent("transitionrun", { propertyName: "opacity" }));
+      element.dispatchEvent(syntheticEvent("transitionend", { propertyName: "opacity" }));
+      assert.equal(emitted.length, 1, "the end state is settled");
     } finally {
       cleanup();
     }

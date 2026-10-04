@@ -45,8 +45,9 @@ import { documentTime, sampleRenderingUpdates } from "./renderingUpdates.js";
  * to say which properties an animation actually touches). While the set is
  * non-empty, every frame emits invalidation batches scoped to the animating
  * elements — the same batches a mutation would have produced, so everything
- * downstream just works. An empty set requests no frames: the idle cost of
- * all of this is nothing.
+ * downstream just works. A held clock emits nothing, and the portal holds
+ * it while its panel loads. An empty set requests no frames: the idle cost
+ * of all of this is nothing.
  */
 
 /**
@@ -328,8 +329,17 @@ const SWEEP_INTERVAL = 60;
  * @param {(tick: () => void) => () => void} requestFrames Starts calling
  *   `tick` once per frame; returns the way to stop. Only ever held while the
  *   membership is non-empty.
+ * @param {object} [options]
+ * @param {() => boolean} [options.held] Asked every frame: while it answers
+ *   true, the frame's sample is not emitted. The portal holds the clock while
+ *   its panel loads, since nobody sees the panel yet and the mount reads
+ *   each style as it builds it; a sample per frame would only undo what the
+ *   mount had read, and under an endless animation the mount would never
+ *   finish. Membership is kept up all the while, so the first frame after
+ *   the hold names every element still animating, and an animation that
+ *   ends is still settled, since an end is said once and not every frame.
  */
-export function createAnimationClock(container, emit, requestFrames) {
+export function createAnimationClock(container, emit, requestFrames, { held = () => false } = {}) {
   /**
    * What is animating right now: for each element, its running animations —
    * keyed so that a transition's end event can find what its start event
@@ -727,6 +737,9 @@ export function createAnimationClock(container, emit, requestFrames) {
     }
     if (!animating.size) {
       stop();
+      return;
+    }
+    if (held()) {
       return;
     }
     emit(buildBatches());

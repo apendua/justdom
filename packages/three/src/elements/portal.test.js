@@ -6,6 +6,7 @@ import { $, $$, attr, children, className, stylesheet } from "@apendua/justdom";
 import { InteractionContext, InteractionManager } from "../interactions.js";
 import {
   DomMirror,
+  getChildNodes,
   getComputedStyleCached,
   LOADING_ATTRIBUTE,
   resetMeasuringRangeForTests,
@@ -34,6 +35,7 @@ const createPortal = (ctx, options = {}) =>
     ...options,
   });
 import { createPortalScheduler, PortalSchedulerContext } from "./portalScheduler.js";
+import { MAX_COMMIT_WAIT } from "./portalPump.js";
 import {
   countingManager,
   dispatchFontsEvent,
@@ -3637,5 +3639,276 @@ describe("a draggable panel", () => {
     press("selectend");
     assert.equal(putDown, 1, "carried, and put down");
     portal.disconnect();
+  });
+});
+
+describe("a panel that is always busy", () => {
+  /**
+   * Stand in for `performance.now` with a clock the test moves, a frame's
+   * length per frame, so how long the panel has waited is up to the test and
+   * not to how fast the machine runs it.
+   *
+   * @returns {{ advance: (ms: number) => void, restore: () => void }}
+   */
+  const fakeClock = () => {
+    const originalNow = performance.now;
+    let clock = 0;
+    performance.now = () => clock;
+    return {
+      advance: (ms) => {
+        clock += ms;
+      },
+      restore: () => {
+        performance.now = originalNow;
+      },
+    };
+  };
+
+  /**
+   * jsdom has no `AnimationEvent` and no `getAnimations`, so the clock knows
+   * of an animation only by its events, and assumes one it cannot read
+   * moves layout: from the start event on, every frame re-measures the whole
+   * panel, which is what an endless animation does to it.
+   *
+   * @param {Element} element
+   * @param {"animationstart" | "animationend"} type
+   */
+  const animation = (element, type) =>
+    element.dispatchEvent(
+      Object.assign(new Event(type, { bubbles: true }), { animationName: "spin" }),
+    );
+
+  /**
+   * A panel of a few rows, mounted at a zero budget, so that one frame
+   * resolves one read and anything that invalidates the panel every frame
+   * keeps its channel from ever emptying.
+   */
+  const busyPanel = () => {
+    const { ctx } = countingManager();
+    const portal = createPortal(ctx, { budget: 0 });
+    const parent = new THREE.Group();
+    portal.addTo(parent);
+    const containerObject = parent.children[0];
+    /** @type {import("@apendua/justdom").Mountable | undefined} */
+    let mountable;
+    const subscription = $("div", [
+      children(...Array.from({ length: 4 }, () => $("div", [children($("div", []))]))),
+    ]).subscribe((value) => {
+      mountable = value;
+    });
+    assert.ok(mountable);
+    portal.mount(mountable);
+    const containers = document.querySelectorAll("[data-xr-portal]");
+    const list = /** @type {HTMLElement} */ (containers[containers.length - 1].firstElementChild);
+    /** The rows the scene holds, once the root has an object. */
+    const rows = () => {
+      const rootObject = containerObject.children.find(
+        (child) => !(child instanceof THREE.Mesh) && child.children.length > 0,
+      );
+      return rootObject ? rootObject.children[0].children.length : 0;
+    };
+    return {
+      portal,
+      list,
+      rows,
+      dispose: () => {
+        subscription.unsubscribe();
+        portal.disconnect();
+      },
+    };
+  };
+
+  test("a change made inside the frame reaches the tick that runs in it", async () => {
+    // A ray's press runs the page's click handler inside the frame, and a
+    // handler that changes the DOM does so with no microtask before the
+    // pump's tick in the same frame. The observer has not delivered, so a
+    // tick that read the mirror as it found it read the page as it was.
+    const { ctx } = countingManager();
+    const root = document.createElement("div");
+    const label = document.createElement("div");
+    const count = document.createElement("span");
+    label.appendChild(count);
+    root.appendChild(label);
+    document.body.appendChild(root);
+    const portal = createPortal(ctx, { root });
+    portal.addTo(new THREE.Group());
+    await settle(portal);
+
+    /** @type {Node[]} */
+    let seen = [];
+    const reader = new Effect(() => {
+      seen = getChildNodes(label);
+    });
+    assert.deepEqual(seen, [count]);
+    try {
+      // Give the next frame work of its own, so the pump ticks in it.
+      root.setAttribute("data-step", "1");
+      await nextMacrotask();
+      assert.ok(frameCallbacks.length > 0, "the next frame has the pump in it");
+
+      count.remove();
+      flushFrame();
+      assert.deepEqual(seen, [], "the tick read the page as the handler left it");
+    } finally {
+      reader.dispose();
+      await drain();
+      portal.disconnect();
+      root.remove();
+    }
+  });
+
+  test("a panel with an endless animation still loads", async () => {
+    // Desk bug 14. The clock re-measured the panel on every frame, the reads
+    // a frame's slice resolved were undone by the next frame's, and the
+    // mount, which commits only once nothing is left to read, never did.
+    // The clock is held while the panel loads, so this is not the time
+    // bound below: the clock here never moves.
+    const clock = fakeClock();
+    const { portal, list, dispose } = busyPanel();
+    const spinner = /** @type {HTMLElement} */ (list.firstElementChild);
+    try {
+      animation(spinner, "animationstart");
+      await nextMacrotask();
+      for (let frame = 0; frame < 300 && portal.isLoading(); frame++) {
+        flushFrame();
+        await nextMacrotask();
+      }
+      assert.equal(portal.isLoading(), false, "the panel loaded");
+    } finally {
+      animation(spinner, "animationend");
+      await drain();
+      dispose();
+      clock.restore();
+    }
+  });
+
+  test("a panel that loaded under an animation follows it from then on", async () => {
+    // The other half of holding the clock: it lets go at the load, and its
+    // first frame after that brings the panel to where the animation is.
+    const clock = fakeClock();
+    const { portal, list, dispose } = busyPanel();
+    const spinner = /** @type {HTMLElement} */ (list.firstElementChild);
+    try {
+      animation(spinner, "animationstart");
+      await settle(portal);
+      assert.equal(portal.isLoading(), false, "the panel loaded");
+      let reads = 0;
+      const holder = new Effect(() => {
+        reads += 1;
+        getComputedStyleCached(spinner);
+      });
+      try {
+        flushFrame();
+        await nextMacrotask();
+        assert.ok(reads > 1, "a sampled frame restyled the spinner");
+      } finally {
+        holder.dispose();
+      }
+    } finally {
+      animation(spinner, "animationend");
+      await drain();
+      dispose();
+      clock.restore();
+    }
+  });
+
+  test("a loaded panel under an endless animation still takes a row", async () => {
+    // Once loaded, the clock samples every frame, and an atomic channel the
+    // samples keep busy never empties. The row waited for the sweep that
+    // empties it, and so for ever. The time bound sweeps once the panel has
+    // waited `MAX_COMMIT_WAIT` on the channel, and the row lands then.
+    const clock = fakeClock();
+    const { portal, list, rows, dispose } = busyPanel();
+    const spinner = /** @type {HTMLElement} */ (list.firstElementChild);
+    try {
+      await settle(portal);
+      assert.equal(rows(), 4);
+      animation(spinner, "animationstart");
+      list.appendChild(document.createElement("div"));
+      await nextMacrotask();
+      let frames = 0;
+      while (frames < 300 && rows() < 5) {
+        clock.advance(16);
+        flushFrame();
+        await nextMacrotask();
+        frames += 1;
+      }
+      assert.equal(rows(), 5, "the new row is in the scene");
+      assert.ok(
+        frames * 16 <= MAX_COMMIT_WAIT + 5 * 16,
+        `within the bound and a few frames, took ${frames}`,
+      );
+    } finally {
+      animation(spinner, "animationend");
+      await drain();
+      dispose();
+      clock.restore();
+    }
+  });
+
+  test("rows arriving faster than the bound do not restart it", async () => {
+    // The charts' log adds a row every couple of seconds. Had each arrival
+    // started the wait again, rows arriving more often than the bound would
+    // hold a busy panel for as long as they kept coming.
+    const clock = fakeClock();
+    const { portal, list, rows, dispose } = busyPanel();
+    const spinner = /** @type {HTMLElement} */ (list.firstElementChild);
+    try {
+      await settle(portal);
+      animation(spinner, "animationstart");
+      await nextMacrotask();
+      let frames = 0;
+      while (frames < 300 && rows() < 5) {
+        if (frames % 10 === 0) {
+          list.appendChild(document.createElement("div"));
+        }
+        clock.advance(16);
+        flushFrame();
+        await nextMacrotask();
+        frames += 1;
+      }
+      assert.ok(rows() >= 5, "the rows reached the scene");
+      assert.ok(
+        frames * 16 <= MAX_COMMIT_WAIT + 10 * 16,
+        `within the bound of the first one waiting, took ${frames}`,
+      );
+    } finally {
+      animation(spinner, "animationend");
+      await drain();
+      dispose();
+      clock.restore();
+    }
+  });
+
+  test("a panel a timer keeps busy still loads, after the bound", async () => {
+    // Ledger 12, and the write-up's fourth test: a timer that changes the
+    // panel faster than a slow frame reads it. The clock is no part of this,
+    // so holding it does nothing; the time bound is what lands the mount.
+    const clock = fakeClock();
+    const { portal, list, dispose } = busyPanel();
+    let tick = 0;
+    const timer = setInterval(() => {
+      tick += 1;
+      list.style.color = tick % 2 ? "red" : "blue";
+    }, 0);
+    try {
+      let frames = 0;
+      while (frames < 300 && portal.isLoading()) {
+        clock.advance(16);
+        flushFrame();
+        await nextMacrotask();
+        frames += 1;
+      }
+      assert.equal(portal.isLoading(), false, "the panel loaded");
+      assert.ok(
+        frames * 16 <= MAX_COMMIT_WAIT + 30 * 16,
+        `within the bound and the frames the mount needs, took ${frames}`,
+      );
+    } finally {
+      clearInterval(timer);
+      await drain();
+      dispose();
+      clock.restore();
+    }
   });
 });

@@ -252,7 +252,9 @@ function claimRoot(root) {
  *   paid by anything that invalidates the panel on *every* frame — a layout
  *   transition, most of all — since each frame's invalidation undoes the
  *   reading the frame before it did, and a panel whose per-frame reading
- *   does not fit the budget does not move until the animation ends. False
+ *   does not fit the budget does not move until the animation ends, or
+ *   until it has waited `MAX_COMMIT_WAIT` (a second; see `portalPump.js`),
+ *   when one long frame reads everything and lands the update. False
  *   runs the effects themselves under the budget, as many as fit, in the
  *   order they were queued: something moves every frame, and an update too
  *   big for one frame lands in instalments. Rows added or removed after
@@ -708,7 +710,8 @@ function buildPortal(ctx, ownOptions = {}) {
    * budget without asking. `maxStalePasses: Infinity` for the same reason: a
    * large mount legitimately overruns the budget many frames in a row, and
    * the catch-up drain the default would force is precisely the stall this
-   * exists to avoid.
+   * exists to avoid. The bound a busy panel does need is the pump's, in
+   * time rather than passes: see `MAX_COMMIT_WAIT`.
    *
    * Atomic, because a panel is one surface. A budget spent running the
    * effects moved the boxes it reached and left the rest where they were, so
@@ -1334,6 +1337,14 @@ function buildPortal(ctx, ownOptions = {}) {
           channel,
           scheduler,
           priority,
+          // What the observer holds and has not delivered: a handler a ray's
+          // press ran inside this frame, with no microtask since.
+          beforeTick: () => {
+            const records = mutationObserver.takeRecords();
+            if (records.length > 0) {
+              mutationCallback(records);
+            }
+          },
           buildNode: buildQueuedNode,
           onCommit: commit,
           // Not atomic, the panel changes by instalments anyway; a row built
@@ -1550,6 +1561,9 @@ function buildPortal(ctx, ownOptions = {}) {
       interactionManager.updateIntersections();
     },
     requestFrames,
+    // Nobody sees the panel until it loads, and the mount reads each style
+    // as it builds it; see `held` in `animationClock.js`.
+    { held: () => loading.get() },
   );
 
   /**

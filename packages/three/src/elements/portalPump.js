@@ -15,6 +15,11 @@ import { batch, Effect, withChannel } from "@apendua/signal";
  *   asks for it when there is work and leaves the queue by finishing, not by
  *   being stopped.
  * @property {number} priority This pump's say in the scheduler's pool.
+ * @property {() => void} [beforeTick] Told at the top of every tick, before
+ *   anything is read: the portal's cue to take whatever its observer holds
+ *   and has not yet delivered. A ray's press runs the page's handlers inside
+ *   the frame, and a handler that changes the DOM leaves its records waiting
+ *   for a microtask that does not come before this tick.
  * @property {(node: Node) => boolean} buildNode Build the object for one
  *   queued node and attach it, returning whether anything was genuinely
  *   built. A stale entry — a node that left the tree, a comment with nothing
@@ -57,6 +62,30 @@ import { batch, Effect, withChannel } from "@apendua/signal";
  */
 
 /**
+ * How long, in milliseconds, a pump waits on a channel that will not empty
+ * before it empties it in one go. The wait starts on the first tick that
+ * finds no node left to build and the channel still holding work the commit
+ * waits for, and ends on a tick that finds the channel empty, or the portal
+ * committing without it (`commitsEarly`). A node arriving meanwhile does
+ * not restart it, or a timer adding a row more often than this would hold
+ * the panel as long as the timer runs; on the first tick past it with no
+ * node queued, the pump sweeps the channel unbudgeted, so the panel takes
+ * one long frame and lands.
+ *
+ * An atomic channel holds every effect until the pass that finds nothing
+ * left to read. Anything that invalidates the panel every frame, such as an
+ * endless animation, a timer faster than a slow frame or a drag, undoes each
+ * frame's reading before the next, so that pass never comes. The channel's
+ * own bound on that, `maxStalePasses`, counts passes and is off here, since
+ * a large mount overruns the budget for many frames and a forced drain there
+ * is the stall the budget exists to avoid. A time bound tells the two
+ * apart: a mount still building has nodes queued and is never swept, and
+ * one with only reading left has a second of budgeted frames before the
+ * long one.
+ */
+export const MAX_COMMIT_WAIT = 1000;
+
+/**
  * The machinery that spreads a portal's work across frames: a queue of DOM
  * nodes waiting to be built, a tick that spends each frame's slice on them
  * and on the channel, and a watcher that asks for frames whenever work lands.
@@ -72,6 +101,7 @@ export function createPortalPump({
   channel,
   scheduler,
   priority,
+  beforeTick = () => {},
   buildNode,
   onCommit,
   commitsEarly = () => false,
@@ -103,6 +133,14 @@ export function createPortalPump({
   const pendingSet = new Set();
 
   /**
+   * When this pump started waiting on a channel that has not emptied, by the
+   * channel's clock, or null while it is not waiting. See `MAX_COMMIT_WAIT`.
+   *
+   * @type {number | null}
+   */
+  let waitingSince = null;
+
+  /**
    * This portal's slice of a frame: build queued nodes until the deadline,
    * hand what is left to the channel, and when both are empty, say so. At
    * least one node and at least one update per call regardless of the clock
@@ -122,7 +160,9 @@ export function createPortalPump({
    * to be built changes the layout of the rows around it, and applying
    * those moves before the row exists would be the same half-update from the
    * other side. So the sweep waits for the queue, and the queue's objects
-   * wait for the sweep — `onCommit` is where the portal puts them in.
+   * wait for the sweep — `onCommit` is where the portal puts them in. A
+   * sweep that something keeps from ever coming, by invalidating the panel
+   * every frame, is forced once the wait passes `MAX_COMMIT_WAIT`.
    *
    * Returns whether the pump is finished, which is how it leaves the
    * scheduler's queue: not by being stopped, but by having nothing left —
@@ -137,6 +177,7 @@ export function createPortalPump({
     priority,
     tick: (deadline) => {
       const now = channel.now;
+      beforeTick();
       if (pendingNodes.length > 0) {
         batch(() => {
           withChannel(channel, () => {
@@ -162,6 +203,8 @@ export function createPortalPump({
         const budget = Math.max(deadline - now(), 0);
         if (pendingNodes.length > 0) {
           channel.warm({ budget });
+        } else if (waitingSince !== null && now() - waitingSince >= MAX_COMMIT_WAIT) {
+          channel.flush({ budget: Infinity });
         } else {
           channel.flush({ budget });
         }
@@ -170,8 +213,16 @@ export function createPortalPump({
       // the scene behind the graph, and the tick has to come round again.
       const built = pendingNodes.length === 0;
       const drained = built && channel.pendingCount === 0;
+      const early = commitsEarly();
+      if (drained || (built && early)) {
+        // Nothing is waiting on the channel: it is empty, or the portal
+        // takes its commit without it.
+        waitingSince = null;
+      } else if (built) {
+        waitingSince ??= now();
+      }
       let settled = drained && onCommit();
-      if (!drained && built && hasPendingCommit() && commitsEarly()) {
+      if (!drained && built && hasPendingCommit() && early) {
         // Committed, but not settled: the channel still has work, and the
         // tick comes round for it.
         onCommit();

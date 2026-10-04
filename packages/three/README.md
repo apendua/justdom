@@ -755,6 +755,18 @@ room made for it are one frame. The trade is that a big change is seen later rat
 than in pieces; a scroll is the one thing that does not wait, for the reason
 the scroll section gives.
 
+That frame may never come on its own. Something that changes the panel on
+every frame, such as an endless animation, a timer faster than a slow frame
+or a drag, undoes each frame's reading before the next frame finishes it.
+So the wait has a bound: once a panel has nothing left to build and has
+waited a second (`MAX_COMMIT_WAIT` in `portalPump.js`) for its reading to
+finish, the next frame reads everything at once, whatever the budget, and
+the update lands. Under input that never stops, that means one long frame
+about once a second, loading or loaded. A panel that has to follow the hand
+on every frame wants `atomic: false` instead, which runs the update's writes
+under the budget and lets the panel change in instalments; `atomic` in
+`PortalOptions` says what that trades.
+
 ```js
 dom(ctx, panel, [set({ position })], {
   budget: 8, // ms of each frame spent mounting
@@ -1370,7 +1382,11 @@ elements or the transitions playing on them.
 CSS transitions, keyframe animations and Web Animations play inside a
 portal: while anything is animating, the affected elements are sampled once
 per frame — through the same invalidation path a mutation takes — and the
-moment nothing is, the sampling stops. An idle panel costs nothing.
+moment nothing is, the sampling stops. An idle panel costs nothing. A panel
+still loading is not sampled at all: nobody sees it yet, its mount reads
+each element's style as it builds it, and a sample every frame would undo
+that reading. The first frame after the load samples every element still
+animating, so the panel appears where its animations are.
 Inline-style writes from a frame loop work too; each one is an ordinary
 mutation scoped to the element it touched. Drive that loop with
 `useFrame(ctx, fn)` rather than with `requestAnimationFrame`, though. Once a

@@ -1667,7 +1667,9 @@ transform, which is the frame its quad is drawn in. The box is axis-aligned in
 that frame, so it turns with the element. A rotating element in a round window
 centred on it, such as a radar's sweep, comes out as it does on the page; a
 rotated card lying across a window's straight edge has that edge drawn turned
-with the card.
+with the card. An `<svg>` root is the exception: it has no layout offsets to
+read, so on a transformed chain it is still placed from its client rect, the
+transformed bounds, and its clip slides as a rotation turns.
 
 The same box also trims ray hits, so the half of a button that has scrolled out
 of sight cannot be pressed, and an element with nothing left showing leaves the

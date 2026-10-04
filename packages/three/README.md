@@ -2188,7 +2188,11 @@ Named here so that nothing public goes unmentioned; each has its JSDoc.
 - `requestFrameRate(renderer, preference)`, `anchorToViewer(renderer)`,
   `installCrashPanel(renderer)` with `CRASH_PANEL_ID`, and
   `createUnsupportedButton(mode)` are the parts of `createXRButton`, for an
-  app that builds its own button.
+  app that builds its own button. Such an app asks for `local-floor` as an
+  optional feature of its session, AR included, as `createXRButton` does.
+  `anchorToViewer` measures upright in it, and in a session without it the
+  anchor falls back to `local`, which IWER leaves tilted when a session is
+  entered with the head tipped.
 - From `@apendua/freedom/svg`: `shape`, `group`, `image` and `drawText` are
   the builders `svgElements()` dispatches to, for a plugin that draws one
   SVG element its own way and hands the rest to them.

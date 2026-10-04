@@ -121,6 +121,69 @@ function fakeFrame(space, pose) {
   );
 }
 
+/**
+ * A session that answers for `local-floor`: with `level`, or with a refusal
+ * when that is null.
+ */
+class LevelSession extends FakeSession {
+  /** @param {ReturnType<typeof fakeSpace> | null} level */
+  constructor(level) {
+    super();
+    this.level = level;
+  }
+
+  /** @param {string} type */
+  requestReferenceSpace(type) {
+    return type === "local-floor" && this.level
+      ? Promise.resolve(this.level)
+      : Promise.reject(new DOMException("Not supported", "NotSupportedError"));
+  }
+}
+
+/**
+ * @param {ReturnType<typeof fakePose>} pose
+ * @returns {THREE.Matrix4}
+ */
+function matrixOf({ transform: { position, orientation } }) {
+  return new THREE.Matrix4().compose(
+    new THREE.Vector3(position.x, position.y, position.z),
+    new THREE.Quaternion(orientation.x, orientation.y, orientation.z, orientation.w),
+    new THREE.Vector3(1, 1, 1),
+  );
+}
+
+/**
+ * A frame from a session with a level space as well as `base`, given where
+ * `base` and the viewer are in the level one. The viewer in `base` is what
+ * those two make it, so the frame agrees with itself whichever it is asked.
+ *
+ * @param {ReturnType<typeof fakeSpace>} base
+ * @param {ReturnType<typeof fakeSpace>} level
+ * @param {ReturnType<typeof fakePose>} baseInLevel
+ * @param {ReturnType<typeof fakePose>} viewerInLevel
+ * @returns {XRFrame}
+ */
+function levelFrame(base, level, baseInLevel, viewerInLevel) {
+  const position = new THREE.Vector3();
+  const orientation = new THREE.Quaternion();
+  matrixOf(baseInLevel)
+    .invert()
+    .multiply(matrixOf(viewerInLevel))
+    .decompose(position, orientation, new THREE.Vector3());
+  const viewerInBase = fakePose({ position, orientation });
+  return /** @type {XRFrame} */ (
+    /** @type {unknown} */ ({
+      getViewerPose: (/** @type {unknown} */ asked) =>
+        asked === level ? viewerInLevel : asked === base ? viewerInBase : null,
+      getPose: (/** @type {unknown} */ space, /** @type {unknown} */ from) =>
+        space === base && from === level ? baseInLevel : null,
+    })
+  );
+}
+
+/** Lets the session's answer about `local-floor` arrive. */
+const answered = () => new Promise((resolve) => setImmediate(resolve));
+
 function fakeRenderer() {
   /** @type {Map<string, Set<() => void>>} */
   const listeners = new Map();
@@ -250,6 +313,88 @@ describe("anchorToViewer", () => {
     assert.ok(Math.abs(offset.orientation.z ?? 0) < 1e-12);
     assert.ok(Math.abs((offset.orientation.y ?? 0) - YAW_90.y) < 1e-12);
     assert.ok(Math.abs((offset.orientation.w ?? 0) - YAW_90.w) < 1e-12);
+  });
+
+  test("stands the origin upright to gravity when the local space is tilted", async () => {
+    // A runtime may keep the head's tilt in the `local` origin: IWER does,
+    // so a session entered with the head tipped down has a tipped `local`.
+    const { renderer, overrides, startSession } = fakeRenderer();
+    anchorToViewer(renderer);
+
+    const level = fakeSpace();
+    const session = new LevelSession(level);
+    const space = fakeSpace();
+    startSession(session, space);
+    await answered();
+
+    const pitch = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -Math.PI / 6);
+    const baseInLevel = fakePose({ position: { x: 0, y: 1.6, z: 0 }, orientation: pitch });
+    const viewerInLevel = fakePose({
+      position: { x: 0, y: 1.6, z: 0 },
+      orientation: new THREE.Quaternion().copy(YAW_90).multiply(pitch),
+    });
+    session.pump(levelFrame(space, level, baseInLevel, viewerInLevel));
+
+    assert.equal(overrides.length, 1);
+    const override = /** @type {{ base: unknown, offset: XRRigidTransform }} */ (overrides[0]);
+    assert.equal(override.base, space);
+    // Where the new origin stands in the level space: at the head, turned
+    // only about the vertical.
+    const origin = matrixOf(baseInLevel).multiply(
+      matrixOf(
+        fakePose({
+          position: /** @type {{ x: number, y: number, z: number }} */ (override.offset.position),
+          orientation: /** @type {{ x: number, y: number, z: number, w: number }} */ (
+            override.offset.orientation
+          ),
+        }),
+      ),
+    );
+    const position = new THREE.Vector3();
+    const orientation = new THREE.Quaternion();
+    origin.decompose(position, orientation, new THREE.Vector3());
+    assert.ok(position.distanceTo(new THREE.Vector3(0, 1.6, 0)) < 1e-9);
+    assert.ok(Math.abs(orientation.x) < 1e-9, `tipped by x ${orientation.x}`);
+    assert.ok(Math.abs(orientation.z) < 1e-9, `tipped by z ${orientation.z}`);
+    assert.ok(Math.abs(Math.abs(orientation.dot(YAW_90)) - 1) < 1e-9);
+  });
+
+  test("waits for the session's answer about local-floor before anchoring", async () => {
+    const { renderer, overrides, startSession } = fakeRenderer();
+    anchorToViewer(renderer);
+
+    const level = fakeSpace();
+    const session = new LevelSession(level);
+    const space = fakeSpace();
+    startSession(session, space);
+
+    // Anchored now, the origin would be measured in a space that may be
+    // tilted, so the frame is let go by.
+    const flat = fakePose({ position: { x: 0, y: 1.6, z: 0 } });
+    session.pump(levelFrame(space, level, flat, flat));
+    assert.equal(overrides.length, 0);
+    assert.equal(session.pending, 1);
+
+    await answered();
+    session.pump(levelFrame(space, level, flat, flat));
+    assert.equal(overrides.length, 1);
+  });
+
+  test("measures upright in the local space when local-floor is refused", async () => {
+    const { renderer, overrides, startSession } = fakeRenderer();
+    anchorToViewer(renderer);
+
+    const session = new LevelSession(null);
+    const space = fakeSpace();
+    startSession(session, space);
+    await answered();
+
+    session.pump(
+      fakeFrame(space, fakePose({ position: { x: 1, y: 2, z: 3 }, orientation: YAW_90 })),
+    );
+    assert.equal(overrides.length, 1);
+    const { offset } = /** @type {{ offset: XRRigidTransform }} */ (overrides[0]);
+    assert.deepEqual(offset.position, { x: 1, y: 2, z: 3 });
   });
 
   test("waits through blurred frames, missing poses and emulated positions", () => {

@@ -283,6 +283,25 @@ describe("createXRButton", () => {
     assert.deepEqual(seen.init, { optionalFeatures: ["local-floor"] });
   });
 
+  test("asks an AR session for local-floor, which the anchor measures upright in", async () => {
+    let seen = captureInit(() => true);
+    let button = await createXRButton(fakeRenderer(), { frameRate: false, handTracking: false });
+    button.click();
+    await settle();
+    assert.deepEqual(seen.init, { optionalFeatures: ["local-floor"] });
+
+    // Without the anchor there is nothing to ask for it.
+    seen = captureInit(() => true);
+    button = await createXRButton(fakeRenderer(), {
+      anchor: false,
+      frameRate: false,
+      handTracking: false,
+    });
+    button.click();
+    await settle();
+    assert.equal(seen.init, undefined);
+  });
+
   test("does not ask for dom-overlay, which three's ARButton added and nothing here used", async () => {
     const seen = captureInit(() => true);
 

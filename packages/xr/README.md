@@ -41,6 +41,13 @@ kept by `clearColor`, `clearDepth` and `clearStencil`
 and each read is a pipeline sync that stalls the emulated session for as
 long as the GPU takes to finish the frame. Nothing on a headset runs it.
 
+It also mends IWER's `getOffsetReferenceSpace` (`src/offsetSpaces.js`).
+IWER 2.4.0 and 2.5.0 take the `XRRigidTransform` it is given for a matrix,
+so every offset space came out offset by NaN and was drawn from whatever
+space the previous pose call measured. freedom's `anchorToViewer` hands
+three an offset space for every session, so without the fix the emulator
+drew the scene from the wrong origin, or from the right one by luck.
+
 Import it lazily, as above, so that it lands in a chunk of its own, named
 `emulator-<hash>.js`. A service worker that precaches the app should leave
 that chunk out; `hexboard-xr` and `paperplane-xr` do it with
@@ -69,6 +76,8 @@ The signals are module state, one set per page.
 
 `npm test` here, or `rush build --to @apendua.dev/headset`, runs
 `node --test` over `src`: the session's rules, `canPresent` against a
-stubbed `navigator.xr`, and the clear-state shadow against a stand-in
-WebGL context. `install` itself needs a browser, and is exercised by the
-apps' own check scripts.
+stubbed `navigator.xr`, the clear-state shadow against a stand-in WebGL
+context, and the offset-space fix against IWER's own `XRReferenceSpace`,
+including a test that fails once IWER fixes it and the fix can go.
+`install` itself needs a browser, and is exercised by the apps' own check
+scripts.

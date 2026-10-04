@@ -20,6 +20,7 @@ export {
 } from "./interactions.js";
 export { place, placeAndScale } from "./elements/place.js";
 export { cursors, pointers } from "./pointers.js";
+export { mouse, followMouse } from "./mouse.js";
 export { dom } from "./dom.js";
 export { createBakery } from "./bakery.js";
 export { drag } from "./drag.js";
@@ -173,6 +174,10 @@ export { installCrashPanel, CRASH_PANEL_ID } from "./crash.js";
 
 /**
  * @typedef {import('./pointers.js').CursorOptions} CursorOptions
+ */
+
+/**
+ * @typedef {import('./mouse.js').MouseView} MouseView
  */
 
 /**

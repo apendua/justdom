@@ -8,7 +8,9 @@ export const DESK_HEIGHT = 1000;
 /**
  * Scale the desk to fit the window, and take the scaling and the tilts off
  * while a session mirrors it (`html[data-presenting]` in the stylesheet), so
- * that every object is measured flat and at its own size.
+ * that every object is measured flat. Freedom divides a scale out of what it
+ * measures, so the scaling could stay on; the tilts are what has to come
+ * off, since a rotation or a perspective cannot be divided out.
  *
  * Returns how many screen px a desk px is right now, which is one while a
  * session runs.

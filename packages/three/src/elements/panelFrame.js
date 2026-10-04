@@ -15,11 +15,14 @@ import { getPortalRoot } from "./portalRoot.js";
  * A frame belongs to a panel's root, and to `document.body` for what is
  * measured outside any panel, the clones and probes appended there, which
  * only a transform on `<body>` or `<html>` reaches. Its scale is the product
- * of the scales from its element up to `<html>`, read once per geometry
- * generation. A rotation, a skew or a perspective has no scale to divide by:
- * the frame then reads at 1, which is how every rect was read before frames
- * existed, and a panel's root warns once, naming the element that carries
- * it.
+ * of the scales from its element up to `<html>`. Nothing the portal hears
+ * can change what is above the root, so the chain is read when a portal
+ * claims a root, when the window resizes, when the ray probes the root and
+ * when the root's own attributes change, and not on every mutation inside
+ * the panel. A rotation, a skew, a flip or a perspective has no scale to
+ * divide by: the frame then reads at 1, which is how every rect was read
+ * before frames existed, and a panel's root warns once, naming the element
+ * that carries it.
  *
  * Nothing else in `src` calls `getBoundingClientRect` or `getClientRects`,
  * and `panelFrame.test.js` fails the build when something does, because a
@@ -28,13 +31,13 @@ import { getPortalRoot } from "./portalRoot.js";
 
 /**
  * Which "moment" of page geometry raw reads belong to. Bumped alongside
- * every dispatch that could move anything, and on the window scrolling or
- * resizing, it lets one settling of the reactive graph share a single
- * client rect per element: a portal-wide re-layout asks about each element
- * three or four times (position, size, a text's parent, a clip window), and
- * each ask past the first is the same numbers again. It also says when a
- * frame's scale is read again. Deliberately a plain counter rather than a
- * signal: the memo spares duplicate reads, it does not schedule anything.
+ * every dispatch that could move anything, and on the page scrolling or the
+ * window resizing, it lets one settling of the reactive graph share a
+ * single client rect per element: a portal-wide re-layout asks about each
+ * element three or four times (position, size, a text's parent, a clip
+ * window), and each ask past the first is the same numbers again.
+ * Deliberately a plain counter rather than a signal: the memo spares
+ * duplicate reads, it does not schedule anything.
  */
 let geometryGeneration = 0;
 
@@ -56,6 +59,12 @@ export function getGeometryGeneration() {
 }
 
 /**
+ * Which reading of the chains above the frames is current. A frame whose
+ * own count differs reads its chain again on its next use.
+ */
+let chainEpoch = 0;
+
+/**
  * How many portals are up, so the window is listened to while any is.
  */
 let watchers = 0;
@@ -64,19 +73,46 @@ let watchers = 0;
 const PAGE_LISTENER = { capture: true, passive: true };
 
 /**
+ * A scroll on the page around the panels. One inside a panel is the
+ * mirror's, which starts its own generation (`DomMirror.scrolled`).
+ *
+ * @param {Event} event
+ * @returns {void}
+ */
+function onPageScroll(event) {
+  if (event.target instanceof Node && getPortalRoot(event.target)) {
+    return;
+  }
+  invalidateGeometry();
+}
+
+/**
+ * The window resized, which may rescale a page that fits itself to it.
+ *
+ * @returns {void}
+ */
+function onResize() {
+  invalidateGeometry();
+  chainEpoch += 1;
+}
+
+/**
  * Start a new geometry generation whenever the page scrolls or the window
- * resizes, for as long as the returned function has not been called. A
- * scroll moves every client rect on the page and a resize may rescale the
- * panel, and neither is a mutation the portal hears, so a rect read before
- * one must not be subtracted from one read after it. Captured, so a scroller
- * on the page around the panel counts as the window does.
+ * resizes, for as long as the returned function has not been called, and
+ * read every frame's chain again on a resize and now, since the caller is a
+ * portal claiming a root. A scroll moves every client rect on the page and
+ * a resize may rescale the panel, and neither is a mutation the portal
+ * hears, so a rect read before one must not be subtracted from one read
+ * after it. Captured, so a scroller on the page around the panel counts as
+ * the window does.
  *
  * @returns {() => void}
  */
 export function watchPageGeometry() {
+  chainEpoch += 1;
   if (watchers === 0) {
-    window.addEventListener("scroll", invalidateGeometry, PAGE_LISTENER);
-    window.addEventListener("resize", invalidateGeometry, PAGE_LISTENER);
+    window.addEventListener("scroll", onPageScroll, PAGE_LISTENER);
+    window.addEventListener("resize", onResize, PAGE_LISTENER);
   }
   watchers += 1;
   let watching = true;
@@ -87,8 +123,8 @@ export function watchPageGeometry() {
     watching = false;
     watchers -= 1;
     if (watchers === 0) {
-      window.removeEventListener("scroll", invalidateGeometry, PAGE_LISTENER);
-      window.removeEventListener("resize", invalidateGeometry, PAGE_LISTENER);
+      window.removeEventListener("scroll", onPageScroll, PAGE_LISTENER);
+      window.removeEventListener("resize", onResize, PAGE_LISTENER);
     }
   };
 }
@@ -97,8 +133,8 @@ export function watchPageGeometry() {
  * The scale a panel is drawn at on the page, and where its root is.
  *
  * @typedef {object} PanelFrame
- * @property {number} generation The geometry generation the scale was last
- *   read in.
+ * @property {number} epoch The `chainEpoch` the scale was last read in, or
+ *   -1 when it is to be read again.
  * @property {number} sx Client px per layout px, across.
  * @property {number} sy Client px per layout px, down.
  * @property {number} left The root's client corner, as last probed (see
@@ -132,7 +168,7 @@ const warned = new WeakSet();
 function frameRecord(base) {
   let frame = frames.get(base);
   if (!frame) {
-    frame = { generation: -1, sx: 1, sy: 1, left: 0, top: 0 };
+    frame = { epoch: -1, sx: 1, sy: 1, left: 0, top: 0 };
     frames.set(base, frame);
   }
   return frame;
@@ -160,10 +196,28 @@ export function matrixValues(value) {
 }
 
 /**
+ * The factors a frame divides by for a scale of `x` across and `y` down,
+ * or null for a flip. A scale of 0 draws nothing, so there is nothing to
+ * divide and nothing to warn about: it counts as 1.
+ *
+ * @param {number} x
+ * @param {number} y
+ * @returns {[number, number] | null}
+ */
+function scaleFactors(x, y) {
+  if (x < 0 || y < 0) {
+    return null;
+  }
+  return [x || 1, y || 1];
+}
+
+/**
  * The scale a computed `transform` draws at, or null for one that also
  * turns, skews, flips or projects. A 3D matrix counts when it is a 2D scale
  * and translation and a depth: `translateZ` alone moves nothing on a page
- * with no perspective, and a perspective is refused where it is set.
+ * with no perspective, and a perspective is refused where it is set. Its
+ * last entry is the projective weight every point is divided by, so a
+ * weight of 2 draws at half size.
  *
  * @param {string | undefined} value
  * @returns {[number, number] | null}
@@ -173,17 +227,22 @@ function transformScale(value) {
   if (!m) {
     return [1, 1];
   }
-  const [a, b, c, d] = m.length === 6 ? m : [m[0], m[1], m[4], m[5]];
+  if (m.length === 6) {
+    const [a, b, c, d] = m;
+    return b === 0 && c === 0 ? scaleFactors(a, d) : null;
+  }
   const flat =
-    m.length === 6 ||
-    (m[2] === 0 &&
-      m[3] === 0 &&
-      m[6] === 0 &&
-      m[7] === 0 &&
-      m[8] === 0 &&
-      m[9] === 0 &&
-      m[11] === 0);
-  return flat && b === 0 && c === 0 && a > 0 && d > 0 ? [a, d] : null;
+    m[1] === 0 &&
+    m[2] === 0 &&
+    m[3] === 0 &&
+    m[4] === 0 &&
+    m[6] === 0 &&
+    m[7] === 0 &&
+    m[8] === 0 &&
+    m[9] === 0 &&
+    m[11] === 0 &&
+    m[15] > 0;
+  return flat ? scaleFactors(m[0] / m[15], m[5] / m[15]) : null;
 }
 
 /**
@@ -193,14 +252,14 @@ function transformScale(value) {
  * @returns {[number, number] | null}
  */
 function propertyScale(value) {
-  if (!value || value === "none") {
+  if (isNone(value)) {
     return [1, 1];
   }
-  const [x, y = x] = value.trim().split(/\s+/).map(Number.parseFloat);
+  const [x, y = x] = /** @type {string} */ (value).trim().split(/\s+/).map(Number.parseFloat);
   if (Number.isNaN(x) || Number.isNaN(y)) {
     return [1, 1];
   }
-  return x > 0 && y > 0 ? [x, y] : null;
+  return scaleFactors(x, y);
 }
 
 /**
@@ -270,7 +329,7 @@ function readScale(frame, base) {
     sx *= transform[0] * scale[0];
     sy *= transform[1] * scale[1];
   }
-  frame.generation = geometryGeneration;
+  frame.epoch = chainEpoch;
   if (!carrier) {
     frame.sx = sx;
     frame.sy = sy;
@@ -278,12 +337,12 @@ function readScale(frame, base) {
   }
   frame.sx = 1;
   frame.sy = 1;
-  if (base !== base.ownerDocument.body && !warned.has(base)) {
+  if (getPortalRoot(base) === base && !warned.has(base)) {
     warned.add(base);
     console.warn(
       `freedom: ${describeElement(base)} is mirrored through a transform on ` +
         `${describeElement(carrier)} (${carried}). A panel is measured as the page draws it, ` +
-        "and a scale is divided out of that, but a rotation, a skew or a perspective is not, " +
+        "and a scale is divided out of that, but a rotation, a skew, a flip or a perspective is not, " +
         "so the panel is drawn distorted. Take the transform off while a session runs.",
       base,
       carrier,
@@ -292,19 +351,46 @@ function readScale(frame, base) {
 }
 
 /**
- * The frame `node` is measured in, its scale read for this geometry
- * generation: its panel root's, or the body's for a node outside any panel.
+ * The frame of a node in a document with nothing to key a frame on, one
+ * with no root element, as a `<template>`'s content is. Nothing in such a
+ * document is drawn, so there is no scale to divide by.
+ *
+ * @type {PanelFrame}
+ */
+const UNDRAWN_FRAME = Object.freeze({ epoch: -1, sx: 1, sy: 1, left: 0, top: 0 });
+
+/**
+ * The frame `node` is measured in, its chain read if it is due: its panel
+ * root's, or for a node outside any panel its document's body, or its root
+ * element in a document with no body.
  *
  * @param {Node} node
  * @returns {PanelFrame}
  */
 export function frameFor(node) {
-  const base = getPortalRoot(node) ?? /** @type {Document} */ (node.ownerDocument).body;
+  const document = node.ownerDocument;
+  const base = getPortalRoot(node) ?? document?.body ?? document?.documentElement;
+  if (!base) {
+    return UNDRAWN_FRAME;
+  }
   const frame = frameRecord(base);
-  if (frame.generation !== geometryGeneration) {
+  if (frame.epoch !== chainEpoch) {
     readScale(frame, base);
   }
   return frame;
+}
+
+/**
+ * Have a panel root's frame read its chain again on its next use: the
+ * root's own attributes changed, and a `style` or a class may have
+ * transformed it. What is above the root the portal does not hear, and
+ * that is read again on a claim, a resize or a probe.
+ *
+ * @param {Element} root
+ * @returns {void}
+ */
+export function invalidatePanelFrame(root) {
+  frameRecord(root).epoch = -1;
 }
 
 /**
@@ -362,18 +448,6 @@ export function measureClientRect(target, frame) {
  */
 export function measureClientRects(range, frame) {
   return Array.from(range.getClientRects(), (rect) => divide(rect, frame));
-}
-
-/**
- * A client rect as the browser reports it, in the viewport's px: for
- * something compared with an event's `clientX` and `clientY`, as the
- * renderer's canvas is, and never for a box a panel draws.
- *
- * @param {Element} element
- * @returns {DOMRect}
- */
-export function measureViewportRect(element) {
-  return element.getBoundingClientRect();
 }
 
 /**

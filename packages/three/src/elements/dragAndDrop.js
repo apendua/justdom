@@ -287,13 +287,13 @@ function clientPointOf(panel, point, client) {
 
 /**
  * Read where the page lays the panel's root element out, and at what scale,
- * for the points taken from then on. A client rect is a layout read, and a forced one
- * whenever the page has touched the DOM since the last, so it is not taken
- * for every point: a ray moving over a panel sends a point every frame, and
- * reads the corner it was last given. The events that are one each probe
- * first, and are exact however the page has moved since: a press, its
- * release and its click, a press on a scrolling list, the ray's arrival
- * on a control by the rule the hover pulse follows (see
+ * for the points taken from then on. A client rect is a layout read, and a
+ * forced one whenever the page has touched the DOM since the last, so it is
+ * not taken for every point: a ray moving over a panel sends a point every
+ * frame, and reads the corner it was last given. The events that are one
+ * each probe first, and are exact however the page has moved since: a
+ * press, its release and its click, a press on a scrolling list, the ray's
+ * arrival on a control by the rule the hover pulse follows (see
  * `forwardPointerEvents`), a drag's start, its arrival on another panel,
  * and its drop. A move, and a drag's other frames, are as exact as the
  * last of them, so a hover starts exact and drifts only by what the page

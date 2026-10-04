@@ -16,6 +16,7 @@ import {
   frameFor,
   getGeometryGeneration,
   invalidateGeometry,
+  invalidatePanelFrame,
   measureClientRect,
   measureClientRects,
 } from "./panelFrame.js";
@@ -917,6 +918,11 @@ export class DomMirror {
       const record = recordOf(element);
       if (record) {
         bump(record.reflow);
+      }
+      // The root's own `style` or class may have given it a transform,
+      // which its frame reads (see `panelFrame.js`).
+      if (isPortalRoot(element)) {
+        invalidatePanelFrame(/** @type {Element} */ (element));
       }
     });
   }

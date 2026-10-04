@@ -27,8 +27,8 @@ if (import.meta.env.DEV) {
 // carries on regardless.
 Promise.resolve(
   query.has("emulator")
-    ? import("./emulator.js").then(({ install }) =>
-        install({ devui: query.get("emulator") !== "bare" }),
+    ? import("@apendua.dev/headset/emulator").then(({ install }) =>
+        install({ devUI: query.get("emulator") !== "bare" }),
       )
     : undefined,
 )

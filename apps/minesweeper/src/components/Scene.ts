@@ -2,7 +2,7 @@ import * as THREE from "three";
 import { $, children, cursors, dom, getScene, getXRSession } from "@apendua/freedom";
 import { createDiagnostics, useDiagnostics } from "@apendua/justui";
 import { component, effects, effectsOnly, Stream, useEffects } from "@apendua/signal";
-import { backdropShown, enterSession } from "../session";
+import { backdropShown, enterSession } from "@apendua.dev/headset/session";
 import { BOARD_AT, boardScale, MENU_AT, MENU_PITCH, MENU_SCALE, MENU_YAW } from "../placement";
 
 /**

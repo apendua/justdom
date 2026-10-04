@@ -14,7 +14,7 @@ import {
 import type { Mountable } from "@apendua/justdom";
 import { component, type Subscribable } from "@apendua/signal";
 import { Fields } from "../store/Fields";
-import { canPassThrough, passthrough, xrSession } from "../session";
+import { canPassThrough, passthrough, xrSession } from "@apendua.dev/headset/session";
 
 export interface SizePreset {
   id: string;

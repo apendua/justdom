@@ -18,8 +18,8 @@ const createControllerModel =
 // stay in a separate chunk that is only fetched when it is asked for.
 Promise.resolve(
   query.has("emulator")
-    ? import("./emulator.js").then(({ install }) =>
-        install({ devui: query.get("emulator") !== "bare" }),
+    ? import("@apendua.dev/headset/emulator").then(({ install }) =>
+        install({ devUI: query.get("emulator") !== "bare" }),
       )
     : undefined,
 )

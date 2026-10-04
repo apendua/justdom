@@ -42,8 +42,8 @@ copy. There is nothing to save, so reloading starts you over.
 | `Panel.ts`  |    85 | The interface, as DOM.                                          |
 | `App.ts`    |    59 | The scene: floor, light, and where the board floats.            |
 
-Plus `main.ts` to mount it, `emulator.ts` to fake a headset, and `palette.ts` so
-the colours live in one place.
+Plus `main.ts` to mount it and to fake a headset behind `?emulator` with
+`@apendua.dev/headset`, and `palette.ts` so the colours live in one place.
 
 ## The four ideas in it
 

@@ -1,27 +1,11 @@
+import { canPresent } from "@apendua.dev/headset/session";
+
 /**
  * The service worker this page was loaded under, if one served it: read as
  * the page loads, since a newer worker can take the page over at any time
  * after.
  */
 const servedBy = navigator.serviceWorker?.controller ?? null;
-
-/**
- * Whether this platform can open an immersive session at all. Asked before
- * the scene is loaded: a page that cannot go anywhere should not fetch
- * three.js, run a render loop or wear a button that says so.
- */
-async function canPresent(): Promise<boolean> {
-  const xr = navigator.xr;
-  if (!xr) {
-    return false;
-  }
-  for (const mode of ["immersive-ar", "immersive-vr"] as const) {
-    if (await xr.isSessionSupported(mode).catch(() => false)) {
-      return true;
-    }
-  }
-  return false;
-}
 
 /**
  * Offer the page a headset, if it can have one: the scene in `xr.ts`, which
@@ -42,7 +26,7 @@ export async function offerHeadset(board: HTMLElement, menu: HTMLElement): Promi
   const query = new URLSearchParams(location.search);
   if (query.has("emulator")) {
     try {
-      const { install } = await fetched(import("./emulator"));
+      const { install } = await fetched(import("@apendua.dev/headset/emulator"));
       install({ devUI: query.get("emulator") !== "bare" });
     } catch (err) {
       console.error("Could not install the XR emulator:", err);

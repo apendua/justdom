@@ -14,7 +14,7 @@ import { Signal, toObservable } from "@apendua/signal";
 import { store, on, set, observable, component } from "@apendua/signal";
 import { scrollable } from "@apendua/justui";
 import ProgressBar from "./ProgressBar.js";
-import { xrSession } from "../session.js";
+import { xrSession } from "@apendua.dev/headset/session";
 import TodoItem from "./TodoItem.js";
 import { slotBefore } from "./reorder.js";
 

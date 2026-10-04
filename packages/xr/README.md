@@ -5,9 +5,10 @@ emulated headset behind `?emulator`, whether the platform can present at
 all, and the session a page reads for the controls that only make sense in
 a headset. Private to this repository.
 
-It has two entries and no index, so that an app importing one does not pull
-in the other. The emulator brings IWER and its dev UI with it, over half a
-megabyte, and is meant to be imported lazily; the session is a few signals.
+It has two entries for a page and no index, so that an app importing one
+does not pull in the other. The emulator brings IWER and its dev UI with it,
+over half a megabyte, and is meant to be imported lazily; the session is a
+few signals. A third entry, the driver, is for the apps' check scripts.
 
 ## `@apendua.dev/headset/emulator`
 
@@ -72,6 +73,21 @@ that chunk out; `hexboard-xr` and `paperplane-xr` do it with
 
 The signals are module state, one set per page.
 
+## `@apendua.dev/headset/driver`
+
+What an app's `tests/xr-check.mjs` imports to drive a session on the
+emulated headset from Node, through the device `install` leaves on
+`window.xrDevice`: `launch()` for Chromium on SwiftShader, `frames(page, n)`
+to wait for frames, `headPosition(page)` for the origin of the `local` space,
+`aimAt(page, head, target)` to point the right controller's ray through a
+point, `press(page, "trigger" | "squeeze")`, and `check`, `finish` and
+`closeAll` for the tally, the exit code and the teardown. It is in
+`driver/` rather than `src/`, since it runs in Node and never in a page.
+It borrows Playwright from `apps/showcase-xr` and launches the Chromium at
+`/opt/pw-browsers/chromium-1194`, or the one `CHROMIUM` names.
+Minesweeper's and the desk's checks use it, and
+`.github/workflows/driven.yml` runs both on pull requests.
+
 ## Tests
 
 `npm test` here, or `rush build --to @apendua.dev/headset`, runs
@@ -80,4 +96,4 @@ stubbed `navigator.xr`, the clear-state shadow against a stand-in WebGL
 context, and the offset-space fix against IWER's own `XRReferenceSpace`,
 including a test that fails once IWER fixes it and the fix can go.
 `install` itself needs a browser, and is exercised by the apps' own check
-scripts.
+scripts, as is the driver.

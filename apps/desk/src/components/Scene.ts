@@ -4,18 +4,8 @@ import { children, cursors, $, dom, getScene, getXRSession, placeAndScale } from
 import { createDiagnostics, useDiagnostics } from "@apendua/justui";
 import { component, effects, effectsOnly, Stream, useEffects } from "@apendua/signal";
 import type { MountedDesk } from "../desk.js";
-import type { Placement, Room } from "../looks.js";
+import { DESK_TOP, PX, type Placement, type Room } from "../looks.js";
 import type { Readable } from "../session.js";
-
-/** The height of the desk's top, below the eyes, in metres. */
-const DESK_TOP = -0.42;
-
-/**
- * How big a desk px is in the room: 0.65 mm, which makes the monitor 40 cm
- * across and the keyboard 43 cm, about what the real things were. A portal
- * draws a px a centimetre, so a panel is scaled by this over 0.01.
- */
-const PX = 0.00065;
 
 /**
  * A source that says nothing and never finishes: what a mounting is handed

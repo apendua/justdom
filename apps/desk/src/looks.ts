@@ -56,6 +56,19 @@ export interface Look {
   mug?: boolean;
 }
 
+/**
+ * The height of the desk's top, below the eyes, in metres. The scene sets
+ * the room out from it, and `tests/xr-check.mjs` aims at the panels by it.
+ */
+export const DESK_TOP = -0.42;
+
+/**
+ * How big a desk px is in the room: 0.65 mm, which makes the monitor 40 cm
+ * across and the keyboard 43 cm, about what the real things were. A portal
+ * draws a px a centimetre, so a panel is scaled by this over 0.01.
+ */
+export const PX = 0.00065;
+
 const degrees = (value: number) => (value * Math.PI) / 180;
 
 // The objects every look has in the same place: the monitor on the desk,

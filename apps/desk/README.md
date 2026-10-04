@@ -40,6 +40,19 @@ renderer. `?emulator` installs a headset in the browser (IWER, with its dev
 panels, from `@apendua.dev/headset`) and an Enter button appears at the
 bottom; `?emulator=bare` installs the runtime without the panels.
 
+`node tests/xr-check.mjs` puts each look up in turn in a session on the
+emulated headset in headless Chromium. It fails unless every zone the look
+places becomes a panel and loads, the ray aimed at the power control is on
+it, and the trigger there ends the session, or if the page throws. It takes
+about two minutes. `SHOTS=<dir>` also photographs each session, and
+`STACKS=1` prints a stack for anything the page throws. It drives the
+browser and the controller through `@apendua.dev/headset/driver`, which
+borrows Playwright from `apps/showcase-xr` and launches the Chromium at
+`/opt/pw-browsers/chromium-1194/chrome-linux/chrome`; `CHROMIUM=<path>`
+points it at one installed elsewhere. A pull request that touches this app
+or a package it imports runs it, with minesweeper's, from
+`.github/workflows/driven.yml`.
+
 ## What you can do
 
 - Type on your own keyboard, or click the keys. The monitor takes commands
@@ -77,7 +90,7 @@ object is a `.zone` with an id, and the modules in `src/` make them move:
 | File | What it is |
 | --- | --- |
 | `src/main.ts` | Puts up the look the address names, runs the menu that swaps it, and offers a session. |
-| `src/looks.ts` | The three looks: markup, stylesheet, fonts, boot program, room colours, and where each zone stands in the room. |
+| `src/looks.ts` | The three looks: markup, stylesheet, fonts, boot program, room colours, and where each zone stands in the room, in plain numbers shared with `tests/xr-check.mjs`. |
 | `src/lookPicker.ts` | The "Look" menu. |
 | `src/desk.ts` | Mounts a look and everything below that its markup asks for, and takes it all down again. |
 | `src/terminal.ts` | The monitor's state: the listing, how much of it is typed, the prompt, the phosphor, and the commands. No DOM. |

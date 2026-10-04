@@ -301,6 +301,12 @@ const MOUSE_EVENT = /** @type {const} */ ({
  *   the hold, or the control the drag ended on would show no hover until
  *   the ray left it and came back.
  * @property {Object3D[]} select
+ * @property {Target | null} pressed The innermost target the trigger's
+ *   last press went through as it began, control or list, which decides
+ *   how its release, its click and its miss finish. Not asked again of what
+ *   is registered on the path by then: a row removed during the hold, and
+ *   its update committed, has let go of its registration, and the list
+ *   under it would otherwise finish a press that was the row's.
  * @property {Object3D[]} squeeze
  */
 
@@ -445,7 +451,7 @@ export function createPanelForwarder(ctx, container) {
   const panelHand = (controller) => {
     let hand = panelHands.get(controller);
     if (!hand) {
-      hand = { hover: [], hovered: null, held: null, select: [], squeeze: [] };
+      hand = { hover: [], hovered: null, held: null, select: [], pressed: null, squeeze: [] };
       panelHands.set(controller, hand);
     }
     return hand;
@@ -482,6 +488,24 @@ export function createPanelForwarder(ctx, container) {
       walk(e.originalTarget, path);
     }
     return path;
+  };
+
+  /**
+   * The hand whose trigger an event ends a press of, with the press's path
+   * and what it was pressed on, as its `selectstart` recorded them. A press
+   * that began before this forwarder heard it is walked from where it
+   * began, and was pressed on what is registered there now.
+   *
+   * @param {{ controller: XRTargetRaySpace, originalTarget: Object3D }} e
+   * @returns {PanelHand}
+   */
+  const pressOf = (e) => {
+    const hand = panelHand(e.controller);
+    if (hand.select[0] !== e.originalTarget) {
+      walk(e.originalTarget, hand.select);
+      hand.pressed = innermost(hand.select) ?? null;
+    }
+    return hand;
   };
 
   /**
@@ -687,6 +711,7 @@ export function createPanelForwarder(ctx, container) {
       const hand = panelHand(e.controller);
       walk(e.originalTarget, hand.select);
       const first = innermost(hand.select);
+      hand.pressed = first ?? null;
       if (!first) {
         return;
       }
@@ -739,25 +764,25 @@ export function createPanelForwarder(ctx, container) {
       stopPropagation(e);
     },
     selectend(e) {
-      const path = recorded(panelHand(e.controller).select, e);
-      const first = innermost(path);
-      if (!first) {
+      const { select: path, pressed } = pressOf(e);
+      if (!pressed) {
         return;
       }
       // The drag a press on a list began ends with the controller's own
       // release, whatever became of the list (see `begin` in `scroll.js`);
       // the list's part is only to keep the release from going on past the
       // panel.
-      if (first.list) {
+      if (pressed.list) {
         stopPropagation(e);
         return;
       }
       // A release is owed to whatever still holds the press. A control
-      // that has left the document sends no `mouseup` of its own, and the
-      // next control up sends it on itself, which is where a page sends a
-      // release whose target has gone. The scroll a press may have become
-      // ends with the controller's own release, whatever became of the
-      // control.
+      // that has left the document, or let go of its registration once its
+      // removal committed, sends no `mouseup` of its own, and the next
+      // control up sends it on itself, which is where a page sends a
+      // release whose target has gone. With none left, the press still
+      // ends here. The scroll a press may have become ends with the
+      // controller's own release, whatever became of the control.
       let sent = false;
       for (const object of path) {
         const target = targets.get(object);
@@ -779,14 +804,13 @@ export function createPanelForwarder(ctx, container) {
       stopPropagation(e);
     },
     select(e) {
-      const path = recorded(panelHand(e.controller).select, e);
-      const first = innermost(path);
-      if (!first) {
+      const { select: path, pressed } = pressOf(e);
+      if (!pressed) {
         return;
       }
-      if (first.list) {
-        if (!isGone(first.element) && !drags.didScroll(e.controller)) {
-          first.element.dispatchEvent(new MouseEvent("click", pressInit(panel(), e, false)));
+      if (pressed.list) {
+        if (!isGone(pressed.element) && !drags.didScroll(e.controller)) {
+          pressed.element.dispatchEvent(new MouseEvent("click", pressInit(panel(), e, false)));
         }
         stopPropagation(e);
         return;
@@ -796,7 +820,13 @@ export function createPanelForwarder(ctx, container) {
       // touchscreen strikes, and for the same reason, since there is
       // nowhere else to grab a list that is made of buttons. A press that
       // became a drag and drop is no click either, as a mouse drag is not.
-      if (isGone(first.element) || drags.didScroll(e.controller) || dnd.didDrag(e.controller)) {
+      const first = innermost(path, true);
+      if (
+        !first ||
+        isGone(pressed.element) ||
+        drags.didScroll(e.controller) ||
+        dnd.didDrag(e.controller)
+      ) {
         stopPropagation(e);
         return;
       }
@@ -812,7 +842,7 @@ export function createPanelForwarder(ctx, container) {
     selectmissed(e) {
       // The panel took the press at its start, so its miss is the panel's
       // as its end is.
-      if (innermost(recorded(panelHand(e.controller).select, e))) {
+      if (pressOf(e).pressed) {
         stopPropagation(e);
       }
     },

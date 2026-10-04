@@ -104,12 +104,14 @@ const RAY_TYPES = [
  * Build the page, mirror it into a panel, and record what it hears.
  *
  * @param {Spec[]} children Under a 400 by 300 root at the page's corner.
- * @param {{ accept?: boolean, capture?: boolean }} [options] Whether a
- *   list takes what is dropped on it, since every scrolling list sorts its
- *   rows by drag and drop, and whether an element captures the pointer
- *   that presses it, as a page that drags by capture does.
+ * @param {{ accept?: boolean, capture?: boolean, cancel?: boolean }} [options]
+ *   Whether a list takes what is dropped on it, since every scrolling list
+ *   sorts its rows by drag and drop; whether an element captures the
+ *   pointer that presses it, as a page that drags by capture does; and
+ *   whether the page cancels `pointerdown`, as a page that takes a press
+ *   as a pointer does.
  */
-async function page(children, { accept = true, capture = false } = {}) {
+async function page(children, { accept = true, capture = false, cancel = false } = {}) {
   const root = document.createElement("div");
   root.id = "root";
   /** @type {Map<string, HTMLElement>} */
@@ -146,6 +148,9 @@ async function page(children, { accept = true, capture = false } = {}) {
     build(root, child);
   }
   document.body.appendChild(root);
+  if (cancel) {
+    root.addEventListener("pointerdown", (event) => event.preventDefault());
+  }
   if (capture) {
     root.addEventListener("pointerdown", (event) => {
       const { pointerId } = /** @type {PointerEvent} */ (event);
@@ -517,6 +522,24 @@ describe("event-sequence goldens", () => {
     await g.step("trigger opens", () => g.hands[0].trigger("selectend"));
     await g.step("ray stays", () => g.hands[0].frame());
     matches("an element removed after the commit", g.lines);
+    g.teardown();
+  });
+
+  test("a cancelled press that outlives its row's registration", async () => {
+    // The press ends with its release though the row it began on has let
+    // go of its registration by then, so the mouse events the cancelled
+    // `pointerdown` held back come back for the moves after it.
+    const g = await page(SCROLLER, { cancel: true });
+    await g.step("aim at #b", () => g.aim(g.on("b")));
+    await g.step("trigger closes", () => g.hands[0].trigger("selectstart"));
+    await g.step("page removes #b, and the panel commits", async () => {
+      g.elements.get("b")?.remove();
+      await drain();
+    });
+    await g.step("trigger opens", () => g.hands[0].trigger("selectend"));
+    await g.step("aim at #c", () => g.aim(g.on("c")));
+    await g.step("hand moves on #c", () => g.aim(g.on("c", 30, 20)));
+    matches("a cancelled press that outlives its row's registration", g.lines);
     g.teardown();
   });
 

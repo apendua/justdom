@@ -1177,7 +1177,17 @@ describe("a panel's ray events", () => {
      * @param {THREE.Object3D} object
      */
     const heard = (object) => types.filter((type) => (listening.get(object)?.get(type) ?? 0) > 0);
-    assert.deepEqual(heard(container), types, "the container hears every one");
+    // Every event the container listens for, ray event or not, so that a
+    // listener added beside these is seen too.
+    const containerHears = [...(listening.get(container) ?? [])]
+      .filter(([, count]) => count > 0)
+      .map(([type]) => type)
+      .sort();
+    assert.deepEqual(
+      containerHears,
+      [...types].sort(),
+      "the container hears every ray event, and no more",
+    );
     /** @type {string[][]} */
     const inside = [];
     container.traverse((object) => {

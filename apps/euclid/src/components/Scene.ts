@@ -150,7 +150,8 @@ export const Scene = ({ toolbar, editor, canvas }: Mounts) =>
         // an atomic panel holds each change back until a frame finds nothing
         // left to resolve, so the drawing would stand still under the hand
         // until the trigger opened. A torn frame of a drawing in motion is
-        // the lesser harm.
+        // the lesser harm. Item 2 of docs/freedom-architecture-plan.md
+        // bounds that wait, and then this can go back to the default.
         Panel(ctx, canvas, BOARD_AT, (rect) => boardScale(rect.width, rect.height), {
           atomic: false,
         }),

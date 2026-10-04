@@ -23,54 +23,6 @@ if (typeof globalThis.DOMParser === "undefined") {
   globalThis.DOMParser = window.DOMParser;
 }
 
-// Nor does it install `Element`, whose prototype the forwarding wraps for
-// pointer capture, and jsdom has neither `PointerEvent` nor the capture
-// methods. They stand in for a browser's here: a pointer event is a mouse
-// event with a pointer's id and type, and capture is refused for any
-// pointer but the mouse's, as a browser refuses one it does not know.
-if (typeof globalThis.Element === "undefined") {
-  globalThis.Element = window.Element;
-}
-if (typeof globalThis.PointerEvent === "undefined") {
-  globalThis.PointerEvent = /** @type {typeof PointerEvent} */ (
-    /** @type {unknown} */ (
-      class extends MouseEvent {
-        /**
-         * @param {string} type
-         * @param {PointerEventInit} [init]
-         */
-        constructor(type, init = {}) {
-          super(type, init);
-          this.pointerId = init.pointerId ?? 0;
-          this.pointerType = init.pointerType ?? "";
-          this.isPrimary = init.isPrimary ?? false;
-        }
-      }
-    )
-  );
-}
-/** The elements that hold the mouse's pointer, as a browser keeps them. */
-const mouseCaptures = new WeakSet();
-Object.assign(Element.prototype, {
-  /** @param {number} id */
-  setPointerCapture(id) {
-    if (id !== 1) {
-      throw new DOMException("No active pointer with the given id is found.", "NotFoundError");
-    }
-    mouseCaptures.add(this);
-  },
-  /** @param {number} id */
-  releasePointerCapture(id) {
-    if (id === 1) {
-      mouseCaptures.delete(this);
-    }
-  },
-  /** @param {number} id */
-  hasPointerCapture(id) {
-    return id === 1 && mouseCaptures.has(this);
-  },
-});
-
 const SVG_NS = "http://www.w3.org/2000/svg";
 
 /**

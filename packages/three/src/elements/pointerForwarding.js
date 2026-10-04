@@ -214,9 +214,10 @@ function acceptPointerCapture() {
  * one: both made before either is sent, from the one init `pressInit` and
  * its siblings write in place, which a handler that the first runs may
  * write again. The mouse event is left out for a hand whose `pointerdown`
- * was cancelled (see `pointerOnly`), and both events are sent only where
- * the page has `PointerEvent` at all. A move's pointer event names no
- * button, as a browser's says `-1` for a move that changes none.
+ * was cancelled (see `pointerOnly`), and the pointer event where the page
+ * has no `PointerEvent` at all, as under a test environment without one.
+ * A move's pointer event names no button, as a browser's says `-1` for a
+ * move that changes none.
  *
  * @param {HTMLElement} element
  * @param {"pointerdown" | "pointermove" | "pointerup"} type

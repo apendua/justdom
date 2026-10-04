@@ -2202,9 +2202,10 @@ path or two shapes, clips nothing. So does a basic shape such as `inset()`, and 
 another shape needs a stencil or a second distance field.
 
 Not drawn yet: gradients and patterns (a `url(#…)` paint reads as `none`, though it still counts as
-painted for a ray), a `clip-path` of any shape but the rect above, `mask`, filters,
-`<foreignObject>` and `vector-effect`. [`docs/freedom-svg-plan.md`](../../docs/freedom-svg-plan.md)
-says what each would take; they go in when a panel needs one.
+painted for a ray, and one given a fallback colour, `url(#hatch) black`, is drawn in that colour), a
+`clip-path` of any shape but the rect above, `mask`, filters, `<foreignObject>` and `vector-effect`.
+[`docs/freedom-svg-plan.md`](../../docs/freedom-svg-plan.md) says what each would take; they go in
+when a panel needs one.
 
 Followed, and not said above: `<switch>` and an `<a>` outside a `<text>`, drawn as a `<g>` is;
 `transform-box: fill-box`; and `revert-layer` beside the other keywords that set nothing. Not

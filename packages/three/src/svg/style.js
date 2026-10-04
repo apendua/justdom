@@ -163,8 +163,10 @@ export function parseNumber(value, fallback) {
 
 /**
  * A `fill` or `stroke` as the colour to draw and the alpha to draw it with,
- * or null for nothing to draw: `none`, and — until gradients are drawn — a
- * `url(#…)` paint server.
+ * or null for nothing to draw: `none`, and — until gradients and patterns
+ * are drawn — a `url(#…)` paint server. A paint server given a fallback
+ * colour, `url(#hatch) black`, is drawn in that colour, which is what a
+ * browser draws when it cannot use the server either.
  *
  * @typedef {object} Paint
  * @property {THREE.Color} color
@@ -172,12 +174,22 @@ export function parseNumber(value, fallback) {
  */
 
 /**
+ * A paint server reference and what follows it: the fallback, if any. The
+ * reference may be quoted, as a computed value always is.
+ */
+const PAINT_SERVER = /^url\((?:"[^"]*"|'[^']*'|[^)]*)\)\s*(.*)$/;
+
+/**
  * @param {string} value
  * @returns {Paint | null}
  */
 export function parsePaint(value) {
   const trimmed = value.trim();
-  if (!trimmed || trimmed === "none" || trimmed.startsWith("url(")) {
+  if (trimmed.startsWith("url(")) {
+    const fallback = PAINT_SERVER.exec(trimmed)?.[1] ?? "";
+    return fallback.startsWith("url(") ? null : parsePaint(fallback);
+  }
+  if (!trimmed || trimmed === "none") {
     return null;
   }
   if (/^rgba?\(/.test(trimmed)) {

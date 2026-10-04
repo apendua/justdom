@@ -221,10 +221,13 @@ export function box(ctx, element, options = {}) {
    * into this element's frame by arithmetic on the scroll offsets — so a
    * frame of scrolling costs no measurement here, only the shift.
    *
-   * The origin comes from the client rect, which is exact for an
-   * untransformed element and for a translated one. Under a rotation or a
-   * scale the rect is the transformed bounds, and the clip edge inherits
-   * that approximation.
+   * The origin comes from the client rect for an untransformed element, and
+   * from its layout offsets on a transformed chain, where the rect is the
+   * transformed bounds: the clip lands where the page puts the element,
+   * before its transform. The box is axis-aligned in that frame, so it turns
+   * with the element. An `<svg>` root has no layout offsets, so on a
+   * transformed chain it is placed from its client rect after all, and its
+   * clip moves with the transformed bounds (see `pageOffset`).
    *
    * The snapshot in the variable is for the raycast filter, which is called
    * from inside three's traversal — somewhere the reactive graph does not

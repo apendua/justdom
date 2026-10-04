@@ -1662,6 +1662,15 @@ intersected into a single box before that — nesting a scroller inside a clippe
 panel costs nothing, because the intersection of two axis-aligned rectangles is
 another one. Where two of them cross, the corner they leave is square.
 
+An element with a transform is clipped where its layout puts it, before the
+transform, which is the frame its quad is drawn in. The box is axis-aligned in
+that frame, so it turns with the element. A rotating element in a round window
+centred on it, such as a radar's sweep, comes out as it does on the page; a
+rotated card lying across a window's straight edge has that edge drawn turned
+with the card. An `<svg>` root is the exception: it has no layout offsets to
+read, so on a transformed chain it is still placed from its client rect, the
+transformed bounds, and its clip slides as a rotation turns.
+
 The same box also trims ray hits, so the half of a button that has scrolled out
 of sight cannot be pressed, and an element with nothing left showing leaves the
 raycast set and the render traversal entirely, taking its subtree with it.
@@ -1708,10 +1717,6 @@ thumb, built out of ordinary elements like the dropdown, over a viewport that
 hides its overflow. It scrolls through `scrollElementBy`, which is exported here
 and is the write above plus the `scroll` event the browser will not dispatch
 while the session has the display.
-
-One print of the measuring tape: the clip is placed from the element's client
-rect, which is exact for untransformed and translated content, and falls back
-to transformed bounds for anything rotated or scaled inside a scroller.
 
 ## Placing a panel
 

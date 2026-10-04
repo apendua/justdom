@@ -176,8 +176,8 @@ function pageOffset(element) {
     // does. Its place is taken from the client rects instead — its own
     // against its parent's, the difference added to the parent's layout
     // offset. Under a transformed ancestor those rects carry the transform,
-    // so this is the transformed-bounds approximation the clip already
-    // makes for rotated content rather than the exact layout offset an
+    // so this is the transformed-bounds approximation an `<svg>` viewport's
+    // clip makes under a rotation, rather than the exact layout offset an
     // HTML element gets; an `<svg>` in an untransformed chain never comes
     // through here at all.
     const parent = el.parentElement;

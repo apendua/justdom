@@ -146,7 +146,9 @@ export function mountKeyboard(keys: HTMLElement, { onKey }: KeyboardOptions) {
     if (focusedField()) {
       return; // the browser types into it
     }
-    if (OWNED_KEYS.has(event.key)) {
+    // A control with focus, the Look menu say, would act on the key as well:
+    // a select takes a letter as type-ahead and changes its choice.
+    if (OWNED_KEYS.has(event.key) || controlFocused()) {
       event.preventDefault();
     }
     onKey(event.key);
@@ -175,6 +177,12 @@ const TEXT_TYPES = new Set(["text", "search", "url", "tel", "email", "password"]
 function focusedField(): HTMLInputElement | null {
   const active = document.activeElement;
   return active instanceof HTMLInputElement && TEXT_TYPES.has(active.type) ? active : null;
+}
+
+/** Whether something other than the page itself has focus: a select, a checkbox, a button. */
+function controlFocused(): boolean {
+  const active = document.activeElement;
+  return active !== null && active !== document.body;
 }
 
 /** What a key does to a field, as the browser would have done it. */

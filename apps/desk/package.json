@@ -12,14 +12,13 @@
     "test:watch": "vitest --environment jsdom"
   },
   "dependencies": {
+    "@apendua.dev/headset": "workspace:*",
     "@apendua.dev/media": "workspace:*",
     "@apendua/freedom": "workspace:*",
     "@apendua/justdom": "workspace:*",
     "@apendua/justui": "workspace:*",
     "@apendua/signal": "workspace:*",
-    "@iwer/devui": "^2.4.0",
     "@types/three": "~0.185.0",
-    "iwer": "^2.4.0",
     "jsdom": "^26.1.0",
     "three": "~0.185.0",
     "typescript": "^7.0.2",

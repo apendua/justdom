@@ -1,4 +1,5 @@
 import { render, createXRButton } from "@apendua/freedom";
+import { canPresent } from "@apendua.dev/headset/session";
 import { XRControllerModelFactory } from "three/examples/jsm/webxr/XRControllerModelFactory.js";
 import Scene from "./components/Scene.js";
 import NoteKeyboard from "./components/NoteKeyboard.js";
@@ -6,27 +7,10 @@ import type { MountedDesk } from "./desk.js";
 import type { Readable } from "./session.js";
 
 /**
- * Whether this platform can open an immersive session at all. Asked before
- * a renderer is made: a page that cannot go anywhere should not run a
- * render loop or wear a button that says so.
- */
-async function canPresent(): Promise<boolean> {
-  const xr = navigator.xr;
-  if (!xr) {
-    return false;
-  }
-  for (const mode of ["immersive-ar", "immersive-vr"] as const) {
-    if (await xr.isSessionSupported(mode).catch(() => false)) {
-      return true;
-    }
-  }
-  return false;
-}
-
-/**
  * Offer the page a headset: a scene that mirrors the objects of whichever
- * look `desk` holds when a session starts, and freedom's Enter button. Nothing happens on a platform that cannot
- * present, so on a laptop the page is the page and nothing else.
+ * look `desk` holds when a session starts, and freedom's Enter button.
+ * Nothing happens on a platform that cannot present, so on a laptop the page
+ * is the page and nothing else.
  *
  * `?emulator` installs a headset in the browser first, so that a session
  * can be driven by hand without one; `?emulator=bare` installs it without
@@ -36,7 +20,7 @@ export async function offerXR(desk: Readable<MountedDesk>): Promise<void> {
   const query = new URLSearchParams(location.search);
   if (query.has("emulator")) {
     try {
-      const { install } = await import("./emulator.js");
+      const { install } = await import("@apendua.dev/headset/emulator");
       install({ devUI: query.get("emulator") !== "bare" });
     } catch (err) {
       console.error("Could not install the XR emulator:", err);

@@ -37,8 +37,8 @@ started with.
 
 On a laptop there is no session to offer, so there is no button and no
 renderer. `?emulator` installs a headset in the browser (IWER, with its dev
-panels) and an Enter button appears at the bottom; `?emulator=bare`
-installs the runtime without the panels.
+panels, from `@apendua.dev/headset`) and an Enter button appears at the
+bottom; `?emulator=bare` installs the runtime without the panels.
 
 ## What you can do
 
@@ -78,12 +78,12 @@ object is a `.zone` with an id, and the modules in `src/` make them move:
 | --- | --- |
 | `src/main.ts` | Puts up the look the address names, runs the menu that swaps it, and offers a session. |
 | `src/looks.ts` | The three looks: markup, stylesheet, fonts, boot program, room colours, and where each zone stands in the room. |
-| `src/lookPicker.ts` | The "Look" menu, which lets go of focus once a look is picked so that the keys typed next reach the monitor. |
+| `src/lookPicker.ts` | The "Look" menu. |
 | `src/desk.ts` | Mounts a look and everything below that its markup asks for, and takes it all down again. |
 | `src/terminal.ts` | The monitor's state: the listing, how much of it is typed, the prompt, the phosphor, and the commands. No DOM. |
 | `src/programs.ts` | What the disks hold. |
 | `src/screen.ts` | Draws the terminal on the screen, one way on the page and another in a session (below). |
-| `src/keyboard.ts` | Builds the keycaps and types with them, and with a real keyboard. |
+| `src/keyboard.ts` | Builds the keycaps and types with them, and with a real keyboard. A key the monitor takes is not also acted on by a focused control, so the Look menu does not take a letter as type-ahead. |
 | `src/phosphorMenu.ts` | The menu under the screen. |
 | `src/dragAndDrop.ts` | Disks into the drive, cards about the board, tickets between columns, new notes from the field. |
 | `src/charts.ts` | Keeps the charts panel moving: lines, bars, donuts, gauges and the log. |
@@ -92,7 +92,7 @@ object is a `.zone` with an id, and the modules in `src/` make them move:
 | `src/swatches.ts` | The swatches that recolour the desk. |
 | `src/power.ts` | The control that ends a session. |
 | `src/stage.ts` | Scales the desk to the window, and takes the staging off during a session. |
-| `src/session.ts` | The session showing the desk, if one is, written by the scene. |
+| `src/session.ts` | Whether a session is showing the desk, from the session `@apendua.dev/headset` keeps and the scene writes. |
 | `src/xr.ts` | The offer: the renderer, the Enter button, the SVG plugin and the note field's keyboard. |
 | `src/components/Scene.ts` | The room in the look's colours, and each zone posed where the look places it. |
 | `src/components/NoteKeyboard.ts` | What the note field's keyboard looks like in a session. |

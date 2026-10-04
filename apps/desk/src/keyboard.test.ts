@@ -93,4 +93,31 @@ describe("mountKeyboard", () => {
     expect(onKey.mock.calls).toEqual([["h"], ["e"]]);
     expect(box.value).toBe("on");
   });
+
+  it("keeps a focused select from taking the monitor's letters as type-ahead", () => {
+    // The Look menu keeps focus after it is opened. A letter it took as
+    // type-ahead would pick another look: the P of LOAD PLOT.BAS, Paper
+    // Studio. A browser leaves type-ahead out when keydown is cancelled.
+    document.body.innerHTML = `<div data-keys></div>
+      <select><option value="ops">Night Ops</option><option value="paper">Paper Studio</option></select>`;
+    const keys = document.querySelector<HTMLElement>("[data-keys]")!;
+    const onKey = vi.fn();
+    dispose = mountKeyboard(keys, { onKey });
+    const select = document.querySelector("select")!;
+    select.focus();
+    const event = new KeyboardEvent("keydown", { key: "p", bubbles: true, cancelable: true });
+    select.dispatchEvent(event);
+    expect(onKey).toHaveBeenCalledWith("p");
+    expect(event.defaultPrevented, "the select would jump to Paper Studio").toBe(true);
+  });
+
+  it("leaves a letter to the browser as well when nothing has focus", () => {
+    const keys = board();
+    const onKey = vi.fn();
+    dispose = mountKeyboard(keys, { onKey });
+    const event = new KeyboardEvent("keydown", { key: "p", cancelable: true });
+    window.dispatchEvent(event);
+    expect(onKey).toHaveBeenCalledWith("p");
+    expect(event.defaultPrevented).toBe(false);
+  });
 });

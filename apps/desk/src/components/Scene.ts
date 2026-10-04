@@ -1,10 +1,11 @@
 import * as THREE from "three";
+import { xrSession } from "@apendua.dev/headset/session";
 import { children, cursors, $, dom, getScene, getXRSession, placeAndScale } from "@apendua/freedom";
 import { createDiagnostics, useDiagnostics } from "@apendua/justui";
 import { component, effects, effectsOnly, Stream, useEffects } from "@apendua/signal";
 import type { MountedDesk } from "../desk.js";
 import type { Placement, Room } from "../looks.js";
-import { type Readable, xrSession } from "../session.js";
+import type { Readable } from "../session.js";
 
 /** The height of the desk's top, below the eyes, in metres. */
 const DESK_TOP = -0.42;

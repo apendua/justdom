@@ -48,7 +48,7 @@ function importGraph(entry) {
 
 test("the widgets a page shows load no three.js and no scene", () => {
   // A dropdown, a scrolling list or a keyboard on a page that may never
-  // open a session asks freedom only which panel it is in and how to
+  // open a session asks freedom at most which panel it is in and how to
   // scroll, which is the page's side of freedom, not the renderer's.
   for (const widget of WIDGETS) {
     const graph = [...importGraph(new URL(`./${widget}.js`, import.meta.url).href)];

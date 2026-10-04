@@ -106,7 +106,7 @@ const ARC_DIVISIONS = 12;
  * The most curve segments a single curve is sampled at, however large the
  * shape is drawn — past this the polygon is finer than the antialiasing.
  */
-const MAX_SEGMENTS = 64;
+const MAX_SEGMENTS = 128;
 
 /**
  * How a zero-length dash is drawn under a cap that has some length of its
@@ -881,15 +881,18 @@ export function paintSlot(element, root, instance, layer) {
 
 /**
  * How many segments to sample each curve of a shape at, given how large the
- * matrix draws a user unit: three's default of twelve at unit scale, more
- * as the shape is drawn bigger — an icon in a `viewBox` of 24 drawn at 192px
- * would show its polygons at twelve — and never fewer than eight.
+ * matrix draws a user unit: twice three's default of twelve at unit scale,
+ * more as the shape is drawn bigger — an icon in a `viewBox` of 24 drawn at
+ * 192px would show its polygons at any fixed count — and never fewer than
+ * sixteen.
+ * Twelve left a circle a few centimetres across on a panel, a point in a
+ * drawing held at arm's length, visibly a polygon.
  *
  * @param {number} scale
  * @returns {number}
  */
 function segmentsFor(scale) {
-  return Math.max(8, Math.min(MAX_SEGMENTS, Math.round(12 * Math.sqrt(Math.max(scale, 1e-6)))));
+  return Math.max(16, Math.min(MAX_SEGMENTS, Math.round(24 * Math.sqrt(Math.max(scale, 1e-6)))));
 }
 
 /**

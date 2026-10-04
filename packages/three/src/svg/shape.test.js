@@ -7,7 +7,8 @@ import { createMirror } from "../elements/mirror.js";
 import { setContentGroup } from "../elements/contentGroup.js";
 import { getControlRoot } from "../elements/pointerForwarding.js";
 import { OBSERVER_OPTIONS } from "../elements/portal.js";
-import { group, shape } from "./shape.js";
+import { SVGLoader } from "three/examples/jsm/loaders/SVGLoader.js";
+import { buildFillGeometry, group, shape } from "./shape.js";
 
 /**
  * @import { Mesh, MeshBasicMaterial, Object3D } from "three";
@@ -1192,5 +1193,33 @@ describe("svg shape as a ray target", () => {
     assert.equal(Math.floor(fill.renderOrder), Math.floor(stroke.renderOrder));
     assert.equal(/** @type {SVGElement} */ (s.element).dataset.xrHover, "true", "still hovered");
     s.teardown();
+  });
+});
+
+describe("how finely a curve is sampled", () => {
+  // three's loader draws a circle as two arcs, so a circle has twice as
+  // many points on its edge as each arc has segments, and a fill one more
+  // for its centre.
+  const circle = new SVGLoader().parse(
+    `<svg xmlns="${SVG_NS}"><circle cx="0" cy="0" r="10"/></svg>`,
+  ).paths[0];
+  /** @param {number} scale */
+  const edge = (scale) => {
+    const geometry = /** @type {THREE.BufferGeometry} */ (
+      buildFillGeometry(circle, "nonzero", scale)
+    );
+    return geometry.getAttribute("position").count - 1;
+  };
+
+  test("a circle drawn at a user unit a px has 48 points on its edge", () => {
+    assert.equal(edge(1), 48);
+  });
+
+  test("never fewer than 32, however small it is drawn", () => {
+    assert.equal(edge(0.01), 32);
+  });
+
+  test("and never more than 256, however large", () => {
+    assert.equal(edge(1000), 256);
   });
 });

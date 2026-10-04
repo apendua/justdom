@@ -1,6 +1,7 @@
 import { Signal } from "@apendua/signal";
 import { mountDesk, type MountedDesk } from "./desk.js";
-import { LOOKS, lookFromSearch, type Look } from "./looks.js";
+import { lookFromSearch, type Look } from "./looks.js";
+import { mountLookPicker } from "./lookPicker.js";
 import { presenting } from "./session.js";
 import { mountStage } from "./stage.js";
 import { offerXR } from "./xr.js";
@@ -34,13 +35,8 @@ const current = Signal.of(show(lookFromSearch(location.search)));
 // The picker swaps one look for another in place, and writes the choice into
 // the address so that a reload or a shared link opens the same desk. Not
 // during a session, which mirrors the elements of the look it started with.
-const picker = find<HTMLSelectElement>("[data-look-picker]");
-for (const look of LOOKS) {
-  picker.add(new Option(look.name, look.id, false, look === current.get().look));
-}
-picker.addEventListener("change", () => {
-  const look = LOOKS.find(({ id }) => id === picker.value);
-  if (!look || presenting.get()) {
+mountLookPicker(find<HTMLSelectElement>("[data-look-picker]"), current.get().look, (look) => {
+  if (presenting.get()) {
     return;
   }
   current.get().dispose();

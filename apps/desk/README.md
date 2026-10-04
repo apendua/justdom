@@ -78,6 +78,7 @@ object is a `.zone` with an id, and the modules in `src/` make them move:
 | --- | --- |
 | `src/main.ts` | Puts up the look the address names, runs the menu that swaps it, and offers a session. |
 | `src/looks.ts` | The three looks: markup, stylesheet, fonts, boot program, room colours, and where each zone stands in the room. |
+| `src/lookPicker.ts` | The "Look" menu, which lets go of focus once a look is picked so that the keys typed next reach the monitor. |
 | `src/desk.ts` | Mounts a look and everything below that its markup asks for, and takes it all down again. |
 | `src/terminal.ts` | The monitor's state: the listing, how much of it is typed, the prompt, the phosphor, and the commands. No DOM. |
 | `src/programs.ts` | What the disks hold. |

@@ -78,4 +78,19 @@ describe("mountKeyboard", () => {
     window.dispatchEvent(new KeyboardEvent("keydown", { key: "x" }));
     expect(onKey).not.toHaveBeenCalled();
   });
+
+  it("types on the monitor when a checkbox has focus, and leaves the box alone", () => {
+    // A click focuses a checkbox, as on the ship list, and a checkbox is no
+    // field to type into.
+    document.body.innerHTML = `<div data-keys></div><input id="box" type="checkbox" />`;
+    const keys = document.querySelector<HTMLElement>("[data-keys]")!;
+    const onKey = vi.fn();
+    dispose = mountKeyboard(keys, { onKey });
+    const box = document.querySelector<HTMLInputElement>("#box")!;
+    box.focus();
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "h" }));
+    keys.querySelector<HTMLElement>('[data-key="e"]')!.click();
+    expect(onKey.mock.calls).toEqual([["h"], ["e"]]);
+    expect(box.value).toBe("on");
+  });
 });

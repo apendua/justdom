@@ -164,9 +164,17 @@ export function mountKeyboard(keys: HTMLElement, { onKey }: KeyboardOptions) {
   };
 }
 
+/** The input types a key types into: everything else, a checkbox say, is not a field. */
+const TEXT_TYPES = new Set(["text", "search", "url", "tel", "email", "password"]);
+
+/**
+ * The text field that has focus, if one does. A checkbox takes focus when
+ * it is clicked, as on the ship list, and must not swallow the keys meant
+ * for the monitor.
+ */
 function focusedField(): HTMLInputElement | null {
   const active = document.activeElement;
-  return active instanceof HTMLInputElement ? active : null;
+  return active instanceof HTMLInputElement && TEXT_TYPES.has(active.type) ? active : null;
 }
 
 /** What a key does to a field, as the browser would have done it. */

@@ -9,11 +9,11 @@
  *   CHROMIUM=<path> node tests/xr-check.mjs  # with a Chromium found elsewhere
  *
  * The right controller is aimed at a point on a panel from the figures the
- * scene places the panels by (`src/placement.ts`), and the script checks
- * that the ray is on the element it was aimed at before it presses
- * anything. First, no chunk the page loads, built for production, may carry
- * three.js: the entry chunk and every chunk it imports statically. And the
- * page alone, with no emulator, must not fetch the headset scene. Then, in a session, in order:
+ * scene places the panels by (`src/placement.ts`), and the script checks that
+ * the ray is on the element it was aimed at before it presses anything. First,
+ * no chunk the page loads, built for production, may carry three.js: the entry
+ * chunk and every chunk it imports statically. And the page alone, with no
+ * emulator, must not fetch the headset scene. Then, in a session, in order:
  *
  * - Point, in the toolbar panel, picks the point tool, and the trigger on
  *   empty paper writes a `point(…)` statement through the drawing's own

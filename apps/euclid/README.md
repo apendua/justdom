@@ -60,10 +60,13 @@ draws a line with the trigger, drags a free point and pans the paper by
 holding it, loads another construction from the picker and leaves by the ×,
 and fails if any of that does not happen or the page throws. `SHOTS=<dir>`
 also photographs the page and the session, and `STACKS=1` prints a stack for
-anything the page throws. It borrows Playwright from `apps/showcase-xr`, so
-that project has to have been installed. It launches the Chromium at
-`/opt/pw-browsers/chromium-1194/chrome-linux/chrome`; `CHROMIUM=<path>`
-points it at one installed elsewhere.
+anything the page throws. It drives the browser and the controller through
+`@apendua.dev/headset/driver`, which borrows Playwright from
+`apps/showcase-xr`, so that project has to have been installed. It
+launches the Chromium at `/opt/pw-browsers/chromium-1194/chrome-linux/chrome`;
+`CHROMIUM=<path>` points it at one installed elsewhere. A pull request that
+touches this app or a package it imports runs it, with minesweeper's and the
+desk's, from `.github/workflows/driven.yml`.
 
 ## How it is put together
 

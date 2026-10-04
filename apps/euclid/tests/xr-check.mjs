@@ -25,70 +25,34 @@
  * - the × ends the session.
  *
  * The script fails if any of them does not happen, or if the page throws
- * along the way. A manual check rather than part of `npm test`: it needs
- * a browser, and takes about a minute under SwiftShader.
+ * along the way. It is kept out of `npm test` because it needs a browser
+ * and takes about a minute under SwiftShader;
+ * `.github/workflows/driven.yml` runs it on pull requests. The browser and
+ * the controller are driven through `@apendua.dev/headset/driver`.
  */
 import { join, resolve, dirname } from "node:path";
 import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { build, createServer } from "vite";
+import {
+  aimAt as aimFrom,
+  check,
+  closeAll,
+  finish,
+  frames,
+  headPosition,
+  hold,
+  launch,
+  press,
+  rotate,
+} from "@apendua.dev/headset/driver";
 
 const HERE = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const { chromium } = await import(
-  resolve(HERE, "../showcase-xr/node_modules/playwright-core/index.mjs")
-);
-
-const CHROMIUM = process.env.CHROMIUM ?? "/opt/pw-browsers/chromium-1194/chrome-linux/chrome";
 
 const SHOTS = process.env.SHOTS;
 if (SHOTS) {
   mkdirSync(SHOTS, { recursive: true });
-}
-
-/**
- * @param {import("playwright-core").Page} page
- * @param {number} count
- */
-async function frames(page, count) {
-  await page.evaluate(
-    (n) =>
-      new Promise((done) => {
-        let left = n;
-        const step = () => (--left <= 0 ? done(undefined) : requestAnimationFrame(step));
-        requestAnimationFrame(step);
-      }),
-    count,
-  );
-}
-
-/** @type {string[]} */
-const failures = [];
-
-/**
- * @param {boolean} ok
- * @param {string} what
- */
-function check(ok, what) {
-  console.log(`  ${ok ? "OK" : "FAIL"}: ${what}`);
-  if (!ok) {
-    failures.push(what);
-  }
-}
-
-/**
- * Rotate a vector by a panel's Euler angles in the order `YXZ`: the pitch
- * about x first, then the yaw about y.
- *
- * @param {[number, number, number]} v
- * @param {number} pitch
- * @param {number} yaw
- * @returns {[number, number, number]}
- */
-function rotate([x, y, z], pitch, yaw) {
-  const y1 = y * Math.cos(pitch) - z * Math.sin(pitch);
-  const z1 = y * Math.sin(pitch) + z * Math.cos(pitch);
-  return [x * Math.cos(yaw) + z1 * Math.sin(yaw), y1, -x * Math.sin(yaw) + z1 * Math.cos(yaw)];
 }
 
 /**
@@ -154,10 +118,7 @@ async function main() {
   /** @type {typeof import("../src/placement.ts")} */
   const placement = /** @type {any} */ (await server.ssrLoadModule("/src/placement.ts"));
 
-  const browser = await chromium.launch({
-    executablePath: CHROMIUM,
-    args: ["--use-gl=angle", "--use-angle=swiftshader", "--enable-unsafe-swiftshader"],
-  });
+  const browser = await launch();
   try {
     console.log("\n== the page alone");
     {
@@ -201,12 +162,7 @@ async function main() {
     );
     await frames(page, 30);
 
-    // Where the head was as the session started, which is the origin of the
-    // `local` space the scene is laid out in.
-    const head = await page.evaluate(() => {
-      const { x, y, z } = /** @type {any} */ (window).xrDevice.position;
-      return [x, y, z];
-    });
+    const head = await headPosition(page);
 
     /**
      * The right controller below the head, its ray through a point in the
@@ -214,30 +170,7 @@ async function main() {
      *
      * @param {[number, number, number]} target
      */
-    const aimAt = async (target) => {
-      const from = [head[0] + 0.05, head[1] - 0.2, head[2] - 0.05];
-      const d = target.map((v, i) => v + head[i] - from[i]);
-      const yaw = Math.atan2(-d[0], -d[2]);
-      const pitch = Math.atan2(d[1], Math.hypot(d[0], d[2]));
-      await page.evaluate(
-        ([p, y, f]) => {
-          const c = /** @type {any} */ (window).xrDevice.controllers.right;
-          c.position.x = f[0];
-          c.position.y = f[1];
-          c.position.z = f[2];
-          const cy = Math.cos(y / 2);
-          const sy = Math.sin(y / 2);
-          const cx = Math.cos(p / 2);
-          const sx = Math.sin(p / 2);
-          c.quaternion.x = cy * sx;
-          c.quaternion.y = sy * cx;
-          c.quaternion.z = -sy * sx;
-          c.quaternion.w = cy * cx;
-        },
-        [pitch, yaw, from],
-      );
-      await frames(page, 3);
-    };
+    const aimAt = (target) => aimFrom(page, head, target);
 
     /**
      * Where a point of the page, in client px, is in the scene, on the
@@ -270,18 +203,9 @@ async function main() {
       return [at[0] + x, at[1] + y, at[2] + z];
     };
 
-    /** @param {"trigger" | "squeeze"} button @param {number} value */
-    const hold = async (button, value) => {
-      await page.evaluate(
-        ([b, v]) => /** @type {any} */ (window).xrDevice.controllers.right.updateButtonValue(b, v),
-        /** @type {const} */ ([button, value]),
-      );
-      await frames(page, 4);
-    };
-
-    const press = async () => {
-      await hold("trigger", 1);
-      await hold("trigger", 0);
+    /** A pull of the trigger, and a few frames for the page to answer it. */
+    const pull = async () => {
+      await press(page, "trigger");
       await frames(page, 6);
     };
 
@@ -307,7 +231,7 @@ async function main() {
         await handle.evaluate((e) => e.hasAttribute("data-xr-hover")),
         `the ray is on ${label}`,
       );
-      await press();
+      await pull();
     };
 
     const code = () =>
@@ -353,7 +277,7 @@ async function main() {
         "the ray is on the drawing",
       );
       const before = await code();
-      await press();
+      await pull();
       const after = await code();
       const added = after.slice(before.length);
       console.log(`  wrote: ${JSON.stringify(added.trim())}`);
@@ -374,7 +298,7 @@ async function main() {
       for (const name of ["A", "B"]) {
         const at = await pointOnPage(name);
         await aimAt(await onPanel("canvas", at.x, at.y));
-        await press();
+        await pull();
       }
       const added = (await code()).slice(before.length).trim();
       console.log(`  wrote: ${JSON.stringify(added)}`);
@@ -386,11 +310,11 @@ async function main() {
     {
       const from = await pointOnPage("B");
       await aimAt(await onPanel("canvas", from.x, from.y));
-      await hold("trigger", 1);
+      await hold(page, "trigger", 1);
       for (let step = 1; step <= 6; step += 1) {
         await aimAt(await onPanel("canvas", from.x + step * 6, from.y - step * 6));
       }
-      await hold("trigger", 0);
+      await hold(page, "trigger", 0);
       await frames(page, 6);
       const moved = /B=point\(([^)]*)\)/.exec(await code())?.[1];
       console.log(`  B is now at (${moved})`);
@@ -401,11 +325,11 @@ async function main() {
       const x = canvasRect.left + canvasRect.width * 0.15;
       const y = canvasRect.top + canvasRect.height * 0.15;
       await aimAt(await onPanel("canvas", x, y));
-      await hold("trigger", 1);
+      await hold(page, "trigger", 1);
       for (let step = 1; step <= 6; step += 1) {
         await aimAt(await onPanel("canvas", x + step * 8, y));
       }
-      await hold("trigger", 0);
+      await hold(page, "trigger", 0);
       await frames(page, 6);
       const after = await pointOnPage("A");
       console.log(`  A moved by ${Math.round(after.x - before.x)} px across the page`);
@@ -438,14 +362,9 @@ async function main() {
     );
     check(errors.length === 0, `the page threw nothing (${errors.length} errors)`);
   } finally {
-    await browser.close();
-    await server.close();
+    await closeAll(browser, server);
   }
-  if (failures.length > 0) {
-    console.log(`\n${failures.length} failed`);
-    process.exit(1);
-  }
-  console.log("\nall passed");
+  finish();
 }
 
 await main();

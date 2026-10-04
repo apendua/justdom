@@ -19,12 +19,13 @@ import { contentImage, isImageElement } from "./image.js";
 import { createBlocker, coverBox } from "./blocker.js";
 import {
   getBorderBoxSize,
+  getBoxOffset,
   getLocalClipBox,
   getScrollOffset,
   isVisibilityHidden,
 } from "./mirror.js";
 import { clipBoxShows, clipRaycast, UNCLIPPED } from "./clip.js";
-import { composeTransform, getBoxOffset, getOwnTransform, isTransformed } from "./cssTransform.js";
+import { composeTransform, getOwnTransform, isTransformed } from "./cssTransform.js";
 import { getContentRenderOrder, getLift, isOverlay } from "./elevation.js";
 import { isScrollable, scrollDrags } from "./scroll.js";
 import { place, placeAndScale } from "./place.js";

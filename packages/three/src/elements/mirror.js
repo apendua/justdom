@@ -11,6 +11,7 @@ import {
 } from "./textLines.js";
 import { isSvgElement } from "./plugins.js";
 import { clipBoxEqual, intersectClipBoxes, toLocalClipBox, UNCLIPPED } from "./clip.js";
+import { getBoxOffset, untransformedOffset } from "./cssTransform.js";
 
 /**
  * @import {RevealLayout, RevealLine, TextLine} from './textLines.js';
@@ -2752,7 +2753,8 @@ function evaluateLocalClip(element) {
       return UNCLIPPED;
     }
     const scroll = getScrollOffset(anchor);
-    return toLocalClipBox(base, anchored.x - scroll.left, anchored.y - scroll.top);
+    const at = isTransformed(element) ? untransformedAnchorOffset(element, anchor) : anchored;
+    return toLocalClipBox(base, at.x - scroll.left, at.y - scroll.top);
   }
   const holder = getParentElement(element);
   if (!holder || isPortalRoot(holder)) {
@@ -2762,9 +2764,30 @@ function evaluateLocalClip(element) {
   if (base === UNCLIPPED) {
     return UNCLIPPED;
   }
-  const offset = getContentPosition(element);
+  // In the flow, the box's object position is its content position, and
+  // `getBoxOffset` is the one place that swaps it for the layout offset
+  // when the element is on a transformed chain.
+  const offset = getBoxOffset(element);
   const scroll = getScrollOffset(holder);
   return toLocalClipBox(base, offset.x - scroll.left, offset.y - scroll.top);
+}
+
+/**
+ * Where a transformed element's border box sits in its anchor's, from the
+ * layout rather than the client rects `getAnchoredOffset` measures. A
+ * transformed element's client rect is the bounding box of what the
+ * transform made of it, which grows and moves as a rotation turns, and a
+ * clip placed by it slides about with the angle. The layout offset is
+ * where the box is before its transform, which is the frame its quad is
+ * drawn and clipped in.
+ *
+ * @param {HTMLElement} element
+ * @param {HTMLElement} anchor
+ * @returns {{ x: number, y: number }}
+ */
+function untransformedAnchorOffset(element, anchor) {
+  getReflowContext(element);
+  return untransformedOffset(element, anchor);
 }
 
 /**

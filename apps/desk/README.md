@@ -157,9 +157,10 @@ Four things to know about it.
   frames a second the whole desk takes about a minute to come up. The
   charts come last, because their live updates keep arriving while they
   mount.
-- Under the emulator, Night Ops' telemetry panel does not finish loading.
-  A panel leaves its loading frame on a frame with nothing left to do, and
-  the radar's sweep, its blips and the status lights blink without end, so
-  at a few frames a second that frame does not come. With the three stopped
-  it loads in about a minute. This is freedom's to fix; it has not been
-  tried on a headset.
+- Night Ops' telemetry panel used to stay on its loading frame under the
+  emulator on a slow machine. A panel left its loading frame on a frame
+  with nothing left to do, and the radar's sweep, its blips and the status
+  lights blink without end, so at a few frames a second that frame did not
+  come. Freedom now samples no animation while a panel loads, and lands a
+  panel that something keeps busy after a second of waiting, one long
+  frame at a time. Neither has been tried on a headset.

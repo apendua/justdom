@@ -11,9 +11,9 @@
  * The right controller is aimed at a point on a panel from the figures the
  * scene places the panels by (`src/placement.ts`), and the script checks
  * that the ray is on the element it was aimed at before it presses
- * anything. First, the page's own entry chunk, built for production, must
- * not carry three.js, and the page alone, with no emulator, must not fetch
- * the headset scene. Then, in a session, in order:
+ * anything. First, no chunk the page loads, built for production, may carry
+ * three.js: the entry chunk and every chunk it imports statically. And the
+ * page alone, with no emulator, must not fetch the headset scene. Then, in a session, in order:
  *
  * - Point, in the toolbar panel, picks the point tool, and the trigger on
  *   empty paper writes a `point(…)` statement through the drawing's own
@@ -26,7 +26,7 @@
  *
  * The script fails if any of them does not happen, or if the page throws
  * along the way. It is kept out of `npm test` because it needs a browser
- * and takes about a minute under SwiftShader;
+ * and takes about half a minute under SwiftShader, the build included;
  * `.github/workflows/driven.yml` runs it on pull requests. The browser and
  * the controller are driven through `@apendua.dev/headset/driver`.
  */
@@ -190,7 +190,7 @@ async function main() {
         id === "toolbar"
           ? [placement.TOOLBAR_AT, placement.toolbarScale(rect.width)]
           : id === "editor"
-            ? [placement.EDITOR_AT, placement.EDITOR_SCALE]
+            ? [placement.EDITOR_AT, placement.editorScale(rect.width, rect.height)]
             : [placement.BOARD_AT, placement.boardScale(rect.width, rect.height)];
       const metres = 0.01 * scale;
       const local = /** @type {[number, number, number]} */ ([
@@ -268,7 +268,8 @@ async function main() {
       "the point tool is picked",
     );
     {
-      // Empty paper: a quarter of the way in from the drawing's lower left.
+      // Empty paper: a fifth of the way in from the drawing's left edge,
+      // and 15% of its height up from the bottom.
       const x = canvasRect.left + canvasRect.width * 0.2;
       const y = canvasRect.top + canvasRect.height * 0.85;
       await aimAt(await onPanel("canvas", x, y));

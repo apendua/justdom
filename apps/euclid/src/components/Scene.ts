@@ -1,6 +1,5 @@
 import * as THREE from "three";
 import { $, children, cursors, dom, getScene, getXRSession } from "@apendua/freedom";
-import type { PortalOptions } from "@apendua/freedom";
 import { createDiagnostics, useDiagnostics } from "@apendua/justui";
 import { component, effects, effectsOnly, Stream, useEffects } from "@apendua/signal";
 import { backdropShown, enterSession } from "@apendua.dev/headset/session";
@@ -9,7 +8,7 @@ import {
   BOARD_AT,
   boardScale,
   EDITOR_AT,
-  EDITOR_SCALE,
+  editorScale,
   facing,
   TOOLBAR_AT,
   toolbarScale,
@@ -65,31 +64,20 @@ const Backdrop = component(() =>
  * a session is presenting.
  */
 const Panel = component(
-  (
-    ctx: WeakKey,
-    element: HTMLElement,
-    at: Vec3,
-    scale: (rect: DOMRect) => number,
-    options?: PortalOptions,
-  ) => {
+  (ctx: WeakKey, element: HTMLElement, at: Vec3, scale: (rect: DOMRect) => number) => {
     if (!getXRSession(ctx)) {
       return NOTHING;
     }
     // Measured once, as the session starts.
     const scalar = scale(element.getBoundingClientRect());
     const { pitch, yaw } = facing(at);
-    return dom(
-      ctx,
-      element,
-      [
-        effects((o) => {
-          o.scale.setScalar(scalar);
-          o.position.set(...at);
-          o.rotation.set(pitch, yaw, 0, "YXZ");
-        }),
-      ],
-      options,
-    );
+    return dom(ctx, element, [
+      effects((o) => {
+        o.scale.setScalar(scalar);
+        o.position.set(...at);
+        o.rotation.set(pitch, yaw, 0, "YXZ");
+      }),
+    ]);
   },
 );
 
@@ -141,7 +129,7 @@ export const Scene = ({ toolbar, editor, canvas }: Mounts) =>
         ]),
         $(new THREE.AmbientLight(0xffffff, 2)),
         Panel(ctx, toolbar, TOOLBAR_AT, (rect) => toolbarScale(rect.width)),
-        Panel(ctx, editor, EDITOR_AT, () => EDITOR_SCALE),
+        Panel(ctx, editor, EDITOR_AT, (rect) => editorScale(rect.width, rect.height)),
         Panel(ctx, canvas, BOARD_AT, (rect) => boardScale(rect.width, rect.height)),
         // The mark at the end of each ray. Half the default size: a drawn
         // point is a few millimetres across, and the mark aiming at one

@@ -30,10 +30,30 @@ export function boardScale(width: number, height: number): number {
 export const BOARD_AT: Vec3 = [0, -0.12, -0.9];
 
 /**
- * The program's scale: 0.8 mm a px, which makes a 480px editor about
- * 38 cm wide and its 13px code about a centimetre tall.
+ * The program's scale at most: 0.8 mm a px, which makes a 480px editor
+ * about 38 cm wide and its 13px code about a centimetre tall.
  */
 export const EDITOR_SCALE = 0.08;
+
+/**
+ * The most room the program takes. It is as tall as the drawing's box, so
+ * that its top stays under the toolbar as the drawing's does, however tall
+ * the window the editor was laid out in.
+ */
+export const EDITOR_WIDTH = 0.4;
+export const EDITOR_HEIGHT = BOARD_HEIGHT;
+
+/**
+ * The program's scale, for an editor laid out `width` by `height` px:
+ * `EDITOR_SCALE`, or less where that would take it out of its box.
+ */
+export function editorScale(width: number, height: number): number {
+  return Math.min(
+    EDITOR_SCALE,
+    EDITOR_WIDTH / (0.01 * Math.max(1, width)),
+    EDITOR_HEIGHT / (0.01 * Math.max(1, height)),
+  );
+}
 
 /**
  * The middle of the program: to the left of the drawing and nearer, so

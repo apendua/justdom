@@ -19,9 +19,9 @@ import type AppStore from "../store/App";
 import type { Tool } from "../store/App";
 
 /*
- * Every hover and press rule is written twice, for `:hover` and `:active`
- * and for `[data-xr-hover]` and `[data-xr-active]`: the first pair is the
- * page's, the second is what a headset's ray sets on the element it is on.
+ * Every hover rule is written twice, for `:hover` and for `[data-xr-hover]`:
+ * the first is the page's, the second is what a headset's ray sets on the
+ * element it is on.
  * A control is anything with `cursor: pointer`, which is also what makes it
  * pressable by the ray.
  */

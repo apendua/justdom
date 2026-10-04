@@ -159,7 +159,7 @@ export function rotate([x, y, z], pitch, yaw) {
  *
  * @param {import("playwright-core").Page} page
  * @param {"trigger" | "squeeze"} button
- * @param {number} value
+ * @param {0 | 1} value
  */
 export async function hold(page, button, value) {
   await page.evaluate(

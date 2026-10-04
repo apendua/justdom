@@ -22,7 +22,10 @@ nothing else, and work on a page with no scene anywhere near them. A page that
 bundles only them carries none of three.js either: what they ask of freedom
 they ask of `@apendua/freedom/page`, which imports none of it, and the package
 says it has no side effects, so a bundler leaves the diagnostics out of a page
-that does not use them. `src/pageWidgets.test.js` holds the widgets to that.
+that does not use them. `src/pageWidgets.test.js` holds the widgets to both:
+it walks each widget's imports for three.js and freedom's scene, and it
+bundles the three from the package's entry with esbuild and fails if three.js
+is in the result.
 
 ## What is in it
 

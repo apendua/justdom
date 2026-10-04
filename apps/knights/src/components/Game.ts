@@ -18,20 +18,42 @@ const BLOCKED_FIELD_PATTERN = "blockedFieldPattern";
  */
 const FIELD_ASPECT_RATIO = 22 / 30;
 
+/**
+ * The whole page. It is a stacking context of its own, so that the backdrop,
+ * a layer under the rest, stays inside it rather than going under the body.
+ */
 const container = stylesheet`
   .${CLASS_NAME} {
+    position: relative;
+    z-index: 0;
     display: flex;
     flex-direction: column;
     height: 100vh;
-    background-image: url('${ASSETS_PREFIX}/assets/background_01_2048.jpg');
-    background-size: cover;
-    background-position: 50% 50%;
   }
 
   .${CLASS_NAME} svg {
     -webkit-touch-callout: none;
     -webkit-user-select: none;
     user-select: none;
+  }
+`;
+
+/**
+ * The painted battlefield behind everything. An `<img>` rather than the
+ * page's `background-image`, which would look the same on the page: a
+ * headset panel draws an `<img>`, and of a background only its colour and
+ * its gradients, so a `url()` background would leave the board's black
+ * grid on the session's dark backdrop.
+ */
+const backdrop = stylesheet`
+  .${CLASS_NAME} {
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: 50% 50%;
   }
 `;
 
@@ -91,6 +113,10 @@ const Game = component((ctx: WeakKey) => {
     set("className", container),
     children(
       Music(ctx),
+      $("img", [
+        set("className", backdrop),
+        set({ src: `${ASSETS_PREFIX}/assets/background_01_2048.jpg`, alt: "" }),
+      ]),
       $("div", [set("className", fillingPanel)]),
       $$("svg", [
         attr("class", panel),

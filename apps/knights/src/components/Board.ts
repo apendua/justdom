@@ -1,4 +1,4 @@
-import { $$, children, list, on } from "@apendua/justdom";
+import { $$, attr, children, list, on } from "@apendua/justdom";
 import { component } from "@apendua/signal";
 import { ANIMATION_IDLE, KNIGHT } from "../constants";
 import { areTheSameField } from "../helpers/map";
@@ -101,6 +101,11 @@ const Board = component((ctx: WeakKey, props: BoardProps) => {
   };
 
   return $$("g", [
+    // Says the board takes orders, to the mouse and to a headset's ray
+    // alike: a panel forwards the ray's moves and presses only to what is
+    // under `cursor: pointer`, so without it the route would never follow
+    // the ray and the trigger would send nobody anywhere.
+    attr("cursor", () => (props.isActive ? "pointer" : undefined)),
     on("click", handleMouseClick),
     on("mousemove", handleMouseMove),
     on("mouseout", handleMouseMove),
@@ -120,7 +125,10 @@ const Board = component((ctx: WeakKey, props: BoardProps) => {
         ...dimensions,
         fields: game.obstacles,
         opacity: 1.0,
-        fill: `url(#${props.obstaclePattern})`,
+        // Black where the hatching cannot be drawn, which is in a headset
+        // panel: it draws no `<pattern>` yet, and a wall left unfilled there
+        // would look like open ground.
+        fill: `url(#${props.obstaclePattern}) black`,
       }),
       // The route to the cursor.
       FieldSet(ctx, {

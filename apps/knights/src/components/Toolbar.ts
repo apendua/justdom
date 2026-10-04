@@ -1,5 +1,17 @@
-import { $, CLASS_NAME, attr, children, on, set, stylesheet, text } from "@apendua/justdom";
-import { component } from "@apendua/signal";
+import {
+  $,
+  CLASS_NAME,
+  attr,
+  children,
+  list,
+  on,
+  set,
+  stylesheet,
+  text,
+  type Mountable,
+} from "@apendua/justdom";
+import { component, type Subscribable } from "@apendua/signal";
+import { canPassThrough, passthrough, xrSession } from "@apendua.dev/headset/session";
 import { ATTACKER } from "../constants";
 import type Game from "../store/Game";
 import { VERSUS_COMPUTER, type GameMode } from "../store/Root";
@@ -42,8 +54,21 @@ function mainSlot(game: Game | null): "create" | "over" | "skip" | "waiting" | "
 }
 
 /**
+ * What only a session has, mounted while there is one and taken down when
+ * it ends. Not hidden and shown: a panel measures the toolbar again when
+ * its children change, and not when one of them is hidden.
+ */
+const inSession = (render: () => Subscribable<Mountable>) =>
+  list(() => (xrSession.get() ? [true] : []), render);
+
+/**
  * The bar along the bottom of the screen: the menu, a note on how the battle is
  * going, and the button that hands the turn over.
+ *
+ * Two things are there only in a headset session, mounted when the scene
+ * says there is one: the passthrough switch, pressable only in a session
+ * that can show the room, and the × at the end of the bar, which ends the
+ * session.
  */
 const Toolbar = component((ctx: WeakKey, props: ToolbarProps) => {
   const handleMainButton = () => {
@@ -116,6 +141,29 @@ const Toolbar = component((ctx: WeakKey, props: ToolbarProps) => {
           ),
           label(() => (props.game ? `Round ${props.game.currentRound + 1}` : "")),
           $("li", [set("className", menuItem), attr({ "data-disabled": "" }), children(text`⚙`)]),
+          inSession(() =>
+            $("li", [
+              set("className", menuItem),
+              attr("data-disabled", () => (canPassThrough() ? undefined : "")),
+              attr("data-inverted", () => (passthrough.get() && canPassThrough() ? "" : undefined)),
+              on("click", () => {
+                if (canPassThrough()) {
+                  passthrough.set(!passthrough.get());
+                }
+              }),
+              children(text`Passthrough`),
+            ]),
+          ),
+          inSession(() =>
+            $("li", [
+              set("className", menuItem),
+              attr({ title: "Leave the headset" }),
+              on("click", () => {
+                void xrSession.get()?.end();
+              }),
+              children(text`×`),
+            ]),
+          ),
         ),
       ]),
     ),

@@ -18,7 +18,6 @@ import {
   type Frame,
   type SpriteSheet,
 } from "../constants";
-import { randomId } from "../helpers/random";
 import { frames as clock } from "../store/clock";
 
 interface SpriteProps {
@@ -176,14 +175,21 @@ class SpriteStore {
 /**
  * Draws one frame of a sprite sheet.
  *
- * The whole sheet is placed as a single `<image>` and shifted so that the frame
- * we want lands at the origin; a clip path the size of one frame hides the
- * rest. That way switching frames only moves the image, and the browser never
- * has to fetch or decode anything again.
+ * The whole sheet is placed as a single `<image>` inside a nested `<svg>` the
+ * size of one frame, and shifted so that the frame we want lands at its
+ * origin; the `<svg>`'s viewport hides the rest. That way switching frames
+ * only moves the image, and the browser never has to fetch or decode
+ * anything again.
+ *
+ * The shift is a `transform` rather than the image's `x` and `y`, and the
+ * viewport is a nested `<svg>` rather than a `clip-path`, for a headset
+ * panel's sake. A panel draws a nested `<svg>`'s viewport as a clip and
+ * does not draw `clip-path` yet, which would show the whole sheet; and it
+ * takes a new `transform` as a matrix write, where a new `x` or `y` would
+ * be a new quad ten times a second for every stack on the board.
  */
 const Sprite = component((_: WeakKey, props: SpriteProps) => {
   const sprite = new SpriteStore(props);
-  const clipId = `sprite_${randomId()}`;
 
   return $$("g", [
     // Start over whenever a different animation is selected. The `Derived` is
@@ -208,31 +214,28 @@ const Sprite = component((_: WeakKey, props: SpriteProps) => {
     }),
     attr("display", () => (sprite.geometry ? undefined : "none")),
     children(
-      $$("defs", [
+      $$("svg", [
+        attr({ x: 0, y: 0, overflow: "hidden" }),
+        attr("width", () => sprite.geometry?.spriteWidth ?? 0),
+        attr("height", () => sprite.geometry?.spriteHeight ?? 0),
         children(
-          $$("clipPath", [
-            attr({ id: clipId, x: 0, y: 0 }),
-            children(
-              $$("rect", [
-                attr({ x: 0, y: 0 }),
-                attr("width", () => sprite.geometry?.spriteWidth ?? 0),
-                attr("height", () => sprite.geometry?.spriteHeight ?? 0),
-              ]),
-            ),
+          $$("image", [
+            attr({ x: 0, y: 0 }),
+            attr("href", () => sprite.geometry?.source),
+            attr("transform", () => {
+              const geometry = sprite.geometry;
+              if (!geometry) {
+                return undefined;
+              }
+              const shift = `translate(${-geometry.frameOffsetX},${-geometry.frameOffsetY})`;
+              return geometry.mirror
+                ? `translate(${geometry.spriteWidth},0) scale(-1,1) ${shift}`
+                : shift;
+            }),
+            attr("width", () => sprite.geometry?.imageWidth ?? 0),
+            attr("height", () => sprite.geometry?.imageHeight ?? 0),
           ]),
         ),
-      ]),
-      $$("image", [
-        attr({ "clip-path": `url(#${clipId})` }),
-        attr("href", () => sprite.geometry?.source),
-        attr("transform", () => {
-          const geometry = sprite.geometry;
-          return geometry?.mirror ? `translate(${geometry.spriteWidth},0),scale(-1,1)` : undefined;
-        }),
-        attr("x", () => -(sprite.geometry?.frameOffsetX ?? 0)),
-        attr("y", () => -(sprite.geometry?.frameOffsetY ?? 0)),
-        attr("width", () => sprite.geometry?.imageWidth ?? 0),
-        attr("height", () => sprite.geometry?.imageHeight ?? 0),
       ]),
     ),
   ]);

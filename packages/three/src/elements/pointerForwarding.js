@@ -557,7 +557,18 @@ export function forwardPointerEvents(ctx, element, object, { enabled, onPress })
         heldEnters.delete(e.controller);
         enter(held);
       }
-      element.dispatchEvent(new MouseEvent("mousemove", moveInit(panel(), e)));
+      // Once, from the innermost element the ray is over, and it bubbles
+      // from there, as a mouse's does: the elements around it hear it on
+      // the way up rather than each sending its own. Not from an element
+      // that has left the document, which the panel still draws until the
+      // commit: the next clickable element up sends it, as it sends a
+      // release whose target has gone.
+      if (isGone(element)) {
+        return;
+      }
+      deliverOnce(e, () => {
+        element.dispatchEvent(new MouseEvent("mousemove", moveInit(panel(), e)));
+      });
     }),
     on("pointerenter", (e) => {
       // Nothing is hovered under a drag, as `:hover` holds still under one

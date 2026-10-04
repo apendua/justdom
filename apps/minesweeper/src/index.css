@@ -11,3 +11,47 @@ code {
   font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
     monospace;
 }
+
+/*
+ * The two places the game is mounted, one for the menu and one for the
+ * board, kept apart because a session mirrors each into a panel of its own.
+ * The menu is set beside the board, or above it in a window taller than it
+ * is wide, and the board takes the rest: it is fitted to its own element,
+ * so no tile is ever under the card.
+ */
+html,
+body {
+  height: 100%;
+}
+
+body {
+  display: flex;
+}
+
+#menu {
+  flex: none;
+  align-self: flex-start;
+  margin: 12px;
+}
+
+/* What the board's `<svg>`, absolutely placed at 0,0, is placed against. */
+#board {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+@media (orientation: portrait), (max-width: 600px) {
+  body {
+    flex-direction: column;
+  }
+}
+
+/* On a phone the card is a bar across the top. */
+@media (max-width: 600px) {
+  #menu {
+    align-self: stretch;
+    margin: 8px;
+  }
+}

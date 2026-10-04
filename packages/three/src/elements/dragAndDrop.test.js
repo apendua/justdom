@@ -2,8 +2,8 @@ import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
 import { InteractionContext, InteractionManager } from "../interactions.js";
-import { fakeFrameLoop } from "../test/frameLoop.js";
 import { drain, flushFrame, settle } from "../test/portalHarness.js";
+import { rayHand } from "../test/rayHand.js";
 import { describeScroller } from "../test/scroller.js";
 import { createDragAndDrop, dragAndDrop } from "./dragAndDrop.js";
 import { movesList } from "./scroll.js";
@@ -178,55 +178,24 @@ async function sortableList({
     other?.parent.rotation.set(0, 0.6, 0);
   }
 
-  /** @type {{ unsubscribe: () => void }[]} */
-  const subscriptions = [];
-
   /**
-   * A controller in the scene, and the things a test does with it.
+   * A controller in the scene, aimed in the first list's px unless told
+   * which list.
    */
   const hand = () => {
-    const controller = /** @type {THREE.XRTargetRaySpace} */ (
-      /** @type {unknown} */ (new THREE.Object3D())
-    );
-    const loop = fakeFrameLoop();
-    subscriptions.push(manager.addController(controller, loop.onAnimationFrame).subscribe());
-    /** The hand moved: the manager's frame, and then the page's. */
-    const moved = () => {
-      controller.updateMatrixWorld(true);
-      controller.dispatchEvent(/** @type {never} */ ({ type: "move" }));
-      loop.run();
-      flushFrame();
-    };
+    const driven = rayHand(manager);
     return {
-      controller,
+      ...driven,
       /**
-       * Point the ray at a spot on a panel, in its px, and let a frame go
-       * by: the manager's, which works out what the ray is on, and then the
-       * page's.
-       *
        * @param {number} x
        * @param {number} y
        * @param {typeof first} [on] The first list's panel unless given.
        */
-      aim: (x, y, on = first) => {
-        on.parent.updateMatrixWorld(true);
-        const point = on.panel.localToWorld(new THREE.Vector3(x, y, 0));
-        controller.position.set(point.x, point.y, point.z + 1);
-        controller.rotation.set(0, 0, 0);
-        moved();
-      },
-      /** Turn the hand round, so that its ray points away from the panels. */
-      turnAway: () => {
-        controller.rotation.set(0, Math.PI, 0);
-        moved();
-      },
-      /** @param {"selectstart" | "selectend" | "squeezestart" | "squeezeend"} type */
-      trigger: (type) => {
-        controller.dispatchEvent(/** @type {never} */ ({ type, data: null }));
-      },
+      aim: (x, y, on = first) => driven.aim(on.panel, x, y),
     };
   };
-  const { aim, trigger, turnAway, controller } = hand();
+  const firstHand = hand();
+  const { aim, trigger, turnAway, controller } = firstHand;
   const secondHand = hand();
 
   return {
@@ -252,7 +221,8 @@ async function sortableList({
       for (const type of [...types, ...dragTypes]) {
         document.removeEventListener(type, record);
       }
-      subscriptions.forEach((subscription) => subscription.unsubscribe());
+      firstHand.remove();
+      secondHand.remove();
       for (const { portal, root } of other ? [first, other] : [first]) {
         portal.disconnect();
         root.remove();

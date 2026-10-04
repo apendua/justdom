@@ -4,7 +4,15 @@ import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { enterSession, fingerprint, nextFrames, openShowcase, photographScene } from "./harness.js";
+import {
+  aimController,
+  enterSession,
+  fingerprint,
+  holdTrigger,
+  nextFrames,
+  openShowcase,
+  photographScene,
+} from "./harness.js";
 import { BASELINE, MOVEMENT, comparePng, countNear, countWhere, inkRatio } from "./pixels.js";
 
 /**
@@ -349,6 +357,91 @@ describe("the showcase in an emulated headset", { timeout: 180_000 }, () => {
       comparePng(restored, before, BASELINE).same,
       "taking the cards away did not put the scene back",
     );
+  });
+});
+
+/**
+ * Where the right controller has to point for its ray to rest on the middle
+ * of the Interactions panel's first button, "One", as yaw to the left and
+ * pitch upwards in degrees. Found by sweeping the ray across the panel; the
+ * button spans about 49.5 to 53.5 of yaw and 36 to 38.5 of pitch.
+ */
+const ON_FIRST_BUTTON = /** @type {const} */ ([51.5, 37.5]);
+
+describe("the showcase under a hand", { timeout: 180_000 }, () => {
+  // A browser of its own, so that the hand is in none of the photographs
+  // above. What these two are for is what a panel draws for a ray resting
+  // on a control and for a trigger held on it: the hover and press styles a
+  // stylesheet hangs on `data-xr-hover` and `data-xr-active`, which the
+  // event goldens in freedom can say were set and only a photograph can say
+  // were drawn.
+
+  /** @type {Awaited<ReturnType<typeof openShowcase>>} */
+  let showcase;
+  /** @type {Record<string, string>} */
+  let stamp;
+
+  before(async () => {
+    showcase = await openShowcase({ freeze: true });
+    await enterSession(showcase.page, { freeze: true });
+    stamp = await fingerprint(showcase.page, showcase.browser);
+  });
+
+  after(async () => {
+    await showcase?.close();
+  });
+
+  /**
+   * Which of the panels' buttons carry a flag, by their text.
+   *
+   * @param {string} flag
+   * @returns {Promise<string[]>}
+   */
+  const flagged = (flag) =>
+    showcase.page.evaluate(
+      (flag) =>
+        [...document.querySelectorAll(`[data-xr-portal] button[${flag}]`)].map(
+          (button) => button.textContent ?? "",
+        ),
+      flag,
+    );
+
+  test("a ray resting on a button, and the trigger held on it, match their baselines", async (t) => {
+    await aimController(showcase.page, ...ON_FIRST_BUTTON);
+    assert.deepEqual(await flagged("data-xr-hover"), ["One"], "the ray is on the first button");
+    const resting = await photographScene(showcase.page, { freeze: true });
+
+    await holdTrigger(showcase.page, true);
+    assert.deepEqual(await flagged("data-xr-active"), ["One"], "the trigger holds it");
+    const held = await photographScene(showcase.page, { freeze: true });
+    await holdTrigger(showcase.page, false);
+
+    // The press shrinks the button where the hover grew it, so the two
+    // photographs differ on any machine. A press that reached the DOM and
+    // not the scene leaves them the same.
+    assert.ok(
+      !comparePng(held, resting, MOVEMENT).same,
+      "holding the trigger changed nothing in the scene: the press style was not drawn",
+    );
+
+    for (const [name, png] of /** @type {const} */ ([
+      ["hover", resting],
+      ["press", held],
+    ])) {
+      const { recorded, missing, result } = compareToBaseline(name, png, stamp);
+      assert.ok(!missing, missing);
+      if (recorded) {
+        t.diagnostic(recorded);
+        continue;
+      }
+      assert.ok(
+        result?.same,
+        `the ${name} photograph differs from its baseline: ${result?.changed} pixels ` +
+          `(${((result?.ratio ?? 0) * 100).toFixed(3)}%)${result?.reason ? `, ${result.reason}` : ""}. ` +
+          `Look at tests/output/${name}.diff.png; if the change is meant, ` +
+          `re-record with npm run test:visual:update.`,
+      );
+    }
   });
 });
 

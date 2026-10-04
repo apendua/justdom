@@ -76,7 +76,8 @@ function nest({ outer, inner, build, haptics = null }) {
   const events = [];
   /** @type {string[]} */
   const points = [];
-  // `mousemove` does not bubble, so everything is heard on the way down.
+  // Heard on the way down, so that an event sent to an element that is
+  // not the innermost one is heard too.
   const types = ["mousedown", "mouseup", "click", "contextmenu", "mousemove"];
   for (const type of types) {
     document.addEventListener(type, record, true);
@@ -417,9 +418,7 @@ describe("a press on nested clickable elements", () => {
     s.press("selectend", null, point);
     s.press("select", null, point);
     assert.deepEqual(s.points, [
-      // One for each of the two, since a move is sent to each element the
-      // ray is over and does not bubble.
-      "mousemove at 112,47 button 0",
+      // One, from the innermost of the two, though the ray is over both.
       "mousemove at 112,47 button 0",
       "mousedown at 112,47 button 0",
       "mouseup at 112,47 button 0",
@@ -742,7 +741,6 @@ describe("a press on nested clickable elements", () => {
     assert.deepEqual(s.points, [
       "mousedown at 112,47 button 0",
       "mousemove at 112,47 button 0",
-      "mousemove at 112,47 button 0",
       "mouseup at 212,47 button 0",
     ]);
     s.teardown();
@@ -783,9 +781,6 @@ describe("a press on nested clickable elements", () => {
     assert.deepEqual(s.points, [
       "mousemove at 112,47 button 0",
       "mousemove at 112,47 button 0",
-      "mousemove at 112,47 button 0",
-      "mousemove at 112,47 button 0",
-      "mousemove at 212,47 button 0",
       "mousemove at 212,47 button 0",
     ]);
     s.teardown();
@@ -818,7 +813,7 @@ describe("a press on nested clickable elements", () => {
     assert.equal(reads, before, "from the button onto its label is no arrival");
     left = 200;
     s.press("pointermove", null, point);
-    assert.deepEqual(s.points, ["mousemove at 112,47 button 0", "mousemove at 112,47 button 0"]);
+    assert.deepEqual(s.points, ["mousemove at 112,47 button 0"]);
     s.teardown();
   });
 

@@ -51,6 +51,18 @@ before — and the freeze does not reach it, because the timestamps it counts
 come from the emulated session rather than from the page's animation frames.
 What these baselines are for is the six panels.
 
+Two more photographs are of the same scene under a hand. The emulated right
+controller is aimed at the Interactions panel's first button, and the scene
+is photographed with the ray resting on it (`hover.png`) and with the trigger
+held on it (`press.png`). They are the part of the pointer path that the event
+goldens in `packages/freedom` cannot see: those say that `data-xr-hover` and
+`data-xr-active` were set, and these say that the styles hung on them were
+drawn. The button is found by angle, since the page cannot say where in the
+room a panel is drawn, and the test asserts that the button took the hover
+before it trusts the photograph. A layout change that moves the button fails
+there, by name, and the angle in `scene.test.js` is what to update. They run
+in a browser of their own, so the hand is in none of the other photographs.
+
 ## The two kinds of check, and which one can fail on your machine
 
 **Baseline comparison** is exact, and is only meaningful on a machine that draws
@@ -120,10 +132,11 @@ nothing goes on passing.
 
 ## When it fails
 
-`tests/output/` holds what this run photographed, and `scene.diff.png` marks in
-magenta what moved. Read it before re-recording: the tint regression above shows
-up there as every line of text lighting up at once, which is unmistakable, and
-a re-record would have quietly blessed it.
+`tests/output/` holds what this run photographed, and a `.diff.png` beside a
+photograph, such as `scene.diff.png`, marks in magenta what moved. Read it
+before re-recording: the tint regression above shows up there as every line of
+text lighting up at once, which is unmistakable, and a re-record would have
+quietly blessed it.
 
 ## In CI
 

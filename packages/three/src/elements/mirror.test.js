@@ -2121,6 +2121,75 @@ function setupPositioned(anchorStyle, rowStyle, menuStyle) {
   return { container, scroller, row, menu };
 }
 
+/**
+ * A clipping holder, 150px square with no border, and in it a child laid out
+ * 100px square at (20, 30) and turned by 45 degrees. The child's client
+ * rect is what a browser reports for a turned box: the bounding box of the
+ * turned square, centred on the same point and bigger. Its layout offsets
+ * are where it sits before the turn.
+ *
+ * @param {string} childStyle
+ */
+function setupTurned(childStyle) {
+  const container = document.createElement("div");
+  container.setAttribute(PORTAL_ATTRIBUTE, "");
+  const holder = document.createElement("div");
+  holder.style.cssText = "position: relative; overflow: hidden";
+  const child = document.createElement("div");
+  child.style.cssText = childStyle;
+  holder.appendChild(child);
+  container.appendChild(holder);
+  document.body.appendChild(container);
+
+  const mirror = createMirror();
+  for (const node of [container, holder, child]) {
+    mirror.adopt(node);
+  }
+
+  layout(holder, () => [0, 0, 150, 150]);
+  // Turned by 45 degrees about its centre, (70, 80): half of the bounding
+  // box is 50 * (cos 45 + sin 45) across.
+  const half = 50 * Math.SQRT2;
+  layout(child, () => [70 - half, 80 - half, 70 + half, 80 + half]);
+  for (const [name, value] of /** @type {const} */ ([
+    ["offsetLeft", 20],
+    ["offsetTop", 30],
+    ["offsetWidth", 100],
+    ["offsetHeight", 100],
+    ["offsetParent", holder],
+  ])) {
+    Object.defineProperty(child, name, { configurable: true, value });
+  }
+  return { container, child };
+}
+
+describe("clip boxes under a transform", () => {
+  // A quarter of a right angle, written as the browser computes it.
+  const turned = "transform: matrix(0.7071, 0.7071, -0.7071, 0.7071, 0, 0)";
+  for (const [kind, style] of [
+    ["in the flow", turned],
+    ["positioned", `position: absolute; ${turned}`],
+  ]) {
+    test(`a turned child ${kind} is clipped where its layout puts it, at any angle`, () => {
+      // The holder's window in the child's frame is the window less the
+      // child's layout offset, (20, 30). Placed by the turned client rect
+      // instead, whose corner the turn moved up and left, the window slid
+      // about 21px right and down: the radar sweep cut along a diagonal.
+      const { container, child } = setupTurned(style);
+      try {
+        assert.ok(isTransformed(child));
+        const clip = getLocalClipBox(child);
+        assert.deepEqual(
+          { left: clip.left, top: clip.top, right: clip.right, bottom: clip.bottom },
+          { left: -20, top: -30, right: 130, bottom: 120 },
+        );
+      } finally {
+        container.remove();
+      }
+    });
+  }
+});
+
 describe("clip boxes and positioned elements", () => {
   test("a dropdown menu escapes the scroller its trigger sits in", () => {
     // dropdown.js ships exactly this: a menu styled `position: absolute;

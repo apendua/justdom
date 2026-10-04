@@ -451,31 +451,21 @@ export function releaseInit(panel, e) {
 }
 
 /**
- * The `pointermove` `moveInit` last wrote `init` for. The manager hands
- * one event to every element the ray is over, and the point is the same
- * for each, so it is mapped once per frame rather than once per element.
- *
- * @type {object | null}
- */
-let lastMove = null;
-
-/**
  * The init for the `mousemove` sent for a ray moving over an element: one
  * a frame, so the point is taken against where the panel was last probed,
- * and reads no layout. Valid until the next call.
+ * and reads no layout. Sent once per move, from the innermost element the
+ * ray is over, and it bubbles from there, as a mouse's does. Valid until
+ * the next call.
  *
  * @param {Panel | null} panel
  * @param {{ intersection?: THREE.Intersection }} e The `pointermove`.
  * @returns {MouseEventInit}
  */
 export function moveInit(panel, e) {
-  if (e !== lastMove) {
-    lastMove = e;
-    init.bubbles = false;
-    init.cancelable = false;
-    init.button = 0;
-    writePoint(panel, e, true);
-  }
+  init.bubbles = true;
+  init.cancelable = false;
+  init.button = 0;
+  writePoint(panel, e, true);
   return init;
 }
 

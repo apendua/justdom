@@ -1,18 +1,9 @@
-import { set, children, $, className } from "@apendua/justdom";
-import { flatMap, makeNonReactive, store, observe } from "@apendua/signal";
+import { flatMap, observe, store } from "@apendua/signal";
 import { Fields, FieldsContext } from "../store/Fields";
 import { RootContext } from "../store/Root";
 import Viewport, { ViewportContext } from "../store/Viewport";
 import Minefield from "./Minefield";
 import Menu, { SizePreset } from "./Menu";
-
-const fullscreen = className`
-  position: absolute;
-  top: 0;
-  left: 0;
-  bottom: 0;
-  right: 0;
-`;
 
 export const SIZE_PRESETS: SizePreset[] = [
   { id: "small", label: "Small", nRows: 9, nColumns: 9, minesRatio: 0.12 },
@@ -22,6 +13,15 @@ export const SIZE_PRESETS: SizePreset[] = [
 
 const DEFAULT_PRESET = SIZE_PRESETS.find((preset) => preset.id === "medium") ?? SIZE_PRESETS[0];
 
+/**
+ * The game, as two trees over one state: the board and the menu. They are
+ * mounted in two places on the page, because a headset session mirrors each
+ * into a panel of its own, and a panel is the element it is mounted in.
+ *
+ * The board is rebuilt whole when a new game starts. The menu is built once
+ * and follows the game through its props, so the panel it is mirrored into
+ * keeps its place and its size across a restart.
+ */
 const Game = (ctx: WeakKey) => {
   const dimensions = RootContext.get(ctx);
 
@@ -49,32 +49,27 @@ const Game = (ctx: WeakKey) => {
 
   ctx = ViewportContext.set(ctx, viewport);
 
-  // `flatMap` runs its callback inside a derivation, so the size read below is
-  // taken non-reactively: `startGame` writes `sizeId` and then `game`, and a
-  // tracked read of the first would rebuild this whole subtree against the old
-  // board before the new one arrived. The rebuild belongs to `game` alone,
-  // which is what `switchMap` said here.
-  const currentSizeId = makeNonReactive(() => state.sizeId);
-  return flatMap((game: Fields) => {
-    const newContext = FieldsContext.set(ctx, game);
-    const selectedId = currentSizeId();
-    return $("div", [
-      set("className", fullscreen),
-      children(
-        Minefield(newContext, game),
-        Menu(newContext, {
-          presets: SIZE_PRESETS,
-          selectedId,
-          game,
-          onSelect: startGame,
-          onRestart: () => {
-            const preset = SIZE_PRESETS.find((p) => p.id === selectedId) ?? SIZE_PRESETS[0];
-            startGame(preset);
-          },
-        }),
-      ),
-    ]);
-  })(observe(state).game);
+  return {
+    // `flatMap` runs its callback inside a derivation, so it reads nothing but
+    // the board it is handed: the rebuild belongs to `game` alone.
+    board: flatMap((game: Fields) => Minefield(FieldsContext.set(ctx, game), game))(
+      observe(state).game,
+    ),
+    menu: Menu(ctx, {
+      presets: SIZE_PRESETS,
+      get selectedId() {
+        return state.sizeId;
+      },
+      get game() {
+        return state.game;
+      },
+      onSelect: startGame,
+      onRestart: () => {
+        const preset = SIZE_PRESETS.find((p) => p.id === state.sizeId) ?? SIZE_PRESETS[0];
+        startGame(preset);
+      },
+    }),
+  };
 };
 
 export default Game;

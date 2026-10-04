@@ -9,7 +9,6 @@ import { createPortal } from "./portal.js";
 import { getContentPosition } from "./mirror.js";
 import { stagedRoot } from "../test/stagedRoot.js";
 import { frameFor } from "./panelFrame.js";
-import { PORTAL_ATTRIBUTE } from "./portalRoot.js";
 
 /**
  * Mirror `root` into a panel and let it load, with every `console.warn` the
@@ -199,28 +198,34 @@ describe("a panel's root on a transformed chain", () => {
 
 describe("a frame's scale", () => {
   test("divides by a matrix3d's projective weight", () => {
-    const root = document.createElement("div");
-    root.setAttribute(PORTAL_ATTRIBUTE, "");
+    const { stage, root, child } = stagedRoot({ claimed: true });
     root.style.transform = "matrix3d(1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 2)";
-    const child = document.createElement("div");
-    root.appendChild(child);
-    document.body.appendChild(root);
     try {
       const frame = frameFor(child);
       assert.deepEqual([frame.sx, frame.sy], [0.5, 0.5]);
     } finally {
-      root.remove();
+      stage.remove();
+    }
+  });
+
+  test("is the product of a scaled root on a scaled page", () => {
+    const { stage, root, child, place, setScale, adopt } = stagedRoot({ claimed: true });
+    place(root, 0, 0, 300, 200);
+    place(child, 100, 40, 50, 20);
+    setScale(stage, 0.5);
+    setScale(root, 1.2);
+    adopt();
+    try {
+      assert.deepEqual(getContentPosition(child), { x: 100, y: 40 });
+    } finally {
+      stage.remove();
     }
   });
 
   test("is not refused for a rotation of zero", () => {
     // An element at rest after a `rotate` animation computes to `0deg`.
-    const stage = document.createElement("div");
-    stage.style.transform = "matrix(0.5, 0, 0, 0.5, 0, 0)";
-    const root = document.createElement("div");
-    root.setAttribute(PORTAL_ATTRIBUTE, "");
-    stage.appendChild(root);
-    document.body.appendChild(stage);
+    const { stage, root, setScale } = stagedRoot({ claimed: true });
+    setScale(stage, 0.5);
     const original = window.getComputedStyle;
     const warn = console.warn;
     /** @type {unknown[]} */
@@ -259,9 +264,9 @@ describe("a frame's scale", () => {
 describe("a frame read again", () => {
   /**
    * A root holding one child laid out 100 px across and 40 down, inside a
-   * stage, adopted by a mirror with no portal: what is above the root
-   * changes by hand through `setScale`, and the test says which event the
-   * mirror hears.
+   * stage, adopted by a mirror with no portal: the root, or what is above
+   * it, changes by hand through `setScale`, and the test says which event
+   * the mirror hears.
    */
   function measuredRoot() {
     const staged = stagedRoot({ claimed: true });

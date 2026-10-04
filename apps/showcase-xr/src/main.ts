@@ -43,7 +43,7 @@ const plugins = vectors
 // frame of a photograph of the scene, which is what the visual test takes.
 Promise.resolve(
   query.has("emulator")
-    ? import("./emulator.js").then(({ install }) =>
+    ? import("@apendua.dev/headset/emulator").then(({ install }) =>
         install({ devUI: query.get("emulator") !== "bare" }),
       )
     : undefined,

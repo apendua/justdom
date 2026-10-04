@@ -2,7 +2,7 @@ import * as THREE from "three";
 import { children, cursors, $, dom, getScene, getXRSession } from "@apendua/freedom";
 import { createDiagnostics, useDiagnostics } from "@apendua/justui";
 import { component, effects, effectsOnly, Stream, useEffects } from "@apendua/signal";
-import { xrSession } from "../session.js";
+import { xrSession } from "@apendua.dev/headset/session";
 
 /**
  * What the session is set against: one colour, all the way round, rather

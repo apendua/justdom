@@ -1,27 +1,10 @@
 import { render, createXRButton } from "@apendua/freedom";
+import { canPresent } from "@apendua.dev/headset/session";
 import { XRControllerModelFactory } from "three/examples/jsm/webxr/XRControllerModelFactory.js";
 import { OculusHandModel } from "three/examples/jsm/webxr/OculusHandModel.js";
 import type { XRHandSpace } from "three";
 import Scene from "./components/Scene.js";
 import TodoKeyboard from "./components/TodoKeyboard.js";
-
-/**
- * Whether this platform can open an immersive session at all. Asked before
- * a renderer is made: a page that cannot go anywhere should not run a
- * render loop or wear a button that says so.
- */
-async function canPresent(): Promise<boolean> {
-  const xr = navigator.xr;
-  if (!xr) {
-    return false;
-  }
-  for (const mode of ["immersive-ar", "immersive-vr"] as const) {
-    if (await xr.isSessionSupported(mode).catch(() => false)) {
-      return true;
-    }
-  }
-  return false;
-}
 
 /**
  * Offer the page a headset: a scene that mirrors `panel` — the element the
@@ -38,7 +21,7 @@ export async function offerXR(panel: HTMLElement): Promise<void> {
   const query = new URLSearchParams(location.search);
   if (query.has("emulator")) {
     try {
-      const { install } = await import("./emulator.js");
+      const { install } = await import("@apendua.dev/headset/emulator");
       install({ devUI: query.get("emulator") !== "bare" });
     } catch (err) {
       console.error("Could not install the XR emulator:", err);

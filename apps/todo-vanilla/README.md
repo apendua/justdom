@@ -39,9 +39,8 @@ the panels, for a harness photographing the scene.
 | `src/components/TodoItem.ts` | A row: a drag handle, a checkbox drawn honestly in both builds, a label, a Delete button. |
 | `tests/drag-check.mjs` | Reorders the list by dragging, with the mouse on the page and with the controller in the emulator. |
 | `src/components/Scene.ts` | The scene: `dom(ctx, panel, …)`. Lights, a cursor, the panel, and the frame rate while a session runs. |
-| `src/session.ts` | The session the page is shown in, or null: written by the scene from `getXRSession`, read by the app for its exit button. |
 | `src/components/TodoKeyboard.ts` | What the headset's keyboard looks like: `keyboard` from `@apendua/justui` dressed for this panel. |
-| `src/emulator.ts` | IWER, behind `?emulator`. |
+| `@apendua.dev/headset` | Not a file here, but shared with the other headset apps: `xrSession`, the session the page is shown in, written by the scene and read by the app for its exit button; `canPresent`; and IWER behind `?emulator`. |
 
 Three things the page does not know about, and does not need to.
 

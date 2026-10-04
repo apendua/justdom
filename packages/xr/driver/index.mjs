@@ -137,6 +137,39 @@ export async function aimAt(page, head, target) {
 }
 
 /**
+ * Rotate a vector by a panel's Euler angles in the order `YXZ`, the pitch
+ * about x first and then the yaw about y, which is how a check turns a
+ * point on a panel into the scene from the figures the app places the
+ * panel by.
+ *
+ * @param {[number, number, number]} v
+ * @param {number} pitch
+ * @param {number} yaw
+ * @returns {[number, number, number]}
+ */
+export function rotate([x, y, z], pitch, yaw) {
+  const y1 = y * Math.cos(pitch) - z * Math.sin(pitch);
+  const z1 = y * Math.sin(pitch) + z * Math.cos(pitch);
+  return [x * Math.cos(yaw) + z1 * Math.sin(yaw), y1, -x * Math.sin(yaw) + z1 * Math.cos(yaw)];
+}
+
+/**
+ * Close (1) or open (0) one of the right controller's buttons, and let four
+ * frames pass. A drag is a close, some aims and an open.
+ *
+ * @param {import("playwright-core").Page} page
+ * @param {"trigger" | "squeeze"} button
+ * @param {0 | 1} value
+ */
+export async function hold(page, button, value) {
+  await page.evaluate(
+    ([b, v]) => /** @type {any} */ (window).xrDevice.controllers.right.updateButtonValue(b, v),
+    /** @type {const} */ ([button, value]),
+  );
+  await frames(page, 4);
+}
+
+/**
  * Press and release one of the right controller's buttons, four frames
  * each way.
  *
@@ -144,11 +177,6 @@ export async function aimAt(page, head, target) {
  * @param {"trigger" | "squeeze"} button
  */
 export async function press(page, button) {
-  for (const value of [1, 0]) {
-    await page.evaluate(
-      ([b, v]) => /** @type {any} */ (window).xrDevice.controllers.right.updateButtonValue(b, v),
-      /** @type {const} */ ([button, value]),
-    );
-    await frames(page, 4);
-  }
+  await hold(page, button, 1);
+  await hold(page, button, 0);
 }

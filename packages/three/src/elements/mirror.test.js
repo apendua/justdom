@@ -13,11 +13,11 @@ import {
   getObjectPosition,
   getTextLayout,
   isTransformed,
-  PORTAL_ATTRIBUTE,
   resetMeasuringRangeForTests,
   trackCharacterEdges,
   tracksCharacterEdges,
 } from "./mirror.js";
+import { PORTAL_ATTRIBUTE } from "./portalRoot.js";
 import { UNCLIPPED } from "./clip.js";
 import { SVG_NAMESPACE } from "./plugins.js";
 

@@ -349,11 +349,17 @@ const client = new THREE.Vector2();
 
 /**
  * The init every mouse event a ray sends is made from, written in place for
- * each. `MouseEvent` copies what it is given, so one object serves them
- * all, and a ray resting on a button, sending `mousemove` every frame,
- * allocates nothing for it.
+ * each, and the pointer event a browser sends ahead of it. `MouseEvent` and
+ * `PointerEvent` copy what they are given, so one object serves them all,
+ * and a ray resting on a button, sending `pointermove` and `mousemove`
+ * every frame, allocates nothing for it.
  *
- * @type {MouseEventInit}
+ * A ray's pointer events say it is a mouse, which is what the mouse events
+ * after them say too, and each hand is a pointer of its own, its
+ * `pointerId` written in for each event (see `sendPointerAndMouse` in
+ * `pointerForwarding.js`).
+ *
+ * @type {PointerEventInit}
  */
 const init = {
   bubbles: false,
@@ -363,6 +369,9 @@ const init = {
   clientY: 0,
   screenX: 0,
   screenY: 0,
+  pointerId: 0,
+  pointerType: "mouse",
+  isPrimary: true,
 };
 
 /**
@@ -416,7 +425,7 @@ function writePoint(panel, e, on) {
  * @param {boolean} cancelable
  * @param {number} [button] The mouse button the event says was pressed: the
  *   main one unless said otherwise, the secondary one (2) for the grip.
- * @returns {MouseEventInit}
+ * @returns {PointerEventInit}
  */
 export function pressInit(panel, e, cancelable, button = 0) {
   init.bubbles = true;
@@ -436,7 +445,7 @@ export function pressInit(panel, e, cancelable, button = 0) {
  *
  * @param {Panel | null} panel
  * @param {{ intersection?: THREE.Intersection }} e The `selectend`.
- * @returns {MouseEventInit}
+ * @returns {PointerEventInit}
  */
 export function releaseInit(panel, e) {
   init.bubbles = true;
@@ -459,7 +468,7 @@ export function releaseInit(panel, e) {
  *
  * @param {Panel | null} panel
  * @param {{ intersection?: THREE.Intersection }} e The `pointermove`.
- * @returns {MouseEventInit}
+ * @returns {PointerEventInit}
  */
 export function moveInit(panel, e) {
   init.bubbles = true;

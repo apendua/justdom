@@ -11,8 +11,16 @@ own environment, but this monorepo's packages are plain ES modules tested with
 `node:test` and nothing else. `setupJsdom()` is the smallest thing that closes
 that gap: it creates a JSDOM instance and copies the handful of globals that
 DOM code actually reaches for — `window`, `document`, `navigator`,
-`HTMLElement`, `Node`, `Comment`, `DocumentFragment`, `Text`, `Event`,
-`MouseEvent` — onto `globalThis`.
+`HTMLElement`, `Element`, `Node`, `Comment`, `DocumentFragment`, `Text`,
+`Event`, `MouseEvent`, `PointerEvent` — onto `globalThis`.
+
+jsdom has no pointer events, so the window gets a stand-in for them: a
+`PointerEvent` that is a `MouseEvent` with the `pointerId`, `pointerType` and
+`isPrimary` it was made with, and `setPointerCapture`,
+`releasePointerCapture` and `hasPointerCapture` on `Element`. The one pointer
+the window knows of is the mouse's, whose id is 1, so capturing or releasing
+any other throws a `NotFoundError`, as a browser does for a pointer it has no
+record of.
 
 ## Usage
 

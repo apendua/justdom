@@ -9,6 +9,25 @@ body {
   background: #faf8f2;
 }
 
-#root {
-  height: 100%;
+/*
+ * The three places the app is mounted: the toolbar across the top, the
+ * program on the left and the drawing on the right. They are kept apart
+ * because a headset session mirrors each into a panel of its own, and a
+ * panel is the element it mirrors.
+ */
+body {
+  display: grid;
+  grid-template-columns: minmax(300px, min(38%, 560px)) minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
+  height: 100vh;
+  height: 100dvh;
+}
+
+#toolbar {
+  grid-column: 1 / -1;
+}
+
+#editor,
+#canvas {
+  min-height: 0;
 }

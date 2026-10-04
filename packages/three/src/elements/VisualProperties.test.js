@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import * as THREE from "three";
 import { Derived } from "@apendua/signal";
 import VisualProperties from "./VisualProperties.js";
-import { PORTAL_ATTRIBUTE } from "./mirror.js";
+import { PORTAL_ATTRIBUTE } from "./portalRoot.js";
 
 // Same stub as div.test.js: jsdom has no Font Loading API, and
 // `VisualProperties` will not measure text until `document.fonts` says the

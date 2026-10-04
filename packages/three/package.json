@@ -25,6 +25,10 @@
       "types": "./lib-types/index.d.ts",
       "import": "./src/index.js"
     },
+    "./page": {
+      "types": "./lib-types/page.d.ts",
+      "import": "./src/page.js"
+    },
     "./svg": {
       "types": "./lib-types/svg/index.d.ts",
       "import": "./src/svg/index.js"

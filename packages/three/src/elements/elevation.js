@@ -11,8 +11,8 @@ import {
   isTransformed,
   movesAgainstScroll,
   nodeCache,
-  PORTAL_ATTRIBUTE,
 } from "./mirror.js";
+import { PORTAL_ATTRIBUTE } from "./portalRoot.js";
 import { composeTransform, getOwnTransform } from "./cssTransform.js";
 import { isSvgElement } from "./plugins.js";
 import { getDrawnBorderColor, parseAlpha } from "./VisualProperties.js";

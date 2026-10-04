@@ -45,6 +45,7 @@ import {
   headPosition,
   launch,
   press,
+  rotate,
 } from "@apendua.dev/headset/driver";
 
 const HERE = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -52,21 +53,6 @@ const HERE = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const SHOTS = process.env.SHOTS;
 if (SHOTS) {
   mkdirSync(SHOTS, { recursive: true });
-}
-
-/**
- * Rotate a vector by a panel's Euler angles in the order `YXZ`: the pitch
- * about x first, then the yaw about y.
- *
- * @param {[number, number, number]} v
- * @param {number} pitch
- * @param {number} yaw
- * @returns {[number, number, number]}
- */
-function rotate([x, y, z], pitch, yaw) {
-  const y1 = y * Math.cos(pitch) - z * Math.sin(pitch);
-  const z1 = y * Math.sin(pitch) + z * Math.cos(pitch);
-  return [x * Math.cos(yaw) + z1 * Math.sin(yaw), y1, -x * Math.sin(yaw) + z1 * Math.cos(yaw)];
 }
 
 /**

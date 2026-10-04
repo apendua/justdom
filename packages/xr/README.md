@@ -80,13 +80,16 @@ emulated headset from Node, through the device `install` leaves on
 `window.xrDevice`: `launch()` for Chromium on SwiftShader, `frames(page, n)`
 to wait for frames, `headPosition(page)` for the origin of the `local` space,
 `aimAt(page, head, target)` to point the right controller's ray through a
-point, `press(page, "trigger" | "squeeze")`, and `check`, `finish` and
-`closeAll` for the tally, the exit code and the teardown. It is in
+point, `rotate(v, pitch, yaw)` to turn a point on a panel into the scene by
+the panel's angles, `press(page, "trigger" | "squeeze")`,
+`hold(page, button, 1 | 0)` to close or open a button for a drag, and
+`check`, `finish` and `closeAll` for the tally, the exit code and the
+teardown. It is in
 `driver/` rather than `src/`, since it runs in Node and never in a page.
 It borrows Playwright from `apps/showcase-xr` and launches the Chromium at
 `/opt/pw-browsers/chromium-1194`, or the one `CHROMIUM` names.
-Minesweeper's and the desk's checks use it, and
-`.github/workflows/driven.yml` runs both on pull requests.
+Minesweeper's, the desk's and Euclid's checks use it, and
+`.github/workflows/driven.yml` runs all three on pull requests.
 
 ## Tests
 

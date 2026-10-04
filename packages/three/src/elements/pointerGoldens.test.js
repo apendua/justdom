@@ -5,12 +5,13 @@
  *
  * A gesture is a script of steps. A step aims the ray, closes or opens a
  * button, changes the page or loses the hand. For each step the golden
- * records every mouse and drag event the page heard, with its target,
- * `bubbles`, `cancelable`, `button` and point. It records every ray event
- * that got past the panel to the scene above it. After the step it records
- * which elements carry `data-xr-hover` and `data-xr-active` and where each
- * scrolling list stands. The recordings are in `pointerGoldens.json` beside
- * this file.
+ * records every pointer, mouse and drag event the page heard, with its
+ * target, `bubbles`, `cancelable`, `button` and point, and for a pointer
+ * event which pointer it came from, its `pointerType` and whether it is
+ * the primary one. It records every ray event that got past the panel to
+ * the scene above it. After the step it records which elements carry
+ * `data-xr-hover` and `data-xr-active` and where each scrolling list
+ * stands. The recordings are in `pointerGoldens.json` beside this file.
  *
  * They pin today's behaviour, which is not always the behaviour anybody
  * wants. A hand lost mid-press releases nothing yet, and the plan means to
@@ -70,6 +71,9 @@ after(() => {
 
 /** The mouse and drag events a page can hear from a ray. */
 const DOM_TYPES = [
+  "pointerdown",
+  "pointerup",
+  "pointermove",
   "mousedown",
   "mouseup",
   "click",
@@ -100,10 +104,12 @@ const RAY_TYPES = [
  * Build the page, mirror it into a panel, and record what it hears.
  *
  * @param {Spec[]} children Under a 400 by 300 root at the page's corner.
- * @param {{ accept?: boolean }} [options] Whether a list takes what is
- *   dropped on it; every scrolling list sorts its rows by drag and drop.
+ * @param {{ accept?: boolean, capture?: boolean }} [options] Whether a
+ *   list takes what is dropped on it, since every scrolling list sorts its
+ *   rows by drag and drop, and whether an element captures the pointer
+ *   that presses it, as a page that drags by capture does.
  */
-async function page(children, { accept = true } = {}) {
+async function page(children, { accept = true, capture = false } = {}) {
   const root = document.createElement("div");
   root.id = "root";
   /** @type {Map<string, HTMLElement>} */
@@ -140,6 +146,12 @@ async function page(children, { accept = true } = {}) {
     build(root, child);
   }
   document.body.appendChild(root);
+  if (capture) {
+    root.addEventListener("pointerdown", (event) => {
+      const { pointerId } = /** @type {PointerEvent} */ (event);
+      /** @type {Element} */ (event.target).setPointerCapture(pointerId);
+    });
+  }
 
   const manager = new InteractionManager();
   const ctx = InteractionContext.set({}, manager);
@@ -151,14 +163,33 @@ async function page(children, { accept = true } = {}) {
 
   /** @type {string[]} */
   const lines = [];
+  /**
+   * Each pointer the page has heard of, numbered from 1 in the order it was
+   * first heard. A hand's `pointerId` is given out once per hand for the
+   * life of the module, so it depends on which tests ran before; what a
+   * golden pins is which pointer an event came from.
+   *
+   * @type {Map<number, number>}
+   */
+  const pointers = new Map();
   /** @param {Event} event */
   const hear = (event) => {
     const { bubbles, cancelable, button, clientX, clientY } = /** @type {MouseEvent} */ (event);
     const target = /** @type {Element} */ (event.target);
+    let pointer = "";
+    if (event instanceof PointerEvent) {
+      const { pointerId, pointerType, isPrimary } = event;
+      let n = pointers.get(pointerId);
+      if (n === undefined) {
+        n = pointers.size + 1;
+        pointers.set(pointerId, n);
+      }
+      pointer = ` pointer ${n} ${pointerType}${isPrimary ? " primary" : ""}`;
+    }
     lines.push(
       `${event.type} #${target.id}` +
         ` ${bubbles ? "bubbles" : "-"} ${cancelable ? "cancelable" : "-"}` +
-        ` button ${button} at ${Math.round(clientX)},${Math.round(clientY)}`,
+        ` button ${button} at ${Math.round(clientX)},${Math.round(clientY)}${pointer}`,
     );
   };
   // On the way down, so that an event which does not bubble is heard too.
@@ -411,6 +442,18 @@ describe("event-sequence goldens", () => {
     await g.step("hand carries it onto #d", () => g.aim(g.on("d")));
     await g.step("trigger opens", () => g.hands[0].trigger("selectend"));
     matches("a press that becomes a drag and drop, refused", g.lines);
+    g.teardown();
+  });
+
+  test("a captured press that becomes a drag and drop", async () => {
+    const g = await page(LISTS, { accept: false, capture: true });
+    await g.step("aim at #a", () => g.aim(g.on("a")));
+    await g.step("trigger closes", () => g.hands[0].trigger("selectstart"));
+    await g.step("hand carries it onto #d", () => g.aim(g.on("d")));
+    await g.step("trigger opens", () => g.hands[0].trigger("selectend"));
+    await g.step("aim at #b", () => g.aim(g.on("b")));
+    await g.step("ray stays", () => g.hands[0].frame());
+    matches("a captured press that becomes a drag and drop", g.lines);
     g.teardown();
   });
 

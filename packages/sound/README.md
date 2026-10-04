@@ -120,9 +120,9 @@ the *last* one landed.
 clusters snapping together — which is the same event wearing a different hat,
 and used to be a `Switch1.wav` loaded by hand in that app.
 
-The soundtrack player and the output picker are used by all six apps with music
-— the three above plus `blockout-xr`, `rubik` and `euclid-xr` — each behind a
-Music section on a panel it already had. Every one of them had its own copy of
+The soundtrack player and the output picker are used by every app here with
+music, the three above among them, each behind a Music section on a panel it
+already had. Every one of them had its own copy of
 the player before this package took it; `knights` still has its own, and should,
 being a flat page with an `<audio>` element rather than a session to hang the
 track on.

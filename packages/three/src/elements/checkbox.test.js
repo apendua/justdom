@@ -2,7 +2,8 @@ import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
 import { InteractionContext } from "../interactions.js";
-import { createMirror, PORTAL_ATTRIBUTE } from "./mirror.js";
+import { createMirror } from "./mirror.js";
+import { PORTAL_ATTRIBUTE } from "./portalRoot.js";
 import { checkbox } from "./checkbox.js";
 
 /**

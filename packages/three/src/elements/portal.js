@@ -17,13 +17,8 @@ import { isTextInput } from "./typing.js";
 import { bindPortalKeyboard } from "./portalKeyboard.js";
 import { createKeyboardHost } from "./keyboardHost.js";
 import { KeyboardSlotContext } from "./keyboardSlot.js";
-import {
-  createMirror,
-  getBorderBoxSize,
-  isPortalRoot,
-  LOADING_ATTRIBUTE,
-  PORTAL_ATTRIBUTE,
-} from "./mirror.js";
+import { createMirror, getBorderBoxSize, isPortalRoot, LOADING_ATTRIBUTE } from "./mirror.js";
+import { PORTAL_ATTRIBUTE } from "./portalRoot.js";
 import { createAnimationClock } from "./animationClock.js";
 import { watchDocumentStyles } from "./documentStyles.js";
 import { createBlocker, coverBox } from "./blocker.js";
@@ -68,32 +63,6 @@ import { InteractionContext } from "../interactions.js";
  * keyboard — has to work its px offsets through.
  */
 const PANEL_SCALE = 0.01;
-
-/**
- * The portal a node was projected through, if it was.
- *
- * Worth having because a click inside a portal and a click on the page are not
- * the same kind of event, however alike they look. The ones the portal
- * synthesises from a ray are the panel's own; the ones the browser raises are
- * somebody using a mouse on whatever else the page happens to be showing — a
- * VR button, a debug overlay, an emulator's controls. A component that dresses
- * itself in a `document` listener to hear "clicked elsewhere" hears both, and
- * closes itself on the mouse click that was busy pressing the trigger.
- *
- * Listening on this instead scopes that to the panel, which is what "elsewhere"
- * was ever meant to mean. It returns null off the page's own DOM, where
- * `document` is the right answer and there is nothing to disambiguate.
- *
- * @param {Node | null} node
- * @returns {HTMLElement | null}
- */
-export function getPortalRoot(node) {
-  const element =
-    node?.nodeType === Node.ELEMENT_NODE
-      ? /** @type {Element} */ (node)
-      : (node?.parentElement ?? null);
-  return /** @type {HTMLElement | null} */ (element?.closest(`[${PORTAL_ATTRIBUTE}]`) ?? null);
-}
 
 /**
  * What a portal's `MutationObserver` watches in its tree. Exported for the

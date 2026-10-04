@@ -44,8 +44,9 @@ const TEXT_RENDER_BLEED = 2;
  * Four rather than a number off the device: three clamps whatever is asked
  * for to what the hardware can do, so this needs no renderer to be reached
  * from here, and four is where a run of text has already got back nearly all
- * there is to get. It is also what `euclid-xr`'s code panel arrived at on its
- * own, before any of this was shared.
+ * there is to get. It is also what the code panel of `euclid-xr`, since
+ * folded into `euclid`, arrived at on its own, before any of this was
+ * shared.
  */
 export const TEXT_ANISOTROPY = 4;
 

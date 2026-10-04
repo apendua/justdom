@@ -138,13 +138,15 @@ function nest({ outer, inner, build, haptics = null }) {
      *   ray met: the inner's unless said otherwise, the outer's for the
      *   part of it the inner does not cover. The events that end a press
      *   carry the start it began with, as the manager's do.
+     * @param {THREE.XRTargetRaySpace} [hand] The controller it came from:
+     *   the one hand unless said otherwise.
      */
-    press(type, inputSource = null, point, on, from = null, of = innerObject) {
+    press(type, inputSource = null, point, on, from = null, of = innerObject, hand = controller) {
       const mesh = of.children.find((child) => child instanceof THREE.Mesh) ?? of;
       const button = type.startsWith("squeeze") ? "squeeze" : "select";
       const event = {
         type,
-        controller,
+        controller: hand,
         inputSource,
         target: mesh,
         originalTarget: mesh,
@@ -164,7 +166,7 @@ function nest({ outer, inner, build, haptics = null }) {
       if (type === "selectend") {
         // The controller's own release, which the manager's listener
         // passed on as the above and which a scroll drag hears directly.
-        controller.dispatchEvent(/** @type {never} */ ({ type, data: inputSource }));
+        hand.dispatchEvent(/** @type {never} */ ({ type, data: inputSource }));
       }
     },
     teardown() {
@@ -877,5 +879,209 @@ describe("a press on nested clickable elements", () => {
     assert.deepEqual(s.points, ["mousemove at 112,47 button 0"]);
     s.press("selectend", null, point, undefined, null, s.outerObject);
     s.teardown();
+  });
+});
+
+describe("a ray's pointer events", () => {
+  const TYPES = [
+    "pointerdown",
+    "pointermove",
+    "pointerup",
+    "mousedown",
+    "mousemove",
+    "mouseup",
+    "click",
+  ];
+
+  /**
+   * A button with a label in it, and what the page hears of the ray on the
+   * label, as `type on element #pointerId button` for a pointer event and
+   * `type on element` for the rest.
+   *
+   * @param {(event: Event) => void} [listen] A page's own handler, run
+   *   for each of `TYPES` on the label as it is heard there.
+   */
+  function label(listen) {
+    const outer = html("button", "cursor: pointer");
+    const inner = html("span", "cursor: pointer");
+    outer.appendChild(inner);
+    outer.getBoundingClientRect = () => clientRect(100, 40, 80, 30);
+    const s = nest({
+      outer,
+      inner,
+      build: (ctx, element) => box(ctx, /** @type {HTMLElement} */ (element)),
+    });
+    s.outerObject.updateMatrixWorld(true);
+    const point = s.outerObject.localToWorld(new THREE.Vector3(12, 7, 0));
+    /** @type {string[]} */
+    const heard = [];
+    /** @param {Event} event */
+    const record = (event) => {
+      const target = /** @type {Element} */ (event.target).localName;
+      heard.push(
+        event instanceof PointerEvent
+          ? `${event.type} on ${target} #${event.pointerId} ${event.button}`
+          : `${event.type} on ${target}`,
+      );
+    };
+    for (const type of TYPES) {
+      document.addEventListener(type, record, true);
+      if (listen) {
+        inner.addEventListener(type, listen);
+      }
+    }
+    return {
+      s,
+      point,
+      inner,
+      outer,
+      heard,
+      teardown() {
+        for (const type of TYPES) {
+          document.removeEventListener(type, record, true);
+        }
+        s.teardown();
+      },
+    };
+  }
+
+  test("come ahead of each mouse event, as a browser sends them", () => {
+    const { s, point, heard, teardown } = label();
+    s.press("pointerenter", null, point);
+    s.press("pointermove", null, point);
+    s.press("selectstart", null, point);
+    s.press("selectend", null, point);
+    s.press("select", null, point);
+    const id = heard[0].split("#")[1].split(" ")[0];
+    assert.ok(Number(id) >= 2, "a hand's pointer is not the mouse's");
+    assert.deepEqual(heard, [
+      // A move changes no button, which a pointer event says as -1.
+      `pointermove on span #${id} -1`,
+      "mousemove on span",
+      `pointerdown on span #${id} 0`,
+      "mousedown on span",
+      `pointerup on span #${id} 0`,
+      "mouseup on span",
+      "click on span",
+    ]);
+    teardown();
+  });
+
+  test("say which hand each is from", () => {
+    const { s, point, heard, teardown } = label();
+    const other = /** @type {THREE.XRTargetRaySpace} */ (
+      /** @type {unknown} */ (new THREE.Object3D())
+    );
+    s.press("pointermove", null, point);
+    s.press("pointermove", null, point, undefined, null, undefined, other);
+    s.press("pointermove", null, point);
+    const ids = heard
+      .filter((entry) => entry.startsWith("pointermove"))
+      .map((entry) => entry.split("#")[1]);
+    assert.equal(ids.length, 3);
+    assert.notEqual(ids[0], ids[1], "the other hand is another pointer");
+    assert.equal(ids[0], ids[2], "and the first hand keeps its own");
+    teardown();
+  });
+
+  test("cancelled at the press, leave out the mouse events until the release", () => {
+    const { s, point, heard, teardown } = label((event) => {
+      if (event.type === "pointerdown") {
+        event.preventDefault();
+      }
+    });
+    s.press("selectstart", null, point);
+    s.press("pointermove", null, point);
+    s.press("selectend", null, point);
+    s.press("select", null, point);
+    s.press("pointermove", null, point);
+    assert.deepEqual(
+      heard.map((entry) => entry.split(" #")[0]),
+      [
+        "pointerdown on span",
+        "pointermove on span",
+        "pointerup on span",
+        // The click still goes, as a browser's does.
+        "click on span",
+        // And a move after the release is a mouse's again.
+        "pointermove on span",
+        "mousemove on span",
+      ],
+    );
+    teardown();
+  });
+
+  test("can be captured, and the hand's moves and release go to the captor", () => {
+    /** @type {string[]} */
+    const captured = [];
+    const { s, point, outer, heard, teardown } = label((event) => {
+      if (event.type === "pointerdown") {
+        const { pointerId } = /** @type {PointerEvent} */ (event);
+        // A page that drags by capture, which a browser refuses for a
+        // pointer it does not know.
+        outer.setPointerCapture(pointerId);
+        captured.push(`has capture: ${outer.hasPointerCapture(pointerId)}`);
+      }
+    });
+    s.press("selectstart", null, point);
+    s.press("pointermove", null, point);
+    s.press("selectend", null, point);
+    s.press("select", null, point);
+    const id = Number(heard[0].split("#")[1].split(" ")[0]);
+    captured.push(`after the release: ${outer.hasPointerCapture(id)}`);
+    s.press("pointermove", null, point);
+    assert.deepEqual(captured, ["has capture: true", "after the release: false"]);
+    assert.deepEqual(
+      heard.map((entry) => entry.split(" #")[0]),
+      [
+        "pointerdown on span",
+        "mousedown on span",
+        "pointermove on button",
+        "mousemove on button",
+        "pointerup on button",
+        "mouseup on button",
+        "click on span",
+        "pointermove on span",
+        "mousemove on span",
+      ],
+    );
+    teardown();
+  });
+
+  test("let the page release a hand's capture in its own pointerup", () => {
+    /** @type {string[]} */
+    const handled = [];
+    const { s, point, outer, teardown } = label((event) => {
+      if (event.type === "pointerdown") {
+        outer.setPointerCapture(/** @type {PointerEvent} */ (event).pointerId);
+      }
+    });
+    outer.addEventListener("pointerup", (event) => {
+      // What a page that drags by capture writes on its captor, which by
+      // now finds the capture gone with the release, as a browser's is.
+      outer.releasePointerCapture(/** @type {PointerEvent} */ (event).pointerId);
+      handled.push("released");
+    });
+    s.press("selectstart", null, point);
+    s.press("selectend", null, point);
+    s.press("select", null, point);
+    const span = /** @type {HTMLElement} */ (outer.firstElementChild);
+    span.releasePointerCapture(2);
+    handled.push("released one never captured");
+    assert.deepEqual(handled, ["released", "released one never captured"]);
+    teardown();
+  });
+
+  test("leave the mouse's own capture to the browser", () => {
+    const element = document.createElement("div");
+    document.body.appendChild(element);
+    // Wrapped by now: an earlier test gave a hand a pointer.
+    element.setPointerCapture(1);
+    assert.equal(element.hasPointerCapture(1), true);
+    element.releasePointerCapture(1);
+    assert.equal(element.hasPointerCapture(1), false);
+    assert.throws(() => element.setPointerCapture(99), { name: "NotFoundError" });
+    assert.throws(() => element.releasePointerCapture(99), { name: "NotFoundError" });
+    element.remove();
   });
 });

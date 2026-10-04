@@ -63,6 +63,78 @@ export function setupJsdom({ ignoreCss = false, html = DEFAULT_HTML } = {}) {
     configurable: true,
     value: dom.window.MouseEvent,
   });
+  Object.defineProperty(globalThis, "Element", {
+    configurable: true,
+    value: dom.window.Element,
+  });
+  standInForPointers(dom.window);
+  Object.defineProperty(globalThis, "PointerEvent", {
+    configurable: true,
+    value: dom.window.PointerEvent,
+  });
 
   return dom;
+}
+
+/**
+ * Give a jsdom window what a browser has for pointers and jsdom does not:
+ * `PointerEvent`, as a `MouseEvent` that carries a pointer's id, type and
+ * whether it is the primary one, and the three pointer capture methods on
+ * `Element`. The only pointer a browser knows of here is the mouse's, whose
+ * id is 1, so capturing or releasing any other throws a `NotFoundError`, as
+ * a browser refuses a pointer it has no record of.
+ *
+ * @param {import("jsdom").DOMWindow} window
+ */
+function standInForPointers(window) {
+  if (typeof window.PointerEvent !== "function") {
+    window.PointerEvent = /** @type {typeof PointerEvent} */ (
+      /** @type {unknown} */ (
+        class PointerEvent extends window.MouseEvent {
+          /**
+           * @param {string} type
+           * @param {PointerEventInit} [init]
+           */
+          constructor(type, init = {}) {
+            super(type, init);
+            this.pointerId = init.pointerId ?? 0;
+            this.pointerType = init.pointerType ?? "";
+            this.isPrimary = init.isPrimary ?? false;
+          }
+        }
+      )
+    );
+  }
+  const proto = window.Element.prototype;
+  if (typeof proto.setPointerCapture === "function") {
+    return;
+  }
+  /** The elements that hold the mouse's pointer. */
+  const mouseCaptures = new WeakSet();
+  Object.assign(proto, {
+    /** @param {number} id */
+    setPointerCapture(id) {
+      if (id !== 1) {
+        throw new window.DOMException(
+          "No active pointer with the given id is found.",
+          "NotFoundError",
+        );
+      }
+      mouseCaptures.add(this);
+    },
+    /** @param {number} id */
+    releasePointerCapture(id) {
+      if (id !== 1) {
+        throw new window.DOMException(
+          "No active pointer with the given id is found.",
+          "NotFoundError",
+        );
+      }
+      mouseCaptures.delete(this);
+    },
+    /** @param {number} id */
+    hasPointerCapture(id) {
+      return id === 1 && mouseCaptures.has(this);
+    },
+  });
 }

@@ -39,8 +39,8 @@ anything the page throws. It drives the browser and the controller through
 `apps/showcase-xr`, so that project has to have been installed. It
 launches the Chromium at `/opt/pw-browsers/chromium-1194/chrome-linux/chrome`;
 `CHROMIUM=<path>` points it at one installed elsewhere. A pull request that
-touches this app or a package it imports runs it, with the desk's, from
-`.github/workflows/driven.yml`.
+touches this app or a package it imports runs it, with the desk's and
+Euclid's, from `.github/workflows/driven.yml`.
 
 ## How it is put together
 

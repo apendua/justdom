@@ -20,6 +20,7 @@ import {
 import { PORTAL_ATTRIBUTE } from "./portalRoot.js";
 import { UNCLIPPED } from "./clip.js";
 import { SVG_NAMESPACE } from "./plugins.js";
+import { stagedRoot } from "../test/stagedRoot.js";
 
 /**
  * @param {Element} element
@@ -820,35 +821,10 @@ describe("a panel measured through a scale", () => {
    * @param {number} scale
    */
   function scaledPanel(scale) {
-    const stage = document.createElement("div");
-    stage.style.transform = `matrix(${scale}, 0, 0, ${scale}, 0, 0)`;
-    const root = document.createElement("div");
-    root.setAttribute(PORTAL_ATTRIBUTE, "");
-    const child = document.createElement("div");
-    root.appendChild(child);
-    stage.appendChild(root);
-    document.body.appendChild(stage);
-    /**
-     * Lay `element` out at layout px (x, y), w by h, inside the root.
-     *
-     * @param {Element} element
-     * @param {number} x
-     * @param {number} y
-     * @param {number} w
-     * @param {number} h
-     */
-    const place = (element, x, y, w, h) =>
-      layout(element, () => [
-        10 + x * scale,
-        20 + y * scale,
-        10 + (x + w) * scale,
-        20 + (y + h) * scale,
-      ]);
-    place(root, 0, 0, 300, 200);
-    const mirror = createMirror();
-    mirror.adopt(root);
-    mirror.adopt(child);
-    return { stage, root, child, place, mirror };
+    const staged = stagedRoot({ at: [10, 20], claimed: true });
+    staged.setScale(staged.stage, scale);
+    staged.place(staged.root, 0, 0, 300, 200);
+    return { ...staged, mirror: staged.adopt() };
   }
 
   test("a child's position is in the root's layout px, scroll included", () => {

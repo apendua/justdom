@@ -6,7 +6,8 @@ import { InteractionContext, InteractionManager } from "../interactions.js";
 import { flushFrame, frameCallbacks, nextMacrotask, pump, settle } from "../test/portalHarness.js";
 import { clientRect } from "../test/clientRect.js";
 import { createPortal } from "./portal.js";
-import { createMirror, getContentPosition } from "./mirror.js";
+import { getContentPosition } from "./mirror.js";
+import { stagedRoot } from "../test/stagedRoot.js";
 import { frameFor } from "./panelFrame.js";
 import { PORTAL_ATTRIBUTE } from "./portalRoot.js";
 
@@ -40,23 +41,19 @@ async function mirrored(root, { budget } = {}) {
 }
 
 /**
- * A root with one box in it, inside a stage on the page. No text: jsdom
- * measures none.
+ * `stagedRoot` left for a portal to claim, with the ids the warnings name
+ * and each transform as the page writes it. No text: jsdom measures none.
  *
  * @param {object} transforms
  * @param {string} [transforms.root]
  * @param {string} [transforms.stage]
  */
 function staged({ root: rootTransform = "", stage: stageTransform = "" } = {}) {
-  const stage = document.createElement("div");
+  const { stage, root } = stagedRoot();
   stage.id = "stage";
   stage.style.transform = stageTransform;
-  const root = document.createElement("div");
   root.id = "charts";
   root.style.transform = rootTransform;
-  root.appendChild(document.createElement("div"));
-  stage.appendChild(root);
-  document.body.appendChild(stage);
   return { stage, root };
 }
 
@@ -263,38 +260,14 @@ describe("a frame read again", () => {
   /**
    * A root holding one child laid out 100 px across and 40 down, inside a
    * stage, adopted by a mirror with no portal: what is above the root
-   * changes by hand, and the test says which event the mirror hears.
-   * `scale` is the factor every client rect is drawn at, changed through
-   * `setScale` together with the transform that draws it.
+   * changes by hand through `setScale`, and the test says which event the
+   * mirror hears.
    */
   function measuredRoot() {
-    const stage = document.createElement("div");
-    const root = document.createElement("div");
-    root.setAttribute(PORTAL_ATTRIBUTE, "");
-    const child = document.createElement("div");
-    root.appendChild(child);
-    stage.appendChild(root);
-    document.body.appendChild(stage);
-    let scale = 1;
-    root.getBoundingClientRect = () => clientRect(0, 0, 300 * scale, 200 * scale);
-    child.getBoundingClientRect = () => clientRect(100 * scale, 40 * scale, 50 * scale, 20 * scale);
-    const mirror = createMirror();
-    mirror.adopt(root);
-    mirror.adopt(child);
-    return {
-      stage,
-      root,
-      child,
-      mirror,
-      /**
-       * @param {HTMLElement} element
-       * @param {number} value
-       */
-      setScale(element, value) {
-        scale = value;
-        element.style.transform = `matrix(${value}, 0, 0, ${value}, 0, 0)`;
-      },
-    };
+    const staged = stagedRoot({ claimed: true });
+    staged.place(staged.root, 0, 0, 300, 200);
+    staged.place(staged.child, 100, 40, 50, 20);
+    return { ...staged, mirror: staged.adopt() };
   }
 
   test("by a transition on the root's own transform, sampled by the clock", () => {

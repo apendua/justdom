@@ -21,10 +21,10 @@ import { getPortalRoot } from "./portalRoot.js";
  * portal claims a root, the window resizes, the document's stylesheets
  * change, or the root's own reflow signal moves (a change to its
  * attributes, or a transition the clock samples on it), and at once when
- * the ray probes the root. A rotation, a skew, a flip or a perspective has no scale to
- * divide by: the frame then reads at 1, which is how every rect was read
- * before frames existed, and a panel's root warns once, naming the element
- * that carries it.
+ * the ray probes the root. A rotation, a skew, a flip or a perspective has
+ * no scale to divide by: the frame then reads at 1, which is how every rect
+ * was read before frames existed, and a panel's root warns once, naming the
+ * element that carries it.
  *
  * Nothing else in `src` calls `getBoundingClientRect` or `getClientRects`,
  * and `panelFrame.test.js` fails the build when something does, because a
@@ -95,7 +95,7 @@ function onPageScroll(event) {
  */
 function onResize() {
   invalidateGeometry();
-  chainEpoch += 1;
+  invalidatePanelFrames();
 }
 
 /**
@@ -111,7 +111,7 @@ function onResize() {
  * @returns {() => void}
  */
 export function watchPageGeometry() {
-  chainEpoch += 1;
+  invalidatePanelFrames();
   if (watchers === 0) {
     window.addEventListener("scroll", onPageScroll, PAGE_LISTENER);
     window.addEventListener("resize", onResize, PAGE_LISTENER);
@@ -413,8 +413,9 @@ export function invalidatePanelFrame(root) {
 }
 
 /**
- * Have every frame read its chain again on its next use: the document's
- * stylesheets changed, and a rule may transform anything above a root.
+ * Have every frame read its chain again on its next use, after an event
+ * that can transform anything above a root: a portal claiming a root, the
+ * window resizing, or the document's stylesheets changing.
  *
  * @returns {void}
  */

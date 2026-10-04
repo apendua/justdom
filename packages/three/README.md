@@ -512,10 +512,11 @@ skew, a flip or a perspective cannot be divided out, so a root on a chain
 that carries one, a card tilted by `rotateY` say, has every offset, size and
 baseline inside the panel slightly wrong. The portal says so once, with a
 `console.warn` naming the root and the element that carries the transform.
-It looks when it claims the root, when the window resizes, when the ray
-presses or arrives on a control, and when the root's own attributes
-change, so a transform that arrives after the claim is caught at the next
-of those. Mirror an untransformed wrapper and transform what is inside it,
+It looks at the next measurement after it claims the root, the window
+resizes, the document's stylesheets change, or the root's own attributes
+or a transition on it change, and at once when the ray presses or arrives
+on a control, so a transform that arrives after the claim is caught at
+the next of those. Mirror an untransformed wrapper and transform what is inside it,
 or take the transform off for as long as a session runs, which is what the
 desk app does.
 

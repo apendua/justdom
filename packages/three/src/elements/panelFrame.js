@@ -15,11 +15,13 @@ import { getPortalRoot } from "./portalRoot.js";
  * A frame belongs to a panel's root, and to `document.body` for what is
  * measured outside any panel, the clones and probes appended there, which
  * only a transform on `<body>` or `<html>` reaches. Its scale is the product
- * of the scales from its element up to `<html>`. Nothing the portal hears
- * can change what is above the root, so the chain is read when a portal
- * claims a root, when the window resizes, when the ray probes the root and
- * when the root's own attributes change, and not on every mutation inside
- * the panel. A rotation, a skew, a flip or a perspective has no scale to
+ * of the scales from its element up to `<html>`. Most of what the portal
+ * hears cannot reach above the root, so the chain is not read on every
+ * mutation inside the panel. It is read at the next measurement after a
+ * portal claims a root, the window resizes, the document's stylesheets
+ * change, or the root's own reflow signal moves (a change to its
+ * attributes, or a transition the clock samples on it), and at once when
+ * the ray probes the root. A rotation, a skew, a flip or a perspective has no scale to
  * divide by: the frame then reads at 1, which is how every rect was read
  * before frames existed, and a panel's root warns once, naming the element
  * that carries it.
@@ -271,6 +273,24 @@ function isNone(value) {
 }
 
 /**
+ * Whether a computed `rotate` turns anything. An element at rest after a
+ * `rotate` animation, or set to `0deg` to be ready for one, computes to an
+ * angle of zero, in any of its forms (`0deg`, `x 0deg`, `1 1 1 0deg`):
+ * the angle is the last word, and a zero there is no rotation, as `scale:
+ * 1` is no scale.
+ *
+ * @param {string | undefined} value
+ * @returns {boolean}
+ */
+function rotates(value) {
+  if (isNone(value)) {
+    return false;
+  }
+  const words = /** @type {string} */ (value).trim().split(/\s+/);
+  return Number.parseFloat(words[words.length - 1]) !== 0;
+}
+
+/**
  * A short name for an element in a warning: its tag and its id, or its
  * first class.
  *
@@ -312,7 +332,7 @@ function readScale(frame, base) {
     const style = window.getComputedStyle(element);
     const transform = transformScale(style.transform);
     const scale = propertyScale(style.scale);
-    if (!transform || !scale || !isNone(style.rotate)) {
+    if (!transform || !scale || rotates(style.rotate)) {
       carrier = element;
       carried = !transform
         ? style.transform
@@ -382,15 +402,24 @@ export function frameFor(node) {
 
 /**
  * Have a panel root's frame read its chain again on its next use: the
- * root's own attributes changed, and a `style` or a class may have
- * transformed it. What is above the root the portal does not hear, and
- * that is read again on a claim, a resize or a probe.
+ * root's reflow signal moved, and a `style`, a class or a transition may
+ * have transformed it.
  *
  * @param {Element} root
  * @returns {void}
  */
 export function invalidatePanelFrame(root) {
   frameRecord(root).epoch = -1;
+}
+
+/**
+ * Have every frame read its chain again on its next use: the document's
+ * stylesheets changed, and a rule may transform anything above a root.
+ *
+ * @returns {void}
+ */
+export function invalidatePanelFrames() {
+  chainEpoch += 1;
 }
 
 /**

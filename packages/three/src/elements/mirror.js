@@ -17,6 +17,7 @@ import {
   getGeometryGeneration,
   invalidateGeometry,
   invalidatePanelFrame,
+  invalidatePanelFrames,
   measureClientRect,
   measureClientRects,
 } from "./panelFrame.js";
@@ -436,6 +437,24 @@ function splitsAcrossLines(element) {
     return false;
   }
   return display === "" || display === "inline";
+}
+
+/**
+ * Tell `node`'s subtree that something above it may have moved it: its
+ * own reflow signal. A panel's root is also where a transform its frame
+ * divides by can arrive, from a class swap or a transition sampled by the
+ * clock alike, so the root's frame reads its chain again too (see
+ * `panelFrame.js`).
+ *
+ * @param {Node} node
+ * @param {NodeRecord} record
+ * @returns {void}
+ */
+function bumpReflow(node, record) {
+  bump(record.reflow);
+  if (isPortalRoot(node)) {
+    invalidatePanelFrame(/** @type {Element} */ (node));
+  }
 }
 
 /**
@@ -917,12 +936,7 @@ export class DomMirror {
       }
       const record = recordOf(element);
       if (record) {
-        bump(record.reflow);
-      }
-      // The root's own `style` or class may have given it a transform,
-      // which its frame reads (see `panelFrame.js`).
-      if (isPortalRoot(element)) {
-        invalidatePanelFrame(/** @type {Element} */ (element));
+        bumpReflow(element, record);
       }
     });
   }
@@ -1155,7 +1169,7 @@ export class DomMirror {
       for (const target of targets) {
         const record = recordOf(target);
         if (record) {
-          bump(record.reflow);
+          bumpReflow(target, record);
         }
       }
     });
@@ -1190,9 +1204,14 @@ export class DomMirror {
    * through an inline `style` instead — that is a mutation on the element
    * that moved, and it is scoped to it.
    *
+   * A rule may also transform something above the panel's root, which is
+   * the one place the portal hears about that, so every frame reads its
+   * chain again too.
+   *
    * @returns {void}
    */
   documentStylesChanged() {
+    invalidatePanelFrames();
     this.#everythingChanged();
   }
 

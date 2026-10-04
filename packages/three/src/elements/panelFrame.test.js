@@ -6,7 +6,7 @@ import { InteractionContext, InteractionManager } from "../interactions.js";
 import { flushFrame, frameCallbacks, nextMacrotask, pump, settle } from "../test/portalHarness.js";
 import { clientRect } from "../test/clientRect.js";
 import { createPortal } from "./portal.js";
-import { getContentPosition } from "./mirror.js";
+import { createMirror, getContentPosition } from "./mirror.js";
 import { frameFor } from "./panelFrame.js";
 import { PORTAL_ATTRIBUTE } from "./portalRoot.js";
 
@@ -216,6 +216,39 @@ describe("a frame's scale", () => {
     }
   });
 
+  test("is not refused for a rotation of zero", () => {
+    // An element at rest after a `rotate` animation computes to `0deg`.
+    const stage = document.createElement("div");
+    stage.style.transform = "matrix(0.5, 0, 0, 0.5, 0, 0)";
+    const root = document.createElement("div");
+    root.setAttribute(PORTAL_ATTRIBUTE, "");
+    stage.appendChild(root);
+    document.body.appendChild(stage);
+    const original = window.getComputedStyle;
+    const warn = console.warn;
+    /** @type {unknown[]} */
+    const warnings = [];
+    console.warn = (message) => warnings.push(message);
+    window.getComputedStyle = (element, pseudo) => {
+      const style = original.call(window, element, pseudo);
+      if (element !== root) {
+        return style;
+      }
+      return /** @type {CSSStyleDeclaration} */ (
+        /** @type {unknown} */ ({ transform: "none", scale: "none", rotate: "1 1 1 0deg" })
+      );
+    };
+    try {
+      const frame = frameFor(root);
+      assert.deepEqual([frame.sx, frame.sy], [0.5, 0.5]);
+      assert.deepEqual(warnings, []);
+    } finally {
+      window.getComputedStyle = original;
+      console.warn = warn;
+      stage.remove();
+    }
+  });
+
   test("is 1 for a node in a document with no root element", () => {
     // A `<template>`'s content, or a document made with no root: what a
     // page may hand `setDragImage`.
@@ -223,6 +256,71 @@ describe("a frame's scale", () => {
     const element = empty.createElementNS("http://www.w3.org/1999/xhtml", "div");
     const frame = frameFor(element);
     assert.deepEqual([frame.sx, frame.sy], [1, 1]);
+  });
+});
+
+describe("a frame read again", () => {
+  /**
+   * A root holding one child laid out 100 px across and 40 down, inside a
+   * stage, adopted by a mirror with no portal: what is above the root
+   * changes by hand, and the test says which event the mirror hears.
+   * `scale` is the factor every client rect is drawn at, changed through
+   * `setScale` together with the transform that draws it.
+   */
+  function measuredRoot() {
+    const stage = document.createElement("div");
+    const root = document.createElement("div");
+    root.setAttribute(PORTAL_ATTRIBUTE, "");
+    const child = document.createElement("div");
+    root.appendChild(child);
+    stage.appendChild(root);
+    document.body.appendChild(stage);
+    let scale = 1;
+    root.getBoundingClientRect = () => clientRect(0, 0, 300 * scale, 200 * scale);
+    child.getBoundingClientRect = () => clientRect(100 * scale, 40 * scale, 50 * scale, 20 * scale);
+    const mirror = createMirror();
+    mirror.adopt(root);
+    mirror.adopt(child);
+    return {
+      stage,
+      root,
+      child,
+      mirror,
+      /**
+       * @param {HTMLElement} element
+       * @param {number} value
+       */
+      setScale(element, value) {
+        scale = value;
+        element.style.transform = `matrix(${value}, 0, 0, ${value}, 0, 0)`;
+      },
+    };
+  }
+
+  test("by a transition on the root's own transform, sampled by the clock", () => {
+    // The clock reports a transform moving as a reflow of the element it
+    // runs on, with no attribute changed.
+    const { stage, root, child, mirror, setScale } = measuredRoot();
+    try {
+      assert.deepEqual(getContentPosition(child), { x: 100, y: 40 });
+      setScale(root, 1.2);
+      mirror.reflowed([root]);
+      assert.deepEqual(getContentPosition(child), { x: 100, y: 40 });
+    } finally {
+      stage.remove();
+    }
+  });
+
+  test("by a stylesheet that transforms what is above the root", () => {
+    const { stage, child, mirror, setScale } = measuredRoot();
+    try {
+      assert.deepEqual(getContentPosition(child), { x: 100, y: 40 });
+      setScale(stage, 0.5);
+      mirror.documentStylesChanged();
+      assert.deepEqual(getContentPosition(child), { x: 100, y: 40 });
+    } finally {
+      stage.remove();
+    }
   });
 });
 

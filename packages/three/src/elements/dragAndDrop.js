@@ -13,6 +13,7 @@ import {
   isVisibilityHidden,
 } from "./mirror.js";
 import { placeAndScale } from "./place.js";
+import { frameFor, getPanelFrame, measureClientRect, probePanelFrame } from "./panelFrame.js";
 import { isSvgRoot } from "./plugins.js";
 import { DRAG_THRESHOLD, planeOf } from "./scroll.js";
 import { createRectMaterial, rectGeometry } from "./sdfRect.js";
@@ -20,6 +21,7 @@ import { snapshotsFor } from "./ghostSnapshot.js";
 
 /**
  * @import {DropEffect} from './dataTransfer.js';
+ * @import {PanelFrame} from './panelFrame.js';
  */
 
 /**
@@ -72,16 +74,16 @@ const GHOST_RENDER_ORDER = 1e9;
 /**
  * What a ray needs of a panel: its container object, its root element, its
  * own record of which object draws which element, which is also what says
- * what is under the ray (see `elementAt`), and where the page last laid the
- * root element out (see `probePanel`).
+ * what is under the ray (see `elementAt`), and where and at what scale the
+ * page last laid the root element out (see `probePanel`).
  *
  * @typedef {object} Panel
  * @property {THREE.Object3D} object
  * @property {HTMLElement} element
  * @property {(node: Node) => THREE.Object3D | undefined} objectOf
- * @property {THREE.Vector2} origin The root element's client rect's top
- *   left corner, as last probed; 0,0 until one of the events `probePanel`
- *   names has read it.
+ * @property {PanelFrame} frame The root element's frame, as last probed:
+ *   its client corner and the scale the page draws it at; the corner is
+ *   0,0 until one of the events `probePanel` names has read it.
  */
 
 /**
@@ -109,7 +111,7 @@ export function registerPanel(object, element, objectOf) {
     object,
     element,
     objectOf,
-    origin: new THREE.Vector2(),
+    frame: getPanelFrame(element),
   };
   panels.set(object, panel);
   return {
@@ -247,24 +249,24 @@ function elementAt(element, objectOf, point) {
 /**
  * Where a point on a panel is on the page, in client coordinates: the point
  * taken into the frame of the element at the panel's top, its border box
- * with the origin at the top left and y down, and moved by where the page
- * lays that element out. The panel draws what is inside the element where
- * the page lays it out, scrolls included and the transforms of what is
- * inside, so the point is where a mouse over the same spot on the page
- * would be. The one thing left out is a transform on the root element
- * itself: the mirror draws the root in its untransformed px, as
- * `isTransformed` says, and the corner is added to those px, so on a root
- * the page scales or turns the point is where the page would have it with
- * the root untransformed.
+ * with the origin at the top left and y down, scaled as the page scales
+ * that element, and moved by where the page lays it out. The panel draws
+ * what is inside the element where the page lays it out, scrolls included
+ * and the transforms of what is inside, so the point is where a mouse over
+ * the same spot on the page would be. A scale on the root element or above
+ * it is in the mapping, as it is divided out of every rect the panel is
+ * measured from (see `panelFrame.js`); a rotation, a skew or a perspective
+ * is not, and the root warns about it, so on a root the page turns the
+ * point is where the page would have it with the root unturned.
  *
  * It is what the mouse events a ray sends carry as `clientX` and `clientY`
  * (see `pressInit` and the others below), so that a page which works out
  * what was pressed from where it was pressed, a board drawn as one `<svg>`
  * path or a canvas, reads the place the ray met; and what a drag's events
- * carry. One matrix and a corner of the root element's client rect,
- * whatever the panel holds. The corner is the one last read by
- * `probePanel`, so a caller asking for a point that has to be exact probes
- * first.
+ * carry. One matrix, a corner of the root element's client rect and a
+ * scale, whatever the panel holds. The corner and the scale are the ones
+ * last read by `probePanel`, so a caller asking for a point that has to be
+ * exact probes first.
  *
  * The point is in the page's layout, so it is right for arithmetic against
  * the page's own rects, which is what a page that hit-tests by position
@@ -284,8 +286,8 @@ function clientPointOf(panel, point, client) {
 }
 
 /**
- * Read where the page lays the panel's root element out, for the points
- * taken from then on. A client rect is a layout read, and a forced one
+ * Read where the page lays the panel's root element out, and at what scale,
+ * for the points taken from then on. A client rect is a layout read, and a forced one
  * whenever the page has touched the DOM since the last, so it is not taken
  * for every point: a ray moving over a panel sends a point every frame, and
  * reads the corner it was last given. The events that are one each probe
@@ -301,8 +303,7 @@ function clientPointOf(panel, point, client) {
  * @returns {void}
  */
 export function probePanel(panel) {
-  const rect = panel.element.getBoundingClientRect();
-  panel.origin.set(rect.left, rect.top);
+  probePanelFrame(panel.element);
 }
 
 /**
@@ -315,7 +316,8 @@ export function probePanel(panel) {
  * @returns {void}
  */
 function clientPointAt(panel, x, y, client) {
-  client.set(panel.origin.x + x, panel.origin.y + y);
+  const { frame } = panel;
+  client.set(frame.left + x * frame.sx, frame.top + y * frame.sy);
 }
 
 /**
@@ -715,7 +717,7 @@ export function createDragAndDrop(requestFrames, readHit, snapshots) {
     // What the ghost shows: what `setDragImage` named, at its size, or the
     // source. An image with no size, a detached `<img>`, is no image.
     const image = dataTransfer.getDragImage();
-    const imageRect = image?.element.getBoundingClientRect();
+    const imageRect = image && measureClientRect(image.element, frameFor(image.element));
     /** @type {Element} */
     let shown = source;
     let width = 0;

@@ -3,6 +3,7 @@ import { effects } from "@apendua/signal";
 import { $ } from "./operators.js";
 import { InteractionContext } from "./interactions.js";
 import { getCamera, getXRSession, onLateFrame, RendererContext } from "./render.js";
+import { measureViewportRect } from "./elements/panelFrame.js";
 
 /**
  * @import { XREventMap } from './core.js';
@@ -53,7 +54,7 @@ export function followMouse(pointer, camera, canvas, view = window) {
       pointer.visible = false;
       return;
     }
-    const rect = canvas.getBoundingClientRect();
+    const rect = measureViewportRect(canvas);
     at.set(
       ((event.clientX - rect.left) / rect.width) * 2 - 1,
       -((event.clientY - rect.top) / rect.height) * 2 + 1,

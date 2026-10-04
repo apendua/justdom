@@ -14,6 +14,7 @@ import { isSvgElement, PortalTemplatesContext, SVG_NAMESPACE } from "../elements
 import { place } from "../elements/place.js";
 import { generateTextTexture, getTextRenderStyle } from "../elements/textHelpers.js";
 import { preservesWhitespace } from "../elements/textLines.js";
+import { frameFor, measureClientRect } from "../elements/panelFrame.js";
 import { readTextScale, TextScaleContext } from "../elements/textScale.js";
 import { matrixEqual, matrixScale, samplingScale } from "./geometry.js";
 import { buildImageGeometry } from "./image.js";
@@ -309,7 +310,8 @@ function measureRuns(element, found, viewport, fonts, layoutStyle) {
   host.appendChild(clone);
   document.body.appendChild(host);
   try {
-    const origin = host.getBoundingClientRect();
+    const frame = frameFor(host);
+    const origin = measureClientRect(host, frame);
     const range = document.createRange();
     /** @type {TextRun[]} */
     const runs = [];
@@ -321,7 +323,7 @@ function measureRuns(element, found, viewport, fonts, layoutStyle) {
       const copy = counterpart(node, element, clone);
       range.setStart(copy, drawn.start);
       range.setEnd(copy, drawn.end);
-      const rect = range.getBoundingClientRect();
+      const rect = measureClientRect(range, frame);
       if (rect.width <= 0 && rect.height <= 0) {
         continue;
       }

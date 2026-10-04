@@ -38,9 +38,14 @@ function layOut(element, left, top, width, height) {
  * @param {Record<string, unknown>} options.seen What its handlers saw.
  * @param {[number, number]} [options.at] Where the page lays the root out,
  *   its top left corner; the page's top left corner unless given.
+ * @param {number} [options.scale] How much the root's own transform scales
+ *   it on the page, about that corner; 1 unless given.
  */
-async function mirroredList(ctx, { id, rowIds, accept, fixed, seen, at = [0, 0] }) {
+async function mirroredList(ctx, { id, rowIds, accept, fixed, seen, at = [0, 0], scale = 1 }) {
   const root = document.createElement("div");
+  if (scale !== 1) {
+    root.style.transform = `matrix(${scale}, 0, 0, ${scale}, 0, 0)`;
+  }
   const list = document.createElement("div");
   list.id = id;
   list.style.overflow = "hidden";
@@ -63,9 +68,11 @@ async function mirroredList(ctx, { id, rowIds, accept, fixed, seen, at = [0, 0] 
    * @param {number} top
    */
   const layOutAt = (left, top) => {
-    layOut(root, left, top, 300, 200);
-    layOut(list, left, top, 300, 200);
-    rows.forEach((row, index) => layOut(row, left, top + index * 40, 300, 40));
+    layOut(root, left, top, 300 * scale, 200 * scale);
+    layOut(list, left, top, 300 * scale, 200 * scale);
+    rows.forEach((row, index) =>
+      layOut(row, left, top + index * 40 * scale, 300 * scale, 40 * scale),
+    );
   };
   layOutAt(...at);
   document.body.appendChild(root);
@@ -131,6 +138,8 @@ async function mirroredList(ctx, { id, rowIds, accept, fixed, seen, at = [0, 0] 
  *   the panel is built.
  * @param {[number, number]} [options.at] Where the page lays the first
  *   list's root out; see `mirroredList`.
+ * @param {number} [options.scale] How much the page scales the first
+ *   list's root; see `mirroredList`.
  */
 async function sortableList({
   accept = true,
@@ -138,6 +147,7 @@ async function sortableList({
   turned = false,
   fixed = [],
   at = [0, 0],
+  scale = 1,
 } = {}) {
   /** @type {string[]} */
   const events = [];
@@ -162,6 +172,7 @@ async function sortableList({
     fixed,
     seen,
     at,
+    scale,
   });
   const other = second
     ? await mirroredList(ctx, {
@@ -629,6 +640,41 @@ describe("drag and drop in a panel", () => {
     assert.deepEqual(s.seen.dropPoint, [190, 560], "the drop reads where the root is now");
     assert.deepEqual(s.seen.endPoint, [190, 560], "and the end of the drag says the same");
     s.teardown();
+  });
+
+  test("its points are scaled as the page scales the root, and so are its rows", async () => {
+    // The page draws the root at half size about its corner. The panel is
+    // drawn at the root's layout size, so a row 40 px down the list is
+    // 40 px down the panel, and a point on the panel is where the page
+    // draws that spot: half as far from the corner.
+    const s = await sortableList({ at: [40, 300], scale: 0.5 });
+    try {
+      s.aim(100, 20);
+      s.trigger("selectstart");
+      s.aim(100, 50);
+      assert.deepEqual(s.events.slice(0, 4), [
+        "mousedown a",
+        "dragstart a",
+        "drag a",
+        "dragenter b",
+      ]);
+      assert.deepEqual(
+        s.seen.startPoint,
+        [90, 310],
+        "picked up at the corner plus half of (100, 20)",
+      );
+      assert.deepEqual(s.seen.overPoint, [90, 325], "and over the second row at half of (100, 50)");
+      s.aim(100, 90);
+      s.trigger("selectend");
+      assert.deepEqual(s.seen.dropPoint, [90, 345]);
+      assert.deepEqual(
+        [...s.list.children].map((row) => row.id),
+        ["b", "a", "c"],
+        "dropped on the third row, the one under the ray",
+      );
+    } finally {
+      s.teardown();
+    }
   });
 
   test("a press is measured where its panel is now, not where it was", async () => {

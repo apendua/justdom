@@ -394,9 +394,10 @@ starts exact and drifts only by what the page moves while the ray stays.
 The point is on screen only for a panel mirroring an element the page
 shows. A panel built from a tree lives in a container the portal parks off
 screen, so its points are right against the page's own rects but
-`elementFromPoint` finds nothing at them. The one thing the mapping leaves
-out is a transform on the mirrored root itself, which the mirror leaves
-out too.
+`elementFromPoint` finds nothing at them. A scale on the mirrored root, or
+above it, is in the mapping, so on a page scaled to fit its window the
+point is where the page draws that spot; a rotation, a skew or a
+perspective there is left out, as the mirror leaves it out (see below).
 
 A press, its release and a move each send, ahead of their mouse event, the
 pointer event a browser sends ahead of it: `pointerdown`, `pointerup` and
@@ -500,15 +501,21 @@ own view of the element out of the way while a session runs hides it with
 container has always been, or covers it — the todo app puts the renderer's
 canvas over the page for exactly as long as a session is presenting.
 
-**And neither it nor anything above it may be transformed.** Every box
-inside the element is measured through its client rect, which the browser
-reports with every transform above the box applied, while the element
-itself is placed as though it had none. A root with a `transform` on it,
-a card tilted by `rotateY` say, or a page that scales itself to fit the
-window, has every offset, size and baseline inside the panel slightly
-wrong, and nothing says why. Mirror an untransformed wrapper and transform
-what is inside it, or take the transforms off for as long as a session
-runs, which is what the desk app does.
+**And neither it nor anything above it may be turned.** Every box inside
+the element is measured through its client rect, which the browser reports
+with every transform above the box applied, while the element itself is
+placed as though it had none. A scale is undone: a page that scales itself
+to fit the window, by a `transform` that only scales and translates or by
+the `scale` property, on the root or anywhere above it, is measured at its
+layout size, every rect divided by the scale it is drawn at. A rotation, a
+skew, a flip or a perspective cannot be divided out, so a root on a chain
+that carries one, a card tilted by `rotateY` say, has every offset, size and
+baseline inside the panel slightly wrong. The portal says so once, with a
+`console.warn` naming the root and the element that carries the transform,
+whenever the panel next measures, since the transform may arrive after the
+panel did. Mirror an untransformed wrapper and transform what is inside it,
+or take the transform off for as long as a session runs, which is what the
+desk app does.
 
 Which element is up to the app, and it can change: `dom()` takes a
 subscribable of elements as readily as one of trees, and each emission is a

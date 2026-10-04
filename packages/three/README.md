@@ -166,6 +166,30 @@ a signal holding that controller's current `THREE.Intersection`, for scenes that
 want to do something else with the hit (a snapping preview, a measurement, a
 sound).
 
+### Pointing with the mouse
+
+The manager casts only from XR controllers, so a scene that is also a page
+puts `mouse(ctx)` among the scene's children. It is a group parked at the
+camera and turned to face the point under the mouse on every move over the
+canvas, registered with the manager as one more controller. A left press
+and release on the canvas are its `selectstart`, `selectend` and `select`,
+so anything that answers a ray answers the mouse, and `cursors(ctx)` puts
+the hover mark on the page too.
+
+```js
+children(scene, mouse(ctx), cursors(ctx));
+```
+
+It writes its pose as its own, so it hangs straight off the scene. It is
+hidden, and so points at nothing, until the mouse first moves onto the
+canvas and whenever the mouse is anywhere else; a release heard off the
+canvas, such as one over the page's own panel, is a miss. It stands down
+while a session is presenting, since a click on the canvas then is not a
+click in the room. Nothing but a mouse move re-aims it, so the camera is
+expected to stand still between sessions. `followMouse(pointer, camera,
+canvas)` is the part that keeps a group on the mouse, for a test or for a
+scene that registers the group itself.
+
 ## Picking things up
 
 `drag(ctx, options)` is the carry every scene here ends up wanting: a press on

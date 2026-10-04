@@ -1,6 +1,13 @@
 # Change Log - @apendua/justui
 
-This log was last generated on Sat, 03 Oct 2026 19:51:46 GMT and should not be manually modified.
+This log was last generated on Sun, 04 Oct 2026 19:35:47 GMT and should not be manually modified.
+
+## 0.3.2
+Sun, 04 Oct 2026 19:35:47 GMT
+
+### Patches
+
+- The dropdown and the scrolling list take what they need of freedom from @apendua/freedom/page, and the package is marked free of side effects, so a page that bundles them no longer carries three.js
 
 ## 0.3.1
 Sat, 03 Oct 2026 19:51:46 GMT

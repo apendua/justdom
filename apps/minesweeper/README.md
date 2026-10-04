@@ -37,7 +37,9 @@ also photographs the page and the session, and `STACKS=1` prints a stack for
 anything the page throws. It borrows Playwright from `apps/showcase-xr`, so
 that project has to have been installed. It launches the Chromium at
 `/opt/pw-browsers/chromium-1194/chrome-linux/chrome`; `CHROMIUM=<path>`
-points it at one installed elsewhere.
+points it at one installed elsewhere. A pull request that touches
+`packages/freedom` or this app runs it, with the desk's, from
+`.github/workflows/driven.yml`.
 
 ## How it is put together
 

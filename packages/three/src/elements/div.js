@@ -376,7 +376,8 @@ export function box(ctx, element, options = {}) {
       }
       useEffects(obj, interactivity);
     }),
-    // A clickable list already carries the gesture through the handlers
+    // A press on a clickable list, or on a control in one, is handed to the
+    // scroll gesture by the panel's forwarder through the registration
     // above; this is for the ordinary case of a list that is only a list.
     effects((obj) => {
       if (clickable.get() || !scrollable.get() || hidden()) {

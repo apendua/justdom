@@ -3,8 +3,8 @@ import { interactions } from "../interactions.js";
 import { getParentObject } from "./contentGroup.js";
 import {
   dragAndDrop,
-  getPanel,
   isDragSource,
+  lazyPanel,
   moveInit,
   pressInit,
   probePanel,
@@ -12,14 +12,13 @@ import {
 } from "./dragAndDrop.js";
 import { HapticsContext, isArrival } from "./haptics.js";
 import { getComputedStyleCached } from "./mirror.js";
-import { movesList, scrollDrags } from "./scroll.js";
+import { movesList, ScrollDragsContext } from "./scroll.js";
 
 /**
  * @import {EntityEffect} from '@apendua/signal';
  * @import {Object3D, XRTargetRaySpace} from 'three';
  * @import {Reactive} from '../interactions.js';
  * @import {InteractionEvent, XREventMap} from '../core.js';
- * @import {Panel} from './dragAndDrop.js';
  */
 
 /**
@@ -126,6 +125,10 @@ const hands = new WeakMap();
 
 /**
  * The same hands by `pointerId`, which is all `setPointerCapture` is given.
+ * A strong map, deliberately: a page may capture a hand's pointer at any
+ * time, so every hand that was ever given an id has to be found by it.
+ * There are as many as the session has controllers, and a hand's `captor`
+ * is let go of with its press (see `endPress`).
  *
  * @type {Map<number, Hand>}
  */
@@ -414,7 +417,7 @@ export const PointerForwarderContext = createProperty(
  */
 export function createPanelForwarder(ctx, container) {
   const { stopPropagation, isStopped } = interactions(ctx);
-  const drags = scrollDrags(ctx);
+  const drags = ScrollDragsContext.get(ctx);
   const dnd = dragAndDrop(ctx);
   /** What the hand feels on a control, if the panel has haptics at all. */
   const haptics = HapticsContext.get(ctx);
@@ -429,15 +432,11 @@ export function createPanelForwarder(ctx, container) {
   const grips = new WeakMap();
 
   /**
-   * The panel, for where its events are on the page. Found from a target's
-   * object on the first event that needs it, since the portal registers the
-   * panel after it builds the forwarder, and the same for every target.
-   *
-   * @type {Panel | null}
+   * The panel, for where its events are on the page: the one registered
+   * under the container, found on the first event that needs it, since the
+   * portal registers the panel after it builds the forwarder.
    */
-  let panel = null;
-  /** @param {Target} target */
-  const panelOf = (target) => (panel ??= getPanel(target.object));
+  const panel = lazyPanel(container);
 
   /**
    * @param {XRTargetRaySpace} controller
@@ -486,31 +485,17 @@ export function createPanelForwarder(ctx, container) {
   };
 
   /**
-   * The innermost target on a path, control or list.
+   * The innermost target on a path, control or list, or the innermost
+   * control, passing over any list below it.
    *
    * @param {Object3D[]} path
+   * @param {boolean} [controlsOnly]
    * @returns {Target | undefined}
    */
-  const innermost = (path) => {
+  const innermost = (path, controlsOnly = false) => {
     for (const object of path) {
       const target = targets.get(object);
-      if (target) {
-        return target;
-      }
-    }
-    return undefined;
-  };
-
-  /**
-   * The innermost control on a path, passing over any list below it.
-   *
-   * @param {Object3D[]} path
-   * @returns {Target | undefined}
-   */
-  const innermostControl = (path) => {
-    for (const object of path) {
-      const target = targets.get(object);
-      if (target && !target.list) {
+      if (target && !(controlsOnly && target.list)) {
         return target;
       }
     }
@@ -630,7 +615,7 @@ export function createPanelForwarder(ctx, container) {
         hand.held = e;
         return;
       }
-      const first = innermostControl(hand.hover);
+      const first = innermost(hand.hover, true);
       if (!first) {
         return;
       }
@@ -642,7 +627,7 @@ export function createPanelForwarder(ctx, container) {
       // began the scroll read it. Not under a drag, which probes the panels
       // it crosses itself and whose drop reads the one it ends on again.
       const arrival = arrived(first, e);
-      const own = arrival ? panelOf(first) : null;
+      const own = arrival ? panel() : null;
       if (own) {
         probePanel(own);
       }
@@ -682,12 +667,7 @@ export function createPanelForwarder(ctx, container) {
         }
         if (!sent && !isGone(target.element)) {
           sent = true;
-          sendPointerAndMouse(
-            target.element,
-            "pointermove",
-            moveInit(panelOf(target), e),
-            e.controller,
-          );
+          sendPointerAndMouse(target.element, "pointermove", moveInit(panel(), e), e.controller);
         }
       }
     },
@@ -719,7 +699,7 @@ export function createPanelForwarder(ctx, container) {
           // `mousedown`. The controls the ray reaches while the list
           // scrolls, and while it glides after, read nothing on arrival
           // (see `arrived`), and their moves take this corner.
-          const own = panelOf(first);
+          const own = panel();
           if (own) {
             probePanel(own);
           }
@@ -739,7 +719,7 @@ export function createPanelForwarder(ctx, container) {
       const pressed = sendPointerAndMouse(
         first.element,
         "pointerdown",
-        pressInit(panelOf(first), e, true),
+        pressInit(panel(), e, true),
         e.controller,
       );
       // A press on something draggable may become a drag and drop, and
@@ -790,12 +770,7 @@ export function createPanelForwarder(ctx, container) {
           // A drag's release is its `drop` and its `dragend`, which the
           // drag sends from the controller's own `selectend`.
           if (!dnd.didDrag(e.controller)) {
-            sendPointerAndMouse(
-              target.element,
-              "pointerup",
-              releaseInit(panelOf(target), e),
-              e.controller,
-            );
+            sendPointerAndMouse(target.element, "pointerup", releaseInit(panel(), e), e.controller);
           }
           haptics?.release(e.inputSource);
         }
@@ -811,7 +786,7 @@ export function createPanelForwarder(ctx, container) {
       }
       if (first.list) {
         if (!isGone(first.element) && !drags.didScroll(e.controller)) {
-          first.element.dispatchEvent(new MouseEvent("click", pressInit(panelOf(first), e, false)));
+          first.element.dispatchEvent(new MouseEvent("click", pressInit(panel(), e, false)));
         }
         stopPropagation(e);
         return;
@@ -825,7 +800,7 @@ export function createPanelForwarder(ctx, container) {
         stopPropagation(e);
         return;
       }
-      first.element.dispatchEvent(new MouseEvent("click", pressInit(panelOf(first), e, false)));
+      first.element.dispatchEvent(new MouseEvent("click", pressInit(panel(), e, false)));
       for (const object of path) {
         const target = targets.get(object);
         if (target && !target.list) {
@@ -844,7 +819,7 @@ export function createPanelForwarder(ctx, container) {
     squeezestart(e) {
       const hand = panelHand(e.controller);
       walk(e.originalTarget, hand.squeeze);
-      const first = innermostControl(hand.squeeze);
+      const first = innermost(hand.squeeze, true);
       if (!first) {
         return;
       }
@@ -872,7 +847,7 @@ export function createPanelForwarder(ctx, container) {
       }
     },
     squeeze(e) {
-      const first = innermostControl(recorded(panelHand(e.controller).squeeze, e));
+      const first = innermost(recorded(panelHand(e.controller).squeeze, e), true);
       // A grab's completion goes on up to the carry.
       if (!first || taken(e.start)) {
         return;
@@ -885,9 +860,7 @@ export function createPanelForwarder(ctx, container) {
       // that closed while the hand carried or moved a list, whatever it
       // does now, nor for one that opens while it does.
       if (!isGone(first.element) && owns(e.start) && !busy(e.controller)) {
-        first.element.dispatchEvent(
-          new MouseEvent("contextmenu", pressInit(panelOf(first), e, true, 2)),
-        );
+        first.element.dispatchEvent(new MouseEvent("contextmenu", pressInit(panel(), e, true, 2)));
       }
       stopPropagation(e);
     },
@@ -896,13 +869,13 @@ export function createPanelForwarder(ctx, container) {
       // grip leaves the panel alike; nothing above listens for a miss
       // today, `drag()` and `carry()` taking the start and the end alone.
       // The panel's own miss stops where a press's does.
-      if (innermostControl(recorded(panelHand(e.controller).squeeze, e)) && !taken(e.start)) {
+      if (innermost(recorded(panelHand(e.controller).squeeze, e), true) && !taken(e.start)) {
         stopPropagation(e);
       }
     },
     squeezeend(e) {
       // A grab's end goes on up to the carry.
-      if (!innermostControl(recorded(panelHand(e.controller).squeeze, e)) || taken(e.start)) {
+      if (!innermost(recorded(panelHand(e.controller).squeeze, e), true) || taken(e.start)) {
         return;
       }
       // Felt once as the grip opens, on a hit and a miss alike, as a
@@ -925,29 +898,29 @@ export function createPanelForwarder(ctx, container) {
     listened.addEventListener(type, /** @type {never} */ (listeners[type]));
   }
 
+  /**
+   * Take a target until the function returned is called, which also takes
+   * a control's `data-xr-*` flags off; a list writes none.
+   *
+   * @param {Target} target
+   * @returns {() => void}
+   */
+  const register = (target) => {
+    targets.set(target.object, target);
+    return () => {
+      if (targets.get(target.object) === target) {
+        targets.delete(target.object);
+      }
+      if (!target.list) {
+        delete target.element.dataset.xrHover;
+        delete target.element.dataset.xrActive;
+      }
+    };
+  };
+
   return {
-    control(object, element, onPress) {
-      /** @type {Target} */
-      const target = { element, object, list: false, onPress };
-      targets.set(object, target);
-      return () => {
-        if (targets.get(object) === target) {
-          targets.delete(object);
-        }
-        delete element.dataset.xrHover;
-        delete element.dataset.xrActive;
-      };
-    },
-    list(object, element) {
-      /** @type {Target} */
-      const target = { element, object, list: true, onPress: undefined };
-      targets.set(object, target);
-      return () => {
-        if (targets.get(object) === target) {
-          targets.delete(object);
-        }
-      };
-    },
+    control: (object, element, onPress) => register({ element, object, list: false, onPress }),
+    list: (object, element) => register({ element, object, list: true, onPress: undefined }),
     dispose() {
       for (const type of types) {
         listened.removeEventListener(type, /** @type {never} */ (listeners[type]));

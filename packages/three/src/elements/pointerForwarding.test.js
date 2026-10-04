@@ -7,13 +7,14 @@ import { getContentGroup } from "./contentGroup.js";
 import { box } from "./div.js";
 import { registerPanel } from "./dragAndDrop.js";
 import { createMirror } from "./mirror.js";
-import { createPanelForwarder, PointerForwarderContext } from "./pointerForwarding.js";
+import { PORTAL_ATTRIBUTE } from "./portalRoot.js";
 import { movesList } from "./scroll.js";
 import { createHaptics, HapticsContext } from "./haptics.js";
 import { recordingSource } from "../test/rumble.js";
 import { clientRect } from "../test/clientRect.js";
 import { describeScroller } from "../test/scroller.js";
 import { countingManager, flushFrame, settle } from "../test/portalHarness.js";
+import { forwardedPanel } from "../test/rays.js";
 import { createPortal } from "./portal.js";
 
 /**
@@ -38,11 +39,12 @@ const SVG_NS = "http://www.w3.org/2000/svg";
 /**
  * An outer element with an inner one in it, projected the way the portal
  * projects them: the inner object in the outer's content group, and the
- * outer under an object standing for the panel's container, which carries
- * the panel's forwarder, in a scene. The manager is a real one, because
- * what is under test is where its dispatch stops. The outer is registered
- * as the panel's top, as the portal registers its container, so that a
- * press can ask where on the page it landed.
+ * outer under the panel's container, which carries the panel's forwarder,
+ * in a scene. The container stands for a root element around the outer,
+ * laid out where the outer is, as a portal's container stands for its
+ * root, and is registered as the panel, so that a press can ask where on
+ * the page it landed. The manager is a real one, because what is under
+ * test is where its dispatch stops.
  *
  * @param {object} options
  * @param {Element} options.outer
@@ -52,17 +54,22 @@ const SVG_NS = "http://www.w3.org/2000/svg";
  *   panel lets the hand feel, if anything.
  */
 function nest({ outer, inner, build, haptics = null }) {
-  document.body.appendChild(outer);
+  const root = document.createElement("div");
+  root.setAttribute(PORTAL_ATTRIBUTE, "");
+  root.getBoundingClientRect = () => outer.getBoundingClientRect();
+  root.appendChild(outer);
+  document.body.appendChild(root);
   const mirror = createMirror();
+  mirror.adopt(root);
   mirror.adopt(outer);
   mirror.adopt(inner);
 
   const manager = new InteractionManager();
   const scene = new THREE.Object3D();
-  const panel = new THREE.Object3D();
+  const { ctx, container: panel } = forwardedPanel(
+    HapticsContext.set(InteractionContext.set({}, manager), haptics),
+  );
   scene.add(panel);
-  const base = HapticsContext.set(InteractionContext.set({}, manager), haptics);
-  const ctx = PointerForwarderContext.set(base, createPanelForwarder(base, panel));
 
   /** @type {THREE.Object3D<XREventMap>[]} */
   const objects = [];
@@ -74,8 +81,8 @@ function nest({ outer, inner, build, haptics = null }) {
   const [outerObject, innerObject] = objects;
   panel.add(outerObject);
   getContentGroup(outerObject).add(innerObject);
-  const { unregister } = registerPanel(outerObject, /** @type {HTMLElement} */ (outer), (node) =>
-    node === outer ? outerObject : node === inner ? innerObject : undefined,
+  const { unregister } = registerPanel(panel, root, (node) =>
+    node === root ? panel : node === outer ? outerObject : node === inner ? innerObject : undefined,
   );
 
   /** @type {string[]} */
@@ -181,7 +188,7 @@ function nest({ outer, inner, build, haptics = null }) {
       }
       unregister();
       subscriptions.forEach((subscription) => subscription.unsubscribe());
-      outer.remove();
+      root.remove();
     },
   };
 }
@@ -1094,6 +1101,38 @@ describe("a ray's pointer events", () => {
 
 describe("a panel's ray events", () => {
   test("are heard by its container, and by nothing in it but the background", async () => {
+    // Which ray events each object listens for, recorded as listeners are
+    // added and removed rather than read from three's private store.
+    /** @type {Map<object, Map<string, number>>} */
+    const listening = new Map();
+    /**
+     * @param {object} object
+     * @param {string} type
+     * @param {number} by
+     */
+    const count = (object, type, by) => {
+      const types = listening.get(object) ?? new Map();
+      types.set(type, (types.get(type) ?? 0) + by);
+      listening.set(object, types);
+    };
+    /** @type {any} */
+    const proto = THREE.EventDispatcher.prototype;
+    const { addEventListener, removeEventListener } = proto;
+    /** @this {THREE.EventDispatcher} @param {string} type @param {any} listener */
+    proto.addEventListener = function (type, listener) {
+      if (!this.hasEventListener(type, listener)) {
+        count(this, type, 1);
+      }
+      addEventListener.call(this, type, listener);
+    };
+    /** @this {THREE.EventDispatcher} @param {string} type @param {any} listener */
+    proto.removeEventListener = function (type, listener) {
+      if (this.hasEventListener(type, listener)) {
+        count(this, type, -1);
+      }
+      removeEventListener.call(this, type, listener);
+    };
+
     // A clickable card with a clickable icon in it, and a list that scrolls,
     // of clickable rows: every kind of element a ray acts on in a panel
     // that has no field and no overlay, which listen for their own reasons.
@@ -1109,12 +1148,17 @@ describe("a panel's ray events", () => {
     const { ctx, targets } = countingManager();
     const portal = createPortal(ctx, { root, budget: 0 });
     const scene = new THREE.Group();
-    portal.addTo(scene);
-    await settle(portal);
+    try {
+      portal.addTo(scene);
+      await settle(portal);
+    } finally {
+      proto.addEventListener = addEventListener;
+      proto.removeEventListener = removeEventListener;
+    }
     const container = scene.children[0];
     assert.equal(targets.size, 6, "the background, the card, the icon, the list and its rows");
 
-    const types = /** @type {const} */ ([
+    const types = [
       "selectstart",
       "selectend",
       "select",
@@ -1126,18 +1170,13 @@ describe("a panel's ray events", () => {
       "pointermove",
       "pointerenter",
       "pointerleave",
-    ]);
+    ];
     /**
      * The ray events an object listens for.
      *
      * @param {THREE.Object3D} object
      */
-    const heard = (object) => {
-      const { _listeners: listeners } = /** @type {{ _listeners?: Record<string, unknown[]> }} */ (
-        /** @type {unknown} */ (object)
-      );
-      return types.filter((type) => (listeners?.[type]?.length ?? 0) > 0);
-    };
+    const heard = (object) => types.filter((type) => (listening.get(object)?.get(type) ?? 0) > 0);
     assert.deepEqual(heard(container), types, "the container hears every one");
     /** @type {string[][]} */
     const inside = [];

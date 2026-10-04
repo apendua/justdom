@@ -9,12 +9,12 @@ import { getContentRenderOrder } from "./elevation.js";
 import { GRADIENT_LINEAR, rampAtlas } from "./gradient.js";
 import { createHaptics, HapticsContext } from "./haptics.js";
 import { getContentGroup } from "./contentGroup.js";
-import { scrollDrags } from "./scroll.js";
+import { ScrollDragsContext } from "./scroll.js";
+import { bubble, forwardedPanel } from "../test/rays.js";
 import { describeScroller } from "../test/scroller.js";
 import { recordingSource } from "../test/rumble.js";
 import { clientRect } from "../test/clientRect.js";
 import { registerPanel } from "./dragAndDrop.js";
-import { createPanelForwarder, PointerForwarderContext } from "./pointerForwarding.js";
 import { rectGeometry } from "./sdfRect.js";
 
 /**
@@ -36,20 +36,6 @@ Object.defineProperty(document, "fonts", {
     removeEventListener: () => {},
   },
 });
-
-/**
- * A ray event sent the way the manager sends one: to the object the ray
- * met, and up through its parents, each told what it went through.
- *
- * @param {THREE.Object3D} object
- * @param {object} event
- */
-function bubble(object, event) {
-  const sent = /** @type {any} */ ({ ...event, originalTarget: object });
-  for (let node = /** @type {THREE.Object3D | null} */ (object); node; node = node.parent) {
-    node.dispatchEvent(sent);
-  }
-}
 
 /**
  * An element wired the way the portal wires one: a mirror standing in for the
@@ -109,9 +95,9 @@ function setup(
     })
   );
 
-  const panel = within?.panel ?? new THREE.Object3D();
-  const base = HapticsContext.set(InteractionContext.set({}, manager), haptics);
-  const ctx = within?.ctx ?? PointerForwarderContext.set(base, createPanelForwarder(base, panel));
+  const { ctx, container: panel } = within
+    ? { ctx: within.ctx, container: within.panel }
+    : forwardedPanel(HapticsContext.set(InteractionContext.set({}, manager), haptics));
 
   /** @type {THREE.Object3D<XREventMap>} */
   let object;
@@ -1282,9 +1268,7 @@ describe("div drag-to-scroll", () => {
         stopPropagation: () => {},
       })
     );
-    const base = InteractionContext.set({}, manager);
-    const panel = new THREE.Object3D();
-    const ctx = PointerForwarderContext.set(base, createPanelForwarder(base, panel));
+    const { ctx, container: panel } = forwardedPanel(InteractionContext.set({}, manager));
 
     /** @type {THREE.Object3D<XREventMap> | undefined} */
     let object;
@@ -1302,9 +1286,10 @@ describe("div drag-to-scroll", () => {
     // A press that never became a drag still reports a click, which is what
     // the panel background would have reported had the list not been there,
     // with the point the ray met, as that click carries it. The list as the
-    // panel's top, laid out by the page at 100,40.
+    // panel's top, laid out by the page at 100,40, and registered under the
+    // container, as the portal registers its panel.
     element.getBoundingClientRect = () => clientRect(100, 40, 300, 100);
-    const { unregister } = registerPanel(object, element, (node) =>
+    const { unregister } = registerPanel(panel, element, (node) =>
       node === element ? object : undefined,
     );
     object.updateMatrixWorld(true);
@@ -1422,7 +1407,7 @@ describe("div haptics", () => {
 
     // The hand takes hold of the list: rows now pass under a ray that is
     // aimed at none of them.
-    const drags = scrollDrags(button.ctx);
+    const drags = ScrollDragsContext.get(button.ctx);
     drags.begin(controller, button.element, button.object);
     button.dispatch("pointerenter", source, listObject, button.object, controller);
     assert.equal(played.length, 2, "silent while the list is being scrolled");

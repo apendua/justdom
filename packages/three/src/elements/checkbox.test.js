@@ -5,7 +5,7 @@ import { InteractionContext } from "../interactions.js";
 import { createMirror } from "./mirror.js";
 import { PORTAL_ATTRIBUTE } from "./portalRoot.js";
 import { checkbox } from "./checkbox.js";
-import { createPanelForwarder, PointerForwarderContext } from "./pointerForwarding.js";
+import { bubble, forwardedPanel } from "../test/rays.js";
 
 /**
  * @import { Mesh, MeshBasicMaterial, Object3D } from "three";
@@ -69,10 +69,7 @@ function setup({ checked = false, disabled = false } = {}) {
     })
   );
 
-  // The panel's container, with the forwarder a portal puts on it.
-  const panel = new THREE.Object3D();
-  const base = InteractionContext.set({}, manager);
-  const ctx = PointerForwarderContext.set(base, createPanelForwarder(base, panel));
+  const { ctx, container: panel } = forwardedPanel(InteractionContext.set({}, manager));
 
   /** @type {Object3D<XREventMap>} */
   let object;
@@ -242,15 +239,8 @@ describe("checkbox", () => {
     const seen = [];
     element.addEventListener("change", () => seen.push(`change:${element.checked}`));
 
-    // A `select` as the manager sends one, up from the box to the panel.
-    const select = () => {
-      const event = { type: "select", originalTarget: registered[0], controller: {} };
-      for (let node = /** @type {Object3D | null} */ (registered[0]); node; node = node.parent) {
-        node.dispatchEvent(/** @type {any} */ (event));
-      }
-    };
-    select();
-    select();
+    bubble(registered[0], { type: "select", controller: {} });
+    bubble(registered[0], { type: "select", controller: {} });
 
     // Which is the whole point of mirroring a real input rather than drawing
     // one: the application listens for `change` and reads `checked`, exactly

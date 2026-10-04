@@ -5,11 +5,8 @@ import * as THREE from "three";
 import { InteractionContext, InteractionManager, intersectVisible } from "../interactions.js";
 import { createMirror } from "../elements/mirror.js";
 import { setContentGroup } from "../elements/contentGroup.js";
-import {
-  createPanelForwarder,
-  getControlRoot,
-  PointerForwarderContext,
-} from "../elements/pointerForwarding.js";
+import { getControlRoot } from "../elements/pointerForwarding.js";
+import { bubble, forwardedPanel } from "../test/rays.js";
 import { OBSERVER_OPTIONS } from "../elements/portal.js";
 import { SVGLoader } from "three/examples/jsm/loaders/SVGLoader.js";
 import { buildFillGeometry, group, shape } from "./shape.js";
@@ -49,32 +46,6 @@ function observedMirror(root) {
 }
 
 const SVG_NS = "http://www.w3.org/2000/svg";
-
-/**
- * A context whose elements are forwarded by a panel with `container` as its
- * container, as a portal's are.
- *
- * @param {WeakKey} ctx
- * @param {Object3D} container
- * @returns {WeakKey}
- */
-function forwardedPanel(ctx, container) {
-  return PointerForwarderContext.set(ctx, createPanelForwarder(ctx, container));
-}
-
-/**
- * A ray event as the manager sends one: to the object the ray met, and up
- * through its parents.
- *
- * @param {Object3D} object
- * @param {object} event
- */
-function bubble(object, event) {
-  const sent = { ...event, target: object, originalTarget: object };
-  for (let node = /** @type {Object3D | null} */ (object); node; node = node.parent) {
-    node.dispatchEvent(/** @type {never} */ (sent));
-  }
-}
 
 /**
  * A shape inside an `<svg>` root, wired the way the portal wires one: the
@@ -122,13 +93,12 @@ function setup(
 
   /** @type {Object3D} */
   let object;
-  const panel = new THREE.Object3D();
-  const ctx = manager ? forwardedPanel(InteractionContext.set({}, manager), panel) : {};
+  const { ctx, container: panel } = manager
+    ? forwardedPanel(InteractionContext.set({}, manager))
+    : { ctx: {}, container: null };
   const subscription = shape(ctx, element).subscribe((value) => {
     object = value;
-    if (manager) {
-      panel.add(value);
-    }
+    panel?.add(value);
   });
 
   return {
@@ -968,8 +938,7 @@ describe("svg shape as a ray target", () => {
     // `<g>` around it is hovered too, as every clickable box around a
     // hovered one is. jsdom inherits no `cursor`, so each says it itself.
     const { manager, registered } = recordingManager();
-    const panel = new THREE.Object3D();
-    const ctx = forwardedPanel(InteractionContext.set({}, manager), panel);
+    const { ctx, container: panel } = forwardedPanel(InteractionContext.set({}, manager));
     const root = document.createElementNS(SVG_NS, "svg");
     const g = document.createElementNS(SVG_NS, "g");
     const rect = document.createElementNS(SVG_NS, "rect");

@@ -3766,6 +3766,30 @@ describe("a panel that is always busy", () => {
   };
 
   /**
+   * Counts the channel flushes run with no budget, the long frames a time
+   * bound forces. Give `UpdateChannel.prototype.flush` back with `restore`,
+   * in a `finally`.
+   */
+  const countUnbudgeted = () => {
+    const flush = UpdateChannel.prototype.flush;
+    let count = 0;
+    UpdateChannel.prototype.flush = function (options) {
+      if (options?.budget === Infinity) {
+        count += 1;
+      }
+      return flush.call(this, options);
+    };
+    return {
+      get count() {
+        return count;
+      },
+      restore() {
+        UpdateChannel.prototype.flush = flush;
+      },
+    };
+  };
+
+  /**
    * A panel of a few rows, mounted at a zero budget, so that one frame
    * resolves one read and anything that invalidates the panel every frame
    * keeps its channel from ever emptying. It takes `performance.now` with
@@ -4040,14 +4064,7 @@ describe("a panel that is always busy", () => {
       loadingFrame: { delay: 250, minimumTime: 1000 },
     });
     const stop = flicker(list);
-    const flush = UpdateChannel.prototype.flush;
-    let unbudgeted = 0;
-    UpdateChannel.prototype.flush = function (options) {
-      if (options?.budget === Infinity) {
-        unbudgeted += 1;
-      }
-      return flush.call(this, options);
-    };
+    const unbudgeted = countUnbudgeted();
     try {
       let frames = 0;
       while (frames < 300 && portal.isLoading()) {
@@ -4062,9 +4079,13 @@ describe("a panel that is always busy", () => {
       const due = 250 + 16 + 1000;
       assert.ok(frames * 16 >= due - 2 * 16, `held until the frame was due, took ${frames}`);
       assert.ok(frames * 16 <= due + 3 * 16, `and no longer, took ${frames}`);
-      assert.equal(unbudgeted, 1, `one long frame, when the frame was due, took ${unbudgeted}`);
+      assert.equal(
+        unbudgeted.count,
+        1,
+        `one long frame, when the frame was due, took ${unbudgeted.count}`,
+      );
     } finally {
-      UpdateChannel.prototype.flush = flush;
+      unbudgeted.restore();
       stop();
       await drain();
       dispose();
@@ -4098,6 +4119,46 @@ describe("a panel that is always busy", () => {
       );
       assert.ok(frames * 16 <= MAX_BUILD_WAIT + 3 * 16, `and landed by it, took ${frames}`);
     } finally {
+      await drain();
+      dispose();
+    }
+  });
+
+  test("rows arriving past the bound wait for the loading frame to be due", async () => {
+    // The bound on the whole wait builds what is queued and sweeps in one
+    // long frame, but only for a commit the portal would take. A loading
+    // frame held up for longer than the bound declines it until it is due,
+    // and until then the pump keeps to its budget.
+    const { portal, list, clock, dispose } = busyPanel({
+      loadingFrame: { delay: 250, minimumTime: 6000 },
+    });
+    const unbudgeted = countUnbudgeted();
+    try {
+      let frames = 0;
+      while (frames < 600 && portal.isLoading()) {
+        // A row with a child every frame: two nodes against the one a zero
+        // budget builds.
+        const row = document.createElement("div");
+        row.appendChild(document.createElement("span"));
+        list.appendChild(row);
+        clock.advance(16);
+        flushFrame();
+        await nextMacrotask();
+        frames += 1;
+      }
+      assert.equal(portal.isLoading(), false, "the panel loaded");
+      // The frame goes up on the first tick past its delay, and is due a
+      // minimum time after that.
+      const due = 250 + 16 + 6000;
+      assert.ok(frames * 16 >= due - 2 * 16, `held until the frame was due, took ${frames}`);
+      assert.ok(frames * 16 <= due + 3 * 16, `and no longer, took ${frames}`);
+      assert.equal(
+        unbudgeted.count,
+        1,
+        `one long frame, when the frame was due, took ${unbudgeted.count}`,
+      );
+    } finally {
+      unbudgeted.restore();
       await drain();
       dispose();
     }

@@ -46,11 +46,12 @@ import { batch, Effect, withChannel } from "@apendua/signal";
  *   made, so it is fit to go in at once. Asked every tick, so the portal
  *   can keep its initial mount whole and commit early only after.
  * @property {() => boolean} [commitDue] Whether the portal would take a
- *   commit now. Asked before either time bound forces a long frame: the
- *   reading a forced frame does is for the commit, and one the portal would
- *   decline is undone by the next invalidation, so until it is due the pump
- *   keeps to its budget. True by default; false while a finished mount is
- *   held for its loading frame's minimum time.
+ *   commit now. Asked on every tick a commit has waited on, so it should be
+ *   cheap, and the time bounds force a long frame only while it answers
+ *   true: the reading a forced frame does is for the commit, and one the
+ *   portal would decline is undone by the next invalidation, so until it is
+ *   due the pump keeps to its budget. True by default; false while a
+ *   finished mount is held for its loading frame's minimum time.
  * @property {() => boolean} [hasPendingCommit] Whether the portal is holding
  *   anything for `onCommit`. Asked when deciding whether a frame is worth
  *   asking for: a removal that happens to queue nothing in the channel
@@ -189,11 +190,11 @@ export function createPortalPump({
   };
 
   /**
-   * How long this pump has waited on a channel that has not emptied, in
-   * ticks with nothing left to build, before the current stretch of them;
-   * and when the current stretch began, by the channel's clock, or null
-   * while a build is under way or nothing is waited for. See
-   * `MAX_COMMIT_WAIT`.
+   * How long, by the channel's clock, this pump has waited on a channel that
+   * has not emptied, over the stretches of ticks with nothing left to build
+   * before the current one, the frames between them included; and when the
+   * current stretch began, or null while a build is under way or nothing is
+   * waited for. See `MAX_COMMIT_WAIT`.
    */
   let waited = 0;
   /** @type {number | null} */
@@ -206,12 +207,19 @@ export function createPortalPump({
    */
   let commitWaitingSince = null;
   /**
-   * When a node last arrived from the page rather than from a build, by the
-   * channel's clock. See `MAX_BUILD_WAIT`.
+   * When a node last arrived from the page rather than from a build: the
+   * start of the tick that first saw it, by the channel's clock. See
+   * `MAX_BUILD_WAIT`.
    *
    * @type {number | null}
    */
   let arrivedAt = null;
+  /**
+   * Whether a node has arrived from the page since the last tick began. Set
+   * per node, and stamped into `arrivedAt` once a tick, so that a thousand
+   * rows appended at once cost one clock read.
+   */
+  let arrived = false;
   /** Whether the tick is building, so that what it queues is not an arrival. */
   let building = false;
 
@@ -254,6 +262,10 @@ export function createPortalPump({
       const now = channel.now;
       const tickStart = now();
       beforeTick();
+      if (arrived) {
+        arrivedAt = tickStart;
+        arrived = false;
+      }
       // Either bound forces a long frame only for a commit the portal would
       // take; until then the tick keeps to its budget.
       const due = commitWaitingSince !== null && commitDue();
@@ -406,7 +418,7 @@ export function createPortalPump({
         // Only what joins the queue arrives: a node the page moves while it
         // is still queued is reported added again and changes nothing.
         if (!building) {
-          arrivedAt = channel.now();
+          arrived = true;
         }
         pendingSet.add(node);
         pendingNodes.push(node);

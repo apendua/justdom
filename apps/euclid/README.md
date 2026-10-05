@@ -95,8 +95,9 @@ else for the rest of the session.
 The drawing's panel is not atomic, unlike the other two. freedom holds an
 atomic panel's change back until a frame finds nothing left to resolve, or
 until it has waited a second, and a point dragged or a paper panned changes
-the drawing on every move. Held back, it would land once a second rather
-than follow the hand.
+the drawing on every move. A move whose reading fits the frame's budget lands
+that frame either way. One whose reading overruns it would land once a second
+rather than follow the hand, so the panel takes a torn frame instead.
 
 The drawing needs nothing from the headset. freedom sends a ray's press, its
 moves and its release as the pointer events a browser sends for a mouse,

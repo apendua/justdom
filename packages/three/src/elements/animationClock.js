@@ -340,7 +340,8 @@ const SWEEP_INTERVAL = 60;
  *   `currentTime`, and still looks for what started and what ended. The
  *   first frame after the hold advances them by what the hold owes them,
  *   or, for one that started during it, by its share of that, which for one
- *   the timeline is not carrying is the time since it started. Elsewhere
+ *   the timeline is not carrying is the time since the first look that saw
+ *   it, within a frame of its start. Elsewhere
  *   membership is kept up all the while. Either way the first frame after
  *   the hold names every element still animating, and an animation that ends
  *   is still settled, since an end is said once and not every frame.
@@ -651,9 +652,9 @@ export function createAnimationClock(container, emit, requestFrames, { held = ()
     // dispatched while the clock drives, so a sweep is the only way one is
     // learned, and the first frame after a hold may be the sweep that
     // learns it. A driven frame stamps with its own `now`, so what it is
-    // first to see is owed exactly nothing yet; only a look reads the clock.
+    // first to see is owed exactly nothing yet; a look reads the clock.
     const noting = lastDrivenAt !== null;
-    const stamp = now ?? (noting ? performance.now() : 0);
+    const stamp = now ?? performance.now();
     const looked = spareSeen;
     looked.clear();
     for (const animation of animations) {
@@ -788,8 +789,9 @@ export function createAnimationClock(container, emit, requestFrames, { held = ()
         narrow.delete(element);
       }
     }
+    const isHeld = held();
     if (sampleRenderingUpdates()) {
-      if (held()) {
+      if (isHeld) {
         // Nothing driven: each `currentTime` write dirties a style the mount
         // would read again. The account keeps running from when driving
         // started, so the first frame after the hold advances by all of it.
@@ -843,7 +845,9 @@ export function createAnimationClock(container, emit, requestFrames, { held = ()
       stop();
       return;
     }
-    if (held()) {
+    // Only the browser-driving branch reaches here held; the held driving
+    // frame has returned above.
+    if (isHeld) {
       return;
     }
     emit(buildBatches());

@@ -149,9 +149,10 @@ export const Scene = ({ toolbar, editor, canvas }: Mounts) =>
         // Not atomic: a drag or a pan changes the drawing on every move, and
         // an atomic panel holds each change back until a frame finds nothing
         // left to resolve, or until it has waited a second
-        // (`MAX_COMMIT_WAIT`), so the drawing would land once a second rather
-        // than follow the hand. A torn frame of a drawing in motion is the
-        // lesser harm.
+        // (`MAX_COMMIT_WAIT`). A move whose reading fits the frame's budget
+        // lands that frame either way; one whose reading overruns it would
+        // land once a second rather than follow the hand. A torn frame of a
+        // drawing in motion is the lesser harm.
         Panel(ctx, canvas, BOARD_AT, (rect) => boardScale(rect.width, rect.height), {
           atomic: false,
         }),

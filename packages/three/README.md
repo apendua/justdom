@@ -518,7 +518,9 @@ or a transition on it change, and at once when the ray presses or arrives
 on a control, so a transform that arrives after the claim is caught at
 the next of those. Mirror an untransformed wrapper and transform what is
 inside it, or take the transform off for as long as a session runs, which
-is what the desk app does.
+is what the desk app does. A `perspective` counts only above the root. One
+on the root itself projects what is inside the panel, which the mirror
+draws as real depth, so it is neither refused nor warned about.
 
 Which element is up to the app, and it can change: `dom()` takes a
 subscribable of elements as readily as one of trees, and each emission is a

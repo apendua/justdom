@@ -488,6 +488,7 @@ export function createAnimationClock(container, emit, requestFrames, { held = ()
     lastDrivenAt = null;
     lastDocumentTime = null;
     joinedDuringHold.clear();
+    lastSeen.clear();
   }
 
   /**
@@ -620,17 +621,32 @@ export function createAnimationClock(container, emit, requestFrames, { held = ()
    * is why the portal calls it on every mutation, the one signal that still
    * arrives (observer callbacks are microtasks, owing nothing to frames).
    *
-   * @param {number} [advanceBy] Milliseconds of real time to move every
-   *   running animation on by first. Nonzero only while the document is
-   *   suspended, where the rendering step that would ordinarily do this has
-   *   stopped.
-   * @param {number} [browserAdvance] How much of that the document's own
-   *   timeline covered — what the browser has already carried its animations
-   *   through, and so must not be charged for twice.
-   * @param {number} [now] The `performance.now()` the elapsed time was
-   *   measured against. Required with `advanceBy`: an animation that
-   *   started during a hold is advanced by the time since it started,
-   *   which is `now` less when it was first seen.
+   * Called with nothing, it only looks. Called to drive, it takes all three
+   * of what follows, or the types refuse it: without `now`, an animation
+   * that started during a hold would be owed a negative time and never
+   * moved. Three numbers rather than one object, since the driving branch
+   * calls this every frame.
+   *
+   * @overload
+   * @returns {void}
+   */
+  /**
+   * @overload
+   * @param {number} advanceBy Milliseconds of real time to move every running
+   *   animation on by first. Nonzero only while the document is suspended,
+   *   where the rendering step that would ordinarily do this has stopped.
+   * @param {number} browserAdvance How much of that the document's own
+   *   timeline covered — what the browser has already carried its
+   *   animations through, and so must not be charged for twice.
+   * @param {number} now The `performance.now()` the elapsed time was
+   *   measured against: an animation that started during a hold is advanced
+   *   by `now` less when it was first seen.
+   * @returns {void}
+   */
+  /**
+   * @param {number} [advanceBy]
+   * @param {number} [browserAdvance]
+   * @param {number} [now]
    */
   function sweep(advanceBy = 0, browserAdvance = 0, now = 0) {
     if (typeof container.getAnimations !== "function") {
@@ -792,13 +808,11 @@ export function createAnimationClock(container, emit, requestFrames, { held = ()
           return;
         }
         if (lastDrivenAt === null) {
+          // What the sweep above saw runs now and is owed the whole hold;
+          // only what a later sweep finds that it did not see started
+          // during it.
           lastDrivenAt = performance.now();
           lastDocumentTime = documentTime();
-          // What runs now is owed the whole hold; only what a later sweep
-          // finds that is not here started during it.
-          if (typeof container.getAnimations === "function") {
-            remember(container.getAnimations({ subtree: true }));
-          }
         }
         return;
       }
@@ -926,8 +940,6 @@ export function createAnimationClock(container, emit, requestFrames, { held = ()
       container.removeEventListener("animationend", onAnimationRemove);
       container.removeEventListener("animationcancel", onAnimationRemove);
       animating.clear();
-      joinedDuringHold.clear();
-      lastSeen.clear();
       stop();
     },
   };

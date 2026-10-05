@@ -241,14 +241,19 @@ export function createPortalPump({
             // spend whole frames building nothing.
             let progressed = false;
             building = true;
-            while (pendingNodes.length > 0 && (!progressed || overdue || now() < deadline)) {
-              const node = /** @type {Node} */ (pendingNodes.shift());
-              pendingSet.delete(node);
-              if (buildNode(node)) {
-                progressed = true;
+            try {
+              while (pendingNodes.length > 0 && (!progressed || overdue || now() < deadline)) {
+                const node = /** @type {Node} */ (pendingNodes.shift());
+                pendingSet.delete(node);
+                if (buildNode(node)) {
+                  progressed = true;
+                }
               }
+            } finally {
+              // A build that throws must not leave the page's next node
+              // taken for the build's own.
+              building = false;
             }
-            building = false;
           });
         });
       }

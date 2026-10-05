@@ -19,6 +19,7 @@ import { DEFAULT_HANDLE_WIDTH } from "./panelHandles.js";
 import { RendererContext } from "../render.js";
 import { recordingSource } from "../test/rumble.js";
 import { clientRect } from "../test/clientRect.js";
+import { fakeClock } from "../test/clock.js";
 import { syntheticEvent } from "../test/events.js";
 
 /**
@@ -41,7 +42,6 @@ import {
   countingManager,
   dispatchFontsEvent,
   drain,
-  fakeClock,
   flushFrame,
   frameCallbacks,
   nextMacrotask,

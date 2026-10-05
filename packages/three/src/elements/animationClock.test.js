@@ -2,6 +2,7 @@ import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { createAnimationClock } from "./animationClock.js";
 import { resetRenderingUpdatesForTests } from "./renderingUpdates.js";
+import { fakeClock } from "../test/clock.js";
 import { syntheticEvent } from "../test/events.js";
 
 /**
@@ -569,16 +570,16 @@ describe("animation clock with rendering updates suspended", () => {
   }
 
   /**
-   * @param {() => void} body
+   * @param {(time: ReturnType<typeof fakeClock>) => void} body
    */
   function withStalledClocks(body) {
-    const original = performance.now;
+    const time = fakeClock();
     const frames = renderingStep();
     resetRenderingUpdatesForTests();
     try {
-      body();
+      body(time);
     } finally {
-      performance.now = original;
+      time.restore();
       frames.restore();
       resetRenderingUpdatesForTests();
     }
@@ -640,9 +641,7 @@ describe("animation clock with rendering updates suspended", () => {
     // which reads and writes nothing.
     let held = true;
     const { container, element, emitted, frames, clock, cleanup } = setup({ held: () => held });
-    withStalledClocks(() => {
-      let clockTime = 0;
-      performance.now = () => clockTime;
+    withStalledClocks((time) => {
       setDocumentTime(500);
 
       try {
@@ -650,19 +649,19 @@ describe("animation clock with rendering updates suspended", () => {
         // @ts-expect-error -- a minimal stand-in for the real thing.
         container.getAnimations = () => [animation];
         clock.sweep();
-        clockTime = 16;
+        time.set(16);
         frames.step();
-        clockTime = PAST_THE_TIMEOUT;
+        time.set(PAST_THE_TIMEOUT);
         frames.step();
-        clockTime = PAST_THE_TIMEOUT + 16;
+        time.set(PAST_THE_TIMEOUT + 16);
         frames.step();
-        clockTime = PAST_THE_TIMEOUT + 32;
+        time.set(PAST_THE_TIMEOUT + 32);
         frames.step();
         assert.equal(animation.currentTime, 0, "nothing driven while held");
         assert.equal(emitted.length, 0, "or emitted");
 
         held = false;
-        clockTime = PAST_THE_TIMEOUT + 48;
+        time.set(PAST_THE_TIMEOUT + 48);
         frames.step();
         assert.equal(animation.currentTime, 48, "the first frame after makes up the hold");
         assert.equal(emitted.length, 1, "and samples");
@@ -676,9 +675,7 @@ describe("animation clock with rendering updates suspended", () => {
     // An element that leaves the tree during the hold empties the
     // membership, and an empty membership holds no frames, held or not.
     const { container, element, frames, clock, cleanup } = setup({ held: () => true });
-    withStalledClocks(() => {
-      let clockTime = 0;
-      performance.now = () => clockTime;
+    withStalledClocks((time) => {
       setDocumentTime(500);
 
       try {
@@ -686,14 +683,14 @@ describe("animation clock with rendering updates suspended", () => {
         // @ts-expect-error -- a minimal stand-in for the real thing.
         container.getAnimations = () => [animation];
         clock.sweep();
-        clockTime = 16;
+        time.set(16);
         frames.step();
-        clockTime = PAST_THE_TIMEOUT;
+        time.set(PAST_THE_TIMEOUT);
         frames.step();
         assert.equal(frames.running, true, "driving, and held");
 
         element.remove();
-        clockTime = PAST_THE_TIMEOUT + 16;
+        time.set(PAST_THE_TIMEOUT + 16);
         frames.step();
         assert.equal(frames.running, false, "nothing animates, so no frames");
       } finally {
@@ -707,9 +704,7 @@ describe("animation clock with rendering updates suspended", () => {
     // style recalc has made the animation, and the look a frame later is
     // the only one coming. A hold must not drop it.
     const { container, element, frames, clock, cleanup } = setup({ held: () => true });
-    withStalledClocks(() => {
-      let clockTime = 0;
-      performance.now = () => clockTime;
+    withStalledClocks((time) => {
       setDocumentTime(500);
 
       try {
@@ -718,14 +713,14 @@ describe("animation clock with rendering updates suspended", () => {
         // @ts-expect-error -- a minimal stand-in for the real thing.
         container.getAnimations = () => running;
         clock.sweep();
-        clockTime = 16;
+        time.set(16);
         frames.step();
         // Long enough that the rendering step has stopped, and the mutation
         // comes now, with the transition not made yet.
-        clockTime = PAST_THE_TIMEOUT;
+        time.set(PAST_THE_TIMEOUT);
         clock.sweep();
         running = [fakeAnimation(element, 1000)];
-        clockTime = PAST_THE_TIMEOUT + 16;
+        time.set(PAST_THE_TIMEOUT + 16);
         frames.step();
         assert.equal(frames.running, true, "the look found the transition");
       } finally {
@@ -742,9 +737,7 @@ describe("animation clock with rendering updates suspended", () => {
     const { container, element, frames, clock, cleanup } = setup({ held: () => held });
     const late = document.createElement("div");
     container.appendChild(late);
-    withStalledClocks(() => {
-      let clockTime = 0;
-      performance.now = () => clockTime;
+    withStalledClocks((time) => {
       setDocumentTime(500);
 
       try {
@@ -755,15 +748,15 @@ describe("animation clock with rendering updates suspended", () => {
         // @ts-expect-error -- a minimal stand-in for the real thing.
         container.getAnimations = () => running;
         clock.sweep();
-        clockTime = 16;
+        time.set(16);
         frames.step();
-        clockTime = PAST_THE_TIMEOUT;
+        time.set(PAST_THE_TIMEOUT);
         frames.step();
         // Driving starts, held; then a second animation starts 300 ms in.
-        clockTime = PAST_THE_TIMEOUT + 300;
+        time.set(PAST_THE_TIMEOUT + 300);
         running = [early, joined];
         clock.sweep();
-        clockTime = PAST_THE_TIMEOUT + 500;
+        time.set(PAST_THE_TIMEOUT + 500);
         held = false;
         frames.step();
         assert.equal(early.currentTime, 500, "the first by the whole hold");
@@ -782,9 +775,7 @@ describe("animation clock with rendering updates suspended", () => {
     const { container, element, frames, clock, cleanup } = setup({ held: () => held });
     const late = document.createElement("div");
     container.appendChild(late);
-    withStalledClocks(() => {
-      let clockTime = 0;
-      performance.now = () => clockTime;
+    withStalledClocks((time) => {
       setDocumentTime(500);
 
       try {
@@ -795,16 +786,16 @@ describe("animation clock with rendering updates suspended", () => {
         // @ts-expect-error -- a minimal stand-in for the real thing.
         container.getAnimations = () => running;
         clock.sweep();
-        clockTime = 16;
+        time.set(16);
         frames.step();
-        clockTime = PAST_THE_TIMEOUT;
+        time.set(PAST_THE_TIMEOUT);
         frames.step();
-        clockTime = PAST_THE_TIMEOUT + 300;
+        time.set(PAST_THE_TIMEOUT + 300);
         clock.sweep();
         running = [early, joined];
-        clockTime = PAST_THE_TIMEOUT + 316;
+        time.set(PAST_THE_TIMEOUT + 316);
         frames.step();
-        clockTime = PAST_THE_TIMEOUT + 500;
+        time.set(PAST_THE_TIMEOUT + 500);
         held = false;
         frames.step();
         assert.equal(early.currentTime, 500, "the first by the whole hold");
@@ -821,9 +812,7 @@ describe("animation clock with rendering updates suspended", () => {
     // the time since it began.
     let held = true;
     const { container, element, frames, clock, cleanup } = setup({ held: () => held });
-    withStalledClocks(() => {
-      let clockTime = 0;
-      performance.now = () => clockTime;
+    withStalledClocks((time) => {
       setDocumentTime(500);
 
       try {
@@ -834,14 +823,14 @@ describe("animation clock with rendering updates suspended", () => {
         // @ts-expect-error -- a minimal stand-in for the real thing.
         container.getAnimations = () => running;
         clock.sweep();
-        clockTime = 16;
+        time.set(16);
         frames.step();
-        clockTime = PAST_THE_TIMEOUT;
+        time.set(PAST_THE_TIMEOUT);
         frames.step();
-        clockTime = PAST_THE_TIMEOUT + 300;
+        time.set(PAST_THE_TIMEOUT + 300);
         running = [pulse, fade];
         clock.sweep();
-        clockTime = PAST_THE_TIMEOUT + 500;
+        time.set(PAST_THE_TIMEOUT + 500);
         held = false;
         frames.step();
         assert.equal(pulse.currentTime, 500, "the pulse by the whole hold");
@@ -858,9 +847,7 @@ describe("animation clock with rendering updates suspended", () => {
     // for one that started then, or it would land behind the page.
     let held = true;
     const { container, element, frames, clock, cleanup } = setup({ held: () => held });
-    withStalledClocks(() => {
-      let clockTime = 0;
-      performance.now = () => clockTime;
+    withStalledClocks((time) => {
       setDocumentTime(500);
 
       try {
@@ -870,15 +857,15 @@ describe("animation clock with rendering updates suspended", () => {
         // @ts-expect-error -- a minimal stand-in for the real thing.
         container.getAnimations = () => running;
         clock.sweep();
-        clockTime = 16;
+        time.set(16);
         frames.step();
         running = [fade];
         element.dispatchEvent(syntheticEvent("transitionrun", { propertyName: "opacity" }));
-        clockTime = PAST_THE_TIMEOUT;
+        time.set(PAST_THE_TIMEOUT);
         frames.step();
-        clockTime = PAST_THE_TIMEOUT + 300;
+        time.set(PAST_THE_TIMEOUT + 300);
         clock.sweep();
-        clockTime = PAST_THE_TIMEOUT + 500;
+        time.set(PAST_THE_TIMEOUT + 500);
         held = false;
         frames.step();
         assert.equal(fade.currentTime, 500, "advanced by the whole hold");
@@ -892,9 +879,7 @@ describe("animation clock with rendering updates suspended", () => {
     // No event says an animation ended while the clock drives, so a held
     // clock looks now and then, as the browser-driving branch does.
     const { container, element, frames, clock, cleanup } = setup({ held: () => true });
-    withStalledClocks(() => {
-      let clockTime = 0;
-      performance.now = () => clockTime;
+    withStalledClocks((time) => {
       setDocumentTime(500);
 
       try {
@@ -902,14 +887,14 @@ describe("animation clock with rendering updates suspended", () => {
         // @ts-expect-error -- a minimal stand-in for the real thing.
         container.getAnimations = () => [fade];
         clock.sweep();
-        clockTime = 16;
+        time.set(16);
         frames.step();
-        clockTime = PAST_THE_TIMEOUT;
+        time.set(PAST_THE_TIMEOUT);
         frames.step();
         // Carried to its end by a timeline that keeps running.
         fade.currentTime = 100;
         for (let tick = 0; tick < 70 && frames.running; tick++) {
-          clockTime += 16;
+          time.advance(16);
           frames.step();
         }
         assert.equal(frames.running, false, "the frames are let go");
@@ -925,9 +910,7 @@ describe("animation clock with rendering updates suspended", () => {
     // since the account was opened for the fade.
     let held = true;
     const { container, element, frames, clock, cleanup } = setup({ held: () => held });
-    withStalledClocks(() => {
-      let clockTime = 0;
-      performance.now = () => clockTime;
+    withStalledClocks((time) => {
       setDocumentTime(500);
 
       try {
@@ -937,25 +920,25 @@ describe("animation clock with rendering updates suspended", () => {
         // @ts-expect-error -- a minimal stand-in for the real thing.
         container.getAnimations = () => running;
         clock.sweep();
-        clockTime = 16;
+        time.set(16);
         frames.step();
-        clockTime = PAST_THE_TIMEOUT;
+        time.set(PAST_THE_TIMEOUT);
         frames.step();
         // Carried to its end; the clock looks, finds nothing, lets go.
         fade.currentTime = 100;
         running = [];
         for (let tick = 0; tick < 70 && frames.running; tick++) {
-          clockTime += 16;
+          time.advance(16);
           frames.step();
         }
         assert.equal(frames.running, false, "the frames were let go");
 
         held = false;
-        clockTime = PAST_THE_TIMEOUT + 60_000;
+        time.set(PAST_THE_TIMEOUT + 60_000);
         const press = fakeAnimation(element, 10_000);
         running = [press];
         clock.sweep();
-        clockTime += 16;
+        time.advance(16);
         frames.step();
         assert.ok(press.currentTime <= 16, `driven from its start, at ${press.currentTime}`);
       } finally {
@@ -972,9 +955,7 @@ describe("animation clock with rendering updates suspended", () => {
     const { container, element, frames, clock, cleanup } = setup({ held: () => held });
     const late = document.createElement("div");
     container.appendChild(late);
-    withStalledClocks(() => {
-      let clockTime = 0;
-      performance.now = () => clockTime;
+    withStalledClocks((time) => {
       setDocumentTime(500);
 
       try {
@@ -985,19 +966,19 @@ describe("animation clock with rendering updates suspended", () => {
         // @ts-expect-error -- a minimal stand-in for the real thing.
         container.getAnimations = () => running;
         clock.sweep();
-        clockTime = 16;
+        time.set(16);
         frames.step();
-        clockTime = PAST_THE_TIMEOUT;
+        time.set(PAST_THE_TIMEOUT);
         frames.step();
-        clockTime = PAST_THE_TIMEOUT + 100;
+        time.set(PAST_THE_TIMEOUT + 100);
         running = [early, joined];
         for (let tick = 0; tick < 59; tick++) {
-          clockTime += 16;
+          time.advance(16);
           frames.step();
         }
-        const owed = clockTime + 16 - (PAST_THE_TIMEOUT + 100);
+        const owed = time.now() + 16 - (PAST_THE_TIMEOUT + 100);
         held = false;
-        clockTime += 16;
+        time.advance(16);
         frames.step();
         assert.ok(
           joined.currentTime >= owed - 16 && joined.currentTime <= owed,

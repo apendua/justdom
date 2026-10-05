@@ -1389,14 +1389,14 @@ elements or the transitions playing on them.
 ## Animation
 
 CSS transitions, keyframe animations and Web Animations play inside a portal:
-while anything is animating, the affected elements are sampled once per frame —
-through the same invalidation path a mutation takes — and the moment nothing is,
-the sampling stops. An idle panel costs nothing. A panel still loading is not
-sampled frame by frame: nobody sees it yet, its mount reads each element's style
-as it builds it, and a sample every frame would undo that reading. An animation
-that ends during the load is settled once, as it would be in a loaded panel. The
-first frame after the load samples every element still animating, so the panel
-appears where its animations are.
+while anything is animating, the affected elements are sampled once per frame
+— through the same invalidation path a mutation takes — and the moment nothing
+is, the sampling stops. An idle panel costs nothing. A panel still loading is
+not sampled frame by frame: nobody sees it yet, its mount reads each element's
+style as it builds it, and a sample every frame would undo that reading. An
+animation that ends during the load is settled once, as it would be in a loaded
+panel. The first frame after the load samples every element still animating,
+so the panel appears where its animations are.
 Inline-style writes from a frame loop work too; each one is an ordinary
 mutation scoped to the element it touched. Drive that loop with
 `useFrame(ctx, fn)` rather than with `requestAnimationFrame`, though. Once a

@@ -441,13 +441,13 @@ export function createAnimationClock(container, emit, requestFrames, { held = ()
    */
   let recheck = false;
   /**
-   * When each animation that started with the clock driving was first seen,
-   * during a hold or on the frame that ends one. The hold keeps one account
-   * from when driving started, and an animation that started later is owed
-   * only its share of it, in proportion to the time since; the next driven
-   * frame with time to make up reads this and clears it. Keyed by the
-   * animation and not its element, since an element already animating can
-   * start another.
+   * When each animation a sweep was first to see, while the clock drives,
+   * was seen. The next driven frame with time to make up reads this and
+   * clears it: an animation that started during a hold is owed only its
+   * share of the hold, in proportion to the time since it was seen, and one
+   * an ordinary driven frame finds is owed nothing on that frame and loses
+   * at most that frame. Keyed by the animation and not its element, since
+   * an element already animating can start another.
    *
    * @type {Map<Animation, number>}
    */
@@ -455,24 +455,14 @@ export function createAnimationClock(container, emit, requestFrames, { held = ()
 
   /**
    * The animations the last sweep saw, kept to tell one that has just
-   * started from one that was running already. One set, refilled by each
-   * sweep, rather than one per sweep.
+   * started from one that was running already. Two sets that each sweep
+   * swaps, filling the spare as it walks, rather than one per sweep.
    *
    * @type {Set<Animation>}
    */
-  const lastSeen = new Set();
-
-  /**
-   * Keep `animations` as the ones the last look saw.
-   *
-   * @param {Animation[]} animations
-   */
-  function remember(animations) {
-    lastSeen.clear();
-    for (const animation of animations) {
-      lastSeen.add(animation);
-    }
-  }
+  let lastSeen = new Set();
+  /** @type {Set<Animation>} */
+  let spareSeen = new Set();
 
   function start() {
     if (!stopFrames) {
@@ -650,24 +640,29 @@ export function createAnimationClock(container, emit, requestFrames, { held = ()
    * @param {number} [browserAdvance]
    * @param {number} [now]
    */
-  function sweep(advanceBy = 0, browserAdvance = 0, now = 0) {
+  function sweep(advanceBy = 0, browserAdvance = 0, now) {
     if (typeof container.getAnimations !== "function") {
       return;
     }
     const animations = container.getAnimations({ subtree: true });
     // What started since the last sweep, with the clock driving, is owed
-    // only the time since now. No animation event is dispatched while the
-    // clock drives, so a sweep is the only way one is learned, and the
-    // first frame after a hold may be the sweep that learns it.
-    if (lastDrivenAt !== null) {
-      const seenAt = performance.now();
-      for (const animation of animations) {
-        if (!lastSeen.has(animation)) {
-          joinedAt.set(animation, seenAt);
-        }
+    // only the time since this sweep saw it. No animation event is
+    // dispatched while the clock drives, so a sweep is the only way one is
+    // learned, and the first frame after a hold may be the sweep that
+    // learns it. A driven frame stamps with its own `now`, so what it is
+    // first to see is owed exactly nothing yet; only a look reads the clock.
+    const noting = lastDrivenAt !== null;
+    const stamp = now ?? (noting ? performance.now() : 0);
+    const looked = spareSeen;
+    looked.clear();
+    for (const animation of animations) {
+      looked.add(animation);
+      if (noting && !lastSeen.has(animation)) {
+        joinedAt.set(animation, stamp);
       }
     }
-    remember(animations);
+    spareSeen = lastSeen;
+    lastSeen = looked;
     if (advanceBy > 0) {
       // What is left for us to do. A timeline that has stopped with the
       // frames leaves the whole of it; one that keeps running while the page
@@ -696,7 +691,7 @@ export function createAnimationClock(container, emit, requestFrames, { held = ()
         // in the same proportion as what it covered of the whole.
         const joined = joinedAt.get(animation);
         const owed = anchored ? shortfall : advanceBy;
-        const delta = joined === undefined ? owed : (owed * (now - joined)) / advanceBy;
+        const delta = joined === undefined ? owed : (owed * (stamp - joined)) / advanceBy;
         if (delta <= 0) {
           continue;
         }

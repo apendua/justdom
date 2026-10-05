@@ -1523,9 +1523,10 @@ function buildPortal(ctx, ownOptions = {}) {
     if (sawContent && loading.get()) {
       // The mount is under way: say so where the DOM can see it, and start
       // placing the panel and the frame that may stand in for it. Both end
-      // with `markLoaded`. The flag is written once: the observer reports
-      // every write, even one of the value already there, and the flush that
-      // reports it comes back here.
+      // with `markLoaded`. The flag is written once, not on every flush of
+      // the mount, since the observer reports a write of the value already
+      // there as a record of its own. Such a record does not lead back here:
+      // `mutationCallback` skips a flush made only of the portal's flags.
       if (!containerElement.hasAttribute(LOADING_ATTRIBUTE)) {
         containerElement.setAttribute(LOADING_ATTRIBUTE, "");
       }

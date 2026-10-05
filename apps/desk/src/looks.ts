@@ -72,10 +72,7 @@ export const PX = 0.00065;
 
 const degrees = (value: number) => (value * Math.PI) / 180;
 
-/**
- * How much bigger the monitor is drawn than its px, on the page (the
- * `#monitor` rule of each look's stylesheet) and in the room alike.
- */
+/** How much bigger the monitor is drawn in the room than its px. */
 const MONITOR_SCALE = 1.5;
 
 // The objects every look has in the same place: the monitor on the desk,

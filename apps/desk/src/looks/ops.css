@@ -23,7 +23,7 @@
 .clocks span { font: 500 9px/1 "Oswald", sans-serif; color: #7c8594; letter-spacing: .3em; }
 
 /* ---------- monitor ---------------------------------------------------- */
-#monitor { left: 500px; top: 20px; width: 600px; transform: scale(1.5); transform-origin: 50% 0; }
+#monitor { left: 500px; top: 108px; width: 600px; }
 .case { background: linear-gradient(180deg, #4a505b 0%, #343941 100%); border: 2px solid #22262c; border-radius: 10px; padding: 18px 18px 0; }
 .bezel { position: relative; background: #121418; border-radius: 10px; padding: 18px; border: 2px solid #5a616d; }
 .screen { position: relative; height: 340px; overflow: hidden; border-radius: 30px / 24px; padding: 18px 24px;

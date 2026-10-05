@@ -20,7 +20,7 @@
   background: repeating-linear-gradient(177deg, #ead6ae 0 10px, #e3cc9e 10px 13px, #ecd9b4 13px 24px, #dfc697 24px 27px); }
 
 /* ---------- the all-in-one -------------------------------------------- */
-#monitor { left: 520px; top: 20px; width: 560px; transform: scale(1.5); transform-origin: 50% 0; }
+#monitor { left: 520px; top: 74px; width: 560px; }
 .aio { background: linear-gradient(180deg, #f1eee6, #dfdbd0); border: 2px solid #b9b4a7; border-radius: 16px 16px 10px 10px; padding: 26px 34px 0; }
 .glass { position: relative; background: #2b2a27; border-radius: 10px; padding: 14px; border: 2px solid #1c1b19; }
 .desktop { position: relative; height: 352px; border-radius: 6px; overflow: hidden; background: #fff repeating-conic-gradient(#c9c9c9 0 25%, #ffffff 0 50%) 0 0 / 4px 4px; }

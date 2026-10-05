@@ -28,7 +28,7 @@
 .hub { position: absolute; left: 50%; top: 50%; width: 9px; height: 9px; margin: -4.5px 0 0 -4.5px; border-radius: 50%; background: #d0402b; }
 
 /* ---------- the monitor ---------------------------------------------- */
-#monitor { left: 492px; top: 20px; width: 616px; transform: scale(1.5); transform-origin: 50% 0; }
+#monitor { left: 492px; top: 142px; width: 616px; }
 .case { background: linear-gradient(180deg, #ece4cf 0%, #ddd3b9 100%); border: 2px solid #a79c80; border-radius: 22px 22px 14px 14px; padding: 26px 30px 0; }
 .bezel { position: relative; background: #34322c; border-radius: 26px; padding: 20px; border: 3px solid #26241f; }
 .screen { position: relative; height: 330px; overflow: hidden; border-radius: 22px; padding: 18px 22px;

@@ -102,10 +102,14 @@ export const MAX_COMMIT_WAIT = 1000;
  * from the first tick that ends without the commit taken, and ends only
  * when one is taken, or the portal commits without the channel. The pump
  * lands the build once a node arrives from the page, not from a build,
- * this long into the wait. A build fed only by its own content, a large
- * mount on a slow device, is left to its budget however long it takes,
- * since building the rest of it in one frame is the stall the budget exists
- * to avoid.
+ * this long into the wait. One node is enough: the rule does not ask
+ * whether the build is keeping up, since a breadth-first walk's queue grows
+ * while it is making headway and no count of the queue tells a slow mount
+ * from a flooded one. So a slow mount that the page adds a single row to
+ * five seconds in builds the rest in one frame. A build fed only by its own
+ * content, a large mount on a slow device, is left to its budget however
+ * long it takes, since building the rest of it in one frame is the stall
+ * the budget exists to avoid.
  */
 export const MAX_BUILD_WAIT = 5000;
 

@@ -710,8 +710,11 @@ function buildPortal(ctx, ownOptions = {}) {
    * budget without asking. `maxStalePasses: Infinity` for the same reason: a
    * large mount legitimately overruns the budget many frames in a row, and
    * the catch-up drain the default would force is precisely the stall this
-   * exists to avoid. The bound a busy panel does need is the pump's, in
-   * time rather than passes: see `MAX_COMMIT_WAIT`.
+   * exists to avoid. The bounds a busy panel does need are the pump's, in
+   * time rather than passes: `MAX_COMMIT_WAIT` for reading that never
+   * finishes, and `MAX_BUILD_WAIT` for a build the page keeps adding to,
+   * which does take that drain, building everything queued and sweeping
+   * the channel in one frame.
    *
    * Atomic, because a panel is one surface. A budget spent running the
    * effects moved the boxes it reached and left the rest where they were, so

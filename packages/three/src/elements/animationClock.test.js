@@ -633,10 +633,11 @@ describe("animation clock with rendering updates suspended", () => {
   });
 
   test("a held clock drives nothing, and its first frame after makes up the hold", () => {
-    // Driving is a `getAnimations()` and a `currentTime` write per running
-    // animation, and every write dirties a style the mount then reads again.
-    // None of it is needed while the panel loads: the first frame after the
-    // hold advances by all of it and lands where the animation is.
+    // Driving is a `currentTime` write per running animation, and every
+    // write dirties a style the mount then reads again. None of it is needed
+    // while the panel loads: the first frame after the hold advances by all
+    // of it and lands where the animation is. A held frame still looks,
+    // which reads and writes nothing.
     let held = true;
     const { container, element, emitted, frames, clock, cleanup } = setup({ held: () => held });
     withStalledClocks(() => {
@@ -646,24 +647,18 @@ describe("animation clock with rendering updates suspended", () => {
 
       try {
         const animation = fakeAnimation(element, 1000);
-        let reads = 0;
         // @ts-expect-error -- a minimal stand-in for the real thing.
-        container.getAnimations = () => {
-          reads += 1;
-          return [animation];
-        };
+        container.getAnimations = () => [animation];
         clock.sweep();
         clockTime = 16;
         frames.step();
         clockTime = PAST_THE_TIMEOUT;
         frames.step();
-        const before = reads;
         clockTime = PAST_THE_TIMEOUT + 16;
         frames.step();
         clockTime = PAST_THE_TIMEOUT + 32;
         frames.step();
         assert.equal(animation.currentTime, 0, "nothing driven while held");
-        assert.equal(reads, before, "and nothing read");
         assert.equal(emitted.length, 0, "or emitted");
 
         held = false;
@@ -918,6 +913,96 @@ describe("animation clock with rendering updates suspended", () => {
           frames.step();
         }
         assert.equal(frames.running, false, "the frames are let go");
+      } finally {
+        cleanup();
+      }
+    });
+  });
+
+  test("an account the frames let go of starts again with the next animation", () => {
+    // A fade during the hold ends, and the frames stop. The first animation
+    // after the load must be driven from its own start, not by everything
+    // since the account was opened for the fade.
+    let held = true;
+    const { container, element, frames, clock, cleanup } = setup({ held: () => held });
+    withStalledClocks(() => {
+      let clockTime = 0;
+      performance.now = () => clockTime;
+      setDocumentTime(500);
+
+      try {
+        const fade = fakeAnimation(element, 100);
+        /** @type {ReturnType<typeof fakeAnimation>[]} */
+        let running = [fade];
+        // @ts-expect-error -- a minimal stand-in for the real thing.
+        container.getAnimations = () => running;
+        clock.sweep();
+        clockTime = 16;
+        frames.step();
+        clockTime = PAST_THE_TIMEOUT;
+        frames.step();
+        // Carried to its end; the clock looks, finds nothing, lets go.
+        fade.currentTime = 100;
+        running = [];
+        for (let tick = 0; tick < 70 && frames.running; tick++) {
+          clockTime += 16;
+          frames.step();
+        }
+        assert.equal(frames.running, false, "the frames were let go");
+
+        held = false;
+        clockTime = PAST_THE_TIMEOUT + 60_000;
+        const press = fakeAnimation(element, 10_000);
+        running = [press];
+        clock.sweep();
+        clockTime += 16;
+        frames.step();
+        assert.ok(press.currentTime <= 16, `driven from its start, at ${press.currentTime}`);
+      } finally {
+        cleanup();
+      }
+    });
+  });
+
+  test("an animation started during a hold with no mutation is owed the time since its start", () => {
+    // `element.animate()` from a timer touches no attribute, so no mutation
+    // asks for a look. The note has to be taken within a frame of the start
+    // all the same.
+    let held = true;
+    const { container, element, frames, clock, cleanup } = setup({ held: () => held });
+    const late = document.createElement("div");
+    container.appendChild(late);
+    withStalledClocks(() => {
+      let clockTime = 0;
+      performance.now = () => clockTime;
+      setDocumentTime(500);
+
+      try {
+        const early = fakeAnimation(element, 10_000);
+        const joined = fakeAnimation(late, 10_000);
+        /** @type {ReturnType<typeof fakeAnimation>[]} */
+        let running = [early];
+        // @ts-expect-error -- a minimal stand-in for the real thing.
+        container.getAnimations = () => running;
+        clock.sweep();
+        clockTime = 16;
+        frames.step();
+        clockTime = PAST_THE_TIMEOUT;
+        frames.step();
+        clockTime = PAST_THE_TIMEOUT + 100;
+        running = [early, joined];
+        for (let tick = 0; tick < 59; tick++) {
+          clockTime += 16;
+          frames.step();
+        }
+        const owed = clockTime + 16 - (PAST_THE_TIMEOUT + 100);
+        held = false;
+        clockTime += 16;
+        frames.step();
+        assert.ok(
+          joined.currentTime >= owed - 16 && joined.currentTime <= owed,
+          `owed ${owed}, got ${joined.currentTime}`,
+        );
       } finally {
         cleanup();
       }

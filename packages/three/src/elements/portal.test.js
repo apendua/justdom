@@ -1263,9 +1263,7 @@ describe("createPortal", () => {
     const busy = () => containerElement.hasAttribute(BUSY_ATTRIBUTE);
     /** @param {string} type */
     const transition = (type) =>
-      card.dispatchEvent(
-        Object.assign(new Event(type, { bubbles: true }), { propertyName: "background-color" }),
-      );
+      card.dispatchEvent(syntheticEvent(type, { propertyName: "background-color" }));
     assert.equal(busy(), false, "a mounted panel with nothing moving is not busy");
 
     try {
@@ -4032,14 +4030,24 @@ describe("a panel that is always busy", () => {
   });
 
   test("a commit the loading frame declines after the bound lands when the frame is due", async () => {
-    // The forced sweep empties the channel, and the commit is declined
-    // while the loading frame has not been up for its minimum time. The
-    // wait goes on until a commit is taken, so the panel loads on the frame
-    // the loading frame is due, not a whole second of waiting later.
+    // The commit is declined while the loading frame has not been up for
+    // its minimum time. The wait goes on until a commit is taken, so the
+    // panel loads on the frame the loading frame is due, not a whole second
+    // of waiting later. Until then the pump keeps to its budget: a long
+    // frame spent reading the panel for a commit it will be refused is
+    // undone by the next invalidation.
     const { portal, list, clock, dispose } = busyPanel({
       loadingFrame: { delay: 250, minimumTime: 1000 },
     });
     const stop = flicker(list);
+    const flush = UpdateChannel.prototype.flush;
+    let unbudgeted = 0;
+    UpdateChannel.prototype.flush = function (options) {
+      if (options?.budget === Infinity) {
+        unbudgeted += 1;
+      }
+      return flush.call(this, options);
+    };
     try {
       let frames = 0;
       while (frames < 300 && portal.isLoading()) {
@@ -4054,7 +4062,9 @@ describe("a panel that is always busy", () => {
       const due = 250 + 16 + 1000;
       assert.ok(frames * 16 >= due - 2 * 16, `held until the frame was due, took ${frames}`);
       assert.ok(frames * 16 <= due + 3 * 16, `and no longer, took ${frames}`);
+      assert.ok(unbudgeted <= 1, `one long frame, when the frame was due, took ${unbudgeted}`);
     } finally {
+      UpdateChannel.prototype.flush = flush;
       stop();
       await drain();
       dispose();

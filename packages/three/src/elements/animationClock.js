@@ -337,14 +337,14 @@ const SWEEP_INTERVAL = 60;
  *   what the mount had read, and under an endless animation the mount would
  *   never finish. Where the clock drives the animations itself, with the
  *   page's rendering suspended, a held frame drives nothing, writing no
- *   `currentTime`, and still looks for what started and what ended. The
- *   first frame after the hold advances them by what the hold owes them,
- *   or, for one that started during it, by its share of that, which for one
- *   the timeline is not carrying is the time since the first look that saw
- *   it, within a frame of its start. Elsewhere
- *   membership is kept up all the while. Either way the first frame after
- *   the hold names every element still animating, and an animation that ends
- *   is still settled, since an end is said once and not every frame.
+ *   `currentTime`, and still looks for what started and what ended. The first
+ *   frame after the hold advances them by what the hold owes them, or, for one
+ *   that started during it, by its share of that, which for one the timeline is
+ *   not carrying is the time since the first look that saw it, within a frame
+ *   of its start. Elsewhere membership is kept up all the while. Either way the
+ *   first frame after the hold names every element still animating, and an
+ *   animation that ends is still settled, since an end is said once and not
+ *   every frame.
  */
 export function createAnimationClock(container, emit, requestFrames, { held = () => false } = {}) {
   /**

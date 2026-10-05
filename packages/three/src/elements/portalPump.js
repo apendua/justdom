@@ -45,6 +45,12 @@ import { batch, Effect, withChannel } from "@apendua/signal";
  *   moving. A row is placed as it is built, since an effect runs when it is
  *   made, so it is fit to go in at once. Asked every tick, so the portal
  *   can keep its initial mount whole and commit early only after.
+ * @property {() => boolean} [commitDue] Whether the portal would take a
+ *   commit now. Asked before either time bound forces a long frame: the
+ *   reading a forced frame does is for the commit, and one the portal would
+ *   decline is undone by the next invalidation, so until it is due the pump
+ *   keeps to its budget. True by default; false while a finished mount is
+ *   held for its loading frame's minimum time.
  * @property {() => boolean} [hasPendingCommit] Whether the portal is holding
  *   anything for `onCommit`. Asked when deciding whether a frame is worth
  *   asking for: a removal that happens to queue nothing in the channel
@@ -68,21 +74,22 @@ import { batch, Effect, withChannel } from "@apendua/signal";
 /**
  * How long, in milliseconds, a pump waits on a channel that will not empty
  * before it empties it in one go. The count is wall-clock time, the frames
- * between ticks included: it runs from the end of the first tick that finds
- * no node left to build and the channel still holding work the commit waits
- * for, to the start of the next tick that ends with nodes still queued. That
- * tick, a build spanning frames, pauses the count, and a build a tick
- * finishes is counted with it. The build's reading gets what is left of the
- * bound afterwards; a pause does not start the count again, or rows that keep
- * arriving would hold the panel for as long as they came. The count ends
- * only when a commit is taken, or the portal commits without the channel
- * (`commitsEarly`). A commit the portal declines, holding a finished mount for
- * its loading frame's minimum time, leaves it running, so past the bound the
- * pump sweeps unbudgeted on every tick until the commit is taken: one long
- * frame per frame for that stretch, which ends when the loading frame is due,
- * against a second of waiting begun again. Otherwise, on the first tick past
- * the bound, the pump sweeps the channel unbudgeted, and the panel takes one
- * long frame and lands.
+ * between ticks included: it runs from the end of the first tick that finds no
+ * node left to build and the channel still holding work the commit waits for,
+ * to the start of the next tick that ends with nodes still queued, a build
+ * spanning frames, which pauses it. A tick that starts with the count running
+ * is counted whole, any build it finishes included; the first tick after a
+ * pause, like the first of all, is counted from its end. The build's reading
+ * gets what is left of the bound afterwards; a pause does not start the count
+ * again, or rows that keep arriving would hold the panel for as long as they
+ * came. The count ends only when a commit is taken, or the portal commits
+ * without the channel (`commitsEarly`). A commit the portal would decline,
+ * holding a finished mount for its loading frame's minimum time, leaves it
+ * running, and past the bound the pump keeps to its budget until the portal
+ * says the commit is due (`commitDue`): a long frame spent reading the panel
+ * for a commit that is refused is undone by the next invalidation. Then, or
+ * otherwise on the first tick past the bound, the pump sweeps the channel
+ * unbudgeted, and the panel takes one long frame and lands.
  *
  * An atomic channel holds every effect until the pass that finds nothing
  * left to read. Anything that invalidates the panel every frame, such as an
@@ -106,18 +113,18 @@ export const MAX_COMMIT_WAIT = 1000;
  * builds it: the desk's charts, whose timers replace text and add log rows, on
  * a runner drawing a few frames a second. The wait counts from the first tick
  * that ends without the commit taken, and ends only when one is taken, or the
- * portal commits without the channel. A commit the portal declines after the
- * overdue build leaves the bound in force, so the pump builds what arrives and
- * sweeps unbudgeted on every tick until the commit is taken. The pump lands the
- * build once a node new to the queue arrives from the page, not from a build,
- * this long into the wait; a queued node the page moves is not new. One node is
- * enough: the rule does not ask whether the build is keeping up, since a
- * breadth-first walk's queue grows while it is making headway and no count of
- * the queue tells a slow mount from a flooded one. So a slow mount that the
- * page adds a single row to five seconds in builds the rest in one frame. A
- * build fed only by its own content, a large mount on a slow device, is left to
- * its budget however long it takes, since building the rest of it in one frame
- * is the stall the budget exists to avoid.
+ * portal commits without the channel. While the portal would decline the
+ * commit, the bound waits for it to be due (`commitDue`), keeping to the budget
+ * until then, as `MAX_COMMIT_WAIT` does. The pump lands the build once a node
+ * new to the queue arrives from the page, not from a build, this long into the
+ * wait; a queued node the page moves is not new. One node is enough: the rule
+ * does not ask whether the build is keeping up, since a breadth-first walk's
+ * queue grows while it is making headway and no count of the queue tells a slow
+ * mount from a flooded one. So a slow mount that the page adds a single row to
+ * five seconds in builds the rest in one frame. A build fed only by its own
+ * content, a large mount on a slow device, is left to its budget however long
+ * it takes, since building the rest of it in one frame is the stall the budget
+ * exists to avoid.
  */
 export const MAX_BUILD_WAIT = 5000;
 
@@ -141,6 +148,7 @@ export function createPortalPump({
   buildNode,
   onCommit,
   commitsEarly = () => false,
+  commitDue = () => true,
   hasPendingCommit = () => false,
   onSettled,
   onQueued = () => {},
@@ -246,9 +254,13 @@ export function createPortalPump({
       const now = channel.now;
       const tickStart = now();
       beforeTick();
+      // Either bound forces a long frame only for a commit the portal would
+      // take; until then the tick keeps to its budget.
+      const due = commitWaitingSince !== null && commitDue();
       // Past the bound on the whole wait, everything queued is built and the
       // channel swept in this tick, whatever the deadline.
       const overdue =
+        due &&
         commitWaitingSince !== null &&
         arrivedAt !== null &&
         arrivedAt - commitWaitingSince >= MAX_BUILD_WAIT;
@@ -286,7 +298,7 @@ export function createPortalPump({
           channel.warm({ budget });
         } else if (
           overdue ||
-          waited + (waitingSince === null ? 0 : now() - waitingSince) >= MAX_COMMIT_WAIT
+          (due && waited + (waitingSince === null ? 0 : now() - waitingSince) >= MAX_COMMIT_WAIT)
         ) {
           channel.flush({ budget: Infinity });
         } else {

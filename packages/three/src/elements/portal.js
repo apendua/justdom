@@ -1117,6 +1117,15 @@ function buildPortal(ctx, ownOptions = {}) {
   const hasPendingCommit = () => pendingAttachments.size > 0 || pendingRemovals.size > 0;
 
   /**
+   * Whether `commit` would be taken now. Not while the mount is built but
+   * the frame standing in for it has not been up for its minimum time: a
+   * frame that flashed and was gone reads as a glitch. The pump asks this
+   * before a time bound spends a long frame on a commit.
+   */
+  const commitDue = () =>
+    !(loading.get() && loadingFrameObject && !loadingFrameObject.isDue(performance.now()));
+
+  /**
    * Put a node's object under its parent's: now, or at the commit if there
    * is one to wait for. Both callers go through here so that a node
    * re-inserted mid-update and one built by the pump keep the same frame.
@@ -1214,12 +1223,10 @@ function buildPortal(ctx, ownOptions = {}) {
    * would be born in the default channel rather than the panel's.
    */
   const commit = () => {
-    if (loading.get() && loadingFrameObject && !loadingFrameObject.isDue(performance.now())) {
-      // The mount is built, but the frame standing in for it has not been
-      // up for its minimum time, and a frame that flashed and was gone reads
-      // as a glitch. Declined: nothing is applied, the lists stay as they
-      // are, and the pump — for which a declined commit is a tick that did
-      // not settle — asks again next frame.
+    if (!commitDue()) {
+      // Declined: nothing is applied, the lists stay as they are, and the
+      // pump — for which a declined commit is a tick that did not settle —
+      // asks again next frame.
       return false;
     }
     projectChanges(() => {
@@ -1382,6 +1389,7 @@ function buildPortal(ctx, ownOptions = {}) {
           // busy channel happens to empty. The mount itself still arrives
           // whole.
           commitsEarly: () => !atomic && !loading.get(),
+          commitDue,
           hasPendingCommit,
           onSettled: markLoaded,
           onQueued: (queued) => {

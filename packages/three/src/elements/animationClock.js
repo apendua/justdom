@@ -481,6 +481,7 @@ export function createAnimationClock(container, emit, requestFrames, { held = ()
     lastDocumentTime = null;
     joinedAt.clear();
     lastSeen.clear();
+    spareSeen.clear();
   }
 
   /**

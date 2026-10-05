@@ -331,18 +331,19 @@ const SWEEP_INTERVAL = 60;
  *   membership is non-empty.
  * @param {object} [options]
  * @param {() => boolean} [options.held] Asked every frame: while it answers
- *   true, the frame's sample is not emitted. The portal holds the clock while
- *   its panel loads, since nobody sees the panel yet and the mount reads
- *   each style as it builds it; a sample per frame would only undo what the
- *   mount had read, and under an endless animation the mount would never
- *   finish. Where the clock drives the animations itself, with the page's
- *   rendering suspended, a held frame drives nothing and reads only for the
- *   one more look a mutation asks for, and the first frame after the hold
- *   advances them by the whole of it, or, for one that started during it,
- *   by the time since it started. Elsewhere
- *   membership is kept up all the while. Either way the first frame after
- *   the hold names every element still animating, and an animation that
- *   ends is still settled, since an end is said once and not every frame.
+ *   true, the frame's sample is not emitted. The portal holds the clock
+ *   while its panel loads, since nobody sees the panel yet and the mount
+ *   reads each style as it builds it; a sample per frame would only undo
+ *   what the mount had read, and under an endless animation the mount would
+ *   never finish. Where the clock drives the animations itself, with the
+ *   page's rendering suspended, a held frame drives nothing and reads only
+ *   for the one more look a mutation asks for and for a look about once a
+ *   second at what has ended. The first frame after the hold advances them
+ *   by the whole of it, or, for one that started during it, by the time
+ *   since it started. Elsewhere membership is kept up all the while. Either
+ *   way the first frame after the hold names every element still animating,
+ *   and an animation that ends is still settled, since an end is said once
+ *   and not every frame.
  */
 export function createAnimationClock(container, emit, requestFrames, { held = () => false } = {}) {
   /**
@@ -459,6 +460,18 @@ export function createAnimationClock(container, emit, requestFrames, { held = ()
    * @type {Set<Animation>}
    */
   const lastSeen = new Set();
+
+  /**
+   * Keep `animations` as the ones the last look saw.
+   *
+   * @param {Animation[]} animations
+   */
+  function remember(animations) {
+    lastSeen.clear();
+    for (const animation of animations) {
+      lastSeen.add(animation);
+    }
+  }
 
   function start() {
     if (!stopFrames) {
@@ -630,10 +643,7 @@ export function createAnimationClock(container, emit, requestFrames, { held = ()
         joinedDuringHold.set(animation, seenAt);
       }
     }
-    lastSeen.clear();
-    for (const animation of animations) {
-      lastSeen.add(animation);
-    }
+    remember(animations);
     if (advanceBy > 0) {
       // What is left for us to do. A timeline that has stopped with the
       // frames leaves the whole of it; one that keeps running while the page
@@ -763,15 +773,17 @@ export function createAnimationClock(container, emit, requestFrames, { held = ()
     }
     if (sampleRenderingUpdates()) {
       if (held()) {
-        // Nothing driven and nothing read: each `currentTime` write dirties
-        // a style the mount would read again. The account keeps running
-        // from when driving started, so the first frame after the hold
-        // advances by all of it, and settles whatever ended meanwhile. An
-        // empty membership, an element that left the tree, holds no frames
-        // here either. The one more look a mutation asked for is still
-        // taken, whatever is animating already: it reads, and writes
-        // nothing, and notes what started when it started.
-        if (recheck) {
+        // Nothing driven: each `currentTime` write dirties a style the
+        // mount would read again. The account keeps running from when
+        // driving started, so the first frame after the hold advances by
+        // all of it, and settles whatever ended meanwhile. An empty
+        // membership holds no frames here either, whether an element left
+        // the tree or what it ran has ended. So the one more look a
+        // mutation asked for is still taken, whatever is animating already,
+        // and a look on the cadence the browser-driving branch keeps, since
+        // no event says an animation ended: each reads, writes nothing, and
+        // notes what started when it started.
+        if (recheck || ticks % SWEEP_INTERVAL === 0) {
           recheck = false;
           sweep();
         }
@@ -782,6 +794,11 @@ export function createAnimationClock(container, emit, requestFrames, { held = ()
         if (lastDrivenAt === null) {
           lastDrivenAt = performance.now();
           lastDocumentTime = documentTime();
+          // What runs now is owed the whole hold; only what a later sweep
+          // finds that is not here started during it.
+          if (typeof container.getAnimations === "function") {
+            remember(container.getAnimations({ subtree: true }));
+          }
         }
         return;
       }

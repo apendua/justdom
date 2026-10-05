@@ -19,6 +19,7 @@ import { DEFAULT_HANDLE_WIDTH } from "./panelHandles.js";
 import { RendererContext } from "../render.js";
 import { recordingSource } from "../test/rumble.js";
 import { clientRect } from "../test/clientRect.js";
+import { syntheticEvent } from "../test/events.js";
 
 /**
  * `createPortal`, with the loading frame's delay and minimum time off. A
@@ -1209,7 +1210,7 @@ describe("createPortal", () => {
 
     /** @param {string} type @param {string} propertyName */
     const transition = (type, propertyName) =>
-      card.dispatchEvent(Object.assign(new Event(type, { bubbles: true }), { propertyName }));
+      card.dispatchEvent(syntheticEvent(type, { propertyName }));
 
     try {
       transition("transitionrun", "transform");
@@ -3647,9 +3648,7 @@ describe("a panel that is always busy", () => {
    * @param {"animationstart" | "animationend"} type
    */
   const animation = (element, type) =>
-    element.dispatchEvent(
-      Object.assign(new Event(type, { bubbles: true }), { animationName: "spin" }),
-    );
+    element.dispatchEvent(syntheticEvent(type, { animationName: "spin" }));
 
   /**
    * A panel of a few rows, mounted at a zero budget, so that one frame
@@ -3661,8 +3660,9 @@ describe("a panel that is always busy", () => {
    * portal to every test after it.
    *
    * @param {Parameters<typeof createPortal>[1]} [options]
+   * @param {number} [count] How many rows, each a div with a div in it.
    */
-  const busyPanel = (options = {}) => {
+  const busyPanel = (options = {}, count = 4) => {
     const clock = fakeClock();
     /** @type {ReturnType<typeof createPortal> | undefined} */
     let portal;
@@ -3682,7 +3682,7 @@ describe("a panel that is always busy", () => {
       /** @type {import("@apendua/justdom").Mountable | undefined} */
       let mountable;
       subscription = $("div", [
-        children(...Array.from({ length: 4 }, () => $("div", [children($("div", []))]))),
+        children(...Array.from({ length: count }, () => $("div", [children($("div", []))]))),
       ]).subscribe((value) => {
         mountable = value;
       });
@@ -3977,6 +3977,64 @@ describe("a panel that is always busy", () => {
     } finally {
       await drain();
       dispose();
+    }
+  });
+
+  test("a mount that takes longer than the bound but is fed by nothing is not cut short", async () => {
+    // The bound on the whole wait is for a queue the page keeps adding to.
+    // A large mount on a slow device takes as long as it takes, and building
+    // the rest of it in one frame at five seconds would be the stall the
+    // budget exists to avoid.
+    const { portal, clock, dispose } = busyPanel({}, 200);
+    try {
+      let frames = 0;
+      while (frames < 600 && portal.isLoading()) {
+        clock.advance(16);
+        flushFrame();
+        await nextMacrotask();
+        frames += 1;
+      }
+      assert.equal(portal.isLoading(), false, "the panel loaded");
+      // Two nodes a row and the root and the list, one a frame.
+      assert.ok(frames >= 400, `a node a frame to the end, took ${frames}`);
+      assert.ok(frames * 16 > MAX_BUILD_WAIT, "and past the bound");
+    } finally {
+      await drain();
+      dispose();
+    }
+  });
+
+  test("a change made inside the frame casts the rays once", async () => {
+    // The observer's own delivery casts the rays, since no tick may follow
+    // it. Taken in by a tick, the tick casts them once it has built.
+    const { manager, ctx } = countingManager();
+    const root = document.createElement("div");
+    const label = document.createElement("div");
+    const count = document.createElement("span");
+    label.appendChild(count);
+    root.appendChild(label);
+    document.body.appendChild(root);
+    const portal = createPortal(ctx, { root });
+    const cast = manager.updateIntersections.bind(manager);
+    let casts = 0;
+    manager.updateIntersections = () => {
+      casts += 1;
+      cast();
+    };
+    try {
+      portal.addTo(new THREE.Group());
+      await settle(portal);
+      root.setAttribute("data-step", "1");
+      await nextMacrotask();
+      assert.ok(frameCallbacks.length > 0, "the next frame has the pump in it");
+      count.remove();
+      casts = 0;
+      flushFrame();
+      assert.equal(casts, 1, "one cast for the frame");
+    } finally {
+      await drain();
+      portal.disconnect();
+      root.remove();
     }
   });
 

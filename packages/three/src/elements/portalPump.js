@@ -93,17 +93,19 @@ import { batch, Effect, withChannel } from "@apendua/signal";
 export const MAX_COMMIT_WAIT = 1000;
 
 /**
- * How long, in milliseconds, a commit waits in all, building included,
- * before the pump builds whatever is queued and sweeps the channel in one
- * go. `MAX_COMMIT_WAIT` counts only the ticks with nothing left to build,
- * so it never runs for a queue that arrivals keep fed faster than a frame's
- * slice builds it: the desk's charts, whose timers replace text and add log
- * rows, on a runner drawing a few frames a second. This counts from the
- * first tick that ends without the commit taken, and ends only when one is
- * taken, or the portal commits without the channel. It is longer than
- * `MAX_COMMIT_WAIT` because a large mount legitimately builds for many
- * frames, and one that finishes inside it is never cut short; one that
- * does not finish lands in one long frame.
+ * How long, in milliseconds, a commit waits on a build the page keeps
+ * adding to before the pump builds whatever is queued and sweeps the channel
+ * in one go. `MAX_COMMIT_WAIT` counts only the ticks with nothing left to
+ * build, so it never runs for a queue that arrivals keep fed faster than a
+ * frame's slice builds it: the desk's charts, whose timers replace text and
+ * add log rows, on a runner drawing a few frames a second. The wait counts
+ * from the first tick that ends without the commit taken, and ends only
+ * when one is taken, or the portal commits without the channel. The pump
+ * lands the build once a node arrives from the page, not from a build,
+ * this long into the wait. A build fed only by its own content, a large
+ * mount on a slow device, is left to its budget however long it takes,
+ * since building the rest of it in one frame is the stall the budget exists
+ * to avoid.
  */
 export const MAX_BUILD_WAIT = 5000;
 
@@ -171,6 +173,15 @@ export function createPortalPump({
    * @type {number | null}
    */
   let commitWaitingSince = null;
+  /**
+   * When a node last arrived from the page rather than from a build, by the
+   * channel's clock. See `MAX_BUILD_WAIT`.
+   *
+   * @type {number | null}
+   */
+  let arrivedAt = null;
+  /** Whether the tick is building, so that what it queues is not an arrival. */
+  let building = false;
 
   /**
    * This portal's slice of a frame: build queued nodes until the deadline,
@@ -214,7 +225,9 @@ export function createPortalPump({
       // Past the bound on the whole wait, everything queued is built and the
       // channel swept in this tick, whatever the deadline.
       const overdue =
-        commitWaitingSince !== null && tickStart - commitWaitingSince >= MAX_BUILD_WAIT;
+        commitWaitingSince !== null &&
+        arrivedAt !== null &&
+        arrivedAt - commitWaitingSince >= MAX_BUILD_WAIT;
       if (pendingNodes.length > 0) {
         batch(() => {
           withChannel(channel, () => {
@@ -223,6 +236,7 @@ export function createPortalPump({
             // tree are skipped for free, or a queue headed by them would
             // spend whole frames building nothing.
             let progressed = false;
+            building = true;
             while (pendingNodes.length > 0 && (!progressed || overdue || now() < deadline)) {
               const node = /** @type {Node} */ (pendingNodes.shift());
               pendingSet.delete(node);
@@ -230,6 +244,7 @@ export function createPortalPump({
                 progressed = true;
               }
             }
+            building = false;
           });
         });
       }
@@ -341,6 +356,9 @@ export function createPortalPump({
      * @param {Node} node
      */
     enqueue(node) {
+      if (!building) {
+        arrivedAt = channel.now();
+      }
       if (!pendingSet.has(node)) {
         pendingSet.add(node);
         pendingNodes.push(node);

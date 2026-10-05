@@ -163,4 +163,7 @@ Four things to know about it.
   lights blink without end, so at a few frames a second that frame did not
   come. Freedom now samples no animation while a panel loads, and lands a
   panel that something keeps busy after a second of waiting, one long
-  frame at a time. Neither has been tried on a headset.
+  frame at a time. A panel whose rows the timers add faster than a slow
+  frame builds them, as the charts' were on the CI runner, lands once
+  rows are still arriving five seconds into the wait. Neither has been
+  tried on a headset.

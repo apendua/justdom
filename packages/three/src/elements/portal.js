@@ -1342,7 +1342,7 @@ function buildPortal(ctx, ownOptions = {}) {
           beforeTick: () => {
             const records = mutationObserver.takeRecords();
             if (records.length > 0) {
-              mutationCallback(records);
+              mutationCallback(records, true);
             }
           },
           buildNode: buildQueuedNode,
@@ -1435,8 +1435,10 @@ function buildPortal(ctx, ownOptions = {}) {
    * that came and went.
    *
    * @param {MutationRecord[]} mutationList
+   * @param {boolean} [inTick] Taken in by the pump's tick, which casts the
+   *   rays itself once it has built; see `contentChanged`.
    */
-  const mutationCallback = (mutationList) => {
+  const mutationCallback = (mutationList, inTick = false) => {
     projectChanges(() => {
       mirror.ingest(mutationList);
       /** @type {Set<Node>} */
@@ -1479,15 +1481,18 @@ function buildPortal(ctx, ownOptions = {}) {
         });
       }
     });
-    contentChanged();
+    contentChanged(inTick);
   };
 
   /**
    * What follows any change to the panel's content, once it has been routed
    * into the mirror and the object tree: an observer flush, or the first
    * look at an element the page handed over with content already in it.
+   *
+   * @param {boolean} [inTick] Whether the pump's tick took the change in, in
+   *   which case the tick casts the rays at its end, after it has built.
    */
-  const contentChanged = () => {
+  const contentChanged = (inTick = false) => {
     // A class swap is how most transitions begin, and inside an immersive
     // session the mutation is the only trace of one that reaches us: the
     // events that would announce it are dispatched with the rendering
@@ -1497,8 +1502,11 @@ function buildPortal(ctx, ownOptions = {}) {
     // Every hand's hit is worked out only when that hand moves, so a menu that
     // opens under a ray resting on the button that opened it would go on
     // reporting the button as hovered until the player twitched. The scene
-    // changed under them; ask for the rays to be cast again.
-    interactionManager.updateIntersections();
+    // changed under them; ask for the rays to be cast again. A tick that
+    // took the change in casts them itself, once it has built.
+    if (!inTick) {
+      interactionManager.updateIntersections();
+    }
     if (sawContent && loading.get()) {
       // The mount is under way: say so where the DOM can see it, and start
       // placing the panel and the frame that may stand in for it. Both end
@@ -1520,7 +1528,7 @@ function buildPortal(ctx, ownOptions = {}) {
     }
   };
 
-  const mutationObserver = new MutationObserver(mutationCallback);
+  const mutationObserver = new MutationObserver((records) => mutationCallback(records));
   mutationObserver.observe(containerElement, OBSERVER_OPTIONS);
 
   /**

@@ -2,6 +2,7 @@ import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { createAnimationClock } from "./animationClock.js";
 import { resetRenderingUpdatesForTests } from "./renderingUpdates.js";
+import { syntheticEvent } from "../test/events.js";
 
 /**
  * @import {MutationBatch} from './animationClock.js';
@@ -31,17 +32,6 @@ function fakeFrames() {
       return tick !== null;
     },
   };
-}
-
-/**
- * jsdom implements neither TransitionEvent nor AnimationEvent; a plain
- * bubbling Event with the field expando'd on is what the clock reads anyway.
- *
- * @param {string} type
- * @param {Record<string, string>} fields
- */
-function syntheticEvent(type, fields) {
-  return Object.assign(new Event(type, { bubbles: true }), fields);
 }
 
 /**
@@ -861,6 +851,73 @@ describe("animation clock with rendering updates suspended", () => {
         frames.step();
         assert.equal(pulse.currentTime, 500, "the pulse by the whole hold");
         assert.equal(fade.currentTime, 200, "the fade from when it started");
+      } finally {
+        cleanup();
+      }
+    });
+  });
+
+  test("what was running when driving began is not taken for a newcomer", () => {
+    // A transition an event announced, with no sweep since, is running when
+    // the clock takes over held. The first mutation's sweep must not take it
+    // for one that started then, or it would land behind the page.
+    let held = true;
+    const { container, element, frames, clock, cleanup } = setup({ held: () => held });
+    withStalledClocks(() => {
+      let clockTime = 0;
+      performance.now = () => clockTime;
+      setDocumentTime(500);
+
+      try {
+        const fade = fakeAnimation(element, 10_000);
+        /** @type {ReturnType<typeof fakeAnimation>[]} */
+        let running = [];
+        // @ts-expect-error -- a minimal stand-in for the real thing.
+        container.getAnimations = () => running;
+        clock.sweep();
+        clockTime = 16;
+        frames.step();
+        running = [fade];
+        element.dispatchEvent(syntheticEvent("transitionrun", { propertyName: "opacity" }));
+        clockTime = PAST_THE_TIMEOUT;
+        frames.step();
+        clockTime = PAST_THE_TIMEOUT + 300;
+        clock.sweep();
+        clockTime = PAST_THE_TIMEOUT + 500;
+        held = false;
+        frames.step();
+        assert.equal(fade.currentTime, 500, "advanced by the whole hold");
+      } finally {
+        cleanup();
+      }
+    });
+  });
+
+  test("a held clock lets go of the frames once what it held has ended", () => {
+    // No event says an animation ended while the clock drives, so a held
+    // clock looks now and then, as the browser-driving branch does.
+    const { container, element, frames, clock, cleanup } = setup({ held: () => true });
+    withStalledClocks(() => {
+      let clockTime = 0;
+      performance.now = () => clockTime;
+      setDocumentTime(500);
+
+      try {
+        const fade = fakeAnimation(element, 100);
+        // @ts-expect-error -- a minimal stand-in for the real thing.
+        container.getAnimations = () => [fade];
+        clock.sweep();
+        clockTime = 16;
+        frames.step();
+        clockTime = PAST_THE_TIMEOUT;
+        frames.step();
+        // Carried to its end by a timeline that keeps running.
+        fade.currentTime = 100;
+        for (let tick = 0; tick < 70 && frames.running; tick++) {
+          clockTime += 16;
+          frames.step();
+        }
+        assert.equal(frames.running, false, "the frames are let go");
       } finally {
         cleanup();
       }

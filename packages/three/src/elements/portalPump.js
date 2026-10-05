@@ -48,6 +48,10 @@ import { batch, Effect, withChannel } from "@apendua/signal";
  * @property {() => void} onSettled Told whenever a tick ends with the queue
  *   and the channel both empty — the portal's cue to declare its initial
  *   mount done.
+ * @property {(queued: boolean) => void} [onQueued] Told when the pump joins
+ *   the scheduler's queue, having work, and when it leaves it, having none:
+ *   the portal's cue to say on the page whether the panel has an update it
+ *   has yet to draw.
  * @property {(settled: boolean) => void} afterTick Told at the end of every
  *   tick, drained or not — the portal's cue that content appeared or moved
  *   under whatever rays are resting on the panel — with whether the tick
@@ -77,6 +81,7 @@ export function createPortalPump({
   commitsEarly = () => false,
   hasPendingCommit = () => false,
   onSettled,
+  onQueued = () => {},
   afterTick,
 }) {
   /**
@@ -101,6 +106,17 @@ export function createPortalPump({
 
   /** @type {Set<Node>} */
   const pendingSet = new Set();
+
+  /** Whether the pump is in the scheduler's queue, as last told. */
+  let queued = false;
+
+  /** @param {boolean} value */
+  const setQueued = (value) => {
+    if (queued !== value) {
+      queued = value;
+      onQueued(value);
+    }
+  };
 
   /**
    * This portal's slice of a frame: build queued nodes until the deadline,
@@ -182,13 +198,18 @@ export function createPortalPump({
         return false;
       }
       onSettled();
-      return pendingNodes.length === 0 && channel.pendingCount === 0;
+      const finished = pendingNodes.length === 0 && channel.pendingCount === 0;
+      if (finished) {
+        setQueued(false);
+      }
+      return finished;
     },
   };
 
   const schedule = () => {
     if (pendingNodes.length > 0 || channel.pendingCount > 0 || hasPendingCommit()) {
       scheduler.schedule(pump);
+      setQueued(true);
     }
   };
 

@@ -280,13 +280,23 @@ export async function freezeAnimations(page) {
  *
  * @param {Page} page
  * @param {object} [options]
- * @param {boolean} [options.freeze] Pin the animations again before shooting.
- *   On for anything a baseline will be held against.
+ * @param {boolean} [options.freeze] Pin the animations again before shooting,
+ *   and wait for the panels to draw what they were pinned at. On for
+ *   anything a baseline will be held against.
  * @returns {Promise<Buffer>} PNG bytes.
  */
 export async function photographScene(page, { freeze = false } = {}) {
   if (freeze) {
     await freezeAnimations(page);
+    // A panel samples a transition on its own frames and brings the change
+    // into the scene a budget's worth per frame, so the DOM can be pinned
+    // at a hover's end while the scene still draws its start. How many
+    // frames that takes depends on the machine; the portal marks its
+    // container until it has drawn the last of it, and the page is asked.
+    // Only with the animations pinned: one running forever keeps it marked.
+    await page.waitForFunction(() => !document.querySelector("[data-xr-busy]"), undefined, {
+      timeout: 30_000,
+    });
     await nextFrames(page, 2);
   }
   const canvas = page.locator("canvas[data-engine]").first();

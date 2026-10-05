@@ -118,14 +118,14 @@ export const MAX_COMMIT_WAIT = 1000;
  * commit, the bound waits for it to be due (`commitDue`), keeping to the budget
  * until then, as `MAX_COMMIT_WAIT` does. The pump lands the build once a node
  * new to the queue arrives from the page, not from a build, this long into the
- * wait; a queued node the page moves is not new. One node is enough: the rule
- * does not ask whether the build is keeping up, since a breadth-first walk's
- * queue grows while it is making headway and no count of the queue tells a slow
- * mount from a flooded one. So a slow mount that the page adds a single row to
- * five seconds in builds the rest in one frame. A build fed only by its own
- * content, a large mount on a slow device, is left to its budget however long
- * it takes, since building the rest of it in one frame is the stall the budget
- * exists to avoid.
+ * wait; a queued node the page moves, or takes out and puts back, is not new.
+ * One node is enough: the rule does not ask whether the build is keeping up,
+ * since a breadth-first walk's queue grows while it is making headway and no
+ * count of the queue tells a slow mount from a flooded one. So a slow mount
+ * that the page adds a single row to five seconds in builds the rest in one
+ * frame. A build fed only by its own content, a large mount on a slow device,
+ * is left to its budget however long it takes, since building the rest of it in
+ * one frame is the stall the budget exists to avoid.
  */
 export const MAX_BUILD_WAIT = 5000;
 
@@ -175,7 +175,14 @@ export function createPortalPump({
    */
   const pendingNodes = [];
 
-  /** @type {Set<Node>} */
+  /**
+   * What `pendingNodes` holds, so that a node is queued once. A node the page
+   * takes out of the tree keeps its entry: `buildNode` reports what left the
+   * tree as no work done, and one the page puts back before its turn is
+   * built then, rather than queued again as an arrival.
+   *
+   * @type {Set<Node>}
+   */
   const pendingSet = new Set();
 
   /** Whether the pump is in the scheduler's queue, as last told. */
@@ -423,18 +430,6 @@ export function createPortalPump({
         pendingSet.add(node);
         pendingNodes.push(node);
       }
-    },
-
-    /**
-     * Un-queue a node rather than build a ghost. The array keeps its entry —
-     * `buildNode` reports what left the tree as no work done — but the
-     * membership must go, or a node removed and re-added would be refused
-     * the queue the second time.
-     *
-     * @param {Node} node
-     */
-    discard(node) {
-      pendingSet.delete(node);
     },
 
     /** Ask the scheduler for frame time, if there is any work to spend it on. */

@@ -1520,7 +1520,6 @@ function buildPortal(ctx, ownOptions = {}) {
           // If this node was added somewhere else it does not make sense to
           // clean it up, so if we detect that it was already seen, we skip it.
           if (!alreadySeen.has(node)) {
-            pump?.discard(node);
             detach(node);
           }
         });

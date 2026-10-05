@@ -807,6 +807,50 @@ describe("animation clock with rendering updates suspended", () => {
     });
   });
 
+  test("an animation resumed during a hold is advanced from its resume", () => {
+    // A paused animation, `animation-play-state: paused` until a class flips
+    // it, is seen by a look and does not run. It joins the hold when a look
+    // first sees it running, not when one first sees it at all.
+    let held = true;
+    const { container, element, frames, clock, cleanup } = setup({ held: () => held });
+    const late = document.createElement("div");
+    container.appendChild(late);
+    withStalledClocks((time) => {
+      setDocumentTime(500);
+
+      try {
+        const early = fakeAnimation(element, 10_000);
+        const resumed = fakeAnimation(late, 10_000);
+        let paused = true;
+        Object.defineProperty(resumed, "playState", {
+          get: () => (paused ? "paused" : "running"),
+        });
+        /** @type {ReturnType<typeof fakeAnimation>[]} */
+        let running = [early];
+        // @ts-expect-error -- a minimal stand-in for the real thing.
+        container.getAnimations = () => running;
+        clock.sweep();
+        time.set(16);
+        frames.step();
+        time.set(PAST_THE_TIMEOUT);
+        frames.step();
+        time.set(PAST_THE_TIMEOUT + 100);
+        running = [early, resumed];
+        clock.sweep();
+        time.set(PAST_THE_TIMEOUT + 900);
+        paused = false;
+        clock.sweep();
+        time.set(PAST_THE_TIMEOUT + 1000);
+        held = false;
+        frames.step();
+        assert.equal(early.currentTime, 1000, "the first by the whole hold");
+        assert.equal(resumed.currentTime, 100, "the second from its resume");
+      } finally {
+        cleanup();
+      }
+    });
+  });
+
   test("a held clock looks again for what a mutation started beside a running animation", () => {
     // With something already animating, a mutation whose transition the
     // recalc has not made yet must still be looked for a frame later, or it

@@ -783,6 +783,7 @@ page adds a node to the panel five seconds or more into the wait
 once; a single row is enough. A loading frame still up for its minimum time
 holds this too, in the same way. A mount the page does not add to is left to its
 budget, however long it takes.
+
 A drag whose reading fits the frame's budget commits every frame and follows
 the hand on an atomic panel too. A panel whose reading overruns the budget on
 every frame would land once a second under a drag, and wants `atomic: false`

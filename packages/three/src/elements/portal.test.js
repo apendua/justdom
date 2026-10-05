@@ -4188,6 +4188,34 @@ describe("a panel that is always busy", () => {
     }
   });
 
+  test("a queued row the page takes out and puts back is not an arrival", async () => {
+    // A row detached in one flush and appended in a later one is the same
+    // content, still queued to be built. It does not feed the build, so a
+    // large mount keeps its budget past the bound.
+    const { portal, list, clock, dispose } = busyPanel({}, 400);
+    try {
+      let frames = 0;
+      while (frames < 1000 && portal.isLoading()) {
+        if (frames >= 300 && frames < 340) {
+          // The last row, still waiting to be built: out, then back in.
+          const row = /** @type {HTMLElement} */ (list.lastElementChild);
+          row.remove();
+          await nextMacrotask();
+          list.appendChild(row);
+        }
+        clock.advance(16);
+        flushFrame();
+        await nextMacrotask();
+        frames += 1;
+      }
+      assert.equal(portal.isLoading(), false, "the panel loaded");
+      assert.ok(frames >= 800, `a node a frame to the end, took ${frames}`);
+    } finally {
+      await drain();
+      dispose();
+    }
+  });
+
   test("a change made inside the frame casts the rays once", async () => {
     // The observer's own delivery casts the rays, since no tick may follow
     // it. Taken in by a tick, the tick casts them once it has built.

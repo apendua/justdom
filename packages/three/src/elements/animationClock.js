@@ -655,9 +655,14 @@ export function createAnimationClock(container, emit, requestFrames, { held = ()
     // first to see is owed exactly nothing yet; a look reads the clock.
     const noting = lastDrivenAt !== null;
     const stamp = now ?? performance.now();
+    // Only what runs joins: a paused animation that resumes is a newcomer
+    // to the look that first sees it running.
     const looked = spareSeen;
     looked.clear();
     for (const animation of animations) {
+      if (animation.playState !== "running") {
+        continue;
+      }
       looked.add(animation);
       if (noting && !lastSeen.has(animation)) {
         joinedAt.set(animation, stamp);
@@ -665,6 +670,15 @@ export function createAnimationClock(container, emit, requestFrames, { held = ()
     }
     spareSeen = lastSeen;
     lastSeen = looked;
+    // What the last look saw running and this one did not, ended or paused,
+    // is owed nothing more, and keeps no `Animation` alive in the map.
+    if (joinedAt.size > 0) {
+      for (const animation of spareSeen) {
+        if (!looked.has(animation)) {
+          joinedAt.delete(animation);
+        }
+      }
+    }
     if (advanceBy > 0) {
       // What is left for us to do. A timeline that has stopped with the
       // frames leaves the whole of it; one that keeps running while the page

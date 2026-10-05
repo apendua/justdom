@@ -63,17 +63,31 @@ export interface Look {
 export const DESK_TOP = -0.42;
 
 /**
- * How big a desk px is in the room: 0.65 mm, which makes the monitor 40 cm
- * across and the keyboard 43 cm, about what the real things were. A portal
- * draws a px a centimetre, so a panel is scaled by this over 0.01.
+ * How big a desk px is in the room: 0.65 mm, which makes the keyboard 43 cm
+ * across, about what the real one was. The monitor is drawn bigger than that
+ * (`MONITOR_SCALE`). A portal draws a px a centimetre, so a panel is scaled
+ * by this over 0.01.
  */
 export const PX = 0.00065;
 
 const degrees = (value: number) => (value * Math.PI) / 180;
 
+/**
+ * How much bigger the monitor is drawn than its px, on the page (the
+ * `#monitor` rule of each look's stylesheet) and in the room alike.
+ */
+const MONITOR_SCALE = 1.5;
+
 // The objects every look has in the same place: the monitor on the desk,
 // the keyboard lying in front of it, raised at the back as keyboards are.
-const monitor: Placement = { id: "monitor", x: 0, y: 0.168, z: -0.78 };
+// Its centre rises with its size, so that it still stands on the desk.
+const monitor: Placement = {
+  id: "monitor",
+  x: 0,
+  y: 0.168 * MONITOR_SCALE,
+  z: -0.78,
+  px: PX * MONITOR_SCALE,
+};
 const keyboard: Placement = {
   id: "keyboard",
   x: 0,

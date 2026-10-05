@@ -734,10 +734,21 @@ the load — its container element carries `data-xr-loading`, so a page — a
 test harness about to photograph the scene, say — can ask whether any panel
 is still on its way without holding the handles:
 `document.querySelector("[data-xr-loading]")`. A panel given nothing to
-mount is not on its way anywhere and never carries it. It is a flag for the
-page and not for a stylesheet: the container is above every element in the
-panel, so the mirror ignores this flag and `data-xr-portal`, and a rule that
-selects on either is not followed.
+mount is not on its way anywhere and never carries it.
+
+While a panel has work it will do on a coming frame, such as an animation the
+clock is sampling or an update the pump has not yet brought into the scene,
+its container carries `data-xr-busy`. The portal takes it off on the frame
+that draws the last of that work. A harness that pins the page's animations
+and then photographs the scene waits for
+`document.querySelector("[data-xr-busy]")` to come back empty, instead of
+guessing how many frames a slow machine needs. A panel with an animation that
+runs forever stays busy for as long as it runs, so a harness waits only after
+it has pinned the animations.
+
+Both are flags for the page and not for a stylesheet: the container is above
+every element in the panel, so the mirror ignores them and `data-xr-portal`,
+and a rule that selects on any of them is not followed.
 
 **An update lands whole, however many frames it took.** A visible panel
 cannot hide while it changes, and a change too big for one frame's budget

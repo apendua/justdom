@@ -2,6 +2,63 @@
   "name": "@apendua/freedom",
   "entries": [
     {
+      "version": "0.27.0",
+      "tag": "@apendua/freedom_v0.27.0",
+      "date": "Sun, 04 Oct 2026 19:35:47 GMT",
+      "comments": {
+        "none": [
+          {
+            "comment": "A comment no longer names euclid-xr as an app of its own"
+          },
+          {
+            "comment": "The README names the workflow that runs the minesweeper and desk checks on freedom's pull requests"
+          },
+          {
+            "comment": "READMEs and changelogs no longer feed the build cache key, so a docs edit does not rebuild every dependent project"
+          },
+          {
+            "comment": "Point to apps/desk among the real examples in the README"
+          }
+        ],
+        "patch": [
+          {
+            "comment": "SVG curves are sampled at twice as many segments: 24 per curve at unit scale, at least 16 and at most 128, so a circle on a panel no longer shows as a polygon"
+          },
+          {
+            "comment": "anchorToViewer stands the origin upright to gravity, measured in local-floor, when the local space keeps the head's tilt"
+          },
+          {
+            "comment": "Move the layout-offset readers getBoxOffset, untransformedOffset and pageOffset from cssTransform.js into mirror.js, so mirror.js no longer imports from a module that imports it. No behaviour changes."
+          },
+          {
+            "comment": "A ray moving over nested clickable elements now sends one bubbling mousemove from the innermost element, instead of one non-bubbling mousemove from each"
+          },
+          {
+            "comment": "Clip a transformed element where its layout puts it, so a rotating element in a clipping parent is no longer cut differently at each angle"
+          }
+        ],
+        "minor": [
+          {
+            "comment": "Add mouse(ctx) and followMouse, a stand-in controller that points at the scene with the mouse on a page, moved here from turntable"
+          },
+          {
+            "comment": "Add the @apendua/freedom/page entry point, getPortalRoot and scrollElementBy without three.js, for widgets a page shows before any session"
+          },
+          {
+            "comment": "A ray's press, release and moves now send pointerdown, pointerup and pointermove ahead of their mouse events, each hand with a pointerId of its own, and setPointerCapture with a hand's pointerId is kept and honoured instead of throwing"
+          }
+        ],
+        "dependency": [
+          {
+            "comment": "Updating dependency \"@apendua/jsdom-env\" to `0.2.0`"
+          },
+          {
+            "comment": "Updating dependency \"@apendua/justdom\" to `0.3.6`"
+          }
+        ]
+      }
+    },
+    {
       "version": "0.26.0",
       "tag": "@apendua/freedom_v0.26.0",
       "date": "Sat, 03 Oct 2026 19:51:46 GMT",

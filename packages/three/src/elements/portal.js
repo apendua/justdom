@@ -17,7 +17,14 @@ import { isTextInput } from "./typing.js";
 import { bindPortalKeyboard } from "./portalKeyboard.js";
 import { createKeyboardHost } from "./keyboardHost.js";
 import { KeyboardSlotContext } from "./keyboardSlot.js";
-import { createMirror, getBorderBoxSize, isPortalRoot, LOADING_ATTRIBUTE } from "./mirror.js";
+import {
+  BUSY_ATTRIBUTE,
+  createMirror,
+  getBorderBoxSize,
+  isBookkeepingMutation,
+  isPortalRoot,
+  LOADING_ATTRIBUTE,
+} from "./mirror.js";
 import { PORTAL_ATTRIBUTE } from "./portalRoot.js";
 import { createAnimationClock } from "./animationClock.js";
 import { watchDocumentStyles } from "./documentStyles.js";
@@ -606,6 +613,24 @@ function buildPortal(ctx, ownOptions = {}) {
     // not to carry by, which follows the hand in the renderer's frames.
   }
   const hasFrames = hasRenderer || typeof requestAnimationFrame === "function";
+
+  /**
+   * The two kinds of work a coming frame does for this panel: the animation
+   * clock sampling styles that move, and the pump bringing an update into
+   * the scene. While either has some, the container carries
+   * `BUSY_ATTRIBUTE`. Written only when that changes, since the observer
+   * reports every write. Never where there are no frames: a clock asked to
+   * sample there is given none and never stops, and nothing it holds will
+   * be drawn.
+   */
+  let clockSampling = false;
+  let pumpQueued = false;
+  const showBusy = () => {
+    const busy = hasFrames && (clockSampling || pumpQueued);
+    if (busy !== containerElement.hasAttribute(BUSY_ATTRIBUTE)) {
+      containerElement.toggleAttribute(BUSY_ATTRIBUTE, busy);
+    }
+  };
 
   /**
    * What a draggable panel is moved by. Its frame goes between the parent
@@ -1341,7 +1366,9 @@ function buildPortal(ctx, ownOptions = {}) {
           scheduler,
           priority,
           // What the observer holds and has not delivered: a handler a ray's
-          // press ran inside this frame, with no microtask since.
+          // press ran inside this frame, with no microtask since. Records of
+          // the portal's own bookkeeping are skipped here as they are when
+          // the observer delivers them.
           beforeTick: () => {
             const records = mutationObserver.takeRecords();
             if (records.length > 0) {
@@ -1357,6 +1384,10 @@ function buildPortal(ctx, ownOptions = {}) {
           commitsEarly: () => !atomic && !loading.get(),
           hasPendingCommit,
           onSettled: markLoaded,
+          onQueued: (queued) => {
+            pumpQueued = queued;
+            showBusy();
+          },
           // Content appeared or moved under whatever rays are resting on
           // the panel.
           afterTick: (settled) => {
@@ -1438,8 +1469,13 @@ function buildPortal(ctx, ownOptions = {}) {
    * that came and went.
    *
    * @param {MutationRecord[]} mutationList
+   * @returns {boolean} Whether the flush changed the content, rather than
+   *   only the portal's own bookkeeping attributes.
    */
   const mutationCallback = (mutationList) => {
+    if (mutationList.every(isBookkeepingMutation)) {
+      return false;
+    }
     projectChanges(() => {
       mirror.ingest(mutationList);
       /** @type {Set<Node>} */
@@ -1483,6 +1519,7 @@ function buildPortal(ctx, ownOptions = {}) {
       }
     });
     contentChanged();
+    return true;
   };
 
   /**
@@ -1502,9 +1539,10 @@ function buildPortal(ctx, ownOptions = {}) {
     if (sawContent && loading.get()) {
       // The mount is under way: say so where the DOM can see it, and start
       // placing the panel and the frame that may stand in for it. Both end
-      // with `markLoaded`. The flag is written once: the observer reports
-      // every write, even one of the value already there, and the flush that
-      // reports it comes back here.
+      // with `markLoaded`. The flag is written once, not on every flush of
+      // the mount, since the observer reports a write of the value already
+      // there as a record of its own. Such a record does not lead back here:
+      // `mutationCallback` skips a flush made only of the portal's flags.
       if (!containerElement.hasAttribute(LOADING_ATTRIBUTE)) {
         containerElement.setAttribute(LOADING_ATTRIBUTE, "");
       }
@@ -1521,13 +1559,14 @@ function buildPortal(ctx, ownOptions = {}) {
   };
 
   const mutationObserver = new MutationObserver((records) => {
-    mutationCallback(records);
     // Every hand's hit is worked out only when that hand moves, so a menu
     // that opens under a ray resting on the button that opened it would go
     // on reporting the button as hovered until the player twitched. The
     // scene changed under them; ask for the rays to be cast again. A change
     // the pump's tick takes in is cast by the tick, once it has built.
-    interactionManager.updateIntersections();
+    if (mutationCallback(records)) {
+      interactionManager.updateIntersections();
+    }
   });
   mutationObserver.observe(containerElement, OBSERVER_OPTIONS);
 
@@ -1568,7 +1607,16 @@ function buildPortal(ctx, ownOptions = {}) {
       // content does.
       interactionManager.updateIntersections();
     },
-    requestFrames,
+    (tick) => {
+      const stop = requestFrames(tick);
+      clockSampling = true;
+      showBusy();
+      return () => {
+        stop();
+        clockSampling = false;
+        showBusy();
+      };
+    },
     // Nobody sees the panel until it loads, and the mount reads each style
     // as it builds it; see `held` in `animationClock.js`.
     { held: () => loading.get() },
@@ -1777,6 +1825,7 @@ function buildPortal(ctx, ownOptions = {}) {
     if (root) {
       containerElement.removeAttribute(PORTAL_ATTRIBUTE);
       containerElement.removeAttribute(LOADING_ATTRIBUTE);
+      containerElement.removeAttribute(BUSY_ATTRIBUTE);
     }
   }
 

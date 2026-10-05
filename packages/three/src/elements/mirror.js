@@ -105,15 +105,51 @@ import { PORTAL_ATTRIBUTE } from "./portalRoot.js";
 export const LOADING_ATTRIBUTE = "data-xr-loading";
 
 /**
- * The portal's own markers on its container. The portal observes every
- * attribute in its tree, and these are the two it writes there itself, to
- * tell the page where a panel is and whether it has loaded. No stylesheet
- * is meant to key on them, so the ingest drops them like a value written
- * again unchanged. The container is an ancestor of every element in the
- * panel, and treating either as an author's attribute would restyle and
- * re-measure the whole panel, twice for every mount.
+ * Set on a portal's container element while the panel has work it will do
+ * on a coming frame: an animation the clock is sampling, or an update the
+ * pump has yet to bring into the scene. Taken off on the frame that finds
+ * neither, which is the frame that draws the last of it. A harness that
+ * freezes the page's animations and then photographs the scene waits for
+ * `document.querySelector("[data-xr-busy]")` to come back empty, where a
+ * fixed number of frames is a guess at how long a slow machine takes. A
+ * panel holding an animation that runs forever is busy for as long as it
+ * runs.
  */
-const PORTAL_BOOKKEEPING_ATTRIBUTES = new Set([PORTAL_ATTRIBUTE, LOADING_ATTRIBUTE]);
+export const BUSY_ATTRIBUTE = "data-xr-busy";
+
+/**
+ * The portal's own markers on its container. The portal observes every
+ * attribute in its tree, and these are the three it writes there itself, to
+ * tell the page where a panel is, whether it has loaded and whether it has
+ * work left to draw. No stylesheet is meant to key on them, so the ingest
+ * drops them like a value written again unchanged. The container is an
+ * ancestor of every element in the panel, and treating any of them as an
+ * author's attribute would restyle and re-measure the whole panel twice for
+ * every mount, and twice for every animation.
+ */
+const PORTAL_BOOKKEEPING_ATTRIBUTES = new Set([
+  PORTAL_ATTRIBUTE,
+  LOADING_ATTRIBUTE,
+  BUSY_ATTRIBUTE,
+]);
+
+/**
+ * Whether an observer record is one of the portal's own markers being
+ * written. A flush of nothing else changes nothing in the panel, and the
+ * portal answers it with nothing: answering it as a change would ask the
+ * animation clock to look again, which marks the panel busy, which is
+ * another such write.
+ *
+ * @param {MutationRecord} mutation
+ * @returns {boolean}
+ */
+export function isBookkeepingMutation(mutation) {
+  return (
+    mutation.type === "attributes" &&
+    mutation.attributeName !== null &&
+    PORTAL_BOOKKEEPING_ATTRIBUTES.has(mutation.attributeName)
+  );
+}
 
 /**
  * The attributes the portal writes onto elements itself, to say what the ray

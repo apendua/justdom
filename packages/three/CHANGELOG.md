@@ -3,278 +3,133 @@
 This log was last generated on Sun, 04 Oct 2026 19:35:47 GMT and should not be manually modified.
 
 ## 0.27.0
-
 Sun, 04 Oct 2026 19:35:47 GMT
 
 ### Minor changes
 
-- Add mouse(ctx) and followMouse, a stand-in controller that points at the scene with the mouse on a
-  page, moved here from turntable
-- Add the @apendua/freedom/page entry point, getPortalRoot and scrollElementBy without three.js, for
-  widgets a page shows before any session
-- A ray's press, release and moves now send pointerdown, pointerup and pointermove ahead of their
-  mouse events, each hand with a pointerId of its own, and setPointerCapture with a hand's pointerId
-  is kept and honoured instead of throwing
+- Add mouse(ctx) and followMouse, a stand-in controller that points at the scene with the mouse on a page, moved here from turntable
+- Add the @apendua/freedom/page entry point, getPortalRoot and scrollElementBy without three.js, for widgets a page shows before any session
+- A ray's press, release and moves now send pointerdown, pointerup and pointermove ahead of their mouse events, each hand with a pointerId of its own, and setPointerCapture with a hand's pointerId is kept and honoured instead of throwing
 
 ### Patches
 
-- SVG curves are sampled at twice as many segments: 24 per curve at unit scale, at least 16 and at
-  most 128, so a circle on a panel no longer shows as a polygon
-- anchorToViewer stands the origin upright to gravity, measured in local-floor, when the local space
-  keeps the head's tilt
-- Move the layout-offset readers getBoxOffset, untransformedOffset and pageOffset from
-  cssTransform.js into mirror.js, so mirror.js no longer imports from a module that imports it. No
-  behaviour changes.
-- A ray moving over nested clickable elements now sends one bubbling mousemove from the innermost
-  element, instead of one non-bubbling mousemove from each
-- Clip a transformed element where its layout puts it, so a rotating element in a clipping parent is
-  no longer cut differently at each angle
+- SVG curves are sampled at twice as many segments: 24 per curve at unit scale, at least 16 and at most 128, so a circle on a panel no longer shows as a polygon
+- anchorToViewer stands the origin upright to gravity, measured in local-floor, when the local space keeps the head's tilt
+- Move the layout-offset readers getBoxOffset, untransformedOffset and pageOffset from cssTransform.js into mirror.js, so mirror.js no longer imports from a module that imports it. No behaviour changes.
+- A ray moving over nested clickable elements now sends one bubbling mousemove from the innermost element, instead of one non-bubbling mousemove from each
+- Clip a transformed element where its layout puts it, so a rotating element in a clipping parent is no longer cut differently at each angle
 
 ## 0.26.0
-
 Sat, 03 Oct 2026 19:51:46 GMT
 
 ### Minor changes
 
 - Mouse events a ray sends to a mirrored page carry the point it met as clientX and clientY
-- The grip on a mirrored element sends the page a contextmenu, and a mirror cache read before its
-  node was adopted follows the node once it is
-- Positioned and transformed siblings are now stepped in depth in front of the earlier siblings they
-  overlap, so a clock hand no longer vanishes into its dial and an earlier card's text and pin no
-  longer show through a card laid over it; siblings that do not overlap stay level.
+- The grip on a mirrored element sends the page a contextmenu, and a mirror cache read before its node was adopted follows the node once it is
+- Positioned and transformed siblings are now stepped in depth in front of the earlier siblings they overlap, so a clock hand no longer vanishes into its dial and an earlier card's text and pin no longer show through a card laid over it; siblings that do not overlap stay level.
 
 ### Patches
 
-- Text rewritten inside an inline element re-measures what follows it, so a caret after a prompt
-  moves with every key even when the prompt keeps its size
-- A translucent card laid over another card now draws after it, so the other card's label shows
-  through it tinted, as on a page, rather than disappearing where the card covers it
+- Text rewritten inside an inline element re-measures what follows it, so a caret after a prompt moves with every key even when the prompt keeps its size
+- A translucent card laid over another card now draws after it, so the other card's label shows through it tinted, as on a page, rather than disappearing where the card covers it
 
 ## 0.25.0
-
 Fri, 02 Oct 2026 14:14:43 GMT
 
 ### Minor changes
 
-- Draw CSS gradient backgrounds in panels: linear, radial and conic gradients and their repeating
-  forms, laid out by background-size, -position, -repeat and -origin, baked into a shared ramp atlas
-  so gradient boxes stay in the batch
+- Draw CSS gradient backgrounds in panels: linear, radial and conic gradients and their repeating forms, laid out by background-size, -position, -repeat and -origin, baked into a shared ramp atlas so gradient boxes stay in the batch
 - The caret of the field being typed into blinks, solid again after each keystroke.
-- dom() and createPortal mirror an element the page already has: pass an HTMLElement (or a
-  subscribable of them) to dom(), or root to createPortal, and the portal watches it where it stands
-  instead of mounting into a container of its own, so an app with a flat interface adds an immersive
-  session without building its UI twice.
-- Panels speak HTML drag and drop: a draggable="true" element picked up with the trigger sends
-  dragstart, dragenter, dragover, dragleave, drop and dragend as a browser would, across panels,
-  with a DataTransfer that honours dropEffect and effectAllowed
-- The drag ghost is a picture of what is dragged, rendered once at dragstart, where it was an
-  outline
-- Panels can opt into being moved by the player with `draggable`; `carry()` keeps the tilt an object
-  was taken with and takes `level: false` for the hand's whole rotation; `runFrame` runs a
-  renderer's frame callbacks for tests; the keyboard is always draggable and its `draggable` option
-  is gone.
-- An element's opacity now fades everything inside it, as on a page: boxes, text, a field's value
-  and caret, and SVG shapes are drawn at the product of their own opacity and every ancestor's up to
-  the panel's top
-- Draw list markers in panels for any element laid out as a list item, <li> and <summary> included:
-  bullets and disclosure triangles, numbers in every common list-style-type, start, value and
-  reversed, inside and outside positions on the item's first line, right-to-left markers, ::marker
-  colour and font, and the item's own overflow clip
-- A panel follows every attribute written inside it, not a fixed list: an SVG shape's d, fill,
-  points or transform bound to data is redrawn when it changes, and an app's own attribute selectors
-  restyle. The portal's own data-xr-loading and data-xr-portal flags on the container are ignored.
-- The keyboard a field brings up follows the haptics of the panel it types for, with the hover on
-  for its keys unless that panel turned it off by name, and silent for a panel with haptics: false.
-- Panels are felt: every control (an element with cursor: pointer) pulses the controller's motors
-  when the trigger closes on it, and, where a panel asks for it with haptics.hover, when the ray
-  arrives on it, once per arrival and not while the hand scrolls a list. PanelOptions and
-  PortalOptions take haptics (hover, off by default; active; strength; flavor: tick, knock, buzz,
-  key or a HapticFlavor of your own; false for none), spread one over the other like keyboard and
-  loadingFrame; playHaptic drives a hand's motors for a scene's own haptics. Pointer events now
-  carry the controller's inputSource and the registeredTarget their hit belongs to; enter and leave
-  are per registered target (a ray drifting from a button's label onto its background is a
-  pointermove, not a leave and an enter) and carry relatedTarget, the registered object the ray came
-  from or went to. InteractionManager.addController takes a reader for what is driving the
-  controller.
-- Add PanelOptions: scene-wide panel defaults (keyboard, loadingFrame, maxTextScale, atomic,
-  opaqueToRays, priority, budget) set through render()'s panelOptions or withPanelOptions, with each
-  panel's own options laid over them. A panel's keyboard option may now be partial or false.
-  loadingFrame no longer accepts true: leave it out for the default frame, or pass false or an
-  options object.
-- A press on nested clickable elements works as on a page: the innermost element is the target of
-  the DOM events, sent once, every clickable element around it takes data-xr-active and hears its
-  onPress, and the ray event stops at the outermost of them
-- A <g> under cursor: pointer is a ray target, so it is hovered and pressed with the shape the ray
-  is on, and a .node[data-xr-hover] rect rule restyles the node. A registered object inside another
-  is cast once, by the outer one's walk, and a pointerleave, a release and a grip's release reach
-  every object their start went through, even once the object under the ray was taken out of the
-  scene.
-- One keyboard for every panel in a render() scene, set once through panelOptions: it opens in front
-  of the player at a constant size (placement, reach, drop, scale), stays put while typing moves
-  between panels, can be moved by handles along its edges that show on hover (draggable), and
-  follows focus like a page, staying up on Enter and going on a press anywhere but a field.
-  KeyboardTarget gains field().
-- Restyle only the animating element for non-inherited animated properties, and add a createPortal
-  atomic option to opt a panel out of whole-or-nothing updates
-- Portals now respect CSS visibility: a hidden element draws nothing of its own and takes no rays,
-  while a descendant can show itself with visibility: visible. The portal container is kept out of
-  sight by translating it off-screen rather than with visibility: hidden, which every element inside
-  used to inherit; it is inert and aria-hidden, and says visibility: visible for itself so a page
-  hiding its own content does not hide the panels.
-- Inline SVG in a portal, as a plugin: a new @apendua/freedom/svg entry point whose svgElements()
-  draws <path>, <rect>, <circle>, <ellipse>, <line>, <polyline> and <polygon> from their computed
-  style -- fills with fill-rule, strokes with caps, joins, dashes and dash offsets (dots included),
-  transforms, viewBox and preserveAspectRatio, opacity, display and visibility, clipping by the
-  panel -- behind a general element-plugin seam (PortalOptions.plugins, RenderOptions.portalPlugins,
-  PortalPluginsContext). An <svg> without the plugin is its CSS box and nothing inside it. The
-  animation clock now follows SVG elements and classifies SVG paint properties, so a
-  stroke-dashoffset animation samples one element rather than re-measuring the panel.
+- dom() and createPortal mirror an element the page already has: pass an HTMLElement (or a subscribable of them) to dom(), or root to createPortal, and the portal watches it where it stands instead of mounting into a container of its own, so an app with a flat interface adds an immersive session without building its UI twice.
+- Panels speak HTML drag and drop: a draggable="true" element picked up with the trigger sends dragstart, dragenter, dragover, dragleave, drop and dragend as a browser would, across panels, with a DataTransfer that honours dropEffect and effectAllowed
+- The drag ghost is a picture of what is dragged, rendered once at dragstart, where it was an outline
+- Panels can opt into being moved by the player with `draggable`; `carry()` keeps the tilt an object was taken with and takes `level: false` for the hand's whole rotation; `runFrame` runs a renderer's frame callbacks for tests; the keyboard is always draggable and its `draggable` option is gone.
+- An element's opacity now fades everything inside it, as on a page: boxes, text, a field's value and caret, and SVG shapes are drawn at the product of their own opacity and every ancestor's up to the panel's top
+- Draw list markers in panels for any element laid out as a list item, <li> and <summary> included: bullets and disclosure triangles, numbers in every common list-style-type, start, value and reversed, inside and outside positions on the item's first line, right-to-left markers, ::marker colour and font, and the item's own overflow clip
+- A panel follows every attribute written inside it, not a fixed list: an SVG shape's d, fill, points or transform bound to data is redrawn when it changes, and an app's own attribute selectors restyle. The portal's own data-xr-loading and data-xr-portal flags on the container are ignored.
+- The keyboard a field brings up follows the haptics of the panel it types for, with the hover on for its keys unless that panel turned it off by name, and silent for a panel with haptics: false.
+- Panels are felt: every control (an element with cursor: pointer) pulses the controller's motors when the trigger closes on it, and, where a panel asks for it with haptics.hover, when the ray arrives on it, once per arrival and not while the hand scrolls a list. PanelOptions and PortalOptions take haptics (hover, off by default; active; strength; flavor: tick, knock, buzz, key or a HapticFlavor of your own; false for none), spread one over the other like keyboard and loadingFrame; playHaptic drives a hand's motors for a scene's own haptics. Pointer events now carry the controller's inputSource and the registeredTarget their hit belongs to; enter and leave are per registered target (a ray drifting from a button's label onto its background is a pointermove, not a leave and an enter) and carry relatedTarget, the registered object the ray came from or went to. InteractionManager.addController takes a reader for what is driving the controller.
+- Add PanelOptions: scene-wide panel defaults (keyboard, loadingFrame, maxTextScale, atomic, opaqueToRays, priority, budget) set through render()'s panelOptions or withPanelOptions, with each panel's own options laid over them. A panel's keyboard option may now be partial or false. loadingFrame no longer accepts true: leave it out for the default frame, or pass false or an options object.
+- A press on nested clickable elements works as on a page: the innermost element is the target of the DOM events, sent once, every clickable element around it takes data-xr-active and hears its onPress, and the ray event stops at the outermost of them
+- A <g> under cursor: pointer is a ray target, so it is hovered and pressed with the shape the ray is on, and a .node[data-xr-hover] rect rule restyles the node. A registered object inside another is cast once, by the outer one's walk, and a pointerleave, a release and a grip's release reach every object their start went through, even once the object under the ray was taken out of the scene.
+- One keyboard for every panel in a render() scene, set once through panelOptions: it opens in front of the player at a constant size (placement, reach, drop, scale), stays put while typing moves between panels, can be moved by handles along its edges that show on hover (draggable), and follows focus like a page, staying up on Enter and going on a press anywhere but a field. KeyboardTarget gains field().
+- Restyle only the animating element for non-inherited animated properties, and add a createPortal atomic option to opt a panel out of whole-or-nothing updates
+- Portals now respect CSS visibility: a hidden element draws nothing of its own and takes no rays, while a descendant can show itself with visibility: visible. The portal container is kept out of sight by translating it off-screen rather than with visibility: hidden, which every element inside used to inherit; it is inert and aria-hidden, and says visibility: visible for itself so a page hiding its own content does not hide the panels.
+- Inline SVG in a portal, as a plugin: a new @apendua/freedom/svg entry point whose svgElements() draws <path>, <rect>, <circle>, <ellipse>, <line>, <polyline> and <polygon> from their computed style -- fills with fill-rule, strokes with caps, joins, dashes and dash offsets (dots included), transforms, viewBox and preserveAspectRatio, opacity, display and visibility, clipping by the panel -- behind a general element-plugin seam (PortalOptions.plugins, RenderOptions.portalPlugins, PortalPluginsContext). An <svg> without the plugin is its CSS box and nothing inside it. The animation clock now follows SVG elements and classifies SVG paint properties, so a stroke-dashoffset animation samples one element rather than re-measuring the panel.
 - freedom/svg: an <image> inside inline SVG is drawn, as a textured quad under the shape's matrices
 - freedom/svg: markers on paths are drawn, and the portal follows SVG templates it does not build
 - freedom/svg: <use> and <symbol> are drawn, and a copy inherits the <use>'s styles
 - freedom/svg: a nested <svg>, a <symbol> and a <marker> clip their content to their viewports
-- SVG shapes under cursor: pointer are ray targets of their own: they forward hover, press and click
-  to their element as a box does, follow pointer-events for which of fill and stroke a ray hits, and
-  are clipped for rays as for drawing
-- SVG in portals, S4b: shapes keep their geometry in user space and transforms move onto the scene
-  graph — the <svg> root's content group carries the viewport, each <g>, nested <svg> and shape its
-  own transform — so a transform animation or a root resize is a matrix write; the clip follows
-  through the clip matrix. box() gains a contentMatrix option.
-- SVG in portals, S4a: the clip patch (applyClip) takes an optional mesh-to-frame clipMatrix
-  uniform, applied in the vertex shader; everything passes the identity for now, so nothing moves.
-- Draw SVG <text> and <tspan> in a portal, laid out by the browser in an untransformed copy and
-  drawn as textured quads in user space
-- Text fields are mirrored: the value or placeholder drawn in the box, followed through input events
-  and the value setter, with a caret while typed into. PortalOptions.keyboard takes a factory for
-  the board's DOM; the portal mounts it below the panel when a field is pressed, types into the
-  field through the exported typeIntoInput, and dismisses it on Enter, Escape, a background press or
-  the field leaving. The portal handle gains size(), and fields carry data-xr-focus while typed
-  into. RenderOptions.presentingOnly draws only while an immersive session is presenting, for a page
-  that offers a session as an extra.
-- The keyboard in the room previews the field being typed into just above its keys: unmasked, in the
-  field's own look (or preview.className), leaning toward the player by preview.tilt (15°), preview:
-  false to leave it off. The caret of a field being typed into is placed by the ray's select press
-  and dragged with it, the preview's going into the field; number and email fields keep a caret too.
-  BoxOptions gain interactions; InputFocus gains placeCaret; PREVIEW_ATTRIBUTE is exported.
+- SVG shapes under cursor: pointer are ray targets of their own: they forward hover, press and click to their element as a box does, follow pointer-events for which of fill and stroke a ray hits, and are clipped for rays as for drawing
+- SVG in portals, S4b: shapes keep their geometry in user space and transforms move onto the scene graph — the <svg> root's content group carries the viewport, each <g>, nested <svg> and shape its own transform — so a transform animation or a root resize is a matrix write; the clip follows through the clip matrix. box() gains a contentMatrix option.
+- SVG in portals, S4a: the clip patch (applyClip) takes an optional mesh-to-frame clipMatrix uniform, applied in the vertex shader; everything passes the identity for now, so nothing moves.
+- Draw SVG <text> and <tspan> in a portal, laid out by the browser in an untransformed copy and drawn as textured quads in user space
+- Text fields are mirrored: the value or placeholder drawn in the box, followed through input events and the value setter, with a caret while typed into. PortalOptions.keyboard takes a factory for the board's DOM; the portal mounts it below the panel when a field is pressed, types into the field through the exported typeIntoInput, and dismisses it on Enter, Escape, a background press or the field leaving. The portal handle gains size(), and fields carry data-xr-focus while typed into. RenderOptions.presentingOnly draws only while an immersive session is presenting, for a page that offers a session as an extra.
+- The keyboard in the room previews the field being typed into just above its keys: unmasked, in the field's own look (or preview.className), leaning toward the player by preview.tilt (15°), preview: false to leave it off. The caret of a field being typed into is placed by the ray's select press and dragged with it, the preview's going into the field; number and email fields keep a caret too. BoxOptions gain interactions; InputFocus gains placeCaret; PREVIEW_ATTRIBUTE is exported.
 
 ### Patches
 
-- A box's border is drawn in the colour of the first side that has a border, so a one-sided border
-  such as a bottom divider is drawn in its own colour rather than the text colour
-- A drag from one panel to another keeps the other panel's controls unhovered, and its ghost follows
-  the ray onto whichever panel it is over
-- A press whose mousedown is cancelled after a drag is a click again, and the control a drag ends on
-  is hovered on the next move
-- A controller three is not tracking (not yet connected, disconnected, or with its pose lost) points
-  at nothing: getIntersection casts no ray from a hidden target ray space, for the hover and for
-  presses, and the manager looks again when its visibility changes, so cursors and hovers go when a
-  session ends and a press from a lost hand lands nowhere
+- A box's border is drawn in the colour of the first side that has a border, so a one-sided border such as a bottom divider is drawn in its own colour rather than the text colour
+- A drag from one panel to another keeps the other panel's controls unhovered, and its ghost follows the ray onto whichever panel it is over
+- A press whose mousedown is cancelled after a drag is a click again, and the control a drag ends on is hovered on the next move
+- A controller three is not tracking (not yet connected, disconnected, or with its pose lost) points at nothing: getIntersection casts no ray from a hidden target ray space, for the hover and for presses, and the manager looks again when its visibility changes, so cursors and hovers go when a session ends and a press from a lost hand lands nowhere
 
 ## 0.24.0
-
 Sat, 26 Sep 2026 15:05:41 GMT
 
 ### Minor changes
 
-- render takes foveation: fixed foveation for the headset's layer, 0 by default rather than three's
-  1, so flat-shaded edges stay sharp at the edges of view.
+- render takes foveation: fixed foveation for the headset's layer, 0 by default rather than three's 1, so flat-shaded edges stay sharp at the edges of view.
 
 ### Patches
 
 - Clip portal container overflow so oversized panels do not add scrollbars to the page
 
 ## 0.23.0
-
 Thu, 24 Sep 2026 14:56:56 GMT
 
 ### Minor changes
 
-- Batched boxes share one invisible material instead of carrying one each: a box's numbers move to a
-  uniforms record the batch reads, and a panel of eight hundred boxes goes from eight hundred
-  materials to one.
-- Update channels can be atomic: a pass spends its budget resolving what the queued effects read
-  (Effect.warm) and runs them all at once, unbudgeted, once every one of them is warm, so an output
-  made of many effects never changes in instalments. UpdateChannel takes an atomic option and gains
-  warm(); Effect gains warm() and a warmed flag the queue owns. The portal's channel is atomic, and
-  it holds the objects of rows that arrived or left for the same frame as the moves around them.
-- A panel whose mount outruns a short delay (250 ms by default) shows a loading frame where it is
-  going to be: a translucent rounded rectangle its own size with a black border and three dots that
-  brighten in turn, placed from the panel's DOM size before the panel's own placement lands and
-  taken down in the frame the content arrives. A panel that settles within the delay appears the
-  moment it is built and shows none. Once shown the frame stays up for half a second at the least,
-  holding a faster mount until it has had its time. On by default; PortalOptions.loadingFrame turns
-  it off or tunes its colours, border, corners, delay and minimum time. The container element
-  carries data-xr-loading while the panel loads.
+- Batched boxes share one invisible material instead of carrying one each: a box's numbers move to a uniforms record the batch reads, and a panel of eight hundred boxes goes from eight hundred materials to one.
+- Update channels can be atomic: a pass spends its budget resolving what the queued effects read (Effect.warm) and runs them all at once, unbudgeted, once every one of them is warm, so an output made of many effects never changes in instalments. UpdateChannel takes an atomic option and gains warm(); Effect gains warm() and a warmed flag the queue owns. The portal's channel is atomic, and it holds the objects of rows that arrived or left for the same frame as the moves around them.
+- A panel whose mount outruns a short delay (250 ms by default) shows a loading frame where it is going to be: a translucent rounded rectangle its own size with a black border and three dots that brighten in turn, placed from the panel's DOM size before the panel's own placement lands and taken down in the frame the content arrives. A panel that settles within the delay appears the moment it is built and shows none. Once shown the frame stays up for half a second at the least, holding a faster mount until it has had its time. On by default; PortalOptions.loadingFrame turns it off or tunes its colours, border, corners, delay and minimum time. The container element carries data-xr-loading while the panel loads.
 
 ### Patches
 
-- Fix a layout settle that could drop a change: when two layout changes in one observer flush
-  reached the same container, a later one naming an earlier child was skipped, and the rows between
-  were never re-measured.
-- Measure every text run with one shared Range rather than one per measurement: a Range is live, and
-  a mount used to leave hundreds of stale ones for every mutation to walk until they were collected.
+- Fix a layout settle that could drop a change: when two layout changes in one observer flush reached the same container, a later one naming an earlier child was skipped, and the rows between were never re-measured.
+- Measure every text run with one shared Range rather than one per measurement: a Range is live, and a mount used to leave hundreds of stale ones for every mutation to walk until they were collected.
 
 ## 0.22.0
-
 Sat, 19 Sep 2026 16:40:06 GMT
 
 ### Minor changes
 
-- A child-list change now restyles only the rows the positional selectors could reach (the tail from
-  the change, the row before it, and the last earlier element of each kind), so a list mounted one
-  row at a time is linear in its length rather than quadratic. :nth-last-child and :nth-last-of-type
-  are no longer followed on structural changes; see the README.
-- Text runs are sampled anisotropically, and a run whose colours are baked into its texture gets a
-  mip chain built from premultiplied canvas halvings rather than one the driver averages toward
-  black
-- A panel's text is rasterized for the device pixels the panel is really painting -- measured from
-  its world scale, the projection and its distance -- rather than for the page's devicePixelRatio,
-  which says nothing about either in a scene and reports 1 in a headset
-- The measured text scale steps by root two rather than by two, which halves what a panel of a given
-  sharpness costs, and a portal can lower its own ceiling with the new maxTextScale option
+- A child-list change now restyles only the rows the positional selectors could reach (the tail from the change, the row before it, and the last earlier element of each kind), so a list mounted one row at a time is linear in its length rather than quadratic. :nth-last-child and :nth-last-of-type are no longer followed on structural changes; see the README.
+- Text runs are sampled anisotropically, and a run whose colours are baked into its texture gets a mip chain built from premultiplied canvas halvings rather than one the driver averages toward black
+- A panel's text is rasterized for the device pixels the panel is really painting -- measured from its world scale, the projection and its distance -- rather than for the page's devicePixelRatio, which says nothing about either in a scene and reports 1 in a headset
+- The measured text scale steps by root two rather than by two, which halves what a panel of a given sharpness costs, and a portal can lower its own ceiling with the new maxTextScale option
 - Add makeReveal: text laid out in full and drawn up to a cursor, cut in the fragment shader
-- createXRButton takes autoEnter: ask for the session as soon as the button is built, rather than
-  waiting for a click. Only where the page runs as an installed app, whose launch is the activation
-  requestSession needs; a browser tab still waits to be asked. The button is built and returned
-  either way, so a refused session leaves a way in rather than a black screen.
+- createXRButton takes autoEnter: ask for the session as soon as the button is built, rather than waiting for a click. Only where the page runs as an installed app, whose launch is the activation requestSession needs; a browser tab still waits to be asked. The button is built and returned either way, so a refused session leaves a way in rather than a black screen.
 
 ### Patches
 
-- Do not end an XR session over a ResizeObserver loop notice, and stop scrollable's observer causing
-  one
-- Stop a numeric font-variant voiding the canvas font string. The font-variant slot of the canvas
-  shorthand is the CSS2 one, normal | small-caps, but style.fontVariant is the computed shorthand
-  and reads back whatever its longhands are set to -- an element carrying font-variant-numeric:
-  tabular-nums reported "tabular-nums" there. An invalid font string is a silent no-op on a 2D
-  context, so every run drawn from such a style came out at the canvas default of 10px sans-serif,
-  whatever the element's own size and weight said. Only the caps longhand now reaches the shorthand.
-- Hiding an object now takes it and its subtree out of the raycast, however far above the registered
-  ray target the hidden object is. The registration set is flat, so a card hidden by one flag on the
-  group it hangs off went on answering rays -- and a projected panel's own buttons and backing plane
-  are not reachable by the app to hide one at a time.
+- Do not end an XR session over a ResizeObserver loop notice, and stop scrollable's observer causing one
+- Stop a numeric font-variant voiding the canvas font string. The font-variant slot of the canvas shorthand is the CSS2 one, normal | small-caps, but style.fontVariant is the computed shorthand and reads back whatever its longhands are set to -- an element carrying font-variant-numeric: tabular-nums reported "tabular-nums" there. An invalid font string is a silent no-op on a 2D context, so every run drawn from such a style came out at the canvas default of 10px sans-serif, whatever the element's own size and weight said. Only the caps longhand now reaches the shorthand.
+- Hiding an object now takes it and its subtree out of the raycast, however far above the registered ray target the hidden object is. The registration set is flat, so a card hidden by one flag on the group it hangs off went on answering rays -- and a projected panel's own buttons and backing plane are not reachable by the app to hide one at a time.
 
 ## 0.21.0
-
 Sat, 12 Sep 2026 17:18:36 GMT
 
 ### Minor changes
 
-- Add createBakery: draw a panel once, stamp copies of it. For pictures rather than views — cards,
-  number chits, badges — where a portal per copy is the wrong price.
+- Add createBakery: draw a panel once, stamp copies of it. For pictures rather than views — cards, number chits, badges — where a portal per copy is the wrong price.
 
 ### Patches
 
-- The crash panel no longer treats a cross-origin script's muted "Script error." as this app's
-  crash: it neither opens the panel nor ends the XR session for one, and an error that does carry a
-  location now reports it
-- Batched text rebuilds its array texture from fresh storage when a run changes, instead of updating
-  one layer in place: on Quest the mip chain of an array whose storage already existed was not
-  regenerated after a layer update, so a changed label read correctly up close and blended into its
-  previous value with distance. Panel text is also drawn with a small polygon offset toward the
-  viewer, against the box it sits on.
+- The crash panel no longer treats a cross-origin script's muted "Script error." as this app's crash: it neither opens the panel nor ends the XR session for one, and an error that does carry a location now reports it
+- Batched text rebuilds its array texture from fresh storage when a run changes, instead of updating one layer in place: on Quest the mip chain of an array whose storage already existed was not regenerated after a layer update, so a changed label read correctly up close and blended into its previous value with distance. Panel text is also drawn with a small polygon offset toward the viewer, against the box it sits on.
 
 ## 0.20.0
-
 Fri, 11 Sep 2026 15:31:13 GMT
 
 ### Minor changes
@@ -283,914 +138,272 @@ Fri, 11 Sep 2026 15:31:13 GMT
 
 ### Patches
 
-- Parse the text-shadow values a computed style actually produces, so a shadowed run is no longer
-  rasterized without its shadow
+- Parse the text-shadow values a computed style actually produces, so a shadowed run is no longer rasterized without its shadow
 
 ## 0.19.0
-
 Sun, 06 Sep 2026 21:40:37 GMT
 
 ### Minor changes
 
-- Hand tracking: createXRButton asks for the hand-tracking feature by default (handTracking: false
-  opts out), render() fills in a hand space per controller slot and wires createHandModel to it, and
-  the controller handle carries hand plus reactive tracked() and pinching() readers.
-- freedom builds its own XR button rather than three's ARButton/VRButton, whose session state can be
-  left claiming a session that has already ended; offerSession is now made from a state of rest, and
-  the AR session no longer asks for dom-overlay
+- Hand tracking: createXRButton asks for the hand-tracking feature by default (handTracking: false opts out), render() fills in a hand space per controller slot and wires createHandModel to it, and the controller handle carries hand plus reactive tracked() and pinching() readers.
+- freedom builds its own XR button rather than three's ARButton/VRButton, whose session state can be left claiming a session that has already ended; offerSession is now made from a state of rest, and the AR session no longer asks for dom-overlay
 
 ## 0.18.0
-
 Fri, 04 Sep 2026 22:51:18 GMT
 
 ### Minor changes
 
-- Every XR app built on `createXRButton` now puts up a crash panel. Inside an immersive session a
-  failure is invisible: three asks for the next frame only once the current callback has returned,
-  so a throw out of the frame loop ends the loop, and what the player sees is a scene that has
-  stopped moving with the reason in a console nobody is in front of. The panel ends the session,
-  which puts the browser back on screen, and writes the error and its stack onto the page where it
-  can be read on the headset. Unhandled rejections count too, since three's own buttons request a
-  session with a bare `.then` and a refused session is otherwise a rejection nobody hears. The frame
-  loop reports its own failures through `reportCrash(renderer, err)` rather than waiting to hear
-  about them from the window: an XR frame callback's throw only reaches the window's `error` event
-  if whatever drives the session reports it, and the IWER emulator these apps are developed against
-  catches every frame callback and writes to the console instead, so a crash was invisible in a tab.
-  Where no panel is installed the failure is rethrown and the host is as loud about it as before.
-  `installCrashPanel(renderer)` and `CRASH_PANEL_ID` are exported for an app that wants to place it
-  itself; `createXRButton` installs it, and `crashPanel: false` opts out.
+- Every XR app built on `createXRButton` now puts up a crash panel. Inside an immersive session a failure is invisible: three asks for the next frame only once the current callback has returned, so a throw out of the frame loop ends the loop, and what the player sees is a scene that has stopped moving with the reason in a console nobody is in front of. The panel ends the session, which puts the browser back on screen, and writes the error and its stack onto the page where it can be read on the headset. Unhandled rejections count too, since three's own buttons request a session with a bare `.then` and a refused session is otherwise a rejection nobody hears. The frame loop reports its own failures through `reportCrash(renderer, err)` rather than waiting to hear about them from the window: an XR frame callback's throw only reaches the window's `error` event if whatever drives the session reports it, and the IWER emulator these apps are developed against catches every frame callback and writes to the console instead, so a crash was invisible in a tab. Where no panel is installed the failure is rethrown and the host is as loud about it as before. `installCrashPanel(renderer)` and `CRASH_PANEL_ID` are exported for an app that wants to place it itself; `createXRButton` installs it, and `crashPanel: false` opts out.
 
 ## 0.17.0
-
 Thu, 03 Sep 2026 07:23:24 GMT
 
 ### Minor changes
 
-- Add carry(ctx, options): carrying an object about the room with a hand while it stays level,
-  steered by the grab point, taken by handles (carryHandle for furniture that is nothing but one),
-  handed from hand to hand — the board carry four apps were each keeping a copy of. The maths
-  (yawOf, levelPose, beginCarry, carriedPose, applyLevelPose) is exported on its own.
-- Add drag(ctx, options): picking an object up with a hand and carrying it, with the handover to the
-  other hand, the release that puts it back, and dragstart/dragmove/dragend events on the object —
-  the carry every app here was writing by hand. Export RendererContext, so a component that asks for
-  frames can be mounted in a test without a renderer.
+- Add carry(ctx, options): carrying an object about the room with a hand while it stays level, steered by the grab point, taken by handles (carryHandle for furniture that is nothing but one), handed from hand to hand — the board carry four apps were each keeping a copy of. The maths (yawOf, levelPose, beginCarry, carriedPose, applyLevelPose) is exported on its own.
+- Add drag(ctx, options): picking an object up with a hand and carrying it, with the handover to the other hand, the release that puts it back, and dragstart/dragmove/dragend events on the object — the carry every app here was writing by hand. Export RendererContext, so a component that asks for frames can be mounted in a test without a renderer.
 
 ## 0.16.0
-
 Tue, 01 Sep 2026 20:21:51 GMT
 
 ### Minor changes
 
-- Replace `animateLate(ctx, fn)` with `onLateFrame(ctx, fn)`, which hands the teardown straight back
-  instead of an `Observable<never>` that never emitted. Both callers of the observable form did the
-  same thing with it -- subscribed on the line that built it and kept the subscription only to
-  unsubscribe later -- which is the shape `animate` had before `useFrame`. The difference is who
-  owns the lifetime: `useFrame` could drop it on the surrounding computation because every one of
-  its callers is a component being built inside one, and the late phase's callers own themselves. A
-  portal disposes what it built from its own teardown, alongside the `new Effect` its pump already
-  owns by hand, and `InteractionManager` is handed the frame hook as a function precisely because it
-  holds no context to ask for frames with -- so this is `onLateFrame` and not a `useLateFrame`, and
-  the doc comment says why. The private `addListener` goes with it: the two controller registrations
-  were reaching past `animateLate` into it anyway and now call `onLateFrame` like the portal does.
-  `InteractionManager.addController` takes a frame hook returning the way off the loop rather than
-  an observable to subscribe to. A failed frame callback still comes off the loop, which is where
-  the observable form ended up once its subscriber was told, and still reaches the global handler
-  when nobody has said where else to send it; `onLateFrame` takes an optional `onError` for a caller
-  who wants it. Nothing changes in the package index -- `animateLate` was never exported from it.
-- Hold a fixed source with `use` in set() and copy() instead of effectMap, and run each()'s callback
-  untracked so a value's arrival cannot make the callback's reads the pusher's dependencies.
-- Hold children and the observable branch of write() with `use` instead of effectMap: the
-  release-before-claim a DOM slot needs comes from onEachValue inside the source, not from the
-  operator holding it.
-- Add `getCamera(ctx)` and `getScene(ctx)`, and remove the `camera(ctx)` observable they replace.
-  `getCamera` is the one reactive-looking getter with nothing to depend on: `render` builds a camera
-  and keeps it for the life of the renderer -- a resize adjusts the one that is there rather than
-  replacing it -- so there is no event that could change the answer. `getScene` does depend on
-  something, because `render` holds whatever scene its tree emits and a tree rooted in a `component`
-  may emit another; the subject holding it is the dependency, exposed through a new `SceneContext`.
-  Asked while the tree is still being built, `getScene` answers with the empty scene `render` starts
-  from -- the real one being what the tree is in the middle of producing -- and because the read is
-  a dependency, a reader that asked early is re-run against the scene that actually arrives.
-  `camera(ctx)` emitted one value and never another, so every caller wrote
-  `use(camera(ctx).pipe(...))` to get at a value it already had; with the getter those become an
-  assignment, or `useEffects(getCamera(ctx), [...])` where something is being mounted on the camera.
-- Cursors stop rebuilding themselves every time a ray crosses an edge. A cursor exists only while a
-  ray is on something, so it was destroyed and recreated constantly -- and its geometry and
-  materials went with it, taking three's compiled program along and charging a fresh GLSL compile
-  and link on the way back in, a stutter arriving exactly where the hand is trying to be precise.
-  The default ball's geometry and material are now memoized with a keep-warm window, and a custom
-  widget's chrome is cloned once per template and shared by every cursor drawn from it rather than
-  cloned and disposed per widget. Measured in an emulated session, a sweep back and forth across the
-  edge of the object under the ray goes from 20 shader compiles, 10 links and 11 program deletions
-  to none at all. Both use `memoizeWithTTL` from @apendua/signal.
-- Text runs are rasterized on a canvas that can be read back cheaply, and the portal budget is a
-  share of the frame rather than a fixed five milliseconds
-- Move `rxjs` to devDependencies, and drop a dead `@import {Observable, Unsubscribable} from 'rxjs'`
-  in `elements/portal.js` that named types the file never used. No source file in the package names
-  RxJS; the tests that feed RxJS observables in on purpose still do.
-- `render` builds the scene and puts it in the context, rather than subscribing to one the tree
-  hands back. The scene was the one piece of the rendering context assembled in the wrong direction
-  -- everything else threaded down through `ctx`, and this one came up -- and nothing wanted the
-  freedom that bought: every app built exactly one scene, immediately, and then spent its root
-  component decorating it, which is what a root still does. It just no longer has to make one first:
-  `useEffects(getScene(ctx), [...])`, and the root returns `Nothing()`. `fn` is now mounted rather
-  than read, so its type is `(ctx) => Observable<unknown>`; `getScene` becomes a plain context read,
-  needing no more invalidation than `getCamera`, since one scene is built before anything can ask
-  and kept for the life of the renderer; and the camera and controllers are added to it directly
-  rather than through a `tap` on every emission. The root produces nothing either -- everything it
-  builds it mounts on the way through, `use` and `useEffects` registering against whatever is
-  evaluating -- so it is wrapped in signal's new `effectsOnly` rather than `component`, and has no
-  trailing `return Nothing()`. It stays a factory returning an observable, which is what `render`
-  subscribes and what hot reload swaps. `component` is unchanged and is still what a child is.
-- Remove the RxJS dependency from justdom and freedom: streams, subjects and operators are now the
-  core's own. Adds mountEach, and exports filtered and the operator types, from @apendua/signal.
-- Mount entity effects instead of piping operators. just(valueOrFactory, effects), store(data,
-  effects) and useEffects(value, effects) take arrays of EntityEffect — (entity) => void functions
-  run as Effects while the entity stays mounted — in place of MonoTypeOperatorFunction arrays. just
-  is cold now: a subscription is a mounting, built on subscribe and torn down on unsubscribe, and a
-  factory first argument is run per subscription, at mount time — the share/ReplaySubject
-  idempotence guard is gone, and sharing a mounting among subscribers is memoize's job (stylesheet
-  keeps its sharing explicitly, through a Derived).
-  set/on/attr/data/style/effectMap/children/copy/makeInteractive/layoutEffects become effect
-  factories; effects(fn) is the identity; a plain lambda is a valid entry; justdom's $ loses its
-  defer, since a cold just gives every subscriber its own element by construction. Errors: a
-  mounting failing on the way in fails synchronously to whoever is subscribing (hydration mismatches
-  are caught before subscribe returns); later failures end the mounting through the error channel.
-  Constructing a store with one operator gets ~50% faster; piping these factories onto an RxJS
-  observable no longer works — mount them instead.
-- Decouple public types from RxJS: inputs are typed Subscribable, outputs Source; new
-  @apendua/signal/rxjs subpath exports rx() as the explicit crossing into RxJS pipelines. No runtime
-  change.
-- Add `useFrame(ctx, fn)`, which is what `use(animate(ctx, fn))` was without the observable in the
-  middle. That pair only ever had one thing to say -- start on the way in, stop on the way out --
-  and said it by wrapping the registration in an `Observable` so `use` had something to subscribe an
-  `Effect` to; nothing was ever emitted through it and nothing subscribed twice, so the effect is
-  the whole of it. `useFrame` registers the frame callback, its teardown takes the callback off
-  again, and signal's new `useEffect` ties that to the computation that asked. The frame callback's
-  own reads are still tracked by a `Computation` of their own, so a value read while drawing keeps
-  its cache without turning into a re-registration. Add `getXRSession(ctx)` alongside it: the
-  session the renderer is presenting to, or `null` while it is presenting to the page, read as a
-  value and depending on the `sessionstart` and `sessionend` events that can change the answer. Read
-  from an `effects` and the block re-runs as a session starts and again as it ends; guard on `null`
-  and the guarded half is the part that only holds inside one, its `onCleanup` running as the
-  session goes. The `session(ctx)` stream said the same thing in three layers -- an outer observable
-  of inner observables, the inner completing on `sessionend` -- so every caller opened with the same
-  pair of `switchMap`s before reaching what it wanted to do, and nothing was ever done with the
-  nesting except flatten it. `WebXRManager` is declared with an `__EVENT_MAP__` so `fromEvent` types
-  against it, the same way `Object3D` already was. `animate(ctx, fn)` and `session(ctx)` are
-  removed: between them `useFrame` and `getXRSession` cover every call site either had, in the repo
-  and in the docs, and what was left of them was two exports nothing reached for. `animateLate` is
-  unchanged. `useFrame` reports a failed frame callback through the `fail` on the context signal now
-  hands its runs, rather than closing over the effect it is in the middle of building. A frame
-  callback whose source dies therefore says so: nothing subscribes to the effect `useFrame` builds,
-  so signal logs the failure rather than losing it.
-- XR buttons no longer offer the browser a session of their own accord, which is what left a Quest
-  browser behaving as though one were still running after the player had left it;
-  `offerSession: true` restores three's behaviour
+- Replace `animateLate(ctx, fn)` with `onLateFrame(ctx, fn)`, which hands the teardown straight back instead of an `Observable<never>` that never emitted. Both callers of the observable form did the same thing with it -- subscribed on the line that built it and kept the subscription only to unsubscribe later -- which is the shape `animate` had before `useFrame`. The difference is who owns the lifetime: `useFrame` could drop it on the surrounding computation because every one of its callers is a component being built inside one, and the late phase's callers own themselves. A portal disposes what it built from its own teardown, alongside the `new Effect` its pump already owns by hand, and `InteractionManager` is handed the frame hook as a function precisely because it holds no context to ask for frames with -- so this is `onLateFrame` and not a `useLateFrame`, and the doc comment says why. The private `addListener` goes with it: the two controller registrations were reaching past `animateLate` into it anyway and now call `onLateFrame` like the portal does. `InteractionManager.addController` takes a frame hook returning the way off the loop rather than an observable to subscribe to. A failed frame callback still comes off the loop, which is where the observable form ended up once its subscriber was told, and still reaches the global handler when nobody has said where else to send it; `onLateFrame` takes an optional `onError` for a caller who wants it. Nothing changes in the package index -- `animateLate` was never exported from it.
+- Hold a fixed source with `use` in set() and copy() instead of effectMap, and run each()'s callback untracked so a value's arrival cannot make the callback's reads the pusher's dependencies.
+- Hold children and the observable branch of write() with `use` instead of effectMap: the release-before-claim a DOM slot needs comes from onEachValue inside the source, not from the operator holding it.
+- Add `getCamera(ctx)` and `getScene(ctx)`, and remove the `camera(ctx)` observable they replace. `getCamera` is the one reactive-looking getter with nothing to depend on: `render` builds a camera and keeps it for the life of the renderer -- a resize adjusts the one that is there rather than replacing it -- so there is no event that could change the answer. `getScene` does depend on something, because `render` holds whatever scene its tree emits and a tree rooted in a `component` may emit another; the subject holding it is the dependency, exposed through a new `SceneContext`. Asked while the tree is still being built, `getScene` answers with the empty scene `render` starts from -- the real one being what the tree is in the middle of producing -- and because the read is a dependency, a reader that asked early is re-run against the scene that actually arrives. `camera(ctx)` emitted one value and never another, so every caller wrote `use(camera(ctx).pipe(...))` to get at a value it already had; with the getter those become an assignment, or `useEffects(getCamera(ctx), [...])` where something is being mounted on the camera.
+- Cursors stop rebuilding themselves every time a ray crosses an edge. A cursor exists only while a ray is on something, so it was destroyed and recreated constantly -- and its geometry and materials went with it, taking three's compiled program along and charging a fresh GLSL compile and link on the way back in, a stutter arriving exactly where the hand is trying to be precise. The default ball's geometry and material are now memoized with a keep-warm window, and a custom widget's chrome is cloned once per template and shared by every cursor drawn from it rather than cloned and disposed per widget. Measured in an emulated session, a sweep back and forth across the edge of the object under the ray goes from 20 shader compiles, 10 links and 11 program deletions to none at all. Both use `memoizeWithTTL` from @apendua/signal.
+- Text runs are rasterized on a canvas that can be read back cheaply, and the portal budget is a share of the frame rather than a fixed five milliseconds
+- Move `rxjs` to devDependencies, and drop a dead `@import {Observable, Unsubscribable} from 'rxjs'` in `elements/portal.js` that named types the file never used. No source file in the package names RxJS; the tests that feed RxJS observables in on purpose still do.
+- `render` builds the scene and puts it in the context, rather than subscribing to one the tree hands back. The scene was the one piece of the rendering context assembled in the wrong direction -- everything else threaded down through `ctx`, and this one came up -- and nothing wanted the freedom that bought: every app built exactly one scene, immediately, and then spent its root component decorating it, which is what a root still does. It just no longer has to make one first: `useEffects(getScene(ctx), [...])`, and the root returns `Nothing()`. `fn` is now mounted rather than read, so its type is `(ctx) => Observable<unknown>`; `getScene` becomes a plain context read, needing no more invalidation than `getCamera`, since one scene is built before anything can ask and kept for the life of the renderer; and the camera and controllers are added to it directly rather than through a `tap` on every emission. The root produces nothing either -- everything it builds it mounts on the way through, `use` and `useEffects` registering against whatever is evaluating -- so it is wrapped in signal's new `effectsOnly` rather than `component`, and has no trailing `return Nothing()`. It stays a factory returning an observable, which is what `render` subscribes and what hot reload swaps. `component` is unchanged and is still what a child is.
+- Remove the RxJS dependency from justdom and freedom: streams, subjects and operators are now the core's own. Adds mountEach, and exports filtered and the operator types, from @apendua/signal.
+- Mount entity effects instead of piping operators. just(valueOrFactory, effects), store(data, effects) and useEffects(value, effects) take arrays of EntityEffect — (entity) => void functions run as Effects while the entity stays mounted — in place of MonoTypeOperatorFunction arrays. just is cold now: a subscription is a mounting, built on subscribe and torn down on unsubscribe, and a factory first argument is run per subscription, at mount time — the share/ReplaySubject idempotence guard is gone, and sharing a mounting among subscribers is memoize's job (stylesheet keeps its sharing explicitly, through a Derived). set/on/attr/data/style/effectMap/children/copy/makeInteractive/layoutEffects become effect factories; effects(fn) is the identity; a plain lambda is a valid entry; justdom's $ loses its defer, since a cold just gives every subscriber its own element by construction. Errors: a mounting failing on the way in fails synchronously to whoever is subscribing (hydration mismatches are caught before subscribe returns); later failures end the mounting through the error channel. Constructing a store with one operator gets ~50% faster; piping these factories onto an RxJS observable no longer works — mount them instead.
+- Decouple public types from RxJS: inputs are typed Subscribable, outputs Source; new @apendua/signal/rxjs subpath exports rx() as the explicit crossing into RxJS pipelines. No runtime change.
+- Add `useFrame(ctx, fn)`, which is what `use(animate(ctx, fn))` was without the observable in the middle. That pair only ever had one thing to say -- start on the way in, stop on the way out -- and said it by wrapping the registration in an `Observable` so `use` had something to subscribe an `Effect` to; nothing was ever emitted through it and nothing subscribed twice, so the effect is the whole of it. `useFrame` registers the frame callback, its teardown takes the callback off again, and signal's new `useEffect` ties that to the computation that asked. The frame callback's own reads are still tracked by a `Computation` of their own, so a value read while drawing keeps its cache without turning into a re-registration. Add `getXRSession(ctx)` alongside it: the session the renderer is presenting to, or `null` while it is presenting to the page, read as a value and depending on the `sessionstart` and `sessionend` events that can change the answer. Read from an `effects` and the block re-runs as a session starts and again as it ends; guard on `null` and the guarded half is the part that only holds inside one, its `onCleanup` running as the session goes. The `session(ctx)` stream said the same thing in three layers -- an outer observable of inner observables, the inner completing on `sessionend` -- so every caller opened with the same pair of `switchMap`s before reaching what it wanted to do, and nothing was ever done with the nesting except flatten it. `WebXRManager` is declared with an `__EVENT_MAP__` so `fromEvent` types against it, the same way `Object3D` already was. `animate(ctx, fn)` and `session(ctx)` are removed: between them `useFrame` and `getXRSession` cover every call site either had, in the repo and in the docs, and what was left of them was two exports nothing reached for. `animateLate` is unchanged. `useFrame` reports a failed frame callback through the `fail` on the context signal now hands its runs, rather than closing over the effect it is in the middle of building. A frame callback whose source dies therefore says so: nothing subscribes to the effect `useFrame` builds, so signal logs the failure rather than losing it.
+- XR buttons no longer offer the browser a session of their own accord, which is what left a Quest browser behaving as though one were still running after the player had left it; `offerSession: true` restores three's behaviour
 - XR sessions now ask for the headset's fastest frame rate, and antialiasing is on by default
 
 ### Patches
 
-- Fix content mounted mid-build being lost to orphaned objects: a node the observer reported while
-  its parent was still in the pump's queue built first, found no object to attach to, and hung
-  outside the scene forever -- which is how scrollable's bar vanished the moment layout gave its
-  widget a size. A parent's turn now adopts any child object already built and loose.
-- Find a stalled rendering step by the frame that never comes, rather than by the document timeline
-  standing still.
+- Fix content mounted mid-build being lost to orphaned objects: a node the observer reported while its parent was still in the pump's queue built first, found no object to attach to, and hung outside the scene forever -- which is how scrollable's bar vanished the moment layout gave its widget a size. A parent's turn now adopts any child object already built and loose.
+- Find a stalled rendering step by the frame that never comes, rather than by the document timeline standing still.
 
-A portal drives CSS animations itself while the page behind an immersive session is not being
-rendered, and what told it to was the document timeline failing to advance between two samples. That
-is an inference from one consequence of the page having stopped rather than the condition itself,
-and a browser is free to break it: where the timeline keeps running while the page gets no rendering
-updates at all, the portal reads a document that is being rendered perfectly well and leaves the
-animations to a browser that is not going to run them.
+A portal drives CSS animations itself while the page behind an immersive session is not being rendered, and what told it to was the document timeline failing to advance between two samples. That is an inference from one consequence of the page having stopped rather than the condition itself, and a browser is free to break it: where the timeline keeps running while the page gets no rendering updates at all, the portal reads a document that is being rendered perfectly well and leaves the animations to a browser that is not going to run them.
 
-The detector now keeps one `requestAnimationFrame` outstanding and reads whether it is ever
-answered. That callback runs in the rendering step and nowhere else, so one unanswered for longer
-than any frame could take is that step having stopped, and one that arrives is it having run. Under
-an emulator, where the page presents and renders both, the frames come back and nothing is taken
-over -- the case the old test was chosen for, and one this gets right without asking about sessions
-at all.
+The detector now keeps one `requestAnimationFrame` outstanding and reads whether it is ever answered. That callback runs in the rendering step and nowhere else, so one unanswered for longer than any frame could take is that step having stopped, and one that arrives is it having run. Under an emulator, where the page presents and renders both, the frames come back and nothing is taken over -- the case the old test was chosen for, and one this gets right without asking about sessions at all.
 
-The takeover it switches on is now per animation and by shortfall rather than by elapsed time. An
-animation is advanced by however much of the elapsed real time the document timeline did not cover:
-a stopped timeline leaves the whole of it, a running one leaves none of it, and a page rendering at
-a fraction of the session's rate is topped up rather than played at double speed. An animation with
-no start time is advanced by the whole of it whatever the timeline is doing, because what would have
-anchored it is the pending play task, which belongs to the same rendering step, so it is not moving
-at all -- that is every transition and every keyframe animation _started_ inside a session, a meter
-that fills on a click or a button that lights under the ray, and it is why a panel could sit dead
-while the panel beside it, animating since before the headset went on, looked fine.
+The takeover it switches on is now per animation and by shortfall rather than by elapsed time. An animation is advanced by however much of the elapsed real time the document timeline did not cover: a stopped timeline leaves the whole of it, a running one leaves none of it, and a page rendering at a fraction of the session's rate is topped up rather than played at double speed. An animation with no start time is advanced by the whole of it whatever the timeline is doing, because what would have anchored it is the pending play task, which belongs to the same rendering step, so it is not moving at all -- that is every transition and every keyframe animation *started* inside a session, a meter that fills on a click or a button that lights under the ray, and it is why a panel could sit dead while the panel beside it, animating since before the headset went on, looked fine.
 
-A sweep that finds nothing takes one more look on the next frame. `getAnimations()` is read from the
-observer microtask that carried the style change, and whether the browser has created the transition
-by then is a question of when the style recalc lands; with no animation event coming to announce it
-and no other sweep due, one missed there was missed for good.
-
-- Discriminate a reactive value by whether it is subscribable rather than by instanceof Observable,
-  so a source built by @apendua/signal is still read as a source now that those are no longer RxJS
-  observables.
-- The three peer range becomes a floor rather than a window: >=0.180.0 in place of ~0.180.0, so
-  anyone already on 0.180 stays supported while this package is built and tested against 0.185.1.
-  Nothing in its own API moves.
+A sweep that finds nothing takes one more look on the next frame. `getAnimations()` is read from the observer microtask that carried the style change, and whether the browser has created the transition by then is a question of when the style recalc lands; with no animation event coming to announce it and no other sweep due, one missed there was missed for good.
+- Discriminate a reactive value by whether it is subscribable rather than by instanceof Observable, so a source built by @apendua/signal is still read as a source now that those are no longer RxJS observables.
+- The three peer range becomes a floor rather than a window: >=0.180.0 in place of ~0.180.0, so anyone already on 0.180 stays supported while this package is built and tested against 0.185.1. Nothing in its own API moves.
 
 ## 0.15.0
-
 Tue, 25 Aug 2026 07:15:20 GMT
 
 ### Minor changes
 
-- Breaking: the dropdown, keyboard and scrollable widgets have moved to @apendua/justui, and are no
-  longer exported from here. Their seams are now public instead: createPortal, InteractionContext,
-  InteractionManager, isRenderingSuspended, sampleRenderingUpdates and scrollElementBy.
-  @apendua/justdom is no longer a peer dependency either: the one type it was needed for, Mountable,
-  is now declared here and exported, and is structurally what justdom's Mountable always was.
+- Breaking: the dropdown, keyboard and scrollable widgets have moved to @apendua/justui, and are no longer exported from here. Their seams are now public instead: createPortal, InteractionContext, InteractionManager, isRenderingSuspended, sampleRenderingUpdates and scrollElementBy. @apendua/justdom is no longer a peer dependency either: the one type it was needed for, Mountable, is now declared here and exported, and is structurally what justdom's Mountable always was.
 
 ## 0.14.0
-
 Mon, 24 Aug 2026 21:52:07 GMT
 
 ### Minor changes
 
-- Migrated to the pull-based `@apendua/signal` core. Two idioms a lazy core will not run:
-  `fitRayToHit` built a `Derived` whose body assigned `ray.scale.z` and kept it alive with a
-  subscription -- nothing was ever going to ask for its value, so it is now an effect; and the
-  portal pump watched its channel's queue depth through a never-equal `Derived`, a manual
-  subscription that pulled it, and a priming read, all three of which collapse into one effect that
-  runs when it is built and re-runs on the announcement rather than on the value. No public API
-  changed. Sixteen tests covering scrollable, dropdown and keyboard behaviour that had been failing
-  against the push core now pass: all three are built out of `component()` and `observable()`, which
-  is to say out of `toObservable`, the wrapper that used to drop a node's depth in the graph.
+- Migrated to the pull-based `@apendua/signal` core. Two idioms a lazy core will not run: `fitRayToHit` built a `Derived` whose body assigned `ray.scale.z` and kept it alive with a subscription -- nothing was ever going to ask for its value, so it is now an effect; and the portal pump watched its channel's queue depth through a never-equal `Derived`, a manual subscription that pulled it, and a priming read, all three of which collapse into one effect that runs when it is built and re-runs on the announcement rather than on the value. No public API changed. Sixteen tests covering scrollable, dropdown and keyboard behaviour that had been failing against the push core now pass: all three are built out of `component()` and `observable()`, which is to say out of `toObservable`, the wrapper that used to drop a node's depth in the graph.
 
 ### Patches
 
-- A panel reacts to the document's stylesheets changing. A portal mirrors its container's subtree,
-  which is where every mutation an author makes shows up -- except a rule. A styling library that
-  keeps a class name stable and rewrites the rule behind it -- `@apendua/justdom`'s `className` and
-  `stylesheet` tags are exactly that, and the stable name is the point of them, since it is what
-  lets one `class` attribute survive a lifetime of style updates -- changes what a panel looks like
-  without touching a single node the portal observes: the `<style>` lives in the head, the attribute
-  never changes, and the panel went on wearing the colours it read once. Not permanently, which was
-  the worst of it -- the next unrelated mutation, a hover most likely, invalidated the style cache
-  and flushed the change in late, so a style driven by an observable appeared the next time the ray
-  happened to cross the element. It is treated now as the same shape of event as fonts arriving: no
-  node to blame, so everything restyles and everything re-measures. The head is watched for the
-  mutations that carry rules -- a style element's text rewritten, either way it can be written; a
-  sheet added or removed; a `<link>` landing, which is the one thing a `<link>` says and the
-  difference between a panel that mounted before its own stylesheet arrived being briefly wrong and
-  being wrong forever -- through one observer for the page rather than one per portal, refcounted so
-  the last panel out takes it down. Everything else in the head is filtered out, because the answer
-  is a whole-panel restyle and re-measure and that is far too expensive to spend on a title or a
-  meta tag. It is also why a value animated at frame rate belongs in an inline `style`, which is a
-  mutation on the element that moved and is scoped to it. Rules changed through the CSSOM and
-  `adoptedStyleSheets` remain invisible, mutating no DOM at all.
+- A panel reacts to the document's stylesheets changing. A portal mirrors its container's subtree, which is where every mutation an author makes shows up -- except a rule. A styling library that keeps a class name stable and rewrites the rule behind it -- `@apendua/justdom`'s `className` and `stylesheet` tags are exactly that, and the stable name is the point of them, since it is what lets one `class` attribute survive a lifetime of style updates -- changes what a panel looks like without touching a single node the portal observes: the `<style>` lives in the head, the attribute never changes, and the panel went on wearing the colours it read once. Not permanently, which was the worst of it -- the next unrelated mutation, a hover most likely, invalidated the style cache and flushed the change in late, so a style driven by an observable appeared the next time the ray happened to cross the element. It is treated now as the same shape of event as fonts arriving: no node to blame, so everything restyles and everything re-measures. The head is watched for the mutations that carry rules -- a style element's text rewritten, either way it can be written; a sheet added or removed; a `<link>` landing, which is the one thing a `<link>` says and the difference between a panel that mounted before its own stylesheet arrived being briefly wrong and being wrong forever -- through one observer for the page rather than one per portal, refcounted so the last panel out takes it down. Everything else in the head is filtered out, because the answer is a whole-panel restyle and re-measure and that is far too expensive to spend on a title or a meta tag. It is also why a value animated at frame rate belongs in an inline `style`, which is a mutation on the element that moved and is scoped to it. Rules changed through the CSSOM and `adoptedStyleSheets` remain invisible, mutating no DOM at all.
 
 ## 0.13.1
-
 Thu, 20 Aug 2026 20:52:32 GMT
 
 _Version update only_
 
 ## 0.13.0
-
 Tue, 18 Aug 2026 21:22:37 GMT
 
 ### Minor changes
 
-- A panel's boxes are drawn together rather than one at a time. A box costs almost nothing to
-  describe and almost nothing to draw -- every one is the same unit quad and the same distance field
-  -- but a draw call apiece, each binding a material and uploading its uniforms, is the frame on a
-  panel of a few hundred elements. The description moves to per-instance attributes and the boxes go
-  out as instances, sharing one program compiled once. What a draw call per box was quietly buying
-  is an order, so this is not one batch: there is a bucket per `renderOrder`, because boxes and text
-  interleave by nesting depth rather than merely by layer, and a bucket carrying exactly the boxes
-  of one order takes the place they held. Getting that wrong is invisible while everything is opaque
-  and wrong the moment it is not, which is when a menu is most likely to be translucent. An `<img>`
-  keeps drawing itself: a picture is a texture binding, and a binding is per draw. Nothing else
-  about a box changes -- its mesh stays where it was, so the ray still finds it, `clipRaycast` still
-  trims its hits and `visible` still prunes its subtree. Measured on 800 mirrored boxes, 17.7 ms a
-  frame became 11.4 ms and 1602 draw calls became 803, pixel for pixel identical through scrolling,
-  restyling and rows arriving and leaving.
-- A panel's text runs are drawn together rather than one at a time. A run is rasterized to a canvas
-  of its own, and a texture is bound per draw, so a panel of eight hundred labels was eight hundred
-  draws however alike they were. The runs now live in texture arrays keyed by the exact size of the
-  run and go out as instances. Exact is the load-bearing word: text in a panel is drawn well under
-  1:1 at arm's length, so every run is mipmapped, and a shared atlas cannot keep that — its mip
-  chain is built across everything packed into it, so a reduced level samples whatever landed next
-  door, and no gutter fixes it because the level is chosen from derivatives in atlas space. Measured
-  against the per-run drawing it replaces, an atlas came out visibly bolder across a whole panel and
-  smeared each label into a block at distance; an array of exactly-sized layers came out
-  indistinguishable at every scale. Padding a run into a rounder layer size brings the same fault
-  back by averaging the run with its own padding, so the classes are exact and runs of a size share
-  an array, each label rewriting its own layer when its text changes. A run whose colours are baked
-  into its texture -- text with a shadow or a decoration the mirror cannot tint -- is sRGB where a
-  mask is raw coverage, so it goes on drawing itself. Measured on 800 mirrored rows of varied text,
-  17.3 ms a frame became 7.3 ms and 1602 draw calls became 36.
-- The portal budget is the scene's, not the panel's. The budget guards the frame, and the frame is
-  shared: three panels each honouring a private five milliseconds would cost it fifteen, and several
-  panels mounting at once is scene startup, not an edge case. `render()` now installs one portal
-  scheduler per rendering context, and every portal under it draws frame time from the same pool --
-  `RenderOptions.portalBudget`, a number or a getter read at the top of every frame, so the
-  mount-time-versus-fps trade stays a live one for the whole scene at once. What a single panel says
-  about itself is `priority`, not milliseconds: pumps of higher priority are offered each frame's
-  pool before lower ones, so a panel the player is waiting on can be told to finish first, and
-  within a priority the offer rotates frame by frame so equals share the pool and none waits forever
-  on a peer. The at-least-one-per-frame guarantee goes to the first pump offered the frame -- and
-  counts only nodes genuinely built, with stale queue entries and the markers `children()` fences
-  its segments with skipped for free. A portal built outside a rendering context paces itself
-  exactly as before, and only there does its own `budget` option govern; `createPortalScheduler` and
-  `PortalSchedulerContext` are exported for anyone assembling a context by hand.
-- A panel mounts a budget per frame, behind a loading state. A large mount used to be built whole in
-  one observer flush -- every object constructed and every derived value settled before the next
-  frame could draw, which is exactly the frame drop a list of hundreds produces. The portal now puts
-  everything it derives into its own manual update channel and pumps it a budget's worth of each
-  frame (5 ms by default, `budget` to choose): queued DOM nodes first, then the channel's backlog,
-  at least one of each per frame so a single expensive node overshoots the budget rather than
-  stalling the mount. The grain is the node, not the inserted subtree -- a panel usually arrives as
-  exactly one root -- and the budget may be a getter, read every pump frame, so the
-  time-versus-smoothness trade stays adjustable while a mount is in flight. While that runs the
-  panel is loading: invisible, and stopping no rays -- the raycast set is flat, so an ancestor's
-  `visible` shields nothing, which is why interactive elements ask the new `PortalReadyContext`
-  before registering and the blocker plane waits for the flip. Loading ends exactly once, when the
-  initial content's queue and channel are both empty, so the panel appears whole rather than
-  assembling itself in front of the player; later updates go through the same budgeted pump but
-  never hide a visible panel again. `isLoading()` on the handle is reactive, and `onLoadingChanged`
-  fires once, with false, for whoever wants a spinner. A scroll is never deferred: everything the
-  offset moves is arithmetic on cached values and settles synchronously in the event that carried
-  it, because content sliding this frame with clipping catching up over the next several is a tear
-  no budget is worth. Without a frame source -- no renderer and no `requestAnimationFrame`, as under
-  a test runner -- the portal mounts synchronously, exactly as before.
-- BREAKING: the keyboard wears a phone's layout, which is the right one for a board you point at.
-  The laptop layout it replaces spent half its keys on things a pointed-at board cannot use -- a
-  function row, arrows, chording modifiers -- and spread the character set over six rows of engraved
-  pairs. The default is now four rows: letters under the fingers, and behind a sticky `?123` key a
-  symbols view where the same positions turn digits and punctuation, with shift flipping each view's
-  faces so the full printable ASCII set is never more than two clicks away (a test pins that). The
-  two views are the same keys wearing different faces, not two boards: switching moves labels and
-  nothing else, which on a panel is a restyle rather than the re-measure a swapped subtree would
-  cost -- the promise the component always made for shift, held for the view flip too.
-  `KeyPress.code` names the position rather than the face, exactly as a hardware key reports where
-  it is and not what the layout painted on it. `LAPTOP_LAYOUT` is gone and `MOBILE_LAYOUT` is
-  exported in its place; a custom layout may still use every modifier the default deliberately
-  leaves out -- caps lock, ctrl, alt, meta, fn -- the machinery is all still there, plus `symbols`
-  faces and inert `spacer` entries for centring a short row.
-- A hover restyles the element under the ray and its own subtree, not its siblings. Every restyle
-  was scoped to the parent-of-target subtree -- the mutated element's own signal carrying its
-  descendants, its parent's member signal carrying its siblings -- which is the right scope for an
-  author's mutation, since `~`, `+` and the structural pseudo-classes can all change which rules
-  match a neighbour. A pointer flag cannot, and those are the mutations a panel sees most: hovering
-  one row of a list restyled every row in it and everything beneath them, on every row the ray
-  crossed. The animation clock's per-frame sample is narrowed the same way, which is what makes the
-  rest of it worth anything -- hover styling is conventionally transitioned, so the clock
-  re-reported the hovered element at frame rate and each of those samples paid the full list-wide
-  scope. A transition moves resolved values on the element it runs on and changes no selector's
-  verdict on a sibling, so the subtree is the whole of it. Counted as style re-reads, one hover
-  transition on a list of N rows was 2N and is now 2, unchanged from fifty rows to three thousand.
-  `[data-xr-hover] ~ .row` and `[data-xr-active] + .row` are the forms this gives up, and no rule in
-  this repository used either; the descendant form is untouched. `data-xr-checked` keeps its sibling
-  scope, and the asymmetry is deliberate: the argument above is one from frequency, and a box is
-  ticked once by a hand where hover is written on every element a moving ray crosses. The flag is
-  written on the `<input>`, whose siblings are a label and a button rather than a hundred rows, so
-  narrowing it would save two elements a click and would cost `input:checked + label` -- the idiom
-  the flat web has always used to strike through a completed item, and the reason the attribute
-  exists. All three remain unable to move layout, which is unchanged.
-- Sessions no longer trust the `local` origin the runtime snapshotted. The spaces here are all laid
-  out around that origin on the promise that it is the player's head at the moment the session
-  began, but the promise is only as good as tracking was at that one instant -- a session entered
-  right after the headset woke, or while the boundary was being re-established, snapshots an origin
-  from stale data and the whole scene comes up wherever the guess landed, unrecoverably, because
-  nothing ever read the viewer's pose again. The new `anchorToViewer(renderer)` waits instead for
-  the first frame worth believing -- session visible, a viewer pose present, its position tracked
-  rather than emulated (with a patience limit so a 3DoF viewer is not kept waiting for a fix that
-  never comes) -- and re-derives the origin from that pose's position and yaw, handing three.js an
-  offset reference space in place of the requested one. The runtime's `reset` event re-runs the
-  wait, so a system recenter now puts the scene back in front of the player instead of requiring the
-  page refresh it used to; the override is cleared when the session ends. `createXRButton` installs
-  the anchor itself, since it is what sets scenes up for the `local` origin in the first place --
-  `anchor: false` opts out for an app that manages the reference space on its own.
+- A panel's boxes are drawn together rather than one at a time. A box costs almost nothing to describe and almost nothing to draw -- every one is the same unit quad and the same distance field -- but a draw call apiece, each binding a material and uploading its uniforms, is the frame on a panel of a few hundred elements. The description moves to per-instance attributes and the boxes go out as instances, sharing one program compiled once. What a draw call per box was quietly buying is an order, so this is not one batch: there is a bucket per `renderOrder`, because boxes and text interleave by nesting depth rather than merely by layer, and a bucket carrying exactly the boxes of one order takes the place they held. Getting that wrong is invisible while everything is opaque and wrong the moment it is not, which is when a menu is most likely to be translucent. An `<img>` keeps drawing itself: a picture is a texture binding, and a binding is per draw. Nothing else about a box changes -- its mesh stays where it was, so the ray still finds it, `clipRaycast` still trims its hits and `visible` still prunes its subtree. Measured on 800 mirrored boxes, 17.7 ms a frame became 11.4 ms and 1602 draw calls became 803, pixel for pixel identical through scrolling, restyling and rows arriving and leaving.
+- A panel's text runs are drawn together rather than one at a time. A run is rasterized to a canvas of its own, and a texture is bound per draw, so a panel of eight hundred labels was eight hundred draws however alike they were. The runs now live in texture arrays keyed by the exact size of the run and go out as instances. Exact is the load-bearing word: text in a panel is drawn well under 1:1 at arm's length, so every run is mipmapped, and a shared atlas cannot keep that — its mip chain is built across everything packed into it, so a reduced level samples whatever landed next door, and no gutter fixes it because the level is chosen from derivatives in atlas space. Measured against the per-run drawing it replaces, an atlas came out visibly bolder across a whole panel and smeared each label into a block at distance; an array of exactly-sized layers came out indistinguishable at every scale. Padding a run into a rounder layer size brings the same fault back by averaging the run with its own padding, so the classes are exact and runs of a size share an array, each label rewriting its own layer when its text changes. A run whose colours are baked into its texture -- text with a shadow or a decoration the mirror cannot tint -- is sRGB where a mask is raw coverage, so it goes on drawing itself. Measured on 800 mirrored rows of varied text, 17.3 ms a frame became 7.3 ms and 1602 draw calls became 36.
+- The portal budget is the scene's, not the panel's. The budget guards the frame, and the frame is shared: three panels each honouring a private five milliseconds would cost it fifteen, and several panels mounting at once is scene startup, not an edge case. `render()` now installs one portal scheduler per rendering context, and every portal under it draws frame time from the same pool -- `RenderOptions.portalBudget`, a number or a getter read at the top of every frame, so the mount-time-versus-fps trade stays a live one for the whole scene at once. What a single panel says about itself is `priority`, not milliseconds: pumps of higher priority are offered each frame's pool before lower ones, so a panel the player is waiting on can be told to finish first, and within a priority the offer rotates frame by frame so equals share the pool and none waits forever on a peer. The at-least-one-per-frame guarantee goes to the first pump offered the frame -- and counts only nodes genuinely built, with stale queue entries and the markers `children()` fences its segments with skipped for free. A portal built outside a rendering context paces itself exactly as before, and only there does its own `budget` option govern; `createPortalScheduler` and `PortalSchedulerContext` are exported for anyone assembling a context by hand.
+- A panel mounts a budget per frame, behind a loading state. A large mount used to be built whole in one observer flush -- every object constructed and every derived value settled before the next frame could draw, which is exactly the frame drop a list of hundreds produces. The portal now puts everything it derives into its own manual update channel and pumps it a budget's worth of each frame (5 ms by default, `budget` to choose): queued DOM nodes first, then the channel's backlog, at least one of each per frame so a single expensive node overshoots the budget rather than stalling the mount. The grain is the node, not the inserted subtree -- a panel usually arrives as exactly one root -- and the budget may be a getter, read every pump frame, so the time-versus-smoothness trade stays adjustable while a mount is in flight. While that runs the panel is loading: invisible, and stopping no rays -- the raycast set is flat, so an ancestor's `visible` shields nothing, which is why interactive elements ask the new `PortalReadyContext` before registering and the blocker plane waits for the flip. Loading ends exactly once, when the initial content's queue and channel are both empty, so the panel appears whole rather than assembling itself in front of the player; later updates go through the same budgeted pump but never hide a visible panel again. `isLoading()` on the handle is reactive, and `onLoadingChanged` fires once, with false, for whoever wants a spinner. A scroll is never deferred: everything the offset moves is arithmetic on cached values and settles synchronously in the event that carried it, because content sliding this frame with clipping catching up over the next several is a tear no budget is worth. Without a frame source -- no renderer and no `requestAnimationFrame`, as under a test runner -- the portal mounts synchronously, exactly as before.
+- BREAKING: the keyboard wears a phone's layout, which is the right one for a board you point at. The laptop layout it replaces spent half its keys on things a pointed-at board cannot use -- a function row, arrows, chording modifiers -- and spread the character set over six rows of engraved pairs. The default is now four rows: letters under the fingers, and behind a sticky `?123` key a symbols view where the same positions turn digits and punctuation, with shift flipping each view's faces so the full printable ASCII set is never more than two clicks away (a test pins that). The two views are the same keys wearing different faces, not two boards: switching moves labels and nothing else, which on a panel is a restyle rather than the re-measure a swapped subtree would cost -- the promise the component always made for shift, held for the view flip too. `KeyPress.code` names the position rather than the face, exactly as a hardware key reports where it is and not what the layout painted on it. `LAPTOP_LAYOUT` is gone and `MOBILE_LAYOUT` is exported in its place; a custom layout may still use every modifier the default deliberately leaves out -- caps lock, ctrl, alt, meta, fn -- the machinery is all still there, plus `symbols` faces and inert `spacer` entries for centring a short row.
+- A hover restyles the element under the ray and its own subtree, not its siblings. Every restyle was scoped to the parent-of-target subtree -- the mutated element's own signal carrying its descendants, its parent's member signal carrying its siblings -- which is the right scope for an author's mutation, since `~`, `+` and the structural pseudo-classes can all change which rules match a neighbour. A pointer flag cannot, and those are the mutations a panel sees most: hovering one row of a list restyled every row in it and everything beneath them, on every row the ray crossed. The animation clock's per-frame sample is narrowed the same way, which is what makes the rest of it worth anything -- hover styling is conventionally transitioned, so the clock re-reported the hovered element at frame rate and each of those samples paid the full list-wide scope. A transition moves resolved values on the element it runs on and changes no selector's verdict on a sibling, so the subtree is the whole of it. Counted as style re-reads, one hover transition on a list of N rows was 2N and is now 2, unchanged from fifty rows to three thousand. `[data-xr-hover] ~ .row` and `[data-xr-active] + .row` are the forms this gives up, and no rule in this repository used either; the descendant form is untouched. `data-xr-checked` keeps its sibling scope, and the asymmetry is deliberate: the argument above is one from frequency, and a box is ticked once by a hand where hover is written on every element a moving ray crosses. The flag is written on the `<input>`, whose siblings are a label and a button rather than a hundred rows, so narrowing it would save two elements a click and would cost `input:checked + label` -- the idiom the flat web has always used to strike through a completed item, and the reason the attribute exists. All three remain unable to move layout, which is unchanged.
+- Sessions no longer trust the `local` origin the runtime snapshotted. The spaces here are all laid out around that origin on the promise that it is the player's head at the moment the session began, but the promise is only as good as tracking was at that one instant -- a session entered right after the headset woke, or while the boundary was being re-established, snapshots an origin from stale data and the whole scene comes up wherever the guess landed, unrecoverably, because nothing ever read the viewer's pose again. The new `anchorToViewer(renderer)` waits instead for the first frame worth believing -- session visible, a viewer pose present, its position tracked rather than emulated (with a patience limit so a 3DoF viewer is not kept waiting for a fix that never comes) -- and re-derives the origin from that pose's position and yaw, handing three.js an offset reference space in place of the requested one. The runtime's `reset` event re-runs the wait, so a system recenter now puts the scene back in front of the player instead of requiring the page refresh it used to; the override is cleared when the session ends. `createXRButton` installs the anchor itself, since it is what sets scenes up for the `local` origin in the first place -- `anchor: false` opts out for an app that manages the reference space on its own.
 
 ### Patches
 
-- Cursors are drawn as pointer chrome -- over everything, ignoring depth -- the way a desktop draws
-  the mouse cursor. Since the portal gained its blocker plane, a background hit lands one local px
-  behind the panel's root plane while the panel's content sits centimetres in front of it, so a
-  depth-tested cursor ball was buried completely by the mirrored quads; over a button, half of it
-  was always inside the surface it marked. The default ball's shared material carries the flags
-  itself; a custom widget's clone gets clones of its materials dressed the same way, disposed with
-  the widget, and the caller's template is never touched -- geometries stay shared exactly as
-  before.
-- A panel's box batch is dressed by its own material rather than one shared with every other panel.
-  A material is how a panel is dressed, and code outside the batch dresses whole panels by walking
-  them: the diagnostics HUD turns depth testing off across its own subtree, so that its reading
-  stays legible whatever the scene puts in front of it. Batching gave every panel in the application
-  the same material to reach, so that one walk took depth testing away from all of them -- and a
-  panel that does not test depth draws over whatever is in front of it, which is how a cursor
-  sitting on the surface it had just hit came to be painted over by the surface. The batch keeps one
-  material per panel; the program is still cached by shader source, so panels compile it once
-  between them, and only the state a panel is allowed to own is per panel.
-- A batched panel is copied down at the end of the frame that changed it rather than after that
-  frame has been drawn. Both batches coalesce their rebuilds into a microtask, which is the right
-  grain for a mutation -- it arrives as its own task, so the microtask lands after the reactive
-  graph settles and before the next frame draws -- and the wrong one for anything that arrives from
-  inside the frame callback, because a microtask queued there does not run until that callback, and
-  the `renderer.render` at the end of it, has returned. Two sources do exactly that: the animation
-  clock, which samples a running CSS animation or transition at the top of each frame, and a scroll
-  drag in an immersive session, whose synthetic `scroll` event is dispatched from the same tick.
-  Both left a batched box or run drawing where it was on the previous frame while its unbatched
-  neighbours -- an `<img>`, a checkbox tick, a run with a shadow -- drew where it is now, which is a
-  panel shearing along the line between them, plus a frame of latency for the batched majority. A
-  batch now also flushes from the renderer's late phase, after everything that moves the scene has
-  moved it and before any of it is drawn, through the new `animateLate`; whichever of the two
-  schedules gets there first does the work, so a panel is still rebuilt at most once a frame, and a
-  portal with no frames to run late in -- a plain page, a test -- keeps the microtask as the whole
-  mechanism. Measured on a panel with a CSS animation running, comparing what each batch would draw
-  against the panel itself at the moment of the draw: every frame disagreed, by up to 224 px of
-  panel space, and none does now.
-- A batch bucket now tells three it is going, so the device buffer behind its instances goes with
-  it. An `InstancedMesh` keeps `instanceMatrix` outside its geometry -- the renderer uploads it
-  separately and frees it only on the mesh's own `dispose` event -- so disposing the geometry, which
-  is what a bucket did, left that buffer allocated with nothing referring to it. The renderer's
-  record of it is weakly keyed, so collecting the attribute drops the key and the `deleteBuffer`
-  that would have followed it: the allocation survives until the context does. A bucket is rebuilt
-  at double capacity every time it fills and again when the panel closes, so a panel that grew
-  through a few sizes and was reopened a few times leaked one buffer per growth per panel.
-  Separately, the text batch kept the set of its own meshes -- the ones its walk of the panel has to
-  step over -- by adding to it as buckets were made and never taking anything out, so every mesh a
-  bucket had grown out of stayed in it for the life of the portal. That set is now derived from the
-  live buckets at the top of each rebuild, which cannot go stale, rather than accumulated.
-- Where a panel's box bucket draws relative to its text bucket is written down rather than left to
-  three. The renderOrder scheme makes the collision structural: an element's box carries
-  `elevation * 1000 + depth` and its own text carries `elevation * 1000 + (depth + 1)`, which is the
-  same integer as the box of anything nested one level inside it. Drawn a mesh at a time that tie
-  was broken by view-space depth and came out right for nothing -- a nested box sits toward the
-  viewer of its parent's content while a run of text sits level with it, so the text was farther,
-  drew first, and the box composited over it. Buckets have no such depth to offer: every bucket of a
-  panel hangs off the container with an identity matrix, so a box bucket and a text bucket of one
-  order sort at exactly the same distance and three falls through to comparing object ids -- which
-  is creation order, and which is not stable, because a bucket that fills is rebuilt with a fresh
-  id. With the box material writing depth, that decides whether text under a translucent box is
-  drawn at all. Box buckets now draw at their order plus a half step, which keeps each one strictly
-  between its own integer and the next so the levels never interleave, and leaves the order decided
-  by a number rather than by which mesh happened to be made first. Verified against the same panel
-  rendered without batching at all: the half step reproduces it exactly, pixel for pixel, before and
-  after a bucket is forced to grow, while the opposite order differs across the glyphs. A mesh that
-  still draws itself among batched ones -- an `<img>`'s box, a run of text whose colours are baked
-  in -- sorts on its own origin and composites over batched content of equal order; that one is left
-  alone, being stable, and is noted where the bias is set.
-- A panel's text arrays are bounded, and a size nobody is using gives its storage back. The batch
-  keeps each run's pixels as one layer of a `DataArrayTexture` per exact canvas size, and the array
-  doubled without limit -- but the number of layers a device will give is not unlimited: WebGL2
-  guarantees 256, and asking for more than a device allows is a failed allocation and a size class
-  that draws nothing. A run is now declined past 256 layers and draws itself, which is a draw call
-  apiece and exactly what the panel did before there were batches; it is asked again on every
-  rebuild, so it joins as soon as another run of its size leaves. Separately, nothing ever gave an
-  array back: layers were released to a free list but `capacity` never fell, so a size class whose
-  runs had all gone -- which is every class in the panel after a change of device pixel ratio
-  re-rasterizes every label at a new size -- held its full array on the device and its full mirror
-  of it in memory, at `width * height * 4` bytes a layer on each side, until the portal closed. A
-  rebuild now sweeps the classes and drops the storage of any whose layers have all come back. The
-  class itself stays, because buckets hold theirs directly and a replacement would leave them
-  pointing at a dead one; a run of that size appearing later builds a fresh array from the minimum
-  and the generation bump has the buckets rebind to it.
-- A layout change now reaches the boxes it could have moved rather than the whole panel. CSS layout
-  is non-local, but it is not unbounded, and what bounds it is the parent-relative storage the
-  mirror already had: a box is laid out from the space it was given, so a box that came out the size
-  it was has not moved anything inside it. The portal-wide layout epoch is replaced by a per-node
-  `moved` signal and a walk that climbs from each change telling every level's children they moved
-  and stopping at the first level that kept its own size; a box that did resize reaches its own
-  contents through its measured size, one level per settling and no further than the sizes actually
-  change. That is the same argument `overflow: hidden` used to be asked to supply, and it never
-  needed the overflow -- a list that merely happens not to have changed height is now sealed as
-  firmly as one that clips, which the overflow test could not see. Fonts, an animating layout
-  property and out-of-flow boxes keep the portal-wide answer, being the changes no walk could find.
-  On a panel of 800 mirrored rows, one row appended went from 31,400 reactive evaluations to 2,600
-  and from 1,602 client rects to 805, and stopped re-running a `Range` measurement for all 800
-  labels -- the most expensive read the mirror makes.
-- Appending to a list now costs the same whether the list has ten rows or a thousand. Two facts get
-  it there. A change at one child cannot have moved the children before it, where the container
-  places its children in document order from a fixed start edge -- so a childList record's
-  `previousSibling` becomes the point the news starts from, and `getFlowMode` decides per container
-  whether that promise holds, whitelisting block flow and unwrapped, start-packed, unreversed flex
-  and falling back to telling every child for grid, tables, centred or reversed containers, and
-  anything in a writing mode or direction that moves the start edge. And a block container that got
-  taller got taller _because_ of its children, which are stacked from the top and stay there -- so
-  its contents follow its inline extent alone, without which every append would re-measure the whole
-  list through the parent-box channel regardless. On a panel of 800 mirrored rows, a row appended
-  went from 805 client rects to 5 and from 2,592 layout evaluations to 194, both now flat in the
-  size of the panel: building the panel one row per flush is linear in its length rather than
-  quadratic.
-- The portal's pacing is split out of its projection. The pump -- the queue of nodes waiting to be
-  built, the tick that spends each frame's slice on them and on the channel, and the watcher that
-  asks for frames when work lands -- moves to a module of its own behind a four-method handle, so
-  the portal reads as what is projected and the pump as when. A projectChanges helper replaces the
-  five copies of the withChannel-batch nesting, declarations are ordered so nothing refers forward,
-  and the scheduler's two stop-frames sites fold into one. No behavior change: the full suite and
-  the A/B benchmark against the previous revision agree.
+- Cursors are drawn as pointer chrome -- over everything, ignoring depth -- the way a desktop draws the mouse cursor. Since the portal gained its blocker plane, a background hit lands one local px behind the panel's root plane while the panel's content sits centimetres in front of it, so a depth-tested cursor ball was buried completely by the mirrored quads; over a button, half of it was always inside the surface it marked. The default ball's shared material carries the flags itself; a custom widget's clone gets clones of its materials dressed the same way, disposed with the widget, and the caller's template is never touched -- geometries stay shared exactly as before.
+- A panel's box batch is dressed by its own material rather than one shared with every other panel. A material is how a panel is dressed, and code outside the batch dresses whole panels by walking them: the diagnostics HUD turns depth testing off across its own subtree, so that its reading stays legible whatever the scene puts in front of it. Batching gave every panel in the application the same material to reach, so that one walk took depth testing away from all of them -- and a panel that does not test depth draws over whatever is in front of it, which is how a cursor sitting on the surface it had just hit came to be painted over by the surface. The batch keeps one material per panel; the program is still cached by shader source, so panels compile it once between them, and only the state a panel is allowed to own is per panel.
+- A batched panel is copied down at the end of the frame that changed it rather than after that frame has been drawn. Both batches coalesce their rebuilds into a microtask, which is the right grain for a mutation -- it arrives as its own task, so the microtask lands after the reactive graph settles and before the next frame draws -- and the wrong one for anything that arrives from inside the frame callback, because a microtask queued there does not run until that callback, and the `renderer.render` at the end of it, has returned. Two sources do exactly that: the animation clock, which samples a running CSS animation or transition at the top of each frame, and a scroll drag in an immersive session, whose synthetic `scroll` event is dispatched from the same tick. Both left a batched box or run drawing where it was on the previous frame while its unbatched neighbours -- an `<img>`, a checkbox tick, a run with a shadow -- drew where it is now, which is a panel shearing along the line between them, plus a frame of latency for the batched majority. A batch now also flushes from the renderer's late phase, after everything that moves the scene has moved it and before any of it is drawn, through the new `animateLate`; whichever of the two schedules gets there first does the work, so a panel is still rebuilt at most once a frame, and a portal with no frames to run late in -- a plain page, a test -- keeps the microtask as the whole mechanism. Measured on a panel with a CSS animation running, comparing what each batch would draw against the panel itself at the moment of the draw: every frame disagreed, by up to 224 px of panel space, and none does now.
+- A batch bucket now tells three it is going, so the device buffer behind its instances goes with it. An `InstancedMesh` keeps `instanceMatrix` outside its geometry -- the renderer uploads it separately and frees it only on the mesh's own `dispose` event -- so disposing the geometry, which is what a bucket did, left that buffer allocated with nothing referring to it. The renderer's record of it is weakly keyed, so collecting the attribute drops the key and the `deleteBuffer` that would have followed it: the allocation survives until the context does. A bucket is rebuilt at double capacity every time it fills and again when the panel closes, so a panel that grew through a few sizes and was reopened a few times leaked one buffer per growth per panel. Separately, the text batch kept the set of its own meshes -- the ones its walk of the panel has to step over -- by adding to it as buckets were made and never taking anything out, so every mesh a bucket had grown out of stayed in it for the life of the portal. That set is now derived from the live buckets at the top of each rebuild, which cannot go stale, rather than accumulated.
+- Where a panel's box bucket draws relative to its text bucket is written down rather than left to three. The renderOrder scheme makes the collision structural: an element's box carries `elevation * 1000 + depth` and its own text carries `elevation * 1000 + (depth + 1)`, which is the same integer as the box of anything nested one level inside it. Drawn a mesh at a time that tie was broken by view-space depth and came out right for nothing -- a nested box sits toward the viewer of its parent's content while a run of text sits level with it, so the text was farther, drew first, and the box composited over it. Buckets have no such depth to offer: every bucket of a panel hangs off the container with an identity matrix, so a box bucket and a text bucket of one order sort at exactly the same distance and three falls through to comparing object ids -- which is creation order, and which is not stable, because a bucket that fills is rebuilt with a fresh id. With the box material writing depth, that decides whether text under a translucent box is drawn at all. Box buckets now draw at their order plus a half step, which keeps each one strictly between its own integer and the next so the levels never interleave, and leaves the order decided by a number rather than by which mesh happened to be made first. Verified against the same panel rendered without batching at all: the half step reproduces it exactly, pixel for pixel, before and after a bucket is forced to grow, while the opposite order differs across the glyphs. A mesh that still draws itself among batched ones -- an `<img>`'s box, a run of text whose colours are baked in -- sorts on its own origin and composites over batched content of equal order; that one is left alone, being stable, and is noted where the bias is set.
+- A panel's text arrays are bounded, and a size nobody is using gives its storage back. The batch keeps each run's pixels as one layer of a `DataArrayTexture` per exact canvas size, and the array doubled without limit -- but the number of layers a device will give is not unlimited: WebGL2 guarantees 256, and asking for more than a device allows is a failed allocation and a size class that draws nothing. A run is now declined past 256 layers and draws itself, which is a draw call apiece and exactly what the panel did before there were batches; it is asked again on every rebuild, so it joins as soon as another run of its size leaves. Separately, nothing ever gave an array back: layers were released to a free list but `capacity` never fell, so a size class whose runs had all gone -- which is every class in the panel after a change of device pixel ratio re-rasterizes every label at a new size -- held its full array on the device and its full mirror of it in memory, at `width * height * 4` bytes a layer on each side, until the portal closed. A rebuild now sweeps the classes and drops the storage of any whose layers have all come back. The class itself stays, because buckets hold theirs directly and a replacement would leave them pointing at a dead one; a run of that size appearing later builds a fresh array from the minimum and the generation bump has the buckets rebind to it.
+- A layout change now reaches the boxes it could have moved rather than the whole panel. CSS layout is non-local, but it is not unbounded, and what bounds it is the parent-relative storage the mirror already had: a box is laid out from the space it was given, so a box that came out the size it was has not moved anything inside it. The portal-wide layout epoch is replaced by a per-node `moved` signal and a walk that climbs from each change telling every level's children they moved and stopping at the first level that kept its own size; a box that did resize reaches its own contents through its measured size, one level per settling and no further than the sizes actually change. That is the same argument `overflow: hidden` used to be asked to supply, and it never needed the overflow -- a list that merely happens not to have changed height is now sealed as firmly as one that clips, which the overflow test could not see. Fonts, an animating layout property and out-of-flow boxes keep the portal-wide answer, being the changes no walk could find. On a panel of 800 mirrored rows, one row appended went from 31,400 reactive evaluations to 2,600 and from 1,602 client rects to 805, and stopped re-running a `Range` measurement for all 800 labels -- the most expensive read the mirror makes.
+- Appending to a list now costs the same whether the list has ten rows or a thousand. Two facts get it there. A change at one child cannot have moved the children before it, where the container places its children in document order from a fixed start edge -- so a childList record's `previousSibling` becomes the point the news starts from, and `getFlowMode` decides per container whether that promise holds, whitelisting block flow and unwrapped, start-packed, unreversed flex and falling back to telling every child for grid, tables, centred or reversed containers, and anything in a writing mode or direction that moves the start edge. And a block container that got taller got taller *because* of its children, which are stacked from the top and stay there -- so its contents follow its inline extent alone, without which every append would re-measure the whole list through the parent-box channel regardless. On a panel of 800 mirrored rows, a row appended went from 805 client rects to 5 and from 2,592 layout evaluations to 194, both now flat in the size of the panel: building the panel one row per flush is linear in its length rather than quadratic.
+- The portal's pacing is split out of its projection. The pump -- the queue of nodes waiting to be built, the tick that spends each frame's slice on them and on the channel, and the watcher that asks for frames when work lands -- moves to a module of its own behind a four-method handle, so the portal reads as what is projected and the pump as when. A projectChanges helper replaces the five copies of the withChannel-batch nesting, declarations are ordered so nothing refers forward, and the scheduler's two stop-frames sites fold into one. No behavior change: the full suite and the A/B benchmark against the previous revision agree.
 
 ## 0.12.0
-
 Thu, 13 Aug 2026 21:23:25 GMT
 
 ### Minor changes
 
-- Portal surfaces are drawn in a single pass, and the objects a portal draws now keep their own
-  matrices. Three draws a two-sided transparent material twice -- back faces, then front -- so that
-  a closed shape's far surface composites under its near one, and flips `material.needsUpdate`
-  before each pass, which invalidates the material's program. A quad has no far surface, so every
-  box, glyph and tick in a panel was being drawn twice and recomputing its program key and
-  re-uploading its uniforms twice per frame, for a second pass that redrew exactly what the first
-  did. Separately, three recomposes every object's local matrix from its position, quaternion and
-  scale once per frame on the chance it moved, and does it twice over because world matrices are
-  brought up to date once before rays are cast and again on the way into the draw -- work a mirrored
-  DOM never needs, since a box is placed by an effect when its layout moves and by nothing else in
-  between. Boxes, content groups, quads, text, the checkbox tick, blockers and the portal container
-  now compose their own matrices through the new `place` and `placeAndScale` helpers, which are
-  exported for scenes that want the same for their own static objects. An opt-out is only worth what
-  the scene above it allows -- three marks a world matrix stale when an object recomposes its own,
-  and every descendant then recomputes unconditionally, so a group left on three's defaults in front
-  of a panel hands the whole panel back the work it just opted out of, and the constraint runs all
-  the way to the scene root. Rather than ask that of apps, which cannot opt out objects they never
-  created and cannot see the cost from where the decision is made, a portal declines the recompute
-  at its own perimeter: it recomputes its own world matrix each pass and passes the recompute on
-  only when that matrix actually came out different, so a panel that has not moved costs a matrix
-  multiply and a panel that has moved costs what it always did. Measured on a static panel of 800
-  mirrored boxes, 48.4 ms a frame became 8.1 ms, drawing the same pixels -- zero differing, maximum
-  channel delta zero.
-- Rewrite the portal's invalidation core around fine-grained reactivity: cache.js's broadcast
-  subject and per-listener heuristic filters become mirror.js, a per-portal reactive DOM mirror.
-  Mutation flushes are ingested inside one signal batch(), deduplicated against oldValue, and routed
-  to per-node signals; style and reflow invalidation chain per level instead of filtering per
-  listener. Geometry is stored scroll-invariantly -- positions in the parent's content space, clip
-  windows in their owner's border frame, text layout in content space -- and the scroll offset is
-  applied as a scene-level translation of each box's content group, so a frame of scrolling reads no
-  rects and measures no text however long the list is. Positioned elements anchor to their
-  containing block through a cached measurement, so a menu anchored above a scroller holds still
-  while its trigger scrolls away. Every measurement sits behind a value equality, so portal-wide
-  re-layouts stop propagating at the first element that did not move.
-- `dom(ctx, mountable$, operators, options)` takes a fourth argument, and `{ opaqueToRays: false }`
-  in it leaves the panel drawn but with no blocker plane spanning it, so rays pass through to
-  whatever is behind. That is for readouts rather than controls, and mainly for a head-locked
-  overlay: one rides between the eye and the whole scene, so an opaque one is a plate the player's
-  own pointer keeps landing on. Only the panel's background goes -- a `cursor: pointer` element
-  inside is still a ray target. Panels that say nothing are opaque exactly as before.
+- Portal surfaces are drawn in a single pass, and the objects a portal draws now keep their own matrices. Three draws a two-sided transparent material twice -- back faces, then front -- so that a closed shape's far surface composites under its near one, and flips `material.needsUpdate` before each pass, which invalidates the material's program. A quad has no far surface, so every box, glyph and tick in a panel was being drawn twice and recomputing its program key and re-uploading its uniforms twice per frame, for a second pass that redrew exactly what the first did. Separately, three recomposes every object's local matrix from its position, quaternion and scale once per frame on the chance it moved, and does it twice over because world matrices are brought up to date once before rays are cast and again on the way into the draw -- work a mirrored DOM never needs, since a box is placed by an effect when its layout moves and by nothing else in between. Boxes, content groups, quads, text, the checkbox tick, blockers and the portal container now compose their own matrices through the new `place` and `placeAndScale` helpers, which are exported for scenes that want the same for their own static objects. An opt-out is only worth what the scene above it allows -- three marks a world matrix stale when an object recomposes its own, and every descendant then recomputes unconditionally, so a group left on three's defaults in front of a panel hands the whole panel back the work it just opted out of, and the constraint runs all the way to the scene root. Rather than ask that of apps, which cannot opt out objects they never created and cannot see the cost from where the decision is made, a portal declines the recompute at its own perimeter: it recomputes its own world matrix each pass and passes the recompute on only when that matrix actually came out different, so a panel that has not moved costs a matrix multiply and a panel that has moved costs what it always did. Measured on a static panel of 800 mirrored boxes, 48.4 ms a frame became 8.1 ms, drawing the same pixels -- zero differing, maximum channel delta zero.
+- Rewrite the portal's invalidation core around fine-grained reactivity: cache.js's broadcast subject and per-listener heuristic filters become mirror.js, a per-portal reactive DOM mirror. Mutation flushes are ingested inside one signal batch(), deduplicated against oldValue, and routed to per-node signals; style and reflow invalidation chain per level instead of filtering per listener. Geometry is stored scroll-invariantly -- positions in the parent's content space, clip windows in their owner's border frame, text layout in content space -- and the scroll offset is applied as a scene-level translation of each box's content group, so a frame of scrolling reads no rects and measures no text however long the list is. Positioned elements anchor to their containing block through a cached measurement, so a menu anchored above a scroller holds still while its trigger scrolls away. Every measurement sits behind a value equality, so portal-wide re-layouts stop propagating at the first element that did not move.
+- `dom(ctx, mountable$, operators, options)` takes a fourth argument, and `{ opaqueToRays: false }` in it leaves the panel drawn but with no blocker plane spanning it, so rays pass through to whatever is behind. That is for readouts rather than controls, and mainly for a head-locked overlay: one rides between the eye and the whole scene, so an opaque one is a plate the player's own pointer keeps landing on. Only the panel's background goes -- a `cursor: pointer` element inside is still a ray target. Panels that say nothing are opaque exactly as before.
 
 ### Patches
 
-- A renderer now has its frames before anything asks for them. `frames(ctx)` used to throw when the
-  renderer had no frame subject yet, and the subject was created just after the scene was subscribed
-  — which is just after every portal in it was built, since a tree has to exist before there is
-  anything to draw. A caller that asked too early was handed the documented fallback, the browser's
-  own `requestAnimationFrame`, which is correct everywhere the page is being rendered and useless
-  inside an immersive session, where the page gets no rendering opportunities and that clock never
-  ticks. The subject is created on demand instead, and the loop picks up whichever one is already
-  there.
+- A renderer now has its frames before anything asks for them. `frames(ctx)` used to throw when the renderer had no frame subject yet, and the subject was created just after the scene was subscribed — which is just after every portal in it was built, since a tree has to exist before there is anything to draw. A caller that asked too early was handed the documented fallback, the browser's own `requestAnimationFrame`, which is correct everywhere the page is being rendered and useless inside an immersive session, where the page gets no rendering opportunities and that clock never ticks. The subject is created on demand instead, and the loop picks up whichever one is already there.
 
 ## 0.11.0
-
 Mon, 10 Aug 2026 22:34:42 GMT
 
 ### Minor changes
 
-- `<input type="checkbox">` is now projected into a scene as a component of its own rather than as
-  one more box, so the tick is drawn where the browser's own is chrome that never reaches the DOM.
-  The box comes from the same CSS the rest of the panel is drawn from, the tick from the element's
-  `color`; the ticked state is written back as `data-xr-checked`, so a style that follows `:checked`
-  is re-read; and the control is a ray target without asking for one, unless it is disabled.
-- Adds keyboard(props): a clickable board with a standard laptop layout, dressed in caller-supplied
-  classes like dropdown. There is nothing to type into a panel with -- a headset has no keys, and
-  the one the system offers belongs to the compositor rather than the DOM, so none of it reaches the
-  scene. Presses are shaped like KeyboardEvent; shift and the chording modifiers are one-shot, since
-  nobody chords on a board they have to point at, and caps lock is not. The tree is built once and
-  never changes shape: a state change moves a class name and the text inside a key, because a
-  changed tree would cost a re-measure of all seventy-seven boxes.
+- `<input type="checkbox">` is now projected into a scene as a component of its own rather than as one more box, so the tick is drawn where the browser's own is chrome that never reaches the DOM. The box comes from the same CSS the rest of the panel is drawn from, the tick from the element's `color`; the ticked state is written back as `data-xr-checked`, so a style that follows `:checked` is re-read; and the control is a ray target without asking for one, unless it is disabled.
+- Adds keyboard(props): a clickable board with a standard laptop layout, dressed in caller-supplied classes like dropdown. There is nothing to type into a panel with -- a headset has no keys, and the one the system offers belongs to the compositor rather than the DOM, so none of it reaches the scene. Presses are shaped like KeyboardEvent; shift and the chording modifiers are one-shot, since nobody chords on a board they have to point at, and caps lock is not. The tree is built once and never changes shape: a state change moves a class name and the text inside a key, because a changed tree would cost a re-measure of all seventy-seven boxes.
 
 ### Patches
 
-- Animations and scroll now keep working inside an immersive session. Once the headset has the
-  display the page behind it stops being rendered, and everything the browser does in its rendering
-  step stops with it: the document timeline no longer advances, so CSS transitions and keyframe
-  animations froze where they stood, and the `transitionrun`/`animationstart`/`transitionend` and
-  `scroll` events — all dispatched from that step — never arrived, so nothing even reported that an
-  animation had begun or that a dragged list had moved. A portal now notices when the document has
-  stopped keeping up with the frames, finds animations by sweeping `getAnimations()` on each
-  mutation instead of waiting for events, advances each running animation by the real time that
-  passed, and has every scroll it performs itself — the drag gesture and the `scrollable` widget's
-  arrows and track alike — announce that scroll, which the portal's listener cannot tell from the
-  real thing. The check is the condition itself — has the document timeline moved between two
-  moments of real time — rather than whether a session is presenting, so it stays correct under an
-  emulator, where the page is presenting and rendering both.
-- An element no longer flashes at the size it had while it was transformed. A client rect measured
-  under a CSS transform is the transformed bounds, and nothing reads it while the transform is there
-  — the box carries the matrix itself and takes its size from layout offsets. The moment a
-  transition returned the transform to `none`, that cached number became the element's size again: a
-  card that spent its transition rotated five degrees was drawn about a tenth too wide, along with
-  everything inside it, for the few frames until some unrelated mutation happened to re-measure.
-  Nothing was going to invalidate it, either — a transition restyles without relaying out, which is
-  exactly the case rect invalidation ignores in order to keep an animating transform free. The rect
-  cache now depends on whether the element is transformed, so a crossing in either direction
-  re-measures and the frames in between still cost nothing.
-- Text is rasterized a line at a time rather than a character at a time when there is no letter- or
-  word-spacing to apply, which is nearly always. Drawing glyph by glyph cost two canvas operations
-  per character — a measure and a fill — so relabelling a 46-row list took 886 draw calls where it
-  now takes 56. It also comes out kerned, which glyph-by-glyph drawing cannot be: the line now
-  matches the width the browser measured instead of running a shade wide and having the texture
-  grown to fit it.
+- Animations and scroll now keep working inside an immersive session. Once the headset has the display the page behind it stops being rendered, and everything the browser does in its rendering step stops with it: the document timeline no longer advances, so CSS transitions and keyframe animations froze where they stood, and the `transitionrun`/`animationstart`/`transitionend` and `scroll` events — all dispatched from that step — never arrived, so nothing even reported that an animation had begun or that a dragged list had moved. A portal now notices when the document has stopped keeping up with the frames, finds animations by sweeping `getAnimations()` on each mutation instead of waiting for events, advances each running animation by the real time that passed, and has every scroll it performs itself — the drag gesture and the `scrollable` widget's arrows and track alike — announce that scroll, which the portal's listener cannot tell from the real thing. The check is the condition itself — has the document timeline moved between two moments of real time — rather than whether a session is presenting, so it stays correct under an emulator, where the page is presenting and rendering both.
+- An element no longer flashes at the size it had while it was transformed. A client rect measured under a CSS transform is the transformed bounds, and nothing reads it while the transform is there — the box carries the matrix itself and takes its size from layout offsets. The moment a transition returned the transform to `none`, that cached number became the element's size again: a card that spent its transition rotated five degrees was drawn about a tenth too wide, along with everything inside it, for the few frames until some unrelated mutation happened to re-measure. Nothing was going to invalidate it, either — a transition restyles without relaying out, which is exactly the case rect invalidation ignores in order to keep an animating transform free. The rect cache now depends on whether the element is transformed, so a crossing in either direction re-measures and the frames in between still cost nothing.
+- Text is rasterized a line at a time rather than a character at a time when there is no letter- or word-spacing to apply, which is nearly always. Drawing glyph by glyph cost two canvas operations per character — a measure and a fill — so relabelling a 46-row list took 886 draw calls where it now takes 56. It also comes out kerned, which glyph-by-glyph drawing cannot be: the line now matches the width the browser measured instead of running a shade wide and having the texture grown to fit it.
 
 ## 0.10.1
-
 Mon, 10 Aug 2026 07:14:43 GMT
 
 ### Patches
 
-- The interaction manager's raycast honors visible: a subtree culled out of the draw is out of the
-  cast, so a registered scroller no longer pays a ray test per hidden row per controller per frame —
-  the cast is flat in list length. And scrollable() mounts its bar on a gated boolean rather than on
-  the live metrics, so a frame of scrolling updates the thumb's styles and moves no nodes; profiled
-  end to end, the scrollbar used to be unmounted and remounted on every scrolled frame, each remount
-  answered with a portal-wide re-measure, which was most of what dragging a list cost inside a real
-  browser.
+- The interaction manager's raycast honors visible: a subtree culled out of the draw is out of the cast, so a registered scroller no longer pays a ray test per hidden row per controller per frame — the cast is flat in list length. And scrollable() mounts its bar on a gated boolean rather than on the live metrics, so a frame of scrolling updates the thumb's styles and moves no nodes; profiled end to end, the scrollbar used to be unmounted and remounted on every scrolled frame, each remount answered with a portal-wide re-measure, which was most of what dragging a list cost inside a real browser.
 
 ## 0.10.0
-
 Sat, 08 Aug 2026 14:20:52 GMT
 
 ### Minor changes
 
-- `<img>` elements are mirrored into the scene. The picture is a layer on the same signed-distance
-  quad that already draws the element's background and border ring — painted between them and the
-  element's descendants, which is where CSS paints replaced content — so it costs no extra mesh and
-  inherits everything the box already had: an avatar with `border-radius: 50%` comes out round
-  rather than square behind a round frame, and a picture halfway out of a scroller is trimmed by the
-  clip box that was going to trim its box anyway. `object-fit` (all five values) and
-  `object-position` are resolved on the CPU into two rectangles, where the picture goes and what
-  crops it, so a resize or a crop is a uniform write; a translucent PNG composites over the
-  element's own background. It is not free for panels that draw no pictures: `div.js` reaches for
-  the image module unconditionally, so the code ships with any app that projects DOM at all.
-  Measured against two of them, `apps/todo-xr` and `apps/rubik`, it is the same 4,942 bytes minified
-  in both — about 1.7 KB more over the wire once gzipped, and roughly 8% of the library — because it
-  is a fixed cost of the library rather than anything that scales with the app.
-- Textures are shared by URL and reference-counted: a list of a hundred rows wearing the same icon
-  decodes and uploads it once, and the last element to let go of one disposes it. The URL is re-read
-  when the element announces its own `load`, so swapping `src` swaps the picture and a `srcset` is
-  followed as soon as the browser has resolved it — `src` never had to join the portal's attribute
-  filter. A picture that fails to load draws nothing, leaving the element's own box behind it.
-- A portal now hears an image arriving, under a `load` mutation type. Nothing is mutated and nothing
-  restyled when a picture lands, so no observer reports it, but an `<img>` the author gave no size
-  to has just been handed the one the picture turned out to have, and everything after it in the
-  flow has moved — the same shape of event as a font arriving, and scoped portal-wide for the same
-  reason.
+- `<img>` elements are mirrored into the scene. The picture is a layer on the same signed-distance quad that already draws the element's background and border ring — painted between them and the element's descendants, which is where CSS paints replaced content — so it costs no extra mesh and inherits everything the box already had: an avatar with `border-radius: 50%` comes out round rather than square behind a round frame, and a picture halfway out of a scroller is trimmed by the clip box that was going to trim its box anyway. `object-fit` (all five values) and `object-position` are resolved on the CPU into two rectangles, where the picture goes and what crops it, so a resize or a crop is a uniform write; a translucent PNG composites over the element's own background. It is not free for panels that draw no pictures: `div.js` reaches for the image module unconditionally, so the code ships with any app that projects DOM at all. Measured against two of them, `apps/todo-xr` and `apps/rubik`, it is the same 4,942 bytes minified in both — about 1.7 KB more over the wire once gzipped, and roughly 8% of the library — because it is a fixed cost of the library rather than anything that scales with the app.
+- Textures are shared by URL and reference-counted: a list of a hundred rows wearing the same icon decodes and uploads it once, and the last element to let go of one disposes it. The URL is re-read when the element announces its own `load`, so swapping `src` swaps the picture and a `srcset` is followed as soon as the browser has resolved it — `src` never had to join the portal's attribute filter. A picture that fails to load draws nothing, leaving the element's own box behind it.
+- A portal now hears an image arriving, under a `load` mutation type. Nothing is mutated and nothing restyled when a picture lands, so no observer reports it, but an `<img>` the author gave no size to has just been handed the one the picture turned out to have, and everything after it in the flow has moved — the same shape of event as a font arriving, and scoped portal-wide for the same reason.
 
 ### Patches
 
-- Fixed a hairline hole through the middle of large boxes. Every edge in the rect shader becomes
-  coverage through a smoothstep one derivative wide, and a distance to a box has a ridge down its
-  middle where the nearest edge changes — along which `fwidth` reads zero, `smoothstep(0.0, 0.0, x)`
-  divides by zero, and the driver is entitled to answer anything. It was invisible until something
-  was big enough and square enough to the viewer to put a pixel row exactly on the ridge, which a
-  picture in a panel facing you turned out to be. The width now has a floor of a ten-thousandth of a
-  pixel.
-- Images announce their arrival to the portal once per frame rather than once each. A picture
-  landing re-measures the whole portal — an `<img>` given no size takes the one the picture turned
-  out to have, and everything after it in the flow moves — which makes each arrival as expensive as
-  a font's, and unlike fonts they arrive one at a time: a panel of nine icons was reflowing
-  everything nine times over for a layout that settles once, and now does it once. The frame comes
-  from the requester the animation clock already uses, and is given back the moment it fires, so a
-  portal with nothing to announce asks for no frames at all.
-- Fixed a listener that threw where `Element` is not a global. The portal's `load` listener guarded
-  on `event.target instanceof Element`, which is the one thing `cache.js` warns against and the only
-  place in the package that did it — and a reference error inside an event listener goes nowhere, so
-  the announcement simply never happened rather than failing loudly. It reads `nodeType` now, like
-  everything else in the file.
+- Fixed a hairline hole through the middle of large boxes. Every edge in the rect shader becomes coverage through a smoothstep one derivative wide, and a distance to a box has a ridge down its middle where the nearest edge changes — along which `fwidth` reads zero, `smoothstep(0.0, 0.0, x)` divides by zero, and the driver is entitled to answer anything. It was invisible until something was big enough and square enough to the viewer to put a pixel row exactly on the ridge, which a picture in a panel facing you turned out to be. The width now has a floor of a ten-thousandth of a pixel.
+- Images announce their arrival to the portal once per frame rather than once each. A picture landing re-measures the whole portal — an `<img>` given no size takes the one the picture turned out to have, and everything after it in the flow moves — which makes each arrival as expensive as a font's, and unlike fonts they arrive one at a time: a panel of nine icons was reflowing everything nine times over for a layout that settles once, and now does it once. The frame comes from the requester the animation clock already uses, and is given back the moment it fires, so a portal with nothing to announce asks for no frames at all.
+- Fixed a listener that threw where `Element` is not a global. The portal's `load` listener guarded on `event.target instanceof Element`, which is the one thing `cache.js` warns against and the only place in the package that did it — and a reference error inside an event listener goes nowhere, so the announcement simply never happened rather than failing loudly. It reads `nodeType` now, like everything else in the file.
 
 ## 0.9.0
-
 Fri, 07 Aug 2026 22:12:45 GMT
 
 ### Minor changes
 
-- Portals honour 'overflow: hidden'. An element's clipping ancestors are intersected into one
-  rounded box in its own px and handed to the box shader as uniforms, so the clipped edge comes out
-  of the same distance field the box is already drawn with — antialiased, and rounded where the
-  window is. The box also trims ray hits on partly clipped elements and drops wholly clipped ones
-  from the raycast set and the render traversal. A scroll on the mirrored tree is announced as a
-  reflow of the scroller's subtree, so setting scrollTop scrolls the panel in the scene.
-- Adds scrollable(props): a scrolling window with controls, dressed in caller-supplied classes like
-  dropdown. Arrows move a step and repeat while held, the free track jumps a window, and the thumb
-  reports position and proportion. Presses rather than clicks, because a ray's click only arrives
-  when the trigger comes back up.
-- Scrolling lists can be dragged with the controller ray: hold the trigger over a list with more in
-  it than fits and pull, and the content follows the hand; release while moving and it glides to a
-  stop. The drag is sampled by projecting the ray onto the scroller's own plane each frame, so an
-  angled, scaled or hand-held panel needs no special case and the list keeps up with a hand that has
-  slid off it. A travel threshold separates a drag from a press, and a drag swallows the click on
-  the row it grabbed — the touchscreen bargain. Nothing to opt into: any element that clips its
-  overflow and overflows becomes draggable, and stops being so when it fits again.
-- Positioned elements are clipped by their containing block rather than by every overflow ancestor:
-  an absolutely positioned box escapes scrollers below its containing block — which is how a
-  dropdown menu anchored outside a list survives its trigger row scrolling — and a fixed one escapes
-  them all, exactly as on the page.
+- Portals honour 'overflow: hidden'. An element's clipping ancestors are intersected into one rounded box in its own px and handed to the box shader as uniforms, so the clipped edge comes out of the same distance field the box is already drawn with — antialiased, and rounded where the window is. The box also trims ray hits on partly clipped elements and drops wholly clipped ones from the raycast set and the render traversal. A scroll on the mirrored tree is announced as a reflow of the scroller's subtree, so setting scrollTop scrolls the panel in the scene.
+- Adds scrollable(props): a scrolling window with controls, dressed in caller-supplied classes like dropdown. Arrows move a step and repeat while held, the free track jumps a window, and the thumb reports position and proportion. Presses rather than clicks, because a ray's click only arrives when the trigger comes back up.
+- Scrolling lists can be dragged with the controller ray: hold the trigger over a list with more in it than fits and pull, and the content follows the hand; release while moving and it glides to a stop. The drag is sampled by projecting the ray onto the scroller's own plane each frame, so an angled, scaled or hand-held panel needs no special case and the list keeps up with a hand that has slid off it. A travel threshold separates a drag from a press, and a drag swallows the click on the row it grabbed — the touchscreen bargain. Nothing to opt into: any element that clips its overflow and overflows becomes draggable, and stops being so when it fits again.
+- Positioned elements are clipped by their containing block rather than by every overflow ancestor: an absolutely positioned box escapes scrollers below its containing block — which is how a dropdown menu anchored outside a list survives its trigger row scrolling — and a fixed one escapes them all, exactly as on the page.
 
 ### Patches
 
-- Scrolling no longer re-measures text. Every number a text measurement reports is relative to
-  something that scrolls with the text — its position to the parent's border box, its line boxes to
-  their own union — so a scroller sliding its content cannot change any of them, and the Range
-  measurement that proved it each frame was the most expensive read in the layout cache. A scroll
-  frame over a list now costs three client-rect reads per row and no text measurement, where it cost
-  five and two; the saving grows with the length of the list, since a row scrolled out of sight was
-  measured just like a visible one. Text whose own parent is the element that scrolled still
-  measures: there the border box is the window standing still while the text moves inside it.
+- Scrolling no longer re-measures text. Every number a text measurement reports is relative to something that scrolls with the text — its position to the parent's border box, its line boxes to their own union — so a scroller sliding its content cannot change any of them, and the Range measurement that proved it each frame was the most expensive read in the layout cache. A scroll frame over a list now costs three client-rect reads per row and no text measurement, where it cost five and two; the saving grows with the length of the list, since a row scrolled out of sight was measured just like a visible one. Text whose own parent is the element that scrolled still measures: there the border box is the window standing still while the text moves inside it.
 
 ## 0.8.1
-
 Fri, 07 Aug 2026 21:07:43 GMT
 
 ### Patches
 
-- A text node's measured layout now reports the size of its line boxes rather than the client
-  rectangle they were read from. The rectangle carried a viewport position that nothing downstream
-  wanted, in a `DOMRect` — an instance of a class, which the selector proxy cannot look inside — so
-  every re-measurement handed its dependents a new identity and re-rasterized the label's texture.
-  Text that only moved, which is what a layout animation and a scroll both do to a whole subtree
-  every frame, now re-measures without re-drawing anything.
-- Wrapped text is measured by the line rather than by the character. A range already reports the
-  line boxes the browser broke the text into; what it does not report is which characters landed on
-  each one, and that used to be recovered by measuring every character in turn. Because a character
-  can never land on an earlier line than the one before it, the offset each line starts at can be
-  found by bisection instead — a handful of measurements per line, and one more per line for its own
-  extent, which is also more faithful than a union of per-character boxes. In Chromium a wrapped
-  paragraph measures in 0.055ms rather than 0.411ms, and a paragraph of Japanese in 0.100ms rather
-  than 1.756ms; single-line labels keep the fast path they had. Every layout tried — wrapped,
-  justified, centred, right-aligned, bidi, CJK, `pre`, `pre-wrap`, `pre-line`,
-  `overflow-wrap: anywhere` — reports what it reported before.
+- A text node's measured layout now reports the size of its line boxes rather than the client rectangle they were read from. The rectangle carried a viewport position that nothing downstream wanted, in a `DOMRect` — an instance of a class, which the selector proxy cannot look inside — so every re-measurement handed its dependents a new identity and re-rasterized the label's texture. Text that only moved, which is what a layout animation and a scroll both do to a whole subtree every frame, now re-measures without re-drawing anything.
+- Wrapped text is measured by the line rather than by the character. A range already reports the line boxes the browser broke the text into; what it does not report is which characters landed on each one, and that used to be recovered by measuring every character in turn. Because a character can never land on an earlier line than the one before it, the offset each line starts at can be found by bisection instead — a handful of measurements per line, and one more per line for its own extent, which is also more faithful than a union of per-character boxes. In Chromium a wrapped paragraph measures in 0.055ms rather than 0.411ms, and a paragraph of Japanese in 0.100ms rather than 1.756ms; single-line labels keep the fast path they had. Every layout tried — wrapped, justified, centred, right-aligned, bidi, CJK, `pre`, `pre-wrap`, `pre-line`, `overflow-wrap: anywhere` — reports what it reported before.
 
 ## 0.8.0
-
 Fri, 07 Aug 2026 17:18:23 GMT
 
 ### Minor changes
 
-- Style invalidation is scoped to the mutation's neighbourhood instead of the whole portal: the
-  observer's targets ride along with each batch, and a computed-style cache re-reads only when a
-  change at some target's parent subtree can actually restyle it. A hover twitch went from O(panel)
-  style snapshots to O(neighbourhood). `:has()` crossing upward past the mutated element's parent is
-  a documented limitation.
-- CSS `transform` and `transform-origin` — 2D and 3D alike — are mirrored onto the element's object
-  as a matrix, fixing the mis-render where a transformed element drew as its transformed
-  axis-aligned bounds; `translateZ`/`rotateY` move content into actual scene depth. Transformed
-  elements are measured off layout offsets (client rects come back with the transform already
-  applied); text is measured with the transforms briefly switched off, so line boxes and positions
-  are exact under any transform. Attribute mutations now also re-measure the mutated element's own
-  subtree, which is what a toggled transform moves.
-- CSS transitions, keyframe animations, Web Animations and rAF-driven inline styles now play inside
-  a portal. An animation clock samples the animating elements once per frame through the same
-  invalidation path a mutation takes — style samples scoped to the animating elements, rect
-  re-measures scoped to what the animated properties can actually move — and requests no frames at
-  all while nothing animates. A `getAnimations()` sweep reconciles what events miss and refines
-  keyframe classifications.
-- Text color is tinted onto a glyph mask through the material instead of being baked into the
-  rasterized texture, so animating `color` re-draws no canvas and uploads nothing. The mask rides in
-  the material's alpha map — only coverage is sampled, so linear filtering has no transparent-black
-  texels to drag into glyph edges as a dark fringe. Text with a `text-shadow`, or a decoration
-  explicitly coloured something other than the text, keeps the baked path.
-- Each box renders as one shared unit quad and a signed-distance shader — per-corner radii, per-side
-  border widths and both colours as uniforms — replacing the background + border pair of
-  triangulated meshes. Geometry is never rebuilt: a resize is a scale write, everything else a
-  uniform write, which halves the mesh count per element and makes layout-class animation
-  affordable. Corners are circular where CSS would draw elliptical ones for percentage radii on
-  non-square boxes.
+- Style invalidation is scoped to the mutation's neighbourhood instead of the whole portal: the observer's targets ride along with each batch, and a computed-style cache re-reads only when a change at some target's parent subtree can actually restyle it. A hover twitch went from O(panel) style snapshots to O(neighbourhood). `:has()` crossing upward past the mutated element's parent is a documented limitation.
+- CSS `transform` and `transform-origin` — 2D and 3D alike — are mirrored onto the element's object as a matrix, fixing the mis-render where a transformed element drew as its transformed axis-aligned bounds; `translateZ`/`rotateY` move content into actual scene depth. Transformed elements are measured off layout offsets (client rects come back with the transform already applied); text is measured with the transforms briefly switched off, so line boxes and positions are exact under any transform. Attribute mutations now also re-measure the mutated element's own subtree, which is what a toggled transform moves.
+- CSS transitions, keyframe animations, Web Animations and rAF-driven inline styles now play inside a portal. An animation clock samples the animating elements once per frame through the same invalidation path a mutation takes — style samples scoped to the animating elements, rect re-measures scoped to what the animated properties can actually move — and requests no frames at all while nothing animates. A `getAnimations()` sweep reconciles what events miss and refines keyframe classifications.
+- Text color is tinted onto a glyph mask through the material instead of being baked into the rasterized texture, so animating `color` re-draws no canvas and uploads nothing. The mask rides in the material's alpha map — only coverage is sampled, so linear filtering has no transparent-black texels to drag into glyph edges as a dark fringe. Text with a `text-shadow`, or a decoration explicitly coloured something other than the text, keeps the baked path.
+- Each box renders as one shared unit quad and a signed-distance shader — per-corner radii, per-side border widths and both colours as uniforms — replacing the background + border pair of triangulated meshes. Geometry is never rebuilt: a resize is a scale write, everything else a uniform write, which halves the mesh count per element and makes layout-class animation affordable. Corners are circular where CSS would draw elliptical ones for percentage radii on non-square boxes.
 
 ## 0.7.1
-
 Fri, 07 Aug 2026 15:07:17 GMT
 
 ### Patches
 
-- `layoutEffects` now waits for the object to reach a scene once, and stays put when it is later
-  re-parented. It used to re-run on every `added`/`removed` along the ancestor chain, so picking up
-  anything an effect's object hung off — a board, a tray — tore the effect down and built it again
-  over the detached instant in the middle of `Object3D.attach`. Nothing an effect can read has
-  changed across a re-parent, since `attach` keeps the object where it was in the room; for a
-  physics body it meant the whole simulation being rebuilt, and every marble losing the speed it
-  had.
+- `layoutEffects` now waits for the object to reach a scene once, and stays put when it is later re-parented. It used to re-run on every `added`/`removed` along the ancestor chain, so picking up anything an effect's object hung off — a board, a tray — tore the effect down and built it again over the detached instant in the middle of `Object3D.attach`. Nothing an effect can read has changed across a re-parent, since `attach` keeps the object where it was in the room; for a physics body it meant the whole simulation being rebuilt, and every marble losing the speed it had.
 
 ## 0.7.0
-
 Fri, 07 Aug 2026 07:20:41 GMT
 
 ### Minor changes
 
-- New `dropdown(props)`: a select built out of ordinary elements, so that it works in a portal,
-  where a native `<select>` cannot — `<option>` has no CSS box to mirror and the list the browser
-  pops up is chrome rather than DOM. Structure only; every part is dressed in a class name the
-  caller supplies. `options` may be a getter, so an open menu follows a list that changes under it.
-  Moved here out of `apps/euclid-xr`, which now uses it.
-- `@apendua/justdom` is now a peer dependency. It was already what `dom(ctx, ...)` expects to be
-  handed, and building `dropdown` out of it makes the dependency a real one rather than one carried
-  in types alone.
+- New `dropdown(props)`: a select built out of ordinary elements, so that it works in a portal, where a native `<select>` cannot — `<option>` has no CSS box to mirror and the list the browser pops up is chrome rather than DOM. Structure only; every part is dressed in a class name the caller supplies. `options` may be a getter, so an open menu follows a list that changes under it. Moved here out of `apps/euclid-xr`, which now uses it.
+- `@apendua/justdom` is now a peer dependency. It was already what `dom(ctx, ...)` expects to be handed, and building `dropdown` out of it makes the dependency a real one rather than one carried in types alone.
 
 ### Patches
 
 - Read computed CSS colours as sRGB, so panels are drawn in the colours they were written in
-- Draw nothing for a border of no width, instead of filling a rounded element with slivers in the
-  border colour
+- Draw nothing for a border of no width, instead of filling a rounded element with slivers in the border colour
 
 ## 0.6.0
-
 Thu, 06 Aug 2026 12:02:12 GMT
 
 ### Minor changes
 
-- Portals can hold a layer above the panel. An element that is positioned with a positive z-index is
-  pushed clear of what it covers, drawn in a render-order band above everything below it, and made
-  opaque to rays by a blocker of its own -- so a dropdown menu is not something a ray can pass
-  through into the buttons behind it. Fully transparent fills no longer write depth, and the portal
-  asks for the rays to be cast again when it mirrors a change, so a menu opening under a resting ray
-  is noticed. The portal's own background blocker now reports its click to the DOM, which is what
-  dismiss-on-outside-click needs, and is two-sided -- being one-sided behind the container's
-  half-turn flip, it was never raycast at all, so panels were not in fact opaque to rays.
-- Adds getPortalRoot(node), which finds the panel a projected node belongs to, and marks each portal
-  container with data-xr-portal so it can. A component inside a portal that wants to hear "clicked
-  elsewhere" has to scope that to its panel: a document listener also hears real mouse clicks on the
-  page around the scene -- the VR button, or an emulator whose every control is a mouse click -- and
-  closes itself the moment you reach for the control that was going to drive the ray.
+- Portals can hold a layer above the panel. An element that is positioned with a positive z-index is pushed clear of what it covers, drawn in a render-order band above everything below it, and made opaque to rays by a blocker of its own -- so a dropdown menu is not something a ray can pass through into the buttons behind it. Fully transparent fills no longer write depth, and the portal asks for the rays to be cast again when it mirrors a change, so a menu opening under a resting ray is noticed. The portal's own background blocker now reports its click to the DOM, which is what dismiss-on-outside-click needs, and is two-sided -- being one-sided behind the container's half-turn flip, it was never raycast at all, so panels were not in fact opaque to rays.
+- Adds getPortalRoot(node), which finds the panel a projected node belongs to, and marks each portal container with data-xr-portal so it can. A component inside a portal that wants to hear "clicked elsewhere" has to scope that to its panel: a document listener also hears real mouse clicks on the page around the scene -- the VR button, or an emulator whose every control is a mouse click -- and closes itself the moment you reach for the control that was going to drive the ray.
 
 ### Patches
 
-- A press and a release are matched by the interactive object they landed on rather than by the mesh
-  the ray happened to meet. A projected button is a background quad plus a quad of text, so a hand
-  drifting a few millimetres from the label onto the background between pressing and letting go was
-  counted as a miss and the click was dropped -- most visible on a wide row with a short label, such
-  as an option in a dropdown menu. Squeeze is matched the same way.
+- A press and a release are matched by the interactive object they landed on rather than by the mesh the ray happened to meet. A projected button is a background quad plus a quad of text, so a hand drifting a few millimetres from the label onto the background between pressing and letting go was counted as a miss and the click was dropped -- most visible on a wide row with a short label, such as an option in a dropdown menu. Squeeze is matched the same way.
 
 ## 0.5.1
-
 Thu, 06 Aug 2026 07:34:16 GMT
 
 ### Patches
 
-- Built with TypeScript 7. VisualProperties declared its initialisation guard as 'asserts this is
-  {#properties: ...}', which is not valid TypeScript -- a private name cannot appear in a type
-  literal -- and TypeScript 7 rejects it. Replaced with a private #props getter applying the same
-  guard. No behaviour change.
+- Built with TypeScript 7. VisualProperties declared its initialisation guard as 'asserts this is {#properties: ...}', which is not valid TypeScript -- a private name cannot appear in a type literal -- and TypeScript 7 rejects it. Replaced with a private #props getter applying the same guard. No behaviour change.
 
 ## 0.5.0
-
 Wed, 05 Aug 2026 21:59:09 GMT
 
 ### Minor changes
 
-- makeInteractive now accepts an optional `enabled` argument -- a boolean, a reactive getter, or an
-  observable -- that turns raycast registration on and off while the entity stays in the scene.
-  Omitting it keeps the previous always-interactive behaviour.
-- Projected DOM elements now follow `cursor: pointer` as the stylesheet changes it, instead of
-  deciding once whether they are ray targets. A button that becomes disabled stops being pointable,
-  and stops carrying the handlers that would otherwise fire on events bubbling up from its children.
-- The ray each controller draws is now cut at whatever it is pointing at, so it stops at the surface
-  instead of disappearing into it, and stretches back out to a fixed reach when the hand is pointing
-  at nothing. It used to be drawn at a fixed length regardless.
+- makeInteractive now accepts an optional `enabled` argument -- a boolean, a reactive getter, or an observable -- that turns raycast registration on and off while the entity stays in the scene. Omitting it keeps the previous always-interactive behaviour.
+- Projected DOM elements now follow `cursor: pointer` as the stylesheet changes it, instead of deciding once whether they are ray targets. A button that becomes disabled stops being pointable, and stops carrying the handlers that would otherwise fire on events bubbling up from its children.
+- The ray each controller draws is now cut at whatever it is pointing at, so it stops at the surface instead of disappearing into it, and stretches back out to a fixed reach when the hand is pointing at nothing. It used to be drawn at a fixed length regardless.
 
 ## 0.4.0
-
 Wed, 05 Aug 2026 21:24:29 GMT
 
 ### Minor changes
 
-- The interaction manager now publishes where each controller's ray lands, read with pointers(ctx),
-  and cursors(ctx, options) draws a widget there — a white ball by default, resizable with `scale`,
-  recolourable with `color`, or replaced entirely by cloning an object passed as `object`.
-- Controller rays are now cast at the end of the frame, after every animate() callback and with
-  world matrices refreshed, instead of on the controller's own move event — the pose three.js writes
-  there is not readable until matrices are flushed, so hits (and anything drawn at them) were a
-  frame behind. Each controller also tracks its own pending-update flag, so two hands no longer race
-  for one.
+- The interaction manager now publishes where each controller's ray lands, read with pointers(ctx), and cursors(ctx, options) draws a widget there — a white ball by default, resizable with `scale`, recolourable with `color`, or replaced entirely by cloning an object passed as `object`.
+- Controller rays are now cast at the end of the frame, after every animate() callback and with world matrices refreshed, instead of on the controller's own move event — the pose three.js writes there is not readable until matrices are flushed, so hits (and anything drawn at them) were a frame behind. Each controller also tracks its own pending-update flag, so two hands no longer race for one.
 
 ## 0.3.0
-
 Wed, 05 Aug 2026 15:45:44 GMT
 
 ### Minor changes
 
-- Portal hover styles now propagate (the computed-style cache no longer swallows invalidations of
-  the live CSSStyleDeclaration), only elements with cursor: pointer become ray targets, and each
-  portal registers a single invisible blocker plane so panels stay opaque to rays.
+- Portal hover styles now propagate (the computed-style cache no longer swallows invalidations of the live CSSStyleDeclaration), only elements with cursor: pointer become ray targets, and each portal registers a single invisible blocker plane so panels stay opaque to rays.
 
 ## 0.2.0
-
 Tue, 04 Aug 2026 22:07:09 GMT
 
 ### Minor changes
 
-- Add createXRButton(), which prefers immersive-ar but falls back to immersive-vr on headsets
-  without passthrough.
+- Add createXRButton(), which prefers immersive-ar but falls back to immersive-vr on headsets without passthrough.
 
 ### Patches
 
-- Fix createXRButton() leaving the immersive-vr fallback at floor-level origin instead of the local
-  space AR content is authored for.
+- Fix createXRButton() leaving the immersive-vr fallback at floor-level origin instead of the local space AR content is authored for.
 
 ## 0.1.1
-
 Tue, 04 Aug 2026 21:29:33 GMT
 
 _Initial release_
+

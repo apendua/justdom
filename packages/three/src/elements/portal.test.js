@@ -4216,6 +4216,31 @@ describe("a panel that is always busy", () => {
     }
   });
 
+  test("a node the page adds and removes between two reads is not an arrival", async () => {
+    // A spinner made and dropped before the observer's flush is read is in
+    // its added nodes and gone from the page. Nothing of it is left to
+    // build, so it does not feed the build and the mount keeps its budget
+    // past the bound.
+    const { portal, list, clock, dispose } = busyPanel({}, 200);
+    try {
+      let frames = 0;
+      while (frames < 600 && portal.isLoading()) {
+        const spinner = document.createElement("div");
+        list.appendChild(spinner);
+        spinner.remove();
+        clock.advance(16);
+        flushFrame();
+        await nextMacrotask();
+        frames += 1;
+      }
+      assert.equal(portal.isLoading(), false, "the panel loaded");
+      assert.ok(frames >= 400, `a node a frame to the end, took ${frames}`);
+    } finally {
+      await drain();
+      dispose();
+    }
+  });
+
   test("a change made inside the frame casts the rays once", async () => {
     // The observer's own delivery casts the rays, since no tick may follow
     // it. Taken in by a tick, the tick casts them once it has built.

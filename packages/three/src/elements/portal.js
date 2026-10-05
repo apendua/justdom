@@ -1120,7 +1120,8 @@ function buildPortal(ctx, ownOptions = {}) {
    * Whether `commit` would be taken now. Not while the mount is built but
    * the frame standing in for it has not been up for its minimum time: a
    * frame that flashed and was gone reads as a glitch. The pump asks this
-   * before a time bound spends a long frame on a commit.
+   * on every tick a commit has waited on, so it has to stay cheap, and its
+   * time bounds force a long frame only while it answers true.
    */
   const commitDue = () =>
     !(loading.get() && loadingFrameObject && !loadingFrameObject.isDue(performance.now()));
@@ -1499,9 +1500,14 @@ function buildPortal(ctx, ownOptions = {}) {
           // built when the pump reaches it — that is the slicing. One it
           // has seen — a reinsertion, a move — already paid its cost and
           // reattaches without queueing, in the frame the rest of the
-          // change lands in.
+          // change lands in. One already out of the tree again by this
+          // flush, a spinner made and dropped between two reads, has
+          // nothing to build, and queueing it would count it as an arrival
+          // towards `MAX_BUILD_WAIT`.
           if (pump && !nodeToObject.has(node)) {
-            pump.enqueue(node);
+            if (containerElement.contains(node)) {
+              pump.enqueue(node);
+            }
             return;
           }
           // Listed whether or not the parent has an object yet: a node

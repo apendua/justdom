@@ -112,13 +112,15 @@ export const MAX_COMMIT_WAIT = 1000;
  * `MAX_COMMIT_WAIT` pauses on every tick that ends with nodes queued, so it
  * never runs for a queue that arrivals keep fed faster than a frame's slice
  * builds it: the desk's charts, whose timers replace text and add log rows, on
- * a runner drawing a few frames a second. The wait counts from the first tick
- * that ends without the commit taken, and ends only when one is taken, or the
- * portal commits without the channel. While the portal would decline the
- * commit, the bound waits for it to be due (`commitDue`), keeping to the budget
- * until then, as `MAX_COMMIT_WAIT` does. The pump lands the build once a node
- * new to the queue arrives from the page, not from a build, this long into the
- * wait; a queued node the page moves, or takes out and puts back, is not new.
+ * a runner drawing a few frames a second. The wait counts from the start of
+ * the first tick that ends without the commit taken, and ends only when one is
+ * taken, or the portal commits without the channel. While the portal would
+ * decline the commit, the bound waits for it to be due (`commitDue`), keeping
+ * to the budget until then, as `MAX_COMMIT_WAIT` does. The pump lands the
+ * build once a node new to the queue arrives from the page, not from a build,
+ * this long into the wait; a queued node the page moves, or takes out and
+ * puts back, is not new, and the portal does not queue a node the page has
+ * already taken out again by the time it reads the change.
  * One node is enough: the rule does not ask whether the build is keeping up,
  * since a breadth-first walk's queue grows while it is making headway and no
  * count of the queue tells a slow mount from a flooded one. So a slow mount
@@ -207,8 +209,9 @@ export function createPortalPump({
   /** @type {number | null} */
   let waitingSince = null;
   /**
-   * When the commit began to wait, building included, by the channel's
-   * clock, or null while it is not waiting. See `MAX_BUILD_WAIT`.
+   * The start of the first tick that ended without the commit taken,
+   * building included, by the channel's clock, or null while it is not
+   * waiting. See `MAX_BUILD_WAIT`.
    *
    * @type {number | null}
    */

@@ -161,7 +161,8 @@ Four things to know about it.
   emulator on a slow machine. A panel left its loading frame on a frame
   with nothing left to do, and the radar's sweep, its blips and the status
   lights blink without end, so at a few frames a second that frame did not
-  come. Freedom now samples no animation while a panel loads, and lands a
+  come. Freedom no longer samples animations frame by frame while a panel
+  loads, and only settles an animation that ends there, once. It lands a
   panel that something keeps busy after a second of waiting, one long
   frame at a time. A panel whose rows the timers add faster than a slow
   frame builds them, as the charts' were on the CI runner, lands once

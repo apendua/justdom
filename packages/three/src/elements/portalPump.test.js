@@ -2,6 +2,7 @@ import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { UpdateChannel } from "@apendua/signal";
 import { createPortalPump, MAX_BUILD_WAIT } from "./portalPump.js";
+import { fakeClock } from "../test/clock.js";
 
 describe("portal pump", () => {
   test("a node from the page right after a build threw still counts as an arrival", () => {
@@ -10,13 +11,12 @@ describe("portal pump", () => {
     // throws must not leave the pump believing it is still building, or a
     // node the page adds before the next build would be taken for the
     // build's own, and the bound would not land the panel for it.
-    let clock = 0;
+    const clock = fakeClock();
     const channel = new UpdateChannel({
       name: "pump-test",
       manual: true,
       atomic: true,
       maxStalePasses: Infinity,
-      now: () => clock,
     });
     const bad = /** @type {Node} */ (/** @type {unknown} */ ({}));
     // A mount of a thousand nodes, each queuing the next as it is built: a
@@ -60,18 +60,18 @@ describe("portal pump", () => {
       const tick = /** @type {{ tick: (deadline: number) => boolean }} */ (ticker);
       let threw = false;
       for (let frame = 0; frame < 1100 && built < 1000; frame++) {
-        clock += 16;
+        clock.advance(16);
         try {
-          tick.tick(clock);
+          tick.tick(clock.now());
         } catch {
           threw = true;
           // The page adds one node before the next frame.
           pump.enqueue(/** @type {Node} */ (/** @type {unknown} */ ({})));
           const before = built;
-          clock += 16;
-          tick.tick(clock);
-          clock += 16;
-          tick.tick(clock);
+          clock.advance(16);
+          tick.tick(clock.now());
+          clock.advance(16);
+          tick.tick(clock.now());
           assert.ok(
             built - before > 2,
             `the bound built what was queued at once, built ${built - before} in two frames`,
@@ -82,6 +82,7 @@ describe("portal pump", () => {
       assert.ok(threw, "the build threw past the bound");
     } finally {
       pump.dispose();
+      clock.restore();
     }
   });
 });

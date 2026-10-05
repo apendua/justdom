@@ -100,9 +100,11 @@ export const MAX_COMMIT_WAIT = 1000;
  * frame's slice builds it: the desk's charts, whose timers replace text and
  * add log rows, on a runner drawing a few frames a second. The wait counts
  * from the first tick that ends without the commit taken, and ends only
- * when one is taken, or the portal commits without the channel. The pump
- * lands the build once a node arrives from the page, not from a build,
- * this long into the wait. One node is enough: the rule does not ask
+ * when one is taken, or the portal commits without the channel. A commit
+ * the portal declines after the overdue build leaves the bound in force, so
+ * the pump builds what arrives and sweeps unbudgeted on every tick until
+ * the commit is taken. The pump lands the build once a node arrives from
+ * the page, not from a build, this long into the wait. One node is enough: the rule does not ask
  * whether the build is keeping up, since a breadth-first walk's queue grows
  * while it is making headway and no count of the queue tells a slow mount
  * from a flooded one. So a slow mount that the page adds a single row to

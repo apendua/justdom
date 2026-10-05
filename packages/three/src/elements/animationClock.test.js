@@ -767,6 +767,48 @@ describe("animation clock with rendering updates suspended", () => {
     });
   });
 
+  test("an anchored animation that starts during a hold at a partial rate gets its share", () => {
+    // A page rendering at half the session's rate carries what it anchored
+    // through half of the time since, and the shortfall is the other half.
+    // One that started 700 ms into a 1000 ms hold is owed its share of the
+    // shortfall, not the whole of it.
+    let held = true;
+    const { container, element, frames, clock, cleanup } = setup({ held: () => held });
+    const late = document.createElement("div");
+    container.appendChild(late);
+    withStalledClocks((time) => {
+      setDocumentTime(1000);
+
+      try {
+        const early = fakeAnimation(element, 10_000, 0);
+        const joined = fakeAnimation(late, 10_000, 0);
+        /** @type {ReturnType<typeof fakeAnimation>[]} */
+        let running = [early];
+        // @ts-expect-error -- a minimal stand-in for the real thing.
+        container.getAnimations = () => running;
+        clock.sweep();
+        time.set(16);
+        frames.step();
+        time.set(PAST_THE_TIMEOUT);
+        frames.step();
+        time.set(PAST_THE_TIMEOUT + 300);
+        running = [early, joined];
+        clock.sweep();
+        // The browser's half of the hold, and of the time since the join.
+        time.set(PAST_THE_TIMEOUT + 1000);
+        setDocumentTime(1500);
+        early.currentTime = 500;
+        joined.currentTime = 350;
+        held = false;
+        frames.step();
+        assert.equal(early.currentTime, 1000, "the first by the whole shortfall");
+        assert.equal(joined.currentTime, 700, "the second by its share of it");
+      } finally {
+        cleanup();
+      }
+    });
+  });
+
   test("a held clock looks again for what a mutation started beside a running animation", () => {
     // With something already animating, a mutation whose transition the
     // recalc has not made yet must still be looked for a frame later, or it

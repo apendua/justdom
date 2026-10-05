@@ -639,8 +639,8 @@ export function createAnimationClock(container, emit, requestFrames, { held = ()
    *   timeline covered — what the browser has already carried its
    *   animations through, and so must not be charged for twice.
    * @param {number} now The `performance.now()` the elapsed time was
-   *   measured against: an animation that started during a hold is advanced
-   *   by `now` less when it was first seen.
+   *   measured against: an animation that started during a hold is owed
+   *   only the share of the interval since it was first seen.
    * @returns {void}
    */
   /**
@@ -656,11 +656,12 @@ export function createAnimationClock(container, emit, requestFrames, { held = ()
     // What started since the last sweep, while held with the clock driving,
     // is owed only the time since now. No animation event is dispatched
     // while the clock drives, so a sweep is the only way one is learned.
-    const noting = lastDrivenAt !== null && held();
-    const seenAt = noting ? performance.now() : 0;
-    for (const animation of animations) {
-      if (noting && !lastSeen.has(animation)) {
-        joinedDuringHold.set(animation, seenAt);
+    if (lastDrivenAt !== null && held()) {
+      const seenAt = performance.now();
+      for (const animation of animations) {
+        if (!lastSeen.has(animation)) {
+          joinedDuringHold.set(animation, seenAt);
+        }
       }
     }
     remember(animations);
@@ -687,10 +688,12 @@ export function createAnimationClock(container, emit, requestFrames, { held = ()
         // have their start time and are moving if anything is. It is also
         // why a panel can look dead while the panel beside it looks alive.
         const anchored = typeof animation.startTime === "number";
-        // One that started during a hold is owed only the time since then.
+        // One that started during a hold is owed only its share of the
+        // interval: what the timeline covered of the time since it joined is
+        // in the same proportion as what it covered of the whole.
         const joined = joinedDuringHold.get(animation);
         const owed = anchored ? shortfall : advanceBy;
-        const delta = joined === undefined ? owed : Math.min(owed, now - joined);
+        const delta = joined === undefined ? owed : (owed * (now - joined)) / advanceBy;
         if (delta <= 0) {
           continue;
         }

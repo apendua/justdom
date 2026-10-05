@@ -396,7 +396,7 @@ shows. A panel built from a tree lives in a container the portal parks off
 screen, so its points are right against the page's own rects but
 `elementFromPoint` finds nothing at them. A scale on the mirrored root, or
 above it, is in the mapping, so on a page scaled to fit its window the
-point is where the page draws that spot; a rotation, a skew or a
+point is where the page draws that spot; a rotation, a skew, a flip or a
 perspective there is left out, as the mirror leaves it out (see below).
 
 A press, its release and a move each send, ahead of their mouse event, the

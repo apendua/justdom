@@ -270,14 +270,6 @@ function scrollOffsetEqual(a, b) {
 }
 
 /**
- * @typedef {object} ClientRect
- * @property {number} left
- * @property {number} top
- * @property {number} width
- * @property {number} height
- */
-
-/**
  * Every per-node cache in this module, so that a node can be forgotten.
  *
  * The caches are module-level and keyed by node, which is what lets the
@@ -324,7 +316,7 @@ export function forgetNode(node) {
   }
 }
 
-/** @type {WeakMap<Element, { generation: number, rect: ClientRect }>} */
+/** @type {WeakMap<Element, { generation: number, rect: FramedRect }>} */
 const clientRectCache = nodeCache();
 
 /**
@@ -334,7 +326,7 @@ const clientRectCache = nodeCache();
  * asking the browser the same question twice in one settling.
  *
  * @param {Element} element
- * @returns {ClientRect}
+ * @returns {FramedRect}
  */
 function readClientRect(element) {
   const generation = getGeometryGeneration();

@@ -48,12 +48,50 @@ async function mirrored(root, { budget } = {}) {
  * @param {string} [transforms.stage]
  */
 function staged({ root: rootTransform = "", stage: stageTransform = "" } = {}) {
-  const { stage, root } = stagedRoot();
+  const { stage, root, child } = stagedRoot();
   stage.id = "stage";
   stage.style.transform = stageTransform;
   root.id = "charts";
   root.style.transform = rootTransform;
-  return { stage, root };
+  return { stage, root, child };
+}
+
+/**
+ * Run `body` with `getComputedStyle` answering `styles` for the elements it
+ * names, and every `console.warn` kept. jsdom computes no `scale`,
+ * `rotate` or `perspective`, so the frame's refusals of those are driven
+ * through this.
+ *
+ * @param {Map<Element, Record<string, string>>} styles
+ * @param {(warnings: unknown[][]) => void} body
+ */
+function withStyles(styles, body) {
+  const original = window.getComputedStyle;
+  const warn = console.warn;
+  /** @type {unknown[][]} */
+  const warnings = [];
+  console.warn = (...args) => warnings.push(args);
+  window.getComputedStyle = (element, pseudo) => {
+    const style = styles.get(element);
+    if (!style) {
+      return original.call(window, element, pseudo);
+    }
+    return /** @type {CSSStyleDeclaration} */ (
+      /** @type {unknown} */ ({
+        transform: "none",
+        scale: "none",
+        rotate: "none",
+        perspective: "none",
+        ...style,
+      })
+    );
+  };
+  try {
+    body(warnings);
+  } finally {
+    window.getComputedStyle = original;
+    console.warn = warn;
+  }
 }
 
 /**
@@ -168,7 +206,7 @@ describe("a panel's root on a transformed chain", () => {
     // A panel that writes a style every frame, a gauge's needle say,
     // dispatches a mutation every frame. Nothing it hears can change what
     // is above its root, so none of them may cost a walk of that chain.
-    const { stage, root } = staged({ stage: "matrix(0.5, 0, 0, 0.5, 0, 0)" });
+    const { stage, root, child: box } = staged({ stage: "matrix(0.5, 0, 0, 0.5, 0, 0)" });
     const panel = await mirrored(root);
     const original = window.getComputedStyle;
     let stageReads = 0;
@@ -180,7 +218,6 @@ describe("a panel's root on a transformed chain", () => {
         }
         return original.call(window, element, pseudo);
       };
-      const box = /** @type {HTMLElement} */ (root.firstElementChild);
       for (let frame = 0; frame < 5; frame++) {
         box.style.width = `${10 + frame}px`;
         await pump();
@@ -225,10 +262,6 @@ describe("a frame's scale", () => {
     const { stage, child, setScale } = measuredRoot();
     setScale("stage", 0.5);
     setScale("root", 1.2);
-    // A scale on the child is one no rect follows, so the fixture refuses
-    // it by its type.
-    // @ts-expect-error -- only the stage and the root are drawn at a scale.
-    void (() => setScale("child", 2));
     try {
       assert.deepEqual(getContentPosition(child), { x: 100, y: 40 });
     } finally {
@@ -236,32 +269,92 @@ describe("a frame's scale", () => {
     }
   });
 
+  test("draws the stage and the root at a scale, and not the child", () => {
+    // A scale on the child is one no rect `place` gives out follows, so the
+    // fixture refuses it by its type.
+    /** @type {Parameters<ReturnType<typeof stagedRoot>["setScale"]>[0]} */
+    // @ts-expect-error -- only the stage and the root are drawn at a scale.
+    const refused = "child";
+    assert.ok(refused);
+  });
+
   test("is not refused for a rotation of zero", () => {
     // An element at rest after a `rotate` animation computes to `0deg`.
     const { stage, root, setScale } = stagedRoot({ claimed: true });
     setScale("stage", 0.5);
-    const original = window.getComputedStyle;
-    const warn = console.warn;
-    /** @type {unknown[]} */
-    const warnings = [];
-    console.warn = (message) => warnings.push(message);
-    window.getComputedStyle = (element, pseudo) => {
-      const style = original.call(window, element, pseudo);
-      if (element !== root) {
-        return style;
-      }
-      return /** @type {CSSStyleDeclaration} */ (
-        /** @type {unknown} */ ({ transform: "none", scale: "none", rotate: "1 1 1 0deg" })
-      );
-    };
     try {
-      const frame = frameFor(root);
-      assert.deepEqual([frame.sx, frame.sy], [0.5, 0.5]);
-      assert.deepEqual(warnings, []);
+      withStyles(new Map([[root, { rotate: "1 1 1 0deg" }]]), (warnings) => {
+        const frame = frameFor(root);
+        assert.deepEqual([frame.sx, frame.sy], [0.5, 0.5]);
+        assert.deepEqual(warnings, []);
+      });
     } finally {
-      window.getComputedStyle = original;
-      console.warn = warn;
       stage.remove();
+    }
+  });
+
+  test("reads the `scale` property across and down", () => {
+    const { stage, root } = stagedRoot({ claimed: true });
+    try {
+      withStyles(new Map([[root, { scale: "0.5 2" }]]), (warnings) => {
+        const frame = frameFor(root);
+        assert.deepEqual([frame.sx, frame.sy], [0.5, 2]);
+        assert.deepEqual(warnings, []);
+      });
+    } finally {
+      stage.remove();
+    }
+  });
+
+  test("refuses a `scale` of -1 as a flip, and warns", () => {
+    const { stage, root } = stagedRoot({ claimed: true });
+    try {
+      withStyles(new Map([[root, { scale: "-1 1" }]]), (warnings) => {
+        const frame = frameFor(root);
+        assert.deepEqual([frame.sx, frame.sy], [1, 1]);
+        assert.equal(warnings.length, 1);
+        assert.match(String(warnings[0][0]), /\(scale: -1 1\)/);
+      });
+    } finally {
+      stage.remove();
+    }
+  });
+
+  test("refuses a `rotate` of 45deg, and warns naming it", () => {
+    const { stage, root, setScale } = stagedRoot({ claimed: true });
+    setScale("stage", 0.5);
+    try {
+      withStyles(new Map([[root, { rotate: "45deg" }]]), (warnings) => {
+        const frame = frameFor(root);
+        assert.deepEqual([frame.sx, frame.sy], [1, 1]);
+        assert.equal(warnings.length, 1);
+        assert.match(String(warnings[0][0]), /\(rotate: 45deg\)/);
+      });
+    } finally {
+      stage.remove();
+    }
+  });
+
+  test("refuses a perspective above the root, and not one on it", () => {
+    const above = stagedRoot({ claimed: true });
+    const on = stagedRoot({ claimed: true });
+    try {
+      withStyles(
+        new Map([
+          [above.stage, { perspective: "800px" }],
+          [on.root, { perspective: "800px" }],
+        ]),
+        (warnings) => {
+          frameFor(on.root);
+          assert.deepEqual(warnings, [], "a perspective on the root projects the panel's inside");
+          frameFor(above.root);
+          assert.equal(warnings.length, 1);
+          assert.match(String(warnings[0][0]), /\(perspective: 800px\)/);
+        },
+      );
+    } finally {
+      above.stage.remove();
+      on.stage.remove();
     }
   });
 

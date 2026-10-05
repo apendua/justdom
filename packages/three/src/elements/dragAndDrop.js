@@ -255,9 +255,9 @@ function elementAt(element, objectOf, point) {
  * and the transforms of what is inside, so the point is where a mouse over
  * the same spot on the page would be. A scale on the root element or above
  * it is in the mapping, as it is divided out of every rect the panel is
- * measured from (see `panelFrame.js`); a rotation, a skew or a perspective
- * is not, and the root warns about it, so on a root the page turns the
- * point is where the page would have it with the root unturned.
+ * measured from (see `panelFrame.js`); a rotation, a skew, a flip or a
+ * perspective is not, and the root warns about it, so on a root the page
+ * turns the point is where the page would have it with the root unturned.
  *
  * It is what the mouse events a ray sends carry as `clientX` and `clientY`
  * (see `pressInit` and the others below), so that a page which works out

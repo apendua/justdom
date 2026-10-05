@@ -339,12 +339,12 @@ const SWEEP_INTERVAL = 60;
  *   page's rendering suspended, a held frame drives nothing, writing no
  *   `currentTime`, and still looks for what started and what ended. The first
  *   frame after the hold advances them by what the hold owes them, or, for one
- *   that started during it, by its share of that, which for one the timeline is
- *   not carrying is the time since the first look that saw it, within a frame
- *   of its start. Elsewhere membership is kept up all the while. Either way the
- *   first frame after the hold names every element still animating, and an
- *   animation that ends is still settled, since an end is said once and not
- *   every frame.
+ *   that started or resumed during it, by its share of that, which for one the
+ *   timeline is not carrying is the time since the first look that saw it
+ *   running, within a frame of its start or resume. Elsewhere membership is
+ *   kept up all the while. Either way the first frame after the hold names
+ *   every element still animating, and an animation that ends is still settled,
+ *   since an end is said once and not every frame.
  */
 export function createAnimationClock(container, emit, requestFrames, { held = () => false } = {}) {
   /**
@@ -442,13 +442,15 @@ export function createAnimationClock(container, emit, requestFrames, { held = ()
    */
   let recheck = false;
   /**
-   * When each animation a sweep was first to see, while the clock drives,
-   * was seen. The next driven frame with time to make up reads this and
-   * clears it: an animation that started during a hold is owed only its
-   * share of the hold, in proportion to the time since it was seen, and one
-   * an ordinary driven frame finds is owed nothing on that frame and loses
-   * at most that frame. Keyed by the animation and not its element, since
-   * an element already animating can start another.
+   * When each animation was first seen running by a look, while the clock
+   * drives. A look drops the entry once it finds the animation no longer
+   * running, ended or paused, and the next driven frame with time to make
+   * up reads the rest and clears them: an animation that started or resumed
+   * during a hold is owed only its share of the hold, in proportion to the
+   * time since it was seen running, and one an ordinary driven frame finds
+   * is owed nothing on that frame and loses at most that frame. Keyed by the
+   * animation and not its element, since an element already animating can
+   * start another.
    *
    * @type {Map<Animation, number>}
    */

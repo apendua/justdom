@@ -802,33 +802,32 @@ export function createAnimationClock(container, emit, requestFrames, { held = ()
         // no frames here either.
         recheck = false;
         sweep();
-        if (!animating.size) {
-          stop();
-          return;
-        }
-        if (lastDrivenAt === null) {
+        // Not on a frame whose sweep stopped the clock: nothing animates,
+        // so there is no account to open.
+        if (animating.size && lastDrivenAt === null) {
           // What the sweep above saw runs now and is owed the whole hold;
           // only what a later sweep finds that it did not see started
           // during it.
           lastDrivenAt = performance.now();
           lastDocumentTime = documentTime();
         }
-        return;
+      } else {
+        // No event will say when an animation starts or stops, so every
+        // frame is a sweep: make up whatever of the elapsed time the
+        // document's own timeline did not cover, then read back what is
+        // still running.
+        const now = performance.now();
+        const documentNow = documentTime();
+        const elapsed = lastDrivenAt === null ? 0 : now - lastDrivenAt;
+        const browserAdvance =
+          lastDrivenAt === null || lastDocumentTime === null || documentNow === null
+            ? 0
+            : Math.max(0, documentNow - lastDocumentTime);
+        lastDrivenAt = now;
+        lastDocumentTime = documentNow;
+        recheck = false;
+        sweep(elapsed, browserAdvance, now);
       }
-      // No event will say when an animation starts or stops, so every frame
-      // is a sweep: make up whatever of the elapsed time the document's own
-      // timeline did not cover, then read back what is still running.
-      const now = performance.now();
-      const documentNow = documentTime();
-      const elapsed = lastDrivenAt === null ? 0 : now - lastDrivenAt;
-      const browserAdvance =
-        lastDrivenAt === null || lastDocumentTime === null || documentNow === null
-          ? 0
-          : Math.max(0, documentNow - lastDocumentTime);
-      lastDrivenAt = now;
-      lastDocumentTime = documentNow;
-      recheck = false;
-      sweep(elapsed, browserAdvance, now);
     } else {
       // The browser is driving; the events keep membership honest and the
       // sweep is only there to catch what they miss.
@@ -845,8 +844,6 @@ export function createAnimationClock(container, emit, requestFrames, { held = ()
       stop();
       return;
     }
-    // Only the browser-driving branch reaches here held; the held driving
-    // frame has returned above.
     if (isHeld) {
       return;
     }

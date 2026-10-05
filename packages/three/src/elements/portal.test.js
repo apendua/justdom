@@ -4062,7 +4062,7 @@ describe("a panel that is always busy", () => {
       const due = 250 + 16 + 1000;
       assert.ok(frames * 16 >= due - 2 * 16, `held until the frame was due, took ${frames}`);
       assert.ok(frames * 16 <= due + 3 * 16, `and no longer, took ${frames}`);
-      assert.ok(unbudgeted <= 1, `one long frame, when the frame was due, took ${unbudgeted}`);
+      assert.equal(unbudgeted, 1, `one long frame, when the frame was due, took ${unbudgeted}`);
     } finally {
       UpdateChannel.prototype.flush = flush;
       stop();

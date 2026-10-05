@@ -17,7 +17,6 @@ const fakeNode = () => /** @type {Node} */ (/** @type {unknown} */ ({}));
  *   built, while `built` still counts the ones before it.
  */
 function chainedMount(onBuild = () => {}) {
-  const clock = fakeClock();
   const channel = new UpdateChannel({
     name: "pump-test",
     manual: true,
@@ -51,6 +50,8 @@ function chainedMount(onBuild = () => {}) {
     onSettled: () => {},
     afterTick: () => {},
   });
+  // Taken last, once nothing left here can throw and strand it.
+  const clock = fakeClock();
   pump.enqueue(queued);
   pump.schedule();
   return {

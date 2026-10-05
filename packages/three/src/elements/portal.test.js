@@ -5,6 +5,7 @@ import { Derived, Effect, Signal, toObservable, UpdateChannel, withChannel } fro
 import { $, $$, attr, children, className, stylesheet } from "@apendua/justdom";
 import { InteractionContext, InteractionManager } from "../interactions.js";
 import {
+  BUSY_ATTRIBUTE,
   DomMirror,
   getComputedStyleCached,
   LOADING_ATTRIBUTE,
@@ -1230,6 +1231,102 @@ describe("createPortal", () => {
       subscription.unsubscribe();
       portal.disconnect();
     }
+  });
+
+  test("the container is busy while a transition is sampled, until its end is drawn", async () => {
+    // A harness that pins the page's animations and photographs the scene
+    // has to know when the scene has caught up with the DOM. The clock
+    // samples on frames of its own, and the end of a transition is one more
+    // update the pump brings in on a frame after that, so the flag has to
+    // hold across the moment the clock lets go and the pump takes over.
+    const manager = new InteractionManager();
+    const ctx = InteractionContext.set({}, manager);
+    const portal = createPortal(ctx);
+    portal.addTo(new THREE.Group());
+    /** @type {import("@apendua/justdom").Mountable | undefined} */
+    let mountable;
+    const subscription = $("div", [children($("div", []))]).subscribe((value) => {
+      mountable = value;
+    });
+    assert.ok(mountable);
+    portal.mount(mountable);
+    await settle(portal);
+    await pump();
+
+    const containers = document.querySelectorAll("[data-xr-portal]");
+    const containerElement = containers[containers.length - 1];
+    const card = /** @type {HTMLElement} */ (containerElement.firstElementChild);
+    const busy = () => containerElement.hasAttribute(BUSY_ATTRIBUTE);
+    /** @param {string} type */
+    const transition = (type) =>
+      card.dispatchEvent(
+        Object.assign(new Event(type, { bubbles: true }), { propertyName: "background-color" }),
+      );
+    assert.equal(busy(), false, "a mounted panel with nothing moving is not busy");
+
+    try {
+      transition("transitionrun");
+      assert.ok(busy(), "busy from the transition's start");
+      await pump();
+      assert.ok(busy(), "and for as long as it runs");
+
+      transition("transitionend");
+      await nextMacrotask();
+      assert.ok(busy(), "the end is an update still to be drawn");
+      await pump();
+      assert.equal(busy(), false, "and once it is, the panel is not busy");
+    } finally {
+      transition("transitionend");
+      await pump();
+      subscription.unsubscribe();
+      portal.disconnect();
+    }
+  });
+
+  test("the container is busy while the pump has an update to draw", async () => {
+    // A mount and an update alike: from the observer's flush to the frame
+    // that brings the last of it into the scene. Three nodes at a budget of
+    // zero are three frames of building.
+    const manager = new InteractionManager();
+    const ctx = InteractionContext.set({}, manager);
+    const portal = createPortal(ctx, { budget: 0 });
+    portal.addTo(new THREE.Group());
+    const label = Signal.of("a");
+    /** @type {import("@apendua/justdom").Mountable | undefined} */
+    let mountable;
+    const tree = $("div", [children($("div"), $("div", [attr("title", toObservable(label))]))]);
+    const subscription = tree.subscribe((value) => {
+      mountable = value;
+    });
+    assert.ok(mountable);
+    const containers = document.querySelectorAll("[data-xr-portal]");
+    const containerElement = containers[containers.length - 1];
+    const busy = () => containerElement.hasAttribute(BUSY_ATTRIBUTE);
+    assert.equal(busy(), false, "nothing to mount yet");
+
+    portal.mount(mountable);
+    await nextMacrotask();
+    assert.ok(busy(), "busy from the mount's first flush");
+    /** @type {boolean[]} */
+    const seen = [];
+    for (let index = 0; index < 20 && busy(); index++) {
+      seen.push(portal.isLoading());
+      flushFrame();
+      await nextMacrotask();
+    }
+    assert.equal(portal.isLoading(), false);
+    assert.equal(busy(), false, "not busy once the mount is drawn");
+    assert.ok(seen.length > 1, `busy across the mount's frames: ${seen.length}`);
+
+    label.set("b");
+    await nextMacrotask();
+    assert.ok(busy(), "an update after the load is busy too");
+    await pump();
+    assert.equal(busy(), false, "until it is drawn");
+
+    subscription.unsubscribe();
+    portal.disconnect();
+    assert.equal(busy(), false);
   });
 
   test("a portal that is not atomic changes by instalments, something every frame", async () => {
@@ -2664,10 +2761,11 @@ describe("createPortal", () => {
     style.remove();
   });
 
-  test("the portal's loading flag on its container restyles nothing", async () => {
+  test("the portal's loading and busy flags on its container restyle nothing", async () => {
     // The container is above every element in the panel, so an author's
-    // attribute there would restyle all of them. The portal writes this one
-    // twice a mount, and no stylesheet is meant to select on it.
+    // attribute there would restyle all of them. The portal writes the
+    // loading flag twice a mount and the busy flag twice an animation, and
+    // no stylesheet is meant to select on either.
     const manager = new InteractionManager();
     const ctx = InteractionContext.set({}, manager);
     const portal = createPortal(ctx);
@@ -2702,11 +2800,13 @@ describe("createPortal", () => {
     dependent.get();
     assert.equal(reads, 1);
 
-    containerElement.setAttribute(LOADING_ATTRIBUTE, "");
-    await pump();
-    containerElement.removeAttribute(LOADING_ATTRIBUTE);
-    await pump();
-    assert.equal(reads, 1, "neither write reached the element");
+    for (const flag of [LOADING_ATTRIBUTE, BUSY_ATTRIBUTE]) {
+      containerElement.setAttribute(flag, "");
+      await pump();
+      containerElement.removeAttribute(flag);
+      await pump();
+      assert.equal(reads, 1, `neither write of ${flag} reached the element`);
+    }
 
     containerElement.setAttribute("data-anything-else", "");
     await pump();

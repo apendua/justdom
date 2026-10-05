@@ -765,6 +765,10 @@ the update lands. Under input that never stops, that means one long frame
 about once a second, loading or loaded. A loading frame still up for its
 minimum time holds the panel past the second, and until it is due every
 frame reads everything at once; the panel lands on the frame it is due.
+Rows can arrive faster than a slow frame builds them, too, so that the
+panel always has something left to build: the whole wait, building
+included, is bounded at five seconds (`MAX_BUILD_WAIT`), and past it one
+frame builds everything queued and reads everything at once.
 A panel that has to follow the hand on every frame wants `atomic: false`
 instead, which runs the update's writes under the budget and lets the
 panel change in instalments; `atomic` in `PortalOptions` says what that

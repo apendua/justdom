@@ -85,11 +85,27 @@ import { batch, Effect, withChannel } from "@apendua/signal";
  * own bound on that, `maxStalePasses`, counts passes and is off here, since
  * a large mount overruns the budget for many frames and a forced drain there
  * is the stall the budget exists to avoid. A time bound tells the two
- * apart: a mount still building has nodes queued and is never swept, and
- * one with only reading left has a second of budgeted frames before the
- * long one.
+ * apart: a mount still building has nodes queued and is not swept by this
+ * one, and one with only reading left has a second of budgeted frames
+ * before the long one. A build that never finishes has a bound of its own,
+ * `MAX_BUILD_WAIT`.
  */
 export const MAX_COMMIT_WAIT = 1000;
+
+/**
+ * How long, in milliseconds, a commit waits in all, building included,
+ * before the pump builds whatever is queued and sweeps the channel in one
+ * go. `MAX_COMMIT_WAIT` counts only the ticks with nothing left to build,
+ * so it never runs for a queue that arrivals keep fed faster than a frame's
+ * slice builds it: the desk's charts, whose timers replace text and add log
+ * rows, on a runner drawing a few frames a second. This counts from the
+ * first tick that ends without the commit taken, and ends only when one is
+ * taken, or the portal commits without the channel. It is longer than
+ * `MAX_COMMIT_WAIT` because a large mount legitimately builds for many
+ * frames, and one that finishes inside it is never cut short; one that
+ * does not finish lands in one long frame.
+ */
+export const MAX_BUILD_WAIT = 5000;
 
 /**
  * The machinery that spreads a portal's work across frames: a queue of DOM
@@ -148,6 +164,13 @@ export function createPortalPump({
   let waited = 0;
   /** @type {number | null} */
   let waitingSince = null;
+  /**
+   * When the commit began to wait, building included, by the channel's
+   * clock, or null while it is not waiting. See `MAX_BUILD_WAIT`.
+   *
+   * @type {number | null}
+   */
+  let commitWaitingSince = null;
 
   /**
    * This portal's slice of a frame: build queued nodes until the deadline,
@@ -188,6 +211,10 @@ export function createPortalPump({
       const now = channel.now;
       const tickStart = now();
       beforeTick();
+      // Past the bound on the whole wait, everything queued is built and the
+      // channel swept in this tick, whatever the deadline.
+      const overdue =
+        commitWaitingSince !== null && tickStart - commitWaitingSince >= MAX_BUILD_WAIT;
       if (pendingNodes.length > 0) {
         batch(() => {
           withChannel(channel, () => {
@@ -196,7 +223,7 @@ export function createPortalPump({
             // tree are skipped for free, or a queue headed by them would
             // spend whole frames building nothing.
             let progressed = false;
-            while (pendingNodes.length > 0 && (!progressed || now() < deadline)) {
+            while (pendingNodes.length > 0 && (!progressed || overdue || now() < deadline)) {
               const node = /** @type {Node} */ (pendingNodes.shift());
               pendingSet.delete(node);
               if (buildNode(node)) {
@@ -213,7 +240,10 @@ export function createPortalPump({
         const budget = Math.max(deadline - now(), 0);
         if (pendingNodes.length > 0) {
           channel.warm({ budget });
-        } else if (waited + (waitingSince === null ? 0 : now() - waitingSince) >= MAX_COMMIT_WAIT) {
+        } else if (
+          overdue ||
+          waited + (waitingSince === null ? 0 : now() - waitingSince) >= MAX_COMMIT_WAIT
+        ) {
           channel.flush({ budget: Infinity });
         } else {
           channel.flush({ budget });
@@ -236,7 +266,11 @@ export function createPortalPump({
         // taken, or the portal takes it without the channel.
         waited = 0;
         waitingSince = null;
-      } else if (!built) {
+        commitWaitingSince = null;
+        return finish(settled);
+      }
+      commitWaitingSince ??= tickStart;
+      if (!built) {
         // Still building. The frames a build spans do not count towards
         // the bound, so its reading gets what is left of it afterwards.
         if (waitingSince !== null) {
@@ -246,14 +280,25 @@ export function createPortalPump({
       } else if (!drained) {
         waitingSince ??= now();
       }
-      afterTick(settled);
-      if (!settled) {
-        return false;
-      }
-      onSettled();
-      return pendingNodes.length === 0 && channel.pendingCount === 0;
+      return finish(settled);
     },
   };
+
+  /**
+   * The end of every tick, settled or not; see `tick` for why the queue and
+   * the channel are checked again after `onSettled`.
+   *
+   * @param {boolean} settled
+   * @returns {boolean} whether the pump is finished
+   */
+  function finish(settled) {
+    afterTick(settled);
+    if (!settled) {
+      return false;
+    }
+    onSettled();
+    return pendingNodes.length === 0 && channel.pendingCount === 0;
+  }
 
   const schedule = () => {
     if (pendingNodes.length > 0 || channel.pendingCount > 0 || hasPendingCommit()) {

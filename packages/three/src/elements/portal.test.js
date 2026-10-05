@@ -35,7 +35,7 @@ const createPortal = (ctx, options = {}) =>
     ...options,
   });
 import { createPortalScheduler, PortalSchedulerContext } from "./portalScheduler.js";
-import { MAX_COMMIT_WAIT } from "./portalPump.js";
+import { MAX_BUILD_WAIT, MAX_COMMIT_WAIT } from "./portalPump.js";
 import {
   countingManager,
   dispatchFontsEvent,
@@ -3943,6 +3943,38 @@ describe("a panel that is always busy", () => {
       assert.ok(frames * 16 <= due + 3 * 16, `and no longer, took ${frames}`);
     } finally {
       clearInterval(timer);
+      await drain();
+      dispose();
+    }
+  });
+
+  test("a panel whose rows arrive faster than it builds them still loads", async () => {
+    // Ledger 12 on a slow runner: the charts' timers add rows and replace
+    // text faster than a slow frame's slice builds them, so the node queue
+    // is never empty at the end of a tick, and a wait that counts only the
+    // ticks with nothing left to build never runs. The bound on the whole
+    // wait, build included, builds what is queued and lands the panel.
+    const { portal, list, clock, dispose } = busyPanel();
+    try {
+      let frames = 0;
+      while (frames < 600 && portal.isLoading()) {
+        // A row with a child every frame: two nodes against the one a zero
+        // budget builds.
+        const row = document.createElement("div");
+        row.appendChild(document.createElement("span"));
+        list.appendChild(row);
+        clock.advance(16);
+        flushFrame();
+        await nextMacrotask();
+        frames += 1;
+      }
+      assert.equal(portal.isLoading(), false, "the panel loaded");
+      assert.ok(
+        frames * 16 >= MAX_BUILD_WAIT - 2 * 16,
+        `held until the bound on the whole wait, took ${frames}`,
+      );
+      assert.ok(frames * 16 <= MAX_BUILD_WAIT + 3 * 16, `and landed by it, took ${frames}`);
+    } finally {
       await drain();
       dispose();
     }

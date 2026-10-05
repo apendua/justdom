@@ -45,9 +45,9 @@ import { documentTime, sampleRenderingUpdates } from "./renderingUpdates.js";
  * to say which properties an animation actually touches). While the set is
  * non-empty, every frame emits invalidation batches scoped to the animating
  * elements — the same batches a mutation would have produced, so everything
- * downstream just works. A held clock emits nothing, and the portal holds
- * it while its panel loads. An empty set requests no frames: the idle cost
- * of all of this is nothing.
+ * downstream just works. A held clock emits no sample, only the settle of
+ * an animation that ends, and the portal holds it while its panel loads. An
+ * empty set requests no frames: the idle cost of all of this is nothing.
  */
 
 /**
@@ -441,17 +441,17 @@ export function createAnimationClock(container, emit, requestFrames, { held = ()
    */
   let recheck = false;
   /**
-   * When each animation that started during a hold, with the clock driving,
-   * was first seen. The hold keeps one account from when driving started,
-   * and an animation that started later is owed only its share of it, in
-   * proportion to the time since; the first driven frame after the hold
-   * reads this and clears it. Keyed by
-   * the animation and not its element, since an element already animating
-   * can start another.
+   * When each animation that started with the clock driving was first seen,
+   * during a hold or on the frame that ends one. The hold keeps one account
+   * from when driving started, and an animation that started later is owed
+   * only its share of it, in proportion to the time since; the next driven
+   * frame with time to make up reads this and clears it. Keyed by the
+   * animation and not its element, since an element already animating can
+   * start another.
    *
    * @type {Map<Animation, number>}
    */
-  const joinedDuringHold = new Map();
+  const joinedAt = new Map();
 
   /**
    * The animations the last sweep saw, kept to tell one that has just
@@ -489,7 +489,7 @@ export function createAnimationClock(container, emit, requestFrames, { held = ()
     // from its own start, not by everything since this account was opened.
     lastDrivenAt = null;
     lastDocumentTime = null;
-    joinedDuringHold.clear();
+    joinedAt.clear();
     lastSeen.clear();
   }
 
@@ -655,14 +655,15 @@ export function createAnimationClock(container, emit, requestFrames, { held = ()
       return;
     }
     const animations = container.getAnimations({ subtree: true });
-    // What started since the last sweep, while held with the clock driving,
-    // is owed only the time since now. No animation event is dispatched
-    // while the clock drives, so a sweep is the only way one is learned.
-    if (lastDrivenAt !== null && held()) {
+    // What started since the last sweep, with the clock driving, is owed
+    // only the time since now. No animation event is dispatched while the
+    // clock drives, so a sweep is the only way one is learned, and the
+    // first frame after a hold may be the sweep that learns it.
+    if (lastDrivenAt !== null) {
       const seenAt = performance.now();
       for (const animation of animations) {
         if (!lastSeen.has(animation)) {
-          joinedDuringHold.set(animation, seenAt);
+          joinedAt.set(animation, seenAt);
         }
       }
     }
@@ -693,7 +694,7 @@ export function createAnimationClock(container, emit, requestFrames, { held = ()
         // One that started during a hold is owed only its share of the
         // interval: what the timeline covered of the time since it joined is
         // in the same proportion as what it covered of the whole.
-        const joined = joinedDuringHold.get(animation);
+        const joined = joinedAt.get(animation);
         const owed = anchored ? shortfall : advanceBy;
         const delta = joined === undefined ? owed : (owed * (now - joined)) / advanceBy;
         if (delta <= 0) {
@@ -714,7 +715,7 @@ export function createAnimationClock(container, emit, requestFrames, { held = ()
           animation.currentTime = delta;
         }
       }
-      joinedDuringHold.clear();
+      joinedAt.clear();
     }
     /** @type {Map<Element, Map<string, Animated>>} */
     const seen = new Map();
@@ -835,7 +836,7 @@ export function createAnimationClock(container, emit, requestFrames, { held = ()
       // sweep is only there to catch what they miss.
       lastDrivenAt = null;
       lastDocumentTime = null;
-      joinedDuringHold.clear();
+      joinedAt.clear();
       const wanted = recheck;
       recheck = false;
       if (wanted || ticks % SWEEP_INTERVAL === 0) {

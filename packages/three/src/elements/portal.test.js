@@ -3651,6 +3651,23 @@ describe("a panel that is always busy", () => {
     element.dispatchEvent(syntheticEvent(type, { animationName: "spin" }));
 
   /**
+   * A timer at zero delay that flips the element's colour on every turn,
+   * faster than any frame reads it: a panel a timer keeps busy. Returns
+   * what stops it.
+   *
+   * @param {HTMLElement} element
+   * @returns {() => void}
+   */
+  const flicker = (element) => {
+    let tick = 0;
+    const timer = setInterval(() => {
+      tick += 1;
+      element.style.color = tick % 2 ? "red" : "blue";
+    }, 0);
+    return () => clearInterval(timer);
+  };
+
+  /**
    * A panel of a few rows, mounted at a zero budget, so that one frame
    * resolves one read and anything that invalidates the panel every frame
    * keeps its channel from ever emptying. It takes `performance.now` with
@@ -3922,11 +3939,7 @@ describe("a panel that is always busy", () => {
     const { portal, list, clock, dispose } = busyPanel({
       loadingFrame: { delay: 250, minimumTime: 1000 },
     });
-    let tick = 0;
-    const timer = setInterval(() => {
-      tick += 1;
-      list.style.color = tick % 2 ? "red" : "blue";
-    }, 0);
+    const stop = flicker(list);
     try {
       let frames = 0;
       while (frames < 300 && portal.isLoading()) {
@@ -3942,7 +3955,7 @@ describe("a panel that is always busy", () => {
       assert.ok(frames * 16 >= due - 2 * 16, `held until the frame was due, took ${frames}`);
       assert.ok(frames * 16 <= due + 3 * 16, `and no longer, took ${frames}`);
     } finally {
-      clearInterval(timer);
+      stop();
       await drain();
       dispose();
     }
@@ -4043,11 +4056,7 @@ describe("a panel that is always busy", () => {
     // panel faster than a slow frame reads it. The clock is no part of this,
     // so holding it does nothing; the time bound is what lands the mount.
     const { portal, list, clock, dispose } = busyPanel();
-    let tick = 0;
-    const timer = setInterval(() => {
-      tick += 1;
-      list.style.color = tick % 2 ? "red" : "blue";
-    }, 0);
+    const stop = flicker(list);
     try {
       let frames = 0;
       while (frames < 300 && portal.isLoading()) {
@@ -4066,7 +4075,7 @@ describe("a panel that is always busy", () => {
         `and landed by it and the frames the mount needs, took ${frames}`,
       );
     } finally {
-      clearInterval(timer);
+      stop();
       await drain();
       dispose();
     }

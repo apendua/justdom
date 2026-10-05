@@ -1030,6 +1030,44 @@ describe("animation clock with rendering updates suspended", () => {
     });
   });
 
+  test("an animation the frame that ends a hold is first to see is owed none of it", () => {
+    // A timer can start a Web Animation between the last held frame and
+    // the one that ends the hold, with no mutation to ask for a look. The
+    // frame that ends the hold is then the first sweep to see it, and it
+    // has started only now.
+    let held = true;
+    const { container, element, frames, clock, cleanup } = setup({ held: () => held });
+    const late = document.createElement("div");
+    container.appendChild(late);
+    withStalledClocks((time) => {
+      setDocumentTime(500);
+
+      try {
+        const early = fakeAnimation(element, 10_000);
+        const joined = fakeAnimation(late, 10_000);
+        /** @type {ReturnType<typeof fakeAnimation>[]} */
+        let running = [early];
+        // @ts-expect-error -- a minimal stand-in for the real thing.
+        container.getAnimations = () => running;
+        clock.sweep();
+        time.set(16);
+        frames.step();
+        time.set(PAST_THE_TIMEOUT);
+        frames.step();
+        time.set(PAST_THE_TIMEOUT + 2000);
+        frames.step();
+        running = [early, joined];
+        held = false;
+        time.advance(16);
+        frames.step();
+        assert.equal(early.currentTime, 2016, "the first by the whole hold");
+        assert.equal(joined.currentTime, 0, "the second by nothing yet");
+      } finally {
+        cleanup();
+      }
+    });
+  });
+
   test("leaves animations alone while the document is still rendering", () => {
     const { container, element, frames, clock, cleanup } = setup();
     withStalledClocks((time) => {

@@ -2413,6 +2413,51 @@ describe("createPortal", () => {
     portal.disconnect();
   });
 
+  test("a row taken out, put back and taken out in one flush is taken down", async () => {
+    // The flush lists the row as removed, added and removed. It is in the
+    // added nodes, so a removal that asked the record list whether the row
+    // had come back took it for a move and left its object in the scene,
+    // drawn for a row the page no longer has.
+    const manager = new InteractionManager();
+    const ctx = InteractionContext.set({}, manager);
+    const portal = createPortal(ctx, { budget: 0 });
+    const parent = new THREE.Group();
+    portal.addTo(parent);
+    const containerObject = parent.children[0];
+
+    /** @type {import("@apendua/justdom").Mountable | undefined} */
+    let mountable;
+    const tree = $("div");
+    const subscription = tree.subscribe((value) => {
+      mountable = value;
+    });
+    assert.ok(mountable);
+    portal.mount(mountable);
+    await settle(portal);
+
+    const containers = document.querySelectorAll("[data-xr-portal]");
+    const list = /** @type {HTMLElement} */ (containers[containers.length - 1].firstElementChild);
+    const row = document.createElement("div");
+    list.appendChild(row);
+    await drain();
+
+    const rootObject = /** @type {THREE.Object3D} */ (
+      containerObject.children.find((child) => !(child instanceof THREE.Mesh))
+    );
+    const rowObject = rootObject.children[0].children[0];
+    assert.ok(rowObject, "the row was built");
+
+    list.removeChild(row);
+    list.appendChild(row);
+    list.removeChild(row);
+    await drain();
+    assert.equal(rowObject.parent, null, "the row's object is out of the scene");
+
+    subscription.unsubscribe();
+    portal.disconnect();
+    await drain();
+  });
+
   test("an object built for a commit that never came is taken down with the panel", async () => {
     // Built in one frame, removed before the next: the object is in the
     // tree no longer and in the scene never, so neither of the walks a

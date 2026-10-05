@@ -1487,15 +1487,12 @@ function buildPortal(ctx, ownOptions = {}) {
     }
     projectChanges(() => {
       mirror.ingest(mutationList);
-      /** @type {Set<Node>} */
-      const alreadySeen = new Set();
       for (const mutation of mutationList) {
         if (mutation.type !== "childList") {
           continue;
         }
         sawContent = true;
         mutation.addedNodes.forEach((node) => {
-          alreadySeen.add(node);
           // A node the portal has never seen goes to the queue and gets
           // built when the pump reaches it — that is the slicing. One it
           // has seen — a reinsertion, a move — already paid its cost and
@@ -1523,9 +1520,9 @@ function buildPortal(ctx, ownOptions = {}) {
           continue;
         }
         mutation.removedNodes.forEach((node) => {
-          // If this node was added somewhere else it does not make sense to
-          // clean it up, so if we detect that it was already seen, we skip it.
-          if (!alreadySeen.has(node)) {
+          // Moved if the tree still holds it; gone otherwise, however many
+          // times the flush put it back in between.
+          if (!containerElement.contains(node)) {
             detach(node);
           }
         });

@@ -3717,16 +3717,18 @@ describe("a panel that is always busy", () => {
     root.appendChild(label);
     document.body.appendChild(root);
     const portal = createPortal(ctx, { root });
-    portal.addTo(new THREE.Group());
-    await settle(portal);
-
-    /** @type {Node[]} */
-    let seen = [];
-    const reader = new Effect(() => {
-      seen = getChildNodes(label);
-    });
-    assert.deepEqual(seen, [count]);
+    /** @type {Effect | undefined} */
+    let reader;
     try {
+      portal.addTo(new THREE.Group());
+      await settle(portal);
+
+      /** @type {Node[]} */
+      let seen = [];
+      reader = new Effect(() => {
+        seen = getChildNodes(label);
+      });
+      assert.deepEqual(seen, [count]);
       // Give the next frame work of its own, so the pump ticks in it.
       root.setAttribute("data-step", "1");
       await nextMacrotask();
@@ -3736,7 +3738,7 @@ describe("a panel that is always busy", () => {
       flushFrame();
       assert.deepEqual(seen, [], "the tick read the page as the handler left it");
     } finally {
-      reader.dispose();
+      reader?.dispose();
       await drain();
       portal.disconnect();
       root.remove();

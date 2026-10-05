@@ -336,9 +336,10 @@ const SWEEP_INTERVAL = 60;
  *   each style as it builds it; a sample per frame would only undo what the
  *   mount had read, and under an endless animation the mount would never
  *   finish. Where the clock drives the animations itself, with the page's
- *   rendering suspended, a held frame drives and reads nothing, and the
- *   first frame after the hold advances them by the whole of it, or, for
- *   one that started during it, by the time since it started. Elsewhere
+ *   rendering suspended, a held frame drives nothing and reads only for the
+ *   one more look a mutation asks for, and the first frame after the hold
+ *   advances them by the whole of it, or, for one that started during it,
+ *   by the time since it started. Elsewhere
  *   membership is kept up all the while. Either way the first frame after
  *   the hold names every element still animating, and an animation that
  *   ends is still settled, since an end is said once and not every frame.
@@ -439,27 +440,25 @@ export function createAnimationClock(container, emit, requestFrames, { held = ()
    */
   let recheck = false;
   /**
-   * When each element that joined the membership during a hold, with the
-   * clock driving, joined it. The hold keeps one account from when driving
-   * started, and an animation that started later is owed only the time
-   * since it started; the first driven frame after the hold reads this and
-   * clears it.
+   * When each animation that started during a hold, with the clock driving,
+   * was first seen. The hold keeps one account from when driving started,
+   * and an animation that started later is owed only the time since; the
+   * first driven frame after the hold reads this and clears it. Keyed by
+   * the animation and not its element, since an element already animating
+   * can start another.
    *
-   * @type {Map<Element, number>}
+   * @type {Map<Animation, number>}
    */
   const joinedDuringHold = new Map();
 
   /**
-   * Note when `element` joined, if it joined during a hold with the clock
-   * driving.
+   * The animations the last sweep saw, kept to tell one that has just
+   * started from one that was running already. One set, refilled by each
+   * sweep, rather than one per sweep.
    *
-   * @param {Element} element
+   * @type {Set<Animation>}
    */
-  function noteJoin(element) {
-    if (lastDrivenAt !== null && !animating.has(element) && held()) {
-      joinedDuringHold.set(element, performance.now());
-    }
-  }
+  const lastSeen = new Set();
 
   function start() {
     if (!stopFrames) {
@@ -559,7 +558,6 @@ export function createAnimationClock(container, emit, requestFrames, { held = ()
    * @param {Animated} animated
    */
   function add(element, key, animated) {
-    noteJoin(element);
     let keys = animating.get(element);
     if (!keys) {
       keys = new Map();
@@ -612,12 +610,30 @@ export function createAnimationClock(container, emit, requestFrames, { held = ()
    * @param {number} [browserAdvance] How much of that the document's own
    *   timeline covered — what the browser has already carried its animations
    *   through, and so must not be charged for twice.
+   * @param {number} [now] The `performance.now()` the elapsed time was
+   *   measured against. Required with `advanceBy`: an animation that
+   *   started during a hold is advanced by the time since it started,
+   *   which is `now` less when it was first seen.
    */
   function sweep(advanceBy = 0, browserAdvance = 0, now = 0) {
     if (typeof container.getAnimations !== "function") {
       return;
     }
     const animations = container.getAnimations({ subtree: true });
+    // What started since the last sweep, while held with the clock driving,
+    // is owed only the time since now. No animation event is dispatched
+    // while the clock drives, so a sweep is the only way one is learned.
+    const noting = lastDrivenAt !== null && held();
+    const seenAt = noting ? performance.now() : 0;
+    for (const animation of animations) {
+      if (noting && !lastSeen.has(animation)) {
+        joinedDuringHold.set(animation, seenAt);
+      }
+    }
+    lastSeen.clear();
+    for (const animation of animations) {
+      lastSeen.add(animation);
+    }
     if (advanceBy > 0) {
       // What is left for us to do. A timeline that has stopped with the
       // frames leaves the whole of it; one that keeps running while the page
@@ -642,8 +658,7 @@ export function createAnimationClock(container, emit, requestFrames, { held = ()
         // why a panel can look dead while the panel beside it looks alive.
         const anchored = typeof animation.startTime === "number";
         // One that started during a hold is owed only the time since then.
-        const target = /** @type {KeyframeEffect | null} */ (animation.effect)?.target;
-        const joined = isElement(target) ? joinedDuringHold.get(target) : undefined;
+        const joined = joinedDuringHold.get(animation);
         const owed = anchored ? shortfall : advanceBy;
         const delta = joined === undefined ? owed : Math.min(owed, now - joined);
         if (delta <= 0) {
@@ -716,9 +731,6 @@ export function createAnimationClock(container, emit, requestFrames, { held = ()
     for (const [element] of finished) {
       narrow.delete(element);
     }
-    for (const element of seen.keys()) {
-      noteJoin(element);
-    }
     animating.clear();
     for (const [element, keys] of seen) {
       animating.set(element, keys);
@@ -742,6 +754,11 @@ export function createAnimationClock(container, emit, requestFrames, { held = ()
       if (!container.contains(element)) {
         animating.delete(element);
         narrow.delete(element);
+        for (const animation of joinedDuringHold.keys()) {
+          if (/** @type {KeyframeEffect | null} */ (animation.effect)?.target === element) {
+            joinedDuringHold.delete(animation);
+          }
+        }
       }
     }
     if (sampleRenderingUpdates()) {
@@ -752,8 +769,9 @@ export function createAnimationClock(container, emit, requestFrames, { held = ()
         // advances by all of it, and settles whatever ended meanwhile. An
         // empty membership, an element that left the tree, holds no frames
         // here either. The one more look a mutation asked for is still
-        // taken: it reads, and writes nothing.
-        if (recheck && !animating.size) {
+        // taken, whatever is animating already: it reads, and writes
+        // nothing, and notes what started when it started.
+        if (recheck) {
           recheck = false;
           sweep();
         }
@@ -786,6 +804,7 @@ export function createAnimationClock(container, emit, requestFrames, { held = ()
       // sweep is only there to catch what they miss.
       lastDrivenAt = null;
       lastDocumentTime = null;
+      joinedDuringHold.clear();
       const wanted = recheck;
       recheck = false;
       if (wanted || ticks % SWEEP_INTERVAL === 0) {
@@ -868,7 +887,9 @@ export function createAnimationClock(container, emit, requestFrames, { held = ()
      */
     sweep() {
       sweep();
-      if (!animating.size) {
+      // A held frame does not sweep, so while held the look is asked for
+      // even with something animating already: it is the only one coming.
+      if (!animating.size || held()) {
         // Nothing is animating *yet*. A transition begins with the style
         // change this mutation carried, and whether the browser has created
         // it by the time a microtask asks `getAnimations()` is a question of
@@ -891,6 +912,7 @@ export function createAnimationClock(container, emit, requestFrames, { held = ()
       container.removeEventListener("animationcancel", onAnimationRemove);
       animating.clear();
       joinedDuringHold.clear();
+      lastSeen.clear();
       stop();
     },
   };

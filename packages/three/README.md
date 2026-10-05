@@ -757,22 +757,20 @@ the scroll section gives.
 
 That frame may never come on its own. Something that changes the panel on
 every frame, such as an endless animation, a timer faster than a slow frame
-or a drag, undoes each frame's reading before the next frame finishes it.
-So the wait has a bound: once a panel has nothing left to build and has
-waited a second (`MAX_COMMIT_WAIT` in `portalPump.js`) for its reading to
-finish, the next frame reads everything at once, whatever the budget, and
-the update lands. Under input that never stops, that means one long frame
-about once a second, loading or loaded. A loading frame still up for its
-minimum time holds the panel past the second, and until it is due every
-frame reads everything at once; the panel lands on the frame it is due.
-Rows can arrive faster than a slow frame builds them, too, so that the
-panel always has something left to build. Once the page adds a node to
-the panel five seconds or more into the wait (`MAX_BUILD_WAIT`), one
-frame builds everything queued and reads everything at once; a single
-row is enough. A loading frame still up for its minimum time holds this
-too: until it is due, every frame builds what arrives and reads
-everything at once. A mount the page does not add to is left to its budget,
-however long it takes.
+or a drag, undoes each frame's reading before the next frame finishes it. So the
+wait has a bound: once a panel has nothing left to build and has waited a second
+(`MAX_COMMIT_WAIT` in `portalPump.js`) for its reading to finish, the next frame
+reads everything at once, whatever the budget, and the update lands. Under input
+that never stops, that means one long frame about once a second, loading or
+loaded. A loading frame still up for its minimum time holds the panel past the
+second, and until it is due every frame reads everything at once; the panel
+lands on the frame it is due. Rows can arrive faster than a slow frame builds
+them, too, so that the panel always has something left to build. Once the page
+adds a node to the panel five seconds or more into the wait (`MAX_BUILD_WAIT`),
+one frame builds everything queued and reads everything at once; a single row is
+enough. A loading frame still up for its minimum time holds this too: until it
+is due, every frame builds what arrives and reads everything at once. A mount
+the page does not add to is left to its budget, however long it takes.
 A panel that has to follow the hand on every frame wants `atomic: false`
 instead, which runs the update's writes under the budget and lets the
 panel change in instalments; `atomic` in `PortalOptions` says what that
@@ -1390,15 +1388,15 @@ elements or the transitions playing on them.
 
 ## Animation
 
-CSS transitions, keyframe animations and Web Animations play inside a
-portal: while anything is animating, the affected elements are sampled once
-per frame — through the same invalidation path a mutation takes — and the
-moment nothing is, the sampling stops. An idle panel costs nothing. A panel
-still loading is not sampled frame by frame: nobody sees it yet, its mount
-reads each element's style as it builds it, and a sample every frame would
-undo that reading. An animation that ends during the load is settled once,
-as it would be in a loaded panel. The first frame after the load samples every element still
-animating, so the panel appears where its animations are.
+CSS transitions, keyframe animations and Web Animations play inside a portal:
+while anything is animating, the affected elements are sampled once per frame —
+through the same invalidation path a mutation takes — and the moment nothing is,
+the sampling stops. An idle panel costs nothing. A panel still loading is not
+sampled frame by frame: nobody sees it yet, its mount reads each element's style
+as it builds it, and a sample every frame would undo that reading. An animation
+that ends during the load is settled once, as it would be in a loaded panel. The
+first frame after the load samples every element still animating, so the panel
+appears where its animations are.
 Inline-style writes from a frame loop work too; each one is an ordinary
 mutation scoped to the element it touched. Drive that loop with
 `useFrame(ctx, fn)` rather than with `requestAnimationFrame`, though. Once a

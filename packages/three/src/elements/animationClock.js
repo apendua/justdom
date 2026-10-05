@@ -338,8 +338,9 @@ const SWEEP_INTERVAL = 60;
  *   never finish. Where the clock drives the animations itself, with the
  *   page's rendering suspended, a held frame drives nothing, writing no
  *   `currentTime`, and still looks for what started and what ended. The
- *   first frame after the hold advances them by the whole of it, or, for one
- *   that started during it, by the time since it started. Elsewhere
+ *   first frame after the hold advances them by what the hold owes them,
+ *   or, for one that started during it, by its share of that, which for one
+ *   the timeline is not carrying is the time since it started. Elsewhere
  *   membership is kept up all the while. Either way the first frame after
  *   the hold names every element still animating, and an animation that ends
  *   is still settled, since an end is said once and not every frame.
@@ -442,8 +443,9 @@ export function createAnimationClock(container, emit, requestFrames, { held = ()
   /**
    * When each animation that started during a hold, with the clock driving,
    * was first seen. The hold keeps one account from when driving started,
-   * and an animation that started later is owed only the time since; the
-   * first driven frame after the hold reads this and clears it. Keyed by
+   * and an animation that started later is owed only its share of it, in
+   * proportion to the time since; the first driven frame after the hold
+   * reads this and clears it. Keyed by
    * the animation and not its element, since an element already animating
    * can start another.
    *
@@ -787,11 +789,6 @@ export function createAnimationClock(container, emit, requestFrames, { held = ()
       if (!container.contains(element)) {
         animating.delete(element);
         narrow.delete(element);
-        for (const animation of joinedDuringHold.keys()) {
-          if (/** @type {KeyframeEffect | null} */ (animation.effect)?.target === element) {
-            joinedDuringHold.delete(animation);
-          }
-        }
       }
     }
     if (sampleRenderingUpdates()) {

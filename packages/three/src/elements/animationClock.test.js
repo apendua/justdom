@@ -587,9 +587,7 @@ describe("animation clock with rendering updates suspended", () => {
 
   test("drives animations itself and needs no events to find them", () => {
     const { container, element, emitted, frames, clock, cleanup } = setup();
-    withStalledClocks(() => {
-      let clockTime = 0;
-      performance.now = () => clockTime;
+    withStalledClocks((time) => {
       setDocumentTime(500);
 
       try {
@@ -606,24 +604,24 @@ describe("animation clock with rendering updates suspended", () => {
 
         // First frame: the frame request has only just gone in, and one frame
         // that has not come back yet is not a stopped browser.
-        clockTime = 16;
+        time.set(16);
         frames.step();
         assert.equal(animation.currentTime, 0);
 
         // Long enough now that no rendering step can be coming. The clock
         // takes over — and its own first frame moves nothing, because what it
         // knows is when it started driving, not what the browser had.
-        clockTime = PAST_THE_TIMEOUT;
+        time.set(PAST_THE_TIMEOUT);
         frames.step();
         assert.equal(animation.currentTime, 0);
-        clockTime = PAST_THE_TIMEOUT + 16;
+        time.set(PAST_THE_TIMEOUT + 16);
         frames.step();
         assert.equal(animation.currentTime, 16);
         assert.ok(emitted.length > 0);
 
         // Driven past its end, it retires — and the settle sample still goes
         // out, though no `transitionend` will ever arrive to say so.
-        clockTime = PAST_THE_TIMEOUT + 216;
+        time.set(PAST_THE_TIMEOUT + 216);
         frames.step();
         assert.equal(animation.playState, "finished");
         assert.equal(frames.running, false);
@@ -1034,9 +1032,7 @@ describe("animation clock with rendering updates suspended", () => {
 
   test("leaves animations alone while the document is still rendering", () => {
     const { container, element, frames, clock, cleanup } = setup();
-    withStalledClocks(() => {
-      let clockTime = 0;
-      performance.now = () => clockTime;
+    withStalledClocks((time) => {
       const step = renderingStep();
 
       try {
@@ -1050,7 +1046,7 @@ describe("animation clock with rendering updates suspended", () => {
         // fast — which is the emulator, where the page presents and renders
         // both.
         for (const real of [16, 32, 48, 400, 800]) {
-          clockTime = real;
+          time.set(real);
           step.run();
           frames.step();
         }
@@ -1069,9 +1065,7 @@ describe("animation clock with rendering updates suspended", () => {
     // a clock that took the page having stopped as licence to drive
     // everything would play them at double speed.
     const { container, element, frames, clock, cleanup } = setup();
-    withStalledClocks(() => {
-      let clockTime = 0;
-      performance.now = () => clockTime;
+    withStalledClocks((time) => {
       setDocumentTime(1000);
 
       try {
@@ -1081,7 +1075,7 @@ describe("animation clock with rendering updates suspended", () => {
         clock.sweep();
 
         for (const elapsed of [PAST_THE_TIMEOUT, PAST_THE_TIMEOUT + 16, PAST_THE_TIMEOUT + 32]) {
-          clockTime = elapsed;
+          time.set(elapsed);
           setDocumentTime(1000 + elapsed);
           frames.step();
         }
@@ -1100,9 +1094,7 @@ describe("animation clock with rendering updates suspended", () => {
     // sits at its first value until something moves it, which is a panel that
     // looks dead while the panel beside it looks alive.
     const { container, element, frames, clock, cleanup } = setup();
-    withStalledClocks(() => {
-      let clockTime = 0;
-      performance.now = () => clockTime;
+    withStalledClocks((time) => {
       setDocumentTime(1000);
 
       try {
@@ -1115,7 +1107,7 @@ describe("animation clock with rendering updates suspended", () => {
         frames.step();
 
         for (const elapsed of [PAST_THE_TIMEOUT, PAST_THE_TIMEOUT + 16, PAST_THE_TIMEOUT + 32]) {
-          clockTime = elapsed;
+          time.set(elapsed);
           setDocumentTime(1000 + elapsed);
           frames.step();
         }
@@ -1128,9 +1120,7 @@ describe("animation clock with rendering updates suspended", () => {
 
   test("a timeline running at a fraction of the frames is topped up, not doubled", () => {
     const { container, element, frames, clock, cleanup } = setup();
-    withStalledClocks(() => {
-      let clockTime = 0;
-      performance.now = () => clockTime;
+    withStalledClocks((time) => {
       setDocumentTime(1000);
 
       try {
@@ -1141,10 +1131,10 @@ describe("animation clock with rendering updates suspended", () => {
         frames.step();
 
         // Half the elapsed time covered by the browser, half owed.
-        clockTime = PAST_THE_TIMEOUT;
+        time.set(PAST_THE_TIMEOUT);
         setDocumentTime(1000 + PAST_THE_TIMEOUT);
         frames.step();
-        clockTime = PAST_THE_TIMEOUT + 16;
+        time.set(PAST_THE_TIMEOUT + 16);
         setDocumentTime(1000 + PAST_THE_TIMEOUT + 8);
         frames.step();
         assert.equal(animation.currentTime, 8);
@@ -1161,9 +1151,7 @@ describe("animation clock with rendering updates suspended", () => {
     // later, and with nothing animating no frame is either — so the clock
     // holds one.
     const { container, element, frames, clock, cleanup } = setup();
-    withStalledClocks(() => {
-      let clockTime = 0;
-      performance.now = () => clockTime;
+    withStalledClocks((time) => {
       setDocumentTime(500);
 
       try {
@@ -1178,17 +1166,17 @@ describe("animation clock with rendering updates suspended", () => {
 
         // Still nothing on the second look: there was nothing to find, and
         // the loop goes back to costing nothing.
-        clockTime = 16;
+        time.set(16);
         frames.step();
         assert.equal(frames.running, false);
 
         // And the case the second look is there for: the transition the
         // mutation started shows up once the browser has caught up with it.
         running = [fakeAnimation(element, 100)];
-        clockTime = 32;
+        time.set(32);
         clock.sweep();
         assert.equal(frames.running, true);
-        clockTime = 48;
+        time.set(48);
         frames.step();
         assert.equal(frames.running, true, "found, and now being sampled");
       } finally {

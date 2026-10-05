@@ -782,10 +782,11 @@ one frame builds everything queued and reads everything at once; a single row is
 enough. A loading frame still up for its minimum time holds this too: until it
 is due, every frame builds what arrives and reads everything at once. A mount
 the page does not add to is left to its budget, however long it takes.
-A panel that has to follow the hand on every frame wants `atomic: false`
-instead, which runs the update's writes under the budget and lets the
-panel change in instalments; `atomic` in `PortalOptions` says what that
-trades.
+A drag whose reading fits the frame's budget commits every frame and follows
+the hand on an atomic panel too. A panel whose reading overruns the budget on
+every frame would land once a second under a drag, and wants `atomic: false`
+instead, which runs the update's writes under the budget and lets the panel
+change in instalments; `atomic` in `PortalOptions` says what that trades.
 
 ```js
 dom(ctx, panel, [set({ position })], {

@@ -67,12 +67,14 @@ import { batch, Effect, withChannel } from "@apendua/signal";
 
 /**
  * How long, in milliseconds, a pump waits on a channel that will not empty
- * before it empties it in one go. What counts is the time spent in ticks that
- * find no node left to build and the channel still holding work the commit
- * waits for. A tick that ends with nodes still queued, a build spanning frames,
- * pauses the count from its own start, and the build's reading gets what is
- * left of the bound afterwards; it does not start the count again, or rows that
- * keep arriving would hold the panel for as long as they came. The count ends
+ * before it empties it in one go. The count is wall-clock time, the frames
+ * between ticks included: it runs from the end of the first tick that finds
+ * no node left to build and the channel still holding work the commit waits
+ * for, to the start of the next tick that ends with nodes still queued. That
+ * tick, a build spanning frames, pauses the count, and a build a tick
+ * finishes is counted with it. The build's reading gets what is left of the
+ * bound afterwards; a pause does not start the count again, or rows that keep
+ * arriving would hold the panel for as long as they came. The count ends
  * only when a commit is taken, or the portal commits without the channel
  * (`commitsEarly`). A commit the portal declines, holding a finished mount for
  * its loading frame's minimum time, leaves it running, so past the bound the
@@ -99,7 +101,7 @@ export const MAX_COMMIT_WAIT = 1000;
 /**
  * How long, in milliseconds, a commit waits on a build the page keeps adding to
  * before the pump builds whatever is queued and sweeps the channel in one go.
- * `MAX_COMMIT_WAIT` counts only the ticks with nothing left to build, so it
+ * `MAX_COMMIT_WAIT` pauses on every tick that ends with nodes queued, so it
  * never runs for a queue that arrivals keep fed faster than a frame's slice
  * builds it: the desk's charts, whose timers replace text and add log rows, on
  * a runner drawing a few frames a second. The wait counts from the first tick
@@ -107,14 +109,15 @@ export const MAX_COMMIT_WAIT = 1000;
  * portal commits without the channel. A commit the portal declines after the
  * overdue build leaves the bound in force, so the pump builds what arrives and
  * sweeps unbudgeted on every tick until the commit is taken. The pump lands the
- * build once a node arrives from the page, not from a build, this long into the
- * wait. One node is enough: the rule does not ask whether the build is keeping
- * up, since a breadth-first walk's queue grows while it is making headway and
- * no count of the queue tells a slow mount from a flooded one. So a slow mount
- * that the page adds a single row to five seconds in builds the rest in one
- * frame. A build fed only by its own content, a large mount on a slow device,
- * is left to its budget however long it takes, since building the rest of it in
- * one frame is the stall the budget exists to avoid.
+ * build once a node new to the queue arrives from the page, not from a build,
+ * this long into the wait; a queued node the page moves is not new. One node is
+ * enough: the rule does not ask whether the build is keeping up, since a
+ * breadth-first walk's queue grows while it is making headway and no count of
+ * the queue tells a slow mount from a flooded one. So a slow mount that the
+ * page adds a single row to five seconds in builds the rest in one frame. A
+ * build fed only by its own content, a large mount on a slow device, is left to
+ * its budget however long it takes, since building the rest of it in one frame
+ * is the stall the budget exists to avoid.
  */
 export const MAX_BUILD_WAIT = 5000;
 
@@ -387,10 +390,12 @@ export function createPortalPump({
      * @param {Node} node
      */
     enqueue(node) {
-      if (!building) {
-        arrivedAt = channel.now();
-      }
       if (!pendingSet.has(node)) {
+        // Only what joins the queue arrives: a node the page moves while it
+        // is still queued is reported added again and changes nothing.
+        if (!building) {
+          arrivedAt = channel.now();
+        }
         pendingSet.add(node);
         pendingNodes.push(node);
       }

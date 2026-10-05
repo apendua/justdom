@@ -917,7 +917,8 @@ describe("animation clock with rendering updates suspended", () => {
 
   test("a held clock lets go of the frames once what it held has ended", () => {
     // No event says an animation ended while the clock drives, so a held
-    // clock looks now and then, as the browser-driving branch does.
+    // clock looks every frame, and the first look after the end lets the
+    // frames go.
     const { container, element, frames, clock, cleanup } = setup({ held: () => true });
     withStalledClocks((time) => {
       setDocumentTime(500);
@@ -933,10 +934,8 @@ describe("animation clock with rendering updates suspended", () => {
         frames.step();
         // Carried to its end by a timeline that keeps running.
         fade.currentTime = 100;
-        for (let tick = 0; tick < 70 && frames.running; tick++) {
-          time.advance(16);
-          frames.step();
-        }
+        time.advance(16);
+        frames.step();
         assert.equal(frames.running, false, "the frames are let go");
       } finally {
         cleanup();

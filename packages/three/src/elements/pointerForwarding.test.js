@@ -1603,6 +1603,28 @@ describe("a ray's pointer events", () => {
     page.teardown();
   });
 
+  test("leave as a browser's do, the pointer first, when a hand that holds nothing goes", async () => {
+    const page = await mirrored((place) => {
+      place("div", "btn", [20, 20, 100, 40]).style.cursor = "pointer";
+    });
+    const hand = rayHand(page.manager);
+    hand.aim(page.panel, 70, 40);
+    const { heard, stop } = hearing(["pointerout", "pointerleave", "mouseout", "mouseleave"]);
+    hand.disconnect();
+    hand.frame();
+    stop();
+    assert.deepEqual(heard, [
+      "pointerout #btn",
+      "pointerleave #btn",
+      "pointerleave #root",
+      "mouseout #btn",
+      "mouseleave #btn",
+      "mouseleave #root",
+    ]);
+    hand.remove();
+    page.teardown();
+  });
+
   test("captured on one panel, take the mouse off the captor when the hand goes", async () => {
     const page = await mirrored(drawing);
     const other = await mirrored(

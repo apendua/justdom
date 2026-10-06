@@ -12,6 +12,7 @@ import {
   lazyPanel,
   moveInit,
   planeInit,
+  writeClient,
   pressInit,
   probePanel,
   releaseInit,
@@ -258,10 +259,12 @@ function handOf(controller) {
         cancelPointer(controller);
       }
       endPress(controller);
-      // The pointer is out of every panel, and the mouse goes the same
-      // way: a capture held it over its captor wherever the ray was, and
-      // the ray's own leave reaches only the panel it was on.
-      bringUpElsewhere(controller, undefined, { nowhere: true });
+      // The hand is over nothing now, on any panel: its pointer, which a
+      // cancel has already taken out wherever there was a press, and then
+      // the mouse, as a browser's leaves come. A capture held them over its
+      // captor wherever the ray was, and the ray's own leave reaches only
+      // the panel it was on.
+      bringUpElsewhere(controller, undefined, { pointer: true, nowhere: true });
     });
   }
   return hand;
@@ -560,10 +563,7 @@ function placeless(controller, buttons) {
   placelessInit.pointerId = hand?.pointerId ?? 0;
   placelessInit.isPrimary = controller === primary;
   placelessInit.relatedTarget = null;
-  placelessInit.clientX = 0;
-  placelessInit.clientY = 0;
-  placelessInit.screenX = 0;
-  placelessInit.screenY = 0;
+  writeClient(placelessInit, 0, 0);
   return placelessInit;
 }
 
@@ -1827,10 +1827,7 @@ export function createPanelForwarder(ctx, container) {
       const own = panel();
       if (own && element && sampleRay(controller, container, onPlane, inPanel)) {
         clientPointAt(own, inPanel.x, inPanel.y, client);
-        init.clientX = client.x;
-        init.clientY = client.y;
-        init.screenX = client.x;
-        init.screenY = client.y;
+        writeClient(init, client.x, client.y);
       }
       if (pointer && hand && typeof PointerEvent === "function") {
         cross(hand.chain, element, init, "pointer");

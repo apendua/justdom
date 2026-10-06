@@ -416,25 +416,27 @@ const init = {
 function writePoint(panel, e, on) {
   if (e.intersection && panel && on) {
     clientPointOf(panel, e.intersection.point, client);
-    writeClient(client.x, client.y);
+    writeClient(init, client.x, client.y);
   } else {
-    writeClient(0, 0);
+    writeClient(init, 0, 0);
   }
 }
 
 /**
- * Write a point on the page into `init`, as `clientX` and `clientY`, and as
- * `screenX` and `screenY` too, since a panel has no screen of its own.
+ * Write a point on the page into an event's init, as `clientX` and
+ * `clientY`, and as `screenX` and `screenY` too, since a panel has no
+ * screen of its own.
  *
+ * @param {MouseEventInit} target
  * @param {number} x
  * @param {number} y
  * @returns {void}
  */
-function writeClient(x, y) {
-  init.clientX = x;
-  init.clientY = y;
-  init.screenX = x;
-  init.screenY = y;
+export function writeClient(target, x, y) {
+  target.clientX = x;
+  target.clientY = y;
+  target.screenX = x;
+  target.screenY = y;
 }
 
 /**
@@ -536,7 +538,7 @@ export function moveInit(panel, e) {
 export function planeInit(panel, x, y) {
   writeMove();
   clientPointAt(panel, x, y, client);
-  writeClient(client.x, client.y);
+  writeClient(init, client.x, client.y);
   return init;
 }
 

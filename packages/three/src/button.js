@@ -383,9 +383,10 @@ export function createSessionButton(
    * @returns {void}
    */
   function offer() {
-    const xr = /** @type {(XRSystem & {
-     *   offerSession?: (mode: XRSessionMode, init?: XRSessionInit) => Promise<XRSession>;
-     * }) | undefined} */ (navigator.xr);
+    const xr =
+      /** @type {(XRSystem & {
+       *   offerSession?: (mode: XRSessionMode, init?: XRSessionInit) => Promise<XRSession>;
+       * }) | undefined} */ (navigator.xr);
     if (!offerSession || !xr || typeof xr.offerSession !== "function" || phase !== "idle") {
       return;
     }

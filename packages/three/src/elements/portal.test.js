@@ -3218,7 +3218,7 @@ describe("mounting a tree justdom did not build", () => {
           throw new Error("Cannot replace a segment that is not in a tree.");
         }
         parent.insertBefore(node, first);
-        for (let current = /** @type {Node | null} */ (first); current; ) {
+        for (let current = /** @type {Node | null} */ (first); current;) {
           const next = current.nextSibling;
           parent.removeChild(current);
           current = current === last ? null : next;

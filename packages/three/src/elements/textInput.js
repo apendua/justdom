@@ -266,7 +266,7 @@ function installValueHooks(element) {
   if (!Object.prototype.hasOwnProperty.call(element, "value")) {
     /** @type {PropertyDescriptor | undefined} */
     let descriptor;
-    for (let proto = Object.getPrototypeOf(element); proto && !descriptor; ) {
+    for (let proto = Object.getPrototypeOf(element); proto && !descriptor;) {
       descriptor = Object.getOwnPropertyDescriptor(proto, "value");
       proto = Object.getPrototypeOf(proto);
     }

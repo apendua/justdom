@@ -1381,9 +1381,10 @@ text, which writes no depth, in front of the boxes inside the dial it is laid ov
 opaque card hides what it covers in either order and keeps the order of its siblings; text that
 overflows it is the one mark it does not cover. Only the stepped box itself is asked, so a
 positioned wrapper with no background around an opaque card draws after what it covers, and a board
-of such cards takes a box bucket and a text bucket per card, each a draw call per eye, where opaque
-cards alone would share them. A box anchored above a scroller that its siblings scroll in counts as
-covering all of them, so its lift and theirs stay put while the list scrolls.
+of such cards takes two box buckets and a text bucket per card, the wrapper's quad being batched
+too, each a draw call per eye, where opaque cards alone would share them. A box anchored above a
+scroller that its siblings scroll in counts as covering all of them, so its lift and theirs stay put
+while the list scrolls.
 
 A native `<select>` cannot work here, layers or not: `<option>` has no CSS box to mirror, and the
 list the browser pops up is chrome rather than DOM, so none of it reaches the scene. Nor can the

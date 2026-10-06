@@ -22,7 +22,6 @@ import { markedBox } from "./listMarker.js";
 import { installRange } from "../test/textRange.js";
 import { stubCanvas } from "../test/stubCanvas.js";
 import { isRunMesh } from "../test/runMesh.js";
-import { paintSlot } from "../svg/shape.js";
 
 /**
  * @import { InteractionManager } from "../interactions.js";
@@ -561,13 +560,24 @@ function setupSiblings() {
     place(cssText, rect, into = parent) {
       const element = document.createElement("div");
       element.style.cssText = cssText;
+      this.adopt(element, rect, into);
+      return element;
+    },
+    /**
+     * Put any element in `into`, laid out at `rect` and mirrored, but not
+     * drawn: a field, a list item or an `<svg>` as much as a `div`.
+     *
+     * @param {Element} element
+     * @param {[number, number, number, number]} rect
+     * @param {HTMLElement} [into]
+     */
+    adopt(element, rect, into = parent) {
       into.appendChild(element);
       layout(element, () => rect);
       mirror.adopt(element);
       // As the portal's observer would, or every sibling read after the
       // first goes on seeing the child list from before it.
       mirror.childListChanged(into);
-      return element;
     },
     /** @param {HTMLElement} element */
     draw(element) {
@@ -1292,8 +1302,8 @@ describe("marks stepped over a box", () => {
     const restore = installRange();
     const gauge = setupSiblings();
     try {
-      const window = gauge.add("position: relative; overflow: hidden", [0, 50, 400, 150]);
-      const parts = dialWithCaption(gauge, "", window);
+      const clip = gauge.add("position: relative; overflow: hidden", [0, 50, 400, 150]);
+      const parts = dialWithCaption(gauge, "", clip);
       const run = gauge.write(parts.caption, "LOAD");
 
       assertDrawsAfterDial(gauge, run, parts);
@@ -1389,7 +1399,7 @@ describe("marks stepped over a box", () => {
       const parts = dialWithCaption(gauge);
       const item = document.createElement("li");
       item.style.cssText = "display: list-item; list-style-type: disc";
-      adoptInto(gauge, parts.caption, item, [50, 60, 70, 80]);
+      gauge.adopt(item, [50, 60, 70, 80], parts.caption);
       const object = gauge.drawWith(item, (ctx) => markedBox(ctx, item));
 
       const marker = findMesh(object, isRunMesh);
@@ -1403,43 +1413,25 @@ describe("marks stepped over a box", () => {
   });
 
   test("an <svg> laid over a dial paints all of itself after the dial's face", () => {
-    // An `<svg>` paints its shapes in a slot from its content order up to
-    // the next level (`paintSlot`), so the slot's start is the earliest any
-    // of them draws.
+    // An `<svg>` paints its shapes in a slot that starts at its content
+    // order and ends short of the next level (`paintSlot`), so no shape in
+    // it draws before that order.
     const gauge = setupSiblings();
     try {
       const parts = dialWithCaption(gauge);
       const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-      const shape = document.createElementNS("http://www.w3.org/2000/svg", "rect");
-      svg.appendChild(shape);
-      adoptInto(gauge, parts.caption, svg, [30, 60, 70, 80]);
-      gauge.mirror.adopt(shape);
-      gauge.mirror.childListChanged(svg);
+      gauge.adopt(svg, [30, 60, 70, 80], parts.caption);
 
-      const first = new THREE.Object3D();
-      first.renderOrder = paintSlot(shape, svg, null, 0).start;
-      assertDrawsAfterDial(gauge, first, parts);
+      const slot = new THREE.Object3D();
+      slot.renderOrder = getContentRenderOrder(
+        /** @type {HTMLElement} */ (/** @type {unknown} */ (svg)),
+      );
+      assertDrawsAfterDial(gauge, slot, parts);
     } finally {
       gauge.teardown();
     }
   });
 });
-
-/**
- * Put an element in a parent the harness drew, laid out at `rect` and
- * mirrored, as the portal's observer would.
- *
- * @param {ReturnType<typeof setupSiblings>} gauge
- * @param {HTMLElement} parent
- * @param {Element} element
- * @param {[number, number, number, number]} rect
- */
-function adoptInto(gauge, parent, element, rect) {
-  parent.appendChild(element);
-  layout(element, () => rect);
-  gauge.mirror.adopt(element);
-  gauge.mirror.childListChanged(parent);
-}
 
 /**
  * A text field holding "42", with nothing of its own to paint, in the
@@ -1455,7 +1447,7 @@ function fieldOverDial(gauge, focus) {
   input.type = "text";
   input.value = "42";
   input.style.cssText = "background: transparent; border: 0";
-  adoptInto(gauge, parts.caption, input, [30, 60, 70, 80]);
+  gauge.adopt(input, [30, 60, 70, 80], parts.caption);
   const object = gauge.drawWith(input, (ctx) =>
     textInput(focus ? InputFocusContext.set(ctx, focus) : ctx, input),
   );

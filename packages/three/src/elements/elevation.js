@@ -102,8 +102,9 @@ import { getDrawnBorderColor, parseAlpha } from "./VisualProperties.js";
  * - Only the box that clears a sibling is asked whether it is opaque. A
  *   positioned wrapper with nothing to paint, around an opaque card, draws
  *   after the sibling it covers although the card's quad would hide that
- *   sibling in either order, so a board of N such cards draws at N levels,
- *   a box bucket and a text bucket each, where tree order would share one.
+ *   sibling in either order. The wrapper's own quad is batched too, so a
+ *   board of N such cards draws at three levels a card, two box buckets
+ *   and a text bucket, where tree order would share one of each.
  */
 
 /**
@@ -581,9 +582,9 @@ const drawLevelCache = nodeCache();
  * so what is behind it fails the depth test whenever it draws. It keeps
  * its tree depth, and a pile of opaque cards shares one bucket.
  *
- * A pile of translucent cards climbs a few levels a card, which is what
- * `ELEVATION_BAND` is sized for. A hover or a transition that takes a card's
- * opacity across 1 moves it, and what it carries, between buckets.
+ * A pile of cards that are not opaque climbs a few levels a card, which is
+ * what `ELEVATION_BAND` is sized for. A hover or a transition that takes a
+ * card's opacity across 1 moves it, and what it carries, between buckets.
  *
  * @param {Element} element
  * @returns {number}

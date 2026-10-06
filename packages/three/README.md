@@ -866,7 +866,9 @@ and every actuator of its gamepad gets a `dual-rumble` effect, or a `pulse` on a
 has that. A tracked hand has no motors and feels nothing. The pulses are worked out once per panel,
 so the panel's forwarder pays for the call and nothing else. `playHaptic(source, effect)` is that
 driver on its own, for a scene with haptics of its own to play, so that one place knows both
-interfaces and what to do when a motor refuses.
+interfaces and what to do when a motor refuses. `playHapticAll(session, effect)` plays one effect on
+every input source of a session, for a rumble that belongs to the scene rather than to one hand, and
+does nothing when the session is null.
 
 **A hover is one pulse per arrival on a control.** `cursor` is inherited, so the label or the icon
 inside a button is a ray target of its own, and the ray crossing from it onto the button's own

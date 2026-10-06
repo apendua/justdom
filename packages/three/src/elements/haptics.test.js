@@ -2,7 +2,7 @@ import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
 import { createHaptics, HAPTIC_FLAVORS, isArrival, playHaptic, playHapticAll } from "./haptics.js";
-import { recordingSource } from "../test/rumble.js";
+import { pulsingSource, recordingSource } from "../test/rumble.js";
 
 /**
  * @import {HapticOptions} from './haptics.js';
@@ -67,26 +67,7 @@ describe("playHapticAll", () => {
     // A runtime whose actuator has only the older `pulse`, beside one with
     // `playEffect`. Calling `playEffect` on the first is the TypeError a
     // game's rumble used to throw on a headset.
-    /** @type {[number, number][]} */
-    const pulsed = [];
-    const older = /** @type {XRInputSource} */ (
-      /** @type {unknown} */ ({
-        gamepad: {
-          hapticActuators: [
-            {
-              /**
-               * @param {number} intensity
-               * @param {number} duration
-               */
-              pulse: (intensity, duration) => {
-                pulsed.push([intensity, duration]);
-                return Promise.resolve(true);
-              },
-            },
-          ],
-        },
-      })
-    );
+    const { source: older, pulsed } = pulsingSource();
     const { source: current, played } = recordingSource();
     const session = /** @type {XRSession} */ (
       /** @type {unknown} */ ({ inputSources: [older, current] })
@@ -182,26 +163,7 @@ describe("createHaptics", () => {
   });
 
   test("drives an older runtime's `pulse` at the larger magnitude", () => {
-    /** @type {[number, number][]} */
-    const pulsed = [];
-    const source = /** @type {XRInputSource} */ (
-      /** @type {unknown} */ ({
-        gamepad: {
-          hapticActuators: [
-            {
-              /**
-               * @param {number} intensity
-               * @param {number} duration
-               */
-              pulse: (intensity, duration) => {
-                pulsed.push([intensity, duration]);
-                return Promise.resolve(true);
-              },
-            },
-          ],
-        },
-      })
-    );
+    const { source, pulsed } = pulsingSource();
     const haptics = createHaptics({ flavor: "knock" });
     assert.ok(haptics);
     haptics.press(source);

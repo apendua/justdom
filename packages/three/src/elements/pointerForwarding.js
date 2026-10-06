@@ -374,8 +374,10 @@ function holdPointerCapture() {
  * hand's next event, and then the element hears `gotpointercapture`, and
  * `lostpointercapture` as it ends (see `settleCapture`). It ends with the
  * release, after its `pointerup` and `mouseup`, with
- * `releasePointerCapture`, or when the press becomes a drag and drop,
- * which sends no `pointerup` (see `endPress`). Releasing a hand's pointer
+ * `releasePointerCapture`, or when the press becomes a scroll or a drag and
+ * drop, which cancels it (see `cancel` in `createPanelForwarder`). A press
+ * that sends no `pointerup` ends it as the trigger opens (see `endPress`).
+ * Releasing a hand's pointer
  * that holds no capture does nothing, as it does for a pointer a browser
  * knows, so a page's own `pointerup` handler may release what the release
  * already ended.
@@ -493,11 +495,12 @@ function releaseCapture(controller) {
 
 /**
  * End what a hand's press asked for, as its trigger opens: the mouse events
- * a cancelled `pointerdown` held back come back, and a capture ends. The
- * release's `pointerup` ends the capture itself, but a press that became a
- * drag and drop, or whose element left the page, sends none, and the
- * capture would otherwise take the hand's moves over every other control
- * until its next press.
+ * a cancelled `pointerdown` held back come back, a press the page lost to a
+ * scroll or a drag sends again, and a capture ends. The release's
+ * `pointerup` ends the capture itself, and so does a cancel, but a press
+ * whose element left the page sends neither, and the capture would
+ * otherwise take the hand's moves over every other control until its next
+ * press.
  *
  * @param {XRTargetRaySpace} controller
  */

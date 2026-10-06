@@ -481,7 +481,7 @@ export function createPanelForwarder(ctx, container) {
    */
   const walk = (object, path) => {
     path.length = 0;
-    for (let node = /** @type {Object3D | null} */ (object); node && node !== container; ) {
+    for (let node = /** @type {Object3D | null} */ (object); node && node !== container;) {
       path.push(node);
       node = node.parent;
     }

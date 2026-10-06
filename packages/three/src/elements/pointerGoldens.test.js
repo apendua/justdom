@@ -499,6 +499,22 @@ describe("event-sequence goldens", () => {
     g.teardown();
   });
 
+  test("a captured press dragged off the controls", async () => {
+    // The page captured the pointer, so its moves go on to the captor from
+    // where the ray crosses the panel's plane, on no control and off the
+    // panel too, as a browser sends a captured mouse's.
+    const g = await page(LEAF, { capture: true });
+    await g.step("aim at #leaf", () => g.aim(g.on("leaf")));
+    await g.step("trigger closes", () => g.hands[0].trigger("selectstart"));
+    await g.step("aim at nothing on the panel", () => g.aim([380, 10]));
+    await g.step("aim off the panel", () => g.aim([500, 400]));
+    await g.step("ray stays", () => g.hands[0].frame());
+    await g.step("trigger opens", () => g.hands[0].trigger("selectend"));
+    await g.step("aim at #leaf", () => g.aim(g.on("leaf")));
+    matches("a captured press dragged off the controls", g.lines);
+    g.teardown();
+  });
+
   test("the grip", async () => {
     const g = await page(NEST);
     await g.step("aim at #icon", () => g.aim(g.on("icon")));

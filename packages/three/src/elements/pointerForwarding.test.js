@@ -1396,6 +1396,66 @@ describe("a ray's pointer events", () => {
     teardown();
   });
 
+  test("captured, follow the ray off the controls and off the panel", async () => {
+    // A drawing that drags by capture, as Euclid's does, in the corner of
+    // a panel with room around it.
+    const root = document.createElement("div");
+    root.id = "root";
+    root.getBoundingClientRect = () => clientRect(0, 0, 400, 300);
+    const drawing = document.createElement("div");
+    drawing.id = "drawing";
+    drawing.style.cursor = "pointer";
+    drawing.getBoundingClientRect = () => clientRect(20, 20, 100, 100);
+    root.appendChild(drawing);
+    document.body.appendChild(root);
+    drawing.addEventListener("pointerdown", (event) => {
+      drawing.setPointerCapture(/** @type {PointerEvent} */ (event).pointerId);
+    });
+    const manager = new InteractionManager();
+    const portal = createPortal(InteractionContext.set({}, manager), { root, budget: 0 });
+    const scene = new THREE.Group();
+    portal.addTo(scene);
+    await settle(portal);
+    const panel = scene.children[0];
+    const hand = rayHand(manager);
+    /** @type {string[]} */
+    const heard = [];
+    /** @param {Event} event */
+    const record = (event) => {
+      const { clientX, clientY } = /** @type {MouseEvent} */ (event);
+      const target = /** @type {Element} */ (event.target).id;
+      heard.push(`${event.type} #${target} at ${Math.round(clientX)},${Math.round(clientY)}`);
+    };
+    const types = ["pointermove", "pointerup"];
+    for (const type of types) {
+      document.addEventListener(type, record, true);
+    }
+    hand.aim(panel, 50, 50);
+    hand.trigger("selectstart");
+    hand.aim(panel, 60, 50);
+    // Onto the panel's background, where no control is.
+    hand.aim(panel, 200, 150);
+    // Past the panel's edge, onto nothing at all.
+    hand.aim(panel, 500, 350);
+    // A frame with the hand still sends nothing new.
+    hand.frame();
+    hand.aim(panel, 80, 80);
+    hand.trigger("selectend");
+    for (const type of types) {
+      document.removeEventListener(type, record, true);
+    }
+    assert.deepEqual(heard, [
+      "pointermove #drawing at 60,50",
+      "pointermove #drawing at 200,150",
+      "pointermove #drawing at 500,350",
+      "pointermove #drawing at 80,80",
+      "pointerup #drawing at 80,80",
+    ]);
+    hand.remove();
+    portal.disconnect();
+    root.remove();
+  });
+
   test("let the page release a hand's capture in its own pointerup", () => {
     /** @type {string[]} */
     const handled = [];

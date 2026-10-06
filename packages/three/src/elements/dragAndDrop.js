@@ -15,7 +15,7 @@ import {
 import { placeAndScale } from "./place.js";
 import { frameFor, getPanelFrame, measureClientRect, probePanelFrame } from "./panelFrame.js";
 import { isSvgRoot } from "./plugins.js";
-import { DRAG_THRESHOLD, planeOf } from "./scroll.js";
+import { DRAG_THRESHOLD, sampleRay } from "./scroll.js";
 import { createRectMaterial, rectGeometry } from "./sdfRect.js";
 import { snapshotsFor } from "./ghostSnapshot.js";
 
@@ -490,6 +490,33 @@ export function moveInit(panel, e) {
 }
 
 /**
+ * The init for the `pointermove` and `mousemove` a captured pointer sends
+ * from where the ray crosses its captor's panel's plane, wherever the ray
+ * is (see `sampleRay` in `scroll.js`): at a point in the panel's own px,
+ * mapped onto the page as any point on the panel is. One a frame, so
+ * against the corner last probed, as `moveInit` is. Valid until the next
+ * call.
+ *
+ * @param {Panel} panel
+ * @param {number} x
+ * @param {number} y
+ * @returns {PointerEventInit}
+ */
+export function planeInit(panel, x, y) {
+  init.bubbles = true;
+  init.cancelable = false;
+  init.button = 0;
+  init.buttons = 0;
+  init.relatedTarget = null;
+  clientPointAt(panel, x, y, client);
+  init.clientX = client.x;
+  init.clientY = client.y;
+  init.screenX = client.x;
+  init.screenY = client.y;
+  return init;
+}
+
+/**
  * The translucent card that follows the ray while a drag is under way, the
  * size of the element it shows, the source or its drag image, drawn in the
  * plane of the panel the ray is on (see `placeGhost`). With a snapshot it is
@@ -638,29 +665,20 @@ export function createDragAndDrop(requestFrames, readHit, snapshots) {
   /** @type {(() => void) | null} */
   let stopFrames = null;
 
-  const raycaster = new THREE.Raycaster();
-  const plane = new THREE.Plane();
   const onPlane = new THREE.Vector3();
   const inPanel = new THREE.Vector2();
 
   /**
    * Where the hand's ray crosses the source panel's plane, in world space in
    * `onPlane` and in the panel's px in `inPanel`; false when it points away
-   * from it.
+   * from it. Where the panel is now, not where it was at the press: a panel
+   * the scene lets a hand carry can move while it is pressed.
    *
    * @param {Session} session
    * @returns {boolean}
    */
   function sample(session) {
-    raycaster.setFromXRController(session.controller);
-    // Where the panel is now, not where it was at the press: a panel the
-    // scene lets a hand carry can move while it is pressed.
-    if (!raycaster.ray.intersectPlane(planeOf(session.panel, plane), onPlane)) {
-      return false;
-    }
-    session.panel.worldToLocal(scratch.copy(onPlane));
-    inPanel.set(scratch.x, scratch.y);
-    return true;
+    return sampleRay(session.controller, session.panel, onPlane, inPanel);
   }
 
   /**
@@ -917,8 +935,7 @@ export function createDragAndDrop(requestFrames, readHit, snapshots) {
     if (hit && panel) {
       scratch.copy(hit.point);
     } else {
-      raycaster.setFromXRController(session.controller);
-      if (!raycaster.ray.intersectPlane(planeOf(target, plane), onPlane)) {
+      if (!sampleRay(session.controller, target, onPlane)) {
         ghost.visible = false;
         return;
       }

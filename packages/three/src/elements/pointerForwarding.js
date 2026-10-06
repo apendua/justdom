@@ -1,3 +1,4 @@
+import * as THREE from "three";
 import { createProperty, onCleanup } from "@apendua/signal";
 import { interactions } from "../interactions.js";
 import { getParentObject } from "./contentGroup.js";
@@ -6,13 +7,15 @@ import {
   isDragSource,
   lazyPanel,
   moveInit,
+  planeInit,
   pressInit,
   probePanel,
   releaseInit,
 } from "./dragAndDrop.js";
+import { createFrameRequester } from "./frameRequester.js";
 import { HapticsContext, isArrival } from "./haptics.js";
 import { getComputedStyleCached, isPortalRoot } from "./mirror.js";
-import { movesList, ScrollDragsContext } from "./scroll.js";
+import { movesList, sampleRay, ScrollDragsContext } from "./scroll.js";
 
 /**
  * @import {EntityEffect} from '@apendua/signal';
@@ -224,10 +227,14 @@ let primary = null;
 
 /**
  * The forwarders of the panels that are up, each able to say whether a
- * hand's ray is on its panel, for `isIdle`. An array, walked by index,
+ * hand's ray is on its panel, for `isIdle`, and to follow a hand captured
+ * to one of its elements (see `settleCapture`). An array, walked by index,
  * since it is asked every frame a hand that is not the primary one moves.
  *
- * @type {{ pointsAt: (controller: XRTargetRaySpace) => boolean }[]}
+ * @type {{
+ *   pointsAt: (controller: XRTargetRaySpace) => boolean,
+ *   follow: (controller: XRTargetRaySpace, captor: Element) => void,
+ * }[]}
  */
 const forwarders = [];
 
@@ -410,6 +417,12 @@ function settleCapture(controller) {
   }
   if (hand.captor) {
     hand.captor.dispatchEvent(new PointerEvent("gotpointercapture", captureInit));
+  }
+  const captor = hand.captor;
+  if (captor) {
+    for (let i = 0; i < forwarders.length; i += 1) {
+      forwarders[i].follow(controller, captor);
+    }
   }
 }
 
@@ -1061,6 +1074,66 @@ export function createPanelForwarder(ctx, container) {
   };
 
   /**
+   * The hands whose pointer an element of this panel has captured, each
+   * with where in the panel's px its last move was sent from. A browser
+   * sends a captured pointer's moves to its captor wherever the pointer
+   * goes, and a ray reaches this panel's listeners only while it is on
+   * something here; so while a hand is captured, its moves come from where
+   * its ray crosses this panel's plane (see `sampleRay`), once a frame the
+   * ray has moved, whether it is on a control here, on the panel's
+   * background, on another panel or on nothing at all.
+   *
+   * @type {Map<XRTargetRaySpace, { x: number, y: number, sent: boolean }>}
+   */
+  const following = new Map();
+  const requestFrames = createFrameRequester(ctx);
+  /** @type {(() => void) | null} */
+  let stopFollowing = null;
+  const onPlane = new THREE.Vector3();
+  const inPanel = new THREE.Vector2();
+
+  /**
+   * One captured hand's move, if its ray has moved across this panel's
+   * plane since the last; and let go of a hand no longer captured here.
+   *
+   * @param {{ x: number, y: number, sent: boolean }} last
+   * @param {XRTargetRaySpace} controller
+   * @returns {void}
+   */
+  const moveCaptured = (last, controller) => {
+    const captor = hands.get(controller)?.captor;
+    const own = panel();
+    if (!own || !captor?.isConnected || !own.element.contains(captor)) {
+      following.delete(controller);
+      return;
+    }
+    if (!sampleRay(controller, container, onPlane, inPanel)) {
+      return;
+    }
+    if (last.sent && last.x === inPanel.x && last.y === inPanel.y) {
+      return;
+    }
+    last.x = inPanel.x;
+    last.y = inPanel.y;
+    last.sent = true;
+    sendPointerAndMouse(
+      /** @type {HTMLElement} */ (captor),
+      "pointermove",
+      planeInit(own, inPanel.x, inPanel.y),
+      controller,
+    );
+  };
+
+  /** The frames a captured hand is followed on, while any is. */
+  const followFrame = () => {
+    following.forEach(moveCaptured);
+    if (following.size === 0 && stopFollowing) {
+      stopFollowing();
+      stopFollowing = null;
+    }
+  };
+
+  /**
    * Bring what the page knows of where a hand's pointer is up to date with
    * where its ray is, before anything else the ray sends: `cross` from the
    * element it was over to `elementUnder`, for its pointer, and for the
@@ -1211,12 +1284,19 @@ export function createPanelForwarder(ctx, container) {
       // it, which is when a page's `:hover` catches up after a drag.
       const held = hand.held;
       hand.held = null;
+      // A captured hand's moves come from the captor's panel, from where
+      // the ray crosses its plane: from here at once if that is this one.
+      const captured = !!hands.get(e.controller)?.captor?.isConnected;
+      const last = following.get(e.controller);
+      if (last) {
+        moveCaptured(last, e.controller);
+      }
       // Once, from the innermost control the ray is over, and it bubbles
       // from there, as a mouse's does: the controls around it hear it on
       // the way up. Not from one that has left the document, which the
       // panel still draws until the commit: the next control up sends it,
       // as it sends a release whose target has gone.
-      let sent = false;
+      let sent = captured;
       for (const object of hand.hover) {
         const target = targets.get(object);
         if (!target || target.list) {
@@ -1479,10 +1559,28 @@ export function createPanelForwarder(ctx, container) {
 
   const letGoOfCapture = holdPointerCapture();
 
-  /** This panel, among the panels that are up (see `isIdle`). */
+  /** This panel, among the panels that are up (see `forwarders`). */
   const registered = {
     /** @param {XRTargetRaySpace} controller */
     pointsAt: (controller) => (panelHands.get(controller)?.hover.length ?? 0) > 0,
+    /**
+     * @param {XRTargetRaySpace} controller
+     * @param {Element} captor
+     */
+    follow: (controller, captor) => {
+      if (!panel()?.element.contains(captor)) {
+        return;
+      }
+      // A capture of its own, whose first move goes out wherever the last
+      // one's last move was.
+      const last = following.get(controller);
+      if (last) {
+        last.sent = false;
+      } else {
+        following.set(controller, { x: 0, y: 0, sent: false });
+      }
+      stopFollowing ??= requestFrames(followFrame);
+    },
   };
   forwarders.push(registered);
 
@@ -1515,6 +1613,9 @@ export function createPanelForwarder(ctx, container) {
       }
       forwarders.splice(forwarders.indexOf(registered), 1);
       letGoOfCapture();
+      following.clear();
+      stopFollowing?.();
+      stopFollowing = null;
       panelHands.clear();
     },
   };

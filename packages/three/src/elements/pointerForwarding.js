@@ -1,4 +1,4 @@
-import { on, onCleanup } from "@apendua/signal";
+import { createProperty, onCleanup } from "@apendua/signal";
 import { interactions } from "../interactions.js";
 import { getParentObject } from "./contentGroup.js";
 import {
@@ -12,7 +12,7 @@ import {
 } from "./dragAndDrop.js";
 import { HapticsContext, isArrival } from "./haptics.js";
 import { getComputedStyleCached } from "./mirror.js";
-import { movesList, scrollDrags } from "./scroll.js";
+import { movesList, ScrollDragsContext } from "./scroll.js";
 
 /**
  * @import {EntityEffect} from '@apendua/signal';
@@ -100,65 +100,54 @@ export function isGone(element) {
 }
 
 /**
- * The objects forwarding a ray's events right now, so that a handler can
- * tell whether another one is above it.
+ * What a hand is to the page as a pointer, whichever panel its ray is on: a
+ * page knows a pointer by its id, and the capture and the cancelled
+ * `pointerdown` below go with the pointer, across panels, as a browser's
+ * go with the mouse across the document.
  *
- * @type {WeakSet<Object3D>}
+ * @typedef {object} Hand
+ * @property {number} pointerId Given out as the hand first sends a pointer
+ *   event: a page that follows a press by its pointer, as a drag does,
+ *   follows that hand, and the other ray moving over the same element is
+ *   another pointer hovering, not the press wandering off. 1 is the
+ *   mouse's in a browser, so the hands count on from 2.
+ * @property {Element | null} captor The element the page captured the
+ *   pointer to (see `acceptPointerCapture`).
+ * @property {boolean} pointerOnly Whether the page cancelled the hand's
+ *   `pointerdown`, until its trigger opens. A page that does is saying it
+ *   handles the press as a pointer, and a browser then sends none of the
+ *   mouse events that would otherwise follow it, `mousedown`, `mousemove`
+ *   and `mouseup`, until the button is let go. The `click` still goes.
  */
-const forwarding = new WeakSet();
+
+/** @type {WeakMap<XRTargetRaySpace, Hand>} */
+const hands = new WeakMap();
 
 /**
- * The ray events already acted on once: the DOM event sent, or the panel
- * read for an arrival. The manager hands one event object to every object
- * up the chain, so the first handler to see it, the innermost forwarding
- * element's, does the thing and the ones above only follow it.
+ * The same hands by `pointerId`, which is all `setPointerCapture` is given.
+ * A strong map, deliberately: a page may capture a hand's pointer at any
+ * time, so every hand that was ever given an id has to be found by it.
+ * There are as many as the session has controllers, and a hand's `captor`
+ * is let go of with its press (see `endPress`).
  *
- * @type {WeakSet<object>}
+ * @type {Map<number, Hand>}
  */
-const delivered = new WeakSet();
-
-/**
- * The hands whose `pointerdown` the page cancelled, until their trigger
- * opens. A page that cancels `pointerdown` is saying it handles the press
- * as a pointer, and a browser then sends none of the mouse events that
- * would otherwise follow it, `mousedown`, `mousemove` and `mouseup`, until
- * the button is let go. The `click` still goes.
- *
- * @type {WeakSet<XRTargetRaySpace>}
- */
-const pointerOnly = new WeakSet();
-
-/**
- * Each hand's `pointerId`, given out as a hand first sends a pointer event:
- * a page that follows a press by its pointer, as a drag does, follows that
- * hand, and the other ray moving over the same element is another pointer
- * hovering, not the press wandering off. 1 is the mouse's in a browser, so
- * the hands count on from 2.
- *
- * @type {WeakMap<XRTargetRaySpace, number>}
- */
-const pointerIds = new WeakMap();
-
-/** @param {XRTargetRaySpace} controller */
-function pointerIdOf(controller) {
-  let id = pointerIds.get(controller);
-  if (id === undefined) {
-    id = nextPointerId;
-    nextPointerId += 1;
-    pointerIds.set(controller, id);
-    acceptPointerCapture();
-  }
-  return id;
-}
+const handsById = new Map();
 
 let nextPointerId = 2;
 
-/**
- * The element each hand's pointer is captured by, by its `pointerId`.
- *
- * @type {Map<number, Element>}
- */
-const captures = new Map();
+/** @param {XRTargetRaySpace} controller */
+function handOf(controller) {
+  let hand = hands.get(controller);
+  if (!hand) {
+    hand = { pointerId: nextPointerId, captor: null, pointerOnly: false };
+    nextPointerId += 1;
+    hands.set(controller, hand);
+    handsById.set(hand.pointerId, hand);
+    acceptPointerCapture();
+  }
+  return hand;
+}
 
 /** Whether `acceptPointerCapture` has run. */
 let capturing = false;
@@ -169,9 +158,9 @@ let capturing = false;
  * that there is no such pointer, from the `pointerdown` handler of every
  * page that drags by capture. So, once a hand has a pointer, the three
  * capture methods are wrapped: a call the browser refuses for a hand's
- * pointer is kept here instead, and while it holds, the hand's moves and
- * its release are sent to the capturing element, whichever control on the
- * panels the ray is over, as a browser sends a captured pointer's. A
+ * pointer is kept on the hand instead, and while it holds, the hand's moves
+ * and its release are sent to the capturing element, whichever control on
+ * the panels the ray is over, as a browser sends a captured pointer's. A
  * pointer the browser knows is the browser's, as before.
  *
  * Capture ends as a browser ends it: with the release, or with
@@ -188,27 +177,27 @@ function acceptPointerCapture() {
   capturing = true;
   const proto = Element.prototype;
   const { setPointerCapture, releasePointerCapture, hasPointerCapture } = proto;
-  /** @param {number} id */
-  const isHand = (id) => id >= 2 && id < nextPointerId;
   proto.setPointerCapture = function (id) {
     try {
       setPointerCapture.call(this, id);
     } catch (err) {
-      if (!isHand(id)) {
+      const hand = handsById.get(id);
+      if (!hand) {
         throw err;
       }
-      captures.set(id, this);
+      hand.captor = this;
     }
   };
   proto.releasePointerCapture = function (id) {
-    if (!isHand(id)) {
+    const hand = handsById.get(id);
+    if (!hand) {
       releasePointerCapture.call(this, id);
-    } else if (captures.get(id) === this) {
-      captures.delete(id);
+    } else if (hand.captor === this) {
+      hand.captor = null;
     }
   };
   proto.hasPointerCapture = function (id) {
-    return captures.get(id) === this || hasPointerCapture.call(this, id);
+    return handsById.get(id)?.captor === this || hasPointerCapture.call(this, id);
   };
 }
 
@@ -223,10 +212,10 @@ function acceptPointerCapture() {
  * @param {XRTargetRaySpace} controller
  */
 function endPress(controller) {
-  pointerOnly.delete(controller);
-  const id = pointerIds.get(controller);
-  if (id !== undefined) {
-    captures.delete(id);
+  const hand = hands.get(controller);
+  if (hand) {
+    hand.pointerOnly = false;
+    hand.captor = null;
   }
 }
 
@@ -235,10 +224,10 @@ function endPress(controller) {
  * one: both made before either is sent, from the one init `pressInit` and
  * its siblings write in place, which a handler that the first runs may
  * write again. The mouse event is left out for a hand whose `pointerdown`
- * was cancelled (see `pointerOnly`), and the pointer event where the page
- * has no `PointerEvent` at all, as under a test environment without one.
- * A move's pointer event names no button, as a browser's says `-1` for a
- * move that changes none.
+ * was cancelled (see `Hand.pointerOnly`), and the pointer event where the
+ * page has no `PointerEvent` at all, as under a test environment without
+ * one. A move's pointer event names no button, as a browser's says `-1`
+ * for a move that changes none.
  *
  * @param {HTMLElement} element
  * @param {"pointerdown" | "pointermove" | "pointerup"} type
@@ -252,25 +241,25 @@ function sendPointerAndMouse(element, type, init, controller) {
   if (type === "pointermove") {
     init.button = -1;
   }
-  const id = pointerIdOf(controller);
-  init.pointerId = id;
+  const hand = handOf(controller);
+  init.pointerId = hand.pointerId;
   const pointer = typeof PointerEvent === "function" ? new PointerEvent(type, init) : null;
   init.button = button;
   const mouse = new MouseEvent(MOUSE_EVENT[type], init);
   if (type === "pointerdown") {
     // A press of its own, whatever became of the last one's release.
-    pointerOnly.delete(controller);
-    captures.delete(id);
+    hand.pointerOnly = false;
+    hand.captor = null;
   }
-  const captor = captures.get(id);
+  const captor = hand.captor;
   const target = captor?.isConnected ? captor : element;
   if (type === "pointerup") {
-    captures.delete(id);
+    hand.captor = null;
   }
   if (pointer && !target.dispatchEvent(pointer) && type === "pointerdown") {
-    pointerOnly.add(controller);
+    hand.pointerOnly = true;
   }
-  return pointerOnly.has(controller) || target.dispatchEvent(mouse);
+  return hand.pointerOnly || target.dispatchEvent(mouse);
 }
 
 /** The mouse event a browser sends after each pointer event a ray sends. */
@@ -281,8 +270,82 @@ const MOUSE_EVENT = /** @type {const} */ ({
 });
 
 /**
- * What became of each grip start a panel's elements heard, one state per
- * grip, decided as it closes:
+ * An element of a panel that rays act on: a control, which is anything a
+ * ray targets of its own (see `isRayTarget`), or a scrolling list that is
+ * no control, which a ray takes hold of by the gaps between its rows.
+ *
+ * @typedef {object} Target
+ * @property {HTMLElement} element
+ * @property {Object3D} object The element's object, which is registered
+ *   with the interaction manager.
+ * @property {boolean} list Whether this is a list rather than a control.
+ * @property {(() => void) | undefined} onPress See `ForwardingOptions`.
+ */
+
+/**
+ * What one hand has done on one panel, which the events that follow it
+ * read: the objects its last press of each button went through, and the
+ * objects its hover went through. The manager sends a release along the
+ * press's path and a leave along the hover's, not along a walk from what
+ * was hit, since that may have left the scene meanwhile (see
+ * `addController` in `interactions.js`), so the panel keeps the same paths
+ * and reads which of its targets were on them. Each path stops below the
+ * panel's container, and is written in place, so a hand moving from mesh
+ * to mesh allocates nothing.
+ *
+ * @typedef {object} PanelHand
+ * @property {Object3D[]} hover
+ * @property {Object3D | null} hovered The mesh `hover` was walked from.
+ * @property {XREventMap["pointerenter"] | null} held The enter that came
+ *   while the hand held something draggable, kept for the first move after
+ *   the hold, or the control the drag ended on would show no hover until
+ *   the ray left it and came back.
+ * @property {Press} select The trigger's last press.
+ * @property {Press} squeeze The grip's, as `select` is the trigger's.
+ */
+
+/**
+ * A press of one button, as it began: the objects it went through, and the
+ * innermost target among them, which decides how the events that end it
+ * finish. That target is not asked again of what is registered on the path
+ * by then: a row removed during the hold, and its update committed, has
+ * let go of its registration, and the list under it, or nothing, would
+ * otherwise finish a press that was the row's.
+ *
+ * @typedef {object} Press
+ * @property {Object3D[]} path
+ * @property {Target | null} target A control or a list for the trigger, a
+ *   control alone for the grip, which no list takes.
+ */
+
+/**
+ * The forwarder of one panel; see `createPanelForwarder`.
+ *
+ * @typedef {object} Forwarder
+ * @property {(object: Object3D, element: HTMLElement, onPress?: () => void) => () => void} control
+ *   Take an element as a control, until the function it returns is called,
+ *   which also takes its `data-xr-*` flags off.
+ * @property {(object: Object3D, element: HTMLElement) => () => void} list
+ *   Take an element as a list that is no control.
+ * @property {() => void} dispose Stop listening on the container.
+ */
+
+/**
+ * The forwarder the elements of a panel register with. The portal makes
+ * one per panel (`createPanelForwarder`) and sets it as it sets its scroll
+ * gesture. An element is forwarded by the panel it is in, so one built
+ * outside any portal has none: it is still a ray target, and its events go
+ * on past it as they came.
+ */
+export const PointerForwarderContext = createProperty(
+  /**
+   * @returns {Forwarder | null}
+   */
+  () => null,
+);
+
+/**
+ * What a grip start became, decided as it closes:
  *
  * - `"swallowed"`: it closed on an element that had gone (see `isGone`),
  *   and the panel stopped it. The events that end it ask whether something
@@ -302,118 +365,193 @@ const MOUSE_EVENT = /** @type {const} */ ({
  * A start in none of them closed while the hand was busy: nothing of it is
  * the panel's but the stopping of its end.
  *
- * @type {WeakMap<object, "swallowed" | "owned" | "felt">}
+ * @typedef {"swallowed" | "owned" | "felt"} Grip
  */
-const grips = new WeakMap();
 
 /**
- * Whether another forwarding object is above this one, which makes this
- * one not the outermost of a nest of clickable elements.
+ * Forward what rays do on one panel back to the page, from one listener per
+ * ray event on the panel's container object. The interaction manager sends
+ * every ray event along the objects from what the ray met up to the
+ * controller, and the container is on that path for anything in the panel,
+ * so it hears them all; the elements only register (see
+ * `forwardPointerEvents`).
  *
- * @param {Object3D} object
- * @returns {boolean}
- */
-function hasForwardingAncestor(object) {
-  for (let node = object.parent; node; node = node.parent) {
-    if (forwarding.has(node)) {
-      return true;
-    }
-  }
-  return false;
-}
-
-/**
- * @typedef {object} ForwardingOptions
- * @property {Reactive<boolean>} enabled Whether rays can hit the object at
- *   all, handed to `makeInteractive`.
- * @property {() => void} [onPress] Told when a press on the element, or on
- *   a clickable element inside it, has been delivered as a click; see
- *   `BoxOptions.onPress`.
- */
-
-/**
- * Being a ray target, and forwarding what happens there back to the DOM. A
- * press arrives as `mousedown`, `mouseup` and `click`, a ray moving over
- * the object as `mousemove`, and a press of the grip as `contextmenu`,
- * which is the grip standing in for the mouse's other button. Each
- * `mousedown`, `mouseup` and `mousemove` has the pointer event a browser
- * sends ahead of it, from the hand's own pointer (see
- * `sendPointerAndMouse`). Each carries
- * the point the ray met, on the page, as its `clientX` and `clientY` (see
- * `pressInit` in `dragAndDrop.js`). While the ray is on it the element
- * carries `data-xr-hover`, and while it is held, `data-xr-active`. A
- * stylesheet answers those flags where a page would use `:hover` and
+ * A browser hit-tests once, picks the innermost element, dispatches once
+ * and bubbles, and so does this. For each event the forwarder reads which
+ * of its targets the event went through, innermost first. A press arrives
+ * as `mousedown`, `mouseup` and `click`, a ray moving over a control as
+ * `mousemove`, and a press of the grip as `contextmenu`, which is the grip
+ * standing in for the mouse's other button. Each `mousedown`, `mouseup`
+ * and `mousemove` has the pointer event a browser sends ahead of it, from
+ * the hand's own pointer (see `sendPointerAndMouse`). Each carries the
+ * point the ray met, on the page, as its `clientX` and `clientY` (see
+ * `pressInit` in `dragAndDrop.js`). While the ray is on a control the
+ * element carries `data-xr-hover`, and while it is held, `data-xr-active`.
+ * A stylesheet answers those flags where a page would use `:hover` and
  * `:active`. Where the panel has haptics, the hand feels a press and its
- * release, of the grip as of the trigger, and an arrival on a control
- * where the panel asks for one. A press on something draggable that the
- * hand carries away is a drag and drop instead, and its release is a
- * `drop` and a `dragend` rather than a `mouseup` and a `click` (see
- * `dragAndDrop.js`). A grip that closes while the trigger carries
- * something that way, or moves a list, on this panel or another, is no
- * press on anything: it sends no `contextmenu` and is not felt, closing or
- * opening. One that closed before and opens while the hand is busy sends
- * no `contextmenu` either, but is felt opening, as its closing was: the
- * pulses follow the closing, and the right-click asks again as it opens.
+ * release, of the grip as of the trigger, and an arrival on a control where
+ * the panel asks for one. A press on something draggable that the hand
+ * carries away is a drag and drop instead, and its release is a `drop` and
+ * a `dragend` rather than a `mouseup` and a `click` (see `dragAndDrop.js`).
+ * A grip that closes while the trigger carries something that way, or
+ * moves a list, on this panel or another, is no press on anything: it sends
+ * no `contextmenu` and is not felt, closing or opening. One that closed
+ * before and opens while the hand is busy sends no `contextmenu` either,
+ * but is felt opening, as its closing was: the pulses follow the closing,
+ * and the right-click asks again as it opens.
  *
- * Boxes, SVG shapes and clickable SVG groups all forward rays through this
- * function, so a panel's stylesheet and its click handlers see the same
- * events whichever of them the ray met.
- *
- * Clickable elements nest, if only because `cursor` is inherited: the label
- * in a button, the icon in it, a button on a clickable card. A press goes
- * where it goes on a page. The innermost element is the target of the DOM
+ * Controls nest, if only because `cursor` is inherited: the label in a
+ * button, the icon in it, a button on a clickable card. A press goes where
+ * it goes on a page. The innermost control is the target of the DOM
  * events, sent once, and they bubble through the DOM from there. Every
- * clickable element around it is pressed too, the way `:active` applies to
- * the ancestors of what is pressed, so each one takes `data-xr-active` and
- * hears its own `onPress`. The ray event stops at the outermost of them,
- * so nothing outside the panel sees a press the panel took. The one ray
- * event let past is the grip's start, so that a scene can pick up with the
- * grip what the panel hangs from, a `drag()` with `squeeze` among its
- * buttons. A grip something above took that way is that grab's, and the
- * panel neither sends nor feels it; a grip nothing took is the panel's,
- * and its end, its completion and its miss stop at the outermost element
- * too, as a trigger's do.
+ * control around it is pressed too, the way `:active` applies to the
+ * ancestors of what is pressed, so each one takes `data-xr-active` and
+ * hears its own `onPress`. The ray event stops at the container, so nothing
+ * outside the panel sees a press the panel took. The one ray event let past
+ * is the grip's start, so that a scene can pick up with the grip what the
+ * panel hangs from, a `drag()` with `squeeze` among its buttons. A grip
+ * something above took that way is that grab's, and the panel neither
+ * sends nor feels it; a grip nothing took is the panel's, and its end, its
+ * completion and its miss stop at the container too, as a trigger's do.
  *
- * These belong together: an element that stops being clickable has to lose
- * the handlers too, not just the registration. The interaction manager
- * dispatches up the parent chain, so a listener left behind on a wrapper
- * that is no longer clickable would still see events bubbling out of a
- * button inside it and synthesise a second, spurious click on the wrapper.
- * Mount and unmount the returned list as a whole. Unmounting it clears the
- * flags, since the `pointerleave` that would have cleared them goes with it.
+ * A press whose innermost target is a list, between its rows or on its
+ * padding, is the list's: it may become a scroll, a press that never did
+ * still reports a `click` on the list, which is what the panel's background
+ * would have reported had the list not been in the way, and no flag is
+ * written, since the list is draggable rather than clickable.
  *
- * @param {WeakKey} ctx
- * @param {HTMLElement} element
- * @param {Object3D<XREventMap>} object The registered object. A press that
- *   turns into a drag is measured from its frame.
- * @param {ForwardingOptions} options
- * @returns {EntityEffect<Object3D<XREventMap>>[]}
+ * An event that went through none of the panel's targets, a hit on the
+ * panel's own blocker or on what a plugin hangs in the panel, goes on as
+ * it came.
+ *
+ * @param {WeakKey} ctx The panel's context, with its haptics and its scroll
+ *   gesture.
+ * @param {Object3D} container The panel's container object.
+ * @returns {Forwarder}
  */
-export function forwardPointerEvents(ctx, element, object, { enabled, onPress }) {
-  const { makeInteractive, stopPropagation, isStopped } = interactions(ctx);
-  const drags = scrollDrags(ctx);
+export function createPanelForwarder(ctx, container) {
+  const { stopPropagation, isStopped } = interactions(ctx);
+  const drags = ScrollDragsContext.get(ctx);
   const dnd = dragAndDrop(ctx);
-  /**
-   * What the hand feels on this element, if it is a control and the panel
-   * has haptics at all. The handlers below hand it the hand each event came
-   * from.
-   */
+  /** What the hand feels on a control, if the panel has haptics at all. */
   const haptics = HapticsContext.get(ctx);
 
-  /** The panel the object is in, for where its events are on the page. */
-  const panel = lazyPanel(object);
+  /** @type {Map<Object3D, Target>} */
+  const targets = new Map();
+
+  /** @type {Map<XRTargetRaySpace, PanelHand>} */
+  const panelHands = new Map();
+
+  /** @type {WeakMap<object, Grip>} */
+  const grips = new WeakMap();
 
   /**
-   * The enter `arrived` last answered for, and its answer. The panel read
-   * and the pulse ask about the same enter, so the walks are done once;
-   * `enter`, the last to ask, lets it go, since the memo has to span one
-   * dispatch only and an enter holds the mesh the ray met and the object
-   * it came from.
-   *
-   * @type {object | null}
+   * The panel, for where its events are on the page: the one registered
+   * under the container, found on the first event that needs it, since the
+   * portal registers the panel after it builds the forwarder.
    */
-  let arrivalOf = null;
-  let arrival = false;
+  const panel = lazyPanel(container);
+
+  /**
+   * @param {XRTargetRaySpace} controller
+   * @returns {PanelHand}
+   */
+  const panelHand = (controller) => {
+    let hand = panelHands.get(controller);
+    if (!hand) {
+      hand = {
+        hover: [],
+        hovered: null,
+        held: null,
+        select: { path: [], target: null },
+        squeeze: { path: [], target: null },
+      };
+      panelHands.set(controller, hand);
+    }
+    return hand;
+  };
+
+  /**
+   * Write the objects from `object` up to the container, the container
+   * left out, into `path`.
+   *
+   * @param {Object3D} object
+   * @param {Object3D[]} path
+   * @returns {void}
+   */
+  const walk = (object, path) => {
+    path.length = 0;
+    for (let node = /** @type {Object3D | null} */ (object); node && node !== container; ) {
+      path.push(node);
+      node = node.parent;
+    }
+  };
+
+  /**
+   * The path a leave goes through: the one the hover recorded, which
+   * reaches the objects it went through even after the one it began on has
+   * left the scene. A hover that began before this forwarder heard it is
+   * walked from where it began. A press keeps its own (see `pressOf`).
+   *
+   * @param {Object3D[]} path
+   * @param {{ originalTarget: Object3D }} e
+   * @returns {Object3D[]}
+   */
+  const recorded = (path, e) => {
+    if (path[0] !== e.originalTarget) {
+      walk(e.originalTarget, path);
+    }
+    return path;
+  };
+
+  /**
+   * Record a press as it begins, from what the ray met.
+   *
+   * @param {Press} press
+   * @param {Object3D} object
+   * @param {boolean} controlsOnly Whether a list can take the press.
+   * @returns {Target | null}
+   */
+  const begin = (press, object, controlsOnly) => {
+    walk(object, press.path);
+    press.target = innermost(press.path, controlsOnly) ?? null;
+    return press.target;
+  };
+
+  /**
+   * The press an event of one button ends, as its start recorded it. A
+   * press that began before this forwarder heard it is walked from where it
+   * began, and was pressed on what is registered there now.
+   *
+   * @param {{ controller: XRTargetRaySpace, originalTarget: Object3D }} e
+   * @param {"select" | "squeeze"} button
+   * @returns {Press}
+   */
+  const pressOf = (e, button) => {
+    const press = panelHand(e.controller)[button];
+    if (press.path[0] !== e.originalTarget) {
+      begin(press, e.originalTarget, button === "squeeze");
+    }
+    return press;
+  };
+
+  /**
+   * The innermost target on a path, control or list, or the innermost
+   * control, passing over any list below it.
+   *
+   * @param {Object3D[]} path
+   * @param {boolean} [controlsOnly]
+   * @returns {Target | undefined}
+   */
+  const innermost = (path, controlsOnly = false) => {
+    for (const object of path) {
+      const target = targets.get(object);
+      if (target && !(controlsOnly && target.list)) {
+        return target;
+      }
+    }
+    return undefined;
+  };
 
   /**
    * Whether an enter is the ray arriving on this control, which is what
@@ -423,83 +561,39 @@ export function forwardPointerEvents(ctx, element, object, { enabled, onPress })
    * hand is scrolling a list, when the rows pass under a ray that is aimed
    * at none of them, glide included.
    *
+   * @param {Target} target
    * @param {XREventMap["pointerenter"]} e
    * @returns {boolean}
    */
-  const arrived = (e) => {
-    if (e !== arrivalOf) {
-      arrivalOf = e;
-      arrival =
-        !drags.scrolling(e.controller) &&
-        isArrival(getControlRoot(element, object), e.relatedTarget);
-    }
-    return arrival;
-  };
+  const arrived = (target, e) =>
+    !drags.scrolling(e.controller) &&
+    isArrival(getControlRoot(target.element, target.object), e.relatedTarget);
 
   /**
-   * The ray arriving on this element: the hover flag, and the pulse an
-   * arrival on a control plays.
+   * The ray arriving on a control: the hover flag, and the pulse an arrival
+   * on a control plays, once per arrival, by the control that was hit and
+   * not by the ones around it.
    *
+   * @param {Target} target
    * @param {XREventMap["pointerenter"]} e
+   * @param {boolean} [arrival] `arrived` for this target and enter, if it
+   *   is known already.
    * @returns {void}
    */
-  const enter = (e) => {
-    element.dataset.xrHover = "true";
-    // Once per arrival on this control: not for an enter bubbling up from
-    // a target nested in this one, which plays its own.
-    if (haptics && e.registeredTarget === object && arrived(e)) {
+  const enter = (target, e, arrival) => {
+    target.element.dataset.xrHover = "true";
+    if (haptics && e.registeredTarget === target.object && (arrival ?? arrived(target, e))) {
       haptics.hover(e.inputSource);
-    }
-    arrivalOf = null;
-  };
-
-  /**
-   * The enters that came while a hand held a press, kept until that hand's
-   * hold is over; see `pointerenter` below. One per hand, as the manager
-   * tracks enter and leave per hand: the other hand crossing this element
-   * neither drops the enter nor lands it.
-   *
-   * @type {Map<XRTargetRaySpace, XREventMap["pointerenter"]>}
-   */
-  const heldEnters = new Map();
-
-  /**
-   * Act on a ray event once, by the innermost forwarding element: send its
-   * DOM event, or read the panel for an arrival, unless an element inside
-   * this one already has.
-   *
-   * @param {object} e
-   * @param {() => void} send
-   * @returns {void}
-   */
-  const deliverOnce = (e, send) => {
-    if (!delivered.has(e)) {
-      delivered.add(e);
-      send();
-    }
-  };
-
-  /**
-   * Let the ray event go on to the next clickable element up, or stop it
-   * here if there is none.
-   *
-   * @param {InteractionEvent} e
-   * @returns {void}
-   */
-  const passOn = (e) => {
-    if (!hasForwardingAncestor(object)) {
-      stopPropagation(e);
     }
   };
 
   /**
    * Whether something above the panel took the grip's start, a `drag()`
    * that picks things up with the grip. Then the press was a grab, and the
-   * events that end it are the carry's, whatever became of this element
-   * in the meantime: a row the page took out while the hand carried the
-   * panel by it still has to hand the carry its end. Asked of the start
-   * itself, which the manager hands over, so the answer does not depend on
-   * this element's handlers having been up when the grip closed.
+   * events that end it are the carry's, whatever became of the control in
+   * the meantime: a row the page took out while the hand carried the panel
+   * by it still has to hand the carry its end. Asked of the start itself,
+   * which the manager hands over.
    *
    * @param {InteractionEvent} start
    * @returns {boolean}
@@ -552,58 +646,239 @@ export function forwardPointerEvents(ctx, element, object, { enabled, onPress })
    */
   const busy = (controller) => dnd.carrying(controller) || movesList(ctx, controller);
 
-  return [
-    makeInteractive(enabled),
-    () => {
-      forwarding.add(object);
-      onCleanup(() => {
-        forwarding.delete(object);
-        heldEnters.clear();
-        delete element.dataset.xrHover;
-        delete element.dataset.xrActive;
-      });
+  /**
+   * One listener per ray event. Each reads what the ray met from the
+   * event's `originalTarget`: three writes `target` as the object whose
+   * listener is running, which here is the container.
+   *
+   * @type {{ [K in keyof import('../core.js').InteractionEventMap]: (e: XREventMap[K]) => void }}
+   */
+  const listeners = {
+    pointerenter(e) {
+      const hand = panelHand(e.controller);
+      walk(e.originalTarget, hand.hover);
+      hand.hovered = e.originalTarget;
+      // Nothing is hovered under a drag, as `:hover` holds still under one
+      // on a page; the targets the drag passes over hear `dragenter`. From
+      // the press, since the ray has already moved in the frame the press
+      // becomes a drag.
+      if (dnd.holding(e.controller)) {
+        hand.held = e;
+        return;
+      }
+      const first = innermost(hand.hover, true);
+      if (!first) {
+        return;
+      }
+      // An arrival on a control is one event, so it is where the moves
+      // that follow take their point from: the panel is asked where the
+      // page lays it out now, and a hover starts exact. Only for an
+      // arrival by `arrived`'s rule, the pulse's: the rows passing under a
+      // scroll move nothing the root's rect depends on, and the press that
+      // began the scroll read it. Not under a drag, which probes the panels
+      // it crosses itself and whose drop reads the one it ends on again.
+      const arrival = arrived(first, e);
+      const own = arrival ? panel() : null;
+      if (own) {
+        probePanel(own);
+      }
+      for (const object of hand.hover) {
+        const target = targets.get(object);
+        if (target && !target.list) {
+          enter(target, e, target === first ? arrival : undefined);
+        }
+      }
     },
-    on("select", (e) => {
+    pointermove(e) {
+      const hand = panelHand(e.controller);
+      if (e.originalTarget !== hand.hovered) {
+        walk(e.originalTarget, hand.hover);
+        hand.hovered = e.originalTarget;
+      }
+      if (dnd.holding(e.controller)) {
+        return;
+      }
+      // The first move after a hold on a control the ray came onto during
+      // it, which is when a page's `:hover` catches up after a drag.
+      const held = hand.held;
+      hand.held = null;
+      // Once, from the innermost control the ray is over, and it bubbles
+      // from there, as a mouse's does: the controls around it hear it on
+      // the way up. Not from one that has left the document, which the
+      // panel still draws until the commit: the next control up sends it,
+      // as it sends a release whose target has gone.
+      let sent = false;
+      for (const object of hand.hover) {
+        const target = targets.get(object);
+        if (!target || target.list) {
+          continue;
+        }
+        if (held) {
+          enter(target, held);
+        }
+        if (!sent && !isGone(target.element)) {
+          sent = true;
+          sendPointerAndMouse(target.element, "pointermove", moveInit(panel(), e), e.controller);
+        }
+      }
+    },
+    pointerleave(e) {
+      const hand = panelHand(e.controller);
+      hand.held = null;
+      for (const object of recorded(hand.hover, e)) {
+        const target = targets.get(object);
+        if (target && !target.list) {
+          delete target.element.dataset.xrHover;
+        }
+      }
+      hand.hover.length = 0;
+      hand.hovered = null;
+    },
+    selectstart(e) {
+      const { select } = panelHand(e.controller);
+      const first = begin(select, e.originalTarget, false);
+      if (!first) {
+        return;
+      }
+      // A press that lands on an element that has gone is swallowed (see
+      // `isGone`), and goes no further than the panel.
+      if (first.list) {
+        if (!isGone(first.element)) {
+          // The press is one event, so it reads where the page lays the
+          // panel out, as a press on a control does through its
+          // `mousedown`. The controls the ray reaches while the list
+          // scrolls, and while it glides after, read nothing on arrival
+          // (see `arrived`), and their moves take this corner.
+          const own = panel();
+          if (own) {
+            probePanel(own);
+          }
+          drags.begin(e.controller, first.element, first.object);
+        }
+        stopPropagation(e);
+        return;
+      }
+      if (isGone(first.element)) {
+        stopPropagation(e);
+        return;
+      }
+      // Cancelable, as a real one is: a page that cancels its `mousedown`
+      // is saying that nothing is to be dragged from here. A cancelled
+      // `pointerdown` says something else, that the page takes the press
+      // as a pointer, and holds no drag back on a page either.
+      const pressed = sendPointerAndMouse(
+        first.element,
+        "pointerdown",
+        pressInit(panel(), e, true),
+        e.controller,
+      );
+      // A press on something draggable may become a drag and drop, and
+      // otherwise a press over a list may become a scroll; only holding it
+      // will tell. The page's own gesture comes first, as it does under a
+      // mouse, where dragging a row drags the row and not the list.
+      if (!dnd.begin(e.controller, first.element, first.object, pressed)) {
+        drags.begin(e.controller, first.element, first.object);
+      }
+      haptics?.press(e.inputSource);
+      for (const object of select.path) {
+        const target = targets.get(object);
+        if (target && !target.list) {
+          target.element.dataset.xrActive = "true";
+        }
+      }
+      stopPropagation(e);
+    },
+    selectend(e) {
+      const { path, target: pressed } = pressOf(e, "select");
+      if (!pressed) {
+        return;
+      }
+      // The drag a press on a list began ends with the controller's own
+      // release, whatever became of the list (see `begin` in `scroll.js`);
+      // the list's part is only to keep the release from going on past the
+      // panel.
+      if (pressed.list) {
+        stopPropagation(e);
+        return;
+      }
+      // A release is owed to whatever still holds the press. A control
+      // that has left the document, or let go of its registration once its
+      // removal committed, sends no `mouseup` of its own, and the next
+      // control up sends it on itself, which is where a page sends a
+      // release whose target has gone. With none left, the press still
+      // ends here. The scroll a press may have become ends with the
+      // controller's own release, whatever became of the control.
+      let sent = false;
+      for (const object of path) {
+        const target = targets.get(object);
+        if (!target || target.list) {
+          continue;
+        }
+        delete target.element.dataset.xrActive;
+        if (!sent && !isGone(target.element)) {
+          sent = true;
+          // A drag's release is its `drop` and its `dragend`, which the
+          // drag sends from the controller's own `selectend`.
+          if (!dnd.didDrag(e.controller)) {
+            sendPointerAndMouse(target.element, "pointerup", releaseInit(panel(), e), e.controller);
+          }
+          haptics?.release(e.inputSource);
+        }
+      }
+      endPress(e.controller);
+      stopPropagation(e);
+    },
+    select(e) {
+      const { path, target: pressed } = pressOf(e, "select");
+      if (!pressed) {
+        return;
+      }
+      if (pressed.list) {
+        if (!isGone(pressed.element) && !drags.didScroll(e.controller)) {
+          pressed.element.dispatchEvent(new MouseEvent("click", pressInit(panel(), e, false)));
+        }
+        stopPropagation(e);
+        return;
+      }
       // A press that turned into a drag was the player scrolling the list
-      // this button sits in, not pressing the button — the same bargain a
-      // touchscreen strikes, and for the same reason: there is nowhere else
-      // to grab a list that is made of buttons.
-      // A press that became a drag and drop is no click either, as a mouse
-      // drag is not.
-      if (isGone(element) || drags.didScroll(e.controller) || dnd.didDrag(e.controller)) {
+      // this control sits in, not pressing the control: the same bargain a
+      // touchscreen strikes, and for the same reason, since there is
+      // nowhere else to grab a list that is made of buttons. A press that
+      // became a drag and drop is no click either, as a mouse drag is not.
+      const first = innermost(path, true);
+      if (
+        !first ||
+        isGone(pressed.element) ||
+        drags.didScroll(e.controller) ||
+        dnd.didDrag(e.controller)
+      ) {
         stopPropagation(e);
         return;
       }
-      deliverOnce(e, () => {
-        element.dispatchEvent(new MouseEvent("click", pressInit(panel(), e, false)));
-      });
-      onPress?.();
-      passOn(e);
-    }),
-    on("squeeze", (e) => {
-      // The grip is the ray's other button. A page hears the mouse's other
-      // button as `contextmenu`, and that is where it flags a tile or opens
-      // a menu of its own, so that is what the grip sends: on what the ray
-      // is on, once however many clickable elements the press holds, and
-      // only for a press let go where it started, as a click is.
-      if (taken(e.start)) {
-        return;
+      first.element.dispatchEvent(new MouseEvent("click", pressInit(panel(), e, false)));
+      for (const object of path) {
+        const target = targets.get(object);
+        if (target && !target.list) {
+          target.onPress?.();
+        }
       }
-      // Nothing for a grip that closed while the hand carried or moved a
-      // list, whatever it does now, nor for one that opens while it does.
-      if (isGone(element) || !owns(e.start) || busy(e.controller)) {
+      stopPropagation(e);
+    },
+    selectmissed(e) {
+      // The panel took the press at its start, so its miss is the panel's
+      // as its end is.
+      if (pressOf(e, "select").target) {
         stopPropagation(e);
+      }
+    },
+    squeezestart(e) {
+      const first = begin(panelHand(e.controller).squeeze, e.originalTarget, true);
+      if (!first) {
         return;
       }
-      deliverOnce(e, () => {
-        element.dispatchEvent(new MouseEvent("contextmenu", pressInit(panel(), e, true, 2)));
-      });
-      passOn(e);
-    }),
-    on("squeezestart", (e) => {
       // Swallowed as a trigger's press on such an element is, and before
       // the scene can grab the panel by a row the page has let go of.
-      if (isGone(element)) {
+      if (isGone(first.element)) {
         grips.set(e, "swallowed");
         stopPropagation(e);
         return;
@@ -611,35 +886,50 @@ export function forwardPointerEvents(ctx, element, object, { enabled, onPress })
       if (busy(e.controller)) {
         return;
       }
-      if (!grips.has(e)) {
-        grips.set(e, "owned");
-      }
+      grips.set(e, "owned");
       // Felt once as the grip closes on a control, as a trigger's press is,
       // but only once the dispatch has run, since the start goes on past
       // the panel and only then is it known whether something above took
       // it. A grab is felt by nothing here.
       if (haptics) {
-        deliverOnce(e, () => {
-          queueMicrotask(() => {
-            if (owns(e)) {
-              feelClosing(e);
-            }
-          });
+        queueMicrotask(() => {
+          if (owns(e)) {
+            feelClosing(e);
+          }
         });
       }
-    }),
-    on("squeezemissed", (e) => {
+    },
+    squeeze(e) {
+      const { path, target: gripped } = pressOf(e, "squeeze");
+      // A grab's completion goes on up to the carry.
+      if (!gripped || taken(e.start)) {
+        return;
+      }
+      // The grip is the ray's other button. A page hears the mouse's other
+      // button as `contextmenu`, and that is where it flags a tile or opens
+      // a menu of its own, so that is what the grip sends: on what the ray
+      // is on, once however many controls the press holds, and only for a
+      // press let go where it started, as a click is. Nothing for a grip
+      // that closed while the hand carried or moved a list, whatever it
+      // does now, nor for one that opens while it does.
+      const first = innermost(path, true);
+      if (first && !isGone(gripped.element) && owns(e.start) && !busy(e.controller)) {
+        first.element.dispatchEvent(new MouseEvent("contextmenu", pressInit(panel(), e, true, 2)));
+      }
+      stopPropagation(e);
+    },
+    squeezemissed(e) {
       // Let past for a grab, as its end is, so that every event of a taken
       // grip leaves the panel alike; nothing above listens for a miss
       // today, `drag()` and `carry()` taking the start and the end alone.
       // The panel's own miss stops where a press's does.
-      if (!taken(e.start)) {
-        passOn(e);
+      if (pressOf(e, "squeeze").target && !taken(e.start)) {
+        stopPropagation(e);
       }
-    }),
-    on("squeezeend", (e) => {
+    },
+    squeezeend(e) {
       // A grab's end goes on up to the carry.
-      if (taken(e.start)) {
+      if (!pressOf(e, "squeeze").target || taken(e.start)) {
         return;
       }
       // Felt once as the grip opens, on a hit and a miss alike, as a
@@ -649,134 +939,115 @@ export function forwardPointerEvents(ctx, element, object, { enabled, onPress })
       // opens. A closing not felt yet, its microtask still to come, is felt
       // first.
       if (haptics && owns(e.start)) {
-        deliverOnce(e, () => {
-          feelClosing(e.start);
-          haptics.release(e.inputSource);
-        });
+        feelClosing(e.start);
+        haptics.release(e.inputSource);
       }
-      passOn(e);
-    }),
-    on("selectstart", (e) => {
-      if (isGone(element)) {
-        stopPropagation(e);
-        return;
+      stopPropagation(e);
+    },
+  };
+
+  const listened = /** @type {Object3D<XREventMap>} */ (container);
+  const types = /** @type {(keyof typeof listeners)[]} */ (Object.keys(listeners));
+  for (const type of types) {
+    listened.addEventListener(type, /** @type {never} */ (listeners[type]));
+  }
+
+  /**
+   * Take a target until the function returned is called, which also takes
+   * a control's `data-xr-*` flags off; a list writes none.
+   *
+   * @param {Target} target
+   * @returns {() => void}
+   */
+  const register = (target) => {
+    targets.set(target.object, target);
+    return () => {
+      if (targets.get(target.object) === target) {
+        targets.delete(target.object);
       }
-      deliverOnce(e, () => {
-        // Cancelable, as a real one is: a page that cancels its `mousedown`
-        // is saying that nothing is to be dragged from here. A cancelled
-        // `pointerdown` says something else, that the page takes the
-        // press as a pointer, and holds no drag back on a page either.
-        const pressed = sendPointerAndMouse(
-          element,
-          "pointerdown",
-          pressInit(panel(), e, true),
-          e.controller,
-        );
-        // A press on something draggable may become a drag and drop, and
-        // otherwise a press over a list may become a scroll; only holding
-        // it will tell. The page's own gesture comes first, as it does
-        // under a mouse, where dragging a row drags the row and not the
-        // list. Once, by the element the press landed on, since a second
-        // `begin` for the same hand would start the gesture over.
-        if (!dnd.begin(e.controller, element, object, pressed)) {
-          drags.begin(e.controller, element, object);
-        }
-        // Felt once, however many clickable elements the press holds.
-        haptics?.press(e.inputSource);
-      });
-      element.dataset.xrActive = "true";
-      passOn(e);
-    }),
-    on("selectmissed", (e) => {
-      // The panel took the press at its start, so its miss is the panel's as
-      // its end is.
-      passOn(e);
-    }),
-    on("selectend", (e) => {
-      delete element.dataset.xrActive;
-      if (isGone(element)) {
-        // A release is owed to whatever still holds the press. An element
-        // that has left the document sends no `mouseup` of its own, and the
-        // next clickable element up sends it on itself, which is where a
-        // page sends a release whose target has gone. The scroll a press
-        // may have become ends with the controller's own release (see
-        // `begin` in `scroll.js`), whatever became of the element.
-        if (hasForwardingAncestor(object)) {
-          return;
-        }
-        endPress(e.controller);
-        stopPropagation(e);
-        return;
+      if (!target.list) {
+        delete target.element.dataset.xrHover;
+        delete target.element.dataset.xrActive;
       }
-      deliverOnce(e, () => {
-        // A drag's release is its `drop` and its `dragend`, which the drag
-        // sends from the controller's own `selectend`.
-        if (!dnd.didDrag(e.controller)) {
-          sendPointerAndMouse(element, "pointerup", releaseInit(panel(), e), e.controller);
-        }
-        haptics?.release(e.inputSource);
-      });
-      endPress(e.controller);
-      passOn(e);
-    }),
-    on("pointermove", (e) => {
-      if (dnd.holding(e.controller)) {
-        return;
+    };
+  };
+
+  return {
+    control: (object, element, onPress) => register({ element, object, list: false, onPress }),
+    list: (object, element) => register({ element, object, list: true, onPress: undefined }),
+    dispose() {
+      for (const type of types) {
+        listened.removeEventListener(type, /** @type {never} */ (listeners[type]));
       }
-      // The first move after a hold on a control the ray came onto during
-      // it, which is when a page's `:hover` catches up after a drag.
-      const held = heldEnters.get(e.controller);
-      if (held) {
-        heldEnters.delete(e.controller);
-        enter(held);
+      panelHands.clear();
+    },
+  };
+}
+
+/**
+ * @typedef {object} ForwardingOptions
+ * @property {Reactive<boolean>} enabled Whether rays can hit the object at
+ *   all, handed to `makeInteractive`.
+ * @property {() => void} [onPress] Told when a press on the element, or on
+ *   a control inside it, has been delivered as a click; see
+ *   `BoxOptions.onPress`.
+ */
+
+/**
+ * Being a control: a ray target, whose events the panel's forwarder sends
+ * back to the DOM (see `createPanelForwarder`). Boxes, SVG shapes and
+ * clickable SVG groups all register this way, so a panel's stylesheet and
+ * its click handlers see the same events whichever of them the ray met.
+ *
+ * An element that stops being clickable has to stop being forwarded too,
+ * not just stop being registered: the manager dispatches up the parent
+ * chain, so an element left forwarded would still take events bubbling out
+ * of a control inside it and press itself. Mount and unmount the returned
+ * list as a whole. Unmounting it clears the flags, since the `pointerleave`
+ * that would have cleared them goes with it.
+ *
+ * @param {WeakKey} ctx
+ * @param {HTMLElement} element
+ * @param {Object3D<XREventMap>} object The registered object. A press that
+ *   turns into a drag is measured from its frame.
+ * @param {ForwardingOptions} options
+ * @returns {EntityEffect<Object3D<XREventMap>>[]}
+ */
+export function forwardPointerEvents(ctx, element, object, { enabled, onPress }) {
+  const { makeInteractive } = interactions(ctx);
+  const forwarder = PointerForwarderContext.get(ctx);
+  return [
+    makeInteractive(enabled),
+    () => {
+      if (forwarder) {
+        onCleanup(forwarder.control(object, element, onPress));
       }
-      // Once, from the innermost element the ray is over, and it bubbles
-      // from there, as a mouse's does: the elements around it hear it on
-      // the way up rather than each sending its own. Not from an element
-      // that has left the document, which the panel still draws until the
-      // commit: the next clickable element up sends it, as it sends a
-      // release whose target has gone.
-      if (isGone(element)) {
-        return;
+    },
+  ];
+}
+
+/**
+ * Being a list a ray takes hold of: a ray target for the gaps between its
+ * rows and for its own padding, whose presses the panel's forwarder hands
+ * to the scroll gesture (see `createPanelForwarder`). As
+ * `forwardPointerEvents` is for a control, and mounted and unmounted the
+ * same way.
+ *
+ * @param {WeakKey} ctx
+ * @param {HTMLElement} element
+ * @param {Object3D<XREventMap>} object
+ * @param {Reactive<boolean>} enabled
+ * @returns {EntityEffect<Object3D<XREventMap>>[]}
+ */
+export function forwardListEvents(ctx, element, object, enabled) {
+  const { makeInteractive } = interactions(ctx);
+  const forwarder = PointerForwarderContext.get(ctx);
+  return [
+    makeInteractive(enabled),
+    () => {
+      if (forwarder) {
+        onCleanup(forwarder.list(object, element));
       }
-      deliverOnce(e, () => {
-        sendPointerAndMouse(element, "pointermove", moveInit(panel(), e), e.controller);
-      });
-    }),
-    on("pointerenter", (e) => {
-      // Nothing is hovered under a drag, as `:hover` holds still under one
-      // on a page; the targets the drag passes over hear `dragenter`. From
-      // the press, since the ray has already moved in the frame the press
-      // becomes a drag. The enter is kept for the first move after the
-      // hold, or the control the drag ended on would show no hover until
-      // the ray left it and came back.
-      if (dnd.holding(e.controller)) {
-        heldEnters.set(e.controller, e);
-        return;
-      }
-      // An arrival on a control is one event, so it is where the moves
-      // that follow take their point from: the panel is asked where the
-      // page lays it out now, and a hover starts exact. Once per ray
-      // event, by the innermost forwarding element, whatever was
-      // registered under it, which may be a scrolling list or an overlay's
-      // blocker that forwards nothing. Only for an arrival by `arrived`'s
-      // rule, the pulse's: the rows passing under a scroll move nothing
-      // the root's rect depends on, and the press that began the scroll
-      // read it (a row's `mousedown` above, or the list's own
-      // `selectstart` in `div.js`). Not under a drag, which probes the
-      // panels it crosses itself and whose drop reads the one it ends on
-      // again.
-      deliverOnce(e, () => {
-        const own = arrived(e) ? panel() : null;
-        if (own) {
-          probePanel(own);
-        }
-      });
-      enter(e);
-    }),
-    on("pointerleave", (e) => {
-      heldEnters.delete(e.controller);
-      delete element.dataset.xrHover;
-    }),
+    },
   ];
 }

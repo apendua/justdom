@@ -206,12 +206,12 @@ function keyboardPanel(configure = ownKeyboard, slot, room) {
   const press = (object, inputSource = null) => {
     assert.ok(object, "nothing to press");
     const controller = new THREE.Group();
-    // @ts-expect-error -- the shape the handlers read, not three's full event.
-    object.dispatchEvent({ type: "selectstart", controller, inputSource });
-    // @ts-expect-error -- as above.
-    object.dispatchEvent({ type: "select", controller, inputSource });
-    // @ts-expect-error -- as above.
-    object.dispatchEvent({ type: "selectend", controller, inputSource });
+    for (const type of ["selectstart", "select", "selectend"]) {
+      manager.dispatch(
+        /** @type {any} */ (object),
+        /** @type {any} */ ({ type, controller, inputSource, originalTarget: object }),
+      );
+    }
   };
 
   return {
@@ -549,7 +549,8 @@ describe("the keyboard from the panel options", () => {
       const { source, played } = recordingSource();
       const key = panel.keyObject();
       assert.ok(key, "a key to point at");
-      key.dispatchEvent(
+      panel.manager.dispatch(
+        /** @type {any} */ (key),
         /** @type {any} */ ({
           type: "pointerenter",
           controller: new THREE.Group(),

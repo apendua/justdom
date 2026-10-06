@@ -10,7 +10,6 @@ import {
   findScroller,
   isScrollable,
   movesList,
-  scrollDrags,
   ScrollDragsContext,
 } from "./scroll.js";
 import { describeScroller } from "../test/scroller.js";
@@ -144,7 +143,7 @@ describe("a hand moving a list", () => {
     const scene = InteractionContext.set({}, manager);
     const here = ScrollDragsContext.set(scene, createPanelScrollDrags(scene));
     const there = ScrollDragsContext.set(scene, createPanelScrollDrags(scene));
-    const drags = scrollDrags(here);
+    const drags = ScrollDragsContext.get(here);
 
     drags.begin(controller, row, rowObject);
     assert.equal(drags.scrolling(controller), true, "the panel's gesture holds the press");
@@ -153,7 +152,11 @@ describe("a hand moving a list", () => {
     aimAt(0, -40);
     flushFrame();
     assert.equal(movesList(there, controller), true, "seen from the other panel");
-    assert.equal(scrollDrags(there).scrolling(controller), false, "whose gesture has no say");
+    assert.equal(
+      ScrollDragsContext.get(there).scrolling(controller),
+      false,
+      "whose gesture has no say",
+    );
 
     drags.end(controller);
     flushFrame();
@@ -169,7 +172,7 @@ describe("a hand moving a list", () => {
     const { list, row, rowObject, controller, aimAt } = setup();
     const manager = new InteractionManager();
     const ctx = InteractionContext.set({}, manager);
-    const drags = scrollDrags(ctx);
+    const drags = createPanelScrollDrags(ctx);
     const hold = () => {
       aimAt(0, 0);
       drags.begin(controller, row, rowObject);

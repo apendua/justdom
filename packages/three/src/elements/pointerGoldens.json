@@ -293,5 +293,53 @@
     "pointermove #b bubbles - button -1 at 95,80 pointer 1 mouse primary",
     "mousemove #b bubbles - button 0 at 95,80",
     "= #b hover"
+  ],
+  "a cancelled press that outlives its row's registration": [
+    "> aim at #b",
+    "= #b hover",
+    "> trigger closes",
+    "pointerdown #b bubbles cancelable button 0 at 95,80 pointer 1 mouse primary",
+    "= #b hover active",
+    "> page removes #b, and the panel commits",
+    "= nothing",
+    "> trigger opens",
+    "= nothing",
+    "> aim at #c",
+    "= #c hover",
+    "> hand moves on #c",
+    "pointermove #c bubbles - button -1 at 50,120 pointer 1 mouse primary",
+    "mousemove #c bubbles - button 0 at 50,120",
+    "= #c hover"
+  ],
+  "a captured press that outlives its row's registration, in a control": [
+    "> aim at #b",
+    "= #card hover, #b hover",
+    "> trigger closes",
+    "pointerdown #b bubbles cancelable button 0 at 95,80 pointer 1 mouse primary",
+    "mousedown #b bubbles cancelable button 0 at 95,80",
+    "= #card hover active, #b hover active",
+    "> page removes #b, and the panel commits",
+    "= #card hover active",
+    "> trigger opens",
+    "pointerup #card bubbles - button 0 at 95,80 pointer 1 mouse primary",
+    "mouseup #card bubbles - button 0 at 95,80",
+    "= #card hover",
+    "> aim at #c",
+    "= #card hover, #c hover",
+    "> hand moves on #c",
+    "pointermove #c bubbles - button -1 at 50,120 pointer 1 mouse primary",
+    "mousemove #c bubbles - button 0 at 50,120",
+    "= #card hover, #c hover"
+  ],
+  "a grip that outlives its row's registration": [
+    "> aim at #b",
+    "= #b hover",
+    "> grip closes",
+    "escaped squeezestart",
+    "= #b hover",
+    "> page removes #b, and the panel commits",
+    "= nothing",
+    "> grip opens",
+    "= nothing"
   ]
 }

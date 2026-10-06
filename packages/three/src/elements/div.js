@@ -27,12 +27,12 @@ import {
 import { clipBoxShows, clipRaycast, UNCLIPPED } from "./clip.js";
 import { composeTransform, getOwnTransform, isTransformed } from "./cssTransform.js";
 import { getContentRenderOrder, getLift, isOverlay } from "./elevation.js";
-import { isScrollable, scrollDrags } from "./scroll.js";
+import { isScrollable } from "./scroll.js";
 import { place, placeAndScale } from "./place.js";
 import { BoxBatchContext } from "./boxBatch.js";
 import { TextBatchContext } from "./textBatch.js";
-import { forwardPointerEvents, isGone, isRayTarget } from "./pointerForwarding.js";
-import { lazyPanel, pressInit, probePanel } from "./dragAndDrop.js";
+import { forwardListEvents, forwardPointerEvents, isRayTarget } from "./pointerForwarding.js";
+import { lazyPanel, pressInit } from "./dragAndDrop.js";
 import { setContentGroup } from "./contentGroup.js";
 
 /** Scratch for composing a scroll onto a content group's matrix. */
@@ -160,9 +160,8 @@ export function box(ctx, element, options = {}) {
   setContentGroup(object, contentGroup);
 
   const { makeInteractive, stopPropagation } = interactions(ctx);
-  /** The panel the box is in, for where a click on it is on the page. */
+  /** The panel the box is in, for where a click on an overlay is on the page. */
   const panel = lazyPanel(object);
-  const drags = scrollDrags(ctx);
   const isPanelReady = PortalReadyContext.get(ctx);
   /**
    * Whether this element wants to be a ray target, as its own signal so that
@@ -357,58 +356,19 @@ export function box(ctx, element, options = {}) {
    * have nothing to grab at all. It becomes a ray target for the gaps
    * between its rows and for its own padding, gated on `shown` the way the
    * ordinary interactivity is: a list scrolled entirely out of some outer
-   * scroller is not something a ray should find.
-   *
-   * No hover or press styling comes with this: the list is draggable, not
-   * clickable, and the `data-xr-*` flags are what say "this reacts to being
-   * pointed at". A press that never became a drag still reports a click,
-   * which is what the panel's background would have reported had the list
-   * not been in the way.
+   * scroller is not something a ray should find. What a press there does is
+   * the panel's forwarder's (see `createPanelForwarder`).
    *
    * @type {EntityEffect<THREE.Object3D<XREventMap>>[]}
    */
-  const draggability = [
-    makeInteractive(() => isPanelReady() && shown.get()),
-    on("selectstart", (e) => {
-      if (!isGone(element)) {
-        // The press is one event, so it reads where the page lays the
-        // panel out, as a press on a button does through its `mousedown`.
-        // The controls the ray reaches while the list scrolls, and while
-        // it glides after, read nothing on arrival (see `arrived` in
-        // `forwardPointerEvents`), and their moves take this corner.
-        const own = panel();
-        if (own) {
-          probePanel(own);
-        }
-        drags.begin(e.controller, element, object);
-      }
-      stopPropagation(e);
-    }),
-    // The drag a press here began ends with the controller's own release,
-    // whatever became of the list (see `begin` in `scroll.js`); the list's
-    // part is only to keep the release from going on past the panel.
-    on("selectend", (e) => {
-      stopPropagation(e);
-    }),
-    on("select", (e) => {
-      if (!isGone(element) && !drags.didScroll(e.controller)) {
-        element.dispatchEvent(new MouseEvent("click", pressInit(panel(), e, false)));
-      }
-      stopPropagation(e);
-    }),
-    // The list took the press at its start, so its miss is the list's as
-    // its end is, and goes no further than a forwarding element's does.
-    on("selectmissed", (e) => {
-      stopPropagation(e);
-    }),
-  ];
+  const draggability = forwardListEvents(ctx, element, object, () => isPanelReady() && shown.get());
 
   return just(object, [
     // `cursor: pointer` is a live stylesheet decision — a button gets disabled,
     // a card becomes clickable — so interactivity follows it rather than being
     // fixed at the moment the element was first projected into the scene.
-    // A hidden element takes no clicks, and loses the handlers along with the
-    // registration, for the reason `forwardPointerEvents` gives. A visible
+    // A hidden element takes no clicks, and stops being forwarded along with
+    // the registration, for the reason `forwardPointerEvents` gives. A visible
     // child's events still bubble up the object chain through this one.
     effects((obj) => {
       if (!clickable.get() || hidden()) {
@@ -416,7 +376,8 @@ export function box(ctx, element, options = {}) {
       }
       useEffects(obj, interactivity);
     }),
-    // A clickable list already carries the gesture through the handlers
+    // A press on a clickable list, or on a control in one, is handed to the
+    // scroll gesture by the panel's forwarder through the registration
     // above; this is for the ordinary case of a list that is only a list.
     effects((obj) => {
       if (clickable.get() || !scrollable.get() || hidden()) {

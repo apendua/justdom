@@ -293,8 +293,8 @@ function clientPointOf(panel, point, client) {
  * frame, and reads the corner it was last given. The events that are one
  * each probe first, and are exact however the page has moved since: a
  * press, its release and its click, a press on a scrolling list, the ray's
- * arrival on a control by the rule the hover pulse follows (see
- * `forwardPointerEvents`), a drag's start, its arrival on another panel,
+ * arrival on a control by the rule the hover pulse follows (see `arrived`
+ * in `createPanelForwarder`), a drag's start, its arrival on another panel,
  * and its drop. A move, and a drag's other frames, are as exact as the
  * last of them, so a hover starts exact and drifts only by what the page
  * moves while the ray stays.

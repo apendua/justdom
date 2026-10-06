@@ -5,6 +5,7 @@ import { InteractionContext } from "../interactions.js";
 import { createMirror } from "./mirror.js";
 import { PORTAL_ATTRIBUTE } from "./portalRoot.js";
 import { checkbox } from "./checkbox.js";
+import { bubble, forwardedPanel } from "../test/rays.js";
 
 /**
  * @import { Mesh, MeshBasicMaterial, Object3D } from "three";
@@ -68,12 +69,13 @@ function setup({ checked = false, disabled = false } = {}) {
     })
   );
 
-  const ctx = InteractionContext.set({}, manager);
+  const { ctx, container: panel } = forwardedPanel(InteractionContext.set({}, manager));
 
   /** @type {Object3D<XREventMap>} */
   let object;
   const subscription = checkbox(ctx, element).subscribe((value) => {
     object = /** @type {Object3D<XREventMap>} */ (value);
+    panel.add(value);
   });
 
   return {
@@ -237,8 +239,8 @@ describe("checkbox", () => {
     const seen = [];
     element.addEventListener("change", () => seen.push(`change:${element.checked}`));
 
-    registered[0].dispatchEvent(/** @type {any} */ ({ type: "select", target: registered[0] }));
-    registered[0].dispatchEvent(/** @type {any} */ ({ type: "select", target: registered[0] }));
+    bubble(registered[0], { type: "select", controller: {} });
+    bubble(registered[0], { type: "select", controller: {} });
 
     // Which is the whole point of mirroring a real input rather than drawing
     // one: the application listens for `change` and reads `checked`, exactly

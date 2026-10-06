@@ -369,16 +369,19 @@ function sceneOf(ctx) {
  * that hand's drag wherever the ray travels next on the panel. The portal
  * makes one (`createPanelScrollDrags`) and sets it as it sets its batches
  * and its haptics, so there is one per panel by construction, and disposes
- * it as the panel is taken down. One per panel, not per scene, so that a
- * list scrolled on one panel does not silence the arrival pulses on
- * another (drag and drop keeps its gesture per scene for that reason; see
- * `dragAndDrop`); `movesList` is what asks about the scene.
+ * it as the panel is taken down. Only the panel's forwarder reads it (see
+ * `createPanelForwarder`), so it has no default. One per panel, not per
+ * scene, so that a list scrolled on one panel does not silence the arrival
+ * pulses on another (drag and drop keeps its gesture per scene for that
+ * reason; see `dragAndDrop`); `movesList` is what asks about the scene.
  */
 export const ScrollDragsContext = createProperty(
   /**
-   * @returns {ScrollDrags | null}
+   * @returns {ScrollDrags}
    */
-  () => null,
+  () => {
+    throw new Error("ScrollDragsContext not set");
+  },
 );
 
 /**
@@ -389,36 +392,6 @@ export const ScrollDragsContext = createProperty(
  */
 export function createPanelScrollDrags(ctx) {
   return createScrollDrags(createFrameRequester(ctx), sceneOf(ctx));
-}
-
-/**
- * The gesture of the elements built outside any portal, one per scene:
- * there is no panel to share one or to dispose it, and they live as long
- * as the scene does.
- *
- * @type {WeakMap<object, ScrollDrags>}
- */
-const unparented = new WeakMap();
-
-/**
- * The scroll gesture an element built with this context shares: its
- * panel's, or the scene's for an element built outside any portal.
- *
- * @param {WeakKey} ctx
- * @returns {ScrollDrags}
- */
-export function scrollDrags(ctx) {
-  const own = ScrollDragsContext.get(ctx);
-  if (own) {
-    return own;
-  }
-  const manager = InteractionContext.get(ctx);
-  let drags = unparented.get(manager);
-  if (!drags) {
-    drags = createPanelScrollDrags(ctx);
-    unparented.set(manager, drags);
-  }
-  return drags;
 }
 
 /**

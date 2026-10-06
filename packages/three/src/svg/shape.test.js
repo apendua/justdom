@@ -6,6 +6,7 @@ import { InteractionContext, InteractionManager, intersectVisible } from "../int
 import { createMirror } from "../elements/mirror.js";
 import { setContentGroup } from "../elements/contentGroup.js";
 import { getControlRoot } from "../elements/pointerForwarding.js";
+import { bubble, forwardedPanel } from "../test/rays.js";
 import { OBSERVER_OPTIONS } from "../elements/portal.js";
 import { SVGLoader } from "three/examples/jsm/loaders/SVGLoader.js";
 import { buildFillGeometry, group, shape } from "./shape.js";
@@ -60,7 +61,9 @@ const SVG_NS = "http://www.w3.org/2000/svg";
  * @param {string} [options.wrap] A `<g>` to put the shape in, as its
  *   attributes.
  * @param {InteractionManager} [options.manager] What the shape registers
- *   itself with, if it is ever clickable.
+ *   itself with, if it is ever clickable. With one, the shape's object is
+ *   put under a panel's container, which carries the forwarder a portal
+ *   puts on its own.
  * @param {HTMLElement} [options.inside] Where the `<svg>` goes on the page,
  *   adopted with it unless it is the body.
  */
@@ -90,9 +93,12 @@ function setup(
 
   /** @type {Object3D} */
   let object;
-  const ctx = manager ? InteractionContext.set({}, manager) : {};
+  const { ctx, container: panel } = manager
+    ? forwardedPanel(InteractionContext.set({}, manager))
+    : { ctx: {}, container: null };
   const subscription = shape(ctx, element).subscribe((value) => {
     object = value;
+    panel?.add(value);
   });
 
   return {
@@ -932,7 +938,7 @@ describe("svg shape as a ray target", () => {
     // `<g>` around it is hovered too, as every clickable box around a
     // hovered one is. jsdom inherits no `cursor`, so each says it itself.
     const { manager, registered } = recordingManager();
-    const ctx = InteractionContext.set({}, manager);
+    const { ctx, container: panel } = forwardedPanel(InteractionContext.set({}, manager));
     const root = document.createElementNS(SVG_NS, "svg");
     const g = document.createElementNS(SVG_NS, "g");
     const rect = document.createElementNS(SVG_NS, "rect");
@@ -961,15 +967,12 @@ describe("svg shape as a ray target", () => {
     ];
     assert.ok(gObject && rectObject);
     gObject.add(rectObject);
+    panel.add(gObject);
 
-    // Up the parent chain from the shape, as the manager dispatches.
     const controller = new THREE.Object3D();
     /** @param {string} type */
     const dispatch = (type) => {
-      const event = { type, controller, target: rectObject, originalTarget: rectObject };
-      for (let node = /** @type {Object3D | null} */ (rectObject); node; node = node.parent) {
-        node.dispatchEvent(/** @type {never} */ (event));
-      }
+      bubble(/** @type {Object3D} */ (rectObject), { type, controller });
     };
     const gData = /** @type {SVGElement} */ (g).dataset;
     const rectData = /** @type {SVGElement} */ (rect).dataset;
@@ -1065,9 +1068,7 @@ describe("svg shape as a ray target", () => {
     const controller = new THREE.Object3D();
     /** @param {string} type */
     const dispatch = (type) => {
-      s.object.dispatchEvent(
-        /** @type {never} */ ({ type, controller, target: s.object, originalTarget: s.object }),
-      );
+      bubble(s.object, { type, controller });
     };
     const dataset = /** @type {SVGElement} */ (s.element).dataset;
 
@@ -1180,9 +1181,7 @@ describe("svg shape as a ray target", () => {
   test("a hover that switches the fill on puts it under the stroke", () => {
     const { manager } = recordingManager();
     const s = setup("rect", { ...SQUARE, fill: "none", style: "cursor: pointer" }, { manager });
-    s.object.dispatchEvent(
-      /** @type {never} */ ({ type: "pointerenter", target: s.object, originalTarget: s.object }),
-    );
+    bubble(s.object, { type: "pointerenter" });
     assert.equal(/** @type {SVGElement} */ (s.element).dataset.xrHover, "true");
 
     // What a `[data-xr-hover] { fill: … }` rule does to the computed style.

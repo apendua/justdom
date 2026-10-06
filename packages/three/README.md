@@ -766,6 +766,30 @@ room made for it are one frame. The trade is that a big change is seen later rat
 than in pieces; a scroll is the one thing that does not wait, for the reason
 the scroll section gives.
 
+That frame may never come on its own. Something that changes the panel on
+every frame, such as an endless animation, a timer faster than a slow frame
+or a drag, undoes each frame's reading before the next frame finishes it. So the
+wait has a bound: once a panel has nothing left to build and has waited a second
+(`MAX_COMMIT_WAIT` in `portalPump.js`) for its reading to finish, the next frame
+reads everything at once, whatever the budget, and the update lands. Under input
+that never stops, that means one long frame about once a second, loading or
+loaded. A loading frame still up for its minimum time holds the panel past the
+second; until it is due the frames keep to the budget, since a reading the
+commit would be refused for is undone by the next change, and the panel lands in
+one long frame on the frame it is due. Rows can arrive faster than a slow frame
+builds them, too, so that the panel always has something left to build. Once the
+page adds a node to the panel five seconds or more into the wait
+(`MAX_BUILD_WAIT`), one frame builds everything queued and reads everything at
+once; a single row is enough. A loading frame still up for its minimum time
+holds this too, in the same way. A mount the page does not add to is left to its
+budget, however long it takes.
+
+A drag whose reading fits the frame's budget commits every frame and follows
+the hand on an atomic panel too. A panel whose reading overruns the budget on
+every frame would land once a second under a drag, and wants `atomic: false`
+instead, which runs the update's writes under the budget and lets the panel
+change in instalments; `atomic` in `PortalOptions` says what that trades.
+
 ```js
 dom(ctx, panel, [set({ position })], {
   budget: 8, // ms of each frame spent mounting
@@ -1378,10 +1402,15 @@ elements or the transitions playing on them.
 
 ## Animation
 
-CSS transitions, keyframe animations and Web Animations play inside a
-portal: while anything is animating, the affected elements are sampled once
-per frame — through the same invalidation path a mutation takes — and the
-moment nothing is, the sampling stops. An idle panel costs nothing.
+CSS transitions, keyframe animations and Web Animations play inside a portal:
+while anything is animating, the affected elements are sampled once per frame —
+through the same invalidation path a mutation takes — and the moment nothing is,
+the sampling stops. An idle panel costs nothing. A panel still loading is not
+sampled frame by frame: nobody sees it yet, its mount reads each element's style
+as it builds it, and a sample every frame would undo that reading. An animation
+that ends during the load is settled once, as it would be in a loaded panel. The
+first frame after the load samples every element still animating, and the next
+update brings the panel to where they are.
 Inline-style writes from a frame loop work too; each one is an ordinary
 mutation scoped to the element it touched. Drive that loop with
 `useFrame(ctx, fn)` rather than with `requestAnimationFrame`, though. Once a

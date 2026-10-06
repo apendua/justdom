@@ -259,7 +259,9 @@ function claimRoot(root) {
  *   paid by anything that invalidates the panel on *every* frame — a layout
  *   transition, most of all — since each frame's invalidation undoes the
  *   reading the frame before it did, and a panel whose per-frame reading
- *   does not fit the budget does not move until the animation ends. False
+ *   does not fit the budget does not move until the animation ends, or
+ *   until it has waited `MAX_COMMIT_WAIT` (a second; see `portalPump.js`),
+ *   when one long frame reads everything and lands the update. False
  *   runs the effects themselves under the budget, as many as fit, in the
  *   order they were queued: something moves every frame, and an update too
  *   big for one frame lands in instalments. Rows added or removed after
@@ -733,7 +735,11 @@ function buildPortal(ctx, ownOptions = {}) {
    * budget without asking. `maxStalePasses: Infinity` for the same reason: a
    * large mount legitimately overruns the budget many frames in a row, and
    * the catch-up drain the default would force is precisely the stall this
-   * exists to avoid.
+   * exists to avoid. The bounds a busy panel does need are the pump's, in
+   * time rather than passes: `MAX_COMMIT_WAIT` for reading that never
+   * finishes, and `MAX_BUILD_WAIT` for a build the page keeps adding to,
+   * which does take that drain, building everything queued and sweeping
+   * the channel in one frame.
    *
    * Atomic, because a panel is one surface. A budget spent running the
    * effects moved the boxes it reached and left the rest where they were, so
@@ -1111,6 +1117,16 @@ function buildPortal(ctx, ownOptions = {}) {
   const hasPendingCommit = () => pendingAttachments.size > 0 || pendingRemovals.size > 0;
 
   /**
+   * Whether `commit` would be taken now. Not while the mount is built but
+   * the frame standing in for it has not been up for its minimum time: a
+   * frame that flashed and was gone reads as a glitch. The pump asks this
+   * on every tick a commit has waited on, so it has to stay cheap, and its
+   * time bounds force a long frame only while it answers true.
+   */
+  const commitDue = () =>
+    !(loading.get() && loadingFrameObject && !loadingFrameObject.isDue(performance.now()));
+
+  /**
    * Put a node's object under its parent's: now, or at the commit if there
    * is one to wait for. Both callers go through here so that a node
    * re-inserted mid-update and one built by the pump keep the same frame.
@@ -1208,12 +1224,10 @@ function buildPortal(ctx, ownOptions = {}) {
    * would be born in the default channel rather than the panel's.
    */
   const commit = () => {
-    if (loading.get() && loadingFrameObject && !loadingFrameObject.isDue(performance.now())) {
-      // The mount is built, but the frame standing in for it has not been
-      // up for its minimum time, and a frame that flashed and was gone reads
-      // as a glitch. Declined: nothing is applied, the lists stay as they
-      // are, and the pump — for which a declined commit is a tick that did
-      // not settle — asks again next frame.
+    if (!commitDue()) {
+      // Declined: nothing is applied, the lists stay as they are, and the
+      // pump — for which a declined commit is a tick that did not settle —
+      // asks again next frame.
       return false;
     }
     projectChanges(() => {
@@ -1359,6 +1373,16 @@ function buildPortal(ctx, ownOptions = {}) {
           channel,
           scheduler,
           priority,
+          // What the observer holds and has not delivered: a handler a ray's
+          // press ran inside this frame, with no microtask since. Records of
+          // the portal's own bookkeeping are skipped here as they are when
+          // the observer delivers them.
+          beforeTick: () => {
+            const records = mutationObserver.takeRecords();
+            if (records.length > 0) {
+              mutationCallback(records);
+            }
+          },
           buildNode: buildQueuedNode,
           onCommit: commit,
           // Not atomic, the panel changes by instalments anyway; a row built
@@ -1366,6 +1390,7 @@ function buildPortal(ctx, ownOptions = {}) {
           // busy channel happens to empty. The mount itself still arrives
           // whole.
           commitsEarly: () => !atomic && !loading.get(),
+          commitDue,
           hasPendingCommit,
           onSettled: markLoaded,
           onQueued: (queued) => {
@@ -1453,29 +1478,33 @@ function buildPortal(ctx, ownOptions = {}) {
    * that came and went.
    *
    * @param {MutationRecord[]} mutationList
+   * @returns {boolean} Whether the flush changed the content, rather than
+   *   only the portal's own bookkeeping attributes.
    */
   const mutationCallback = (mutationList) => {
     if (mutationList.every(isBookkeepingMutation)) {
-      return;
+      return false;
     }
     projectChanges(() => {
       mirror.ingest(mutationList);
-      /** @type {Set<Node>} */
-      const alreadySeen = new Set();
       for (const mutation of mutationList) {
         if (mutation.type !== "childList") {
           continue;
         }
         sawContent = true;
         mutation.addedNodes.forEach((node) => {
-          alreadySeen.add(node);
           // A node the portal has never seen goes to the queue and gets
           // built when the pump reaches it — that is the slicing. One it
           // has seen — a reinsertion, a move — already paid its cost and
           // reattaches without queueing, in the frame the rest of the
-          // change lands in.
+          // change lands in. One already out of the tree again by this
+          // flush, a spinner made and dropped between two reads, has
+          // nothing to build, and queueing it would count it as an arrival
+          // towards `MAX_BUILD_WAIT`.
           if (pump && !nodeToObject.has(node)) {
-            pump.enqueue(node);
+            if (containerElement.contains(node)) {
+              pump.enqueue(node);
+            }
             return;
           }
           // Listed whether or not the parent has an object yet: a node
@@ -1491,22 +1520,24 @@ function buildPortal(ctx, ownOptions = {}) {
           continue;
         }
         mutation.removedNodes.forEach((node) => {
-          // If this node was added somewhere else it does not make sense to
-          // clean it up, so if we detect that it was already seen, we skip it.
-          if (!alreadySeen.has(node)) {
-            pump?.discard(node);
+          // Moved if the tree still holds it; gone otherwise, however many
+          // times the flush put it back in between.
+          if (!containerElement.contains(node)) {
             detach(node);
           }
         });
       }
     });
     contentChanged();
+    return true;
   };
 
   /**
    * What follows any change to the panel's content, once it has been routed
    * into the mirror and the object tree: an observer flush, or the first
    * look at an element the page handed over with content already in it.
+   * The rays are cast again by the caller: by the observer's callback, the
+   * first look, or the pump's tick once it has built.
    */
   const contentChanged = () => {
     // A class swap is how most transitions begin, and inside an immersive
@@ -1515,11 +1546,6 @@ function buildPortal(ctx, ownOptions = {}) {
     // updates the session has suspended. Observer callbacks are microtasks
     // and keep arriving, so this is where the clock gets to look.
     animationClock.sweep();
-    // Every hand's hit is worked out only when that hand moves, so a menu that
-    // opens under a ray resting on the button that opened it would go on
-    // reporting the button as hovered until the player twitched. The scene
-    // changed under them; ask for the rays to be cast again.
-    interactionManager.updateIntersections();
     if (sawContent && loading.get()) {
       // The mount is under way: say so where the DOM can see it, and start
       // placing the panel and the frame that may stand in for it. Both end
@@ -1542,7 +1568,16 @@ function buildPortal(ctx, ownOptions = {}) {
     }
   };
 
-  const mutationObserver = new MutationObserver(mutationCallback);
+  const mutationObserver = new MutationObserver((records) => {
+    // Every hand's hit is worked out only when that hand moves, so a menu
+    // that opens under a ray resting on the button that opened it would go
+    // on reporting the button as hovered until the player twitched. The
+    // scene changed under them; ask for the rays to be cast again. A change
+    // the pump's tick takes in is cast by the tick, once it has built.
+    if (mutationCallback(records)) {
+      interactionManager.updateIntersections();
+    }
+  });
   mutationObserver.observe(containerElement, OBSERVER_OPTIONS);
 
   /**
@@ -1592,6 +1627,9 @@ function buildPortal(ctx, ownOptions = {}) {
         showBusy();
       };
     },
+    // Nobody sees the panel until it loads, and the mount reads each style
+    // as it builds it; see `held` in `animationClock.js`.
+    { held: () => loading.get() },
   );
 
   /**
@@ -1767,6 +1805,7 @@ function buildPortal(ctx, ownOptions = {}) {
           }
         });
         contentChanged();
+        interactionManager.updateIntersections();
       } catch (err) {
         disconnect();
         throw err;

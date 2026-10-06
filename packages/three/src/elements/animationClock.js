@@ -45,8 +45,9 @@ import { documentTime, sampleRenderingUpdates } from "./renderingUpdates.js";
  * to say which properties an animation actually touches). While the set is
  * non-empty, every frame emits invalidation batches scoped to the animating
  * elements — the same batches a mutation would have produced, so everything
- * downstream just works. An empty set requests no frames: the idle cost of
- * all of this is nothing.
+ * downstream just works. A held clock emits no sample, only the settle of
+ * an animation that ends, and the portal holds it while its panel loads. An
+ * empty set requests no frames: the idle cost of all of this is nothing.
  */
 
 /**
@@ -328,8 +329,24 @@ const SWEEP_INTERVAL = 60;
  * @param {(tick: () => void) => () => void} requestFrames Starts calling
  *   `tick` once per frame; returns the way to stop. Only ever held while the
  *   membership is non-empty.
+ * @param {object} [options]
+ * @param {() => boolean} [options.held] Asked every frame: while it answers
+ *   true, the frame's sample is not emitted. The portal holds the clock
+ *   while its panel loads, since nobody sees the panel yet and the mount
+ *   reads each style as it builds it; a sample per frame would only undo
+ *   what the mount had read, and under an endless animation the mount would
+ *   never finish. Where the clock drives the animations itself, with the
+ *   page's rendering suspended, a held frame drives nothing, writing no
+ *   `currentTime`, and still looks for what started and what ended. The first
+ *   frame after the hold advances them by what the hold owes them, or, for one
+ *   that started or resumed during it, by its share of that, which for one the
+ *   timeline is not carrying is the time since the first look that saw it
+ *   running, within a frame of its start or resume. Elsewhere membership is
+ *   kept up all the while. Either way the first frame after the hold names
+ *   every element still animating, and an animation that ends is still settled,
+ *   since an end is said once and not every frame.
  */
-export function createAnimationClock(container, emit, requestFrames) {
+export function createAnimationClock(container, emit, requestFrames, { held = () => false } = {}) {
   /**
    * What is animating right now: for each element, its running animations —
    * keyed so that a transition's end event can find what its start event
@@ -424,6 +441,31 @@ export function createAnimationClock(container, emit, requestFrames) {
    * see the exported `sweep` below.
    */
   let recheck = false;
+  /**
+   * When each animation was first seen running by a look, while the clock
+   * drives. A look drops the entry once it finds the animation no longer
+   * running, ended or paused, and the next driven frame with time to make
+   * up reads the rest and clears them: an animation that started or resumed
+   * during a hold is owed only its share of the hold, in proportion to the
+   * time since it was seen running, and one an ordinary driven frame finds
+   * is owed nothing on that frame and loses at most that frame. Keyed by the
+   * animation and not its element, since an element already animating can
+   * start another.
+   *
+   * @type {Map<Animation, number>}
+   */
+  const joinedAt = new Map();
+
+  /**
+   * The animations the last sweep saw, kept to tell one that has just
+   * started from one that was running already. Two sets that each sweep
+   * swaps, filling the spare as it walks, rather than one per sweep.
+   *
+   * @type {Set<Animation>}
+   */
+  let lastSeen = new Set();
+  /** @type {Set<Animation>} */
+  let spareSeen = new Set();
 
   function start() {
     if (!stopFrames) {
@@ -436,6 +478,13 @@ export function createAnimationClock(container, emit, requestFrames) {
       stopFrames();
       stopFrames = null;
     }
+    // Nothing animates, so nothing is owed: the next animation is driven
+    // from its own start, not by everything since this account was opened.
+    lastDrivenAt = null;
+    lastDocumentTime = null;
+    joinedAt.clear();
+    lastSeen.clear();
+    spareSeen.clear();
   }
 
   /**
@@ -568,19 +617,70 @@ export function createAnimationClock(container, emit, requestFrames) {
    * is why the portal calls it on every mutation, the one signal that still
    * arrives (observer callbacks are microtasks, owing nothing to frames).
    *
-   * @param {number} [advanceBy] Milliseconds of real time to move every
-   *   running animation on by first. Nonzero only while the document is
-   *   suspended, where the rendering step that would ordinarily do this has
-   *   stopped.
-   * @param {number} [browserAdvance] How much of that the document's own
-   *   timeline covered — what the browser has already carried its animations
-   *   through, and so must not be charged for twice.
+   * Called with nothing, it only looks. Called to drive, it takes all three
+   * of what follows, or the types refuse it: without `now`, an animation
+   * that started during a hold would be owed a negative time and never
+   * moved. Three numbers rather than one object, since the driving branch
+   * calls this every frame.
+   *
+   * @overload
+   * @returns {void}
    */
-  function sweep(advanceBy = 0, browserAdvance = 0) {
+  /**
+   * @overload
+   * @param {number} advanceBy Milliseconds of real time to move every running
+   *   animation on by first. Nonzero only while the document is suspended,
+   *   where the rendering step that would ordinarily do this has stopped.
+   * @param {number} browserAdvance How much of that the document's own
+   *   timeline covered — what the browser has already carried its
+   *   animations through, and so must not be charged for twice.
+   * @param {number} now The `performance.now()` the elapsed time was
+   *   measured against: an animation that started during a hold is owed
+   *   only the share of the interval since it was first seen.
+   * @returns {void}
+   */
+  /**
+   * @param {number} [advanceBy]
+   * @param {number} [browserAdvance]
+   * @param {number} [now]
+   */
+  function sweep(advanceBy = 0, browserAdvance = 0, now) {
     if (typeof container.getAnimations !== "function") {
       return;
     }
     const animations = container.getAnimations({ subtree: true });
+    // What started since the last sweep, with the clock driving, is owed
+    // only the time since this sweep saw it. No animation event is
+    // dispatched while the clock drives, so a sweep is the only way one is
+    // learned, and the first frame after a hold may be the sweep that
+    // learns it. A driven frame stamps with its own `now`, so what it is
+    // first to see is owed exactly nothing yet; a look reads the clock.
+    const noting = lastDrivenAt !== null;
+    const stamp = now ?? performance.now();
+    // Only what runs joins: a paused animation that resumes is a newcomer
+    // to the look that first sees it running.
+    const looked = spareSeen;
+    looked.clear();
+    for (const animation of animations) {
+      if (animation.playState !== "running") {
+        continue;
+      }
+      looked.add(animation);
+      if (noting && !lastSeen.has(animation)) {
+        joinedAt.set(animation, stamp);
+      }
+    }
+    spareSeen = lastSeen;
+    lastSeen = looked;
+    // What the last look saw running and this one did not, ended or paused,
+    // is owed nothing more, and keeps no `Animation` alive in the map.
+    if (joinedAt.size > 0) {
+      for (const animation of spareSeen) {
+        if (!looked.has(animation)) {
+          joinedAt.delete(animation);
+        }
+      }
+    }
     if (advanceBy > 0) {
       // What is left for us to do. A timeline that has stopped with the
       // frames leaves the whole of it; one that keeps running while the page
@@ -604,7 +704,12 @@ export function createAnimationClock(container, emit, requestFrames) {
         // have their start time and are moving if anything is. It is also
         // why a panel can look dead while the panel beside it looks alive.
         const anchored = typeof animation.startTime === "number";
-        const delta = anchored ? shortfall : advanceBy;
+        // One that started during a hold is owed only its share of the
+        // interval: what the timeline covered of the time since it joined is
+        // in the same proportion as what it covered of the whole.
+        const joined = joinedAt.get(animation);
+        const owed = anchored ? shortfall : advanceBy;
+        const delta = joined === undefined ? owed : (owed * (stamp - joined)) / advanceBy;
         if (delta <= 0) {
           continue;
         }
@@ -623,6 +728,7 @@ export function createAnimationClock(container, emit, requestFrames) {
           animation.currentTime = delta;
         }
       }
+      joinedAt.clear();
     }
     /** @type {Map<Element, Map<string, Animated>>} */
     const seen = new Map();
@@ -699,26 +805,51 @@ export function createAnimationClock(container, emit, requestFrames) {
         narrow.delete(element);
       }
     }
+    const isHeld = held();
     if (sampleRenderingUpdates()) {
-      // No event will say when an animation starts or stops, so every frame
-      // is a sweep: make up whatever of the elapsed time the document's own
-      // timeline did not cover, then read back what is still running.
-      const now = performance.now();
-      const documentNow = documentTime();
-      const elapsed = lastDrivenAt === null ? 0 : now - lastDrivenAt;
-      const browserAdvance =
-        lastDrivenAt === null || lastDocumentTime === null || documentNow === null
-          ? 0
-          : Math.max(0, documentNow - lastDocumentTime);
-      lastDrivenAt = now;
-      lastDocumentTime = documentNow;
-      recheck = false;
-      sweep(elapsed, browserAdvance);
+      if (isHeld) {
+        // Nothing driven: each `currentTime` write dirties a style the mount
+        // would read again. The account keeps running from when driving
+        // started, so the first frame after the hold advances by all of it.
+        // Each held frame still looks, as a driven frame does, since no event
+        // says an animation started or ended while the clock drives: a look
+        // reads and writes nothing, notes what started within a frame of its
+        // start, and finds what has ended, so that an empty membership holds
+        // no frames here either.
+        recheck = false;
+        sweep();
+        // Not on a frame whose sweep stopped the clock: nothing animates,
+        // so there is no account to open.
+        if (animating.size && lastDrivenAt === null) {
+          // What the sweep above saw runs now and is owed the whole hold;
+          // only what a later sweep finds that it did not see started
+          // during it.
+          lastDrivenAt = performance.now();
+          lastDocumentTime = documentTime();
+        }
+      } else {
+        // No event will say when an animation starts or stops, so every
+        // frame is a sweep: make up whatever of the elapsed time the
+        // document's own timeline did not cover, then read back what is
+        // still running.
+        const now = performance.now();
+        const documentNow = documentTime();
+        const elapsed = lastDrivenAt === null ? 0 : now - lastDrivenAt;
+        const browserAdvance =
+          lastDrivenAt === null || lastDocumentTime === null || documentNow === null
+            ? 0
+            : Math.max(0, documentNow - lastDocumentTime);
+        lastDrivenAt = now;
+        lastDocumentTime = documentNow;
+        recheck = false;
+        sweep(elapsed, browserAdvance, now);
+      }
     } else {
       // The browser is driving; the events keep membership honest and the
       // sweep is only there to catch what they miss.
       lastDrivenAt = null;
       lastDocumentTime = null;
+      joinedAt.clear();
       const wanted = recheck;
       recheck = false;
       if (wanted || ticks % SWEEP_INTERVAL === 0) {
@@ -727,6 +858,9 @@ export function createAnimationClock(container, emit, requestFrames) {
     }
     if (!animating.size) {
       stop();
+      return;
+    }
+    if (isHeld) {
       return;
     }
     emit(buildBatches());

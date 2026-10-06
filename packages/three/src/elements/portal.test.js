@@ -7,6 +7,7 @@ import { InteractionContext, InteractionManager } from "../interactions.js";
 import {
   BUSY_ATTRIBUTE,
   DomMirror,
+  getChildNodes,
   getComputedStyleCached,
   LOADING_ATTRIBUTE,
   resetMeasuringRangeForTests,
@@ -19,6 +20,8 @@ import { DEFAULT_HANDLE_WIDTH } from "./panelHandles.js";
 import { RendererContext } from "../render.js";
 import { recordingSource } from "../test/rumble.js";
 import { clientRect } from "../test/clientRect.js";
+import { fakeClock } from "../test/clock.js";
+import { syntheticEvent } from "../test/events.js";
 
 /**
  * `createPortal`, with the loading frame's delay and minimum time off. A
@@ -35,6 +38,7 @@ const createPortal = (ctx, options = {}) =>
     ...options,
   });
 import { createPortalScheduler, PortalSchedulerContext } from "./portalScheduler.js";
+import { MAX_BUILD_WAIT, MAX_COMMIT_WAIT } from "./portalPump.js";
 import {
   countingManager,
   dispatchFontsEvent,
@@ -1207,7 +1211,7 @@ describe("createPortal", () => {
 
     /** @param {string} type @param {string} propertyName */
     const transition = (type, propertyName) =>
-      card.dispatchEvent(Object.assign(new Event(type, { bubbles: true }), { propertyName }));
+      card.dispatchEvent(syntheticEvent(type, { propertyName }));
 
     try {
       transition("transitionrun", "transform");
@@ -1259,9 +1263,7 @@ describe("createPortal", () => {
     const busy = () => containerElement.hasAttribute(BUSY_ATTRIBUTE);
     /** @param {string} type */
     const transition = (type) =>
-      card.dispatchEvent(
-        Object.assign(new Event(type, { bubbles: true }), { propertyName: "background-color" }),
-      );
+      card.dispatchEvent(syntheticEvent(type, { propertyName: "background-color" }));
     assert.equal(busy(), false, "a mounted panel with nothing moving is not busy");
 
     try {
@@ -1333,10 +1335,10 @@ describe("createPortal", () => {
     // The trade the option is for. An atomic panel under an update that
     // lands on every frame — a layout transition — re-reads everything each
     // frame, and when that does not fit the budget it does not move until
-    // the animation ends. Not atomic, the budget runs effects rather than
-    // resolving for them: the rows change a few at a time, as they did
-    // before there were atomic channels, and the first of them changes in
-    // the first frame.
+    // the animation ends or the pump's bound passes. Not atomic, the budget
+    // runs effects rather than resolving for them: the rows change a few at
+    // a time, as they did before there were atomic channels, and the first
+    // of them changes in the first frame.
     const manager = new InteractionManager();
     const ctx = InteractionContext.set({}, manager);
     const portal = createPortal(ctx, { budget: 0, atomic: false });
@@ -1696,9 +1698,7 @@ describe("createPortal", () => {
     // declined commit is a tick that did not settle, so the pump stays
     // scheduled and asks again each frame until the time is up, and the
     // tick that finds it up commits and loads. On a clock the test drives.
-    const originalNow = performance.now;
-    let clock = 0;
-    performance.now = () => clock;
+    const clock = fakeClock();
     try {
       const manager = new InteractionManager();
       const ctx = InteractionContext.set({}, manager);
@@ -1743,7 +1743,7 @@ describe("createPortal", () => {
       // first tick ends unfinished and the frame goes up at 0 ms; the third
       // finishes the mount at 32 ms, well inside the second. Held.
       for (const at of [0, 16, 32, 400, 999]) {
-        clock = at;
+        clock.set(at);
         flushFrame();
         await nextMacrotask();
         assert.equal(portal.isLoading(), true, `still loading at ${at} ms`);
@@ -1752,7 +1752,7 @@ describe("createPortal", () => {
       }
       assert.deepEqual(transitions, []);
 
-      clock = 1000;
+      clock.set(1000);
       for (let index = 0; index < 5 && portal.isLoading(); index++) {
         flushFrame();
         await nextMacrotask();
@@ -1767,7 +1767,7 @@ describe("createPortal", () => {
       portal.disconnect();
       await drain();
     } finally {
-      performance.now = originalNow;
+      clock.restore();
     }
   });
 
@@ -1776,9 +1776,7 @@ describe("createPortal", () => {
     // apart: done at 32 ms, well inside a 250 ms delay. No frame goes up,
     // so the minimum time — which counts from the showing — holds nothing,
     // and the panel loads in the frame it was finished in.
-    const originalNow = performance.now;
-    let clock = 0;
-    performance.now = () => clock;
+    const clock = fakeClock();
     try {
       const manager = new InteractionManager();
       const ctx = InteractionContext.set({}, manager);
@@ -1811,13 +1809,13 @@ describe("createPortal", () => {
 
       let frames = 0;
       while (frames < 20 && portal.isLoading()) {
-        clock = frames * 16;
+        clock.set(frames * 16);
         frames += 1;
         flushFrame();
         await nextMacrotask();
       }
       assert.equal(portal.isLoading(), false);
-      assert.ok(clock < 250, `loaded inside the delay (${clock} ms)`);
+      assert.ok(clock.now() < 250, `loaded inside the delay (${clock.now()} ms)`);
       assert.ok(frames > 1, `and the mount did take more than one frame (${frames})`);
       assert.ok(!added.includes("loading-frame"), "without the frame ever put in the scene");
 
@@ -1825,7 +1823,7 @@ describe("createPortal", () => {
       portal.disconnect();
       await drain();
     } finally {
-      performance.now = originalNow;
+      clock.restore();
     }
   });
 
@@ -1834,9 +1832,7 @@ describe("createPortal", () => {
     // delay: nothing shown. The next, at 300 ms, is past it: the frame goes
     // up then, and its minimum time counts from then — so the mount, done a
     // frame later, is held until 1300 ms, not 1000.
-    const originalNow = performance.now;
-    let clock = 0;
-    performance.now = () => clock;
+    const clock = fakeClock();
     try {
       const manager = new InteractionManager();
       const ctx = InteractionContext.set({}, manager);
@@ -1864,20 +1860,20 @@ describe("createPortal", () => {
       portal.mount(mountable);
       await nextMacrotask();
 
-      clock = 0;
+      clock.set(0);
       flushFrame();
       await nextMacrotask();
       assert.equal(portal.isLoading(), true);
       assert.equal(loadingFrame(), undefined, "unfinished at 0 ms, but inside the delay");
 
-      clock = 300;
+      clock.set(300);
       flushFrame();
       await nextMacrotask();
       assert.equal(portal.isLoading(), true);
       assert.ok(loadingFrame(), "past the delay at 300 ms, and shown");
 
       for (const at of [316, 1000, 1299]) {
-        clock = at;
+        clock.set(at);
         flushFrame();
         await nextMacrotask();
         assert.equal(portal.isLoading(), true, `held at ${at} ms`);
@@ -1885,7 +1881,7 @@ describe("createPortal", () => {
         assert.equal(content(), undefined, `nothing attached at ${at} ms`);
       }
 
-      clock = 1300;
+      clock.set(1300);
       for (let index = 0; index < 5 && portal.isLoading(); index++) {
         flushFrame();
         await nextMacrotask();
@@ -1898,7 +1894,7 @@ describe("createPortal", () => {
       portal.disconnect();
       await drain();
     } finally {
-      performance.now = originalNow;
+      clock.restore();
     }
   });
 
@@ -1907,8 +1903,7 @@ describe("createPortal", () => {
     // to be built in its first tick has nothing to soften: it lands in that
     // tick, no frame is shown, and the minimum time — which counts from the
     // showing — holds nothing.
-    const originalNow = performance.now;
-    performance.now = () => 0;
+    const clock = fakeClock();
     try {
       const manager = new InteractionManager();
       const ctx = InteractionContext.set({}, manager);
@@ -1955,7 +1950,7 @@ describe("createPortal", () => {
       portal.disconnect();
       await drain();
     } finally {
-      performance.now = originalNow;
+      clock.restore();
     }
   });
 
@@ -2416,6 +2411,51 @@ describe("createPortal", () => {
 
     subscription.unsubscribe();
     portal.disconnect();
+  });
+
+  test("a row taken out, put back and taken out in one flush is taken down", async () => {
+    // The flush lists the row as removed, added and removed. It is in the
+    // added nodes, so a removal that asked the record list whether the row
+    // had come back took it for a move and left its object in the scene,
+    // drawn for a row the page no longer has.
+    const manager = new InteractionManager();
+    const ctx = InteractionContext.set({}, manager);
+    const portal = createPortal(ctx, { budget: 0 });
+    const parent = new THREE.Group();
+    portal.addTo(parent);
+    const containerObject = parent.children[0];
+
+    /** @type {import("@apendua/justdom").Mountable | undefined} */
+    let mountable;
+    const tree = $("div");
+    const subscription = tree.subscribe((value) => {
+      mountable = value;
+    });
+    assert.ok(mountable);
+    portal.mount(mountable);
+    await settle(portal);
+
+    const containers = document.querySelectorAll("[data-xr-portal]");
+    const list = /** @type {HTMLElement} */ (containers[containers.length - 1].firstElementChild);
+    const row = document.createElement("div");
+    list.appendChild(row);
+    await drain();
+
+    const rootObject = /** @type {THREE.Object3D} */ (
+      containerObject.children.find((child) => !(child instanceof THREE.Mesh))
+    );
+    const rowObject = rootObject.children[0].children[0];
+    assert.ok(rowObject, "the row was built");
+
+    list.removeChild(row);
+    list.appendChild(row);
+    list.removeChild(row);
+    await drain();
+    assert.equal(rowObject.parent, null, "the row's object is out of the scene");
+
+    subscription.unsubscribe();
+    portal.disconnect();
+    await drain();
   });
 
   test("an object built for a commit that never came is taken down with the panel", async () => {
@@ -3737,5 +3777,576 @@ describe("a draggable panel", () => {
     press("selectend");
     assert.equal(putDown, 1, "carried, and put down");
     portal.disconnect();
+  });
+});
+
+describe("a panel that is always busy", () => {
+  /**
+   * jsdom has no `AnimationEvent` and no `getAnimations`, so the clock knows
+   * of an animation only by its events, and assumes one it cannot read
+   * moves layout: from the start event on, every frame re-measures the whole
+   * panel, which is what an endless animation does to it.
+   *
+   * @param {Element} element
+   * @param {"animationstart" | "animationend"} type
+   */
+  const animation = (element, type) =>
+    element.dispatchEvent(syntheticEvent(type, { animationName: "spin" }));
+
+  /**
+   * A timer at zero delay that flips the element's colour on every turn,
+   * faster than any frame reads it: a panel a timer keeps busy. Returns
+   * what stops it.
+   *
+   * @param {HTMLElement} element
+   * @returns {() => void}
+   */
+  const flicker = (element) => {
+    let tick = 0;
+    const timer = setInterval(() => {
+      tick += 1;
+      element.style.color = tick % 2 ? "red" : "blue";
+    }, 0);
+    return () => clearInterval(timer);
+  };
+
+  /**
+   * Counts the channel flushes run with no budget, the long frames a time
+   * bound forces. Give `UpdateChannel.prototype.flush` back with `restore`,
+   * in a `finally`.
+   */
+  const countUnbudgeted = () => {
+    const flush = UpdateChannel.prototype.flush;
+    let count = 0;
+    UpdateChannel.prototype.flush = function (options) {
+      if (options?.budget === Infinity) {
+        count += 1;
+      }
+      return flush.call(this, options);
+    };
+    return {
+      get count() {
+        return count;
+      },
+      restore() {
+        UpdateChannel.prototype.flush = flush;
+      },
+    };
+  };
+
+  /**
+   * A panel of a few rows, mounted at a zero budget, so that one frame
+   * resolves one read and anything that invalidates the panel every frame
+   * keeps its channel from ever emptying. It takes `performance.now` with
+   * `fakeClock` before it builds anything, and gives it back in `dispose`.
+   * If building the panel throws, it disposes of what it built at once, so
+   * that one failing test leaves neither a frozen clock nor a connected
+   * portal to every test after it.
+   *
+   * @param {Parameters<typeof createPortal>[1]} [options]
+   * @param {number} [count] How many rows, each a div with a div in it.
+   */
+  const busyPanel = (options = {}, count = 4) => {
+    const clock = fakeClock();
+    /** @type {ReturnType<typeof createPortal> | undefined} */
+    let portal;
+    /** @type {{ unsubscribe: () => void } | undefined} */
+    let subscription;
+    const dispose = () => {
+      subscription?.unsubscribe();
+      portal?.disconnect();
+      clock.restore();
+    };
+    try {
+      const { ctx } = countingManager();
+      portal = createPortal(ctx, { budget: 0, ...options });
+      const parent = new THREE.Group();
+      portal.addTo(parent);
+      const containerObject = parent.children[0];
+      /** @type {import("@apendua/justdom").Mountable | undefined} */
+      let mountable;
+      subscription = $("div", [
+        children(...Array.from({ length: count }, () => $("div", [children($("div", []))]))),
+      ]).subscribe((value) => {
+        mountable = value;
+      });
+      assert.ok(mountable);
+      portal.mount(mountable);
+      const containers = document.querySelectorAll("[data-xr-portal]");
+      const list = /** @type {HTMLElement} */ (containers[containers.length - 1].firstElementChild);
+      /** The rows the scene holds, once the root has an object. */
+      const rows = () => {
+        const rootObject = containerObject.children.find(
+          (child) => !(child instanceof THREE.Mesh) && child.children.length > 0,
+        );
+        return rootObject ? rootObject.children[0].children.length : 0;
+      };
+      return { portal, list, rows, clock, dispose };
+    } catch (error) {
+      dispose();
+      throw error;
+    }
+  };
+
+  test("a change made inside the frame reaches the tick that runs in it", async () => {
+    // A ray's press runs the page's click handler inside the frame, and a
+    // handler that changes the DOM does so with no microtask before the
+    // pump's tick in the same frame. The observer has not delivered, so a
+    // tick that read the mirror as it found it read the page as it was.
+    const { ctx } = countingManager();
+    const root = document.createElement("div");
+    const label = document.createElement("div");
+    const count = document.createElement("span");
+    label.appendChild(count);
+    root.appendChild(label);
+    document.body.appendChild(root);
+    const portal = createPortal(ctx, { root });
+    /** @type {Effect | undefined} */
+    let reader;
+    try {
+      portal.addTo(new THREE.Group());
+      await settle(portal);
+
+      /** @type {Node[]} */
+      let seen = [];
+      reader = new Effect(() => {
+        seen = getChildNodes(label);
+      });
+      assert.deepEqual(seen, [count]);
+      // Give the next frame work of its own, so the pump ticks in it.
+      root.setAttribute("data-step", "1");
+      await nextMacrotask();
+      assert.ok(frameCallbacks.length > 0, "the next frame has the pump in it");
+
+      count.remove();
+      flushFrame();
+      assert.deepEqual(seen, [], "the tick read the page as the handler left it");
+    } finally {
+      reader?.dispose();
+      await drain();
+      portal.disconnect();
+      root.remove();
+    }
+  });
+
+  test("a panel with an endless animation still loads", async () => {
+    // Desk bug 14. The clock re-measured the panel on every frame, the reads
+    // a frame's slice resolved were undone by the next frame's, and the
+    // mount, which commits only once nothing is left to read, never did.
+    // The clock is held while the panel loads, so this is not the time
+    // bound below: the clock here never moves.
+    const { portal, list, dispose } = busyPanel();
+    const spinner = /** @type {HTMLElement} */ (list.firstElementChild);
+    try {
+      animation(spinner, "animationstart");
+      await nextMacrotask();
+      for (let frame = 0; frame < 300 && portal.isLoading(); frame++) {
+        flushFrame();
+        await nextMacrotask();
+      }
+      assert.equal(portal.isLoading(), false, "the panel loaded");
+    } finally {
+      animation(spinner, "animationend");
+      await drain();
+      dispose();
+    }
+  });
+
+  test("a panel that loaded under an animation follows it from then on", async () => {
+    // The other half of holding the clock: it lets go at the load, and its
+    // first frame after that brings the panel to where the animation is.
+    const { portal, list, dispose } = busyPanel();
+    const spinner = /** @type {HTMLElement} */ (list.firstElementChild);
+    try {
+      animation(spinner, "animationstart");
+      await settle(portal);
+      assert.equal(portal.isLoading(), false, "the panel loaded");
+      let reads = 0;
+      const holder = new Effect(() => {
+        reads += 1;
+        getComputedStyleCached(spinner);
+      });
+      try {
+        flushFrame();
+        await nextMacrotask();
+        assert.ok(reads > 1, "a sampled frame restyled the spinner");
+      } finally {
+        holder.dispose();
+      }
+    } finally {
+      animation(spinner, "animationend");
+      await drain();
+      dispose();
+    }
+  });
+
+  test("a loaded panel under an endless animation still takes a row", async () => {
+    // Once loaded, the clock samples every frame, and an atomic channel the
+    // samples keep busy never empties. The row waited for the sweep that
+    // empties it, and so for ever. The time bound sweeps once the panel has
+    // waited `MAX_COMMIT_WAIT` on the channel, and the row lands then.
+    const { portal, list, rows, clock, dispose } = busyPanel();
+    const spinner = /** @type {HTMLElement} */ (list.firstElementChild);
+    try {
+      await settle(portal);
+      assert.equal(rows(), 4);
+      animation(spinner, "animationstart");
+      list.appendChild(document.createElement("div"));
+      await nextMacrotask();
+      let frames = 0;
+      while (frames < 300 && rows() < 5) {
+        clock.advance(16);
+        flushFrame();
+        await nextMacrotask();
+        frames += 1;
+      }
+      assert.equal(rows(), 5, "the new row is in the scene");
+      assert.ok(
+        frames * 16 >= MAX_COMMIT_WAIT - 2 * 16,
+        `held until the bound, so the animation kept the channel busy, took ${frames}`,
+      );
+      assert.ok(frames * 16 <= MAX_COMMIT_WAIT + 5 * 16, `and landed by it, took ${frames}`);
+    } finally {
+      animation(spinner, "animationend");
+      await drain();
+      dispose();
+    }
+  });
+
+  test("a build that spans frames pauses the wait, and does not end it", async () => {
+    // The bound is for a channel that will not empty, not for a build: the
+    // frames a build spans do not count towards it, so a build's reading
+    // gets what is left of the second after it. Nor does a build start the
+    // second again, or rows that keep arriving would hold the panel.
+    const { portal, list, rows, clock, dispose } = busyPanel();
+    const spinner = /** @type {HTMLElement} */ (list.firstElementChild);
+    try {
+      await settle(portal);
+      animation(spinner, "animationstart");
+      await nextMacrotask();
+      const before = 30;
+      for (let frame = 0; frame < before; frame++) {
+        clock.advance(16);
+        flushFrame();
+        await nextMacrotask();
+      }
+      assert.equal(rows(), 4, "nothing landed yet");
+      const added = 20;
+      for (let index = 0; index < added; index++) {
+        list.appendChild(document.createElement("div"));
+      }
+      await nextMacrotask();
+      let frames = 0;
+      while (frames < 300 && rows() < 4 + added) {
+        clock.advance(16);
+        flushFrame();
+        await nextMacrotask();
+        frames += 1;
+      }
+      assert.equal(rows(), 4 + added, "the rows are in the scene");
+      // What was left of the second when the build began, after the build.
+      const left = (MAX_COMMIT_WAIT - (before - 1) * 16) / 16;
+      assert.ok(frames >= added + left - 2, `the build's frames did not count, took ${frames}`);
+      assert.ok(frames <= added + left + 2, `nor did the build restart the wait, took ${frames}`);
+    } finally {
+      animation(spinner, "animationend");
+      await drain();
+      dispose();
+    }
+  });
+
+  test("rows arriving faster than the bound do not restart it", async () => {
+    // The charts' log adds a row every couple of seconds. Had each arrival,
+    // or each build that spans a tick, started the wait again, rows arriving
+    // more often than the bound would hold a busy panel for as long as they
+    // kept coming.
+    const { portal, list, rows, clock, dispose } = busyPanel();
+    const spinner = /** @type {HTMLElement} */ (list.firstElementChild);
+    try {
+      await settle(portal);
+      animation(spinner, "animationstart");
+      await nextMacrotask();
+      let frames = 0;
+      while (frames < 300 && rows() < 5) {
+        if (frames % 10 === 0) {
+          // A row with a child, built over two ticks at this budget, as
+          // the desk's log row, a div with two spans, is over more.
+          const row = document.createElement("div");
+          row.appendChild(document.createElement("span"));
+          list.appendChild(row);
+        }
+        clock.advance(16);
+        flushFrame();
+        await nextMacrotask();
+        frames += 1;
+      }
+      assert.ok(rows() >= 5, "the rows reached the scene");
+      assert.ok(
+        frames * 16 >= MAX_COMMIT_WAIT - 2 * 16,
+        `held until the bound, so the animation kept the channel busy, took ${frames}`,
+      );
+      // A row builds over two ticks, and the frame between them, with a
+      // node still queued, does not count: one frame in ten.
+      assert.ok(
+        frames * 16 <= (MAX_COMMIT_WAIT * 10) / 9 + 10 * 16,
+        `and landed by the bound, less the frames spent building, took ${frames}`,
+      );
+    } finally {
+      animation(spinner, "animationend");
+      await drain();
+      dispose();
+    }
+  });
+
+  test("a commit the loading frame declines after the bound lands when the frame is due", async () => {
+    // The commit is declined while the loading frame has not been up for
+    // its minimum time. The wait goes on until a commit is taken, so the
+    // panel loads on the frame the loading frame is due, not a whole second
+    // of waiting later. Until then the pump keeps to its budget: a long
+    // frame spent reading the panel for a commit it will be refused is
+    // undone by the next invalidation.
+    const { portal, list, clock, dispose } = busyPanel({
+      loadingFrame: { delay: 250, minimumTime: 1000 },
+    });
+    const stop = flicker(list);
+    const unbudgeted = countUnbudgeted();
+    try {
+      let frames = 0;
+      while (frames < 300 && portal.isLoading()) {
+        clock.advance(16);
+        flushFrame();
+        await nextMacrotask();
+        frames += 1;
+      }
+      assert.equal(portal.isLoading(), false, "the panel loaded");
+      // The frame goes up on the first tick past its delay, and is due a
+      // minimum time after that.
+      const due = 250 + 16 + 1000;
+      assert.ok(frames * 16 >= due - 2 * 16, `held until the frame was due, took ${frames}`);
+      assert.ok(frames * 16 <= due + 3 * 16, `and no longer, took ${frames}`);
+      assert.equal(
+        unbudgeted.count,
+        1,
+        `one long frame, when the frame was due, took ${unbudgeted.count}`,
+      );
+    } finally {
+      unbudgeted.restore();
+      stop();
+      await drain();
+      dispose();
+    }
+  });
+
+  test("a panel whose rows arrive faster than it builds them still loads", async () => {
+    // Ledger 12 on a slow runner: the charts' timers add rows and replace
+    // text faster than a slow frame's slice builds them, so the node queue
+    // is never empty at the end of a tick, and a wait that counts only the
+    // ticks with nothing left to build never runs. The bound on the whole
+    // wait, build included, builds what is queued and lands the panel.
+    const { portal, list, clock, dispose } = busyPanel();
+    try {
+      let frames = 0;
+      while (frames < 600 && portal.isLoading()) {
+        // A row with a child every frame: two nodes against the one a zero
+        // budget builds.
+        const row = document.createElement("div");
+        row.appendChild(document.createElement("span"));
+        list.appendChild(row);
+        clock.advance(16);
+        flushFrame();
+        await nextMacrotask();
+        frames += 1;
+      }
+      assert.equal(portal.isLoading(), false, "the panel loaded");
+      assert.ok(
+        frames * 16 >= MAX_BUILD_WAIT - 2 * 16,
+        `held until the bound on the whole wait, took ${frames}`,
+      );
+      assert.ok(frames * 16 <= MAX_BUILD_WAIT + 3 * 16, `and landed by it, took ${frames}`);
+    } finally {
+      await drain();
+      dispose();
+    }
+  });
+
+  test("rows arriving past the bound wait for the loading frame to be due", async () => {
+    // The bound on the whole wait builds what is queued and sweeps in one
+    // long frame, but only for a commit the portal would take. A loading
+    // frame held up for longer than the bound declines it until it is due,
+    // and until then the pump keeps to its budget.
+    const { portal, list, clock, dispose } = busyPanel({
+      loadingFrame: { delay: 250, minimumTime: 6000 },
+    });
+    const unbudgeted = countUnbudgeted();
+    try {
+      let frames = 0;
+      while (frames < 600 && portal.isLoading()) {
+        // A row with a child every frame: two nodes against the one a zero
+        // budget builds.
+        const row = document.createElement("div");
+        row.appendChild(document.createElement("span"));
+        list.appendChild(row);
+        clock.advance(16);
+        flushFrame();
+        await nextMacrotask();
+        frames += 1;
+      }
+      assert.equal(portal.isLoading(), false, "the panel loaded");
+      // The frame goes up on the first tick past its delay, and is due a
+      // minimum time after that.
+      const due = 250 + 16 + 6000;
+      assert.ok(frames * 16 >= due - 2 * 16, `held until the frame was due, took ${frames}`);
+      assert.ok(frames * 16 <= due + 3 * 16, `and no longer, took ${frames}`);
+      assert.equal(
+        unbudgeted.count,
+        1,
+        `one long frame, when the frame was due, took ${unbudgeted.count}`,
+      );
+    } finally {
+      unbudgeted.restore();
+      await drain();
+      dispose();
+    }
+  });
+
+  test("a mount that takes longer than the bound but is fed by nothing is not cut short", async () => {
+    // The bound on the whole wait is for a queue the page keeps adding to.
+    // A large mount on a slow device takes as long as it takes, and building
+    // the rest of it in one frame at five seconds would be the stall the
+    // budget exists to avoid.
+    const { portal, clock, dispose } = busyPanel({}, 200);
+    try {
+      let frames = 0;
+      while (frames < 600 && portal.isLoading()) {
+        clock.advance(16);
+        flushFrame();
+        await nextMacrotask();
+        frames += 1;
+      }
+      assert.equal(portal.isLoading(), false, "the panel loaded");
+      // Two nodes a row and the root and the list, one a frame.
+      assert.ok(frames >= 400, `a node a frame to the end, took ${frames}`);
+      assert.ok(frames * 16 > MAX_BUILD_WAIT, "and past the bound");
+    } finally {
+      await drain();
+      dispose();
+    }
+  });
+
+  test("a queued row the page takes out and puts back is not an arrival", async () => {
+    // A row detached in one flush and appended in a later one is the same
+    // content, still queued to be built. It does not feed the build, so a
+    // large mount keeps its budget past the bound.
+    const { portal, list, clock, dispose } = busyPanel({}, 400);
+    try {
+      let frames = 0;
+      while (frames < 1000 && portal.isLoading()) {
+        if (frames >= 300 && frames < 340) {
+          // The last row, still waiting to be built: out, then back in.
+          const row = /** @type {HTMLElement} */ (list.lastElementChild);
+          row.remove();
+          await nextMacrotask();
+          list.appendChild(row);
+        }
+        clock.advance(16);
+        flushFrame();
+        await nextMacrotask();
+        frames += 1;
+      }
+      assert.equal(portal.isLoading(), false, "the panel loaded");
+      assert.ok(frames >= 800, `a node a frame to the end, took ${frames}`);
+    } finally {
+      await drain();
+      dispose();
+    }
+  });
+
+  test("a node the page adds and removes between two reads is not an arrival", async () => {
+    // A spinner made and dropped before the observer's flush is read is in
+    // its added nodes and gone from the page. Nothing of it is left to
+    // build, so it does not feed the build and the mount keeps its budget
+    // past the bound.
+    const { portal, list, clock, dispose } = busyPanel({}, 200);
+    try {
+      let frames = 0;
+      while (frames < 600 && portal.isLoading()) {
+        const spinner = document.createElement("div");
+        list.appendChild(spinner);
+        spinner.remove();
+        clock.advance(16);
+        flushFrame();
+        await nextMacrotask();
+        frames += 1;
+      }
+      assert.equal(portal.isLoading(), false, "the panel loaded");
+      assert.ok(frames >= 400, `a node a frame to the end, took ${frames}`);
+    } finally {
+      await drain();
+      dispose();
+    }
+  });
+
+  test("a change made inside the frame casts the rays once", async () => {
+    // The observer's own delivery casts the rays, since no tick may follow
+    // it. Taken in by a tick, the tick casts them once it has built.
+    const { manager, ctx } = countingManager();
+    const root = document.createElement("div");
+    const label = document.createElement("div");
+    const count = document.createElement("span");
+    label.appendChild(count);
+    root.appendChild(label);
+    document.body.appendChild(root);
+    const portal = createPortal(ctx, { root });
+    const cast = manager.updateIntersections.bind(manager);
+    let casts = 0;
+    manager.updateIntersections = () => {
+      casts += 1;
+      cast();
+    };
+    try {
+      portal.addTo(new THREE.Group());
+      await settle(portal);
+      root.setAttribute("data-step", "1");
+      await nextMacrotask();
+      assert.ok(frameCallbacks.length > 0, "the next frame has the pump in it");
+      count.remove();
+      casts = 0;
+      flushFrame();
+      assert.equal(casts, 1, "one cast for the frame");
+    } finally {
+      await drain();
+      portal.disconnect();
+      root.remove();
+    }
+  });
+
+  test("a panel a timer keeps busy still loads, after the bound", async () => {
+    // Ledger 12, and the write-up's fourth test: a timer that changes the
+    // panel faster than a slow frame reads it. The clock is no part of this,
+    // so holding it does nothing; the time bound is what lands the mount.
+    const { portal, list, clock, dispose } = busyPanel();
+    const stop = flicker(list);
+    try {
+      let frames = 0;
+      while (frames < 300 && portal.isLoading()) {
+        clock.advance(16);
+        flushFrame();
+        await nextMacrotask();
+        frames += 1;
+      }
+      assert.equal(portal.isLoading(), false, "the panel loaded");
+      assert.ok(
+        frames * 16 >= MAX_COMMIT_WAIT,
+        `held until the bound, so the timer kept the panel busy, took ${frames}`,
+      );
+      assert.ok(
+        frames * 16 <= MAX_COMMIT_WAIT + 30 * 16,
+        `and landed by it and the frames the mount needs, took ${frames}`,
+      );
+    } finally {
+      stop();
+      await drain();
+      dispose();
+    }
   });
 });

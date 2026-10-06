@@ -810,7 +810,10 @@ export const PointerForwarderContext = createProperty(
  * and `mousemove` has the pointer event a browser sends ahead of it, from
  * the hand's own pointer (see `sendPointerAndMouse`). Each carries the
  * point the ray met, on the page, as its `clientX` and `clientY` (see
- * `pressInit` in `dragAndDrop.js`). While the ray is on a control the
+ * `pressInit` in `dragAndDrop.js`). The page also hears where the ray
+ * crosses from element to element (see `track`), a press that becomes a
+ * scroll or a drag cancelled (see `cancel`), and a captured hand's moves
+ * wherever its ray goes (see `following`). While the ray is on a control the
  * element carries `data-xr-hover`, and while it is held, `data-xr-active`.
  * A stylesheet answers those flags where a page would use `:hover` and
  * `:active`. Where the panel has haptics, the hand feels a press and its

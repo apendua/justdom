@@ -347,19 +347,52 @@ sends ahead of it: `pointerdown`, `pointerup` and `pointermove`, at the same poi
 for pointers, which is how a page takes a mouse, a pen and a finger with one set of handlers, hears
 the ray as well, a drawing board that drags and pans on `pointermove` included. They say
 `pointerType` `"mouse"`, as the mouse events after them do, but each hand is a pointer of its own,
-with a `pointerId` of its own from 2 on, since 1 is the mouse's: a page that follows a drag by its
-pointer is not thrown when the other hand's ray crosses the same element. A page that cancels
-`pointerdown` hears no `mousedown`, `mousemove` or `mouseup` from that hand until its trigger opens,
-and hears the `click` all the same, which is a browser's rule. A browser knows nothing of the hands'
-pointers, so `setPointerCapture` with a hand's `pointerId` would throw that there is no such
-pointer. Once a hand has one, the three capture methods on `Element` are wrapped: a capture the
-browser refuses for a hand is kept here instead, and while it holds, the hand's moves and its
-release go to the capturing element, whichever control on the panels the ray is over, until the
-release, `releasePointerCapture`, or a drag and drop the press becomes. Releasing a hand's pointer
-that holds no capture does nothing, as for a pointer the browser knows, so a page's `pointerup`
-handler may release what the release already ended. Not sent: `gotpointercapture`,
-`lostpointercapture`, `pointerover`, `pointerenter`, `pointerout`, `pointerleave` and
-`pointercancel`, and a move carries no `buttons`. The grip's `contextmenu` comes alone, as before.
+with a `pointerId` of its own from 2 on, since 1 is the mouse's. So a page that follows a drag by
+its pointer is not thrown when the other hand's ray crosses the same element. Every event a hand
+sends carries the `buttons` it holds, the trigger as 1 and the grip as 2, as a mouse's say its main
+and secondary buttons, so a page that tells a drag from a hover by `buttons` sees the drag.
+
+One hand is the primary one, as a browser has a primary touch among several. It is the first hand
+whose ray reaches a control while the primary one holds no button and points at no panel, or a hand
+whose trigger closes while the primary one holds no button. Only its pointer events say `isPrimary`,
+and only it sends `mousedown`, `mousemove`, `mouseup` and the mouse's enter and leave, so a page
+that follows the mouse follows one hand and not two rays taking turns. A `click` and a `contextmenu`
+go for either hand, since a control has to answer whichever hand presses it.
+
+As the ray moves from element to element, the page hears what a browser sends for a mouse. First
+`pointerout` and `pointerleave` from what the ray left and `pointerover` and `pointerenter` on what
+it is on, then `mouseout`, `mouseleave`, `mouseover` and `mouseenter`, each naming the other element
+as `relatedTarget`. The element a hand is over is the innermost control under its ray, the one its
+moves go to, with the elements around it up to the panel's root. A ray that slides off the controls
+onto the panel's background, or off the panel, leaves them all. These hold still while the hand
+holds something draggable, as `:hover` does under a drag, and catch up at the release.
+
+A page that cancels `pointerdown` hears no `mousedown`, `mousemove` or `mouseup` from that hand
+until its trigger opens, and hears the `click` all the same, which is a browser's rule. A press that
+becomes a scroll or a drag and drop is taken from the page the way a browser takes one. The page
+hears `pointercancel` where the press went, the pointer leaves what it was over, and nothing more of
+that hand is sent, `pointerup` and `mouseup` included, until the trigger opens.
+
+A browser knows nothing of the hands' pointers, so `setPointerCapture` with a hand's `pointerId`
+would throw that there is no such pointer. While any panel is up, the three capture methods on
+`Element` are wrapped, and the last panel to go puts the browser's back. A capture the browser
+refuses for a hand is kept here instead. It starts before the hand's next event, with
+`gotpointercapture` on the captor, as a browser's does. While it holds, the hand's moves and its
+release go to the captor, and the pointer is over the captor and nothing else. The moves come from
+where the ray crosses the plane of the captor's panel, once a frame the ray has moved, whether the
+ray is on a control, on the panel's background, on another panel or on nothing at all. So a drag by
+capture follows the hand off the panel as a mouse's follows it off the window. The capture ends with
+`lostpointercapture` at the release, after its `pointerup` and `mouseup`, at
+`releasePointerCapture`, or when the press becomes a scroll or a drag and drop. Releasing a hand's
+pointer that holds no capture does nothing, as for a pointer the browser knows, so a page's
+`pointerup` handler may release what the release already ended. The grip's `contextmenu` comes
+alone, as before.
+
+In development, a press that lands on a panel's content with no ray target under it warns once per
+element, naming the element. A board that listens for clicks and says no `cursor: pointer` would
+otherwise take no press and give no sign of why. Development is Vite's `import.meta.env.DEV`, or
+`NODE_ENV` set to `development` where Vite is not used.
+
 Clickable elements nest, if only because `cursor` is inherited, and a press inside several of them
 goes where it goes on a page. The innermost one is the target, its DOM events are sent once and
 bubble from there, and every clickable element around it takes `data-xr-hover` and `data-xr-active`
@@ -767,7 +800,8 @@ draggable element. After it, once a frame, the source gets `drag` and the elemen
 `dragover`, with `dragenter` and `dragleave` as the ray moves from one element to the next. Opening
 the trigger sends `drop` to the element under the ray, if its last `dragover` was cancelled, and
 `dragleave` to it otherwise. `dragend` goes to the source either way. A drag sends no `mouseup` and
-no `click`.
+no `click`. Right after a `dragstart` the page let through, it sends `pointercancel`, as a browser
+does when a drag begins.
 
 The rules are the browser's:
 
@@ -1535,7 +1569,8 @@ scaled or hand-held panel needs no special case and the list keeps up with a han
 it entirely; let go while moving and it glides to a stop. A drag that travels more than a few px is
 a scroll rather than a press, so pulling a list made of buttons does not also press the one you
 grabbed — the same bargain a touchscreen strikes; below that threshold the press is delivered as an
-ordinary click. There is nothing to opt into: a list becomes draggable the moment it overflows, and
+ordinary click. A press that becomes a scroll sends the page `pointercancel`, as a touch's does, and
+no `pointerup`. There is nothing to opt into: a list becomes draggable the moment it overflows, and
 stops being so when it no longer does. A press on a `draggable="true"` row is the exception. It
 becomes a drag and drop, not a scroll, as it does under a mouse, so a list made only of draggable
 rows is scrolled by its gaps and its padding.
@@ -1839,13 +1874,14 @@ which the marching ants in the showcase spend without noticing.
 A shape with `cursor: pointer` is a ray target of its own, by the rule a box follows. It forwards
 the ray to its element exactly as a box does: `pointerdown` and `mousedown`, `pointerup` and
 `mouseup`, and `click` for a press, `contextmenu` for the grip, `pointermove` and `mousemove` while
-the ray moves over it, each with the point on the page, and `data-xr-hover` and `data-xr-active` on
-the element for a stylesheet to answer. A press that turns into a drag scrolls the list the `<svg>`
-sits in. `pointer-events` decides which of the fill and the stroke a ray can hit, with SVG's values:
-the default `visiblePainted` hits whatever is painted and visible, `none` lets the ray through to
-what is behind, `fill` and `stroke` pick one region, and `all` hits a region with no paint, which is
-drawn as nothing and hit all the same. The `<svg>`'s clip trims the hits as it trims the drawing, so
-a node scrolled out of view takes no press.
+the ray moves over it, the enter, leave, over and out events as it comes and goes, each with the
+point on the page, and `data-xr-hover` and `data-xr-active` on the element for a stylesheet to
+answer. A press that turns into a drag scrolls the list the `<svg>` sits in. `pointer-events`
+decides which of the fill and the stroke a ray can hit, with SVG's values: the default
+`visiblePainted` hits whatever is painted and visible, `none` lets the ray through to what is
+behind, `fill` and `stroke` pick one region, and `all` hits a region with no paint, which is drawn
+as nothing and hit all the same. The `<svg>`'s clip trims the hits as it trims the drawing, so a
+node scrolled out of view takes no press.
 
 ```css
 .diagram .node {

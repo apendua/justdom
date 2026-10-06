@@ -369,6 +369,7 @@ const init = {
   cancelable: false,
   button: 0,
   buttons: 0,
+  relatedTarget: null,
   clientX: 0,
   clientY: 0,
   screenX: 0,
@@ -436,6 +437,7 @@ export function pressInit(panel, e, cancelable, button = 0) {
   init.cancelable = cancelable;
   init.button = button;
   init.buttons = 0;
+  init.relatedTarget = null;
   if (panel) {
     probePanel(panel);
   }
@@ -457,6 +459,7 @@ export function releaseInit(panel, e) {
   init.cancelable = false;
   init.button = 0;
   init.buttons = 0;
+  init.relatedTarget = null;
   const on = !!e.intersection && getPanel(e.intersection.object) === panel;
   if (panel && on) {
     probePanel(panel);
@@ -481,6 +484,7 @@ export function moveInit(panel, e) {
   init.cancelable = false;
   init.button = 0;
   init.buttons = 0;
+  init.relatedTarget = null;
   writePoint(panel, e, true);
   return init;
 }

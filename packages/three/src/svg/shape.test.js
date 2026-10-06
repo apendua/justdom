@@ -1181,7 +1181,8 @@ describe("svg shape as a ray target", () => {
   test("a hover that switches the fill on puts it under the stroke", () => {
     const { manager } = recordingManager();
     const s = setup("rect", { ...SQUARE, fill: "none", style: "cursor: pointer" }, { manager });
-    bubble(s.object, { type: "pointerenter" });
+    // From a hand, as every ray event is.
+    bubble(s.object, { type: "pointerenter", controller: new THREE.Object3D() });
     assert.equal(/** @type {SVGElement} */ (s.element).dataset.xrHover, "true");
 
     // What a `[data-xr-hover] { fill: … }` rule does to the computed style.

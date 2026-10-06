@@ -132,6 +132,7 @@ function nest({ outer, inner, build, haptics = null }) {
     points,
     /** The outer element's object, whose frame is the panel's px. */
     outerObject,
+    innerObject,
     scene,
     manager,
     escaped,
@@ -1139,6 +1140,85 @@ describe("a ray's pointer events", () => {
       "> first pointermove",
       "pointermove primary",
       "mousemove",
+    ]);
+    teardown();
+  });
+
+  test("say where the ray crosses from element to element, as a mouse's do", () => {
+    const { s, point, inner, outer, teardown } = label();
+    const crossings = [
+      "pointerover",
+      "pointerenter",
+      "pointerout",
+      "pointerleave",
+      "mouseover",
+      "mouseenter",
+      "mouseout",
+      "mouseleave",
+      "pointermove",
+      "mousemove",
+    ];
+    /** @type {string[]} */
+    const heard = [];
+    /** @param {Event} event */
+    const record = (event) => {
+      const { relatedTarget, bubbles } = /** @type {MouseEvent} */ (event);
+      const target = /** @type {Element} */ (event.target).localName;
+      const related = /** @type {Element | null} */ (relatedTarget)?.localName ?? "nothing";
+      heard.push(
+        event.type.endsWith("move")
+          ? `${event.type} ${target}`
+          : `${event.type} ${target} from ${related}${bubbles ? " bubbles" : ""}`,
+      );
+    };
+    for (const type of crossings) {
+      document.addEventListener(type, record, true);
+    }
+    /** @param {string} label */
+    const step = (label) => heard.push(`> ${label}`);
+    step("onto the label");
+    s.press("pointerenter", null, point);
+    s.press("pointermove", null, point);
+    step("onto the button around it");
+    s.press("pointerleave", null, undefined, undefined, s.outerObject);
+    s.press("pointerenter", null, point, undefined, s.innerObject, s.outerObject);
+    step("off the panel");
+    s.press("pointerleave", null, undefined, undefined, null, s.outerObject);
+    for (const type of crossings) {
+      document.removeEventListener(type, record, true);
+    }
+    const root = /** @type {HTMLElement} */ (outer.parentElement).localName;
+    assert.equal(root, "div");
+    assert.equal(inner.localName, "span");
+    assert.deepEqual(heard, [
+      "> onto the label",
+      // Over and out bubble from the element itself, and enter and leave
+      // go to each element crossed, the panel's root included, from the
+      // outermost in as the ray enters and the innermost out as it leaves.
+      "pointerover span from nothing bubbles",
+      "pointerenter div from nothing",
+      "pointerenter button from nothing",
+      "pointerenter span from nothing",
+      "mouseover span from nothing bubbles",
+      "mouseenter div from nothing",
+      "mouseenter button from nothing",
+      "mouseenter span from nothing",
+      "pointermove span",
+      "mousemove span",
+      "> onto the button around it",
+      "pointerout span from button bubbles",
+      "pointerleave span from button",
+      "pointerover button from span bubbles",
+      "mouseout span from button bubbles",
+      "mouseleave span from button",
+      "mouseover button from span bubbles",
+      "> off the panel",
+      "pointerout button from nothing bubbles",
+      "pointerleave button from nothing",
+      "pointerleave div from nothing",
+      "mouseout button from nothing bubbles",
+      "mouseleave button from nothing",
+      "mouseleave div from nothing",
     ]);
     teardown();
   });

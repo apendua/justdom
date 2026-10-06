@@ -11,7 +11,7 @@ import {
   releaseInit,
 } from "./dragAndDrop.js";
 import { HapticsContext, isArrival } from "./haptics.js";
-import { getComputedStyleCached } from "./mirror.js";
+import { getComputedStyleCached, isPortalRoot } from "./mirror.js";
 import { movesList, ScrollDragsContext } from "./scroll.js";
 
 /**
@@ -210,11 +210,29 @@ let primary = null;
 
 /**
  * The forwarders of the panels that are up, each able to say whether a
- * hand's ray is on its panel, for `isIdle`.
+ * hand's ray is on its panel, for `isIdle`. An array, walked by index,
+ * since it is asked every frame a hand that is not the primary one moves.
  *
- * @type {Set<{ pointsAt: (controller: XRTargetRaySpace) => boolean }>}
+ * @type {{ pointsAt: (controller: XRTargetRaySpace) => boolean }[]}
  */
-const forwarders = new Set();
+const forwarders = [];
+
+/**
+ * Make a hand the primary one if it may be (see `primary`).
+ *
+ * @param {XRTargetRaySpace} controller
+ * @param {boolean} pressing Whether its trigger is closing.
+ * @returns {boolean} Whether it is the primary hand now.
+ */
+function elect(controller, pressing) {
+  if (
+    primary !== controller &&
+    (!primary || (pressing && heldButtons(primary) === 0) || isIdle(primary))
+  ) {
+    primary = controller;
+  }
+  return primary === controller;
+}
 
 /**
  * Whether a hand holds no button and its ray is on no panel.
@@ -226,8 +244,8 @@ function isIdle(controller) {
   if (heldButtons(controller) !== 0) {
     return false;
   }
-  for (const forwarder of forwarders) {
-    if (forwarder.pointsAt(controller)) {
+  for (let i = 0; i < forwarders.length; i += 1) {
+    if (forwarders[i].pointsAt(controller)) {
       return false;
     }
   }
@@ -328,12 +346,7 @@ function sendPointerAndMouse(element, type, init, controller) {
     init.button = -1;
   }
   const hand = handOf(controller);
-  if (
-    primary !== controller &&
-    (!primary || (type === "pointerdown" && heldButtons(primary) === 0) || isIdle(primary))
-  ) {
-    primary = controller;
-  }
+  const isPrimary = elect(controller, type === "pointerdown");
   // A press says the button it closed, and a release no longer says the
   // one it opened, as a browser's do; and the hand's record holds them
   // from here, since the controller's own events come after the panel's.
@@ -346,7 +359,7 @@ function sendPointerAndMouse(element, type, init, controller) {
   }
   init.buttons = hand.buttons;
   init.pointerId = hand.pointerId;
-  init.isPrimary = controller === primary;
+  init.isPrimary = isPrimary;
   const pointer = typeof PointerEvent === "function" ? new PointerEvent(type, init) : null;
   init.button = button;
   const mouse = new MouseEvent(MOUSE_EVENT[type], init);
@@ -363,7 +376,7 @@ function sendPointerAndMouse(element, type, init, controller) {
   if (pointer && !target.dispatchEvent(pointer) && type === "pointerdown") {
     hand.pointerOnly = true;
   }
-  return hand.pointerOnly || controller !== primary || target.dispatchEvent(mouse);
+  return hand.pointerOnly || !isPrimary || target.dispatchEvent(mouse);
 }
 
 /** The mouse event a browser sends after each pointer event a ray sends. */
@@ -372,6 +385,114 @@ const MOUSE_EVENT = /** @type {const} */ ({
   pointermove: "mousemove",
   pointerup: "mouseup",
 });
+
+/**
+ * The events a browser sends as a pointer, or the mouse, crosses from one
+ * element to another.
+ */
+const CROSSINGS = /** @type {const} */ ({
+  pointer: { over: "pointerover", enter: "pointerenter", out: "pointerout", leave: "pointerleave" },
+  mouse: { over: "mouseover", enter: "mouseenter", out: "mouseout", leave: "mouseleave" },
+});
+
+/**
+ * Write the element and the elements around it, up to the root of the
+ * panel it is in, into `chain`, innermost first; or nothing for no
+ * element.
+ *
+ * @param {Element | null} element
+ * @param {Element[]} chain
+ * @returns {void}
+ */
+function fillChain(element, chain) {
+  chain.length = 0;
+  for (let el = element; el; el = el.parentElement) {
+    chain.push(el);
+    if (isPortalRoot(el)) {
+      return;
+    }
+  }
+}
+
+/** A ray event's place on the page where it has none on the panel. */
+const NOWHERE = {};
+
+/** Scratch for the chain a ray is crossing into (see `cross`). */
+const into = /** @type {Element[]} */ ([]);
+
+/**
+ * Tell the page that a pointer, or the mouse, has crossed from the element
+ * at the head of `chain` to `element`, as a browser does: `out` on the one
+ * it left and `leave` on it and on each element around it that does not
+ * hold the new one, innermost first; then `over` on the one it is on and
+ * `enter` on each element around it that did not hold the old one,
+ * outermost first. `over` and `out` bubble and can be cancelled, `enter`
+ * and `leave` do neither, and each names the other element as its
+ * `relatedTarget`. Elements that have left the page hear nothing: a
+ * pointer over an element the page took out is over what is left of what
+ * was around it, so a ray on a removed label is still on its button, and
+ * nothing was over, so nothing hears `out` and the next `over` names none.
+ *
+ * @param {Element[]} chain What the page was last told the pointer is
+ *   over, written with the new chain once the events are sent.
+ * @param {Element | null} element
+ * @param {PointerEventInit} init The point, the pointer and its buttons,
+ *   for every event sent.
+ * @param {"pointer" | "mouse"} kind
+ * @returns {void}
+ */
+function cross(chain, element, init, kind) {
+  let gone = 0;
+  while (gone < chain.length && !chain[gone].isConnected) {
+    gone += 1;
+  }
+  chain.splice(0, gone);
+  if (gone === 0 && (chain[0] ?? null) === element) {
+    return;
+  }
+  fillChain(element, into);
+  let shared = 0;
+  while (
+    shared < chain.length &&
+    shared < into.length &&
+    chain[chain.length - 1 - shared] === into[into.length - 1 - shared]
+  ) {
+    shared += 1;
+  }
+  const from = gone === 0 ? (chain[0] ?? null) : null;
+  const types = CROSSINGS[kind];
+  const Event = kind === "pointer" ? PointerEvent : MouseEvent;
+  init.button = kind === "pointer" ? -1 : 0;
+  /**
+   * @param {string} type
+   * @param {Element} target
+   * @param {Element | null} related
+   * @param {boolean} bubbles
+   */
+  const send = (type, target, related, bubbles) => {
+    init.bubbles = bubbles;
+    init.cancelable = bubbles;
+    init.relatedTarget = related;
+    target.dispatchEvent(new Event(type, init));
+  };
+  if (from) {
+    send(types.out, from, element, true);
+  }
+  for (let i = 0; i < chain.length - shared; i += 1) {
+    send(types.leave, chain[i], element, false);
+  }
+  if (element && element !== chain[0]) {
+    send(types.over, element, from, true);
+  }
+  for (let i = into.length - shared - 1; i >= 0; i -= 1) {
+    send(types.enter, into[i], from, false);
+  }
+  init.relatedTarget = null;
+  chain.length = 0;
+  for (const el of into) {
+    chain.push(el);
+  }
+}
 
 /**
  * An element of a panel that rays act on: a control, which is anything a
@@ -406,6 +527,9 @@ const MOUSE_EVENT = /** @type {const} */ ({
  *   the ray left it and came back.
  * @property {Press} select The trigger's last press.
  * @property {Press} squeeze The grip's, as `select` is the trigger's.
+ * @property {Element[]} chain The element the page was last told the
+ *   hand's pointer is over, and the elements around it up to the panel's
+ *   root, innermost first (see `track`).
  */
 
 /**
@@ -569,6 +693,7 @@ export function createPanelForwarder(ctx, container) {
         held: null,
         select: { path: [], target: null },
         squeeze: { path: [], target: null },
+        chain: [],
       };
       panelHands.set(controller, hand);
     }
@@ -751,6 +876,99 @@ export function createPanelForwarder(ctx, container) {
   const busy = (controller) => dnd.carrying(controller) || movesList(ctx, controller);
 
   /**
+   * What the mouse was last told it is over in this panel, as
+   * `PanelHand.chain` is for a hand's pointer. One for the panel, since a
+   * page has one mouse: it follows the primary hand, and moves to where
+   * the other hand is when that one takes over.
+   *
+   * @type {Element[]}
+   */
+  const mouseChain = [];
+
+  /**
+   * Whether an object is in this panel.
+   *
+   * @param {Object3D | null} object
+   * @returns {boolean}
+   */
+  const isOurs = (object) => {
+    for (let node = object; node; node = node.parent) {
+      if (node === container) {
+        return true;
+      }
+    }
+    return false;
+  };
+
+  /**
+   * The element a hand's pointer is over in this panel, as a browser would
+   * have it: the element that captured it while it holds a capture, if
+   * that is in this panel, and nothing here if it is in another; otherwise
+   * the innermost control the ray is on that the page still has, the one
+   * its moves go to.
+   *
+   * @param {XRTargetRaySpace} controller
+   * @param {PanelHand} hand
+   * @returns {Element | null}
+   */
+  const elementUnder = (controller, hand) => {
+    const captor = hands.get(controller)?.captor;
+    if (captor?.isConnected) {
+      const own = panel();
+      return !own || own.element.contains(captor) ? captor : null;
+    }
+    for (const object of hand.hover) {
+      const target = targets.get(object);
+      if (target && !target.list && !isGone(target.element)) {
+        return target.element;
+      }
+    }
+    return null;
+  };
+
+  /**
+   * Bring what the page knows of where a hand's pointer is up to date with
+   * where its ray is, before anything else the ray sends: `cross` from the
+   * element it was over to `elementUnder`, for its pointer, and for the
+   * mouse if it is the primary hand. Not while it holds something
+   * draggable, since what is under a pointer holds still under a drag on a
+   * page too; the release, or the first move after it, catches up.
+   *
+   * @param {{ controller: XRTargetRaySpace, intersection?: import('three').Intersection }} e
+   * @param {PanelHand} hand
+   * @param {boolean} [released] Whether the trigger has just opened, which
+   *   ends a hold whatever the drag has still to hear of it.
+   * @returns {void}
+   */
+  const track = (e, hand, released = false) => {
+    const { controller } = e;
+    if (!released && dnd.holding(controller)) {
+      return;
+    }
+    const element = elementUnder(controller, hand);
+    const isPrimary = (hand.chain.length > 0 || element !== null) && elect(controller, false);
+    if (
+      (hand.chain[0] ?? null) === element &&
+      (!isPrimary || (mouseChain[0] ?? null) === element)
+    ) {
+      return;
+    }
+    const pointer = handOf(controller);
+    // A point only where the ray is on this panel: a release may come with
+    // it on another.
+    const init = moveInit(panel(), isOurs(e.intersection?.object ?? null) ? e : NOWHERE);
+    init.pointerId = pointer.pointerId;
+    init.isPrimary = isPrimary;
+    init.buttons = heldButtons(controller, released ? HAND_BITS.select : 0);
+    if (typeof PointerEvent === "function") {
+      cross(hand.chain, element, init, "pointer");
+    }
+    if (isPrimary) {
+      cross(mouseChain, element, init, "mouse");
+    }
+  };
+
+  /**
    * The init of the `click` a trigger's press completes with, which comes
    * after the trigger opened.
    *
@@ -783,6 +1001,7 @@ export function createPanelForwarder(ctx, container) {
         hand.held = e;
         return;
       }
+      track(e, hand);
       const first = innermost(hand.hover, true);
       if (!first) {
         return;
@@ -815,6 +1034,7 @@ export function createPanelForwarder(ctx, container) {
       if (dnd.holding(e.controller)) {
         return;
       }
+      track(e, hand);
       // The first move after a hold on a control the ray came onto during
       // it, which is when a page's `:hover` catches up after a drag.
       const held = hand.held;
@@ -850,6 +1070,10 @@ export function createPanelForwarder(ctx, container) {
       }
       hand.hover.length = 0;
       hand.hovered = null;
+      // Onto something else in this panel, its enter crosses over to it.
+      if (!isOurs(e.relatedTarget)) {
+        track(e, hand);
+      }
     },
     selectstart(e) {
       const { select } = panelHand(e.controller);
@@ -943,6 +1167,16 @@ export function createPanelForwarder(ctx, container) {
         }
       }
       endPress(e.controller);
+      // A capture, a hold of something draggable: what the press held the
+      // pointer to has let go of it. A drag's `drop` and `dragend` come
+      // first, from the controller's own release, which follows this one
+      // in the same task.
+      const hand = panelHand(e.controller);
+      if (dnd.holding(e.controller)) {
+        queueMicrotask(() => track(e, hand, true));
+      } else {
+        track(e, hand, true);
+      }
       stopPropagation(e);
     },
     select(e) {
@@ -1076,7 +1310,7 @@ export function createPanelForwarder(ctx, container) {
     /** @param {XRTargetRaySpace} controller */
     pointsAt: (controller) => (panelHands.get(controller)?.hover.length ?? 0) > 0,
   };
-  forwarders.add(registered);
+  forwarders.push(registered);
 
   /**
    * Take a target until the function returned is called, which also takes
@@ -1105,7 +1339,7 @@ export function createPanelForwarder(ctx, container) {
       for (const type of types) {
         listened.removeEventListener(type, /** @type {never} */ (listeners[type]));
       }
-      forwarders.delete(registered);
+      forwarders.splice(forwarders.indexOf(registered), 1);
       panelHands.clear();
     },
   };

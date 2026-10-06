@@ -51,7 +51,8 @@ import { getDrawnBorderColor, parseAlpha } from "./VisualProperties.js";
  * always reaches the reader in front of its own box and behind anything
  * stepped in front of that box. It is kept in front of what its box is
  * stepped over by drawing after it, whatever its alpha, so its blended
- * edges land on what is behind them.
+ * edges land on what is behind them, or, on an opaque box, by its quad's
+ * depth.
  *
  * SVG content is on neither side. The shapes, images and text inside an
  * `<svg>` are drawn level with it (`getReach` gives it none) and their
@@ -98,6 +99,11 @@ import { getDrawnBorderColor, parseAlpha } from "./VisualProperties.js";
  * - A mark that overflows an opaque box is not covered by its quad. The box
  *   keeps its tree depth, so a box inside the sibling it is stepped over can
  *   draw after the overflowing text and paint over it.
+ * - Only the box that clears a sibling is asked whether it is opaque. A
+ *   positioned wrapper with nothing to paint, around an opaque card, draws
+ *   after the sibling it covers although the card's quad would hide that
+ *   sibling in either order, so a board of N such cards draws at N levels,
+ *   a box bucket and a text bucket each, where tree order would share one.
  */
 
 /**
@@ -150,11 +156,12 @@ export function isOverlay(element) {
  * How far apart in the draw order two elevations are. An overlay is drawn
  * after everything below it however shallow the overlay is, so each
  * elevation takes a band of draw levels of its own, wide enough that no
- * plausible tree climbs out of one. A pile of translucent cards climbs a
- * few levels a card (see `getDrawLevel`), so a band has to hold thousands
- * of cards rather than a deep tree. It is bounded from above as well: the
- * cursor and the drag ghost draw at 1e9, after every panel, so the band
- * times the deepest elevation a page reaches has to stay well under that.
+ * plausible tree climbs out of one. A pile of cards that are not opaque
+ * climbs a few levels a card (see `getDrawLevel`), so a band has to hold
+ * thousands of cards rather than a deep tree. It is bounded from above as
+ * well: the cursor and the drag ghost draw at 1e9, after every panel, so
+ * the band times the deepest elevation a page reaches has to stay well
+ * under that.
  */
 export const ELEVATION_BAND = 100_000;
 

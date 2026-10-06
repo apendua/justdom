@@ -21,6 +21,8 @@ import { InputFocusContext, textInput } from "./textInput.js";
 import { markedBox } from "./listMarker.js";
 import { installRange } from "../test/textRange.js";
 import { stubCanvas } from "../test/stubCanvas.js";
+import { isRunMesh } from "../test/runMesh.js";
+import { paintSlot } from "../svg/shape.js";
 
 /**
  * @import { InteractionManager } from "../interactions.js";
@@ -1286,12 +1288,12 @@ describe("marks stepped over a box", () => {
     }
   });
 
-  test("a caption in a scrolled window draws after the dial's face", () => {
+  test("a caption in a clipping window draws after the dial's face", () => {
     const restore = installRange();
     const gauge = setupSiblings();
     try {
-      const scroller = gauge.add("position: relative; overflow: hidden", [0, 50, 400, 150]);
-      const parts = dialWithCaption(gauge, "", scroller);
+      const window = gauge.add("position: relative; overflow: hidden", [0, 50, 400, 150]);
+      const parts = dialWithCaption(gauge, "", window);
       const run = gauge.write(parts.caption, "LOAD");
 
       assertDrawsAfterDial(gauge, run, parts);
@@ -1348,22 +1350,9 @@ describe("marks stepped over a box", () => {
     const canvas = stubCanvas();
     const gauge = setupSiblings();
     try {
-      const parts = dialWithCaption(gauge);
-      const { caption } = parts;
-      const input = document.createElement("input");
-      input.type = "text";
-      input.value = "42";
-      input.style.cssText = "background: transparent; border: 0";
-      caption.appendChild(input);
-      layout(input, () => [30, 60, 70, 80]);
-      gauge.mirror.adopt(input);
-      gauge.mirror.childListChanged(caption);
-      const object = gauge.drawWith(input, (ctx) => textInput(ctx, input));
+      const { parts, object } = fieldOverDial(gauge);
 
-      const value = findMesh(object, (mesh) => {
-        const material = /** @type {THREE.MeshBasicMaterial} */ (mesh.material);
-        return !!(material.alphaMap || material.map);
-      });
+      const value = findMesh(object, isRunMesh);
       assert.ok(value, "the value is drawn");
       assertDrawsAfterDial(gauge, value, parts);
     } finally {
@@ -1376,21 +1365,8 @@ describe("marks stepped over a box", () => {
     const canvas = stubCanvas();
     const gauge = setupSiblings();
     try {
-      const parts = dialWithCaption(gauge);
-      const { caption } = parts;
-      const input = document.createElement("input");
-      input.type = "text";
-      input.value = "42";
-      input.style.cssText = "background: transparent; border: 0";
-      caption.appendChild(input);
-      layout(input, () => [30, 60, 70, 80]);
-      gauge.mirror.adopt(input);
-      gauge.mirror.childListChanged(caption);
       // The field being typed into, which is the one that draws a caret.
-      const focus = { isFocused: () => true, press: () => {} };
-      const object = gauge.drawWith(input, (ctx) =>
-        textInput(InputFocusContext.set(ctx, focus), input),
-      );
+      const { parts, object } = fieldOverDial(gauge, { isFocused: () => true, press: () => {} });
 
       // The caret is a quad of its own in the field's content, not the
       // field's box.
@@ -1411,19 +1387,12 @@ describe("marks stepped over a box", () => {
     const gauge = setupSiblings();
     try {
       const parts = dialWithCaption(gauge);
-      const { caption } = parts;
       const item = document.createElement("li");
       item.style.cssText = "display: list-item; list-style-type: disc";
-      caption.appendChild(item);
-      layout(item, () => [50, 60, 70, 80]);
-      gauge.mirror.adopt(item);
-      gauge.mirror.childListChanged(caption);
+      adoptInto(gauge, parts.caption, item, [50, 60, 70, 80]);
       const object = gauge.drawWith(item, (ctx) => markedBox(ctx, item));
 
-      const marker = findMesh(object, (mesh) => {
-        const material = /** @type {THREE.MeshBasicMaterial} */ (mesh.material);
-        return !!(material.alphaMap || material.map);
-      });
+      const marker = findMesh(object, isRunMesh);
       assert.ok(marker, "the marker is drawn");
       assert.ok(canvas.drawn.includes("•"), "the marker is a bullet");
       assertDrawsAfterDial(gauge, marker, parts);
@@ -1432,7 +1401,66 @@ describe("marks stepped over a box", () => {
       canvas.restore();
     }
   });
+
+  test("an <svg> laid over a dial paints all of itself after the dial's face", () => {
+    // An `<svg>` paints its shapes in a slot from its content order up to
+    // the next level (`paintSlot`), so the slot's start is the earliest any
+    // of them draws.
+    const gauge = setupSiblings();
+    try {
+      const parts = dialWithCaption(gauge);
+      const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      const shape = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+      svg.appendChild(shape);
+      adoptInto(gauge, parts.caption, svg, [30, 60, 70, 80]);
+      gauge.mirror.adopt(shape);
+      gauge.mirror.childListChanged(svg);
+
+      const first = new THREE.Object3D();
+      first.renderOrder = paintSlot(shape, svg, null, 0).start;
+      assertDrawsAfterDial(gauge, first, parts);
+    } finally {
+      gauge.teardown();
+    }
+  });
 });
+
+/**
+ * Put an element in a parent the harness drew, laid out at `rect` and
+ * mirrored, as the portal's observer would.
+ *
+ * @param {ReturnType<typeof setupSiblings>} gauge
+ * @param {HTMLElement} parent
+ * @param {Element} element
+ * @param {[number, number, number, number]} rect
+ */
+function adoptInto(gauge, parent, element, rect) {
+  parent.appendChild(element);
+  layout(element, () => rect);
+  gauge.mirror.adopt(element);
+  gauge.mirror.childListChanged(parent);
+}
+
+/**
+ * A text field holding "42", with nothing of its own to paint, in the
+ * caption `dialWithCaption` lays over a dial, drawn as the portal draws one.
+ *
+ * @param {ReturnType<typeof setupSiblings>} gauge
+ * @param {import("./textInput.js").InputFocus} [focus] For a field being
+ *   typed into, which draws a caret.
+ */
+function fieldOverDial(gauge, focus) {
+  const parts = dialWithCaption(gauge);
+  const input = document.createElement("input");
+  input.type = "text";
+  input.value = "42";
+  input.style.cssText = "background: transparent; border: 0";
+  adoptInto(gauge, parts.caption, input, [30, 60, 70, 80]);
+  const object = gauge.drawWith(input, (ctx) =>
+    textInput(focus ? InputFocusContext.set(ctx, focus) : ctx, input),
+  );
+  return { parts, object };
+}
 
 /**
  * The first mesh under an object that a predicate accepts.

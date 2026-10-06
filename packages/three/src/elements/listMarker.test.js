@@ -7,6 +7,7 @@ import { createPortal as createHeldPortal } from "./portal.js";
 import { getListItemOrdinal, listMarkerText } from "./listMarker.js";
 import { resetMeasuringRangeForTests } from "./mirror.js";
 import { stubCanvas, STUB_GLYPH_WIDTH } from "../test/stubCanvas.js";
+import { isRunMesh } from "../test/runMesh.js";
 
 /**
  * `createPortal` with the loading frame's timing off, as the portal suite
@@ -157,11 +158,8 @@ function listPanel(markup) {
       /** @type {THREE.Mesh[]} */
       const found = [];
       parent.traverse((object) => {
-        if (object instanceof THREE.Mesh) {
-          const material = /** @type {THREE.MeshBasicMaterial} */ (object.material);
-          if (material && (material.alphaMap || material.map)) {
-            found.push(object);
-          }
+        if (isRunMesh(object)) {
+          found.push(object);
         }
       });
       return found;

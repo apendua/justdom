@@ -31,7 +31,8 @@ import { rampUniforms } from "./gradient.js";
  *     a panel nests a handful deep, so a few hundred draws become a few.
  *     The exception is a box that is not opaque stepped over a sibling,
  *     which draws after that sibling's subtree at a level of its own
- *     (`getDrawLevel`): a translucent pile is a bucket per card.
+ *     (`getDrawLevel`): a pile of cards that are not opaque is a bucket per
+ *     card.
  *
  *     Getting this wrong is not subtle in the one case that matters. An
  *     overlay drawn before the text it covers is hidden by the depth buffer

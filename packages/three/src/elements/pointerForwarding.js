@@ -12,10 +12,10 @@ import {
   lazyPanel,
   moveInit,
   planeInit,
-  writeClient,
   pressInit,
   probePanel,
   releaseInit,
+  writeClient,
 } from "./dragAndDrop.js";
 import { createFrameRequester } from "./frameRequester.js";
 import { HapticsContext, isArrival } from "./haptics.js";

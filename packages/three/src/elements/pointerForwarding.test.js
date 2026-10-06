@@ -1567,6 +1567,60 @@ describe("a ray's pointer events", () => {
   });
 });
 
+describe("a press on mirrored content that is no ray target", () => {
+  test("is named once per element in development", async () => {
+    // A board that listens for clicks but says no `cursor: pointer`, as
+    // Knights' did, and a label beside it.
+    const root = document.createElement("div");
+    root.getBoundingClientRect = () => clientRect(0, 0, 400, 300);
+    const board = document.createElement("div");
+    board.id = "board";
+    board.getBoundingClientRect = () => clientRect(20, 20, 200, 200);
+    const label = document.createElement("p");
+    label.className = "caption";
+    label.getBoundingClientRect = () => clientRect(250, 20, 100, 40);
+    root.append(board, label);
+    document.body.appendChild(root);
+    const manager = new InteractionManager();
+    const portal = createPortal(InteractionContext.set({}, manager), { root, budget: 0 });
+    const scene = new THREE.Group();
+    portal.addTo(scene);
+    await settle(portal);
+    const panel = scene.children[0];
+    const hand = rayHand(manager);
+    /** @type {string[]} */
+    const notes = [];
+    const { warn } = console;
+    const { NODE_ENV } = process.env;
+    /** @param {Element} at */
+    const press = (at) => {
+      const { left, top, width, height } = at.getBoundingClientRect();
+      hand.aim(panel, left + width / 2, top + height / 2);
+      hand.trigger("selectstart");
+      hand.trigger("selectend");
+    };
+    try {
+      console.warn = (message) => notes.push(String(message));
+      process.env.NODE_ENV = "production";
+      press(board);
+      assert.deepEqual(notes, [], "nothing outside development");
+      process.env.NODE_ENV = "development";
+      press(board);
+      press(board);
+      press(label);
+      assert.equal(notes.length, 2, "once for each element");
+      assert.match(notes[0], /div#board/);
+      assert.match(notes[1], /p\.caption/);
+    } finally {
+      console.warn = warn;
+      process.env.NODE_ENV = NODE_ENV;
+      hand.remove();
+      portal.disconnect();
+      root.remove();
+    }
+  });
+});
+
 describe("a panel's ray events", () => {
   test("are heard by its container, and by nothing in it but the background", async () => {
     // Which ray events each object listens for, recorded as listeners are

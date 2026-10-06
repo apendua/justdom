@@ -4,6 +4,7 @@ import { interactions } from "../interactions.js";
 import { getParentObject } from "./contentGroup.js";
 import {
   dragAndDrop,
+  hitElement,
   isDragSource,
   lazyPanel,
   moveInit,
@@ -15,6 +16,7 @@ import {
 import { createFrameRequester } from "./frameRequester.js";
 import { HapticsContext, isArrival } from "./haptics.js";
 import { getComputedStyleCached, isPortalRoot } from "./mirror.js";
+import { describeElement } from "./panelFrame.js";
 import { movesList, sampleRay, ScrollDragsContext } from "./scroll.js";
 
 /**
@@ -100,6 +102,55 @@ export function getControlRoot(element, object) {
  */
 export function isGone(element) {
   return !element.isConnected;
+}
+
+/**
+ * Whether the page runs in development: what Vite says as
+ * `import.meta.env.DEV` where Vite served or built it, and `NODE_ENV`
+ * under Node, as under a test runner.
+ *
+ * @returns {boolean}
+ */
+function isDevelopment() {
+  const { env } = /** @type {ImportMeta & { env?: { DEV?: boolean } }} */ (import.meta);
+  if (env) {
+    return env.DEV === true;
+  }
+  // Read off `globalThis`, since a page has no `process` and a types build
+  // knows of none.
+  const { process } = /** @type {{ process?: { env?: Record<string, string | undefined> } }} */ (
+    /** @type {unknown} */ (globalThis)
+  );
+  return process?.env?.NODE_ENV === "development";
+}
+
+/** The elements `noteMissedPress` has named, each once. */
+const named = new WeakSet();
+
+/**
+ * In development, name an element a press landed on that no ray targets,
+ * once. A page marks what it handles presses on with `cursor: pointer`
+ * for a mouse's sake, and the ray follows that, so a board that listens
+ * for clicks and sets no cursor fails without a sound: the press reaches
+ * nothing. The listeners cannot be found to warn about them before a
+ * session, since a page attaches them through means nothing outside a
+ * browser's devtools lists, so the note comes from the ray's side, the
+ * first time it lands there.
+ *
+ * @param {Element | null} element What the press landed on.
+ * @returns {void}
+ */
+function noteMissedPress(element) {
+  if (!element || named.has(element)) {
+    return;
+  }
+  named.add(element);
+  console.warn(
+    `freedom: a press landed on ${describeElement(element)}, which no ray targets, so the ` +
+      "page heard nothing of it. An element is a ray target when its computed cursor is " +
+      '"pointer" or it is draggable="true".',
+    element,
+  );
 }
 
 /**
@@ -1331,6 +1382,10 @@ export function createPanelForwarder(ctx, container) {
       const { select } = panelHand(e.controller);
       const first = begin(select, e.originalTarget, false);
       if (!first) {
+        const own = panel();
+        if (own && isDevelopment()) {
+          noteMissedPress(hitElement(own, e.intersection.point));
+        }
         return;
       }
       // A press that lands on an element that has gone is swallowed (see

@@ -247,6 +247,18 @@ function elementAt(element, objectOf, point) {
 }
 
 /**
+ * The deepest element of a panel under a point on it, found as `elementAt`
+ * finds what a drag is over.
+ *
+ * @param {Panel} panel
+ * @param {THREE.Vector3} point In world space.
+ * @returns {HTMLElement | null}
+ */
+export function hitElement(panel, point) {
+  return elementAt(panel.element, panel.objectOf, point);
+}
+
+/**
  * Where a point on a panel is on the page, in client coordinates: the point
  * taken into the frame of the element at the panel's top, its border box
  * with the origin at the top left and y down, scaled as the page scales

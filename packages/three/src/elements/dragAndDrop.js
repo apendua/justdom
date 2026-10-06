@@ -592,16 +592,20 @@ function outlineGhost(shown, width, height) {
  *   hears `dragover` and `drop`.
  * @property {DropEffect} operation
  * @property {() => void} unlisten
+ * @property {((controller: THREE.XRTargetRaySpace) => void) | undefined} onTaken
+ *   See `DragAndDrop.begin`.
  */
 
 /**
  * @typedef {object} DragAndDrop
- * @property {(controller: THREE.XRTargetRaySpace, element: HTMLElement, object: THREE.Object3D, allowed: boolean) => boolean} begin
+ * @property {(controller: THREE.XRTargetRaySpace, element: HTMLElement, object: THREE.Object3D, allowed: boolean, onTaken?: (controller: THREE.XRTargetRaySpace) => void) => boolean} begin
  *   Tell the gesture about a press, every press, since a new press is what
  *   ends the last one's say over `didDrag`. Taken, and true, when the page
  *   allowed it, which is `false` when it cancelled the press's `mousedown`,
  *   and there is something draggable at or above the element; the press
- *   then belongs to it until the controller's own `selectend`.
+ *   then belongs to it until the controller's own `selectend`. `onTaken` is
+ *   told once, right after a `dragstart` the page let through, which is
+ *   when a browser cancels the pointer that pressed.
  * @property {(controller: THREE.XRTargetRaySpace) => boolean} holding
  *   Whether the hand is holding something draggable: carrying it, or
  *   pressing it and not yet far enough from where it started for that to
@@ -951,6 +955,7 @@ export function createDragAndDrop(requestFrames, readHit, snapshots) {
           sessions.delete(session.controller);
           continue;
         }
+        session.onTaken?.(session.controller);
       }
       const hit = readHit(session.controller);
       const panel = hit ? panelOf(hit.object) : null;
@@ -964,7 +969,7 @@ export function createDragAndDrop(requestFrames, readHit, snapshots) {
   }
 
   return {
-    begin(controller, element, object, allowed) {
+    begin(controller, element, object, allowed, onTaken) {
       dragged.delete(controller);
       const previous = sessions.get(controller);
       if (previous) {
@@ -1001,6 +1006,7 @@ export function createDragAndDrop(requestFrames, readHit, snapshots) {
         current: null,
         operation: "none",
         unlisten: () => {},
+        onTaken,
       };
       if (!sample(session)) {
         return false;

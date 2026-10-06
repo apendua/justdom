@@ -122,6 +122,9 @@ export function isGone(element) {
  *   handles the press as a pointer, and a browser then sends none of the
  *   mouse events that would otherwise follow it, `mousedown`, `mousemove`
  *   and `mouseup`, until the button is let go. The `click` still goes.
+ * @property {boolean} cancelled Whether the hand's press became a scroll or
+ *   a drag and drop, until its trigger opens. A browser cancels the pointer
+ *   then, and sends nothing more of it until its button is let go.
  * @property {number} buttons The buttons the hand holds, as a mouse event's
  *   `buttons` says them: the trigger as the main button, 1, and the grip
  *   as the secondary one, 2, as its `contextmenu` says `button` 2. Kept
@@ -161,6 +164,7 @@ function handOf(controller) {
       captor: null,
       pending: null,
       pointerOnly: false,
+      cancelled: false,
       buttons: 0,
     };
     hand = created;
@@ -437,6 +441,7 @@ function endPress(controller) {
   const hand = hands.get(controller);
   if (hand) {
     hand.pointerOnly = false;
+    hand.cancelled = false;
     releaseCapture(controller);
   }
 }
@@ -449,6 +454,8 @@ function endPress(controller) {
  * primary one (see `primary`) and for one whose `pointerdown` was
  * cancelled (see `Hand.pointerOnly`), and the pointer event where the page
  * has no `PointerEvent` at all, as under a test environment without one.
+ * A hand whose press the browser would have cancelled sends neither (see
+ * `Hand.cancelled`).
  * A move's pointer event names no button, as a browser's says `-1` for a
  * move that changes none.
  *
@@ -465,12 +472,15 @@ function sendPointerAndMouse(element, type, init, controller) {
     init.button = -1;
   }
   const hand = handOf(controller);
-  const isPrimary = elect(controller, type === "pointerdown");
   if (type === "pointerdown") {
     // A press of its own, whatever became of the last one's release.
     hand.pointerOnly = false;
+    hand.cancelled = false;
     hand.pending = null;
+  } else if (hand.cancelled) {
+    return true;
   }
+  const isPrimary = elect(controller, type === "pointerdown");
   settleCapture(controller);
   // A press says the button it closed, and a release no longer says the
   // one it opened, as a browser's do; and the hand's record holds them
@@ -1066,7 +1076,7 @@ export function createPanelForwarder(ctx, container) {
    */
   const track = (e, hand, released = false) => {
     const { controller } = e;
-    if (!released && dnd.holding(controller)) {
+    if (!released && (dnd.holding(controller) || hands.get(controller)?.cancelled)) {
       return;
     }
     const element = elementUnder(controller, hand);
@@ -1090,6 +1100,44 @@ export function createPanelForwarder(ctx, container) {
     if (isPrimary) {
       cross(mouseChain, element, init, "mouse");
     }
+  };
+
+  /**
+   * The press of this panel that a hand began has become a scroll or a drag
+   * and drop, and the page loses the pointer, as a browser cancels one
+   * whose press it takes for a gesture of its own: `pointercancel` where
+   * the press went, the element that captured it or the one pressed, then
+   * `lostpointercapture`, and the pointer leaves everything it was over.
+   * Nothing more of the pointer reaches the page until the trigger opens,
+   * the mouse included, which holds still as it does under a drag; the
+   * release catches both up.
+   *
+   * @param {XRTargetRaySpace} controller
+   * @returns {void}
+   */
+  const cancel = (controller) => {
+    const pointer = hands.get(controller);
+    if (!pointer || pointer.cancelled) {
+      return;
+    }
+    settleCapture(controller);
+    pointer.cancelled = true;
+    if (typeof PointerEvent !== "function") {
+      releaseCapture(controller);
+      return;
+    }
+    const hand = panelHand(controller);
+    const pressed = hand.select.target?.element;
+    const target = pointer.captor?.isConnected ? pointer.captor : pressed;
+    const init = moveInit(panel(), NOWHERE);
+    init.button = -1;
+    init.pointerId = pointer.pointerId;
+    init.isPrimary = controller === primary;
+    if (target?.isConnected) {
+      target.dispatchEvent(new PointerEvent("pointercancel", init));
+    }
+    releaseCapture(controller);
+    cross(hand.chain, null, init, "pointer");
   };
 
   /**
@@ -1241,8 +1289,8 @@ export function createPanelForwarder(ctx, container) {
       // otherwise a press over a list may become a scroll; only holding it
       // will tell. The page's own gesture comes first, as it does under a
       // mouse, where dragging a row drags the row and not the list.
-      if (!dnd.begin(e.controller, first.element, first.object, pressed)) {
-        drags.begin(e.controller, first.element, first.object);
+      if (!dnd.begin(e.controller, first.element, first.object, pressed, cancel)) {
+        drags.begin(e.controller, first.element, first.object, cancel);
       }
       haptics?.press(e.inputSource);
       for (const object of select.path) {

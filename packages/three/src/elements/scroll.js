@@ -121,11 +121,16 @@ export function planeOf(space, target) {
  * @property {THREE.Vector2} velocity Local px per frame, for the glide.
  * @property {boolean} released Whether this is now a glide rather than a hold.
  * @property {() => void} unlisten Stop hearing the controller (see `begin`).
+ * @property {((controller: THREE.XRTargetRaySpace) => void) | undefined} onTaken
+ *   See `ScrollDrags.begin`.
  */
 
 /**
  * @typedef {object} ScrollDrags
- * @property {(controller: THREE.XRTargetRaySpace, element: HTMLElement, object: THREE.Object3D) => void} begin
+ * @property {(controller: THREE.XRTargetRaySpace, element: HTMLElement, object: THREE.Object3D, onTaken?: (controller: THREE.XRTargetRaySpace) => void) => void} begin
+ *   Take hold of the list under a press. `onTaken` is told once, on the
+ *   frame the press travels past `DRAG_THRESHOLD` and becomes a scroll,
+ *   which is when a browser cancels the pointer that pressed.
  * @property {(controller: THREE.XRTargetRaySpace) => void} end The hand
  *   let go: a glide, if the list was moving fast enough, or nothing. Called
  *   from the controller's own release, which every drag hears (see
@@ -232,7 +237,10 @@ export function createScrollDrags(requestFrames, scene) {
         // is allowed to become a click.
         continue;
       }
-      scrolled.add(controller);
+      if (!scrolled.has(controller)) {
+        scrolled.add(controller);
+        drag.onTaken?.(controller);
+      }
       // The content follows the hand, so the viewport goes the other way.
       drag.velocity.set(-dx, -dy);
       scrollElementBy(drag.scroller, -dx, -dy);
@@ -251,7 +259,7 @@ export function createScrollDrags(requestFrames, scene) {
 
   /** @type {ScrollDrags} */
   const gesture = {
-    begin(controller, element, object) {
+    begin(controller, element, object, onTaken) {
       drop(controller);
       scrolled.delete(controller);
       const scroller = findScroller(element);
@@ -295,6 +303,7 @@ export function createScrollDrags(requestFrames, scene) {
         travelled: 0,
         velocity: new THREE.Vector2(0, 0),
         released: false,
+        onTaken,
         unlisten: () => {
           controller.removeEventListener("selectend", onSelectEnd);
           controller.removeEventListener("disconnected", onDisconnected);

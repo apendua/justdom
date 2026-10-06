@@ -15,6 +15,7 @@ import { clientRect } from "../test/clientRect.js";
 import { describeScroller } from "../test/scroller.js";
 import { countingManager, flushFrame, settle } from "../test/portalHarness.js";
 import { forwardedPanel } from "../test/rays.js";
+import { rayHand } from "../test/rayHand.js";
 import { createPortal } from "./portal.js";
 import { PointerForwarderContext } from "./pointerForwarding.js";
 
@@ -1225,6 +1226,111 @@ describe("a ray's pointer events", () => {
     ]);
     teardown();
   });
+
+  const MOVED = ["pointermove #row", "mousemove #row"];
+  for (const [gesture, draggable, held, first] of /** @type {const} */ ([
+    // The hand's frame comes before the page's in `rayHand`, so the move
+    // that crosses the threshold is sent before the scroll hears of it.
+    ["a scroll", false, MOVED, MOVED],
+    // A press on something draggable sends no moves while it is held, as
+    // a page's `:hover` holds still under a drag.
+    ["a drag and drop", true, [], ["dragstart #row"]],
+  ])) {
+    test(`are cancelled when a press becomes ${gesture}, and go quiet until the release`, async () => {
+      // A row a hand's length tall in a list that scrolls, so the ray stays
+      // on it whether the list follows the hand or the row is carried.
+      const root = document.createElement("div");
+      root.id = "root";
+      root.getBoundingClientRect = () => clientRect(0, 0, 400, 300);
+      const list = document.createElement("div");
+      list.id = "list";
+      list.style.overflow = "hidden";
+      describeScroller(list, { client: 120, scroll: 400 });
+      list.getBoundingClientRect = () => clientRect(20, 20, 150, 120);
+      const row = document.createElement("div");
+      row.id = "row";
+      row.style.cursor = "pointer";
+      if (draggable) {
+        row.setAttribute("draggable", "true");
+      }
+      row.getBoundingClientRect = () => clientRect(20, 20, 150, 100);
+      list.appendChild(row);
+      root.appendChild(list);
+      document.body.appendChild(root);
+      const manager = new InteractionManager();
+      const portal = createPortal(InteractionContext.set({}, manager), { root, budget: 0 });
+      const scene = new THREE.Group();
+      portal.addTo(scene);
+      await settle(portal);
+      const panel = scene.children[0];
+      const hand = rayHand(manager);
+
+      const types = [
+        "pointerdown",
+        "pointermove",
+        "pointercancel",
+        "pointerout",
+        "pointerleave",
+        "pointerup",
+        "mousedown",
+        "mousemove",
+        "mouseup",
+        "click",
+        "dragstart",
+      ];
+      /** @type {string[]} */
+      const heard = [];
+      /** @param {Event} event */
+      const record = (event) => {
+        heard.push(`${event.type} #${/** @type {Element} */ (event.target).id}`);
+      };
+      hand.aim(panel, 95, 100);
+      for (const type of types) {
+        document.addEventListener(type, record, true);
+      }
+      /** @param {string} label */
+      const step = (label) => heard.push(`> ${label}`);
+
+      step("press");
+      hand.trigger("selectstart");
+      hand.aim(panel, 95, 97);
+      step("past the threshold");
+      hand.aim(panel, 95, 60);
+      step("on");
+      hand.aim(panel, 95, 55);
+      step("release");
+      hand.trigger("selectend");
+      await null;
+      step("after");
+      hand.aim(panel, 95, 50);
+      hand.aim(panel, 95, 45);
+      for (const type of types) {
+        document.removeEventListener(type, record, true);
+      }
+      assert.deepEqual(heard, [
+        "> press",
+        "pointerdown #row",
+        "mousedown #row",
+        ...held,
+        "> past the threshold",
+        ...first,
+        // The pointer is taken away from the page, and leaves.
+        "pointercancel #row",
+        "pointerout #row",
+        "pointerleave #row",
+        "pointerleave #list",
+        "pointerleave #root",
+        "> on",
+        "> release",
+        "> after",
+        ...MOVED,
+        ...MOVED,
+      ]);
+      hand.remove();
+      portal.disconnect();
+      root.remove();
+    });
+  }
 
   test("cancelled at the press, leave out the mouse events until the release", () => {
     const { s, point, heard, teardown } = label((event) => {

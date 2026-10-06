@@ -29,6 +29,9 @@ if (typeof globalThis.DOMParser === "undefined") {
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 
+/** The capture method a browser has, before any panel wraps it. */
+const { setPointerCapture } = Element.prototype;
+
 /**
  * The ray events `nest` can dispatch.
  *
@@ -1311,10 +1314,82 @@ describe("a ray's pointer events", () => {
     teardown();
   });
 
+  test("tell the captor it has the pointer, and that it has lost it", () => {
+    let id = 0;
+    const { s, point, outer, teardown } = label((event) => {
+      if (event.type === "pointerdown") {
+        id = /** @type {PointerEvent} */ (event).pointerId;
+        outer.setPointerCapture(id);
+      }
+    });
+    const types = [
+      "gotpointercapture",
+      "lostpointercapture",
+      "pointerdown",
+      "pointermove",
+      "pointerup",
+      "mouseup",
+      "click",
+    ];
+    /** @type {string[]} */
+    const heard = [];
+    /** @param {Event} event */
+    const record = (event) => {
+      heard.push(`${event.type} on ${/** @type {Element} */ (event.target).localName}`);
+    };
+    for (const type of types) {
+      document.addEventListener(type, record, true);
+    }
+    s.press("selectstart", null, point);
+    s.press("pointermove", null, point);
+    s.press("selectend", null, point);
+    s.press("select", null, point);
+    // A page that lets go of it before the release.
+    s.press("selectstart", null, point);
+    s.press("pointermove", null, point);
+    outer.releasePointerCapture(id);
+    s.press("pointermove", null, point);
+    s.press("selectend", null, point);
+    for (const type of types) {
+      document.removeEventListener(type, record, true);
+    }
+    assert.deepEqual(heard, [
+      "pointerdown on span",
+      // Before the hand's next event, as a browser processes a capture.
+      "gotpointercapture on button",
+      "pointermove on button",
+      "pointerup on button",
+      "mouseup on button",
+      // The release ends it.
+      "lostpointercapture on button",
+      "click on span",
+      "pointerdown on span",
+      "gotpointercapture on button",
+      "pointermove on button",
+      "lostpointercapture on button",
+      "pointermove on span",
+      "pointerup on span",
+      "mouseup on span",
+    ]);
+    teardown();
+  });
+
+  test("wrap the capture methods while a panel is up, and no longer", () => {
+    const proto = Element.prototype;
+    const first = label();
+    const second = label();
+    first.s.press("pointermove", null, first.point);
+    assert.notEqual(proto.setPointerCapture, setPointerCapture, "wrapped while panels are up");
+    first.teardown();
+    assert.notEqual(proto.setPointerCapture, setPointerCapture, "and while one is");
+    second.teardown();
+    assert.equal(proto.setPointerCapture, setPointerCapture, "given back after the last");
+  });
+
   test("leave the mouse's own capture to the browser", () => {
+    const { teardown } = label();
     const element = document.createElement("div");
     document.body.appendChild(element);
-    // Wrapped by now: an earlier test gave a hand a pointer.
     element.setPointerCapture(1);
     assert.equal(element.hasPointerCapture(1), true);
     element.releasePointerCapture(1);
@@ -1322,6 +1397,7 @@ describe("a ray's pointer events", () => {
     assert.throws(() => element.setPointerCapture(99), { name: "NotFoundError" });
     assert.throws(() => element.releasePointerCapture(99), { name: "NotFoundError" });
     element.remove();
+    teardown();
   });
 });
 

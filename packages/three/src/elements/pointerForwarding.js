@@ -111,8 +111,12 @@ export function isGone(element) {
  *   follows that hand, and the other ray moving over the same element is
  *   another pointer hovering, not the press wandering off. 1 is the
  *   mouse's in a browser, so the hands count on from 2.
- * @property {Element | null} captor The element the page captured the
- *   pointer to (see `acceptPointerCapture`).
+ * @property {Element | null} captor The element the pointer is captured to,
+ *   which its moves and its release go to (see `wrapPointerCapture`).
+ * @property {Element | null} pending The element the page last asked to
+ *   capture the pointer, or null once it let go: `captor` follows it, with
+ *   `gotpointercapture` and `lostpointercapture`, before the hand's next
+ *   event, as a browser processes a pending capture (see `settleCapture`).
  * @property {boolean} pointerOnly Whether the page cancelled the hand's
  *   `pointerdown`, until its trigger opens. A page that does is saying it
  *   handles the press as a pointer, and a browser then sends none of the
@@ -132,7 +136,7 @@ const hands = new WeakMap();
  * The same hands by `pointerId`, which is all `setPointerCapture` is given.
  * A strong map, deliberately: a page may capture a hand's pointer at any
  * time, so every hand that was ever given an id has to be found by it.
- * There are as many as the session has controllers, and a hand's `captor`
+ * There are as many as the session has controllers, and a hand's capture
  * is let go of with its press (see `endPress`).
  *
  * @type {Map<number, Hand>}
@@ -151,12 +155,18 @@ const HAND_BITS = /** @type {const} */ ({ select: 1, squeeze: 2 });
 function handOf(controller) {
   let hand = hands.get(controller);
   if (!hand) {
-    const created = { pointerId: nextPointerId, captor: null, pointerOnly: false, buttons: 0 };
+    /** @type {Hand} */
+    const created = {
+      pointerId: nextPointerId,
+      captor: null,
+      pending: null,
+      pointerOnly: false,
+      buttons: 0,
+    };
     hand = created;
     nextPointerId += 1;
     hands.set(controller, hand);
     handsById.set(hand.pointerId, hand);
-    acceptPointerCapture();
     // The controller's own events, which three sends wherever the ray is,
     // and the manager passes on into the scene only when it is on
     // something. A press on a panel writes its bit before these come,
@@ -252,32 +262,66 @@ function isIdle(controller) {
   return true;
 }
 
-/** Whether `acceptPointerCapture` has run. */
-let capturing = false;
+/** How many panels are up, each holding the wrap (see `holdPointerCapture`). */
+let wrapHolders = 0;
+
+/** Undo `wrapPointerCapture`, while the wrap is on. */
+let unwrapPointerCapture = () => {};
+
+/**
+ * Let the page capture a hand's pointer while any panel is up, and give
+ * the capture methods back after the last one goes, as `trackValue` gives
+ * a field's `value` back after its last watcher. Each forwarder holds it
+ * for its panel's life.
+ *
+ * @returns {() => void} Let go of it.
+ */
+function holdPointerCapture() {
+  if (typeof Element === "undefined") {
+    return () => {};
+  }
+  wrapHolders += 1;
+  if (wrapHolders === 1) {
+    unwrapPointerCapture = wrapPointerCapture();
+  }
+  let held = true;
+  return () => {
+    if (!held) {
+      return;
+    }
+    held = false;
+    wrapHolders -= 1;
+    if (wrapHolders === 0) {
+      unwrapPointerCapture();
+    }
+  };
+}
 
 /**
  * Let the page capture a hand's pointer. A browser knows nothing of the
  * hands' pointers, so `setPointerCapture` with a hand's `pointerId` throws
  * that there is no such pointer, from the `pointerdown` handler of every
- * page that drags by capture. So, once a hand has a pointer, the three
- * capture methods are wrapped: a call the browser refuses for a hand's
- * pointer is kept on the hand instead, and while it holds, the hand's moves
- * and its release are sent to the capturing element, whichever control on
- * the panels the ray is over, as a browser sends a captured pointer's. A
- * pointer the browser knows is the browser's, as before.
+ * page that drags by capture. So the three capture methods are wrapped: a
+ * call the browser refuses for a hand's pointer is kept on the hand
+ * instead, and while it holds, the hand's moves and its release are sent
+ * to the capturing element, whichever control on the panels the ray is
+ * over, as a browser sends a captured pointer's. A pointer the browser
+ * knows is the browser's, as before.
  *
- * Capture ends as a browser ends it: with the release, or with
- * `releasePointerCapture`, or when the press becomes a drag and drop, which
- * sends no `pointerup` (see `endPress`). Releasing a hand's pointer that
- * holds no capture does nothing, as it does for a pointer a browser knows,
- * so a page's own `pointerup` handler may release what the release already
- * ended. Neither `gotpointercapture` nor `lostpointercapture` is sent.
+ * A capture starts and ends as a browser's does: it is pending until the
+ * hand's next event, and then the element hears `gotpointercapture`, and
+ * `lostpointercapture` as it ends (see `settleCapture`). It ends with the
+ * release, after its `pointerup` and `mouseup`, with
+ * `releasePointerCapture`, or when the press becomes a drag and drop,
+ * which sends no `pointerup` (see `endPress`). Releasing a hand's pointer
+ * that holds no capture does nothing, as it does for a pointer a browser
+ * knows, so a page's own `pointerup` handler may release what the release
+ * already ended.
+ *
+ * @returns {() => void} Put the methods back, and let go of every capture
+ *   the hands hold, since no panel is left to send their events.
  */
-function acceptPointerCapture() {
-  if (capturing || typeof Element === "undefined") {
-    return;
-  }
-  capturing = true;
+function wrapPointerCapture() {
   const proto = Element.prototype;
   const { setPointerCapture, releasePointerCapture, hasPointerCapture } = proto;
   proto.setPointerCapture = function (id) {
@@ -288,20 +332,95 @@ function acceptPointerCapture() {
       if (!hand) {
         throw err;
       }
-      hand.captor = this;
+      hand.pending = this;
     }
   };
   proto.releasePointerCapture = function (id) {
     const hand = handsById.get(id);
     if (!hand) {
       releasePointerCapture.call(this, id);
-    } else if (hand.captor === this) {
-      hand.captor = null;
+    } else if (hand.pending === this) {
+      hand.pending = null;
     }
   };
   proto.hasPointerCapture = function (id) {
-    return handsById.get(id)?.captor === this || hasPointerCapture.call(this, id);
+    return handsById.get(id)?.pending === this || hasPointerCapture.call(this, id);
   };
+  return () => {
+    Object.assign(proto, { setPointerCapture, releasePointerCapture, hasPointerCapture });
+    for (const hand of handsById.values()) {
+      hand.captor = null;
+      hand.pending = null;
+    }
+  };
+}
+
+/**
+ * The init `gotpointercapture` and `lostpointercapture` are made from,
+ * written in place for each. Neither is about a place on the page.
+ *
+ * @type {PointerEventInit}
+ */
+const captureInit = {
+  bubbles: true,
+  cancelable: false,
+  button: -1,
+  buttons: 0,
+  pointerId: 0,
+  pointerType: "mouse",
+  isPrimary: false,
+};
+
+/**
+ * Process a hand's pending capture, as a browser does before it sends the
+ * pointer's next event: if the element the page last asked for is not the
+ * one that has the pointer, the one that has it hears `lostpointercapture`
+ * and the new one `gotpointercapture`. An element that left the page has
+ * no capture to get, and the document hears that one that left lost it.
+ *
+ * @param {XRTargetRaySpace} controller
+ * @returns {void}
+ */
+function settleCapture(controller) {
+  const hand = hands.get(controller);
+  if (!hand) {
+    return;
+  }
+  if (hand.pending && !hand.pending.isConnected) {
+    hand.pending = null;
+  }
+  if (hand.pending === hand.captor) {
+    return;
+  }
+  const lost = hand.captor;
+  hand.captor = hand.pending;
+  if (typeof PointerEvent !== "function") {
+    return;
+  }
+  captureInit.pointerId = hand.pointerId;
+  captureInit.isPrimary = controller === primary;
+  captureInit.buttons = hand.buttons;
+  if (lost) {
+    const target = lost.isConnected ? lost : lost.ownerDocument;
+    target.dispatchEvent(new PointerEvent("lostpointercapture", captureInit));
+  }
+  if (hand.captor) {
+    hand.captor.dispatchEvent(new PointerEvent("gotpointercapture", captureInit));
+  }
+}
+
+/**
+ * Let go of a hand's capture now, as the end of its press does.
+ *
+ * @param {XRTargetRaySpace} controller
+ * @returns {void}
+ */
+function releaseCapture(controller) {
+  const hand = hands.get(controller);
+  if (hand) {
+    hand.pending = null;
+    settleCapture(controller);
+  }
 }
 
 /**
@@ -318,7 +437,7 @@ function endPress(controller) {
   const hand = hands.get(controller);
   if (hand) {
     hand.pointerOnly = false;
-    hand.captor = null;
+    releaseCapture(controller);
   }
 }
 
@@ -347,6 +466,12 @@ function sendPointerAndMouse(element, type, init, controller) {
   }
   const hand = handOf(controller);
   const isPrimary = elect(controller, type === "pointerdown");
+  if (type === "pointerdown") {
+    // A press of its own, whatever became of the last one's release.
+    hand.pointerOnly = false;
+    hand.pending = null;
+  }
+  settleCapture(controller);
   // A press says the button it closed, and a release no longer says the
   // one it opened, as a browser's do; and the hand's record holds them
   // from here, since the controller's own events come after the panel's.
@@ -363,20 +488,18 @@ function sendPointerAndMouse(element, type, init, controller) {
   const pointer = typeof PointerEvent === "function" ? new PointerEvent(type, init) : null;
   init.button = button;
   const mouse = new MouseEvent(MOUSE_EVENT[type], init);
-  if (type === "pointerdown") {
-    // A press of its own, whatever became of the last one's release.
-    hand.pointerOnly = false;
-    hand.captor = null;
-  }
   const captor = hand.captor;
   const target = captor?.isConnected ? captor : element;
-  if (type === "pointerup") {
-    hand.captor = null;
-  }
   if (pointer && !target.dispatchEvent(pointer) && type === "pointerdown") {
     hand.pointerOnly = true;
   }
-  return hand.pointerOnly || !isPrimary || target.dispatchEvent(mouse);
+  const proceed = hand.pointerOnly || !isPrimary || target.dispatchEvent(mouse);
+  if (type === "pointerup") {
+    // The release ends the capture, once it has been sent where the
+    // capture sent it.
+    releaseCapture(controller);
+  }
+  return proceed;
 }
 
 /** The mouse event a browser sends after each pointer event a ray sends. */
@@ -912,6 +1035,7 @@ export function createPanelForwarder(ctx, container) {
    * @returns {Element | null}
    */
   const elementUnder = (controller, hand) => {
+    settleCapture(controller);
     const captor = hands.get(controller)?.captor;
     if (captor?.isConnected) {
       const own = panel();
@@ -1305,6 +1429,8 @@ export function createPanelForwarder(ctx, container) {
     listened.addEventListener(type, /** @type {never} */ (listeners[type]));
   }
 
+  const letGoOfCapture = holdPointerCapture();
+
   /** This panel, among the panels that are up (see `isIdle`). */
   const registered = {
     /** @param {XRTargetRaySpace} controller */
@@ -1340,6 +1466,7 @@ export function createPanelForwarder(ctx, container) {
         listened.removeEventListener(type, /** @type {never} */ (listeners[type]));
       }
       forwarders.splice(forwarders.indexOf(registered), 1);
+      letGoOfCapture();
       panelHands.clear();
     },
   };

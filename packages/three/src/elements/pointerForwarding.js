@@ -256,9 +256,7 @@ function handOf(controller) {
       if (created.pressed || created.captor || created.pending) {
         cancelPointer(controller);
       }
-      created.pressed = null;
-      created.pointerOnly = false;
-      created.cancelled = false;
+      endPress(controller);
     });
   }
   return hand;
@@ -295,15 +293,6 @@ function heldButtons(controller, released = 0) {
 let primary = null;
 
 /**
- * The forwarders of the panels that are up, each able to say whether a
- * hand's ray is on its panel, for `isIdle`, to follow a hand captured to
- * one of its elements (see `settleCapture`), and to take a pointer or the
- * mouse out of it (see `cancelPointer` and `elect`). An array, walked by
- * index, since it is asked every frame a hand that is not the primary one
- * moves.
- */
-
-/**
  * @typedef {object} ForwarderEntry
  * @property {(controller: XRTargetRaySpace) => boolean} pointsAt Whether
  *   the hand's ray is on the panel.
@@ -311,23 +300,55 @@ let primary = null;
  *   Follow a hand captured to an element of the panel.
  * @property {(controller: XRTargetRaySpace, init: PointerEventInit) => void} leave
  *   Take the hand's pointer out of everything it is over in the panel.
- * @property {(init: PointerEventInit) => void} mouseOut Take the mouse out
- *   of everything it is over in the panel.
+ * @property {(controller: XRTargetRaySpace, init: PointerEventInit, pointer: boolean) => void} bringUp
+ *   Cross the mouse, if the hand is the primary one, and its pointer if
+ *   `pointer` says so, to the element the hand is over in the panel now.
  */
 
-/** @type {ForwarderEntry[]} */
+/**
+ * The forwarders of the panels that are up, each able to say whether a
+ * hand's ray is on its panel, for `isIdle`, to follow a hand captured to
+ * one of its elements (see `settleCapture`), and to bring what the page
+ * knows of a hand up to date in it (see `cancelPointer`, `elect` and
+ * `bringUpElsewhere`). An array, walked by index, since it is asked every
+ * frame a hand that is not the primary one moves.
+ *
+ * @type {ForwarderEntry[]}
+ */
 const forwarders = [];
 
 /**
+ * Bring what the page knows of a hand up to date on every panel but one,
+ * where that one does it itself (see `ForwarderEntry.bringUp`).
+ *
+ * @param {XRTargetRaySpace} controller
+ * @param {ForwarderEntry | undefined} except
+ * @param {boolean} pointer Whether the hand's pointer is crossed too, and
+ *   not the mouse alone.
+ * @returns {void}
+ */
+function bringUpElsewhere(controller, except, pointer) {
+  const init = placeless(controller, heldButtons(controller));
+  for (let i = 0; i < forwarders.length; i += 1) {
+    if (forwarders[i] !== except) {
+      forwarders[i].bringUp(controller, init, pointer);
+    }
+  }
+}
+
+/**
  * Make a hand the primary one if it may be (see `primary`). The mouse goes
- * with it: it leaves what the hand that was primary left it over, on every
- * panel, so that no panel keeps a mouse over an element the page has no
- * mouse on any more.
+ * with it, on every panel, whichever way the election came: it leaves
+ * what the hand that was primary left it over and is over what the new
+ * one is over, the captor where the new hand holds a capture, before
+ * anything the new hand sends. So no panel keeps a mouse over an element
+ * the page has no mouse on any more, and no mouse event goes out from
+ * where the mouse never came.
  *
  * @param {XRTargetRaySpace} controller
  * @param {boolean} pressing Whether its trigger is closing.
  * @param {ForwarderEntry} [asking] The panel asking, which crosses its own
- *   mouse from that element to the new hand's itself (see `track`).
+ *   mouse itself (see `track`).
  * @returns {boolean} Whether it is the primary hand now.
  */
 function elect(controller, pressing, asking) {
@@ -335,15 +356,8 @@ function elect(controller, pressing, asking) {
     primary !== controller &&
     (!primary || (pressing && heldButtons(primary) === 0) || isIdle(primary))
   ) {
-    const init = primary ? placeless(primary, heldButtons(primary)) : null;
     primary = controller;
-    if (init) {
-      for (let i = 0; i < forwarders.length; i += 1) {
-        if (forwarders[i] !== asking) {
-          forwarders[i].mouseOut(init);
-        }
-      }
-    }
+    bringUpElsewhere(controller, asking, false);
   }
   return primary === controller;
 }
@@ -1215,7 +1229,8 @@ export function createPanelForwarder(ctx, container) {
    * its moves go to.
    *
    * @param {XRTargetRaySpace} controller
-   * @param {PanelHand} hand
+   * @param {PanelHand | undefined} hand Its record here, if its ray has
+   *   been on this panel.
    * @returns {Element | null}
    */
   const elementUnder = (controller, hand) => {
@@ -1224,6 +1239,9 @@ export function createPanelForwarder(ctx, container) {
     if (captor?.isConnected) {
       const own = panel();
       return !own || own.element.contains(captor) ? captor : null;
+    }
+    if (!hand) {
+      return null;
     }
     for (const object of hand.hover) {
       const target = targets.get(object);
@@ -1465,11 +1483,17 @@ export function createPanelForwarder(ctx, container) {
       const { select } = hand;
       const first = begin(select, e.originalTarget, false);
       if (!first) {
-        // A press on the panel's background where the page has an element,
-        // and not on a plugin's own object, which the scene takes, nor on
-        // the panel's empty root.
+        // A press on the panel's own background where the page has an
+        // element. Not on an overlay's background, which clicks its
+        // overlay, nor on a plugin's own object, which the scene takes, nor
+        // on the panel's empty root.
         const own = panel();
-        if (own && isBlocker(e.originalTarget) && isDevelopment()) {
+        if (
+          own &&
+          e.originalTarget.parent === container &&
+          isBlocker(e.originalTarget) &&
+          isDevelopment()
+        ) {
           const element = hitElement(own, e.intersection.point);
           if (element !== own.element) {
             noteMissedPress(element);
@@ -1541,6 +1565,11 @@ export function createPanelForwarder(ctx, container) {
         stopPropagation(e);
         return;
       }
+      // A press the page lost, or one that held the pointer to its captor,
+      // kept the other panels from following the ray, so they catch up as
+      // it ends.
+      const pointer = hands.get(e.controller);
+      const held = !!pointer && (pointer.cancelled || pointer.captor !== null);
       // A release is owed to whatever still holds the press. A control
       // that has left the document, or let go of its registration once its
       // removal committed, sends no `mouseup` of its own, and the next
@@ -1571,10 +1600,16 @@ export function createPanelForwarder(ctx, container) {
       // first, from the controller's own release, which follows this one
       // in the same task.
       const hand = panelHand(e.controller);
-      if (dnd.holding(e.controller)) {
-        queueMicrotask(() => track(e, hand, true));
-      } else {
+      const catchUp = () => {
         track(e, hand, true);
+        if (held) {
+          bringUpElsewhere(e.controller, registered, true);
+        }
+      };
+      if (dnd.holding(e.controller)) {
+        queueMicrotask(catchUp);
+      } else {
+        catchUp();
       }
       stopPropagation(e);
     },
@@ -1738,7 +1773,16 @@ export function createPanelForwarder(ctx, container) {
         cross(hand.chain, null, init, "pointer");
       }
     },
-    mouseOut: (init) => cross(mouseChain, null, init, "mouse"),
+    bringUp: (controller, init, pointer) => {
+      const hand = panelHands.get(controller);
+      const element = elementUnder(controller, hand);
+      if (pointer && hand && typeof PointerEvent === "function") {
+        cross(hand.chain, element, init, "pointer");
+      }
+      if (controller === primary) {
+        cross(mouseChain, element, init, "mouse");
+      }
+    },
   };
   forwarders.push(registered);
 

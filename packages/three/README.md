@@ -357,9 +357,9 @@ whose ray reaches a control while the primary one holds no button and points at 
 whose trigger closes while the primary one holds no button. Only its pointer events say `isPrimary`,
 and only it sends `mousedown`, `mousemove`, `mouseup` and the mouse's enter and leave, so a page
 that follows the mouse follows one hand and not two rays taking turns. When another hand takes over,
-the mouse leaves what the first hand was over, on every panel, and is over what the new hand is on
-before its press goes out. A `click` and a `contextmenu` go for either hand, since a control has to
-answer whichever hand presses it.
+the mouse leaves what the first hand was over, on every panel, and is over what the new hand is
+over, its captor if it holds a capture, before anything the new hand sends. A `click` and a
+`contextmenu` go for either hand, since a control has to answer whichever hand presses it.
 
 As the ray moves from element to element, the page hears what a browser sends for a mouse. First
 `pointerout` and `pointerleave` from what the ray left and `pointerover` and `pointerenter` on what
@@ -373,9 +373,10 @@ A page that cancels `pointerdown` hears no `mousedown`, `mousemove` or `mouseup`
 until its trigger opens, and hears the `click` all the same, which is a browser's rule. A press that
 becomes a scroll or a drag and drop is taken from the page the way a browser takes one. The page
 hears `pointercancel` where the press went, the pointer leaves what it was over on every panel, and
-nothing more of that hand is sent, `pointerup` and `mouseup` included, until the trigger opens. A
-hand lost in the middle of a press, as every hand is when a session ends, sends no release, and its
-pointer is cancelled the same way.
+nothing more of that hand is sent, `pointerup` and `mouseup` included, until the trigger opens. Then
+the pointer and the mouse catch up with where the ray is, on every panel. A hand lost in the middle
+of a press, as every hand is when a session ends, sends no release, and its pointer is cancelled the
+same way.
 
 A browser knows nothing of the hands' pointers, so `setPointerCapture` with a hand's `pointerId`
 would throw that there is no such pointer. Once a hand sends anything while a panel is up, the three

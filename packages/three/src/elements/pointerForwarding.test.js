@@ -1422,6 +1422,33 @@ describe("a ray's pointer events", () => {
     page.teardown();
   });
 
+  test("cancelled, catch the mouse up on every panel at the release", async () => {
+    // The mouse crossed onto another panel's button on the frame the press
+    // became a scroll, and held still there while the press was the
+    // scroll's. The ray turns away before the release.
+    const page = await mirrored((place) => scrollingRow(place, false));
+    const other = await mirrored(
+      (place) => {
+        place("div", "far", [20, 20, 100, 40]).style.cursor = "pointer";
+      },
+      { name: "other", manager: page.manager, scene: page.scene, x: 4 },
+    );
+    const hand = rayHand(page.manager);
+    hand.aim(page.panel, 95, 100);
+    hand.trigger("selectstart");
+    hand.aim(other.panel, 70, 40);
+    const { heard, stop } = hearing(["mouseout", "mouseleave"]);
+    hand.turnAway();
+    hand.trigger("selectend");
+    hand.frame();
+    hand.frame();
+    stop();
+    assert.deepEqual(heard, ["mouseout #far", "mouseleave #far", "mouseleave #other"]);
+    hand.remove();
+    other.teardown();
+    page.teardown();
+  });
+
   test("cancelled at the press, leave out the mouse events until the release", () => {
     const { s, point, heard, teardown } = label((event) => {
       if (event.type === "pointerdown") {
@@ -1491,9 +1518,13 @@ describe("a ray's pointer events", () => {
    * panel with room around it.
    *
    * @param {Parameters<Parameters<typeof mirrored>[0]>[0]} place
+   * @param {[number, number, number, number]} [at]
    */
-  const drawing = (place) => {
-    const element = place("div", "drawing", [20, 20, 100, 100]);
+  const drawing = (
+    place,
+    at = /** @type {[number, number, number, number]} */ ([20, 20, 100, 100]),
+  ) => {
+    const element = place("div", "drawing", at);
     element.style.cursor = "pointer";
     element.addEventListener("pointerdown", (event) => {
       element.setPointerCapture(/** @type {PointerEvent} */ (event).pointerId);
@@ -1612,6 +1643,61 @@ describe("a ray's pointer events", () => {
     page.teardown();
   });
 
+  test("move the mouse to a captured hand that takes over on a move", async () => {
+    // The first hand holds a button; the second captures a drawing and
+    // takes its ray to another panel. The first lets go and turns away, and
+    // the second's next captured move makes it the primary one.
+    const page = await mirrored((place) => {
+      place("div", "hold", [20, 20, 100, 40]).style.cursor = "pointer";
+      drawing(place, [20, 100, 100, 100]);
+    });
+    const other = await mirrored(
+      (place) => {
+        place("div", "far", [20, 20, 100, 40]).style.cursor = "pointer";
+      },
+      { name: "other", manager: page.manager, scene: page.scene, x: 4 },
+    );
+    const firstHand = rayHand(page.manager);
+    const secondHand = rayHand(page.manager);
+    firstHand.aim(page.panel, 70, 40);
+    firstHand.trigger("selectstart");
+    secondHand.aim(page.panel, 70, 150);
+    secondHand.trigger("selectstart");
+    secondHand.aim(other.panel, 70, 40);
+    firstHand.trigger("selectend");
+    firstHand.turnAway();
+    const { heard, stop } = hearing([
+      "mouseover",
+      "mouseenter",
+      "mouseout",
+      "mouseleave",
+      "mousemove",
+      "mouseup",
+    ]);
+    secondHand.aim(other.panel, 75, 40);
+    secondHand.trigger("selectend");
+    stop();
+    assert.deepEqual(heard, [
+      // The mouse is over the captor before its first move there,
+      "mouseover #drawing",
+      "mouseenter #root",
+      "mouseenter #drawing",
+      "mousemove #drawing",
+      "mouseup #drawing",
+      // and goes where the ray is once the release ends the capture.
+      "mouseout #drawing",
+      "mouseleave #drawing",
+      "mouseleave #root",
+      "mouseover #far",
+      "mouseenter #other",
+      "mouseenter #far",
+    ]);
+    firstHand.remove();
+    secondHand.remove();
+    other.teardown();
+    page.teardown();
+  });
+
   test("let the page release a hand's capture in its own pointerup", () => {
     /** @type {string[]} */
     const handled = [];
@@ -1710,7 +1796,11 @@ describe("a ray's pointer events", () => {
   });
 
   test("leave the mouse's own capture to the browser", () => {
-    const { teardown } = label();
+    const { s, point, teardown } = label();
+    // A hand sends something, so the wrap is on and the mouse's capture
+    // goes through it.
+    s.press("pointermove", null, point);
+    assert.notEqual(Element.prototype.setPointerCapture, setPointerCapture);
     const element = document.createElement("div");
     document.body.appendChild(element);
     element.setPointerCapture(1);
@@ -1730,14 +1820,22 @@ describe("a press on mirrored content that is no ray target", () => {
     // Knights' did, and a label beside it, with room around both.
     /** @type {HTMLElement[]} */
     const pressed = [];
+    /** @type {string[]} */
+    const clicks = [];
     const page = await mirrored((place) => {
       pressed.push(place("div", "board", [20, 20, 200, 200]));
       const label = place("p", "", [250, 20, 100, 40]);
       label.removeAttribute("id");
       label.className = "caption";
       pressed.push(label);
+      // A menu in a layer of its own, whose padding a press reaches through
+      // its own blocker, as a click on the menu.
+      const menu = place("div", "menu", [250, 100, 100, 60]);
+      menu.style.cssText = "position: absolute; z-index: 10";
+      menu.addEventListener("click", () => clicks.push("menu"));
+      pressed.push(menu);
     });
-    const [board, label] = pressed;
+    const [board, label, menu] = pressed;
     // Something of the scene's own hung in the panel, as a plugin hangs
     // its objects, which takes presses of its own.
     const prop = new THREE.Mesh(
@@ -1775,10 +1873,13 @@ describe("a press on mirrored content that is no ray target", () => {
       pressAt(middle(board));
       pressAt(middle(board));
       pressAt(middle(label));
-      // The panel's own background, and the scene's object in the panel.
-      pressAt([380, 120]);
+      // The panel's own background, the scene's object in the panel, and
+      // the menu's padding.
+      pressAt([380, 250]);
       pressAt([300, 200]);
+      pressAt(middle(menu));
       assert.deepEqual(taken, ["prop"], "the press reached the scene's object");
+      assert.deepEqual(clicks, ["menu"], "and the menu heard its click");
       assert.equal(notes.length, 2, "once for each element of the page, and for nothing else");
       assert.match(notes[0], /div#board/);
       assert.match(notes[1], /p\.caption/);

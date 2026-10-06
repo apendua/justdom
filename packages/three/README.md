@@ -376,7 +376,8 @@ hears `pointercancel` where the press went, the pointer leaves what it was over 
 nothing more of that hand is sent, `pointerup` and `mouseup` included, until the trigger opens. Then
 the pointer and the mouse catch up with where the ray is, on every panel. A hand lost in the middle
 of a press, as every hand is when a session ends, sends no release, and its pointer is cancelled the
-same way.
+same way, and the mouse leaves what the hand was over on every panel. The crossings that catch a
+panel up carry the point where the ray crosses that panel, as a move does.
 
 A browser knows nothing of the hands' pointers, so `setPointerCapture` with a hand's `pointerId`
 would throw that there is no such pointer. Once a hand sends anything while a panel is up, the three

@@ -4,6 +4,7 @@ import { interactions } from "../interactions.js";
 import { isBlocker } from "./blocker.js";
 import { getParentObject } from "./contentGroup.js";
 import {
+  clientPointAt,
   dragAndDrop,
   getPanel,
   hitElement,
@@ -257,6 +258,10 @@ function handOf(controller) {
         cancelPointer(controller);
       }
       endPress(controller);
+      // The pointer is out of every panel, and the mouse goes the same
+      // way: a capture held it over its captor wherever the ray was, and
+      // the ray's own leave reaches only the panel it was on.
+      bringUpElsewhere(controller, undefined, { nowhere: true });
     });
   }
   return hand;
@@ -300,9 +305,21 @@ let primary = null;
  *   Follow a hand captured to an element of the panel.
  * @property {(controller: XRTargetRaySpace, init: PointerEventInit) => void} leave
  *   Take the hand's pointer out of everything it is over in the panel.
- * @property {(controller: XRTargetRaySpace, init: PointerEventInit, pointer: boolean) => void} bringUp
+ * @property {(controller: XRTargetRaySpace, how: BringUp) => void} bringUp
  *   Cross the mouse, if the hand is the primary one, and its pointer if
- *   `pointer` says so, to the element the hand is over in the panel now.
+ *   `how` says so, to the element the hand is over in the panel now, at
+ *   the point where its ray crosses the panel's plane.
+ */
+
+/**
+ * How `bringUpElsewhere` brings a hand up to date.
+ *
+ * @typedef {object} BringUp
+ * @property {boolean} pointer Whether the hand's pointer crosses too, and
+ *   not the mouse alone.
+ * @property {number} buttons What the crossings say the hand holds.
+ * @property {boolean} nowhere Whether the hand is over nothing at all, as
+ *   one that has gone is, wherever its ray was left.
  */
 
 /**
@@ -323,15 +340,24 @@ const forwarders = [];
  *
  * @param {XRTargetRaySpace} controller
  * @param {ForwarderEntry | undefined} except
- * @param {boolean} pointer Whether the hand's pointer is crossed too, and
- *   not the mouse alone.
+ * @param {object} [options]
+ * @param {boolean} [options.pointer] See `BringUp`.
+ * @param {number} [options.released] The bit of a button that has opened
+ *   though the hand's own record has not heard so yet, as at a release
+ *   (see `heldButtons`).
+ * @param {boolean} [options.nowhere] See `BringUp`.
  * @returns {void}
  */
-function bringUpElsewhere(controller, except, pointer) {
-  const init = placeless(controller, heldButtons(controller));
+function bringUpElsewhere(
+  controller,
+  except,
+  { pointer = false, released = 0, nowhere = false } = {},
+) {
+  /** @type {BringUp} */
+  const how = { pointer, buttons: heldButtons(controller, released), nowhere };
   for (let i = 0; i < forwarders.length; i += 1) {
     if (forwarders[i] !== except) {
-      forwarders[i].bringUp(controller, init, pointer);
+      forwarders[i].bringUp(controller, how);
     }
   }
 }
@@ -357,7 +383,7 @@ function elect(controller, pressing, asking) {
     (!primary || (pressing && heldButtons(primary) === 0) || isIdle(primary))
   ) {
     primary = controller;
-    bringUpElsewhere(controller, asking, false);
+    bringUpElsewhere(controller, asking);
   }
   return primary === controller;
 }
@@ -493,9 +519,12 @@ function wrapPointerCapture() {
 }
 
 /**
- * The init of the events about no place on the page, `gotpointercapture`,
- * `lostpointercapture` and `pointercancel`, and of the leaves that follow
- * a hand that goes. Written in place by `placeless`.
+ * The init of the events no ray event places on the page,
+ * `gotpointercapture`, `lostpointercapture` and `pointercancel`, the leaves
+ * that follow a cancel, and the crossings that bring another panel up to
+ * date (see `bringUpElsewhere`), which may come while a ray event's own
+ * init, the one `pressInit` and its siblings write, is being sent. Written
+ * in place by `placeless`, with no point unless its caller adds one.
  *
  * @type {PointerEventInit}
  */
@@ -504,6 +533,10 @@ const placelessInit = {
   cancelable: false,
   button: -1,
   buttons: 0,
+  clientX: 0,
+  clientY: 0,
+  screenX: 0,
+  screenY: 0,
   pointerId: 0,
   pointerType: "mouse",
   isPrimary: false,
@@ -527,6 +560,10 @@ function placeless(controller, buttons) {
   placelessInit.pointerId = hand?.pointerId ?? 0;
   placelessInit.isPrimary = controller === primary;
   placelessInit.relatedTarget = null;
+  placelessInit.clientX = 0;
+  placelessInit.clientY = 0;
+  placelessInit.screenX = 0;
+  placelessInit.screenY = 0;
   return placelessInit;
 }
 
@@ -1270,6 +1307,7 @@ export function createPanelForwarder(ctx, container) {
   let stopFollowing = null;
   const onPlane = new THREE.Vector3();
   const inPanel = new THREE.Vector2();
+  const client = new THREE.Vector2();
 
   /**
    * One captured hand's move, if its ray has moved across this panel's
@@ -1603,7 +1641,10 @@ export function createPanelForwarder(ctx, container) {
       const catchUp = () => {
         track(e, hand, true);
         if (held) {
-          bringUpElsewhere(e.controller, registered, true);
+          bringUpElsewhere(e.controller, registered, {
+            pointer: true,
+            released: HAND_BITS.select,
+          });
         }
       };
       if (dnd.holding(e.controller)) {
@@ -1773,13 +1814,28 @@ export function createPanelForwarder(ctx, container) {
         cross(hand.chain, null, init, "pointer");
       }
     },
-    bringUp: (controller, init, pointer) => {
+    bringUp: (controller, { pointer, buttons, nowhere }) => {
       const hand = panelHands.get(controller);
-      const element = elementUnder(controller, hand);
+      const element = nowhere ? null : elementUnder(controller, hand);
+      const mouse = controller === primary;
+      if (!mouse && !(pointer && hand)) {
+        return;
+      }
+      // Where the ray crosses this panel's plane, as a captured hand's
+      // moves are placed, since no ray event here says where it is.
+      const init = placeless(controller, buttons);
+      const own = panel();
+      if (own && element && sampleRay(controller, container, onPlane, inPanel)) {
+        clientPointAt(own, inPanel.x, inPanel.y, client);
+        init.clientX = client.x;
+        init.clientY = client.y;
+        init.screenX = client.x;
+        init.screenY = client.y;
+      }
       if (pointer && hand && typeof PointerEvent === "function") {
         cross(hand.chain, element, init, "pointer");
       }
-      if (controller === primary) {
+      if (mouse) {
         cross(mouseChain, element, init, "mouse");
       }
     },

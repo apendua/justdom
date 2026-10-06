@@ -253,16 +253,20 @@ async function mirrored(
 
 /**
  * What the page hears of the given events, as `type #id`, from the moment
- * this is called until `stop`.
+ * this is called until `stop`; with `at`, followed by the event's point
+ * and the buttons it says are held.
  *
  * @param {string[]} types
+ * @param {{ at?: boolean }} [options]
  */
-function hearing(types) {
+function hearing(types, { at = false } = {}) {
   /** @type {string[]} */
   const heard = [];
   /** @param {Event} event */
   const record = (event) => {
-    heard.push(`${event.type} #${/** @type {Element} */ (event.target).id}`);
+    const { clientX, clientY, buttons } = /** @type {MouseEvent} */ (event);
+    const where = at ? ` at ${Math.round(clientX)},${Math.round(clientY)} buttons ${buttons}` : "";
+    heard.push(`${event.type} #${/** @type {Element} */ (event.target).id}${where}`);
   };
   for (const type of types) {
     document.addEventListener(type, record, true);
@@ -1422,6 +1426,33 @@ describe("a ray's pointer events", () => {
     page.teardown();
   });
 
+  test("cancelled, catch up on another panel at the release where the ray is, holding nothing", async () => {
+    // The press became a scroll on its own panel, and the ray went on to
+    // another panel's button while the press was the scroll's.
+    const page = await mirrored((place) => scrollingRow(place, false));
+    const other = await mirrored(
+      (place) => {
+        place("div", "far", [20, 20, 100, 40]).style.cursor = "pointer";
+      },
+      { name: "other", manager: page.manager, scene: page.scene, x: 4 },
+    );
+    const hand = rayHand(page.manager);
+    hand.aim(page.panel, 95, 100);
+    hand.trigger("selectstart");
+    hand.aim(page.panel, 95, 60);
+    hand.aim(other.panel, 70, 40);
+    const { heard, stop } = hearing(["mouseover", "pointerover"], { at: true });
+    hand.trigger("selectend");
+    stop();
+    assert.deepEqual(
+      heard.filter((entry) => entry.includes("#far")),
+      ["pointerover #far at 70,40 buttons 0", "mouseover #far at 70,40 buttons 0"],
+    );
+    hand.remove();
+    other.teardown();
+    page.teardown();
+  });
+
   test("cancelled, catch the mouse up on every panel at the release", async () => {
     // The mouse crossed onto another panel's button on the frame the press
     // became a scroll, and held still there while the press was the
@@ -1569,6 +1600,28 @@ describe("a ray's pointer events", () => {
       "pointerup #drawing at 80,80",
     ]);
     hand.remove();
+    page.teardown();
+  });
+
+  test("captured on one panel, take the mouse off the captor when the hand goes", async () => {
+    const page = await mirrored(drawing);
+    const other = await mirrored(
+      (place) => {
+        place("div", "far", [20, 20, 100, 40]).style.cursor = "pointer";
+      },
+      { name: "other", manager: page.manager, scene: page.scene, x: 4 },
+    );
+    const hand = rayHand(page.manager);
+    hand.aim(page.panel, 50, 50);
+    hand.trigger("selectstart");
+    hand.aim(other.panel, 70, 40);
+    const { heard, stop } = hearing(["mouseover", "mouseout", "mouseleave"]);
+    hand.disconnect();
+    hand.frame();
+    stop();
+    assert.deepEqual(heard, ["mouseout #drawing", "mouseleave #drawing", "mouseleave #root"]);
+    hand.remove();
+    other.teardown();
     page.teardown();
   });
 

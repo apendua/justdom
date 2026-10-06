@@ -327,7 +327,7 @@ export function probePanel(panel) {
  * @param {THREE.Vector2} client
  * @returns {void}
  */
-function clientPointAt(panel, x, y, client) {
+export function clientPointAt(panel, x, y, client) {
   const { frame } = panel;
   client.set(frame.left + x * frame.sx, frame.top + y * frame.sy);
 }

@@ -11,6 +11,7 @@ import {
 import { fromEvent, store } from "@apendua/signal";
 import { filtered, Subject } from "@apendua/signal";
 import { getBorderBoxSize, getComputedStyleCached, getOpacity } from "./mirror.js";
+import { frameFor, measureClientRect } from "./panelFrame.js";
 
 import { ELEVATION_BAND, getDrawLevel, getElevation } from "./elevation.js";
 import { layoutGradient, parseBackground } from "./gradient.js";
@@ -204,7 +205,7 @@ function getRelativeXHeightShared(fontFamily, fontWeight) {
           element.style.lineHeight = "normal";
           element.textContent = "x";
           document.body.appendChild(element);
-          const rect = element.getBoundingClientRect();
+          const rect = measureClientRect(element, frameFor(element));
           document.body.removeChild(element);
           return rect.height / 100;
         }),

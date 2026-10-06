@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { getComputedStyleCached, hasTransform, isTransformed } from "./mirror.js";
+import { matrixValues } from "./panelFrame.js";
 
 /**
  * CSS transforms, read off the computed style and turned into the matrices
@@ -39,18 +40,11 @@ export function parseTransform(value) {
   if (!hasTransform(value)) {
     return null;
   }
-  const match = value.match(/^matrix(3d)?\(([^)]*)\)/);
-  if (!match) {
+  const values = matrixValues(value);
+  if (!values) {
     return null;
   }
-  const values = match[2].split(",").map((part) => Number.parseFloat(part));
-  if (values.some(Number.isNaN)) {
-    return null;
-  }
-  if (match[1]) {
-    if (values.length !== 16) {
-      return null;
-    }
+  if (values.length === 16) {
     const matrix = new THREE.Matrix4().fromArray(values);
     const e = matrix.elements;
     e[2] = -e[2];
@@ -60,9 +54,6 @@ export function parseTransform(value) {
     e[11] = -e[11];
     e[14] = -e[14];
     return matrix;
-  }
-  if (values.length !== 6) {
-    return null;
   }
   const [a, b, c, d, e, f] = values;
   return new THREE.Matrix4().fromArray([a, b, 0, 0, c, d, 0, 0, 0, 0, 1, 0, e, f, 0, 1]);

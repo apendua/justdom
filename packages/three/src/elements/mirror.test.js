@@ -20,6 +20,7 @@ import {
 import { PORTAL_ATTRIBUTE } from "./portalRoot.js";
 import { UNCLIPPED } from "./clip.js";
 import { SVG_NAMESPACE } from "./plugins.js";
+import { stagedRoot } from "../test/stagedRoot.js";
 
 /**
  * @param {Element} element
@@ -804,6 +805,125 @@ describe("text layout under transforms", () => {
       assert.equal(document.body.childElementCount, childrenBefore);
     } finally {
       parent.remove();
+      document.createRange = originalCreateRange;
+      resetMeasuringRangeForTests();
+    }
+  });
+});
+
+describe("a panel measured through a scale", () => {
+  /**
+   * A panel's root inside a stage the page scales to fit its window, by
+   * `scale` in both directions, as the desk's `stage.ts` does. The root is
+   * laid out at (10, 20) on the page, 300 by 200 layout px; what the page
+   * reports is every client rect scaled about that corner.
+   *
+   * @param {number} scale
+   */
+  function scaledPanel(scale) {
+    const staged = stagedRoot({ at: [10, 20], claimed: true });
+    staged.setScale("stage", scale);
+    staged.place(staged.root, 0, 0, 300, 200);
+    return { ...staged, mirror: staged.adopt() };
+  }
+
+  test("a child's position is in the root's layout px, scroll included", () => {
+    const { stage, root, child, place } = scaledPanel(0.5);
+    place(child, 100, 50, 80, 60);
+    scrollable(root, () => 10);
+    try {
+      assert.deepEqual(getContentPosition(child), { x: 100, y: 60 });
+    } finally {
+      stage.remove();
+    }
+  });
+
+  test("a child's size is its layout size", () => {
+    const { stage, child, place } = scaledPanel(0.5);
+    place(child, 100, 50, 80, 60);
+    try {
+      assert.deepEqual(getBorderBoxSize(child), { width: 80, height: 60 });
+    } finally {
+      stage.remove();
+    }
+  });
+
+  test("a turned card in a scrolled list is clipped where its box is drawn", () => {
+    // Section 6 of the architecture plan: a turned card is placed from its
+    // layout offsets, which no scale reaches, and clipped by a window read
+    // from client rects, which the scale shrank. The two have to agree.
+    const { stage, root, child: holder, place, mirror } = scaledPanel(0.5);
+    holder.style.cssText = "position: relative; overflow: hidden";
+    const list = document.createElement("div");
+    list.style.overflow = "hidden";
+    const card = document.createElement("div");
+    card.style.cssText =
+      "position: absolute; transform: matrix(0.7071, 0.7071, -0.7071, 0.7071, 0, 0)";
+    list.appendChild(card);
+    holder.appendChild(list);
+    mirror.adopt(list);
+    mirror.adopt(card);
+    place(holder, 0, 0, 150, 150);
+    place(list, 0, 0, 150, 150);
+    scrollable(list, () => 10);
+    // Laid out 100 px square at (20, 30) in the holder, turned about its
+    // centre.
+    const half = 50 * Math.SQRT2;
+    place(card, 70 - half, 80 - half, 2 * half, 2 * half);
+    for (const [name, value] of /** @type {const} */ ([
+      ["offsetLeft", 20],
+      ["offsetTop", 30],
+      ["offsetWidth", 100],
+      ["offsetHeight", 100],
+      ["offsetParent", holder],
+    ])) {
+      Object.defineProperty(card, name, { configurable: true, value });
+    }
+    try {
+      assert.ok(isTransformed(card));
+      assert.equal(root.contains(card), true);
+      const clip = getLocalClipBox(card);
+      assert.deepEqual(
+        { left: clip.left, top: clip.top, right: clip.right, bottom: clip.bottom },
+        { left: -20, top: -30, right: 130, bottom: 120 },
+      );
+    } finally {
+      stage.remove();
+    }
+  });
+
+  test("a line of text is as tall as it is laid out", () => {
+    const { stage, child, place, mirror } = scaledPanel(0.5);
+    place(child, 0, 0, 300, 40);
+    const text = document.createTextNode("hello");
+    child.appendChild(text);
+    mirror.adopt(text);
+    // The text is laid out at (20, 5) in the child, 60 by 16 layout px.
+    const rect = () => new window.DOMRect(10 + 20 * 0.5, 20 + 5 * 0.5, 60 * 0.5, 16 * 0.5);
+    const originalCreateRange = document.createRange;
+    resetMeasuringRangeForTests();
+    document.createRange = () =>
+      /** @type {Range} */ (
+        /** @type {unknown} */ ({
+          selectNodeContents: () => {},
+          setStart: () => {},
+          setEnd: () => {},
+          getBoundingClientRect: rect,
+          getClientRects: () => /** @type {DOMRectList} */ (/** @type {unknown} */ ([rect()])),
+        })
+      );
+    try {
+      const measured = getTextLayout(text);
+      assert.deepEqual(
+        { left: measured.left, top: measured.top, bounds: measured.bounds },
+        { left: 20, top: 5, bounds: { width: 60, height: 16 } },
+      );
+      assert.deepEqual(
+        measured.lines.map(({ width, height }) => ({ width, height })),
+        [{ width: 60, height: 16 }],
+      );
+    } finally {
+      stage.remove();
       document.createRange = originalCreateRange;
       resetMeasuringRangeForTests();
     }

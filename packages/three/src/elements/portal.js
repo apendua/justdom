@@ -30,6 +30,7 @@ import { createAnimationClock } from "./animationClock.js";
 import { watchDocumentStyles } from "./documentStyles.js";
 import { createBlocker, coverBox } from "./blocker.js";
 import { pressInit, registerPanel } from "./dragAndDrop.js";
+import { watchPageGeometry } from "./panelFrame.js";
 import { BoxBatchContext, createBoxBatch } from "./boxBatch.js";
 import { TextBatchContext, createTextBatch } from "./textBatch.js";
 import { TextScaleContext, createTextScale } from "./textScale.js";
@@ -1670,6 +1671,7 @@ function buildPortal(ctx, ownOptions = {}) {
     interactionManager.updateIntersections();
   };
   containerElement.addEventListener("scroll", scrollCallback, true);
+  const stopWatchingPage = watchPageGeometry();
 
   /**
    * A frame asked for to announce images that have arrived, and the way to
@@ -1880,6 +1882,7 @@ function buildPortal(ctx, ownOptions = {}) {
     }
     stopWatchingStyles();
     containerElement.removeEventListener("scroll", scrollCallback, true);
+    stopWatchingPage();
     containerElement.removeEventListener("load", loadCallback, true);
     // A frame asked for by an image that landed just as the portal came down.
     loadFrame?.();

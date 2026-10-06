@@ -12,11 +12,21 @@ import {
 import { isSvgElement } from "./plugins.js";
 import { clipBoxEqual, intersectClipBoxes, toLocalClipBox, UNCLIPPED } from "./clip.js";
 import { PORTAL_ATTRIBUTE } from "./portalRoot.js";
+import {
+  frameFor,
+  getGeometryGeneration,
+  invalidateGeometry,
+  invalidatePanelFrame,
+  invalidatePanelFrames,
+  measureClientRect,
+  measureClientRects,
+} from "./panelFrame.js";
 
 /**
  * @import {RevealLayout, RevealLine, TextLine} from './textLines.js';
  * @import {TextBounds} from './textHelpers.js';
  * @import {ClipBox} from './clip.js';
+ * @import {FramedRect, PanelFrame} from './panelFrame.js';
  */
 
 /**
@@ -260,25 +270,6 @@ function scrollOffsetEqual(a, b) {
 }
 
 /**
- * Which "moment" of page geometry raw reads belong to. Bumped alongside
- * every dispatch that could move anything, it lets one settling of the
- * reactive graph share a single `getBoundingClientRect` per element — a
- * portal-wide re-layout asks about each element three or four times
- * (position, size, a text's parent, a clip window), and each ask past the
- * first is the same numbers again. Deliberately a plain counter rather than
- * a signal: the memo spares duplicate reads, it does not schedule anything.
- */
-let geometryGeneration = 0;
-
-/**
- * @typedef {object} ClientRect
- * @property {number} left
- * @property {number} top
- * @property {number} width
- * @property {number} height
- */
-
-/**
  * Every per-node cache in this module, so that a node can be forgotten.
  *
  * The caches are module-level and keyed by node, which is what lets the
@@ -325,31 +316,26 @@ export function forgetNode(node) {
   }
 }
 
-/** @type {WeakMap<Element, { generation: number, rect: ClientRect }>} */
+/** @type {WeakMap<Element, { generation: number, rect: FramedRect }>} */
 const clientRectCache = nodeCache();
 
 /**
- * The element's client rect, at most once per geometry generation. A plain
- * read with no dependencies — the reactive layer decides *when* to come
- * back, this only keeps it from asking the browser the same question twice
- * in one settling.
+ * The element's client rect in its panel's layout px (see `panelFrame.js`),
+ * at most once per geometry generation. A plain read with no dependencies —
+ * the reactive layer decides *when* to come back, this only keeps it from
+ * asking the browser the same question twice in one settling.
  *
  * @param {Element} element
- * @returns {ClientRect}
+ * @returns {FramedRect}
  */
 function readClientRect(element) {
+  const generation = getGeometryGeneration();
   const cached = clientRectCache.get(element);
-  if (cached && cached.generation === geometryGeneration) {
+  if (cached && cached.generation === generation) {
     return cached.rect;
   }
-  const measured = element.getBoundingClientRect();
-  const rect = {
-    left: measured.left,
-    top: measured.top,
-    width: measured.width,
-    height: measured.height,
-  };
-  clientRectCache.set(element, { generation: geometryGeneration, rect });
+  const rect = measureClientRect(element, frameFor(element));
+  clientRectCache.set(element, { generation, rect });
   return rect;
 }
 
@@ -377,7 +363,7 @@ const lastSettledSize = nodeCache();
  * @returns {boolean}
  */
 function resized(element) {
-  const rect = element.getBoundingClientRect();
+  const rect = measureClientRect(element, frameFor(element));
   const previous = lastSettledSize.get(element);
   if (previous && previous.width === rect.width && previous.height === rect.height) {
     return false;
@@ -446,10 +432,28 @@ function splitsAcrossLines(element) {
 }
 
 /**
+ * Tell `node`'s subtree that something above it may have moved it: its
+ * own reflow signal. A panel's root is also where a transform its frame
+ * divides by can arrive, from a class swap or a transition sampled by the
+ * clock alike, so the root's frame reads its chain again too (see
+ * `panelFrame.js`).
+ *
+ * @param {Node} node
+ * @param {NodeRecord} record
+ * @returns {void}
+ */
+function bumpReflow(node, record) {
+  bump(record.reflow);
+  if (isPortalRoot(node)) {
+    invalidatePanelFrame(/** @type {Element} */ (node));
+  }
+}
+
+/**
  * @param {Signal<number>} signal
  */
 function bump(signal) {
-  geometryGeneration += 1;
+  invalidateGeometry();
   signal.setFn(
     (value) => value + 1,
     () => 1,
@@ -924,7 +928,7 @@ export class DomMirror {
       }
       const record = recordOf(element);
       if (record) {
-        bump(record.reflow);
+        bumpReflow(element, record);
       }
     });
   }
@@ -1089,7 +1093,7 @@ export class DomMirror {
     // Client rects move with a scroll even though nothing reactive depends
     // on them for it — the raw-read memo must not serve pre-scroll numbers
     // to whoever measures next.
-    geometryGeneration += 1;
+    invalidateGeometry();
     record.scroll.set({ left: element.scrollLeft || 0, top: element.scrollTop || 0 });
   }
 
@@ -1157,7 +1161,7 @@ export class DomMirror {
       for (const target of targets) {
         const record = recordOf(target);
         if (record) {
-          bump(record.reflow);
+          bumpReflow(target, record);
         }
       }
     });
@@ -1192,9 +1196,14 @@ export class DomMirror {
    * through an inline `style` instead — that is a mutation on the element
    * that moved, and it is scoped to it.
    *
+   * A rule may also transform something above the panel's root, which is
+   * the one place the portal hears about that, so every frame reads its
+   * chain again too.
+   *
    * @returns {void}
    */
   documentStylesChanged() {
+    invalidatePanelFrames();
     this.#everythingChanged();
   }
 
@@ -2569,8 +2578,9 @@ function pageOffset(element) {
     if (!parent) {
       return { x, y };
     }
-    const rect = el.getBoundingClientRect();
-    const parentRect = parent.getBoundingClientRect();
+    const frame = frameFor(el);
+    const rect = measureClientRect(el, frame);
+    const parentRect = measureClientRect(parent, frame);
     x = rect.left - parentRect.left;
     y = rect.top - parentRect.top;
     el = parent;
@@ -3211,24 +3221,26 @@ function measureTextRects(text, parentElement, whiteSpace, scrolled, revealed) {
  */
 function measureTextRectsWith(range, text, parentElement, whiteSpace, scrolled, revealed) {
   const content = text.textContent || "";
+  // The live tree's frame is its panel's; a clone's is the body it is
+  // appended to.
+  const frame = frameFor(parentElement);
   // Against the live tree the parent's rect is shareable; a measurement
   // clone is created and thrown away inside one measurement, so its rect is
   // read directly.
   const parentRect = scrolled
     ? readClientRect(parentElement)
-    : parentElement.getBoundingClientRect();
+    : measureClientRect(parentElement, frame);
   range.selectNodeContents(text);
-  const boundsRect = range.getBoundingClientRect();
+  const boundsRect = measureClientRect(range, frame);
   const left = boundsRect.left - parentRect.left + (scrolled ? parentElement.scrollLeft || 0 : 0);
   const top = boundsRect.top - parentRect.top + (scrolled ? parentElement.scrollTop || 0 : 0);
-  // Size alone, and a plain object: where the text sits is already said by
-  // `left` and `top`, in the content-space terms the mirror draws in — and
-  // a `DOMRect` is not a plain object, so the selector proxy cannot look
-  // inside one: a fresh identity per measurement would re-run the rasterizer
-  // for every visible label on every frame that moved anything.
+  // Size alone: where the text sits is already said by `left` and `top`, in
+  // the content-space terms the mirror draws in, and a fresh identity per
+  // measurement would re-run the rasterizer for every visible label on
+  // every frame that moved anything.
   const bounds = { width: boundsRect.width, height: boundsRect.height };
 
-  const boxes = groupLineBoxes(range.getClientRects());
+  const boxes = groupLineBoxes(measureClientRects(range, frame));
   if (boxes.length === 0) {
     // Empty, or not laid out at all. Either way there is nothing to draw,
     // and in particular nothing that should be drawn at the origin instead.
@@ -3251,7 +3263,14 @@ function measureTextRectsWith(range, text, parentElement, whiteSpace, scrolled, 
       top,
       lines,
       reveal: revealed
-        ? measureRevealLayout(text, range, boundsRect, lines, lines.length ? [single.offsets] : [])
+        ? measureRevealLayout(
+            text,
+            range,
+            frame,
+            boundsRect,
+            lines,
+            lines.length ? [single.offsets] : [],
+          )
         : null,
     };
   }
@@ -3260,7 +3279,7 @@ function measureTextRectsWith(range, text, parentElement, whiteSpace, scrolled, 
   const starts = findLineStarts(content.length, boxes.length, (index) => {
     range.setStart(text, index);
     range.setEnd(text, index + 1);
-    const rect = range.getBoundingClientRect();
+    const rect = measureClientRect(range, frame);
     if (rect.width <= 0 && rect.height <= 0) {
       // Whitespace the layout collapsed away occupies no space and sits on
       // no line box.
@@ -3304,7 +3323,7 @@ function measureTextRectsWith(range, text, parentElement, whiteSpace, scrolled, 
     // union of per-character boxes.
     range.setStart(text, from);
     range.setEnd(text, to);
-    const rect = range.getBoundingClientRect();
+    const rect = measureClientRect(range, frame);
     lines.push({
       text: value,
       left: rect.left - boundsRect.left,
@@ -3319,7 +3338,7 @@ function measureTextRectsWith(range, text, parentElement, whiteSpace, scrolled, 
     left,
     top,
     lines,
-    reveal: revealed ? measureRevealLayout(text, range, boundsRect, lines, offsets) : null,
+    reveal: revealed ? measureRevealLayout(text, range, frame, boundsRect, lines, offsets) : null,
   };
 }
 
@@ -3337,13 +3356,14 @@ const EMPTY_REVEAL = { length: 0, lines: [] };
  *
  * @param {Text} text
  * @param {Range} range Reused, and left pointing wherever the last read put it.
- * @param {DOMRect} boundsRect What the other positions are relative to.
+ * @param {PanelFrame} frame What the text is measured in.
+ * @param {FramedRect} boundsRect What the other positions are relative to.
  * @param {TextLine[]} lines The lines actually drawn, in document order.
  * @param {number[][]} offsets Where each line's rendered characters sit in
  *   the node's data, one array per line of `lines`.
  * @returns {RevealLayout}
  */
-function measureRevealLayout(text, range, boundsRect, lines, offsets) {
+function measureRevealLayout(text, range, frame, boundsRect, lines, offsets) {
   /** @type {RevealLine[]} */
   const revealLines = [];
   let start = 0;
@@ -3354,7 +3374,7 @@ function measureRevealLayout(text, range, boundsRect, lines, offsets) {
     const edges = buildCharacterEdges(count, (at) => {
       range.setStart(text, lineOffsets[at]);
       range.setEnd(text, lineOffsets[at] + 1);
-      const rect = range.getBoundingClientRect();
+      const rect = measureClientRect(range, frame);
       if (rect.width <= 0 && rect.height <= 0) {
         return null;
       }

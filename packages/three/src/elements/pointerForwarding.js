@@ -192,6 +192,48 @@ function heldButtons(controller, released = 0) {
   return (hands.get(controller)?.buttons ?? 0) & ~released;
 }
 
+/**
+ * The hand whose pointer is the primary one, as a browser has a primary
+ * touch among several. A touch is primary when it lands with no other
+ * touch down, and a hand when it sends a pointer event with the primary
+ * one idle: holding no button, with its ray on no panel. A hand whose
+ * trigger closes while the primary one holds no button takes over too,
+ * whatever that one's ray is on, since the hand that presses is the one
+ * the player is using. A hand that presses while the primary one holds a
+ * button is a second touch. Only the primary hand sends mouse events, as
+ * only the primary touch does, so a page that follows the mouse alone
+ * follows one hand and not two rays taking turns.
+ *
+ * @type {XRTargetRaySpace | null}
+ */
+let primary = null;
+
+/**
+ * The forwarders of the panels that are up, each able to say whether a
+ * hand's ray is on its panel, for `isIdle`.
+ *
+ * @type {Set<{ pointsAt: (controller: XRTargetRaySpace) => boolean }>}
+ */
+const forwarders = new Set();
+
+/**
+ * Whether a hand holds no button and its ray is on no panel.
+ *
+ * @param {XRTargetRaySpace} controller
+ * @returns {boolean}
+ */
+function isIdle(controller) {
+  if (heldButtons(controller) !== 0) {
+    return false;
+  }
+  for (const forwarder of forwarders) {
+    if (forwarder.pointsAt(controller)) {
+      return false;
+    }
+  }
+  return true;
+}
+
 /** Whether `acceptPointerCapture` has run. */
 let capturing = false;
 
@@ -266,11 +308,12 @@ function endPress(controller) {
  * Send a pointer event and the mouse event a browser sends after it, as
  * one: both made before either is sent, from the one init `pressInit` and
  * its siblings write in place, which a handler that the first runs may
- * write again. The mouse event is left out for a hand whose `pointerdown`
- * was cancelled (see `Hand.pointerOnly`), and the pointer event where the
- * page has no `PointerEvent` at all, as under a test environment without
- * one. A move's pointer event names no button, as a browser's says `-1`
- * for a move that changes none.
+ * write again. The mouse event is left out for a hand that is not the
+ * primary one (see `primary`) and for one whose `pointerdown` was
+ * cancelled (see `Hand.pointerOnly`), and the pointer event where the page
+ * has no `PointerEvent` at all, as under a test environment without one.
+ * A move's pointer event names no button, as a browser's says `-1` for a
+ * move that changes none.
  *
  * @param {HTMLElement} element
  * @param {"pointerdown" | "pointermove" | "pointerup"} type
@@ -285,6 +328,12 @@ function sendPointerAndMouse(element, type, init, controller) {
     init.button = -1;
   }
   const hand = handOf(controller);
+  if (
+    primary !== controller &&
+    (!primary || (type === "pointerdown" && heldButtons(primary) === 0) || isIdle(primary))
+  ) {
+    primary = controller;
+  }
   // A press says the button it closed, and a release no longer says the
   // one it opened, as a browser's do; and the hand's record holds them
   // from here, since the controller's own events come after the panel's.
@@ -297,6 +346,7 @@ function sendPointerAndMouse(element, type, init, controller) {
   }
   init.buttons = hand.buttons;
   init.pointerId = hand.pointerId;
+  init.isPrimary = controller === primary;
   const pointer = typeof PointerEvent === "function" ? new PointerEvent(type, init) : null;
   init.button = button;
   const mouse = new MouseEvent(MOUSE_EVENT[type], init);
@@ -313,7 +363,7 @@ function sendPointerAndMouse(element, type, init, controller) {
   if (pointer && !target.dispatchEvent(pointer) && type === "pointerdown") {
     hand.pointerOnly = true;
   }
-  return hand.pointerOnly || target.dispatchEvent(mouse);
+  return hand.pointerOnly || controller !== primary || target.dispatchEvent(mouse);
 }
 
 /** The mouse event a browser sends after each pointer event a ray sends. */
@@ -1021,6 +1071,13 @@ export function createPanelForwarder(ctx, container) {
     listened.addEventListener(type, /** @type {never} */ (listeners[type]));
   }
 
+  /** This panel, among the panels that are up (see `isIdle`). */
+  const registered = {
+    /** @param {XRTargetRaySpace} controller */
+    pointsAt: (controller) => (panelHands.get(controller)?.hover.length ?? 0) > 0,
+  };
+  forwarders.add(registered);
+
   /**
    * Take a target until the function returned is called, which also takes
    * a control's `data-xr-*` flags off; a list writes none.
@@ -1048,6 +1105,7 @@ export function createPanelForwarder(ctx, container) {
       for (const type of types) {
         listened.removeEventListener(type, /** @type {never} */ (listeners[type]));
       }
+      forwarders.delete(registered);
       panelHands.clear();
     },
   };

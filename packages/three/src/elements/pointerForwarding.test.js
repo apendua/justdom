@@ -16,6 +16,7 @@ import { describeScroller } from "../test/scroller.js";
 import { countingManager, flushFrame, settle } from "../test/portalHarness.js";
 import { forwardedPanel } from "../test/rays.js";
 import { createPortal } from "./portal.js";
+import { PointerForwarderContext } from "./pointerForwarding.js";
 
 /**
  * @import { XREventMap } from "../core.js";
@@ -187,6 +188,7 @@ function nest({ outer, inner, build, haptics = null }) {
       for (const type of types) {
         document.removeEventListener(type, record, true);
       }
+      PointerForwarderContext.get(ctx)?.dispose();
       unregister();
       subscriptions.forEach((subscription) => subscription.unsubscribe());
       root.remove();
@@ -1057,6 +1059,87 @@ describe("a ray's pointer events", () => {
     assert.equal(ids.length, 3);
     assert.notEqual(ids[0], ids[1], "the other hand is another pointer");
     assert.equal(ids[0], ids[2], "and the first hand keeps its own");
+    teardown();
+  });
+
+  test("are the mouse's from the primary hand alone, as a second touch's are not", () => {
+    const { s, point, inner, teardown } = label();
+    const other = /** @type {THREE.XRTargetRaySpace} */ (
+      /** @type {unknown} */ (new THREE.Object3D())
+    );
+    /** @type {string[]} */
+    const heard = [];
+    /** @param {Event} event */
+    const record = (event) => {
+      heard.push(
+        event instanceof PointerEvent
+          ? `${event.type}${event.isPrimary ? " primary" : ""}`
+          : event.type,
+      );
+    };
+    for (const type of TYPES) {
+      inner.addEventListener(type, record);
+    }
+    /**
+     * @param {RayEventType} type
+     * @param {THREE.XRTargetRaySpace} [hand]
+     */
+    const send = (type, hand) => {
+      heard.push(`> ${hand === other ? "other" : "first"} ${type}`);
+      s.press(type, null, point, undefined, null, undefined, hand);
+    };
+    send("pointermove");
+    send("pointermove", other);
+    // A press of a hand while the primary one holds nothing makes it the
+    // primary one.
+    send("selectstart", other);
+    send("selectend", other);
+    send("select", other);
+    send("pointermove");
+    // While the primary one holds a press, the other's does not take over,
+    // and its click still goes.
+    send("selectstart", other);
+    send("selectstart");
+    send("selectend");
+    send("select");
+    send("selectend", other);
+    // Once the primary hand holds nothing and its ray is on no panel, the
+    // next hand to send anything is the primary one.
+    send("pointerleave", other);
+    send("pointermove");
+    assert.deepEqual(heard, [
+      "> first pointermove",
+      "pointermove primary",
+      "mousemove",
+      "> other pointermove",
+      "pointermove",
+      "> other selectstart",
+      "pointerdown primary",
+      "mousedown",
+      "> other selectend",
+      "pointerup primary",
+      "mouseup",
+      "> other select",
+      "click",
+      "> first pointermove",
+      "pointermove",
+      "> other selectstart",
+      "pointerdown primary",
+      "mousedown",
+      "> first selectstart",
+      "pointerdown",
+      "> first selectend",
+      "pointerup",
+      "> first select",
+      "click",
+      "> other selectend",
+      "pointerup primary",
+      "mouseup",
+      "> other pointerleave",
+      "> first pointermove",
+      "pointermove primary",
+      "mousemove",
+    ]);
     teardown();
   });
 

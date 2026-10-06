@@ -104,7 +104,8 @@ import { getDrawnBorderColor, parseAlpha } from "./VisualProperties.js";
  *   after the sibling it covers although the card's quad would hide that
  *   sibling in either order. The wrapper's own quad is batched too, so a
  *   board of N such cards draws at three levels a card, two box buckets
- *   and a text bucket, where tree order would share one of each.
+ *   and a text bucket, where tree order would share two box buckets and a
+ *   text bucket across the board.
  */
 
 /**

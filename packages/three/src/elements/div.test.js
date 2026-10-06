@@ -862,6 +862,20 @@ describe("div sibling stacking", () => {
     board.teardown();
   });
 
+  test("a translucent card in an empty wrapper is drawn after the label it covers", () => {
+    // The wrapper is what clears the sibling, and has nothing to paint. It
+    // still waits for the sibling, so the card inside it blends over the
+    // label rather than keeping it out of the depth test.
+    const board = setupSiblings();
+    const first = board.add("position: absolute; background: white", [0, 0, 100, 100]);
+    const label = board.add("", [10, 10, 90, 30], first);
+    const wrapper = board.add("position: absolute", [50, 0, 150, 100]);
+    const card = board.add("background: rgba(255, 255, 255, 0.3)", [50, 0, 150, 100], wrapper);
+
+    assert.ok(board.boxOrder(card) > getContentRenderOrder(label));
+    board.teardown();
+  });
+
   test("a translucent border is drawn after the label it covers", () => {
     const board = setupSiblings();
     const first = board.add("position: absolute; background: white", [0, 0, 100, 100]);

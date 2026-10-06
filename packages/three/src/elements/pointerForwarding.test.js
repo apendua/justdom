@@ -202,6 +202,99 @@ function nest({ outer, inner, build, haptics = null }) {
 }
 
 /**
+ * A page mirrored into a real panel, in a scene with a real interaction
+ * manager, for a test that hands drive frame by frame. The root is 400 by
+ * 300 at the page's corner, and `place` lays each element out where it
+ * says, on the page and so in the panel.
+ *
+ * @param {(place: (tag: string, id: string, at: [number, number, number, number], parent?: HTMLElement) => HTMLElement) => void} fill
+ * @param {object} [options]
+ * @param {string} [options.name] The root's id.
+ * @param {InteractionManager} [options.manager] Another page's, to share
+ *   its scene.
+ * @param {THREE.Object3D} [options.scene]
+ * @param {number} [options.x] How far along x to put the panel, in m, so
+ *   that a ray aimed at one panel misses another.
+ */
+async function mirrored(
+  fill,
+  { name = "root", manager = new InteractionManager(), scene = new THREE.Group(), x = 0 } = {},
+) {
+  const root = document.createElement("div");
+  root.id = name;
+  root.getBoundingClientRect = () => clientRect(0, 0, 400, 300);
+  fill((tag, id, at, parent = root) => {
+    const element = document.createElement(tag);
+    element.id = id;
+    element.getBoundingClientRect = () => clientRect(...at);
+    parent.appendChild(element);
+    return element;
+  });
+  document.body.appendChild(root);
+  const portal = createPortal(InteractionContext.set({}, manager), { root, budget: 0 });
+  const group = new THREE.Group();
+  group.position.x = x;
+  scene.add(group);
+  portal.addTo(group);
+  await settle(portal);
+  return {
+    root,
+    manager,
+    scene,
+    /** The panel's object, whose frame is the page's px. */
+    panel: group.children[0],
+    teardown() {
+      portal.disconnect();
+      root.remove();
+      group.removeFromParent();
+    },
+  };
+}
+
+/**
+ * What the page hears of the given events, as `type #id`, from the moment
+ * this is called until `stop`.
+ *
+ * @param {string[]} types
+ */
+function hearing(types) {
+  /** @type {string[]} */
+  const heard = [];
+  /** @param {Event} event */
+  const record = (event) => {
+    heard.push(`${event.type} #${/** @type {Element} */ (event.target).id}`);
+  };
+  for (const type of types) {
+    document.addEventListener(type, record, true);
+  }
+  return {
+    heard,
+    stop() {
+      for (const type of types) {
+        document.removeEventListener(type, record, true);
+      }
+    },
+  };
+}
+
+/**
+ * A row a hand's length tall in a list that scrolls, for `mirrored`.
+ *
+ * @param {Parameters<Parameters<typeof mirrored>[0]>[0]} place
+ * @param {boolean} draggable Whether the row is `draggable="true"`.
+ */
+function scrollingRow(place, draggable) {
+  const list = place("div", "list", [20, 20, 150, 120]);
+  list.style.overflow = "hidden";
+  describeScroller(list, { client: 120, scroll: 400 });
+  const row = place("div", "row", [20, 20, 150, 100], list);
+  row.style.cursor = "pointer";
+  if (draggable) {
+    row.setAttribute("draggable", "true");
+  }
+}
+
+/**
  * @param {string} tag
  * @param {string} cssText
  */
@@ -1239,33 +1332,11 @@ describe("a ray's pointer events", () => {
     test(`are cancelled when a press becomes ${gesture}, and go quiet until the release`, async () => {
       // A row a hand's length tall in a list that scrolls, so the ray stays
       // on it whether the list follows the hand or the row is carried.
-      const root = document.createElement("div");
-      root.id = "root";
-      root.getBoundingClientRect = () => clientRect(0, 0, 400, 300);
-      const list = document.createElement("div");
-      list.id = "list";
-      list.style.overflow = "hidden";
-      describeScroller(list, { client: 120, scroll: 400 });
-      list.getBoundingClientRect = () => clientRect(20, 20, 150, 120);
-      const row = document.createElement("div");
-      row.id = "row";
-      row.style.cursor = "pointer";
-      if (draggable) {
-        row.setAttribute("draggable", "true");
-      }
-      row.getBoundingClientRect = () => clientRect(20, 20, 150, 100);
-      list.appendChild(row);
-      root.appendChild(list);
-      document.body.appendChild(root);
-      const manager = new InteractionManager();
-      const portal = createPortal(InteractionContext.set({}, manager), { root, budget: 0 });
-      const scene = new THREE.Group();
-      portal.addTo(scene);
-      await settle(portal);
-      const panel = scene.children[0];
-      const hand = rayHand(manager);
-
-      const types = [
+      const page = await mirrored((place) => scrollingRow(place, draggable));
+      const { panel } = page;
+      const hand = rayHand(page.manager);
+      hand.aim(panel, 95, 100);
+      const { heard, stop } = hearing([
         "pointerdown",
         "pointermove",
         "pointercancel",
@@ -1277,17 +1348,7 @@ describe("a ray's pointer events", () => {
         "mouseup",
         "click",
         "dragstart",
-      ];
-      /** @type {string[]} */
-      const heard = [];
-      /** @param {Event} event */
-      const record = (event) => {
-        heard.push(`${event.type} #${/** @type {Element} */ (event.target).id}`);
-      };
-      hand.aim(panel, 95, 100);
-      for (const type of types) {
-        document.addEventListener(type, record, true);
-      }
+      ]);
       /** @param {string} label */
       const step = (label) => heard.push(`> ${label}`);
 
@@ -1304,9 +1365,7 @@ describe("a ray's pointer events", () => {
       step("after");
       hand.aim(panel, 95, 50);
       hand.aim(panel, 95, 45);
-      for (const type of types) {
-        document.removeEventListener(type, record, true);
-      }
+      stop();
       assert.deepEqual(heard, [
         "> press",
         "pointerdown #row",
@@ -1327,10 +1386,41 @@ describe("a ray's pointer events", () => {
         ...MOVED,
       ]);
       hand.remove();
-      portal.disconnect();
-      root.remove();
+      page.teardown();
     });
   }
+
+  test("are cancelled on every panel the ray is over when the press becomes a gesture", async () => {
+    // A press on a row whose ray is on another panel's button by the frame
+    // the press becomes a scroll: that button is left as well.
+    const page = await mirrored((place) => scrollingRow(place, false));
+    const other = await mirrored(
+      (place) => {
+        place("div", "far", [20, 20, 100, 40]).style.cursor = "pointer";
+      },
+      { name: "other", manager: page.manager, scene: page.scene, x: 4 },
+    );
+    const hand = rayHand(page.manager);
+    hand.aim(page.panel, 95, 100);
+    hand.trigger("selectstart");
+    const { heard, stop } = hearing(["pointercancel", "pointerout", "pointerleave"]);
+    hand.aim(other.panel, 70, 40);
+    stop();
+    assert.deepEqual(heard, [
+      "pointerout #row",
+      "pointerleave #row",
+      "pointerleave #list",
+      "pointerleave #root",
+      "pointercancel #row",
+      "pointerout #far",
+      "pointerleave #far",
+      "pointerleave #other",
+    ]);
+    hand.trigger("selectend");
+    hand.remove();
+    other.teardown();
+    page.teardown();
+  });
 
   test("cancelled at the press, leave out the mouse events until the release", () => {
     const { s, point, heard, teardown } = label((event) => {
@@ -1396,28 +1486,24 @@ describe("a ray's pointer events", () => {
     teardown();
   });
 
-  test("captured, follow the ray off the controls and off the panel", async () => {
-    // A drawing that drags by capture, as Euclid's does, in the corner of
-    // a panel with room around it.
-    const root = document.createElement("div");
-    root.id = "root";
-    root.getBoundingClientRect = () => clientRect(0, 0, 400, 300);
-    const drawing = document.createElement("div");
-    drawing.id = "drawing";
-    drawing.style.cursor = "pointer";
-    drawing.getBoundingClientRect = () => clientRect(20, 20, 100, 100);
-    root.appendChild(drawing);
-    document.body.appendChild(root);
-    drawing.addEventListener("pointerdown", (event) => {
-      drawing.setPointerCapture(/** @type {PointerEvent} */ (event).pointerId);
+  /**
+   * A drawing that drags by capture, as Euclid's does, in the corner of a
+   * panel with room around it.
+   *
+   * @param {Parameters<Parameters<typeof mirrored>[0]>[0]} place
+   */
+  const drawing = (place) => {
+    const element = place("div", "drawing", [20, 20, 100, 100]);
+    element.style.cursor = "pointer";
+    element.addEventListener("pointerdown", (event) => {
+      element.setPointerCapture(/** @type {PointerEvent} */ (event).pointerId);
     });
-    const manager = new InteractionManager();
-    const portal = createPortal(InteractionContext.set({}, manager), { root, budget: 0 });
-    const scene = new THREE.Group();
-    portal.addTo(scene);
-    await settle(portal);
-    const panel = scene.children[0];
-    const hand = rayHand(manager);
+  };
+
+  test("captured, follow the ray off the controls and off the panel", async () => {
+    const page = await mirrored(drawing);
+    const { panel } = page;
+    const hand = rayHand(page.manager);
     /** @type {string[]} */
     const heard = [];
     /** @param {Event} event */
@@ -1452,8 +1538,78 @@ describe("a ray's pointer events", () => {
       "pointerup #drawing at 80,80",
     ]);
     hand.remove();
-    portal.disconnect();
-    root.remove();
+    page.teardown();
+  });
+
+  test("captured, are cancelled when the hand goes, and followed no further", async () => {
+    const page = await mirrored(drawing);
+    const hand = rayHand(page.manager);
+    hand.aim(page.panel, 50, 50);
+    hand.trigger("selectstart");
+    const { heard, stop } = hearing([
+      "gotpointercapture",
+      "pointermove",
+      "pointercancel",
+      "lostpointercapture",
+    ]);
+    hand.aim(page.panel, 60, 50);
+    // At the end of a session, say: no release will come.
+    hand.disconnect();
+    hand.aim(page.panel, 80, 80);
+    stop();
+    assert.deepEqual(heard, [
+      "gotpointercapture #drawing",
+      "pointermove #drawing",
+      "pointercancel #drawing",
+      "lostpointercapture #drawing",
+    ]);
+    hand.remove();
+    page.teardown();
+  });
+
+  test("move the mouse to the hand that takes over, on every panel", async () => {
+    // One hand on a button of one panel is the primary one; the other,
+    // on another panel's button, presses it and takes over.
+    const page = await mirrored((place) => {
+      place("div", "first", [20, 20, 100, 40]).style.cursor = "pointer";
+    });
+    const other = await mirrored(
+      (place) => {
+        place("div", "second", [20, 20, 100, 40]).style.cursor = "pointer";
+      },
+      { name: "other", manager: page.manager, scene: page.scene, x: 4 },
+    );
+    const firstHand = rayHand(page.manager);
+    const secondHand = rayHand(page.manager);
+    firstHand.aim(page.panel, 70, 40);
+    secondHand.aim(other.panel, 70, 40);
+    const { heard, stop } = hearing([
+      "mouseover",
+      "mouseenter",
+      "mouseout",
+      "mouseleave",
+      "pointerdown",
+      "mousedown",
+    ]);
+    secondHand.trigger("selectstart");
+    stop();
+    assert.deepEqual(heard, [
+      // The mouse leaves where the first hand left it,
+      "mouseout #first",
+      "mouseleave #first",
+      "mouseleave #root",
+      // and is over the second hand's button before it is pressed there.
+      "mouseover #second",
+      "mouseenter #other",
+      "mouseenter #second",
+      "pointerdown #second",
+      "mousedown #second",
+    ]);
+    secondHand.trigger("selectend");
+    firstHand.remove();
+    secondHand.remove();
+    other.teardown();
+    page.teardown();
   });
 
   test("let the page release a hand's capture in its own pointerup", () => {
@@ -1544,6 +1700,7 @@ describe("a ray's pointer events", () => {
     const proto = Element.prototype;
     const first = label();
     const second = label();
+    assert.equal(proto.setPointerCapture, setPointerCapture, "not before a hand sends anything");
     first.s.press("pointermove", null, first.point);
     assert.notEqual(proto.setPointerCapture, setPointerCapture, "wrapped while panels are up");
     first.teardown();
@@ -1570,53 +1727,66 @@ describe("a ray's pointer events", () => {
 describe("a press on mirrored content that is no ray target", () => {
   test("is named once per element in development", async () => {
     // A board that listens for clicks but says no `cursor: pointer`, as
-    // Knights' did, and a label beside it.
-    const root = document.createElement("div");
-    root.getBoundingClientRect = () => clientRect(0, 0, 400, 300);
-    const board = document.createElement("div");
-    board.id = "board";
-    board.getBoundingClientRect = () => clientRect(20, 20, 200, 200);
-    const label = document.createElement("p");
-    label.className = "caption";
-    label.getBoundingClientRect = () => clientRect(250, 20, 100, 40);
-    root.append(board, label);
-    document.body.appendChild(root);
-    const manager = new InteractionManager();
-    const portal = createPortal(InteractionContext.set({}, manager), { root, budget: 0 });
-    const scene = new THREE.Group();
-    portal.addTo(scene);
-    await settle(portal);
-    const panel = scene.children[0];
-    const hand = rayHand(manager);
+    // Knights' did, and a label beside it, with room around both.
+    /** @type {HTMLElement[]} */
+    const pressed = [];
+    const page = await mirrored((place) => {
+      pressed.push(place("div", "board", [20, 20, 200, 200]));
+      const label = place("p", "", [250, 20, 100, 40]);
+      label.removeAttribute("id");
+      label.className = "caption";
+      pressed.push(label);
+    });
+    const [board, label] = pressed;
+    // Something of the scene's own hung in the panel, as a plugin hangs
+    // its objects, which takes presses of its own.
+    const prop = new THREE.Mesh(
+      new THREE.PlaneGeometry(40, 40),
+      new THREE.MeshBasicMaterial({ side: THREE.DoubleSide }),
+    );
+    prop.position.set(300, 200, -5);
+    page.panel.add(prop);
+    page.manager.add(/** @type {never} */ (prop));
+    /** @type {string[]} */
+    const taken = [];
+    prop.addEventListener(/** @type {never} */ ("selectstart"), () => taken.push("prop"));
+    const hand = rayHand(page.manager);
     /** @type {string[]} */
     const notes = [];
     const { warn } = console;
     const { NODE_ENV } = process.env;
-    /** @param {Element} at */
-    const press = (at) => {
-      const { left, top, width, height } = at.getBoundingClientRect();
-      hand.aim(panel, left + width / 2, top + height / 2);
+    /** @param {[number, number]} at */
+    const pressAt = ([x, y]) => {
+      hand.aim(page.panel, x, y);
       hand.trigger("selectstart");
       hand.trigger("selectend");
+    };
+    /** @param {Element} element */
+    const middle = (element) => {
+      const { left, top, width, height } = element.getBoundingClientRect();
+      return /** @type {[number, number]} */ ([left + width / 2, top + height / 2]);
     };
     try {
       console.warn = (message) => notes.push(String(message));
       process.env.NODE_ENV = "production";
-      press(board);
+      pressAt(middle(board));
       assert.deepEqual(notes, [], "nothing outside development");
       process.env.NODE_ENV = "development";
-      press(board);
-      press(board);
-      press(label);
-      assert.equal(notes.length, 2, "once for each element");
+      pressAt(middle(board));
+      pressAt(middle(board));
+      pressAt(middle(label));
+      // The panel's own background, and the scene's object in the panel.
+      pressAt([380, 120]);
+      pressAt([300, 200]);
+      assert.deepEqual(taken, ["prop"], "the press reached the scene's object");
+      assert.equal(notes.length, 2, "once for each element of the page, and for nothing else");
       assert.match(notes[0], /div#board/);
       assert.match(notes[1], /p\.caption/);
     } finally {
       console.warn = warn;
       process.env.NODE_ENV = NODE_ENV;
       hand.remove();
-      portal.disconnect();
-      root.remove();
+      page.teardown();
     }
   });
 });

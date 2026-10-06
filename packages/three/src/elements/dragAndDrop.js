@@ -414,17 +414,40 @@ const init = {
  * @returns {void}
  */
 function writePoint(panel, e, on) {
-  let x = 0;
-  let y = 0;
   if (e.intersection && panel && on) {
     clientPointOf(panel, e.intersection.point, client);
-    x = client.x;
-    y = client.y;
+    writeClient(client.x, client.y);
+  } else {
+    writeClient(0, 0);
   }
+}
+
+/**
+ * Write a point on the page into `init`, as `clientX` and `clientY`, and as
+ * `screenX` and `screenY` too, since a panel has no screen of its own.
+ *
+ * @param {number} x
+ * @param {number} y
+ * @returns {void}
+ */
+function writeClient(x, y) {
   init.clientX = x;
   init.clientY = y;
   init.screenX = x;
   init.screenY = y;
+}
+
+/**
+ * Write the fields of a move into `init`, every one but its point.
+ *
+ * @returns {void}
+ */
+function writeMove() {
+  init.bubbles = true;
+  init.cancelable = false;
+  init.button = 0;
+  init.buttons = 0;
+  init.relatedTarget = null;
 }
 
 /**
@@ -492,11 +515,7 @@ export function releaseInit(panel, e) {
  * @returns {PointerEventInit}
  */
 export function moveInit(panel, e) {
-  init.bubbles = true;
-  init.cancelable = false;
-  init.button = 0;
-  init.buttons = 0;
-  init.relatedTarget = null;
+  writeMove();
   writePoint(panel, e, true);
   return init;
 }
@@ -515,16 +534,9 @@ export function moveInit(panel, e) {
  * @returns {PointerEventInit}
  */
 export function planeInit(panel, x, y) {
-  init.bubbles = true;
-  init.cancelable = false;
-  init.button = 0;
-  init.buttons = 0;
-  init.relatedTarget = null;
+  writeMove();
   clientPointAt(panel, x, y, client);
-  init.clientX = client.x;
-  init.clientY = client.y;
-  init.screenX = client.x;
-  init.screenY = client.y;
+  writeClient(client.x, client.y);
   return init;
 }
 

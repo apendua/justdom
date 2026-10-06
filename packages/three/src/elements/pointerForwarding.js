@@ -1,9 +1,11 @@
 import * as THREE from "three";
 import { createProperty, onCleanup } from "@apendua/signal";
 import { interactions } from "../interactions.js";
+import { isBlocker } from "./blocker.js";
 import { getParentObject } from "./contentGroup.js";
 import {
   dragAndDrop,
+  getPanel,
   hitElement,
   isDragSource,
   lazyPanel,
@@ -112,7 +114,9 @@ export function isGone(element) {
  * @returns {boolean}
  */
 function isDevelopment() {
-  const { env } = /** @type {ImportMeta & { env?: { DEV?: boolean } }} */ (import.meta);
+  // Written out whole, since Vite's dev server gives a module its `env`
+  // only where it reads `import.meta.env`, and a build replaces only that.
+  const env = import.meta.env;
   if (env) {
     return env.DEV === true;
   }
@@ -176,6 +180,9 @@ function noteMissedPress(element) {
  *   handles the press as a pointer, and a browser then sends none of the
  *   mouse events that would otherwise follow it, `mousedown`, `mousemove`
  *   and `mouseup`, until the button is let go. The `click` still goes.
+ * @property {HTMLElement | null} pressed The element the hand's press went
+ *   to, until its trigger opens, which hears the press's `pointercancel`
+ *   if nothing captured the pointer.
  * @property {boolean} cancelled Whether the hand's press became a scroll or
  *   a drag and drop, until its trigger opens. A browser cancels the pointer
  *   then, and sends nothing more of it until its button is let go.
@@ -210,6 +217,7 @@ const HAND_BITS = /** @type {const} */ ({ select: 1, squeeze: 2 });
 
 /** @param {XRTargetRaySpace} controller */
 function handOf(controller) {
+  wrapWhileHeld();
   let hand = hands.get(controller);
   if (!hand) {
     /** @type {Hand} */
@@ -217,6 +225,7 @@ function handOf(controller) {
       pointerId: nextPointerId,
       captor: null,
       pending: null,
+      pressed: null,
       pointerOnly: false,
       cancelled: false,
       buttons: 0,
@@ -239,8 +248,17 @@ function handOf(controller) {
         created.buttons &= ~bit;
       });
     }
+    // A hand that goes, at the end of a session say, sends no release, and
+    // a browser cancels a pointer it loses: the press and any capture end
+    // here, and the pointer leaves what it was over.
     listened.addEventListener("disconnected", () => {
       created.buttons = 0;
+      if (created.pressed || created.captor || created.pending) {
+        cancelPointer(controller);
+      }
+      created.pressed = null;
+      created.pointerOnly = false;
+      created.cancelled = false;
     });
   }
   return hand;
@@ -278,30 +296,54 @@ let primary = null;
 
 /**
  * The forwarders of the panels that are up, each able to say whether a
- * hand's ray is on its panel, for `isIdle`, and to follow a hand captured
- * to one of its elements (see `settleCapture`). An array, walked by index,
- * since it is asked every frame a hand that is not the primary one moves.
- *
- * @type {{
- *   pointsAt: (controller: XRTargetRaySpace) => boolean,
- *   follow: (controller: XRTargetRaySpace, captor: Element) => void,
- * }[]}
+ * hand's ray is on its panel, for `isIdle`, to follow a hand captured to
+ * one of its elements (see `settleCapture`), and to take a pointer or the
+ * mouse out of it (see `cancelPointer` and `elect`). An array, walked by
+ * index, since it is asked every frame a hand that is not the primary one
+ * moves.
  */
+
+/**
+ * @typedef {object} ForwarderEntry
+ * @property {(controller: XRTargetRaySpace) => boolean} pointsAt Whether
+ *   the hand's ray is on the panel.
+ * @property {(controller: XRTargetRaySpace, captor: Element) => void} follow
+ *   Follow a hand captured to an element of the panel.
+ * @property {(controller: XRTargetRaySpace, init: PointerEventInit) => void} leave
+ *   Take the hand's pointer out of everything it is over in the panel.
+ * @property {(init: PointerEventInit) => void} mouseOut Take the mouse out
+ *   of everything it is over in the panel.
+ */
+
+/** @type {ForwarderEntry[]} */
 const forwarders = [];
 
 /**
- * Make a hand the primary one if it may be (see `primary`).
+ * Make a hand the primary one if it may be (see `primary`). The mouse goes
+ * with it: it leaves what the hand that was primary left it over, on every
+ * panel, so that no panel keeps a mouse over an element the page has no
+ * mouse on any more.
  *
  * @param {XRTargetRaySpace} controller
  * @param {boolean} pressing Whether its trigger is closing.
+ * @param {ForwarderEntry} [asking] The panel asking, which crosses its own
+ *   mouse from that element to the new hand's itself (see `track`).
  * @returns {boolean} Whether it is the primary hand now.
  */
-function elect(controller, pressing) {
+function elect(controller, pressing, asking) {
   if (
     primary !== controller &&
     (!primary || (pressing && heldButtons(primary) === 0) || isIdle(primary))
   ) {
+    const init = primary ? placeless(primary, heldButtons(primary)) : null;
     primary = controller;
+    if (init) {
+      for (let i = 0; i < forwarders.length; i += 1) {
+        if (forwarders[i] !== asking) {
+          forwarders[i].mouseOut(init);
+        }
+      }
+    }
   }
   return primary === controller;
 }
@@ -327,6 +369,9 @@ function isIdle(controller) {
 /** How many panels are up, each holding the wrap (see `holdPointerCapture`). */
 let wrapHolders = 0;
 
+/** Whether the capture methods are wrapped now. */
+let wrapped = false;
+
 /** Undo `wrapPointerCapture`, while the wrap is on. */
 let unwrapPointerCapture = () => {};
 
@@ -334,7 +379,9 @@ let unwrapPointerCapture = () => {};
  * Let the page capture a hand's pointer while any panel is up, and give
  * the capture methods back after the last one goes, as `trackValue` gives
  * a field's `value` back after its last watcher. Each forwarder holds it
- * for its panel's life.
+ * for its panel's life. The methods are wrapped only once a hand sends
+ * something while a panel is up (see `wrapWhileHeld`), so a page that
+ * mirrors a panel and opens no session runs with the browser's own.
  *
  * @returns {() => void} Let go of it.
  */
@@ -343,9 +390,6 @@ function holdPointerCapture() {
     return () => {};
   }
   wrapHolders += 1;
-  if (wrapHolders === 1) {
-    unwrapPointerCapture = wrapPointerCapture();
-  }
   let held = true;
   return () => {
     if (!held) {
@@ -353,10 +397,25 @@ function holdPointerCapture() {
     }
     held = false;
     wrapHolders -= 1;
-    if (wrapHolders === 0) {
+    if (wrapHolders === 0 && wrapped) {
+      wrapped = false;
       unwrapPointerCapture();
     }
   };
+}
+
+/**
+ * Wrap the capture methods if a panel is up and they are not wrapped yet,
+ * as a hand sends something. Asked of every one of a hand's events, which
+ * costs two reads once they are.
+ *
+ * @returns {void}
+ */
+function wrapWhileHeld() {
+  if (!wrapped && wrapHolders > 0) {
+    wrapped = true;
+    unwrapPointerCapture = wrapPointerCapture();
+  }
 }
 
 /**
@@ -375,7 +434,7 @@ function holdPointerCapture() {
  * `lostpointercapture` as it ends (see `settleCapture`). It ends with the
  * release, after its `pointerup` and `mouseup`, with
  * `releasePointerCapture`, or when the press becomes a scroll or a drag and
- * drop, which cancels it (see `cancel` in `createPanelForwarder`). A press
+ * drop, which cancels it (see `cancelPointer`). A press
  * that sends no `pointerup` ends it as the trigger opens (see `endPress`).
  * Releasing a hand's pointer
  * that holds no capture does nothing, as it does for a pointer a browser
@@ -420,12 +479,13 @@ function wrapPointerCapture() {
 }
 
 /**
- * The init `gotpointercapture` and `lostpointercapture` are made from,
- * written in place for each. Neither is about a place on the page.
+ * The init of the events about no place on the page, `gotpointercapture`,
+ * `lostpointercapture` and `pointercancel`, and of the leaves that follow
+ * a hand that goes. Written in place by `placeless`.
  *
  * @type {PointerEventInit}
  */
-const captureInit = {
+const placelessInit = {
   bubbles: true,
   cancelable: false,
   button: -1,
@@ -433,7 +493,28 @@ const captureInit = {
   pointerId: 0,
   pointerType: "mouse",
   isPrimary: false,
+  relatedTarget: null,
 };
+
+/**
+ * `placelessInit` written for one hand's pointer.
+ *
+ * @param {XRTargetRaySpace} controller
+ * @param {number} buttons What the event says the hand holds: none for a
+ *   pointer the page has lost.
+ * @returns {PointerEventInit}
+ */
+function placeless(controller, buttons) {
+  const hand = hands.get(controller);
+  placelessInit.bubbles = true;
+  placelessInit.cancelable = false;
+  placelessInit.button = -1;
+  placelessInit.buttons = buttons;
+  placelessInit.pointerId = hand?.pointerId ?? 0;
+  placelessInit.isPrimary = controller === primary;
+  placelessInit.relatedTarget = null;
+  return placelessInit;
+}
 
 /**
  * Process a hand's pending capture, as a browser does before it sends the
@@ -461,21 +542,57 @@ function settleCapture(controller) {
   if (typeof PointerEvent !== "function") {
     return;
   }
-  captureInit.pointerId = hand.pointerId;
-  captureInit.isPrimary = controller === primary;
-  captureInit.buttons = hand.buttons;
   if (lost) {
     const target = lost.isConnected ? lost : lost.ownerDocument;
-    target.dispatchEvent(new PointerEvent("lostpointercapture", captureInit));
+    target.dispatchEvent(
+      new PointerEvent("lostpointercapture", placeless(controller, hand.buttons)),
+    );
   }
   if (hand.captor) {
-    hand.captor.dispatchEvent(new PointerEvent("gotpointercapture", captureInit));
+    hand.captor.dispatchEvent(
+      new PointerEvent("gotpointercapture", placeless(controller, hand.buttons)),
+    );
   }
   const captor = hand.captor;
   if (captor) {
     for (let i = 0; i < forwarders.length; i += 1) {
       forwarders[i].follow(controller, captor);
     }
+  }
+}
+
+/**
+ * A hand's press has become a scroll or a drag and drop, or the hand has
+ * gone, and the page loses the pointer, as a browser cancels one whose
+ * press it takes for a gesture of its own or whose device goes away:
+ * `pointercancel` where the press went, the element that captured it or
+ * the one pressed, then `lostpointercapture`, and the pointer leaves
+ * everything it was over, on every panel. Nothing more of the pointer
+ * reaches the page until the trigger opens, the mouse included, which
+ * holds still as it does under a drag; the release catches both up. The
+ * scroll gesture and drag and drop are handed this as their `onTaken`.
+ *
+ * @param {XRTargetRaySpace} controller
+ * @returns {void}
+ */
+function cancelPointer(controller) {
+  const hand = hands.get(controller);
+  if (!hand || hand.cancelled) {
+    return;
+  }
+  settleCapture(controller);
+  hand.cancelled = true;
+  if (typeof PointerEvent !== "function") {
+    releaseCapture(controller);
+    return;
+  }
+  const target = hand.captor?.isConnected ? hand.captor : hand.pressed;
+  if (target?.isConnected) {
+    target.dispatchEvent(new PointerEvent("pointercancel", placeless(controller, 0)));
+  }
+  releaseCapture(controller);
+  for (let i = 0; i < forwarders.length; i += 1) {
+    forwarders[i].leave(controller, placeless(controller, 0));
   }
 }
 
@@ -507,6 +624,7 @@ function releaseCapture(controller) {
 function endPress(controller) {
   const hand = hands.get(controller);
   if (hand) {
+    hand.pressed = null;
     hand.pointerOnly = false;
     hand.cancelled = false;
     releaseCapture(controller);
@@ -541,6 +659,7 @@ function sendPointerAndMouse(element, type, init, controller) {
   const hand = handOf(controller);
   if (type === "pointerdown") {
     // A press of its own, whatever became of the last one's release.
+    hand.pressed = element;
     hand.pointerOnly = false;
     hand.cancelled = false;
     hand.pending = null;
@@ -815,7 +934,7 @@ export const PointerForwarderContext = createProperty(
  * point the ray met, on the page, as its `clientX` and `clientY` (see
  * `pressInit` in `dragAndDrop.js`). The page also hears where the ray
  * crosses from element to element (see `track`), a press that becomes a
- * scroll or a drag cancelled (see `cancel`), and a captured hand's moves
+ * scroll or a drag cancelled (see `cancelPointer`), and a captured hand's moves
  * wherever its ray goes (see `following`). While the ray is on a control the
  * element carries `data-xr-hover`, and while it is held, `data-xr-active`.
  * A stylesheet answers those flags where a page would use `:hover` and
@@ -1089,21 +1208,6 @@ export function createPanelForwarder(ctx, container) {
   const mouseChain = [];
 
   /**
-   * Whether an object is in this panel.
-   *
-   * @param {Object3D | null} object
-   * @returns {boolean}
-   */
-  const isOurs = (object) => {
-    for (let node = object; node; node = node.parent) {
-      if (node === container) {
-        return true;
-      }
-    }
-    return false;
-  };
-
-  /**
    * The element a hand's pointer is over in this panel, as a browser would
    * have it: the element that captured it while it holds a capture, if
    * that is in this panel, and nothing here if it is in another; otherwise
@@ -1202,15 +1306,22 @@ export function createPanelForwarder(ctx, container) {
    * @param {PanelHand} hand
    * @param {boolean} [released] Whether the trigger has just opened, which
    *   ends a hold whatever the drag has still to hear of it.
+   * @param {boolean} [pressing] Whether the trigger is closing, which may
+   *   make the hand the primary one (see `primary`).
    * @returns {void}
    */
-  const track = (e, hand, released = false) => {
+  const track = (e, hand, released = false, pressing = false) => {
     const { controller } = e;
     if (!released && (dnd.holding(controller) || hands.get(controller)?.cancelled)) {
       return;
     }
     const element = elementUnder(controller, hand);
-    const isPrimary = (hand.chain.length > 0 || element !== null) && elect(controller, false);
+    // A hand whose ray is on nothing here, and was on nothing, is not made
+    // the primary one by this panel; one that was the primary one still is.
+    const isPrimary =
+      hand.chain.length > 0 || element !== null
+        ? elect(controller, pressing, registered)
+        : primary === controller;
     if (
       (hand.chain[0] ?? null) === element &&
       (!isPrimary || (mouseChain[0] ?? null) === element)
@@ -1220,7 +1331,9 @@ export function createPanelForwarder(ctx, container) {
     const pointer = handOf(controller);
     // A point only where the ray is on this panel: a release may come with
     // it on another.
-    const init = moveInit(panel(), isOurs(e.intersection?.object ?? null) ? e : NOWHERE);
+    const own = panel();
+    const on = own !== null && getPanel(e.intersection?.object ?? null) === own;
+    const init = moveInit(own, on ? e : NOWHERE);
     init.pointerId = pointer.pointerId;
     init.isPrimary = isPrimary;
     init.buttons = heldButtons(controller, released ? HAND_BITS.select : 0);
@@ -1230,44 +1343,6 @@ export function createPanelForwarder(ctx, container) {
     if (isPrimary) {
       cross(mouseChain, element, init, "mouse");
     }
-  };
-
-  /**
-   * The press of this panel that a hand began has become a scroll or a drag
-   * and drop, and the page loses the pointer, as a browser cancels one
-   * whose press it takes for a gesture of its own: `pointercancel` where
-   * the press went, the element that captured it or the one pressed, then
-   * `lostpointercapture`, and the pointer leaves everything it was over.
-   * Nothing more of the pointer reaches the page until the trigger opens,
-   * the mouse included, which holds still as it does under a drag; the
-   * release catches both up.
-   *
-   * @param {XRTargetRaySpace} controller
-   * @returns {void}
-   */
-  const cancel = (controller) => {
-    const pointer = hands.get(controller);
-    if (!pointer || pointer.cancelled) {
-      return;
-    }
-    settleCapture(controller);
-    pointer.cancelled = true;
-    if (typeof PointerEvent !== "function") {
-      releaseCapture(controller);
-      return;
-    }
-    const hand = panelHand(controller);
-    const pressed = hand.select.target?.element;
-    const target = pointer.captor?.isConnected ? pointer.captor : pressed;
-    const init = moveInit(panel(), NOWHERE);
-    init.button = -1;
-    init.pointerId = pointer.pointerId;
-    init.isPrimary = controller === primary;
-    if (target?.isConnected) {
-      target.dispatchEvent(new PointerEvent("pointercancel", init));
-    }
-    releaseCapture(controller);
-    cross(hand.chain, null, init, "pointer");
   };
 
   /**
@@ -1380,17 +1455,25 @@ export function createPanelForwarder(ctx, container) {
       hand.hover.length = 0;
       hand.hovered = null;
       // Onto something else in this panel, its enter crosses over to it.
-      if (!isOurs(e.relatedTarget)) {
+      const own = panel();
+      if (!own || getPanel(e.relatedTarget) !== own) {
         track(e, hand);
       }
     },
     selectstart(e) {
-      const { select } = panelHand(e.controller);
+      const hand = panelHand(e.controller);
+      const { select } = hand;
       const first = begin(select, e.originalTarget, false);
       if (!first) {
+        // A press on the panel's background where the page has an element,
+        // and not on a plugin's own object, which the scene takes, nor on
+        // the panel's empty root.
         const own = panel();
-        if (own && isDevelopment()) {
-          noteMissedPress(hitElement(own, e.intersection.point));
+        if (own && isBlocker(e.originalTarget) && isDevelopment()) {
+          const element = hitElement(own, e.intersection.point);
+          if (element !== own.element) {
+            noteMissedPress(element);
+          }
         }
         return;
       }
@@ -1416,6 +1499,9 @@ export function createPanelForwarder(ctx, container) {
         stopPropagation(e);
         return;
       }
+      // The hand that presses may take over as the primary one, and then
+      // the mouse is over what it presses before it presses it.
+      track(e, hand, false, true);
       // Cancelable, as a real one is: a page that cancels its `mousedown`
       // is saying that nothing is to be dragged from here. A cancelled
       // `pointerdown` says something else, that the page takes the press
@@ -1430,8 +1516,8 @@ export function createPanelForwarder(ctx, container) {
       // otherwise a press over a list may become a scroll; only holding it
       // will tell. The page's own gesture comes first, as it does under a
       // mouse, where dragging a row drags the row and not the list.
-      if (!dnd.begin(e.controller, first.element, first.object, pressed, cancel)) {
-        drags.begin(e.controller, first.element, first.object, cancel);
+      if (!dnd.begin(e.controller, first.element, first.object, pressed, cancelPointer)) {
+        drags.begin(e.controller, first.element, first.object, cancelPointer);
       }
       haptics?.press(e.inputSource);
       for (const object of select.path) {
@@ -1620,7 +1706,11 @@ export function createPanelForwarder(ctx, container) {
 
   const letGoOfCapture = holdPointerCapture();
 
-  /** This panel, among the panels that are up (see `forwarders`). */
+  /**
+   * This panel, among the panels that are up (see `forwarders`).
+   *
+   * @type {ForwarderEntry}
+   */
   const registered = {
     /** @param {XRTargetRaySpace} controller */
     pointsAt: (controller) => (panelHands.get(controller)?.hover.length ?? 0) > 0,
@@ -1642,6 +1732,13 @@ export function createPanelForwarder(ctx, container) {
       }
       stopFollowing ??= requestFrames(followFrame);
     },
+    leave: (controller, init) => {
+      const hand = panelHands.get(controller);
+      if (hand) {
+        cross(hand.chain, null, init, "pointer");
+      }
+    },
+    mouseOut: (init) => cross(mouseChain, null, init, "mouse"),
   };
   forwarders.push(registered);
 
@@ -1672,7 +1769,10 @@ export function createPanelForwarder(ctx, container) {
       for (const type of types) {
         listened.removeEventListener(type, /** @type {never} */ (listeners[type]));
       }
-      forwarders.splice(forwarders.indexOf(registered), 1);
+      const index = forwarders.indexOf(registered);
+      if (index !== -1) {
+        forwarders.splice(index, 1);
+      }
       letGoOfCapture();
       following.clear();
       stopFollowing?.();

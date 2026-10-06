@@ -356,8 +356,10 @@ One hand is the primary one, as a browser has a primary touch among several. It 
 whose ray reaches a control while the primary one holds no button and points at no panel, or a hand
 whose trigger closes while the primary one holds no button. Only its pointer events say `isPrimary`,
 and only it sends `mousedown`, `mousemove`, `mouseup` and the mouse's enter and leave, so a page
-that follows the mouse follows one hand and not two rays taking turns. A `click` and a `contextmenu`
-go for either hand, since a control has to answer whichever hand presses it.
+that follows the mouse follows one hand and not two rays taking turns. When another hand takes over,
+the mouse leaves what the first hand was over, on every panel, and is over what the new hand is on
+before its press goes out. A `click` and a `contextmenu` go for either hand, since a control has to
+answer whichever hand presses it.
 
 As the ray moves from element to element, the page hears what a browser sends for a mouse. First
 `pointerout` and `pointerleave` from what the ray left and `pointerover` and `pointerenter` on what
@@ -370,12 +372,15 @@ holds something draggable, as `:hover` does under a drag, and catch up at the re
 A page that cancels `pointerdown` hears no `mousedown`, `mousemove` or `mouseup` from that hand
 until its trigger opens, and hears the `click` all the same, which is a browser's rule. A press that
 becomes a scroll or a drag and drop is taken from the page the way a browser takes one. The page
-hears `pointercancel` where the press went, the pointer leaves what it was over, and nothing more of
-that hand is sent, `pointerup` and `mouseup` included, until the trigger opens.
+hears `pointercancel` where the press went, the pointer leaves what it was over on every panel, and
+nothing more of that hand is sent, `pointerup` and `mouseup` included, until the trigger opens. A
+hand lost in the middle of a press, as every hand is when a session ends, sends no release, and its
+pointer is cancelled the same way.
 
 A browser knows nothing of the hands' pointers, so `setPointerCapture` with a hand's `pointerId`
-would throw that there is no such pointer. While any panel is up, the three capture methods on
-`Element` are wrapped, and the last panel to go puts the browser's back. A capture the browser
+would throw that there is no such pointer. Once a hand sends anything while a panel is up, the three
+capture methods on `Element` are wrapped, and the last panel to go puts the browser's back, so a
+page that mirrors a panel and opens no session keeps the browser's own. A capture the browser
 refuses for a hand is kept here instead. It starts before the hand's next event, with
 `gotpointercapture` on the captor, as a browser's does. While it holds, the hand's moves and its
 release go to the captor, and the pointer is over the captor and nothing else. The moves come from
@@ -383,15 +388,16 @@ where the ray crosses the plane of the captor's panel, once a frame the ray has 
 ray is on a control, on the panel's background, on another panel or on nothing at all. So a drag by
 capture follows the hand off the panel as a mouse's follows it off the window. The capture ends with
 `lostpointercapture` at the release, after its `pointerup` and `mouseup`, at
-`releasePointerCapture`, or when the press becomes a scroll or a drag and drop. Releasing a hand's
-pointer that holds no capture does nothing, as for a pointer the browser knows, so a page's
-`pointerup` handler may release what the release already ended. The grip's `contextmenu` comes
-alone, as before.
+`releasePointerCapture`, when the press becomes a scroll or a drag and drop, or when the hand is
+lost. Releasing a hand's pointer that holds no capture does nothing, as for a pointer the browser
+knows, so a page's `pointerup` handler may release what the release already ended. The grip's
+`contextmenu` comes alone, as before.
 
-In development, a press that lands on a panel's content with no ray target under it warns once per
-element, naming the element. A board that listens for clicks and says no `cursor: pointer` would
-otherwise take no press and give no sign of why. Development is Vite's `import.meta.env.DEV`, or
-`NODE_ENV` set to `development` where Vite is not used.
+In development, a press that lands on an element of a panel's page with no ray target under it warns
+once per element, naming the element. A press on the panel's empty root, or on an object of the
+scene's own hung in the panel, is not one. A board that listens for clicks and says no
+`cursor: pointer` would otherwise take no press and give no sign of why. Development is Vite's
+`import.meta.env.DEV`, or `NODE_ENV` set to `development` where Vite is not used.
 
 Clickable elements nest, if only because `cursor` is inherited, and a press inside several of them
 goes where it goes on a page. The innermost one is the target, its DOM events are sent once and

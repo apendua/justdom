@@ -418,6 +418,7 @@
     "mousedown #icon bubbles cancelable button 0 buttons 1 at 60,60",
     "= #card hover active, #icon hover active",
     "> hand disconnects",
+    "pointercancel #icon bubbles - button -1 at 0,0 pointer 1 mouse primary",
     "pointerout #icon bubbles cancelable button -1 at 0,0 related none pointer 1 mouse primary",
     "pointerleave #icon - - button -1 at 0,0 related none pointer 1 mouse primary",
     "pointerleave #card - - button -1 at 0,0 related none pointer 1 mouse primary",

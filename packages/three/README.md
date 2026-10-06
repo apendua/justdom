@@ -1373,14 +1373,14 @@ except that boxes with a negative `z-index` stay on one plane, since a step woul
 the flow content a page paints over them. Only the sign of `z-index` counts, so to bring a card to
 the front, append it to the end of its parent again. A transformed element counts as covering the
 axis-aligned box around its corners, and a descendant that overflows its parent's box does not count
-towards what the parent overlaps. A translucent card stepped over another, by its background, its
-border, a background image or an `opacity` of its own or an ancestor's, is also drawn after
-everything the other card draws, so the other card's content shows through it tinted, as on a page.
-A box with no background of its own that is stepped over such a card is drawn after it too, with its
-text and children. Only the box that is stepped is asked: a positioned wrapper with nothing to
-paint, around a translucent card, over a card drawn in tree order, still lets that card hide what
-the wrapper covers. A box anchored above a scroller that its siblings scroll in counts as covering
-all of them, so its lift and theirs stay put while the list scrolls.
+towards what the parent overlaps. A card stepped over another that is not opaque is also drawn after
+everything the other card draws, with its text and children. A translucent card, by its background,
+its border, a background image or an `opacity` of its own or an ancestor's, lets the other card's
+content show through it tinted, as on a page. A caption with no background keeps its text, which
+writes no depth, in front of the boxes inside the dial it is laid over, at any alpha. An opaque card
+hides what it covers in either order and keeps the order of its siblings; text that overflows it is
+the one mark it does not cover. A box anchored above a scroller that its siblings scroll in counts
+as covering all of them, so its lift and theirs stay put while the list scrolls.
 
 A native `<select>` cannot work here, layers or not: `<option>` has no CSS box to mirror, and the
 list the browser pops up is chrome rather than DOM, so none of it reaches the scene. Nor can the

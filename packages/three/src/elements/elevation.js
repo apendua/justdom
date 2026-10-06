@@ -33,23 +33,25 @@ import { getDrawnBorderColor, parseAlpha } from "./VisualProperties.js";
  *
  * Draw order has to agree with the step wherever something blends. A box's
  * quad writes depth as it is drawn, so a quad drawn before what is behind it
- * keeps that out of the depth test instead of blending over it. A box draws
- * at `getElevation` times `ELEVATION_BAND` plus `getDrawLevel`, and its
- * content one level later. The draw level is the tree depth, except for a
- * box that clears a sibling and would hide it wrongly if drawn first: a
- * translucent box, over any sibling, and an empty one, over a sibling that
- * itself climbed. That box draws after everything the sibling draws, and
- * its subtree comes with it. An opaque box hides what it covers in either
- * order, so it keeps its tree depth, and a pile of opaque cards shares one
- * bucket. The lift and the draw level read what an element clears from one
- * list, `getClearedSiblings`.
+ * keeps that out of the depth test instead of blending over it, and a mark
+ * writes none, so a box behind it that draws later paints over it. A box
+ * draws at `getElevation` times `ELEVATION_BAND` plus `getDrawLevel`, and
+ * its content one level later. The draw level is the tree depth, except for
+ * a box that clears a sibling and is not opaque. That box draws after
+ * everything the sibling draws, and its subtree comes with it, so what it
+ * is stepped over draws first, back to front. An opaque box hides what it
+ * covers in either order, marks included, so it keeps its tree depth, and a
+ * pile of opaque cards shares one bucket. The lift and the draw level read
+ * what an element clears from one list, `getClearedSiblings`.
  *
  * Marks are not stepped. Text, carets and list markers are drawn level with
  * the object of the box they belong to, so 1 px in front of its quad, with
  * no depth write and the polygon offset of `MARK_MATERIAL_SETTINGS` in
  * `textHelpers.js`, the offset a decal is drawn with. A mark therefore
  * always reaches the reader in front of its own box and behind anything
- * stepped in front of that box.
+ * stepped in front of that box. It is kept in front of what its box is
+ * stepped over by drawing after it, whatever its alpha, so its blended
+ * edges land on what is behind them.
  *
  * SVG content is on neither side. The shapes, images and text inside an
  * `<svg>` are drawn level with it (`getReach` gives it none) and their
@@ -93,11 +95,9 @@ import { getDrawnBorderColor, parseAlpha } from "./VisualProperties.js";
  *   position, rather than only those passing under it now.
  * - Stacking contexts are modelled for `z-index`, `position: fixed` and
  *   `sticky`, transforms and `opacity` only (`formsStackingContext`).
- * - Only the box that clears a sibling is asked what its quad paints. A
- *   positioned wrapper with nothing to paint, around a translucent card,
- *   over a sibling that did not climb, keeps its tree depth, so the card
- *   inside it draws before the text of what the wrapper covers and hides
- *   that text rather than tinting it.
+ * - A mark that overflows an opaque box is not covered by its quad. The box
+ *   keeps its tree depth, so a box inside the sibling it is stepped over can
+ *   draw after the overflowing text and paint over it.
  */
 
 /**
@@ -510,87 +510,38 @@ export function getLift(element) {
 }
 
 /**
- * What the element's own quad does to what is behind it, which decides
- * whether the element may draw before what it is stepped over.
+ * Whether the element's own quad hides what is behind it in either draw
+ * order: an opaque background at full opacity, with no background image
+ * and no border that blends. Such a quad writes depth over all of what it
+ * covers, so what is behind it fails the depth test whenever it draws.
  *
- * - `"translucent"`: it blends, so drawn first it would hide what is
- *   behind it rather than tint it. The quad is drawn with `getOpacity`,
- *   which an ancestor's `opacity` is part of, and blends wherever its
- *   background or border colour is partly transparent. Any
- *   `background-image` is taken to blend, since a picture or a gradient may
- *   have transparent pixels.
- * - `"opaque"`: an opaque background at full opacity. It hides what is
- *   behind it in either order.
- * - `"empty"`: no background at all. A fragment with nothing to paint is
- *   discarded (`sdfRect.js`), writing no depth, so the quad hides nothing
- *   whenever it is drawn. What is inside it still may.
+ * Anything else may let what is behind it through. A quad that blends,
+ * by `getOpacity` (which an ancestor's `opacity` is part of), a partly
+ * transparent background or border colour, or any `background-image`,
+ * would hide what is behind it rather than tint it if drawn first. A quad
+ * with nothing to paint is discarded (`sdfRect.js`) and hides nothing, so
+ * whatever is behind it and drawn later lands on the marks in front of it,
+ * which write no depth.
  *
  * Read from the computed style rather than a `VisualProperties`, whose
  * `renderOrder` reads `getDrawLevel` and so would read itself.
  *
  * @param {Element} element
- * @returns {"translucent" | "opaque" | "empty"}
+ * @returns {boolean}
  */
-function getQuadPaint(element) {
+function isOpaqueQuad(element) {
   if (getOpacity(element) < 1) {
-    return "translucent";
+    return false;
   }
   const style = getComputedStyleCached(element);
   if ((style.backgroundImage || "none") !== "none") {
-    return "translucent";
+    return false;
   }
-  const background = parseAlpha(style.backgroundColor);
-  if (blends(background) || blends(parseAlpha(getDrawnBorderColor(style)))) {
-    return "translucent";
+  if (parseAlpha(style.backgroundColor) !== 1) {
+    return false;
   }
-  return background === 1 ? "opaque" : "empty";
-}
-
-/**
- * @param {number} alpha
- * @returns {boolean}
- */
-function blends(alpha) {
-  return alpha > 0 && alpha < 1;
-}
-
-/** @type {WeakMap<Element, Derived<boolean>>} */
-const climbedCache = nodeCache();
-
-/**
- * Whether anything in the element's subtree, the element included, draws
- * later than its depth in the tree would put it (see `getDrawLevel`).
- * Overlays and what is inside an `<svg>` are left out, as `getDrawReach`
- * leaves them out.
- *
- * @param {Element} element
- * @returns {boolean}
- */
-function hasClimbed(element) {
-  let signal = climbedCache.get(element);
-  if (!signal) {
-    signal = new Derived(() => {
-      const parent = element.hasAttribute(PORTAL_ATTRIBUTE) ? null : getParentElement(element);
-      if (parent && getDrawLevel(element) > getDrawLevel(parent) + 1) {
-        return true;
-      }
-      if (isSvgElement(element)) {
-        return false;
-      }
-      for (const node of getChildNodes(element)) {
-        if (node.nodeType !== Node.ELEMENT_NODE) {
-          continue;
-        }
-        const child = /** @type {HTMLElement} */ (node);
-        if (!isOverlay(child) && hasClimbed(child)) {
-          return true;
-        }
-      }
-      return false;
-    });
-    climbedCache.set(element, signal);
-  }
-  return signal.get();
+  const border = parseAlpha(getDrawnBorderColor(style));
+  return border === 0 || border === 1;
 }
 
 /** @type {WeakMap<Element, Derived<number>>} */
@@ -605,22 +556,23 @@ const drawLevelCache = nodeCache();
  * element that clears siblings (see `getClearedSiblings`) and has to draw
  * after them. That one draws after everything such a sibling draws, at
  * `getDrawLevel(sibling) + getDrawReach(sibling) + 1` where that is higher,
- * and its subtree comes with it. The step puts it in front of the sibling's
- * subtree, and a quad writes depth as it is drawn, so drawn first it would
- * keep what is behind it out of the depth test instead of blending over it.
- * Which siblings it waits for depends on its own quad (`getQuadPaint`):
+ * and its subtree comes with it. The step puts the element and its subtree
+ * in front of the sibling's subtree, so this draws them back to front:
  *
- * - A translucent one waits for every sibling it clears. Drawn first, it
- *   would leave a hole where a page shows the sibling's label tinted.
- * - An empty one waits for the siblings that climbed (`hasClimbed`). Its
- *   quad hides nothing, but its text and children do. A sibling at its tree
- *   depth draws its own box before them, and that is all the tree order
- *   guarantees: what is inside that sibling can still draw after a child of
- *   this one, which is the wrapper limit in the header. One that climbed
- *   draws even its own box after them, so a translucent card that climbed
- *   would blend behind the glyphs it should tint.
- * - An opaque one waits for none. It hides what it covers in either order,
- *   so it keeps its tree depth and adds no bucket of its own.
+ * - Its quad writes depth as it is drawn, so a translucent quad drawn first
+ *   would keep what is behind it out of the depth test instead of blending
+ *   over it, and leave a hole where a page shows the sibling's label
+ *   tinted.
+ * - Its marks, text, carets, list markers and a field's value, write no
+ *   depth (`MARK_MATERIAL_SETTINGS` in `textHelpers.js`), so a box inside
+ *   the sibling that drew after them would paint over them although it is
+ *   behind them. Glyph edges are blended, so they have to draw after what
+ *   is behind them, whatever their alpha.
+ *
+ * An element whose own quad is opaque (`isOpaqueQuad`) waits for none. Its
+ * quad draws before its marks and writes depth over all of what it covers,
+ * so what is behind it fails the depth test whenever it draws. It keeps
+ * its tree depth, and a pile of opaque cards shares one bucket.
  *
  * A pile of translucent cards climbs a few levels a card, which is what
  * `ELEVATION_BAND` is sized for. A hover or a transition that takes a card's
@@ -648,14 +600,11 @@ export function getDrawLevel(element) {
       if (cleared.length === 0) {
         return level;
       }
-      const paint = getQuadPaint(element);
-      if (paint === "opaque") {
+      if (isOpaqueQuad(element)) {
         return level;
       }
       for (const { sibling } of cleared) {
-        if (paint === "translucent" || hasClimbed(sibling)) {
-          level = Math.max(level, getDrawLevel(sibling) + getDrawReach(sibling) + 1);
-        }
+        level = Math.max(level, getDrawLevel(sibling) + getDrawReach(sibling) + 1);
       }
       return level;
     });

@@ -49,9 +49,9 @@ about two minutes. `SHOTS=<dir>` also photographs each session, and
 browser and the controller through `@apendua.dev/headset/driver`, which
 borrows Playwright from `apps/showcase-xr` and launches the Chromium at
 `/opt/pw-browsers/chromium-1194/chrome-linux/chrome`; `CHROMIUM=<path>`
-points it at one installed elsewhere. A pull request that touches this app
-or a package it imports runs it, with minesweeper's and Euclid's, from
-`.github/workflows/driven.yml`.
+points it at one installed elsewhere. A pull request that changes this app
+or a package it imports, other than in docs, unit tests or benchmarks, runs
+it, with minesweeper's and Euclid's, from `.github/workflows/driven.yml`.
 
 ## What you can do
 

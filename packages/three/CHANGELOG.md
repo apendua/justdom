@@ -1,6 +1,16 @@
 # Change Log - @apendua/freedom
 
-This log was last generated on Sun, 04 Oct 2026 19:35:47 GMT and should not be manually modified.
+This log was last generated on Tue, 06 Oct 2026 21:11:09 GMT and should not be manually modified.
+
+## 0.28.0
+Tue, 06 Oct 2026 21:11:09 GMT
+
+### Minor changes
+
+- A panel the page scales, on its root or above it, is measured at its layout size: every client rect goes through panelFrame.js and is divided by the scale of the root's chain, the ray's points are scaled back, a rotation, skew or flip on the chain, or a perspective above the root, warns once per root, and a window scroll or resize starts a new geometry generation
+- A panel forwards what rays do to its page from one listener on its container, in place of listeners on every element. The recorded event sequences are unchanged. Two cases they did not cover now behave differently: a control in a scrolling list that is no control, inside another control, now presses the outer control too; and a press of the trigger whose row's removal commits during the hold now ends with its release, so the control around the row hears the release, a page that cancelled its pointerdown hears mouse moves again, and a capture ends, while a grip that outlives its row the same way stays the panel's to its end, and its opening is felt. An element built outside any portal is a ray target and is no longer forwarded.
+- A panel that is always busy still loads and still updates: the pump takes the observer's records at the top of each tick, the animation clock is held while a panel loads, and a pump that has waited MAX_COMMIT_WAIT on a channel that will not empty sweeps it unbudgeted; one whose build the page keeps adding to for MAX_BUILD_WAIT builds what is queued and sweeps in one frame. A node the page adds and removes before the observer's records are read no longer counts as an arrival, and a row taken out, put back and taken out again in one flush is now taken down rather than left drawn.
+- A portal's container carries data-xr-busy while the animation clock samples or the pump has an update still to draw, so a harness can wait for the scene to catch up with the DOM before it photographs. The portal ignores an observer flush made only of its own container flags.
 
 ## 0.27.0
 Sun, 04 Oct 2026 19:35:47 GMT

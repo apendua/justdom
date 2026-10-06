@@ -2,6 +2,29 @@
   "name": "@apendua/justui",
   "entries": [
     {
+      "version": "0.3.3",
+      "tag": "@apendua/justui_v0.3.3",
+      "date": "Tue, 06 Oct 2026 21:11:09 GMT",
+      "comments": {
+        "none": [
+          {
+            "comment": "The keyboard's headset test sends each key's select through the interaction manager, which freedom's panel forwarder needs to hear it."
+          },
+          {
+            "comment": "Rewrap the README at 100 columns with Prettier's proseWrap."
+          }
+        ],
+        "dependency": [
+          {
+            "comment": "Updating dependency \"@apendua/freedom\" to `0.28.0`"
+          },
+          {
+            "comment": "Updating dependency \"@apendua/freedom\" to `0.28.0`"
+          }
+        ]
+      }
+    },
+    {
       "version": "0.3.2",
       "tag": "@apendua/justui_v0.3.2",
       "date": "Sun, 04 Oct 2026 19:35:47 GMT",

@@ -176,9 +176,10 @@ function nest({ outer, inner, build, haptics = null }) {
         /** @type {THREE.Object3D<XREventMap>} */ (mesh),
         /** @type {never} */ (event),
       );
-      if (type === "selectend") {
-        // The controller's own release, which the manager's listener
-        // passed on as the above and which a scroll drag hears directly.
+      if (type.endsWith("start") || type.endsWith("end")) {
+        // The controller's own button event, which the manager's listener
+        // passed on as the above, and which a scroll drag and the hand's
+        // record of its buttons hear directly.
         hand.dispatchEvent(/** @type {never} */ ({ type, data: inputSource }));
       }
     },
@@ -977,6 +978,68 @@ describe("a ray's pointer events", () => {
       "mouseup on span",
       "click on span",
     ]);
+    teardown();
+  });
+
+  test("carry the buttons the hand holds, the grip as 2", () => {
+    const { s, point, inner, teardown } = label();
+    /** @type {string[]} */
+    const held = [];
+    const types = [...TYPES, "contextmenu"];
+    /** @param {Event} event */
+    const record = (event) => {
+      held.push(`${event.type} ${/** @type {MouseEvent} */ (event).buttons}`);
+    };
+    for (const type of types) {
+      inner.addEventListener(type, record);
+    }
+    s.press("pointermove", null, point);
+    s.press("selectstart", null, point);
+    s.press("pointermove", null, point);
+    s.press("squeezestart", null, point);
+    s.press("pointermove", null, point);
+    s.press("selectend", null, point);
+    s.press("select", null, point);
+    s.press("pointermove", null, point);
+    s.press("squeezeend", null, point);
+    s.press("squeeze", null, point);
+    s.press("pointermove", null, point);
+    assert.deepEqual(held, [
+      "pointermove 0",
+      "mousemove 0",
+      // A press says the button it closed, and a release no longer does,
+      // as a browser's do.
+      "pointerdown 1",
+      "mousedown 1",
+      "pointermove 1",
+      "mousemove 1",
+      "pointermove 3",
+      "mousemove 3",
+      "pointerup 2",
+      "mouseup 2",
+      "click 2",
+      "pointermove 2",
+      "mousemove 2",
+      "contextmenu 0",
+      "pointermove 0",
+      "mousemove 0",
+    ]);
+    teardown();
+  });
+
+  test("count a button closed while the ray was off the panels", () => {
+    const { s, point, inner, teardown } = label();
+    /** @type {number[]} */
+    const held = [];
+    inner.addEventListener("pointermove", (event) => held.push(event.buttons));
+    s.press("pointermove", null, point);
+    // The trigger closes with the ray on nothing the panel has: the
+    // manager sends the scene nothing, and the controller its own event.
+    s.controller.dispatchEvent(/** @type {never} */ ({ type: "selectstart", data: null }));
+    s.press("pointermove", null, point);
+    s.controller.dispatchEvent(/** @type {never} */ ({ type: "selectend", data: null }));
+    s.press("pointermove", null, point);
+    assert.deepEqual(held, [0, 1, 0]);
     teardown();
   });
 

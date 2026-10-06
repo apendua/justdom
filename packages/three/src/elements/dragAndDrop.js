@@ -358,8 +358,9 @@ const client = new THREE.Vector2();
  *
  * A ray's pointer events say it is a mouse, which is what the mouse events
  * after them say too, and each hand is a pointer of its own, its
- * `pointerId` written in for each event (see `sendPointerAndMouse` in
- * `pointerForwarding.js`).
+ * `pointerId` and the `buttons` it holds written in for each event by the
+ * panel's forwarder (see `sendPointerAndMouse` in `pointerForwarding.js`);
+ * each init below says none, for an event sent on no hand's behalf.
  *
  * @type {PointerEventInit}
  */
@@ -367,6 +368,7 @@ const init = {
   bubbles: false,
   cancelable: false,
   button: 0,
+  buttons: 0,
   clientX: 0,
   clientY: 0,
   screenX: 0,
@@ -433,6 +435,7 @@ export function pressInit(panel, e, cancelable, button = 0) {
   init.bubbles = true;
   init.cancelable = cancelable;
   init.button = button;
+  init.buttons = 0;
   if (panel) {
     probePanel(panel);
   }
@@ -453,6 +456,7 @@ export function releaseInit(panel, e) {
   init.bubbles = true;
   init.cancelable = false;
   init.button = 0;
+  init.buttons = 0;
   const on = !!e.intersection && getPanel(e.intersection.object) === panel;
   if (panel && on) {
     probePanel(panel);
@@ -476,6 +480,7 @@ export function moveInit(panel, e) {
   init.bubbles = true;
   init.cancelable = false;
   init.button = 0;
+  init.buttons = 0;
   writePoint(panel, e, true);
   return init;
 }

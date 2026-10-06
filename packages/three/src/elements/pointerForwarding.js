@@ -118,6 +118,11 @@ export function isGone(element) {
  *   handles the press as a pointer, and a browser then sends none of the
  *   mouse events that would otherwise follow it, `mousedown`, `mousemove`
  *   and `mouseup`, until the button is let go. The `click` still goes.
+ * @property {number} buttons The buttons the hand holds, as a mouse event's
+ *   `buttons` says them: the trigger as the main button, 1, and the grip
+ *   as the secondary one, 2, as its `contextmenu` says `button` 2. Kept
+ *   from the controller's own events, wherever its ray is when a button
+ *   closes, from the hand's first pointer event on.
  */
 
 /** @type {WeakMap<XRTargetRaySpace, Hand>} */
@@ -136,17 +141,55 @@ const handsById = new Map();
 
 let nextPointerId = 2;
 
+/**
+ * The bit each of a hand's buttons sets in `Hand.buttons`, which is the bit
+ * a mouse's main button and its secondary one set in a mouse event's.
+ */
+const HAND_BITS = /** @type {const} */ ({ select: 1, squeeze: 2 });
+
 /** @param {XRTargetRaySpace} controller */
 function handOf(controller) {
   let hand = hands.get(controller);
   if (!hand) {
-    hand = { pointerId: nextPointerId, captor: null, pointerOnly: false };
+    const created = { pointerId: nextPointerId, captor: null, pointerOnly: false, buttons: 0 };
+    hand = created;
     nextPointerId += 1;
     hands.set(controller, hand);
     handsById.set(hand.pointerId, hand);
     acceptPointerCapture();
+    // The controller's own events, which three sends wherever the ray is,
+    // and the manager passes on into the scene only when it is on
+    // something. A press on a panel writes its bit before these come,
+    // since the manager hears them first (see `sendPointerAndMouse`).
+    const listened = /** @type {Object3D<any>} */ (controller);
+    for (const button of /** @type {const} */ (["select", "squeeze"])) {
+      const bit = HAND_BITS[button];
+      listened.addEventListener(`${button}start`, () => {
+        created.buttons |= bit;
+      });
+      listened.addEventListener(`${button}end`, () => {
+        created.buttons &= ~bit;
+      });
+    }
+    listened.addEventListener("disconnected", () => {
+      created.buttons = 0;
+    });
   }
   return hand;
+}
+
+/**
+ * The buttons a hand holds as one of its events goes out, with the one the
+ * event releases let go of already: a `click` or a `contextmenu` comes
+ * after its button opened, as a browser's do, though the hand's own record
+ * hears the opening only after the panel has sent them.
+ *
+ * @param {XRTargetRaySpace} controller
+ * @param {number} [released] The bit of the button the event releases.
+ * @returns {number}
+ */
+function heldButtons(controller, released = 0) {
+  return (hands.get(controller)?.buttons ?? 0) & ~released;
 }
 
 /** Whether `acceptPointerCapture` has run. */
@@ -242,6 +285,17 @@ function sendPointerAndMouse(element, type, init, controller) {
     init.button = -1;
   }
   const hand = handOf(controller);
+  // A press says the button it closed, and a release no longer says the
+  // one it opened, as a browser's do; and the hand's record holds them
+  // from here, since the controller's own events come after the panel's.
+  // Only the trigger presses and releases: the grip sends a `contextmenu`
+  // alone.
+  if (type === "pointerdown") {
+    hand.buttons |= HAND_BITS.select;
+  } else if (type === "pointerup") {
+    hand.buttons &= ~HAND_BITS.select;
+  }
+  init.buttons = hand.buttons;
   init.pointerId = hand.pointerId;
   const pointer = typeof PointerEvent === "function" ? new PointerEvent(type, init) : null;
   init.button = button;
@@ -647,6 +701,19 @@ export function createPanelForwarder(ctx, container) {
   const busy = (controller) => dnd.carrying(controller) || movesList(ctx, controller);
 
   /**
+   * The init of the `click` a trigger's press completes with, which comes
+   * after the trigger opened.
+   *
+   * @param {XREventMap["select"]} e
+   * @returns {MouseEventInit}
+   */
+  const clickInit = (e) => {
+    const init = pressInit(panel(), e, false);
+    init.buttons = heldButtons(e.controller, HAND_BITS.select);
+    return init;
+  };
+
+  /**
    * One listener per ray event. Each reads what the ray met from the
    * event's `originalTarget`: three writes `target` as the object whose
    * listener is running, which here is the container.
@@ -835,7 +902,7 @@ export function createPanelForwarder(ctx, container) {
       }
       if (pressed.list) {
         if (!isGone(pressed.element) && !drags.didScroll(e.controller)) {
-          pressed.element.dispatchEvent(new MouseEvent("click", pressInit(panel(), e, false)));
+          pressed.element.dispatchEvent(new MouseEvent("click", clickInit(e)));
         }
         stopPropagation(e);
         return;
@@ -855,7 +922,7 @@ export function createPanelForwarder(ctx, container) {
         stopPropagation(e);
         return;
       }
-      first.element.dispatchEvent(new MouseEvent("click", pressInit(panel(), e, false)));
+      first.element.dispatchEvent(new MouseEvent("click", clickInit(e)));
       for (const object of path) {
         const target = targets.get(object);
         if (target && !target.list) {
@@ -914,7 +981,9 @@ export function createPanelForwarder(ctx, container) {
       // does now, nor for one that opens while it does.
       const first = innermost(path, true);
       if (first && !isGone(gripped.element) && owns(e.start) && !busy(e.controller)) {
-        first.element.dispatchEvent(new MouseEvent("contextmenu", pressInit(panel(), e, true, 2)));
+        const init = pressInit(panel(), e, true, 2);
+        init.buttons = heldButtons(e.controller, HAND_BITS.squeeze);
+        first.element.dispatchEvent(new MouseEvent("contextmenu", init));
       }
       stopPropagation(e);
     },

@@ -212,11 +212,11 @@ function noteMissedPress(element) {
  *   crossings the same `selectend` sends after it, which then say where
  *   it said the pointer is (see `track`); false at any other time. Set as
  *   the `pointerup` goes out, and cleared once those crossings have read
- *   it. A press that sends no release, one the page lost to a scroll or a
- *   drag and drop or one swallowed on an element that had gone with no
- *   control around it, never sets it, and its crossings stay nowhere, as
- *   nothing said where the pointer went. A control around such an element
- *   still sends the release, which sets it as any other does.
+ *   it. A `selectend` that sends no `pointerup` never sets it, and the
+ *   crossings it sends stay nowhere, as nothing said where the pointer
+ *   went: a press the page lost to a scroll or a drag and drop, say, or
+ *   one swallowed on an element that had gone where no control around it
+ *   sends the release.
  */
 
 /** @type {WeakMap<XRTargetRaySpace, Hand>} */

@@ -36,6 +36,7 @@ import { createProperty } from "@apendua/signal";
  *   so a scene can pick the flavor and a panel only turn hover off;
  *   `false`, at either level, is no haptics. There is no `true` (see
  *   `PortalOptions.haptics`).
+ * @property {boolean} [thumbstickWheel]
  * @property {number} [maxTextScale]
  * @property {boolean} [atomic]
  * @property {boolean} [opaqueToRays]

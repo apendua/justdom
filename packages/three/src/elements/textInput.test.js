@@ -4,6 +4,7 @@ import * as THREE from "three";
 import { InteractionContext, InteractionManager } from "../interactions.js";
 import { createPortal as createHeldPortal } from "./portal.js";
 import { stubCanvas, STUB_GLYPH_WIDTH } from "../test/stubCanvas.js";
+import { isRunMesh } from "../test/runMesh.js";
 
 /**
  * `createPortal` with the loading frame's timing off, as the portal suite
@@ -130,11 +131,8 @@ function fieldPanel(dress = () => {}) {
       /** @type {THREE.Mesh | undefined} */
       let run;
       parent.traverse((object) => {
-        if (object instanceof THREE.Mesh) {
-          const material = /** @type {THREE.MeshBasicMaterial} */ (object.material);
-          if (material && (material.alphaMap || material.map)) {
-            run = object;
-          }
+        if (isRunMesh(object)) {
+          run = object;
         }
       });
       return run;
@@ -284,10 +282,7 @@ describe("a text field in a panel", () => {
     assert.equal(panel.input.hasAttribute("data-xr-focus"), false);
     // One run for the value; the caret, which `portalKeyboard.test.js`
     // counts arriving with a keyboard, is not among the meshes here.
-    const runs = panel.meshes().filter((mesh) => {
-      const material = /** @type {THREE.MeshBasicMaterial} */ (mesh.material);
-      return !!(material.alphaMap || material.map);
-    });
+    const runs = panel.meshes().filter(isRunMesh);
     assert.equal(runs.length, 1);
     const caretSized = panel.meshes().filter((mesh) => mesh.scale.x === 1 && mesh.scale.y > 1);
     assert.equal(caretSized.length, 0, "no one-px-wide mark");

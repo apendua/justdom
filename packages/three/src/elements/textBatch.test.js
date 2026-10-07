@@ -197,7 +197,82 @@ describe("text batch draw order", () => {
     assert.notEqual(after.id, before.id, "expected the bucket to have been rebuilt");
     assert.equal(after.renderOrder, 0);
   });
+
+  // A caption stepped over a box that holds boxes of its own draws after
+  // them (`getDrawLevel`), so its run's order moves while its neighbours'
+  // stay. The bucket it is drawn by has to move with it, or the boxes
+  // behind it paint over its glyphs.
+
+  test("a run whose order moves later is drawn by a bucket at that order", () => {
+    const { container, batch, meshes } = ordered(3, 7);
+    meshes[0].renderOrder = 9;
+    batch.invalidate();
+    batch.flush();
+
+    assert.deepEqual(bucketCounts(container), [
+      [7, 2],
+      [9, 1],
+    ]);
+  });
+
+  test("a run whose order comes back rejoins its neighbours' bucket", () => {
+    const { container, batch, meshes } = ordered(3, 7);
+    meshes[0].renderOrder = 9;
+    batch.invalidate();
+    batch.flush();
+    meshes[0].renderOrder = 7;
+    batch.invalidate();
+    batch.flush();
+
+    assert.deepEqual(bucketCounts(container), [[7, 3]]);
+  });
+
+  test("a run the batch declines draws itself at its own order", () => {
+    // 256 runs fill the size class, and the 257th draws itself.
+    const { container } = ordered(257, 9);
+    const odd = declined(container);
+
+    assert.equal(odd.length, 1);
+    assert.equal(odd[0].renderOrder, 9);
+  });
 });
+
+/**
+ * A panel of `count` runs of one size, all at `order`, flushed.
+ *
+ * @param {number} count
+ * @param {number} order
+ */
+function ordered(count, order) {
+  const container = new THREE.Group();
+  place(container, 0, 0, 0);
+  const batch = createTextBatch(container);
+  /** @type {THREE.Mesh[]} */
+  const meshes = [];
+  for (let i = 0; i < count; i++) {
+    const mesh = run(24, 12);
+    mesh.renderOrder = order;
+    container.add(mesh);
+    batch.add(mesh, { value: new THREE.Vector4(-1e6, -1e6, 1e6, 1e6) });
+    meshes.push(mesh);
+  }
+  batch.flush();
+  return { container, batch, meshes };
+}
+
+/**
+ * The visible buckets of a container, as `[renderOrder, count]` pairs in
+ * draw order.
+ *
+ * @param {THREE.Object3D} container
+ * @returns {[number, number][]}
+ */
+function bucketCounts(container) {
+  return /** @type {THREE.InstancedMesh[]} */ (container.children)
+    .filter((c) => c.isInstancedMesh && c.visible && c.count > 0)
+    .map((c) => /** @type {[number, number]} */ ([c.renderOrder, c.count]))
+    .sort((a, b) => a[0] - b[0]);
+}
 
 /**
  * The array texture a bucket is currently drawing from.

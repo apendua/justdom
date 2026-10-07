@@ -410,9 +410,34 @@ the pointer last was, as a browser's release says the pointer's last position. S
 follows the hand off the panel as a mouse's follows it off the window. The capture ends with
 `lostpointercapture` at the release, after its `pointerup` and `mouseup`, at
 `releasePointerCapture`, when the press becomes a scroll or a drag and drop, or when the hand is
-lost. Releasing a hand's pointer that holds no capture does nothing, as for a pointer the browser
-knows, so a page's `pointerup` handler may release what the release already ended. The grip's
-`contextmenu` comes alone, as before.
+lost. `gotpointercapture` and `lostpointercapture` say where the page last heard the pointer was:
+the `pointerdown` for a capture taken in its handler, the release for the capture it ends. A release
+with the ray off the panel takes the pointer out of the captor at the release's point too. Releasing
+a hand's pointer that holds no capture does nothing, as for a pointer the browser knows, so a page's
+`pointerup` handler may release what the release already ended. The grip's `contextmenu` comes
+alone, as before.
+
+A panel can also hear a hand's thumbstick as a mouse wheel, for a page that zooms or pans on
+`wheel`:
+
+```js
+dom(ctx, drawing, [set({ position })], { thumbstickWheel: true });
+```
+
+While the hand's ray is on the panel and the hand holds no button, pushing the stick forward or
+pulling it back sends `wheel` once a frame to the element under the ray: the innermost control the
+ray is on, the one its moves go to, or, on a list's gaps or the panel's background, whatever element
+is there, as a browser sends a wheel to whatever the mouse is over. A ray on an object the scene
+hangs in the panel turns nothing, and on a panel with `opaqueToRays: false` only a ray on a control
+or a list does, since the panel has no background to be on. Its `deltaY` is in px (`deltaMode` 0)
+and negative for the stick pushed forward, as for a wheel turned up. It follows how far the stick is
+pushed: nothing inside a small dead zone around the centre, and 1000 px a second at the stop. Its
+`clientX` and `clientY` are where the ray crosses the panel, as a move's are. Either hand turns it.
+The wheel scrolls nothing of itself, since a list is scrolled by pulling it (see **Clipping and
+scrolling**); a page that wants it to scroll one does that in its handler, with `scrollElementBy`.
+It is off unless a panel asks, because a scene may read the stick for something else, to turn a
+carried object or to move the player. A scene that does not can turn it on for every panel through
+its panel defaults.
 
 In development, a press that lands on an element of a panel's page with no ray target under it warns
 once per element, naming the element. A press on the panel's empty root, or on an object of the
@@ -1436,14 +1461,18 @@ except that boxes with a negative `z-index` stay on one plane, since a step woul
 the flow content a page paints over them. Only the sign of `z-index` counts, so to bring a card to
 the front, append it to the end of its parent again. A transformed element counts as covering the
 axis-aligned box around its corners, and a descendant that overflows its parent's box does not count
-towards what the parent overlaps. A translucent card stepped over another, by its background, its
-border, a background image or an `opacity` of its own or an ancestor's, is also drawn after
-everything the other card draws, so the other card's content shows through it tinted, as on a page.
-A box with no background of its own that is stepped over such a card is drawn after it too, with its
-text and children. Only the box that is stepped is asked: a positioned wrapper with nothing to
-paint, around a translucent card, over a card drawn in tree order, still lets that card hide what
-the wrapper covers. A box anchored above a scroller that its siblings scroll in counts as covering
-all of them, so its lift and theirs stay put while the list scrolls.
+towards what the parent overlaps. A card that is not opaque, stepped over another, is also drawn
+after everything the other card draws, with its text and children. A translucent card, by its
+background, its border, a background image or an `opacity` of its own or an ancestor's, lets the
+other card's content show through it tinted, as on a page. A caption with no background keeps its
+text, which writes no depth, in front of the boxes inside the dial it is laid over, at any alpha. An
+opaque card hides what it covers in either order and keeps the order of its siblings; text that
+overflows it is the one mark it does not cover. Only the stepped box itself is asked, so a
+positioned wrapper with no background around an opaque card draws after what it covers, and a board
+of such cards takes two box buckets and a text bucket per card, the wrapper's quad being batched
+too, each a draw call per eye, where opaque cards alone would share them. A box anchored above a
+scroller that its siblings scroll in counts as covering all of them, so its lift and theirs stay put
+while the list scrolls.
 
 A native `<select>` cannot work here, layers or not: `<option>` has no CSS box to mirror, and the
 list the browser pops up is chrome rather than DOM, so none of it reaches the scene. Nor can the
@@ -1748,13 +1777,14 @@ render(Scene, {
 });
 ```
 
-`keyboard`, `loadingFrame`, `haptics`, `maxTextScale`, `atomic`, `opaqueToRays`, `priority` and
-`budget` can be set this way. A panel's own options are laid over them: its value wins, except that
-a `keyboard`, a `loadingFrame` or a `haptics` given as an object is spread over the scene's, so a
-panel can change one thing about them without restating the rest. `withPanelOptions(ctx, …)` does
-the same for a part of the scene, over whatever is in scope already. `plugins` is not among them —
-it has `portalPlugins`, whose list a panel's own is put in front of rather than in place of — and
-neither are `root` and `onLoadingChanged`, which are only ever one panel's.
+`keyboard`, `loadingFrame`, `haptics`, `thumbstickWheel`, `maxTextScale`, `atomic`, `opaqueToRays`,
+`priority` and `budget` can be set this way. A panel's own options are laid over them: its value
+wins, except that a `keyboard`, a `loadingFrame` or a `haptics` given as an object is spread over
+the scene's, so a panel can change one thing about them without restating the rest.
+`withPanelOptions(ctx, …)` does the same for a part of the scene, over whatever is in scope already.
+`plugins` is not among them — it has `portalPlugins`, whose list a panel's own is put in front of
+rather than in place of — and neither are `root` and `onLoadingChanged`, which are only ever one
+panel's.
 
 ## SVG
 

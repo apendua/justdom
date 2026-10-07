@@ -198,8 +198,10 @@ const scratch = new THREE.Vector3();
  * into that frame and compared with the element's size and clip box. An
  * object the mirror has culled, a row scrolled out of its list, is not
  * visited and nor is anything in it. The walk visits every element in the
- * panel otherwise, since a child can overflow its parent, and it is only
- * asked while a drag is under way.
+ * panel otherwise, since a child can overflow its parent. So it is asked
+ * once a frame only while a drag is under way, or while a thumbstick turns
+ * the wheel with the ray on a panel's background or a list's gaps, where
+ * no control names the element; and once for a press, in development.
  *
  * @param {HTMLElement} element
  * @param {(node: Node) => THREE.Object3D | undefined} objectOf The panel's
@@ -483,6 +485,19 @@ export function pressInit(panel, e, cancelable, button = 0) {
 }
 
 /**
+ * Whether a ray event's ray is on a panel: what a release, which may come
+ * with the ray anywhere, has to be asked before it has a point on the page
+ * (see `releaseInit`).
+ *
+ * @param {Panel | null} panel
+ * @param {{ intersection?: THREE.Intersection }} e
+ * @returns {boolean}
+ */
+export function isOnPanel(panel, e) {
+  return panel !== null && !!e.intersection && getPanel(e.intersection.object) === panel;
+}
+
+/**
  * The init for the `mouseup` sent for a press's release. One event, probed
  * like a press; but the ray may have wandered since the press, and only a
  * release on the element's own panel has a point on its page. A captured
@@ -500,7 +515,7 @@ export function releaseInit(panel, e) {
   init.button = 0;
   init.buttons = 0;
   init.relatedTarget = null;
-  const on = !!e.intersection && getPanel(e.intersection.object) === panel;
+  const on = isOnPanel(panel, e);
   if (panel && on) {
     probePanel(panel);
   }

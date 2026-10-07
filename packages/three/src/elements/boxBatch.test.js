@@ -450,10 +450,11 @@ describe("the material a batched box wears", () => {
   });
 
   test("a fragment with nothing to paint is discarded, so it writes no depth", () => {
-    // What the draw order leans on (see `getQuadPaint` in elevation.js): a
+    // What the draw order leans on (see `isOpaqueQuad` in elevation.js): a
     // box with no background and no border writes neither colour nor depth,
-    // so stepping it over a sibling's label hides nothing and it needs no
-    // later order. Both materials a box can wear make the same promise.
+    // so stepped over a sibling it hides nothing of it, and its own marks
+    // need it to draw after that sibling. Both materials a box can wear make
+    // the same promise.
     const p = panel();
     const bucket = /** @type {THREE.InstancedMesh} */ (
       p.container.children.find(

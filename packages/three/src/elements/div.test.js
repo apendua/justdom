@@ -16,6 +16,12 @@ import { recordingSource } from "../test/rumble.js";
 import { clientRect } from "../test/clientRect.js";
 import { registerPanel } from "./dragAndDrop.js";
 import { rectGeometry } from "./sdfRect.js";
+import { text } from "./text.js";
+import { InputFocusContext, textInput } from "./textInput.js";
+import { markedBox } from "./listMarker.js";
+import { installRange } from "../test/textRange.js";
+import { stubCanvas } from "../test/stubCanvas.js";
+import { isRunMesh } from "../test/runMesh.js";
 
 /**
  * @import { InteractionManager } from "../interactions.js";
@@ -554,13 +560,24 @@ function setupSiblings() {
     place(cssText, rect, into = parent) {
       const element = document.createElement("div");
       element.style.cssText = cssText;
+      this.adopt(element, rect, into);
+      return element;
+    },
+    /**
+     * Put any element in `into`, laid out at `rect` and mirrored, but not
+     * drawn: a field, a list item or an `<svg>` as much as a `div`.
+     *
+     * @param {Element} element
+     * @param {[number, number, number, number]} rect
+     * @param {HTMLElement} [into]
+     */
+    adopt(element, rect, into = parent) {
       into.appendChild(element);
       layout(element, () => rect);
       mirror.adopt(element);
       // As the portal's observer would, or every sibling read after the
       // first goes on seeing the child list from before it.
       mirror.childListChanged(into);
-      return element;
     },
     /** @param {HTMLElement} element */
     draw(element) {
@@ -578,6 +595,48 @@ function setupSiblings() {
      */
     add(cssText, rect, into = parent) {
       return this.draw(this.place(cssText, rect, into));
+    },
+    /**
+     * Draw an element with a component other than `div`, handed the
+     * harness's context: a field or a list item, as the portal draws them.
+     *
+     * @param {HTMLElement} element
+     * @param {(ctx: object) => import("@apendua/signal").Source<THREE.Object3D>} component
+     * @returns {THREE.Object3D} What the component built.
+     */
+    drawWith(element, component) {
+      subscriptions.push(
+        component(ctx).subscribe((value) => {
+          objects.set(element, value);
+        }),
+      );
+      const object = objects.get(element);
+      assert.ok(object, "expected the component to build an object");
+      return object;
+    },
+    /**
+     * A text node appended to the element and drawn as the portal draws one,
+     * by `text`, with no batch, so the run draws itself. Needs
+     * `installRange`.
+     *
+     * @param {HTMLElement} element
+     * @param {string} data
+     * @returns {THREE.Mesh} The run's mesh.
+     */
+    write(element, data) {
+      const node = document.createTextNode(data);
+      element.appendChild(node);
+      mirror.adopt(node);
+      mirror.childListChanged(element);
+      /** @type {THREE.Mesh | undefined} */
+      let run;
+      subscriptions.push(
+        text(ctx, node).subscribe((object) => {
+          run = /** @type {THREE.Mesh} */ (object.children[0]);
+        }),
+      );
+      assert.ok(run, "expected a run");
+      return run;
     },
     /**
      * How far the element's origin sits from its parent's content along
@@ -801,15 +860,31 @@ describe("div sibling stacking", () => {
     board.teardown();
   });
 
-  test("an empty positioned wrapper keeps the order of its siblings", () => {
+  test("an empty positioned wrapper draws after what it is stepped over", () => {
     // A fragment with nothing to paint is discarded, writing no depth, so a
-    // wrapper with no background or border hides nothing it is stepped over.
+    // wrapper with no background or border hides nothing it is stepped over,
+    // and what that holds would draw over the wrapper's text, which writes
+    // no depth either, if it drew later.
     const board = setupSiblings();
     const first = board.add("position: absolute; background: white", [0, 0, 100, 100]);
-    board.add("", [10, 10, 90, 30], first);
+    const label = board.add("", [10, 10, 90, 30], first);
     const wrapper = board.add("position: absolute; background: transparent", [50, 0, 150, 100]);
 
-    assert.equal(board.boxOrder(wrapper), board.boxOrder(first));
+    assert.ok(board.boxOrder(wrapper) > getContentRenderOrder(label));
+    board.teardown();
+  });
+
+  test("a translucent card in an empty wrapper is drawn after the label it covers", () => {
+    // The wrapper is what clears the sibling, and has nothing to paint. It
+    // still waits for the sibling, so the card inside it blends over the
+    // label rather than keeping it out of the depth test.
+    const board = setupSiblings();
+    const first = board.add("position: absolute; background: white", [0, 0, 100, 100]);
+    const label = board.add("", [10, 10, 90, 30], first);
+    const wrapper = board.add("position: absolute", [50, 0, 150, 100]);
+    const card = board.add("background: rgba(255, 255, 255, 0.3)", [50, 0, 150, 100], wrapper);
+
+    assert.ok(board.boxOrder(card) > getContentRenderOrder(label));
     board.teardown();
   });
 
@@ -1097,6 +1172,305 @@ describe("div sibling stacking", () => {
     page.teardown();
   });
 });
+
+// Night Ops' gauges: a caption is a positioned box with no background laid
+// over the dial, and the dial's face is a box inside the dial. The caption
+// is stepped in front of the face, and its marks write no depth, so the
+// face has to draw before them or it paints over them.
+
+/**
+ * A dial with a face inside it, as Night Ops' gauges have, a tick on the
+ * face, and a positioned caption with no background laid over both. The
+ * tick is a level deeper than the face, so a mark nested a level inside the
+ * caption meets a box at its own tree depth too.
+ *
+ * @param {ReturnType<typeof setupSiblings>} gauge
+ * @param {string} [captionCss]
+ * @param {HTMLElement} [into]
+ */
+function dialWithCaption(gauge, captionCss = "", into = gauge.parent) {
+  const dial = gauge.add("position: absolute; background: white", [0, 0, 100, 100], into);
+  const face = gauge.add("background: black", [20, 20, 80, 80], dial);
+  const tick = gauge.add("background: red", [25, 55, 75, 85], face);
+  const caption = gauge.add(`position: absolute; ${captionCss}`, [30, 60, 70, 80], into);
+  return { dial, face, tick, caption };
+}
+
+/**
+ * Assert that a mark laid over `dialWithCaption`'s dial draws after every
+ * box of the dial.
+ *
+ * @param {ReturnType<typeof setupSiblings>} gauge
+ * @param {THREE.Object3D} mark
+ * @param {ReturnType<typeof dialWithCaption>} dial
+ */
+function assertDrawsAfterDial(gauge, mark, { dial, face, tick }) {
+  for (const box of [dial, face, tick]) {
+    assertDrawsAfter(gauge, mark, box);
+  }
+}
+
+/**
+ * Assert that a mark draws after a box: after the box's own mesh, and after
+ * the half level later a portal's box batch draws it at.
+ *
+ * @param {ReturnType<typeof setupSiblings>} gauge
+ * @param {THREE.Object3D} mark
+ * @param {Element} box
+ */
+function assertDrawsAfter(gauge, mark, box) {
+  assert.ok(
+    gauge.boxOrder(box) + 0.5 < mark.renderOrder,
+    `the box at ${gauge.boxOrder(box)} draws after the mark at ${mark.renderOrder}`,
+  );
+}
+
+describe("marks stepped over a box", () => {
+  test("a caption laid over a dial draws after the dial's face", () => {
+    const restore = installRange();
+    const gauge = setupSiblings();
+    try {
+      const parts = dialWithCaption(gauge);
+      const { dial, face, caption } = parts;
+      const run = gauge.write(caption, "LOAD");
+
+      assert.ok(gauge.z(caption) < gauge.z(dial) + gauge.z(face) + 1, "the face is behind");
+      assertDrawsAfterDial(gauge, run, parts);
+    } finally {
+      gauge.teardown();
+      restore();
+    }
+  });
+
+  test("a rotated caption laid over a dial draws after the dial's face", () => {
+    const restore = installRange();
+    const gauge = setupSiblings();
+    try {
+      const dial = gauge.add("position: absolute; background: white", [0, 0, 100, 100]);
+      const face = gauge.add("background: black", [20, 20, 80, 80], dial);
+      // A transform alone puts the caption in a painting layer; it is placed
+      // by its layout offsets, as a transformed box is.
+      const [cos, sin] = [Math.cos(0.3), Math.sin(0.3)];
+      const caption = gauge.add(
+        `transform: matrix(${cos}, ${sin}, ${-sin}, ${cos}, 0, 0)`,
+        [0, 0, 0, 0],
+      );
+      for (const [name, value] of /** @type {const} */ ([
+        ["offsetLeft", 30],
+        ["offsetTop", 60],
+        ["offsetWidth", 40],
+        ["offsetHeight", 20],
+      ])) {
+        Object.defineProperty(caption, name, { configurable: true, value });
+      }
+      gauge.mirror.reflowed([caption]);
+      const run = gauge.write(caption, "LOAD");
+
+      assert.ok(gauge.z(caption) < gauge.z(dial), "the caption is stepped over the dial");
+      assertDrawsAfter(gauge, run, face);
+    } finally {
+      gauge.teardown();
+      restore();
+    }
+  });
+
+  test("a caption moved off the dial goes back to its tree order", () => {
+    const restore = installRange();
+    const gauge = setupSiblings();
+    try {
+      const dial = gauge.add("position: absolute; background: white", [0, 0, 100, 100]);
+      const face = gauge.add("background: black", [20, 20, 80, 80], dial);
+      /** @type {[number, number, number, number]} */
+      const rect = [30, 60, 70, 80];
+      const caption = gauge.add("position: absolute", rect);
+      const run = gauge.write(caption, "LOAD");
+      assertDrawsAfter(gauge, run, face);
+
+      // Read through `layout`, which reads the same array every time.
+      rect.splice(0, 4, 200, 60, 240, 80);
+      gauge.mirror.reflowed([caption]);
+
+      assert.equal(gauge.boxOrder(caption), gauge.boxOrder(dial), "the caption's box");
+      assert.equal(run.renderOrder, getContentRenderOrder(dial), "the caption's text");
+    } finally {
+      gauge.teardown();
+      restore();
+    }
+  });
+
+  test("a caption in a clipping window draws after the dial's face", () => {
+    const restore = installRange();
+    const gauge = setupSiblings();
+    try {
+      const clip = gauge.add("position: relative; overflow: hidden", [0, 50, 400, 150]);
+      const parts = dialWithCaption(gauge, "", clip);
+      const run = gauge.write(parts.caption, "LOAD");
+
+      assertDrawsAfterDial(gauge, run, parts);
+    } finally {
+      gauge.teardown();
+      restore();
+    }
+  });
+
+  test("a faint caption, its colour at 30% alpha, draws after the dial's face", () => {
+    // The alpha is the text's, not the caption box's, so the box has nothing
+    // to paint and is no more translucent than a clear caption.
+    const restore = installRange();
+    const gauge = setupSiblings();
+    try {
+      const parts = dialWithCaption(gauge, "color: rgba(255, 255, 255, 0.3)");
+      const run = gauge.write(parts.caption, "LOAD");
+      const material = /** @type {THREE.MeshBasicMaterial} */ (run.material);
+      assert.ok(material.opacity < 0.5, `the caption is drawn at ${material.opacity}`);
+
+      assertDrawsAfterDial(gauge, run, parts);
+    } finally {
+      gauge.teardown();
+      restore();
+    }
+  });
+
+  test("a caption fading in draws after the dial's face all through the fade", () => {
+    // The fade is on a child of the caption, so the caption's own box stays
+    // empty and only the text it holds is faint.
+    const restore = installRange();
+    const gauge = setupSiblings();
+    try {
+      const parts = dialWithCaption(gauge);
+      const value = gauge.add("opacity: 0.3", [30, 60, 70, 80], parts.caption);
+      const run = gauge.write(value, "LOAD");
+      const opacity = () => /** @type {THREE.MeshBasicMaterial} */ (run.material).opacity;
+      assert.ok(opacity() < 0.5, `the caption is drawn at ${opacity()}`);
+      assertDrawsAfterDial(gauge, run, parts);
+
+      for (const step of ["0.45", "0.6", "1"]) {
+        value.style.opacity = step;
+        gauge.mirror.attributeChanged(value);
+        assert.equal(opacity(), Number(step), "the run follows the fade");
+        assertDrawsAfterDial(gauge, run, parts);
+      }
+    } finally {
+      gauge.teardown();
+      restore();
+    }
+  });
+
+  test("a field's value laid over a dial draws after the dial's face", () => {
+    const canvas = stubCanvas();
+    const gauge = setupSiblings();
+    try {
+      const { parts, object } = fieldOverDial(gauge);
+
+      const value = findMesh(object, isRunMesh);
+      assert.ok(value, "the value is drawn");
+      assertDrawsAfterDial(gauge, value, parts);
+    } finally {
+      gauge.teardown();
+      canvas.restore();
+    }
+  });
+
+  test("a field's caret laid over a dial draws after the dial's face", () => {
+    const canvas = stubCanvas();
+    const gauge = setupSiblings();
+    try {
+      // The field being typed into, which is the one that draws a caret.
+      const { parts, object } = fieldOverDial(gauge, { isFocused: () => true, press: () => {} });
+
+      // The caret is a quad of its own in the field's content, not the
+      // field's box.
+      const box = object.children.find(
+        (child) => /** @type {THREE.Mesh} */ (child).geometry === rectGeometry,
+      );
+      const caret = findMesh(object, (mesh) => mesh !== box && mesh.geometry === rectGeometry);
+      assert.ok(caret, "the caret is drawn");
+      assertDrawsAfterDial(gauge, caret, parts);
+    } finally {
+      gauge.teardown();
+      canvas.restore();
+    }
+  });
+
+  test("a list marker laid over a dial draws after the dial's face", () => {
+    const canvas = stubCanvas();
+    const gauge = setupSiblings();
+    try {
+      const parts = dialWithCaption(gauge);
+      const item = document.createElement("li");
+      item.style.cssText = "display: list-item; list-style-type: disc";
+      gauge.adopt(item, [50, 60, 70, 80], parts.caption);
+      const object = gauge.drawWith(item, (ctx) => markedBox(ctx, item));
+
+      const marker = findMesh(object, isRunMesh);
+      assert.ok(marker, "the marker is drawn");
+      assert.ok(canvas.drawn.includes("•"), "the marker is a bullet");
+      assertDrawsAfterDial(gauge, marker, parts);
+    } finally {
+      gauge.teardown();
+      canvas.restore();
+    }
+  });
+
+  test("an <svg> laid over a dial paints all of itself after the dial's face", () => {
+    // An `<svg>` paints its shapes in a slot that starts at its content
+    // order and ends short of the next level (`paintSlot`), so no shape in
+    // it draws before that order.
+    const gauge = setupSiblings();
+    try {
+      const parts = dialWithCaption(gauge);
+      const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      gauge.adopt(svg, [30, 60, 70, 80], parts.caption);
+
+      const slot = new THREE.Object3D();
+      slot.renderOrder = getContentRenderOrder(
+        /** @type {HTMLElement} */ (/** @type {unknown} */ (svg)),
+      );
+      assertDrawsAfterDial(gauge, slot, parts);
+    } finally {
+      gauge.teardown();
+    }
+  });
+});
+
+/**
+ * A text field holding "42", with nothing of its own to paint, in the
+ * caption `dialWithCaption` lays over a dial, drawn as the portal draws one.
+ *
+ * @param {ReturnType<typeof setupSiblings>} gauge
+ * @param {import("./textInput.js").InputFocus} [focus] For a field being
+ *   typed into, which draws a caret.
+ */
+function fieldOverDial(gauge, focus) {
+  const parts = dialWithCaption(gauge);
+  const input = document.createElement("input");
+  input.type = "text";
+  input.value = "42";
+  input.style.cssText = "background: transparent; border: 0";
+  gauge.adopt(input, [30, 60, 70, 80], parts.caption);
+  const object = gauge.drawWith(input, (ctx) =>
+    textInput(focus ? InputFocusContext.set(ctx, focus) : ctx, input),
+  );
+  return { parts, object };
+}
+
+/**
+ * The first mesh under an object that a predicate accepts.
+ *
+ * @param {THREE.Object3D} object
+ * @param {(mesh: THREE.Mesh) => boolean} accept
+ * @returns {THREE.Mesh | undefined}
+ */
+function findMesh(object, accept) {
+  /** @type {THREE.Mesh | undefined} */
+  let found;
+  object.traverse((child) => {
+    if (!found && child instanceof THREE.Mesh && accept(child)) {
+      found = child;
+    }
+  });
+  return found;
+}
 
 /**
  * Give an element the client rect jsdom does not compute: left, top, right

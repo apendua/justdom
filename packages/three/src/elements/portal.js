@@ -325,9 +325,10 @@ function claimRoot(root) {
  * @property {boolean} [thumbstickWheel] Whether a hand's thumbstick is a
  *   mouse wheel on this panel: while the hand's ray is on the panel and it
  *   holds no button, pushing the stick forward or pulling it back sends
- *   `wheel` to the element under the ray, once a frame, with a `deltaY`
- *   that follows how far the stick is pushed, forward as negative, as a
- *   wheel turned up says it. For a page that zooms or pans on the wheel. It
+ *   `wheel` to the element under the ray, once a frame (see `wheelTarget`
+ *   in `pointerForwarding.js` for which one), with a `deltaY` that follows
+ *   how far the stick is pushed, forward as negative, as a wheel turned up
+ *   says it. For a page that zooms or pans on the wheel. It
  *   scrolls nothing of itself, since a list is scrolled by pulling it. Off
  *   by default, because a scene may read the stick for something else, to
  *   turn a carried object or to move the player; one that does not can

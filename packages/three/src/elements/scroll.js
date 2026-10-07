@@ -11,9 +11,10 @@ import { sampleRenderingUpdates, scrollElementBy } from "./renderingUpdates.js";
  *
  * A headset has no wheel that scrolls a list (a panel that asks for one
  * hears the thumbstick as `wheel`, which scrolls nothing of itself) and
- * nothing worth aiming a scrollbar thumb at, so the gesture to mirror is the
- * one every touchscreen already teaches: take hold of the content and pull. Hold the trigger over a list that has
- * more in it than fits, move your hand, and the list follows.
+ * nothing worth aiming a scrollbar thumb at, so the gesture to mirror is
+ * the one every touchscreen already teaches: take hold of the content and
+ * pull. Hold the trigger over a list that has more in it than fits, move
+ * your hand, and the list follows.
  *
  * Two things make it feel like holding something rather than nudging it.
  *

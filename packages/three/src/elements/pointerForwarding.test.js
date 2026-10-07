@@ -2197,8 +2197,9 @@ describe("the thumbstick as a wheel", () => {
    */
   const stick = () => {
     const axes = [0, 0, 0, 0];
+    const trigger = { pressed: false };
     const source = /** @type {XRInputSource} */ (
-      /** @type {unknown} */ ({ gamepad: { axes, buttons: [] } })
+      /** @type {unknown} */ ({ gamepad: { axes, buttons: [trigger, { pressed: false }] } })
     );
     return {
       source,
@@ -2206,7 +2207,48 @@ describe("the thumbstick as a wheel", () => {
       push(y) {
         axes[3] = y;
       },
+      /**
+       * Hold the trigger down as the gamepad reports it, with no event.
+       *
+       * @param {boolean} pressed
+       */
+      hold(pressed) {
+        trigger.pressed = pressed;
+      },
     };
+  };
+
+  /**
+   * Frames that the page asks for while `body` runs, and then over `limit`
+   * more frames: how many of those rounds, `body` the first, asked for
+   * one. A panel left alone asks for none, and one that reads a stick
+   * every frame asks for one each round.
+   *
+   * @param {() => void} body
+   * @param {number} [limit]
+   * @returns {number}
+   */
+  const framesAskedFor = (body, limit = 5) => {
+    const { requestAnimationFrame: queue } = globalThis;
+    let asked = 0;
+    globalThis.requestAnimationFrame = (callback) => {
+      asked += 1;
+      return queue(callback);
+    };
+    try {
+      body();
+      let rounds = asked > 0 ? 1 : 0;
+      for (let i = 0; i < limit; i += 1) {
+        asked = 0;
+        flushFrame();
+        if (asked > 0) {
+          rounds += 1;
+        }
+      }
+      return rounds;
+    } finally {
+      globalThis.requestAnimationFrame = queue;
+    }
   };
 
   /**
@@ -2218,7 +2260,7 @@ describe("the thumbstick as a wheel", () => {
   const wheeling = async (options = { thumbstickWheel: true }) => {
     const page = await mirrored(board, { portal: options });
     const clock = fakeClock();
-    const { source, push } = stick();
+    const { source, push, hold } = stick();
     const hand = rayHand(page.manager, source);
     /** @type {WheelEvent[]} */
     const events = [];
@@ -2238,8 +2280,11 @@ describe("the thumbstick as a wheel", () => {
       panel: page.panel,
       manager: page.manager,
       scene: page.scene,
+      source,
       hand,
       push,
+      hold,
+      teardownPage: () => page.teardown(),
       events,
       heard,
       /**
@@ -2350,6 +2395,95 @@ describe("the thumbstick as a wheel", () => {
       assert.equal(front.root.contains(/** @type {Node} */ (w.events[0].target)), true);
     } finally {
       front.teardown();
+      w.teardown();
+    }
+  });
+
+  test("turns nothing under a trigger held since before the ray came to the panel", async () => {
+    const w = await wheeling();
+    try {
+      // Held on something the scene carries, so the panel heard no press.
+      w.hold(true);
+      w.hand.aim(w.panel, 60, 60);
+      w.push(-1);
+      w.after(50);
+      w.hold(false);
+      w.after(50);
+      assert.deepEqual(w.heard, ["wheel #piece at 60,60 deltaY -50"]);
+    } finally {
+      w.teardown();
+    }
+  });
+
+  test("turns nothing while the ray is on the scene's own object in the panel", async () => {
+    const w = await wheeling();
+    // Over the board, as a plugin hangs its objects.
+    const prop = new THREE.Mesh(
+      new THREE.PlaneGeometry(40, 40),
+      new THREE.MeshBasicMaterial({ side: THREE.DoubleSide }),
+    );
+    prop.position.set(150, 120, -5);
+    w.panel.add(prop);
+    w.manager.add(/** @type {never} */ (prop));
+    try {
+      w.hand.aim(w.panel, 150, 120);
+      w.push(-1);
+      w.after(50);
+      w.hand.aim(w.panel, 180, 150);
+      w.after(50);
+      assert.deepEqual(w.heard, ["wheel #board at 180,150 deltaY -50"]);
+    } finally {
+      w.manager.remove(/** @type {never} */ (prop));
+      w.teardown();
+    }
+  });
+
+  test("starts when a source with a stick comes to a hand already on the panel", async () => {
+    const w = await wheeling();
+    try {
+      w.hand.use(null);
+      w.hand.aim(w.panel, 60, 60);
+      w.hand.use(w.source);
+      w.hand.aim(w.panel, 62, 60);
+      w.push(-1);
+      w.after(50);
+      assert.deepEqual(w.heard, ["wheel #piece at 62,60 deltaY -50"]);
+    } finally {
+      w.teardown();
+    }
+  });
+
+  test("reads the stick only while a hand with one is on the panel", async () => {
+    const w = await wheeling();
+    try {
+      assert.equal(
+        framesAskedFor(() => w.hand.aim(w.panel, 150, 120)),
+        6,
+        "every frame while it is on the panel",
+      );
+      // The frame the hand turns in is the last to read it. It has asked
+      // for the next before it heard it was the last, and that one runs
+      // nothing and asks for none.
+      assert.equal(
+        framesAskedFor(() => w.hand.turnAway()),
+        1,
+        "and no longer once it has left",
+      );
+      // A hand with no gamepad, as the mouse is.
+      w.hand.use(null);
+      assert.equal(
+        framesAskedFor(() => w.hand.aim(w.panel, 150, 120)),
+        0,
+        "nor for a hand with no stick",
+      );
+      w.hand.use(w.source);
+      w.hand.aim(w.panel, 152, 120);
+      assert.equal(
+        framesAskedFor(() => w.teardownPage()),
+        0,
+        "nor once the panel is gone",
+      );
+    } finally {
       w.teardown();
     }
   });

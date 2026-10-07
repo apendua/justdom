@@ -198,8 +198,10 @@ const scratch = new THREE.Vector3();
  * into that frame and compared with the element's size and clip box. An
  * object the mirror has culled, a row scrolled out of its list, is not
  * visited and nor is anything in it. The walk visits every element in the
- * panel otherwise, since a child can overflow its parent, and it is only
- * asked while a drag is under way.
+ * panel otherwise, since a child can overflow its parent. So it is asked
+ * once a frame only while a drag is under way, or while a thumbstick turns
+ * the wheel with the ray on a panel's background or a list's gaps, where
+ * no control names the element; and once for a press, in development.
  *
  * @param {HTMLElement} element
  * @param {(node: Node) => THREE.Object3D | undefined} objectOf The panel's

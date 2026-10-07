@@ -83,6 +83,15 @@ export function rayHand(manager, inputSource = null) {
       controller.dispatchEvent(/** @type {never} */ ({ type: "disconnected", data: null }));
       moved();
     },
+    /**
+     * Have another source drive the hand from now on, as three connects a
+     * controller's source anew.
+     *
+     * @param {XRInputSource | null} source
+     */
+    use(source) {
+      inputSource = source;
+    },
     /** Take the controller off the manager. */
     remove() {
       subscription.unsubscribe();

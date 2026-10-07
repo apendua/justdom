@@ -9,6 +9,7 @@ import {
   getPanel,
   hitElement,
   isDragSource,
+  isOnPanel,
   lazyPanel,
   moveInit,
   planeInit,
@@ -195,23 +196,25 @@ function noteMissedPress(element) {
  *   from the controller's own events, wherever its ray is when a button
  *   closes, from the hand's first pointer event on.
  * @property {number} x Where on the page the hand's pointer last was, as
- *   its last `pointerdown` or `pointermove` said, or its last captured
- *   `pointerup`, in client coordinates. One point for every panel, since
- *   the panels' points are all on the one page, wherever the event that
- *   wrote it was sent. A release with no capture is left out: off its
- *   panel it says 0, 0, which is nowhere rather than a place. A captured
- *   release whose ray crosses the captor's plane nowhere, the hand turned
- *   round, says this (see `placeCapturedRelease`), and so do
- *   `gotpointercapture` and `lostpointercapture` (see `atPointer`) and the
- *   crossings a placed release brings (see `placedRelease`).
+ *   its last `pointerdown`, `pointermove` or placed `pointerup` said, in
+ *   client coordinates. One point for every panel, since the panels'
+ *   points are all on the one page, wherever the event that wrote it was
+ *   sent. A release is placed when it is captured, or when its ray is on
+ *   its panel; one with no capture off its panel says 0, 0, which is
+ *   nowhere rather than a place, and is left out. A captured release whose
+ *   ray crosses the captor's plane nowhere, the hand turned round, says
+ *   this (see `placeCapturedRelease`), and so do `gotpointercapture` and
+ *   `lostpointercapture` (see `atPointer`) and the crossings a placed
+ *   release brings (see `placedRelease`).
  * @property {number} y See `x`.
- * @property {boolean} placedRelease Whether the hand's last `pointerup` was
- *   captured, and so placed on its captor's plane wherever the ray was.
- *   Set as each `pointerup` goes out and cleared as each `pointerdown`
- *   does. The crossings that release brings with the ray off the panel
- *   say where it said the pointer is (see `track`). A press that sent no
- *   release, one the page lost to a scroll or a drag and drop, leaves it
- *   cleared, and those crossings stay nowhere, as nothing said where the
+ * @property {boolean} placedRelease Whether the release a `selectend` is
+ *   finishing went out placed (see `x`), from its `pointerup` to the
+ *   crossings the same `selectend` sends after it, which then say where
+ *   it said the pointer is (see `track`); false at any other time. Set as
+ *   the `pointerup` goes out, and cleared once those crossings have read
+ *   it. A press that sends no release, one the page lost to a scroll or a
+ *   drag and drop or one swallowed on an element that had gone, never
+ *   sets it, and its crossings stay nowhere, as nothing said where the
  *   pointer went.
  */
 
@@ -775,17 +778,20 @@ function endPress(controller) {
  * A move's pointer event names no button, as a browser's says `-1` for a
  * move that changes none. A captured `pointerup` has its point rewritten
  * once the capture has settled, from the captor it then goes to (see
- * `placeCapturedRelease`). Each event but an uncaptured `pointerup`
- * records its point as where the hand's pointer is (`Hand.x`, `Hand.y`).
+ * `placeCapturedRelease`). Each event records its point as where the
+ * hand's pointer is (`Hand.x`, `Hand.y`), but a release that is not
+ * placed: uncaptured, with its ray off its panel.
  *
  * @param {HTMLElement} element
  * @param {"pointerdown" | "pointermove" | "pointerup"} type
  * @param {PointerEventInit} init
  * @param {XRTargetRaySpace} controller
+ * @param {boolean} [onPanel] Whether the ray is on the panel the event
+ *   went to, which a release has to be asked (see `releaseInit`).
  * @returns {boolean} Whether the mouse event, if it was sent, was not
  *   cancelled.
  */
-function sendPointerAndMouse(element, type, init, controller) {
+function sendPointerAndMouse(element, type, init, controller, onPanel = true) {
   const button = init.button;
   if (type === "pointermove") {
     init.button = -1;
@@ -797,7 +803,6 @@ function sendPointerAndMouse(element, type, init, controller) {
     hand.pointerOnly = false;
     hand.cancelled = false;
     hand.pending = null;
-    hand.placedRelease = false;
   } else if (hand.cancelled) {
     return true;
   }
@@ -821,12 +826,12 @@ function sendPointerAndMouse(element, type, init, controller) {
   const captor = hand.captor?.isConnected ? hand.captor : null;
   const target = captor ?? element;
   if (type === "pointerup") {
-    hand.placedRelease = captor !== null;
+    hand.placedRelease = captor !== null || onPanel;
     if (captor) {
       placeCapturedRelease(controller, hand, captor, init);
     }
   }
-  if (type !== "pointerup" || captor) {
+  if (type !== "pointerup" || hand.placedRelease) {
     hand.x = init.clientX ?? 0;
     hand.y = init.clientY ?? 0;
   }
@@ -1511,7 +1516,7 @@ export function createPanelForwarder(ctx, container) {
     // it said the pointer is, on its captor's plane (see
     // `Hand.placedRelease`).
     const own = panel();
-    const on = own !== null && getPanel(e.intersection?.object ?? null) === own;
+    const on = isOnPanel(own, e);
     const init = moveInit(own, on ? e : NOWHERE);
     if (released && !on && pointer.placedRelease) {
       writeLastPoint(init, pointer);
@@ -1755,7 +1760,13 @@ export function createPanelForwarder(ctx, container) {
           // A captured hand's release is placed from its captor's panel
           // (see `placeCapturedRelease`).
           if (!dnd.didDrag(e.controller)) {
-            sendPointerAndMouse(target.element, "pointerup", releaseInit(panel(), e), e.controller);
+            sendPointerAndMouse(
+              target.element,
+              "pointerup",
+              releaseInit(panel(), e),
+              e.controller,
+              isOnPanel(panel(), e),
+            );
           }
           haptics?.release(e.inputSource);
         }
@@ -1768,6 +1779,11 @@ export function createPanelForwarder(ctx, container) {
       const hand = panelHand(e.controller);
       const catchUp = () => {
         track(e, hand, true);
+        // The release is finished with, and says nothing of the next one.
+        const released = hands.get(e.controller);
+        if (released) {
+          released.placedRelease = false;
+        }
         if (held) {
           bringUpElsewhere(e.controller, registered, {
             pointer: true,

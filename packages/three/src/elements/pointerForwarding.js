@@ -1141,34 +1141,33 @@ export const PointerForwarderContext = createProperty(
  * so it hears them all; the elements only register (see
  * `forwardPointerEvents`).
  *
- * A browser hit-tests once, picks the innermost element, dispatches once
- * and bubbles, and so does this. For each event the forwarder reads which
- * of its targets the event went through, innermost first. A press arrives
- * as `mousedown`, `mouseup` and `click`, a ray moving over a control as
+ * A browser hit-tests once, picks the innermost element, dispatches once and
+ * bubbles, and so does this. For each event the forwarder reads which of its
+ * targets the event went through, innermost first. A press arrives as
+ * `mousedown`, `mouseup` and `click`, a ray moving over a control as
  * `mousemove`, and a press of the grip as `contextmenu`, which is the grip
- * standing in for the mouse's other button. Each `mousedown`, `mouseup`
- * and `mousemove` has the pointer event a browser sends ahead of it, from
- * the hand's own pointer (see `sendPointerAndMouse`). Each carries the
- * point the ray met, on the page, as its `clientX` and `clientY` (see
- * `pressInit` in `dragAndDrop.js`). The page also hears where the ray
- * crosses from element to element (see `track`), a press that becomes a
- * scroll or a drag cancelled (see `cancelPointer`), and a captured hand's moves
- * wherever its ray goes (see `following`). While a hand's pointer is over
- * a control, which is the control its ray is on, or under a capture the
- * captor wherever the ray is (see `rehover`), the element carries
- * `data-xr-hover`, and while it is held, `data-xr-active`, each kept per
- * hand (see `createFlag`). A stylesheet answers those flags where a page
- * would use `:hover` and `:active`. Where the panel has haptics, the hand feels a press and its
- * release, of the grip as of the trigger, and an arrival on a control where
- * the panel asks for one. A press on something draggable that the hand
- * carries away is a drag and drop instead, and its release is a `drop` and
- * a `dragend` rather than a `mouseup` and a `click` (see `dragAndDrop.js`).
- * A grip that closes while the trigger carries something that way, or
- * moves a list, on this panel or another, is no press on anything: it sends
- * no `contextmenu` and is not felt, closing or opening. One that closed
- * before and opens while the hand is busy sends no `contextmenu` either,
- * but is felt opening, as its closing was: the pulses follow the closing,
- * and the right-click asks again as it opens.
+ * standing in for the mouse's other button. Each `mousedown`, `mouseup` and
+ * `mousemove` has the pointer event a browser sends ahead of it, from the
+ * hand's own pointer (see `sendPointerAndMouse`). Each carries the point the
+ * ray met, on the page, as its `clientX` and `clientY` (see `pressInit` in
+ * `dragAndDrop.js`). The page also hears where the ray crosses from element to
+ * element (see `track`), a press that becomes a scroll or a drag cancelled (see
+ * `cancelPointer`), and a captured hand's moves wherever its ray goes (see
+ * `following`). While a hand's pointer is over a control, which is the control
+ * its ray is on, or under a capture the captor wherever the ray is (see
+ * `rehover`), the element carries `data-xr-hover`, and while it is held,
+ * `data-xr-active`, each kept per hand (see `createFlag`). A stylesheet answers
+ * those flags where a page would use `:hover` and `:active`. Where the panel
+ * has haptics, the hand feels a press and its release, of the grip as of the
+ * trigger, and an arrival on a control where the panel asks for one. A press on
+ * something draggable that the hand carries away is a drag and drop instead,
+ * and its release is a `drop` and a `dragend` rather than a `mouseup` and a
+ * `click` (see `dragAndDrop.js`). A grip that closes while the trigger carries
+ * something that way, or moves a list, on this panel or another, is no press on
+ * anything: it sends no `contextmenu` and is not felt, closing or opening. One
+ * that closed before and opens while the hand is busy sends no `contextmenu`
+ * either, but is felt opening, as its closing was: the pulses follow the
+ * closing, and the right-click asks again as it opens.
  *
  * Controls nest, if only because `cursor` is inherited: the label in a
  * button, the icon in it, a button on a clickable card. A press goes where

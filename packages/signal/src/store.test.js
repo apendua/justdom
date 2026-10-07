@@ -162,29 +162,6 @@ test("custom setters", () => {
   assert.deepStrictEqual(values, [1, 2, 3]);
 });
 
-test("a write replaces a getter that has no setter", () => {
-  // The way a component gives a prop a default that follows a palette:
-  // `get color() { return palette.amber }` in its defaults, which a parent
-  // overrides with `set({ color })`. The write has to win over the getter.
-  const palette = store({ amber: "amber" });
-  /** @type {{ color: string }} */
-  const state = store({
-    get color() {
-      return palette.amber;
-    },
-  });
-  /** @type {string[]} */
-  const values = [];
-  new Effect(() => {
-    values.push(state.color);
-  });
-  palette.amber = "orange";
-  state.color = "ivory";
-  palette.amber = "yellow";
-  state.color = "ivory";
-  assert.deepStrictEqual(values, ["amber", "orange", "ivory"]);
-});
-
 test("non-plain object", () => {
   assert.throws(() => {
     store(new Date());

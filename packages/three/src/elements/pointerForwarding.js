@@ -729,7 +729,10 @@ function endPress(controller) {
  * A hand whose press the browser would have cancelled sends neither (see
  * `Hand.cancelled`).
  * A move's pointer event names no button, as a browser's says `-1` for a
- * move that changes none.
+ * move that changes none. A `pointerdown` or `pointermove` records its
+ * point as where the hand's pointer is (`Hand.x`, `Hand.y`). A captured
+ * `pointerup` has its point rewritten once the capture has settled, from
+ * the captor it then goes to (see `placeCapturedRelease`).
  *
  * @param {HTMLElement} element
  * @param {"pointerdown" | "pointermove" | "pointerup"} type

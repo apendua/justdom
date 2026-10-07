@@ -1669,6 +1669,8 @@ describe("a ray's pointer events", () => {
     page.teardown();
   });
 
+  // Pins where the release reads its capture: after `settleCapture`, from
+  // the captor it is then sent to, and not before.
   test("let go of before the release, are released as an uncaptured press is", async () => {
     const page = await mirrored(drawing);
     const element = /** @type {HTMLElement} */ (page.root.querySelector("#drawing"));

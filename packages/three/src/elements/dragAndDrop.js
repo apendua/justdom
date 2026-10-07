@@ -486,8 +486,9 @@ export function pressInit(panel, e, cancelable, button = 0) {
  * The init for the `mouseup` sent for a press's release. One event, probed
  * like a press; but the ray may have wandered since the press, and only a
  * release on the element's own panel has a point on its page. A captured
- * hand's release takes its point from the captor's panel instead, as its
- * moves do (see `placeCapturedRelease` in `pointerForwarding.js`).
+ * hand's release takes its point from `placeCapturedRelease` in
+ * `pointerForwarding.js` instead: the captor's panel, as its moves do, or
+ * where the pointer last was.
  *
  * @param {Panel | null} panel
  * @param {{ intersection?: THREE.Intersection }} e The `selectend`.

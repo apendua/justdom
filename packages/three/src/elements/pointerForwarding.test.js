@@ -1717,6 +1717,81 @@ describe("a ray's pointer events", () => {
     page.teardown();
   });
 
+  test("captured, leave the captor where the release says, not where the last move did", async () => {
+    const page = await mirrored(drawing);
+    const hand = rayHand(page.manager);
+    hand.aim(page.panel, 50, 50);
+    hand.trigger("selectstart");
+    hand.aim(page.panel, 500, 350);
+    // The ray moves on with no frame between, so the release is the first
+    // the page hears of where it went.
+    page.panel.updateWorldMatrix(true, true);
+    const point = page.panel.localToWorld(new THREE.Vector3(450, 320, 0));
+    hand.controller.position.set(point.x, point.y, point.z + 1);
+    hand.controller.updateMatrixWorld(true);
+    const { heard, stop } = hearing(["pointerup", "lostpointercapture", "pointerout"], {
+      at: true,
+    });
+    hand.trigger("selectend");
+    stop();
+    assert.deepEqual(heard, [
+      "pointerup #drawing at 450,320 buttons 0",
+      "lostpointercapture #drawing at 450,320 buttons 0",
+      "pointerout #drawing at 450,320 buttons 0",
+    ]);
+    hand.remove();
+    page.teardown();
+  });
+
+  for (const [gesture, draggable] of /** @type {const} */ ([
+    ["a scroll", false],
+    ["a drag and drop", true],
+  ])) {
+    test(`taken by ${gesture} and released off the panel, leave nowhere, as no release says where`, async () => {
+      const page = await mirrored((place) => scrollingRow(place, draggable));
+      const hand = rayHand(page.manager);
+      hand.aim(page.panel, 95, 100);
+      hand.trigger("selectstart");
+      hand.aim(page.panel, 95, 97);
+      hand.aim(page.panel, 95, 60);
+      hand.aim(page.panel, 95, 55);
+      hand.turnAway();
+      const { heard, stop } = hearing(["pointerup", "mouseout"], { at: true });
+      hand.trigger("selectend");
+      await null;
+      stop();
+      assert.deepEqual(heard, ["mouseout #row at 0,0 buttons 0"]);
+      hand.remove();
+      page.teardown();
+    });
+  }
+
+  test("uncaptured, released off the panel, leave the pointer where it last was on the page", async () => {
+    const page = await mirrored((place) => {
+      place("div", "btn", [20, 20, 100, 40]).style.cursor = "pointer";
+    });
+    const button = /** @type {HTMLElement} */ (page.root.querySelector("#btn"));
+    let pointerId = 0;
+    button.addEventListener("pointerdown", (event) => {
+      pointerId = /** @type {PointerEvent} */ (event).pointerId;
+    });
+    const hand = rayHand(page.manager);
+    hand.aim(page.panel, 70, 40);
+    hand.trigger("selectstart");
+    hand.aim(page.panel, 500, 350);
+    // A release off the panel, uncaptured, is nowhere on the page.
+    hand.trigger("selectend");
+    // A capture taken with no button held, before the next press.
+    button.setPointerCapture(pointerId);
+    const { heard, stop } = hearing(["gotpointercapture"], { at: true });
+    hand.aim(page.panel, 60, 30);
+    stop();
+    button.releasePointerCapture(pointerId);
+    assert.deepEqual(heard, ["gotpointercapture #btn at 70,40 buttons 0"]);
+    hand.remove();
+    page.teardown();
+  });
+
   // Pins where the release reads its capture: after `settleCapture`, from
   // the captor it is then sent to, and not before.
   test("let go of before the release, are released as an uncaptured press is", async () => {

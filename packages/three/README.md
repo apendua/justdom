@@ -1138,8 +1138,8 @@ field, and the board goes, as the field would blur on a page; a press on another
 typing there instead. Only a panel with a keyboard listens for that press, so one in a panel with
 `keyboard: false`, or on the scene outside every panel, leaves the board up. It also goes on
 `Escape`, which a board can offer as its "done" key, when the field being typed into leaves the
-document or its panel goes, and with the scene; `dismiss` on the target closes it for any other
-reason a board might have.
+document or its panel goes, when the session ends, and with the scene; `dismiss` on the target
+closes it for any other reason a board might have.
 
 A panel can still say something of its own. Its `keyboard` option is laid over the scene's, so a
 panel for entering a code can bring a different board, and `keyboard: false` gives a panel none:

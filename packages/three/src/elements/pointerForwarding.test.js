@@ -1444,6 +1444,67 @@ describe("a ray's pointer events", () => {
     page.teardown();
   });
 
+  for (const [gesture, draggable, before, at] of /** @type {const} */ ([
+    // The move that crosses the threshold is the last the page hears.
+    ["a scroll", false, [], "95,60"],
+    // The page hears no moves while the row is held, and `dragstart`
+    // says the press's point, which is where the drag goes on from.
+    ["a drag and drop", true, ["dragstart #row at 95,100 buttons 0"], "95,100"],
+  ])) {
+    test(`cancelled by ${gesture}, say where the page last heard the pointer`, async () => {
+      const page = await mirrored((place) => scrollingRow(place, draggable));
+      const hand = rayHand(page.manager);
+      hand.aim(page.panel, 95, 100);
+      hand.trigger("selectstart");
+      hand.aim(page.panel, 95, 97);
+      const { heard, stop } = hearing(
+        ["dragstart", "pointercancel", "pointerout", "pointerleave"],
+        { at: true },
+      );
+      hand.aim(page.panel, 95, 60);
+      stop();
+      assert.deepEqual(heard, [
+        ...before,
+        `pointercancel #row at ${at} buttons 0`,
+        `pointerout #row at ${at} buttons 0`,
+        `pointerleave #row at ${at} buttons 0`,
+        `pointerleave #list at ${at} buttons 0`,
+        `pointerleave #root at ${at} buttons 0`,
+      ]);
+      hand.trigger("selectend");
+      await null;
+      hand.remove();
+      page.teardown();
+    });
+  }
+
+  test("cancelled as the hand goes mid-press, leave where the page last heard the pointer", async () => {
+    const page = await mirrored((place) => {
+      place("div", "btn", [20, 20, 100, 40]).style.cursor = "pointer";
+    });
+    const hand = rayHand(page.manager);
+    hand.aim(page.panel, 70, 40);
+    hand.trigger("selectstart");
+    hand.aim(page.panel, 75, 45);
+    const { heard, stop } = hearing(
+      ["pointercancel", "pointerout", "pointerleave", "mouseout", "mouseleave"],
+      { at: true },
+    );
+    hand.disconnect();
+    stop();
+    assert.deepEqual(heard, [
+      "pointercancel #btn at 75,45 buttons 0",
+      "pointerout #btn at 75,45 buttons 0",
+      "pointerleave #btn at 75,45 buttons 0",
+      "pointerleave #root at 75,45 buttons 0",
+      "mouseout #btn at 75,45 buttons 0",
+      "mouseleave #btn at 75,45 buttons 0",
+      "mouseleave #root at 75,45 buttons 0",
+    ]);
+    hand.remove();
+    page.teardown();
+  });
+
   test("cancelled, catch up on another panel at the release where the ray is, holding nothing", async () => {
     // The press became a scroll on its own panel, and the ray went on to
     // another panel's button while the press was the scroll's.
@@ -1761,11 +1822,13 @@ describe("a ray's pointer events", () => {
     page.teardown();
   });
 
-  for (const [gesture, draggable] of /** @type {const} */ ([
-    ["a scroll", false],
-    ["a drag and drop", true],
+  for (const [gesture, draggable, at] of /** @type {const} */ ([
+    // The cancel's point, the last the page heard before the scroll.
+    ["a scroll", false, "95,60"],
+    // The `dragend`'s, the last point the drag was over the panel.
+    ["a drag and drop", true, "95,55"],
   ])) {
-    test(`taken by ${gesture} and released off the panel, leave nowhere, as no release says where`, async () => {
+    test(`taken by ${gesture} and released off the panel, leave where the page last heard the pointer`, async () => {
       const page = await mirrored((place) => scrollingRow(place, draggable));
       const hand = rayHand(page.manager);
       hand.aim(page.panel, 95, 100);
@@ -1778,7 +1841,7 @@ describe("a ray's pointer events", () => {
       hand.trigger("selectend");
       await null;
       stop();
-      assert.deepEqual(heard, ["mouseout #row at 0,0 buttons 0"]);
+      assert.deepEqual(heard, [`mouseout #row at ${at} buttons 0`]);
       hand.remove();
       page.teardown();
     });
@@ -1810,7 +1873,7 @@ describe("a ray's pointer events", () => {
     page.teardown();
   });
 
-  test("after a swallowed press, leave nowhere, whatever the hand's last release said", async () => {
+  test("after a swallowed press, leave where the page last heard the pointer, not where the last release said", async () => {
     const page = await mirrored((place) => {
       drawing(place, [20, 20, 100, 40]);
       place("div", "gone", [300, 200, 60, 60]).style.cursor = "pointer";
@@ -1836,9 +1899,11 @@ describe("a ray's pointer events", () => {
     const { heard, stop } = hearing(["pointerup", "pointerout", "mouseout"], { at: true });
     hand.trigger("selectend");
     stop();
+    // The captured move to the gone element's spot, and not the release
+    // before it.
     assert.deepEqual(heard, [
-      "pointerout #drawing at 0,0 buttons 0",
-      "mouseout #drawing at 0,0 buttons 0",
+      "pointerout #drawing at 330,230 buttons 0",
+      "mouseout #drawing at 330,230 buttons 0",
     ]);
     hand.remove();
     page.teardown();
@@ -1935,12 +2000,21 @@ describe("a ray's pointer events", () => {
     const hand = rayHand(page.manager);
     hand.aim(page.panel, 50, 50);
     hand.trigger("selectstart");
+    const { heard, stop } = hearing(["pointermove", "mouseover", "mouseout", "mouseleave"], {
+      at: true,
+    });
     hand.aim(other.panel, 70, 40);
-    const { heard, stop } = hearing(["mouseover", "mouseout", "mouseleave"]);
     hand.disconnect();
     hand.frame();
     stop();
-    assert.deepEqual(heard, ["mouseout #drawing", "mouseleave #drawing", "mouseleave #root"]);
+    assert.deepEqual(heard, [
+      "pointermove #drawing at 470,40 buttons 1",
+      // The hand has no ray left to say where it went, so the mouse leaves
+      // from where the page last heard the pointer, the captured move.
+      "mouseout #drawing at 470,40 buttons 0",
+      "mouseleave #drawing at 470,40 buttons 0",
+      "mouseleave #root at 470,40 buttons 0",
+    ]);
     hand.remove();
     other.teardown();
     page.teardown();

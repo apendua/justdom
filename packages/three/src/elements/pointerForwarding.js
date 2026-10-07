@@ -195,28 +195,52 @@ function noteMissedPress(element) {
  *   as the secondary one, 2, as its `contextmenu` says `button` 2. Kept
  *   from the controller's own events, wherever its ray is when a button
  *   closes, from the hand's first pointer event on.
- * @property {number} x Where on the page the hand's pointer last was, as
- *   its last `pointerdown`, `pointermove` or placed `pointerup` said, in
- *   client coordinates. One point for every panel, since the panels'
+ * @property {number} x Where on the page the page last heard the hand's
+ *   pointer was, in client coordinates: the point of the last of its
+ *   events that said one, its `pointerdown`, `pointermove` and placed
+ *   `pointerup`, the crossings of its pointer or the mouse from element
+ *   to element (see `track` and `ForwarderEntry.bringUp`), and the drag
+ *   events its press sends, `dragstart` to `dragend` (see
+ *   `DragAndDrop.begin`). One point for every panel, since the panels'
  *   points are all on the one page, wherever the event that wrote it was
  *   sent. A release is placed when it is captured, or when its ray is on
  *   its panel; one with no capture off its panel says 0, 0, which is
- *   nowhere rather than a place, and is left out. A captured release whose
- *   ray crosses the captor's plane nowhere, the hand turned round, says
- *   this (see `placeCapturedRelease`), and so do `gotpointercapture` and
- *   `lostpointercapture` (see `atPointer`) and the crossings a placed
- *   release brings (see `placedRelease`).
+ *   nowhere rather than a place, and is left out, as are the crossings
+ *   that say 0, 0.
+ *
+ *   The events that no ray places say this point (see `atPointer`), so a
+ *   page hears the pointer go on from where it last heard it and never
+ *   from the corner:
+ *
+ *   - `gotpointercapture` and `lostpointercapture`, as a capture changes
+ *     between two of the pointer's events: the `pointerdown` for a capture
+ *     taken in its handler, the release for the capture it ends.
+ *   - `pointercancel`, and the leaves after it on every panel (see
+ *     `cancelPointer`). Under a scroll, the page has heard the pointer's
+ *     moves and crossings up to the frame the press became one, so the
+ *     cancel says the last of them. Under a drag and drop, it has heard no
+ *     move since the press, and `dragstart` says the press's point, so the
+ *     cancel says that; the drag's own events go on from there, and the
+ *     point with them.
+ *   - The crossings a `selectend` sends with the ray off its panel (see
+ *     `track`): where a placed release said, or, after a press that sent
+ *     no `pointerup`, where the page last heard the pointer: the cancel's
+ *     point after a scroll, the `dragend`'s after a drag and drop, and the
+ *     last move's after a press swallowed on an element that had gone.
+ *     After a release that said 0, 0, they say 0, 0 too (see
+ *     `releasedNowhere`), as they say what the release said.
+ *   - The leaves of a hand that has gone, which has no ray left to place
+ *     them, on its own panel and on the others (see `track` and
+ *     `BringUp.nowhere`).
+ *   - A captured release whose ray crosses the captor's plane nowhere,
+ *     the hand turned round (see `placeCapturedRelease`).
  * @property {number} y See `x`.
- * @property {boolean} placedRelease Whether the release a `selectend` is
- *   finishing went out placed (see `x`), from its `pointerup` to the
- *   crossings the same `selectend` sends after it, which then say where
- *   it said the pointer is (see `track`); false at any other time. Set as
- *   the `pointerup` goes out, and cleared once those crossings have read
- *   it. A `selectend` that sends no `pointerup` never sets it, and the
- *   crossings it sends stay nowhere, as nothing said where the pointer
- *   went: a press the page lost to a scroll or a drag and drop, say, or
- *   one swallowed on an element that had gone where no control around it
- *   sends the release.
+ * @property {boolean} releasedNowhere Whether the release a `selectend` is
+ *   finishing went out at 0, 0 (see `x`), from its `pointerup` to the
+ *   crossings the same `selectend` sends after it, which then say 0, 0 too
+ *   (see `track`); false at any other time. Set as the `pointerup` goes
+ *   out, and cleared once those crossings have read it. A `selectend` that
+ *   sends no `pointerup` never sets it.
  */
 
 /** @type {WeakMap<XRTargetRaySpace, Hand>} */
@@ -257,7 +281,7 @@ function handOf(controller) {
       buttons: 0,
       x: 0,
       y: 0,
-      placedRelease: false,
+      releasedNowhere: false,
     };
     hand = created;
     nextPointerId += 1;
@@ -343,7 +367,8 @@ let primary = null;
  * @property {(controller: XRTargetRaySpace, how: BringUp) => void} bringUp
  *   Cross the mouse, if the hand is the primary one, and its pointer if
  *   `how` says so, to the element the hand is over in the panel now, at
- *   the point where its ray crosses the panel's plane.
+ *   the point where its ray crosses the panel's plane, or, for a hand that
+ *   has gone, where the page last heard its pointer was.
  */
 
 /**
@@ -354,7 +379,8 @@ let primary = null;
  *   not the mouse alone.
  * @property {number} buttons What the crossings say the hand holds.
  * @property {boolean} nowhere Whether the hand is over nothing at all, as
- *   one that has gone is, wherever its ray was left.
+ *   one that has gone is, wherever its ray was left. Its crossings then say
+ *   where the page last heard its pointer was (see `Hand.x`).
  */
 
 /**
@@ -402,6 +428,19 @@ function placeCapturedRelease(controller, hand, captor, init) {
  */
 function writeLastPoint(init, hand) {
   writeClient(init, hand.x, hand.y);
+}
+
+/**
+ * Record an event's point as where the page last heard a hand's pointer
+ * was (see `Hand.x`), as `writeLastPoint` reads it back.
+ *
+ * @param {Hand} hand
+ * @param {PointerEventInit} init
+ * @returns {void}
+ */
+function recordPoint(hand, init) {
+  hand.x = init.clientX ?? 0;
+  hand.y = init.clientY ?? 0;
 }
 
 /**
@@ -671,8 +710,9 @@ function wrapPointerCapture() {
  * date (see `bringUpElsewhere`), which may come while a ray event's own
  * init, the one `pressInit` and its siblings write, is being sent. Written
  * in place by `placeless`, with no point unless its caller adds one:
- * `atPointer` places the capture events where the pointer last was, and
- * `bringUp` places its crossings on its panel's plane.
+ * `atPointer` places the capture events, the cancel and the leaves of a
+ * hand that has gone where the pointer last was, and `bringUp` places its
+ * crossings on its panel's plane.
  *
  * @type {PointerEventInit}
  */
@@ -713,19 +753,17 @@ function placeless(controller, buttons) {
 }
 
 /**
- * `placeless` at where the page last heard the hand's pointer was (see
- * `Hand.x`), for `gotpointercapture` and `lostpointercapture`, which
- * carry the pointer's position as a browser's do. A capture changes
- * between two of the pointer's events, so the last one says where it is:
- * the `pointerdown` for a capture taken in its handler, the release for
- * the capture it ends.
+ * `placeless` at where the page last heard the hand's pointer was, for
+ * the events no ray places (see `Hand.x`), which carry the pointer's
+ * position as a browser's do.
  *
  * @param {XRTargetRaySpace} controller
  * @param {Hand} hand
+ * @param {number} buttons See `placeless`.
  * @returns {PointerEventInit}
  */
-function atPointer(controller, hand) {
-  const init = placeless(controller, hand.buttons);
+function atPointer(controller, hand, buttons) {
+  const init = placeless(controller, buttons);
   writeLastPoint(init, hand);
   return init;
 }
@@ -759,10 +797,14 @@ function settleCapture(controller) {
   }
   if (lost) {
     const target = lost.isConnected ? lost : lost.ownerDocument;
-    target.dispatchEvent(new PointerEvent("lostpointercapture", atPointer(controller, hand)));
+    target.dispatchEvent(
+      new PointerEvent("lostpointercapture", atPointer(controller, hand, hand.buttons)),
+    );
   }
   if (hand.captor) {
-    hand.captor.dispatchEvent(new PointerEvent("gotpointercapture", atPointer(controller, hand)));
+    hand.captor.dispatchEvent(
+      new PointerEvent("gotpointercapture", atPointer(controller, hand, hand.buttons)),
+    );
   }
   const captor = hand.captor;
   for (let i = 0; i < forwarders.length; i += 1) {
@@ -779,7 +821,8 @@ function settleCapture(controller) {
  * press it takes for a gesture of its own or whose device goes away:
  * `pointercancel` where the press went, the element that captured it or
  * the one pressed, then `lostpointercapture`, and the pointer leaves
- * everything it was over, on every panel. Nothing more of the pointer
+ * everything it was over, on every panel, all where the page last heard
+ * the pointer was (see `Hand.x`). Nothing more of the pointer
  * reaches the page until the trigger opens, the mouse included, which
  * holds still as it does under a drag; the release catches both up. The
  * scroll gesture and drag and drop are handed this as their `onTaken`.
@@ -800,11 +843,11 @@ function cancelPointer(controller) {
   }
   const target = hand.captor?.isConnected ? hand.captor : hand.pressed;
   if (target?.isConnected) {
-    target.dispatchEvent(new PointerEvent("pointercancel", placeless(controller, 0)));
+    target.dispatchEvent(new PointerEvent("pointercancel", atPointer(controller, hand, 0)));
   }
   releaseCapture(controller);
   for (let i = 0; i < forwarders.length; i += 1) {
-    forwarders[i].leave(controller, placeless(controller, 0));
+    forwarders[i].leave(controller, atPointer(controller, hand, 0));
   }
 }
 
@@ -879,7 +922,7 @@ function endPress(controller) {
  * once the capture has settled, from the captor it then goes to (see
  * `placeCapturedRelease`). Each event records its point as where the
  * hand's pointer is (`Hand.x`, `Hand.y`), but a release that is not
- * placed: uncaptured, with its ray off its panel.
+ * placed: uncaptured, with its ray off its panel, which says 0, 0.
  *
  * @param {HTMLElement} element
  * @param {"pointerdown" | "pointermove" | "pointerup"} type
@@ -925,14 +968,13 @@ function sendPointerAndMouse(element, type, init, controller, onPanel = true) {
   const captor = hand.captor?.isConnected ? hand.captor : null;
   const target = captor ?? element;
   if (type === "pointerup") {
-    hand.placedRelease = captor !== null || onPanel;
+    hand.releasedNowhere = captor === null && !onPanel;
     if (captor) {
       placeCapturedRelease(controller, hand, captor, init);
     }
   }
-  if (type !== "pointerup" || hand.placedRelease) {
-    hand.x = init.clientX ?? 0;
-    hand.y = init.clientY ?? 0;
+  if (type !== "pointerup" || !hand.releasedNowhere) {
+    recordPoint(hand, init);
   }
   const pointer = typeof PointerEvent === "function" ? new PointerEvent(type, init) : null;
   init.button = button;
@@ -1871,9 +1913,13 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
    * element it was over to `elementUnder`, for its pointer, and for the
    * mouse if it is the primary hand. Not while it holds something
    * draggable, since what is under a pointer holds still under a drag on a
-   * page too; the release, or the first move after it, catches up.
+   * page too; the release, or the first move after it, catches up. The
+   * crossings are where the ray is on this panel, and are where the page
+   * last heard the pointer is from then on (see `Hand.x`). With the ray
+   * off it, they say that last point at a release, unless the release
+   * said 0, 0, and as the hand goes; otherwise 0, 0.
    *
-   * @param {{ controller: XRTargetRaySpace, intersection?: import('three').Intersection }} e
+   * @param {{ controller: XRTargetRaySpace, intersection?: import('three').Intersection, lost?: boolean }} e
    * @param {PanelHand} hand
    * @param {boolean} [released] Whether the trigger has just opened, which
    *   ends a hold whatever the drag has still to hear of it.
@@ -1900,14 +1946,15 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
       return;
     }
     const pointer = handOf(controller);
-    // A point only where the ray is on this panel: a release may come with
-    // it on another. Then the crossings a captured release brings say where
-    // it said the pointer is, on its captor's plane (see
-    // `Hand.placedRelease`).
+    // A point of the ray's own only where it is on this panel: a release
+    // may come with it on another, and a hand that has gone has it
+    // nowhere.
     const own = panel();
     const on = isOnPanel(own, e);
     const init = moveInit(own, on ? e : NOWHERE);
-    if (released && !on && pointer.placedRelease) {
+    if (on) {
+      recordPoint(pointer, init);
+    } else if (released ? !pointer.releasedNowhere : e.lost) {
       writeLastPoint(init, pointer);
     }
     init.pointerId = pointer.pointerId;
@@ -2107,7 +2154,8 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
       // otherwise a press over a list may become a scroll; only holding it
       // will tell. The page's own gesture comes first, as it does under a
       // mouse, where dragging a row drags the row and not the list.
-      if (!dnd.begin(e.controller, first.element, first.object, pressed, cancelPointer)) {
+      const pointer = handOf(e.controller);
+      if (!dnd.begin(e.controller, first.element, first.object, pressed, cancelPointer, pointer)) {
         drags.begin(e.controller, first.element, first.object, cancelPointer);
       }
       haptics?.press(e.inputSource);
@@ -2192,7 +2240,7 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
         // The release is finished with, and says nothing of the next one.
         const ended = hands.get(e.controller);
         if (ended) {
-          ended.placedRelease = false;
+          ended.releasedNowhere = false;
         }
         if (held) {
           bringUpElsewhere(e.controller, registered, {
@@ -2390,11 +2438,19 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
         return;
       }
       // Where the ray crosses this panel's plane, as a captured hand's
-      // moves are placed, since no ray event here says where it is.
-      const init = placeless(controller, buttons);
+      // moves are placed, since no ray event here says where it is; where
+      // the page last heard the pointer for a hand that has gone.
+      const pointerHand = hands.get(controller);
+      const init =
+        nowhere && pointerHand
+          ? atPointer(controller, pointerHand, buttons)
+          : placeless(controller, buttons);
       const own = panel();
       if (own && element && samplePlane(controller)) {
         writeSampled(own, init);
+        if (pointerHand) {
+          recordPoint(pointerHand, init);
+        }
       }
       if (pointer && hand && typeof PointerEvent === "function") {
         cross(hand.chain, element, init, "pointer");

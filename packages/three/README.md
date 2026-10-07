@@ -395,6 +395,14 @@ same way, the elements it held lose `data-xr-active`, and the mouse leaves what 
 every panel. The crossings that catch a panel up carry the point where the ray crosses that panel,
 as a move does.
 
+`pointercancel` and the leaves after it say where the page last heard the pointer. Under a scroll
+that is the last move or crossing before the press became one. Under a drag and drop it is the
+press, which `dragstart` says too, and the drag's own events go on from there. The leaves of a hand
+that is lost say where the page last heard it, on every panel, since it has no ray left. A release
+that sends no `pointerup`, after a scroll or a drag and drop, catches the pointer and the mouse up
+where the ray is if it is on the panel, and otherwise where the page last heard the pointer: the
+cancel's point after a scroll, the `dragend`'s after a drag and drop.
+
 A browser knows nothing of the hands' pointers, so `setPointerCapture` with a hand's `pointerId`
 would throw that there is no such pointer. Once a hand sends anything while a panel is up, the three
 capture methods on `Element` are wrapped, and the last panel to go puts the browser's back, so a

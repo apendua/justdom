@@ -388,12 +388,14 @@ refuses for a hand is kept here instead. It starts before the hand's next event,
 release go to the captor, and the pointer is over the captor and nothing else. The moves and the
 release come from where the ray crosses the plane of the captor's panel, the moves once a frame the
 ray has moved, whether the ray is on a control, on the panel's background, on another panel or on
-nothing at all. So a drag by capture follows the hand off the panel as a mouse's follows it off the
-window. The capture ends with `lostpointercapture` at the release, after its `pointerup` and
-`mouseup`, at `releasePointerCapture`, when the press becomes a scroll or a drag and drop, or when
-the hand is lost. Releasing a hand's pointer that holds no capture does nothing, as for a pointer
-the browser knows, so a page's `pointerup` handler may release what the release already ended. The
-grip's `contextmenu` comes alone, as before.
+nothing at all. A release whose ray crosses that plane nowhere, the hand turned round, says where
+the pointer last was, as a browser's release says the pointer's last position. So a drag by capture
+follows the hand off the panel as a mouse's follows it off the window. The capture ends with
+`lostpointercapture` at the release, after its `pointerup` and `mouseup`, at
+`releasePointerCapture`, when the press becomes a scroll or a drag and drop, or when the hand is
+lost. Releasing a hand's pointer that holds no capture does nothing, as for a pointer the browser
+knows, so a page's `pointerup` handler may release what the release already ended. The grip's
+`contextmenu` comes alone, as before.
 
 In development, a press that lands on an element of a panel's page with no ray target under it warns
 once per element, naming the element. A press on the panel's empty root, or on an object of the

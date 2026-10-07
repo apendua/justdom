@@ -1650,6 +1650,49 @@ describe("a ray's pointer events", () => {
     page.teardown();
   });
 
+  test("captured, are released where the pointer last was when the ray turns from the plane", async () => {
+    const page = await mirrored(drawing);
+    const hand = rayHand(page.manager);
+    hand.aim(page.panel, 50, 50);
+    hand.trigger("selectstart");
+    hand.aim(page.panel, 500, 350);
+    // Turned round, the ray crosses the captor's plane nowhere.
+    hand.turnAway();
+    const { heard, stop } = hearing(["pointerup", "mouseup"], { at: true });
+    hand.trigger("selectend");
+    stop();
+    assert.deepEqual(heard, [
+      "pointerup #drawing at 500,350 buttons 0",
+      "mouseup #drawing at 500,350 buttons 0",
+    ]);
+    hand.remove();
+    page.teardown();
+  });
+
+  test("let go of before the release, are released as an uncaptured press is", async () => {
+    const page = await mirrored(drawing);
+    const element = /** @type {HTMLElement} */ (page.root.querySelector("#drawing"));
+    element.addEventListener("pointermove", (event) => {
+      element.releasePointerCapture(/** @type {PointerEvent} */ (event).pointerId);
+    });
+    const hand = rayHand(page.manager);
+    hand.aim(page.panel, 50, 50);
+    hand.trigger("selectstart");
+    // The capture takes hold at this move, which lets go of it; the
+    // release that follows is the next event, which ends it.
+    hand.aim(page.panel, 500, 350);
+    const { heard, stop } = hearing(["pointerup", "mouseup"], { at: true });
+    hand.trigger("selectend");
+    stop();
+    // Off the panel, uncaptured, the release is nowhere on the page.
+    assert.deepEqual(heard, [
+      "pointerup #drawing at 0,0 buttons 0",
+      "mouseup #drawing at 0,0 buttons 0",
+    ]);
+    hand.remove();
+    page.teardown();
+  });
+
   test("leave as a browser's do, the pointer first, when a hand that holds nothing goes", async () => {
     const page = await mirrored((place) => {
       place("div", "btn", [20, 20, 100, 40]).style.cursor = "pointer";

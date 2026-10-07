@@ -213,9 +213,10 @@ function noteMissedPress(element) {
  *   it said the pointer is (see `track`); false at any other time. Set as
  *   the `pointerup` goes out, and cleared once those crossings have read
  *   it. A press that sends no release, one the page lost to a scroll or a
- *   drag and drop or one swallowed on an element that had gone, never
- *   sets it, and its crossings stay nowhere, as nothing said where the
- *   pointer went.
+ *   drag and drop or one swallowed on an element that had gone with no
+ *   control around it, never sets it, and its crossings stay nowhere, as
+ *   nothing said where the pointer went. A control around such an element
+ *   still sends the release, which sets it as any other does.
  */
 
 /** @type {WeakMap<XRTargetRaySpace, Hand>} */
@@ -1780,9 +1781,9 @@ export function createPanelForwarder(ctx, container) {
       const catchUp = () => {
         track(e, hand, true);
         // The release is finished with, and says nothing of the next one.
-        const released = hands.get(e.controller);
-        if (released) {
-          released.placedRelease = false;
+        const ended = hands.get(e.controller);
+        if (ended) {
+          ended.placedRelease = false;
         }
         if (held) {
           bringUpElsewhere(e.controller, registered, {

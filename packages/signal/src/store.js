@@ -224,17 +224,25 @@ function store(data, operators = []) {
       if (setter) {
         setter.call(receiver, newValue);
       } else {
+        // A getter with no setter is a default, as in a component's
+        // `get color() { return palette.amber }`, and a write replaces it:
+        // from here on the key holds what was written, like any other.
+        // `state[key]` is the getter's value at construction, so it says
+        // nothing about what readers see now, and is neither reconciled
+        // nor compared against.
+        const replacesGetter = getters.delete(key);
+        derived.delete(key);
         if (isPlainObject(newValue)) {
           const oldValue = state[key];
           // We need to use non-reactive version of isPlainObject to prevent accidentally creating
           // a circular dependency on oldValue should it be a store itself.
-          if (isPlainObjectNoComputation(oldValue)) {
+          if (!replacesGetter && isPlainObjectNoComputation(oldValue)) {
             replace(oldValue, newValue);
             return true;
           }
           newValue = store(newValue);
         }
-        if (Object.is(state[key], newValue)) {
+        if (!replacesGetter && Object.is(state[key], newValue)) {
           return true;
         }
         state[key] = newValue;

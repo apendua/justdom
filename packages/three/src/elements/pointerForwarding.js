@@ -926,6 +926,94 @@ function cross(chain, element, init, kind) {
 }
 
 /**
+ * One of the flags a hand writes on the controls of a panel,
+ * `data-xr-hover` or `data-xr-active`, counted per hand. Each hand keeps
+ * the elements it flagged, and an element carries the flag while any hand
+ * does: two hands on one button are two hovers, and the first to leave or
+ * let go takes neither the other's hover nor its press off it.
+ *
+ * @typedef {object} Flag
+ * @property {(flagged: HTMLElement[], next: HTMLElement[]) => void} replace
+ *   Flag `next` for the hand that flagged `flagged`, and let go of the
+ *   rest; `flagged` holds `next`'s elements after, and `next` is emptied.
+ *   An element in both keeps its flag throughout, so no mutation says it
+ *   went.
+ * @property {(flagged: HTMLElement[]) => void} clear Let go of every
+ *   element a hand flagged.
+ * @property {(element: HTMLElement) => void} forget Take the flag off an
+ *   element that is no control any more, whoever flagged it.
+ */
+
+/**
+ * @param {"xrHover" | "xrActive"} name The flag, as `dataset` names it.
+ * @returns {Flag}
+ */
+function createFlag(name) {
+  /** @type {Map<HTMLElement, number>} How many hands flag each element. */
+  const counts = new Map();
+  /** @param {HTMLElement} element */
+  const set = (element) => {
+    const count = counts.get(element) ?? 0;
+    counts.set(element, count + 1);
+    if (count === 0) {
+      element.dataset[name] = "true";
+    }
+  };
+  /** @param {HTMLElement} element */
+  const unset = (element) => {
+    const count = counts.get(element) ?? 0;
+    if (count > 1) {
+      counts.set(element, count - 1);
+    } else if (count === 1) {
+      counts.delete(element);
+      delete element.dataset[name];
+    }
+  };
+  return {
+    replace(flagged, next) {
+      for (const element of next) {
+        set(element);
+      }
+      for (const element of flagged) {
+        unset(element);
+      }
+      flagged.length = 0;
+      for (const element of next) {
+        flagged.push(element);
+      }
+      next.length = 0;
+    },
+    clear(flagged) {
+      for (const element of flagged) {
+        unset(element);
+      }
+      flagged.length = 0;
+    },
+    forget(element) {
+      counts.delete(element);
+      delete element.dataset[name];
+    },
+  };
+}
+
+/**
+ * Take an element out of a list, if it is in it.
+ *
+ * @param {HTMLElement[]} list
+ * @param {HTMLElement} element
+ * @returns {void}
+ */
+function drop(list, element) {
+  const index = list.indexOf(element);
+  if (index !== -1) {
+    list.splice(index, 1);
+  }
+}
+
+/** Scratch for the elements a hand is to flag next (see `Flag.replace`). */
+const nextFlagged = /** @type {HTMLElement[]} */ ([]);
+
+/**
  * An element of a panel that rays act on: a control, which is anything a
  * ray targets of its own (see `isRayTarget`), or a scrolling list that is
  * no control, which a ray takes hold of by the gaps between its rows.
@@ -945,9 +1033,11 @@ function cross(chain, element, init, kind) {
  * press's path and a leave along the hover's, not along a walk from what
  * was hit, since that may have left the scene meanwhile (see
  * `addController` in `interactions.js`), so the panel keeps the same paths
- * and reads which of its targets were on them. Each path stops below the
- * panel's container, and is written in place, so a hand moving from mesh
- * to mesh allocates nothing.
+ * and reads which of its targets were on them. The flags it writes it keeps
+ * as the elements it wrote them on, so a leave and a release take off what
+ * the hand put on and nothing another hand did. Each path stops below the
+ * panel's container, and each list is written in place, so a hand moving
+ * from mesh to mesh allocates nothing.
  *
  * @typedef {object} PanelHand
  * @property {Object3D[]} hover
@@ -961,6 +1051,10 @@ function cross(chain, element, init, kind) {
  * @property {Element[]} chain The element the page was last told the
  *   hand's pointer is over, and the elements around it up to the panel's
  *   root, innermost first (see `track`).
+ * @property {HTMLElement[]} hovering The controls the hand flags
+ *   `data-xr-hover` on, the ones its ray is on (see `rehover`).
+ * @property {HTMLElement[]} active The controls its trigger's press
+ *   flags `data-xr-active` on, until the press ends.
  */
 
 /**
@@ -1101,6 +1195,9 @@ export function createPanelForwarder(ctx, container) {
   /** @type {Map<Object3D, Target>} */
   const targets = new Map();
 
+  const hoverFlag = createFlag("xrHover");
+  const activeFlag = createFlag("xrActive");
+
   /** @type {Map<XRTargetRaySpace, PanelHand>} */
   const panelHands = new Map();
 
@@ -1128,6 +1225,8 @@ export function createPanelForwarder(ctx, container) {
         select: { path: [], target: null },
         squeeze: { path: [], target: null },
         chain: [],
+        hovering: [],
+        active: [],
       };
       panelHands.set(controller, hand);
     }
@@ -1148,23 +1247,6 @@ export function createPanelForwarder(ctx, container) {
       path.push(node);
       node = node.parent;
     }
-  };
-
-  /**
-   * The path a leave goes through: the one the hover recorded, which
-   * reaches the objects it went through even after the one it began on has
-   * left the scene. A hover that began before this forwarder heard it is
-   * walked from where it began. A press keeps its own (see `pressOf`).
-   *
-   * @param {Object3D[]} path
-   * @param {{ originalTarget: Object3D }} e
-   * @returns {Object3D[]}
-   */
-  const recorded = (path, e) => {
-    if (path[0] !== e.originalTarget) {
-      walk(e.originalTarget, path);
-    }
-    return path;
   };
 
   /**
@@ -1233,9 +1315,8 @@ export function createPanelForwarder(ctx, container) {
     isArrival(getControlRoot(target.element, target.object), e.relatedTarget);
 
   /**
-   * The ray arriving on a control: the hover flag, and the pulse an arrival
-   * on a control plays, once per arrival, by the control that was hit and
-   * not by the ones around it.
+   * The pulse the ray arriving on a control plays, once per arrival, by the
+   * control that was hit and not by the ones around it.
    *
    * @param {Target} target
    * @param {XREventMap["pointerenter"]} e
@@ -1243,11 +1324,34 @@ export function createPanelForwarder(ctx, container) {
    *   is known already.
    * @returns {void}
    */
-  const enter = (target, e, arrival) => {
-    target.element.dataset.xrHover = "true";
+  const feelArrival = (target, e, arrival) => {
     if (haptics && e.registeredTarget === target.object && (arrival ?? arrived(target, e))) {
       haptics.hover(e.inputSource);
     }
+  };
+
+  /**
+   * Flag `data-xr-hover` on the controls the hand's ray is on. Under a
+   * drag none is flagged anew, as `:hover` holds still under one, and the
+   * ray leaving one takes its flag off.
+   *
+   * @param {XRTargetRaySpace} controller
+   * @returns {void}
+   */
+  const rehover = (controller) => {
+    const hand = panelHands.get(controller);
+    if (!hand) {
+      return;
+    }
+    // Under a drag, only what the ray has left loses the flag.
+    const holding = dnd.holding(controller);
+    for (const object of hand.hover) {
+      const target = targets.get(object);
+      if (target && !target.list && (!holding || hand.hovering.includes(target.element))) {
+        nextFlagged.push(target.element);
+      }
+    }
+    hoverFlag.replace(hand.hovering, nextFlagged);
   };
 
   /**
@@ -1540,9 +1644,10 @@ export function createPanelForwarder(ctx, container) {
       for (const object of hand.hover) {
         const target = targets.get(object);
         if (target && !target.list) {
-          enter(target, e, target === first ? arrival : undefined);
+          feelArrival(target, e, target === first ? arrival : undefined);
         }
       }
+      rehover(e.controller);
     },
     pointermove(e) {
       const hand = panelHand(e.controller);
@@ -1577,12 +1682,15 @@ export function createPanelForwarder(ctx, container) {
           continue;
         }
         if (held) {
-          enter(target, held);
+          feelArrival(target, held);
         }
         if (!sent && !isGone(target.element)) {
           sent = true;
           sendPointerAndMouse(target.element, "pointermove", moveInit(panel(), e), e.controller);
         }
+      }
+      if (held) {
+        rehover(e.controller);
       }
     },
     pointerleave(e) {
@@ -1594,12 +1702,7 @@ export function createPanelForwarder(ctx, container) {
       if (pointer) {
         pointer.buttons = 0;
       }
-      for (const object of recorded(hand.hover, e)) {
-        const target = targets.get(object);
-        if (target && !target.list) {
-          delete target.element.dataset.xrHover;
-        }
-      }
+      hoverFlag.clear(hand.hovering);
       hand.hover.length = 0;
       hand.hovered = null;
       // Onto something else in this panel, its enter crosses over to it.
@@ -1677,9 +1780,10 @@ export function createPanelForwarder(ctx, container) {
       for (const object of select.path) {
         const target = targets.get(object);
         if (target && !target.list) {
-          target.element.dataset.xrActive = "true";
+          nextFlagged.push(target.element);
         }
       }
+      activeFlag.replace(hand.active, nextFlagged);
       stopPropagation(e);
     },
     selectend(e) {
@@ -1701,12 +1805,7 @@ export function createPanelForwarder(ctx, container) {
       // comes after this, takes the mouse off what it was over.
       if (e.lost) {
         cancelHeld(e.controller);
-        for (const object of path) {
-          const target = targets.get(object);
-          if (target && !target.list) {
-            delete target.element.dataset.xrActive;
-          }
-        }
+        activeFlag.clear(panelHand(e.controller).active);
         endPress(e.controller);
         stopPropagation(e);
         return;
@@ -1729,7 +1828,6 @@ export function createPanelForwarder(ctx, container) {
         if (!target || target.list) {
           continue;
         }
-        delete target.element.dataset.xrActive;
         if (!sent && !isGone(target.element)) {
           sent = true;
           // A drag's release is its `drop` and its `dragend`, which the
@@ -1742,6 +1840,7 @@ export function createPanelForwarder(ctx, container) {
           haptics?.release(e.inputSource);
         }
       }
+      activeFlag.clear(panelHand(e.controller).active);
       endPress(e.controller);
       // A capture, a hold of something draggable: what the press held the
       // pointer to has let go of it. A drag's `drop` and `dragend` come
@@ -1972,8 +2071,12 @@ export function createPanelForwarder(ctx, container) {
         targets.delete(target.object);
       }
       if (!target.list) {
-        delete target.element.dataset.xrHover;
-        delete target.element.dataset.xrActive;
+        for (const hand of panelHands.values()) {
+          drop(hand.hovering, target.element);
+          drop(hand.active, target.element);
+        }
+        hoverFlag.forget(target.element);
+        activeFlag.forget(target.element);
       }
     };
   };

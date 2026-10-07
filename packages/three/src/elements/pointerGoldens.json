@@ -455,18 +455,18 @@
     "> second trigger opens",
     "pointerup #leaf bubbles - button 0 at 100,40 pointer 2 mouse",
     "click #leaf bubbles - button 0 at 100,40",
-    "= #leaf hover",
+    "= #leaf hover active",
     "> second hand aims at #far",
     "pointerout #leaf bubbles cancelable button -1 at 250,220 related #far pointer 2 mouse",
     "pointerleave #leaf - - button -1 at 250,220 related #far pointer 2 mouse",
     "pointerover #far bubbles cancelable button -1 at 250,220 related #leaf pointer 2 mouse",
     "pointerenter #far - - button -1 at 250,220 related #leaf pointer 2 mouse",
-    "= #far hover",
+    "= #leaf hover active, #far hover",
     "> first trigger opens",
     "pointerup #leaf bubbles - button 0 at 70,40 pointer 1 mouse primary",
     "mouseup #leaf bubbles - button 0 at 70,40",
     "click #leaf bubbles - button 0 at 70,40",
-    "= #far hover"
+    "= #leaf hover, #far hover"
   ],
   "a press on the top card of a pile": [
     "> aim where the three overlap",

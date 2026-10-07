@@ -331,26 +331,27 @@ An element is a ray target of its own when its computed `cursor` is `pointer`, t
 uses for "clickable", or when it is `draggable="true"` (see **Dragging and dropping** below), and
 its `pointer-events` is not `none`. A press on it arrives as `mousedown`, `mouseup` and `click` on
 the element, and the element carries `data-xr-hover` while the ray is on it and `data-xr-active`
-while it is held. The grip is the mouse's other button: a press of it, let go on the element it
-started on, arrives as `contextmenu`, which is where a page already flags a tile or opens a menu of
-its own. A grip that something above the panel took as it closed, a `drag()` that picks up what the
-panel hangs from with `squeeze` among its `buttons`, is that grab and sends nothing. Nor does a grip
-while the trigger carries a row (see **Dragging and dropping**) or moves a list, gliding included,
-on any panel: a page in the middle of a drag hears no other button. A trigger only resting on a row
-moves nothing yet, and a grip under it is a right-click as a mouse's is. Each of these events, and
-the `mousemove` a ray moving over the element sends, carries the point the ray met as `clientX` and
-`clientY`, mapped onto the page's own layout, so a page that finds what was pressed from where it
-was pressed, a board drawn as one `<svg>` path, reads the place a mouse over the same spot would
-have given it. A press, its release, its click, a right-click, a press on a scrolling list and the
-ray's arrival on a control, by the rule the hover pulse follows (see **Haptics**), each read where
-the page lays the panel out; a move, sent every frame, reads no layout and takes its point where the
-panel was last read, so a hover starts exact and drifts only by what the page moves while the ray
-stays. The point is on screen only for a panel mirroring an element the page shows. A panel built
-from a tree lives in a container the portal parks off screen, so its points are right against the
-page's own rects but `elementFromPoint` finds nothing at them. A scale on the mirrored root, or
-above it, is in the mapping, so on a page scaled to fit its window the point is where the page draws
-that spot; a rotation, a skew, a flip or a perspective there is left out, as the mirror leaves it
-out (see below).
+while it is held. Each hand's flags are its own: a button two hands are on, or two hands press,
+keeps each flag until the last of them leaves or lets go. The grip is the mouse's other button: a
+press of it, let go on the element it started on, arrives as `contextmenu`, which is where a page
+already flags a tile or opens a menu of its own. A grip that something above the panel took as it
+closed, a `drag()` that picks up what the panel hangs from with `squeeze` among its `buttons`, is
+that grab and sends nothing. Nor does a grip while the trigger carries a row (see **Dragging and
+dropping**) or moves a list, gliding included, on any panel: a page in the middle of a drag hears no
+other button. A trigger only resting on a row moves nothing yet, and a grip under it is a
+right-click as a mouse's is. Each of these events, and the `mousemove` a ray moving over the element
+sends, carries the point the ray met as `clientX` and `clientY`, mapped onto the page's own layout,
+so a page that finds what was pressed from where it was pressed, a board drawn as one `<svg>` path,
+reads the place a mouse over the same spot would have given it. A press, its release, its click, a
+right-click, a press on a scrolling list and the ray's arrival on a control, by the rule the hover
+pulse follows (see **Haptics**), each read where the page lays the panel out; a move, sent every
+frame, reads no layout and takes its point where the panel was last read, so a hover starts exact
+and drifts only by what the page moves while the ray stays. The point is on screen only for a panel
+mirroring an element the page shows. A panel built from a tree lives in a container the portal parks
+off screen, so its points are right against the page's own rects but `elementFromPoint` finds
+nothing at them. A scale on the mirrored root, or above it, is in the mapping, so on a page scaled
+to fit its window the point is where the page draws that spot; a rotation, a skew, a flip or a
+perspective there is left out, as the mirror leaves it out (see below).
 
 A press, its release and a move each send, ahead of their mouse event, the pointer event a browser
 sends ahead of it: `pointerdown`, `pointerup` and `pointermove`, at the same point. A page written

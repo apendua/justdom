@@ -2161,3 +2161,41 @@ describe("a panel's ray events", () => {
     root.remove();
   });
 });
+
+describe("the flags a hand writes", () => {
+  /**
+   * The flags on each button, as `#id hover active`.
+   *
+   * @param {HTMLElement} root
+   */
+  const flags = (root) =>
+    [...root.children]
+      .map((element) => {
+        const { xrHover, xrActive } = /** @type {HTMLElement} */ (element).dataset;
+        return [`#${element.id}`, xrHover && "hover", xrActive && "active"]
+          .filter(Boolean)
+          .join(" ");
+      })
+      .join(", ");
+
+  test("data-xr-active stays on while another hand still holds the press", async () => {
+    const page = await mirrored((place) => {
+      place("div", "first", [20, 20, 100, 40]).style.cursor = "pointer";
+      place("div", "second", [200, 20, 100, 40]).style.cursor = "pointer";
+    });
+    const [left, right] = [rayHand(page.manager), rayHand(page.manager)];
+    left.aim(page.panel, 50, 40);
+    left.trigger("selectstart");
+    right.aim(page.panel, 90, 40);
+    right.trigger("selectstart");
+    right.trigger("selectend");
+    assert.equal(flags(page.root), "#first hover active, #second");
+    right.aim(page.panel, 250, 40);
+    assert.equal(flags(page.root), "#first hover active, #second hover", "and so does the hover");
+    left.trigger("selectend");
+    assert.equal(flags(page.root), "#first hover, #second hover");
+    left.remove();
+    right.remove();
+    page.teardown();
+  });
+});

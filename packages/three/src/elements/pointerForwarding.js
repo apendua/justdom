@@ -306,6 +306,10 @@ let primary = null;
  *   the hand's ray is on the panel.
  * @property {(controller: XRTargetRaySpace, captor: Element) => void} follow
  *   Follow a hand captured to an element of the panel.
+ * @property {(controller: XRTargetRaySpace, captor: Element) => PointerEventInit | null} releaseAt
+ *   The init for the release of a hand captured to an element of the
+ *   panel, at the point where its ray crosses the panel's plane; null for
+ *   a captor elsewhere, or a ray that does not cross the plane.
  * @property {(controller: XRTargetRaySpace, init: PointerEventInit) => void} leave
  *   Take the hand's pointer out of everything it is over in the panel.
  * @property {(controller: XRTargetRaySpace, how: BringUp) => void} bringUp
@@ -336,6 +340,26 @@ let primary = null;
  * @type {ForwarderEntry[]}
  */
 const forwarders = [];
+
+/**
+ * The init for the release of a hand captured to `captor`, from where its
+ * ray crosses the plane of the captor's panel, as its moves under the
+ * capture are (see `ForwarderEntry.releaseAt`); null where no panel has a
+ * point for it.
+ *
+ * @param {XRTargetRaySpace} controller
+ * @param {Element} captor
+ * @returns {PointerEventInit | null}
+ */
+function capturedReleaseInit(controller, captor) {
+  for (let i = 0; i < forwarders.length; i += 1) {
+    const init = forwarders[i].releaseAt(controller, captor);
+    if (init) {
+      return init;
+    }
+  }
+  return null;
+}
 
 /**
  * Bring what the page knows of a hand up to date on every panel but one,
@@ -1626,8 +1650,15 @@ export function createPanelForwarder(ctx, container) {
           sent = true;
           // A drag's release is its `drop` and its `dragend`, which the
           // drag sends from the controller's own `selectend`.
+          // A captured hand's release is where its ray crosses the
+          // captor's panel's plane, as its moves were, wherever the ray
+          // is; the capture asked for and not yet taken up is the one the
+          // release goes to (see `settleCapture`).
           if (!dnd.didDrag(e.controller)) {
-            sendPointerAndMouse(target.element, "pointerup", releaseInit(panel(), e), e.controller);
+            const captor = pointer?.pending?.isConnected ? pointer.pending : null;
+            const init =
+              (captor && capturedReleaseInit(e.controller, captor)) ?? releaseInit(panel(), e);
+            sendPointerAndMouse(target.element, "pointerup", init, e.controller);
           }
           haptics?.release(e.inputSource);
         }
@@ -1807,6 +1838,15 @@ export function createPanelForwarder(ctx, container) {
         following.set(controller, { x: 0, y: 0, sent: false });
       }
       stopFollowing ??= requestFrames(followFrame);
+    },
+    releaseAt: (controller, captor) => {
+      const own = panel();
+      if (!own?.element.contains(captor) || !sampleRay(controller, container, onPlane, inPanel)) {
+        return null;
+      }
+      // One event, so probed, as any release is.
+      probePanel(own);
+      return planeInit(own, inPanel.x, inPanel.y);
     },
     leave: (controller, init) => {
       const hand = panelHands.get(controller);

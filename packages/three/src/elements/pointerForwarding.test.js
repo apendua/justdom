@@ -1603,6 +1603,53 @@ describe("a ray's pointer events", () => {
     page.teardown();
   });
 
+  test("captured, are released where the ray crosses the captor's panel", async () => {
+    const page = await mirrored(drawing);
+    const other = await mirrored(
+      (place) => {
+        place("div", "far", [20, 20, 100, 40]).style.cursor = "pointer";
+      },
+      { name: "other", manager: page.manager, scene: page.scene, x: 4 },
+    );
+    const hand = rayHand(page.manager);
+    /** @type {string[]} */
+    const heard = [];
+    /** @param {Event} event */
+    const record = (event) => {
+      const { clientX, clientY } = /** @type {MouseEvent} */ (event);
+      const target = /** @type {Element} */ (event.target).id;
+      heard.push(`${event.type} #${target} at ${Math.round(clientX)},${Math.round(clientY)}`);
+    };
+    const types = ["pointerup", "mouseup"];
+    for (const type of types) {
+      document.addEventListener(type, record, true);
+    }
+    // Released past the panel's edge, onto nothing at all.
+    hand.aim(page.panel, 50, 50);
+    hand.trigger("selectstart");
+    hand.aim(page.panel, 500, 350);
+    hand.trigger("selectend");
+    // Released on another panel, which is still off the captor's.
+    hand.aim(page.panel, 50, 50);
+    hand.trigger("selectstart");
+    hand.aim(other.panel, 70, 40);
+    hand.trigger("selectend");
+    for (const type of types) {
+      document.removeEventListener(type, record, true);
+    }
+    // The other panel lies 4 units to the right in the captor's plane,
+    // which is 400 of the captor's px at a portal's 0.01 units a px.
+    assert.deepEqual(heard, [
+      "pointerup #drawing at 500,350",
+      "mouseup #drawing at 500,350",
+      "pointerup #drawing at 470,40",
+      "mouseup #drawing at 470,40",
+    ]);
+    hand.remove();
+    other.teardown();
+    page.teardown();
+  });
+
   test("leave as a browser's do, the pointer first, when a hand that holds nothing goes", async () => {
     const page = await mirrored((place) => {
       place("div", "btn", [20, 20, 100, 40]).style.cursor = "pointer";

@@ -45,16 +45,16 @@ emulated session is drawn over the page. `?emulator=bare` installs the runtime w
 `node tests/xr-check.mjs` first builds the app for production and fails if any chunk the page loads
 carries three.js. It then loads the page alone in headless Chromium, which can present nothing, and
 fails if the headset scene is fetched. Then it draws in a session on the emulated headset: it picks
-tools in the toolbar panel, places a point and draws a line with the trigger, drags a free point and
-pans the paper by holding it, loads another construction from the picker and leaves by the ×, and
-fails if any of that does not happen or the page throws. The whole check takes about half a minute
-under SwiftShader. `SHOTS=<dir>` also photographs the page and the session, and `STACKS=1` prints a
-stack for anything the page throws. It drives the browser and the controller through
-`@apendua.dev/headset/driver`, which borrows Playwright from `apps/showcase-xr`, so that project has
-to have been installed. It launches the Chromium at
-`/opt/pw-browsers/chromium-1194/chrome-linux/chrome`; `CHROMIUM=<path>` points it at one installed
-elsewhere. A pull request that changes this app or a package it imports, other than in docs, unit
-tests or benchmarks, runs it, with minesweeper's and the desk's, from
+tools in the toolbar panel, places a point, sees the snap ring clear as the ray leaves the drawing,
+draws a line with the trigger, drags a free point and pans the paper by holding it, loads another
+construction from the picker and leaves by the ×, and fails if any of that does not happen or the
+page throws. The whole check takes about half a minute under SwiftShader. `SHOTS=<dir>` also
+photographs the page and the session, and `STACKS=1` prints a stack for anything the page throws. It
+drives the browser and the controller through `@apendua.dev/headset/driver`, which borrows
+Playwright from `apps/showcase-xr`, so that project has to have been installed. It launches the
+Chromium at `/opt/pw-browsers/chromium-1194/chrome-linux/chrome`; `CHROMIUM=<path>` points it at one
+installed elsewhere. A pull request that changes this app or a package it imports, other than in
+docs, unit tests or benchmarks, runs it, with minesweeper's and the desk's, from
 `.github/workflows/driven.yml`.
 
 ## How it is put together
@@ -88,9 +88,11 @@ hand, so the panel takes a torn frame instead.
 The drawing needs nothing from the headset. freedom sends a ray's press, its moves and its release
 as the pointer events a browser sends for a mouse, each hand its own pointer, carrying the point the
 ray met as `clientX` and `clientY`, so the handlers that serve the mouse and the finger place
-points, drag them and pan. The one thing the drawing does for the headset is to say
-`cursor: pointer` while there is a session, since a ray presses only what says it is pressable, and
-every point of the paper is. A pointer has no wheel, so the toolbar zooms with **+** and **−**.
+points, drag them and pan. The ray leaving the drawing is its `pointerleave`, which clears the snap
+ring, and a drag the drawing captured goes on following the hand off the drawing. The one thing the
+drawing does for the headset is to say `cursor: pointer` while there is a session, since a ray
+presses only what says it is pressable, and every point of the paper is. A pointer has no wheel, so
+the toolbar zooms with **+** and **−**.
 
 The program is read in a session, not typed: a `<textarea>` is drawn as the box it is, and the
 highlighted copy under it is what shows. That copy is also where the statement of the object

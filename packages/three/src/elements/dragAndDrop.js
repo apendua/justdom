@@ -15,7 +15,7 @@ import {
 import { placeAndScale } from "./place.js";
 import { frameFor, getPanelFrame, measureClientRect, probePanelFrame } from "./panelFrame.js";
 import { isSvgRoot } from "./plugins.js";
-import { DRAG_THRESHOLD, planeOf } from "./scroll.js";
+import { DRAG_THRESHOLD, sampleRay } from "./scroll.js";
 import { createRectMaterial, rectGeometry } from "./sdfRect.js";
 import { snapshotsFor } from "./ghostSnapshot.js";
 
@@ -247,6 +247,18 @@ function elementAt(element, objectOf, point) {
 }
 
 /**
+ * The deepest element of a panel under a point on it, found as `elementAt`
+ * finds what a drag is over.
+ *
+ * @param {Panel} panel
+ * @param {THREE.Vector3} point In world space.
+ * @returns {HTMLElement | null}
+ */
+export function hitElement(panel, point) {
+  return elementAt(panel.element, panel.objectOf, point);
+}
+
+/**
  * Where a point on a panel is on the page, in client coordinates: the point
  * taken into the frame of the element at the panel's top, its border box
  * with the origin at the top left and y down, scaled as the page scales
@@ -315,7 +327,7 @@ export function probePanel(panel) {
  * @param {THREE.Vector2} client
  * @returns {void}
  */
-function clientPointAt(panel, x, y, client) {
+export function clientPointAt(panel, x, y, client) {
   const { frame } = panel;
   client.set(frame.left + x * frame.sx, frame.top + y * frame.sy);
 }
@@ -358,8 +370,9 @@ const client = new THREE.Vector2();
  *
  * A ray's pointer events say it is a mouse, which is what the mouse events
  * after them say too, and each hand is a pointer of its own, its
- * `pointerId` written in for each event (see `sendPointerAndMouse` in
- * `pointerForwarding.js`).
+ * `pointerId` and the `buttons` it holds written in for each event by the
+ * panel's forwarder (see `sendPointerAndMouse` in `pointerForwarding.js`);
+ * each init below says none, for an event sent on no hand's behalf.
  *
  * @type {PointerEventInit}
  */
@@ -367,6 +380,8 @@ const init = {
   bubbles: false,
   cancelable: false,
   button: 0,
+  buttons: 0,
+  relatedTarget: null,
   clientX: 0,
   clientY: 0,
   screenX: 0,
@@ -399,17 +414,42 @@ const init = {
  * @returns {void}
  */
 function writePoint(panel, e, on) {
-  let x = 0;
-  let y = 0;
   if (e.intersection && panel && on) {
     clientPointOf(panel, e.intersection.point, client);
-    x = client.x;
-    y = client.y;
+    writeClient(init, client.x, client.y);
+  } else {
+    writeClient(init, 0, 0);
   }
-  init.clientX = x;
-  init.clientY = y;
-  init.screenX = x;
-  init.screenY = y;
+}
+
+/**
+ * Write a point on the page into an event's init, as `clientX` and
+ * `clientY`, and as `screenX` and `screenY` too, since a panel has no
+ * screen of its own.
+ *
+ * @param {MouseEventInit} target
+ * @param {number} x
+ * @param {number} y
+ * @returns {void}
+ */
+export function writeClient(target, x, y) {
+  target.clientX = x;
+  target.clientY = y;
+  target.screenX = x;
+  target.screenY = y;
+}
+
+/**
+ * Write the fields of a move into `init`, every one but its point.
+ *
+ * @returns {void}
+ */
+function writeMove() {
+  init.bubbles = true;
+  init.cancelable = false;
+  init.button = 0;
+  init.buttons = 0;
+  init.relatedTarget = null;
 }
 
 /**
@@ -433,6 +473,8 @@ export function pressInit(panel, e, cancelable, button = 0) {
   init.bubbles = true;
   init.cancelable = cancelable;
   init.button = button;
+  init.buttons = 0;
+  init.relatedTarget = null;
   if (panel) {
     probePanel(panel);
   }
@@ -453,6 +495,8 @@ export function releaseInit(panel, e) {
   init.bubbles = true;
   init.cancelable = false;
   init.button = 0;
+  init.buttons = 0;
+  init.relatedTarget = null;
   const on = !!e.intersection && getPanel(e.intersection.object) === panel;
   if (panel && on) {
     probePanel(panel);
@@ -473,10 +517,28 @@ export function releaseInit(panel, e) {
  * @returns {PointerEventInit}
  */
 export function moveInit(panel, e) {
-  init.bubbles = true;
-  init.cancelable = false;
-  init.button = 0;
+  writeMove();
   writePoint(panel, e, true);
+  return init;
+}
+
+/**
+ * The init for the `pointermove` and `mousemove` a captured pointer sends
+ * from where the ray crosses its captor's panel's plane, wherever the ray
+ * is (see `sampleRay` in `scroll.js`): at a point in the panel's own px,
+ * mapped onto the page as any point on the panel is. One a frame, so
+ * against the corner last probed, as `moveInit` is. Valid until the next
+ * call.
+ *
+ * @param {Panel} panel
+ * @param {number} x
+ * @param {number} y
+ * @returns {PointerEventInit}
+ */
+export function planeInit(panel, x, y) {
+  writeMove();
+  clientPointAt(panel, x, y, client);
+  writeClient(init, client.x, client.y);
   return init;
 }
 
@@ -583,16 +645,20 @@ function outlineGhost(shown, width, height) {
  *   hears `dragover` and `drop`.
  * @property {DropEffect} operation
  * @property {() => void} unlisten
+ * @property {((controller: THREE.XRTargetRaySpace) => void) | undefined} onTaken
+ *   See `DragAndDrop.begin`.
  */
 
 /**
  * @typedef {object} DragAndDrop
- * @property {(controller: THREE.XRTargetRaySpace, element: HTMLElement, object: THREE.Object3D, allowed: boolean) => boolean} begin
+ * @property {(controller: THREE.XRTargetRaySpace, element: HTMLElement, object: THREE.Object3D, allowed: boolean, onTaken?: (controller: THREE.XRTargetRaySpace) => void) => boolean} begin
  *   Tell the gesture about a press, every press, since a new press is what
  *   ends the last one's say over `didDrag`. Taken, and true, when the page
  *   allowed it, which is `false` when it cancelled the press's `mousedown`,
  *   and there is something draggable at or above the element; the press
- *   then belongs to it until the controller's own `selectend`.
+ *   then belongs to it until the controller's own `selectend`. `onTaken` is
+ *   told once, right after a `dragstart` the page let through, which is
+ *   when a browser cancels the pointer that pressed.
  * @property {(controller: THREE.XRTargetRaySpace) => boolean} holding
  *   Whether the hand is holding something draggable: carrying it, or
  *   pressing it and not yet far enough from where it started for that to
@@ -625,29 +691,20 @@ export function createDragAndDrop(requestFrames, readHit, snapshots) {
   /** @type {(() => void) | null} */
   let stopFrames = null;
 
-  const raycaster = new THREE.Raycaster();
-  const plane = new THREE.Plane();
   const onPlane = new THREE.Vector3();
   const inPanel = new THREE.Vector2();
 
   /**
    * Where the hand's ray crosses the source panel's plane, in world space in
    * `onPlane` and in the panel's px in `inPanel`; false when it points away
-   * from it.
+   * from it. Where the panel is now, not where it was at the press: a panel
+   * the scene lets a hand carry can move while it is pressed.
    *
    * @param {Session} session
    * @returns {boolean}
    */
   function sample(session) {
-    raycaster.setFromXRController(session.controller);
-    // Where the panel is now, not where it was at the press: a panel the
-    // scene lets a hand carry can move while it is pressed.
-    if (!raycaster.ray.intersectPlane(planeOf(session.panel, plane), onPlane)) {
-      return false;
-    }
-    session.panel.worldToLocal(scratch.copy(onPlane));
-    inPanel.set(scratch.x, scratch.y);
-    return true;
+    return sampleRay(session.controller, session.panel, onPlane, inPanel);
   }
 
   /**
@@ -904,8 +961,7 @@ export function createDragAndDrop(requestFrames, readHit, snapshots) {
     if (hit && panel) {
       scratch.copy(hit.point);
     } else {
-      raycaster.setFromXRController(session.controller);
-      if (!raycaster.ray.intersectPlane(planeOf(target, plane), onPlane)) {
+      if (!sampleRay(session.controller, target, onPlane)) {
         ghost.visible = false;
         return;
       }
@@ -942,6 +998,7 @@ export function createDragAndDrop(requestFrames, readHit, snapshots) {
           sessions.delete(session.controller);
           continue;
         }
+        session.onTaken?.(session.controller);
       }
       const hit = readHit(session.controller);
       const panel = hit ? panelOf(hit.object) : null;
@@ -955,7 +1012,7 @@ export function createDragAndDrop(requestFrames, readHit, snapshots) {
   }
 
   return {
-    begin(controller, element, object, allowed) {
+    begin(controller, element, object, allowed, onTaken) {
       dragged.delete(controller);
       const previous = sessions.get(controller);
       if (previous) {
@@ -992,6 +1049,7 @@ export function createDragAndDrop(requestFrames, readHit, snapshots) {
         current: null,
         operation: "none",
         unlisten: () => {},
+        onTaken,
       };
       if (!sample(session)) {
         return false;

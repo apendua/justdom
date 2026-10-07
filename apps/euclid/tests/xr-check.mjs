@@ -18,6 +18,8 @@
  * - Point, in the toolbar panel, picks the point tool, and the trigger on
  *   empty paper writes a `point(…)` statement through the drawing's own
  *   pointer handlers, at the place the ray met;
+ * - the snap ring shows on `A` with the ray on it, and clears when the ray
+ *   leaves the drawing, on the drawing's own `pointerleave`;
  * - Line, then the trigger on `A` and on `B`, writes a `line(A, B)`;
  * - Select, then the trigger held on `B` while the ray moves, drags `B`
  *   and rewrites its coordinates, without the program taking the keyboard;
@@ -291,6 +293,34 @@ async function main() {
           "at the place on the page the ray was aimed at",
         );
       }
+    }
+
+    console.log("\n== the snap ring");
+    {
+      // The ring round the point a click of the point tool would snap to:
+      // the one circle on the drawing 7 px across, hidden while the pointer
+      // is near no point.
+      const ringShown = () =>
+        page.$eval("#canvas svg", (svg) =>
+          [...svg.querySelectorAll("circle")].some(
+            (c) => c.getAttribute("r") === "7" && c.getAttribute("visibility") === "visible",
+          ),
+        );
+      // The emulator's left controller rests with its ray on the drawing
+      // too, and its moves, far from A, would hide the ring whatever the
+      // right hand's ray did. Turned round, it points at nothing.
+      await page.evaluate(() => {
+        const left = /** @type {any} */ (window).xrDevice.controllers.left;
+        Object.assign(left.quaternion, { x: 0, y: 1, z: 0, w: 0 });
+      });
+      const { x, y } = await pointOnPage("A");
+      await aimAt(await onPanel("canvas", x, y));
+      await frames(page, 6);
+      check(await ringShown(), "the snap ring shows on A with the ray on it");
+      // As far above the drawing as it is tall: off its panel.
+      await aimAt(await onPanel("canvas", x, canvasRect.top - canvasRect.height));
+      await frames(page, 6);
+      check(!(await ringShown()), "and clears when the ray leaves the drawing");
     }
 
     console.log("\n== a line");

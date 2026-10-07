@@ -297,7 +297,7 @@ function rotates(value) {
  * @param {Element} element
  * @returns {string}
  */
-function describeElement(element) {
+export function describeElement(element) {
   if (element.id) {
     return `${element.localName}#${element.id}`;
   }

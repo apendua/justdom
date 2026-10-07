@@ -1531,14 +1531,15 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
 
   /**
    * The element a hand's wheel goes to: the innermost control its ray is
-   * on that the page still has, which is what its moves go to, found as
-   * they find it and without a walk; or, on a list's gaps or on the panel's
-   * background, the deepest element at the point `samplePlane` last found
-   * (see `hitElement`). Nothing where the ray is on
-   * something a plugin hangs in the panel, which is the scene's, as the
-   * scene's object is in front of the page there; and, on a panel that
-   * stops no rays, nothing between its controls and lists, where it has no
-   * background for the ray to be on.
+   * on that the page still has, found as its moves find it, without a
+   * walk. On a list's gaps, on a gone row in a list, which the walk then
+   * finds whatever replaced, or on the panel's background, it is the
+   * deepest element at the point `samplePlane` last found (see
+   * `hitElement`); a move passes over the list to a control outside it
+   * instead. Nothing where the ray is on something a plugin hangs in the
+   * panel, which is the scene's, as the scene's object is in front of the
+   * page there; and, on a panel that stops no rays, nothing between its
+   * controls and lists, where it has no background for the ray to be on.
    *
    * @param {PanelHand} hand
    * @param {Panel} own

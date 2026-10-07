@@ -431,16 +431,31 @@ function writeLastPoint(init, hand) {
 }
 
 /**
- * Record an event's point as where the page last heard a hand's pointer
- * was (see `Hand.x`), as `writeLastPoint` reads it back.
+ * Record an event's point, in client coordinates, as where the page last
+ * heard a hand's pointer was (see `Hand.x`), as `writeLastPoint` reads it
+ * back. The only writer of `Hand.x`.
  *
  * @param {Hand} hand
- * @param {PointerEventInit} init
+ * @param {number} x
+ * @param {number} y
  * @returns {void}
  */
-function recordPoint(hand, init) {
-  hand.x = init.clientX ?? 0;
-  hand.y = init.clientY ?? 0;
+function recordPoint(hand, x, y) {
+  hand.x = x;
+  hand.y = y;
+}
+
+/**
+ * Record the point of a drag event a hand's press sent, as the drag and
+ * drop tells it (see `DragAndDrop.begin`).
+ *
+ * @param {XRTargetRaySpace} controller
+ * @param {number} x
+ * @param {number} y
+ * @returns {void}
+ */
+function recordDragPoint(controller, x, y) {
+  recordPoint(handOf(controller), x, y);
 }
 
 /**
@@ -710,9 +725,9 @@ function wrapPointerCapture() {
  * date (see `bringUpElsewhere`), which may come while a ray event's own
  * init, the one `pressInit` and its siblings write, is being sent. Written
  * in place by `placeless`, with no point unless its caller adds one:
- * `atPointer` places the capture events, the cancel and the leaves of a
- * hand that has gone where the pointer last was, and `bringUp` places its
- * crossings on its panel's plane.
+ * `atPointer` places the capture events, the cancel and the leaves after
+ * it, and the leaves of a hand that has gone where the pointer last was,
+ * and `bringUp` places its crossings on its panel's plane.
  *
  * @type {PointerEventInit}
  */
@@ -822,10 +837,10 @@ function settleCapture(controller) {
  * `pointercancel` where the press went, the element that captured it or
  * the one pressed, then `lostpointercapture`, and the pointer leaves
  * everything it was over, on every panel, all where the page last heard
- * the pointer was (see `Hand.x`). Nothing more of the pointer
- * reaches the page until the trigger opens, the mouse included, which
- * holds still as it does under a drag; the release catches both up. The
- * scroll gesture and drag and drop are handed this as their `onTaken`.
+ * the pointer was (see `Hand.x`). Nothing more of the pointer reaches the
+ * page until the trigger opens, the mouse included, which holds still as
+ * it does under a drag; the release catches both up. The scroll gesture
+ * and drag and drop are handed this as their `onTaken`.
  *
  * @param {XRTargetRaySpace} controller
  * @returns {void}
@@ -974,7 +989,7 @@ function sendPointerAndMouse(element, type, init, controller, onPanel = true) {
     }
   }
   if (type !== "pointerup" || !hand.releasedNowhere) {
-    recordPoint(hand, init);
+    recordPoint(hand, init.clientX ?? 0, init.clientY ?? 0);
   }
   const pointer = typeof PointerEvent === "function" ? new PointerEvent(type, init) : null;
   init.button = button;
@@ -1051,7 +1066,7 @@ const into = /** @type {Element[]} */ ([]);
  * @param {PointerEventInit} init The point, the pointer and its buttons,
  *   for every event sent.
  * @param {"pointer" | "mouse"} kind
- * @returns {void}
+ * @returns {boolean} Whether any event went out.
  */
 function cross(chain, element, init, kind) {
   let gone = 0;
@@ -1060,7 +1075,7 @@ function cross(chain, element, init, kind) {
   }
   chain.splice(0, gone);
   if (gone === 0 && (chain[0] ?? null) === element) {
-    return;
+    return false;
   }
   fillChain(element, into);
   let shared = 0;
@@ -1075,6 +1090,7 @@ function cross(chain, element, init, kind) {
   const types = CROSSINGS[kind];
   const Event = kind === "pointer" ? PointerEvent : MouseEvent;
   init.button = kind === "pointer" ? -1 : 0;
+  let sent = false;
   /**
    * @param {string} type
    * @param {Element} target
@@ -1086,6 +1102,7 @@ function cross(chain, element, init, kind) {
     init.cancelable = bubbles;
     init.relatedTarget = related;
     target.dispatchEvent(new Event(type, init));
+    sent = true;
   };
   if (from) {
     send(types.out, from, element, true);
@@ -1104,6 +1121,7 @@ function cross(chain, element, init, kind) {
   for (const el of into) {
     chain.push(el);
   }
+  return sent;
 }
 
 /**
@@ -1952,19 +1970,23 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
     const own = panel();
     const on = isOnPanel(own, e);
     const init = moveInit(own, on ? e : NOWHERE);
-    if (on) {
-      recordPoint(pointer, init);
-    } else if (released ? !pointer.releasedNowhere : e.lost) {
+    if (!on && (released ? !pointer.releasedNowhere : e.lost)) {
       writeLastPoint(init, pointer);
     }
     init.pointerId = pointer.pointerId;
     init.isPrimary = isPrimary;
     init.buttons = heldButtons(controller, released ? HAND_BITS.select : 0);
+    const x = init.clientX ?? 0;
+    const y = init.clientY ?? 0;
+    let sent = false;
     if (typeof PointerEvent === "function") {
-      cross(hand.chain, element, init, "pointer");
+      sent = cross(hand.chain, element, init, "pointer");
     }
     if (isPrimary) {
-      cross(mouseChain, element, init, "mouse");
+      sent = cross(mouseChain, element, init, "mouse") || sent;
+    }
+    if (sent && on) {
+      recordPoint(pointer, x, y);
     }
   };
 
@@ -2154,8 +2176,16 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
       // otherwise a press over a list may become a scroll; only holding it
       // will tell. The page's own gesture comes first, as it does under a
       // mouse, where dragging a row drags the row and not the list.
-      const pointer = handOf(e.controller);
-      if (!dnd.begin(e.controller, first.element, first.object, pressed, cancelPointer, pointer)) {
+      if (
+        !dnd.begin(
+          e.controller,
+          first.element,
+          first.object,
+          pressed,
+          cancelPointer,
+          recordDragPoint,
+        )
+      ) {
         drags.begin(e.controller, first.element, first.object, cancelPointer);
       }
       haptics?.press(e.inputSource);
@@ -2440,23 +2470,26 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
       // Where the ray crosses this panel's plane, as a captured hand's
       // moves are placed, since no ray event here says where it is; where
       // the page last heard the pointer for a hand that has gone.
-      const pointerHand = hands.get(controller);
-      const init =
-        nowhere && pointerHand
-          ? atPointer(controller, pointerHand, buttons)
-          : placeless(controller, buttons);
+      const pointerHand = handOf(controller);
+      const init = nowhere
+        ? atPointer(controller, pointerHand, buttons)
+        : placeless(controller, buttons);
       const own = panel();
-      if (own && element && samplePlane(controller)) {
+      const placed = !!own && !!element && samplePlane(controller);
+      if (placed) {
         writeSampled(own, init);
-        if (pointerHand) {
-          recordPoint(pointerHand, init);
-        }
       }
+      const x = init.clientX ?? 0;
+      const y = init.clientY ?? 0;
+      let sent = false;
       if (pointer && hand && typeof PointerEvent === "function") {
-        cross(hand.chain, element, init, "pointer");
+        sent = cross(hand.chain, element, init, "pointer");
       }
       if (mouse) {
-        cross(mouseChain, element, init, "mouse");
+        sent = cross(mouseChain, element, init, "mouse") || sent;
+      }
+      if (sent && placed) {
+        recordPoint(pointerHand, x, y);
       }
     },
   };

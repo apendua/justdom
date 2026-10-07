@@ -665,31 +665,24 @@ function outlineGhost(shown, width, height) {
  * @property {() => void} unlisten
  * @property {((controller: THREE.XRTargetRaySpace) => void) | undefined} onTaken
  *   See `DragAndDrop.begin`.
- * @property {Heard | undefined} heard See `DragAndDrop.begin`.
- */
-
-/**
- * Where the page last heard a pointer was, in client coordinates, which a
- * drag writes the point of each of its events into as it goes out (see
- * `Hand.x` in `pointerForwarding.js`).
- *
- * @typedef {object} Heard
- * @property {number} x
- * @property {number} y
+ * @property {((controller: THREE.XRTargetRaySpace, x: number, y: number) => void) | undefined} onPoint
+ *   See `DragAndDrop.begin`.
  */
 
 /**
  * @typedef {object} DragAndDrop
- * @property {(controller: THREE.XRTargetRaySpace, element: HTMLElement, object: THREE.Object3D, allowed: boolean, onTaken?: (controller: THREE.XRTargetRaySpace) => void, heard?: Heard) => boolean} begin
+ * @property {(controller: THREE.XRTargetRaySpace, element: HTMLElement, object: THREE.Object3D, allowed: boolean, onTaken?: (controller: THREE.XRTargetRaySpace) => void, onPoint?: (controller: THREE.XRTargetRaySpace, x: number, y: number) => void) => boolean} begin
  *   Tell the gesture about a press, every press, since a new press is what
  *   ends the last one's say over `didDrag`. Taken, and true, when the page
  *   allowed it, which is `false` when it cancelled the press's `mousedown`,
  *   and there is something draggable at or above the element; the press
  *   then belongs to it until the controller's own `selectend`. `onTaken` is
  *   told once, right after a `dragstart` the page let through, which is
- *   when a browser cancels the pointer that pressed. `heard` takes the
+ *   when a browser cancels the pointer that pressed. `onPoint` is told the
  *   point of every drag event the press sends, `dragstart` to `dragend`,
- *   since the page hears the pointer go on from the press through them.
+ *   in client coordinates, as it goes out, since the page hears the
+ *   pointer go on from the press through them (see `Hand.x` in
+ *   `pointerForwarding.js`).
  * @property {(controller: THREE.XRTargetRaySpace) => boolean} holding
  *   Whether the hand is holding something draggable: carrying it, or
  *   pressing it and not yet far enough from where it started for that to
@@ -774,10 +767,7 @@ export function createDragAndDrop(requestFrames, readHit, snapshots) {
     // A browser's own `dataTransfer` cannot carry an effect; see
     // `PanelDataTransfer`. The event is the browser's, the store is ours.
     Object.defineProperty(event, "dataTransfer", { value: dataTransfer });
-    if (session.heard) {
-      session.heard.x = session.client.x;
-      session.heard.y = session.client.y;
-    }
+    session.onPoint?.(session.controller, session.client.x, session.client.y);
     const proceed = target.dispatchEvent(event);
     dataTransfer.setMode("protected");
     return !proceed;
@@ -1047,7 +1037,7 @@ export function createDragAndDrop(requestFrames, readHit, snapshots) {
   }
 
   return {
-    begin(controller, element, object, allowed, onTaken, heard) {
+    begin(controller, element, object, allowed, onTaken, onPoint) {
       dragged.delete(controller);
       const previous = sessions.get(controller);
       if (previous) {
@@ -1085,7 +1075,7 @@ export function createDragAndDrop(requestFrames, readHit, snapshots) {
         operation: "none",
         unlisten: () => {},
         onTaken,
-        heard,
+        onPoint,
       };
       if (!sample(session)) {
         return false;

@@ -1532,6 +1532,34 @@ describe("a ray's pointer events", () => {
     page.teardown();
   });
 
+  test("cancelled, caught up on another panel at the release, leave from there when the hand goes", async () => {
+    const page = await mirrored((place) => scrollingRow(place, false));
+    const other = await mirrored(
+      (place) => {
+        place("div", "far", [20, 20, 100, 40]).style.cursor = "pointer";
+      },
+      { name: "other", manager: page.manager, scene: page.scene, x: 4 },
+    );
+    const hand = rayHand(page.manager);
+    hand.aim(page.panel, 95, 100);
+    hand.trigger("selectstart");
+    hand.aim(page.panel, 95, 60);
+    hand.aim(other.panel, 70, 40);
+    // The release crosses the pointer and the mouse onto the other panel's
+    // button, the last place the page hears of them.
+    hand.trigger("selectend");
+    const { heard, stop } = hearing(["pointerout", "mouseout"], { at: true });
+    hand.disconnect();
+    stop();
+    assert.deepEqual(heard, [
+      "pointerout #far at 70,40 buttons 0",
+      "mouseout #far at 70,40 buttons 0",
+    ]);
+    hand.remove();
+    other.teardown();
+    page.teardown();
+  });
+
   test("cancelled, catch the mouse up on every panel at the release", async () => {
     // The mouse crossed onto another panel's button on the frame the press
     // became a scroll, and held still there while the press was the
@@ -1955,13 +1983,19 @@ describe("a ray's pointer events", () => {
     // The capture takes hold at this move, which lets go of it; the
     // release that follows is the next event, which ends it.
     hand.aim(page.panel, 500, 350);
-    const { heard, stop } = hearing(["pointerup", "mouseup"], { at: true });
+    const { heard, stop } = hearing(["pointerup", "mouseup", "pointerout", "mouseout"], {
+      at: true,
+    });
     hand.trigger("selectend");
     stop();
-    // Off the panel, uncaptured, the release is nowhere on the page.
+    // Off the panel, uncaptured, the release is nowhere on the page, and
+    // so are the crossings that take the pointer off the drawing after it,
+    // since they say what the release said.
     assert.deepEqual(heard, [
       "pointerup #drawing at 0,0 buttons 0",
       "mouseup #drawing at 0,0 buttons 0",
+      "pointerout #drawing at 0,0 buttons 0",
+      "mouseout #drawing at 0,0 buttons 0",
     ]);
     hand.remove();
     page.teardown();

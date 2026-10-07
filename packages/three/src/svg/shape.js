@@ -850,13 +850,13 @@ const LAYERS = 3;
  * content render order R up to R + `BOX_BUCKET_BIAS`, where HTML text of
  * that order draws. A box drawn at the `<svg>`'s content level draws at that
  * bias, so every element of the `<svg>` draws before the box, whatever its
- * place in the document order. A slot that ran up to R + 1 drew the later elements
- * after the box, which writes depth, and a box in front of the `<svg>` hid
- * them. Each element in the slot gets an equal share of it by its place in
- * the root's document order, split into its three layers. The content of
- * an instance shares out the instance's slot the same way, by its place in
- * the template, so the arrowheads on a path are drawn over its stroke and
- * under whatever comes after it.
+ * place in the document order. A slot that ran up to R + 1 drew the later
+ * elements after the box, which writes depth, and a box in front of the
+ * `<svg>` hid them. Each element in the slot gets an equal share of it by its
+ * place in the root's document order, split into its three layers. The
+ * content of an instance shares out the instance's slot the same way, by its
+ * place in the template, so the arrowheads on a path are drawn over its
+ * stroke and under whatever comes after it.
  *
  * @param {Element} element
  * @param {Element | null} root The element's `<svg>` root, from its chain.

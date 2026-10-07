@@ -483,6 +483,19 @@ export function pressInit(panel, e, cancelable, button = 0) {
 }
 
 /**
+ * Whether a ray event's ray is on a panel: what a release, which may come
+ * with the ray anywhere, has to be asked before it has a point on the page
+ * (see `releaseInit`).
+ *
+ * @param {Panel | null} panel
+ * @param {{ intersection?: THREE.Intersection }} e
+ * @returns {boolean}
+ */
+export function isOnPanel(panel, e) {
+  return panel !== null && !!e.intersection && getPanel(e.intersection.object) === panel;
+}
+
+/**
  * The init for the `mouseup` sent for a press's release. One event, probed
  * like a press; but the ray may have wandered since the press, and only a
  * release on the element's own panel has a point on its page. A captured
@@ -500,7 +513,7 @@ export function releaseInit(panel, e) {
   init.button = 0;
   init.buttons = 0;
   init.relatedTarget = null;
-  const on = !!e.intersection && getPanel(e.intersection.object) === panel;
+  const on = isOnPanel(panel, e);
   if (panel && on) {
     probePanel(panel);
   }

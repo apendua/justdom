@@ -2399,6 +2399,48 @@ describe("the thumbstick as a wheel", () => {
     }
   });
 
+  test("turns the control the ray is on, not what is inside it", async () => {
+    const w = await wheeling();
+    try {
+      // A label in the piece that is no control of its own.
+      const piece = /** @type {HTMLElement} */ (document.getElementById("piece"));
+      const label = document.createElement("span");
+      label.id = "label";
+      label.style.cursor = "default";
+      label.getBoundingClientRect = () => clientRect(50, 50, 30, 20);
+      piece.appendChild(label);
+      await settle();
+      w.hand.aim(w.panel, 60, 60);
+      w.push(-1);
+      w.after(50);
+      assert.deepEqual(w.heard, ["wheel #piece at 60,60 deltaY -50"]);
+    } finally {
+      w.teardown();
+    }
+  });
+
+  test("turns the next control up from one the page has taken out", async () => {
+    const w = await wheeling();
+    try {
+      // A knob in the piece, a control of its own, which the page takes out
+      // while the panel still draws it.
+      const piece = /** @type {HTMLElement} */ (document.getElementById("piece"));
+      const knob = document.createElement("span");
+      knob.id = "knob";
+      knob.style.cursor = "pointer";
+      knob.getBoundingClientRect = () => clientRect(50, 50, 30, 20);
+      piece.appendChild(knob);
+      await settle();
+      w.hand.aim(w.panel, 60, 60);
+      knob.remove();
+      w.push(-1);
+      w.after(50);
+      assert.deepEqual(w.heard, ["wheel #piece at 60,60 deltaY -50"]);
+    } finally {
+      w.teardown();
+    }
+  });
+
   test("turns nothing under a trigger held since before the ray came to the panel", async () => {
     const w = await wheeling();
     try {

@@ -1531,30 +1531,37 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
 
   /**
    * The element a hand's wheel goes to: the innermost control its ray is
-   * on, which is what its moves go to, without a walk; or, on a list's gaps
-   * or on the panel's background, the deepest element where the ray crosses
-   * the panel's plane (see `hitElement`). Nothing where the ray is on
+   * on that the page still has, which is what its moves go to, found as
+   * they find it and without a walk; or, on a list's gaps or on the panel's
+   * background, the deepest element at the point `samplePlane` last found
+   * (see `hitElement`). Nothing where the ray is on
    * something a plugin hangs in the panel, which is the scene's, as the
    * scene's object is in front of the page there; and, on a panel that
    * stops no rays, nothing between its controls and lists, where it has no
    * background for the ray to be on.
    *
    * @param {PanelHand} hand
-   * @param {XRTargetRaySpace} controller
    * @param {Panel} own
    * @returns {HTMLElement | null}
    */
-  const wheelTarget = (hand, controller, own) => {
-    const target = innermost(hand.hover);
-    if (target && !target.list) {
-      return isGone(target.element) ? null : target.element;
+  const wheelTarget = (hand, own) => {
+    let onList = false;
+    for (const object of hand.hover) {
+      const target = targets.get(object);
+      if (!target) {
+        continue;
+      }
+      if (target.list) {
+        onList = true;
+        break;
+      }
+      if (!isGone(target.element)) {
+        return target.element;
+      }
     }
     const hovered = hand.hovered;
     const onBackground = hovered?.parent === container && isBlocker(hovered);
-    if (!target && !onBackground) {
-      return null;
-    }
-    return samplePlane(controller) ? hitElement(own, onPlane) : null;
+    return onList || onBackground ? hitElement(own, onPlane) : null;
   };
 
   /**
@@ -1587,8 +1594,8 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
     ) {
       return;
     }
-    const element = wheelTarget(hand, controller, own);
-    if (!element || !samplePlane(controller)) {
+    const element = samplePlane(controller) ? wheelTarget(hand, own) : null;
+    if (!element) {
       return;
     }
     writeSampled(own, wheelInit);

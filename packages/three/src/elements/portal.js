@@ -328,9 +328,11 @@ function claimRoot(root) {
  *   `wheel` to the element under the ray, once a frame (see `wheelTarget`
  *   in `pointerForwarding.js` for which one), with a `deltaY` that follows
  *   how far the stick is pushed, forward as negative, as a wheel turned up
- *   says it. For a page that zooms or pans on the wheel. It
- *   scrolls nothing of itself, since a list is scrolled by pulling it. Off
- *   by default, because a scene may read the stick for something else, to
+ *   says it. For a page that zooms or pans on the wheel. A panel with
+ *   `opaqueToRays: false` turns it only while the ray is on a control or a
+ *   list, since it has no background for the ray to be on. It scrolls
+ *   nothing of itself, since a list is scrolled by pulling it. Off by
+ *   default, because a scene may read the stick for something else, to
  *   turn a carried object or to move the player; one that does not can
  *   turn it on for every panel through the scene's `PanelOptions`.
  * @property {boolean | PanelDragOptions} [draggable] Whether the player can

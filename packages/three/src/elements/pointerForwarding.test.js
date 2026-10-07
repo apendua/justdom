@@ -16,6 +16,7 @@ import { describeScroller } from "../test/scroller.js";
 import { countingManager, flushFrame, settle } from "../test/portalHarness.js";
 import { forwardedPanel } from "../test/rays.js";
 import { rayHand } from "../test/rayHand.js";
+import { fakeClock } from "../test/clock.js";
 import { createPortal } from "./portal.js";
 import { PointerForwarderContext } from "./pointerForwarding.js";
 
@@ -26,6 +27,11 @@ import { PointerForwarderContext } from "./pointerForwarding.js";
 // three's SVGLoader parses with DOMParser, which jsdom-env does not install.
 if (typeof globalThis.DOMParser === "undefined") {
   globalThis.DOMParser = window.DOMParser;
+}
+
+// Nor `WheelEvent`, which a panel sends for a hand's thumbstick.
+if (typeof globalThis.WheelEvent === "undefined") {
+  globalThis.WheelEvent = window.WheelEvent;
 }
 
 const SVG_NS = "http://www.w3.org/2000/svg";
@@ -215,10 +221,18 @@ function nest({ outer, inner, build, haptics = null }) {
  * @param {THREE.Object3D} [options.scene]
  * @param {number} [options.x] How far along x to put the panel, in m, so
  *   that a ray aimed at one panel misses another.
+ * @param {import("./portal.js").PortalOptions} [options.portal] The
+ *   panel's own options, besides its root and a budget of 0.
  */
 async function mirrored(
   fill,
-  { name = "root", manager = new InteractionManager(), scene = new THREE.Group(), x = 0 } = {},
+  {
+    name = "root",
+    manager = new InteractionManager(),
+    scene = new THREE.Group(),
+    x = 0,
+    portal: options = {},
+  } = {},
 ) {
   const root = document.createElement("div");
   root.id = name;
@@ -231,7 +245,11 @@ async function mirrored(
     return element;
   });
   document.body.appendChild(root);
-  const portal = createPortal(InteractionContext.set({}, manager), { root, budget: 0 });
+  const portal = createPortal(InteractionContext.set({}, manager), {
+    ...options,
+    root,
+    budget: 0,
+  });
   const group = new THREE.Group();
   group.position.x = x;
   scene.add(group);
@@ -2348,5 +2366,368 @@ describe("a panel's ray events", () => {
 
     portal.disconnect();
     root.remove();
+  });
+});
+
+describe("the thumbstick as a wheel", () => {
+  /**
+   * A board with a piece on it, the piece a control and the board not.
+   *
+   * @param {Parameters<Parameters<typeof mirrored>[0]>[0]} place
+   */
+  const board = (place) => {
+    const element = place("div", "board", [20, 20, 200, 150]);
+    place("div", "piece", [40, 40, 50, 50], element).style.cursor = "pointer";
+  };
+
+  /**
+   * An input source whose gamepad has a thumbstick, on the axes the
+   * `xr-standard` mapping gives it, and a way to push it.
+   */
+  const stick = () => {
+    const axes = [0, 0, 0, 0];
+    const trigger = { pressed: false };
+    const source = /** @type {XRInputSource} */ (
+      /** @type {unknown} */ ({ gamepad: { axes, buttons: [trigger, { pressed: false }] } })
+    );
+    return {
+      source,
+      /** @param {number} y Forward is -1, as a gamepad says it. */
+      push(y) {
+        axes[3] = y;
+      },
+      /**
+       * Hold the trigger down as the gamepad reports it, with no event.
+       *
+       * @param {boolean} pressed
+       */
+      hold(pressed) {
+        trigger.pressed = pressed;
+      },
+    };
+  };
+
+  /**
+   * Frames that the page asks for while `body` runs, and then over `limit`
+   * more frames: how many of those rounds, `body` the first, asked for
+   * one. A panel left alone asks for none, and one that reads a stick
+   * every frame asks for one each round.
+   *
+   * @param {() => void} body
+   * @param {number} [limit]
+   * @returns {number}
+   */
+  const framesAskedFor = (body, limit = 5) => {
+    const { requestAnimationFrame: queue } = globalThis;
+    let asked = 0;
+    globalThis.requestAnimationFrame = (callback) => {
+      asked += 1;
+      return queue(callback);
+    };
+    try {
+      body();
+      let rounds = asked > 0 ? 1 : 0;
+      for (let i = 0; i < limit; i += 1) {
+        asked = 0;
+        flushFrame();
+        if (asked > 0) {
+          rounds += 1;
+        }
+      }
+      return rounds;
+    } finally {
+      globalThis.requestAnimationFrame = queue;
+    }
+  };
+
+  /**
+   * A hand with a stick on a board, a clock the test moves, and the
+   * `wheel` events the page hears, as `wheel #id at x,y deltaY d`.
+   *
+   * @param {import("./portal.js").PortalOptions} [options]
+   */
+  const wheeling = async (options = { thumbstickWheel: true }) => {
+    const page = await mirrored(board, { portal: options });
+    const clock = fakeClock();
+    const { source, push, hold } = stick();
+    const hand = rayHand(page.manager, source);
+    /** @type {WheelEvent[]} */
+    const events = [];
+    /** @type {string[]} */
+    const heard = [];
+    /** @param {Event} event */
+    const record = (event) => {
+      const wheel = /** @type {WheelEvent} */ (event);
+      events.push(wheel);
+      const { clientX, clientY, deltaY } = wheel;
+      const target = /** @type {Element} */ (event.target).id;
+      const at = `${Math.round(clientX)},${Math.round(clientY)}`;
+      heard.push(`wheel #${target} at ${at} deltaY ${Math.round(deltaY)}`);
+    };
+    document.addEventListener("wheel", record, true);
+    return {
+      panel: page.panel,
+      manager: page.manager,
+      scene: page.scene,
+      source,
+      hand,
+      push,
+      hold,
+      teardownPage: () => page.teardown(),
+      events,
+      heard,
+      /**
+       * A frame `ms` after the last, with the hand where it is.
+       *
+       * @param {number} ms
+       */
+      after(ms) {
+        clock.advance(ms);
+        hand.frame();
+      },
+      teardown() {
+        document.removeEventListener("wheel", record, true);
+        clock.restore();
+        hand.remove();
+        page.teardown();
+      },
+    };
+  };
+
+  test("turns the element under the ray, by the stick's vertical axis", async () => {
+    const w = await wheeling();
+    try {
+      w.hand.aim(w.panel, 60, 60);
+      w.push(-1);
+      w.after(50);
+      // Half way between the dead zone and the stop.
+      w.push(0.575);
+      w.after(50);
+      // The board is no control, and takes the wheel as a page's would.
+      w.hand.aim(w.panel, 150, 120);
+      w.after(50);
+      assert.deepEqual(w.heard, [
+        "wheel #piece at 60,60 deltaY -50",
+        "wheel #piece at 60,60 deltaY 25",
+        "wheel #board at 150,120 deltaY 25",
+      ]);
+      const [first] = w.events;
+      assert.equal(first.bubbles, true);
+      assert.equal(first.cancelable, true);
+      assert.equal(first.deltaMode, 0);
+      assert.equal(first.deltaX, 0);
+    } finally {
+      w.teardown();
+    }
+  });
+
+  test("is off unless the panel asks for it", async () => {
+    const w = await wheeling({});
+    try {
+      w.hand.aim(w.panel, 60, 60);
+      w.push(-1);
+      w.after(50);
+      assert.deepEqual(w.heard, []);
+    } finally {
+      w.teardown();
+    }
+  });
+
+  test("turns nothing while the hand holds the trigger or the grip", async () => {
+    const w = await wheeling();
+    try {
+      w.hand.aim(w.panel, 60, 60);
+      w.push(-1);
+      w.hand.trigger("selectstart");
+      w.after(50);
+      w.hand.trigger("selectend");
+      w.hand.trigger("squeezestart");
+      w.after(50);
+      w.hand.trigger("squeezeend");
+      w.after(50);
+      assert.deepEqual(w.heard, ["wheel #piece at 60,60 deltaY -50"]);
+    } finally {
+      w.teardown();
+    }
+  });
+
+  test("turns nothing inside the stick's dead zone", async () => {
+    const w = await wheeling();
+    try {
+      w.hand.aim(w.panel, 60, 60);
+      w.push(-0.1);
+      w.after(50);
+      assert.deepEqual(w.heard, []);
+    } finally {
+      w.teardown();
+    }
+  });
+
+  test("turns nothing on a panel the ray has left for one in front of it", async () => {
+    const w = await wheeling();
+    // Over the right half of the first, and nearer the hand.
+    const front = await mirrored(board, {
+      name: "front",
+      manager: w.manager,
+      scene: w.scene,
+      x: 3,
+      portal: { thumbstickWheel: true },
+    });
+    try {
+      front.panel.parent?.position.setZ(0.5);
+      w.hand.aim(w.panel, 60, 60);
+      // The first panel's plane is still behind the ray, on its root.
+      w.hand.aim(front.panel, 60, 60);
+      w.push(-1);
+      w.after(50);
+      assert.deepEqual(w.heard, ["wheel #piece at 60,60 deltaY -50"]);
+      assert.equal(front.root.contains(/** @type {Node} */ (w.events[0].target)), true);
+    } finally {
+      front.teardown();
+      w.teardown();
+    }
+  });
+
+  test("turns the control the ray is on, not what is inside it", async () => {
+    const w = await wheeling();
+    try {
+      // A label in the piece that is no control of its own.
+      const piece = /** @type {HTMLElement} */ (document.getElementById("piece"));
+      const label = document.createElement("span");
+      label.id = "label";
+      label.style.cursor = "default";
+      label.getBoundingClientRect = () => clientRect(50, 50, 30, 20);
+      piece.appendChild(label);
+      await settle();
+      w.hand.aim(w.panel, 60, 60);
+      w.push(-1);
+      w.after(50);
+      assert.deepEqual(w.heard, ["wheel #piece at 60,60 deltaY -50"]);
+    } finally {
+      w.teardown();
+    }
+  });
+
+  test("turns the next control up from one the page has taken out", async () => {
+    const w = await wheeling();
+    try {
+      // A knob in the piece, a control of its own, which the page takes out
+      // while the panel still draws it.
+      const piece = /** @type {HTMLElement} */ (document.getElementById("piece"));
+      const knob = document.createElement("span");
+      knob.id = "knob";
+      knob.style.cursor = "pointer";
+      knob.getBoundingClientRect = () => clientRect(50, 50, 30, 20);
+      piece.appendChild(knob);
+      await settle();
+      w.hand.aim(w.panel, 60, 60);
+      knob.remove();
+      w.push(-1);
+      w.after(50);
+      assert.deepEqual(w.heard, ["wheel #piece at 60,60 deltaY -50"]);
+    } finally {
+      w.teardown();
+    }
+  });
+
+  test("turns nothing under a trigger held since before the ray came to the panel", async () => {
+    const w = await wheeling();
+    try {
+      // Held on something the scene carries, so the panel heard no press.
+      w.hold(true);
+      w.hand.aim(w.panel, 60, 60);
+      w.push(-1);
+      w.after(50);
+      w.hold(false);
+      w.after(50);
+      assert.deepEqual(w.heard, ["wheel #piece at 60,60 deltaY -50"]);
+    } finally {
+      w.teardown();
+    }
+  });
+
+  test("turns nothing while the ray is on the scene's own object in the panel", async () => {
+    const w = await wheeling();
+    // Over the board, as a plugin hangs its objects.
+    const prop = new THREE.Mesh(
+      new THREE.PlaneGeometry(40, 40),
+      new THREE.MeshBasicMaterial({ side: THREE.DoubleSide }),
+    );
+    prop.position.set(150, 120, -5);
+    w.panel.add(prop);
+    w.manager.add(/** @type {never} */ (prop));
+    try {
+      w.hand.aim(w.panel, 150, 120);
+      w.push(-1);
+      w.after(50);
+      w.hand.aim(w.panel, 180, 150);
+      w.after(50);
+      assert.deepEqual(w.heard, ["wheel #board at 180,150 deltaY -50"]);
+    } finally {
+      w.manager.remove(/** @type {never} */ (prop));
+      w.teardown();
+    }
+  });
+
+  test("starts when a source with a stick comes to a hand already on the panel", async () => {
+    const w = await wheeling();
+    try {
+      w.hand.use(null);
+      w.hand.aim(w.panel, 60, 60);
+      w.hand.use(w.source);
+      w.hand.aim(w.panel, 62, 60);
+      w.push(-1);
+      w.after(50);
+      assert.deepEqual(w.heard, ["wheel #piece at 62,60 deltaY -50"]);
+    } finally {
+      w.teardown();
+    }
+  });
+
+  test("reads the stick only while a hand with one is on the panel", async () => {
+    const w = await wheeling();
+    try {
+      assert.equal(
+        framesAskedFor(() => w.hand.aim(w.panel, 150, 120)),
+        6,
+        "every frame while it is on the panel",
+      );
+      // The frame the hand turns in is the last to read it. It has asked
+      // for the next before it heard it was the last, and that one runs
+      // nothing and asks for none.
+      assert.equal(
+        framesAskedFor(() => w.hand.turnAway()),
+        1,
+        "and no longer once it has left",
+      );
+      // A hand with no gamepad, as the mouse is.
+      w.hand.use(null);
+      assert.equal(
+        framesAskedFor(() => w.hand.aim(w.panel, 150, 120)),
+        0,
+        "nor for a hand with no stick",
+      );
+      w.hand.use(w.source);
+      w.hand.aim(w.panel, 152, 120);
+      assert.equal(
+        framesAskedFor(() => w.teardownPage()),
+        0,
+        "nor once the panel is gone",
+      );
+    } finally {
+      w.teardown();
+    }
+  });
+
+  test("turns no further for a stalled frame than for a tenth of a second", async () => {
+    const w = await wheeling();
+    try {
+      w.hand.aim(w.panel, 60, 60);
+      w.push(-1);
+      w.after(1000);
+      assert.deepEqual(w.heard, ["wheel #piece at 60,60 deltaY -100"]);
+    } finally {
+      w.teardown();
+    }
   });
 });

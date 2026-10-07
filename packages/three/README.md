@@ -397,6 +397,25 @@ lost. Releasing a hand's pointer that holds no capture does nothing, as for a po
 knows, so a page's `pointerup` handler may release what the release already ended. The grip's
 `contextmenu` comes alone, as before.
 
+A panel can also hear a hand's thumbstick as a mouse wheel, for a page that zooms or pans on
+`wheel`:
+
+```js
+dom(ctx, drawing, [set({ position })], { thumbstickWheel: true });
+```
+
+While the hand's ray is on the panel and the hand holds no button, pushing the stick forward or
+pulling it back sends `wheel` once a frame to the element under the ray. That is any element, a
+control or not, as a browser sends a wheel to whatever the mouse is over. Its `deltaY` is in px
+(`deltaMode` 0) and negative for the stick pushed forward, as for a wheel turned up. It follows how
+far the stick is pushed: nothing inside a small dead zone around the centre, and 1000 px a second at
+the stop. Its `clientX` and `clientY` are where the ray crosses the panel, as a move's are. Either
+hand turns it. The wheel scrolls nothing of itself, since a list is scrolled by pulling it (see
+**Clipping and scrolling**); a page that wants it to scroll one does that in its handler, with
+`scrollElementBy`. It is off unless a panel asks, because a scene may read the stick for something
+else, to turn a carried object or to move the player. A scene that does not can turn it on for every
+panel through its panel defaults.
+
 In development, a press that lands on an element of a panel's page with no ray target under it warns
 once per element, naming the element. A press on the panel's empty root, or on an object of the
 scene's own hung in the panel, is not one. A board that listens for clicks and says no
@@ -1735,13 +1754,14 @@ render(Scene, {
 });
 ```
 
-`keyboard`, `loadingFrame`, `haptics`, `maxTextScale`, `atomic`, `opaqueToRays`, `priority` and
-`budget` can be set this way. A panel's own options are laid over them: its value wins, except that
-a `keyboard`, a `loadingFrame` or a `haptics` given as an object is spread over the scene's, so a
-panel can change one thing about them without restating the rest. `withPanelOptions(ctx, …)` does
-the same for a part of the scene, over whatever is in scope already. `plugins` is not among them —
-it has `portalPlugins`, whose list a panel's own is put in front of rather than in place of — and
-neither are `root` and `onLoadingChanged`, which are only ever one panel's.
+`keyboard`, `loadingFrame`, `haptics`, `thumbstickWheel`, `maxTextScale`, `atomic`, `opaqueToRays`,
+`priority` and `budget` can be set this way. A panel's own options are laid over them: its value
+wins, except that a `keyboard`, a `loadingFrame` or a `haptics` given as an object is spread over
+the scene's, so a panel can change one thing about them without restating the rest.
+`withPanelOptions(ctx, …)` does the same for a part of the scene, over whatever is in scope already.
+`plugins` is not among them — it has `portalPlugins`, whose list a panel's own is put in front of
+rather than in place of — and neither are `root` and `onLoadingChanged`, which are only ever one
+panel's.
 
 ## SVG
 

@@ -15,13 +15,19 @@ import { flushFrame } from "./portalHarness.js";
  * met its events, and then the page's, in which the portal answers them.
  *
  * @param {InteractionManager} manager
+ * @param {XRInputSource | null} [inputSource] What drives the hand, as
+ *   `render()` hands the manager a controller's: its gamepad, for a test
+ *   that moves its thumbstick. None unless given, as for a controller
+ *   under a test.
  */
-export function rayHand(manager) {
+export function rayHand(manager, inputSource = null) {
   const controller = /** @type {THREE.XRTargetRaySpace} */ (
     /** @type {unknown} */ (new THREE.Object3D())
   );
   const loop = fakeFrameLoop();
-  const subscription = manager.addController(controller, loop.onAnimationFrame).subscribe();
+  const subscription = manager
+    .addController(controller, loop.onAnimationFrame, () => inputSource)
+    .subscribe();
 
   /** The hand moved: the manager's frame, and then the page's. */
   const moved = () => {

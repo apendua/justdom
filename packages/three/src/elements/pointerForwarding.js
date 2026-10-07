@@ -445,6 +445,67 @@ function isIdle(controller) {
   return true;
 }
 
+/**
+ * How far a hand's thumbstick turns the wheel, in px a second with the
+ * stick held at its stop. A browser turns about 100 px a notch, so this is
+ * ten notches a second.
+ */
+const WHEEL_SPEED = 1000;
+
+/**
+ * How far off its centre the stick has to be before it turns the wheel,
+ * as a fraction of its travel. A stick let go of reads a little off zero,
+ * and a wheel turned by that would creep under a hand that is not on it.
+ * The travel past it is the wheel's whole range, so the wheel turns from
+ * nothing as the stick leaves the zone.
+ */
+const STICK_DEAD_ZONE = 0.15;
+
+/**
+ * The most a frame counts for in turning the wheel, in ms. A frame that
+ * stalled, on a commit that read a whole panel at once say, would
+ * otherwise turn it as far as the stall was long, all at once.
+ */
+const MAX_WHEEL_FRAME = 100;
+
+/**
+ * Where a hand's thumbstick is along its vertical axis: -1 pushed forward,
+ * 1 pulled back, as a gamepad says it, and 0 inside the dead zone (see
+ * `STICK_DEAD_ZONE`). The `xr-standard` mapping puts the thumbstick on
+ * axes 2 and 3, with a touchpad's, or zeros, on 0 and 1; a gamepad with
+ * only two axes has its stick on those.
+ *
+ * @param {XRInputSource | null} source
+ * @returns {number}
+ */
+function stickY(source) {
+  const axes = source?.gamepad?.axes;
+  const y = axes ? (axes.length >= 4 ? axes[3] : (axes[1] ?? 0)) : 0;
+  const travel = (Math.abs(y) - STICK_DEAD_ZONE) / (1 - STICK_DEAD_ZONE);
+  return travel > 0 ? Math.sign(y) * Math.min(travel, 1) : 0;
+}
+
+/**
+ * The init of every `wheel` a thumbstick turns, written in place for each,
+ * since one goes out every frame the stick is held over a panel. Pixels,
+ * vertical, and cancelable, as a browser's is: a page that zooms on the
+ * wheel cancels it.
+ *
+ * @type {WheelEventInit}
+ */
+const wheelInit = {
+  bubbles: true,
+  cancelable: true,
+  deltaMode: 0,
+  deltaX: 0,
+  deltaY: 0,
+  deltaZ: 0,
+  clientX: 0,
+  clientY: 0,
+  screenX: 0,
+  screenY: 0,
+};
+
 /** How many panels are up, each holding the wrap (see `holdPointerCapture`). */
 let wrapHolders = 0;
 
@@ -949,6 +1010,9 @@ function cross(chain, element, init, kind) {
  * @property {Element[]} chain The element the page was last told the
  *   hand's pointer is over, and the elements around it up to the panel's
  *   root, innermost first (see `track`).
+ * @property {XRInputSource | null} source What drives the hand, as its last
+ *   ray event here said: its gamepad is where the thumbstick that turns the
+ *   wheel is read (see `PortalOptions.thumbstickWheel` in `portal.js`).
  */
 
 /**
@@ -975,6 +1039,12 @@ function cross(chain, element, init, kind) {
  * @property {(object: Object3D, element: HTMLElement) => () => void} list
  *   Take an element as a list that is no control.
  * @property {() => void} dispose Stop listening on the container.
+ */
+
+/**
+ * @typedef {object} ForwarderOptions
+ * @property {boolean} [thumbstickWheel] Whether a hand's thumbstick turns
+ *   the wheel; see `PortalOptions.thumbstickWheel`.
  */
 
 /**
@@ -1074,12 +1144,18 @@ export const PointerForwarderContext = createProperty(
  * panel's own blocker or on what a plugin hangs in the panel, goes on as
  * it came.
  *
+ * A panel that asks for it also hears a hand's thumbstick as a wheel (see
+ * `PortalOptions.thumbstickWheel` in `portal.js`). Like a browser's, the
+ * `wheel` goes to whatever element is under the ray, a control or not, and
+ * scrolls nothing of itself.
+ *
  * @param {WeakKey} ctx The panel's context, with its haptics and its scroll
  *   gesture.
  * @param {Object3D} container The panel's container object.
+ * @param {ForwarderOptions} [options]
  * @returns {Forwarder}
  */
-export function createPanelForwarder(ctx, container) {
+export function createPanelForwarder(ctx, container, { thumbstickWheel = false } = {}) {
   const { stopPropagation, isStopped } = interactions(ctx);
   const drags = ScrollDragsContext.get(ctx);
   const dnd = dragAndDrop(ctx);
@@ -1116,6 +1192,7 @@ export function createPanelForwarder(ctx, container) {
         select: { path: [], target: null },
         squeeze: { path: [], target: null },
         chain: [],
+        source: null,
       };
       panelHands.set(controller, hand);
     }
@@ -1375,7 +1452,7 @@ export function createPanelForwarder(ctx, container) {
    * point on the page.
    *
    * @param {Panel} own
-   * @param {PointerEventInit} init
+   * @param {MouseEventInit} init
    * @returns {void}
    */
   const writeSampled = (own, init) => {
@@ -1421,6 +1498,81 @@ export function createPanelForwarder(ctx, container) {
     if (following.size === 0 && stopFollowing) {
       stopFollowing();
       stopFollowing = null;
+    }
+  };
+
+  /**
+   * Stop the frames the thumbstick is read on, while they run.
+   *
+   * @type {(() => void) | null}
+   */
+  let stopWheel = null;
+  /** When the last of those frames ran, by `performance.now`. */
+  let wheelTime = 0;
+  /** How long this one counts for, in ms (see `MAX_WHEEL_FRAME`). */
+  let wheelFrame = 0;
+  /** Whether a hand with a stick has its ray on the panel this frame. */
+  let wheelHeld = false;
+
+  /**
+   * One hand's turn of the wheel this frame, if its ray is on the panel,
+   * it holds no button, and its stick is out of the dead zone: a `wheel`
+   * on the element under the ray, where the ray crosses the panel's plane,
+   * against the corner last probed, as a move is placed.
+   *
+   * @param {PanelHand} hand
+   * @param {XRTargetRaySpace} controller
+   * @returns {void}
+   */
+  const turnWheel = (hand, controller) => {
+    if (hand.hover.length === 0 || !hand.source?.gamepad) {
+      return;
+    }
+    wheelHeld = true;
+    const y = stickY(hand.source);
+    const own = panel();
+    if (y === 0 || wheelFrame === 0 || heldButtons(controller) !== 0 || !own) {
+      return;
+    }
+    const element = samplePlane(controller) ? hitElement(own, onPlane) : null;
+    if (!element) {
+      return;
+    }
+    writeSampled(own, wheelInit);
+    wheelInit.deltaY = (y * WHEEL_SPEED * wheelFrame) / 1000;
+    element.dispatchEvent(new WheelEvent("wheel", wheelInit));
+  };
+
+  /** The frames the thumbstick is read on, while a hand with one is here. */
+  const wheelTick = () => {
+    const now = performance.now();
+    wheelFrame = Math.min(now - wheelTime, MAX_WHEEL_FRAME);
+    wheelTime = now;
+    wheelHeld = false;
+    panelHands.forEach(turnWheel);
+    if (!wheelHeld && stopWheel) {
+      stopWheel();
+      stopWheel = null;
+    }
+  };
+
+  /**
+   * Read the stick of a hand whose ray has come onto the panel, if the
+   * panel asks for a wheel and the hand has a stick: the mouse has none,
+   * and so starts nothing before a session. The hand's record of its
+   * buttons starts here at the latest, which is what says it holds none.
+   *
+   * @param {XREventMap["pointerenter"]} e
+   * @returns {void}
+   */
+  const watchStick = (e) => {
+    if (!thumbstickWheel || !e.inputSource?.gamepad) {
+      return;
+    }
+    handOf(e.controller);
+    if (!stopWheel) {
+      wheelTime = performance.now();
+      stopWheel = requestFrames(wheelTick);
     }
   };
 
@@ -1500,6 +1652,8 @@ export function createPanelForwarder(ctx, container) {
       const hand = panelHand(e.controller);
       walk(e.originalTarget, hand.hover);
       hand.hovered = e.originalTarget;
+      hand.source = e.inputSource;
+      watchStick(e);
       // Nothing is hovered under a drag, as `:hover` holds still under one
       // on a page; the targets the drag passes over hear `dragenter`. From
       // the press, since the ray has already moved in the frame the press
@@ -1534,6 +1688,7 @@ export function createPanelForwarder(ctx, container) {
     },
     pointermove(e) {
       const hand = panelHand(e.controller);
+      hand.source = e.inputSource;
       if (e.originalTarget !== hand.hovered) {
         walk(e.originalTarget, hand.hover);
         hand.hovered = e.originalTarget;
@@ -1959,6 +2114,8 @@ export function createPanelForwarder(ctx, container) {
       following.clear();
       stopFollowing?.();
       stopFollowing = null;
+      stopWheel?.();
+      stopWheel = null;
       panelHands.clear();
     },
   };

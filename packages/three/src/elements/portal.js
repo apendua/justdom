@@ -322,6 +322,16 @@ function claimRoot(root) {
  *   for the reason `loadingFrame` has none: pass `{}` for the defaults
  *   outright. A tracked hand has no motors and feels nothing either way.
  *   See `HapticOptions` in `haptics.js`.
+ * @property {boolean} [thumbstickWheel] Whether a hand's thumbstick is a
+ *   mouse wheel on this panel: while the hand's ray is on the panel and it
+ *   holds no button, pushing the stick forward or pulling it back sends
+ *   `wheel` to the element under the ray, once a frame, with a `deltaY`
+ *   that follows how far the stick is pushed, forward as negative, as a
+ *   wheel turned up says it. For a page that zooms or pans on the wheel. It
+ *   scrolls nothing of itself, since a list is scrolled by pulling it. Off
+ *   by default, because a scene may read the stick for something else, to
+ *   turn a carried object or to move the player; one that does not can
+ *   turn it on for every panel through the scene's `PanelOptions`.
  * @property {boolean | PanelDragOptions} [draggable] Whether the player can
  *   move the panel. Four strips along its edges are invisible until a ray
  *   is on the panel, faint while one is, and full on the strip a ray is on.
@@ -379,6 +389,7 @@ function buildPortal(ctx, ownOptions = {}) {
     onLoadingChanged,
     loadingFrame = {},
     haptics = {},
+    thumbstickWheel = false,
     draggable = false,
     plugins: ownPlugins = [],
   } = mergePanelOptions(PanelOptionsContext.get(ctx), ownOptions);
@@ -458,7 +469,7 @@ function buildPortal(ctx, ownOptions = {}) {
    * nothing else listens (see `createPanelForwarder`). After the scroll
    * gesture and the haptics, which it reads from the context.
    */
-  const forwarder = createPanelForwarder(ctx, containerObject);
+  const forwarder = createPanelForwarder(ctx, containerObject, { thumbstickWheel });
   ctx = PointerForwarderContext.set(ctx, forwarder);
 
   /**

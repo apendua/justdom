@@ -58,12 +58,13 @@ const DEFAULT_MARKS = /** @type {const} */ (["▲", "▼"]);
  * scrolling is the ordinary `scrollTop` write it is on the flat web — client
  * rects move with it and the panel follows.
  *
- * What a portal does not have is the gesture. There is no wheel to turn and
- * no surface to flick, so the controls here are all presses: an arrow moves a
- * step and keeps moving while it is held, the free track jumps a window, and
- * the thumb says where you are. It is also why a bar in a panel is worth
- * making chunky — a ray is a blunter instrument than a mouse, and a scrollbar
- * the width of a real one is a hard thing to point at.
+ * What a portal does not have is the gesture. No wheel scrolls it, not even
+ * the thumbstick a panel can take as one, and there is no surface to flick,
+ * so the controls here are all presses: an arrow moves a step and keeps
+ * moving while it is held, the free track jumps a window, and the thumb says
+ * where you are. It is also why a bar in a panel is worth making chunky — a
+ * ray is a blunter instrument than a mouse, and a scrollbar the width of a
+ * real one is a hard thing to point at.
  *
  * @param {ScrollableProps} props
  * @returns {import("@apendua/signal").Source<Mountable>}

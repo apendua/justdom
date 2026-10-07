@@ -308,6 +308,9 @@ let primary = null;
 
 /**
  * @typedef {object} ForwarderEntry
+ * @property {(controller: XRTargetRaySpace) => void} rehover Flag
+ *   `data-xr-hover` where the hand's pointer is over in the panel, as its
+ *   capture has just begun or ended.
  * @property {(controller: XRTargetRaySpace) => boolean} pointsAt Whether
  *   the hand's ray is on the panel.
  * @property {(controller: XRTargetRaySpace, captor: Element) => void} follow
@@ -639,10 +642,11 @@ function settleCapture(controller) {
     );
   }
   const captor = hand.captor;
-  if (captor) {
-    for (let i = 0; i < forwarders.length; i += 1) {
+  for (let i = 0; i < forwarders.length; i += 1) {
+    if (captor) {
       forwarders[i].follow(controller, captor);
     }
+    forwarders[i].rehover(controller);
   }
 }
 
@@ -1052,7 +1056,8 @@ const nextFlagged = /** @type {HTMLElement[]} */ ([]);
  *   hand's pointer is over, and the elements around it up to the panel's
  *   root, innermost first (see `track`).
  * @property {HTMLElement[]} hovering The controls the hand flags
- *   `data-xr-hover` on, the ones its ray is on (see `rehover`).
+ *   `data-xr-hover` on: the ones its ray is on, or, while its pointer is
+ *   captured, the captor and the controls around it (see `rehover`).
  * @property {HTMLElement[]} active The controls its trigger's press
  *   flags `data-xr-active` on, until the press ends.
  */
@@ -1195,6 +1200,14 @@ export function createPanelForwarder(ctx, container) {
   /** @type {Map<Object3D, Target>} */
   const targets = new Map();
 
+  /**
+   * The controls among `targets`, by element, for the walk up from a
+   * captor (see `rehover`).
+   *
+   * @type {Set<HTMLElement>}
+   */
+  const controls = new Set();
+
   const hoverFlag = createFlag("xrHover");
   const activeFlag = createFlag("xrActive");
 
@@ -1331,15 +1344,37 @@ export function createPanelForwarder(ctx, container) {
   };
 
   /**
-   * Flag `data-xr-hover` on the controls the hand's ray is on. Under a
-   * drag none is flagged anew, as `:hover` holds still under one, and the
-   * ray leaving one takes its flag off.
+   * Flag `data-xr-hover` on what the hand's pointer is over in this panel,
+   * as `:hover` follows a page's pointer: while the pointer is captured, the
+   * captor and the controls around it if it is in this panel and nothing
+   * here if it is in another, wherever the ray is; otherwise the controls
+   * the ray is on. Under a drag none is flagged anew, as `:hover` holds
+   * still under one, and the ray leaving one takes its flag off.
    *
    * @param {XRTargetRaySpace} controller
    * @returns {void}
    */
   const rehover = (controller) => {
     const hand = panelHands.get(controller);
+    const captor = hands.get(controller)?.captor;
+    if (captor?.isConnected) {
+      if (!panel()?.element.contains(captor)) {
+        if (hand) {
+          hoverFlag.clear(hand.hovering);
+        }
+        return;
+      }
+      for (let el = /** @type {Element | null} */ (captor); el; el = el.parentElement) {
+        if (controls.has(/** @type {HTMLElement} */ (el))) {
+          nextFlagged.push(/** @type {HTMLElement} */ (el));
+        }
+        if (isPortalRoot(el)) {
+          break;
+        }
+      }
+      hoverFlag.replace(panelHand(controller).hovering, nextFlagged);
+      return;
+    }
     if (!hand) {
       return;
     }
@@ -1353,6 +1388,17 @@ export function createPanelForwarder(ctx, container) {
     }
     hoverFlag.replace(hand.hovering, nextFlagged);
   };
+
+  /**
+   * Whether a hand's pointer is captured, or will be once the capture the
+   * page asked for settles at its next event, which then flags the hover
+   * (see `settleCapture`). Asked without settling it, so the page hears
+   * `gotpointercapture` where it always did.
+   *
+   * @param {XRTargetRaySpace} controller
+   * @returns {boolean}
+   */
+  const isCaptured = (controller) => !!hands.get(controller)?.pending?.isConnected;
 
   /**
    * Whether something above the panel took the grip's start, a `drag()`
@@ -1702,7 +1748,10 @@ export function createPanelForwarder(ctx, container) {
       if (pointer) {
         pointer.buttons = 0;
       }
-      hoverFlag.clear(hand.hovering);
+      // A captured pointer is still over its captor, wherever the ray went.
+      if (!isCaptured(e.controller)) {
+        hoverFlag.clear(hand.hovering);
+      }
       hand.hover.length = 0;
       hand.hovered = null;
       // Onto something else in this panel, its enter crosses over to it.
@@ -1997,6 +2046,7 @@ export function createPanelForwarder(ctx, container) {
    * @type {ForwarderEntry}
    */
   const registered = {
+    rehover,
     /** @param {XRTargetRaySpace} controller */
     pointsAt: (controller) => (panelHands.get(controller)?.hover.length ?? 0) > 0,
     /**
@@ -2066,11 +2116,15 @@ export function createPanelForwarder(ctx, container) {
    */
   const register = (target) => {
     targets.set(target.object, target);
+    if (!target.list) {
+      controls.add(target.element);
+    }
     return () => {
       if (targets.get(target.object) === target) {
         targets.delete(target.object);
       }
       if (!target.list) {
+        controls.delete(target.element);
         for (const hand of panelHands.values()) {
           drop(hand.hovering, target.element);
           drop(hand.active, target.element);

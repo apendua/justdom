@@ -2164,6 +2164,22 @@ describe("a panel's ray events", () => {
 
 describe("the flags a hand writes", () => {
   /**
+   * Two buttons side by side, the first capturing the pointer that
+   * presses it, as a page that drags by capture does.
+   *
+   * @param {Parameters<Parameters<typeof mirrored>[0]>[0]} place
+   */
+  const buttons = (place) => {
+    const first = place("div", "first", [20, 20, 100, 40]);
+    first.style.cursor = "pointer";
+    first.addEventListener("pointerdown", (event) => {
+      first.setPointerCapture(/** @type {PointerEvent} */ (event).pointerId);
+    });
+    const second = place("div", "second", [200, 20, 100, 40]);
+    second.style.cursor = "pointer";
+  };
+
+  /**
    * The flags on each button, as `#id hover active`.
    *
    * @param {HTMLElement} root
@@ -2196,6 +2212,27 @@ describe("the flags a hand writes", () => {
     assert.equal(flags(page.root), "#first hover, #second hover");
     left.remove();
     right.remove();
+    page.teardown();
+  });
+
+  test("data-xr-hover follows a captured pointer to its captor, not the ray", async () => {
+    const page = await mirrored(buttons);
+    const hand = rayHand(page.manager);
+    hand.aim(page.panel, 50, 40);
+    hand.trigger("selectstart");
+    // The capture settles at the hand's next event, and the ray goes on to
+    // the other button: the pointer is still over its captor, and so is
+    // the hover.
+    hand.aim(page.panel, 250, 40);
+    assert.equal(flags(page.root), "#first hover active, #second");
+    hand.aim(page.panel, 380, 280);
+    assert.equal(flags(page.root), "#first hover active, #second");
+    hand.aim(page.panel, 250, 40);
+    hand.trigger("selectend");
+    // The capture ends with the release, and the hover goes to where the
+    // ray is.
+    assert.equal(flags(page.root), "#first, #second hover");
+    hand.remove();
     page.teardown();
   });
 });

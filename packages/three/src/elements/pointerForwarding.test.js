@@ -1669,6 +1669,54 @@ describe("a ray's pointer events", () => {
     page.teardown();
   });
 
+  test("captured, say where the pointer is as the capture comes and goes", async () => {
+    const page = await mirrored(drawing);
+    const hand = rayHand(page.manager);
+    const { heard, stop } = hearing(
+      ["gotpointercapture", "pointerup", "lostpointercapture", "pointerout", "pointerleave"],
+      { at: true },
+    );
+    hand.aim(page.panel, 50, 50);
+    hand.trigger("selectstart");
+    // The capture takes hold at this move, before the move goes out.
+    hand.aim(page.panel, 60, 50);
+    // Released past the panel's edge, where its moves had taken it.
+    hand.aim(page.panel, 500, 350);
+    hand.trigger("selectend");
+    stop();
+    assert.deepEqual(heard, [
+      "gotpointercapture #drawing at 50,50 buttons 1",
+      "pointerup #drawing at 500,350 buttons 0",
+      "lostpointercapture #drawing at 500,350 buttons 0",
+      "pointerout #drawing at 500,350 buttons 0",
+      "pointerleave #drawing at 500,350 buttons 0",
+      "pointerleave #root at 500,350 buttons 0",
+    ]);
+    hand.remove();
+    page.teardown();
+  });
+
+  test("captured, released with the ray turned from the plane, leave where the release says", async () => {
+    const page = await mirrored(drawing);
+    const hand = rayHand(page.manager);
+    hand.aim(page.panel, 50, 50);
+    hand.trigger("selectstart");
+    hand.aim(page.panel, 500, 350);
+    hand.turnAway();
+    const { heard, stop } = hearing(["lostpointercapture", "pointerout", "mouseout"], {
+      at: true,
+    });
+    hand.trigger("selectend");
+    stop();
+    assert.deepEqual(heard, [
+      "lostpointercapture #drawing at 500,350 buttons 0",
+      "pointerout #drawing at 500,350 buttons 0",
+      "mouseout #drawing at 500,350 buttons 0",
+    ]);
+    hand.remove();
+    page.teardown();
+  });
+
   // Pins where the release reads its capture: after `settleCapture`, from
   // the captor it is then sent to, and not before.
   test("let go of before the release, are released as an uncaptured press is", async () => {

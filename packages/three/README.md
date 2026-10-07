@@ -393,9 +393,12 @@ the pointer last was, as a browser's release says the pointer's last position. S
 follows the hand off the panel as a mouse's follows it off the window. The capture ends with
 `lostpointercapture` at the release, after its `pointerup` and `mouseup`, at
 `releasePointerCapture`, when the press becomes a scroll or a drag and drop, or when the hand is
-lost. Releasing a hand's pointer that holds no capture does nothing, as for a pointer the browser
-knows, so a page's `pointerup` handler may release what the release already ended. The grip's
-`contextmenu` comes alone, as before.
+lost. `gotpointercapture` and `lostpointercapture` say where the page last heard the pointer was:
+the `pointerdown` for a capture taken in its handler, the release for the capture it ends. A release
+with the ray off the panel takes the pointer out of the captor at the release's point too. Releasing
+a hand's pointer that holds no capture does nothing, as for a pointer the browser knows, so a page's
+`pointerup` handler may release what the release already ended. The grip's `contextmenu` comes
+alone, as before.
 
 In development, a press that lands on an element of a panel's page with no ray target under it warns
 once per element, naming the element. A press on the panel's empty root, or on an object of the

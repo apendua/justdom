@@ -186,6 +186,26 @@ describe("createSessionButton", () => {
     assert.equal(button.textContent, "START AR");
   });
 
+  test("gives up focus once a session starts, so Enter on a keyboard does not end it", async () => {
+    // A click focuses the button, and a focused button is clicked by Enter:
+    // the first Enter typed in the session, on a keyboard paired with the
+    // headset or the emulator's, ended it.
+    const session = new FakeSession();
+    installXR(fakeXR([session]));
+    const button = createSessionButton(/** @type {never} */ (fakeRenderer()), {
+      mode: "immersive-vr",
+    });
+    document.body.appendChild(button);
+    button.focus();
+    assert.strictEqual(document.activeElement, button);
+
+    button.click();
+    await settle();
+    assert.equal(button.textContent, "EXIT VR");
+    assert.notStrictEqual(document.activeElement, button);
+    button.remove();
+  });
+
   test("clicking while a session is up ends it, and does not ask for another", async () => {
     const session = new FakeSession();
     const xr = fakeXR([session]);

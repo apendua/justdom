@@ -70,8 +70,10 @@ takes the exit branch and calls `end()` on a session that is already over. It is
 session — reached a second way. The element keeps three's ids and wording, so anything selecting
 `#ARButton` / `#VRButton` or reading the label works unchanged; what is different is that the
 session is only ever recorded synchronously, and there are three ways back to a button you can press
-again. `createXRButton` no longer needs `suppressSessionOffers`, which stays exported for a page
-that mounts three's buttons itself.
+again. It also gives up the focus the click left on it once the session starts, so the first Enter
+typed in the session, on a keyboard paired with the headset or under the emulator, does not press it
+and end the session. `createXRButton` no longer needs `suppressSessionOffers`, which stays exported
+for a page that mounts three's buttons itself.
 
 ## Pointing at things
 

@@ -406,18 +406,19 @@ for (const rows of SIZES) {
  * between neighbours, so no card covers another and the scan finds nothing.
  * "piled" puts every card within a few px of the first, so each covers all
  * the cards before it. That is the worst case, where every comparison finds
- * an overlap. "translucent" is the same pile with a half-transparent
- * background on every card, so each one also draws after every card under it
- * (`getDrawLevel` in elevation.js), a bucket of its own per card.
+ * an overlap. Its cards have no background, so none is opaque and each one
+ * also draws after every card under it (`getDrawLevel` in elevation.js), a
+ * bucket of its own per card. "translucent" is the same pile with a
+ * half-transparent background on every card, which draws in the same order.
  *
  * The columns are one more card appended on top; the first card moved by a
  * pixel, which every later card's scan has read; the first card re-appended,
  * which is how a page brings a card to the front; a hover flag on the last
  * card, which by then is the raised one; and the press flag on the same card,
- * which a stylesheet fades to half opacity. The hover moves nothing. The fade
- * moves the card's draw level on the boards where it covers something, which
- * a fading transition pays on every frame it runs. Read them against
- * `cards`: a column that grows with the board is the scan.
+ * which a stylesheet fades to half opacity. The hover moves nothing, and nor
+ * does the fade's draw level: no card on these boards is opaque, faded or
+ * not, so the fade costs only its restyle. Read them against `cards`: a
+ * column that grows with the board is the scan.
  *
  * @param {object} options
  * @param {number} options.cards

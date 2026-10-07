@@ -385,10 +385,12 @@ capture methods on `Element` are wrapped, and the last panel to go puts the brow
 page that mirrors a panel and opens no session keeps the browser's own. A capture the browser
 refuses for a hand is kept here instead. It starts before the hand's next event, with
 `gotpointercapture` on the captor, as a browser's does. While it holds, the hand's moves and its
-release go to the captor, and the pointer is over the captor and nothing else. The moves come from
-where the ray crosses the plane of the captor's panel, once a frame the ray has moved, whether the
-ray is on a control, on the panel's background, on another panel or on nothing at all. So a drag by
-capture follows the hand off the panel as a mouse's follows it off the window. The capture ends with
+release go to the captor, and the pointer is over the captor and nothing else. The moves and the
+release come from where the ray crosses the plane of the captor's panel, the moves once a frame the
+ray has moved, whether the ray is on a control, on the panel's background, on another panel or on
+nothing at all. A release whose ray crosses that plane nowhere, the hand turned round, says where
+the pointer last was, as a browser's release says the pointer's last position. So a drag by capture
+follows the hand off the panel as a mouse's follows it off the window. The capture ends with
 `lostpointercapture` at the release, after its `pointerup` and `mouseup`, at
 `releasePointerCapture`, when the press becomes a scroll or a drag and drop, or when the hand is
 lost. Releasing a hand's pointer that holds no capture does nothing, as for a pointer the browser

@@ -28,6 +28,7 @@ import { movesList, sampleRay, ScrollDragsContext } from "./scroll.js";
  * @import {Object3D, XRTargetRaySpace} from 'three';
  * @import {Reactive} from '../interactions.js';
  * @import {InteractionEvent, XREventMap} from '../core.js';
+ * @import {Panel} from './dragAndDrop.js';
  */
 
 /**
@@ -193,6 +194,11 @@ function noteMissedPress(element) {
  *   as the secondary one, 2, as its `contextmenu` says `button` 2. Kept
  *   from the controller's own events, wherever its ray is when a button
  *   closes, from the hand's first pointer event on.
+ * @property {number} x Where on the page the hand's pointer last was, as
+ *   its last `pointerdown` or `pointermove` said, in client coordinates.
+ *   A captured release whose ray crosses the captor's plane nowhere, the
+ *   hand turned round, says this (see `placeCapturedRelease`).
+ * @property {number} y See `x`.
  */
 
 /** @type {WeakMap<XRTargetRaySpace, Hand>} */
@@ -231,6 +237,8 @@ function handOf(controller) {
       pointerOnly: false,
       cancelled: false,
       buttons: 0,
+      x: 0,
+      y: 0,
     };
     hand = created;
     nextPointerId += 1;
@@ -306,6 +314,11 @@ let primary = null;
  *   the hand's ray is on the panel.
  * @property {(controller: XRTargetRaySpace, captor: Element) => void} follow
  *   Follow a hand captured to an element of the panel.
+ * @property {(controller: XRTargetRaySpace, captor: Element, init: PointerEventInit) => boolean} placeRelease
+ *   Write the point where the ray of a hand captured to an element of the
+ *   panel crosses the panel's plane into its release's init; false, with
+ *   nothing written, for a captor elsewhere or a ray that crosses the
+ *   plane nowhere.
  * @property {(controller: XRTargetRaySpace, init: PointerEventInit) => void} leave
  *   Take the hand's pointer out of everything it is over in the panel.
  * @property {(controller: XRTargetRaySpace, how: BringUp) => void} bringUp
@@ -336,6 +349,29 @@ let primary = null;
  * @type {ForwarderEntry[]}
  */
 const forwarders = [];
+
+/**
+ * Place the release of a hand captured to `captor` as its moves under the
+ * capture are placed: where its ray crosses the plane of the captor's
+ * panel (see `ForwarderEntry.placeRelease`), wherever the ray is. A ray
+ * that crosses that plane nowhere, the hand turned round, leaves the
+ * pointer where the page last heard it was, as a browser's release says
+ * the pointer's last position.
+ *
+ * @param {XRTargetRaySpace} controller
+ * @param {Hand} hand
+ * @param {Element} captor
+ * @param {PointerEventInit} init Written in place.
+ * @returns {void}
+ */
+function placeCapturedRelease(controller, hand, captor, init) {
+  for (let i = 0; i < forwarders.length; i += 1) {
+    if (forwarders[i].placeRelease(controller, captor, init)) {
+      return;
+    }
+  }
+  writeClient(init, hand.x, hand.y);
+}
 
 /**
  * Bring what the page knows of a hand up to date on every panel but one,
@@ -693,7 +729,10 @@ function endPress(controller) {
  * A hand whose press the browser would have cancelled sends neither (see
  * `Hand.cancelled`).
  * A move's pointer event names no button, as a browser's says `-1` for a
- * move that changes none.
+ * move that changes none. A `pointerdown` or `pointermove` records its
+ * point as where the hand's pointer is (`Hand.x`, `Hand.y`). A captured
+ * `pointerup` has its point rewritten once the capture has settled, from
+ * the captor it then goes to (see `placeCapturedRelease`).
  *
  * @param {HTMLElement} element
  * @param {"pointerdown" | "pointermove" | "pointerup"} type
@@ -732,11 +771,21 @@ function sendPointerAndMouse(element, type, init, controller) {
   init.buttons = hand.buttons;
   init.pointerId = hand.pointerId;
   init.isPrimary = isPrimary;
+  // The capture is settled now, so the release's point and its target
+  // come from the same one.
+  const captor = hand.captor?.isConnected ? hand.captor : null;
+  const target = captor ?? element;
+  if (type === "pointerup") {
+    if (captor) {
+      placeCapturedRelease(controller, hand, captor, init);
+    }
+  } else {
+    hand.x = init.clientX ?? 0;
+    hand.y = init.clientY ?? 0;
+  }
   const pointer = typeof PointerEvent === "function" ? new PointerEvent(type, init) : null;
   init.button = button;
   const mouse = new MouseEvent(MOUSE_EVENT[type], init);
-  const captor = hand.captor;
-  const target = captor?.isConnected ? captor : element;
   if (pointer && !target.dispatchEvent(pointer) && type === "pointerdown") {
     hand.pointerOnly = true;
   }
@@ -1310,6 +1359,31 @@ export function createPanelForwarder(ctx, container) {
   const client = new THREE.Vector2();
 
   /**
+   * Where a hand's ray crosses this panel's plane, into `inPanel`, in the
+   * panel's px: the one place every event placed by the plane rather than
+   * by what the ray hit takes its point from, a captured hand's moves and
+   * release and the crossings `bringUp` sends.
+   *
+   * @param {XRTargetRaySpace} controller
+   * @returns {boolean} False, with nothing written, where the ray crosses
+   *   the plane nowhere.
+   */
+  const samplePlane = (controller) => sampleRay(controller, container, onPlane, inPanel);
+
+  /**
+   * Write the point `samplePlane` last found into an event's init, as a
+   * point on the page.
+   *
+   * @param {Panel} own
+   * @param {PointerEventInit} init
+   * @returns {void}
+   */
+  const writeSampled = (own, init) => {
+    clientPointAt(own, inPanel.x, inPanel.y, client);
+    writeClient(init, client.x, client.y);
+  };
+
+  /**
    * One captured hand's move, if its ray has moved across this panel's
    * plane since the last; and let go of a hand no longer captured here.
    *
@@ -1324,7 +1398,7 @@ export function createPanelForwarder(ctx, container) {
       following.delete(controller);
       return;
     }
-    if (!sampleRay(controller, container, onPlane, inPanel)) {
+    if (!samplePlane(controller)) {
       return;
     }
     if (last.sent && last.x === inPanel.x && last.y === inPanel.y) {
@@ -1626,6 +1700,8 @@ export function createPanelForwarder(ctx, container) {
           sent = true;
           // A drag's release is its `drop` and its `dragend`, which the
           // drag sends from the controller's own `selectend`.
+          // A captured hand's release is placed from its captor's panel
+          // (see `placeCapturedRelease`).
           if (!dnd.didDrag(e.controller)) {
             sendPointerAndMouse(target.element, "pointerup", releaseInit(panel(), e), e.controller);
           }
@@ -1808,6 +1884,16 @@ export function createPanelForwarder(ctx, container) {
       }
       stopFollowing ??= requestFrames(followFrame);
     },
+    placeRelease: (controller, captor, init) => {
+      const own = panel();
+      if (!own?.element.contains(captor) || !samplePlane(controller)) {
+        return false;
+      }
+      // One event, so probed, as any release is.
+      probePanel(own);
+      writeSampled(own, init);
+      return true;
+    },
     leave: (controller, init) => {
       const hand = panelHands.get(controller);
       if (hand) {
@@ -1825,9 +1911,8 @@ export function createPanelForwarder(ctx, container) {
       // moves are placed, since no ray event here says where it is.
       const init = placeless(controller, buttons);
       const own = panel();
-      if (own && element && sampleRay(controller, container, onPlane, inPanel)) {
-        clientPointAt(own, inPanel.x, inPanel.y, client);
-        writeClient(init, client.x, client.y);
+      if (own && element && samplePlane(controller)) {
+        writeSampled(own, init);
       }
       if (pointer && hand && typeof PointerEvent === "function") {
         cross(hand.chain, element, init, "pointer");

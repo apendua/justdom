@@ -848,9 +848,9 @@ const LAYERS = 3;
  *
  * An `<svg>` root's slot is the first half of its content level: from its
  * content render order R up to R + `BOX_BUCKET_BIAS`, where HTML text of
- * that order draws. A box nested one level deeper draws at that bias, so
- * every element of the `<svg>` draws before the box, whatever its place in
- * the document order. A slot that ran up to R + 1 drew the later elements
+ * that order draws. A box drawn at the `<svg>`'s content level draws at that
+ * bias, so every element of the `<svg>` draws before the box, whatever its
+ * place in the document order. A slot that ran up to R + 1 drew the later elements
  * after the box, which writes depth, and a box in front of the `<svg>` hid
  * them. Each element in the slot gets an equal share of it by its place in
  * the root's document order, split into its three layers. The content of

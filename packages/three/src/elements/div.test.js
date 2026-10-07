@@ -1414,8 +1414,8 @@ describe("marks stepped over a box", () => {
 
   test("an <svg> laid over a dial paints all of itself after the dial's face", () => {
     // An `<svg>` paints its shapes in a slot that starts at its content
-    // order and ends short of the next level (`paintSlot`), so no shape in
-    // it draws before that order.
+    // order and ends short of the boxes drawn at that level, half a level up
+    // (`paintSlot`), so no shape in it draws before that order.
     const gauge = setupSiblings();
     try {
       const parts = dialWithCaption(gauge);

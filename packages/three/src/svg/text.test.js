@@ -7,6 +7,7 @@ import { svgElements } from "./index.js";
 import { drawUse } from "./template.js";
 import { drawnRange, drawText } from "./text.js";
 import { BOX_BUCKET_BIAS } from "../elements/boxBatch.js";
+import { getContentRenderOrder } from "../elements/elevation.js";
 
 /**
  * @import {Mesh, Object3D} from 'three';
@@ -422,16 +423,20 @@ describe("svg text", () => {
     t.teardown();
   });
 
-  test("a text after a shape draws before the boxes nested in the svg's level", () => {
-    // Night Ops' scribble: an arrow, then "deploy!". A box one level deeper
-    // than the `<svg>` draws at its content order plus `BOX_BUCKET_BIAS` and
-    // writes depth, so a text drawn after it, behind it, is lost.
+  test("a text after a shape draws before the boxes at the svg's content level", () => {
+    // Night Ops' scribble: an arrow, then "deploy!". A box drawn at the
+    // `<svg>`'s content level, there the DONE column it overlaps, draws at that
+    // order plus `BOX_BUCKET_BIAS` and writes depth, so a text drawn after it,
+    // behind it, is lost.
     const arrow = svg("path", { d: "M0 0 L10 10", stroke: "red" });
     const text = svg("text", { x: "0", y: "10", fill: "red" }, ["deploy!"]);
     const s = scene([arrow, text], text);
     const order = s.meshes[0].renderOrder;
+    const level = getContentRenderOrder(
+      /** @type {HTMLElement} */ (/** @type {unknown} */ (s.root)),
+    );
     s.teardown();
-    const level = Math.floor(order);
+    assert.ok(order > level, "after the root's own content order");
     assert.ok(
       order < level + BOX_BUCKET_BIAS,
       `drawn at ${order}, not before ${level + BOX_BUCKET_BIAS}`,

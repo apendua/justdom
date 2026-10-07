@@ -9,8 +9,9 @@ import { getControlRoot } from "../elements/pointerForwarding.js";
 import { bubble, forwardedPanel } from "../test/rays.js";
 import { OBSERVER_OPTIONS } from "../elements/portal.js";
 import { SVGLoader } from "three/examples/jsm/loaders/SVGLoader.js";
-import { buildFillGeometry, group, shape } from "./shape.js";
+import { buildFillGeometry, group, paintSlot, shape } from "./shape.js";
 import { BOX_BUCKET_BIAS } from "../elements/boxBatch.js";
+import { getContentRenderOrder } from "../elements/elevation.js";
 
 /**
  * @import { Mesh, MeshBasicMaterial, Object3D } from "three";
@@ -575,11 +576,12 @@ describe("svg shape", () => {
     assert.ok(firstFill.id > secondFill.id, "the first rect's fill mesh was made later");
     assert.ok(firstFill.renderOrder < firstStroke.renderOrder, "fill under its own stroke");
     assert.ok(firstStroke.renderOrder < secondFill.renderOrder, "the first rect under the second");
-    const base = Math.floor(secondFill.renderOrder);
-    assert.ok(
-      secondFill.renderOrder < base + BOX_BUCKET_BIAS,
-      "all of it before the boxes nested one level in, which draw at the same integer",
-    );
+    // Inside the first half of the root's content level, the last element's
+    // markers included, so all of it draws before a box at that level.
+    const level = getContentRenderOrder(/** @type {HTMLElement} */ (/** @type {unknown} */ (root)));
+    assert.ok(firstFill.renderOrder > level, "after the root's own content order");
+    const end = paintSlot(second, root, null, 2).start;
+    assert.ok(end < level + BOX_BUCKET_BIAS, `the last layer at ${end}, not before the boxes`);
 
     // A shape inserted before both takes the bottom, and the others move up.
     const zeroth = document.createElementNS(SVG_NS, "rect");

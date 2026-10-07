@@ -385,6 +385,19 @@ export class InteractionManager {
       };
 
       /**
+       * The ray is on nothing now: the leave, and nothing targeted after it.
+       *
+       * @param {boolean} [lost] Whether it went because the hand did.
+       * @returns {void}
+       */
+      const leaveForNothing = (lost = false) => {
+        leave(null, lost);
+        targetedObject = undefined;
+        targetedTarget = undefined;
+        targetedPath = [];
+      };
+
+      /**
        * @param {THREE.WebXRSpaceEventMap['selectstart']} event
        */
       const onSelectStart = (event) => {
@@ -462,10 +475,7 @@ export class InteractionManager {
           targetedObject = intersection.object;
           targetedTarget = target;
         } else if (!intersection && targetedObject) {
-          leave(null);
-          targetedObject = undefined;
-          targetedTarget = undefined;
-          targetedPath = [];
+          leaveForNothing();
         }
       };
 
@@ -489,10 +499,7 @@ export class InteractionManager {
         end("select", select, event.data, true);
         end("squeeze", squeeze, event.data, true);
         this.#setPointer(controller, undefined);
-        leave(null, true);
-        targetedObject = undefined;
-        targetedTarget = undefined;
-        targetedPath = [];
+        leaveForNothing(true);
         invalidate();
       };
 

@@ -14,7 +14,7 @@ import { recordingSource } from "../test/rumble.js";
 import { clientRect } from "../test/clientRect.js";
 import { describeScroller } from "../test/scroller.js";
 import { countingManager, flushFrame, settle } from "../test/portalHarness.js";
-import { forwardedPanel } from "../test/rays.js";
+import { bubble, forwardedPanel } from "../test/rays.js";
 import { rayHand } from "../test/rayHand.js";
 import { createPortal } from "./portal.js";
 import { PointerForwarderContext } from "./pointerForwarding.js";
@@ -2234,5 +2234,42 @@ describe("the flags a hand writes", () => {
     assert.equal(flags(page.root), "#first, #second hover");
     hand.remove();
     page.teardown();
+  });
+});
+
+describe("a control registered twice", () => {
+  test("keeps its flags until the last of its registrations goes", () => {
+    // A re-registration whose new `register` runs before the old one's
+    // cleanup, or two objects for one element: the first to go must not
+    // take the flags off a control that is still registered.
+    const manager = new InteractionManager();
+    const { ctx, container } = forwardedPanel(InteractionContext.set({}, manager));
+    const forwarder = /** @type {NonNullable<ReturnType<typeof PointerForwarderContext.get>>} */ (
+      PointerForwarderContext.get(ctx)
+    );
+    const element = html("div", "cursor: pointer");
+    document.body.appendChild(element);
+    const first = new THREE.Object3D();
+    const second = new THREE.Object3D();
+    container.add(first, second);
+    const letGoOfFirst = forwarder.control(first, element);
+    const letGoOfSecond = forwarder.control(second, element);
+    const controller = new THREE.Object3D();
+    bubble(second, {
+      type: "pointerenter",
+      controller,
+      inputSource: null,
+      registeredTarget: second,
+      relatedTarget: null,
+      intersection: { point: new THREE.Vector3() },
+    });
+    assert.equal(element.dataset.xrHover, "true");
+
+    letGoOfFirst();
+    assert.equal(element.dataset.xrHover, "true", "the second registration still has it");
+    letGoOfSecond();
+    assert.equal(element.dataset.xrHover, undefined);
+    forwarder.dispose();
+    element.remove();
   });
 });

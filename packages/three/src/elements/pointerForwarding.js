@@ -262,8 +262,7 @@ function handOf(controller) {
     // a browser cancels a pointer it loses: the press and any capture end
     // here, and the pointer leaves what it was over.
     listened.addEventListener("disconnected", () => {
-      created.buttons = 0;
-      cancelHeld(controller);
+      lose(controller);
       endPress(controller);
       // The hand is over nothing now, on any panel: its pointer, which a
       // cancel has already taken out wherever there was a press, and then
@@ -686,15 +685,22 @@ function cancelPointer(controller) {
 }
 
 /**
- * Cancel a hand's pointer if it holds anything a release would have ended,
- * a press or a capture, as a hand that went does (see `cancelPointer`).
+ * A hand has gone: it holds no button, and its pointer is cancelled if it
+ * held anything a release would have ended, a press or a capture (see
+ * `cancelPointer`). Run from the first of the events that say so, a `lost`
+ * end or leave from the manager or the controller's own `disconnected`,
+ * whichever reaches the forwarder first, and harmless again after it.
  *
  * @param {XRTargetRaySpace} controller
  * @returns {void}
  */
-function cancelHeld(controller) {
+function lose(controller) {
   const hand = hands.get(controller);
-  if (hand && (hand.pressed || hand.captor || hand.pending)) {
+  if (!hand) {
+    return;
+  }
+  hand.buttons = 0;
+  if (hand.pressed || hand.captor || hand.pending) {
     cancelPointer(controller);
   }
 }
@@ -1082,7 +1088,8 @@ const nextFlagged = /** @type {HTMLElement[]} */ ([]);
  * @typedef {object} Forwarder
  * @property {(object: Object3D, element: HTMLElement, onPress?: () => void) => () => void} control
  *   Take an element as a control, until the function it returns is called,
- *   which also takes its `data-xr-*` flags off.
+ *   which also takes its `data-xr-*` flags off once no other registration
+ *   of the element is left.
  * @property {(object: Object3D, element: HTMLElement) => () => void} list
  *   Take an element as a list that is no control.
  * @property {() => void} dispose Stop listening on the container.
@@ -1146,10 +1153,12 @@ export const PointerForwarderContext = createProperty(
  * `pressInit` in `dragAndDrop.js`). The page also hears where the ray
  * crosses from element to element (see `track`), a press that becomes a
  * scroll or a drag cancelled (see `cancelPointer`), and a captured hand's moves
- * wherever its ray goes (see `following`). While the ray is on a control the
- * element carries `data-xr-hover`, and while it is held, `data-xr-active`.
- * A stylesheet answers those flags where a page would use `:hover` and
- * `:active`. Where the panel has haptics, the hand feels a press and its
+ * wherever its ray goes (see `following`). While a hand's pointer is over
+ * a control, which is the control its ray is on, or under a capture the
+ * captor wherever the ray is (see `rehover`), the element carries
+ * `data-xr-hover`, and while it is held, `data-xr-active`, each kept per
+ * hand (see `createFlag`). A stylesheet answers those flags where a page
+ * would use `:hover` and `:active`. Where the panel has haptics, the hand feels a press and its
  * release, of the grip as of the trigger, and an arrival on a control where
  * the panel asks for one. A press on something draggable that the hand
  * carries away is a drag and drop instead, and its release is a `drop` and
@@ -1201,12 +1210,16 @@ export function createPanelForwarder(ctx, container) {
   const targets = new Map();
 
   /**
-   * The controls among `targets`, by element, for the walk up from a
-   * captor (see `rehover`).
+   * The controls among `targets`, by element, each with how many of its
+   * registrations are live: one element may be registered by two targets
+   * at once, as when a re-registration's `register` runs before the old
+   * one's cleanup. Read by the walk up from a captor (see `rehover`), and
+   * an element stays a control, and keeps its flags, until the last of
+   * them goes.
    *
-   * @type {Set<HTMLElement>}
+   * @type {Map<HTMLElement, number>}
    */
-  const controls = new Set();
+  const controls = new Map();
 
   const hoverFlag = createFlag("xrHover");
   const activeFlag = createFlag("xrActive");
@@ -1742,11 +1755,8 @@ export function createPanelForwarder(ctx, container) {
     pointerleave(e) {
       const hand = panelHand(e.controller);
       hand.held = null;
-      // A hand that went holds nothing, whatever its own `disconnected`,
-      // which comes after this, has still to clear.
-      const pointer = e.lost ? hands.get(e.controller) : undefined;
-      if (pointer) {
-        pointer.buttons = 0;
+      if (e.lost) {
+        lose(e.controller);
       }
       // A captured pointer is still over its captor, wherever the ray went.
       if (!isCaptured(e.controller)) {
@@ -1853,7 +1863,7 @@ export function createPanelForwarder(ctx, container) {
       // press held is let go of. The hand's own `disconnected`, which
       // comes after this, takes the mouse off what it was over.
       if (e.lost) {
-        cancelHeld(e.controller);
+        lose(e.controller);
         activeFlag.clear(panelHand(e.controller).active);
         endPress(e.controller);
         stopPropagation(e);
@@ -2014,6 +2024,9 @@ export function createPanelForwarder(ctx, container) {
       }
     },
     squeezeend(e) {
+      if (e.lost) {
+        lose(e.controller);
+      }
       // A grab's end goes on up to the carry.
       if (!pressOf(e, "squeeze").target || taken(e.start)) {
         return;
@@ -2109,7 +2122,8 @@ export function createPanelForwarder(ctx, container) {
 
   /**
    * Take a target until the function returned is called, which also takes
-   * a control's `data-xr-*` flags off; a list writes none.
+   * a control's `data-xr-*` flags off when it is the last registration of
+   * its element (see `controls`); a list writes none.
    *
    * @param {Target} target
    * @returns {() => void}
@@ -2117,13 +2131,18 @@ export function createPanelForwarder(ctx, container) {
   const register = (target) => {
     targets.set(target.object, target);
     if (!target.list) {
-      controls.add(target.element);
+      controls.set(target.element, (controls.get(target.element) ?? 0) + 1);
     }
     return () => {
       if (targets.get(target.object) === target) {
         targets.delete(target.object);
       }
       if (!target.list) {
+        const count = controls.get(target.element) ?? 0;
+        if (count > 1) {
+          controls.set(target.element, count - 1);
+          return;
+        }
         controls.delete(target.element);
         for (const hand of panelHands.values()) {
           drop(hand.hovering, target.element);

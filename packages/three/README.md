@@ -141,7 +141,9 @@ each press the hand holds there and then, as a `selectend` or `squeezeend` and a
 `lost`, and the hand leaves what its ray was on, with its cursor, in the same event rather than on
 the next frame, which a page drawn only while presenting does not run after its session ends. A
 `drag()` lets go of what the hand carried, where it is in the room, and a `carry()` puts its object
-down.
+down. A scene's own release handler that commits something, a turn of a puzzle or a piece snapped
+into place, asks the event's `lost` first, since nobody chose to let go: `apps/rubik` swings the
+layer home and `apps/polytope-xr` leaves the piece unsnapped.
 
 The ray each controller draws is cut at the same hit, so it stops at the surface instead of
 disappearing into it, and stretches back out to a fixed reach when the hand is pointing at nothing.

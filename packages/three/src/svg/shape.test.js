@@ -10,6 +10,7 @@ import { bubble, forwardedPanel } from "../test/rays.js";
 import { OBSERVER_OPTIONS } from "../elements/portal.js";
 import { SVGLoader } from "three/examples/jsm/loaders/SVGLoader.js";
 import { buildFillGeometry, group, shape } from "./shape.js";
+import { BOX_BUCKET_BIAS } from "../elements/boxBatch.js";
 
 /**
  * @import { Mesh, MeshBasicMaterial, Object3D } from "three";
@@ -575,7 +576,10 @@ describe("svg shape", () => {
     assert.ok(firstFill.renderOrder < firstStroke.renderOrder, "fill under its own stroke");
     assert.ok(firstStroke.renderOrder < secondFill.renderOrder, "the first rect under the second");
     const base = Math.floor(secondFill.renderOrder);
-    assert.ok(secondFill.renderOrder < base + 1, "all of it inside the root's own step");
+    assert.ok(
+      secondFill.renderOrder < base + BOX_BUCKET_BIAS,
+      "all of it before the boxes nested one level in, which draw at the same integer",
+    );
 
     // A shape inserted before both takes the bottom, and the others move up.
     const zeroth = document.createElementNS(SVG_NS, "rect");

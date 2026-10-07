@@ -218,6 +218,8 @@ function batchMaterial() {
  * So the order is written down instead. Half a step keeps a bucket strictly
  * between its own integer and the next one, which is what makes this safe:
  * text at R, boxes at R + 0.5, text at R + 1 — the levels never interleave.
+ * An `<svg>`'s content counts as text here: `paintSlot` in `svg/shape.js`
+ * keeps all of it between R and R + 0.5.
  *
  * What this does not fix, and is not meant to: a mesh that draws itself among
  * batched ones — an `<img>`'s box, a run of text whose colours are baked in —
@@ -226,7 +228,7 @@ function batchMaterial() {
  * stable, being a property of where the mesh is rather than of when it was
  * made.
  */
-const BOX_BUCKET_BIAS = 0.5;
+export const BOX_BUCKET_BIAS = 0.5;
 
 /** How many instances a freshly grown bucket has room for. */
 const MINIMUM_CAPACITY = 16;

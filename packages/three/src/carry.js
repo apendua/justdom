@@ -53,6 +53,8 @@ const _direction = new THREE.Vector3();
 const _scale = new THREE.Vector3();
 const _offset = new THREE.Vector3();
 const _matrix = new THREE.Matrix4();
+/** @type {CarriedPose} */
+const _pose = { position: new THREE.Vector3(), yaw: 0, turned: 0 };
 
 /**
  * A pose with no tilt in it: somewhere to stand, and which way round to face.
@@ -60,6 +62,13 @@ const _matrix = new THREE.Matrix4();
  * @typedef {object} LevelPose
  * @property {THREE.Vector3} position
  * @property {number} yaw
+ */
+
+/**
+ * Where a carried thing belongs, and how far it has turned about the
+ * vertical since it was taken (see `carriedPose`).
+ *
+ * @typedef {LevelPose & { turned: number }} CarriedPose
  */
 
 /**
@@ -157,20 +166,26 @@ export function beginCarry(hand, grabPoint, pose) {
  * grab point, goes. `turned` is how far the hand has turned about the
  * vertical since it closed, which is how far the thing has turned too.
  *
+ * The answer is written into `out` where one is given, which is how a
+ * carry asks once a frame without making anything; a fresh one otherwise.
+ *
  * @param {Grip} grip
  * @param {THREE.Matrix4} hand
- * @returns {LevelPose & { turned: number }}
+ * @param {CarriedPose} [out]
+ * @returns {CarriedPose}
  */
-export function carriedPose(grip, hand) {
+export function carriedPose(
+  grip,
+  hand,
+  out = { position: new THREE.Vector3(), yaw: 0, turned: 0 },
+) {
   const ray = rayOf(hand);
   const turned = yawOf(ray.quaternion) - grip.handYaw;
-  const grabPoint = ray.position.clone().addScaledVector(ray.direction, grip.distance);
   const offset = _offset.copy(grip.offset).applyAxisAngle(upAxis, turned);
-  return {
-    position: grabPoint.add(offset),
-    yaw: grip.yaw + turned,
-    turned,
-  };
+  out.position.copy(ray.position).addScaledVector(ray.direction, grip.distance).add(offset);
+  out.yaw = grip.yaw + turned;
+  out.turned = turned;
+  return out;
 }
 
 /**
@@ -311,8 +326,9 @@ export function applyLevelPose(object, pose) {
  * The bookkeeping is `drag()`'s: it remembers which hand, so a press from the
  * other hand while the object is carried is a handover — the new hand takes
  * the grip from wherever its own ray lands — and only the carrying hand's
- * release puts the object down; and the presses a handle takes never reach
- * whatever is behind it.
+ * release puts the object down, a `lost` one included, which the manager
+ * sends for a hand that disconnects; and the presses a handle takes never
+ * reach whatever is behind it.
  *
  * ```js
  * const board = carry(ctx, { enabled: () => phase.get() === "build" });
@@ -466,7 +482,7 @@ export function carry(ctx, options = {}) {
           if (current.offset) {
             setWorldMatrix(entity, _matrix.multiplyMatrices(hand, current.offset));
           } else {
-            const pose = carriedPose(current.grip, hand);
+            const pose = carriedPose(current.grip, hand, _pose);
             // The rotation it was taken with, turned as far about the
             // vertical as the hand has turned since: whatever tilt it had,
             // it keeps.

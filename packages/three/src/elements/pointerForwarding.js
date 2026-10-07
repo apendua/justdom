@@ -281,10 +281,7 @@ function handOf(controller) {
     // a browser cancels a pointer it loses: the press and any capture end
     // here, and the pointer leaves what it was over.
     listened.addEventListener("disconnected", () => {
-      created.buttons = 0;
-      if (created.pressed || created.captor || created.pending) {
-        cancelPointer(controller);
-      }
+      lose(controller);
       endPress(controller);
       // The hand is over nothing now, on any panel: its pointer, which a
       // cancel has already taken out wherever there was a press, and then
@@ -329,6 +326,9 @@ let primary = null;
 
 /**
  * @typedef {object} ForwarderEntry
+ * @property {(controller: XRTargetRaySpace) => void} rehover Flag
+ *   `data-xr-hover` where the hand's pointer is over in the panel, as its
+ *   capture has just begun or ended.
  * @property {(controller: XRTargetRaySpace) => boolean} pointsAt Whether
  *   the hand's ray is on the panel.
  * @property {(controller: XRTargetRaySpace, captor: Element) => void} follow
@@ -765,10 +765,11 @@ function settleCapture(controller) {
     hand.captor.dispatchEvent(new PointerEvent("gotpointercapture", atPointer(controller, hand)));
   }
   const captor = hand.captor;
-  if (captor) {
-    for (let i = 0; i < forwarders.length; i += 1) {
+  for (let i = 0; i < forwarders.length; i += 1) {
+    if (captor) {
       forwarders[i].follow(controller, captor);
     }
+    forwarders[i].rehover(controller);
   }
 }
 
@@ -804,6 +805,27 @@ function cancelPointer(controller) {
   releaseCapture(controller);
   for (let i = 0; i < forwarders.length; i += 1) {
     forwarders[i].leave(controller, placeless(controller, 0));
+  }
+}
+
+/**
+ * A hand has gone: it holds no button, and its pointer is cancelled if it
+ * held anything a release would have ended, a press or a capture (see
+ * `cancelPointer`). Run from the first of the events that say so, a `lost`
+ * end or leave from the manager or the controller's own `disconnected`,
+ * whichever reaches the forwarder first, and harmless again after it.
+ *
+ * @param {XRTargetRaySpace} controller
+ * @returns {void}
+ */
+function lose(controller) {
+  const hand = hands.get(controller);
+  if (!hand) {
+    return;
+  }
+  hand.buttons = 0;
+  if (hand.pressed || hand.captor || hand.pending) {
+    cancelPointer(controller);
   }
 }
 
@@ -1043,6 +1065,94 @@ function cross(chain, element, init, kind) {
 }
 
 /**
+ * One of the flags a hand writes on the controls of a panel,
+ * `data-xr-hover` or `data-xr-active`, counted per hand. Each hand keeps
+ * the elements it flagged, and an element carries the flag while any hand
+ * does: two hands on one button are two hovers, and the first to leave or
+ * let go takes neither the other's hover nor its press off it.
+ *
+ * @typedef {object} Flag
+ * @property {(flagged: HTMLElement[], next: HTMLElement[]) => void} replace
+ *   Flag `next` for the hand that flagged `flagged`, and let go of the
+ *   rest; `flagged` holds `next`'s elements after, and `next` is emptied.
+ *   An element in both keeps its flag throughout, so no mutation says it
+ *   went.
+ * @property {(flagged: HTMLElement[]) => void} clear Let go of every
+ *   element a hand flagged.
+ * @property {(element: HTMLElement) => void} forget Take the flag off an
+ *   element that is no control any more, whoever flagged it.
+ */
+
+/**
+ * @param {"xrHover" | "xrActive"} name The flag, as `dataset` names it.
+ * @returns {Flag}
+ */
+function createFlag(name) {
+  /** @type {Map<HTMLElement, number>} How many hands flag each element. */
+  const counts = new Map();
+  /** @param {HTMLElement} element */
+  const set = (element) => {
+    const count = counts.get(element) ?? 0;
+    counts.set(element, count + 1);
+    if (count === 0) {
+      element.dataset[name] = "true";
+    }
+  };
+  /** @param {HTMLElement} element */
+  const unset = (element) => {
+    const count = counts.get(element) ?? 0;
+    if (count > 1) {
+      counts.set(element, count - 1);
+    } else if (count === 1) {
+      counts.delete(element);
+      delete element.dataset[name];
+    }
+  };
+  return {
+    replace(flagged, next) {
+      for (const element of next) {
+        set(element);
+      }
+      for (const element of flagged) {
+        unset(element);
+      }
+      flagged.length = 0;
+      for (const element of next) {
+        flagged.push(element);
+      }
+      next.length = 0;
+    },
+    clear(flagged) {
+      for (const element of flagged) {
+        unset(element);
+      }
+      flagged.length = 0;
+    },
+    forget(element) {
+      counts.delete(element);
+      delete element.dataset[name];
+    },
+  };
+}
+
+/**
+ * Take an element out of a list, if it is in it.
+ *
+ * @param {HTMLElement[]} list
+ * @param {HTMLElement} element
+ * @returns {void}
+ */
+function drop(list, element) {
+  const index = list.indexOf(element);
+  if (index !== -1) {
+    list.splice(index, 1);
+  }
+}
+
+/** Scratch for the elements a hand is to flag next (see `Flag.replace`). */
+const nextFlagged = /** @type {HTMLElement[]} */ ([]);
+
+/**
  * An element of a panel that rays act on: a control, which is anything a
  * ray targets of its own (see `isRayTarget`), or a scrolling list that is
  * no control, which a ray takes hold of by the gaps between its rows.
@@ -1062,9 +1172,11 @@ function cross(chain, element, init, kind) {
  * press's path and a leave along the hover's, not along a walk from what
  * was hit, since that may have left the scene meanwhile (see
  * `addController` in `interactions.js`), so the panel keeps the same paths
- * and reads which of its targets were on them. Each path stops below the
- * panel's container, and is written in place, so a hand moving from mesh
- * to mesh allocates nothing.
+ * and reads which of its targets were on them. The flags it writes it keeps
+ * as the elements it wrote them on, so a leave and a release take off what
+ * the hand put on and nothing another hand did. Each path stops below the
+ * panel's container, and each list is written in place, so a hand moving
+ * from mesh to mesh allocates nothing.
  *
  * @typedef {object} PanelHand
  * @property {Object3D[]} hover
@@ -1078,6 +1190,11 @@ function cross(chain, element, init, kind) {
  * @property {Element[]} chain The element the page was last told the
  *   hand's pointer is over, and the elements around it up to the panel's
  *   root, innermost first (see `track`).
+ * @property {HTMLElement[]} hovering The controls the hand flags
+ *   `data-xr-hover` on: the ones its ray is on, or, while its pointer is
+ *   captured, the captor and the controls around it (see `rehover`).
+ * @property {HTMLElement[]} active The controls its trigger's press
+ *   flags `data-xr-active` on, until the press ends.
  * @property {XRInputSource | null} source What drives the hand, as its last
  *   ray event here said: its gamepad is where the thumbstick that turns the
  *   wheel is read (see `PortalOptions.thumbstickWheel` in `portal.js`).
@@ -1103,7 +1220,8 @@ function cross(chain, element, init, kind) {
  * @typedef {object} Forwarder
  * @property {(object: Object3D, element: HTMLElement, onPress?: () => void) => () => void} control
  *   Take an element as a control, until the function it returns is called,
- *   which also takes its `data-xr-*` flags off.
+ *   which also takes its `data-xr-*` flags off once no other registration
+ *   of the element is left.
  * @property {(object: Object3D, element: HTMLElement) => () => void} list
  *   Take an element as a list that is no control.
  * @property {() => void} dispose Stop listening on the container.
@@ -1161,32 +1279,33 @@ export const PointerForwarderContext = createProperty(
  * so it hears them all; the elements only register (see
  * `forwardPointerEvents`).
  *
- * A browser hit-tests once, picks the innermost element, dispatches once
- * and bubbles, and so does this. For each event the forwarder reads which
- * of its targets the event went through, innermost first. A press arrives
- * as `mousedown`, `mouseup` and `click`, a ray moving over a control as
+ * A browser hit-tests once, picks the innermost element, dispatches once and
+ * bubbles, and so does this. For each event the forwarder reads which of its
+ * targets the event went through, innermost first. A press arrives as
+ * `mousedown`, `mouseup` and `click`, a ray moving over a control as
  * `mousemove`, and a press of the grip as `contextmenu`, which is the grip
- * standing in for the mouse's other button. Each `mousedown`, `mouseup`
- * and `mousemove` has the pointer event a browser sends ahead of it, from
- * the hand's own pointer (see `sendPointerAndMouse`). Each carries the
- * point the ray met, on the page, as its `clientX` and `clientY` (see
- * `pressInit` in `dragAndDrop.js`). The page also hears where the ray
- * crosses from element to element (see `track`), a press that becomes a
- * scroll or a drag cancelled (see `cancelPointer`), and a captured hand's moves
- * wherever its ray goes (see `following`). While the ray is on a control the
- * element carries `data-xr-hover`, and while it is held, `data-xr-active`.
- * A stylesheet answers those flags where a page would use `:hover` and
- * `:active`. Where the panel has haptics, the hand feels a press and its
- * release, of the grip as of the trigger, and an arrival on a control where
- * the panel asks for one. A press on something draggable that the hand
- * carries away is a drag and drop instead, and its release is a `drop` and
- * a `dragend` rather than a `mouseup` and a `click` (see `dragAndDrop.js`).
- * A grip that closes while the trigger carries something that way, or
- * moves a list, on this panel or another, is no press on anything: it sends
- * no `contextmenu` and is not felt, closing or opening. One that closed
- * before and opens while the hand is busy sends no `contextmenu` either,
- * but is felt opening, as its closing was: the pulses follow the closing,
- * and the right-click asks again as it opens.
+ * standing in for the mouse's other button. Each `mousedown`, `mouseup` and
+ * `mousemove` has the pointer event a browser sends ahead of it, from the
+ * hand's own pointer (see `sendPointerAndMouse`). Each carries the point the
+ * ray met, on the page, as its `clientX` and `clientY` (see `pressInit` in
+ * `dragAndDrop.js`). The page also hears where the ray crosses from element to
+ * element (see `track`), a press that becomes a scroll or a drag cancelled (see
+ * `cancelPointer`), and a captured hand's moves wherever its ray goes (see
+ * `following`). While a hand's pointer is over a control, which is the control
+ * its ray is on, or under a capture the captor wherever the ray is (see
+ * `rehover`), the element carries `data-xr-hover`, and while it is held,
+ * `data-xr-active`, each kept per hand (see `createFlag`). A stylesheet answers
+ * those flags where a page would use `:hover` and `:active`. Where the panel
+ * has haptics, the hand feels a press and its release, of the grip as of the
+ * trigger, and an arrival on a control where the panel asks for one. A press on
+ * something draggable that the hand carries away is a drag and drop instead,
+ * and its release is a `drop` and a `dragend` rather than a `mouseup` and a
+ * `click` (see `dragAndDrop.js`). A grip that closes while the trigger carries
+ * something that way, or moves a list, on this panel or another, is no press on
+ * anything: it sends no `contextmenu` and is not felt, closing or opening. One
+ * that closed before and opens while the hand is busy sends no `contextmenu`
+ * either, but is felt opening, as its closing was: the pulses follow the
+ * closing, and the right-click asks again as it opens.
  *
  * Controls nest, if only because `cursor` is inherited: the label in a
  * button, the icon in it, a button on a clickable card. A press goes where
@@ -1233,6 +1352,21 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
   /** @type {Map<Object3D, Target>} */
   const targets = new Map();
 
+  /**
+   * The controls among `targets`, by element, each with how many of its
+   * registrations are live: one element may be registered by two targets
+   * at once, as when a re-registration's `register` runs before the old
+   * one's cleanup. Read by the walk up from a captor (see `rehover`), and
+   * an element stays a control, and keeps its flags, until the last of
+   * them goes.
+   *
+   * @type {Map<HTMLElement, number>}
+   */
+  const controls = new Map();
+
+  const hoverFlag = createFlag("xrHover");
+  const activeFlag = createFlag("xrActive");
+
   /** @type {Map<XRTargetRaySpace, PanelHand>} */
   const panelHands = new Map();
 
@@ -1260,6 +1394,8 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
         select: { path: [], target: null },
         squeeze: { path: [], target: null },
         chain: [],
+        hovering: [],
+        active: [],
         source: null,
       };
       panelHands.set(controller, hand);
@@ -1281,23 +1417,6 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
       path.push(node);
       node = node.parent;
     }
-  };
-
-  /**
-   * The path a leave goes through: the one the hover recorded, which
-   * reaches the objects it went through even after the one it began on has
-   * left the scene. A hover that began before this forwarder heard it is
-   * walked from where it began. A press keeps its own (see `pressOf`).
-   *
-   * @param {Object3D[]} path
-   * @param {{ originalTarget: Object3D }} e
-   * @returns {Object3D[]}
-   */
-  const recorded = (path, e) => {
-    if (path[0] !== e.originalTarget) {
-      walk(e.originalTarget, path);
-    }
-    return path;
   };
 
   /**
@@ -1366,9 +1485,8 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
     isArrival(getControlRoot(target.element, target.object), e.relatedTarget);
 
   /**
-   * The ray arriving on a control: the hover flag, and the pulse an arrival
-   * on a control plays, once per arrival, by the control that was hit and
-   * not by the ones around it.
+   * The pulse the ray arriving on a control plays, once per arrival, by the
+   * control that was hit and not by the ones around it.
    *
    * @param {Target} target
    * @param {XREventMap["pointerenter"]} e
@@ -1376,12 +1494,68 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
    *   is known already.
    * @returns {void}
    */
-  const enter = (target, e, arrival) => {
-    target.element.dataset.xrHover = "true";
+  const feelArrival = (target, e, arrival) => {
     if (haptics && e.registeredTarget === target.object && (arrival ?? arrived(target, e))) {
       haptics.hover(e.inputSource);
     }
   };
+
+  /**
+   * Flag `data-xr-hover` on what the hand's pointer is over in this panel,
+   * as `:hover` follows a page's pointer: while the pointer is captured, the
+   * captor and the controls around it if it is in this panel and nothing
+   * here if it is in another, wherever the ray is; otherwise the controls
+   * the ray is on. Under a drag none is flagged anew, as `:hover` holds
+   * still under one, and the ray leaving one takes its flag off.
+   *
+   * @param {XRTargetRaySpace} controller
+   * @returns {void}
+   */
+  const rehover = (controller) => {
+    const hand = panelHands.get(controller);
+    const captor = hands.get(controller)?.captor;
+    if (captor?.isConnected) {
+      if (!panel()?.element.contains(captor)) {
+        if (hand) {
+          hoverFlag.clear(hand.hovering);
+        }
+        return;
+      }
+      for (let el = /** @type {Element | null} */ (captor); el; el = el.parentElement) {
+        if (controls.has(/** @type {HTMLElement} */ (el))) {
+          nextFlagged.push(/** @type {HTMLElement} */ (el));
+        }
+        if (isPortalRoot(el)) {
+          break;
+        }
+      }
+      hoverFlag.replace(panelHand(controller).hovering, nextFlagged);
+      return;
+    }
+    if (!hand) {
+      return;
+    }
+    // Under a drag, only what the ray has left loses the flag.
+    const holding = dnd.holding(controller);
+    for (const object of hand.hover) {
+      const target = targets.get(object);
+      if (target && !target.list && (!holding || hand.hovering.includes(target.element))) {
+        nextFlagged.push(target.element);
+      }
+    }
+    hoverFlag.replace(hand.hovering, nextFlagged);
+  };
+
+  /**
+   * Whether a hand's pointer is captured, or will be once the capture the
+   * page asked for settles at its next event, which then flags the hover
+   * (see `settleCapture`). Asked without settling it, so the page hears
+   * `gotpointercapture` where it always did.
+   *
+   * @param {XRTargetRaySpace} controller
+   * @returns {boolean}
+   */
+  const isCaptured = (controller) => !!hands.get(controller)?.pending?.isConnected;
 
   /**
    * Whether something above the panel took the grip's start, a `drag()`
@@ -1802,9 +1976,10 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
       for (const object of hand.hover) {
         const target = targets.get(object);
         if (target && !target.list) {
-          enter(target, e, target === first ? arrival : undefined);
+          feelArrival(target, e, target === first ? arrival : undefined);
         }
       }
+      rehover(e.controller);
     },
     pointermove(e) {
       const hand = panelHand(e.controller);
@@ -1841,22 +2016,26 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
           continue;
         }
         if (held) {
-          enter(target, held);
+          feelArrival(target, held);
         }
         if (!sent && !isGone(target.element)) {
           sent = true;
           sendPointerAndMouse(target.element, "pointermove", moveInit(panel(), e), e.controller);
         }
       }
+      if (held) {
+        rehover(e.controller);
+      }
     },
     pointerleave(e) {
       const hand = panelHand(e.controller);
       hand.held = null;
-      for (const object of recorded(hand.hover, e)) {
-        const target = targets.get(object);
-        if (target && !target.list) {
-          delete target.element.dataset.xrHover;
-        }
+      if (e.lost) {
+        lose(e.controller);
+      }
+      // A captured pointer is still over its captor, wherever the ray went.
+      if (!isCaptured(e.controller)) {
+        hoverFlag.clear(hand.hovering);
       }
       hand.hover.length = 0;
       hand.hovered = null;
@@ -1935,9 +2114,10 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
       for (const object of select.path) {
         const target = targets.get(object);
         if (target && !target.list) {
-          target.element.dataset.xrActive = "true";
+          nextFlagged.push(target.element);
         }
       }
+      activeFlag.replace(hand.active, nextFlagged);
       stopPropagation(e);
     },
     selectend(e) {
@@ -1950,6 +2130,17 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
       // the list's part is only to keep the release from going on past the
       // panel.
       if (pressed.list) {
+        stopPropagation(e);
+        return;
+      }
+      // A hand that went sends no release: the page loses its pointer,
+      // as a browser cancels one whose device goes away, and what the
+      // press held is let go of. The hand's own `disconnected`, which
+      // comes after this, takes the mouse off what it was over.
+      if (e.lost) {
+        lose(e.controller);
+        activeFlag.clear(panelHand(e.controller).active);
+        endPress(e.controller);
         stopPropagation(e);
         return;
       }
@@ -1971,7 +2162,6 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
         if (!target || target.list) {
           continue;
         }
-        delete target.element.dataset.xrActive;
         if (!sent && !isGone(target.element)) {
           sent = true;
           // A drag's release is its `drop` and its `dragend`, which the
@@ -1990,6 +2180,7 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
           haptics?.release(e.inputSource);
         }
       }
+      activeFlag.clear(panelHand(e.controller).active);
       endPress(e.controller);
       // A capture, a hold of something draggable: what the press held the
       // pointer to has let go of it. A drag's `drop` and `dragend` come
@@ -2119,6 +2310,9 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
       }
     },
     squeezeend(e) {
+      if (e.lost) {
+        lose(e.controller);
+      }
       // A grab's end goes on up to the carry.
       if (!pressOf(e, "squeeze").target || taken(e.start)) {
         return;
@@ -2128,8 +2322,8 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
       // a grip swallowed on a gone row, or closed while the hand carried or
       // moved a list, is felt neither way, whatever the hand is doing as it
       // opens. A closing not felt yet, its microtask still to come, is felt
-      // first.
-      if (haptics && owns(e.start)) {
+      // first. A hand that went has no motors left to feel it.
+      if (haptics && owns(e.start) && !e.lost) {
         feelClosing(e.start);
         haptics.release(e.inputSource);
       }
@@ -2151,6 +2345,7 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
    * @type {ForwarderEntry}
    */
   const registered = {
+    rehover,
     /** @param {XRTargetRaySpace} controller */
     pointsAt: (controller) => (panelHands.get(controller)?.hover.length ?? 0) > 0,
     /**
@@ -2213,20 +2408,34 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
 
   /**
    * Take a target until the function returned is called, which also takes
-   * a control's `data-xr-*` flags off; a list writes none.
+   * a control's `data-xr-*` flags off when it is the last registration of
+   * its element (see `controls`); a list writes none.
    *
    * @param {Target} target
    * @returns {() => void}
    */
   const register = (target) => {
     targets.set(target.object, target);
+    if (!target.list) {
+      controls.set(target.element, (controls.get(target.element) ?? 0) + 1);
+    }
     return () => {
       if (targets.get(target.object) === target) {
         targets.delete(target.object);
       }
       if (!target.list) {
-        delete target.element.dataset.xrHover;
-        delete target.element.dataset.xrActive;
+        const count = controls.get(target.element) ?? 0;
+        if (count > 1) {
+          controls.set(target.element, count - 1);
+          return;
+        }
+        controls.delete(target.element);
+        for (const hand of panelHands.values()) {
+          drop(hand.hovering, target.element);
+          drop(hand.active, target.element);
+        }
+        hoverFlag.forget(target.element);
+        activeFlag.forget(target.element);
       }
     };
   };

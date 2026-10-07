@@ -5,7 +5,12 @@ import { $, attr, children } from "@apendua/justdom";
 import { InteractionContext, InteractionManager } from "../interactions.js";
 import { createPortal as createHeldPortal } from "./portal.js";
 import { withPanelOptions } from "./panelOptions.js";
-import { createKeyboardSlot, disposeKeyboardSlot, KeyboardSlotContext } from "./keyboardSlot.js";
+import {
+  createKeyboardSlot,
+  dismissKeyboardAtSessionEnd,
+  disposeKeyboardSlot,
+  KeyboardSlotContext,
+} from "./keyboardSlot.js";
 import { CameraContext, RendererContext, SceneContext } from "../render.js";
 import { HANDLE_OPACITY_ACTIVE, HANDLE_OPACITY_NEAR } from "./panelHandles.js";
 import { stubCanvas } from "../test/stubCanvas.js";
@@ -771,6 +776,39 @@ describe("one keyboard for every panel in a scene", () => {
     assert.equal(slot.host, null);
     a.cleanup();
     b.cleanup();
+  });
+});
+
+describe("the scene's keyboard at the end of a session", () => {
+  /** @type {ReturnType<typeof stubCanvas>} */
+  let canvas;
+  before(() => {
+    canvas = stubCanvas();
+  });
+  after(() => {
+    canvas.restore();
+  });
+
+  test("goes when the session ends, and takes the field's focus with it", async () => {
+    // A page drawn only while presenting runs nothing after its session
+    // ends: a board left up would type into the field in the next one,
+    // from where the player stood in the last, and the page would show the
+    // field focused in between.
+    const slot = createKeyboardSlot();
+    const xr = new THREE.EventDispatcher();
+    const stop = dismissKeyboardAtSessionEnd(slot, /** @type {never} */ (xr));
+    const a = keyboardPanel((create) => ({ options: { keyboard: { create } } }), slot);
+    await settle();
+    a.press(a.fieldObject());
+    await settle();
+    assert.equal(panels(), 2);
+    assert.ok(a.input.hasAttribute("data-xr-focus"));
+
+    xr.dispatchEvent(/** @type {never} */ ({ type: "sessionend" }));
+    assert.equal(panels(), 1, "the board is gone");
+    assert.equal(a.input.hasAttribute("data-xr-focus"), false);
+    stop();
+    a.cleanup();
   });
 });
 

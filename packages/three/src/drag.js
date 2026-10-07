@@ -80,7 +80,9 @@ import { useFrame } from "./render.js";
  * One `drag()` per object: the hold is the object's. Interactivity is not
  * part of it — an object that can be pointed at without being carriable is
  * common — so `makeInteractive()` goes in the same list. Taking the object out
- * of the scene mid-drag takes it off the hand too.
+ * of the scene mid-drag takes it off the hand too. A hand that disconnects
+ * mid-drag lets go where it is: the manager ends its press with a `lost`
+ * release, which this hears as any other.
  *
  * ```js
  * const { draggable, held } = drag(ctx, { enabled: () => props.movable });
@@ -225,16 +227,20 @@ export function drag(ctx, options = {}) {
         if (!current) {
           return;
         }
+        // One event for the hold, sent again every frame: its matrix is the
+        // object's own, live, and nothing else in it changes until the hold
+        // does, which runs this again.
+        const move = /** @type {const} */ ({
+          type: "dragmove",
+          target: object,
+          ...current,
+          matrixWorld: object.matrixWorld,
+        });
         useFrame(ctx, () => {
           // Detached from the frame's own computation, so that whatever the
           // listeners read does not subscribe the frame loop to it.
           withComputation(null, () => {
-            object.dispatchEvent({
-              type: "dragmove",
-              target: object,
-              ...current,
-              matrixWorld: object.matrixWorld,
-            });
+            object.dispatchEvent(move);
           });
         });
       },

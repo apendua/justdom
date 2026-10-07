@@ -52,3 +52,26 @@ export function disposeKeyboardSlot(slot) {
   slot.host?.dispose();
   slot.host = null;
 }
+
+/**
+ * Put the scene's keyboard away when a session ends, as `render()` does
+ * for its slot. A board in the room was opened in front of where the
+ * player stood, and a page drawn only while presenting runs nothing
+ * after its session ends: left up, the board would come back in the next
+ * session where the player no longer is, still typing into the field,
+ * and the page would show that field focused in between.
+ *
+ * @param {KeyboardSlot} slot
+ * @param {import('three').EventDispatcher<{ sessionend: {} }>} xr The
+ *   renderer's XR manager.
+ * @returns {() => void} Stop listening.
+ */
+export function dismissKeyboardAtSessionEnd(slot, xr) {
+  const onSessionEnd = () => {
+    slot.host?.dismiss();
+  };
+  xr.addEventListener("sessionend", onSessionEnd);
+  return () => {
+    xr.removeEventListener("sessionend", onSessionEnd);
+  };
+}

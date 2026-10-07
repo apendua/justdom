@@ -308,18 +308,21 @@ export class InteractionManager {
        * went through, so a click reaches the same elements that have been
        * wearing the pressed styling since the start, even if the one pressed
        * has since been re-rendered. Anywhere else, it misses. The end, the
-       * completion and the miss each carry the start.
+       * completion and the miss each carry the start. A press whose hand
+       * went misses wherever the ray was left, and its end and its miss
+       * say `lost`.
        *
        * @param {"select" | "squeeze"} button
        * @param {Press | undefined} press
        * @param {XRInputSource} inputSource
+       * @param {boolean} [lost] Whether the hand went rather than let go.
        * @returns {void}
        */
-      const end = (button, press, inputSource) => {
+      const end = (button, press, inputSource, lost = false) => {
         if (!press) {
           return;
         }
-        const intersection = this.getIntersection(controller);
+        const intersection = lost ? undefined : this.getIntersection(controller);
         const { object, path, start } = press;
         const releasedOn = intersection && this.getTarget(intersection.object);
         this.#dispatchAlong(path, {
@@ -330,6 +333,7 @@ export class InteractionManager {
           controller,
           intersection,
           start,
+          lost,
         });
         if (intersection && press.target && releasedOn === press.target) {
           this.#dispatchAlong(path, {
@@ -349,8 +353,48 @@ export class InteractionManager {
             originalTarget: object,
             controller,
             start,
+            lost,
           });
         }
+      };
+
+      /**
+       * The ray is off what it was on: the leave goes along the path the
+       * enter went through.
+       *
+       * @param {THREE.Object3D<XREventMap> | null} relatedTarget Where it
+       *   went, or null for nothing.
+       * @param {boolean} [lost] Whether it went because the hand did.
+       * @returns {void}
+       */
+      const leave = (relatedTarget, lost = false) => {
+        if (!targetedObject) {
+          return;
+        }
+        this.#dispatchAlong(targetedPath, {
+          type: "pointerleave",
+          inputSource: inputSource(),
+          // Set with `targetedObject`, so as defined as it is.
+          registeredTarget: /** @type {THREE.Object3D<XREventMap>} */ (targetedTarget),
+          relatedTarget,
+          target: targetedObject,
+          originalTarget: targetedObject,
+          controller,
+          lost,
+        });
+      };
+
+      /**
+       * The ray is on nothing now: the leave, and nothing targeted after it.
+       *
+       * @param {boolean} [lost] Whether it went because the hand did.
+       * @returns {void}
+       */
+      const leaveForNothing = (lost = false) => {
+        leave(null, lost);
+        targetedObject = undefined;
+        targetedTarget = undefined;
+        targetedPath = [];
       };
 
       /**
@@ -413,18 +457,7 @@ export class InteractionManager {
               intersection,
             });
           } else {
-            if (targetedObject) {
-              this.#dispatchAlong(targetedPath, {
-                type: "pointerleave",
-                inputSource: source,
-                // Set with `targetedObject`, so as defined as it is.
-                registeredTarget: /** @type {THREE.Object3D<XREventMap>} */ (targetedTarget),
-                relatedTarget: target,
-                target: targetedObject,
-                originalTarget: targetedObject,
-                controller,
-              });
-            }
+            leave(target);
             this.dispatch(intersection.object, {
               type: "pointerenter",
               inputSource: source,
@@ -442,19 +475,32 @@ export class InteractionManager {
           targetedObject = intersection.object;
           targetedTarget = target;
         } else if (!intersection && targetedObject) {
-          this.#dispatchAlong(targetedPath, {
-            type: "pointerleave",
-            inputSource: inputSource(),
-            registeredTarget: /** @type {THREE.Object3D<XREventMap>} */ (targetedTarget),
-            relatedTarget: null,
-            target: targetedObject,
-            originalTarget: targetedObject,
-            controller,
-          });
-          targetedObject = undefined;
-          targetedTarget = undefined;
-          targetedPath = [];
+          leaveForNothing();
         }
+      };
+
+      /**
+       * The hand has gone: three disconnected it, as it disconnects every
+       * hand when a session ends, and hides its space only afterwards. No
+       * release is coming, so each press it holds ends here, as a miss that
+       * says `lost`, which is how `drag()` and `carry()` let go of what it
+       * held and how a panel cancels its pointer. And it is on nothing any
+       * more, at once: a page drawn only while presenting runs no frame
+       * after its session ends, so a leave left to the next frame would
+       * keep the hover until the next session.
+       *
+       * @param {THREE.WebXRSpaceEventMap['disconnected']} event
+       */
+      const onDisconnected = (event) => {
+        const select = selected;
+        const squeeze = squeezed;
+        selected = undefined;
+        squeezed = undefined;
+        end("select", select, event.data, true);
+        end("squeeze", squeeze, event.data, true);
+        this.#setPointer(controller, undefined);
+        leaveForNothing(true);
+        invalidate();
       };
 
       // three.js fires this while updating the controller from the XR frame,
@@ -484,8 +530,10 @@ export class InteractionManager {
       controller.addEventListener("squeezestart", onSqueezeStart);
       controller.addEventListener("squeezeend", onSqueezeEnd);
       controller.addEventListener("move", onMove);
+      controller.addEventListener("disconnected", onDisconnected);
 
       return () => {
+        controller.removeEventListener("disconnected", onDisconnected);
         controller.removeEventListener("selectstart", onSelectStart);
         controller.removeEventListener("selectend", onSelectEnd);
         controller.removeEventListener("squeezestart", onSqueezeStart);
@@ -523,9 +571,11 @@ export class InteractionManager {
     if (!controller.visible) {
       return undefined;
     }
-    const raycaster = new THREE.Raycaster().setFromXRController(controller);
-    /** @type {THREE.Intersection<THREE.Object3D<XREventMap>>[]} */
-    const intersections = [];
+    // One ray and one list for every cast, since a cast runs every frame a
+    // hand moves; only the hit handed back is new.
+    const raycaster = _raycaster.setFromXRController(controller);
+    const intersections = _intersections;
+    intersections.length = 0;
     for (const object of this.#objects) {
       if (!this.#castsOwnWalk(object)) {
         continue;
@@ -533,7 +583,9 @@ export class InteractionManager {
       intersectVisible(raycaster, object, intersections);
     }
     intersections.sort(byDistance);
-    return intersections[0];
+    const hit = intersections[0];
+    intersections.length = 0;
+    return hit;
   }
 
   /**
@@ -571,6 +623,11 @@ export class InteractionManager {
     this.#pointers.clear();
   }
 }
+
+/** Scratch for `getIntersection`. */
+const _raycaster = new THREE.Raycaster();
+/** @type {THREE.Intersection<THREE.Object3D<XREventMap>>[]} */
+const _intersections = [];
 
 /**
  * @param {{ distance: number }} a

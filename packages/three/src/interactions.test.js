@@ -255,6 +255,34 @@ describe("pointer events", () => {
     assert.deepEqual(events, ["pointerenter", "pointerleave"]);
     subscription.unsubscribe();
   });
+  test("a hand that disconnects leaves what it was on at once, without a frame", () => {
+    // Under `presentingOnly` no frame runs after a session ends, so a leave
+    // that waited for one would leave the hover on until the next session.
+    const manager = new InteractionManager();
+    const controller = fakeController();
+    const loop = fakeFrameLoop();
+    const subscription = manager.addController(controller, loop.onAnimationFrame).subscribe();
+    const { button } = labelledButton();
+    manager.add(button);
+
+    /** @type {string[]} */
+    const events = [];
+    for (const type of /** @type {const} */ (["pointerenter", "pointerleave"])) {
+      button.addEventListener(type, () => events.push(type));
+    }
+    loop.run();
+    assert.equal(manager.pointers.has(controller), true);
+
+    controller.dispatchEvent(/** @type {any} */ ({ type: "disconnected", data: {} }));
+    controller.visible = false;
+    assert.deepEqual(events, ["pointerenter", "pointerleave"]);
+    assert.equal(manager.pointers.has(controller), false, "and its cursor goes with it");
+
+    loop.run();
+    assert.deepEqual(events, ["pointerenter", "pointerleave"], "once");
+    subscription.unsubscribe();
+  });
+
   test("a leave reaches what the enter went through, even once the hit is taken out", () => {
     // A clickable `<g>` around a clickable `<text>`, both registered. The app
     // re-renders the label: the portal takes the old label's object out and
@@ -469,6 +497,49 @@ describe("select", () => {
     controller.visible = false;
     controller.dispatchEvent(/** @type {any} */ ({ type: "selectend", data: {} }));
     assert.deepEqual(events, ["selectstart", "selectend", "selectmissed"]);
+    subscription.unsubscribe();
+  });
+
+  test("a hand that disconnects mid-press ends its presses there, as misses", () => {
+    // three sends `disconnected` and only then hides the space, so the ray
+    // is still on the button as the hand goes. No release is coming for a
+    // hand that has gone, and the press has to end on the event itself:
+    // under `presentingOnly` no frame runs after a session ends.
+    const manager = new InteractionManager();
+    const controller = fakeController();
+    const subscription = connect(manager, controller);
+    const { button } = labelledButton();
+    manager.add(button);
+
+    /** @type {string[]} */
+    const events = [];
+    for (const type of /** @type {const} */ ([
+      "selectend",
+      "select",
+      "selectmissed",
+      "squeezeend",
+      "squeeze",
+      "squeezemissed",
+    ])) {
+      button.addEventListener(type, (event) =>
+        events.push(`${type}${"lost" in event && event.lost ? " lost" : ""}`),
+      );
+    }
+
+    controller.dispatchEvent(/** @type {any} */ ({ type: "selectstart", data: {} }));
+    controller.dispatchEvent(/** @type {any} */ ({ type: "squeezestart", data: {} }));
+    controller.dispatchEvent(/** @type {any} */ ({ type: "disconnected", data: {} }));
+    assert.deepEqual(events, [
+      "selectend lost",
+      "selectmissed lost",
+      "squeezeend lost",
+      "squeezemissed lost",
+    ]);
+
+    // The runtime's own ends, if it sends them late, end nothing.
+    controller.dispatchEvent(/** @type {any} */ ({ type: "selectend", data: {} }));
+    controller.dispatchEvent(/** @type {any} */ ({ type: "squeezeend", data: {} }));
+    assert.equal(events.length, 4);
     subscription.unsubscribe();
   });
 

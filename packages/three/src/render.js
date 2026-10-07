@@ -23,6 +23,7 @@ import { PortalPluginsContext } from "./elements/plugins.js";
 import { withPanelOptions } from "./elements/panelOptions.js";
 import {
   createKeyboardSlot,
+  dismissKeyboardAtSessionEnd,
   disposeKeyboardSlot,
   KeyboardSlotContext,
 } from "./elements/keyboardSlot.js";
@@ -608,6 +609,7 @@ export function render(fn, options = {}) {
     // that offers one and taken down with the scene.
     const keyboardSlot = createKeyboardSlot();
     ctx = KeyboardSlotContext.set(ctx, keyboardSlot);
+    subscriber.add(dismissKeyboardAtSessionEnd(keyboardSlot, renderer.xr));
     subscriber.add(() => {
       disposeKeyboardSlot(keyboardSlot);
     });

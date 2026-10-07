@@ -14,7 +14,7 @@ import { recordingSource } from "../test/rumble.js";
 import { clientRect } from "../test/clientRect.js";
 import { describeScroller } from "../test/scroller.js";
 import { countingManager, flushFrame, settle } from "../test/portalHarness.js";
-import { forwardedPanel } from "../test/rays.js";
+import { bubble, forwardedPanel } from "../test/rays.js";
 import { rayHand } from "../test/rayHand.js";
 import { fakeClock } from "../test/clock.js";
 import { createPortal } from "./portal.js";
@@ -2366,6 +2366,118 @@ describe("a panel's ray events", () => {
 
     portal.disconnect();
     root.remove();
+  });
+});
+
+describe("the flags a hand writes", () => {
+  /**
+   * Two buttons side by side, the first capturing the pointer that
+   * presses it, as a page that drags by capture does.
+   *
+   * @param {Parameters<Parameters<typeof mirrored>[0]>[0]} place
+   */
+  const buttons = (place) => {
+    const first = place("div", "first", [20, 20, 100, 40]);
+    first.style.cursor = "pointer";
+    first.addEventListener("pointerdown", (event) => {
+      first.setPointerCapture(/** @type {PointerEvent} */ (event).pointerId);
+    });
+    const second = place("div", "second", [200, 20, 100, 40]);
+    second.style.cursor = "pointer";
+  };
+
+  /**
+   * The flags on each button, as `#id hover active`.
+   *
+   * @param {HTMLElement} root
+   */
+  const flags = (root) =>
+    [...root.children]
+      .map((element) => {
+        const { xrHover, xrActive } = /** @type {HTMLElement} */ (element).dataset;
+        return [`#${element.id}`, xrHover && "hover", xrActive && "active"]
+          .filter(Boolean)
+          .join(" ");
+      })
+      .join(", ");
+
+  test("data-xr-active stays on while another hand still holds the press", async () => {
+    const page = await mirrored((place) => {
+      place("div", "first", [20, 20, 100, 40]).style.cursor = "pointer";
+      place("div", "second", [200, 20, 100, 40]).style.cursor = "pointer";
+    });
+    const [left, right] = [rayHand(page.manager), rayHand(page.manager)];
+    left.aim(page.panel, 50, 40);
+    left.trigger("selectstart");
+    right.aim(page.panel, 90, 40);
+    right.trigger("selectstart");
+    right.trigger("selectend");
+    assert.equal(flags(page.root), "#first hover active, #second");
+    right.aim(page.panel, 250, 40);
+    assert.equal(flags(page.root), "#first hover active, #second hover", "and so does the hover");
+    left.trigger("selectend");
+    assert.equal(flags(page.root), "#first hover, #second hover");
+    left.remove();
+    right.remove();
+    page.teardown();
+  });
+
+  test("data-xr-hover follows a captured pointer to its captor, not the ray", async () => {
+    const page = await mirrored(buttons);
+    const hand = rayHand(page.manager);
+    hand.aim(page.panel, 50, 40);
+    hand.trigger("selectstart");
+    // The capture settles at the hand's next event, and the ray goes on to
+    // the other button: the pointer is still over its captor, and so is
+    // the hover.
+    hand.aim(page.panel, 250, 40);
+    assert.equal(flags(page.root), "#first hover active, #second");
+    hand.aim(page.panel, 380, 280);
+    assert.equal(flags(page.root), "#first hover active, #second");
+    hand.aim(page.panel, 250, 40);
+    hand.trigger("selectend");
+    // The capture ends with the release, and the hover goes to where the
+    // ray is.
+    assert.equal(flags(page.root), "#first, #second hover");
+    hand.remove();
+    page.teardown();
+  });
+});
+
+describe("a control registered twice", () => {
+  test("keeps its flags until the last of its registrations goes", () => {
+    // A re-registration whose new `register` runs before the old one's
+    // cleanup, or two objects for one element: the first to go must not
+    // take the flags off a control that is still registered.
+    const manager = new InteractionManager();
+    const { ctx, container } = forwardedPanel(InteractionContext.set({}, manager));
+    const forwarder = /** @type {NonNullable<ReturnType<typeof PointerForwarderContext.get>>} */ (
+      PointerForwarderContext.get(ctx)
+    );
+    const element = html("div", "cursor: pointer");
+    document.body.appendChild(element);
+    const first = new THREE.Object3D();
+    const second = new THREE.Object3D();
+    container.add(first, second);
+    const letGoOfFirst = forwarder.control(first, element);
+    const letGoOfSecond = forwarder.control(second, element);
+    const controller = new THREE.Object3D();
+    bubble(second, {
+      type: "pointerenter",
+      controller,
+      inputSource: null,
+      registeredTarget: second,
+      relatedTarget: null,
+      intersection: { point: new THREE.Vector3() },
+    });
+    assert.equal(element.dataset.xrHover, "true");
+
+    letGoOfFirst();
+    assert.equal(element.dataset.xrHover, "true", "the second registration still has it");
+    letGoOfSecond();
+    assert.equal(element.dataset.xrHover, undefined);
+    forwarder.dispose();
+    element.remove();
   });
 });
 

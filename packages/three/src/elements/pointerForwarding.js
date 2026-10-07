@@ -263,9 +263,7 @@ function handOf(controller) {
     // here, and the pointer leaves what it was over.
     listened.addEventListener("disconnected", () => {
       created.buttons = 0;
-      if (created.pressed || created.captor || created.pending) {
-        cancelPointer(controller);
-      }
+      cancelHeld(controller);
       endPress(controller);
       // The hand is over nothing now, on any panel: its pointer, which a
       // cancel has already taken out wherever there was a press, and then
@@ -680,6 +678,20 @@ function cancelPointer(controller) {
   releaseCapture(controller);
   for (let i = 0; i < forwarders.length; i += 1) {
     forwarders[i].leave(controller, placeless(controller, 0));
+  }
+}
+
+/**
+ * Cancel a hand's pointer if it holds anything a release would have ended,
+ * a press or a capture, as a hand that went does (see `cancelPointer`).
+ *
+ * @param {XRTargetRaySpace} controller
+ * @returns {void}
+ */
+function cancelHeld(controller) {
+  const hand = hands.get(controller);
+  if (hand && (hand.pressed || hand.captor || hand.pending)) {
+    cancelPointer(controller);
   }
 }
 
@@ -1576,6 +1588,12 @@ export function createPanelForwarder(ctx, container) {
     pointerleave(e) {
       const hand = panelHand(e.controller);
       hand.held = null;
+      // A hand that went holds nothing, whatever its own `disconnected`,
+      // which comes after this, has still to clear.
+      const pointer = e.lost ? hands.get(e.controller) : undefined;
+      if (pointer) {
+        pointer.buttons = 0;
+      }
       for (const object of recorded(hand.hover, e)) {
         const target = targets.get(object);
         if (target && !target.list) {
@@ -1674,6 +1692,22 @@ export function createPanelForwarder(ctx, container) {
       // the list's part is only to keep the release from going on past the
       // panel.
       if (pressed.list) {
+        stopPropagation(e);
+        return;
+      }
+      // A hand that went sends no release: the page loses its pointer,
+      // as a browser cancels one whose device goes away, and what the
+      // press held is let go of. The hand's own `disconnected`, which
+      // comes after this, takes the mouse off what it was over.
+      if (e.lost) {
+        cancelHeld(e.controller);
+        for (const object of path) {
+          const target = targets.get(object);
+          if (target && !target.list) {
+            delete target.element.dataset.xrActive;
+          }
+        }
+        endPress(e.controller);
         stopPropagation(e);
         return;
       }
@@ -1841,8 +1875,8 @@ export function createPanelForwarder(ctx, container) {
       // a grip swallowed on a gone row, or closed while the hand carried or
       // moved a list, is felt neither way, whatever the hand is doing as it
       // opens. A closing not felt yet, its microtask still to come, is felt
-      // first.
-      if (haptics && owns(e.start)) {
+      // first. A hand that went has no motors left to feel it.
+      if (haptics && owns(e.start) && !e.lost) {
         feelClosing(e.start);
         haptics.release(e.inputSource);
       }

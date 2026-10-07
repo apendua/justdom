@@ -133,6 +133,14 @@ hits stayed on the page after it ended, with a cursor on each and the hover stil
 were on, and a page drawn before any session had a cursor where the two idle controllers, at the
 origin, were looking.
 
+**A hand that disconnects lets go.** three sends `disconnected` for a hand it has lost, and for
+every hand when a session ends, and sends no release for whatever the hand held. So the manager ends
+each press the hand holds there and then, as a `selectend` or `squeezeend` and a miss, both saying
+`lost`, and the hand leaves what its ray was on, with its cursor, in the same event rather than on
+the next frame, which a page drawn only while presenting does not run after its session ends. A
+`drag()` lets go of what the hand carried, where it is in the room, and a `carry()` puts its object
+down.
+
 The ray each controller draws is cut at the same hit, so it stops at the surface instead of
 disappearing into it, and stretches back out to a fixed reach when the hand is pointing at nothing.
 
@@ -209,7 +217,9 @@ release, of the button it is holding with, ends the drag. **It swallows the pres
 press that picks the object up and the release that lets it go never reach whatever is behind, so
 picking up a brick never also picks up the board it sits on. While `enabled`, a release is swallowed
 whether or not its press was taken, so an object made carriable during a press keeps that release
-from whatever took the press. An object taken out of the scene mid-drag leaves the hand too.
+from whatever took the press. An object taken out of the scene mid-drag leaves the hand too, and a
+hand that disconnects, as every hand does when a session ends, lets go of what it holds, with a
+`dragend`, as though it had been released where it was.
 
 `RendererContext` is the property behind the once-a-frame `dragmove`, and `useFrame`; it is exported
 so a test can mount a draggable object without a renderer — `RendererContext.set(ctx, {})` is enough
@@ -268,7 +278,7 @@ afresh from wherever its own ray lands, and only the carrying hand's release put
 `held()` says which hand has it. One difference: a carry that is disabled while under way is put
 down where it is, since nothing was reparented and there is nothing to undo — and so is one whose
 handle leaves the scene, since the release it is waiting for would go to a handle no longer
-listening.
+listening. A carrying hand that disconnects puts the object down where it is, as a drag's does.
 
 ## Hands
 
@@ -376,8 +386,9 @@ hears `pointercancel` where the press went, the pointer leaves what it was over 
 nothing more of that hand is sent, `pointerup` and `mouseup` included, until the trigger opens. Then
 the pointer and the mouse catch up with where the ray is, on every panel. A hand lost in the middle
 of a press, as every hand is when a session ends, sends no release, and its pointer is cancelled the
-same way, and the mouse leaves what the hand was over on every panel. The crossings that catch a
-panel up carry the point where the ray crosses that panel, as a move does.
+same way, the elements it held lose `data-xr-active`, and the mouse leaves what the hand was over on
+every panel. The crossings that catch a panel up carry the point where the ray crosses that panel,
+as a move does.
 
 A browser knows nothing of the hands' pointers, so `setPointerCapture` with a hand's `pointerId`
 would throw that there is no such pointer. Once a hand sends anything while a panel is up, the three

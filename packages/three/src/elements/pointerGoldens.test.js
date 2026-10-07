@@ -16,9 +16,8 @@
  * stands. The recordings are in `pointerGoldens.json` beside this file.
  *
  * They pin today's behaviour, which is not always the behaviour anybody
- * wants. A hand lost mid-press releases nothing yet, and the plan means to
- * change that. They are there so that a change to how rays become events is
- * a change somebody sees. A golden that has to change is a behaviour change.
+ * wants. They are there so that a change to how rays become events is a
+ * change somebody sees. A golden that has to change is a behaviour change.
  * It goes in a commit of its own that says why the old sequence was wrong,
  * as section 10 of `docs/freedom-architecture-plan.md` asks.
  *

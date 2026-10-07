@@ -311,8 +311,9 @@ export function applyLevelPose(object, pose) {
  * The bookkeeping is `drag()`'s: it remembers which hand, so a press from the
  * other hand while the object is carried is a handover — the new hand takes
  * the grip from wherever its own ray lands — and only the carrying hand's
- * release puts the object down; and the presses a handle takes never reach
- * whatever is behind it.
+ * release puts the object down, a `lost` one included, which the manager
+ * sends for a hand that disconnects; and the presses a handle takes never
+ * reach whatever is behind it.
  *
  * ```js
  * const board = carry(ctx, { enabled: () => phase.get() === "build" });

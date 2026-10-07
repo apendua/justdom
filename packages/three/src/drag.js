@@ -80,7 +80,9 @@ import { useFrame } from "./render.js";
  * One `drag()` per object: the hold is the object's. Interactivity is not
  * part of it — an object that can be pointed at without being carriable is
  * common — so `makeInteractive()` goes in the same list. Taking the object out
- * of the scene mid-drag takes it off the hand too.
+ * of the scene mid-drag takes it off the hand too. A hand that disconnects
+ * mid-drag lets go where it is: the manager ends its press with a `lost`
+ * release, which this hears as any other.
  *
  * ```js
  * const { draggable, held } = drag(ctx, { enabled: () => props.movable });

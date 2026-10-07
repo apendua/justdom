@@ -249,6 +249,23 @@ describe("drag", () => {
     dispose();
   });
 
+  test("a hand that disconnects while holding it lets it go where it is", () => {
+    // At the end of a session three disconnects every hand and sends no
+    // release; an object still on the hand would stay on a hidden
+    // controller into the next session.
+    const { left, board, box, events, held, dispose } = setup();
+    press(left, "selectstart");
+    left.position.set(1, 2, 3);
+    left.updateMatrixWorld(true);
+
+    left.dispatchEvent(/** @type {any} */ ({ type: "disconnected", data: {} }));
+    assert.strictEqual(box.parent, board);
+    assert.deepEqual(box.position, new THREE.Vector3(1, 2, -2));
+    assert.deepEqual(events, ["dragstart", "dragend"]);
+    assert.equal(held(), null);
+    dispose();
+  });
+
   test("taken out of the scene while held, it leaves the hand too", () => {
     const { left, box, held, dispose } = setup();
     press(left, "selectstart");

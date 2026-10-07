@@ -496,6 +496,18 @@ describe("carry", () => {
     dispose();
   });
 
+  test("a hand that disconnects mid-carry puts the object down", () => {
+    // Three sends no release for a hand it has lost, at the end of a
+    // session say; the board would otherwise follow a hidden controller.
+    const { left, board, panel, events, dispose } = setup();
+    moveAside(panel);
+    press(left, "selectstart");
+    left.dispatchEvent(/** @type {any} */ ({ type: "disconnected", data: {} }));
+    assert.equal(board.held(), null);
+    assert.deepEqual(events, [], "and the release it stands for stops at the handle");
+    dispose();
+  });
+
   test("taken out of the scene while carried, it is put down", () => {
     const { left, board, panel, dispose } = setup();
     moveAside(panel);

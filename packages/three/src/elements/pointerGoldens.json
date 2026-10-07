@@ -427,9 +427,9 @@
     "mouseleave #icon - - button 0 at 0,0 related none",
     "mouseleave #card - - button 0 at 0,0 related none",
     "mouseleave #root - - button 0 at 0,0 related none",
-    "= #card active, #icon active",
+    "= nothing",
     "> a frame",
-    "= #card active, #icon active"
+    "= nothing"
   ],
   "a second hand during a hold": [
     "> first hand aims at #leaf",

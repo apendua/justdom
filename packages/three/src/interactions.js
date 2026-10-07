@@ -564,9 +564,11 @@ export class InteractionManager {
     if (!controller.visible) {
       return undefined;
     }
-    const raycaster = new THREE.Raycaster().setFromXRController(controller);
-    /** @type {THREE.Intersection<THREE.Object3D<XREventMap>>[]} */
-    const intersections = [];
+    // One ray and one list for every cast, since a cast runs every frame a
+    // hand moves; only the hit handed back is new.
+    const raycaster = _raycaster.setFromXRController(controller);
+    const intersections = _intersections;
+    intersections.length = 0;
     for (const object of this.#objects) {
       if (!this.#castsOwnWalk(object)) {
         continue;
@@ -574,7 +576,9 @@ export class InteractionManager {
       intersectVisible(raycaster, object, intersections);
     }
     intersections.sort(byDistance);
-    return intersections[0];
+    const hit = intersections[0];
+    intersections.length = 0;
+    return hit;
   }
 
   /**
@@ -612,6 +616,11 @@ export class InteractionManager {
     this.#pointers.clear();
   }
 }
+
+/** Scratch for `getIntersection`. */
+const _raycaster = new THREE.Raycaster();
+/** @type {THREE.Intersection<THREE.Object3D<XREventMap>>[]} */
+const _intersections = [];
 
 /**
  * @param {{ distance: number }} a

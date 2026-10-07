@@ -227,16 +227,20 @@ export function drag(ctx, options = {}) {
         if (!current) {
           return;
         }
+        // One event for the hold, sent again every frame: its matrix is the
+        // object's own, live, and nothing else in it changes until the hold
+        // does, which runs this again.
+        const move = /** @type {const} */ ({
+          type: "dragmove",
+          target: object,
+          ...current,
+          matrixWorld: object.matrixWorld,
+        });
         useFrame(ctx, () => {
           // Detached from the frame's own computation, so that whatever the
           // listeners read does not subscribe the frame loop to it.
           withComputation(null, () => {
-            object.dispatchEvent({
-              type: "dragmove",
-              target: object,
-              ...current,
-              matrixWorld: object.matrixWorld,
-            });
+            object.dispatchEvent(move);
           });
         });
       },

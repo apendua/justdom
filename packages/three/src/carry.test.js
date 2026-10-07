@@ -162,6 +162,19 @@ describe("carriedPose", () => {
     close(pose.yaw, board.yaw);
   });
 
+  test("writes into the pose it is given, which a carry asks with once a frame", () => {
+    const from = new THREE.Vector3(0.1, 0, -0.9);
+    const to = new THREE.Vector3(0.6, 0.3, -1.4);
+    const grip = grab(hand(from), 0.5);
+    const out = { position: new THREE.Vector3(), yaw: 0, turned: 0 };
+    const pose = carriedPose(grip, hand(to), out);
+    assert.strictEqual(pose, out);
+    const fresh = carriedPose(grip, hand(to));
+    assert.deepEqual(rounded(out.position), rounded(fresh.position));
+    close(out.yaw, fresh.yaw);
+    close(out.turned, fresh.turned);
+  });
+
   test("keeps the grab point pinned to the ray, however the wrist tips", () => {
     const place = new THREE.Vector3(0.1, 0.2, -0.9);
     const grabbed = hand(place, 0.3, { angle: -0.5 });

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import * as THREE from "three";
 import { Derived } from "@apendua/signal";
 import { InteractionContext, InteractionManager } from "./interactions.js";
-import { RendererContext } from "./render.js";
+import { RendererContext, runFrame } from "./render.js";
 import { $ } from "./operators.js";
 import { drag } from "./drag.js";
 
@@ -49,7 +49,8 @@ function setup(options) {
     manager.addController(right, () => () => {}).subscribe(),
   ];
   // Frames are asked for while the box is held; nobody has to emit them.
-  const ctx = RendererContext.set(InteractionContext.set({}, manager), /** @type {any} */ ({}));
+  const renderer = /** @type {any} */ ({});
+  const ctx = RendererContext.set(InteractionContext.set({}, manager), renderer);
   const { draggable, held } = drag(ctx, options);
 
   const board = /** @type {THREE.Object3D<XREventMap>} */ (
@@ -92,6 +93,8 @@ function setup(options) {
     events,
     details,
     held,
+    /** One frame of the loop, which is when a held object says where it is. */
+    frame: () => runFrame(renderer, 0, /** @type {any} */ ({})),
     dispose: () => {
       for (const subscription of subscriptions) {
         subscription.unsubscribe();
@@ -263,6 +266,24 @@ describe("drag", () => {
     assert.deepEqual(box.position, new THREE.Vector3(1, 2, -2));
     assert.deepEqual(events, ["dragstart", "dragend"]);
     assert.equal(held(), null);
+    dispose();
+  });
+
+  test("says where it is once a frame while held, with one event for the hold", () => {
+    const { left, box, frame, dispose } = setup();
+    /** @type {DragEvent[]} */
+    const moves = [];
+    box.addEventListener("dragmove", (event) => moves.push(event));
+    press(left, "selectstart");
+    frame();
+    frame();
+    assert.equal(moves.length, 2);
+    assert.strictEqual(moves[0], moves[1], "nothing made per frame");
+    assert.strictEqual(moves[0].matrixWorld, box.matrixWorld, "and the matrix is the live one");
+    assert.strictEqual(moves[0].controller, left);
+    press(left, "selectend");
+    frame();
+    assert.equal(moves.length, 2);
     dispose();
   });
 

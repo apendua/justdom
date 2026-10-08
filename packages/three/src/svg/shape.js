@@ -16,6 +16,7 @@ import { PortalReadyContext } from "../elements/div.js";
 import { forwardPointerEvents, isClickable } from "../elements/pointerForwarding.js";
 import { place } from "../elements/place.js";
 import { getContentRenderOrder } from "../elements/elevation.js";
+import { BOX_BUCKET_BIAS } from "../elements/boxBatch.js";
 import {
   getAttributeCached,
   getBorderBoxSize,
@@ -845,12 +846,17 @@ const LAYERS = 3;
  * the initial build, and a fill switched on by a hover, or a shape inserted
  * before its siblings, would otherwise jump the stack.
  *
- * An `<svg>` root's slot is its content render order and the step up to the
- * next one. Each element in it gets an equal share of that slot by its place
- * in the root's document order, split into its three layers. The content of
- * an instance shares out the instance's slot the same way, by its place in
- * the template, so the arrowheads on a path are drawn over its stroke and
- * under whatever comes after it.
+ * An `<svg>` root's slot is the first half of its content level: from its
+ * content render order R up to R + `BOX_BUCKET_BIAS`, where HTML text of
+ * that order draws. A box drawn at the `<svg>`'s content level draws at that
+ * bias, so every element of the `<svg>` draws before the box, whatever its
+ * place in the document order. A slot that ran up to R + 1 drew the later
+ * elements after the box, which writes depth, and a box in front of the
+ * `<svg>` hid them. Each element in the slot gets an equal share of it by its
+ * place in the root's document order, split into its three layers. The
+ * content of an instance shares out the instance's slot the same way, by its
+ * place in the template, so the arrowheads on a path are drawn over its
+ * stroke and under whatever comes after it.
  *
  * @param {Element} element
  * @param {Element | null} root The element's `<svg>` root, from its chain.
@@ -867,7 +873,7 @@ export function paintSlot(element, root, instance, layer) {
   }
   const slot = instance
     ? instance.slot()
-    : { start: getContentRenderOrder(asHtml(scope)), span: 1 };
+    : { start: getContentRenderOrder(asHtml(scope)), span: BOX_BUCKET_BIAS };
   const { index, count } = getPaintOrder(scope);
   const at = index.get(element);
   if (at === undefined) {

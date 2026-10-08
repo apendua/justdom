@@ -22,6 +22,16 @@ import { markedBox } from "./listMarker.js";
 import { installRange } from "../test/textRange.js";
 import { stubCanvas } from "../test/stubCanvas.js";
 import { isRunMesh } from "../test/runMesh.js";
+import { BoxBatchContext, createBoxBatch } from "./boxBatch.js";
+import { PortalTemplatesContext } from "./plugins.js";
+import { shape } from "../svg/shape.js";
+import { drawText } from "../svg/text.js";
+import { installSvgTextLayout } from "../test/svgTextLayout.js";
+
+// three's SVGLoader parses with DOMParser, which jsdom-env does not install.
+if (typeof globalThis.DOMParser === "undefined") {
+  globalThis.DOMParser = window.DOMParser;
+}
 
 /**
  * @import { InteractionManager } from "../interactions.js";
@@ -598,9 +608,10 @@ function setupSiblings() {
     },
     /**
      * Draw an element with a component other than `div`, handed the
-     * harness's context: a field or a list item, as the portal draws them.
+     * harness's context: a field, a list item or an SVG element, as the
+     * portal draws them.
      *
-     * @param {HTMLElement} element
+     * @param {Element} element
      * @param {(ctx: object) => import("@apendua/signal").Source<THREE.Object3D>} component
      * @returns {THREE.Object3D} What the component built.
      */
@@ -1414,8 +1425,8 @@ describe("marks stepped over a box", () => {
 
   test("an <svg> laid over a dial paints all of itself after the dial's face", () => {
     // An `<svg>` paints its shapes in a slot that starts at its content
-    // order and ends short of the next level (`paintSlot`), so no shape in
-    // it draws before that order.
+    // order and ends short of the boxes drawn at that level, half a level up
+    // (`paintSlot`), so no shape in it draws before that order.
     const gauge = setupSiblings();
     try {
       const parts = dialWithCaption(gauge);
@@ -1429,6 +1440,85 @@ describe("marks stepped over a box", () => {
       assertDrawsAfterDial(gauge, slot, parts);
     } finally {
       gauge.teardown();
+    }
+  });
+});
+
+describe("an <svg> over a translucent flow box", () => {
+  test("draws all of itself before the box's bucket, a text after a shape too", () => {
+    // Night Ops' whiteboard: the DONE column, a flow box with a faint tint,
+    // and the scribble, an `<svg>` positioned over it that holds an arrow
+    // and then "deploy!". The column's bucket writes depth in front of the
+    // `<svg>`, so any of the `<svg>` that draws after the bucket is lost.
+    const svgText = installSvgTextLayout();
+    const board = setupSiblings();
+    const container = new THREE.Group();
+    const batch = createBoxBatch(container);
+    try {
+      const columns = board.place("", [0, 0, 400, 400]);
+      const column = board.place(
+        "background: rgba(29, 79, 184, 0.04)",
+        [200, 0, 400, 400],
+        columns,
+      );
+      container.add(board.drawWith(column, (ctx) => div(BoxBatchContext.set(ctx, batch), column)));
+
+      const ns = "http://www.w3.org/2000/svg";
+      const scribble = document.createElementNS(ns, "svg");
+      scribble.setAttribute("viewBox", "0 0 110 70");
+      scribble.setAttribute("style", "position: absolute");
+      board.adopt(scribble, [250, 300, 360, 370]);
+      const arrow = document.createElementNS(ns, "rect");
+      arrow.setAttribute("width", "90");
+      arrow.setAttribute("height", "4");
+      arrow.setAttribute("fill", "red");
+      const label = document.createElementNS(ns, "text");
+      label.setAttribute("x", "6");
+      label.setAttribute("y", "24");
+      label.setAttribute("fill", "red");
+      label.append("deploy!");
+      scribble.append(arrow, label);
+      for (const node of [arrow, label, ...label.childNodes]) {
+        board.mirror.adopt(node);
+      }
+      board.mirror.childListChanged(scribble);
+
+      /** @type {THREE.Mesh[]} */
+      const meshes = [];
+      const drawn = [
+        board.drawWith(arrow, (ctx) => shape(ctx, arrow)),
+        board.drawWith(label, (ctx) =>
+          drawText(
+            PortalTemplatesContext.set(ctx, (node) => board.mirror.adopt(node)),
+            label,
+          ),
+        ),
+      ];
+      for (const object of drawn) {
+        object.traverse((child) => {
+          if (child instanceof THREE.Mesh) {
+            meshes.push(child);
+          }
+        });
+      }
+      assert.equal(meshes.length, 2, "the arrow's fill and the label's run");
+
+      batch.flush();
+      const buckets = container.children.filter(
+        (child) => child instanceof THREE.InstancedMesh && child.count > 0,
+      );
+      assert.equal(buckets.length, 1, "the column's bucket alone");
+      const [bucket] = buckets;
+      for (const mesh of meshes) {
+        assert.ok(
+          mesh.renderOrder < bucket.renderOrder,
+          `drawn at ${mesh.renderOrder}, after the column's bucket at ${bucket.renderOrder}`,
+        );
+      }
+    } finally {
+      board.teardown();
+      batch.dispose();
+      svgText.restore();
     }
   });
 });

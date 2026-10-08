@@ -1019,6 +1019,8 @@ describe("a press on nested clickable elements", () => {
 });
 
 describe("a ray's pointer events", () => {
+  /** What a pointer leaving an element sends, the pointer's then the mouse's. */
+  const LEAVES = ["pointerout", "pointerleave", "mouseout", "mouseleave"];
   const TYPES = [
     "pointerdown",
     "pointermove",
@@ -1486,10 +1488,7 @@ describe("a ray's pointer events", () => {
     hand.aim(page.panel, 70, 40);
     hand.trigger("selectstart");
     hand.aim(page.panel, 75, 45);
-    const { heard, stop } = hearing(
-      ["pointercancel", "pointerout", "pointerleave", "mouseout", "mouseleave"],
-      { at: true },
-    );
+    const { heard, stop } = hearing(["pointercancel", ...LEAVES], { at: true });
     hand.disconnect();
     stop();
     assert.deepEqual(heard, [
@@ -2007,7 +2006,7 @@ describe("a ray's pointer events", () => {
     });
     const hand = rayHand(page.manager);
     hand.aim(page.panel, 70, 40);
-    const { heard, stop } = hearing(["pointerout", "pointerleave", "mouseout", "mouseleave"]);
+    const { heard, stop } = hearing(LEAVES);
     hand.disconnect();
     hand.frame();
     stop();
@@ -2125,7 +2124,6 @@ describe("a ray's pointer events", () => {
     page.teardown();
   });
 
-  const LEAVES = ["pointerout", "pointerleave", "mouseout", "mouseleave"];
   const CROSSINGS = [...LEAVES, "pointerover", "pointerenter", "mouseover", "mouseenter"];
 
   test("leave where the page last heard the pointer as the ray goes onto nothing", async () => {

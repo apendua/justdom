@@ -234,7 +234,9 @@ function noteMissedPress(element) {
  *     `track`, and `writePoint` in `dragAndDrop.js` for why not where it
  *     crosses the panel's plane); and the crossings that bring a panel up
  *     to date for a hand that is over nothing on it, whose ray is on
- *     another panel or has gone (see `ForwarderEntry.bringUp`).
+ *     another panel or has gone, or that is captured to an element of it
+ *     with a ray that crosses its plane nowhere (see
+ *     `ForwarderEntry.bringUp`).
  *   - The leaves of a hand that has gone, which has no ray left to place
  *     them, on its own panel and on the others (see `track` and
  *     `BringUp.nowhere`).
@@ -374,7 +376,9 @@ let primary = null;
  *   Cross the mouse, if the hand is the primary one, and its pointer if
  *   `how` says so, to the element the hand is over in the panel now, at
  *   the point where its ray crosses the panel's plane, or, for a hand
- *   over nothing in the panel, where the page last heard its pointer was.
+ *   over nothing in the panel, or captured to an element of it with a ray
+ *   that crosses its plane nowhere, where the page last heard its pointer
+ *   was.
  */
 
 /**
@@ -730,15 +734,13 @@ function wrapPointerCapture() {
  * that follow a cancel, and the crossings that bring another panel up to
  * date (see `bringUpElsewhere`), which may come while a ray event's own
  * init, the one `pressInit` and its siblings write, is being sent. Written
- * in place by `placeless`, with no point unless its caller adds one:
- * `atPointer` places the capture events, the cancel and the leaves after
- * it, and the leaves of a hand that has gone where the pointer last was,
- * and `bringUp` places its crossings on its panel's plane, or where the
- * pointer last was for a hand over nothing on that panel.
+ * in place by `atPointer`, always at where the page last heard the hand's
+ * pointer was; `bringUp` then moves its crossings onto its panel's plane
+ * where the hand is over an element there and its ray crosses that plane.
  *
  * @type {PointerEventInit}
  */
-const placelessInit = {
+const atPointerInit = {
   bubbles: true,
   cancelable: false,
   button: -1,
@@ -754,40 +756,26 @@ const placelessInit = {
 };
 
 /**
- * `placelessInit` written for one hand's pointer.
+ * `atPointerInit` written for one hand's pointer, at where the page last
+ * heard it was, for the events no ray places (see `Hand.x`), which carry
+ * the pointer's position as a browser's do.
  *
  * @param {XRTargetRaySpace} controller
+ * @param {Hand} hand
  * @param {number} buttons What the event says the hand holds: none for a
  *   pointer the page has lost.
  * @returns {PointerEventInit}
  */
-function placeless(controller, buttons) {
-  const hand = hands.get(controller);
-  placelessInit.bubbles = true;
-  placelessInit.cancelable = false;
-  placelessInit.button = -1;
-  placelessInit.buttons = buttons;
-  placelessInit.pointerId = hand?.pointerId ?? 0;
-  placelessInit.isPrimary = controller === primary;
-  placelessInit.relatedTarget = null;
-  writeClient(placelessInit, 0, 0);
-  return placelessInit;
-}
-
-/**
- * `placeless` at where the page last heard the hand's pointer was, for
- * the events no ray places (see `Hand.x`), which carry the pointer's
- * position as a browser's do.
- *
- * @param {XRTargetRaySpace} controller
- * @param {Hand} hand
- * @param {number} buttons See `placeless`.
- * @returns {PointerEventInit}
- */
 function atPointer(controller, hand, buttons) {
-  const init = placeless(controller, buttons);
-  writeLastPoint(init, hand);
-  return init;
+  atPointerInit.bubbles = true;
+  atPointerInit.cancelable = false;
+  atPointerInit.button = -1;
+  atPointerInit.buttons = buttons;
+  atPointerInit.pointerId = hand.pointerId;
+  atPointerInit.isPrimary = controller === primary;
+  atPointerInit.relatedTarget = null;
+  writeLastPoint(atPointerInit, hand);
+  return atPointerInit;
 }
 
 /**
@@ -2476,7 +2464,8 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
       }
       // Where the ray crosses this panel's plane, as a captured hand's
       // moves are placed, since no ray event here says where it is; where
-      // the page last heard the pointer for a hand over nothing here (see
+      // the page last heard the pointer for a hand over nothing here, or
+      // captured here with a ray that crosses the plane nowhere (see
       // `writePoint` in `dragAndDrop.js`).
       const pointerHand = handOf(controller);
       const init = atPointer(controller, pointerHand, buttons);

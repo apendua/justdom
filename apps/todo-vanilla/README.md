@@ -35,6 +35,8 @@ harness photographing the scene.
 | `src/components/TodoApp.ts`      | The app, written for the page: a field, an Add button, a count, and the list behind `scrollable` from `@apendua/justui`, reordered by dragging.                                                                  |
 | `src/components/TodoItem.ts`     | A row: a drag handle, a checkbox drawn honestly in both builds, a label, a Delete button.                                                                                                                        |
 | `tests/drag-check.mjs`           | Reorders the list by dragging, with the mouse on the page and with the controller in the emulator.                                                                                                               |
+| `src/realFocus.ts`               | An experiment behind `?realfocus`: the field freedom's keyboard types into gets the page's focus too.                                                                                                            |
+| `tests/focus-check.mjs`          | What the page's focus does in a session, with and without `?realfocus`.                                                                                                                                          |
 | `src/components/Scene.ts`        | The scene: `dom(ctx, panel, …)`. Lights, a cursor, the panel, and the frame rate while a session runs.                                                                                                           |
 | `src/components/TodoKeyboard.ts` | What the headset's keyboard looks like: `keyboard` from `@apendua/justui` dressed for this panel.                                                                                                                |
 | `@apendua.dev/headset`           | Not a file here, but shared with the other headset apps: `xrSession`, the session the page is shown in, written by the scene and read by the app for its exit button; `canPresent`; and IWER behind `?emulator`. |
@@ -85,3 +87,20 @@ the eyes, and the copy of the field above the keys lies in the keys' plane. It b
 the page: `Enter` adds the todo and keeps the field, so the next one can be typed straight in, while
 pressing Add, or anything else in the card, puts the keyboard away as a click would blur the field.
 `Escape` puts it away too.
+
+## Experiment: the page's focus in a session
+
+A ray's press on the field is a click freedom dispatches itself, and the browser does not move focus
+for a click a script dispatched. So in a session the field never has the page's focus, even while
+freedom's keyboard types into it: freedom keeps a focus of its own and marks the field with
+`data-xr-focus`. A keyboard paired with the headset, or the laptop's under the emulator, then types
+into nothing, since its keys go to whatever has the page's focus.
+
+`?realfocus` tries the other way. `src/realFocus.ts` watches for that mark and focuses the field
+when it appears and blurs it when it goes, so the two foci agree. `node tests/focus-check.mjs` runs
+the app on the emulated headset with and without it. Without it the field is marked but `<body>` has
+focus and the laptop's keys are lost. With it the field has focus while the board is up, the
+laptop's keys type into it and Enter adds a todo, the board's own keys still type, and focus leaves
+the field when Add puts the board away. The emulator is not a headset: what a Quest's browser does
+when a page focuses a field during an immersive session, for example whether it raises its system
+keyboard, has not been tried.

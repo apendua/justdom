@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { typeIntoInput } from "@apendua/freedom";
 import { mountKeyboard } from "./keyboard.js";
 
 function board() {
@@ -134,5 +135,29 @@ describe("mountKeyboard", () => {
     window.dispatchEvent(event);
     expect(onKey).toHaveBeenCalledWith("p");
     expect(event.defaultPrevented).toBe(false);
+  });
+});
+
+describe("a field a session's keyboard types into", () => {
+  let dispose = () => {};
+  afterEach(() => dispose());
+
+  it("takes its keys, and neither the monitor nor the desk's caps see them", () => {
+    // In a session the note field has no focus: freedom's own board types
+    // into it, dispatching each key's keydown on the field, and the keydown
+    // bubbles up to the window the desk's keyboard listens on.
+    document.body.innerHTML = `<div data-keys></div><input id="field" /><select></select>`;
+    const keys = document.querySelector<HTMLElement>("[data-keys]")!;
+    const onKey = vi.fn();
+    dispose = mountKeyboard(keys, { onKey });
+    // Something else has focus, as the Look menu may.
+    document.querySelector("select")!.focus();
+    const field = document.querySelector<HTMLInputElement>("#field")!;
+    for (const key of ["h", "i", " ", "x", "Backspace"]) {
+      typeIntoInput(field, { key });
+    }
+    expect(field.value).toBe("hi ");
+    expect(onKey).not.toHaveBeenCalled();
+    expect(keys.querySelector("[data-down]")).toBeNull();
   });
 });

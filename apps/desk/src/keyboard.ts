@@ -87,6 +87,8 @@ export interface KeyboardOptions {
  * the text field that has focus, if one does, and into `onKey` otherwise.
  * Only the page has focus to give: in a session a field is typed into with
  * the keyboard freedom opens for it, and every key here goes to `onKey`.
+ * What that keyboard types is the field's alone, and does not press a cap
+ * here or reach `onKey`.
  */
 export function mountKeyboard(keys: HTMLElement, { onKey }: KeyboardOptions) {
   for (const row of ROWS) {
@@ -142,10 +144,18 @@ export function mountKeyboard(keys: HTMLElement, { onKey }: KeyboardOptions) {
     if (event.metaKey || event.ctrlKey) {
       return;
     }
-    pressDown(event.key);
     if (focusedField()) {
+      pressDown(event.key);
       return; // the browser types into it
     }
+    // A field without focus is typed into in a session, by the board freedom
+    // opens for it, which dispatches each key's keydown on the field. The
+    // key is the field's: these caps are the monitor's there, and a cancel
+    // here would keep the character out of the field.
+    if (isTextField(event.target)) {
+      return;
+    }
+    pressDown(event.key);
     // A control with focus, the Look menu say, would act on a character as
     // well: a select takes it as type-ahead and changes its choice. Other
     // keys, F5 or the arrows, are left to the browser and the control.
@@ -177,7 +187,11 @@ const TEXT_TYPES = new Set(["text", "search", "url", "tel", "email", "password"]
  */
 function focusedField(): HTMLInputElement | null {
   const active = document.activeElement;
-  return active instanceof HTMLInputElement && TEXT_TYPES.has(active.type) ? active : null;
+  return isTextField(active) ? active : null;
+}
+
+function isTextField(node: EventTarget | null): node is HTMLInputElement {
+  return node instanceof HTMLInputElement && TEXT_TYPES.has(node.type);
 }
 
 /** Whether something other than the page itself has focus: a select, a checkbox, a button. */

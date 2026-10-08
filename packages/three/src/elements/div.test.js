@@ -1523,6 +1523,125 @@ describe("an <svg> over a translucent flow box", () => {
   });
 });
 
+describe("an <svg> and a translucent stepped card", () => {
+  /**
+   * Two positioned cards on a board, the second translucent and stepped over
+   * the first, each drawn into one box batch, and an `<svg>` holding a shape
+   * and then a text, in `holder`'s choice of card.
+   *
+   * @param {"first" | "second"} holder
+   */
+  function cardsWithSvg(holder) {
+    const svgText = installSvgTextLayout();
+    const board = setupSiblings();
+    const container = new THREE.Group();
+    const batch = createBoxBatch(container);
+    /** @param {HTMLElement} card */
+    const drawCard = (card) =>
+      container.add(board.drawWith(card, (ctx) => div(BoxBatchContext.set(ctx, batch), card)));
+    const first = board.place("position: absolute; background: white", [0, 0, 100, 100]);
+    const second = board.place(
+      "position: absolute; background: rgba(255, 255, 255, 0.3)",
+      [50, 0, 150, 100],
+    );
+    drawCard(first);
+    drawCard(second);
+
+    const ns = "http://www.w3.org/2000/svg";
+    const icon = document.createElementNS(ns, "svg");
+    icon.setAttribute("viewBox", "0 0 40 20");
+    const card = holder === "first" ? first : second;
+    board.adopt(icon, holder === "first" ? [55, 10, 95, 30] : [60, 10, 100, 30], card);
+    const dot = document.createElementNS(ns, "rect");
+    dot.setAttribute("width", "10");
+    dot.setAttribute("height", "10");
+    dot.setAttribute("fill", "red");
+    const label = document.createElementNS(ns, "text");
+    label.setAttribute("x", "12");
+    label.setAttribute("y", "10");
+    label.setAttribute("fill", "red");
+    label.append("on");
+    icon.append(dot, label);
+    for (const node of [dot, label, ...label.childNodes]) {
+      board.mirror.adopt(node);
+    }
+    board.mirror.childListChanged(icon);
+
+    /** @type {THREE.Mesh[]} */
+    const meshes = [];
+    for (const object of [
+      board.drawWith(dot, (ctx) => shape(ctx, dot)),
+      board.drawWith(label, (ctx) =>
+        drawText(
+          PortalTemplatesContext.set(ctx, (node) => board.mirror.adopt(node)),
+          label,
+        ),
+      ),
+    ]) {
+      object.traverse((child) => {
+        if (child instanceof THREE.Mesh) {
+          meshes.push(child);
+        }
+      });
+    }
+    assert.equal(meshes.length, 2, "the dot's fill and the label's run");
+
+    batch.flush();
+    const buckets = container.children
+      .filter((child) => child instanceof THREE.InstancedMesh && child.count > 0)
+      .map((bucket) => bucket.renderOrder)
+      .sort((a, b) => a - b);
+    assert.equal(buckets.length, 2, "the opaque card's bucket and the translucent card's");
+    return {
+      meshes,
+      /** The opaque card's bucket and the translucent card's, in that order. */
+      buckets,
+      teardown() {
+        board.teardown();
+        batch.dispose();
+        svgText.restore();
+      },
+    };
+  }
+
+  test("an <svg> in the translucent card draws over the card, after what it covers", () => {
+    // The card blends over the first card, so it draws after it, and the
+    // `<svg>` on it is in front of both: drawn before the card's bucket, it
+    // would be tinted by the card it sits on.
+    const drawn = cardsWithSvg("second");
+    try {
+      const [under, card] = drawn.buckets;
+      assert.ok(card > under, "the translucent card draws after the card it covers");
+      for (const mesh of drawn.meshes) {
+        assert.ok(
+          mesh.renderOrder > card,
+          `drawn at ${mesh.renderOrder}, before the card it is on at ${card}`,
+        );
+      }
+    } finally {
+      drawn.teardown();
+    }
+  });
+
+  test("an <svg> under the translucent card draws before it, so the card tints it", () => {
+    // The translucent card writes depth in front of the `<svg>`, so any of
+    // the `<svg>` drawn after it is lost where a page shows it tinted.
+    const drawn = cardsWithSvg("first");
+    try {
+      const [under, card] = drawn.buckets;
+      for (const mesh of drawn.meshes) {
+        assert.ok(mesh.renderOrder > under, `drawn at ${mesh.renderOrder}, under its own card`);
+        assert.ok(
+          mesh.renderOrder < card,
+          `drawn at ${mesh.renderOrder}, after the card over it at ${card}`,
+        );
+      }
+    } finally {
+      drawn.teardown();
+    }
+  });
+});
+
 /**
  * A text field holding "42", with nothing of its own to paint, in the
  * caption `dialWithCaption` lays over a dial, drawn as the portal draws one.

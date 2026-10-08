@@ -3029,11 +3029,19 @@ export function getCheckedCached(element) {
  * (`.card[data-state] p`) has no ancestors to match against and falls back
  * to base styling.
  *
- * @param {HTMLElement} element
- * @returns {HTMLElement}
+ * The clone is appended to the body, or, given a `host`, to the host, which
+ * is appended to the body in its place and parked instead: an SVG `<text>`
+ * is laid out only inside an `<svg>` (`measureRuns` in `svg/text.js`). The
+ * caller removes what was appended, the host if it gave one.
+ *
+ * @template {HTMLElement | SVGElement} T
+ * @param {T} element
+ * @param {HTMLElement | SVGElement | null} [host] What the clone is laid out
+ *   in, if not the body.
+ * @returns {T}
  */
-function createMeasurementClone(element) {
-  const clone = /** @type {HTMLElement} */ (element.cloneNode(true));
+export function createMeasurementClone(element, host = null) {
+  const clone = /** @type {T} */ (element.cloneNode(true));
   const computed = window.getComputedStyle(element);
   for (let i = 0; i < computed.length; i++) {
     const property = computed[i];
@@ -3042,10 +3050,16 @@ function createMeasurementClone(element) {
   clone.style.setProperty("transform", "none", "important");
   clone.style.setProperty("transition", "none", "important");
   clone.style.setProperty("animation", "none", "important");
-  clone.style.setProperty("position", "absolute", "important");
-  clone.style.setProperty("top", "0", "important");
-  clone.style.setProperty("left", "-99999px", "important");
   clone.style.setProperty("visibility", "hidden", "important");
+  const parked = host ?? clone;
+  parked.style.setProperty("position", "absolute", "important");
+  parked.style.setProperty("top", "0", "important");
+  parked.style.setProperty("left", "-99999px", "important");
+  parked.style.setProperty("visibility", "hidden", "important");
+  if (host) {
+    host.appendChild(clone);
+  }
+  document.body.appendChild(parked);
   return clone;
 }
 
@@ -3178,6 +3192,28 @@ export function resetMeasuringRangeForTests() {
 }
 
 /**
+ * Measure with the shared range (`getMeasuringRange`), and let go of what it
+ * measured afterwards. Every text measurement goes through this, an SVG
+ * `<text>`'s included (`measureRuns` in `svg/text.js`).
+ *
+ * @template R
+ * @param {(range: Range) => R} measure Synchronous, and making no
+ *   measurement of its own through this.
+ * @returns {R}
+ */
+export function withMeasuringRange(measure) {
+  const range = getMeasuringRange();
+  try {
+    return measure(range);
+  } finally {
+    // Let go of the node. The document has children, so offset 0 is a valid
+    // point in it, and it is one that nothing inside a panel can disturb.
+    range.setStart(document, 0);
+    range.setEnd(document, 0);
+  }
+}
+
+/**
  * @param {Text} text
  * @param {HTMLElement} parentElement
  * @param {string} whiteSpace
@@ -3186,15 +3222,9 @@ export function resetMeasuringRangeForTests() {
  * @returns {TextLayout}
  */
 function measureTextRects(text, parentElement, whiteSpace, scrolled, revealed) {
-  const range = getMeasuringRange();
-  try {
-    return measureTextRectsWith(range, text, parentElement, whiteSpace, scrolled, revealed);
-  } finally {
-    // Let go of the node. The document has children, so offset 0 is a valid
-    // point in it, and it is one that nothing inside a panel can disturb.
-    range.setStart(document, 0);
-    range.setEnd(document, 0);
-  }
+  return withMeasuringRange((range) =>
+    measureTextRectsWith(range, text, parentElement, whiteSpace, scrolled, revealed),
+  );
 }
 
 /**
@@ -3420,7 +3450,6 @@ function measureTextLayout(text) {
     return measureTextRects(text, parentElement, whiteSpace, true, revealed);
   }
   const clone = createMeasurementClone(parentElement);
-  document.body.appendChild(clone);
   try {
     const index = Array.prototype.indexOf.call(parentElement.childNodes, text);
     const cloneText = clone.childNodes[index];

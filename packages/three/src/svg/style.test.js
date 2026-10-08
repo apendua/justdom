@@ -35,6 +35,9 @@ function element(tag, attributes) {
   return { el, style: window.getComputedStyle(el) };
 }
 
+/** For a shape with no percentage to resolve: no viewport. */
+const noViewport = () => null;
+
 describe("svg style reading", () => {
   test("readProperty falls back to the presentation attribute", () => {
     const { el, style } = element("rect", { fill: "red" });
@@ -114,55 +117,89 @@ describe("svg style reading", () => {
     test("a rect, with auto radii resolved", () => {
       const { el, style } = element("rect", { x: "1", y: "2", width: "10", height: "5" });
       assert.equal(
-        readShapeMarkup(style, el),
+        readShapeMarkup(style, el, noViewport),
         '<rect x="1" y="2" width="10" height="5" rx="0" ry="0"/>',
       );
       el.setAttribute("rx", "3");
       assert.equal(
-        readShapeMarkup(style, el),
+        readShapeMarkup(style, el, noViewport),
         '<rect x="1" y="2" width="10" height="5" rx="3" ry="3"/>',
       );
     });
 
     test("a rect with no area is nothing", () => {
       const { el, style } = element("rect", { width: "0", height: "5" });
-      assert.equal(readShapeMarkup(style, el), null);
+      assert.equal(readShapeMarkup(style, el, noViewport), null);
     });
 
     test("a circle and an ellipse", () => {
       const circle = element("circle", { cx: "5", cy: "5", r: "4" });
-      assert.equal(readShapeMarkup(circle.style, circle.el), '<circle cx="5" cy="5" r="4"/>');
+      assert.equal(
+        readShapeMarkup(circle.style, circle.el, noViewport),
+        '<circle cx="5" cy="5" r="4"/>',
+      );
       const ellipse = element("ellipse", { rx: "4" });
       assert.equal(
-        readShapeMarkup(ellipse.style, ellipse.el),
+        readShapeMarkup(ellipse.style, ellipse.el, noViewport),
         '<ellipse cx="0" cy="0" rx="4" ry="4"/>',
       );
       const flat = element("circle", { r: "0" });
-      assert.equal(readShapeMarkup(flat.style, flat.el), null);
+      assert.equal(readShapeMarkup(flat.style, flat.el, noViewport), null);
     });
 
     test("a line, a polyline and a polygon", () => {
       const line = element("line", { x1: "1", y1: "2", x2: "3", y2: "4" });
-      assert.equal(readShapeMarkup(line.style, line.el), '<line x1="1" y1="2" x2="3" y2="4"/>');
+      assert.equal(
+        readShapeMarkup(line.style, line.el, noViewport),
+        '<line x1="1" y1="2" x2="3" y2="4"/>',
+      );
       const polygon = element("polygon", { points: "0,0 10,0 5,5" });
-      assert.equal(readShapeMarkup(polygon.style, polygon.el), '<polygon points="0,0 10,0 5,5"/>');
+      assert.equal(
+        readShapeMarkup(polygon.style, polygon.el, noViewport),
+        '<polygon points="0,0 10,0 5,5"/>',
+      );
       const empty = element("polyline", {});
-      assert.equal(readShapeMarkup(empty.style, empty.el), null);
+      assert.equal(readShapeMarkup(empty.style, empty.el, noViewport), null);
     });
 
     test("a path, escaped for the document it goes into", () => {
       const { el, style } = element("path", { d: 'M0 0 L10 10 "quoted" & <odd>' });
       assert.equal(
-        readShapeMarkup(style, el),
+        readShapeMarkup(style, el, noViewport),
         '<path d="M0 0 L10 10 &quot;quoted&quot; &amp; &lt;odd&gt;"/>',
       );
       el.removeAttribute("d");
-      assert.equal(readShapeMarkup(style, el), null);
+      assert.equal(readShapeMarkup(style, el, noViewport), null);
+    });
+
+    test("a percentage is a share of the viewport, read only for a percentage", () => {
+      let reads = 0;
+      const viewport = () => {
+        reads += 1;
+        return { width: 30, height: 40 };
+      };
+      const plain = element("rect", { width: "10", height: "5" });
+      readShapeMarkup(plain.style, plain.el, viewport);
+      assert.equal(reads, 0, "a shape with no percentage does not read the viewport");
+
+      const rect = element("rect", { x: "10%", width: "50%", height: "25%", ry: "5%" });
+      assert.equal(
+        readShapeMarkup(rect.style, rect.el, viewport),
+        '<rect x="3" y="0" width="15" height="10" rx="2" ry="2"/>',
+      );
+      // A radius is of the diagonal over root two, 50 for 10 by 70.
+      const circle = element("circle", { cx: "50%", cy: "50%", r: "10%" });
+      assert.equal(
+        readShapeMarkup(circle.style, circle.el, () => ({ width: 10, height: 70 })),
+        '<circle cx="5" cy="35" r="5"/>',
+      );
+      // With no viewport to measure against, a percentage is the fallback.
+      assert.equal(readShapeMarkup(rect.style, rect.el, noViewport), null);
     });
 
     test("an element that is not a shape is nothing", () => {
       const { el, style } = element("g", {});
-      assert.equal(readShapeMarkup(style, el), null);
+      assert.equal(readShapeMarkup(style, el, noViewport), null);
     });
   });
 });

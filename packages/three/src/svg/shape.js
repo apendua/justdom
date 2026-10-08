@@ -1284,7 +1284,8 @@ export function shape(ctx, element, { instance = null, decorate } = {}) {
    * below runs only when the geometry itself changed and not when the
    * element was restyled.
    */
-  const markup = new Derived(() => readShapeMarkup(style(), element));
+  const viewport = () => viewportSize(element, instance);
+  const markup = new Derived(() => readShapeMarkup(style(), element, viewport));
 
   /** @type {Derived<ShapePath | null>} */
   const path = new Derived(() => {

@@ -84,6 +84,8 @@ function scene(content, draw, { portalOrder = false } = {}) {
     object: drawn,
     /** One entry per range read: the `transform` the `<text>` had then. */
     transforms: layout.transforms,
+    /** Every range made, with the node it points into now. */
+    ranges: layout.ranges,
     /** @returns {Mesh[]} */
     get meshes() {
       /** @type {Mesh[]} */
@@ -280,6 +282,20 @@ describe("svg text", () => {
     assert.equal(s.meshes.length, 2);
     assert.equal(s.meshes[0], first, "the first run's mesh stays mounted");
     assert.equal(materialOf(first).alphaMap, texture, "and is not drawn again");
+    s.teardown();
+  });
+
+  test("every measurement uses the mirror's one range and lets go of the copy", () => {
+    // A range is live, so each one the document has handed out is walked on
+    // every mutation, and one left in the measuring copy keeps it alive.
+    const text = svg("text", { x: "0", y: "10", fill: "red" }, ["A"]);
+    const s = scene([text], text);
+    const node = /** @type {Text} */ (text.firstChild);
+    node.data = "BB";
+    s.mirror.characterDataChanged(node);
+    assert.equal(s.transforms.length, 2, "measured twice");
+    assert.equal(s.ranges.length, 1, "with one range");
+    assert.equal(s.ranges[0].container, document, "left pointing at the document");
     s.teardown();
   });
 

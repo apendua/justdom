@@ -1,3 +1,5 @@
+import { resetMeasuringRangeForTests } from "../elements/mirror.js";
+
 /**
  * The layout jsdom does not do for an SVG `<text>`, shared by the tests that
  * draw one.
@@ -10,14 +12,21 @@
  * `<svg>`'s width. The measuring `<svg>` reports itself at
  * (1000, 500), as an off-screen one would, so a run is read relative to it.
  * Every range read also records the `transform` of the `<text>` it measured
- * in.
+ * in, and every range made is kept with the node it points into now.
  *
- * @returns {{ transforms: string[], restore: () => void }}
+ * @returns {{
+ *   transforms: string[],
+ *   ranges: { readonly container: Node | null }[],
+ *   restore: () => void,
+ * }}
  */
 export function installSvgTextLayout() {
   /** @type {string[]} */
   const transforms = [];
+  /** @type {{ readonly container: Node | null }[]} */
+  const ranges = [];
   const originalRange = document.createRange;
+  resetMeasuringRangeForTests();
   const originalRect = window.Element.prototype.getBoundingClientRect;
   window.Element.prototype.getBoundingClientRect = function () {
     const element = /** @type {Element} */ (this);
@@ -35,6 +44,11 @@ export function installSvgTextLayout() {
     let container = null;
     let start = 0;
     let end = 0;
+    ranges.push({
+      get container() {
+        return container;
+      },
+    });
     return /** @type {Range} */ (
       /** @type {unknown} */ ({
         setStart: (/** @type {Node} */ node, /** @type {number} */ offset) => {
@@ -69,9 +83,11 @@ export function installSvgTextLayout() {
   };
   return {
     transforms,
+    ranges,
     restore() {
       document.createRange = originalRange;
       window.Element.prototype.getBoundingClientRect = originalRect;
+      resetMeasuringRangeForTests();
     },
   };
 }

@@ -4,11 +4,13 @@ import { keyedList } from "../core.js";
 import { $, children } from "../operators.js";
 import { applyClip, clipRaycast } from "../elements/clip.js";
 import {
+  createMeasurementClone,
   getAttributeCached,
   getChildNodes,
   getComputedStyleCached,
   getReflowContext,
   getTextDataCached,
+  withMeasuringRange,
 } from "../elements/mirror.js";
 import { isSvgElement, PortalTemplatesContext, SVG_NAMESPACE } from "../elements/plugins.js";
 import { place } from "../elements/place.js";
@@ -257,14 +259,16 @@ function counterpart(node, from, to) {
  * Lay a `<text>` out in a detached copy and read back where each run went,
  * in its user space.
  *
- * The copy is the element cloned deep, with every computed style of the
- * `<text>` itself copied onto it and its transform switched off, in an
- * `<svg>` at one CSS pixel per unit. Where a length is a percentage, that
- * `<svg>`'s `viewBox` is the viewport the element is in, so the percentage
- * resolves as it does in place. The `<tspan>`s keep their classes, and the
- * document's stylesheets apply to them as usual; as with HTML text, a
- * selector that reaches above the `<text>` does not match the copy. In a copy
- * made by a `<use>`, the font is the drawn one.
+ * The copy is the mirror's measurement clone (`createMeasurementClone`): the
+ * element cloned deep, with every computed style of the `<text>` itself
+ * copied onto it and its transform switched off, here in an `<svg>` at one
+ * CSS pixel per unit. Where a length is a percentage, that `<svg>`'s
+ * `viewBox` is the viewport the element is in, so the percentage resolves as
+ * it does in place. The `<tspan>`s keep their classes, and the document's
+ * stylesheets apply to them as usual; as with HTML text, a selector that
+ * reaches above the `<text>` does not match the copy. In a copy made by a
+ * `<use>`, the font is the drawn one. The runs are read through the mirror's
+ * one range (`withMeasuringRange`).
  *
  * @param {Element} element
  * @param {{ node: Text, parent: Element }[]} found From `collectRuns`.
@@ -283,61 +287,43 @@ function measureRuns(element, found, viewport, fonts, layoutStyle) {
     host.setAttribute("height", String(viewport.height));
     host.setAttribute("viewBox", `0 0 ${viewport.width} ${viewport.height}`);
   }
-  for (const [name, value] of [
-    ["position", "absolute"],
-    ["left", "-99999px"],
-    ["top", "0"],
-    ["overflow", "visible"],
-    ["visibility", "hidden"],
-  ]) {
-    host.style.setProperty(name, value, "important");
-  }
-  const clone = /** @type {SVGElement} */ (element.cloneNode(true));
-  const computed = window.getComputedStyle(element);
-  for (let i = 0; i < computed.length; i++) {
-    const property = computed[i];
-    clone.style.setProperty(property, computed.getPropertyValue(property));
-  }
+  host.style.setProperty("overflow", "visible", "important");
+  const clone = createMeasurementClone(/** @type {SVGElement} */ (element), host);
   FONT_PROPERTIES.forEach((name, i) => {
     if (fonts[i]) {
       clone.style.setProperty(name, fonts[i]);
     }
   });
-  clone.style.setProperty("transform", "none", "important");
-  clone.style.setProperty("transition", "none", "important");
-  clone.style.setProperty("animation", "none", "important");
-  clone.style.setProperty("visibility", "hidden", "important");
-  host.appendChild(clone);
-  document.body.appendChild(host);
   try {
     const frame = frameFor(host);
     const origin = measureClientRect(host, frame);
-    const range = document.createRange();
-    /** @type {TextRun[]} */
-    const runs = [];
-    for (const { node, parent } of found) {
-      const drawn = drawnRange(node.data, layoutStyle(parent)[WHITE_SPACE]);
-      if (!drawn) {
-        continue;
+    return withMeasuringRange((range) => {
+      /** @type {TextRun[]} */
+      const runs = [];
+      for (const { node, parent } of found) {
+        const drawn = drawnRange(node.data, layoutStyle(parent)[WHITE_SPACE]);
+        if (!drawn) {
+          continue;
+        }
+        const copy = counterpart(node, element, clone);
+        range.setStart(copy, drawn.start);
+        range.setEnd(copy, drawn.end);
+        const rect = measureClientRect(range, frame);
+        if (rect.width <= 0 && rect.height <= 0) {
+          continue;
+        }
+        runs.push({
+          node,
+          parent,
+          text: drawn.text,
+          left: rect.left - origin.left,
+          top: rect.top - origin.top,
+          width: rect.width,
+          height: rect.height,
+        });
       }
-      const copy = counterpart(node, element, clone);
-      range.setStart(copy, drawn.start);
-      range.setEnd(copy, drawn.end);
-      const rect = measureClientRect(range, frame);
-      if (rect.width <= 0 && rect.height <= 0) {
-        continue;
-      }
-      runs.push({
-        node,
-        parent,
-        text: drawn.text,
-        left: rect.left - origin.left,
-        top: rect.top - origin.top,
-        width: rect.width,
-        height: rect.height,
-      });
-    }
-    return runs;
+      return runs;
+    });
   } finally {
     host.remove();
   }

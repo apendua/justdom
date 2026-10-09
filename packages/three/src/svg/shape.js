@@ -31,6 +31,7 @@ import {
 import { findSvgElement, isSvgElement, isSvgRoot, SVG_NAMESPACE } from "../elements/plugins.js";
 import {
   aboutOrigin,
+  apply,
   IDENTITY,
   intersectRects,
   invert,
@@ -301,12 +302,15 @@ export function readClipRect(element, style, instance) {
   const length = (name, axis) => parseLengthIn(readProperty(rectStyle, rect, name), of[axis], 0);
   const x = length("x", "width");
   const y = length("y", "height");
-  return transformRect(matrix, {
-    left: x,
-    top: y,
-    right: x + Math.max(0, length("width", "width")),
-    bottom: y + Math.max(0, length("height", "height")),
-  });
+  const width = length("width", "width");
+  const height = length("height", "height");
+  if (width <= 0 || height <= 0) {
+    // No corners to bound: under a turn the bounding box of a line has
+    // area, and an empty clip has none.
+    const [px, py] = apply(matrix, x, y);
+    return { left: px, top: py, right: px, bottom: py };
+  }
+  return transformRect(matrix, { left: x, top: y, right: x + width, bottom: y + height });
 }
 
 /**

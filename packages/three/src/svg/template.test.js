@@ -1025,7 +1025,8 @@ describe("clip-path", () => {
     const cp = clipPath([svg("rect", { x: "5", y: "2", width: "0", height: "5" })]);
     const rect = svg("rect", { width: "100", height: "100", fill: "red", "clip-path": url(cp) });
     const s = scene([svg("defs", {}, [cp]), rect], [rect]);
-    assert.deepEqual(clipBoxOf(meshesUnder(s.objects[0])[0]), [10, 4, 10, 14]);
+    // An empty box where (5, 2) lands.
+    assert.deepEqual(clipBoxOf(meshesUnder(s.objects[0])[0]), [10, 4, 10, 4]);
     s.teardown();
   });
 
@@ -1095,6 +1096,36 @@ describe("clip-path", () => {
     const use = svg("use", { href: "#clip-path-own-symbol" });
     const s = scene([svg("defs", {}, [cp, symbol]), use], [use]);
     assert.deepEqual(clipBoxOf(meshesUnder(s.objects[0])[0]), [10, 4, 30, 14]);
+    s.teardown();
+  });
+
+  test("a symbol's own clip-path is placed by the use's x and y", () => {
+    const cp = clipPath([svg("rect", { x: "5", y: "2", width: "10", height: "5" })]);
+    const symbol = svg("symbol", { id: "clip-path-own-symbol-moved", "clip-path": url(cp) }, [
+      svg("rect", { width: "100", height: "100", fill: "red" }),
+    ]);
+    const use = svg("use", { href: "#clip-path-own-symbol-moved", x: "10" });
+    const s = scene([svg("defs", {}, [cp, symbol]), use], [use]);
+    // (5, 2)–(15, 7) in the symbol, moved right by the use's 10.
+    assert.deepEqual(clipBoxOf(meshesUnder(s.objects[0])[0]), [30, 4, 50, 14]);
+    s.teardown();
+  });
+
+  test("a turned rect with no area still clips everything away", () => {
+    const cp = clipPath([
+      svg("rect", {
+        x: "5",
+        y: "2",
+        width: "0",
+        height: "5",
+        // Turned by 30°, as computed.
+        style: "transform: matrix(0.866, 0.5, -0.5, 0.866, 0, 0)",
+      }),
+    ]);
+    const rect = svg("rect", { width: "100", height: "100", fill: "red", "clip-path": url(cp) });
+    const s = scene([svg("defs", {}, [cp]), rect], [rect]);
+    // An empty box where (5, 2) lands, (3.33, 4.232).
+    assert.deepEqual(clipBoxOf(meshesUnder(s.objects[0])[0]), [6.66, 8.464, 6.66, 8.464]);
     s.teardown();
   });
 

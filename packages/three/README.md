@@ -2064,19 +2064,21 @@ Under `clipPathUnits="objectBoundingBox"` the rect is a share of the element's `
 read again only when the chain that reads it is read again. For a `<g>` that is when one of its
 children has an attribute changed, since the mirror restyles all of them then. A restyle the mirror
 keeps to one element, a `data-xr-hover` for instance, reads the box again for that child alone, so
-two shapes under one `clip-path` can be clipped to two boxes until the next change to the `<g>`'s
-children, and a change the mirror never sees reads nothing. A `transform` on the `<clipPath>` or the
-`<rect>` moves the rect. The clip intersects the viewports around the element, and it trims a ray as
-it trims the drawing. As with a viewport, the box is axis-aligned in the `<svg>`'s frame, so a rect
-turned or skewed anywhere, by its own `transform`, the `<clipPath>`'s, the element's or a `<g>`'s
-above, clips to the bounding box of the turned rect. The corners are square whatever the rect's `rx`
-and `ry`. An edit to the rect reaches the clip when the `<clipPath>` is inside the panel; one
-elsewhere on the page is drawn as it was first read, as a `<marker>` is. A `<clipPath>` that is not
-in the document when the element is first drawn, such as one in `<defs>` a page renders after its
-content, is found the next time the element's chain is read, such as when the element is restyled.
-Any other `<clipPath>`, such as one holding a circle, a path or two shapes, clips nothing. So does a
-basic shape such as `inset()`, and a `clip-path` on the `<svg>` root. A clip of another shape needs
-a stencil or a second distance field.
+two shapes under one `clip-path` can be clipped to two boxes. That lasts until the next attribute
+change on one of the `<g>`'s own children: a child added or removed, or a change below a child,
+reads the box again only for the children the mirror restyles then. A change the mirror never sees
+reads nothing. A `transform` on the `<clipPath>` or the `<rect>` moves the rect. The clip intersects
+the viewports around the element, and it trims a ray as it trims the drawing. As with a viewport,
+the box is axis-aligned in the `<svg>`'s frame, so a rect turned or skewed anywhere, by its own
+`transform`, the `<clipPath>`'s, the element's or a `<g>`'s above, clips to the bounding box of the
+turned rect. The corners are square whatever the rect's `rx` and `ry`. An edit to the rect reaches
+the clip when the `<clipPath>` is inside the panel; one elsewhere on the page is drawn as it was
+first read, as a `<marker>` is. A `<clipPath>` that is not in the document when the element is first
+drawn, such as one in `<defs>` a page renders after its content, is found the next time the
+element's chain is read, such as when the element is restyled. Any other `<clipPath>`, such as one
+holding a circle, a path or two shapes, clips nothing. So does a basic shape such as `inset()`, and
+a `clip-path` on the `<svg>` root. A clip of another shape needs a stencil or a second distance
+field.
 
 Not drawn yet: gradients and patterns (a `url(#…)` paint reads as `none`, though it still counts as
 painted for a ray), a `clip-path` of any shape but the rect above, `mask`, filters,

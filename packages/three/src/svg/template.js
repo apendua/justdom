@@ -501,9 +501,12 @@ export function drawUse(ctx, element, instance = null) {
        * What the target clips its content to, in the `<use>`'s user space,
        * or null for no clip: its viewport, unless it has no size to clip to
        * or its `overflow` shows what spills out of it, and what its own
-       * `clip-path` leaves, which is in that space as a nested `<svg>`'s is
-       * in the space its `x` and `y` are in. An element other than a symbol
-       * or an `<svg>` is drawn whole, and its chain reads its `clip-path`.
+       * `clip-path` leaves. The target is drawn as an `<svg>` at the origin
+       * of the space the `<use>`'s `x` and `y` move to, so its `clip-path`
+       * is in that space, as a nested `<svg>`'s is in the space its own `x`
+       * and `y` are in, and is moved by them here. An element other than a
+       * symbol or an `<svg>` is drawn whole, and its chain reads its
+       * `clip-path`.
        */
       const viewport = new Derived(
         () => {
@@ -512,13 +515,14 @@ export function drawUse(ctx, element, instance = null) {
           }
           const style = getComputedStyleCached(target);
           const size = frame.get()?.size;
+          const [x, y] = useOrigin(element, instance);
           /** @type {Rect | null} */
           let own = null;
           if (size && clipsViewport(style.overflow)) {
-            const [x, y] = useOrigin(element, instance);
             own = { left: x, top: y, right: x + size.width, bottom: y + size.height };
           }
-          return intersectRects(own, readClipRect(target, style, instance));
+          const clipped = readClipRect(target, style, instance);
+          return intersectRects(own, clipped && transformRect(translation(x, y), clipped));
         },
         { isEqual: rectEqual },
       );

@@ -43,6 +43,39 @@ function layout(element, rect, { count } = {}) {
 }
 
 /**
+ * Stand in for the range text is measured with, which jsdom gives no
+ * geometry. Every rect the range reports is `rect()`, and its line boxes are
+ * that one rect; without `rect` it reports an empty range, no size and no
+ * line boxes.
+ *
+ * @param {{ onSelect?: (node: Node) => void, rect?: () => DOMRectReadOnly }} [options]
+ *   `onSelect` hears each node the range is pointed at, which is one per
+ *   measurement.
+ * @returns {() => void} Puts the document's own `createRange` back.
+ */
+function stubMeasuringRange({ onSelect, rect } = {}) {
+  const original = document.createRange;
+  resetMeasuringRangeForTests();
+  const empty = () =>
+    /** @type {DOMRect} */ ({ left: 0, top: 0, right: 0, bottom: 0, width: 0, height: 0 });
+  document.createRange = () =>
+    /** @type {Range} */ (
+      /** @type {unknown} */ ({
+        selectNodeContents: (/** @type {Node} */ node) => onSelect?.(node),
+        setStart: () => {},
+        setEnd: () => {},
+        getBoundingClientRect: rect ?? empty,
+        getClientRects: () =>
+          /** @type {DOMRectList} */ (/** @type {unknown} */ (rect ? [rect()] : [])),
+      })
+    );
+  return () => {
+    document.createRange = original;
+    resetMeasuringRangeForTests();
+  };
+}
+
+/**
  * @param {Element} element
  * @param {() => number} top
  */
@@ -764,21 +797,7 @@ describe("text layout under transforms", () => {
     // path run to completion. It records which trees were measured.
     /** @type {Node[]} */
     const measured = [];
-    const originalCreateRange = document.createRange;
-    resetMeasuringRangeForTests();
-    document.createRange = () =>
-      /** @type {Range} */ (
-        /** @type {unknown} */ ({
-          selectNodeContents: (/** @type {Node} */ node) => {
-            measured.push(node);
-          },
-          setStart: () => {},
-          setEnd: () => {},
-          getBoundingClientRect: () =>
-            /** @type {DOMRect} */ ({ left: 0, top: 0, right: 0, bottom: 0, width: 0, height: 0 }),
-          getClientRects: () => /** @type {DOMRectList} */ (/** @type {unknown} */ ([])),
-        })
-      );
+    const restoreRange = stubMeasuringRange({ onSelect: (node) => measured.push(node) });
 
     const parent = document.createElement("div");
     parent.style.transform = "matrix(2, 0, 0, 2, 0, 0)";
@@ -805,69 +824,169 @@ describe("text layout under transforms", () => {
       assert.equal(document.body.childElementCount, childrenBefore);
     } finally {
       parent.remove();
-      document.createRange = originalCreateRange;
-      resetMeasuringRangeForTests();
+      restoreRange();
     }
   });
 
-  test("text in an inline parent is measured in a clone of the box its lines are in", () => {
-    // A tilted card whose text sits in a `<span>`: the span's computed
-    // width is `auto`, so a clone of the span alone would be laid out in the
-    // body with nothing to wrap against, and its text would come back on one
-    // line. The clone has to be of the card, whose width the lines break at.
-    /** @type {Node[]} */
-    const measured = [];
-    const originalCreateRange = document.createRange;
-    resetMeasuringRangeForTests();
-    document.createRange = () =>
-      /** @type {Range} */ (
-        /** @type {unknown} */ ({
-          selectNodeContents: (/** @type {Node} */ node) => {
-            measured.push(node);
-          },
-          setStart: () => {},
-          setEnd: () => {},
-          getBoundingClientRect: () =>
-            /** @type {DOMRect} */ ({ left: 0, top: 0, right: 0, bottom: 0, width: 0, height: 0 }),
-          getClientRects: () => /** @type {DOMRectList} */ (/** @type {unknown} */ ([])),
-        })
-      );
+  /**
+   * Measure `text` through `getTextLayout` with the range stubbed, and
+   * report the copy it was measured in, read while the copy is still in
+   * the document: its text node, and the top of it, the child of the body
+   * it was parked as.
+   *
+   * @param {Text} text
+   * @param {() => DOMRectReadOnly} [rect]
+   */
+  function measureThroughCopy(text, rect) {
+    /** @type {Array<{ text: Node, root: HTMLElement }>} */
+    const copies = [];
+    const restoreRange = stubMeasuringRange({
+      rect,
+      onSelect: (node) => {
+        let root = /** @type {HTMLElement} */ (node.parentElement);
+        while (root.parentElement && root.parentElement !== document.body) {
+          root = root.parentElement;
+        }
+        copies.push({ text: node, root });
+      },
+    });
+    const childrenBefore = document.body.childElementCount;
+    try {
+      const layout = getTextLayout(text);
+      assert.equal(copies.length, 1);
+      assert.notEqual(copies[0].text, text);
+      assert.equal(copies[0].text.textContent, text.textContent);
+      // The copy did not outlive the measurement.
+      assert.equal(document.body.childElementCount, childrenBefore);
+      return { layout, ...copies[0] };
+    } finally {
+      restoreRange();
+    }
+  }
 
+  /**
+   * A tilted card, `150px` wide, holding an `<i>`, the label `<span>` with
+   * `text` in it, and a `<b>` after it, adopted by a mirror.
+   *
+   * @param {string} text
+   */
+  function tiltedCard(text) {
     const card = document.createElement("div");
     card.className = "card";
     card.style.width = "150px";
     card.style.transform = "matrix(0.996, 0.087, -0.087, 0.996, 0, 0)";
-    card.appendChild(document.createElement("i"));
     const label = document.createElement("span");
-    const textNode = document.createTextNode("a note long enough to wrap");
+    const textNode = document.createTextNode(text);
     label.appendChild(textNode);
-    card.appendChild(label);
+    card.append(document.createElement("i"), label, document.createElement("b"));
     document.body.appendChild(card);
     const mirror = createMirror();
     mirror.adopt(card);
     mirror.adopt(label);
     mirror.adopt(textNode);
+    return { card, label, textNode };
+  }
 
-    const childrenBefore = document.body.childElementCount;
+  test("text in an inline parent is measured in a copy of the box its lines are in", () => {
+    // The span's computed width is `auto`, so a copy of the span alone would
+    // be laid out in the body with nothing to wrap against, and its text
+    // would come back on one line. The copy has to be of the card, whose
+    // width the lines break at.
+    const { card, textNode } = tiltedCard("a note long enough to wrap");
     try {
-      getTextLayout(textNode);
-      assert.equal(measured.length, 1);
-      const cloneText = measured[0];
-      assert.notEqual(cloneText, textNode);
-      assert.equal(cloneText.textContent, "a note long enough to wrap");
-      // The text is found again under a clone of the span…
-      const cloneLabel = /** @type {HTMLElement} */ (cloneText.parentNode);
-      assert.equal(cloneLabel.localName, "span");
-      // …which sits in a clone of the card, carrying the card's width.
-      const cloneCard = /** @type {HTMLElement} */ (cloneLabel.parentNode);
-      assert.notEqual(cloneCard, card);
-      assert.equal(cloneCard.className, "card");
-      assert.equal(cloneCard.style.width, "150px");
-      assert.equal(document.body.childElementCount, childrenBefore);
+      const { text, root } = measureThroughCopy(textNode);
+      const label = /** @type {HTMLElement} */ (text.parentNode);
+      assert.equal(label.localName, "span");
+      assert.equal(label.parentNode, root);
+      assert.notEqual(root, card);
+      assert.equal(root.className, "card");
+      assert.equal(root.style.width, "150px");
     } finally {
       card.remove();
-      document.createRange = originalCreateRange;
-      resetMeasuringRangeForTests();
+    }
+  });
+
+  test("the copy holds what comes before the text and leaves out what comes after", () => {
+    const { card, textNode } = tiltedCard("a note");
+    try {
+      const { root } = measureThroughCopy(textNode);
+      assert.deepEqual(
+        Array.from(root.children, (child) => child.localName),
+        ["i", "span"],
+      );
+    } finally {
+      card.remove();
+    }
+  });
+
+  test("the inline parent keeps its resolved style in the copy", () => {
+    // A rule that reaches above the card matches the live span and not the
+    // span in a copy parked in the body, so what it sets is copied over.
+    const style = document.createElement("style");
+    style.textContent = ".desk .card span { letter-spacing: 3px; }";
+    document.head.appendChild(style);
+    const desk = document.createElement("div");
+    desk.className = "desk";
+    const { card, textNode } = tiltedCard("a note");
+    desk.appendChild(card);
+    document.body.appendChild(desk);
+    try {
+      assert.equal(
+        window.getComputedStyle(/** @type {Element} */ (textNode.parentElement)).letterSpacing,
+        "3px",
+      );
+      const { text } = measureThroughCopy(textNode);
+      assert.equal(/** @type {HTMLElement} */ (text.parentNode).style.letterSpacing, "3px");
+    } finally {
+      desk.remove();
+      style.remove();
+    }
+  });
+
+  test("the text's position is read against its own parent in the copy", () => {
+    // The span starts 30px into the page and the card 10px; the text starts
+    // at 50px. Measured against the span, as the untransformed path does, it
+    // sits 20px in; against the card it would sit 40px in.
+    const { card, textNode } = tiltedCard("a note");
+    const original = window.HTMLElement.prototype.getBoundingClientRect;
+    window.HTMLElement.prototype.getBoundingClientRect = function () {
+      const left = this.localName === "span" ? 30 : 10;
+      return new window.DOMRect(left, 0, 100, 20);
+    };
+    try {
+      const { layout } = measureThroughCopy(textNode, () => new window.DOMRect(50, 4, 40, 12));
+      assert.deepEqual({ left: layout.left, top: layout.top }, { left: 20, top: 4 });
+    } finally {
+      window.HTMLElement.prototype.getBoundingClientRect = original;
+      card.remove();
+    }
+  });
+
+  test("the climb to the line box stops at the panel's root", () => {
+    // An inline panel root with an inline element under it: the box the
+    // lines are in would be the page's `<div>` above the root, which no
+    // portal mirrors. The copy stops at the root, and drops the attribute
+    // that would make it a panel of its own.
+    const page = document.createElement("div");
+    page.className = "page";
+    const root = document.createElement("span");
+    root.setAttribute(PORTAL_ATTRIBUTE, "");
+    const bold = document.createElement("b");
+    bold.style.transform = "matrix(2, 0, 0, 2, 0, 0)";
+    const textNode = document.createTextNode("hello");
+    bold.appendChild(textNode);
+    root.appendChild(bold);
+    page.appendChild(root);
+    document.body.appendChild(page);
+    const mirror = createMirror();
+    mirror.adopt(bold);
+    mirror.adopt(textNode);
+    try {
+      const { root: copy } = measureThroughCopy(textNode);
+      assert.equal(copy.localName, "span");
+      assert.equal(copy.hasAttribute(PORTAL_ATTRIBUTE), false);
+    } finally {
+      page.remove();
     }
   });
 });
@@ -961,18 +1080,7 @@ describe("a panel measured through a scale", () => {
     mirror.adopt(text);
     // The text is laid out at (20, 5) in the child, 60 by 16 layout px.
     const rect = () => new window.DOMRect(10 + 20 * 0.5, 20 + 5 * 0.5, 60 * 0.5, 16 * 0.5);
-    const originalCreateRange = document.createRange;
-    resetMeasuringRangeForTests();
-    document.createRange = () =>
-      /** @type {Range} */ (
-        /** @type {unknown} */ ({
-          selectNodeContents: () => {},
-          setStart: () => {},
-          setEnd: () => {},
-          getBoundingClientRect: rect,
-          getClientRects: () => /** @type {DOMRectList} */ (/** @type {unknown} */ ([rect()])),
-        })
-      );
+    const restoreRange = stubMeasuringRange({ rect });
     try {
       const measured = getTextLayout(text);
       assert.deepEqual(
@@ -985,8 +1093,7 @@ describe("a panel measured through a scale", () => {
       );
     } finally {
       stage.remove();
-      document.createRange = originalCreateRange;
-      resetMeasuringRangeForTests();
+      restoreRange();
     }
   });
 });
@@ -1005,23 +1112,9 @@ describe("text layout as a dependency", () => {
     // is where jsdom puts it.
     const rect = () => new window.DOMRect(10, 20 - shifted, 30, 12);
 
-    const originalCreateRange = document.createRange;
-    resetMeasuringRangeForTests();
-    document.createRange = () => {
-      return /** @type {Range} */ (
-        /** @type {unknown} */ ({
-          // One range now serves every measurement, so "a measurement
-          // happened" is a node being selected, not a range being made.
-          selectNodeContents: () => {
-            measurements++;
-          },
-          setStart: () => {},
-          setEnd: () => {},
-          getBoundingClientRect: rect,
-          getClientRects: () => /** @type {DOMRectList} */ (/** @type {unknown} */ ([rect()])),
-        })
-      );
-    };
+    // One range serves every measurement, so "a measurement happened" is a
+    // node being selected, not a range being made.
+    const restoreRange = stubMeasuringRange({ rect, onSelect: () => measurements++ });
 
     const parent = document.createElement("div");
     const textNode = document.createTextNode("hello world");
@@ -1069,8 +1162,7 @@ describe("text layout as a dependency", () => {
     } finally {
       subscription.unsubscribe();
       parent.remove();
-      document.createRange = originalCreateRange;
-      resetMeasuringRangeForTests();
+      restoreRange();
     }
   });
 
@@ -1084,7 +1176,6 @@ describe("text layout as a dependency", () => {
     // client-rect terms really did change.
     /** @type {Set<Node>} */
     const measured = new Set();
-    const originalCreateRange = document.createRange;
     let scrollTop = 0;
     const rect = () => ({
       left: 10,
@@ -1094,19 +1185,10 @@ describe("text layout as a dependency", () => {
       width: 30,
       height: 12,
     });
-    resetMeasuringRangeForTests();
-    document.createRange = () => {
-      return /** @type {Range} */ (
-        /** @type {unknown} */ ({
-          /** @param {Node} node */
-          selectNodeContents: (node) => measured.add(node),
-          setStart: () => {},
-          setEnd: () => {},
-          getBoundingClientRect: rect,
-          getClientRects: () => /** @type {DOMRectList} */ (/** @type {unknown} */ ([rect()])),
-        })
-      );
-    };
+    const restoreRange = stubMeasuringRange({
+      rect: () => /** @type {DOMRectReadOnly} */ (rect()),
+      onSelect: (node) => measured.add(node),
+    });
 
     // scroller > row > #text — a row's label, which is where a list keeps
     // nearly all of its text — and text sitting directly in the scroller.
@@ -1175,8 +1257,7 @@ describe("text layout as a dependency", () => {
     } finally {
       holders.forEach((effect) => effect.dispose());
       scroller.remove();
-      document.createRange = originalCreateRange;
-      resetMeasuringRangeForTests();
+      restoreRange();
     }
   });
 });

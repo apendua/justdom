@@ -3033,7 +3033,9 @@ export function getCheckedCached(element) {
  * is appended to the body in its place and parked instead: an SVG `<text>`
  * is laid out only inside an `<svg>` (`measureRuns` in `svg/text.js`). The
  * clone's own `visibility` hides it either way, since the style copied onto
- * it says `visible`; what is parked is only moved off-screen. The caller
+ * it says `visible`; what is parked is only moved off-screen. A clone of a
+ * panel's root drops `PORTAL_ATTRIBUTE`, so that it is measured in the
+ * body's frame rather than taken for a panel of its own. The caller
  * removes what was appended, the host if it gave one.
  *
  * @template {HTMLElement | SVGElement} T
@@ -3043,12 +3045,23 @@ export function getCheckedCached(element) {
  * @returns {T}
  */
 export function createMeasurementClone(element, host = null) {
-  const clone = /** @type {T} */ (element.cloneNode(true));
-  const computed = window.getComputedStyle(element);
-  for (let i = 0; i < computed.length; i++) {
-    const property = computed[i];
-    clone.style.setProperty(property, computed.getPropertyValue(property));
-  }
+  return parkMeasurementClone(element, /** @type {T} */ (element.cloneNode(true)), host);
+}
+
+/**
+ * The second half of `createMeasurementClone`, for a copy of `element` the
+ * caller has made itself: dress it in the element's resolved style, with
+ * its transform, transitions and animations switched off, and park it.
+ *
+ * @template {HTMLElement | SVGElement} T
+ * @param {T} element
+ * @param {T} clone
+ * @param {HTMLElement | SVGElement | null} host
+ * @returns {T}
+ */
+function parkMeasurementClone(element, clone, host) {
+  copyResolvedStyle(element, clone);
+  clone.removeAttribute(PORTAL_ATTRIBUTE);
   clone.style.setProperty("transform", "none", "important");
   clone.style.setProperty("transition", "none", "important");
   clone.style.setProperty("animation", "none", "important");
@@ -3062,6 +3075,22 @@ export function createMeasurementClone(element, host = null) {
   }
   document.body.appendChild(parked);
   return clone;
+}
+
+/**
+ * Write every resolved style of `element` onto `clone` inline, so that the
+ * clone is laid out as the element is wherever it is put.
+ *
+ * @param {HTMLElement | SVGElement} element
+ * @param {HTMLElement | SVGElement} clone
+ * @returns {void}
+ */
+function copyResolvedStyle(element, clone) {
+  const computed = window.getComputedStyle(element);
+  for (let i = 0; i < computed.length; i++) {
+    const property = computed[i];
+    clone.style.setProperty(property, computed.getPropertyValue(property));
+  }
 }
 
 /**
@@ -3430,12 +3459,21 @@ function measureRevealLayout(text, range, frame, boundsRect, lines, offsets) {
  * Under a transform anywhere on the chain, the real tree's client rects are
  * screen-space bounds — a rotation would group lines by screen rows, which
  * is not where the browser broke them — so the measurement runs against a
- * detached untransformed clone instead. What is cloned is the box the
- * text's lines are laid out in: the parent, or, when the parent is inline,
- * the nearest ancestor that is not, since only a box has a width the lines
- * break against. The text is found again in the clone by its path of child
- * indices. The clone is never scrolled, so what it reports is already the
- * content-space position the live path computes.
+ * detached untransformed copy instead.
+ *
+ * The copy is of the box the text's lines are laid out in: the parent, or,
+ * when the parent is inline, the nearest ancestor that is not, since only a
+ * box has a width the lines break against. The climb stops at the panel's
+ * root, whatever its `display`. Under that box the copy holds the path down
+ * to the text and, at each level of it, the siblings before it, which
+ * decide where its first line starts. The siblings after it are left out,
+ * so that measuring each text in a paragraph does not copy the paragraph
+ * once per text. They move the text's lines only where a word runs on
+ * across the text's end with no space to break at, or where something
+ * taller shares its last line. The box at the top and every element on the
+ * path keep their resolved style, so a selector that reaches above the box
+ * still sizes the text. The copy is never scrolled, so what it reports is
+ * already the content-space position the live path computes.
  *
  * @param {Text} text
  * @returns {TextLayout}
@@ -3452,36 +3490,70 @@ function measureTextLayout(text) {
   if (!isTransformed(parentElement)) {
     return measureTextRects(text, parentElement, whiteSpace, true, revealed);
   }
-  // An inline parent has no width of its own to copy: cloned alone, it
-  // would be laid out in the body with nothing to break its lines against,
-  // and every line would come back as one. The box its lines are laid out
-  // in is cloned instead, and the text found again in it by its path.
   let lineBox = parentElement;
-  while (lineBox.parentElement && splitsAcrossLines(lineBox)) {
+  while (!isPortalRoot(lineBox) && lineBox.parentElement && splitsAcrossLines(lineBox)) {
     lineBox = lineBox.parentElement;
   }
-  /** @type {number[]} */
-  const path = [];
-  for (let node = /** @type {Node} */ (text); node !== lineBox;) {
-    const parent = /** @type {Node} */ (node.parentNode);
-    path.push(Array.prototype.indexOf.call(parent.childNodes, node));
-    node = parent;
-  }
-  const clone = createMeasurementClone(lineBox);
+  const {
+    root,
+    text: cloneText,
+    parent: cloneParent,
+  } = cloneLinePath(text, parentElement, lineBox);
   try {
-    /** @type {Node | undefined} */
-    let cloneText = clone;
-    for (let i = path.length - 1; i >= 0 && cloneText; i--) {
-      cloneText = cloneText.childNodes[path[i]];
-    }
-    const cloneParent = cloneText?.parentElement;
-    if (!(cloneText instanceof Text) || !cloneParent) {
-      throw new NoValueError("Text node not found in measurement clone");
-    }
     return measureTextRects(cloneText, cloneParent, whiteSpace, false, revealed);
   } finally {
-    clone.remove();
+    root.remove();
   }
+}
+
+/**
+ * The copy `measureTextLayout` measures a transformed text in, built from
+ * the text up to `lineBox`, parked as `createMeasurementClone` parks one.
+ *
+ * @param {Text} text
+ * @param {HTMLElement} parentElement The text's parent.
+ * @param {HTMLElement} lineBox `parentElement` or an ancestor of it.
+ * @returns {{ root: HTMLElement, text: Text, parent: HTMLElement }}
+ */
+function cloneLinePath(text, parentElement, lineBox) {
+  const cloneText = /** @type {Text} */ (text.cloneNode());
+  const cloneParent = copyPathLevel(parentElement, text, cloneText, lineBox);
+  let copy = cloneParent;
+  for (let element = parentElement; element !== lineBox;) {
+    const parent = /** @type {HTMLElement} */ (element.parentElement);
+    copy = copyPathLevel(parent, element, copy, lineBox);
+    element = parent;
+  }
+  const root = parkMeasurementClone(lineBox, copy, null);
+  return { root, text: cloneText, parent: cloneParent };
+}
+
+/**
+ * One level of `cloneLinePath`: a shallow copy of `element` holding copies
+ * of the children before `child`, then `childCopy`. Below the line box the
+ * copy is dressed in the element's resolved style; the line box itself is
+ * dressed when it is parked.
+ *
+ * @param {HTMLElement} element
+ * @param {Node} child A child of `element`.
+ * @param {Node} childCopy
+ * @param {HTMLElement} lineBox
+ * @returns {HTMLElement}
+ */
+function copyPathLevel(element, child, childCopy, lineBox) {
+  const copy = /** @type {HTMLElement} */ (element.cloneNode(false));
+  for (
+    let sibling = element.firstChild;
+    sibling && sibling !== child;
+    sibling = sibling.nextSibling
+  ) {
+    copy.appendChild(sibling.cloneNode(true));
+  }
+  copy.appendChild(childCopy);
+  if (element !== lineBox) {
+    copyResolvedStyle(element, copy);
+  }
+  return copy;
 }
 
 /** @type {WeakMap<Text, Derived<TextLayout>>} */

@@ -1288,9 +1288,11 @@ that should move toward the viewer is `translateZ`, whatever the page uses for t
 One print of the measuring tape to know about: a transformed element (and everything under it) is
 measured off the layout — whole-pixel offsets — rather than the subpixel client rects untransformed
 content enjoys, because client rects come back with the transform already applied. Text under a
-transform is measured against a detached, untransformed clone of its parent instead, so its line
-boxes and positions are exact whatever the transform — including full 3D rotations — without the
-measurement ever touching the live elements or the transitions playing on them.
+transform is measured against a detached, untransformed copy of the box its lines are laid out in
+instead: its parent, or the nearest ancestor that is not inline, with the path down to the text and
+what comes before it on each level. Its line boxes and positions are exact whatever the transform —
+including full 3D rotations — without the measurement ever touching the live elements or the
+transitions playing on them.
 
 ## Animation
 

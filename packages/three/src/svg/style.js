@@ -34,9 +34,9 @@ export function readProperty(style, element, name) {
 
 /**
  * A length in user units. `px` and unitless are the same thing in user
- * space; a percentage would need the viewport to resolve against and is
- * not followed (it reads as the fallback); `auto`, `none` and nothing at
- * all read as the fallback too.
+ * space; a percentage would need the viewport to resolve against and reads
+ * as the fallback here (`parseLengthIn` is the reader that has a viewport);
+ * `auto`, `none` and nothing at all read as the fallback too.
  *
  * @param {string} value
  * @param {number} [fallback]
@@ -52,23 +52,62 @@ export function parseLength(value, fallback = 0) {
 }
 
 /**
- * A length in user units that may be a percentage of `reference`, the
- * viewport's width or height. Anything else reads as `parseLength` reads it.
+ * A length in user units that may be a percentage of `reference`: the
+ * viewport's width or height, or for a length on neither axis its diagonal
+ * over root two (`viewportReferences`). Anything else reads as `parseLength`
+ * reads it.
  *
  * @param {string} value
- * @param {number | undefined} reference What 100% is, or undefined when there
- *   is no viewport to measure against, which reads a percentage as the
- *   fallback.
+ * @param {number | undefined | (() => number | undefined)} reference What
+ *   100% is, or undefined when there is no viewport to measure against,
+ *   which reads a percentage as the fallback. A function is called only for
+ *   a percentage, so a length that is none reads no viewport.
  * @param {number} [fallback]
  * @returns {number}
  */
 export function parseLengthIn(value, reference, fallback = 0) {
   const trimmed = value.trim();
-  if (trimmed.endsWith("%") && reference !== undefined) {
-    const percent = Number.parseFloat(trimmed);
-    return Number.isFinite(percent) ? (reference * percent) / 100 : fallback;
+  if (!trimmed.endsWith("%")) {
+    return parseLength(trimmed, fallback);
   }
-  return parseLength(trimmed, fallback);
+  const base = typeof reference === "function" ? reference() : reference;
+  const percent = Number.parseFloat(trimmed);
+  return base !== undefined && Number.isFinite(percent) ? (base * percent) / 100 : fallback;
+}
+
+/**
+ * What a percentage length is of: the viewport's width for a length along x,
+ * its height along y, and for one along neither, such as a circle's `r` or a
+ * `stroke-width`, its diagonal over root two, as SVG defines it.
+ *
+ * @typedef {"width" | "height" | "diagonal"} ViewportAxis
+ */
+
+/**
+ * The three references a percentage can be of, for `parseLengthIn`, over a
+ * viewport read at most once, on the first percentage that asks for it.
+ *
+ * @param {() => { width: number, height: number } | null} viewport
+ * @returns {Record<ViewportAxis, () => number | undefined>} Each undefined
+ *   with no viewport.
+ */
+export function viewportReferences(viewport) {
+  /** @type {{ width: number, height: number } | null | undefined} */
+  let size;
+  const read = () => {
+    if (size === undefined) {
+      size = viewport();
+    }
+    return size;
+  };
+  return {
+    width: () => read()?.width,
+    height: () => read()?.height,
+    diagonal: () => {
+      const current = read();
+      return current ? Math.hypot(current.width, current.height) / Math.SQRT2 : undefined;
+    },
+  };
 }
 
 /**
@@ -222,14 +261,17 @@ export function parseFillRule(value) {
  * `4,2`; both are read.
  *
  * @param {string} value
+ * @param {() => number | undefined} [reference] What a percentage dash is
+ *   of, the viewport's diagonal over root two; without one a percentage
+ *   reads as no dash.
  * @returns {number[] | null}
  */
-export function parseDashArray(value) {
+export function parseDashArray(value, reference) {
   const trimmed = value.trim();
   if (!trimmed || trimmed === "none") {
     return null;
   }
-  const values = trimmed.split(/[\s,]+/).map((part) => parseLength(part, Number.NaN));
+  const values = trimmed.split(/[\s,]+/).map((part) => parseLengthIn(part, reference, Number.NaN));
   return normalizeDashArray(values);
 }
 
@@ -278,16 +320,25 @@ function escapeAttribute(value) {
  * observes every attribute, and a write to one invalidates the element's
  * computed style and its cached attribute reads alike.
  *
+ * A percentage, which the computed style keeps as one, is a share of the
+ * viewport the shape is in. The viewport is read once, and only for a length
+ * that is a percentage, so a shape with none does not depend on its size.
+ *
  * @param {CSSStyleDeclaration} style
  * @param {Element} element
+ * @param {() => { width: number, height: number } | null} viewport The
+ *   viewport the shape is in, `viewportSize` in `shape.js`.
  * @returns {string | null}
  */
-export function readShapeMarkup(style, element) {
+export function readShapeMarkup(style, element, viewport) {
+  const of = viewportReferences(viewport);
   /**
    * @param {string} name
+   * @param {ViewportAxis} axis What a percentage of it is of.
    * @param {number} [fallback]
    */
-  const length = (name, fallback = 0) => parseLength(readProperty(style, element, name), fallback);
+  const length = (name, axis, fallback = 0) =>
+    parseLengthIn(readProperty(style, element, name), of[axis], fallback);
   /**
    * @param {Record<string, number | string>} attributes
    */
@@ -298,14 +349,14 @@ export function readShapeMarkup(style, element) {
 
   switch (element.localName) {
     case "rect": {
-      const width = length("width");
-      const height = length("height");
+      const width = length("width", "width");
+      const height = length("height", "height");
       if (width <= 0 || height <= 0) {
         return null;
       }
       // `auto` on one radius means "the other one"; on both, square corners.
-      let rx = length("rx", Number.NaN);
-      let ry = length("ry", Number.NaN);
+      let rx = length("rx", "width", Number.NaN);
+      let ry = length("ry", "height", Number.NaN);
       if (Number.isNaN(rx) && Number.isNaN(ry)) {
         rx = 0;
         ry = 0;
@@ -314,18 +365,18 @@ export function readShapeMarkup(style, element) {
       } else if (Number.isNaN(ry)) {
         ry = rx;
       }
-      return tag({ x: length("x"), y: length("y"), width, height, rx, ry });
+      return tag({ x: length("x", "width"), y: length("y", "height"), width, height, rx, ry });
     }
     case "circle": {
-      const r = length("r");
+      const r = length("r", "diagonal");
       if (r <= 0) {
         return null;
       }
-      return tag({ cx: length("cx"), cy: length("cy"), r });
+      return tag({ cx: length("cx", "width"), cy: length("cy", "height"), r });
     }
     case "ellipse": {
-      let rx = length("rx", Number.NaN);
-      let ry = length("ry", Number.NaN);
+      let rx = length("rx", "width", Number.NaN);
+      let ry = length("ry", "height", Number.NaN);
       if (Number.isNaN(rx)) {
         rx = ry;
       }
@@ -335,10 +386,15 @@ export function readShapeMarkup(style, element) {
       if (!(rx > 0) || !(ry > 0)) {
         return null;
       }
-      return tag({ cx: length("cx"), cy: length("cy"), rx, ry });
+      return tag({ cx: length("cx", "width"), cy: length("cy", "height"), rx, ry });
     }
     case "line": {
-      return tag({ x1: length("x1"), y1: length("y1"), x2: length("x2"), y2: length("y2") });
+      return tag({
+        x1: length("x1", "width"),
+        y1: length("y1", "height"),
+        x2: length("x2", "width"),
+        y2: length("y2", "height"),
+      });
     }
     case "polyline":
     case "polygon": {

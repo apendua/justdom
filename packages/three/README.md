@@ -1853,7 +1853,11 @@ its `overflow` is `visible` or `auto` (the browser's own stylesheet makes it `hi
 same way. The clip box is axis-aligned in the `<svg>`'s frame, so a viewport under a rotation clips
 to its bounding box. Geometry is read from the computed style where the browser exposes it as CSS
 (`cx`, `r`, `x`, `width`, `d`) and from the attribute otherwise. A shape follows both, so one whose
-`d`, `points` or `fill` attribute is bound to data is redrawn when the data changes.
+`d`, `points` or `fill` attribute is bound to data is redrawn when the data changes. A percentage in
+a shape's geometry is a share of the nearest viewport, as it is for an `<image>`: `x`, `cx`, `x1`,
+`x2`, `width` and `rx` of its width, their `y` counterparts of its height, and a circle's `r`, the
+`stroke-width`, the dashes and the dash offset of its diagonal over √2, so
+`<rect width="100%" height="100%">` covers the viewport and follows it when it resizes.
 
 Transforms are matrices, as they are for boxes: a shape's vertices stay in its own user space, the
 `<svg>`'s content group carries the viewport, and each `<g>`, nested `<svg>` and shape carries its

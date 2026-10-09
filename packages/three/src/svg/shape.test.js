@@ -430,6 +430,68 @@ describe("svg shape", () => {
     s.teardown();
   });
 
+  test("a percentage length is a share of the viewport the shape is in", () => {
+    // A 10 by 5 viewBox: x and width are shares of 10, y and height of 5.
+    const rect = setup(
+      "rect",
+      { x: "10%", y: "20%", width: "100%", height: "50%", fill: "red" },
+      { viewBox: "0 0 10 5" },
+    );
+    assert.deepEqual(bounds(rect.meshes[0]), { left: 1, top: 1, right: 11, bottom: 3.5 });
+    // Without a viewBox, the root's content box, 100 by 50 px.
+    rect.root.removeAttribute("viewBox");
+    rect.flush();
+    assert.deepEqual(bounds(rect.meshes[0]), { left: 10, top: 10, right: 110, bottom: 35 });
+    rect.teardown();
+
+    // A radius is a share of the viewport's diagonal over root two: 50 for a
+    // 10 by 70 viewBox, so 10% is 5.
+    const circle = setup(
+      "circle",
+      { cx: "50%", cy: "50%", r: "10%", fill: "red" },
+      { viewBox: "0 0 10 70" },
+    );
+    assertBounds(bounds(circle.meshes[0]), { left: 0, top: 30, right: 10, bottom: 40 });
+    circle.teardown();
+
+    const line = setup(
+      "line",
+      { x1: "0", y1: "50%", x2: "100%", y2: "50%", stroke: "red", "stroke-width": "2" },
+      { viewBox: "0 0 30 40" },
+    );
+    const stroked = line.meshes.filter((mesh) => mesh.geometry.getAttribute("position").count > 0);
+    assert.equal(stroked.length, 1, "the line's stroke");
+    assertBounds(bounds(stroked[0]), { left: 0, top: 19, right: 30, bottom: 21 });
+    line.teardown();
+  });
+
+  test("a percentage stroke width and dash are shares of the viewport's diagonal", () => {
+    // A 100 by 100 viewBox: its diagonal over root two is 100, so 2% is 2
+    // units and 10% is 10.
+    const s = setup(
+      "line",
+      {
+        x1: "0",
+        y1: "50",
+        x2: "100",
+        y2: "50",
+        stroke: "black",
+        "stroke-width": "2%",
+        "stroke-dasharray": "10%",
+        "stroke-dashoffset": "5%",
+      },
+      { viewBox: "0 0 100 100" },
+    );
+    const stroke = s.meshes.find((mesh) => mesh.geometry.getAttribute("position").count > 0);
+    assert.ok(stroke);
+    assertBounds(bounds(stroke), { left: 0, top: 49, right: 100, bottom: 51 });
+    // Ten-unit dashes and gaps, shifted back by five: half a dash at 0 to
+    // 5, whole ones from 15, 35, 55 and 75, and half of one from 95. Each
+    // dash is a quad of two triangles.
+    assert.equal(stroke.geometry.getAttribute("position").count, 6 * 6);
+    s.teardown();
+  });
+
   test("the colour follows the style without rebuilding the geometry", () => {
     const s = setup("rect", { x: "0", y: "0", width: "10", height: "10", fill: "red" });
     const geometry = s.meshes[0].geometry;

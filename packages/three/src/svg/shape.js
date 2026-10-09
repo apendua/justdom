@@ -55,7 +55,6 @@ import {
   isPainted,
   parseDashArray,
   parseFillRule,
-  parseLength,
   parseLengthIn,
   parseLineCap,
   parseLineJoin,
@@ -64,6 +63,7 @@ import {
   parsePointerEvents,
   readProperty,
   readShapeMarkup,
+  viewportReferences,
 } from "./style.js";
 
 /**
@@ -941,18 +941,24 @@ function strokeSpecEqual(a, b) {
 }
 
 /**
+ * The stroke as drawn. Its width, dashes and dash offset may be percentages,
+ * each a share of the viewport's diagonal over root two.
+ *
  * @param {(name: string) => string} read The element's value for a
  *   property.
+ * @param {() => { width: number, height: number } | null} viewport The
+ *   viewport the shape is in, read only for a percentage.
  * @returns {StrokeSpec}
  */
-function readStrokeSpec(read) {
+function readStrokeSpec(read, viewport) {
+  const { diagonal } = viewportReferences(viewport);
   return {
-    width: parseLength(read("stroke-width"), 1),
+    width: parseLengthIn(read("stroke-width"), diagonal, 1),
     cap: parseLineCap(read("stroke-linecap")),
     join: parseLineJoin(read("stroke-linejoin")),
     miterLimit: parseNumber(read("stroke-miterlimit"), 4),
-    dash: parseDashArray(read("stroke-dasharray")),
-    dashOffset: parseLength(read("stroke-dashoffset"), 0),
+    dash: parseDashArray(read("stroke-dasharray"), diagonal),
+    dashOffset: parseLengthIn(read("stroke-dashoffset"), diagonal, 0),
   };
 }
 
@@ -1280,11 +1286,18 @@ export function shape(ctx, element, { instance = null, decorate } = {}) {
   const style = () => getComputedStyleCached(element);
 
   /**
+   * The viewport the shape is in. Read by `readShapeMarkup` and
+   * `readStrokeSpec` only for a length that is a percentage, so a shape
+   * with none does not depend on the viewport's size.
+   */
+  const viewport = () => viewportSize(element, instance);
+
+  /**
    * The geometry as markup — a string, compared as one, so that the parse
    * below runs only when the geometry itself changed and not when the
    * element was restyled.
    */
-  const markup = new Derived(() => readShapeMarkup(style(), element));
+  const markup = new Derived(() => readShapeMarkup(style(), element, viewport));
 
   /** @type {Derived<ShapePath | null>} */
   const path = new Derived(() => {
@@ -1310,7 +1323,7 @@ export function shape(ctx, element, { instance = null, decorate } = {}) {
   const fillPaint = new Derived(() => parsePaint(read("fill")), { isEqual: paintEqual });
   const strokePaint = new Derived(() => parsePaint(read("stroke")), { isEqual: paintEqual });
   const fillRule = new Derived(() => parseFillRule(read("fill-rule")));
-  const strokeSpec = new Derived(() => readStrokeSpec(read), {
+  const strokeSpec = new Derived(() => readStrokeSpec(read, viewport), {
     isEqual: strokeSpecEqual,
   });
 

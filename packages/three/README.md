@@ -1526,6 +1526,15 @@ needs the CORS headers any WebGL texture needs. Swapping `src` swaps the picture
 `load` event is what says so, which also means a `srcset` is followed as soon as the browser has
 resolved it.
 
+An SVG picture, a URL ending in `.svg` or an `image/svg+xml` data URL, is drawn on a canvas at its
+natural size and the canvas is uploaded, since Chrome refuses to upload an SVG with no `width` or
+`height` of its own as a texture. That draw happens once per URL as the picture loads, never per
+frame, and costs a few times what the upload does: about 3 ms for a 256 by 208 picture and 34 ms at
+1024 by 832 in Chromium on SwiftShader. A picture of no other kind pays nothing for it. An SVG
+behind a URL that names no such type, a blob URL or an endpoint with no extension, is uploaded as it
+came. An SVG with only a `viewBox` has the browser's default size, 150 px tall in Chrome, so give it
+a `width` and a `height` for a sharp picture.
+
 Two things to know. A picture that fails to load draws nothing at all — the element's own box,
 border and background stay, but there is no `alt` text and no broken-image frame, neither of which
 has a CSS box to mirror. And an image arriving re-measures the panel, because an `<img>` given no

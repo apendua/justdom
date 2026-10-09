@@ -172,6 +172,55 @@ describe("the texture cache", () => {
     releaseImage(RED_DOT);
   });
 
+  test("an SVG is drawn on a canvas at its natural size, and the canvas uploaded", () => {
+    // Chrome on a laptop refuses to upload an SVG with no size of its own
+    // as a texture ("texSubImage2D: bad image data"), while it draws one on
+    // a canvas at the size it gives it, 185 by 150 here. A canvas uploads.
+    /** @type {unknown[][]} */
+    const drawn = [];
+    const realContext = window.HTMLCanvasElement.prototype.getContext;
+    window.HTMLCanvasElement.prototype.getContext = /** @type {never} */ (
+      () => ({ drawImage: (/** @type {unknown[]} */ ...args) => drawn.push(args) })
+    );
+    const svg = /** @type {HTMLImageElement} */ ({ naturalWidth: 185, naturalHeight: 150 });
+    const png = /** @type {HTMLImageElement} */ ({ naturalWidth: 4, naturalHeight: 2 });
+    const original = THREE.TextureLoader.prototype.load;
+    THREE.TextureLoader.prototype.load = function (url, onLoad) {
+      const texture = new THREE.Texture(url.endsWith(".png") ? png : svg);
+      onLoad?.(/** @type {THREE.Texture<HTMLImageElement>} */ (texture));
+      return /** @type {THREE.Texture<HTMLImageElement>} */ (texture);
+    };
+    const urls = [
+      "/photo.svg",
+      "/photo.svg?v=2#frame",
+      "data:image/svg+xml;utf8,%3Csvg%3E%3C%2Fsvg%3E",
+      "/photo.png",
+    ];
+    try {
+      const [file, query, inline, bitmap] = urls.map((url) => acquireImage(url).state.get());
+      for (const state of [file, query, inline]) {
+        const image = /** @type {HTMLCanvasElement} */ (
+          /** @type {unknown} */ (state.texture?.image)
+        );
+        assert.ok(image instanceof window.HTMLCanvasElement, "the texture holds a canvas");
+        assert.deepEqual([image.width, image.height], [185, 150]);
+        assert.deepEqual([state.width, state.height], [185, 150]);
+      }
+      assert.deepEqual(drawn, [
+        [svg, 0, 0, 185, 150],
+        [svg, 0, 0, 185, 150],
+        [svg, 0, 0, 185, 150],
+      ]);
+      assert.equal(bitmap.texture?.image, png, "a bitmap is uploaded as it came");
+    } finally {
+      for (const url of urls) {
+        releaseImage(url);
+      }
+      THREE.TextureLoader.prototype.load = original;
+      window.HTMLCanvasElement.prototype.getContext = realContext;
+    }
+  });
+
   test("releasing something nobody acquired is not an error", () => {
     releaseImage("data:image/gif;base64,unclaimed");
   });

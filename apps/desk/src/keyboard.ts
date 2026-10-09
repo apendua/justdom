@@ -77,9 +77,9 @@ const PRESS_MS = 110;
 
 export interface KeyboardOptions {
   /**
-   * Where a key goes when no text field on the page has focus, unless a
-   * script typed it into an element without focus, as a session's keyboard
-   * does.
+   * Where a key goes while no text field has focus, and where a cap's press
+   * goes in a session wherever the focus is. A key a script typed into an
+   * element without focus, as a session's keyboard does, is that element's.
    */
   onKey: (key: string) => void;
   /**

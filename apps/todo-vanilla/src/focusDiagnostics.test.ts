@@ -32,4 +32,24 @@ describe("mountFocusDiagnostics", () => {
     dispose = () => {};
     expect(root.querySelector("pre")).toBeNull();
   });
+
+  it("puts the page's virtual keyboard setting back when it goes", () => {
+    document.body.innerHTML = `<div id="root"></div>`;
+    const root = document.querySelector<HTMLElement>("#root")!;
+    const keyboard = Object.assign(new EventTarget(), {
+      overlaysContent: false,
+      boundingRect: new DOMRect(0, 400, 800, 200),
+    });
+    Object.defineProperty(navigator, "virtualKeyboard", { value: keyboard, configurable: true });
+    try {
+      const stop = mountFocusDiagnostics(root);
+      expect(keyboard.overlaysContent).toBe(true);
+      keyboard.dispatchEvent(new Event("geometrychange"));
+      expect(root.querySelector("pre")!.textContent).toContain("geometrychange: x=0 y=400 800x200");
+      stop();
+      expect(keyboard.overlaysContent).toBe(false);
+    } finally {
+      delete (navigator as { virtualKeyboard?: unknown }).virtualKeyboard;
+    }
+  });
 });

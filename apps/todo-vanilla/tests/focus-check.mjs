@@ -1,7 +1,8 @@
 /**
  * What the page's focus does in a session, with and without the
- * `?realfocus` experiment (`@apendua.dev/headset/focus`): vite-served todo-vanilla in
- * headless Chromium, on the emulated headset.
+ * `?realfocus` experiment (`@apendua.dev/headset/focus`): vite-served
+ * todo-vanilla in headless Chromium, on the emulated headset, driven
+ * through `@apendua.dev/headset/driver`.
  *
  *   node tests/focus-check.mjs
  *
@@ -10,9 +11,11 @@
  * page's focus, then types `milk` and Enter on the laptop's keyboard, the
  * way a keyboard paired with a headset would, then a key on freedom's board
  * with the ray, and then presses the Add button, which puts the board away.
- * It fails unless, with the experiment, the field has focus while the board
- * is up, the laptop's keys type into it and add a todo, the board's key
- * still types, and the field loses focus with the board.
+ * It fails unless, without the experiment, the field is marked but
+ * `<body>` keeps the focus and the laptop's keys are lost, and unless, with
+ * it, the field has focus while the board is up, the laptop's keys type
+ * into it and add a todo, the board's key still types, and the field loses
+ * focus with the board.
  *
  * A manual check rather than part of `npm test`: it needs a browser, and
  * takes about a minute under SwiftShader.
@@ -20,27 +23,12 @@
 import { join, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
+import { aim, closeAll, frames, launch, press } from "@apendua.dev/headset/driver";
 
 const HERE = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const { chromium } = await import(
-  resolve(HERE, "../showcase-xr/node_modules/playwright-core/index.mjs")
-);
 
-/**
- * @param {import("playwright-core").Page} page
- * @param {number} count
- */
-async function frames(page, count) {
-  await page.evaluate(
-    (n) =>
-      new Promise((done) => {
-        let left = n;
-        const step = () => (--left <= 0 ? done(undefined) : requestAnimationFrame(step));
-        requestAnimationFrame(step);
-      }),
-    count,
-  );
-}
+/** Where the right controller is held while the ray sweeps: chest height. */
+const HAND = /** @type {[number, number, number]} */ ([0.05, 1.4, -0.05]);
 
 /**
  * The page's state as the check reads it.
@@ -78,32 +66,6 @@ async function run(browser, url, realFocus) {
   await frames(page, 30);
 
   /**
-   * The right controller at chest height, aimed by yaw and pitch in degrees.
-   *
-   * @param {number} yaw
-   * @param {number} pitch
-   */
-  const aim = async (yaw, pitch) => {
-    await page.evaluate(
-      ([y, p]) => {
-        const c = /** @type {any} */ (window).xrDevice.controllers.right;
-        c.position.x = 0.05;
-        c.position.y = 1.4;
-        c.position.z = -0.05;
-        const cy = Math.cos(y / 2);
-        const sy = Math.sin(y / 2);
-        const cx = Math.cos(p / 2);
-        const sx = Math.sin(p / 2);
-        c.quaternion.x = cy * sx;
-        c.quaternion.y = sy * cx;
-        c.quaternion.z = -sy * sx;
-        c.quaternion.w = cy * cx;
-      },
-      [(yaw * Math.PI) / 180, (pitch * Math.PI) / 180],
-    );
-    await frames(page, 2);
-  };
-  /**
    * Sweep the ray until `found` says it is on what it looks for.
    *
    * @param {() => Promise<boolean>} found
@@ -113,7 +75,7 @@ async function run(browser, url, realFocus) {
   const find = async (found, from, to) => {
     for (let pitch = from; pitch >= to; pitch -= 1) {
       for (let yaw = -20; yaw <= 20; yaw += 2) {
-        await aim(yaw, pitch);
+        await aim(page, HAND, (yaw * Math.PI) / 180, (pitch * Math.PI) / 180);
         if (await found()) {
           return [yaw, pitch];
         }
@@ -121,21 +83,7 @@ async function run(browser, url, realFocus) {
     }
     return null;
   };
-  const click = async () => {
-    const press = (/** @type {number} */ v) =>
-      page.evaluate(
-        (value) =>
-          /** @type {any} */ (window).xrDevice.controllers.right.updateButtonValue(
-            "trigger",
-            value,
-          ),
-        v,
-      );
-    await press(1);
-    await frames(page, 3);
-    await press(0);
-    await frames(page, 5);
-  };
+  const click = () => press(page, "trigger");
 
   const label = realFocus ? "with ?realfocus" : "without ?realfocus";
   console.log(`\n== ${label}`);
@@ -186,7 +134,7 @@ async function run(browser, url, realFocus) {
     console.log("  board key pressed:    could not find a key with the ray");
   }
 
-  await aim(...field);
+  await aim(page, HAND, (field[0] * Math.PI) / 180, (field[1] * Math.PI) / 180);
   const add = await find(
     () =>
       page.evaluate(
@@ -203,19 +151,28 @@ async function run(browser, url, realFocus) {
   console.log("  Add pressed:         ", dismissed);
   await page.close();
 
-  if (!realFocus) {
-    return true;
-  }
-  const checks = [
-    ["the field has focus while the board is up", pressed.focused === "field" && pressed.marked],
-    ["the laptop's keys type into the field", typed.value === "milk"],
-    [
-      "Enter adds a todo and clears the field",
-      entered.todos === pressed.todos + 1 && !entered.value,
-    ],
-    ["a key on the board still types", board !== null && board.value === board.letter],
-    ["the field loses focus with the board", dismissed.focused !== "field" && !dismissed.marked],
-  ];
+  const checks = realFocus
+    ? [
+        [
+          "the field has focus while the board is up",
+          pressed.focused === "field" && pressed.marked,
+        ],
+        ["the laptop's keys type into the field", typed.value === "milk"],
+        [
+          "Enter adds a todo and clears the field",
+          entered.todos === pressed.todos + 1 && !entered.value,
+        ],
+        ["a key on the board still types", board !== null && board.value === board.letter],
+        [
+          "the field loses focus with the board",
+          dismissed.focused !== "field" && !dismissed.marked,
+        ],
+      ]
+    : [
+        ["the field is marked but has no focus", pressed.focused !== "field" && pressed.marked],
+        ["the laptop's keys are lost", typed.value === ""],
+        ["Enter adds nothing", entered.todos === pressed.todos],
+      ];
   let ok = true;
   for (const [what, held] of checks) {
     console.log(`  ${held ? "OK" : "FAIL"}: ${what}`);
@@ -235,17 +192,13 @@ async function main() {
   const url = server.resolvedUrls?.local?.[0];
   if (!url) throw new Error("no vite url");
 
-  const browser = await chromium.launch({
-    executablePath: "/opt/pw-browsers/chromium-1194/chrome-linux/chrome",
-    args: ["--use-gl=angle", "--use-angle=swiftshader", "--enable-unsafe-swiftshader"],
-  });
+  const browser = await launch();
   let ok = true;
   try {
     ok = (await run(browser, url, false)) && ok;
     ok = (await run(browser, url, true)) && ok;
   } finally {
-    await browser.close();
-    await server.close();
+    await closeAll(browser, server);
   }
   process.exit(ok ? 0 : 1);
 }

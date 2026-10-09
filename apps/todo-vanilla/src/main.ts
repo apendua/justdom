@@ -28,5 +28,9 @@ offerXR(root).catch((err) => {
 // asks for it, with a log in the card of what the page hears meanwhile.
 if (new URLSearchParams(location.search).has("realfocus")) {
   followXRFocus(root);
+  // After the app, which `just` above has already rendered into `#root`:
+  // its `children` owns the span from the first child to the last and
+  // replaces it on every emission, and it emits once, synchronously, so a
+  // node appended now is left alone.
   mountFocusDiagnostics(root);
 }

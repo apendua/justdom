@@ -67,8 +67,13 @@ export function mountFocusDiagnostics(root: HTMLElement): () => void {
   const keyboard = (navigator as Navigator & { virtualKeyboard?: VirtualKeyboard }).virtualKeyboard;
   if (keyboard) {
     // Without this the browser resizes the page for the keyboard and does
-    // not report the rectangle.
+    // not report the rectangle. It is page-wide, so it is put back with the
+    // log.
+    const overlaid = keyboard.overlaysContent;
     keyboard.overlaysContent = true;
+    disposers.push(() => {
+      keyboard.overlaysContent = overlaid;
+    });
     write("virtualKeyboard: present, overlaysContent set");
     listen(keyboard, "geometrychange", () => {
       const { x, y, width, height } = keyboard.boundingRect;

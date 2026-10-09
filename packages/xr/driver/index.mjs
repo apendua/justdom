@@ -106,19 +106,17 @@ export function headPosition(page) {
 }
 
 /**
- * Hold the right controller below the head, its ray through `target`, a
- * point in the `local` space whose origin is `head`, and let three frames
- * pass so that the ray is cast.
+ * Hold the right controller at `from`, a point in the `local` space, turned
+ * by `yaw` and then pitched by `pitch`, both in radians, and let three
+ * frames pass so that the ray is cast. For a check that sweeps the ray
+ * across a panel rather than aiming it through a known point.
  *
  * @param {import("playwright-core").Page} page
- * @param {[number, number, number]} head
- * @param {[number, number, number]} target
+ * @param {[number, number, number]} from
+ * @param {number} yaw
+ * @param {number} pitch
  */
-export async function aimAt(page, head, target) {
-  const from = [head[0] + 0.05, head[1] - 0.2, head[2] - 0.05];
-  const d = target.map((v, i) => v + head[i] - from[i]);
-  const yaw = Math.atan2(-d[0], -d[2]);
-  const pitch = Math.atan2(d[1], Math.hypot(d[0], d[2]));
+export async function aim(page, from, yaw, pitch) {
   await page.evaluate(([p, y, f]) => {
     const c = /** @type {any} */ (window).xrDevice.controllers.right;
     c.position.x = f[0];
@@ -134,6 +132,22 @@ export async function aimAt(page, head, target) {
     c.quaternion.w = cy * cx;
   }, /** @type {const} */ ([pitch, yaw, from]));
   await frames(page, 3);
+}
+
+/**
+ * Hold the right controller below the head, its ray through `target`, a
+ * point in the `local` space whose origin is `head`, and let three frames
+ * pass so that the ray is cast.
+ *
+ * @param {import("playwright-core").Page} page
+ * @param {[number, number, number]} head
+ * @param {[number, number, number]} target
+ */
+export async function aimAt(page, head, target) {
+  /** @type {[number, number, number]} */
+  const from = [head[0] + 0.05, head[1] - 0.2, head[2] - 0.05];
+  const d = target.map((v, i) => v + head[i] - from[i]);
+  await aim(page, from, Math.atan2(-d[0], -d[2]), Math.atan2(d[1], Math.hypot(d[0], d[2])));
 }
 
 /**

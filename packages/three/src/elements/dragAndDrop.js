@@ -402,7 +402,19 @@ const init = {
  *
  * Only a point on the element's own panel is anywhere on its page. An
  * event whose ray is off it, onto nothing, onto another panel or onto the
- * scene, leaves them at 0, as they are on any event a script dispatches.
+ * scene, leaves them at 0, as they are on any event a script dispatches,
+ * for its sender to place. An uncaptured release off its panel stays
+ * there, nowhere. The crossings that take a pointer out of a panel its
+ * ray has left say where the page last heard the pointer was instead
+ * (`Hand.x` in `pointerForwarding.js`), and so do the crossings that take
+ * it onto nothing on a panel another panel brings up to date (its
+ * `bringUp`), as a browser's mouse leaving the window says where it left.
+ * Not where the ray crosses the panel's plane, as a captured move is
+ * placed: a ray that has left a panel may cross its plane nowhere, turned
+ * away from it, or so far off it that the point is metres past the page's
+ * edge, while the last point heard is always on the page and is the one
+ * every other event that no ray places already says.
+ *
  * The point is in the page's layout, which is on screen only for a panel
  * mirroring an element the page shows; `clientPointOf` says what that
  * means for a panel built from a tree.

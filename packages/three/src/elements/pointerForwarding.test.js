@@ -1019,6 +1019,8 @@ describe("a press on nested clickable elements", () => {
 });
 
 describe("a ray's pointer events", () => {
+  /** What a pointer leaving an element sends, the pointer's then the mouse's. */
+  const LEAVES = ["pointerout", "pointerleave", "mouseout", "mouseleave"];
   const TYPES = [
     "pointerdown",
     "pointermove",
@@ -1486,10 +1488,7 @@ describe("a ray's pointer events", () => {
     hand.aim(page.panel, 70, 40);
     hand.trigger("selectstart");
     hand.aim(page.panel, 75, 45);
-    const { heard, stop } = hearing(
-      ["pointercancel", "pointerout", "pointerleave", "mouseout", "mouseleave"],
-      { at: true },
-    );
+    const { heard, stop } = hearing(["pointercancel", ...LEAVES], { at: true });
     hand.disconnect();
     stop();
     assert.deepEqual(heard, [
@@ -2007,7 +2006,7 @@ describe("a ray's pointer events", () => {
     });
     const hand = rayHand(page.manager);
     hand.aim(page.panel, 70, 40);
-    const { heard, stop } = hearing(["pointerout", "pointerleave", "mouseout", "mouseleave"]);
+    const { heard, stop } = hearing(LEAVES);
     hand.disconnect();
     hand.frame();
     stop();
@@ -2117,6 +2116,100 @@ describe("a ray's pointer events", () => {
       "mouseenter #second",
       "pointerdown #second",
       "mousedown #second",
+    ]);
+    secondHand.trigger("selectend");
+    firstHand.remove();
+    secondHand.remove();
+    other.teardown();
+    page.teardown();
+  });
+
+  const CROSSINGS = [...LEAVES, "pointerover", "pointerenter", "mouseover", "mouseenter"];
+
+  test("leave where the page last heard the pointer as the ray goes onto nothing", async () => {
+    const page = await mirrored((place) => {
+      place("div", "btn", [20, 20, 100, 40]).style.cursor = "pointer";
+    });
+    const hand = rayHand(page.manager);
+    hand.aim(page.panel, 70, 40);
+    hand.aim(page.panel, 60, 35);
+    const { heard, stop } = hearing(LEAVES, { at: true });
+    hand.aim(page.panel, 500, 350);
+    stop();
+    // The last move, and not the corner of the page.
+    assert.deepEqual(heard, [
+      "pointerout #btn at 60,35 buttons 0",
+      "pointerleave #btn at 60,35 buttons 0",
+      "pointerleave #root at 60,35 buttons 0",
+      "mouseout #btn at 60,35 buttons 0",
+      "mouseleave #btn at 60,35 buttons 0",
+      "mouseleave #root at 60,35 buttons 0",
+    ]);
+    hand.remove();
+    page.teardown();
+  });
+
+  test("leave where the page last heard the pointer as the ray goes onto another panel", async () => {
+    const page = await mirrored((place) => {
+      place("div", "first", [20, 20, 100, 40]).style.cursor = "pointer";
+    });
+    const other = await mirrored(
+      (place) => {
+        place("div", "second", [20, 20, 100, 40]).style.cursor = "pointer";
+      },
+      { name: "other", manager: page.manager, scene: page.scene, x: 4 },
+    );
+    const hand = rayHand(page.manager);
+    hand.aim(page.panel, 70, 40);
+    hand.aim(page.panel, 60, 35);
+    const { heard, stop } = hearing(CROSSINGS, { at: true });
+    hand.aim(other.panel, 80, 45);
+    stop();
+    // The leaves where the ray last was on the first panel, and the enters
+    // where it is on the second.
+    assert.deepEqual(heard, [
+      "pointerout #first at 60,35 buttons 0",
+      "pointerleave #first at 60,35 buttons 0",
+      "pointerleave #root at 60,35 buttons 0",
+      "mouseout #first at 60,35 buttons 0",
+      "mouseleave #first at 60,35 buttons 0",
+      "mouseleave #root at 60,35 buttons 0",
+      "pointerover #second at 80,45 buttons 0",
+      "pointerenter #other at 80,45 buttons 0",
+      "pointerenter #second at 80,45 buttons 0",
+      "mouseover #second at 80,45 buttons 0",
+      "mouseenter #other at 80,45 buttons 0",
+      "mouseenter #second at 80,45 buttons 0",
+    ]);
+    hand.remove();
+    other.teardown();
+    page.teardown();
+  });
+
+  test("move the mouse off a panel where the page last heard the hand that takes over", async () => {
+    const page = await mirrored((place) => {
+      place("div", "first", [20, 20, 100, 40]).style.cursor = "pointer";
+    });
+    const other = await mirrored(
+      (place) => {
+        place("div", "second", [20, 20, 100, 40]).style.cursor = "pointer";
+      },
+      { name: "other", manager: page.manager, scene: page.scene, x: 4 },
+    );
+    const firstHand = rayHand(page.manager);
+    const secondHand = rayHand(page.manager);
+    firstHand.aim(page.panel, 70, 40);
+    secondHand.aim(other.panel, 80, 45);
+    const { heard, stop } = hearing(LEAVES, { at: true });
+    secondHand.trigger("selectstart");
+    stop();
+    // The second hand is over nothing on the first panel, so the mouse
+    // leaves it where the page last heard the second hand, its arrival on
+    // the second panel.
+    assert.deepEqual(heard, [
+      "mouseout #first at 80,45 buttons 0",
+      "mouseleave #first at 80,45 buttons 0",
+      "mouseleave #root at 80,45 buttons 0",
     ]);
     secondHand.trigger("selectend");
     firstHand.remove();

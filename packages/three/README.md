@@ -382,7 +382,9 @@ it is on, then `mouseout`, `mouseleave`, `mouseover` and `mouseenter`, each nami
 as `relatedTarget`. The element a hand is over is the innermost control under its ray, the one its
 moves go to, with the elements around it up to the panel's root. A ray that slides off the controls
 onto the panel's background, or off the panel, leaves them all. These hold still while the hand
-holds something draggable, as `:hover` does under a drag, and catch up at the release.
+holds something draggable, as `:hover` does under a drag, and catch up at the release. A ray that
+leaves a panel, onto nothing or onto another panel, leaves at the point where the page last heard
+the pointer, as a browser's mouse leaving the window says where it left.
 
 A page that cancels `pointerdown` hears no `mousedown`, `mousemove` or `mouseup` from that hand
 until its trigger opens, and hears the `click` all the same, which is a browser's rule. A press that
@@ -393,7 +395,8 @@ the pointer and the mouse catch up with where the ray is, on every panel. A hand
 of a press, as every hand is when a session ends, sends no release, and its pointer is cancelled the
 same way, the elements it held lose `data-xr-active`, and the mouse leaves what the hand was over on
 every panel. The crossings that catch a panel up carry the point where the ray crosses that panel,
-as a move does.
+as a move does, and where the page last heard the pointer on a panel the hand is over nothing on, or
+is captured to with a ray that crosses that panel's plane nowhere.
 
 `pointercancel` and the leaves after it say where the page last heard the pointer. Under a scroll
 that is the last move or crossing before the press became one. Under a drag and drop it is the

@@ -14,6 +14,7 @@ import {
   releaseImage,
 } from "./image.js";
 import VisualProperties from "./VisualProperties.js";
+import { stubCanvas } from "../test/stubCanvas.js";
 
 // Same stub as the other element suites: jsdom has no Font Loading API, and
 // `VisualProperties` will not resolve size units until `document.fonts` says
@@ -170,6 +171,93 @@ describe("the texture cache", () => {
     const reacquired = acquireImage(RED_DOT);
     assert.notEqual(reacquired, first, "the entry should not survive its last user");
     releaseImage(RED_DOT);
+  });
+
+  /**
+   * Load each URL through a loader that answers at once with `picture(url)`,
+   * hand back each entry's state, and let go of every one.
+   *
+   * @param {string[]} urls
+   * @param {(url: string) => object} picture
+   */
+  function loadThrough(urls, picture) {
+    const original = THREE.TextureLoader.prototype.load;
+    THREE.TextureLoader.prototype.load = function (url, onLoad) {
+      const texture = new THREE.Texture(/** @type {HTMLImageElement} */ (picture(url)));
+      onLoad?.(/** @type {THREE.Texture<HTMLImageElement>} */ (texture));
+      return /** @type {THREE.Texture<HTMLImageElement>} */ (texture);
+    };
+    try {
+      return urls.map((url) => acquireImage(url).state.get());
+    } finally {
+      for (const url of urls) {
+        releaseImage(url);
+      }
+      THREE.TextureLoader.prototype.load = original;
+    }
+  }
+
+  test("an SVG is drawn on a canvas at its natural size, and the canvas uploaded", () => {
+    // Chrome on a laptop refuses to upload an SVG with no size of its own
+    // as a texture ("texSubImage2D: bad image data"), while it draws one on
+    // a canvas at the size it gives it, 185 by 150 here. A canvas uploads.
+    const canvas = stubCanvas();
+    const svg = { naturalWidth: 185, naturalHeight: 150 };
+    const png = { naturalWidth: 4, naturalHeight: 2 };
+    try {
+      const states = loadThrough(
+        [
+          "/photo.svg",
+          "/photo.svg?v=2#frame",
+          "/photo.svgz",
+          "data:image/svg+xml;utf8,%3Csvg%3E%3C%2Fsvg%3E",
+          "/photo.png",
+        ],
+        (url) => (url.endsWith(".png") ? png : svg),
+      );
+      const bitmap = /** @type {(typeof states)[number]} */ (states.pop());
+      for (const state of states) {
+        const image = /** @type {{ width: number, height: number }} */ (state.texture?.image);
+        assert.notEqual(image, svg, "the texture holds the canvas");
+        assert.deepEqual([image.width, image.height], [185, 150]);
+        assert.deepEqual([state.width, state.height], [185, 150]);
+      }
+      assert.deepEqual(
+        canvas.images,
+        states.map(() => [svg, 0, 0, 185, 150]),
+      );
+      assert.equal(bitmap.texture?.image, png, "a bitmap is uploaded as it came");
+    } finally {
+      canvas.restore();
+    }
+  });
+
+  test("an SVG the browser reports no size for is drawn at 300 by 150", () => {
+    // Firefox has reported 0 by 0 for an SVG with only a `viewBox`. Handed
+    // back as it came, it is the picture Chrome refuses, so it is drawn at
+    // the size CSS gives a replaced element with none.
+    const canvas = stubCanvas();
+    const svg = { naturalWidth: 0, naturalHeight: 0 };
+    try {
+      const [state] = loadThrough(["/unsized.svg"], () => svg);
+      const image = /** @type {{ width: number, height: number }} */ (state.texture?.image);
+      assert.deepEqual([image.width, image.height], [300, 150]);
+      assert.deepEqual(canvas.images, [[svg, 0, 0, 300, 150]]);
+    } finally {
+      canvas.restore();
+    }
+  });
+
+  test("an SVG with no 2D canvas to draw on is uploaded as it came", () => {
+    const realContext = window.HTMLCanvasElement.prototype.getContext;
+    window.HTMLCanvasElement.prototype.getContext = /** @type {never} */ (() => null);
+    const svg = { naturalWidth: 185, naturalHeight: 150 };
+    try {
+      const [state] = loadThrough(["/photo.svg"], () => svg);
+      assert.equal(state.texture?.image, svg);
+    } finally {
+      window.HTMLCanvasElement.prototype.getContext = realContext;
+    }
   });
 
   test("releasing something nobody acquired is not an error", () => {

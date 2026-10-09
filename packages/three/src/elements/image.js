@@ -106,6 +106,58 @@ const PENDING = { status: "loading", texture: null, width: 0, height: 0 };
 const FAILED = { status: "error", texture: null, width: 0, height: 0 };
 
 /**
+ * A URL whose picture is an SVG: a path ending in `.svg` or `.svgz`, before
+ * any query or fragment, or an SVG data URL.
+ */
+const SVG_URL = /^data:image\/svg\+xml[;,]|\.svgz?(?:[?#]|$)/i;
+
+/**
+ * The size an SVG is drawn at when the browser reports none, the default
+ * size CSS gives a replaced element that has none of its own. Firefox has
+ * reported 0 by 0 for an SVG with only a `viewBox`, and the picture handed
+ * back as it came is the one Chrome refuses.
+ */
+const DEFAULT_SVG_SIZE = { width: 300, height: 150 };
+
+/**
+ * What to upload for a decoded picture: the picture itself, or for an SVG a
+ * canvas it is drawn on at its natural size.
+ *
+ * Chrome on a laptop refuses to upload an SVG that has no size of its own,
+ * one with a `viewBox` and no `width` or `height`, as a texture
+ * ("texSubImage2D: bad image data"), so the card that holds it shows no
+ * picture in a session while the page shows it. It draws the same SVG on a
+ * canvas at the size it gives it, and a canvas uploads.
+ *
+ * The draw happens once per URL, as the load lands, never per frame. It
+ * costs a few times what the upload costs, about 3 ms in place of 1 ms for a
+ * 256 by 208 picture and 34 ms in place of 8 ms at 1024 by 832, measured in
+ * Chromium on SwiftShader, and the canvas, 4 bytes a pixel, is kept as the
+ * texture's image in place of the decoded picture. Only an SVG pays it.
+ *
+ * @param {string} url
+ * @param {HTMLImageElement} image
+ * @returns {HTMLImageElement | HTMLCanvasElement}
+ */
+function uploadable(url, image) {
+  if (!SVG_URL.test(url)) {
+    return image;
+  }
+  const sized = image.naturalWidth > 0 && image.naturalHeight > 0;
+  const width = sized ? image.naturalWidth : DEFAULT_SVG_SIZE.width;
+  const height = sized ? image.naturalHeight : DEFAULT_SVG_SIZE.height;
+  const canvas = document.createElement("canvas");
+  const context = canvas.getContext("2d");
+  if (!context) {
+    return image;
+  }
+  canvas.width = width;
+  canvas.height = height;
+  context.drawImage(image, 0, 0, width, height);
+  return canvas;
+}
+
+/**
  * @param {string} url
  * @returns {ImageEntry}
  */
@@ -142,6 +194,10 @@ function entryFor(url) {
       // clamping is what lets the shader clamp UVs instead of branching.
       texture.wrapS = THREE.ClampToEdgeWrapping;
       texture.wrapT = THREE.ClampToEdgeWrapping;
+      // Three types the loader's texture as holding an `<img>`; from here
+      // on it holds whatever `uploadable` gives it.
+      /** @type {THREE.Texture<HTMLImageElement | HTMLCanvasElement>} */ (texture).image =
+        uploadable(url, texture.image);
       const image = /** @type {{ width?: number, height?: number } | null} */ (texture.image);
       entry.texture = texture;
       entry.state.set({

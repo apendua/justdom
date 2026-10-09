@@ -105,8 +105,19 @@ const PENDING = { status: "loading", texture: null, width: 0, height: 0 };
 /** @type {ImageState} */
 const FAILED = { status: "error", texture: null, width: 0, height: 0 };
 
-/** A URL whose picture is an SVG: a file named `.svg`, or an SVG data URL. */
-const SVG_URL = /^data:image\/svg\+xml[;,]|\.svg(?:[?#]|$)/i;
+/**
+ * A URL whose picture is an SVG: a path ending in `.svg` or `.svgz`, before
+ * any query or fragment, or an SVG data URL.
+ */
+const SVG_URL = /^data:image\/svg\+xml[;,]|\.svgz?(?:[?#]|$)/i;
+
+/**
+ * The size an SVG is drawn at when the browser reports none, the default
+ * size CSS gives a replaced element that has none of its own. Firefox has
+ * reported 0 by 0 for an SVG with only a `viewBox`, and the picture handed
+ * back as it came is the one Chrome refuses.
+ */
+const DEFAULT_SVG_SIZE = { width: 300, height: 150 };
 
 /**
  * What to upload for a decoded picture: the picture itself, or for an SVG a
@@ -132,15 +143,16 @@ function uploadable(url, image) {
   if (!SVG_URL.test(url)) {
     return image;
   }
-  const width = image.naturalWidth;
-  const height = image.naturalHeight;
+  const sized = image.naturalWidth > 0 && image.naturalHeight > 0;
+  const width = sized ? image.naturalWidth : DEFAULT_SVG_SIZE.width;
+  const height = sized ? image.naturalHeight : DEFAULT_SVG_SIZE.height;
   const canvas = document.createElement("canvas");
-  canvas.width = width;
-  canvas.height = height;
   const context = canvas.getContext("2d");
-  if (!context || width === 0 || height === 0) {
+  if (!context) {
     return image;
   }
+  canvas.width = width;
+  canvas.height = height;
   context.drawImage(image, 0, 0, width, height);
   return canvas;
 }

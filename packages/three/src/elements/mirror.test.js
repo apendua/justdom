@@ -809,6 +809,67 @@ describe("text layout under transforms", () => {
       resetMeasuringRangeForTests();
     }
   });
+
+  test("text in an inline parent is measured in a clone of the box its lines are in", () => {
+    // A tilted card whose text sits in a `<span>`: the span's computed
+    // width is `auto`, so a clone of the span alone would be laid out in the
+    // body with nothing to wrap against, and its text would come back on one
+    // line. The clone has to be of the card, whose width the lines break at.
+    /** @type {Node[]} */
+    const measured = [];
+    const originalCreateRange = document.createRange;
+    resetMeasuringRangeForTests();
+    document.createRange = () =>
+      /** @type {Range} */ (
+        /** @type {unknown} */ ({
+          selectNodeContents: (/** @type {Node} */ node) => {
+            measured.push(node);
+          },
+          setStart: () => {},
+          setEnd: () => {},
+          getBoundingClientRect: () =>
+            /** @type {DOMRect} */ ({ left: 0, top: 0, right: 0, bottom: 0, width: 0, height: 0 }),
+          getClientRects: () => /** @type {DOMRectList} */ (/** @type {unknown} */ ([])),
+        })
+      );
+
+    const card = document.createElement("div");
+    card.className = "card";
+    card.style.width = "150px";
+    card.style.transform = "matrix(0.996, 0.087, -0.087, 0.996, 0, 0)";
+    card.appendChild(document.createElement("i"));
+    const label = document.createElement("span");
+    const textNode = document.createTextNode("a note long enough to wrap");
+    label.appendChild(textNode);
+    card.appendChild(label);
+    document.body.appendChild(card);
+    const mirror = createMirror();
+    mirror.adopt(card);
+    mirror.adopt(label);
+    mirror.adopt(textNode);
+
+    const childrenBefore = document.body.childElementCount;
+    try {
+      getTextLayout(textNode);
+      assert.equal(measured.length, 1);
+      const cloneText = measured[0];
+      assert.notEqual(cloneText, textNode);
+      assert.equal(cloneText.textContent, "a note long enough to wrap");
+      // The text is found again under a clone of the span…
+      const cloneLabel = /** @type {HTMLElement} */ (cloneText.parentNode);
+      assert.equal(cloneLabel.localName, "span");
+      // …which sits in a clone of the card, carrying the card's width.
+      const cloneCard = /** @type {HTMLElement} */ (cloneLabel.parentNode);
+      assert.notEqual(cloneCard, card);
+      assert.equal(cloneCard.className, "card");
+      assert.equal(cloneCard.style.width, "150px");
+      assert.equal(document.body.childElementCount, childrenBefore);
+    } finally {
+      card.remove();
+      document.createRange = originalCreateRange;
+      resetMeasuringRangeForTests();
+    }
+  });
 });
 
 describe("a panel measured through a scale", () => {

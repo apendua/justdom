@@ -3430,10 +3430,12 @@ function measureRevealLayout(text, range, frame, boundsRect, lines, offsets) {
  * Under a transform anywhere on the chain, the real tree's client rects are
  * screen-space bounds — a rotation would group lines by screen rows, which
  * is not where the browser broke them — so the measurement runs against a
- * detached untransformed clone of the parent instead. The text node is
- * always a direct child of its parent element, so finding it again in the
- * clone is an index lookup. The clone is never scrolled, so what it reports
- * is already the content-space position the live path computes.
+ * detached untransformed clone instead. What is cloned is the box the
+ * text's lines are laid out in: the parent, or, when the parent is inline,
+ * the nearest ancestor that is not, since only a box has a width the lines
+ * break against. The text is found again in the clone by its path of child
+ * indices. The clone is never scrolled, so what it reports is already the
+ * content-space position the live path computes.
  *
  * @param {Text} text
  * @returns {TextLayout}
@@ -3450,14 +3452,33 @@ function measureTextLayout(text) {
   if (!isTransformed(parentElement)) {
     return measureTextRects(text, parentElement, whiteSpace, true, revealed);
   }
-  const clone = createMeasurementClone(parentElement);
+  // An inline parent has no width of its own to copy: cloned alone, it
+  // would be laid out in the body with nothing to break its lines against,
+  // and every line would come back as one. The box its lines are laid out
+  // in is cloned instead, and the text found again in it by its path.
+  let lineBox = parentElement;
+  while (lineBox.parentElement && splitsAcrossLines(lineBox)) {
+    lineBox = lineBox.parentElement;
+  }
+  /** @type {number[]} */
+  const path = [];
+  for (let node = /** @type {Node} */ (text); node !== lineBox;) {
+    const parent = /** @type {Node} */ (node.parentNode);
+    path.push(Array.prototype.indexOf.call(parent.childNodes, node));
+    node = parent;
+  }
+  const clone = createMeasurementClone(lineBox);
   try {
-    const index = Array.prototype.indexOf.call(parentElement.childNodes, text);
-    const cloneText = clone.childNodes[index];
-    if (!(cloneText instanceof Text)) {
+    /** @type {Node | undefined} */
+    let cloneText = clone;
+    for (let i = path.length - 1; i >= 0 && cloneText; i--) {
+      cloneText = cloneText.childNodes[path[i]];
+    }
+    const cloneParent = cloneText?.parentElement;
+    if (!(cloneText instanceof Text) || !cloneParent) {
       throw new NoValueError("Text node not found in measurement clone");
     }
-    return measureTextRects(cloneText, clone, whiteSpace, false, revealed);
+    return measureTextRects(cloneText, cloneParent, whiteSpace, false, revealed);
   } finally {
     clone.remove();
   }

@@ -5,7 +5,7 @@ import { InteractionContext, InteractionManager } from "../interactions.js";
 import { shape } from "../svg/shape.js";
 import { getContentGroup } from "./contentGroup.js";
 import { box } from "./div.js";
-import { registerPanel } from "./dragAndDrop.js";
+import { dragAndDrop, registerPanel } from "./dragAndDrop.js";
 import { createMirror } from "./mirror.js";
 import { PORTAL_ATTRIBUTE } from "./portalRoot.js";
 import { movesList } from "./scroll.js";
@@ -376,6 +376,42 @@ describe("a press on nested clickable elements", () => {
     // Where a page sends a release whose target has gone: to what is left.
     assert.deepEqual(s.events, ["mousedown on span", "mouseup on button"]);
     assert.deepEqual(s.escaped, []);
+    s.teardown();
+  });
+
+  test("on an element that had gone, inside a live control, is silent", () => {
+    // Swallowed (see `isGone`): the page hears nothing of the press, so it
+    // is owed no release, not even by the button still around the row, and
+    // it is felt neither way, as a swallowed grip is not.
+    const outer = html("button", "cursor: pointer");
+    const inner = html("span", "cursor: pointer");
+    outer.appendChild(inner);
+    const { source, played } = recordingSource();
+    const s = nest({
+      outer,
+      inner,
+      build: (ctx, element) => box(ctx, /** @type {HTMLElement} */ (element)),
+      haptics: createHaptics({ flavor: "key" }),
+    });
+    const { heard, stop } = hearing(["pointerdown", "pointerup"]);
+
+    inner.remove();
+    s.press("selectstart", source);
+    assert.equal(outer.dataset.xrActive, undefined, "the button is not held");
+    s.press("selectend", source);
+    s.press("select", source);
+    stop();
+    assert.deepEqual(heard, []);
+    assert.deepEqual(s.events, [], "no mouseup on the button for a press it never heard");
+    assert.equal(played.length, 0, "felt neither closing nor opening");
+    assert.deepEqual(s.escaped, [], "and nothing of it leaves the panel");
+
+    // Silent to its end, even when the page puts the row back meanwhile.
+    s.press("selectstart", source);
+    outer.appendChild(inner);
+    s.press("selectend", source);
+    s.press("select", source);
+    assert.deepEqual(s.events, [], "no release and no click on the row put back");
     s.teardown();
   });
 
@@ -1896,6 +1932,38 @@ describe("a ray's pointer events", () => {
     stop();
     button.releasePointerCapture(pointerId);
     assert.deepEqual(heard, ["gotpointercapture #btn at 70,40 buttons 0"]);
+    hand.remove();
+    page.teardown();
+  });
+
+  test("after a drag and drop, a press swallowed inside a live control ends the drag's say", async () => {
+    const page = await mirrored((place) => {
+      scrollingRow(place, true);
+      const card = place("div", "card", [200, 20, 150, 100]);
+      card.style.cursor = "pointer";
+      place("span", "gone", [220, 40, 60, 40], card).style.cursor = "pointer";
+    });
+    const dnd = dragAndDrop(InteractionContext.set({}, page.manager));
+    const hand = rayHand(page.manager);
+    // The row dragged and dropped.
+    hand.aim(page.panel, 95, 100);
+    hand.trigger("selectstart");
+    hand.aim(page.panel, 95, 97);
+    hand.aim(page.panel, 95, 60);
+    hand.trigger("selectend");
+    await null;
+    assert.equal(dnd.didDrag(hand.controller), true, "the last press was a drag");
+    // Then a press on a span the page took out of the card, still drawn.
+    hand.aim(page.panel, 250, 60);
+    /** @type {HTMLElement} */ (page.root.querySelector("#gone")).remove();
+    const { heard, stop } = hearing(["pointerdown", "pointerup", "mousedown", "mouseup", "click"]);
+    hand.trigger("selectstart");
+    assert.equal(dnd.didDrag(hand.controller), false, "the swallowed press is the last press now");
+    hand.trigger("selectend");
+    stop();
+    // As on a hand that never dragged: nothing, by the rule a swallowed
+    // press follows, and not by what the drag before it left behind.
+    assert.deepEqual(heard, []);
     hand.remove();
     page.teardown();
   });

@@ -99,6 +99,13 @@ export function getControlRoot(element, object) {
  * stopped, so that it does not fall through to whatever is behind the row
  * either — and the gesture is not begun.
  *
+ * A swallowed press is silent to its end: the page hears no `pointerdown`,
+ * no `pointerup` and no click of it, and the hand feels neither its press
+ * nor its release. Not even from a control still around the element, which
+ * would otherwise hear a release it heard no press for. That differs from
+ * an element that goes during a press: the page heard that press, and the
+ * next control up sends its release.
+ *
  * `isConnected` rather than anything reactive, because it is asked from an
  * event handler, at the moment of the press, and the answer is a DOM fact
  * rather than a dependency.
@@ -1267,6 +1274,9 @@ const nextFlagged = /** @type {HTMLElement[]} */ ([]);
  * @property {Object3D[]} path
  * @property {Target | null} target A control or a list for the trigger, a
  *   control alone for the grip, which no list takes.
+ * @property {boolean} swallowed Whether the trigger's press landed on a
+ *   control that had gone, which keeps the whole press silent (see
+ *   `isGone`). Always false for the grip, whose swallow is kept in `grips`.
  */
 
 /**
@@ -1446,8 +1456,8 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
         hover: [],
         hovered: null,
         held: null,
-        select: { path: [], target: null },
-        squeeze: { path: [], target: null },
+        select: { path: [], target: null, swallowed: false },
+        squeeze: { path: [], target: null, swallowed: false },
         chain: [],
         hovering: [],
         active: [],
@@ -1485,6 +1495,7 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
   const begin = (press, object, controlsOnly) => {
     walk(object, press.path);
     press.target = innermost(press.path, controlsOnly) ?? null;
+    press.swallowed = false;
     return press.target;
   };
 
@@ -2150,7 +2161,11 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
         stopPropagation(e);
         return;
       }
+      // Silent to the page, its end included, but still the hand's last
+      // press, which ends the one before's say over `didDrag`.
       if (isGone(first.element)) {
+        select.swallowed = true;
+        dnd.begin(e.controller, first.element, first.object, false);
         stopPropagation(e);
         return;
       }
@@ -2194,7 +2209,8 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
       stopPropagation(e);
     },
     selectend(e) {
-      const { path, target: pressed } = pressOf(e, "select");
+      const press = pressOf(e, "select");
+      const { path, target: pressed } = press;
       if (!pressed) {
         return;
       }
@@ -2228,8 +2244,10 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
       // control up sends it on itself, which is where a page sends a
       // release whose target has gone. With none left, the press still
       // ends here. The scroll a press may have become ends with the
-      // controller's own release, whatever became of the control.
-      let sent = false;
+      // controller's own release, whatever became of the control. A press
+      // swallowed on a control that had gone is owed nothing: the page
+      // heard no press, and the controls around it hear no release.
+      let sent = press.swallowed;
       for (const object of path) {
         const target = targets.get(object);
         if (!target || target.list) {
@@ -2282,7 +2300,8 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
       stopPropagation(e);
     },
     select(e) {
-      const { path, target: pressed } = pressOf(e, "select");
+      const press = pressOf(e, "select");
+      const { path, target: pressed } = press;
       if (!pressed) {
         return;
       }
@@ -2301,6 +2320,7 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
       const first = innermost(path, true);
       if (
         !first ||
+        press.swallowed ||
         isGone(pressed.element) ||
         drags.didScroll(e.controller) ||
         dnd.didDrag(e.controller)

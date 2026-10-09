@@ -1,6 +1,10 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
+
+/**
+ * @import { Matrix2D, Rect } from "./geometry.js";
+ */
 import {
   aboutOrigin,
   apply,
@@ -14,6 +18,7 @@ import {
   toMatrix3,
   toMatrix4,
   transformPositions,
+  transformRect,
   translation,
   viewportMatrix,
 } from "./geometry.js";
@@ -74,6 +79,27 @@ describe("svg geometry", () => {
     assert.equal(parseCssMatrix("none"), null);
     assert.equal(parseCssMatrix(""), null);
     assert.equal(parseCssMatrix("matrix(1, 0, 0)"), null);
+  });
+
+  test("transformRect keeps a rect with no area empty, under any matrix", () => {
+    /** @type {Matrix2D} */
+    const turn = [0.866, 0.5, -0.5, 0.866, 0, 0];
+    const empty = (/** @type {Rect} */ r) => r.right <= r.left || r.bottom <= r.top;
+    // A line and an inverted rect, which `intersectRects` gives for two
+    // that share nothing.
+    assert.ok(empty(transformRect(turn, { left: 5, top: 2, right: 5, bottom: 7 })), "a line");
+    assert.ok(empty(transformRect(turn, { left: 9, top: 0, right: 3, bottom: 4 })), "inverted");
+    // A matrix that flattens the plane leaves no area either.
+    assert.ok(
+      empty(transformRect([0, 0.5, 0, 0.866, 0, 0], { left: 0, top: 0, right: 1, bottom: 1 })),
+      "flattened",
+    );
+    assert.deepEqual(transformRect(turn, { left: 0, top: 0, right: 0, bottom: 0 }), {
+      left: 0,
+      top: 0,
+      right: 0,
+      bottom: 0,
+    });
   });
 
   test("parseViewBox takes spaces or commas and refuses an empty box", () => {

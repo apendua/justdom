@@ -1129,6 +1129,44 @@ describe("clip-path", () => {
     s.teardown();
   });
 
+  test("a symbol's clip-path outside its viewport leaves nothing showing", () => {
+    // Right of the viewport the use gives the symbol, so the two share nothing.
+    const cp = clipPath([svg("rect", { x: "120", width: "30", height: "100" })]);
+    const symbol = svg(
+      "symbol",
+      { id: "clip-path-own-symbol-apart", "clip-path": url(cp), style: "overflow: hidden" },
+      [svg("rect", { width: "200", height: "100", fill: "red" })],
+    );
+    const use = svg("use", { href: "#clip-path-own-symbol-apart", width: "100", height: "100" });
+    const s = scene([svg("defs", {}, [cp, symbol]), use], [use]);
+    const [left, top, right, bottom] = clipBoxOf(meshesUnder(s.objects[0])[0]);
+    assert.ok(right <= left || bottom <= top, `${[left, top, right, bottom]} has area`);
+    s.teardown();
+  });
+
+  test("an objectBoundingBox clip on an element with a flat box, turned, leaves nothing", () => {
+    const cp = clipPath([svg("rect", { width: "1", height: "1" })], {
+      clipPathUnits: "objectBoundingBox",
+    });
+    const line = svg("line", {
+      x1: "10",
+      y1: "0",
+      x2: "10",
+      y2: "100",
+      stroke: "black",
+      "clip-path": url(cp),
+      // Turned by 30°, as computed.
+      style: "transform: matrix(0.866, 0.5, -0.5, 0.866, 0, 0)",
+    });
+    // A vertical line's box has no width.
+    /** @type {SVGGraphicsElement} */ (/** @type {unknown} */ (line)).getBBox = () =>
+      /** @type {DOMRect} */ ({ x: 10, y: 0, width: 0, height: 100 });
+    const s = scene([svg("defs", {}, [cp]), line], [line]);
+    const [left, top, right, bottom] = clipBoxOf(meshesUnder(s.objects[0])[0]);
+    assert.ok(right <= left || bottom <= top, `${[left, top, right, bottom]} has area`);
+    s.teardown();
+  });
+
   test("a marker's own clip-path clips its copies, in its box's frame", () => {
     const cp = clipPath([svg("rect", { x: "1", y: "0", width: "2", height: "1" })]);
     const marker = svg(

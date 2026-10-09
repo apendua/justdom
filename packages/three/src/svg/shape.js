@@ -31,7 +31,6 @@ import {
 import { findSvgElement, isSvgElement, isSvgRoot, SVG_NAMESPACE } from "../elements/plugins.js";
 import {
   aboutOrigin,
-  apply,
   IDENTITY,
   intersectRects,
   invert,
@@ -238,7 +237,8 @@ function readBBox(element) {
  * Under `userSpaceOnUse` a percentage is of the element's viewport; under
  * `objectBoundingBox` the units are its `getBBox`, and an element with none
  * is not clipped. A rect with no area clips everything away, as a browser's
- * empty clip does. The rect's `rx` and `ry` are not followed, so the
+ * empty clip does, and so does an `objectBoundingBox` clip on an element
+ * whose box has no width or height, which flattens the rect. The rect's `rx` and `ry` are not followed, so the
  * corners are square. A turn or a skew, here or anywhere above, clips to
  * the bounding box of the turned rect, as a viewport under a rotation does.
  *
@@ -302,15 +302,13 @@ export function readClipRect(element, style, instance) {
   const length = (name, axis) => parseLengthIn(readProperty(rectStyle, rect, name), of[axis], 0);
   const x = length("x", "width");
   const y = length("y", "height");
-  const width = length("width", "width");
-  const height = length("height", "height");
-  if (width <= 0 || height <= 0) {
-    // No corners to bound: under a turn the bounding box of a line has
-    // area, and an empty clip has none.
-    const [px, py] = apply(matrix, x, y);
-    return { left: px, top: py, right: px, bottom: py };
-  }
-  return transformRect(matrix, { left: x, top: y, right: x + width, bottom: y + height });
+  // One with no area, or flattened by `units`, stays empty (`transformRect`).
+  return transformRect(matrix, {
+    left: x,
+    top: y,
+    right: x + length("width", "width"),
+    bottom: y + length("height", "height"),
+  });
 }
 
 /**

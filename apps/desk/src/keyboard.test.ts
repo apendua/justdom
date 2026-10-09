@@ -170,4 +170,16 @@ describe("mountKeyboard", () => {
     expect(field.value).toBe("1");
     expect(onKey).not.toHaveBeenCalled();
   });
+
+  it("leaves a key a script aims at any element without focus to that element", () => {
+    const keys = board();
+    const button = document.createElement("button");
+    keys.parentElement!.append(button);
+    const onKey = vi.fn();
+    dispose = mountKeyboard(keys, { onKey });
+    const event = new KeyboardEvent("keydown", { key: " ", bubbles: true, cancelable: true });
+    button.dispatchEvent(event);
+    expect(onKey).not.toHaveBeenCalled();
+    expect(event.defaultPrevented).toBe(false);
+  });
 });

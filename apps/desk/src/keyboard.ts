@@ -155,9 +155,9 @@ export function mountKeyboard(keys: HTMLElement, { onKey }: KeyboardOptions) {
     // A real key goes to what has focus. A keydown aimed at an element
     // without it was dispatched there by a script, and is that element's:
     // in a session, the board freedom opens for a field types into it so.
-    // These caps are the monitor's there, and a cancel here would keep the
-    // character out of the field. The window and the document are no
-    // element, and a key aimed at them is still the monitor's.
+    // The caps are the monitor's, so they stay up, and cancelling the key
+    // would keep it out of the field. The window and the document are not
+    // elements, so a key aimed at either is still the monitor's.
     const target = event.target;
     if (target instanceof Element && target !== document.activeElement) {
       return;

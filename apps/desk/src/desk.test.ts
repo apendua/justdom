@@ -1,6 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { mountDesk } from "./desk.js";
 import { LOOKS, lookFromSearch } from "./looks.js";
+import photo from "../public/photo.svg?raw";
+
+/** The SVG files in `public/` a look's markup names, by the `src` it uses. */
+const PUBLIC_SVGS: Record<string, string> = { "photo.svg": photo };
 
 afterEach(() => {
   vi.useRealTimers();
@@ -49,5 +53,38 @@ describe("lookFromSearch", () => {
     expect(lookFromSearch("?look=ops&emulator").id).toBe("ops");
     expect(lookFromSearch("?look=nope").id).toBe("beige");
     expect(lookFromSearch("").id).toBe("beige");
+  });
+});
+
+describe("the photographs on the boards", () => {
+  /**
+   * The SVG behind each `<img>` a look shows, read from `public/` or from
+   * its data URL.
+   */
+  const photographs = LOOKS.flatMap((look) =>
+    [...new DOMParser().parseFromString(look.markup, "text/html").querySelectorAll("img")]
+      .map((img) => img.getAttribute("src") ?? "")
+      .filter((src) => src.endsWith(".svg") || src.startsWith("data:image/svg+xml"))
+      .map((src) => {
+        const svg = src.startsWith("data:")
+          ? decodeURIComponent(src.slice(src.indexOf(",") + 1))
+          : (PUBLIC_SVGS[src] ?? "");
+        return [`${look.name}: ${src.slice(0, 40)}`, svg] as const;
+      }),
+  );
+
+  it("are on the boards", () => {
+    expect(photographs.length).toBeGreaterThan(0);
+  });
+
+  it.each(photographs)("%s says how big it is", (_, svg) => {
+    // A session draws an `<img>` as a WebGL texture. An SVG with only a
+    // `viewBox` has no size of its own, and Chrome on a laptop refuses to
+    // upload one ("texSubImage2D: bad image data"), so the card shows no
+    // picture in a session while the page shows it.
+    const root = new DOMParser().parseFromString(svg, "image/svg+xml").documentElement;
+    expect(root.localName).toBe("svg");
+    expect(Number(root.getAttribute("width"))).toBeGreaterThan(0);
+    expect(Number(root.getAttribute("height"))).toBeGreaterThan(0);
   });
 });

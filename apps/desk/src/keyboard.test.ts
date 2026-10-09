@@ -75,9 +75,11 @@ describe("mountKeyboard", () => {
     keys.querySelector<HTMLElement>('[data-key="Backspace"]')!.click();
     expect(field.value).toBe("a ");
     expect(inputs).toHaveBeenCalledTimes(4);
-    // A real key in a field is the browser's to type.
+    // A real key in a field is the browser's to type, and the cap goes down
+    // with it.
     window.dispatchEvent(new KeyboardEvent("keydown", { key: "x" }));
     expect(onKey).not.toHaveBeenCalled();
+    expect(keys.querySelector('[data-key="x"]')!.hasAttribute("data-down")).toBe(true);
   });
 
   it("types on the monitor when a checkbox has focus, and leaves the box alone", () => {
@@ -136,18 +138,13 @@ describe("mountKeyboard", () => {
     expect(onKey).toHaveBeenCalledWith("p");
     expect(event.defaultPrevented).toBe(false);
   });
-});
 
-describe("a field a session's keyboard types into", () => {
-  let dispose = () => {};
-  afterEach(() => dispose());
-
-  it("takes its keys, and neither the monitor nor the desk's caps see them", () => {
+  it("leaves a field a session's keyboard types into to that keyboard", () => {
     // In a session the note field has no focus: freedom's own board types
     // into it, dispatching each key's keydown on the field, and the keydown
-    // bubbles up to the window the desk's keyboard listens on.
-    document.body.innerHTML = `<div data-keys></div><input id="field" /><select></select>`;
-    const keys = document.querySelector<HTMLElement>("[data-keys]")!;
+    // bubbles up to the window this keyboard listens on.
+    const keys = board();
+    keys.parentElement!.append(document.createElement("select"));
     const onKey = vi.fn();
     dispose = mountKeyboard(keys, { onKey });
     // Something else has focus, as the Look menu may.
@@ -159,5 +156,18 @@ describe("a field a session's keyboard types into", () => {
     expect(field.value).toBe("hi ");
     expect(onKey).not.toHaveBeenCalled();
     expect(keys.querySelector("[data-down]")).toBeNull();
+  });
+
+  it("leaves a number field a session's keyboard types into to that keyboard", () => {
+    const keys = board();
+    const field = document.querySelector<HTMLInputElement>("#field")!;
+    field.type = "number";
+    const onKey = vi.fn();
+    dispose = mountKeyboard(keys, { onKey });
+    for (const key of ["1", "2", "Backspace"]) {
+      typeIntoInput(field, { key });
+    }
+    expect(field.value).toBe("1");
+    expect(onKey).not.toHaveBeenCalled();
   });
 });

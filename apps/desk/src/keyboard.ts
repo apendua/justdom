@@ -74,7 +74,11 @@ const OWNED_KEYS = new Set([" ", "Backspace", "Tab", "Enter"]);
 const PRESS_MS = 110;
 
 export interface KeyboardOptions {
-  /** Where a key goes when no text field on the page has focus. */
+  /**
+   * Where a key goes when no text field on the page has focus, unless a
+   * script typed it into an element without focus, as a session's keyboard
+   * does.
+   */
   onKey: (key: string) => void;
 }
 
@@ -86,9 +90,9 @@ export interface KeyboardOptions {
  * for a moment (`data-down`, a `transform` in the stylesheet) and types into
  * the text field that has focus, if one does, and into `onKey` otherwise.
  * Only the page has focus to give: in a session a field is typed into with
- * the keyboard freedom opens for it, and every key here goes to `onKey`.
- * What that keyboard types is the field's alone, and does not press a cap
- * here or reach `onKey`.
+ * the keyboard freedom opens for it, and every cap pressed here goes to
+ * `onKey`. What that keyboard types is the field's alone, and does not press
+ * a cap here or reach `onKey`.
  */
 export function mountKeyboard(keys: HTMLElement, { onKey }: KeyboardOptions) {
   for (const row of ROWS) {
@@ -148,11 +152,14 @@ export function mountKeyboard(keys: HTMLElement, { onKey }: KeyboardOptions) {
       pressDown(event.key);
       return; // the browser types into it
     }
-    // A field without focus is typed into in a session, by the board freedom
-    // opens for it, which dispatches each key's keydown on the field. The
-    // key is the field's: these caps are the monitor's there, and a cancel
-    // here would keep the character out of the field.
-    if (isTextField(event.target)) {
+    // A real key goes to what has focus. A keydown aimed at an element
+    // without it was dispatched there by a script, and is that element's:
+    // in a session, the board freedom opens for a field types into it so.
+    // These caps are the monitor's there, and a cancel here would keep the
+    // character out of the field. The window and the document are no
+    // element, and a key aimed at them is still the monitor's.
+    const target = event.target;
+    if (target instanceof Element && target !== document.activeElement) {
       return;
     }
     pressDown(event.key);
@@ -187,11 +194,7 @@ const TEXT_TYPES = new Set(["text", "search", "url", "tel", "email", "password"]
  */
 function focusedField(): HTMLInputElement | null {
   const active = document.activeElement;
-  return isTextField(active) ? active : null;
-}
-
-function isTextField(node: EventTarget | null): node is HTMLInputElement {
-  return node instanceof HTMLInputElement && TEXT_TYPES.has(node.type);
+  return active instanceof HTMLInputElement && TEXT_TYPES.has(active.type) ? active : null;
 }
 
 /** Whether something other than the page itself has focus: a select, a checkbox, a button. */

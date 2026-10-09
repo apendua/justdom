@@ -1968,6 +1968,33 @@ describe("a ray's pointer events", () => {
     page.teardown();
   });
 
+  test("after a drag and drop, a press swallowed on a gone list ends the drag's say", async () => {
+    const page = await mirrored((place) => {
+      scrollingRow(place, true);
+      // A second list with a gap below its row, where a press is the list's.
+      const list = place("div", "other", [200, 20, 150, 120]);
+      list.style.overflow = "hidden";
+      describeScroller(list, { client: 120, scroll: 400 });
+      place("div", "inside", [200, 20, 150, 60], list).style.cursor = "pointer";
+    });
+    const dnd = dragAndDrop(InteractionContext.set({}, page.manager));
+    const hand = rayHand(page.manager);
+    hand.aim(page.panel, 95, 100);
+    hand.trigger("selectstart");
+    hand.aim(page.panel, 95, 97);
+    hand.aim(page.panel, 95, 60);
+    hand.trigger("selectend");
+    await null;
+    assert.equal(dnd.didDrag(hand.controller), true, "the last press was a drag");
+    hand.aim(page.panel, 275, 110);
+    /** @type {HTMLElement} */ (page.root.querySelector("#other")).remove();
+    hand.trigger("selectstart");
+    assert.equal(dnd.didDrag(hand.controller), false, "the swallowed press is the last press now");
+    hand.trigger("selectend");
+    hand.remove();
+    page.teardown();
+  });
+
   test("after a swallowed press, leave where the page last heard the pointer, not where the last release said", async () => {
     const page = await mirrored((place) => {
       drawing(place, [20, 20, 100, 40]);

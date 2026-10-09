@@ -187,6 +187,7 @@ describe("svg style reading", () => {
         readShapeMarkup(rect.style, rect.el, viewport),
         '<rect x="3" y="0" width="15" height="10" rx="2" ry="2"/>',
       );
+      assert.equal(reads, 1, "four percentages read the viewport once");
       // A radius is of the diagonal over root two, 50 for 10 by 70.
       const circle = element("circle", { cx: "50%", cy: "50%", r: "10%" });
       assert.equal(

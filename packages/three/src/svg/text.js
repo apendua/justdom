@@ -289,12 +289,12 @@ function measureRuns(element, found, viewport, fonts, layoutStyle) {
   }
   host.style.setProperty("overflow", "visible", "important");
   const clone = createMeasurementClone(/** @type {SVGElement} */ (element), host);
-  FONT_PROPERTIES.forEach((name, i) => {
-    if (fonts[i]) {
-      clone.style.setProperty(name, fonts[i]);
-    }
-  });
   try {
+    FONT_PROPERTIES.forEach((name, i) => {
+      if (fonts[i]) {
+        clone.style.setProperty(name, fonts[i]);
+      }
+    });
     const frame = frameFor(host);
     const origin = measureClientRect(host, frame);
     return withMeasuringRange((range) => {

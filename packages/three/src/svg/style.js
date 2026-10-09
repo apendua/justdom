@@ -53,47 +53,61 @@ export function parseLength(value, fallback = 0) {
 
 /**
  * A length in user units that may be a percentage of `reference`: the
- * viewport's width or height, or for a length on neither axis, a radius,
- * its diagonal over root two (`viewportReference`). Anything else reads as
- * `parseLength` reads it.
+ * viewport's width or height, or for a length on neither axis its diagonal
+ * over root two (`viewportReferences`). Anything else reads as `parseLength`
+ * reads it.
  *
  * @param {string} value
- * @param {number | undefined} reference What 100% is, or undefined when there
- *   is no viewport to measure against, which reads a percentage as the
- *   fallback.
+ * @param {number | undefined | (() => number | undefined)} reference What
+ *   100% is, or undefined when there is no viewport to measure against,
+ *   which reads a percentage as the fallback. A function is called only for
+ *   a percentage, so a length that is none reads no viewport.
  * @param {number} [fallback]
  * @returns {number}
  */
 export function parseLengthIn(value, reference, fallback = 0) {
   const trimmed = value.trim();
-  if (trimmed.endsWith("%") && reference !== undefined) {
-    const percent = Number.parseFloat(trimmed);
-    return Number.isFinite(percent) ? (reference * percent) / 100 : fallback;
+  if (!trimmed.endsWith("%")) {
+    return parseLength(trimmed, fallback);
   }
-  return parseLength(trimmed, fallback);
+  const base = typeof reference === "function" ? reference() : reference;
+  const percent = Number.parseFloat(trimmed);
+  return base !== undefined && Number.isFinite(percent) ? (base * percent) / 100 : fallback;
 }
 
 /**
  * What a percentage length is of: the viewport's width for a length along x,
- * its height along y, and for one along neither, such as a circle's `r`, its
- * diagonal over root two, as SVG defines it.
+ * its height along y, and for one along neither, such as a circle's `r` or a
+ * `stroke-width`, its diagonal over root two, as SVG defines it.
  *
  * @typedef {"width" | "height" | "diagonal"} ViewportAxis
  */
 
 /**
- * @param {{ width: number, height: number } | null} viewport
- * @param {ViewportAxis} axis
- * @returns {number | undefined} Undefined with no viewport, which
- *   `parseLengthIn` reads a percentage against as the fallback.
+ * The three references a percentage can be of, for `parseLengthIn`, over a
+ * viewport read at most once, on the first percentage that asks for it.
+ *
+ * @param {() => { width: number, height: number } | null} viewport
+ * @returns {Record<ViewportAxis, () => number | undefined>} Each undefined
+ *   with no viewport.
  */
-function viewportReference(viewport, axis) {
-  if (!viewport) {
-    return undefined;
-  }
-  return axis === "diagonal"
-    ? Math.hypot(viewport.width, viewport.height) / Math.SQRT2
-    : viewport[axis];
+export function viewportReferences(viewport) {
+  /** @type {{ width: number, height: number } | null | undefined} */
+  let size;
+  const read = () => {
+    if (size === undefined) {
+      size = viewport();
+    }
+    return size;
+  };
+  return {
+    width: () => read()?.width,
+    height: () => read()?.height,
+    diagonal: () => {
+      const current = read();
+      return current ? Math.hypot(current.width, current.height) / Math.SQRT2 : undefined;
+    },
+  };
 }
 
 /**
@@ -247,14 +261,17 @@ export function parseFillRule(value) {
  * `4,2`; both are read.
  *
  * @param {string} value
+ * @param {() => number | undefined} [reference] What a percentage dash is
+ *   of, the viewport's diagonal over root two; without one a percentage
+ *   reads as no dash.
  * @returns {number[] | null}
  */
-export function parseDashArray(value) {
+export function parseDashArray(value, reference) {
   const trimmed = value.trim();
   if (!trimmed || trimmed === "none") {
     return null;
   }
-  const values = trimmed.split(/[\s,]+/).map((part) => parseLength(part, Number.NaN));
+  const values = trimmed.split(/[\s,]+/).map((part) => parseLengthIn(part, reference, Number.NaN));
   return normalizeDashArray(values);
 }
 
@@ -304,8 +321,8 @@ function escapeAttribute(value) {
  * computed style and its cached attribute reads alike.
  *
  * A percentage, which the computed style keeps as one, is a share of the
- * viewport the shape is in. That is read only for a length that is a
- * percentage, so a shape with none does not depend on the viewport's size.
+ * viewport the shape is in. The viewport is read once, and only for a length
+ * that is a percentage, so a shape with none does not depend on its size.
  *
  * @param {CSSStyleDeclaration} style
  * @param {Element} element
@@ -314,16 +331,14 @@ function escapeAttribute(value) {
  * @returns {string | null}
  */
 export function readShapeMarkup(style, element, viewport) {
+  const of = viewportReferences(viewport);
   /**
    * @param {string} name
    * @param {ViewportAxis} axis What a percentage of it is of.
    * @param {number} [fallback]
    */
-  const length = (name, axis, fallback = 0) => {
-    const value = readProperty(style, element, name);
-    const reference = value.trim().endsWith("%") ? viewportReference(viewport(), axis) : undefined;
-    return parseLengthIn(value, reference, fallback);
-  };
+  const length = (name, axis, fallback = 0) =>
+    parseLengthIn(readProperty(style, element, name), of[axis], fallback);
   /**
    * @param {Record<string, number | string>} attributes
    */

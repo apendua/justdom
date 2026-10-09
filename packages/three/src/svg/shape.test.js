@@ -465,6 +465,33 @@ describe("svg shape", () => {
     line.teardown();
   });
 
+  test("a percentage stroke width and dash are shares of the viewport's diagonal", () => {
+    // A 100 by 100 viewBox: its diagonal over root two is 100, so 2% is 2
+    // units and 10% is 10.
+    const s = setup(
+      "line",
+      {
+        x1: "0",
+        y1: "50",
+        x2: "100",
+        y2: "50",
+        stroke: "black",
+        "stroke-width": "2%",
+        "stroke-dasharray": "10%",
+        "stroke-dashoffset": "5%",
+      },
+      { viewBox: "0 0 100 100" },
+    );
+    const stroke = s.meshes.find((mesh) => mesh.geometry.getAttribute("position").count > 0);
+    assert.ok(stroke);
+    assertBounds(bounds(stroke), { left: 0, top: 49, right: 100, bottom: 51 });
+    // Ten-unit dashes and gaps, shifted back by five: half a dash at 0 to
+    // 5, whole ones from 15, 35, 55 and 75, and half of one from 95. Each
+    // dash is a quad of two triangles.
+    assert.equal(stroke.geometry.getAttribute("position").count, 6 * 6);
+    s.teardown();
+  });
+
   test("the colour follows the style without rebuilding the geometry", () => {
     const s = setup("rect", { x: "0", y: "0", width: "10", height: "10", fill: "red" });
     const geometry = s.meshes[0].geometry;

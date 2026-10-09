@@ -3032,7 +3032,9 @@ export function getCheckedCached(element) {
  * The clone is appended to the body, or, given a `host`, to the host, which
  * is appended to the body in its place and parked instead: an SVG `<text>`
  * is laid out only inside an `<svg>` (`measureRuns` in `svg/text.js`). The
- * caller removes what was appended, the host if it gave one.
+ * clone's own `visibility` hides it either way, since the style copied onto
+ * it says `visible`; what is parked is only moved off-screen. The caller
+ * removes what was appended, the host if it gave one.
  *
  * @template {HTMLElement | SVGElement} T
  * @param {T} element
@@ -3055,7 +3057,6 @@ export function createMeasurementClone(element, host = null) {
   parked.style.setProperty("position", "absolute", "important");
   parked.style.setProperty("top", "0", "important");
   parked.style.setProperty("left", "-99999px", "important");
-  parked.style.setProperty("visibility", "hidden", "important");
   if (host) {
     host.appendChild(clone);
   }

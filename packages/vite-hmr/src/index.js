@@ -11,6 +11,7 @@ import {
   ReactiveMap,
   ReactiveSet,
   reconfigure,
+  reshape,
   Signal,
   Stream,
   Subject,
@@ -57,19 +58,27 @@ import {
  *   previous module's subscription before taking the new one.
  * - **A `volatileStore`** — a theme, a palette, layout metrics: a store
  *   whose contents are written in source rather than by the running program
- *   — is the one thing both kept and followed. The object is
- *   kept, so the module's own code and its importers go on sharing it, and
- *   `reconfigure`d with the re-evaluated definition, so the readers of the
- *   keys that changed re-run and nobody else does. Which is
- *   what a theme wants: an edit to one colour reaches the things wearing
- *   that colour, and nothing else moves.
- * - **State** — a `Signal`, a `store`, a `ReactiveMap` or `ReactiveSet`, a
- *   `Subject` or `Emitter`, an `UpdateChannel`, a context property — is
- *   *kept*. What such an export holds is what the running application has
- *   put there, and a fresh instance would throw that away; so the one the
- *   first evaluation built is what every later evaluation exports, and the
- *   instance the re-evaluated module built is dropped unused. The price is
- *   that an edit to the initial value does not show until a full reload.
+ *   — is kept and followed in full. The object is kept, so the module's own
+ *   code and its importers go on sharing it, and `reconfigure`d with the
+ *   re-evaluated definition, values included, so the readers of the keys
+ *   that changed re-run and nobody else does. Which is what a theme wants:
+ *   an edit to one colour reaches the things wearing that colour, and
+ *   nothing else moves.
+ * - **A `store`** is kept and followed in shape. What it holds is what the
+ *   running application has put there, so the object is kept and
+ *   `reshape`d with the re-evaluated definition: it takes the definition's
+ *   getters, setters and keys, and keeps the values of the data keys both
+ *   have, so a getter added or edited in source takes effect and what was
+ *   written stays. The price is that an edit to a data key's initial value
+ *   does not show until a full reload.
+ * - **State** — a `Signal`, a `ReactiveMap` or `ReactiveSet`, a `Subject` or
+ *   `Emitter`, an `UpdateChannel`, a context property — is *kept*. What such
+ *   an export holds is what the running application has put there, and a
+ *   fresh instance would throw that away; so the one the first evaluation
+ *   built is what every later evaluation exports, and the instance the
+ *   re-evaluated module built is dropped unused. It has no shape to follow,
+ *   so the price is that an edit to the initial value does not show until a
+ *   full reload.
  * - **Anything else** cannot be followed. It is handed back untouched and
  *   remembered; a re-evaluation that registers the identical value (a
  *   primitive constant, an already-wrapped export re-exported under another
@@ -405,7 +414,8 @@ function createEntry(kind, value) {
     return { kind, shape: "", held: null, exported: value };
   }
   if (kind === "state") {
-    // Kept, not followed: the instance is the state.
+    // Kept: the instance is the state. A store is also followed in shape, by
+    // being reshaped with the new definition: see `commit`.
     return { kind, shape: stateShapeOf(value) ?? "", held: null, exported: value };
   }
   if (kind === "constants") {
@@ -465,7 +475,11 @@ export function $hmr(hot) {
       }
       if (entry.kind === kind && kind === "state" && entry.shape === stateShapeOf(value)) {
         // The state the application has been writing to, kept; the instance
-        // this evaluation just built goes unused.
+        // this evaluation just built goes unused, apart from a store's shape,
+        // which the kept one takes at `commit`.
+        if (entry.shape === "store") {
+          session.pending.set(entry, value);
+        }
         return /** @type {T} */ (entry.exported);
       }
       if (entry.kind === kind && Object.is(entry.exported, value)) {
@@ -495,10 +509,14 @@ export function $hmr(hot) {
       for (const [entry, value] of pending) {
         if (entry.held) {
           entry.held.set(value);
-        } else {
+        } else if (entry.kind === "constants") {
           // A `volatileStore`: the kept object takes the new definition, and
           // only the readers of what changed hear.
           reconfigure(/** @type {any} */ (entry.exported), /** @type {object} */ (value));
+        } else {
+          // A `store`: the kept object takes the definition's getters, setters
+          // and keys, and keeps what the program wrote to the keys both have.
+          reshape(/** @type {any} */ (entry.exported), /** @type {object} */ (value));
         }
       }
     });

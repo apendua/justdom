@@ -60,6 +60,7 @@ export {
   isVolatile,
   reconfigure,
   replace,
+  reshape,
   volatileStore,
 } from "./store.js";
 export { default as selector, arraySelector } from "./selector.js";

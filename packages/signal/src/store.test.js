@@ -4,7 +4,15 @@ import { Effect } from "./index.js";
 import { set } from "./operators.js";
 import { NoValueError } from "./core.js";
 import selector from "./selector.js";
-import store, { emit, isStore, isVolatile, reconfigure, replace, volatileStore } from "./store.js";
+import store, {
+  emit,
+  isStore,
+  isVolatile,
+  reconfigure,
+  replace,
+  reshape,
+  volatileStore,
+} from "./store.js";
 
 test("observes value", () => {
   const state = store({ value: 1 });
@@ -337,6 +345,114 @@ test("reconfigure() with the same definition re-runs nothing", () => {
 test("reconfigure() takes a store", () => {
   // @ts-expect-error A plain object is not a store, which the type says.
   assert.throws(() => reconfigure({}, {}), /takes a store/);
+});
+
+test("reshape() keeps what was written and takes the definition's shape", () => {
+  const kept = store(/** @type {{ x: number, y?: number }} */ ({ x: 1, y: 2 }));
+  kept.x = 5;
+  const definition = {
+    x: 1,
+    z: 3,
+    get sum() {
+      return this.x + this.z;
+    },
+  };
+  reshape(kept, definition);
+  const shaped = /** @type {{ x: number, z: number, readonly sum: number }} */ (
+    /** @type {unknown} */ (kept)
+  );
+  assert.strictEqual(shaped.x, 5, "a data key both have keeps what was written");
+  assert.strictEqual("y" in kept, false, "a key the definition no longer has goes");
+  assert.strictEqual(shaped.z, 3, "a key the definition adds takes its value");
+  assert.strictEqual(shaped.sum, 8, "a getter the definition adds reads the kept value");
+});
+
+test("reshape() lets the definition win where the shape changes", () => {
+  const kept = /** @type {any} */ (
+    store({
+      a: 1,
+      b: { n: 1 },
+      get c() {
+        return 1;
+      },
+      d: 4,
+    })
+  );
+  kept.a = 9;
+  kept.b.n = 7;
+  kept.d = 8;
+  reshape(kept, {
+    a: { n: 1 },
+    b: 2,
+    c: 3,
+    get d() {
+      return 5;
+    },
+  });
+  assert.ok(isStore(kept.a), "a value that becomes a plain object takes the definition's");
+  assert.deepStrictEqual({ ...kept.a }, { n: 1 });
+  assert.strictEqual(kept.b, 2, "a store that becomes a value takes the definition's");
+  assert.strictEqual(kept.c, 3, "a getter that becomes a data key takes the definition's value");
+  assert.strictEqual(kept.d, 5, "a data key that becomes a getter reads the getter");
+  assert.strictEqual(Object.getOwnPropertyDescriptor(kept, "d")?.value, undefined);
+});
+
+test("reshape() reshapes a nested store in place", () => {
+  const kept = /** @type {any} */ (store({ layout: { width: 1, height: 2 } }));
+  const nested = kept.layout;
+  kept.layout.width = 10;
+  const layout = {
+    width: 1,
+    depth: 3,
+    get area() {
+      return this.width * this.depth;
+    },
+  };
+  reshape(kept, { layout });
+  assert.strictEqual(kept.layout, nested, "the nested store is the same object");
+  assert.strictEqual(kept.layout.width, 10, "what was written to it stays");
+  assert.strictEqual("height" in kept.layout, false, "a key gone from the definition goes");
+  assert.strictEqual(kept.layout.depth, 3);
+  assert.strictEqual(kept.layout.area, 30);
+});
+
+test("reshape() re-runs no reader of a kept value", () => {
+  const kept = store({ x: 1, y: 2 });
+  kept.x = 5;
+  /** @type {number[]} */
+  const xs = [];
+  /** @type {number[]} */
+  const ys = [];
+  new Effect(() => {
+    xs.push(kept.x);
+  });
+  new Effect(() => {
+    ys.push(kept.y);
+  });
+  reshape(kept, {
+    x: 1,
+    get y() {
+      return 3;
+    },
+  });
+  assert.deepStrictEqual(xs, [5], "the reader of the kept key did not run");
+  assert.deepStrictEqual(ys, [2, 3], "the reader of the key that gained a getter did");
+});
+
+test("reconfigure() takes the definition's value where reshape() keeps the store's", () => {
+  const theme = volatileStore({ accent: "amber" });
+  theme.accent = "ivory";
+  reconfigure(theme, { accent: "amber" });
+  assert.strictEqual(theme.accent, "amber");
+  const settings = store({ accent: "amber" });
+  settings.accent = "ivory";
+  reshape(settings, { accent: "amber" });
+  assert.strictEqual(settings.accent, "ivory");
+});
+
+test("reshape() takes a store", () => {
+  // @ts-expect-error A plain object is not a store, which the type says.
+  assert.throws(() => reshape({}, {}), /reshape\(\) takes a store/);
 });
 
 test("a data key turned into a getter lets go of its value", () => {

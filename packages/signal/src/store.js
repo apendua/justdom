@@ -19,11 +19,11 @@ import { isPlainObject } from "./util.js";
  * @property {Map<PropertyKey, (value: unknown) => void>} setters
  * @property {Map<PropertyKey, Derived<unknown>>} derived
  * @property {Signal<number> | undefined} definition Bumped when
- *   `reconfigure` replaces a getter with another. Every getter's `Derived`
- *   of this store reads it, so each recomputes and its readers re-run only
- *   if its value changed by `Object.is`. It is one per store, not one for
- *   all, so that a reload reaches no other store. Made with the store's
- *   first getter `Derived`.
+ *   `reconfigure` or `reshape` replaces a getter with another. Every
+ *   getter's `Derived` of this store reads it, so each recomputes and its
+ *   readers re-run only if its value changed by `Object.is`. It is one per
+ *   store, not one for all, so that a reload reaches no other store. Made
+ *   with the store's first getter `Derived`.
  * @property {(key: PropertyKey) => void} announce
  * @property {symbol} ownKeys The key the key set's readers depend on.
  * @property {boolean} volatile Whether `volatileStore` made it, so that a
@@ -137,7 +137,7 @@ function bump(version) {
  * and assigned to `oldValue` as any write is: through `oldValue`'s setter
  * where the key has one; to nothing where the key has a getter and no
  * setter; and to the key itself otherwise. `oldValue`'s getters and setters
- * stay as they are, which only `reconfigure` changes.
+ * stay as they are, which only `reconfigure` and `reshape` change.
  *
  * @param {Record<PropertyKey, unknown>} oldValue
  * @param {Record<PropertyKey, unknown>} newValue
@@ -337,8 +337,8 @@ function store(data, operators = []) {
     deleteProperty(_, key) {
       if (getters.has(key) || setters.has(key)) {
         // A key with a getter or a setter stays for the store's life, since
-        // only `reconfigure` changes those. The delete does nothing, as on a
-        // non-configurable property outside strict mode.
+        // only `reconfigure` and `reshape` change those. The delete does
+        // nothing, as on a non-configurable property outside strict mode.
         return true;
       }
       delete state[key];
@@ -370,19 +370,22 @@ function store(data, operators = []) {
  * A store whose contents come from *source* rather than from the running
  * program — a theme, a palette, layout metrics.
  *
- * An ordinary `store` is state, and state is what a hot reload has to keep:
- * throwing it away would lose the very thing hot reload exists to preserve.
- * Values written in source are the other case. Keeping them across a reload
- * means keeping the ones just edited out of the file, which is the opposite
- * of what the edit asked for.
+ * An ordinary `store` is state, and what the program wrote to it is what a
+ * hot reload has to keep: throwing it away would lose the very thing hot
+ * reload exists to preserve. So a reload `reshape`s it: it takes the
+ * re-evaluated definition's getters, setters and keys, and keeps the values
+ * of the data keys both have. Values written in source are the other case.
+ * Keeping them across a reload means keeping the ones just edited out of the
+ * file, which is the opposite of what the edit asked for.
  *
  * So this is a store in every other respect — the same proxy, the same
  * per-key dependencies, the same nesting — that `@apendua/vite-hmr` treats
- * differently on a reload: it keeps the object, so the module's own code and
- * its importers go on sharing it, and `reconfigure`s it with the re-evaluated
- * definition. The readers of the keys that changed re-run, and nobody else
- * does. A getter has changed when its value differs by `Object.is`, so one
- * that builds a new object on each call re-runs its readers on every reload.
+ * differently on a reload: it keeps the object, as it keeps every store, so
+ * the module's own code and its importers go on sharing it, and
+ * `reconfigure`s it with the re-evaluated definition, values included. The
+ * readers of the keys that changed re-run, and nobody else does. A getter
+ * has changed when its value differs by `Object.is`, so one that builds a
+ * new object on each call re-runs its readers on every reload.
  *
  * Which leaves one thing to get right at the call site: a value has to be
  * *read* inside a computation to follow an edit. A read in a `set({ get
@@ -439,13 +442,53 @@ export function volatileStore(data, operators = []) {
  * @returns {void}
  */
 export function reconfigure(target, definition) {
+  configure(target, definition, false, "reconfigure");
+}
+
+/**
+ * Give `target` the shape `definition` defines and keep what the program
+ * wrote to it. Its getters and setters are the definition's; a key the
+ * definition does not have goes; a key it adds takes the definition's value;
+ * and a data key both have keeps the value the store holds now, since the
+ * definition's is the initial one, which the store has moved on from. A
+ * nested store is reshaped the same way with the plain object at its key.
+ * Where one side has a store or a plain object and the other does not, the
+ * definition wins, as a change of shape. So does a data key that gains an
+ * accessor, which lets go of its value, and an accessor key that becomes a
+ * data key, which held nothing.
+ *
+ * This is the hot reload of an ordinary `store`, whose contents are state:
+ * what the program wrote stays, and a getter added or edited in source takes
+ * effect. `reconfigure` is the hot reload of a `volatileStore`, whose
+ * contents are source, and takes the definition's values too. The readers
+ * that re-run are the same for both: those of the keys that changed.
+ *
+ * @template {IEmitter<Record<any, any>>} T
+ * @param {T} target A store.
+ * @param {object} definition
+ * @returns {void}
+ */
+export function reshape(target, definition) {
+  configure(target, definition, true, "reshape");
+}
+
+/**
+ * What `reconfigure` and `reshape` share.
+ *
+ * @param {object} target
+ * @param {object} definition
+ * @param {boolean} keep Whether a data key both have keeps the store's value.
+ * @param {string} caller The function to name in the error.
+ * @returns {void}
+ */
+function configure(target, definition, keep, caller) {
   const internals = internalsOf(target);
   if (!internals) {
-    throw new Error("reconfigure() takes a store");
+    throw new Error(`${caller}() takes a store`);
   }
   const descriptors = describe(definition);
   batch(() => {
-    reconfigureWith(internals, descriptors);
+    reconfigureWith(internals, descriptors, keep);
   });
 }
 
@@ -506,10 +549,14 @@ function defineAccessors(getters, setters, descriptors) {
 /**
  * @param {Internals} internals
  * @param {Record<PropertyKey, PropertyDescriptor>} descriptors
+ * @param {boolean} keep Whether a data key both have keeps the store's value,
+ *   as `reshape` has it, rather than take the definition's, as `reconfigure`
+ *   has it.
  */
-function reconfigureWith(internals, descriptors) {
+function reconfigureWith(internals, descriptors, keep) {
   const { state, getters, setters, derived, announce, ownKeys } = internals;
   const previous = new Map(getters);
+  const previousSetters = new Set(setters.keys());
   getters.clear();
   setters.clear();
   defineAccessors(getters, setters, descriptors);
@@ -552,14 +599,21 @@ function reconfigureWith(internals, descriptors) {
       continue;
     }
     const value = descriptor.value;
+    const added = !Object.hasOwn(state, key);
     const old = state[key];
     const nested = internalsOf(old);
-    if (nested && isPlainObjectNoComputation(value)) {
-      reconfigureWith(nested, describe(value));
+    const plain = isPlainObjectNoComputation(value);
+    if (nested && plain) {
+      reconfigureWith(nested, describe(value), keep);
       continue;
     }
-    const next = isPlainObjectNoComputation(value) ? store(value) : value;
-    const added = !Object.hasOwn(state, key);
+    if (keep && !added && !nested && !plain && !previous.has(key) && !previousSetters.has(key)) {
+      // A data key the store already had keeps what the program wrote to it.
+      // A key that held a store, or gains one, takes the definition's side as
+      // a change of shape, and a key that had an accessor held nothing.
+      continue;
+    }
+    const next = plain ? store(value) : value;
     if (!added && Object.is(old, next)) {
       continue;
     }

@@ -178,7 +178,8 @@ and throws rather than spinning.
   out to want, and `use()` no longer takes a callback at all.
 - `store()` — a reactive `Proxy` over plain objects/arrays, with per-key dependency tracking. A
   getter with no setter is readonly. `replace()` assigns values through the store; `reconfigure()`
-  swaps in a new definition, which is what a hot reload does.
+  swaps in a new definition, which is the hot reload of a `volatileStore`; `reshape()` swaps in its
+  shape and keeps what was written, which is the hot reload of a `store`.
 - `selector()` / `arraySelector()` — structural, read-only reactive views.
 - `ReactiveMap` / `ReactiveSet` — reactive wrappers around the native collections.
 - `createProperty()` — a `WeakKey`-chained context mechanism (dependency injection without a

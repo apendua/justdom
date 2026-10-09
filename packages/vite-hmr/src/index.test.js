@@ -500,6 +500,36 @@ describe("a state export", () => {
     assert.strictEqual(next.invalidation({ locale: again }), null);
   });
 
+  test("a store keeps what was written and takes a getter added in source", () => {
+    const hot = fakeHot();
+    const settings = reload(hot, "settings", store({ volume: 1 }));
+    settings.volume = 5;
+    /** @type {number[]} */
+    const volumes = [];
+    const a = new Effect(() => {
+      volumes.push(settings.volume);
+    });
+
+    const next = $hmr(hot);
+    const again = next.reloadable(
+      "settings",
+      store({
+        volume: 1,
+        get loud() {
+          return this.volume > 3;
+        },
+      }),
+    );
+    assert.strictEqual(again, settings, "the first instance is the one exported");
+    assert.strictEqual(again.loud, undefined, "nothing moves before the body has run");
+    next.commit();
+    assert.strictEqual(settings.volume, 5, "what was written stays");
+    assert.strictEqual(again.loud, true, "the getter added in source reads it");
+    assert.deepStrictEqual(volumes, [5], "the reader of the kept key did not run");
+    assert.strictEqual(next.invalidation({ settings: again }), null);
+    a.dispose();
+  });
+
   test("a store, a reactive map, a subject and a context property are kept the same way", () => {
     const hot = fakeHot();
     const first = $hmr(hot);

@@ -28,12 +28,14 @@ import {
   hidesVisibility,
   isVisibilityHidden,
 } from "../elements/mirror.js";
-import { isSvgRoot, SVG_NAMESPACE } from "../elements/plugins.js";
+import { isSvgElement, isSvgRoot, SVG_NAMESPACE } from "../elements/plugins.js";
+import { parseMarkerReference } from "./marker.js";
 import {
   aboutOrigin,
   IDENTITY,
   intersectRects,
   invert,
+  isAxisAligned,
   matrixEqual,
   matrixScale,
   multiply,
@@ -197,10 +199,7 @@ function ownTransform(element, style, viewBoxOrigin) {
   let ox = px(origin[0] ?? "0");
   let oy = px(origin[1] ?? "0");
   if (style.getPropertyValue("transform-box") === "fill-box") {
-    const bbox =
-      typeof (/** @type {SVGGraphicsElement} */ (element).getBBox) === "function"
-        ? /** @type {SVGGraphicsElement} */ (element).getBBox()
-        : null;
+    const bbox = readBBox(element);
     if (bbox) {
       ox += bbox.x;
       oy += bbox.y;
@@ -210,6 +209,95 @@ function ownTransform(element, style, viewBoxOrigin) {
     oy += viewBoxOrigin.y;
   }
   return aboutOrigin(matrix, ox, oy);
+}
+
+/**
+ * The element's bounds in its own user space, as `getBBox` reports them, or
+ * null where there is no `getBBox`, as under jsdom. The read is not a
+ * dependency of its own: what reads it re-runs when the element is
+ * restyled, and not when only the geometry of a `<g>`'s children moves.
+ *
+ * @param {Element} element
+ * @returns {DOMRect | null}
+ */
+function readBBox(element) {
+  const graphics = /** @type {SVGGraphicsElement} */ (element);
+  return typeof graphics.getBBox === "function" ? graphics.getBBox() : null;
+}
+
+/**
+ * What a `clip-path` leaves of an element, as a rectangle in the space the
+ * element's own geometry is in, or null for no clip.
+ *
+ * Followed: `url(#id)` naming a `<clipPath>` whose one element child is a
+ * `<rect>`, under transforms on the two and `clipPathUnits` that keep the
+ * rect's edges on the axes, which `transformRect` then maps exactly. Under
+ * `userSpaceOnUse` a percentage is of the element's viewport; under
+ * `objectBoundingBox` the units are its `getBBox`, and an element with none
+ * is not clipped. A rect with no area clips everything away, as a browser's
+ * empty clip does. The rect's `rx` and `ry` are not followed, so the
+ * corners are square.
+ *
+ * Not followed, and so not clipped: any other `<clipPath>`, a turned or
+ * skewed rect, a basic shape such as `inset()`, and a `clip-path` on the
+ * `<clipPath>` or its rect. A `<clipPath>` outside the panel is read as it
+ * was first read, as a `<marker>` is (see `readRecordOf` in `mirror.js`).
+ *
+ * @param {Element} element
+ * @param {CSSStyleDeclaration} style The element's computed style.
+ * @param {Instance | null} instance The instance the element is part of.
+ * @returns {Rect | null}
+ */
+function readClipRect(element, style, instance) {
+  const id = parseMarkerReference(readProperty(style, element, "clip-path"));
+  const clipPath = id ? element.ownerDocument.getElementById(id) : null;
+  if (!clipPath || !isSvgElement(clipPath) || clipPath.localName !== "clipPath") {
+    return null;
+  }
+  /** @type {Element | null} */
+  let rect = null;
+  for (const node of getChildNodes(clipPath)) {
+    if (node.nodeType !== Node.ELEMENT_NODE) {
+      continue;
+    }
+    if (rect || !isSvgElement(node) || /** @type {Element} */ (node).localName !== "rect") {
+      return null;
+    }
+    rect = /** @type {Element} */ (node);
+  }
+  if (!rect) {
+    return null;
+  }
+  /** @type {Matrix2D} */
+  let units = IDENTITY;
+  /** @type {Record<"width" | "height", number | (() => number | undefined)>} */
+  let of = viewportReferences(() => viewportSize(element, instance));
+  if (getAttributeCached(clipPath, "clipPathUnits") === "objectBoundingBox") {
+    const bbox = readBBox(element);
+    if (!bbox) {
+      return null;
+    }
+    units = [bbox.width, 0, 0, bbox.height, bbox.x, bbox.y];
+    of = { width: 1, height: 1 };
+  }
+  const matrix = multiply(units, withOwnTransform(clipPath, localMatrix(rect), null));
+  if (!isAxisAligned(matrix)) {
+    return null;
+  }
+  const rectStyle = getComputedStyleCached(rect);
+  /**
+   * @param {string} name
+   * @param {"width" | "height"} axis
+   */
+  const length = (name, axis) => parseLengthIn(readProperty(rectStyle, rect, name), of[axis], 0);
+  const x = length("x", "width");
+  const y = length("y", "height");
+  return transformRect(matrix, {
+    left: x,
+    top: y,
+    right: x + Math.max(0, length("width", "width")),
+    bottom: y + Math.max(0, length("height", "height")),
+  });
 }
 
 /**
@@ -226,9 +314,10 @@ function ownTransform(element, style, viewBoxOrigin) {
  *   the shape's own included and the root's not.
  * @property {Element | null} root
  * @property {Rect | null} clip What the viewports above the element leave of
- *   it, a nested `<svg>`, a `<symbol>` or a `<marker>`, in the root's frame.
- *   Null for none. The root's own overflow is not in it: that is a box's,
- *   and the portal's clip chain has it.
+ *   it, a nested `<svg>`, a `<symbol>` or a `<marker>`, and what the
+ *   `clip-path` of the element or of anything above it leaves, in the root's
+ *   frame. Null for none. The root's own overflow is not in it: that is a
+ *   box's, and the portal's clip chain has it.
  */
 
 /**
@@ -640,9 +729,9 @@ export function readChain(element, instance = null) {
   let ctm = IDENTITY;
   let opacity = 1;
   /**
-   * Each clipping viewport passed on the way, in the user space of its
-   * parent, with the matrix from the element's user space to there. Where
-   * that space lands in the root's frame is known only at the top.
+   * Each clip passed on the way, a viewport or a `clip-path`, in the space
+   * it is given in, with the matrix from the element's user space to there.
+   * Where that space lands in the root's frame is known only at the top.
    *
    * @type {{ rect: Rect, below: Matrix2D }[]}
    */
@@ -703,6 +792,13 @@ export function readChain(element, instance = null) {
           below: multiply(fit, ctm),
         });
       }
+    }
+    // In the space the element's own geometry is in, which its `transform`
+    // then moves. For a nested `<svg>` that is the space its `x`, `y`,
+    // `width` and `height` are in, before its `viewBox`.
+    const clipRect = readClipRect(current, style, instance);
+    if (clipRect) {
+      viewports.push({ rect: clipRect, below: multiply(fit, ctm) });
     }
     ctm = multiply(withOwnTransform(current, fit, instance), ctm);
     current = getParentElement(current);

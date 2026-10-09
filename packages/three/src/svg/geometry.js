@@ -112,6 +112,25 @@ export function invert(m) {
 }
 
 /**
+ * Whether `m` keeps a rectangle's edges on the axes: a scale and a move,
+ * with a quarter turn or a flip among them, so that `transformRect` returns
+ * the rectangle moved and not a box around it. A turn by a computed
+ * `rotate(90deg)` leaves a cosine of about 1e-16 behind, which counts as
+ * none.
+ *
+ * @param {Matrix2D} m
+ * @returns {boolean}
+ */
+export function isAxisAligned(m) {
+  const [a, b, c, d] = m;
+  const tolerance = 1e-9 * (Math.abs(a) + Math.abs(b) + Math.abs(c) + Math.abs(d));
+  return (
+    (Math.abs(b) <= tolerance && Math.abs(c) <= tolerance) ||
+    (Math.abs(a) <= tolerance && Math.abs(d) <= tolerance)
+  );
+}
+
+/**
  * An axis-aligned rectangle, the shape of every clip in a portal.
  *
  * @typedef {object} Rect

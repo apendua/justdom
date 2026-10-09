@@ -1246,6 +1246,26 @@ describe("svg shape as a ray target", () => {
     s.teardown();
   });
 
+  test("a ray is trimmed where a clip-path trims the drawing", () => {
+    const s = setup("rect", SQUARE);
+    // The left half of the square.
+    const edge = document.createElementNS(SVG_NS, "rect");
+    edge.setAttribute("x", "10");
+    edge.setAttribute("y", "10");
+    edge.setAttribute("width", "10");
+    edge.setAttribute("height", "20");
+    const clipPath = document.createElementNS(SVG_NS, "clipPath");
+    clipPath.id = "ray-clip-path";
+    clipPath.appendChild(edge);
+    s.root.appendChild(clipPath);
+    s.setAttribute("clip-path", "url(#ray-clip-path)");
+    const [fill] = s.meshes;
+
+    assert.deepEqual(hitsAt(s.object, 15, 20), [fill]);
+    assert.deepEqual(hitsAt(s.object, 25, 20), [], "right of the clip");
+    s.teardown();
+  });
+
   test("a hover that switches the fill on puts it under the stroke", () => {
     const { manager } = recordingManager();
     const s = setup("rect", { ...SQUARE, fill: "none", style: "cursor: pointer" }, { manager });

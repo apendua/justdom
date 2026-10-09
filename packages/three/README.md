@@ -2044,10 +2044,37 @@ group:
 A hit on the group is a hit on one of its shapes, so each shape's own `pointer-events` still decides
 whether it can be hit.
 
+A `clip-path` is drawn when it names a `<clipPath>` that holds one `<rect>`. That is the one shape
+the clip box a nested `<svg>` uses can hold, and the clip is that box:
+
+```html
+<defs>
+  <clipPath id="frame">
+    <rect width="32" height="32" />
+  </clipPath>
+</defs>
+<image href="sheet.png" x="-64" width="256" height="128" clip-path="url(#frame)" />
+```
+
+The rect is in the user space of the element that names it, so the element's own `transform` moves
+the clip with it, and a `clip-path` on a `<g>` or a `<use>` clips everything drawn under it. A
+percentage is of the element's viewport. Under `clipPathUnits="objectBoundingBox"` the rect is a
+share of the element's `getBBox()`, which is read again when the element is restyled, so a `<g>`
+whose children move keeps the box it was clipped to until then. A `transform` on the `<clipPath>` or
+the `<rect>` is followed when it keeps the rect's edges on the axes: a scale, a move, a quarter turn
+or a flip. The clip intersects the viewports around the element, and it trims a ray as it trims the
+drawing. As with a viewport, the box is axis-aligned in the `<svg>`'s frame, so an element turned by
+its own `transform` or by a `<g>` above it is clipped to the bounding box of the turned rect. The
+corners are square whatever the rect's `rx` and `ry`. An edit to the rect reaches the clip when the
+`<clipPath>` is inside the panel; one elsewhere on the page is drawn as it was first read, as a
+`<marker>` is. Any other `<clipPath>`, such as one holding a circle, a path or two shapes, or a rect
+turned by any other angle, clips nothing. So does a basic shape such as `inset()`, and a `clip-path`
+on the `<svg>` root. A clip of another shape needs a stencil or a second distance field.
+
 Not drawn yet: gradients and patterns (a `url(#…)` paint reads as `none`, though it still counts as
-painted for a ray), `clip-path`, `mask`, filters, `<foreignObject>` and `vector-effect`.
-[`docs/freedom-svg-plan.md`](../../docs/freedom-svg-plan.md) says what each would take; they go in
-when a panel needs one.
+painted for a ray), a `clip-path` of any shape but the rect above, `mask`, filters,
+`<foreignObject>` and `vector-effect`. [`docs/freedom-svg-plan.md`](../../docs/freedom-svg-plan.md)
+says what each would take; they go in when a panel needs one.
 
 Followed, and not said above: `<switch>` and an `<a>` outside a `<text>`, drawn as a `<g>` is;
 `transform-box: fill-box`; and `revert-layer` beside the other keywords that set nothing. Not

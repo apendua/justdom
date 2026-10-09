@@ -14,6 +14,10 @@
       "types": "./lib-types/session.d.ts",
       "import": "./src/session.js"
     },
+    "./focus": {
+      "types": "./lib-types/focus.d.ts",
+      "import": "./src/focus.js"
+    },
     "./driver": "./driver/index.mjs"
   },
   "files": [

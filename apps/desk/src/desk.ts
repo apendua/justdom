@@ -63,7 +63,7 @@ export function mountDesk(
       terminal,
     ),
     mountPowerButton(find("[data-power]"), xrSession),
-    mountKeyboard(find("[data-keys]"), { onKey: (key) => terminal.key(key) }),
+    mountKeyboard(find("[data-keys]"), { onKey: (key) => terminal.key(key), presenting }),
     mountDragAndDrop({
       board: find("[data-board]"),
       drive: find("[data-drive]"),

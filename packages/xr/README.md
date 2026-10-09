@@ -4,9 +4,10 @@ What every app with a headset session repeats, kept in one place: the emulated h
 `?emulator`, whether the platform can present at all, and the session a page reads for the controls
 that only make sense in a headset. Private to this repository.
 
-It has two entries for a page and no index, so that an app importing one does not pull in the other.
-The emulator brings IWER and its dev UI with it, over half a megabyte, and is meant to be imported
-lazily; the session is a few signals. A third entry, the driver, is for the apps' check scripts.
+It has three entries for a page and no index, so that an app importing one does not pull in the
+others. The emulator brings IWER and its dev UI with it, over half a megabyte, and is meant to be
+imported lazily; the session is a few signals. A fourth entry, the driver, is for the apps' check
+scripts.
 
 ## `@apendua.dev/headset/emulator`
 
@@ -60,6 +61,16 @@ do it with `globIgnores: ["**/emulator-*.js"]`.
   should stand round the viewer: in a session, unless the room has been asked for and can be had.
 
 The signals are module state, one set per page.
+
+## `@apendua.dev/headset/focus`
+
+An experiment. `followXRFocus(root)` gives the page's focus to the field under `root` that freedom's
+keyboard is typing into, and takes it away when the keyboard goes. A ray's press is a click freedom
+dispatches itself, which moves no focus, so in a session a field is only ever focused in freedom's
+own sense: it carries `data-xr-focus`. Following that mark with `focus()` and `blur()` lets a
+keyboard paired with the headset, or the laptop's under the emulator, type into the field. The todo
+app and the desk turn it on behind `?realfocus`; `apps/todo-vanilla/tests/focus-check.mjs` runs it
+on the emulated headset.
 
 ## `@apendua.dev/headset/driver`
 

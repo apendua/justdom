@@ -1,6 +1,6 @@
 /**
  * What the page's focus does in a session, with and without the
- * `?realfocus` experiment (`src/realFocus.ts`): vite-served todo-vanilla in
+ * `?realfocus` experiment (`@apendua.dev/headset/focus`): vite-served todo-vanilla in
  * headless Chromium, on the emulated headset.
  *
  *   node tests/focus-check.mjs

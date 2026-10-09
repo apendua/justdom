@@ -1,6 +1,6 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
-import { watchDocumentStyles } from "./documentStyles.js";
+import { enableThemingMode, watchDocumentStyles } from "./documentStyles.js";
 
 // jsdom-env exposes the common DOM globals, but not MutationObserver.
 if (typeof globalThis.MutationObserver === "undefined") {
@@ -166,5 +166,169 @@ describe("watchDocumentStyles", () => {
       second.stop();
       style.remove();
     }
+  });
+
+  describe("in theming mode", () => {
+    /**
+     * A `<style>` in the head, and its sheet, for a test to edit through the
+     * CSSOM.
+     *
+     * @param {string} css
+     * @returns {{ style: HTMLStyleElement, sheet: CSSStyleSheet }}
+     */
+    function addSheet(css) {
+      const style = document.createElement("style");
+      style.textContent = css;
+      document.head.appendChild(style);
+      const sheet = style.sheet;
+      assert.ok(sheet);
+      return { style, sheet };
+    }
+
+    test("a rule edited through the CSSOM is announced at the next read", async (t) => {
+      t.mock.timers.enable({ apis: ["setInterval"] });
+      const { style, sheet } = addSheet(".e { color: red; }");
+      await flush();
+      const watcher = watch();
+      const stopTheming = enableThemingMode({ interval: 100 });
+      try {
+        // What the developer tools do to a declaration: the rule object is
+        // written, and the `<style>` element's text is left as it was.
+        const rule = /** @type {CSSStyleRule} */ (sheet.cssRules[0]);
+        rule.style.setProperty("color", "blue");
+        await flush();
+        assert.equal(watcher.count(), 0, "no observer reports a CSSOM write");
+        t.mock.timers.tick(100);
+        assert.equal(watcher.count(), 1);
+
+        sheet.insertRule(".f { color: green; }", 1);
+        t.mock.timers.tick(100);
+        assert.equal(watcher.count(), 2);
+
+        sheet.deleteRule(1);
+        t.mock.timers.tick(100);
+        assert.equal(watcher.count(), 3);
+
+        t.mock.timers.tick(500);
+        assert.equal(watcher.count(), 3, "rules that stayed the same are not announced");
+      } finally {
+        stopTheming();
+        watcher.stop();
+        style.remove();
+      }
+    });
+
+    test("without it, a CSSOM write stays unseen", async (t) => {
+      t.mock.timers.enable({ apis: ["setInterval"] });
+      const { style, sheet } = addSheet(".g { color: red; }");
+      await flush();
+      const watcher = watch();
+      try {
+        const rule = /** @type {CSSStyleRule} */ (sheet.cssRules[0]);
+        rule.style.setProperty("color", "blue");
+        await flush();
+        t.mock.timers.tick(1000);
+        assert.equal(watcher.count(), 0);
+      } finally {
+        watcher.stop();
+        style.remove();
+      }
+    });
+
+    test("an edit the observer reported is not announced again by the next read", async (t) => {
+      t.mock.timers.enable({ apis: ["setInterval"] });
+      const { style } = addSheet(".h { color: red; }");
+      await flush();
+      const watcher = watch();
+      const stopTheming = enableThemingMode({ interval: 100 });
+      try {
+        style.textContent = ".h { color: blue; }";
+        await flush();
+        assert.equal(watcher.count(), 1);
+        t.mock.timers.tick(100);
+        assert.equal(watcher.count(), 1, "the panel restyles once for one edit");
+      } finally {
+        stopTheming();
+        watcher.stop();
+        style.remove();
+      }
+    });
+
+    test("it stays on until every caller has turned it off", async (t) => {
+      t.mock.timers.enable({ apis: ["setInterval"] });
+      const { style, sheet } = addSheet(".i { color: red; }");
+      await flush();
+      const watcher = watch();
+      const stopFirst = enableThemingMode({ interval: 100 });
+      const stopSecond = enableThemingMode({ interval: 100 });
+      try {
+        const rule = /** @type {CSSStyleRule} */ (sheet.cssRules[0]);
+        stopFirst();
+        // Idempotent: the first caller turning it off twice must not take
+        // the second caller's request with it.
+        stopFirst();
+        rule.style.setProperty("color", "blue");
+        t.mock.timers.tick(100);
+        assert.equal(watcher.count(), 1, "the second caller still has it on");
+
+        stopSecond();
+        rule.style.setProperty("color", "green");
+        t.mock.timers.tick(1000);
+        assert.equal(watcher.count(), 1, "and the last one out stops the reads");
+      } finally {
+        stopFirst();
+        stopSecond();
+        watcher.stop();
+        style.remove();
+      }
+    });
+
+    test("a caller asking for a shorter interval keeps an edit not yet read", async (t) => {
+      t.mock.timers.enable({ apis: ["setInterval"] });
+      const { style, sheet } = addSheet(".k { color: red; }");
+      await flush();
+      const watcher = watch();
+      const stopSlow = enableThemingMode({ interval: 1000 });
+      let stopFast = () => {};
+      try {
+        const rule = /** @type {CSSStyleRule} */ (sheet.cssRules[0]);
+        rule.style.setProperty("color", "blue");
+        stopFast = enableThemingMode({ interval: 100 });
+        t.mock.timers.tick(100);
+        assert.equal(watcher.count(), 1);
+      } finally {
+        stopFast();
+        stopSlow();
+        watcher.stop();
+        style.remove();
+      }
+    });
+
+    test("a panel that starts watching hears the edits after it, not before", async (t) => {
+      t.mock.timers.enable({ apis: ["setInterval"] });
+      const { style, sheet } = addSheet(".j { color: red; }");
+      await flush();
+      const stopTheming = enableThemingMode({ interval: 100 });
+      let watcher = null;
+      try {
+        const rule = /** @type {CSSStyleRule} */ (sheet.cssRules[0]);
+        rule.style.setProperty("color", "blue");
+        t.mock.timers.tick(100);
+        // A panel mounted after the edit reads the rules as they are when it
+        // mounts, so the edit is no change to announce to it. The reads start
+        // from there, since nothing was listening before.
+        watcher = watch();
+        t.mock.timers.tick(100);
+        assert.equal(watcher.count(), 0);
+
+        rule.style.setProperty("color", "green");
+        t.mock.timers.tick(100);
+        assert.equal(watcher.count(), 1);
+      } finally {
+        stopTheming();
+        watcher?.stop();
+        style.remove();
+      }
+    });
   });
 });

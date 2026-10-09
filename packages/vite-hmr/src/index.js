@@ -131,8 +131,9 @@ import {
  *   `Signal` cannot stand in for a `ReactiveMap`. Empty for the others.
  * @property {Signal<any> | null} held the current definition, for the kinds
  *   that follow it through a holder. `null` for a plain value, which cannot
- *   be followed; for state, which is kept rather than followed; and for
- *   constants, which follow by having their contents replaced in place.
+ *   be followed; for state, which is kept, a store among it followed in
+ *   shape by being reshaped in place; and for constants, which follow by
+ *   having their contents replaced in place.
  * @property {unknown} exported what the module exports under the name: the
  *   wrapper, or the value itself.
  */

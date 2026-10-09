@@ -75,8 +75,10 @@ with its holder depends on what kind of thing the module defined:
   application has put there, so the object is kept and `reshape`d with the re-evaluated definition:
   it takes the definition's getters, setters and keys, and keeps the values of the data keys both
   have. A getter added or edited in source takes effect, a key dropped from source goes, and what
-  was written stays. The price is that an edit to a data key's _initial_ value does not show until a
-  full reload.
+  was written stays. The key set is the definition's: a key the program added goes too, and one it
+  deleted comes back, so a store used as a record with runtime keys is not a fit for a reloaded
+  export. The price is that an edit to a data key's _initial_ value does not show until a full
+  reload.
 
 - **State.** A `Signal`, a `ReactiveMap` or `ReactiveSet`, a `Subject` or `Emitter`, an
   `UpdateChannel`, or a context property from `createProperty` is _kept_: what such an export holds
@@ -85,8 +87,7 @@ with its holder depends on what kind of thing the module defined:
   re-evaluated module built is dropped unused. So editing a component in a module that also exports
   the app's `locale` signal swaps the component and leaves the current locale alone. Such an export
   has no shape to follow, so the price is that an edit to a signal's _initial_ value does not show
-  until a full reload — the same bargain
-  every framework's state-preserving HMR strikes.
+  until a full reload — the same bargain every framework's state-preserving HMR strikes.
 
 - **Anything else** cannot be followed and is exported as it is. The runtime remembers it, and a
   re-evaluation that registers the identical value — a primitive constant that did not change, an

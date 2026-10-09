@@ -394,6 +394,7 @@ test("reshape() lets the definition win where the shape changes", () => {
   assert.strictEqual(kept.b, 2, "a store that becomes a value takes the definition's");
   assert.strictEqual(kept.c, 3, "a getter that becomes a data key takes the definition's value");
   assert.strictEqual(kept.d, 5, "a data key that becomes a getter reads the getter");
+  assert.ok(Object.hasOwn(kept, "d"), "and stays a key of the store");
   assert.strictEqual(Object.getOwnPropertyDescriptor(kept, "d")?.value, undefined);
 });
 

@@ -26,8 +26,10 @@ import { isPlainObject } from "./util.js";
  *   with the store's first getter `Derived`.
  * @property {(key: PropertyKey) => void} announce
  * @property {symbol} ownKeys The key the key set's readers depend on.
- * @property {boolean} volatile Whether `volatileStore` made it, so that a
- *   hot reload reconfigures it rather than keeps it.
+ * @property {boolean} volatile Whether `volatileStore` made it. A hot
+ *   reload keeps every store; the flag decides whether it `reconfigure`s
+ *   the store, taking the definition's values, or `reshape`s it, keeping
+ *   the store's.
  */
 
 /**
@@ -76,8 +78,9 @@ export function isStore(value) {
 }
 
 /**
- * Whether `value` is a store built by `volatileStore` — one whose contents a
- * hot reload should replace rather than keep.
+ * Whether `value` is a store built by `volatileStore` — one whose values a
+ * hot reload takes from the re-evaluated definition, where it keeps a
+ * `store`'s.
  *
  * `@apendua/vite-hmr` is what asks.
  *
@@ -442,7 +445,7 @@ export function volatileStore(data, operators = []) {
  * @returns {void}
  */
 export function reconfigure(target, definition) {
-  configure(target, definition, false, "reconfigure");
+  configure(target, definition, false);
 }
 
 /**
@@ -457,6 +460,13 @@ export function reconfigure(target, definition) {
  * accessor, which lets go of its value, and an accessor key that becomes a
  * data key, which held nothing.
  *
+ * The key set is the definition's, not the program's. A key the program
+ * added, as to a store used as a record, goes with the keys edited out of
+ * source, since the store cannot tell the two apart, and a key the program
+ * deleted comes back with the definition's value, as a key it adds. So a
+ * store written with runtime keys is not a fit for a reloaded module-level
+ * export.
+ *
  * This is the hot reload of an ordinary `store`, whose contents are state:
  * what the program wrote stays, and a getter added or edited in source takes
  * effect. `reconfigure` is the hot reload of a `volatileStore`, whose
@@ -469,7 +479,7 @@ export function reconfigure(target, definition) {
  * @returns {void}
  */
 export function reshape(target, definition) {
-  configure(target, definition, true, "reshape");
+  configure(target, definition, true);
 }
 
 /**
@@ -477,14 +487,14 @@ export function reshape(target, definition) {
  *
  * @param {object} target
  * @param {object} definition
- * @param {boolean} keep Whether a data key both have keeps the store's value.
- * @param {string} caller The function to name in the error.
+ * @param {boolean} keep Whether a data key both have keeps the store's value,
+ *   which is `reshape`; `reconfigure` otherwise.
  * @returns {void}
  */
-function configure(target, definition, keep, caller) {
+function configure(target, definition, keep) {
   const internals = internalsOf(target);
   if (!internals) {
-    throw new Error(`${caller}() takes a store`);
+    throw new Error(`${keep ? "reshape" : "reconfigure"}() takes a store`);
   }
   const descriptors = describe(definition);
   batch(() => {

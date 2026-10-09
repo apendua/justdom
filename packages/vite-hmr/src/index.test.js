@@ -554,7 +554,8 @@ describe("a state export", () => {
       ),
       theme,
     );
-    assert.strictEqual(settings.volume, 5);
+    next.commit();
+    assert.strictEqual(settings.volume, 5, "reshaped with the same definition, the value stays");
     assert.strictEqual(scores.get("a"), 10);
     assert.strictEqual(next.invalidation({ settings, scores, clicks, theme }), null);
   });

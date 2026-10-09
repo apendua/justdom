@@ -26,16 +26,28 @@ import { isPlainObject } from "./util.js";
  *   first getter `Derived`.
  * @property {(key: PropertyKey) => void} announce
  * @property {symbol} ownKeys The key the key set's readers depend on.
- * @property {object | undefined} self The store's proxy, so that only the
- *   proxy itself, and nothing that forwards reads to it, counts as the store.
+ * @property {boolean} volatile Whether `volatileStore` made it, so that a
+ *   hot reload reconfigures it rather than keeps it.
  */
+
+/**
+ * Every proxy `store()` has made. `internalsOf` asks this before it reads a
+ * key of the value it was given, since reading a key of a proxy runs its
+ * `get` trap: a `selector()` evaluates its source for any key, and throws
+ * for a source that is not ready. Membership reads nothing, and an object
+ * whose prototype is a store is not a member.
+ *
+ * @type {WeakSet<object>}
+ */
+const stores = new WeakSet();
 
 /**
  * The key a store's proxy answers with its `Internals`, which `emit`,
  * `reconfigure` and a store used as another's definition read. It is not one
  * of the store's keys: `in`, `ownKeys` and spread do not see it. A
  * `WeakMap` from proxy to record did the same job, and holding every store's
- * record in it made building a store about a fifth slower.
+ * record in it made building a store about a fifth slower; `stores` holds
+ * the proxy alone.
  */
 const internalsKey = Symbol("internals");
 
@@ -44,23 +56,11 @@ const internalsKey = Symbol("internals");
  * @returns {Internals | undefined} The record of `value` if it is a store.
  */
 function internalsOf(value) {
-  if (typeof value !== "object" || value === null) {
+  if (typeof value !== "object" || value === null || !stores.has(value)) {
     return undefined;
   }
-  const internals = /** @type {{ [internalsKey]?: unknown }} */ (value)[internalsKey];
-  // An object whose prototype is a store, or a proxy that answers every key,
-  // reads something here too; only the store's own proxy is its `self`.
-  return /** @type {Internals | undefined} */ (internals)?.self === value
-    ? /** @type {Internals} */ (internals)
-    : undefined;
+  return /** @type {{ [internalsKey]: Internals }} */ (value)[internalsKey];
 }
-
-/**
- * Everything `volatileStore` has made.
- *
- * @type {WeakSet<object>}
- */
-const volatileStores = new WeakSet();
 
 /**
  * Whether `value` is a store — the proxy `store()` handed back, as opposed to
@@ -85,7 +85,7 @@ export function isStore(value) {
  * @returns {boolean}
  */
 export function isVolatile(value) {
-  return typeof value === "object" && value !== null && volatileStores.has(value);
+  return internalsOf(value)?.volatile === true;
 }
 
 /**
@@ -113,6 +113,20 @@ function ownKeysNoComputation(value) {
  */
 function isPlainObjectNoComputation(value) {
   return withComputation(null, () => isPlainObject(value));
+}
+
+/**
+ * Bump a version counter that readers depend on. `setFn` reads the old value
+ * non-reactively, so a bump from inside a computation does not make that
+ * computation depend on the counter.
+ *
+ * @param {Signal<number>} version
+ */
+function bump(version) {
+  version.setFn(
+    (value) => value + 1,
+    () => 1,
+  );
 }
 
 /**
@@ -155,30 +169,33 @@ export function replace(oldValue, newValue) {
  */
 function store(data, operators = []) {
   // TODO(@apendua): Handle array methods to trigger reactivity.
+  /** @type {Map<PropertyKey, () => unknown>} */
+  const getters = new Map();
+  /** @type {Map<PropertyKey, (value: unknown) => void>} */
+  const setters = new Map();
   /** @type {Record<PropertyKey, unknown>} */
   const state = withComputation(null, () => {
     if (!isPlainObject(data)) {
       throw new Error("Store can only be created from a plain object");
     }
-    const newData = { ...data };
-    for (const key of Reflect.ownKeys(newData)) {
-      const value = newData[key];
-      if (isPlainObject(value)) {
-        newData[key] = store(value);
-      }
+    const descriptors = describe(data);
+    defineAccessors(getters, setters, descriptors);
+    // A data key holds its value, a plain object made a store. A key with an
+    // accessor holds `undefined`, which is read only when the key has no
+    // getter; the getter is not run here. `reconfigureWith` keeps the same.
+    /** @type {Record<PropertyKey, unknown>} */
+    const held = {};
+    for (const key of Reflect.ownKeys(descriptors)) {
+      const descriptor = descriptors[key];
+      const value = descriptor.get || descriptor.set ? undefined : descriptor.value;
+      held[key] = isPlainObject(value) ? store(value) : value;
     }
-    return newData;
+    return held;
   });
   const ownKeys = Symbol("ownKeys");
 
   /** @type {Map<PropertyKey, Derived<unknown>>} */
   const derived = new Map();
-
-  /** @type {Map<PropertyKey, () => unknown>} */
-  const getters = new Map();
-  /** @type {Map<PropertyKey, (value: unknown) => void>} */
-  const setters = new Map();
-  defineAccessors(getters, setters, describe(data));
 
   /**
    * What a reader of one key depends on: a counter per key, bumped when that
@@ -225,12 +242,7 @@ function store(data, operators = []) {
   const announce = (key) => {
     const version = versions.get(key);
     if (version) {
-      // `setFn` reads the old value non-reactively, so bumping a counter from
-      // inside a computation does not make that computation depend on it.
-      version.setFn(
-        (value) => value + 1,
-        () => 1,
-      );
+      bump(version);
     }
   };
 
@@ -249,7 +261,7 @@ function store(data, operators = []) {
     definition: undefined,
     announce,
     ownKeys,
-    self: undefined,
+    volatile: false,
   };
 
   const proxy = new Proxy(state, {
@@ -341,7 +353,7 @@ function store(data, operators = []) {
       return Reflect.ownKeys(state);
     },
   });
-  internals.self = proxy;
+  stores.add(proxy);
 
   if (operators.length > 0) {
     // Skipped when there is nothing to apply, which is the common case: a
@@ -395,7 +407,7 @@ function store(data, operators = []) {
  */
 export function volatileStore(data, operators = []) {
   const proxy = store(data, operators);
-  volatileStores.add(proxy);
+  /** @type {Internals} */ (internalsOf(proxy)).volatile = true;
   return proxy;
 }
 
@@ -421,7 +433,8 @@ export function volatileStore(data, operators = []) {
  * the first sets a plain object's prototype, the second is how
  * `isPlainObject` tells a plain object.
  *
- * @param {object} target A store.
+ * @template {IEmitter<Record<any, any>>} T
+ * @param {T} target A store.
  * @param {object} definition
  * @returns {void}
  */
@@ -448,7 +461,7 @@ export function reconfigure(target, definition) {
 function describe(definition) {
   const internals = internalsOf(definition);
   if (!internals) {
-    // The keys a spread would copy, as `store()` copies them.
+    // The keys a spread would copy: the enumerable ones.
     /** @type {Record<PropertyKey, PropertyDescriptor>} */
     const descriptors = Object.getOwnPropertyDescriptors(definition);
     for (const key of Reflect.ownKeys(descriptors)) {
@@ -518,22 +531,18 @@ function reconfigureWith(internals, descriptors) {
     announce(key);
   }
   if (replaced && internals.definition) {
-    internals.definition.setFn(
-      (value) => value + 1,
-      () => 1,
-    );
+    bump(internals.definition);
   }
   // The values of the data keys, written to `state` rather than through the
   // store, so no setter runs.
   for (const key of Reflect.ownKeys(descriptors)) {
     const descriptor = descriptors[key];
     if (descriptor.get || descriptor.set) {
-      // A key with an accessor is in `state` as a key, as the spread puts it
-      // there at `store()` time, so `in`, `ownKeys` and spread see it. What
-      // `state` holds for it is read only when it has no getter, and then it
-      // is `undefined`, as at `store()` time.
+      // A key with an accessor is in `state` as a key holding `undefined`,
+      // as at `store()` time, so `in`, `ownKeys` and spread see it, and a
+      // value it held as a data key is let go of.
       const added = !Object.hasOwn(state, key);
-      if (added || (!descriptor.get && state[key] !== undefined)) {
+      if (added || state[key] !== undefined) {
         state[key] = undefined;
         announce(key);
       }

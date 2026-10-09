@@ -498,7 +498,7 @@ export function $hmr(hot) {
         } else {
           // A `volatileStore`: the kept object takes the new definition, and
           // only the readers of what changed hear.
-          reconfigure(/** @type {object} */ (entry.exported), /** @type {object} */ (value));
+          reconfigure(/** @type {any} */ (entry.exported), /** @type {object} */ (value));
         }
       }
     });

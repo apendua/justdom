@@ -2,6 +2,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { Effect } from "./index.js";
 import { set } from "./operators.js";
+import { NoValueError } from "./core.js";
+import selector from "./selector.js";
 import store, { emit, isStore, isVolatile, reconfigure, replace, volatileStore } from "./store.js";
 
 test("observes value", () => {
@@ -290,8 +292,7 @@ test("a hot reload moves getters and values", () => {
 });
 
 test("reconfigure() drops the keys the definition no longer has", () => {
-  /** @type {{ a: number, b?: number }} */
-  const state = store({ a: 1, b: 2 });
+  const state = store(/** @type {{ a: number, b?: number }} */ ({ a: 1, b: 2 }));
   /** @type {unknown[]} */
   const keys = [];
   new Effect(() => {
@@ -303,8 +304,7 @@ test("reconfigure() drops the keys the definition no longer has", () => {
 
 test("reconfigure() turns data into a getter and back", () => {
   const palette = store({ amber: "amber" });
-  /** @type {{ color?: string }} */
-  const state = store({ color: "ivory" });
+  const state = store(/** @type {{ color?: string }} */ ({ color: "ivory" }));
   /** @type {unknown[]} */
   const values = [];
   new Effect(() => {
@@ -335,7 +335,48 @@ test("reconfigure() with the same definition re-runs nothing", () => {
 });
 
 test("reconfigure() takes a store", () => {
+  // @ts-expect-error A plain object is not a store, which the type says.
   assert.throws(() => reconfigure({}, {}), /takes a store/);
+});
+
+test("a data key turned into a getter lets go of its value", () => {
+  const kept = volatileStore({ n: { a: 1 } });
+  reconfigure(kept, {
+    get n() {
+      return 5;
+    },
+  });
+  assert.strictEqual(kept.n, 5);
+  assert.strictEqual(Object.getOwnPropertyDescriptor(kept, "n")?.value, undefined);
+});
+
+test("store() runs no getter and holds undefined for its key", () => {
+  let runs = 0;
+  const built = store({
+    get g() {
+      runs += 1;
+      return { z: 1 };
+    },
+  });
+  assert.strictEqual(runs, 0);
+  assert.strictEqual(Object.getOwnPropertyDescriptor(built, "g")?.value, undefined);
+  assert.deepStrictEqual(built.g, { z: 1 });
+  assert.strictEqual(runs, 1);
+});
+
+test("reconfigure() writes a data key to state and runs no setter", () => {
+  /** @type {unknown[]} */
+  const written = [];
+  const kept = volatileStore({
+    x: 1,
+    set y(/** @type {unknown} */ value) {
+      written.push(value);
+    },
+  });
+  reconfigure(kept, { x: 2, y: 3 });
+  assert.deepStrictEqual(written, []);
+  assert.strictEqual(kept.x, 2);
+  assert.strictEqual(/** @type {any} */ (kept).y, 3);
 });
 
 test("reconfigure() from a store keeps what was written to it", () => {
@@ -572,6 +613,17 @@ test("isStore is true for a store's own proxy only", () => {
   assert.strictEqual(isStore(everyKey), false);
   emit(/** @type {any} */ (everyKey), "x", 1);
   assert.throws(() => reconfigure(Object.create(state), {}), /reconfigure\(\) takes a store/);
+});
+
+test("isStore() reads no key of what it is given", () => {
+  let runs = 0;
+  const lazy = selector(() => {
+    runs += 1;
+    throw new NoValueError("not yet");
+  });
+  assert.strictEqual(isStore(lazy), false);
+  assert.strictEqual(isVolatile(lazy), false);
+  assert.strictEqual(runs, 0);
 });
 
 test("isStore reads no key of the store and adds none", () => {

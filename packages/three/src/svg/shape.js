@@ -28,14 +28,12 @@ import {
   hidesVisibility,
   isVisibilityHidden,
 } from "../elements/mirror.js";
-import { isSvgElement, isSvgRoot, SVG_NAMESPACE } from "../elements/plugins.js";
-import { parseMarkerReference } from "./marker.js";
+import { findSvgElement, isSvgElement, isSvgRoot, SVG_NAMESPACE } from "../elements/plugins.js";
 import {
   aboutOrigin,
   IDENTITY,
   intersectRects,
   invert,
-  isAxisAligned,
   matrixEqual,
   matrixScale,
   multiply,
@@ -63,6 +61,7 @@ import {
   parseNumber,
   parsePaint,
   parsePointerEvents,
+  parseUrlReference,
   readProperty,
   readShapeMarkup,
   viewportReferences,
@@ -214,8 +213,12 @@ function ownTransform(element, style, viewBoxOrigin) {
 /**
  * The element's bounds in its own user space, as `getBBox` reports them, or
  * null where there is no `getBBox`, as under jsdom. The read is not a
- * dependency of its own: what reads it re-runs when the element is
- * restyled, and not when only the geometry of a `<g>`'s children moves.
+ * dependency of its own, so it is read again only when what reads it runs
+ * again. For a `<g>`, whose box is its children's, that is when one of its
+ * children has an attribute changed, since the mirror restyles every child
+ * of the `<g>` then and each child's chain reads the box again. A restyle
+ * the mirror scopes to one element, such as `data-xr-hover`, reads it again
+ * for that child alone, and a change the mirror never sees reads nothing.
  *
  * @param {Element} element
  * @returns {DOMRect | null}
@@ -230,28 +233,37 @@ function readBBox(element) {
  * element's own geometry is in, or null for no clip.
  *
  * Followed: `url(#id)` naming a `<clipPath>` whose one element child is a
- * `<rect>`, under transforms on the two and `clipPathUnits` that keep the
- * rect's edges on the axes, which `transformRect` then maps exactly. Under
- * `userSpaceOnUse` a percentage is of the element's viewport; under
+ * `<rect>`, moved by the transforms on the two and by `clipPathUnits`.
+ * Under `userSpaceOnUse` a percentage is of the element's viewport; under
  * `objectBoundingBox` the units are its `getBBox`, and an element with none
  * is not clipped. A rect with no area clips everything away, as a browser's
  * empty clip does. The rect's `rx` and `ry` are not followed, so the
- * corners are square.
+ * corners are square. A turn or a skew, here or anywhere above, clips to
+ * the bounding box of the turned rect, as a viewport under a rotation does.
  *
- * Not followed, and so not clipped: any other `<clipPath>`, a turned or
- * skewed rect, a basic shape such as `inset()`, and a `clip-path` on the
- * `<clipPath>` or its rect. A `<clipPath>` outside the panel is read as it
- * was first read, as a `<marker>` is (see `readRecordOf` in `mirror.js`).
+ * Not followed, and so not clipped: any other `<clipPath>`, a basic shape
+ * such as `inset()`, and a `clip-path` on the `<clipPath>` or its rect. A
+ * `<clipPath>` outside the panel is read as it was first read, as a
+ * `<marker>` is (see `readRecordOf` in `mirror.js`). The lookup by id is
+ * not a cached read, so a `<clipPath>` added after the element was drawn is
+ * found the next time the element's chain is read, such as when the element
+ * is restyled.
+ *
+ * Exported for the templates in `template.js`, whose own `clip-path` the
+ * walk in `readChain` stops short of.
  *
  * @param {Element} element
  * @param {CSSStyleDeclaration} style The element's computed style.
  * @param {Instance | null} instance The instance the element is part of.
  * @returns {Rect | null}
  */
-function readClipRect(element, style, instance) {
-  const id = parseMarkerReference(readProperty(style, element, "clip-path"));
-  const clipPath = id ? element.ownerDocument.getElementById(id) : null;
-  if (!clipPath || !isSvgElement(clipPath) || clipPath.localName !== "clipPath") {
+export function readClipRect(element, style, instance) {
+  const clipPath = findSvgElement(
+    element,
+    parseUrlReference(readProperty(style, element, "clip-path")),
+    "clipPath",
+  );
+  if (!clipPath) {
     return null;
   }
   /** @type {Element | null} */
@@ -281,9 +293,6 @@ function readClipRect(element, style, instance) {
     of = { width: 1, height: 1 };
   }
   const matrix = multiply(units, withOwnTransform(clipPath, localMatrix(rect), null));
-  if (!isAxisAligned(matrix)) {
-    return null;
-  }
   const rectStyle = getComputedStyleCached(rect);
   /**
    * @param {string} name

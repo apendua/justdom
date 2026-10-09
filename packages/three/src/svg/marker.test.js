@@ -2,15 +2,7 @@ import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { SVGLoader } from "three/addons/loaders/SVGLoader.js";
 import { apply } from "./geometry.js";
-import {
-  bisect,
-  findMarker,
-  markerMatrix,
-  markerVertices,
-  parseMarkerReference,
-  parseOrient,
-  readMarkerSpec,
-} from "./marker.js";
+import { bisect, markerMatrix, markerVertices, parseOrient, readMarkerSpec } from "./marker.js";
 
 // jsdom-env installs the common DOM globals, but not DOMParser, which three's
 // SVGLoader parses its document with.
@@ -206,28 +198,5 @@ describe("markerMatrix", () => {
     const spec = { ...arrow, orient: parseOrient("0") };
     const m = markerMatrix(spec, { x: 0, y: 0, angle: Math.PI / 2, position: "mid" }, 1);
     assert.deepEqual(apply(m, 0, 5).map(round), [-6, 0]);
-  });
-});
-
-describe("marker references", () => {
-  test("a computed url, an attribute's, a full URL and none", () => {
-    assert.equal(parseMarkerReference(`url("#arrow")`), "arrow");
-    assert.equal(parseMarkerReference("url(#arrow)"), "arrow");
-    assert.equal(parseMarkerReference(`url("https://example.com/page#arrow")`), "arrow");
-    assert.equal(parseMarkerReference("none"), null);
-    assert.equal(parseMarkerReference(""), null);
-  });
-
-  test("only a marker is found by its id", () => {
-    const root = document.createElementNS(SVG_NS, "svg");
-    const found = marker({ id: "found-marker" });
-    const other = document.createElementNS(SVG_NS, "g");
-    other.setAttribute("id", "not-a-marker");
-    root.append(found, other);
-    document.body.appendChild(root);
-    assert.equal(findMarker(root, "found-marker"), found);
-    assert.equal(findMarker(root, "not-a-marker"), null);
-    assert.equal(findMarker(root, "missing"), null);
-    root.remove();
   });
 });

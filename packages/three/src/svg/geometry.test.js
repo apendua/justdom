@@ -5,7 +5,6 @@ import {
   aboutOrigin,
   apply,
   IDENTITY,
-  isAxisAligned,
   matrixScale,
   multiply,
   parseCssMatrix,
@@ -75,16 +74,6 @@ describe("svg geometry", () => {
     assert.equal(parseCssMatrix("none"), null);
     assert.equal(parseCssMatrix(""), null);
     assert.equal(parseCssMatrix("matrix(1, 0, 0)"), null);
-  });
-
-  test("isAxisAligned takes a scale, a quarter turn and a flip, and no other turn", () => {
-    assert.equal(isAxisAligned([2, 0, 0, 3, 5, 7]), true);
-    assert.equal(isAxisAligned([0, 1, -1, 0, 10, 0]), true, "a quarter turn");
-    assert.equal(isAxisAligned([-1, 0, 0, 1, 0, 0]), true, "a flip");
-    // What a browser computes for `rotate(90deg)`.
-    assert.equal(isAxisAligned([6.123233995736766e-17, 1, -1, 6.123233995736766e-17, 0, 0]), true);
-    assert.equal(isAxisAligned([0.866, 0.5, -0.5, 0.866, 0, 0]), false, "a turn by 30°");
-    assert.equal(isAxisAligned([1, 0, 0.5, 1, 0, 0]), false, "a skew");
   });
 
   test("parseViewBox takes spaces or commas and refuses an empty box", () => {

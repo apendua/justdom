@@ -25,6 +25,24 @@ export function isSvgElement(node) {
 }
 
 /**
+ * The SVG element an id names in `element`'s document, or null for an id
+ * that is missing, names nothing, or names an element of another namespace
+ * or, with `localName`, of another kind.
+ *
+ * @param {Element} element
+ * @param {string | null} id
+ * @param {string | null} [localName] The kind it must be, `"marker"` or
+ *   `"clipPath"`, or null for any.
+ * @returns {Element | null}
+ */
+export function findSvgElement(element, id, localName = null) {
+  const found = id ? element.ownerDocument.getElementById(id) : null;
+  return found && isSvgElement(found) && (localName === null || found.localName === localName)
+    ? found
+    : null;
+}
+
+/**
  * Whether the node is an `<svg>` root: the one element in the namespace that
  * is also a CSS box in the HTML flow around it, with a background, a border
  * and a size the page laid out — and so the one the portal draws as a box

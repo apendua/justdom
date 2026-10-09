@@ -1029,19 +1029,110 @@ describe("clip-path", () => {
     s.teardown();
   });
 
+  test("a rect turned by some other angle clips to its bounding box", () => {
+    const cp = clipPath([
+      svg("rect", {
+        width: "5",
+        height: "5",
+        // Turned by 30°, as computed.
+        style: "transform: matrix(0.866, 0.5, -0.5, 0.866, 0, 0)",
+      }),
+    ]);
+    const rect = svg("rect", { width: "100", height: "100", fill: "red", "clip-path": url(cp) });
+    const s = scene([svg("defs", {}, [cp]), rect], [rect]);
+    // The corners land at (0, 0), (4.33, 2.5), (1.83, 6.83) and (-2.5, 4.33).
+    assert.deepEqual(clipBoxOf(meshesUnder(s.objects[0])[0]), [-5, 0, 8.66, 13.66]);
+    s.teardown();
+  });
+
+  test("a flip on the clipPath places the rect where it lands", () => {
+    const cp = clipPath([svg("rect", { x: "5", y: "2", width: "10", height: "5" })], {
+      style: "transform: matrix(-1, 0, 0, 1, 30, 0)",
+    });
+    const rect = svg("rect", { width: "100", height: "100", fill: "red", "clip-path": url(cp) });
+    const s = scene([svg("defs", {}, [cp]), rect], [rect]);
+    // (5, 2)–(15, 7) flipped about x = 15 is (15, 2)–(25, 7).
+    assert.deepEqual(clipBoxOf(meshesUnder(s.objects[0])[0]), [30, 4, 50, 14]);
+    s.teardown();
+  });
+
+  test("a g's transform above the element moves the clip with it", () => {
+    const cp = clipPath([svg("rect", { x: "5", y: "2", width: "10", height: "5" })]);
+    const rect = svg("rect", { width: "100", height: "100", fill: "red", "clip-path": url(cp) });
+    const g = svg("g", { style: "transform: matrix(1, 0, 0, 1, 20, 0)" }, [rect]);
+    const s = scene([svg("defs", {}, [cp]), g], [rect]);
+    assert.deepEqual(clipBoxOf(meshesUnder(s.objects[0])[0]), [50, 4, 70, 14]);
+    s.teardown();
+  });
+
+  test("one on a nested svg is in the space its x and y are in, which its transform moves", () => {
+    const cp = clipPath([svg("rect", { x: "6", y: "2", width: "4", height: "5" })]);
+    const rect = svg("rect", { width: "100", height: "100", fill: "red" });
+    const nested = svg(
+      "svg",
+      {
+        x: "5",
+        y: "2",
+        width: "10",
+        height: "5",
+        "clip-path": url(cp),
+        // `translate(20, 0)`, as computed, and no viewport clip of its own.
+        style: "overflow: visible; transform: matrix(1, 0, 0, 1, 20, 0)",
+      },
+      [rect],
+    );
+    const s = scene([svg("defs", {}, [cp]), nested], [rect]);
+    // (6, 2)–(10, 7) moved right by 20, and not offset by the svg's x again.
+    assert.deepEqual(clipBoxOf(meshesUnder(s.objects[0])[0]), [52, 4, 60, 14]);
+    s.teardown();
+  });
+
+  test("a symbol's own clip-path clips the copy a use draws", () => {
+    const cp = clipPath([svg("rect", { x: "5", y: "2", width: "10", height: "5" })]);
+    const symbol = svg("symbol", { id: "clip-path-own-symbol", "clip-path": url(cp) }, [
+      svg("rect", { width: "100", height: "100", fill: "red" }),
+    ]);
+    const use = svg("use", { href: "#clip-path-own-symbol" });
+    const s = scene([svg("defs", {}, [cp, symbol]), use], [use]);
+    assert.deepEqual(clipBoxOf(meshesUnder(s.objects[0])[0]), [10, 4, 30, 14]);
+    s.teardown();
+  });
+
+  test("a marker's own clip-path clips its copies, in its box's frame", () => {
+    const cp = clipPath([svg("rect", { x: "1", y: "0", width: "2", height: "1" })]);
+    const marker = svg(
+      "marker",
+      {
+        id: "clip-path-own-marker",
+        markerWidth: "4",
+        markerHeight: "2",
+        markerUnits: "userSpaceOnUse",
+        "clip-path": url(cp),
+      },
+      [svg("rect", { width: "20", height: "20", fill: "red" })],
+    );
+    const line = svg("line", {
+      x1: "0",
+      y1: "10",
+      x2: "20",
+      y2: "10",
+      stroke: "black",
+      "marker-end": url(marker),
+    });
+    const s = scene([svg("defs", {}, [cp, marker]), line], [line]);
+    const markerMesh = s.objects[0].children
+      .filter((child) => !(child instanceof THREE.Mesh))
+      .flatMap(meshesUnder)[0];
+    // The box starts at the line's end, (20, 10), so the rect is (21, 10)–(23, 11).
+    assert.deepEqual(clipBoxOf(markerMesh), [42, 20, 46, 22]);
+    s.teardown();
+  });
+
   test("any other clipPath, or a missing one, clips nothing", () => {
     /** @type {Element[][]} */
     const contents = [
       [svg("circle", { r: "5" })],
       [svg("rect", { width: "5", height: "5" }), svg("rect", { x: "10", width: "5", height: "5" })],
-      // Turned by 30°, so its edges are not the box's.
-      [
-        svg("rect", {
-          width: "5",
-          height: "5",
-          style: "transform: matrix(0.866, 0.5, -0.5, 0.866, 0, 0)",
-        }),
-      ],
     ];
     for (const content of contents) {
       const cp = clipPath(content);

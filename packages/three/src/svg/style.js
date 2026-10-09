@@ -33,6 +33,23 @@ export function readProperty(style, element, name) {
 }
 
 /**
+ * The id a `url()` reference names, as `marker-start`, `marker-mid`,
+ * `marker-end` and `clip-path` name one, or null for `none` and anything
+ * else. A computed value is `url("#id")`, an attribute `url(#id)`.
+ *
+ * @param {string} value
+ * @returns {string | null}
+ */
+export function parseUrlReference(value) {
+  const match = /^url\(\s*(["']?)(.*)\1\s*\)$/.exec(value.trim());
+  if (!match) {
+    return null;
+  }
+  const hash = match[2].lastIndexOf("#");
+  return hash >= 0 && hash < match[2].length - 1 ? match[2].slice(hash + 1) : null;
+}
+
+/**
  * A length in user units. `px` and unitless are the same thing in user
  * space; a percentage would need the viewport to resolve against and reads
  * as the fallback here (`parseLengthIn` is the reader that has a viewport);

@@ -1,6 +1,5 @@
 import { EllipseCurve, LineCurve } from "three";
 import { getAttributeCached } from "../elements/mirror.js";
-import { SVG_NAMESPACE } from "../elements/plugins.js";
 import {
   apply,
   multiply,
@@ -24,8 +23,9 @@ import {
  * `markerUnits`, and turns it to the path's direction there under
  * `orient="auto"`.
  *
- * Everything here is pure except `findMarker`, which looks the `<marker>` up
- * by id. What reads the element and draws the copies is `svg/template.js`.
+ * Everything here is arithmetic except `readMarkerSpec`, which reads the
+ * `<marker>`'s attributes. What looks the `<marker>` up by id and draws the
+ * copies is `svg/template.js`.
  *
  * @import {Curve, ShapePath, Vector2} from 'three';
  * @import {Matrix2D, PreserveAspectRatio, ViewBox} from './geometry.js';
@@ -300,38 +300,4 @@ function markerViewport(spec) {
  */
 export function markerMatrix(spec, vertex, strokeWidth) {
   return multiply(markerFrame(spec, vertex, strokeWidth), markerViewport(spec));
-}
-
-/**
- * The id a `marker-start`, `marker-mid` or `marker-end` names, or null for
- * `none`. A computed value is `url("#id")`, an attribute `url(#id)`.
- *
- * @param {string} value
- * @returns {string | null}
- */
-export function parseMarkerReference(value) {
-  const match = /^url\(\s*(["']?)(.*)\1\s*\)$/.exec(value.trim());
-  if (!match) {
-    return null;
-  }
-  const hash = match[2].lastIndexOf("#");
-  return hash >= 0 && hash < match[2].length - 1 ? match[2].slice(hash + 1) : null;
-}
-
-/**
- * The `<marker>` an id names in the element's document, or null for one
- * that is missing or is something other than a marker.
- *
- * @param {Element} element
- * @param {string | null} id
- * @returns {Element | null}
- */
-export function findMarker(element, id) {
-  if (!id) {
-    return null;
-  }
-  const found = element.ownerDocument.getElementById(id);
-  return found && found.localName === "marker" && found.namespaceURI === SVG_NAMESPACE
-    ? found
-    : null;
 }

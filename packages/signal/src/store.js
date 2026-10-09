@@ -11,8 +11,49 @@ import { isPlainObject } from "./util.js";
  * @import {IEmitter} from "./Emitter.js";
  */
 
-/** @type {WeakMap<object, Emitter<Record<PropertyKey, unknown>>>} */
-const emitters = new WeakMap();
+/**
+ * @typedef {object} Internals
+ * @property {Emitter<Record<PropertyKey, unknown>>} emitter
+ * @property {Record<PropertyKey, unknown>} state
+ * @property {Map<PropertyKey, () => unknown>} getters
+ * @property {Map<PropertyKey, (value: unknown) => void>} setters
+ * @property {Map<PropertyKey, Derived<unknown>>} derived
+ * @property {Signal<number> | undefined} definition Bumped when
+ *   `reconfigure` replaces a getter with another. Every getter's `Derived`
+ *   of this store reads it, so each recomputes and its readers re-run only
+ *   if its value changed by `Object.is`. It is one per store, not one for
+ *   all, so that a reload reaches no other store. Made with the store's
+ *   first getter `Derived`.
+ * @property {(key: PropertyKey) => void} announce
+ * @property {symbol} ownKeys The key the key set's readers depend on.
+ * @property {object | undefined} self The store's proxy, so that only the
+ *   proxy itself, and nothing that forwards reads to it, counts as the store.
+ */
+
+/**
+ * The key a store's proxy answers with its `Internals`, which `emit`,
+ * `reconfigure` and a store used as another's definition read. It is not one
+ * of the store's keys: `in`, `ownKeys` and spread do not see it. A
+ * `WeakMap` from proxy to record did the same job, and holding every store's
+ * record in it made building a store about a fifth slower.
+ */
+const internalsKey = Symbol("internals");
+
+/**
+ * @param {unknown} value
+ * @returns {Internals | undefined} The record of `value` if it is a store.
+ */
+function internalsOf(value) {
+  if (typeof value !== "object" || value === null) {
+    return undefined;
+  }
+  const internals = /** @type {{ [internalsKey]?: unknown }} */ (value)[internalsKey];
+  // An object whose prototype is a store, or a proxy that answers every key,
+  // reads something here too; only the store's own proxy is its `self`.
+  return /** @type {Internals | undefined} */ (internals)?.self === value
+    ? /** @type {Internals} */ (internals)
+    : undefined;
+}
 
 /**
  * Everything `volatileStore` has made.
@@ -31,7 +72,7 @@ const volatileStores = new WeakSet();
  * @returns {boolean}
  */
 export function isStore(value) {
-  return typeof value === "object" && value !== null && emitters.has(value);
+  return internalsOf(value) !== undefined;
 }
 
 /**
@@ -56,10 +97,7 @@ export function isVolatile(value) {
  * @return {void}
  */
 export function emit(data, event, payload) {
-  let emitter = emitters.get(data);
-  if (emitter) {
-    emitter.emit(event, payload);
-  }
+  internalsOf(data)?.emitter.emit(event, payload);
 }
 
 /**
@@ -78,6 +116,15 @@ function isPlainObjectNoComputation(value) {
 }
 
 /**
+ * Give `oldValue` the values of `newValue`: assign each of its keys and
+ * delete each key it does not have, in one batch.
+ *
+ * Each value is read from `newValue`, through its getter where it has one,
+ * and assigned to `oldValue` as any write is: through `oldValue`'s setter
+ * where the key has one; to nothing where the key has a getter and no
+ * setter; and to the key itself otherwise. `oldValue`'s getters and setters
+ * stay as they are, which only `reconfigure` changes.
+ *
  * @param {Record<PropertyKey, unknown>} oldValue
  * @param {Record<PropertyKey, unknown>} newValue
  */
@@ -114,7 +161,8 @@ function store(data, operators = []) {
       throw new Error("Store can only be created from a plain object");
     }
     const newData = { ...data };
-    for (const [key, value] of Object.entries(newData)) {
+    for (const key of Reflect.ownKeys(newData)) {
+      const value = newData[key];
       if (isPlainObject(value)) {
         newData[key] = store(value);
       }
@@ -130,15 +178,7 @@ function store(data, operators = []) {
   const getters = new Map();
   /** @type {Map<PropertyKey, (value: unknown) => void>} */
   const setters = new Map();
-
-  for (const [key, descriptor] of Object.entries(Object.getOwnPropertyDescriptors(data))) {
-    if (descriptor.get) {
-      getters.set(key, descriptor.get);
-    }
-    if (descriptor.set) {
-      setters.set(key, descriptor.set);
-    }
-  }
+  defineAccessors(getters, setters, describe(data));
 
   /**
    * What a reader of one key depends on: a counter per key, bumped when that
@@ -199,6 +239,19 @@ function store(data, operators = []) {
   const addEventListener = eventListener.addEventListener.bind(eventListener);
   const removeEventListener = eventListener.removeEventListener.bind(eventListener);
 
+  /** @type {Internals} */
+  const internals = {
+    emitter: eventListener,
+    state,
+    getters,
+    setters,
+    derived,
+    definition: undefined,
+    announce,
+    ownKeys,
+    self: undefined,
+  };
+
   const proxy = new Proxy(state, {
     get(_, key, receiver) {
       if (key === "addEventListener") {
@@ -207,14 +260,23 @@ function store(data, operators = []) {
       if (key === "removeEventListener") {
         return removeEventListener;
       }
+      if (key === internalsKey) {
+        return internals;
+      }
       addDependency(getChangesAtKey(key));
-      const getter = getters.get(key);
-      if (!getter) {
+      if (!getters.has(key)) {
         return state[key];
       }
       let signal = derived.get(key);
       if (!signal) {
-        signal = new Derived(() => getter.call(receiver));
+        // The getter is looked up on each run rather than captured, so a
+        // `reconfigure` that bumps `internals.definition` makes this run the
+        // new one, and the cutoff spares the readers when it agrees.
+        signal = new Derived(() => {
+          (internals.definition ??= Signal.of(0)).get();
+          const getter = getters.get(key);
+          return getter ? getter.call(receiver) : state[key];
+        });
         derived.set(key, signal);
       }
       return signal.get();
@@ -223,6 +285,11 @@ function store(data, operators = []) {
       const setter = setters.get(key);
       if (setter) {
         setter.call(receiver, newValue);
+      } else if (getters.has(key)) {
+        // A getter with no setter is readonly, which the store's type says
+        // too. The write does nothing, as on a frozen object outside strict
+        // mode, rather than land in `state`, which a getter key is not read
+        // from.
       } else {
         if (isPlainObject(newValue)) {
           const oldValue = state[key];
@@ -256,6 +323,12 @@ function store(data, operators = []) {
       return key in state;
     },
     deleteProperty(_, key) {
+      if (getters.has(key) || setters.has(key)) {
+        // A key with a getter or a setter stays for the store's life, since
+        // only `reconfigure` changes those. The delete does nothing, as on a
+        // non-configurable property outside strict mode.
+        return true;
+      }
       delete state[key];
       batch(() => {
         announce(key);
@@ -268,8 +341,8 @@ function store(data, operators = []) {
       return Reflect.ownKeys(state);
     },
   });
+  internals.self = proxy;
 
-  emitters.set(proxy, eventListener);
   if (operators.length > 0) {
     // Skipped when there is nothing to apply, which is the common case: a
     // store is the ordinary way to hold state here and most hold it without
@@ -294,9 +367,10 @@ function store(data, operators = []) {
  * So this is a store in every other respect — the same proxy, the same
  * per-key dependencies, the same nesting — that `@apendua/vite-hmr` treats
  * differently on a reload: it keeps the object, so the module's own code and
- * its importers go on sharing it, and `replace`s the contents with the
- * re-evaluated definition. The readers of the keys that changed re-run, and
- * nobody else does.
+ * its importers go on sharing it, and `reconfigure`s it with the re-evaluated
+ * definition. The readers of the keys that changed re-run, and nobody else
+ * does. A getter has changed when its value differs by `Object.is`, so one
+ * that builds a new object on each call re-runs its readers on every reload.
  *
  * Which leaves one thing to get right at the call site: a value has to be
  * *read* inside a computation to follow an edit. A read in a `set({ get
@@ -323,6 +397,178 @@ export function volatileStore(data, operators = []) {
   const proxy = store(data, operators);
   volatileStores.add(proxy);
   return proxy;
+}
+
+/**
+ * Make `target` what `definition` defines: its getters and setters, its data
+ * keys' values and no other keys. A data key's value is written to the
+ * store's state, not through a setter, so no setter runs. The readers of
+ * each key that changed re-run; a replaced getter's readers re-run only when
+ * its value changes by `Object.is`, so a getter that builds a new object on
+ * each call re-runs them on every reconfigure. Nested stores are
+ * reconfigured with the objects at the same keys, plain or stores.
+ *
+ * `definition` is a plain object, or a store, which stands for its getters
+ * and setters and the values it holds now, so what has been written to it
+ * since it was made is kept. This is the whole of a hot reload of a
+ * `volatileStore`; `replace` is an assignment and belongs to the running
+ * program.
+ *
+ * A key with a setter and no getter reads `undefined`, as it does when
+ * `store()` makes it: a write to it goes to the setter, never to `state`.
+ * Like a key with a getter, it stays for the store's life: `delete` does not
+ * remove it. A store is given no key named `__proto__` or `constructor`:
+ * the first sets a plain object's prototype, the second is how
+ * `isPlainObject` tells a plain object.
+ *
+ * @param {object} target A store.
+ * @param {object} definition
+ * @returns {void}
+ */
+export function reconfigure(target, definition) {
+  const internals = internalsOf(target);
+  if (!internals) {
+    throw new Error("reconfigure() takes a store");
+  }
+  const descriptors = describe(definition);
+  batch(() => {
+    reconfigureWith(internals, descriptors);
+  });
+}
+
+/**
+ * The descriptors `definition` defines a store with. A store stands for its
+ * getters and setters and the values it holds now, so that what has been
+ * written to it since it was made is kept. A plain object gives its
+ * enumerable keys, the ones a spread copies.
+ *
+ * @param {object} definition
+ * @returns {Record<PropertyKey, PropertyDescriptor>}
+ */
+function describe(definition) {
+  const internals = internalsOf(definition);
+  if (!internals) {
+    // The keys a spread would copy, as `store()` copies them.
+    /** @type {Record<PropertyKey, PropertyDescriptor>} */
+    const descriptors = Object.getOwnPropertyDescriptors(definition);
+    for (const key of Reflect.ownKeys(descriptors)) {
+      if (!descriptors[key].enumerable) {
+        delete descriptors[key];
+      }
+    }
+    return descriptors;
+  }
+  /** @type {Record<PropertyKey, PropertyDescriptor>} */
+  const descriptors = {};
+  for (const key of Reflect.ownKeys(internals.state)) {
+    const get = internals.getters.get(key);
+    const set = internals.setters.get(key);
+    descriptors[key] =
+      get || set
+        ? { get, set, enumerable: true, configurable: true }
+        : { value: internals.state[key], writable: true, enumerable: true, configurable: true };
+  }
+  return descriptors;
+}
+
+/**
+ * Fill `getters` and `setters` from `descriptors`.
+ *
+ * @param {Map<PropertyKey, () => unknown>} getters
+ * @param {Map<PropertyKey, (value: unknown) => void>} setters
+ * @param {Record<PropertyKey, PropertyDescriptor>} descriptors
+ */
+function defineAccessors(getters, setters, descriptors) {
+  for (const key of Reflect.ownKeys(descriptors)) {
+    const descriptor = descriptors[key];
+    if (descriptor.get) {
+      getters.set(key, descriptor.get);
+    }
+    if (descriptor.set) {
+      setters.set(key, descriptor.set);
+    }
+  }
+}
+
+/**
+ * @param {Internals} internals
+ * @param {Record<PropertyKey, PropertyDescriptor>} descriptors
+ */
+function reconfigureWith(internals, descriptors) {
+  const { state, getters, setters, derived, announce, ownKeys } = internals;
+  const previous = new Map(getters);
+  getters.clear();
+  setters.clear();
+  defineAccessors(getters, setters, descriptors);
+  // A getter replaced by another: its `Derived` recomputes and the cutoff
+  // decides whether its readers re-run. A key that gains or loses its getter
+  // changes where it is read from, so its readers re-run.
+  let replaced = false;
+  for (const key of new Set([...previous.keys(), ...getters.keys()])) {
+    const before = previous.get(key);
+    const after = getters.get(key);
+    if (before === after) {
+      continue;
+    }
+    if (before && after) {
+      replaced = true;
+      continue;
+    }
+    derived.delete(key);
+    announce(key);
+  }
+  if (replaced && internals.definition) {
+    internals.definition.setFn(
+      (value) => value + 1,
+      () => 1,
+    );
+  }
+  // The values of the data keys, written to `state` rather than through the
+  // store, so no setter runs.
+  for (const key of Reflect.ownKeys(descriptors)) {
+    const descriptor = descriptors[key];
+    if (descriptor.get || descriptor.set) {
+      // A key with an accessor is in `state` as a key, as the spread puts it
+      // there at `store()` time, so `in`, `ownKeys` and spread see it. What
+      // `state` holds for it is read only when it has no getter, and then it
+      // is `undefined`, as at `store()` time.
+      const added = !Object.hasOwn(state, key);
+      if (added || (!descriptor.get && state[key] !== undefined)) {
+        state[key] = undefined;
+        announce(key);
+      }
+      if (added) {
+        announce(ownKeys);
+      }
+      continue;
+    }
+    const value = descriptor.value;
+    const old = state[key];
+    const nested = internalsOf(old);
+    if (nested && isPlainObjectNoComputation(value)) {
+      reconfigureWith(nested, describe(value));
+      continue;
+    }
+    const next = isPlainObjectNoComputation(value) ? store(value) : value;
+    const added = !Object.hasOwn(state, key);
+    if (!added && Object.is(old, next)) {
+      continue;
+    }
+    state[key] = next;
+    announce(key);
+    if (added) {
+      announce(ownKeys);
+    }
+  }
+  // The keys the definition no longer has.
+  for (const key of Reflect.ownKeys(state)) {
+    if (!Object.hasOwn(descriptors, key)) {
+      delete state[key];
+      derived.delete(key);
+      announce(key);
+      announce(ownKeys);
+    }
+  }
 }
 
 export default store;

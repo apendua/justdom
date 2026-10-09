@@ -53,7 +53,15 @@ export {
 export { memo, memoFn, decorate, mutate } from "./decorators.js";
 export { observable, component, effectsOnly, just } from "./factories.js";
 export { all, each } from "./util.js";
-export { default as store, emit, isStore, isVolatile, replace, volatileStore } from "./store.js";
+export {
+  default as store,
+  emit,
+  isStore,
+  isVolatile,
+  reconfigure,
+  replace,
+  volatileStore,
+} from "./store.js";
 export { default as selector, arraySelector } from "./selector.js";
 export {
   MINUTE,

@@ -176,7 +176,9 @@ and throws rather than spinning.
   that built the effect, rather than stopping the effect silently — pass `standalone: true` for an
   effect whose death should stay its own. This is what every `use(() => ...)` in this repo turned
   out to want, and `use()` no longer takes a callback at all.
-- `store()` — a reactive `Proxy` over plain objects/arrays, with per-key dependency tracking.
+- `store()` — a reactive `Proxy` over plain objects/arrays, with per-key dependency tracking. A
+  getter with no setter is readonly. `replace()` assigns values through the store; `reconfigure()`
+  swaps in a new definition, which is what a hot reload does.
 - `selector()` / `arraySelector()` — structural, read-only reactive views.
 - `ReactiveMap` / `ReactiveSet` — reactive wrappers around the native collections.
 - `createProperty()` — a `WeakKey`-chained context mechanism (dependency injection without a

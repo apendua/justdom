@@ -10,7 +10,7 @@ import {
   observable,
   ReactiveMap,
   ReactiveSet,
-  replace,
+  reconfigure,
   Signal,
   Stream,
   Subject,
@@ -59,8 +59,8 @@ import {
  *   whose contents are written in source rather than by the running program
  *   — is the one thing both kept and followed. The object is
  *   kept, so the module's own code and its importers go on sharing it, and
- *   its contents are `replace`d with the re-evaluated definition, so the
- *   readers of the keys that changed re-run and nobody else does. Which is
+ *   `reconfigure`d with the re-evaluated definition, so the readers of the
+ *   keys that changed re-run and nobody else does. Which is
  *   what a theme wants: an edit to one colour reaches the things wearing
  *   that colour, and nothing else moves.
  * - **State** — a `Signal`, a `store`, a `ReactiveMap` or `ReactiveSet`, a
@@ -409,8 +409,8 @@ function createEntry(kind, value) {
     return { kind, shape: stateShapeOf(value) ?? "", held: null, exported: value };
   }
   if (kind === "constants") {
-    // Kept as an object, and followed by having its contents replaced: see
-    // `commit`.
+    // Kept as an object, and followed by being reconfigured with the new
+    // definition, getters and setters included: see `commit`.
     return { kind, shape: "", held: null, exported: value };
   }
   const held = Signal.of(/** @type {any} */ (value));
@@ -498,7 +498,7 @@ export function $hmr(hot) {
         } else {
           // A `volatileStore`: the kept object takes the new definition, and
           // only the readers of what changed hear.
-          replace(/** @type {any} */ (entry.exported), /** @type {any} */ (value));
+          reconfigure(/** @type {object} */ (entry.exported), /** @type {object} */ (value));
         }
       }
     });

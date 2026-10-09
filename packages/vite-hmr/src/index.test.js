@@ -443,6 +443,40 @@ describe("a volatileStore export", () => {
     b.dispose();
   });
 
+  test("follows an edit to a getter's body", () => {
+    const palette = store({ amber: "#fb0", ivory: "#eed" });
+    const hot = fakeHot();
+    const theme = reload(
+      hot,
+      "theme",
+      volatileStore({
+        get accent() {
+          return palette.amber;
+        },
+      }),
+    );
+    /** @type {string[]} */
+    const accents = [];
+    const a = new Effect(() => {
+      accents.push(theme.accent);
+    });
+
+    const next = $hmr(hot);
+    next.reloadable(
+      "theme",
+      volatileStore({
+        get accent() {
+          return palette.ivory;
+        },
+      }),
+    );
+    next.commit();
+    palette.ivory = "#fff";
+    palette.amber = "#f80";
+    assert.deepStrictEqual(accents, ["#fb0", "#eed", "#fff"], "the new getter, still computed");
+    a.dispose();
+  });
+
   test("which constructor made it is what tells it from an ordinary store", () => {
     const hot = fakeHot();
     reload(hot, "thing", volatileStore({ a: 1 }));

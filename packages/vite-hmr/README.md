@@ -63,10 +63,12 @@ with its holder depends on what kind of thing the module defined:
 
 - **A `volatileStore`.** A theme, a palette, layout metrics: a store whose contents come from source
   rather than from the running program. The object is kept, as state is, so the module's own code
-  and its importers go on sharing it — and its contents are `replace`d with the re-evaluated
-  definition, so the readers of the keys that changed re-run and nobody else does. A module
-  exporting its theme this way rather than as an object literal is one an edit to a colour reaches
-  without reloading anything, let alone the page. A colour still has to be _read_ inside a
+  and its importers go on sharing it. It is `reconfigure`d with the re-evaluated definition, which
+  gives it the new getters, setters and values, so an edited getter takes effect and the readers of
+  the keys that changed re-run and nobody else does. A getter has changed when its value differs by
+  `Object.is`, so one that builds a new object on each call re-runs its readers on every reload. A
+  module exporting its theme this way rather than as an object literal is one an edit to a colour
+  reaches without reloading anything, let alone the page. A colour still has to be _read_ inside a
   computation to follow the edit; one read at module scope is captured, as any constant would be.
 
 - **State.** A `Signal`, a `store`, a `ReactiveMap` or `ReactiveSet`, a `Subject` or `Emitter`, an

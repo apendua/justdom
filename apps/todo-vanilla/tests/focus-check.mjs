@@ -65,6 +65,9 @@ async function run(browser, url, realFocus) {
   );
   await frames(page, 30);
 
+  /** The right controller held at `HAND`, aimed by yaw and pitch in degrees. */
+  const at = (/** @type {number} */ yaw, /** @type {number} */ pitch) =>
+    aim(page, HAND, (yaw * Math.PI) / 180, (pitch * Math.PI) / 180);
   /**
    * Sweep the ray until `found` says it is on what it looks for.
    *
@@ -75,7 +78,7 @@ async function run(browser, url, realFocus) {
   const find = async (found, from, to) => {
     for (let pitch = from; pitch >= to; pitch -= 1) {
       for (let yaw = -20; yaw <= 20; yaw += 2) {
-        await aim(page, HAND, (yaw * Math.PI) / 180, (pitch * Math.PI) / 180);
+        await at(yaw, pitch);
         if (await found()) {
           return [yaw, pitch];
         }
@@ -134,7 +137,7 @@ async function run(browser, url, realFocus) {
     console.log("  board key pressed:    could not find a key with the ray");
   }
 
-  await aim(page, HAND, (field[0] * Math.PI) / 180, (field[1] * Math.PI) / 180);
+  await at(...field);
   const add = await find(
     () =>
       page.evaluate(

@@ -97,7 +97,9 @@ freedom's keyboard types into it: freedom keeps a focus of its own and marks the
 into nothing, since its keys go to whatever has the page's focus.
 
 `?realfocus` tries the other way. `followXRFocus` from `@apendua.dev/headset/focus` watches for that
-mark and focuses the field when it appears and blurs it when it goes, so the two foci agree.
+mark and focuses the field when it appears and blurs it when it goes. It runs one way only: when the
+page's focus leaves the field on its own, the mark and freedom's keyboard stay, and the log below
+shows whether a Quest does that; `@apendua.dev/headset/focus` has the rules.
 `node tests/focus-check.mjs` runs the app on the emulated headset with and without it. Without it
 the field is marked but `<body>` has focus and the laptop's keys are lost. With it the field has
 focus while the board is up, the laptop's keys type into it and Enter adds a todo, the board's own

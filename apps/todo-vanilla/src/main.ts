@@ -3,6 +3,7 @@ import { just } from "@apendua/signal";
 import TodoApp from "./components/TodoApp";
 import { offerXR } from "./xr";
 import { followXRFocus } from "@apendua.dev/headset/focus";
+import { mountFocusDiagnostics } from "./focusDiagnostics";
 import "./index.css";
 
 const root = document.querySelector<HTMLDivElement>("#root");
@@ -23,7 +24,9 @@ offerXR(root).catch((err) => {
   console.error("Could not offer an XR session:", err);
 });
 
-// The experiment in `@apendua.dev/headset/focus`, only when the address asks for it.
+// The experiment in `@apendua.dev/headset/focus`, only when the address
+// asks for it, with a log in the card of what the page hears meanwhile.
 if (new URLSearchParams(location.search).has("realfocus")) {
   followXRFocus(root);
+  mountFocusDiagnostics(root);
 }

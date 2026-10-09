@@ -36,6 +36,7 @@ harness photographing the scene.
 | `src/components/TodoItem.ts`     | A row: a drag handle, a checkbox drawn honestly in both builds, a label, a Delete button.                                                                                                                        |
 | `tests/drag-check.mjs`           | Reorders the list by dragging, with the mouse on the page and with the controller in the emulator.                                                                                                               |
 | `tests/focus-check.mjs`          | What the page's focus does in a session, with and without `?realfocus`.                                                                                                                                          |
+| `src/focusDiagnostics.ts`        | Under `?realfocus`, a log in the card of keys, focus and the system keyboard, to read in a headset.                                                                                                              |
 | `src/components/Scene.ts`        | The scene: `dom(ctx, panel, …)`. Lights, a cursor, the panel, and the frame rate while a session runs.                                                                                                           |
 | `src/components/TodoKeyboard.ts` | What the headset's keyboard looks like: `keyboard` from `@apendua/justui` dressed for this panel.                                                                                                                |
 | `@apendua.dev/headset`           | Not a file here, but shared with the other headset apps: `xrSession`, the session the page is shown in, written by the scene and read by the app for its exit button; `canPresent`; and IWER behind `?emulator`. |
@@ -103,3 +104,10 @@ focus while the board is up, the laptop's keys type into it and Enter adds a tod
 keys still type, and focus leaves the field when Add puts the board away. The emulator is not a
 headset: what a Quest's browser does when a page focuses a field during an immersive session, for
 example whether it raises its system keyboard, has not been tried.
+
+Under `?realfocus` the card also carries a log, `src/focusDiagnostics.ts`, to read in the headset,
+where there are no dev tools. It shows whether `navigator.virtualKeyboard` exists and the rectangle
+its `geometrychange` reports, every `keydown` with whether the browser sent it (`TRUSTED`) or a
+script did (freedom's keyboard), focus moving in the card, and the window and the visual viewport
+changing size. On a Quest it says whether the system keyboard comes up and whether a paired
+keyboard's keys reach the page.

@@ -40,13 +40,7 @@ import { createFrameRequester } from "./frameRequester.js";
 import { createLoadingFrame } from "./loadingFrame.js";
 import { createPortalPump } from "./portalPump.js";
 import { createPortalScheduler, PortalSchedulerContext } from "./portalScheduler.js";
-import {
-  isSvgElement,
-  isSvgRoot,
-  PortalPluginsContext,
-  PortalTemplatesContext,
-  projectWithPlugins,
-} from "./plugins.js";
+import { isSvgElement, isSvgRoot, PortalPluginsContext, projectWithPlugins } from "./plugins.js";
 import { mergePanelOptions, PanelOptionsContext, resolveKeyboard } from "./panelOptions.js";
 import { createHaptics, HapticsContext } from "./haptics.js";
 import { createPanelForwarder, PointerForwarderContext } from "./pointerForwarding.js";
@@ -932,7 +926,7 @@ function buildPortal(ctx, ownOptions = {}) {
     // portal, and a node kept in them keeps this mirror's signals under it.
     // The element the page owns is the one that comes back — see
     // `forgetNode` in mirror.js.
-    mirror.release(node);
+    mirror.forget(node);
   }
 
   /**
@@ -955,18 +949,6 @@ function buildPortal(ctx, ownOptions = {}) {
     templateNodes.add(node);
     node.childNodes.forEach(adoptTemplate);
   }
-  // Only what is inside this panel: a marker another panel or the page
-  // owns is not this mirror's to follow, and its own portal adopts it. And
-  // only what the portal has not built: a `<use>` may name a `<g>` drawn
-  // where it stands, and a node taken for a template has children the
-  // portal does not build. A template adopted already stays adopted, its
-  // later children with it, so a plugin that asks again on every restyle
-  // walks nothing.
-  ctx = PortalTemplatesContext.set(ctx, (node) => {
-    if (!templateNodes.has(node) && containerElement.contains(node) && !nodeToObject.has(node)) {
-      adoptTemplate(node);
-    }
-  });
 
   /**
    * Build the object for this one node and nothing below it. The recursion
@@ -1197,14 +1179,18 @@ function buildPortal(ctx, ownOptions = {}) {
    * commit to close over the gap. So a removed row keeps its subscription,
    * and with it its effects, until the commit.
    *
-   * What that costs is bounded, and worth knowing. The mutation that
-   * removes a node bumps its `reparented` signal, which invalidates its
-   * subtree's styles and layouts, so its effects are queued and warmed once
-   * against DOM that is no longer in the document — reads that come back
-   * empty, and cost little for it. The same bump is what cuts the subtree
-   * loose: its parent chain now ends at a node with no parent, so nothing
-   * that happens in the live tree afterwards reaches it. One wave, and then
-   * quiet until the commit disposes it.
+   * What that costs is bounded, and worth knowing. The mirror lets go of
+   * the subtree here and now (`DomMirror.release`), and keeps nothing but
+   * what the objects already hold. The mutation that removes a node bumps
+   * its `reparented` signal, which invalidates its subtree's styles and
+   * layouts, so its effects are queued and warmed once against DOM that is
+   * no longer in the document — reads that come back empty, and cost little
+   * for it. That is the last of it: those reads find the subtree let go of,
+   * cut off from its parent chain and from the panel's own signals, so
+   * nothing that happens in the panel afterwards reaches it, a font arriving
+   * included. One wave, and then quiet until the commit disposes it. A node
+   * put back before the commit is taken back by the mirror as the flush
+   * that reports it arrives (`DomMirror.reclaim`).
    *
    * A child that *moved* out of the removed subtree — appended elsewhere
    * before the commit — is still in the tree, and its object is still under
@@ -1221,6 +1207,7 @@ function buildPortal(ctx, ownOptions = {}) {
    */
   const detach = (node) => {
     if (pump && nodeToObject.has(node)) {
+      mirror.release(node);
       pendingRemovals.add(node);
       return;
     }

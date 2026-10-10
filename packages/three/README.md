@@ -1081,7 +1081,10 @@ size. It does _not_ carry hover's other restriction: a tick may style the elemen
 
 The DOM stays the thing that is true. A ray's click is a click, so the browser does the toggling and
 fires `change`, and an application reads `checked` and listens for `change` exactly as it would on a
-page — including `set("checked", …)` from the other direction, which the scene follows.
+page — including `set("checked", …)` from the other direction, which the scene follows. An
+assignment changes no attribute, so the portal hears it through an accessor of its own on the
+element, which calls through to the browser's. It is there while a panel shows the box and taken off
+once none does.
 
 Every other kind of `<input>` is still drawn as a plain box: a range's thumb, a colour swatch and a
 file picker's button are chrome the DOM does not describe, and there is nothing honest to mirror.

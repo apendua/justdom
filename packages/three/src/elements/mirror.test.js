@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import { batch, Computation, Derived, Effect, selector, toObservable } from "@apendua/signal";
 import {
   createMirror,
+  getCheckedCached,
   getChildNodes,
   getBorderBoxSize,
   getComputedStyleCached,
@@ -2896,5 +2897,43 @@ describe("the module graph", () => {
     walk(root, ["mirror.js"]);
     assert.ok(visited.size > 0, "the walk found mirror.js's own imports");
     assert.deepEqual(cycles, []);
+  });
+});
+
+describe("a checkbox's checked property", () => {
+  test("is heard by every watcher, and left as it was when the last one goes", () => {
+    // Two panels over one box, as when a panel re-mounts while the one it
+    // replaces is still coming down. The first lets go of the box, and the
+    // second reads it afresh: an assignment still reaches the reader the
+    // first panel left behind, and the box keeps no accessor of ours once
+    // nobody reads it.
+    const box = document.createElement("input");
+    box.type = "checkbox";
+    document.body.appendChild(box);
+    /** @type {boolean[]} */
+    const first = [];
+    const firstSubscription = toObservable(new Derived(() => getCheckedCached(box))).subscribe(
+      (checked) => first.push(checked),
+    );
+    const mirror = createMirror();
+    mirror.adopt(box);
+    mirror.forget(box);
+    /** @type {boolean[]} */
+    const second = [];
+    const secondSubscription = toObservable(new Derived(() => getCheckedCached(box))).subscribe(
+      (checked) => second.push(checked),
+    );
+
+    box.checked = true;
+    assert.deepEqual(first, [false, true], "the first reader hears it");
+    assert.deepEqual(second, [false, true], "and so does the second");
+
+    firstSubscription.unsubscribe();
+    assert.ok(Object.hasOwn(box, "checked"), "kept while a reader is left");
+    box.checked = false;
+    assert.deepEqual(second, [false, true, false]);
+    secondSubscription.unsubscribe();
+    assert.ok(!Object.hasOwn(box, "checked"), "and taken off after the last");
+    box.remove();
   });
 });

@@ -4,17 +4,25 @@
  * second panel over the same page starts from, and what a plugin hears of a
  * template it draws.
  *
- * They pin today's behaviour for R2 in `docs/freedom-architecture-plan.md`,
- * sections 8 and 10. R2 changes how the mirror lets a node go, and that
- * change has to land with these green. The fourth test of the set, #454's
- * node read before any portal adopted it, is in `mirror.test.js`.
+ * They pin R2 in `docs/freedom-architecture-plan.md`, sections 8 and 10:
+ * the mirror lets a node go at `detach`, when it leaves the panel, and
+ * keeps only its objects drawn until the commit. The fourth test of the
+ * set, #454's node read before any portal adopted it, is in
+ * `mirror.test.js`, beside the refcount on a checkbox's accessor.
  */
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
 import { svgElements } from "../svg/index.js";
 import { clientRect } from "../test/clientRect.js";
-import { countingManager, drain, settle } from "../test/portalHarness.js";
+import {
+  countingManager,
+  dispatchFontsEvent,
+  drain,
+  flushFrame,
+  nextMacrotask,
+  settle,
+} from "../test/portalHarness.js";
 import { createPortal } from "./portal.js";
 
 // three's SVGLoader parses with DOMParser, which jsdom-env does not install.
@@ -84,12 +92,111 @@ describe("a node's life in a mirror", () => {
     root.remove();
   });
 
+  test("a departed subtree is quiet while it waits for the commit", async () => {
+    // A card leaves while rows arrive, so the commit that takes the card out
+    // waits for the rows to be built, a frame each. Until then the card is
+    // drawn as it was. Nothing the panel hears in the meantime reaches it: a
+    // font arriving re-measures the panel, and not the card, which is no
+    // longer in the document to be measured.
+    const { ctx } = countingManager();
+    const root = document.createElement("div");
+    root.getBoundingClientRect = () => clientRect(0, 0, 200, 100);
+    const card = document.createElement("div");
+    card.style.padding = "4px";
+    const inner = document.createElement("div");
+    inner.style.cursor = "pointer";
+    card.appendChild(inner);
+    root.appendChild(card);
+    document.body.appendChild(root);
+
+    const portal = createPortal(ctx, { root, budget: 0 });
+    const scene = new THREE.Group();
+    portal.addTo(scene);
+    await settle(portal);
+    const before = countObjects(scene);
+
+    card.remove();
+    for (let index = 0; index < 20; index++) {
+      root.appendChild(document.createElement("div"));
+    }
+    // The flush that reports both, and a few of the frames that build the
+    // rows: the card's reads are answered once for the removal itself.
+    await nextMacrotask();
+    for (let index = 0; index < 4; index++) {
+      flushFrame();
+      await nextMacrotask();
+    }
+    assert.equal(countObjects(scene), before, "the card is still drawn: no commit yet");
+
+    let reads = 0;
+    for (const element of [card, inner]) {
+      element.getBoundingClientRect = () => {
+        reads += 1;
+        return clientRect(0, 0, 50, 50);
+      };
+    }
+    dispatchFontsEvent("loadingdone");
+    for (let index = 0; index < 4; index++) {
+      flushFrame();
+      await nextMacrotask();
+    }
+    assert.equal(countObjects(scene), before, "still waiting for the rows");
+    assert.equal(reads, 0, "nothing in the card is measured again");
+
+    await drain();
+    assert.ok(countObjects(scene) > before, "the rows arrived");
+    assert.equal(reads, 0, "nor at the commit that takes it out");
+
+    portal.disconnect();
+    root.remove();
+  });
+
+  test("a subtree that comes back before the commit is followed again", async () => {
+    // Taken out in one task and put back in the next, before the commit:
+    // moved rather than removed, so it keeps its objects, and what the page
+    // does to it afterwards reaches them.
+    const { ctx } = countingManager();
+    const root = document.createElement("div");
+    root.getBoundingClientRect = () => clientRect(0, 0, 200, 100);
+    const card = document.createElement("div");
+    const inner = document.createElement("div");
+    inner.style.cursor = "pointer";
+    inner.getBoundingClientRect = () => clientRect(0, 0, 50, 20);
+    card.appendChild(inner);
+    root.appendChild(card);
+    document.body.appendChild(root);
+
+    const portal = createPortal(ctx, { root, budget: 0 });
+    const scene = new THREE.Group();
+    portal.addTo(scene);
+    await settle(portal);
+    const before = countObjects(scene);
+
+    card.remove();
+    await nextMacrotask();
+    root.appendChild(card);
+    await drain();
+    assert.equal(countObjects(scene), before, "kept, not rebuilt or doubled");
+
+    let reads = 0;
+    inner.getBoundingClientRect = () => {
+      reads += 1;
+      return clientRect(0, 0, 50, 40);
+    };
+    inner.setAttribute("class", "taller");
+    await drain();
+    assert.ok(reads > 0, "an edit after it came back is measured");
+
+    portal.disconnect();
+    root.remove();
+  });
+
   test("a re-claimed checkbox starts clean", async () => {
     // A session over the page, and then another: the second panel follows
     // the box the way the first did, whichever way the state moves, and so
     // does a panel the box leaves and comes back to. The `checked` property
-    // is watched by an accessor installed on the element at its first read,
-    // and a release forgets the signal behind it.
+    // is watched by an accessor on the element for as long as anything
+    // reads it, and a release forgets the signal behind it.
     const { ctx } = countingManager();
     const root = document.createElement("div");
     root.getBoundingClientRect = () => clientRect(0, 0, 200, 100);
@@ -105,12 +212,10 @@ describe("a node's life in a mirror", () => {
     box.checked = true;
     await drain();
     assert.equal(box.dataset.xrChecked, "true", "the first panel follows an assignment");
+    assert.ok(Object.hasOwn(box, "checked"), "followed through an accessor on the element");
     first.disconnect();
     assert.equal(box.dataset.xrChecked, undefined, "and leaves nothing behind");
-    // Except the accessor, which nothing takes off again. Pinned so that
-    // the change which restores it on release (item 4 of the plan) is seen
-    // to.
-    assert.ok(Object.hasOwn(box, "checked"), "the accessor stays on the element");
+    assert.ok(!Object.hasOwn(box, "checked"), "the accessor included");
 
     // Moved while no panel is watching.
     box.checked = false;

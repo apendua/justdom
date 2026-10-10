@@ -92,25 +92,6 @@ export const PortalPluginsContext = createProperty(
 );
 
 /**
- * How a plugin brings a template into the portal's mirror: a `<marker>` or a
- * `<symbol>` it is about to draw, with everything under it. The portal builds
- * nothing for a template, and adopts one when its walk reaches it, which for
- * a `<defs>` at the end of the document is after the shapes that use it. A
- * plugin that reads a template earlier adopts it first. A read cached from
- * a node with no record follows the node's adoption (`readRecordOf` in
- * `mirror.js`) and would come round when the walk got there; adopted here,
- * it has its record from the first read, and the walk finds the template
- * adopted. Idempotent. A scene with no portal, a unit test, gets a function
- * that does nothing.
- */
-export const PortalTemplatesContext = createProperty(
-  /**
-   * @returns {(node: Node) => void}
-   */
-  () => () => {},
-);
-
-/**
  * The first plugin's answer for an element, or `null` when none claims it.
  *
  * @param {readonly PortalPlugin[]} plugins

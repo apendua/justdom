@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { Derived, effects, flatMap, just, Stream, use } from "@apendua/signal";
 import { getAttributeCached, getChildNodes, getComputedStyleCached } from "../elements/mirror.js";
-import { isSvgElement, PortalTemplatesContext } from "../elements/plugins.js";
+import { isSvgElement } from "../elements/plugins.js";
 import {
   IDENTITY,
   intersectRects,
@@ -194,21 +194,15 @@ function placementsEqual(a, b) {
  * @returns {EntityEffect<THREE.Object3D>}
  */
 function markers(ctx, element, host, hostInstance) {
-  const adopt = PortalTemplatesContext.get(ctx);
   const expanding = hostInstance?.expanding ?? new Set();
   /** @param {string} name */
   const named = (name) => {
     const marker = findMarker(element, parseMarkerReference(host.read(name)));
-    if (!marker || expanding.has(marker)) {
-      return null;
-    }
-    // Before anything reads it: a `<defs>` later in the panel than this
-    // path, or in another `<svg>` in it, is not in the mirror yet, and a
-    // read cached now would be read again only once the portal's walk got
-    // there (`readRecordOf` in `mirror.js`). One outside the panel is not
-    // this portal's to follow, and stays as read.
-    adopt(marker);
-    return marker;
+    // A `<defs>` later in the panel than this path, or in another `<svg>`
+    // in it, is not in the mirror yet. What is read of it now is read again
+    // once the portal's walk adopts it (`readRecordOf` in `mirror.js`). One
+    // outside the panel is not this portal's to follow, and stays as read.
+    return !marker || expanding.has(marker) ? null : marker;
   };
 
   const referenced = new Derived(
@@ -445,18 +439,12 @@ export function drawUse(ctx, element, instance = null) {
   const style = () => getComputedStyleCached(element);
   const own = new Derived(() => localMatrix(element, instance), { isEqual: matrixEqual });
   const chain = new Derived(() => readChain(element, instance), { isEqual: chainEqual });
-  const adopt = PortalTemplatesContext.get(ctx);
   const referenced = new Derived(() => {
     // Read for the invalidation: a `<use>` restyled is a reason to look
-    // again.
+    // again. A `<symbol>` in a `<defs>` the portal's walk has not reached
+    // yet is read again once it does, as a marker is.
     style();
-    const target = findReferenced(element);
-    // Before anything reads it, as `markers` does, for a `<symbol>` in a
-    // `<defs>` the portal's walk has not reached yet.
-    if (target) {
-      adopt(target);
-    }
-    return target;
+    return findReferenced(element);
   });
 
   return just(new THREE.Object3D(), [

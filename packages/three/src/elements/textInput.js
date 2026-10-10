@@ -146,6 +146,13 @@ const PASSWORD_BULLET = "•";
  * the element rather than the mounting, because two things in the scene may
  * read it — the run and the caret — and both want the same one.
  *
+ * Not a `nodeCache()`, which is the rule for anything kept per node, and on
+ * purpose. The rule is there so that a node a portal lets go of keeps none
+ * of that portal's signals, and this signal is the element's own: the
+ * events and the setter bump it, never a mirror. Forgetting it on a release
+ * would leave a field mirrored by a second panel, while the first is still
+ * coming down, with two signals that each hear half of what the page does.
+ *
  * @type {WeakMap<HTMLInputElement, Signal<number>>}
  */
 const valueVersions = new WeakMap();

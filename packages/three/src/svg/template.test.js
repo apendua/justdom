@@ -2,7 +2,6 @@ import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
 import { createMirror } from "../elements/mirror.js";
-import { PortalTemplatesContext } from "../elements/plugins.js";
 import { drawShape, drawUse } from "./template.js";
 
 /**
@@ -258,7 +257,7 @@ describe("markers", () => {
     s.teardown();
   });
 
-  test("a marker defined after the line is adopted before it is read, so edits reach it", () => {
+  test("a marker defined after the line follows its adoption, so edits reach it", async () => {
     const head = svg("path", { d: "M0 0 L10 5 L0 10 z", fill: "red" });
     const marker = svg("marker", { id: "late-marker", viewBox: "0 0 10 10" }, [head]);
     const line = svg("line", {
@@ -285,12 +284,15 @@ describe("markers", () => {
     };
     /** @type {Object3D | undefined} */
     let object;
-    const subscription = drawShape(PortalTemplatesContext.set({}, adopt), line).subscribe(
-      (value) => {
-        object = value;
-      },
-    );
+    const subscription = drawShape({}, line).subscribe((value) => {
+      object = value;
+    });
     assert.ok(object);
+    // The walk reaches the defs after the line is drawn, and what read the
+    // marker before then comes round a microtask after it does
+    // (`announceAdoption` in `mirror.js`).
+    adopt(/** @type {Element} */ (root.lastElementChild));
+    await Promise.resolve();
     const copyMeshes = () =>
       /** @type {Object3D} */ (object).children
         .filter((child) => !(child instanceof THREE.Mesh))

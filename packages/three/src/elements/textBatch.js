@@ -541,7 +541,7 @@ class Bucket {
  *
  * @typedef {object} Member
  * @property {THREE.Mesh} mesh
- * @property {{ value: THREE.Vector4 }} clip The uniform `text.js` maintains.
+ * @property {{ value: THREE.Vector4 }} clip The run's clip uniform (`textRun.js`).
  * @property {SizeClass | null} sizeClass
  * @property {number} layer
  * @property {HTMLCanvasElement | null} canvas
@@ -608,13 +608,13 @@ export class TextBatch {
    * anything private to the run has nowhere to go. A run whose colours are
    * baked into its texture is declined below, by `#settle`, because one array
    * texture cannot hold both coverage and colour. A run that is *revealed* is
-   * not offered by `text.js` in the first place, because it carries a cut
+   * not offered by `textRun.js` in the first place, because it carries a cut
    * uniform of its own — and making that cut a vertex attribute instead would
    * dirty the batch on every keystroke, which is the one thing that could
    * make a reveal cost more than the rewriting it replaces.
    *
    * @param {THREE.Mesh} mesh
-   * @param {{ value: THREE.Vector4 }} clip The clip uniform `text.js` keeps,
+   * @param {{ value: THREE.Vector4 }} clip The clip uniform the run keeps,
    *   which is the one piece of a run's description the mesh does not carry.
    * @returns {void}
    */

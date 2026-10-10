@@ -614,6 +614,13 @@ const departed = new WeakMap();
  * How many of `departed`'s records each mirror has, so that the ingest of an
  * ordinary arrival, with none to take back, walks nothing (`reclaim`).
  *
+ * It can stay above zero. A node let go of that the portal built no object
+ * for, a comment or a template's child, and that the page then took out of
+ * the departed subtree before the commit, is on neither of the walks the
+ * commit forgets by. Its record stays here, and from then on `reclaim` walks
+ * every added subtree and finds nothing in it: the cost this count saves,
+ * and nothing worse.
+ *
  * @type {WeakMap<DomMirror, number>}
  */
 const departures = new WeakMap();
@@ -891,8 +898,10 @@ export class DomMirror {
    * @returns {void}
    */
   forget(node) {
-    const record = records.get(node);
-    if (record && record.mirror !== this) {
+    // Held or let go of: one another panel has let go of since is still
+    // that panel's, waiting for its own commit or to be taken back.
+    const owner = (records.get(node) ?? departed.get(node))?.mirror;
+    if (owner && owner !== this) {
       return;
     }
     forgetNode(node);

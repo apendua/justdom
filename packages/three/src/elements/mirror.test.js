@@ -2937,3 +2937,32 @@ describe("a checkbox's checked property", () => {
     box.remove();
   });
 });
+
+describe("a node two panels have let go of", () => {
+  test("stays the second panel's when the first forgets it", () => {
+    // The first panel lets go of the node; before its commit the page moves
+    // it into the second panel, which adopts it and then lets go of it too.
+    // The first panel's commit forgets the node, and the second, taking it
+    // back, still has the record its reads hang from.
+    const node = document.createElement("div");
+    document.body.appendChild(node);
+    const first = createMirror();
+    const second = createMirror();
+    first.adopt(node);
+    first.release(node);
+    second.adopt(node);
+    /** @type {number[]} */
+    const seen = [];
+    const subscription = toObservable(new Derived(() => getChildNodes(node).length)).subscribe(
+      (count) => seen.push(count),
+    );
+    second.release(node);
+    first.forget(node);
+    second.reclaim(node);
+    node.appendChild(document.createElement("span"));
+    second.childListChanged(node);
+    assert.deepEqual(seen, [0, 1], "the second panel's change still reaches the read");
+    subscription.unsubscribe();
+    node.remove();
+  });
+});

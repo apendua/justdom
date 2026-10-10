@@ -342,11 +342,11 @@ function readDeclarations(text) {
 
 /**
  * Whether an inline style that went from `before` to `after` changed only
- * declarations that move no box, added, removed or rewritten, as
- * `movesLayout` decides each one. This is what keeps a gauge that
- * writes `style.transform` every frame at the cost of its own subtree, where
- * a width written the same way settles the panel. A custom property moves
- * layout too, since a `var()` may feed a width.
+ * declarations that move no box, added, removed or rewritten, as `movesLayout`
+ * decides each one. This is what keeps a gauge that writes `style.transform`
+ * every frame at the cost of its own subtree, where a width written the same
+ * way settles the panel. A custom property moves layout too, since a `var()`
+ * may feed a width.
  *
  * @param {string | null} before
  * @param {string | null} after
@@ -372,11 +372,10 @@ function paintsOnly(before, after) {
 /**
  * Whether one declaration can move a box. The name decides, through the
  * animation clock's `classify`, with its default: an unknown property moves
- * layout. The exception is `visibility: collapse`, which takes a table row or
- * a flex item out of the layout where every other `visibility` only paints.
- * The value is read as CSS reads a keyword, in any case and with an
- * `!important` after it, which is how `setProperty` with a priority writes
- * it.
+ * layout. The exception is `visibility: collapse`, which takes a table row or a
+ * flex item out of the layout where every other `visibility` only paints. The
+ * value is read as CSS reads a keyword, in any case and with an `!important`
+ * after it, which is how `setProperty` with a priority writes it.
  *
  * @param {string} name
  * @param {string | undefined} value
@@ -1932,13 +1931,13 @@ const flowModeCache = nodeCache();
  * answers are for. The first is that a change at one child cannot move the
  * children *before* it, which a flex row does not keep (see `FlowMode`) — a
  * narrower claim than it sounds, since plenty of ordinary containers place
- * their children from the far end, or from the middle, or in an order of
- * their own: adding a row to a `justify-content: center` list moves every
- * row already in it, and adding one to a `column-reverse` list moves all of
- * them and puts the new one first. The
- * second is that a container growing along the block axis leaves its children
- * where they are, which is true of block flow and emphatically not of flex,
- * where the cross axis is handed out by the container.
+ * their children from the far end, or from the middle, or in an order of their
+ * own: adding a row to a `justify-content: center` list moves every row already
+ * in it, and adding one to a `column-reverse` list moves all of them and puts
+ * the new one first. The second is that a container growing along the block
+ * axis leaves its children where they are, which is true of block flow and
+ * emphatically not of flex, where the cross axis is handed out by the
+ * container.
  *
  * So the whitelist is written as a whitelist, and everything not on it falls
  * back to telling every child — which costs what this did before the

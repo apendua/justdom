@@ -558,15 +558,15 @@ Two things about a portal are worth knowing before writing UI for one.
 
 **An attribute can move the layout, as a child arriving can.** Every attribute is followed: a class,
 an inline style, `hidden`, an app's own `data-*` or `aria-*` flag. Changing one restyles the
-element, its subtree and its siblings (apart from the SVG geometry below, which does not reach the siblings), and re-measures the element's subtree. Then the element and
-what comes after it in its parent re-measure where they are, every item in the row when the parent
-is a flex row, since its items share the row's width. The change climbs on to the parent's own
-siblings if the parent changed size or is an inline box, whose size says nothing about where the
-next line starts, and so on up to the panel, which resizes with what it holds. So a menu opened by a
-class, or a section shown by taking `hidden` off, resizes the panel as it would if it were mounted.
-A change that moved nothing costs a client rect for the element, for each element after it and for
-the parent, a text measurement for each text node after it, and a client rect for each positioned
-box in the panel.
+element, its subtree and its siblings (apart from the SVG geometry below, which does not reach the
+siblings), and re-measures the element's subtree. Then the element and what comes after it in its
+parent re-measure where they are, every item in the row when the parent is a flex row, since its
+items share the row's width. The change climbs on to the parent's own siblings if the parent changed
+size or is an inline box, whose size says nothing about where the next line starts, and so on up to
+the panel, which resizes with what it holds. So a menu opened by a class, or a section shown by
+taking `hidden` off, resizes the panel as it would if it were mounted. A change that moved nothing
+costs a client rect for the element, for each element after it and for the parent, a text
+measurement for each text node after it, and a client rect for each positioned box in the panel.
 
 Two changes stay cheaper. An inline `style` write that changes only properties that move no box,
 `transform`, `opacity`, a `visibility` other than `collapse`, the colours and the like, re-measures

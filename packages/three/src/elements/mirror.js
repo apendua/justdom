@@ -311,6 +311,97 @@ function isSelfScoped(element, name) {
 }
 
 /**
+ * The CSS properties that move no box: an inline `style` write that changes
+ * nothing else restyles the element and re-measures its own subtree, which a
+ * transform moves, but leaves the layout around it alone. This is what keeps
+ * a gauge that writes `style.transform` every frame at the cost of its own
+ * subtree, where a width written the same way settles the panel.
+ *
+ * A property not in this set climbs, and so does anything the parse below
+ * cannot read, a custom property included, since a `var()` may feed a width.
+ */
+const PAINT_ONLY_PROPERTIES = new Set([
+  "transform",
+  "transform-origin",
+  "translate",
+  "rotate",
+  "scale",
+  "opacity",
+  "visibility",
+  "z-index",
+  "cursor",
+  "color",
+  "background",
+  "background-color",
+  "background-image",
+  "background-position",
+  "background-size",
+  "border-color",
+  "border-top-color",
+  "border-right-color",
+  "border-bottom-color",
+  "border-left-color",
+  "outline",
+  "outline-color",
+  "box-shadow",
+  "filter",
+  "fill",
+  "stroke",
+]);
+
+/**
+ * An inline style's declarations, by property name. A declaration with no
+ * colon keeps its text as its name, which no set of property names holds,
+ * so a value the split cuts in two, a `data:` URL with a `;` in it say,
+ * reads as a change that moves boxes.
+ *
+ * @param {string | null} text
+ * @returns {Map<string, string>}
+ */
+function readDeclarations(text) {
+  /** @type {Map<string, string>} */
+  const declarations = new Map();
+  for (const declaration of (text ?? "").split(";")) {
+    const colon = declaration.indexOf(":");
+    if (colon < 0) {
+      if (declaration.trim()) {
+        declarations.set(declaration.trim(), "");
+      }
+      continue;
+    }
+    declarations.set(
+      declaration.slice(0, colon).trim().toLowerCase(),
+      declaration.slice(colon + 1).trim(),
+    );
+  }
+  return declarations;
+}
+
+/**
+ * Whether an inline style that went from `before` to `after` changed only
+ * properties in `PAINT_ONLY_PROPERTIES`, added, removed or rewritten.
+ *
+ * @param {string | null} before
+ * @param {string | null} after
+ * @returns {boolean}
+ */
+function paintsOnly(before, after) {
+  const was = readDeclarations(before);
+  const now = readDeclarations(after);
+  for (const [name, value] of now) {
+    if (was.get(name) !== value && !PAINT_ONLY_PROPERTIES.has(name)) {
+      return false;
+    }
+  }
+  for (const name of was.keys()) {
+    if (!now.has(name) && !PAINT_ONLY_PROPERTIES.has(name)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/**
  * Whether a computed `transform` value is one the mirror treats as a
  * transform at all. Browsers serialize every computed transform to a single
  * `matrix()`/`matrix3d()`, so under a real engine this is exactly "has a
@@ -1100,20 +1191,25 @@ export class DomMirror {
       // input's siblings, which is where a checkbox's label lives.
       let presentational = true;
       let selfScoped = true;
+      let paintOnly = true;
       for (const [name, oldValue] of names) {
-        if (element.getAttribute(name) === oldValue || PORTAL_BOOKKEEPING_ATTRIBUTES.has(name)) {
+        const value = element.getAttribute(name);
+        if (value === oldValue || PORTAL_BOOKKEEPING_ATTRIBUTES.has(name)) {
           continue;
         }
         changed = true;
         if (!PRESENTATIONAL_ATTRIBUTES.has(name)) {
           presentational = false;
+          if (name !== "style" || !paintsOnly(oldValue, value)) {
+            paintOnly = false;
+          }
         }
         if (!isSelfScoped(element, name)) {
           selfScoped = false;
         }
       }
       if (changed) {
-        this.attributeChanged(element, { presentational, selfScoped });
+        this.attributeChanged(element, { presentational, selfScoped, paintOnly });
       }
     }
     for (const [node, oldValue] of characterBaselines) {
@@ -1132,19 +1228,26 @@ export class DomMirror {
    *
    * The climb is what lets a class swap or a `hidden` resize the panel. It
    * starts at the parent, telling the element and the children after it
-   * that they moved, and goes on only past a parent that changed size (see
-   * `#settleLayout`). Each child told re-measures its own box and stops
-   * there when the box came out where it was, so a swap that moved nothing
-   * costs a rect per child from the element on, one for the parent's size,
-   * one per positioned box in the panel (`outOfFlowLayout`), and no text.
-   * That is the scope the restyle above already has, since an author's
-   * attribute can restyle its siblings.
+   * that they moved, and goes on past a parent that changed size or whose
+   * size says nothing, an inline box (see `#settleLayout`). Each child told
+   * re-measures its own box and stops there when the box came out where it
+   * was. So a swap that moved nothing costs a rect for the element and for
+   * each element after it, a text measurement for each text node after it,
+   * a rect for the parent's size, and a rect for each positioned box in the
+   * panel (`outOfFlowLayout`). That is the scope the restyle above already
+   * has, since an author's attribute can restyle its siblings.
    *
-   * Two elements start no climb. The panel's root has nothing above it in
-   * the panel, and its own size is in the subtree re-measured above. An
-   * SVG element under an `<svg>` root is placed in user space, so an
-   * attribute on it moves none of its siblings; the root's own attributes,
-   * its `width` say, are a box's and climb.
+   * In a flex row every child is told, the ones before the element too:
+   * the items share the row, so an item that grows shrinks the items
+   * before it as well as moving the ones after it.
+   *
+   * Three changes start no climb. An inline `style` whose changed
+   * properties move no box (`paintOnly`) is the motion a page writes every
+   * frame. The panel's root has nothing above it in the panel, and its own
+   * size is in the subtree re-measured above. An SVG element under an
+   * `<svg>` root is placed in user space, so an attribute on it moves none
+   * of its siblings; the root's own attributes, its `width` say, are a
+   * box's and climb.
    *
    * @param {Node} element
    * @param {object} [options]
@@ -1157,9 +1260,16 @@ export class DomMirror {
    *   own subtree. False by default. Independent of `presentational` because
    *   the two claims are: `data-xr-checked` moves no layout but may still
    *   style the label beside it. See `isSelfScoped`.
+   * @param {boolean} [options.paintOnly] Whether the change is an inline
+   *   style that moved no box, so the element's subtree re-measures and the
+   *   layout around it is not settled. False by default. See
+   *   `PAINT_ONLY_PROPERTIES`.
    * @returns {void}
    */
-  attributeChanged(element, { presentational = false, selfScoped = false } = {}) {
+  attributeChanged(
+    element,
+    { presentational = false, selfScoped = false, paintOnly = false } = {},
+  ) {
     batch(() => {
       this.#restyleScope(element, { reachesSiblings: !selfScoped });
       if (presentational) {
@@ -1170,8 +1280,13 @@ export class DomMirror {
         bumpReflow(element, record);
       }
       const parent = element.parentElement;
-      if (parent && !isPortalRoot(element) && (!isSvgElement(element) || isSvgRoot(element))) {
-        this.#layoutChangedAt(parent, element);
+      if (
+        parent &&
+        !paintOnly &&
+        !isPortalRoot(element) &&
+        (!isSvgElement(element) || isSvgRoot(element))
+      ) {
+        this.#layoutChangedAt(parent, getFlowMode(parent) === "flex" ? null : element);
       }
     });
   }

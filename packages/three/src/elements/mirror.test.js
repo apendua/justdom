@@ -707,8 +707,8 @@ describe("measured geometry", () => {
   test("an attribute change re-measures its target's subtree and what follows it", () => {
     // An attribute can toggle a CSS transform, which changes the client
     // rects of exactly the mutated element's subtree, or change the
-    // element's box, which moves the boxes after it. What comes before it
-    // in the flow cannot have moved.
+    // element's box, which moves the boxes after it. In block flow what
+    // comes before it cannot have moved; a flex row is the test below.
     const earlier = document.createElement("div");
     const parent = document.createElement("div");
     const child = document.createElement("div");
@@ -2518,6 +2518,121 @@ describe("layout boundaries", () => {
       assert.equal(watched.panel.get().height, 40, "and the panel got shorter");
 
       holders.forEach((effect) => effect.dispose());
+    } finally {
+      container.remove();
+    }
+  });
+
+  test("an attribute on a flex item re-measures the items before it", () => {
+    // Items in a flex row share its width, so a class that widens the
+    // second item shrinks the first. The row kept its size, so nothing but
+    // the attribute's own climb tells the first item.
+    let firstWidth = 100;
+
+    const container = document.createElement("div");
+    container.setAttribute(PORTAL_ATTRIBUTE, "");
+    const row = document.createElement("div");
+    row.style.display = "flex";
+    const first = document.createElement("div");
+    const second = document.createElement("div");
+    row.appendChild(first);
+    row.appendChild(second);
+    container.appendChild(row);
+    document.body.appendChild(container);
+
+    const mirror = createMirror();
+    for (const node of [container, row, first, second]) {
+      mirror.adopt(node);
+    }
+
+    layout(container, () => [0, 0, 200, 20]);
+    layout(row, () => [0, 0, 200, 20]);
+    layout(first, () => [0, 0, firstWidth, 20]);
+    layout(second, () => [firstWidth, 0, 200, 20]);
+
+    try {
+      const size = new Derived(() => getBorderBoxSize(first));
+      const holder = new Effect(() => size.get());
+      assert.equal(size.get().width, 100);
+
+      second.className = "wide";
+      firstWidth = 60;
+      mirror.ingest([
+        /** @type {MutationRecord} */ (
+          /** @type {unknown} */ ({
+            type: "attributes",
+            target: second,
+            attributeName: "class",
+            oldValue: null,
+            addedNodes: [],
+            removedNodes: [],
+          })
+        ),
+      ]);
+
+      assert.equal(size.get().width, 60, "the first item shrank");
+
+      holder.dispose();
+    } finally {
+      container.remove();
+    }
+  });
+
+  test("an inline style that moves no box leaves the boxes after it alone", () => {
+    // A gauge that writes `style.transform` every frame pays for its own
+    // subtree. A width written the same way moves what follows it.
+    const container = document.createElement("div");
+    container.setAttribute(PORTAL_ATTRIBUTE, "");
+    const bar = document.createElement("div");
+    const label = document.createElement("div");
+    container.appendChild(bar);
+    container.appendChild(label);
+    document.body.appendChild(container);
+
+    const mirror = createMirror();
+    for (const node of [container, bar, label]) {
+      mirror.adopt(node);
+    }
+
+    const reads = { label: 0 };
+    layout(container, () => [0, 0, 200, 40]);
+    layout(bar, () => [0, 0, 200, 20]);
+    layout(label, () => [0, 20, 200, 40], { count: () => reads.label++ });
+
+    /** @param {string | null} oldValue */
+    const styled = (oldValue) =>
+      /** @type {MutationRecord} */ (
+        /** @type {unknown} */ ({
+          type: "attributes",
+          target: bar,
+          attributeName: "style",
+          oldValue,
+          addedNodes: [],
+          removedNodes: [],
+        })
+      );
+
+    try {
+      const position = new Derived(() => getContentPosition(label));
+      const holder = new Effect(() => position.get());
+      // A first settle reads as changed everywhere, so the ledger is primed
+      // before anything is asserted about it.
+      bar.style.width = "200px";
+      mirror.ingest([styled(null)]);
+      const before = reads.label;
+
+      bar.style.transform = "scaleX(0.5)";
+      mirror.ingest([styled("width: 200px;")]);
+      bar.style.transform = "scaleX(0.6)";
+      bar.style.opacity = "0.5";
+      mirror.ingest([styled("width: 200px; transform: scaleX(0.5);")]);
+      assert.equal(reads.label, before, "a transform and an opacity moved nothing");
+
+      bar.style.width = "180px";
+      mirror.ingest([styled("width: 200px; transform: scaleX(0.6); opacity: 0.5;")]);
+      assert.equal(reads.label, before + 1, "a width moved the label");
+
+      holder.dispose();
     } finally {
       container.remove();
     }

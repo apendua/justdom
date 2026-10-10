@@ -15,7 +15,10 @@
  *
  * The "app attr" column is an attribute the portal does not know the name
  * of, toggled on the first row. It costs what a class swap on the row costs,
- * since a stylesheet may select on it through `+` or `~`. The "loading"
+ * since a stylesheet may select on it through `+` or `~`. The "transform"
+ * column is an inline `style.transform` written on the first row, the motion
+ * a gauge writes every frame, which moves no box and so should cost the row
+ * and not the list. The "loading"
  * column is the portal's own flag toggled on its container, above every
  * element in the panel, and should cost nothing: the mirror drops it.
  *
@@ -350,6 +353,10 @@ async function measure({ rows, clipped = false, perFlush = false }) {
     /** @type {HTMLElement} */ (list.firstChild).dataset.on = "true";
   });
 
+  const transform = await sample(() => {
+    /** @type {HTMLElement} */ (list.firstChild).style.transform = "scaleX(0.5)";
+  });
+
   const loadingFlag = await sample(async () => {
     containerElement.setAttribute(LOADING_ATTRIBUTE, "");
     await nextMacrotask();
@@ -358,7 +365,7 @@ async function measure({ rows, clipped = false, perFlush = false }) {
 
   portal.disconnect();
   containerElement.remove();
-  return { mount, one, hover, appAttribute, loadingFlag };
+  return { mount, one, hover, appAttribute, transform, loadingFlag };
 }
 
 const SIZES = [100, 200, 400, 800];
@@ -374,15 +381,19 @@ for (const clipped of [false, true]) {
   );
   console.log(
     "rows\t| mount: evals\trects\tms\t| +1 row: evals\trects\tms\t| hover: evals\trects" +
-      "\t| app attr: evals\trects\t| loading: evals\trects",
+      "\t| app attr: evals\trects\t| transform: evals\trects\t| loading: evals\trects",
   );
   for (const rows of SIZES) {
-    const { mount, one, hover, appAttribute, loadingFlag } = await measure({ rows, clipped });
+    const { mount, one, hover, appAttribute, transform, loadingFlag } = await measure({
+      rows,
+      clipped,
+    });
     console.log(
       `${rows}\t| ${mount.evaluations}\t${mount.rectReads}\t${mount.ms.toFixed(0)}\t| ` +
         `${one.evaluations}\t${one.rectReads}\t${one.ms.toFixed(1)}\t| ` +
         `${hover.evaluations}\t${hover.rectReads}\t| ` +
         `${appAttribute.evaluations}\t${appAttribute.rectReads}\t| ` +
+        `${transform.evaluations}\t${transform.rectReads}\t| ` +
         `${loadingFlag.evaluations}\t${loadingFlag.rectReads}`,
     );
   }

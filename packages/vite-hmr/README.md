@@ -62,17 +62,21 @@ with its holder depends on what kind of thing the module defined:
   the new.
 
 - **A `store`.** Kept, as state is, and followed. The object is kept, so the module's own code and
-  its importers go on sharing it, and from its first evaluation it records which keys the program
-  writes, through `trackWrites`. On a reload it is `reshape`d with the re-evaluated definition: a
-  key the program wrote keeps what the program did, and every other key takes the definition's side,
-  getter, setter, value and presence alike. So a getter edited in source takes effect, an edited
-  initial value shows unless the program has written that key, and what the program wrote, added or
-  deleted stays until the key gains an accessor in source. A getter has changed when its value
-  differs by `Object.is`, so one that builds a new object on each call re-runs its readers on every
-  reload. A theme or a palette is a store nothing writes to, so an edit to a colour reaches the
-  things wearing it without reloading anything, let alone the page. A colour still has to be _read_
-  inside a computation to follow the edit; one read at module scope is captured, as any constant
-  would be.
+  its importers go on sharing it, and once the export's initialiser has evaluated it records which
+  keys the program writes, through `trackWrites`. On a reload it is `reshape`d with the re-evaluated
+  definition: a key the program wrote keeps what the program did, and every other key takes the
+  definition's side, getter, setter, value and presence alike. So a getter edited in source takes
+  effect, an edited initial value shows unless the program has written that key, and what the
+  program wrote, added or deleted stays until the key gains an accessor in source. A write made
+  while the initialiser runs, by a factory that fills the store it returns or by an operator writing
+  at construction, comes before the recording and follows the source on the first reload. Only a
+  write through the store is seen: a `Map` or an array the program fills in place is replaced on a
+  reload, so state that has to survive one goes in a plain object, which is a store, or in a
+  `ReactiveMap` export of its own. A getter has changed when its value differs by `Object.is`, so
+  one that builds a new object on each call re-runs its readers on every reload. A theme or a
+  palette is a store nothing writes to, so an edit to a colour reaches the things wearing it without
+  reloading anything, let alone the page. A colour still has to be _read_ inside a computation to
+  follow the edit; one read at module scope is captured, as any constant would be.
 
 - **State.** A `Signal`, a `ReactiveMap` or `ReactiveSet`, a `Subject` or `Emitter`, an
   `UpdateChannel`, or a context property from `createProperty` is _kept_: what such an export holds

@@ -527,6 +527,56 @@ test("a second trackWrites() keeps the marks", () => {
   assert.strictEqual(kept.x, 5);
 });
 
+test("a write that changes nothing marks nothing", () => {
+  const kept = store({ x: 1 });
+  trackWrites(kept);
+  kept.x = kept.x;
+  reshape(kept, { x: 2 });
+  assert.strictEqual(kept.x, 2);
+});
+
+test("a delete of a key the store does not have marks nothing", () => {
+  const kept = /** @type {any} */ (store({ x: 1 }));
+  trackWrites(kept);
+  delete kept.z;
+  reshape(kept, { x: 1, z: 3 });
+  assert.strictEqual(kept.z, 3);
+});
+
+test("trackWrites() on the parent keeps the marks of a nested store tracked first", () => {
+  const kept = /** @type {any} */ (store({ layout: { width: 1 } }));
+  trackWrites(kept.layout);
+  kept.layout.width = 10;
+  trackWrites(kept);
+  reshape(kept, { layout: { width: 2 } });
+  assert.strictEqual(kept.layout.width, 10);
+});
+
+test("a nested store's key is the source's, whatever was written into it", () => {
+  const kept = /** @type {any} */ (store({ layout: { width: 1 }, x: 1 }));
+  trackWrites(kept);
+  kept.layout.width = 10;
+  reshape(kept, { x: 1 });
+  assert.strictEqual("layout" in kept, false, "a key the definition drops goes, with the store");
+  const other = /** @type {any} */ (store({ layout: { width: 1 } }));
+  trackWrites(other);
+  other.layout.width = 10;
+  reshape(other, { layout: 5 });
+  assert.strictEqual(other.layout, 5, "a key the definition makes a value takes it");
+});
+
+test("a container mutated in place is untouched and takes the definition's", () => {
+  const kept = store({ players: new Map(), x: 1 });
+  trackWrites(kept);
+  kept.players.set("a", 1);
+  const next = new Map();
+  reshape(kept, { players: next, x: 1 });
+  assert.strictEqual(kept.players, next, "the Map filled in place is replaced");
+  kept.players = new Map([["b", 2]]);
+  reshape(kept, { players: new Map(), x: 1 });
+  assert.deepStrictEqual([...kept.players], [["b", 2]], "the Map assigned through the store stays");
+});
+
 test("reshape() takes a store", () => {
   // @ts-expect-error A plain object is not a store, which the type says.
   assert.throws(() => reshape({}, {}), /reshape\(\) takes a store/);

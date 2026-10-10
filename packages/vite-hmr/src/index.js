@@ -56,16 +56,19 @@ import {
  *   is wrapped in a source that switches to the current one, dropping the
  *   previous module's subscription before taking the new one.
  * - **A `store`** is kept and followed. The object is kept, so the module's
- *   own code and its importers go on sharing it, and from its first
- *   evaluation it records which keys the program writes, through
- *   `trackWrites`. On a reload it is `reshape`d with the re-evaluated
- *   definition: a key the program wrote keeps what the program did, and
- *   every other key takes the definition's side, getter, setter, value and
- *   presence alike. So a getter edited in source takes effect, an edited
- *   initial value shows unless the program has written that key, and what
- *   the program wrote, added or deleted stays. A theme or a palette is a
- *   store nobody writes to, so an edit to one colour reaches the things
- *   wearing it and nothing else moves.
+ *   own code and its importers go on sharing it, and once the export's
+ *   initialiser has evaluated it records which keys the program writes,
+ *   through `trackWrites`. On a reload it is `reshape`d with the
+ *   re-evaluated definition: a key the program wrote keeps what the program
+ *   did, and every other key takes the definition's side, getter, setter,
+ *   value and presence alike. So a getter edited in source takes effect, an
+ *   edited initial value shows unless the program has written that key, and
+ *   what the program wrote, added or deleted stays. A write made while the
+ *   initialiser runs, by a factory that fills the store it returns or by an
+ *   operator writing at construction, comes before the recording and
+ *   follows the source on the first reload. A theme or a palette is a store
+ *   nobody writes to, so an edit to one colour reaches the things wearing
+ *   it and nothing else moves.
  * - **State** — a `Signal`, a `ReactiveMap` or `ReactiveSet`, a `Subject` or
  *   `Emitter`, an `UpdateChannel`, a context property — is *kept*. What such
  *   an export holds is what the running application has put there, and a

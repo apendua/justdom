@@ -292,8 +292,6 @@ function store(data, operators = []) {
         // mode, rather than land in `state`, which a getter key is not read
         // from.
       } else {
-        // A write the program makes to a data key, which `reshape` keeps.
-        internals.touched?.add(key);
         if (isPlainObject(newValue)) {
           const oldValue = state[key];
           // We need to use non-reactive version of isPlainObject to prevent accidentally creating
@@ -309,6 +307,10 @@ function store(data, operators = []) {
         if (Object.is(state[key], newValue)) {
           return true;
         }
+        // A write the program makes that changes a data key, which `reshape`
+        // keeps. One that changes nothing marks nothing, so a value written
+        // back to itself still follows the source.
+        internals.touched?.add(key);
         state[key] = newValue;
         // One write is one update. Announcing a change queues each dependent,
         // and outside a batch a queued dependent drains immediately — so
@@ -334,8 +336,12 @@ function store(data, operators = []) {
         // non-configurable property outside strict mode.
         return true;
       }
-      // A delete the program makes, which `reshape` keeps as it keeps a write.
-      internals.touched?.add(key);
+      if (Object.hasOwn(state, key)) {
+        // A delete the program makes that removes a key, which `reshape`
+        // keeps as it keeps a write. One of a key the store does not have
+        // marks nothing, so the source can still add the key.
+        internals.touched?.add(key);
+      }
       delete state[key];
       batch(() => {
         announce(key);
@@ -363,19 +369,30 @@ function store(data, operators = []) {
 
 /**
  * Record the keys the program writes to `target`, so that `reshape` keeps
- * them. From this call on, a write or a delete through the store's proxy
- * marks its data key as the program's, and so does one through a store
- * nested in it, now or later. A reload then takes the definition's side for
- * every other key. Nothing is recorded before the call, and nothing for a
- * store nobody calls it on, so a store that is never reloaded pays one null
- * check per write and no more. A second call changes nothing.
+ * them. From this call on, a write through the store's proxy that changes a
+ * data key, or a delete that removes one, marks the key as the program's,
+ * and so does one through a store nested in it, now or later. A reload then
+ * takes the definition's side for every other key. Nothing is recorded
+ * before the call, and nothing for a store nobody calls it on, so a store
+ * that is never reloaded pays one null check per write and no more. A
+ * second call changes nothing, on the store or on a store nested in it that
+ * was tracked first.
  *
- * `@apendua/vite-hmr` calls it on every store a module exports, when the
- * module first evaluates. A write to a key with a getter or a setter is not
- * state and marks nothing. An object the program assigns to a key becomes a
- * store whose every key is the program's. A reload records nothing, since
- * `reshape` writes state directly rather than through the proxy, and clears
- * the mark of a key it gives an accessor to.
+ * `@apendua/vite-hmr` calls it on every store a module exports, once the
+ * export's initialiser has evaluated. A write to a key with a getter or a
+ * setter is not state and marks nothing. A write that changes nothing, or a
+ * delete of a key the store does not have, marks nothing. An object the
+ * program assigns to a key becomes a store whose every key is the program's.
+ * A reload records nothing, since `reshape` writes state directly rather
+ * than through the proxy, and clears the mark of a key it gives an accessor
+ * to.
+ *
+ * Only a write through the store is seen. A value the program mutates in
+ * place, a `Map` or a `Set` it fills, an array it pushes to, an instance
+ * whose field it sets, marks nothing, and a reload replaces it with the
+ * definition's. State that has to survive a reload goes in a plain object,
+ * which is a store and tracked, or in a `ReactiveMap` or `ReactiveSet`
+ * export of its own, which is kept as state.
  *
  * @template {IEmitter<Record<any, any>>} T
  * @param {T} target A store.
@@ -386,20 +403,24 @@ export function trackWrites(target) {
   if (!internals) {
     throw new Error("trackWrites() takes a store");
   }
-  if (!internals.touched) {
-    track(internals, false);
-  }
+  track(internals, false);
 }
 
 /**
  * Start recording the program's writes to a store and to every store nested
  * in it. `owned` marks every data key as written already: for a store made
- * of an object the program assigned, whose keys are all the program's.
+ * of an object the program assigned, whose keys are all the program's. A
+ * store already recording keeps its marks, and so do the stores nested in
+ * it, which it reached when it started; an owned store is freshly built and
+ * never already recording.
  *
  * @param {Internals} internals
  * @param {boolean} owned
  */
 function track(internals, owned) {
+  if (internals.touched) {
+    return;
+  }
   const { state, getters, setters } = internals;
   const keys = Reflect.ownKeys(state);
   internals.touched = new Set(
@@ -442,8 +463,14 @@ function nestedStore(internals, value, owned) {
  * definition gives the key a getter or a setter. That wins as a change of
  * shape and clears the mark, so the key takes the definition's value if it
  * becomes a data key again. A nested store is reshaped the same way in
- * place, by its own marks, with the plain object at its key. A store nobody
- * called `trackWrites` on has no marks and takes the definition in full.
+ * place, by its own marks, with the plain object at its key. A write into
+ * it marks its own key and not the key it sits at, so that key is the
+ * source's: when the definition drops it or makes it a value, the nested
+ * store goes, the program's writes into it with it. A value that is not a
+ * plain object, a `Map`, an array, an instance, is kept only at a key the
+ * program assigned; one the program mutated in place is untouched to the
+ * store and takes the definition's. A store nobody called `trackWrites` on
+ * has no marks and takes the definition in full.
  *
  * A data key's value is written to the store's state, not through a setter,
  * so no setter runs. The readers of each key that changed re-run; a replaced

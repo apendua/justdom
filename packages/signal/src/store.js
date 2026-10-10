@@ -18,18 +18,18 @@ import { isPlainObject } from "./util.js";
  * @property {Map<PropertyKey, () => unknown>} getters
  * @property {Map<PropertyKey, (value: unknown) => void>} setters
  * @property {Map<PropertyKey, Derived<unknown>>} derived
- * @property {Signal<number> | undefined} definition Bumped when
- *   `reconfigure` or `reshape` replaces a getter with another. Every
- *   getter's `Derived` of this store reads it, so each recomputes and its
- *   readers re-run only if its value changed by `Object.is`. It is one per
- *   store, not one for all, so that a reload reaches no other store. Made
- *   with the store's first getter `Derived`.
+ * @property {Signal<number> | undefined} definition Bumped when `reshape`
+ *   replaces a getter with another. Every getter's `Derived` of this store
+ *   reads it, so each recomputes and its readers re-run only if its value
+ *   changed by `Object.is`. It is one per store, not one for all, so that a
+ *   reload reaches no other store. Made with the store's first getter
+ *   `Derived`.
  * @property {(key: PropertyKey) => void} announce
  * @property {symbol} ownKeys The key the key set's readers depend on.
- * @property {boolean} volatile Whether `volatileStore` made it. A hot
- *   reload keeps every store; the flag decides whether it `reconfigure`s
- *   the store, taking the definition's values, or `reshape`s it, keeping
- *   the store's.
+ * @property {Set<PropertyKey> | null} touched The data keys the program has
+ *   written or deleted through the proxy since `trackWrites` was called,
+ *   which `reshape` keeps. `null` until then, so a store nobody reloads
+ *   records nothing.
  */
 
 /**
@@ -45,7 +45,7 @@ const stores = new WeakSet();
 
 /**
  * The key a store's proxy answers with its `Internals`, which `emit`,
- * `reconfigure` and a store used as another's definition read. It is not one
+ * `reshape` and a store used as another's definition read. It is not one
  * of the store's keys: `in`, `ownKeys` and spread do not see it. A
  * `WeakMap` from proxy to record did the same job, and holding every store's
  * record in it made building a store about a fifth slower; `stores` holds
@@ -75,20 +75,6 @@ function internalsOf(value) {
  */
 export function isStore(value) {
   return internalsOf(value) !== undefined;
-}
-
-/**
- * Whether `value` is a store built by `volatileStore` — one whose values a
- * hot reload takes from the re-evaluated definition, where it keeps a
- * `store`'s.
- *
- * `@apendua/vite-hmr` is what asks.
- *
- * @param {unknown} value
- * @returns {boolean}
- */
-export function isVolatile(value) {
-  return internalsOf(value)?.volatile === true;
 }
 
 /**
@@ -140,7 +126,7 @@ function bump(version) {
  * and assigned to `oldValue` as any write is: through `oldValue`'s setter
  * where the key has one; to nothing where the key has a getter and no
  * setter; and to the key itself otherwise. `oldValue`'s getters and setters
- * stay as they are, which only `reconfigure` and `reshape` change.
+ * stay as they are, which only `reshape` changes.
  *
  * @param {Record<PropertyKey, unknown>} oldValue
  * @param {Record<PropertyKey, unknown>} newValue
@@ -185,7 +171,7 @@ function store(data, operators = []) {
     defineAccessors(getters, setters, descriptors);
     // A data key holds its value, a plain object made a store. A key with an
     // accessor holds `undefined`, which is read only when the key has no
-    // getter; the getter is not run here. `reconfigureWith` keeps the same.
+    // getter; the getter is not run here. `reshapeWith` keeps the same.
     /** @type {Record<PropertyKey, unknown>} */
     const held = {};
     for (const key of Reflect.ownKeys(descriptors)) {
@@ -264,7 +250,7 @@ function store(data, operators = []) {
     definition: undefined,
     announce,
     ownKeys,
-    volatile: false,
+    touched: null,
   };
 
   const proxy = new Proxy(state, {
@@ -285,7 +271,7 @@ function store(data, operators = []) {
       let signal = derived.get(key);
       if (!signal) {
         // The getter is looked up on each run rather than captured, so a
-        // `reconfigure` that bumps `internals.definition` makes this run the
+        // `reshape` that bumps `internals.definition` makes this run the
         // new one, and the cutoff spares the readers when it agrees.
         signal = new Derived(() => {
           (internals.definition ??= Signal.of(0)).get();
@@ -306,6 +292,8 @@ function store(data, operators = []) {
         // mode, rather than land in `state`, which a getter key is not read
         // from.
       } else {
+        // A write the program makes to a data key, which `reshape` keeps.
+        internals.touched?.add(key);
         if (isPlainObject(newValue)) {
           const oldValue = state[key];
           // We need to use non-reactive version of isPlainObject to prevent accidentally creating
@@ -314,7 +302,9 @@ function store(data, operators = []) {
             replace(oldValue, newValue);
             return true;
           }
-          newValue = store(newValue);
+          // The program wrote the whole object, so every key of the store
+          // made of it is the program's.
+          newValue = nestedStore(internals, newValue, true);
         }
         if (Object.is(state[key], newValue)) {
           return true;
@@ -340,10 +330,12 @@ function store(data, operators = []) {
     deleteProperty(_, key) {
       if (getters.has(key) || setters.has(key)) {
         // A key with a getter or a setter stays for the store's life, since
-        // only `reconfigure` and `reshape` change those. The delete does
-        // nothing, as on a non-configurable property outside strict mode.
+        // only `reshape` changes those. The delete does nothing, as on a
+        // non-configurable property outside strict mode.
         return true;
       }
+      // A delete the program makes, which `reshape` keeps as it keeps a write.
+      internals.touched?.add(key);
       delete state[key];
       batch(() => {
         announce(key);
@@ -370,67 +362,98 @@ function store(data, operators = []) {
 }
 
 /**
- * A store whose contents come from *source* rather than from the running
- * program — a theme, a palette, layout metrics.
+ * Record the keys the program writes to `target`, so that `reshape` keeps
+ * them. From this call on, a write or a delete through the store's proxy
+ * marks its data key as the program's, and so does one through a store
+ * nested in it, now or later. A reload then takes the definition's side for
+ * every other key. Nothing is recorded before the call, and nothing for a
+ * store nobody calls it on, so a store that is never reloaded pays one null
+ * check per write and no more. A second call changes nothing.
  *
- * An ordinary `store` is state, and what the program wrote to it is what a
- * hot reload has to keep: throwing it away would lose the very thing hot
- * reload exists to preserve. So a reload `reshape`s it: it takes the
- * re-evaluated definition's getters, setters and keys, and keeps the values
- * of the data keys both have. Values written in source are the other case.
- * Keeping them across a reload means keeping the ones just edited out of the
- * file, which is the opposite of what the edit asked for.
+ * `@apendua/vite-hmr` calls it on every store a module exports, when the
+ * module first evaluates. A write to a key with a getter or a setter is not
+ * state and marks nothing. An object the program assigns to a key becomes a
+ * store whose every key is the program's. A reload records nothing, since
+ * `reshape` writes state directly rather than through the proxy, and clears
+ * the mark of a key it gives an accessor to.
  *
- * So this is a store in every other respect — the same proxy, the same
- * per-key dependencies, the same nesting — that `@apendua/vite-hmr` treats
- * differently on a reload: it keeps the object, as it keeps every store, so
- * the module's own code and its importers go on sharing it, and
- * `reconfigure`s it with the re-evaluated definition, values included. The
- * readers of the keys that changed re-run, and nobody else does. A getter
- * has changed when its value differs by `Object.is`, so one that builds a
- * new object on each call re-runs its readers on every reload.
- *
- * Which leaves one thing to get right at the call site: a value has to be
- * *read* inside a computation to follow an edit. A read in a `set({ get
- * material() {…} })`, in an `effects(…)`, or in a `${() => palette.accent}`
- * interpolation follows it. One at module scope — `const accent =
- * palette.accent`, or a plain `${palette.accent}`, which a tagged template
- * evaluates once — captures a value and keeps it, exactly as any other
- * constant would.
- *
- * @template {object} T
- * @template {object} [TEventMap={}]
- * @overload
- * @param {T} data
- * @param {Array<EntityEffect<T & IEmitter<TEventMap>>>} [operators]
- * @return {T & IEmitter<TEventMap>}
+ * @template {IEmitter<Record<any, any>>} T
+ * @param {T} target A store.
+ * @returns {void}
  */
-
-/**
- * @param {object} data
- * @param {Array<EntityEffect<unknown>>} [operators]
- * @return {object}
- */
-export function volatileStore(data, operators = []) {
-  const proxy = store(data, operators);
-  /** @type {Internals} */ (internalsOf(proxy)).volatile = true;
-  return proxy;
+export function trackWrites(target) {
+  const internals = internalsOf(target);
+  if (!internals) {
+    throw new Error("trackWrites() takes a store");
+  }
+  if (!internals.touched) {
+    track(internals, false);
+  }
 }
 
 /**
- * Make `target` what `definition` defines: its getters and setters, its data
- * keys' values and no other keys. A data key's value is written to the
- * store's state, not through a setter, so no setter runs. The readers of
- * each key that changed re-run; a replaced getter's readers re-run only when
- * its value changes by `Object.is`, so a getter that builds a new object on
- * each call re-runs them on every reconfigure. Nested stores are
- * reconfigured with the objects at the same keys, plain or stores.
+ * Start recording the program's writes to a store and to every store nested
+ * in it. `owned` marks every data key as written already: for a store made
+ * of an object the program assigned, whose keys are all the program's.
+ *
+ * @param {Internals} internals
+ * @param {boolean} owned
+ */
+function track(internals, owned) {
+  const { state, getters, setters } = internals;
+  const keys = Reflect.ownKeys(state);
+  internals.touched = new Set(
+    owned ? keys.filter((key) => !getters.has(key) && !setters.has(key)) : [],
+  );
+  for (const key of keys) {
+    const nested = internalsOf(state[key]);
+    if (nested) {
+      track(nested, owned);
+    }
+  }
+}
+
+/**
+ * A store made of `value` to nest in `internals`' store, recording the
+ * program's writes if that one does: as the program's own when it assigned
+ * the object, with every key marked, and as the source's otherwise.
+ *
+ * @param {Internals} internals
+ * @param {object} value
+ * @param {boolean} owned
+ * @returns {object}
+ */
+function nestedStore(internals, value, owned) {
+  const inner = store(value);
+  if (internals.touched) {
+    track(/** @type {Internals} */ (internalsOf(inner)), owned);
+  }
+  return inner;
+}
+
+/**
+ * Give `target` what `definition` defines, except for the keys the program
+ * has written. Its getters and setters are the definition's. A key the
+ * program has not touched takes the definition's side in full, its value or
+ * its absence, so an edit to an initial value in source shows on a reload. A
+ * data key the program wrote or deleted since `trackWrites` keeps what the
+ * program did: its value stays, a key the program added stays, and a key the
+ * program deleted stays deleted, whatever the definition says, until the
+ * definition gives the key a getter or a setter. That wins as a change of
+ * shape and clears the mark, so the key takes the definition's value if it
+ * becomes a data key again. A nested store is reshaped the same way in
+ * place, by its own marks, with the plain object at its key. A store nobody
+ * called `trackWrites` on has no marks and takes the definition in full.
+ *
+ * A data key's value is written to the store's state, not through a setter,
+ * so no setter runs. The readers of each key that changed re-run; a replaced
+ * getter's readers re-run only when its value changes by `Object.is`, so a
+ * getter that builds a new object on each call re-runs them on every
+ * reshape. A kept key re-runs nobody.
  *
  * `definition` is a plain object, or a store, which stands for its getters
- * and setters and the values it holds now, so what has been written to it
- * since it was made is kept. This is the whole of a hot reload of a
- * `volatileStore`; `replace` is an assignment and belongs to the running
- * program.
+ * and setters and the values it holds now. This is the whole of a hot reload
+ * of a store; `replace` is an assignment and belongs to the running program.
  *
  * A key with a setter and no getter reads `undefined`, as it does when
  * `store()` makes it: a write to it goes to the setter, never to `state`.
@@ -444,61 +467,14 @@ export function volatileStore(data, operators = []) {
  * @param {object} definition
  * @returns {void}
  */
-export function reconfigure(target, definition) {
-  configure(target, definition, false);
-}
-
-/**
- * Give `target` the shape `definition` defines and keep what the program
- * wrote to it. Its getters and setters are the definition's; a key the
- * definition does not have goes; a key it adds takes the definition's value;
- * and a data key both have keeps the value the store holds now, since the
- * definition's is the initial one, which the store has moved on from. A
- * nested store is reshaped the same way with the plain object at its key.
- * Where one side has a store or a plain object and the other does not, the
- * definition wins, as a change of shape. So does a data key that gains an
- * accessor, which lets go of its value, and an accessor key that becomes a
- * data key, which held nothing.
- *
- * The key set is the definition's, not the program's. A key the program
- * added, as to a store used as a record, goes with the keys edited out of
- * source, since the store cannot tell the two apart, and a key the program
- * deleted comes back with the definition's value, as a key it adds. So a
- * store written with runtime keys is not a fit for a reloaded module-level
- * export.
- *
- * This is the hot reload of an ordinary `store`, whose contents are state:
- * what the program wrote stays, and a getter added or edited in source takes
- * effect. `reconfigure` is the hot reload of a `volatileStore`, whose
- * contents are source, and takes the definition's values too. The readers
- * that re-run are the same for both: those of the keys that changed.
- *
- * @template {IEmitter<Record<any, any>>} T
- * @param {T} target A store.
- * @param {object} definition
- * @returns {void}
- */
 export function reshape(target, definition) {
-  configure(target, definition, true);
-}
-
-/**
- * What `reconfigure` and `reshape` share.
- *
- * @param {object} target
- * @param {object} definition
- * @param {boolean} keep Whether a data key both have keeps the store's value,
- *   which is `reshape`; `reconfigure` otherwise.
- * @returns {void}
- */
-function configure(target, definition, keep) {
   const internals = internalsOf(target);
   if (!internals) {
-    throw new Error(`${keep ? "reshape" : "reconfigure"}() takes a store`);
+    throw new Error("reshape() takes a store");
   }
   const descriptors = describe(definition);
   batch(() => {
-    reconfigureWith(internals, descriptors, keep);
+    reshapeWith(internals, descriptors);
   });
 }
 
@@ -559,14 +535,10 @@ function defineAccessors(getters, setters, descriptors) {
 /**
  * @param {Internals} internals
  * @param {Record<PropertyKey, PropertyDescriptor>} descriptors
- * @param {boolean} keep Whether a data key both have keeps the store's value,
- *   as `reshape` has it, rather than take the definition's, as `reconfigure`
- *   has it.
  */
-function reconfigureWith(internals, descriptors, keep) {
-  const { state, getters, setters, derived, announce, ownKeys } = internals;
+function reshapeWith(internals, descriptors) {
+  const { state, getters, setters, derived, announce, ownKeys, touched } = internals;
   const previous = new Map(getters);
-  const previousSetters = new Set(setters.keys());
   getters.clear();
   setters.clear();
   defineAccessors(getters, setters, descriptors);
@@ -597,7 +569,9 @@ function reconfigureWith(internals, descriptors, keep) {
     if (descriptor.get || descriptor.set) {
       // A key with an accessor is in `state` as a key holding `undefined`,
       // as at `store()` time, so `in`, `ownKeys` and spread see it, and a
-      // value it held as a data key is let go of.
+      // value it held as a data key is let go of, the program's or not: the
+      // shape wins, and the key is the source's again.
+      touched?.delete(key);
       const added = !Object.hasOwn(state, key);
       if (added || state[key] !== undefined) {
         state[key] = undefined;
@@ -614,16 +588,15 @@ function reconfigureWith(internals, descriptors, keep) {
     const nested = internalsOf(old);
     const plain = isPlainObjectNoComputation(value);
     if (nested && plain) {
-      reconfigureWith(nested, describe(value), keep);
+      // By the nested store's own marks, whoever wrote the key it sits at.
+      reshapeWith(nested, describe(value));
       continue;
     }
-    if (keep && !added && !nested && !plain && !previous.has(key) && !previousSetters.has(key)) {
-      // A data key the store already had keeps what the program wrote to it.
-      // A key that held a store, or gains one, takes the definition's side as
-      // a change of shape, and a key that had an accessor held nothing.
+    if (touched?.has(key)) {
+      // The program wrote or deleted this key: what it did stays.
       continue;
     }
-    const next = plain ? store(value) : value;
+    const next = plain ? nestedStore(internals, value, false) : value;
     if (!added && Object.is(old, next)) {
       continue;
     }
@@ -633,9 +606,9 @@ function reconfigureWith(internals, descriptors, keep) {
       announce(ownKeys);
     }
   }
-  // The keys the definition no longer has.
+  // The keys the definition no longer has, unless the program put them there.
   for (const key of Reflect.ownKeys(state)) {
-    if (!Object.hasOwn(descriptors, key)) {
+    if (!Object.hasOwn(descriptors, key) && !touched?.has(key)) {
       delete state[key];
       derived.delete(key);
       announce(key);

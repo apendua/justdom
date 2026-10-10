@@ -13,7 +13,6 @@ import {
   store,
   Stream,
   Subject,
-  volatileStore,
 } from "@apendua/signal";
 import { $hmr } from "./index.js";
 
@@ -416,10 +415,10 @@ describe("a derived export", () => {
   });
 });
 
-describe("a volatileStore export", () => {
+describe("a store export", () => {
   test("is kept, and takes the new definition key by key", () => {
     const hot = fakeHot();
-    const theme = reload(hot, "theme", volatileStore({ accent: "#f00", spacing: 8 }));
+    const theme = reload(hot, "theme", store({ accent: "#f00", spacing: 8 }));
     /** @type {string[]} */
     const accents = [];
     /** @type {number[]} */
@@ -432,7 +431,7 @@ describe("a volatileStore export", () => {
     });
 
     const next = $hmr(hot);
-    const again = next.reloadable("theme", volatileStore({ accent: "#0f0", spacing: 8 }));
+    const again = next.reloadable("theme", store({ accent: "#0f0", spacing: 8 }));
     assert.strictEqual(again, theme, "the instance is the one the module and its importers share");
     assert.deepStrictEqual(accents, ["#f00"], "nothing moves before the body has run");
     next.commit();
@@ -449,7 +448,7 @@ describe("a volatileStore export", () => {
     const theme = reload(
       hot,
       "theme",
-      volatileStore({
+      store({
         get accent() {
           return palette.amber;
         },
@@ -464,7 +463,7 @@ describe("a volatileStore export", () => {
     const next = $hmr(hot);
     next.reloadable(
       "theme",
-      volatileStore({
+      store({
         get accent() {
           return palette.ivory;
         },
@@ -477,13 +476,30 @@ describe("a volatileStore export", () => {
     a.dispose();
   });
 
-  test("which constructor made it is what tells it from an ordinary store", () => {
+  test("keeps the keys the program wrote and follows the rest", () => {
     const hot = fakeHot();
-    reload(hot, "thing", volatileStore({ a: 1 }));
+    const settings = reload(hot, "settings", store({ volume: 1, theme: "light" }));
+    settings.volume = 5;
     const next = $hmr(hot);
-    // The same shape, but state now: not something the first one can stand in for.
-    next.reloadable("thing", store({ a: 1 }));
-    assert.match(String(next.invalidation({ thing: null })), /thing cannot be replaced/);
+    const again = next.reloadable("settings", store({ volume: 2, theme: "dark" }));
+    next.commit();
+    assert.strictEqual(again.volume, 5, "the program's write stays");
+    assert.strictEqual(again.theme, "dark", "the edited initial value shows");
+  });
+
+  test("keeps a key the program added and one it deleted", () => {
+    const hot = fakeHot();
+    const scores = reload(
+      hot,
+      "scores",
+      store(/** @type {Record<string, number>} */ ({ a: 1, b: 2 })),
+    );
+    scores.c = 3;
+    delete scores.b;
+    const next = $hmr(hot);
+    next.reloadable("scores", store({ a: 1, b: 2 }));
+    next.commit();
+    assert.deepStrictEqual({ ...scores }, { a: 1, c: 3 });
   });
 });
 

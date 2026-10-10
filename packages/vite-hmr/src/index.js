@@ -6,13 +6,12 @@ import {
   flatMap,
   isProperty,
   isStore,
-  isVolatile,
   observable,
   ReactiveMap,
   ReactiveSet,
-  reconfigure,
   reshape,
   Signal,
+  trackWrites,
   Stream,
   Subject,
   UpdateChannel,
@@ -56,21 +55,17 @@ import {
  * - **A `Stream`** — a `stylesheet`, a `className`, an `observable(...)` —
  *   is wrapped in a source that switches to the current one, dropping the
  *   previous module's subscription before taking the new one.
- * - **A `volatileStore`** — a theme, a palette, layout metrics: a store
- *   whose contents are written in source rather than by the running program
- *   — is kept and followed in full. The object is kept, so the module's own
- *   code and its importers go on sharing it, and `reconfigure`d with the
- *   re-evaluated definition, values included, so the readers of the keys
- *   that changed re-run and nobody else does. Which is what a theme wants:
- *   an edit to one colour reaches the things wearing that colour, and
- *   nothing else moves.
- * - **A `store`** is kept and followed in shape. What it holds is what the
- *   running application has put there, so the object is kept and
- *   `reshape`d with the re-evaluated definition: it takes the definition's
- *   getters, setters and keys, and keeps the values of the data keys both
- *   have, so a getter added or edited in source takes effect and what was
- *   written stays. The price is that an edit to a data key's initial value
- *   does not show until a full reload.
+ * - **A `store`** is kept and followed. The object is kept, so the module's
+ *   own code and its importers go on sharing it, and from its first
+ *   evaluation it records which keys the program writes, through
+ *   `trackWrites`. On a reload it is `reshape`d with the re-evaluated
+ *   definition: a key the program wrote keeps what the program did, and
+ *   every other key takes the definition's side, getter, setter, value and
+ *   presence alike. So a getter edited in source takes effect, an edited
+ *   initial value shows unless the program has written that key, and what
+ *   the program wrote, added or deleted stays. A theme or a palette is a
+ *   store nobody writes to, so an edit to one colour reaches the things
+ *   wearing it and nothing else moves.
  * - **State** — a `Signal`, a `ReactiveMap` or `ReactiveSet`, a `Subject` or
  *   `Emitter`, an `UpdateChannel`, a context property — is *kept*. What such
  *   an export holds is what the running application has put there, and a
@@ -119,7 +114,7 @@ import {
  */
 
 /**
- * @typedef {"function" | "derived" | "stream" | "constants" | "state" | "value"} Kind
+ * @typedef {"function" | "derived" | "stream" | "state" | "value"} Kind
  */
 
 /**
@@ -131,9 +126,8 @@ import {
  *   `Signal` cannot stand in for a `ReactiveMap`. Empty for the others.
  * @property {Signal<any> | null} held the current definition, for the kinds
  *   that follow it through a holder. `null` for a plain value, which cannot
- *   be followed; for state, which is kept, a store among it followed in
- *   shape by being reshaped in place; and for constants, which follow by
- *   having their contents replaced in place.
+ *   be followed, and for state, which is kept; a store among it is followed
+ *   by being reshaped in place.
  * @property {unknown} exported what the module exports under the name: the
  *   wrapper, or the value itself.
  */
@@ -260,11 +254,6 @@ function kindOf(value) {
   }
   if (value instanceof Stream) {
     return "stream";
-  }
-  if (isVolatile(value)) {
-    // A `volatileStore`: its contents come from source, so a reload is
-    // exactly what should move them.
-    return "constants";
   }
   if (stateShapeOf(value) !== null) {
     return "state";
@@ -415,14 +404,14 @@ function createEntry(kind, value) {
     return { kind, shape: "", held: null, exported: value };
   }
   if (kind === "state") {
-    // Kept: the instance is the state. A store is also followed in shape, by
-    // being reshaped with the new definition: see `commit`.
-    return { kind, shape: stateShapeOf(value) ?? "", held: null, exported: value };
-  }
-  if (kind === "constants") {
-    // Kept as an object, and followed by being reconfigured with the new
-    // definition, getters and setters included: see `commit`.
-    return { kind, shape: "", held: null, exported: value };
+    // Kept: the instance is the state. A store is also followed, by being
+    // reshaped with the new definition at `commit`, which keeps the keys the
+    // program writes from here on.
+    const shape = stateShapeOf(value) ?? "";
+    if (shape === "store") {
+      trackWrites(/** @type {any} */ (value));
+    }
+    return { kind, shape, held: null, exported: value };
   }
   const held = Signal.of(/** @type {any} */ (value));
   /** @type {unknown} */
@@ -469,15 +458,15 @@ export function $hmr(hot) {
     const kind = kindOf(value);
     const entry = registry.entries.get(name);
     if (entry) {
-      if (entry.kind === kind && (entry.held || kind === "constants")) {
+      if (entry.kind === kind && entry.held) {
         // Queued rather than written: see `commit`.
         session.pending.set(entry, value);
         return /** @type {T} */ (entry.exported);
       }
       if (entry.kind === kind && kind === "state" && entry.shape === stateShapeOf(value)) {
         // The state the application has been writing to, kept; the instance
-        // this evaluation just built goes unused, apart from a store's shape,
-        // which the kept one takes at `commit`.
+        // this evaluation just built goes unused, apart from a store's
+        // definition, which the kept one takes at `commit`.
         if (entry.shape === "store") {
           session.pending.set(entry, value);
         }
@@ -510,13 +499,10 @@ export function $hmr(hot) {
       for (const [entry, value] of pending) {
         if (entry.held) {
           entry.held.set(value);
-        } else if (entry.kind === "constants") {
-          // A `volatileStore`: the kept object takes the new definition, and
-          // only the readers of what changed hear.
-          reconfigure(/** @type {any} */ (entry.exported), /** @type {object} */ (value));
         } else {
-          // A `store`: the kept object takes the definition's getters, setters
-          // and keys, and keeps what the program wrote to the keys both have.
+          // A `store`: the kept object takes the new definition, except for
+          // the keys the program wrote, and only the readers of what changed
+          // hear.
           reshape(/** @type {any} */ (entry.exported), /** @type {object} */ (value));
         }
       }

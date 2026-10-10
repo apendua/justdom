@@ -4,15 +4,7 @@ import { Effect } from "./index.js";
 import { set } from "./operators.js";
 import { NoValueError } from "./core.js";
 import selector from "./selector.js";
-import store, {
-  emit,
-  isStore,
-  isVolatile,
-  reconfigure,
-  replace,
-  reshape,
-  volatileStore,
-} from "./store.js";
+import store, { emit, isStore, replace, reshape, trackWrites } from "./store.js";
 
 test("observes value", () => {
   const state = store({ value: 1 });
@@ -287,30 +279,30 @@ function theme(palette, accent, spacing) {
 
 test("a hot reload moves getters and values", () => {
   const palette = store({ amber: "amber", ivory: "ivory" });
-  const kept = volatileStore(theme(palette, "amber", 8));
+  const kept = store(theme(palette, "amber", 8));
   /** @type {unknown[]} */
   const values = [];
   new Effect(() => {
     values.push(`${kept.accent}/${kept.nested.border}/${kept.spacing}`);
   });
-  reconfigure(kept, volatileStore(theme(palette, "ivory", 12)));
+  reshape(kept, store(theme(palette, "ivory", 12)));
   palette.ivory = "white";
   palette.amber = "orange";
   assert.deepStrictEqual(values, ["amber/amber/8", "ivory/ivory/12", "white/white/12"]);
 });
 
-test("reconfigure() drops the keys the definition no longer has", () => {
+test("reshape() drops the keys the definition no longer has", () => {
   const state = store(/** @type {{ a: number, b?: number }} */ ({ a: 1, b: 2 }));
   /** @type {unknown[]} */
   const keys = [];
   new Effect(() => {
     keys.push(Object.keys(state).join(","));
   });
-  reconfigure(state, { a: 1 });
+  reshape(state, { a: 1 });
   assert.deepStrictEqual(keys, ["a,b", "a"]);
 });
 
-test("reconfigure() turns data into a getter and back", () => {
+test("reshape() turns data into a getter and back", () => {
   const palette = store({ amber: "amber" });
   const state = store(/** @type {{ color?: string }} */ ({ color: "ivory" }));
   /** @type {unknown[]} */
@@ -323,14 +315,14 @@ test("reconfigure() turns data into a getter and back", () => {
       return palette.amber;
     },
   };
-  reconfigure(state, computed);
+  reshape(state, computed);
   palette.amber = "orange";
-  reconfigure(state, { color: "ivory" });
+  reshape(state, { color: "ivory" });
   palette.amber = "yellow";
   assert.deepStrictEqual(values, ["ivory", "amber", "orange", "ivory"]);
 });
 
-test("reconfigure() with the same definition re-runs nothing", () => {
+test("reshape() with the same definition re-runs nothing", () => {
   const definition = theme(store({ amber: "amber", ivory: "ivory" }), "amber", 8);
   const state = store(definition);
   let runs = 0;
@@ -338,17 +330,13 @@ test("reconfigure() with the same definition re-runs nothing", () => {
     runs += 1;
     void state.accent;
   });
-  reconfigure(state, definition);
+  reshape(state, definition);
   assert.strictEqual(runs, 1);
-});
-
-test("reconfigure() takes a store", () => {
-  // @ts-expect-error A plain object is not a store, which the type says.
-  assert.throws(() => reconfigure({}, {}), /takes a store/);
 });
 
 test("reshape() keeps what was written and takes the definition's shape", () => {
   const kept = store(/** @type {{ x: number, y?: number }} */ ({ x: 1, y: 2 }));
+  trackWrites(kept);
   kept.x = 5;
   const definition = {
     x: 1,
@@ -367,7 +355,7 @@ test("reshape() keeps what was written and takes the definition's shape", () => 
   assert.strictEqual(shaped.sum, 8, "a getter the definition adds reads the kept value");
 });
 
-test("reshape() lets the definition win where the shape changes", () => {
+test("reshape() takes the definition in full for an untracked store", () => {
   const kept = /** @type {any} */ (
     store({
       a: 1,
@@ -389,9 +377,9 @@ test("reshape() lets the definition win where the shape changes", () => {
       return 5;
     },
   });
-  assert.ok(isStore(kept.a), "a value that becomes a plain object takes the definition's");
+  assert.ok(isStore(kept.a), "a written value that becomes a plain object takes the definition's");
   assert.deepStrictEqual({ ...kept.a }, { n: 1 });
-  assert.strictEqual(kept.b, 2, "a store that becomes a value takes the definition's");
+  assert.strictEqual(kept.b, 2, "a written store that becomes a value takes the definition's");
   assert.strictEqual(kept.c, 3, "a getter that becomes a data key takes the definition's value");
   assert.strictEqual(kept.d, 5, "a data key that becomes a getter reads the getter");
   assert.ok(Object.hasOwn(kept, "d"), "and stays a key of the store");
@@ -400,6 +388,7 @@ test("reshape() lets the definition win where the shape changes", () => {
 
 test("reshape() reshapes a nested store in place", () => {
   const kept = /** @type {any} */ (store({ layout: { width: 1, height: 2 } }));
+  trackWrites(kept);
   const nested = kept.layout;
   kept.layout.width = 10;
   const layout = {
@@ -419,6 +408,7 @@ test("reshape() reshapes a nested store in place", () => {
 
 test("reshape() re-runs no reader of a kept value", () => {
   const kept = store({ x: 1, y: 2 });
+  trackWrites(kept);
   kept.x = 5;
   /** @type {number[]} */
   const xs = [];
@@ -440,15 +430,101 @@ test("reshape() re-runs no reader of a kept value", () => {
   assert.deepStrictEqual(ys, [2, 3], "the reader of the key that gained a getter did");
 });
 
-test("reconfigure() takes the definition's value where reshape() keeps the store's", () => {
-  const theme = volatileStore({ accent: "amber" });
-  theme.accent = "ivory";
-  reconfigure(theme, { accent: "amber" });
-  assert.strictEqual(theme.accent, "amber");
-  const settings = store({ accent: "amber" });
-  settings.accent = "ivory";
-  reshape(settings, { accent: "amber" });
-  assert.strictEqual(settings.accent, "ivory");
+test("reshape() keeps a written key once trackWrites() records it", () => {
+  const untracked = store({ accent: "amber" });
+  untracked.accent = "ivory";
+  reshape(untracked, { accent: "amber" });
+  assert.strictEqual(untracked.accent, "amber", "nothing recorded, so the definition wins");
+  const tracked = store({ accent: "amber", spacing: 8 });
+  trackWrites(tracked);
+  tracked.accent = "ivory";
+  reshape(tracked, { accent: "amber", spacing: 12 });
+  assert.strictEqual(tracked.accent, "ivory", "the written key keeps the program's value");
+  assert.strictEqual(tracked.spacing, 12, "an untouched key takes the edited initial value");
+});
+
+test("writes before trackWrites() are not recorded", () => {
+  const kept = store({ x: 1 });
+  kept.x = 5;
+  trackWrites(kept);
+  reshape(kept, { x: 2 });
+  assert.strictEqual(kept.x, 2);
+});
+
+test("a key the program added stays, and one it deleted stays deleted", () => {
+  const kept = /** @type {any} */ (store({ x: 1, y: 2 }));
+  trackWrites(kept);
+  kept.z = 3;
+  delete kept.y;
+  reshape(kept, { x: 1, y: 2 });
+  assert.strictEqual(kept.z, 3, "the program's key stays");
+  assert.strictEqual("y" in kept, false, "the program's delete stays");
+  assert.deepStrictEqual(Reflect.ownKeys(kept), ["x", "z"]);
+});
+
+test("a written key that gains a getter follows it, and is the source's again", () => {
+  const kept = /** @type {any} */ (store({ x: 1 }));
+  trackWrites(kept);
+  kept.x = 5;
+  reshape(kept, {
+    get x() {
+      return 7;
+    },
+  });
+  assert.strictEqual(kept.x, 7, "the shape wins over the program's write");
+  reshape(kept, { x: 1 });
+  assert.strictEqual(kept.x, 1, "as a data key again, it takes the definition's value");
+});
+
+test("a write to a getter key marks nothing", () => {
+  const kept = /** @type {any} */ (
+    store({
+      get x() {
+        return 1;
+      },
+    })
+  );
+  trackWrites(kept);
+  kept.x = 9;
+  reshape(kept, { x: 2 });
+  assert.strictEqual(kept.x, 2);
+});
+
+test("an object the program assigns is the program's, key by key", () => {
+  const kept = /** @type {any} */ (store({ a: 1 }));
+  trackWrites(kept);
+  kept.a = { n: 1, m: 2 };
+  reshape(kept, {
+    a: {
+      n: 5,
+      get sum() {
+        return kept.a.n + kept.a.m;
+      },
+    },
+  });
+  assert.strictEqual(kept.a.n, 1, "a key the program wrote stays");
+  assert.strictEqual(kept.a.m, 2, "a key the definition lacks stays");
+  assert.strictEqual(kept.a.sum, 3, "a getter the definition adds reads them");
+  reshape(kept, { a: 7 });
+  assert.ok(isStore(kept.a), "the program's object stays where the definition has a value");
+});
+
+test("a store the definition adds records writes like its parent", () => {
+  const kept = /** @type {any} */ (store({ x: 1 }));
+  trackWrites(kept);
+  reshape(kept, { x: 1, layout: { width: 1 } });
+  kept.layout.width = 10;
+  reshape(kept, { x: 1, layout: { width: 2 } });
+  assert.strictEqual(kept.layout.width, 10);
+});
+
+test("a second trackWrites() keeps the marks", () => {
+  const kept = store({ x: 1 });
+  trackWrites(kept);
+  kept.x = 5;
+  trackWrites(kept);
+  reshape(kept, { x: 1 });
+  assert.strictEqual(kept.x, 5);
 });
 
 test("reshape() takes a store", () => {
@@ -456,9 +532,14 @@ test("reshape() takes a store", () => {
   assert.throws(() => reshape({}, {}), /reshape\(\) takes a store/);
 });
 
+test("trackWrites() takes a store", () => {
+  // @ts-expect-error A plain object is not a store, which the type says.
+  assert.throws(() => trackWrites({}), /trackWrites\(\) takes a store/);
+});
+
 test("a data key turned into a getter lets go of its value", () => {
-  const kept = volatileStore({ n: { a: 1 } });
-  reconfigure(kept, {
+  const kept = store({ n: { a: 1 } });
+  reshape(kept, {
     get n() {
       return 5;
     },
@@ -481,40 +562,40 @@ test("store() runs no getter and holds undefined for its key", () => {
   assert.strictEqual(runs, 1);
 });
 
-test("reconfigure() writes a data key to state and runs no setter", () => {
+test("reshape() writes a data key to state and runs no setter", () => {
   /** @type {unknown[]} */
   const written = [];
-  const kept = volatileStore({
+  const kept = store({
     x: 1,
     set y(/** @type {unknown} */ value) {
       written.push(value);
     },
   });
-  reconfigure(kept, { x: 2, y: 3 });
+  reshape(kept, { x: 2, y: 3 });
   assert.deepStrictEqual(written, []);
   assert.strictEqual(kept.x, 2);
   assert.strictEqual(/** @type {any} */ (kept).y, 3);
 });
 
-test("reconfigure() from a store keeps what was written to it", () => {
+test("reshape() from a store keeps what was written to it", () => {
   /** @param {number} width */
   const define = (width) => {
-    const theme = volatileStore({ width: 0 });
+    const theme = store({ width: 0 });
     theme.width = width;
     return theme;
   };
   const kept = define(10);
-  reconfigure(kept, define(20));
+  reshape(kept, define(20));
   assert.strictEqual(kept.width, 20);
 
   const palette = store({ amber: "amber" });
   palette.amber = "orange";
-  const holder = volatileStore({ palette, x: 1 });
-  reconfigure(holder, volatileStore({ palette, x: 2 }));
+  const holder = store({ palette, x: 1 });
+  reshape(holder, store({ palette, x: 2 }));
   assert.strictEqual(holder.palette.amber, "orange");
 });
 
-test("reconfigure() re-runs no reader of another store", () => {
+test("reshape() re-runs no reader of another store", () => {
   const other = store({
     get list() {
       return [1];
@@ -525,13 +606,13 @@ test("reconfigure() re-runs no reader of another store", () => {
     runs += 1;
     void other.list;
   });
-  const kept = volatileStore({
+  const kept = store({
     get x() {
       return 1;
     },
   });
   void kept.x;
-  reconfigure(kept, {
+  reshape(kept, {
     get x() {
       return 1;
     },
@@ -546,8 +627,8 @@ test("a store at a new key keeps its getters", () => {
       return palette.amber;
     },
   });
-  const kept = volatileStore({ x: 1 });
-  reconfigure(kept, { x: 1, inner });
+  const kept = store({ x: 1 });
+  reshape(kept, { x: 1, inner });
   palette.amber = "orange";
   assert.strictEqual(/** @type {any} */ (kept).inner.color, "orange");
   const built = store({ inner });
@@ -557,20 +638,20 @@ test("a store at a new key keeps its getters", () => {
 
 test("store() makes a store of a plain object at a symbol key", () => {
   const s = Symbol("s");
-  const kept = volatileStore({ [s]: { a: 1 }, x: 1 });
+  const kept = store({ [s]: { a: 1 }, x: 1 });
   assert.strictEqual(isStore(kept[s]), true);
   let runs = 0;
   new Effect(() => {
     runs += 1;
     void kept[s];
   });
-  reconfigure(kept, { [s]: { a: 1 }, x: 1 });
+  reshape(kept, { [s]: { a: 1 }, x: 1 });
   assert.strictEqual(runs, 1);
 });
 
-test("reconfigure() puts a key that gains only a setter in the store", () => {
-  const kept = volatileStore({ x: 1 });
-  reconfigure(kept, {
+test("reshape() puts a key that gains only a setter in the store", () => {
+  const kept = store({ x: 1 });
+  reshape(kept, {
     x: 1,
     set y(/** @type {unknown} */ _) {},
   });
@@ -578,17 +659,17 @@ test("reconfigure() puts a key that gains only a setter in the store", () => {
   assert.deepStrictEqual(Reflect.ownKeys(kept), ["x", "y"]);
 });
 
-test("reconfigure() takes a key named like an Object.prototype member as new", () => {
-  const kept = volatileStore({ x: 1 });
+test("reshape() takes a key named like an Object.prototype member as new", () => {
+  const kept = store({ x: 1 });
   /** @type {string[]} */
   const keys = [];
   new Effect(() => {
     keys.push(Object.keys(kept).join(","));
   });
-  reconfigure(kept, { x: 1, valueOf: 5 });
+  reshape(kept, { x: 1, valueOf: 5 });
   assert.deepStrictEqual(keys, ["x", "x,valueOf"]);
-  const other = volatileStore({ x: 1 });
-  reconfigure(other, {
+  const other = store({ x: 1 });
+  reshape(other, {
     x: 1,
     get toString() {
       return "t";
@@ -598,13 +679,13 @@ test("reconfigure() takes a key named like an Object.prototype member as new", (
 });
 
 test("a key turned setter-only reads undefined and re-runs its readers", () => {
-  const kept = volatileStore({ x: { a: 1 } });
+  const kept = store({ x: { a: 1 } });
   /** @type {unknown[]} */
   const seen = [];
   new Effect(() => {
     seen.push(/** @type {any} */ (kept).x);
   });
-  reconfigure(kept, {
+  reshape(kept, {
     set x(/** @type {unknown} */ _) {},
   });
   assert.strictEqual(seen.length, 2);
@@ -612,7 +693,7 @@ test("a key turned setter-only reads undefined and re-runs its readers", () => {
 });
 
 test("a getter-only key turned setter-only reads undefined", () => {
-  const kept = volatileStore({
+  const kept = store({
     get n() {
       return { a: 1 };
     },
@@ -622,7 +703,7 @@ test("a getter-only key turned setter-only reads undefined", () => {
   new Effect(() => {
     seen.push(/** @type {any} */ (kept).n);
   });
-  reconfigure(kept, {
+  reshape(kept, {
     set n(/** @type {unknown} */ _) {},
   });
   assert.strictEqual(seen.length, 2);
@@ -632,7 +713,7 @@ test("a getter-only key turned setter-only reads undefined", () => {
 test("delete leaves a setter-only key in the store", () => {
   /** @type {unknown[]} */
   const written = [];
-  const kept = volatileStore({
+  const kept = store({
     x: 1,
     set y(/** @type {unknown} */ value) {
       written.push(value);
@@ -646,20 +727,20 @@ test("delete leaves a setter-only key in the store", () => {
   assert.deepStrictEqual(written, [7, 8]);
 });
 
-test("reconfigure() reads only the keys a spread would copy", () => {
+test("reshape() reads only the keys a spread would copy", () => {
   const kept = store(/** @type {Record<string, unknown>} */ ({ a: 1 }));
   const definition = { b: 2 };
   Object.defineProperty(definition, "hidden", { value: 3, enumerable: false });
-  reconfigure(kept, definition);
+  reshape(kept, definition);
   assert.deepStrictEqual(Reflect.ownKeys(kept), ["b"]);
 });
 
-test("reconfigure() follows a symbol key as any other", () => {
+test("reshape() follows a symbol key as any other", () => {
   const s = Symbol("s");
-  const kept = volatileStore({ [s]: 1, x: 1 });
-  reconfigure(kept, volatileStore({ [s]: 1, x: 2 }));
+  const kept = store({ [s]: 1, x: 1 });
+  reshape(kept, store({ [s]: 1, x: 2 }));
   assert.strictEqual(kept[s], 1);
-  reconfigure(kept, { [s]: 2, x: 2 });
+  reshape(kept, { [s]: 2, x: 2 });
   assert.strictEqual(kept[s], 2);
 });
 
@@ -667,7 +748,7 @@ test("a hot reload re-runs a getter's readers only when its value changes", () =
   const palette = store({ amber: "amber", ivory: "ivory" });
   /** @param {"amber" | "ivory"} accent */
   const define = (accent) =>
-    volatileStore({
+    store({
       get accent() {
         return palette[accent];
       },
@@ -679,11 +760,11 @@ test("a hot reload re-runs a getter's readers only when its value changes", () =
     runs += 1;
     void kept.accent;
   });
-  reconfigure(kept, define("amber"));
+  reshape(kept, define("amber"));
   assert.strictEqual(runs, 1);
   // A new getter that agrees for now still follows what it reads.
   palette.ivory = "amber";
-  reconfigure(kept, define("ivory"));
+  reshape(kept, define("ivory"));
   assert.strictEqual(runs, 1);
   palette.ivory = "white";
   assert.strictEqual(runs, 2);
@@ -729,7 +810,7 @@ test("isStore is true for a store's own proxy only", () => {
   assert.strictEqual(isStore(Object.create(state)), false);
   assert.strictEqual(isStore(everyKey), false);
   emit(/** @type {any} */ (everyKey), "x", 1);
-  assert.throws(() => reconfigure(Object.create(state), {}), /reconfigure\(\) takes a store/);
+  assert.throws(() => reshape(Object.create(state), {}), /reshape\(\) takes a store/);
 });
 
 test("isStore() reads no key of what it is given", () => {
@@ -739,7 +820,6 @@ test("isStore() reads no key of what it is given", () => {
     throw new NoValueError("not yet");
   });
   assert.strictEqual(isStore(lazy), false);
-  assert.strictEqual(isVolatile(lazy), false);
   assert.strictEqual(runs, 0);
 });
 
@@ -757,21 +837,9 @@ test("isStore reads no key of the store and adds none", () => {
   assert.deepStrictEqual(Object.getOwnPropertySymbols({ ...store({ value: 1 }) }), []);
 });
 
-test("volatileStore() makes a store a hot reload should not preserve", () => {
-  const state = store({ value: 1 });
-  const constants = volatileStore({ value: 1 });
-  assert.strictEqual(isVolatile(constants), true);
-  assert.strictEqual(isVolatile(state), false);
-  assert.strictEqual(isVolatile({ value: 1 }), false);
-  assert.strictEqual(isVolatile(null), false);
-  assert.strictEqual(isStore(constants), true, "it is a store in every other respect");
-  constants.value = 2;
-  assert.strictEqual(constants.value, 2, "including being writable and reactive");
-});
-
 test("replace() moves the keys that changed and leaves the rest alone", () => {
-  // What a hot reload does to a store that opted out of preservation.
-  const palette = volatileStore({ accent: "#f00", spacing: 8 });
+  // An assignment through the store, as the running program makes one.
+  const palette = store({ accent: "#f00", spacing: 8 });
   /** @type {string[]} */
   const accents = [];
   /** @type {number[]} */

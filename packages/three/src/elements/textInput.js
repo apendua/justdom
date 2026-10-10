@@ -27,6 +27,7 @@ import { rectGeometry } from "./sdfRect.js";
 import { placeAndScale } from "./place.js";
 import { surfaceRun } from "./surfaceRun.js";
 import { discardDraft, getCaretOffset, getShownValue, setCaretOffset } from "./typing.js";
+import { holdShared, shadowAccessor } from "./shadowAccessor.js";
 
 /**
  * @import {EntityEffect} from '@apendua/signal';
@@ -198,59 +199,20 @@ export function watchValue(element) {
 }
 
 /**
- * How many watchers each element has, and what the first of them installed
- * for all of them: one listener pair and one accessor per element however
- * many portals follow it, taken down when the last of them lets go. Two
- * watchers of one field are ordinary — the same `<input>` mirrored by two
- * panels, or a panel re-mounting while the one it replaces is still coming
- * down — and a second watcher that installed nothing, or a first that took
- * the accessor away from under the second, would leave the survivor deaf to
- * `input.value = ""`.
- *
- * @type {WeakMap<HTMLInputElement, { count: number, dispose: () => void }>}
- */
-const valueWatchers = new WeakMap();
-
-/**
  * Follow the element's value from here on: through the events typing
- * dispatches, and through the `value` setter — the prototype's accessor
- * shadowed by one on the element that calls through and then says so.
- * Counted per element: the first call installs, the last stop removes, and
- * every call between shares what the first installed. See `valueWatchers`.
- *
- * The accessor is looked up along the prototype chain rather than on a
- * global `HTMLInputElement`, which the element's document may not share
- * with this code; the first prototype carrying an own `value` descriptor
- * is the one the browser defined it on. An element that already carries an
- * own `value` — an app's, or a library's — is left with it and followed
- * through its events alone.
+ * dispatches, and through the `value` setter, the prototype's accessor
+ * shadowed by one on the element that calls through and then says so
+ * (`shadowAccessor`). Held per element: the first call installs, the last
+ * stop removes, and every call between shares what the first installed
+ * (`holdShared`), so a field mirrored by two panels is followed by both.
+ * An element that already carries an own `value`, an app's or a library's,
+ * is left with it and followed through its events alone.
  *
  * @param {HTMLInputElement} element
  * @returns {() => void}
  */
 export function trackValue(element) {
-  const existing = valueWatchers.get(element);
-  if (existing) {
-    existing.count += 1;
-  } else {
-    valueWatchers.set(element, { count: 1, dispose: installValueHooks(element) });
-  }
-  let stopped = false;
-  return () => {
-    if (stopped) {
-      return;
-    }
-    stopped = true;
-    const watchers = valueWatchers.get(element);
-    if (!watchers) {
-      return;
-    }
-    watchers.count -= 1;
-    if (watchers.count === 0) {
-      valueWatchers.delete(element);
-      watchers.dispose();
-    }
-  };
+  return holdShared(element, "value", () => installValueHooks(element));
 }
 
 /**
@@ -267,42 +229,22 @@ function installValueHooks(element) {
   };
   element.addEventListener("input", bump);
   element.addEventListener("change", bump);
-
-  /** @type {(() => void) | null} */
-  let restore = null;
-  if (!Object.prototype.hasOwnProperty.call(element, "value")) {
-    /** @type {PropertyDescriptor | undefined} */
-    let descriptor;
-    for (let proto = Object.getPrototypeOf(element); proto && !descriptor;) {
-      descriptor = Object.getOwnPropertyDescriptor(proto, "value");
-      proto = Object.getPrototypeOf(proto);
-    }
-    const getter = descriptor?.get;
-    const setter = descriptor?.set;
-    if (getter && setter) {
-      Object.defineProperty(element, "value", {
-        configurable: true,
-        enumerable: descriptor?.enumerable ?? true,
-        get() {
-          return getter.call(this);
-        },
-        /** @param {string} value */
-        set(value) {
-          // A script's write replaces whatever was being typed, even when it
-          // writes the value the field already held: `""` over a draft of
-          // `-` is a cleared field, not a half-typed number.
-          discardDraft(element);
-          setter.call(this, value);
-          bump();
-        },
-      });
-      restore = () => {
-        // The own property gone, the prototype's accessor is the one found
-        // again.
-        Reflect.deleteProperty(element, "value");
-      };
-    }
-  }
+  const restore = shadowAccessor(
+    element,
+    "value",
+    /**
+     * @param {string} value
+     * @param {(value: string) => void} write
+     */
+    (value, write) => {
+      // A script's write replaces whatever was being typed, even when it
+      // writes the value the field already held: `""` over a draft of
+      // `-` is a cleared field, not a half-typed number.
+      discardDraft(element);
+      write(value);
+      bump();
+    },
+  );
   return () => {
     element.removeEventListener("input", bump);
     element.removeEventListener("change", bump);

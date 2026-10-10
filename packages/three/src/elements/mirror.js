@@ -12,6 +12,7 @@ import {
 import { isSvgElement } from "./plugins.js";
 import { clipBoxEqual, intersectClipBoxes, toLocalClipBox, UNCLIPPED } from "./clip.js";
 import { PORTAL_ATTRIBUTE } from "./portalRoot.js";
+import { holdShared, shadowAccessor } from "./shadowAccessor.js";
 import {
   frameFor,
   getGeometryGeneration,
@@ -296,7 +297,9 @@ const nodeCaches = [];
  * The exceptions hold nothing of a mirror's, only what the element itself
  * announces, and are kept for the element's life in a plain `WeakMap` that
  * says so where it is declared: `assignmentSources` below and
- * `valueVersions` in `textInput.js`.
+ * `valueVersions` in `textInput.js`. `hiddenCache` below is not one of
+ * them: it holds a read of the computed style in a plain `WeakMap`, a gap
+ * the architecture plan records under "Found along the way".
  *
  * @template {WeakMap<any, any>} T
  * @returns {T}
@@ -317,7 +320,7 @@ export function nodeCache() {
  */
 export function forgetNode(node) {
   records.delete(node);
-  departed.delete(node);
+  takeDeparted(node);
   for (const cache of nodeCaches) {
     cache.delete(node);
   }
@@ -608,6 +611,29 @@ const records = new WeakMap();
 const departed = new WeakMap();
 
 /**
+ * How many of `departed`'s records each mirror has, so that the ingest of an
+ * ordinary arrival, with none to take back, walks nothing (`reclaim`).
+ *
+ * @type {WeakMap<DomMirror, number>}
+ */
+const departures = new WeakMap();
+
+/**
+ * Take a node's record out of `departed`, keeping its mirror's count.
+ *
+ * @param {Node} node
+ * @returns {NodeRecord | undefined}
+ */
+function takeDeparted(node) {
+  const record = departed.get(node);
+  if (record) {
+    departed.delete(node);
+    departures.set(record.mirror, (departures.get(record.mirror) ?? 1) - 1);
+  }
+  return record;
+}
+
+/**
  * The nodes read before any portal adopted them, each with a signal the
  * adoption sets. See `readRecordOf`.
  *
@@ -764,9 +790,8 @@ export class DomMirror {
     if (records.has(node)) {
       return;
     }
-    let record = departed.get(node);
+    let record = takeDeparted(node);
     if (record) {
-      departed.delete(node);
       if (record.mirror !== this) {
         // Another panel's, on its way out of it, and everything cached for
         // it hangs off that panel's signals.
@@ -787,12 +812,13 @@ export class DomMirror {
    * the portal keeps drawing their objects until its commit. From here on
    * the mirror bumps nothing for them, and a read cached for one of them
    * that runs again reads it as a node no portal adopted (`readRecordOf`),
-   * which depends on nothing the panel changes. The removal itself is the
-   * last thing they hear: it bumps the node's `reparented`, which cuts the
-   * subtree off its parent chain, so each read that depended on the panel
-   * runs once more, finds no record, and keeps nothing of the panel's. A
-   * font arriving, or a stylesheet changing, before the commit then reaches
-   * none of them.
+   * which depends on nothing the panel changes. The last thing they hear is
+   * a bump of the node's `reparented`, given here before its record is put
+   * aside, so that it does not depend on the ingest of the removal having
+   * come first. It cuts the subtree off its parent chain, so each read that
+   * depended on the panel runs once more, finds no record, and keeps
+   * nothing of the panel's. A font arriving, or a stylesheet changing,
+   * before the commit then reaches none of them.
    *
    * Their records are kept to one side rather than dropped. A node put back
    * before the commit was moved, not removed, keeps its objects, and takes
@@ -805,28 +831,49 @@ export class DomMirror {
    * @returns {void}
    */
   release(node) {
-    const record = records.get(node);
-    if (record?.mirror === this) {
-      records.delete(node);
-      departed.set(node, record);
-    }
-    node.childNodes.forEach((child) => {
-      this.release(child);
+    batch(() => {
+      const record = records.get(node);
+      if (record?.mirror === this) {
+        bump(record.reparented);
+      }
+      this.#putAside(node);
     });
   }
 
   /**
-   * Take back a node this mirror let go of (`release`), with whatever under
-   * it was let go of with it, now that the panel has it again.
+   * @param {Node} node
+   * @returns {void}
+   */
+  #putAside(node) {
+    const record = records.get(node);
+    if (record?.mirror === this) {
+      records.delete(node);
+      departed.set(node, record);
+      departures.set(this, (departures.get(this) ?? 0) + 1);
+    }
+    node.childNodes.forEach((child) => {
+      this.#putAside(child);
+    });
+  }
+
+  /**
+   * Take back every node under `node`, itself included, that this mirror
+   * let go of (`release`), now that the panel has them again. The whole
+   * subtree is walked, not only from a node that was let go of: while out
+   * of the document the page may have put one inside an element the panel
+   * has never seen, and the flush then names that element. A mirror with
+   * nothing let go of walks nothing.
    *
    * @param {Node} node
    * @returns {void}
    */
   reclaim(node) {
-    if (departed.get(node)?.mirror !== this) {
+    if (!departures.get(this)) {
       return;
     }
-    this.adopt(node);
+    if (departed.get(node)?.mirror === this) {
+      this.adopt(node);
+    }
     node.childNodes.forEach((child) => {
       this.reclaim(child);
     });
@@ -3050,16 +3097,14 @@ const assignmentSources = new WeakMap();
 
 /**
  * Every assignment to the element's `checked` that moved it, for as long as
- * something listens. The first listener installs an own accessor that
- * delegates to the one it shadows and then says so, the last one to leave
- * takes it off again, and every listener between shares it. The shape is
- * `trackValue`'s in `textInput.js`, for the same reason: a reader that
- * installed its own accessor over another's would leave the first deaf,
- * and one that took the accessor away would leave the rest deaf.
- *
- * An element that already carries an own `checked`, an app's or a
- * library's, is left with it and followed through `change` alone, as
- * `trackValue` leaves an own `value`.
+ * something listens. The first listener installs an own accessor that calls
+ * through to the browser's and then says so (`shadowAccessor`), the last
+ * one to leave takes it off again, and every listener between shares it
+ * (`holdShared`), as `trackValue` holds a field's `value`: a reader that
+ * installed its own accessor over another's would leave the first deaf, and
+ * one that took the accessor away would leave the rest deaf. An element
+ * that already carries an own `checked`, an app's or a library's, is left
+ * with it and followed through `change` alone.
  *
  * @param {HTMLInputElement} element
  * @returns {Subscribable<void>}
@@ -3069,21 +3114,31 @@ function checkedAssignments(element) {
   if (!source) {
     /** @type {Subject<void>} */
     const assigned = new Subject();
-    /** @type {(() => void) | null} */
-    let restore = null;
+    const install = () =>
+      shadowAccessor(
+        element,
+        "checked",
+        /**
+         * @param {boolean} value
+         * @param {(value: boolean) => void} write
+         * @param {() => boolean} read
+         */
+        (value, write, read) => {
+          const before = read();
+          write(value);
+          if (read() !== before) {
+            assigned.next();
+          }
+        },
+      ) ?? (() => {});
     source = {
       subscribe(observer) {
-        if (!assigned.observed) {
-          restore = instrumentChecked(element, assigned);
-        }
+        const release = holdShared(element, "checked", install);
         const subscription = assigned.subscribe(observer);
         return {
           unsubscribe() {
             subscription.unsubscribe();
-            if (!assigned.observed) {
-              restore?.();
-              restore = null;
-            }
+            release();
           },
         };
       },
@@ -3091,47 +3146,6 @@ function checkedAssignments(element) {
     assignmentSources.set(element, source);
   }
   return source;
-}
-
-/**
- * Shadow the prototype's `checked` with an own accessor that calls through
- * and then tells `assigned` when the value moved.
- *
- * @param {HTMLInputElement} element
- * @param {Subject<void>} assigned
- * @returns {(() => void) | null} Take the accessor off again, or null when
- *   none was installed.
- */
-function instrumentChecked(element, assigned) {
-  if (Object.hasOwn(element, "checked")) {
-    return null;
-  }
-  const descriptor = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(element), "checked");
-  const read = descriptor?.get;
-  const write = descriptor?.set;
-  if (!read || !write) {
-    return null;
-  }
-  Object.defineProperty(element, "checked", {
-    configurable: true,
-    enumerable: false,
-    get() {
-      return read.call(this);
-    },
-    /** @param {boolean} value */
-    set(value) {
-      const before = read.call(this);
-      write.call(this, value);
-      if (read.call(this) !== before) {
-        assigned.next();
-      }
-    },
-  });
-  return () => {
-    // The own property gone, the prototype's accessor is the one found
-    // again.
-    Reflect.deleteProperty(element, "checked");
-  };
 }
 
 /**

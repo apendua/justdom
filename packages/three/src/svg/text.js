@@ -201,7 +201,9 @@ function arraysEqual(a, b) {
  * when any of them changes. The portal adopts a `<text>`'s children only
  * after the `<text>` is built, so the first reads of them come before their
  * records, and are read again once the portal's walk adopts them
- * (`readRecordOf` in `mirror.js`).
+ * (`readRecordOf` in `mirror.js`). A pumped portal therefore collects a
+ * `<text>`'s runs twice as it mounts it. The second finds the same runs,
+ * and the gate on `runs` stops it there, so what it costs is the walk.
  *
  * @param {Element} element
  * @param {(element: Element) => readonly string[]} layoutStyle The element's

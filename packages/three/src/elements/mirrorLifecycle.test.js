@@ -191,6 +191,45 @@ describe("a node's life in a mirror", () => {
     root.remove();
   });
 
+  test("a subtree that comes back inside a new element is followed again", async () => {
+    // Taken out, wrapped in an element the panel has never seen while out
+    // of the document, and put back inside it before the commit. The added
+    // node the flush names is the wrapper, and the card is under it.
+    const { ctx } = countingManager();
+    const root = document.createElement("div");
+    root.getBoundingClientRect = () => clientRect(0, 0, 200, 100);
+    const card = document.createElement("div");
+    const inner = document.createElement("div");
+    inner.style.cursor = "pointer";
+    inner.getBoundingClientRect = () => clientRect(0, 0, 50, 20);
+    card.appendChild(inner);
+    root.appendChild(card);
+    document.body.appendChild(root);
+
+    const portal = createPortal(ctx, { root, budget: 0 });
+    portal.addTo(new THREE.Group());
+    await settle(portal);
+
+    card.remove();
+    await nextMacrotask();
+    const wrap = document.createElement("div");
+    wrap.appendChild(card);
+    root.appendChild(wrap);
+    await drain();
+
+    let reads = 0;
+    inner.getBoundingClientRect = () => {
+      reads += 1;
+      return clientRect(0, 0, 50, 40);
+    };
+    inner.setAttribute("class", "taller");
+    await drain();
+    assert.ok(reads > 0, "an edit after it came back is measured");
+
+    portal.disconnect();
+    root.remove();
+  });
+
   test("a re-claimed checkbox starts clean", async () => {
     // A session over the page, and then another: the second panel follows
     // the box the way the first did, whichever way the state moves, and so

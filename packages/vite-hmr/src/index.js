@@ -66,8 +66,9 @@ import {
  *   added or deleted stays. A write made while the initialiser runs, by a
  *   factory that fills the store it returns or by an operator writing at
  *   construction, comes before the recording and follows the source on the
- *   first reload. A store made of an array is followed the same way, and is the
- *   program's as a whole once the program has written to it. A theme or a
+ *   first reload. A store made of an array is followed the same way: once the
+ *   program has written to it, it keeps which element is at each index, and its
+ *   length, while its element stores are still reshaped in place. A theme or a
  *   palette is a store nobody writes to, so an edit to one colour reaches the
  *   things wearing it and nothing else moves.
  * - **State** — a `Signal`, a `ReactiveMap` or `ReactiveSet`, a `Subject` or

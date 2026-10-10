@@ -29,6 +29,8 @@ import { isPlainObject } from "./util.js";
  *   `Derived`.
  * @property {(key: PropertyKey) => void} announce
  * @property {symbol} ownKeys The key the key set's readers depend on.
+ * @property {number} mutating How many of the array methods in
+ *   `arrayMutators` are running on the store. See there for what it changes.
  * @property {Set<PropertyKey> | null} touched The data keys the program has
  *   written or deleted through the proxy since `trackWrites` was called,
  *   which `reshape` keeps. `null` until then, so a store nobody reloads
@@ -94,15 +96,24 @@ export function emit(data, event, payload) {
 
 /**
  * The array methods that change the array they are called on, each run on
- * the store as one batch outside any computation. One batch, because a
- * method writes several keys, an index or two and `length` for a `push`,
- * every index for a `sort`, and a reader of more than one must see the
- * array once it is done rather than once per key. Outside any computation,
- * because each of them reads the array too, its `length` at least, and an
- * `Effect` that pushes would otherwise depend on the `length` it writes
- * and run again on its own push. The method itself is the native one,
- * called on the proxy, so every key it writes goes through the store's
- * traps as any other write does.
+ * the store as one batch with the store's `mutating` count raised. The
+ * method itself is the native one, called on the proxy, so every key it
+ * reads and writes goes through the store's traps.
+ *
+ * One batch, because a method writes several keys, an index or two and
+ * `length` for a `push`, every index for a `sort`, and a reader of more than
+ * one must see the array once it is done rather than once per key.
+ *
+ * While `mutating` is raised, the store's traps record no read of its own
+ * keys, since each method reads the array it writes, its `length` at least,
+ * and an `Effect` that pushes would otherwise depend on the `length` it
+ * writes and run again on its own push. A read of anything else, a `sort`
+ * comparator's read of an element store, is recorded as any read is, so an
+ * effect that sorts follows what it sorts by. And a value written while it
+ * is raised always makes a new store at its index, never a write into the
+ * store found there: `unshift` and `splice` copy an element up before they
+ * write the index it came from, so that store is the one now held one index
+ * on.
  *
  * @type {Map<PropertyKey, (this: unknown[], ...args: unknown[]) => unknown>}
  */
@@ -122,7 +133,17 @@ for (const name of [
     Reflect.get(Array.prototype, name)
   );
   arrayMutators.set(name, function (...args) {
-    return batch(() => withComputation(null, () => method.apply(this, args)));
+    const internals = /** @type {Internals} */ (internalsOf(this));
+    // Lowered inside the batch, before it drains: an effect the method
+    // queued re-runs after it, and its reads of the store are its own.
+    return batch(() => {
+      internals.mutating += 1;
+      try {
+        return method.apply(this, args);
+      } finally {
+        internals.mutating -= 1;
+      }
+    });
   });
 }
 
@@ -313,6 +334,19 @@ function store(data, operators = []) {
   };
 
   /**
+   * Record a read of `key` in the running computation, unless one of the
+   * store's own array methods made it. See `arrayMutators`.
+   *
+   * @param {PropertyKey} key
+   * @returns {void}
+   */
+  const dependOn = (key) => {
+    if (internals.mutating === 0) {
+      addDependency(getChangesAtKey(key));
+    }
+  };
+
+  /**
    * @param {PropertyKey} key
    * @returns {void}
    */
@@ -339,6 +373,7 @@ function store(data, operators = []) {
     definition: undefined,
     announce,
     ownKeys,
+    mutating: 0,
     touched: null,
   };
 
@@ -359,7 +394,7 @@ function store(data, operators = []) {
           return mutator;
         }
       }
-      addDependency(getChangesAtKey(key));
+      dependOn(key);
       if (!getters.has(key)) {
         return state[key];
       }
@@ -402,14 +437,16 @@ function store(data, operators = []) {
             announce(String(index));
           }
           announce(key);
-          announce(ownKeys);
+          if (next < length) {
+            announce(ownKeys);
+          }
         });
       } else {
         const kind = storeKindOf(newValue);
         if (kind) {
           const oldValue = state[key];
           const nested = internalsOf(oldValue);
-          if (nested && isOfKind(nested, kind) && !isStore(newValue)) {
+          if (nested && isOfKind(nested, kind) && !isStore(newValue) && internals.mutating === 0) {
             // Written into the nested store key by key, whose traps mark the
             // keys the value changes. This key holds the same store as
             // before, so it is not marked, as no unchanged key is.
@@ -455,13 +492,13 @@ function store(data, operators = []) {
       return true;
     },
     has(_, key) {
-      addDependency(getChangesAtKey(key));
+      dependOn(key);
       return key in state;
     },
     getOwnPropertyDescriptor(_, key) {
       // What `Object.hasOwn` and a spread ask of each key, so that their
       // reader follows the key as `in` does.
-      addDependency(getChangesAtKey(key));
+      dependOn(key);
       return Reflect.getOwnPropertyDescriptor(state, key);
     },
     deleteProperty(_, key) {
@@ -485,7 +522,7 @@ function store(data, operators = []) {
       return true;
     },
     ownKeys() {
-      addDependency(getChangesAtKey(ownKeys));
+      dependOn(ownKeys);
       return Reflect.ownKeys(state);
     },
   });
@@ -619,8 +656,9 @@ function nestedStore(internals, value, owned) {
  * A write into it marks its own key and not the key it sits at, so that key
  * is the source's: when the definition drops it or makes it a value of
  * another kind, the nested store goes, the program's writes into it with
- * it. An array store is the program's as a whole once the program has
- * written to it, and takes the definition's elements otherwise; see
+ * it. An array store keeps which element is at each index, and its length,
+ * once the program has written to it, and takes the definition's elements
+ * otherwise, while its element stores are reshaped in place either way; see
  * `reshapeArray`. A value that is not a plain object or an array, a `Map`,
  * an instance, is kept only at a key the program assigned; one the program
  * mutated in place is untouched to the store and takes the definition's. A
@@ -635,8 +673,9 @@ function nestedStore(internals, value, owned) {
  *
  * `definition` is a plain object, or a store, which stands for its getters
  * and setters and the values it holds now. For a store made of an array it
- * is an array, or an array store; one of the other kind throws, since a
- * store keeps the kind it was made with. This is the whole of a hot reload
+ * is an array, or an array store. A store keeps the kind it was made with,
+ * so a definition of the other kind throws, and for an array store its type
+ * refuses one too. This is the whole of a hot reload
  * of a store; `replace` is an assignment and belongs to the running program.
  *
  * A key with a setter and no getter reads `undefined`, as it does when
@@ -648,7 +687,10 @@ function nestedStore(internals, value, owned) {
  *
  * @template {IEmitter<Record<any, any>>} T
  * @param {T} target A store.
- * @param {object} definition
+ * @param {T extends readonly unknown[] ? readonly unknown[] : object} definition
+ *   An array for a store made of one, which its type refuses anything else
+ *   for. The type cannot refuse an array for a store made of an object,
+ *   since an array is an object, so that throws.
  * @returns {void}
  */
 export function reshape(target, definition) {
@@ -821,18 +863,26 @@ function reshapeWith(internals, descriptors) {
  * Give the array store of `internals` the elements of `definition`, an array
  * or an array store, unless the program has written to it.
  *
- * An array is the program's or the source's as a whole, not index by index:
- * its indices are positions, not names, and a `shift` or a `splice` moves
- * what each holds, so a mark on an index says nothing about the element now
- * at it. A write the program makes to the array, to an index or to its
- * length, by assignment or by any of its methods, keeps every element and
- * the length as the program left them. A write into a store the array holds
- * marks that store and not the array, as it would at a key of an object.
+ * Which element the array holds at each index, and its length, are the
+ * program's or the source's as a whole, not index by index: its indices are
+ * positions, not names, and a `shift` or a `splice` moves what each holds,
+ * so a mark on an index says nothing about the element now at it. A write
+ * the program makes to the array, to an index or to its length, by
+ * assignment or by any of its methods, keeps which element is at each index
+ * and the length as the program left them. A write into a store the array
+ * holds marks that store and not the array, as it would at a key of an
+ * object.
+ *
+ * What is inside an element store follows the source either way. An element
+ * that is a store, where the definition has a plain object or an array of
+ * its kind at the same index, is reshaped in place by its own marks, so that
+ * a getter edited in source reaches it and the program's writes into it
+ * stay. In an array the program has written to, the element at an index may
+ * have come from another one, and is reshaped with the definition's at the
+ * index it is at now.
  *
  * An array the program has not written takes the definition's elements and
- * length. An element that is a store, where the definition has a plain
- * object or an array of its kind, is reshaped in place by its own marks, so
- * that the program's writes into it stay. Every other element takes the
+ * length. Every element that is not reshaped in place takes the
  * definition's, and only the readers of an index whose element changed, and
  * of the length when it did, re-run.
  *
@@ -841,11 +891,21 @@ function reshapeWith(internals, descriptors) {
  */
 function reshapeArray(internals, definition) {
   const { state, announce, ownKeys, touched } = internals;
-  if (touched?.size) {
-    return;
-  }
   const array = /** @type {unknown[]} */ (/** @type {unknown} */ (state));
   const source = /** @type {unknown[]} */ (internalsOf(definition)?.state ?? definition);
+  if (touched?.size) {
+    // The program's elements stay where it put them. Only what is inside
+    // them follows the source.
+    const shared = Math.min(array.length, source.length);
+    for (let index = 0; index < shared; index += 1) {
+      const nested = internalsOf(array[index]);
+      const value = source[index];
+      if (nested && isOfKind(nested, storeKindOf(value))) {
+        reshapeInto(nested, /** @type {object} */ (value));
+      }
+    }
+    return;
+  }
   const before = array.length;
   for (let index = 0; index < source.length; index += 1) {
     const key = String(index);

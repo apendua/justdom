@@ -179,11 +179,13 @@ and throws rather than spinning.
 - `store()` — a reactive `Proxy` over plain objects/arrays, with per-key dependency tracking. A
   plain object or an array nested in a store is a store too, and a store assigned to one is held as
   itself. An array's methods that change it, `push`, `splice`, `sort` and the rest, each run as one
-  update, and an effect calling one does not depend on what the method read. A getter with no setter
-  is readonly. `replace()` assigns values through the store; `reshape()` swaps in a new definition
-  and keeps the keys the program wrote since `trackWrites()`, which is what a hot reload does. An
-  array is the program's as a whole once the program has written to it, and takes the definition's
-  elements otherwise.
+  update. An effect calling one does not depend on the array's own keys the method read, and does
+  depend on what else it read, such as the element stores a `sort` comparator reads. A getter with
+  no setter is readonly. `replace()` assigns values through the store; `reshape()` swaps in a new
+  definition and keeps the keys the program wrote since `trackWrites()`, which is what a hot reload
+  does. An array keeps which element is at each index, and its length, once the program has written
+  to it, and takes the definition's elements otherwise. Either way, its element stores are reshaped
+  in place with the definition's element at the same index.
 - `selector()` / `arraySelector()` — structural, read-only reactive views.
 - `ReactiveMap` / `ReactiveSet` — reactive wrappers around the native collections.
 - `createProperty()` — a `WeakKey`-chained context mechanism (dependency injection without a

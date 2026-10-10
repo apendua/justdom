@@ -576,7 +576,7 @@ describe("a state export", () => {
     assert.strictEqual(next.invalidation({ settings, scores, clicks, theme }), null);
   });
 
-  test("an array store is kept, and takes the new elements until the program writes to it", () => {
+  test("an array store is kept, and keeps its elements once the program writes to it", () => {
     const hot = fakeHot();
     const levels = reload(hot, "levels", store([{ name: "a" }, { name: "b" }]));
     const first = levels[0];
@@ -589,7 +589,11 @@ describe("a state export", () => {
     assert.strictEqual(levels[0], first, "an element store is reshaped in place");
     levels.push({ name: "d" });
     reload(hot, "levels", store([{ name: "x" }]));
-    assert.deepStrictEqual(seen, ["a,b", "a,c", "a,c,d"], "what the program pushed stays");
+    assert.deepStrictEqual(
+      seen,
+      ["a,b", "a,c", "a,c,d", "x,c,d"],
+      "what the program pushed stays, and an element store still follows the source",
+    );
     a.dispose();
   });
 

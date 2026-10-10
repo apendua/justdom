@@ -1186,7 +1186,6 @@ test("reshape() of an array store takes an array", () => {
   reshape(list, [1, , 3]);
   assert.strictEqual(1 in list, false, "a hole in the definition is one in the store");
   assert.strictEqual(list.length, 3);
-  assert.throws(() => reshape(list, {}), /reshape\(\) takes a definition of the store's kind/);
   assert.throws(() => reshape(store({}), []), /reshape\(\) takes a definition of the store's kind/);
 });
 
@@ -1201,4 +1200,89 @@ test("Object.hasOwn() follows the key", () => {
   delete state.value;
   state.value = 2;
   assert.deepStrictEqual(values, [true, false, true]);
+});
+
+test("unshift and splice insert a new store rather than writing into a moved one", () => {
+  const list = store([{ n: 1 }, { n: 2 }]);
+  const [one, two] = list;
+  list.unshift({ n: 0 });
+  assert.deepStrictEqual(
+    list.map((item) => item.n),
+    [0, 1, 2],
+  );
+  assert.strictEqual(list[1], one, "the store that moved is the one that was there");
+  assert.strictEqual(list[2], two);
+  const other = store([{ n: 1 }, { n: 2 }, { n: 3 }]);
+  other.splice(0, 1, { n: 8 }, { n: 9 });
+  assert.deepStrictEqual(
+    other.map((item) => item.n),
+    [8, 9, 2, 3],
+  );
+  const nested = store([[1], [2]]);
+  nested.unshift([0]);
+  assert.deepStrictEqual(
+    nested.map((item) => [...item]),
+    [[0], [1], [2]],
+  );
+});
+
+test("an effect that sorts follows what its comparator reads", () => {
+  const state = store({ list: [{ n: 2 }, { n: 1 }] });
+  new Effect(() => {
+    state.list.sort((a, b) => a.n - b.n);
+  });
+  assert.deepStrictEqual(
+    state.list.map((item) => item.n),
+    [1, 2],
+  );
+  state.list[0].n = 5;
+  assert.deepStrictEqual(
+    state.list.map((item) => item.n),
+    [2, 5],
+  );
+});
+
+test("reshape() reaches the element stores of an array the program wrote to", () => {
+  const levels = store([
+    {
+      get label() {
+        return "old";
+      },
+    },
+  ]);
+  trackWrites(levels);
+  levels.push({
+    get label() {
+      return "pushed";
+    },
+  });
+  reshape(levels, [
+    {
+      get label() {
+        return "new";
+      },
+    },
+  ]);
+  assert.strictEqual(levels.length, 2, "the program's elements and length stay");
+  assert.strictEqual(levels[0].label, "new", "a store at an index the definition has is reshaped");
+  assert.strictEqual(levels[1].label, "pushed");
+});
+
+test("a length that grows tells no reader of the key set", () => {
+  const list = store([1]);
+  let runs = 0;
+  new Effect(() => {
+    runs += 1;
+    void Reflect.ownKeys(list);
+  });
+  list.length = 5;
+  assert.strictEqual(runs, 1);
+  list.length = 0;
+  assert.strictEqual(runs, 2);
+});
+
+test("reshape() of an array store refuses an object by its type", () => {
+  const list = store([1]);
+  // @ts-expect-error An array store takes an array.
+  assert.throws(() => reshape(list, {}), /reshape\(\) takes a definition of the store's kind/);
 });

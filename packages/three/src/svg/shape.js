@@ -62,7 +62,8 @@ import {
   parsePaint,
   parsePointerEvents,
   readProperty,
-  readShapeMarkup,
+  readShapeGeometry,
+  shapeGeometryEqual,
   viewportReferences,
 } from "./style.js";
 
@@ -72,7 +73,7 @@ import {
  * @import {Component, XREventMap} from '../core.js';
  * @import {ClipBox} from '../elements/clip.js';
  * @import {Matrix2D, Rect} from './geometry.js';
- * @import {HitRule, Paint} from './style.js';
+ * @import {HitRule, Paint, ShapeGeometry} from './style.js';
  */
 
 /**
@@ -117,11 +118,11 @@ const MAX_SEGMENTS = 128;
 const DOT_LENGTH = 0.05;
 
 /**
- * Parsed geometry, by the markup it was parsed from. A shape's `d` string
- * is the same across a hover, a colour animation and a resize, and parsing
- * it again for each would be the one expensive step on the path that is
- * meant to be cheap. Bounded, and simply emptied when full: the strings a
- * panel uses are few, and re-parsing them once is the whole cost of a miss.
+ * Parsed paths, by their `d`. A shape's `d` string is the same across a
+ * hover, a colour animation and a resize, and parsing it again for each
+ * would be the one expensive step on the path that is meant to be cheap.
+ * Bounded, and simply emptied when full: the strings a panel uses are few,
+ * and re-parsing them once is the whole cost of a miss.
  *
  * @type {Map<string, ShapePath | null>}
  */
@@ -129,15 +130,32 @@ const parsed = new Map();
 
 const PARSED_LIMIT = 512;
 
-/** One loader for every shape; `parse` keeps no state between calls. */
+/** One loader for every path; `parse` keeps no state between calls. */
 let loader = /** @type {SVGLoader | null} */ (null);
 
 /**
- * @param {string} markup
+ * @param {string} value
+ * @returns {string}
+ */
+function escapeAttribute(value) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+/**
+ * A `<path>`'s outline, parsed by three's `SVGLoader` from a one-element
+ * document: its `d` parser and its arc handling, without re-implementing
+ * either. The loader's parser is local to `parse`, so a document is the
+ * only way in.
+ *
+ * @param {string} d
  * @returns {ShapePath | null}
  */
-function parseShape(markup) {
-  const cached = parsed.get(markup);
+function parsePath(d) {
+  const cached = parsed.get(d);
   if (cached !== undefined) {
     return cached;
   }
@@ -145,10 +163,109 @@ function parseShape(markup) {
     parsed.clear();
   }
   loader ??= new SVGLoader();
+  const markup = `<path d="${escapeAttribute(d)}"/>`;
   const result = loader.parse(`<svg xmlns="${SVG_NAMESPACE}">${markup}</svg>`);
   const path = result.paths[0] ?? null;
-  parsed.set(markup, path);
+  parsed.set(d, path);
   return path;
+}
+
+/**
+ * A coordinate pair in `points`, as `SVGLoader` reads it: two numbers with
+ * one comma or one space between them.
+ */
+const POINT_PAIR = /([+-]?\d*\.?\d+(?:e[+-]?\d+)?)(?:,|\s)([+-]?\d*\.?\d+(?:e[+-]?\d+)?)/g;
+
+/**
+ * `SVGLoader`'s rounded corner: one minus the bezier approximation of a
+ * quarter ellipse, as its `parseRectNode` uses it.
+ */
+const CORNER = 1 - 0.551915024494;
+
+/**
+ * The shape's outline as three's `ShapePath`, the same one `SVGLoader`
+ * would build from the element: the same curves, in the same order, with
+ * the same closing. Every kind but a `<path>` is built here, from the
+ * numbers already read, rather than written out as markup for the loader
+ * to parse back; a shape that moves every frame is a few curves a frame and
+ * not a document. A `<path>` goes to the loader, by its `d`.
+ *
+ * A path built here is the shape's own, and one parsed is shared by every
+ * shape with the same `d`.
+ *
+ * @param {ShapeGeometry} geometry
+ * @returns {ShapePath | null}
+ */
+export function buildShapePath(geometry) {
+  switch (geometry.kind) {
+    case "path":
+      return parsePath(geometry.d);
+    case "circle":
+    case "ellipse": {
+      const subPath = new THREE.Path();
+      if (geometry.kind === "circle") {
+        subPath.absarc(geometry.cx, geometry.cy, geometry.r, 0, Math.PI * 2);
+      } else {
+        subPath.absellipse(geometry.cx, geometry.cy, geometry.rx, geometry.ry, 0, Math.PI * 2);
+      }
+      const path = new THREE.ShapePath();
+      path.subPaths.push(subPath);
+      return path;
+    }
+    case "line": {
+      const path = new THREE.ShapePath();
+      path.moveTo(geometry.x1, geometry.y1);
+      path.lineTo(geometry.x2, geometry.y2);
+      return path;
+    }
+    case "polyline":
+    case "polygon": {
+      const path = new THREE.ShapePath();
+      let first = true;
+      for (const [, x, y] of geometry.points.matchAll(POINT_PAIR)) {
+        if (first) {
+          path.moveTo(Number.parseFloat(x), Number.parseFloat(y));
+          first = false;
+        } else {
+          path.lineTo(Number.parseFloat(x), Number.parseFloat(y));
+        }
+      }
+      if (geometry.kind === "polygon" && path.currentPath) {
+        path.currentPath.autoClose = true;
+      }
+      return path;
+    }
+    case "rect": {
+      const { x, y, width: w, height: h, rx, ry } = geometry;
+      const rounded = rx !== 0 || ry !== 0;
+      const path = new THREE.ShapePath();
+      path.moveTo(x + rx, y);
+      path.lineTo(x + w - rx, y);
+      if (rounded) {
+        path.bezierCurveTo(x + w - rx * CORNER, y, x + w, y + ry * CORNER, x + w, y + ry);
+      }
+      path.lineTo(x + w, y + h - ry);
+      if (rounded) {
+        path.bezierCurveTo(
+          x + w,
+          y + h - ry * CORNER,
+          x + w - rx * CORNER,
+          y + h,
+          x + w - rx,
+          y + h,
+        );
+      }
+      path.lineTo(x + rx, y + h);
+      if (rounded) {
+        path.bezierCurveTo(x + rx * CORNER, y + h, x, y + h - ry * CORNER, x, y + h - ry);
+      }
+      path.lineTo(x, y + ry);
+      if (rounded) {
+        path.bezierCurveTo(x, y + ry * CORNER, x + rx * CORNER, y, x + rx, y);
+      }
+      return path;
+    }
+  }
 }
 
 /**
@@ -973,8 +1090,8 @@ function readStrokeSpec(read, viewport) {
  * @returns {THREE.BufferGeometry | null}
  */
 export function buildFillGeometry(path, fillRule, scale) {
-  // `toShapes` reads the fill rule off the path it is called on. The parsed
-  // path is shared by every element with the same geometry, so the rule is
+  // `toShapes` reads the fill rule off the path it is called on. A parsed
+  // path is shared by every `<path>` with the same `d`, so the rule is
   // written just before the call and read nowhere after it.
   path.userData = { style: { fillRule } };
   const shapes = path.toShapes();
@@ -1286,23 +1403,25 @@ export function shape(ctx, element, { instance = null, decorate } = {}) {
   const style = () => getComputedStyleCached(element);
 
   /**
-   * The viewport the shape is in. Read by `readShapeMarkup` and
+   * The viewport the shape is in. Read by `readShapeGeometry` and
    * `readStrokeSpec` only for a length that is a percentage, so a shape
    * with none does not depend on the viewport's size.
    */
   const viewport = () => viewportSize(element, instance);
 
   /**
-   * The geometry as markup — a string, compared as one, so that the parse
-   * below runs only when the geometry itself changed and not when the
+   * The geometry's numbers, compared field by field, so that the outline
+   * below is built only when the geometry itself changed and not when the
    * element was restyled.
    */
-  const markup = new Derived(() => readShapeMarkup(style(), element, viewport));
+  const geometry = new Derived(() => readShapeGeometry(style(), element, viewport), {
+    isEqual: shapeGeometryEqual,
+  });
 
   /** @type {Derived<ShapePath | null>} */
   const path = new Derived(() => {
-    const current = markup.get();
-    return current ? parseShape(current) : null;
+    const current = geometry.get();
+    return current ? buildShapePath(current) : null;
   });
 
   /** This shape's own transform, which its object carries. */

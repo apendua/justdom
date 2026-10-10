@@ -294,24 +294,52 @@ export function parseLineJoin(value) {
 }
 
 /**
- * @param {string} value
- * @returns {string}
+ * The numbers a shape's outline is built from, by the kind of shape: what
+ * `buildShapePath` in `shape.js` turns into three's `ShapePath`. A `<path>`
+ * keeps its `d` as the string it is, since parsing one is `SVGLoader`'s
+ * job; every other kind is a handful of lengths.
+ *
+ * @typedef {{
+ *       kind: "rect",
+ *       x: number,
+ *       y: number,
+ *       width: number,
+ *       height: number,
+ *       rx: number,
+ *       ry: number,
+ *     }
+ *   | { kind: "circle", cx: number, cy: number, r: number }
+ *   | { kind: "ellipse", cx: number, cy: number, rx: number, ry: number }
+ *   | { kind: "line", x1: number, y1: number, x2: number, y2: number }
+ *   | { kind: "polyline" | "polygon", points: string }
+ *   | { kind: "path", d: string }} ShapeGeometry
  */
-function escapeAttribute(value) {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
+
+/**
+ * Whether two readings of a shape's geometry are the same outline: the same
+ * kind, and every field equal. A restyle that moves none of them builds
+ * nothing.
+ *
+ * @param {ShapeGeometry | null} a
+ * @param {ShapeGeometry | null} b
+ * @returns {boolean}
+ */
+export function shapeGeometryEqual(a, b) {
+  if (a === b) {
+    return true;
+  }
+  if (!a || !b || a.kind !== b.kind) {
+    return false;
+  }
+  const fields = /** @type {Record<string, unknown>} */ (/** @type {unknown} */ (a));
+  const others = /** @type {Record<string, unknown>} */ (/** @type {unknown} */ (b));
+  return Object.keys(fields).every((name) => Object.is(fields[name], others[name]));
 }
 
 /**
- * The shape's geometry as a one-element document for three's `SVGLoader` to
- * parse — its `d` parser, its arc handling and its rounded-rect
- * construction, without re-implementing any of them — or null for a shape
- * with nothing to draw. Nothing about the element's styling goes in; the
- * loader is handed geometry and nothing else, and the styling is read from
- * the live element by the code that draws it.
+ * The shape's geometry, or null for a shape with nothing to draw. Nothing
+ * about the element's styling goes in; the styling is read from the live
+ * element by the code that draws it.
  *
  * Geometry comes from the computed style where the browser exposes it as
  * CSS — Chromium reports `cx`, `r`, `x`, `width` and the rest in px, and a
@@ -328,9 +356,9 @@ function escapeAttribute(value) {
  * @param {Element} element
  * @param {() => { width: number, height: number } | null} viewport The
  *   viewport the shape is in, `viewportSize` in `shape.js`.
- * @returns {string | null}
+ * @returns {ShapeGeometry | null}
  */
-export function readShapeMarkup(style, element, viewport) {
+export function readShapeGeometry(style, element, viewport) {
   const of = viewportReferences(viewport);
   /**
    * @param {string} name
@@ -339,14 +367,6 @@ export function readShapeMarkup(style, element, viewport) {
    */
   const length = (name, axis, fallback = 0) =>
     parseLengthIn(readProperty(style, element, name), of[axis], fallback);
-  /**
-   * @param {Record<string, number | string>} attributes
-   */
-  const tag = (attributes) =>
-    `<${element.localName}${Object.entries(attributes)
-      .map(([name, value]) => ` ${name}="${escapeAttribute(String(value))}"`)
-      .join("")}/>`;
-
   switch (element.localName) {
     case "rect": {
       const width = length("width", "width");
@@ -365,14 +385,22 @@ export function readShapeMarkup(style, element, viewport) {
       } else if (Number.isNaN(ry)) {
         ry = rx;
       }
-      return tag({ x: length("x", "width"), y: length("y", "height"), width, height, rx, ry });
+      return {
+        kind: "rect",
+        x: length("x", "width"),
+        y: length("y", "height"),
+        width,
+        height,
+        rx,
+        ry,
+      };
     }
     case "circle": {
       const r = length("r", "diagonal");
       if (r <= 0) {
         return null;
       }
-      return tag({ cx: length("cx", "width"), cy: length("cy", "height"), r });
+      return { kind: "circle", cx: length("cx", "width"), cy: length("cy", "height"), r };
     }
     case "ellipse": {
       let rx = length("rx", "width", Number.NaN);
@@ -386,26 +414,30 @@ export function readShapeMarkup(style, element, viewport) {
       if (!(rx > 0) || !(ry > 0)) {
         return null;
       }
-      return tag({ cx: length("cx", "width"), cy: length("cy", "height"), rx, ry });
+      return { kind: "ellipse", cx: length("cx", "width"), cy: length("cy", "height"), rx, ry };
     }
     case "line": {
-      return tag({
+      return {
+        kind: "line",
         x1: length("x1", "width"),
         y1: length("y1", "height"),
         x2: length("x2", "width"),
         y2: length("y2", "height"),
-      });
+      };
     }
     case "polyline":
     case "polygon": {
       const points = readProperty(style, element, "points").trim();
-      return points ? tag({ points }) : null;
+      if (!points) {
+        return null;
+      }
+      return { kind: element.localName === "polygon" ? "polygon" : "polyline", points };
     }
     case "path": {
       const computed = style.getPropertyValue("d").trim();
       const match = /^path\((["'])([\s\S]*)\1\)$/.exec(computed);
       const d = (match ? match[2] : (getAttributeCached(element, "d") ?? "")).trim();
-      return d ? tag({ d }) : null;
+      return d ? { kind: "path", d } : null;
     }
     default:
       return null;

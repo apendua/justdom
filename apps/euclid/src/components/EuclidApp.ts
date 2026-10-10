@@ -25,7 +25,7 @@ const editorBodyStyle = className`
  * mirrors each into a panel of its own, and a panel is the element it is
  * mounted in. `canvas` says how the drawing is drawn.
  */
-const EuclidApp = (store: AppStore, canvas: CanvasOptions = {}) => ({
+const EuclidApp = (store: AppStore, canvas: CanvasOptions) => ({
   toolbar: Toolbar(store),
   editor: $("div", [
     set("className", editorPaneStyle),

@@ -1311,3 +1311,36 @@ test("an array method taken off its store runs on what it is called on", () => {
   push.call(plain, 2);
   assert.deepStrictEqual(plain, [2]);
 });
+
+test("a reload reshapes no store the program brought to a key from elsewhere", () => {
+  const levels = store([
+    { id: 1, name: "a" },
+    { id: 2, name: "b" },
+  ]);
+  trackWrites(levels);
+  const game = store({ current: { id: 0, name: "none" } });
+  trackWrites(game);
+  game.current = levels[1];
+  reshape(game, { current: { score: 0 } });
+  assert.strictEqual(game.current, levels[1], "the key the program assigned keeps the store");
+  assert.deepStrictEqual({ ...levels[1] }, { id: 2, name: "b" }, "which nothing wrote into");
+
+  const untracked = store(/** @type {{ x: object }} */ ({ x: { a: 0 } }));
+  const assigned = store({ a: 5 });
+  untracked.x = assigned;
+  reshape(untracked, { x: { a: 1, b: 2 } });
+  assert.deepStrictEqual({ ...untracked.x }, { a: 1, b: 2 }, "an untracked key takes the source's");
+  assert.deepStrictEqual({ ...assigned }, { a: 5 }, "and leaves the assigned store as it was");
+});
+
+test("a reload reshapes no element store moved in from another array", () => {
+  const a = store([{ n: 1 }]);
+  const b = store([{ n: 2 }]);
+  trackWrites(a);
+  trackWrites(b);
+  const moved = /** @type {{ n: number }} */ (a.shift());
+  b.push(moved);
+  reshape(b, [{ n: 2 }, { n: 9 }]);
+  assert.strictEqual(b[1], moved);
+  assert.strictEqual(moved.n, 1);
+});

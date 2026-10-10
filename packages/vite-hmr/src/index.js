@@ -68,9 +68,9 @@ import {
  *   construction, comes before the recording and follows the source on the
  *   first reload. A store made of an array is followed the same way: once the
  *   program has written to it, it keeps which element is at each index, and its
- *   length, while its element stores are still reshaped in place. A theme or a
- *   palette is a store nobody writes to, so an edit to one colour reaches the
- *   things wearing it and nothing else moves.
+ *   length, while the element stores it made are still reshaped in place. A
+ *   theme or a palette is a store nobody writes to, so an edit to one colour
+ *   reaches the things wearing it and nothing else moves.
  * - **State** — a `Signal`, a `ReactiveMap` or `ReactiveSet`, a `Subject` or
  *   `Emitter`, an `UpdateChannel`, a context property — is *kept*. What such
  *   an export holds is what the running application has put there, and a

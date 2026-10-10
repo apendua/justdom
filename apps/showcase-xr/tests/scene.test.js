@@ -312,8 +312,13 @@ describe("the showcase in an emulated headset", { timeout: 180_000 }, () => {
     await reclip(original);
     await nextFrames(showcase.page, 10);
     const restored = await photographScene(showcase.page, { freeze: true });
+    // The half the clip hides is about 125 pixels, under `BASELINE`'s
+    // allowance, so the scene must match to the pixel, as a frozen scene
+    // photographed twice does.
+    const back = countNear(restored, CLIPPED_COLOR);
+    assert.equal(back, clipped, "putting the clip-path back did not hide the bar's right half");
     assert.ok(
-      comparePng(restored, before, BASELINE).same,
+      comparePng(restored, before, MOVEMENT).same,
       "putting the clip-path back did not put the scene back",
     );
   });

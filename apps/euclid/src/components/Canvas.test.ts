@@ -1,7 +1,7 @@
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { children } from "@apendua/justdom";
 import { just } from "@apendua/signal";
-import AppStore from "../store/App";
+import AppStore, { type PendingStep } from "../store/App";
 import Canvas, { type CanvasOptions } from "./Canvas";
 
 // jsdom lays nothing out, so it has no ResizeObserver for the canvas to ask
@@ -23,7 +23,7 @@ afterEach(() => {
  * the page mounts it, with the first click of `tool` made and the cursor
  * elsewhere, so that the tool's rubber band is drawn too.
  */
-function mount(tool: "line" | "circle", options?: CanvasOptions) {
+function mount(tool: PendingStep["tool"], options?: CanvasOptions) {
   const store = new AppStore();
   store.setCode("A=point(0, 0);\nB=point(2, 0);\nl=line(A, B);\nc=circle(A, B-A);\n");
   store.setTool(tool);
@@ -41,8 +41,11 @@ function mount(tool: "line" | "circle", options?: CanvasOptions) {
   return { constructionLine, constructionCircle, band, subscription };
 }
 
+/** Every tool that draws a rubber band. */
+const tools: PendingStep["tool"][] = ["line", "circle"];
+
 describe("the drawing's dashes", () => {
-  for (const tool of ["line", "circle"] as const) {
+  for (const tool of tools) {
     it(`draws construction lines and the ${tool}'s rubber band solid by default`, () => {
       const { constructionLine, constructionCircle, band, subscription } = mount(tool);
       expect(constructionLine.localName).toBe("line");

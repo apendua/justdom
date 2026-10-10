@@ -3475,8 +3475,12 @@ function measureRevealLayout(text, range, frame, boundsRect, lines, offsets) {
  * across the text's end breaks. The box at the top and every element on the
  * path down to the text keep their resolved style, with their transforms,
  * transitions and animations off, so a selector that reaches above the box
- * still sizes the text. The copy is never scrolled, so what it reports is
- * already the content-space position the live path computes.
+ * still sizes the text. Everything else is copied as `createMeasurementClone`
+ * copies descendants, with its classes only: a selector that reaches above
+ * the box does not style it, and its animations start again, either of
+ * which can move the text in a centred or flex line box. The copy is never
+ * scrolled, so what it reports is already the content-space position the
+ * live path computes.
  *
  * @param {Text} text
  * @returns {TextLayout}

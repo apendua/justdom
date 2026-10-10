@@ -99,3 +99,22 @@ bench(
   },
   options,
 );
+
+bench(
+  "store({ get ... }) — a getter, read in the computation that built it",
+  () => {
+    const { value, dispose } = inComputation(() => {
+      const built = store({
+        get x() {
+          return 0;
+        },
+        y: 0,
+      });
+      void built.x;
+      return built;
+    });
+    dispose();
+    return value.y;
+  },
+  options,
+);

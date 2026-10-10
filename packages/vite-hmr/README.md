@@ -61,22 +61,31 @@ with its holder depends on what kind of thing the module defined:
   source that switches to the current one, dropping the previous module's subscription before taking
   the new.
 
-- **A `volatileStore`.** A theme, a palette, layout metrics: a store whose contents come from source
-  rather than from the running program. The object is kept, as state is, so the module's own code
-  and its importers go on sharing it — and its contents are `replace`d with the re-evaluated
-  definition, so the readers of the keys that changed re-run and nobody else does. A module
-  exporting its theme this way rather than as an object literal is one an edit to a colour reaches
-  without reloading anything, let alone the page. A colour still has to be _read_ inside a
-  computation to follow the edit; one read at module scope is captured, as any constant would be.
+- **A `store`.** Kept, as state is, and followed. The object is kept, so the module's own code and
+  its importers go on sharing it, and once the export's initialiser has evaluated it records which
+  keys the program writes, through `trackWrites`. On a reload it is `reshape`d with the re-evaluated
+  definition: a key the program wrote keeps what the program did, and every other key takes the
+  definition's side, getter, setter, value and presence alike. So a getter edited in source takes
+  effect, an edited initial value shows unless the program has written that key, and what the
+  program wrote, added or deleted stays until the key gains an accessor in source. A write made
+  while the initialiser runs, by a factory that fills the store it returns or by an operator writing
+  at construction, comes before the recording and follows the source on the first reload. Only a
+  write through the store is seen: a `Map` or an array the program fills in place is replaced on a
+  reload, so state that has to survive one goes in a plain object, which is a store, or in a
+  `ReactiveMap` export of its own. A getter has changed when its value differs by `Object.is`, so
+  one that builds a new object on each call re-runs its readers on every reload. A theme or a
+  palette is a store nothing writes to, so an edit to a colour reaches the things wearing it without
+  reloading anything, let alone the page. A colour still has to be _read_ inside a computation to
+  follow the edit; one read at module scope is captured, as any constant would be.
 
-- **State.** A `Signal`, a `store`, a `ReactiveMap` or `ReactiveSet`, a `Subject` or `Emitter`, an
+- **State.** A `Signal`, a `ReactiveMap` or `ReactiveSet`, a `Subject` or `Emitter`, an
   `UpdateChannel`, or a context property from `createProperty` is _kept_: what such an export holds
   is what the running application has put there, and a fresh instance would throw that away. The
   instance the first evaluation built is the one every later evaluation exports, and the one the
   re-evaluated module built is dropped unused. So editing a component in a module that also exports
-  the app's `locale` signal swaps the component and leaves the current locale alone. The price is
-  that an edit to a signal's _initial_ value does not show until a full reload — the same bargain
-  every framework's state-preserving HMR strikes.
+  the app's `locale` signal swaps the component and leaves the current locale alone. Such an export
+  has no shape to follow, so the price is that an edit to a signal's _initial_ value does not show
+  until a full reload — the same bargain every framework's state-preserving HMR strikes.
 
 - **Anything else** cannot be followed and is exported as it is. The runtime remembers it, and a
   re-evaluation that registers the identical value — a primitive constant that did not change, an
@@ -89,7 +98,7 @@ with its holder depends on what kind of thing the module defined:
 
 The transform itself needs no knowledge of what a definition is or which package constructed it, so
 nothing is hardcoded about `@apendua/signal` or `@apendua/justdom`; any module whose exports are
-functions, nodes, streams, state and constants is one hot reload can replace in place.
+functions, nodes, streams and state is one hot reload can replace in place.
 
 ## What the transform does to a module
 
@@ -130,10 +139,10 @@ imports the runtime, and the runtime is built on the core.
 
 Values that are none of the above — plain objects, arrays, classes, anything this package cannot
 recognise — are compared by identity, so a module exporting a palette as a plain object next to its
-components propagates every update to its importers. A `volatileStore` is what such an object should
-be when its readers are reactive. Recognising a store and a context property relies on `isStore`,
-`isVolatile` and `isProperty` from `@apendua/signal`, since each is a `Proxy` or a bare object; a
-stateful shape from another library would need the same kind of brand before it could be kept.
+components propagates every update to its importers. A `store` is what such an object should be when
+its readers are reactive. Recognising a store and a context property relies on `isStore` and
+`isProperty` from `@apendua/signal`, since each is a `Proxy` or a bare object; a stateful shape from
+another library would need the same kind of brand before it could be kept.
 
 ## License
 

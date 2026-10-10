@@ -99,6 +99,15 @@ export function getControlRoot(element, object) {
  * stopped, so that it does not fall through to whatever is behind the row
  * either — and the gesture is not begun.
  *
+ * A swallowed press is silent to its end: the page hears no `pointerdown`,
+ * no `pointerup` and no click of it, and the hand feels neither its press
+ * nor its release. Not even from a control still around the element, which
+ * would otherwise hear a release it heard no press for. That differs from
+ * an element that goes during a press: the page heard that press, and the
+ * next control up sends its release. The button stays held all the same,
+ * so the hand's moves while it holds a swallowed press say `buttons` 1, as
+ * a browser's moves do for a button pressed outside its window.
+ *
  * `isConnected` rather than anything reactive, because it is asked from an
  * event handler, at the moment of the press, and the answer is a DOM fact
  * rather than a dependency.
@@ -1267,6 +1276,10 @@ const nextFlagged = /** @type {HTMLElement[]} */ ([]);
  * @property {Object3D[]} path
  * @property {Target | null} target A control or a list for the trigger, a
  *   control alone for the grip, which no list takes.
+ * @property {boolean} swallowed Whether the press landed on an element that
+ *   had gone, which keeps the whole press silent (see `isGone`). The panel
+ *   stopped its start, and the manager's `isStopped` alone cannot tell
+ *   that from a start the scene took; this can (see `taken`).
  */
 
 /**
@@ -1303,12 +1316,9 @@ export const PointerForwarderContext = createProperty(
 );
 
 /**
- * What a grip start became, decided as it closes:
+ * What a grip start became, decided as it closes, when it closed on a
+ * control that had not gone (see `Press.swallowed` for one that had):
  *
- * - `"swallowed"`: it closed on an element that had gone (see `isGone`),
- *   and the panel stopped it. The events that end it ask whether something
- *   took its start, and the manager's `isStopped` alone cannot tell a start
- *   the panel stopped from one the scene took; this can.
  * - `"owned"`: it closed on a control that was there, by a hand neither
  *   carrying nor moving a list. Asked by everything that follows the grip,
  *   the right-click and both pulses, so that they follow one decision
@@ -1323,7 +1333,7 @@ export const PointerForwarderContext = createProperty(
  * A start in none of them closed while the hand was busy: nothing of it is
  * the panel's but the stopping of its end.
  *
- * @typedef {"swallowed" | "owned" | "felt"} Grip
+ * @typedef {"owned" | "felt"} Grip
  */
 
 /**
@@ -1446,8 +1456,8 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
         hover: [],
         hovered: null,
         held: null,
-        select: { path: [], target: null },
-        squeeze: { path: [], target: null },
+        select: { path: [], target: null, swallowed: false },
+        squeeze: { path: [], target: null, swallowed: false },
         chain: [],
         hovering: [],
         active: [],
@@ -1485,6 +1495,7 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
   const begin = (press, object, controlsOnly) => {
     walk(object, press.path);
     press.target = innermost(press.path, controlsOnly) ?? null;
+    press.swallowed = false;
     return press.target;
   };
 
@@ -1617,13 +1628,13 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
    * that picks things up with the grip. Then the press was a grab, and the
    * events that end it are the carry's, whatever became of the control in
    * the meantime: a row the page took out while the hand carried the panel
-   * by it still has to hand the carry its end. Asked of the start itself,
-   * which the manager hands over.
+   * by it still has to hand the carry its end. Asked of an event that ends
+   * the grip, which carries the start the manager handed over.
    *
-   * @param {InteractionEvent} start
+   * @param {{ controller: XRTargetRaySpace, originalTarget: Object3D, start: InteractionEvent }} e
    * @returns {boolean}
    */
-  const taken = (start) => isStopped(start) && grips.get(start) !== "swallowed";
+  const taken = (e) => isStopped(e.start) && !pressOf(e, "squeeze").swallowed;
 
   /**
    * Whether the panel owns the grip that began with this start: the start
@@ -2132,25 +2143,27 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
         }
         return;
       }
-      // A press that lands on an element that has gone is swallowed (see
-      // `isGone`), and goes no further than the panel.
-      if (first.list) {
-        if (!isGone(first.element)) {
-          // The press is one event, so it reads where the page lays the
-          // panel out, as a press on a control does through its
-          // `mousedown`. The controls the ray reaches while the list
-          // scrolls, and while it glides after, read nothing on arrival
-          // (see `arrived`), and their moves take this corner.
-          const own = panel();
-          if (own) {
-            probePanel(own);
-          }
-          drags.begin(e.controller, first.element, first.object);
-        }
+      // A press that lands on an element that has gone, list or control,
+      // is swallowed (see `isGone`), and goes no further than the panel.
+      // Silent to the page, its end included, but still the hand's last
+      // press, which ends the one before's say over `didDrag`.
+      if (isGone(first.element)) {
+        select.swallowed = true;
+        dnd.begin(e.controller, first.element, first.object, false);
         stopPropagation(e);
         return;
       }
-      if (isGone(first.element)) {
+      if (first.list) {
+        // The press is one event, so it reads where the page lays the
+        // panel out, as a press on a control does through its `mousedown`.
+        // The controls the ray reaches while the list scrolls, and while it
+        // glides after, read nothing on arrival (see `arrived`), and their
+        // moves take this corner.
+        const own = panel();
+        if (own) {
+          probePanel(own);
+        }
+        drags.begin(e.controller, first.element, first.object);
         stopPropagation(e);
         return;
       }
@@ -2194,7 +2207,8 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
       stopPropagation(e);
     },
     selectend(e) {
-      const { path, target: pressed } = pressOf(e, "select");
+      const press = pressOf(e, "select");
+      const { path, target: pressed } = press;
       if (!pressed) {
         return;
       }
@@ -2228,8 +2242,10 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
       // control up sends it on itself, which is where a page sends a
       // release whose target has gone. With none left, the press still
       // ends here. The scroll a press may have become ends with the
-      // controller's own release, whatever became of the control.
-      let sent = false;
+      // controller's own release, whatever became of the control. A press
+      // swallowed on a control that had gone is owed nothing: the page
+      // heard no press, and the controls around it hear no release.
+      let sent = press.swallowed;
       for (const object of path) {
         const target = targets.get(object);
         if (!target || target.list) {
@@ -2282,7 +2298,8 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
       stopPropagation(e);
     },
     select(e) {
-      const { path, target: pressed } = pressOf(e, "select");
+      const press = pressOf(e, "select");
+      const { path, target: pressed } = press;
       if (!pressed) {
         return;
       }
@@ -2301,6 +2318,7 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
       const first = innermost(path, true);
       if (
         !first ||
+        press.swallowed ||
         isGone(pressed.element) ||
         drags.didScroll(e.controller) ||
         dnd.didDrag(e.controller)
@@ -2325,14 +2343,15 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
       }
     },
     squeezestart(e) {
-      const first = begin(panelHand(e.controller).squeeze, e.originalTarget, true);
+      const { squeeze } = panelHand(e.controller);
+      const first = begin(squeeze, e.originalTarget, true);
       if (!first) {
         return;
       }
       // Swallowed as a trigger's press on such an element is, and before
       // the scene can grab the panel by a row the page has let go of.
       if (isGone(first.element)) {
-        grips.set(e, "swallowed");
+        squeeze.swallowed = true;
         stopPropagation(e);
         return;
       }
@@ -2355,7 +2374,7 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
     squeeze(e) {
       const { path, target: gripped } = pressOf(e, "squeeze");
       // A grab's completion goes on up to the carry.
-      if (!gripped || taken(e.start)) {
+      if (!gripped || taken(e)) {
         return;
       }
       // The grip is the ray's other button. A page hears the mouse's other
@@ -2378,7 +2397,7 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
       // grip leaves the panel alike; nothing above listens for a miss
       // today, `drag()` and `carry()` taking the start and the end alone.
       // The panel's own miss stops where a press's does.
-      if (pressOf(e, "squeeze").target && !taken(e.start)) {
+      if (pressOf(e, "squeeze").target && !taken(e)) {
         stopPropagation(e);
       }
     },
@@ -2387,7 +2406,7 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
         lose(e.controller);
       }
       // A grab's end goes on up to the carry.
-      if (!pressOf(e, "squeeze").target || taken(e.start)) {
+      if (!pressOf(e, "squeeze").target || taken(e)) {
         return;
       }
       // Felt once as the grip opens, on a hit and a miss alike, as a

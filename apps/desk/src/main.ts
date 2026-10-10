@@ -1,3 +1,4 @@
+import { followXRFocus } from "@apendua.dev/headset/focus";
 import { Signal } from "@apendua/signal";
 import { mountDesk, type MountedDesk } from "./desk.js";
 import { lookFromSearch, type Look } from "./looks.js";
@@ -49,6 +50,13 @@ mountLookPicker(find<HTMLSelectElement>("[data-look-picker]"), current.get().loo
 find("[data-notes-toggle]").addEventListener("click", () => {
   document.body.classList.toggle("tags");
 });
+
+// The experiment in `@apendua.dev/headset/focus`, only when the address
+// asks for it: the note field freedom's keyboard types into gets the page's
+// focus as well, so a real keyboard types into it in a session.
+if (new URLSearchParams(location.search).has("realfocus")) {
+  followXRFocus(desk);
+}
 
 // And the headset, offered to a page that can open one: the scene mirrors
 // the very elements the page is showing.

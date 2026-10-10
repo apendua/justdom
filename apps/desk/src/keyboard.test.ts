@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { typeIntoInput } from "@apendua/freedom";
 import { mountKeyboard } from "./keyboard.js";
+
+/** A page with no session showing it. */
+const page = { get: () => false };
 
 function board() {
   document.body.innerHTML = `<div data-keys></div><input id="field" />`;
@@ -15,7 +19,7 @@ describe("mountKeyboard", () => {
 
   it("lays out five rows of keys with their legends", () => {
     const keys = board();
-    dispose = mountKeyboard(keys, { onKey: vi.fn() });
+    dispose = mountKeyboard(keys, { onKey: vi.fn(), presenting: page });
     expect(keys.querySelectorAll(".krow")).toHaveLength(5);
     const enter = keys.querySelector<HTMLElement>('[data-key="Enter"]')!;
     expect(enter.textContent).toBe("RETURN");
@@ -27,7 +31,7 @@ describe("mountKeyboard", () => {
     vi.useFakeTimers();
     const keys = board();
     const onKey = vi.fn();
-    dispose = mountKeyboard(keys, { onKey });
+    dispose = mountKeyboard(keys, { onKey, presenting: page });
     const q = keys.querySelector<HTMLElement>('[data-key="q"] .cap')!;
     q.click();
     expect(onKey).toHaveBeenCalledWith("q");
@@ -40,7 +44,7 @@ describe("mountKeyboard", () => {
   it("types a real key and presses its cap", () => {
     const keys = board();
     const onKey = vi.fn();
-    dispose = mountKeyboard(keys, { onKey });
+    dispose = mountKeyboard(keys, { onKey, presenting: page });
     const event = new KeyboardEvent("keydown", { key: "Backspace", cancelable: true });
     window.dispatchEvent(event);
     expect(onKey).toHaveBeenCalledWith("Backspace");
@@ -52,7 +56,7 @@ describe("mountKeyboard", () => {
     document.body.innerHTML = `<div data-keys></div><button id="session">STOP AR</button>`;
     const keys = document.querySelector<HTMLElement>("[data-keys]")!;
     const onKey = vi.fn();
-    dispose = mountKeyboard(keys, { onKey });
+    dispose = mountKeyboard(keys, { onKey, presenting: page });
     document.querySelector<HTMLButtonElement>("#session")!.focus();
     const event = new KeyboardEvent("keydown", { key: "Enter", cancelable: true });
     window.dispatchEvent(event);
@@ -63,7 +67,7 @@ describe("mountKeyboard", () => {
   it("types into the field that has focus, and not on the monitor", () => {
     const keys = board();
     const onKey = vi.fn();
-    dispose = mountKeyboard(keys, { onKey });
+    dispose = mountKeyboard(keys, { onKey, presenting: page });
     const field = document.querySelector<HTMLInputElement>("#field")!;
     field.focus();
     const inputs = vi.fn();
@@ -74,9 +78,11 @@ describe("mountKeyboard", () => {
     keys.querySelector<HTMLElement>('[data-key="Backspace"]')!.click();
     expect(field.value).toBe("a ");
     expect(inputs).toHaveBeenCalledTimes(4);
-    // A real key in a field is the browser's to type.
+    // A real key in a field is the browser's to type, and the cap goes down
+    // with it.
     window.dispatchEvent(new KeyboardEvent("keydown", { key: "x" }));
     expect(onKey).not.toHaveBeenCalled();
+    expect(keys.querySelector('[data-key="x"]')!.hasAttribute("data-down")).toBe(true);
   });
 
   it("types on the monitor when a checkbox has focus, and leaves the box alone", () => {
@@ -85,7 +91,7 @@ describe("mountKeyboard", () => {
     document.body.innerHTML = `<div data-keys></div><input id="box" type="checkbox" />`;
     const keys = document.querySelector<HTMLElement>("[data-keys]")!;
     const onKey = vi.fn();
-    dispose = mountKeyboard(keys, { onKey });
+    dispose = mountKeyboard(keys, { onKey, presenting: page });
     const box = document.querySelector<HTMLInputElement>("#box")!;
     box.focus();
     window.dispatchEvent(new KeyboardEvent("keydown", { key: "h" }));
@@ -102,7 +108,7 @@ describe("mountKeyboard", () => {
       <select><option value="ops">Night Ops</option><option value="paper">Paper Studio</option></select>`;
     const keys = document.querySelector<HTMLElement>("[data-keys]")!;
     const onKey = vi.fn();
-    dispose = mountKeyboard(keys, { onKey });
+    dispose = mountKeyboard(keys, { onKey, presenting: page });
     const select = document.querySelector("select")!;
     select.focus();
     const event = new KeyboardEvent("keydown", { key: "p", bubbles: true, cancelable: true });
@@ -116,7 +122,7 @@ describe("mountKeyboard", () => {
     // none of them is a character the select would take as type-ahead.
     document.body.innerHTML = `<div data-keys></div><select><option>Night Ops</option></select>`;
     const keys = document.querySelector<HTMLElement>("[data-keys]")!;
-    dispose = mountKeyboard(keys, { onKey: vi.fn() });
+    dispose = mountKeyboard(keys, { onKey: vi.fn(), presenting: page });
     const select = document.querySelector("select")!;
     select.focus();
     for (const key of ["F5", "ArrowDown", "ArrowLeft"]) {
@@ -129,10 +135,71 @@ describe("mountKeyboard", () => {
   it("leaves a letter to the browser as well when nothing has focus", () => {
     const keys = board();
     const onKey = vi.fn();
-    dispose = mountKeyboard(keys, { onKey });
+    dispose = mountKeyboard(keys, { onKey, presenting: page });
     const event = new KeyboardEvent("keydown", { key: "p", cancelable: true });
     window.dispatchEvent(event);
     expect(onKey).toHaveBeenCalledWith("p");
     expect(event.defaultPrevented).toBe(false);
+  });
+
+  it("leaves a field a session's keyboard types into to that keyboard", () => {
+    // In a session the note field has no focus: freedom's own board types
+    // into it, dispatching each key's keydown on the field, and the keydown
+    // bubbles up to the window this keyboard listens on.
+    const keys = board();
+    keys.parentElement!.append(document.createElement("select"));
+    const onKey = vi.fn();
+    dispose = mountKeyboard(keys, { onKey, presenting: page });
+    // Something else has focus, as the Look menu may.
+    document.querySelector("select")!.focus();
+    const field = document.querySelector<HTMLInputElement>("#field")!;
+    for (const key of ["h", "i", " ", "x", "Backspace"]) {
+      typeIntoInput(field, { key });
+    }
+    expect(field.value).toBe("hi ");
+    expect(onKey).not.toHaveBeenCalled();
+    expect(keys.querySelector("[data-down]")).toBeNull();
+  });
+
+  it("leaves a number field a session's keyboard types into to that keyboard", () => {
+    const keys = board();
+    const field = document.querySelector<HTMLInputElement>("#field")!;
+    field.type = "number";
+    const onKey = vi.fn();
+    dispose = mountKeyboard(keys, { onKey, presenting: page });
+    for (const key of ["1", "2", "Backspace"]) {
+      typeIntoInput(field, { key });
+    }
+    expect(field.value).toBe("1");
+    expect(onKey).not.toHaveBeenCalled();
+  });
+
+  it("leaves a key a script aims at any element without focus to that element", () => {
+    const keys = board();
+    const button = document.createElement("button");
+    keys.parentElement!.append(button);
+    const onKey = vi.fn();
+    dispose = mountKeyboard(keys, { onKey, presenting: page });
+    const event = new KeyboardEvent("keydown", { key: " ", bubbles: true, cancelable: true });
+    button.dispatchEvent(event);
+    expect(onKey).not.toHaveBeenCalled();
+    expect(event.defaultPrevented).toBe(false);
+  });
+
+  it("keeps the caps the monitor's in a session, while a field has focus", () => {
+    // With the page's focus on the note field, as `?realfocus` gives it, a
+    // real key is the browser's to type into the field, and a ray on the
+    // caps still types on the monitor.
+    const keys = board();
+    const onKey = vi.fn();
+    dispose = mountKeyboard(keys, { onKey, presenting: { get: () => true } });
+    const field = document.querySelector<HTMLInputElement>("#field")!;
+    field.focus();
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "x" }));
+    expect(onKey).not.toHaveBeenCalled();
+    expect(keys.querySelector('[data-key="x"]')!.hasAttribute("data-down")).toBe(false);
+    keys.querySelector<HTMLElement>('[data-key="a"]')!.click();
+    expect(onKey).toHaveBeenCalledWith("a");
+    expect(field.value).toBe("");
   });
 });

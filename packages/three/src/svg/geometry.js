@@ -12,6 +12,8 @@
  * d·y + f, column-major exactly as `matrix(a, b, c, d, e, f)` lists them.
  */
 
+import { UNBOUNDED } from "../elements/clip.js";
+
 /**
  * @typedef {readonly [number, number, number, number, number, number]} Matrix2D
  */
@@ -122,18 +124,13 @@ export function invert(m) {
  */
 
 /**
- * How far an empty rect from `transformRect` is inverted, in the units it
- * is in: as far as the clip patch's open box reaches the other way.
- */
-const EMPTY_EXTENT = 1e6;
-
-/**
  * The smallest axis-aligned rectangle holding `rect` once `m` has moved it.
  * Exact under a scale and a move; around a rotation, the bounding box.
  *
  * A rect with no area, a line or one inverted as `intersectRects` leaves
- * two that share nothing, stays one with no area: `EMPTY_EXTENT` short on
- * each axis of where its first corner lands. So does any rect under a
+ * two that share nothing, stays one with no area: `UNBOUNDED` short on each
+ * axis of where its first corner lands, as far as the clip patch's open
+ * box reaches the other way. So does any rect under a
  * matrix that flattens the plane. Inverted that far and not a point, since
  * the clip patch antialiases its edge over a pixel: a point, or a rect
  * inverted by a unit, leaves the pixels near it partly drawn when a panel
@@ -148,7 +145,7 @@ const EMPTY_EXTENT = 1e6;
 export function transformRect(m, rect) {
   if (rect.right <= rect.left || rect.bottom <= rect.top || m[0] * m[3] === m[1] * m[2]) {
     const [x, y] = apply(m, rect.left, rect.top);
-    return { left: x, top: y, right: x - EMPTY_EXTENT, bottom: y - EMPTY_EXTENT };
+    return { left: x, top: y, right: x - UNBOUNDED, bottom: y - UNBOUNDED };
   }
   const corners = [
     apply(m, rect.left, rect.top),

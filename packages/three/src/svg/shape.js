@@ -31,6 +31,7 @@ import {
 import { findSvgElement, isSvgElement, isSvgRoot, SVG_NAMESPACE } from "../elements/plugins.js";
 import {
   aboutOrigin,
+  apply,
   IDENTITY,
   intersectRects,
   invert,
@@ -245,19 +246,6 @@ function rectOf(box) {
 }
 
 /**
- * @param {Rect} rect
- * @returns {Box}
- */
-function boxOf(rect) {
-  return {
-    x: rect.left,
-    y: rect.top,
-    width: rect.right - rect.left,
-    height: rect.bottom - rect.top,
-  };
-}
-
-/**
  * The elements a `<clipPath>` may hold beside its shapes that are never
  * drawn, so they neither clip nor stop the rect from clipping.
  */
@@ -271,7 +259,10 @@ const DESCRIPTIVE_TAGS = new Set(["title", "desc", "metadata"]);
  * `<rect>`, a `<title>`, `<desc>` or `<metadata>` beside it aside, moved by
  * the transforms on the two and by `clipPathUnits`. Under `userSpaceOnUse`
  * a percentage is of the viewport around the `<clipPath>`, whatever names
- * it, as a browser resolves the rect's lengths. Under `objectBoundingBox`
+ * it, as a browser resolves the rect's lengths. One defined inside a
+ * `<symbol>` or a `<marker>`, which Chrome does not take as a clip at all,
+ * resolves against the viewport above the template, since the walk is not
+ * told an instance to stop at. Under `objectBoundingBox`
  * the units are `box`, the element's box in the space the rect is in, and
  * an element with none is not clipped. For a template drawn somewhere
  * else, a `<symbol>`, a `<marker>` or an `<svg>` a `<use>` draws, the box
@@ -846,7 +837,7 @@ export function readChain(element, instance = null) {
         Number.isFinite(box.height)
       ) {
         viewports.push({
-          rect: { left: box.x, top: box.y, right: box.x + box.width, bottom: box.y + box.height },
+          rect: rectOf(box),
           below: multiply(fit, ctm),
         });
       }
@@ -859,10 +850,13 @@ export function readChain(element, instance = null) {
     const inner = fit;
     const clipRect = readClipRect(current, style, () => {
       const bbox = readBBox(at);
-      // A box with no area stays as read: its units flatten the rect.
-      return bbox && at.localName === "svg" && bbox.width > 0 && bbox.height > 0
-        ? boxOf(transformRect(inner, rectOf(bbox)))
-        : bbox;
+      if (!bbox || at.localName !== "svg") {
+        return bbox;
+      }
+      // `fit` is a scale and a move, so the box maps corner and size alike,
+      // and one with no area keeps none.
+      const [x, y] = apply(inner, bbox.x, bbox.y);
+      return { x, y, width: inner[0] * bbox.width, height: inner[3] * bbox.height };
     });
     if (clipRect) {
       viewports.push({ rect: clipRect, below: multiply(fit, ctm) });

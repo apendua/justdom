@@ -975,7 +975,29 @@ describe("clip-path", () => {
     s.teardown();
   });
 
-  test("a percentage in user space is a share of the element's viewport", () => {
+  test("a percentage on a shape in a nested svg is of the viewport around the clipPath", () => {
+    const cp = clipPath([svg("rect", { width: "50%", height: "100%" })]);
+    const rect = svg("rect", { width: "100", height: "100", fill: "red", "clip-path": url(cp) });
+    const nested = svg(
+      "svg",
+      {
+        x: "5",
+        y: "2",
+        width: "10",
+        height: "5",
+        viewBox: "0 0 10 10",
+        style: "overflow: visible",
+      },
+      [rect],
+    );
+    const s = scene([svg("defs", {}, [cp]), nested], [rect]);
+    // (0, 0)-(25, 25) of the root's 50 by 25, under the 0.5 fit of the
+    // viewBox into 10 by 5, centred: (7.5, 2)-(20, 14.5), doubled.
+    assert.deepEqual(clipBoxOf(meshesUnder(s.objects[0])[0]), [15, 4, 40, 29]);
+    s.teardown();
+  });
+
+  test("a percentage in user space is a share of the viewport around the clipPath", () => {
     const cp = clipPath([svg("rect", { width: "50%", height: "100%" })]);
     const rect = svg("rect", { width: "100", height: "100", fill: "red", "clip-path": url(cp) });
     const s = scene([svg("defs", {}, [cp]), rect], [rect]);

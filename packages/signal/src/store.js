@@ -416,10 +416,9 @@ export function trackWrites(target) {
  * Start recording the program's writes to a store and to every store nested
  * in it. `owned` marks every data key as written already: for a store made
  * of an object the program assigned where no store was, every key of which
- * is a change. A
- * store already recording keeps its marks, and so do the stores nested in
- * it, which it reached when it started; an owned store is freshly built and
- * never already recording.
+ * is a change. A store already recording keeps its marks, and so do the
+ * stores nested in it, which it reached when it started; an owned store is
+ * freshly built and never already recording.
  *
  * @param {Internals} internals
  * @param {boolean} owned

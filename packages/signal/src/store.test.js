@@ -523,12 +523,12 @@ test("an object assigned over a nested store marks the keys it changes", () => {
 });
 
 test("an object assignment that changes nothing marks nothing", () => {
-  const kept = /** @type {any} */ (store({ layout: { width: 1, height: 2 }, x: 1 }));
+  const kept = /** @type {any} */ (store({ layout: { width: 1, height: 2 } }));
   trackWrites(kept);
   kept.layout = { width: 1, height: 2 };
-  reshape(kept, { layout: { width: 3, height: 4 }, x: 2 });
+  reshape(kept, { layout: { width: 3, height: 4 } });
   assert.deepStrictEqual({ ...kept.layout }, { width: 3, height: 4 });
-  reshape(kept, { x: 2 });
+  reshape(kept, {});
   assert.strictEqual("layout" in kept, false);
 });
 

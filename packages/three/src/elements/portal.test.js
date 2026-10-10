@@ -3774,17 +3774,15 @@ describe("a draggable panel", () => {
     const { portal, parent } = setup({ draggable: { onPutDown: () => putDown++ } });
     const top = /** @type {THREE.Object3D} */ (parent.getObjectByName("panel-handle-top"));
     const controller = new THREE.Group();
-    const press = (/** @type {string} */ type) =>
-      top.dispatchEvent(
-        /** @type {any} */ ({
-          type,
-          controller,
-          inputSource: {},
-          intersection: { object: top, point: new THREE.Vector3() },
-        }),
-      );
-    press("selectstart");
-    press("selectend");
+    const start = {
+      type: "selectstart",
+      controller,
+      inputSource: {},
+      intersection: { object: top, point: new THREE.Vector3() },
+    };
+    top.dispatchEvent(/** @type {any} */ (start));
+    // The release carries its press's start, as the manager sends it.
+    top.dispatchEvent(/** @type {any} */ ({ ...start, type: "selectend", start }));
     assert.equal(putDown, 1, "carried, and put down");
     portal.disconnect();
   });

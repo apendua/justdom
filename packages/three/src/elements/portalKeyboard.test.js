@@ -214,7 +214,7 @@ function keyboardPanel(configure = ownKeyboard, slot, room) {
     for (const type of ["selectstart", "select", "selectend"]) {
       manager.dispatch(
         /** @type {any} */ (object),
-        /** @type {any} */ ({ type, controller, inputSource, originalTarget: object }),
+        /** @type {any} */ (withStart({ type, controller, inputSource, originalTarget: object })),
       );
     }
   };
@@ -1125,17 +1125,15 @@ describe("the keyboard's handles", () => {
      * @param {THREE.Object3D} object
      */
     const dispatch = (type, object) => {
-      panel.manager.dispatch(
-        /** @type {any} */ (object),
-        /** @type {any} */ ({
-          type,
-          target: object,
-          originalTarget: object,
-          controller,
-          inputSource: {},
-          intersection: { object, point: object.getWorldPosition(new THREE.Vector3()) },
-        }),
-      );
+      const event = {
+        type,
+        target: object,
+        originalTarget: object,
+        controller,
+        inputSource: {},
+        intersection: { object, point: object.getWorldPosition(new THREE.Vector3()) },
+      };
+      panel.manager.dispatch(/** @type {any} */ (object), /** @type {any} */ (withStart(event)));
     };
     /**
      * The board's panel itself, beside the strips in the frame they carry
@@ -1327,6 +1325,26 @@ function wideInputs() {
   };
 }
 
+/** @type {WeakMap<object, object>} Each hand's last `selectstart`. */
+const starts = new WeakMap();
+
+/**
+ * A ray event as the manager sends it: a press's `selectstart` is kept for
+ * the hand, and the events that end the press carry it as `start`.
+ *
+ * @template {{ type: string, controller: object }} E
+ * @param {E} event
+ * @returns {E}
+ */
+function withStart(event) {
+  if (event.type === "selectstart") {
+    starts.set(event.controller, event);
+  } else if (event.type === "select" || event.type === "selectend") {
+    return { ...event, start: starts.get(event.controller) };
+  }
+  return event;
+}
+
 /**
  * An event as the manager dispatches it, from what the ray met up through
  * its parents, landing `x` px into the field `object` draws.
@@ -1340,17 +1358,15 @@ function wideInputs() {
 function ray(manager, type, object, controller, x) {
   object.updateWorldMatrix(true, false);
   const point = x === undefined ? undefined : object.localToWorld(new THREE.Vector3(x, 10, 0));
-  manager.dispatch(
-    /** @type {any} */ (object),
-    /** @type {any} */ ({
-      type,
-      target: object,
-      originalTarget: object,
-      controller,
-      inputSource: {},
-      ...(point ? { intersection: { object, point } } : {}),
-    }),
-  );
+  const event = {
+    type,
+    target: object,
+    originalTarget: object,
+    controller,
+    inputSource: {},
+    ...(point ? { intersection: { object, point } } : {}),
+  };
+  manager.dispatch(/** @type {any} */ (object), /** @type {any} */ (withStart(event)));
 }
 
 describe("the caret, placed by a ray", () => {

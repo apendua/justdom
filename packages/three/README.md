@@ -219,11 +219,11 @@ other hand while the object is carried is a handover — the object moves to tha
 carries on, one `dragstart` and one `dragend` for the whole of it — and only the holding hand's
 release, of the button it is holding with, ends the drag. **It swallows the presses it takes:** the
 press that picks the object up and the release that lets it go never reach whatever is behind, so
-picking up a brick never also picks up the board it sits on. While `enabled`, a release is swallowed
-whether or not its press was taken, so an object made carriable during a press keeps that release
-from whatever took the press. An object taken out of the scene mid-drag leaves the hand too, and a
-hand that disconnects, as every hand does when a session ends, lets go of what it holds, with a
-`dragend`, as though it had been released where it was.
+picking up a brick never also picks up the board it sits on. A release is swallowed if and only if
+its press was, whatever `enabled` says in between, so whatever is behind hears a press and its
+release or neither. An object taken out of the scene mid-drag leaves the hand too, and a hand that
+disconnects, as every hand does when a session ends, lets go of what it holds, with a `dragend`, as
+though it had been released where it was.
 
 `RendererContext` is the property behind the once-a-frame `dragmove`, and `useFrame`; it is exported
 so a test can mount a draggable object without a renderer — `RendererContext.set(ctx, {})` is enough
@@ -277,12 +277,14 @@ reparented. Its place in the hand is `beginFreeCarry(hand, object)`, the hand's 
 inverted times the object's, and each frame puts it at the hand's matrix times that. A draggable
 panel with `level: false` is carried this way.
 
-The bookkeeping is `drag()`'s: a press from the other hand mid-carry is a handover, taking the grip
-afresh from wherever its own ray lands, and only the carrying hand's release puts the object down;
+The bookkeeping is `drag()`'s, in one place (`createHold` in `hold.js`): a press from the other hand
+mid-carry is a handover, taking the grip afresh from wherever its own ray lands, only the carrying
+hand's release puts the object down, and a release is swallowed if and only if its press was;
 `held()` says which hand has it. One difference: a carry that is disabled while under way is put
-down where it is, since nothing was reparented and there is nothing to undo — and so is one whose
-handle leaves the scene, since the release it is waiting for would go to a handle no longer
-listening. A carrying hand that disconnects puts the object down where it is, as a drag's does.
+down where it is, since nothing was reparented and there is nothing to undo, and its release is
+still swallowed when it comes. So is one whose handle leaves the scene, since the release it is
+waiting for would go to a handle no longer listening. A carrying hand that disconnects puts the
+object down where it is, as a drag's does.
 
 ## Hands
 

@@ -487,10 +487,22 @@ describe("carry", () => {
     allowed.set(false);
     // Nothing was reparented, so there is nothing to undo: it is simply down.
     assert.equal(board.held(), null);
-    // And the release that follows passes through, like any press while
-    // disabled.
+    // The release that follows ends a press the handle took, so the room,
+    // which never heard that press, does not hear its release either.
     press(left, "selectend");
-    assert.deepEqual(events, ["room:selectend"]);
+    assert.deepEqual(events, []);
+    dispose();
+  });
+
+  test("a press it refused is not followed by a release it takes", () => {
+    const allowed = Signal.of(false);
+    const { left, board, panel, events, dispose } = setup({ enabled: () => allowed.get() });
+    moveAside(panel);
+    press(left, "selectstart");
+    allowed.set(true);
+    press(left, "selectend");
+    assert.equal(board.held(), null);
+    assert.deepEqual(events, ["room:selectstart", "room:selectend"]);
     dispose();
   });
 

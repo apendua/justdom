@@ -1,4 +1,5 @@
-import { Signal, makeNonReactive, onCleanup, useEffect, withComputation } from "@apendua/signal";
+import { makeNonReactive, onCleanup, useEffect, withComputation } from "@apendua/signal";
+import { createHold } from "./hold.js";
 import { asReader, InteractionContext, setLocalMatrix } from "./interactions.js";
 import { useFrame } from "./render.js";
 
@@ -75,7 +76,8 @@ import { useFrame } from "./render.js";
  * - **It swallows the presses it takes.** A press that picks the object up,
  *   and the release that lets it go, do not reach whatever is behind — the
  *   board the object sits on, the tray it was pulled off — so picking up a
- *   brick never also picks up the board.
+ *   brick never also picks up the board. A release is swallowed if and only
+ *   if its press was, whatever `enabled` says in between (see `createHold`).
  *
  * One `drag()` per object: the hold is the object's. Interactivity is not
  * part of it — an object that can be pointed at without being carriable is
@@ -108,8 +110,9 @@ export function drag(ctx, options = {}) {
   const { buttons = ["select"], enabled = true } = options;
   const manager = InteractionContext.get(ctx);
   const isEnabled = asReader(enabled);
-  /** @type {Signal<Hold | null>} */
-  const hold = Signal.of(/** @type {Hold | null} */ (null));
+  /** @type {import("./hold.js").HandHold<Hold>} */
+  const presses = createHold(manager);
+  const hold = presses.held;
   /** @type {Origin | null} */
   let origin = null;
 
@@ -123,7 +126,7 @@ export function drag(ctx, options = {}) {
       if (!isEnabled()) {
         return;
       }
-      manager.stopPropagation(event);
+      presses.take(event);
       const { controller, inputSource } = event;
       const current = hold.get();
       if (current) {
@@ -163,19 +166,8 @@ export function drag(ctx, options = {}) {
      * @param {DragButton} button
      */
     (object, event, button) => {
-      const current = hold.get();
+      const current = presses.release(event, button);
       if (!current) {
-        // Not held — but the press that this releases was swallowed above
-        // while it was carriable, so the release is swallowed too rather than
-        // reaching whatever is behind as a release it never saw the press of.
-        if (isEnabled()) {
-          manager.stopPropagation(event);
-        }
-        return;
-      }
-      manager.stopPropagation(event);
-      if (current.controller !== event.controller || current.button !== button) {
-        // Released by a hand, or a button, that is not the one holding it.
         return;
       }
       // Where the object ended up is read while it is still on the hand; the

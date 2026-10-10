@@ -10,8 +10,9 @@
  *
  * The right controller is aimed at a point on the panel from the figures
  * the scene places it by (`src/placement.ts`). First, the page alone, with
- * no emulator, must not fetch the headset scene. Then, in a session, in
- * order:
+ * no emulator, must not fetch the headset scene, and a click on a field
+ * the stack can reach, with no move before it, must send the stack there.
+ * Then, in a session, with the left hand pointing at the floor, in order:
  *
  * - the ray over a field the white stack can reach previews the route
  *   there, through the board's own `mousemove` handler;
@@ -46,6 +47,72 @@ const HERE = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const SHOTS = process.env.SHOTS;
 if (SHOTS) {
   mkdirSync(SHOTS, { recursive: true });
+}
+
+/**
+ * A point well inside the area the stack whose turn it is can reach, three
+ * fields or more from it, on the page: found in the board's own user space
+ * and taken through its transform, so it is where the page draws it.
+ *
+ * @param {import("playwright-core").Page} page
+ * @returns {Promise<{ x: number, y: number } | null>}
+ */
+function reachablePoint(page) {
+  return page.evaluate(() => {
+    const svg = /** @type {SVGSVGElement} */ (document.querySelector("#root svg"));
+    const [reach] = /** @type {SVGPathElement[]} */ ([
+      ...svg.querySelectorAll(":scope > g > path"),
+    ]);
+    const here = /** @type {SVGPolygonElement} */ (svg.querySelector(":scope > g > polygon"));
+    const box = here.getBBox();
+    const cx = box.x + box.width / 2;
+    const cy = box.y + box.height / 2;
+    const ctm = /** @type {DOMMatrix} */ (svg.getScreenCTM());
+    let best = null;
+    for (let y = 0; y < 640; y += 4) {
+      for (let x = 0; x < 1024; x += 4) {
+        const inside = [
+          [0, 0],
+          [-6, 0],
+          [6, 0],
+          [0, -4],
+          [0, 4],
+        ].every(([dx, dy]) => reach.isPointInFill(new DOMPoint(x + dx, y + dy)));
+        const distance = Math.hypot(x - cx, y - cy);
+        if (inside && distance > 3 * box.width && (!best || distance < best.distance)) {
+          best = { x, y, distance };
+        }
+      }
+    }
+    if (!best) return null;
+    const point = new DOMPoint(best.x, best.y).matrixTransform(ctm);
+    return { x: point.x, y: point.y };
+  });
+}
+
+/**
+ * Whether the toolbar comes to show an item with this text within half a
+ * minute. It shows Continue on the white stack's turn while nothing moves,
+ * and Skip while a move plays out.
+ *
+ * @param {import("playwright-core").Page} page
+ * @param {string} label
+ * @returns {Promise<boolean>}
+ */
+function toolbarSays(page, label) {
+  return page
+    .waitForFunction(
+      (text) =>
+        [...document.querySelectorAll("#root li")].some(
+          // The menu behind ☰ has a Continue of its own, hidden while it is
+          // closed.
+          (li) => li.textContent === text && !li.closest("[hidden]"),
+        ),
+      label,
+      { timeout: 30_000 },
+    )
+    .then(() => true)
+    .catch(() => false);
 }
 
 async function main() {
@@ -83,6 +150,22 @@ async function main() {
       if (SHOTS) {
         await plain.screenshot({ path: join(SHOTS, "page.png") });
       }
+
+      // A click with no move before it, as a tap on a touchscreen is, and as
+      // a headset's trigger is when the other hand moves the mouse: the stack
+      // goes where it was clicked.
+      if (!(await toolbarSays(plain, "Continue"))) {
+        throw new Error("the white stack never got its turn");
+      }
+      const tap = await reachablePoint(plain);
+      if (!tap) throw new Error("no reachable field to tap");
+      await plain.evaluate(({ x, y }) => {
+        document
+          .elementFromPoint(x, y)
+          ?.dispatchEvent(new MouseEvent("click", { bubbles: true, clientX: x, clientY: y }));
+      }, tap);
+      const moved = await toolbarSays(plain, "Skip");
+      check(moved, "a click with no move before it sends the stack");
       await plain.close();
     }
 
@@ -119,6 +202,19 @@ async function main() {
     // Where the head was as the session started, which is the origin of the
     // `local` space the scene is laid out in.
     const head = await headPosition(page);
+
+    // The left hand hangs down, its ray on the floor, as a player's free hand
+    // does. Only one hand moves the mouse, the primary one, and an idle hand
+    // left pointing at the board could be it: the route would follow it and
+    // not the right hand this check aims.
+    await page.evaluate(() => {
+      const left = /** @type {any} */ (window).xrDevice.controllers.left;
+      left.quaternion.x = -Math.SQRT1_2;
+      left.quaternion.y = 0;
+      left.quaternion.z = 0;
+      left.quaternion.w = Math.SQRT1_2;
+    });
+    await frames(page, 3);
 
     /**
      * Where a point on the page, in its px, is in the scene: the panel is
@@ -198,39 +294,12 @@ async function main() {
     });
 
     console.log("\n== the board");
-    // A point well inside the reachable area, three fields or more from the
-    // stack, on the page: found in the board's own user space and taken
-    // through its transform, so it is where the page draws it.
-    const target = await page.evaluate(() => {
-      const svg = /** @type {SVGSVGElement} */ (document.querySelector("#root svg"));
-      const [reach] = /** @type {SVGPathElement[]} */ ([
-        ...svg.querySelectorAll(":scope > g > path"),
-      ]);
-      const here = /** @type {SVGPolygonElement} */ (svg.querySelector(":scope > g > polygon"));
-      const box = here.getBBox();
-      const cx = box.x + box.width / 2;
-      const cy = box.y + box.height / 2;
-      const ctm = /** @type {DOMMatrix} */ (svg.getScreenCTM());
-      let best = null;
-      for (let y = 0; y < 640; y += 4) {
-        for (let x = 0; x < 1024; x += 4) {
-          const inside = [
-            [0, 0],
-            [-6, 0],
-            [6, 0],
-            [0, -4],
-            [0, 4],
-          ].every(([dx, dy]) => reach.isPointInFill(new DOMPoint(x + dx, y + dy)));
-          const distance = Math.hypot(x - cx, y - cy);
-          if (inside && distance > 3 * box.width && (!best || distance < best.distance)) {
-            best = { x, y, distance };
-          }
-        }
-      }
-      if (!best) return null;
-      const point = new DOMPoint(best.x, best.y).matrixTransform(ctm);
-      return { x: point.x, y: point.y };
-    });
+    // The computer's stack moves first when it stands highest on the board,
+    // and the board takes no orders until it is the white stack's turn.
+    if (!(await toolbarSays(page, "Continue"))) {
+      throw new Error("the white stack never got its turn");
+    }
+    const target = await reachablePoint(page);
     if (!target) throw new Error("no reachable field to aim at");
     const routeBefore = await route();
     await aimAt(page, head, await onGame(target.x, target.y));

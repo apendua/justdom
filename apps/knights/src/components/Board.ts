@@ -60,32 +60,40 @@ const Board = component((ctx: WeakKey, props: BoardProps) => {
     return toFieldCoords(point.matrixTransform(ctm.inverse()));
   };
 
-  const handleMouseMove = (e: MouseEvent) => {
-    if (!props.isActive) {
-      return;
-    }
+  /**
+   * Put the cursor on the field under the event, and say which field that
+   * is.
+   */
+  const pointAt = (e: MouseEvent) => {
     const coords = getMapCoords({ x: e.clientX, y: e.clientY });
-    if (!coords) {
-      return;
+    if (coords) {
+      board.setCursor(
+        { row: coords.row, column: coords.column },
+        { row: coords.nRow, column: coords.nColumn },
+      );
     }
-    board.setCursor(
-      { row: coords.row, column: coords.column },
-      { row: coords.nRow, column: coords.nColumn },
-    );
+    return coords;
+  };
+
+  const handleMouseMove = (e: MouseEvent) => {
+    if (props.isActive) {
+      pointAt(e);
+    }
   };
 
   const handleMouseClick = (e: MouseEvent) => {
     if (!props.isActive) {
       return;
     }
+    // The route goes where the click is, not where the last move left the
+    // cursor. A tap on a touchscreen comes with no move before it, and in a
+    // headset either hand's trigger clicks while only one hand moves the
+    // mouse, so the last move can be the other hand's or none at all.
+    const coords = pointAt(e);
     const pathToCursor = board.pathToCursor;
     const actor = game.currentActor;
 
-    if (pathToCursor.length === 0 || !actor) {
-      return;
-    }
-    const coords = getMapCoords({ x: e.clientX, y: e.clientY });
-    if (!coords) {
+    if (!coords || pathToCursor.length === 0 || !actor) {
       return;
     }
     const target = game.actors.find(

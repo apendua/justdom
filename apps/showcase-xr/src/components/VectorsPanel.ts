@@ -20,7 +20,8 @@ import { cardStyle, captionStyle, classes, headingStyle, rowStyle } from "./pane
  * The diagram at the top is the case the whole thing exists for — boxes
  * joined by arrows, the arrows dashed and dotted, their heads markers, the
  * nodes labelled through `<text>`, two pictures above them through
- * `<image>`, one turned by its group — and
+ * `<image>`, one turned by its group, and a bar between them that a
+ * `clip-path` cuts in half — and
  * it is styled the way a diagram on a page is styled, through classes and
  * a stylesheet rather than presentation attributes, because computed style
  * is what the plugin reads. Below it: the same icon through the same
@@ -33,7 +34,9 @@ import { cardStyle, captionStyle, classes, headingStyle, rowStyle } from "./pane
  * being able to see side by side.
  *
  * The teal of the diagram's nodes is used nowhere else in the showcase, so
- * the visual suite can count it and know the shapes were drawn.
+ * the visual suite can count it and know the shapes were drawn. The orange
+ * of the clipped bar is the same kind of marker: half of it is shown, so the
+ * suite can count it with the clip and without.
  */
 
 /**
@@ -60,6 +63,12 @@ const PINK_HEAD = "vectors-pink-head";
 
 /** The id of the symbol the icon row draws three times. */
 const DOT = "vectors-dot";
+
+/** The id of the clip that shows the left half of the orange bar. */
+const HALF = "vectors-half";
+
+/** The clipped bar's fill: a colour the visual suite looks for. */
+export const CLIPPED_COLOR = "rgb(255, 110, 0)";
 
 /** The nodes' fill: the colour the visual suite looks for. */
 export const NODE_COLOR = "rgb(0, 168, 150)";
@@ -132,6 +141,10 @@ const diagramStyle = stylesheet`
 
   .${CLASS_NAME} .head.pink {
     fill: rgb(221, 64, 104);
+  }
+
+  .${CLASS_NAME} .clipped {
+    fill: ${CLIPPED_COLOR};
   }
 
   .${CLASS_NAME} .grid {
@@ -319,6 +332,12 @@ const VectorsPanel = component((_ctx: WeakKey) => {
                 }),
                 children($$("path", [attr({ class: "head pink", d: "M0 0 L12 3.5 L0 7 z" })])),
               ]),
+              // The left half of the bar below, which is all of it a
+              // browser shows.
+              $$("clipPath", [
+                attr({ id: HALF }),
+                children($$("rect", [attr({ x: 108, y: 8, width: 28, height: 18 })])),
+              ]),
             ),
           ]),
           // A faint dotted grid behind everything, the kind a canvas draws.
@@ -338,6 +357,17 @@ const VectorsPanel = component((_ctx: WeakKey) => {
             children(
               $$("image", [attr({ href: RASTER_PICTURE, x: 207, y: 4, width: 26, height: 26 })]),
             ),
+          ]),
+          // A bar between the pictures, cut in half by a `clip-path`.
+          $$("rect", [
+            attr({
+              class: "clipped",
+              x: 108,
+              y: 8,
+              width: 56,
+              height: 18,
+              "clip-path": `url(#${HALF})`,
+            }),
           ]),
           // Two nodes and a small third one.
           $$("rect", [attr({ class: "node", x: 16, y: 34, width: 72, height: 44, rx: 8 })]),

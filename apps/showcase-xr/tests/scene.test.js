@@ -77,6 +77,13 @@ const ACCENT = /** @type {[number, number, number]} */ ([0, 123, 255]);
 const NODE_COLOR = /** @type {[number, number, number]} */ ([0, 168, 150]);
 
 /**
+ * The orange of the vector panel's clipped bar, used nowhere else in the
+ * showcase. A `clip-path` shows the left half of the bar, so the scene holds
+ * half as much of it as the bar with no clip would.
+ */
+const CLIPPED_COLOR = /** @type {[number, number, number]} */ ([255, 110, 0]);
+
+/**
  * Baselines are filed under the environment that drew them, so more than one
  * can be committed at a time and none of them clobbers another: CI keeps its
  * own, and anyone who records locally keeps theirs beside it. The name is a
@@ -264,6 +271,50 @@ describe("the showcase in an emulated headset", { timeout: 180_000 }, () => {
     assert.ok(
       comparePng(restored, before, BASELINE).same,
       "turning it back did not put the scene back",
+    );
+  });
+
+  test("a clip-path shows half of the bar, and all of it once it is taken off", async () => {
+    // The bar is 56 by 18 and its clip the left 28 by 18. Taking the
+    // clip-path off has to double the orange in the headset, and putting it
+    // back has to put the scene back. Counts rather than a baseline, so this
+    // means the same on any machine.
+    const before = await photographScene(showcase.page, { freeze: true });
+    const clipped = countNear(before, CLIPPED_COLOR);
+    assert.ok(clipped > 100, `expected the clipped bar in the frame, found ${clipped} pixels`);
+
+    // Sets the bar's clip-path and hands back the one it replaced.
+    const reclip = (/** @type {string | null} */ value) =>
+      showcase.page.evaluate((value) => {
+        const bar = document.querySelector("[data-xr-portal] svg rect.clipped");
+        if (!bar) {
+          throw new Error("no clipped bar");
+        }
+        const previous = bar.getAttribute("clip-path");
+        if (value === null) {
+          bar.removeAttribute("clip-path");
+        } else {
+          bar.setAttribute("clip-path", value);
+        }
+        return previous;
+      }, value);
+
+    const original = await reclip(null);
+    await nextFrames(showcase.page, 10);
+    const bare = await photographScene(showcase.page, { freeze: true });
+    const whole = countNear(bare, CLIPPED_COLOR);
+    // Twice as much, give or take the antialiased edges.
+    assert.ok(
+      whole > clipped * 1.7 && whole < clipped * 2.3,
+      `expected about twice ${clipped} orange pixels with the clip taken off, found ${whole}`,
+    );
+
+    await reclip(original);
+    await nextFrames(showcase.page, 10);
+    const restored = await photographScene(showcase.page, { freeze: true });
+    assert.ok(
+      comparePng(restored, before, BASELINE).same,
+      "putting the clip-path back did not put the scene back",
     );
   });
 

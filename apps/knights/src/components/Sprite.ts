@@ -18,6 +18,7 @@ import {
   type Frame,
   type SpriteSheet,
 } from "../constants";
+import { randomId } from "../helpers/random";
 import { frames as clock } from "../store/clock";
 
 interface SpriteProps {
@@ -175,21 +176,21 @@ class SpriteStore {
 /**
  * Draws one frame of a sprite sheet.
  *
- * The whole sheet is placed as a single `<image>` inside a nested `<svg>` the
- * size of one frame, and shifted so that the frame we want lands at its
- * origin; the `<svg>`'s viewport hides the rest. That way switching frames
- * only moves the image, and the browser never has to fetch or decode
- * anything again.
+ * The whole sheet is placed as a single `<image>` and shifted so that the
+ * frame we want lands at the origin; a clip path the size of one frame
+ * hides the rest. That way switching frames only moves the image, and the
+ * browser never has to fetch or decode anything again.
  *
- * The shift is a `transform` rather than the image's `x` and `y`, and the
- * viewport is a nested `<svg>` rather than a `clip-path`, for a headset
- * panel's sake. A panel draws a nested `<svg>`'s viewport as a clip and
- * does not draw `clip-path` yet, which would show the whole sheet; and it
- * takes a new `transform` as a matrix write, where a new `x` or `y` would
- * be a new quad ten times a second for every stack on the board.
+ * The clip path is on a group around the image rather than on the image,
+ * and the shift is the image's `transform` rather than its `x` and `y`, for
+ * a headset panel's sake. A panel takes a new `transform` as a matrix write,
+ * where a new `x` or `y` would be a new quad ten times a second for every
+ * stack on the board; and a clip path on the image would move with its
+ * `transform`, as it does on the page, so the group holds it still.
  */
 const Sprite = component((_: WeakKey, props: SpriteProps) => {
   const sprite = new SpriteStore(props);
+  const clipId = `sprite_${randomId()}`;
 
   return $$("g", [
     // Start over whenever a different animation is selected. The `Derived` is
@@ -214,10 +215,22 @@ const Sprite = component((_: WeakKey, props: SpriteProps) => {
     }),
     attr("display", () => (sprite.geometry ? undefined : "none")),
     children(
-      $$("svg", [
-        attr({ x: 0, y: 0, overflow: "hidden" }),
-        attr("width", () => sprite.geometry?.spriteWidth ?? 0),
-        attr("height", () => sprite.geometry?.spriteHeight ?? 0),
+      $$("defs", [
+        children(
+          $$("clipPath", [
+            attr({ id: clipId }),
+            children(
+              $$("rect", [
+                attr({ x: 0, y: 0 }),
+                attr("width", () => sprite.geometry?.spriteWidth ?? 0),
+                attr("height", () => sprite.geometry?.spriteHeight ?? 0),
+              ]),
+            ),
+          ]),
+        ),
+      ]),
+      $$("g", [
+        attr({ "clip-path": `url(#${clipId})` }),
         children(
           $$("image", [
             attr({ x: 0, y: 0 }),

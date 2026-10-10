@@ -170,12 +170,18 @@ const Canvas = component((store: AppStore, { dashes = false }: CanvasOptions = {
   };
 
   const dashFor = (id: string): string => {
+    if (!dashes) {
+      return "";
+    }
     const item = itemAt(id);
-    if (dashes && item && !item.drawn && !store.highlightedIds.get().has(id)) {
+    if (item && !item.drawn && !store.highlightedIds.get().has(id)) {
       return "5 4";
     }
     return "";
   };
+
+  /** The rubber band's dashes, the same for the line and the circle. */
+  const previewDash = dashes ? "4 4" : "";
 
   const lineEndpoint = (id: string, which: 0 | 1): { x: number; y: number } => {
     const item = itemAt(id);
@@ -369,7 +375,7 @@ const Canvas = component((store: AppStore, { dashes = false }: CanvasOptions = {
         $$("line", [
           attr("stroke", () => PREVIEW),
           attr("stroke-width", () => "1.25"),
-          attr("stroke-dasharray", () => (dashes ? "4 4" : "")),
+          attr("stroke-dasharray", () => previewDash),
           attr("visibility", () => {
             const pending = store.pending.get();
             return pending?.tool === "line" && pendingAnchor() && store.cursorWorld.get()
@@ -397,7 +403,7 @@ const Canvas = component((store: AppStore, { dashes = false }: CanvasOptions = {
           attr("fill", () => "none"),
           attr("stroke", () => PREVIEW),
           attr("stroke-width", () => "1.25"),
-          attr("stroke-dasharray", () => (dashes ? "4 4" : "")),
+          attr("stroke-dasharray", () => previewDash),
           attr("visibility", () => {
             const pending = store.pending.get();
             return pending?.tool === "circle" && pendingAnchor() && store.cursorWorld.get()

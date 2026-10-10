@@ -10,6 +10,7 @@ import { bubble, forwardedPanel } from "../test/rays.js";
 import { OBSERVER_OPTIONS } from "../elements/portal.js";
 import { SVGLoader } from "three/examples/jsm/loaders/SVGLoader.js";
 import { buildFillGeometry, buildShapePath, group, paintSlot, shape } from "./shape.js";
+import { parsePoints } from "./style.js";
 import { BOX_BUCKET_BIAS } from "../elements/boxBatch.js";
 import { getContentRenderOrder } from "../elements/elevation.js";
 
@@ -1297,13 +1298,31 @@ describe("a shape's outline", () => {
       [{ kind: "circle", cx: 5, cy: -3, r: 4.25 }, '<circle cx="5" cy="-3" r="4.25"/>'],
       [{ kind: "ellipse", cx: 0, cy: 1, rx: 4, ry: 2 }, '<ellipse cx="0" cy="1" rx="4" ry="2"/>'],
       [{ kind: "line", x1: 1, y1: 2, x2: 3.5, y2: -4 }, '<line x1="1" y1="2" x2="3.5" y2="-4"/>'],
-      [{ kind: "polyline", points: "0,0 10,0 5,5e-1" }, '<polyline points="0,0 10,0 5,5e-1"/>'],
-      [{ kind: "polygon", points: "0 0 10 0 5 5" }, '<polygon points="0 0 10 0 5 5"/>'],
+      [{ kind: "polyline", points: [0, 0, 10, 0, 5, 0.5] }, '<polyline points="0,0 10,0 5,5e-1"/>'],
+      [{ kind: "polygon", points: [0, 0, 10, 0, 5, 5] }, '<polygon points="0 0 10 0 5 5"/>'],
       [{ kind: "path", d: "M0 0 A5 5 0 0 1 10 0 Z" }, '<path d="M0 0 A5 5 0 0 1 10 0 Z"/>'],
+      // A quote in a `d` is escaped on its way into the document the loader
+      // parses, and the loader reads the path up to it.
+      [{ kind: "path", d: 'M0 0 L10 0 L10 10 Z "' }, '<path d="M0 0 L10 0 L10 10 Z"/>'],
     ];
     for (const [geometry, markup] of cases) {
-      assert.deepEqual(outline(buildShapePath(geometry)), outline(loaded(markup)), markup);
+      const built = buildShapePath(geometry);
+      assert.ok(built, markup);
+      assert.deepEqual(outline(built), outline(loaded(markup)), markup);
     }
+  });
+
+  test("a points list is read as a browser reads it, where the loader shifts its pairs", () => {
+    // A comma and then a space between the numbers of a pair: the loader
+    // takes one separator only, and pairs `0, 0 10, 0 5, 5` as (0,10),(0,5).
+    const geometry = /** @type {const} */ ({
+      kind: "polygon",
+      points: parsePoints("0, 0 10, 0 5, 5") ?? [],
+    });
+    assert.deepEqual(
+      outline(buildShapePath(geometry)),
+      outline(loaded('<polygon points="0,0 10,0 5,5"/>')),
+    );
   });
 
   test("a shape that moves is rebuilt without the loader; a path is parsed once per d", (t) => {
@@ -1323,9 +1342,14 @@ describe("a shape's outline", () => {
     }
     assert.equal(parse.mock.callCount(), 0, "no simple shape was written out and parsed");
 
-    const s = setup("path", { d: "M0 0 H21 V11 Z", fill: "red" });
-    s.setAttribute("d", "M0 0 H41 V11 Z");
-    s.setAttribute("d", "M0 0 H21 V11 Z");
+    // The parsed paths are cached for the whole process, so these two `d`s
+    // are this test's own: no other test may draw them, or the count below
+    // would find one already parsed.
+    const first = "M0 0 H21.0625 V11.0625 Z";
+    const second = "M0 0 H41.0625 V11.0625 Z";
+    const s = setup("path", { d: first, fill: "red" });
+    s.setAttribute("d", second);
+    s.setAttribute("d", first);
     assert.equal(parse.mock.callCount(), 2, "each d is parsed once, and found again after");
     s.teardown();
   });

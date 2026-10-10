@@ -171,12 +171,6 @@ function parsePath(d) {
 }
 
 /**
- * A coordinate pair in `points`, as `SVGLoader` reads it: two numbers with
- * one comma or one space between them.
- */
-const POINT_PAIR = /([+-]?\d*\.?\d+(?:e[+-]?\d+)?)(?:,|\s)([+-]?\d*\.?\d+(?:e[+-]?\d+)?)/g;
-
-/**
  * `SVGLoader`'s rounded corner: one minus the bezier approximation of a
  * quarter ellipse, as its `parseRectNode` uses it.
  */
@@ -188,10 +182,14 @@ const CORNER = 1 - 0.551915024494;
  * the same closing. Every kind but a `<path>` is built here, from the
  * numbers already read, rather than written out as markup for the loader
  * to parse back; a shape that moves every frame is a few curves a frame and
- * not a document. A `<path>` goes to the loader, by its `d`.
+ * not a document. The one difference is a `points` list written with a
+ * comma and a space between the numbers of a pair, which the loader reads
+ * with its pairs shifted and `parsePoints` reads as a browser does.
  *
- * A path built here is the shape's own, and one parsed is shared by every
- * shape with the same `d`.
+ * A `<path>` goes to the loader, by its `d`. One whose `d` changes every
+ * frame still parses a document every frame, and each new `d` takes a
+ * place in the cache. A path built here is the shape's own, and one parsed
+ * is shared by every shape with the same `d`.
  *
  * @param {ShapeGeometry} geometry
  * @returns {ShapePath | null}
@@ -220,18 +218,14 @@ export function buildShapePath(geometry) {
     }
     case "polyline":
     case "polygon": {
+      const { points } = geometry;
       const path = new THREE.ShapePath();
-      let first = true;
-      for (const [, x, y] of geometry.points.matchAll(POINT_PAIR)) {
-        if (first) {
-          path.moveTo(Number.parseFloat(x), Number.parseFloat(y));
-          first = false;
-        } else {
-          path.lineTo(Number.parseFloat(x), Number.parseFloat(y));
-        }
+      path.moveTo(points[0], points[1]);
+      for (let i = 2; i < points.length; i += 2) {
+        path.lineTo(points[i], points[i + 1]);
       }
-      if (geometry.kind === "polygon" && path.currentPath) {
-        path.currentPath.autoClose = true;
+      if (geometry.kind === "polygon") {
+        /** @type {THREE.Path} */ (path.currentPath).autoClose = true;
       }
       return path;
     }

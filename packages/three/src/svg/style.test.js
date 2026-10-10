@@ -10,7 +10,9 @@ import {
   parsePaint,
   parsePointerEvents,
   readProperty,
+  parsePoints,
   readShapeGeometry,
+  shapeGeometryEqual,
 } from "./style.js";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
@@ -174,8 +176,14 @@ describe("svg style reading", () => {
       const polygon = element("polygon", { points: "0,0 10,0 5,5" });
       assert.deepEqual(readShapeGeometry(polygon.style, polygon.el, noViewport), {
         kind: "polygon",
-        points: "0,0 10,0 5,5",
+        points: [0, 0, 10, 0, 5, 5],
       });
+      const unreadable = element("polyline", { points: "5" });
+      assert.equal(
+        readShapeGeometry(unreadable.style, unreadable.el, noViewport),
+        null,
+        "a list with no whole pair draws nothing",
+      );
       const empty = element("polyline", {});
       assert.equal(readShapeGeometry(empty.style, empty.el, noViewport), null);
     });
@@ -219,6 +227,36 @@ describe("svg style reading", () => {
       );
       // With no viewport to measure against, a percentage is the fallback.
       assert.equal(readShapeGeometry(rect.style, rect.el, noViewport), null);
+    });
+
+    test("a points list is read as SVG's grammar writes one", () => {
+      assert.deepEqual(parsePoints("0, 0 10 ,0\n5,5"), [0, 0, 10, 0, 5, 5], "comma and spaces");
+      assert.deepEqual(parsePoints("10-5 .5.5 1e1,2E-1"), [10, -5, 0.5, 0.5, 10, 0.2], "no gaps");
+      assert.deepEqual(parsePoints("0,0 10,0 5"), [0, 0, 10, 0], "an odd last number is dropped");
+      assert.equal(parsePoints("5"), null);
+      assert.equal(parsePoints("a b"), null);
+    });
+
+    test("two readings are equal when every number is", () => {
+      /** @type {import("./style.js").ShapeGeometry} */
+      const polygon = { kind: "polygon", points: [0, 0, 10, 0] };
+      assert.ok(shapeGeometryEqual(polygon, { kind: "polygon", points: [0, 0, 10, 0] }));
+      assert.ok(!shapeGeometryEqual(polygon, { kind: "polygon", points: [0, 0, 10, 1] }));
+      assert.ok(!shapeGeometryEqual(polygon, { kind: "polyline", points: [0, 0, 10, 0] }));
+      assert.ok(!shapeGeometryEqual(polygon, { kind: "polygon", points: [0, 0, 10, 0, 1, 1] }));
+      assert.ok(
+        shapeGeometryEqual(
+          { kind: "circle", cx: 1, cy: 2, r: 3 },
+          { kind: "circle", cx: 1, cy: 2, r: 3 },
+        ),
+      );
+      assert.ok(
+        !shapeGeometryEqual(
+          { kind: "circle", cx: 1, cy: 2, r: 3 },
+          { kind: "circle", cx: 1, cy: 2, r: 4 },
+        ),
+      );
+      assert.ok(!shapeGeometryEqual({ kind: "path", d: "M0 0" }, null));
     });
 
     test("an element that is not a shape is nothing", () => {

@@ -297,7 +297,9 @@ export function parseLineJoin(value) {
  * The numbers a shape's outline is built from, by the kind of shape: what
  * `buildShapePath` in `shape.js` turns into three's `ShapePath`. A `<path>`
  * keeps its `d` as the string it is, since parsing one is `SVGLoader`'s
- * job; every other kind is a handful of lengths.
+ * job; every other kind is a handful of lengths. A polyline's or a
+ * polygon's `points` are its coordinates in order, x then y, two to a
+ * vertex.
  *
  * @typedef {{
  *       kind: "rect",
@@ -311,7 +313,7 @@ export function parseLineJoin(value) {
  *   | { kind: "circle", cx: number, cy: number, r: number }
  *   | { kind: "ellipse", cx: number, cy: number, rx: number, ry: number }
  *   | { kind: "line", x1: number, y1: number, x2: number, y2: number }
- *   | { kind: "polyline" | "polygon", points: string }
+ *   | { kind: "polyline" | "polygon", points: number[] }
  *   | { kind: "path", d: string }} ShapeGeometry
  */
 
@@ -328,12 +330,67 @@ export function shapeGeometryEqual(a, b) {
   if (a === b) {
     return true;
   }
-  if (!a || !b || a.kind !== b.kind) {
+  if (!a || !b) {
     return false;
   }
-  const fields = /** @type {Record<string, unknown>} */ (/** @type {unknown} */ (a));
-  const others = /** @type {Record<string, unknown>} */ (/** @type {unknown} */ (b));
-  return Object.keys(fields).every((name) => Object.is(fields[name], others[name]));
+  switch (a.kind) {
+    case "rect":
+      return (
+        b.kind === "rect" &&
+        a.x === b.x &&
+        a.y === b.y &&
+        a.width === b.width &&
+        a.height === b.height &&
+        a.rx === b.rx &&
+        a.ry === b.ry
+      );
+    case "circle":
+      return b.kind === "circle" && a.cx === b.cx && a.cy === b.cy && a.r === b.r;
+    case "ellipse":
+      return (
+        b.kind === "ellipse" && a.cx === b.cx && a.cy === b.cy && a.rx === b.rx && a.ry === b.ry
+      );
+    case "line":
+      return b.kind === "line" && a.x1 === b.x1 && a.y1 === b.y1 && a.x2 === b.x2 && a.y2 === b.y2;
+    case "polyline":
+    case "polygon": {
+      if (b.kind !== a.kind || a.points.length !== b.points.length) {
+        return false;
+      }
+      for (let i = 0; i < a.points.length; i++) {
+        if (a.points[i] !== b.points[i]) {
+          return false;
+        }
+      }
+      return true;
+    }
+    case "path":
+      return b.kind === "path" && a.d === b.d;
+  }
+}
+
+/**
+ * A number in a `points` list, as SVG's grammar writes one. The numbers
+ * are separated by spaces, by a comma with or without spaces around it, or
+ * by nothing at all where a sign or a second decimal point starts the next
+ * one (`10-5`, `0.5.5`).
+ */
+const POINTS_NUMBER = /[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?/g;
+
+/**
+ * A `points` list read as SVG reads it: the coordinates in order, two to a
+ * vertex, with an odd last one dropped. Null for a list with not one whole
+ * pair in it, which draws nothing.
+ *
+ * @param {string} value
+ * @returns {number[] | null}
+ */
+export function parsePoints(value) {
+  const numbers = Array.from(value.matchAll(POINTS_NUMBER), ([match]) => Number(match));
+  if (numbers.length % 2 === 1) {
+    numbers.pop();
+  }
+  return numbers.length ? numbers : null;
 }
 
 /**
@@ -427,7 +484,7 @@ export function readShapeGeometry(style, element, viewport) {
     }
     case "polyline":
     case "polygon": {
-      const points = readProperty(style, element, "points").trim();
+      const points = parsePoints(readProperty(style, element, "points"));
       if (!points) {
         return null;
       }

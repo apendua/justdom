@@ -122,15 +122,22 @@ export function invert(m) {
  */
 
 /**
+ * How far an empty rect from `transformRect` is inverted, in the units it
+ * is in: as far as the clip patch's open box reaches the other way.
+ */
+const EMPTY_EXTENT = 1e6;
+
+/**
  * The smallest axis-aligned rectangle holding `rect` once `m` has moved it.
  * Exact under a scale and a move; around a rotation, the bounding box.
  *
  * A rect with no area, a line or one inverted as `intersectRects` leaves
- * two that share nothing, stays one with no area: an inverted rect, a unit
- * short on each axis of where its first corner lands. So does any rect
- * under a matrix that flattens the plane. Inverted and not a point, since
- * the clip patch draws the pixel a point falls on at half strength, and
- * takes an inverted rect as holding nothing anywhere. A clip that holds
+ * two that share nothing, stays one with no area: `EMPTY_EXTENT` short on
+ * each axis of where its first corner lands. So does any rect under a
+ * matrix that flattens the plane. Inverted that far and not a point, since
+ * the clip patch antialiases its edge over a pixel: a point, or a rect
+ * inverted by a unit, leaves the pixels near it partly drawn when a panel
+ * is drawn small, and one inverted by a million leaves none. A clip that holds
  * nothing then holds nothing in every frame it is carried to, where the
  * bounding box of its corners would have area under a turn.
  *
@@ -141,7 +148,7 @@ export function invert(m) {
 export function transformRect(m, rect) {
   if (rect.right <= rect.left || rect.bottom <= rect.top || m[0] * m[3] === m[1] * m[2]) {
     const [x, y] = apply(m, rect.left, rect.top);
-    return { left: x, top: y, right: x - 1, bottom: y - 1 };
+    return { left: x, top: y, right: x - EMPTY_EXTENT, bottom: y - EMPTY_EXTENT };
   }
   const corners = [
     apply(m, rect.left, rect.top),

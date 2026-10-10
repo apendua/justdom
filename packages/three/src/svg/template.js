@@ -271,7 +271,7 @@ function markers(ctx, element, host, hostInstance) {
             clipsViewport(style.overflow)
               ? { left: 0, top: 0, right: spec.width, bottom: spec.height }
               : null,
-            readClipRect(marker, style, hostInstance),
+            readClipRect(marker, style, hostInstance, spec),
           );
           return rect ? { frame: markerFrame(spec, vertex, host.strokeWidth()), rect } : null;
         },
@@ -521,7 +521,7 @@ export function drawUse(ctx, element, instance = null) {
           if (size && clipsViewport(style.overflow)) {
             own = { left: x, top: y, right: x + size.width, bottom: y + size.height };
           }
-          const clipped = readClipRect(target, style, instance);
+          const clipped = readClipRect(target, style, instance, size ?? null);
           return intersectRects(own, clipped && transformRect(translation(x, y), clipped));
         },
         { isEqual: rectEqual },

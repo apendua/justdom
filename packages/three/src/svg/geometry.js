@@ -126,11 +126,13 @@ export function invert(m) {
  * Exact under a scale and a move; around a rotation, the bounding box.
  *
  * A rect with no area, a line or one inverted as `intersectRects` leaves
- * two that share nothing, stays one with no area: the empty rect where its
- * first corner lands. So does any rect under a matrix that flattens the
- * plane. A clip that holds nothing then holds nothing in every frame it is
- * carried to, where the bounding box of its corners would have area under
- * a turn.
+ * two that share nothing, stays one with no area: an inverted rect, a unit
+ * short on each axis of where its first corner lands. So does any rect
+ * under a matrix that flattens the plane. Inverted and not a point, since
+ * the clip patch draws the pixel a point falls on at half strength, and
+ * takes an inverted rect as holding nothing anywhere. A clip that holds
+ * nothing then holds nothing in every frame it is carried to, where the
+ * bounding box of its corners would have area under a turn.
  *
  * @param {Matrix2D} m
  * @param {Rect} rect
@@ -139,7 +141,7 @@ export function invert(m) {
 export function transformRect(m, rect) {
   if (rect.right <= rect.left || rect.bottom <= rect.top || m[0] * m[3] === m[1] * m[2]) {
     const [x, y] = apply(m, rect.left, rect.top);
-    return { left: x, top: y, right: x, bottom: y };
+    return { left: x, top: y, right: x - 1, bottom: y - 1 };
   }
   const corners = [
     apply(m, rect.left, rect.top),

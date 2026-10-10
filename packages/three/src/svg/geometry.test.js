@@ -94,11 +94,12 @@ describe("svg geometry", () => {
       empty(transformRect([0, 0.5, 0, 0.866, 0, 0], { left: 0, top: 0, right: 1, bottom: 1 })),
       "flattened",
     );
+    // Inverted, so no pixel of it is drawn, as one at a point would be.
     assert.deepEqual(transformRect(turn, { left: 0, top: 0, right: 0, bottom: 0 }), {
       left: 0,
       top: 0,
-      right: 0,
-      bottom: 0,
+      right: -1,
+      bottom: -1,
     });
   });
 

@@ -219,6 +219,8 @@ function ownTransform(element, style, viewBoxOrigin) {
  * of the `<g>` then and each child's chain reads the box again. A restyle
  * the mirror scopes to one element, such as `data-xr-hover`, reads it again
  * for that child alone, and a change the mirror never sees reads nothing.
+ * Each shape's chain reads it for itself, so an `objectBoundingBox` clip on
+ * a `<g>` reads the `<g>`'s box once per shape below it.
  *
  * @param {Element} element
  * @returns {DOMRect | null}
@@ -229,18 +231,29 @@ function readBBox(element) {
 }
 
 /**
+ * The elements a `<clipPath>` may hold beside its shapes that are never
+ * drawn, so they neither clip nor stop the rect from clipping.
+ */
+const DESCRIPTIVE_TAGS = new Set(["title", "desc", "metadata"]);
+
+/**
  * What a `clip-path` leaves of an element, as a rectangle in the space the
  * element's own geometry is in, or null for no clip.
  *
  * Followed: `url(#id)` naming a `<clipPath>` whose one element child is a
- * `<rect>`, moved by the transforms on the two and by `clipPathUnits`.
- * Under `userSpaceOnUse` a percentage is of the element's viewport; under
- * `objectBoundingBox` the units are its `getBBox`, and an element with none
- * is not clipped. A rect with no area clips everything away, as a browser's
- * empty clip does, and so does an `objectBoundingBox` clip on an element
- * whose box has no width or height, which flattens the rect. The rect's `rx` and `ry` are not followed, so the
- * corners are square. A turn or a skew, here or anywhere above, clips to
- * the bounding box of the turned rect, as a viewport under a rotation does.
+ * `<rect>`, a `<title>`, `<desc>` or `<metadata>` beside it aside, moved by
+ * the transforms on the two and by `clipPathUnits`. Under `userSpaceOnUse`
+ * a percentage is of the element's viewport; under `objectBoundingBox` the
+ * units are its `getBBox`, and an element with none is not clipped. For a
+ * template drawn somewhere else, a `<symbol>`, a `<marker>` or an `<svg>` a
+ * `<use>` draws, both are the copy's: the box it is given where it is
+ * drawn, `frame`, and not the template's where it is defined, which a
+ * browser never lays out. A rect with no area clips everything away, as a
+ * browser's empty clip does, and so does an `objectBoundingBox` clip on an
+ * element whose box has no width or height, which flattens the rect. The
+ * rect's `rx` and `ry` are not followed, so the corners are square. A turn
+ * or a skew, here or anywhere above, clips to the bounding box of the
+ * turned rect, as a viewport under a rotation does.
  *
  * Not followed, and so not clipped: any other `<clipPath>`, a basic shape
  * such as `inset()`, and a `clip-path` on the `<clipPath>` or its rect. A
@@ -256,9 +269,13 @@ function readBBox(element) {
  * @param {Element} element
  * @param {CSSStyleDeclaration} style The element's computed style.
  * @param {Instance | null} instance The instance the element is part of.
+ * @param {{ width: number, height: number } | null} [frame] For a template,
+ *   the size of the copy's box, from (0, 0) in the space the rect is in:
+ *   what a percentage and `objectBoundingBox` are of. Null for a copy with
+ *   no size, which resolves neither. Left out, both are the element's own.
  * @returns {Rect | null}
  */
-export function readClipRect(element, style, instance) {
+export function readClipRect(element, style, instance, frame) {
   const clipPath = findSvgElement(
     element,
     parseUrlReference(readProperty(style, element, "clip-path")),
@@ -270,7 +287,10 @@ export function readClipRect(element, style, instance) {
   /** @type {Element | null} */
   let rect = null;
   for (const node of getChildNodes(clipPath)) {
-    if (node.nodeType !== Node.ELEMENT_NODE) {
+    if (
+      node.nodeType !== Node.ELEMENT_NODE ||
+      DESCRIPTIVE_TAGS.has(/** @type {Element} */ (node).localName)
+    ) {
       continue;
     }
     if (rect || !isSvgElement(node) || /** @type {Element} */ (node).localName !== "rect") {
@@ -284,9 +304,14 @@ export function readClipRect(element, style, instance) {
   /** @type {Matrix2D} */
   let units = IDENTITY;
   /** @type {Record<"width" | "height", number | (() => number | undefined)>} */
-  let of = viewportReferences(() => viewportSize(element, instance));
+  let of = viewportReferences(() =>
+    frame === undefined ? viewportSize(element, instance) : frame,
+  );
   if (getAttributeCached(clipPath, "clipPathUnits") === "objectBoundingBox") {
-    const bbox = readBBox(element);
+    const bbox =
+      frame === undefined
+        ? readBBox(element)
+        : frame && { x: 0, y: 0, width: frame.width, height: frame.height };
     if (!bbox) {
       return null;
     }

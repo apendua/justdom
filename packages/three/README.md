@@ -1312,18 +1312,20 @@ Theming mode follows those too, by reading the text of every rule on a timer:
 ```js
 import { enableThemingMode } from "@apendua/freedom";
 
-if (import.meta.env.DEV) {
+if (new URLSearchParams(location.search).has("theming")) {
   enableThemingMode(); // returns a function that turns it off again
 }
 ```
 
-While it is on and a panel is mounted, it reads every rule's text every 250 milliseconds (pass
-`{ interval }` to change that) and restyles the panels when the text changed. A drag across the
-developer tools' colour picker lands as one restyle per read rather than one per step. The read
-takes a few milliseconds on a large stylesheet, on a timer outside the frame loop, which is fine at
-a desk and not worth paying in a headset, so keep it out of a production build. A sheet from another
-origin served without CORS hides its rules from script, and edits to it are not followed; serve the
-sheet you are theming from the page's own origin.
+The apps in this repository turn it on with `?theming` in the address, through
+`followThemingQuery()` in `@apendua.dev/headset`. While it is on and a panel is mounted, it reads
+every rule's text every 250 milliseconds (pass `{ interval }` to change that) and restyles the
+panels when the text changed. A drag across the developer tools' colour picker lands as one restyle
+per read rather than one per step. The read takes a few milliseconds on a large stylesheet, on a
+timer outside the frame loop, which is fine at a desk and not worth paying in a headset, so turn it
+on only when it is asked for. A sheet from another origin served without CORS hides its rules from
+script, and edits to it are not followed; serve the sheet you are theming from the page's own
+origin.
 
 ## Animation
 

@@ -1,12 +1,14 @@
 # @apendua.dev/headset
 
 What every app with a headset session repeats, kept in one place: the emulated headset behind
-`?emulator`, whether the platform can present at all, and the session a page reads for the controls
-that only make sense in a headset. Private to this repository.
+`?emulator`, freedom's theming mode behind `?theming`, whether the platform can present at all, and
+the session a page reads for the controls that only make sense in a headset. Private to this
+repository.
 
-It has two entries for a page and no index, so that an app importing one does not pull in the other.
-The emulator brings IWER and its dev UI with it, over half a megabyte, and is meant to be imported
-lazily; the session is a few signals. A third entry, the driver, is for the apps' check scripts.
+It has three entries for a page and no index, so that an app importing one does not pull in the
+others. The emulator brings IWER and its dev UI with it, over half a megabyte, and is meant to be
+imported lazily; the session is a few signals. A third entry, the driver, is for the apps' check
+scripts.
 
 ## `@apendua.dev/headset/emulator`
 
@@ -45,6 +47,23 @@ Import it lazily, as above, so that it lands in a chunk of its own, named `emula
 service worker that precaches the app should leave that chunk out; `hexboard-xr` and `paperplane-xr`
 do it with `globIgnores: ["**/emulator-*.js"]`.
 
+## `@apendua.dev/headset/theming`
+
+```ts
+import { followThemingQuery } from "@apendua.dev/headset/theming";
+
+followThemingQuery();
+```
+
+`followThemingQuery()` turns on freedom's `enableThemingMode()` when the page's address has
+`?theming`, and returns whether it did. The panels then follow rules edited, added or switched off
+in the browser's developer tools, which they otherwise miss; "Stylesheets" in freedom's README says
+what it reads and what that costs. It stays on for the life of the page. Every app built on freedom
+calls it next to where it reads `?emulator`, or where it calls `render()` when the module that reads
+`?emulator` imports nothing from three.js. `paperplane-xr` calls it in its labs edition only.
+
+This entry imports `@apendua/freedom`, so import it only from a module that already does.
+
 ## `@apendua.dev/headset/session`
 
 - `canPresent()` resolves to whether the platform can open an `immersive-ar` or `immersive-vr`
@@ -79,6 +98,7 @@ drag, and `check`, `finish` and `closeAll` for the tally, the exit code and the 
 
 `npm test` here, or `rush build --to @apendua.dev/headset`, runs `node --test` over `src`: the
 session's rules, `canPresent` against a stubbed `navigator.xr`, the clear-state shadow against a
-stand-in WebGL context, and the offset-space fix against IWER's own `XRReferenceSpace`, including a
-test that fails once IWER fixes it and the fix can go. `install` itself needs a browser, and is
-exercised by the apps' own check scripts, as is the driver.
+stand-in WebGL context, which queries `followThemingQuery` takes for `?theming`, and the
+offset-space fix against IWER's own `XRReferenceSpace`, including a test that fails once IWER fixes
+it and the fix can go. `install` itself needs a browser, and is exercised by the apps' own check
+scripts, as is the driver.

@@ -1,4 +1,5 @@
 import { render, createXRButton } from "@apendua/freedom";
+import { followThemingQuery } from "@apendua.dev/headset/theming";
 import { svgElements } from "@apendua/freedom/svg";
 import { XRControllerModelFactory } from "three/examples/jsm/webxr/XRControllerModelFactory.js";
 import { OculusHandModel } from "three/examples/jsm/webxr/OculusHandModel.js";
@@ -12,6 +13,7 @@ import Scene from "./components/Scene";
  * Loaded by `offerHeadset` only on a platform that can present.
  */
 export function offerXR(board: HTMLElement, menu: HTMLElement): void {
+  followThemingQuery();
   const controllerModelFactory = new XRControllerModelFactory();
   const createControllerModel =
     controllerModelFactory.createControllerModel.bind(controllerModelFactory);

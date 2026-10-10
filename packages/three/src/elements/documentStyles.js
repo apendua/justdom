@@ -35,8 +35,8 @@
  * Theming mode (`enableThemingMode`) covers the rest by looking instead of
  * listening. While it is on and a panel is watching, a timer reads every
  * rule's text a few times a second and announces when that text changed. A
- * page under development turns it on to see its edits in the panel; nothing
- * in a production page needs it.
+ * page being themed turns it on to see its edits in the panel, and turns it
+ * on only when asked, since nothing else needs it.
  */
 
 /** @type {Set<() => void>} */
@@ -312,7 +312,7 @@ export function watchDocumentStyles(listener) {
  * It costs a read of every rule's text each `interval`, on a timer and not in
  * the frame loop, for as long as it is on and a panel is mounted. That is a
  * few milliseconds on a large stylesheet, which is fine at a desk and not
- * worth paying in a headset, so leave it off in a production build. Each
+ * worth paying in a headset, so turn it on only when it is asked for. Each
  * change it finds costs a whole-panel restyle and re-measure, the same as any
  * other change to the rules; the interval is also what coalesces a burst of
  * edits, such as a colour picker dragged across its range, into one.

@@ -10,8 +10,8 @@
  * measured. This loads `src/elements/mirror.js` as it is, unbundled, into a
  * page served from the repository, and times the measurement there. The
  * numbers are milliseconds on whatever machine runs it: the median of
- * `REPEATS` runs, each on a fresh card and a fresh mirror, including what the
- * measurement leaves for the end of the task.
+ * `REPEATS` runs, each on a fresh card and a fresh mirror, including letting
+ * go of the layouts, which removes the copy they were measured in.
  *
  * The last table mounts the paragraph in a portal instead, as an app
  * mounts a panel, and times it until the portal stops loading. With
@@ -89,7 +89,7 @@ const PAGE = `<!doctype html>
     return { card, texts };
   }
 
-  window.runBench = async (sentences, which) => {
+  window.runBench = (sentences, which) => {
     const { card, texts } = makeCard(sentences);
     // Lay the live card out first: that is the page's cost, not the mirror's.
     card.getBoundingClientRect();
@@ -101,7 +101,6 @@ const PAGE = `<!doctype html>
       (text) => new Effect(() => (lines += getTextLayout(text).lines.length)),
     );
     readers.forEach((reader) => reader.dispose());
-    await new Promise((done) => setTimeout(done, 0));
     const ms = performance.now() - started;
     card.remove();
     return { ms, lines };

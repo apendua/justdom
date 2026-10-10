@@ -138,7 +138,7 @@ function makeCard(sentences) {
  * @param {number} sentences
  * @param {"all" | "one"} which
  */
-async function run(sentences, which) {
+function run(sentences, which) {
   const { card, texts } = makeCard(sentences);
   nodesCloned = 0;
   stylesCopied = 0;
@@ -150,7 +150,6 @@ async function run(sentences, which) {
     (text) => new Effect(() => getTextLayout(text)),
   );
   readers.forEach((reader) => reader.dispose());
-  await new Promise((resolve) => setTimeout(resolve, 0));
   const ms = performance.now() - started;
   card.remove();
   return { nodesCloned, stylesCopied, copiesParked, ms };
@@ -163,8 +162,8 @@ for (const which of /** @type {const} */ (["all", "one"])) {
   console.log("sentences\ttexts\tcopies\tnodes cloned\tstyles copied\tms");
   for (const sentences of SIZES) {
     // One run to warm the JIT, then the one reported.
-    await run(sentences, which);
-    const result = await run(sentences, which);
+    run(sentences, which);
+    const result = run(sentences, which);
     console.log(
       [
         sentences,

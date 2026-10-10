@@ -3322,9 +3322,9 @@ function measureTextRectsWith(range, text, parentElement, whiteSpace, scrolled, 
   // The live tree's frame is its panel's; a clone's is the body it is
   // appended to.
   const frame = frameFor(parentElement);
-  // Against the live tree the parent's rect is shareable; a measurement
-  // clone is created and thrown away inside one measurement, so its rect is
-  // read directly.
+  // Against the live tree the parent's rect is shareable. A copy is none of
+  // the panel's nodes, so its rect is read directly, once for each text
+  // measured in it, even though a line box copy stands for many of them.
   const parentRect = scrolled
     ? readClientRect(parentElement)
     : measureClientRect(parentElement, frame);
@@ -3594,14 +3594,15 @@ const lineBoxCopyCache = nodeCache();
  *   The portal's presentational flags, hover and press, change none of them
  *   (`PRESENTATIONAL_ATTRIBUTES`), just as they re-measure no text. Nor does
  *   a text replaced by one with the same characters: `findInCopy` finds it
- *   by its place. A font that finished loading rebuilds
- *   nothing the copy holds, but the copy is laid out by the browser like the
- *   page is, and is re-measured in it with the rest.
+ *   by its place. A font that finished loading does rebuild it, through the
+ *   layout epoch in the box's reflow context, as it re-measures every text.
  * - **Removed** when it is rebuilt, and when the last text reading it lets
  *   go of it.
  *
  * A reader that is not itself read by anything, as a test may be, builds the
- * copy afresh on every read, and the build it leaves is removed at the next.
+ * copy afresh on every read, and the build it leaves stays parked until the
+ * next read of the same box removes it: after the last one, for good. Every
+ * reader in the mirror is read by an effect.
  *
  * @param {HTMLElement} lineBox
  * @returns {HTMLElement} The copy, parked.
@@ -3661,8 +3662,10 @@ function getLineBoxShape(lineBox) {
 /**
  * Append `node`'s children to the description `getLineBoxShape` builds,
  * depending on each: on the child list, on a text's characters, and on an
- * element's reflow context, which a change to one of its attributes bumps
- * unless the portal declares the attribute presentational. Every length is
+ * element's own reflow signal, which a change to one of its attributes bumps
+ * unless the portal declares the attribute presentational, and which waits
+ * for the element's adoption when it has no record yet. The ancestors' and
+ * the portal-wide ones reach the copy through `getLineBoxCopy`. Every length is
  * written before what it measures, so that no text can pass for markup.
  *
  * @param {Node} node
@@ -3676,7 +3679,7 @@ function describeShape(node, parts) {
       parts.push(`#${data.length}:${data}`);
     } else if (child.nodeType === Node.ELEMENT_NODE) {
       const element = /** @type {Element} */ (child);
-      getReflowContext(element);
+      readRecordOf(element)?.reflow.get();
       parts.push(`<${element.localName}`);
       for (const { name, value } of element.attributes) {
         if (!PRESENTATIONAL_ATTRIBUTES.has(name) && !PORTAL_BOOKKEEPING_ATTRIBUTES.has(name)) {

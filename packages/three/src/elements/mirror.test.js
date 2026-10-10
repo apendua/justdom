@@ -2650,6 +2650,13 @@ describe("layout boundaries", () => {
       mirror.ingest([styled("visibility: collapse;")]);
       assert.equal(reads.label, before + 4, "and so did taking it off");
 
+      // A keyword is case-insensitive, and `setProperty` with a priority
+      // serializes as `collapse !important`. jsdom drops the priority, so
+      // the attribute is written as a browser would write it.
+      bar.setAttribute("style", "visibility: COLLAPSE !important");
+      mirror.ingest([styled("visibility: visible;")]);
+      assert.equal(reads.label, before + 5, "a collapse in another spelling moved it");
+
       holder.dispose();
     } finally {
       container.remove();

@@ -1289,10 +1289,10 @@ One print of the measuring tape to know about: a transformed element (and everyt
 measured off the layout — whole-pixel offsets — rather than the subpixel client rects untransformed
 content enjoys, because client rects come back with the transform already applied. Text under a
 transform is measured against a detached, untransformed copy of the box its lines are laid out in
-instead: its parent, or the nearest ancestor that is not inline, with the path down to the text and
-what comes before it on each level. Its line boxes and positions are exact whatever the transform —
-including full 3D rotations — without the measurement ever touching the live elements or the
-transitions playing on them.
+instead: its parent, or the nearest ancestor that does not split across lines (`splitsAcrossLines`
+in `mirror.js`), with everything that box lays out. Its line boxes and positions are exact whatever
+the transform — including full 3D rotations — without the measurement ever touching the live
+elements or the transitions playing on them.
 
 ## Animation
 

@@ -906,14 +906,34 @@ describe("text layout under transforms", () => {
     }
   });
 
-  test("the copy holds what comes before the text and leaves out what comes after", () => {
+  test("the copy holds everything the line box lays out, after the text too", () => {
+    // What follows the text places it: it aligns the last line, takes space
+    // in a flex box, and decides where a word running on past it breaks.
     const { card, textNode } = tiltedCard("a note");
     try {
       const { root } = measureThroughCopy(textNode);
       assert.deepEqual(
         Array.from(root.children, (child) => child.localName),
-        ["i", "span"],
+        ["i", "span", "b"],
       );
+    } finally {
+      card.remove();
+    }
+  });
+
+  test("the inline parent's animations and transitions are off in the copy", () => {
+    // An animation would start again on the copy at its first keyframe and
+    // beat the resolved value copied onto it.
+    const { card, label, textNode } = tiltedCard("a note");
+    label.style.animation = "grow 2s infinite";
+    label.style.transition = "letter-spacing 1s";
+    try {
+      const { text } = measureThroughCopy(textNode);
+      const copy = /** @type {HTMLElement} */ (text.parentNode);
+      for (const property of ["animation", "transition"]) {
+        assert.equal(copy.style.getPropertyValue(property), "none", property);
+        assert.equal(copy.style.getPropertyPriority(property), "important", property);
+      }
     } finally {
       card.remove();
     }

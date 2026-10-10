@@ -3051,7 +3051,8 @@ export function createMeasurementClone(element, host = null) {
 /**
  * The second half of `createMeasurementClone`, for a copy of `element` the
  * caller has made itself: dress it in the element's resolved style, with
- * its transform, transitions and animations switched off, and park it.
+ * its transform, transitions and animations switched off (`copyStillStyle`),
+ * and park it.
  *
  * @template {HTMLElement | SVGElement} T
  * @param {T} element
@@ -3060,11 +3061,8 @@ export function createMeasurementClone(element, host = null) {
  * @returns {T}
  */
 function parkMeasurementClone(element, clone, host) {
-  copyResolvedStyle(element, clone);
+  copyStillStyle(element, clone);
   clone.removeAttribute(PORTAL_ATTRIBUTE);
-  clone.style.setProperty("transform", "none", "important");
-  clone.style.setProperty("transition", "none", "important");
-  clone.style.setProperty("animation", "none", "important");
   clone.style.setProperty("visibility", "hidden", "important");
   const parked = host ?? clone;
   parked.style.setProperty("position", "absolute", "important");
@@ -3079,18 +3077,24 @@ function parkMeasurementClone(element, clone, host) {
 
 /**
  * Write every resolved style of `element` onto `clone` inline, so that the
- * clone is laid out as the element is wherever it is put.
+ * clone is laid out as the element is wherever it is put, and switch its
+ * transform, transitions and animations off. An animation would start
+ * again on the clone at its first keyframe, and an animated value beats an
+ * inline one that is not `!important`.
  *
  * @param {HTMLElement | SVGElement} element
  * @param {HTMLElement | SVGElement} clone
  * @returns {void}
  */
-function copyResolvedStyle(element, clone) {
+function copyStillStyle(element, clone) {
   const computed = window.getComputedStyle(element);
   for (let i = 0; i < computed.length; i++) {
     const property = computed[i];
     clone.style.setProperty(property, computed.getPropertyValue(property));
   }
+  clone.style.setProperty("transform", "none", "important");
+  clone.style.setProperty("transition", "none", "important");
+  clone.style.setProperty("animation", "none", "important");
 }
 
 /**
@@ -3461,17 +3465,16 @@ function measureRevealLayout(text, range, frame, boundsRect, lines, offsets) {
  * is not where the browser broke them — so the measurement runs against a
  * detached untransformed copy instead.
  *
- * The copy is of the box the text's lines are laid out in: the parent, or,
- * when the parent is inline, the nearest ancestor that is not, since only a
- * box has a width the lines break against. The climb stops at the panel's
- * root, whatever its `display`. Under that box the copy holds the path down
- * to the text and, at each level of it, the siblings before it, which
- * decide where its first line starts. The siblings after it are left out,
- * so that measuring each text in a paragraph does not copy the paragraph
- * once per text. They move the text's lines only where a word runs on
- * across the text's end with no space to break at, or where something
- * taller shares its last line. The box at the top and every element on the
- * path keep their resolved style, so a selector that reaches above the box
+ * The copy is of the box the text's lines are laid out in: the parent, or
+ * the nearest ancestor that does not split across lines
+ * (`splitsAcrossLines`), since a box that does has no width of its own for
+ * the lines to break against. The climb stops at the panel's root, whatever
+ * its `display`. The copy holds everything that box lays out, because what
+ * comes after the text places it too: it aligns the text's last line, takes
+ * space from it in a flex or grid box, and decides where a word running on
+ * across the text's end breaks. The box at the top and every element on the
+ * path down to the text keep their resolved style, with their transforms,
+ * transitions and animations off, so a selector that reaches above the box
  * still sizes the text. The copy is never scrolled, so what it reports is
  * already the content-space position the live path computes.
  *
@@ -3529,10 +3532,10 @@ function cloneLinePath(text, parentElement, lineBox) {
 }
 
 /**
- * One level of `cloneLinePath`: a shallow copy of `element` holding copies
- * of the children before `child`, then `childCopy`. Below the line box the
- * copy is dressed in the element's resolved style; the line box itself is
- * dressed when it is parked.
+ * One level of `cloneLinePath`: a shallow copy of `element` holding a copy
+ * of each of its children, `childCopy` in the place of `child`. Below the
+ * line box the copy is dressed in the element's still style; the line box
+ * itself is dressed when it is parked.
  *
  * @param {HTMLElement} element
  * @param {Node} child A child of `element`.
@@ -3542,16 +3545,11 @@ function cloneLinePath(text, parentElement, lineBox) {
  */
 function copyPathLevel(element, child, childCopy, lineBox) {
   const copy = /** @type {HTMLElement} */ (element.cloneNode(false));
-  for (
-    let sibling = element.firstChild;
-    sibling && sibling !== child;
-    sibling = sibling.nextSibling
-  ) {
-    copy.appendChild(sibling.cloneNode(true));
+  for (const node of element.childNodes) {
+    copy.appendChild(node === child ? childCopy : node.cloneNode(true));
   }
-  copy.appendChild(childCopy);
   if (element !== lineBox) {
-    copyResolvedStyle(element, copy);
+    copyStillStyle(element, copy);
   }
   return copy;
 }

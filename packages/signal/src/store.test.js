@@ -509,7 +509,7 @@ test("an object the program assigns is the program's, key by key", () => {
   assert.ok(isStore(kept.a), "the program's object stays where the definition has a value");
 });
 
-test("an object assigned over a nested store is the program's, key by key", () => {
+test("an object assigned over a nested store marks the keys it changes", () => {
   const kept = /** @type {any} */ (store({ layout: { width: 1, height: 2 } }));
   trackWrites(kept);
   const nested = kept.layout;
@@ -517,9 +517,28 @@ test("an object assigned over a nested store is the program's, key by key", () =
   assert.strictEqual(kept.layout, nested, "assigned into the store the key holds");
   reshape(kept, { layout: { width: 3, height: 4 } });
   assert.strictEqual(kept.layout.width, 10, "a key that changed is the program's");
-  assert.strictEqual(kept.layout.height, 2, "and so is one replace() found unchanged");
+  assert.strictEqual(kept.layout.height, 4, "one it left as it was is the source's");
   reshape(kept, { layout: 5 });
-  assert.strictEqual(kept.layout, nested, "as is the key the object was assigned to");
+  assert.strictEqual(kept.layout, 5, "and so is the key it sits at, which holds the same store");
+});
+
+test("an object assignment that changes nothing marks nothing", () => {
+  const kept = /** @type {any} */ (store({ layout: { width: 1, height: 2 }, x: 1 }));
+  trackWrites(kept);
+  kept.layout = { width: 1, height: 2 };
+  reshape(kept, { layout: { width: 3, height: 4 }, x: 2 });
+  assert.deepStrictEqual({ ...kept.layout }, { width: 3, height: 4 });
+  reshape(kept, { x: 2 });
+  assert.strictEqual("layout" in kept, false);
+});
+
+test("a key an assigned object holds undefined for is not the program's", () => {
+  const kept = /** @type {any} */ (store({ layout: { width: 1 } }));
+  trackWrites(kept);
+  kept.layout = { width: 1, depth: undefined };
+  assert.deepStrictEqual(Reflect.ownKeys(kept.layout), ["width"]);
+  reshape(kept, { layout: { width: 1, depth: 3 } });
+  assert.strictEqual(kept.layout.depth, 3, "the source adds the key");
 });
 
 test("a store the definition adds records writes like its parent", () => {

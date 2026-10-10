@@ -297,16 +297,14 @@ function store(data, operators = []) {
           // We need to use non-reactive version of isPlainObject to prevent accidentally creating
           // a circular dependency on oldValue should it be a store itself.
           if (isPlainObjectNoComputation(oldValue)) {
-            // The program assigned the whole object over the nested store the
-            // key holds, so the key and every data key it assigned are the
-            // program's, the ones `replace` finds unchanged included.
-            internals.touched?.add(key);
+            // Written into the nested store key by key, whose traps mark the
+            // keys the object changes. This key holds the same store as
+            // before, so it is not marked, as no unchanged key is.
             replace(oldValue, newValue);
-            own(/** @type {Internals} */ (internalsOf(oldValue)), newValue);
             return true;
           }
-          // The program wrote the whole object, so every key of the store
-          // made of it is the program's.
+          // The key held no store, so the one made of the object is new and
+          // every key of it is a change the program made.
           newValue = nestedStore(internals, newValue, true);
         }
         if (Object.is(state[key], newValue)) {
@@ -386,11 +384,14 @@ function store(data, operators = []) {
  * `@apendua/vite-hmr` calls it on every store a module exports, once the
  * export's initialiser has evaluated. A write to a key with a getter or a
  * setter is not state and marks nothing. A write that changes nothing, or a
- * delete of a key the store does not have, marks nothing. An object the
- * program assigns to a key becomes a store whose every key is the program's.
- * A reload records nothing, since `reshape` writes state directly rather
- * than through the proxy, and clears the mark of a key it gives an accessor
- * to.
+ * delete of a key the store does not have, marks nothing. A write marks the
+ * keys whose value it changes, at whatever depth: an object assigned to a
+ * key that held no store becomes a new store, every key of which is a
+ * change, and one assigned over a nested store is written into it key by
+ * key and marks the keys it changes there, not the key it sits at, which
+ * holds the same store. A reload records nothing, since `reshape` writes
+ * state directly rather than through the proxy, and clears the mark of a key
+ * it gives an accessor to.
  *
  * Only a write through the store is seen. A value the program mutates in
  * place, a `Map` or a `Set` it fills, an array it pushes to, an instance
@@ -414,7 +415,8 @@ export function trackWrites(target) {
 /**
  * Start recording the program's writes to a store and to every store nested
  * in it. `owned` marks every data key as written already: for a store made
- * of an object the program assigned, whose keys are all the program's. A
+ * of an object the program assigned where no store was, every key of which
+ * is a change. A
  * store already recording keeps its marks, and so do the stores nested in
  * it, which it reached when it started; an owned store is freshly built and
  * never already recording.
@@ -435,31 +437,6 @@ function track(internals, owned) {
     const nested = internalsOf(state[key]);
     if (nested) {
       track(nested, owned);
-    }
-  }
-}
-
-/**
- * Mark every data key `value` assigns to a store as the program's, when the
- * store records writes. `replace` has written them already and marked the
- * ones that changed; the program assigned the whole object, so the rest are
- * its too. The keys are the enumerable own ones, which `Object.assign` copies.
- *
- * @param {Internals} internals
- * @param {object} value
- */
-function own(internals, value) {
-  const { touched, getters, setters } = internals;
-  if (!touched) {
-    return;
-  }
-  for (const key of Reflect.ownKeys(value)) {
-    if (
-      Object.prototype.propertyIsEnumerable.call(value, key) &&
-      !getters.has(key) &&
-      !setters.has(key)
-    ) {
-      touched.add(key);
     }
   }
 }

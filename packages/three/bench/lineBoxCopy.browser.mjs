@@ -56,6 +56,7 @@ const PAGE = `<!doctype html>
   .card { width: 300px; padding: 12px; transform: rotate(-4deg); }
 </style>
 <script type="module">
+  import { Effect } from "@apendua/signal";
   import { createMirror, getTextLayout } from "/packages/freedom/src/elements/mirror.js";
 
   function buildCard(sentences) {
@@ -94,9 +95,12 @@ const PAGE = `<!doctype html>
     card.getBoundingClientRect();
     const started = performance.now();
     let lines = 0;
-    for (const text of which === "all" ? texts : texts.slice(0, 1)) {
-      lines += getTextLayout(text).lines.length;
-    }
+    // Held by effects, as the mirror holds a layout, and let go of at the
+    // end, which is what removes the copy they shared.
+    const readers = (which === "all" ? texts : texts.slice(0, 1)).map(
+      (text) => new Effect(() => (lines += getTextLayout(text).lines.length)),
+    );
+    readers.forEach((reader) => reader.dispose());
     await new Promise((done) => setTimeout(done, 0));
     const ms = performance.now() - started;
     card.remove();

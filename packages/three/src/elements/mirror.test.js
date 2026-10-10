@@ -77,6 +77,26 @@ function stubMeasuringRange({ onSelect, rect } = {}) {
 }
 
 /**
+ * Read `text`'s layout the way the mirror does, from an effect that holds it
+ * until `dispose`, so that what the layout reads is held with it.
+ *
+ * @param {Text} text
+ */
+function holdTextLayout(text) {
+  /** @type {import("./mirror.js").TextLayout | undefined} */
+  let layout;
+  const effect = new Effect(() => {
+    layout = getTextLayout(text);
+  });
+  return {
+    get layout() {
+      return /** @type {import("./mirror.js").TextLayout} */ (layout);
+    },
+    dispose: () => effect.dispose(),
+  };
+}
+
+/**
  * @param {Element} element
  * @param {() => number} top
  */
@@ -793,7 +813,7 @@ describe("measured geometry", () => {
 });
 
 describe("text layout under transforms", () => {
-  test("a transformed parent is measured through a clone, and the clone is cleaned up", async () => {
+  test("a transformed parent is measured through a clone, and the clone is cleaned up", () => {
     // jsdom implements no Range geometry; a minimal stand-in lets the clone
     // path run to completion. It records which trees were measured.
     /** @type {Node[]} */
@@ -812,8 +832,8 @@ describe("text layout under transforms", () => {
 
     const childrenBefore = document.body.childElementCount;
     try {
-      const layout = getTextLayout(textNode);
-      assert.deepEqual(layout.lines, []);
+      const held = holdTextLayout(textNode);
+      assert.deepEqual(held.layout.lines, []);
       // The measurement ran against a clone's text, not the live node…
       assert.equal(measured.length, 1);
       assert.notEqual(measured[0], textNode);
@@ -821,8 +841,8 @@ describe("text layout under transforms", () => {
       // …the live parent was never touched — no attributes, no style writes
       // a `transition: transform` could smooth into a lie…
       assert.equal(parent.style.transform, "matrix(2, 0, 0, 2, 0, 0)");
-      // …and the clone did not outlive the task's microtasks.
-      await Promise.resolve();
+      // …and the clone did not outlive the last reader of the layout.
+      held.dispose();
       assert.equal(document.body.childElementCount, childrenBefore);
     } finally {
       parent.remove();
@@ -834,13 +854,12 @@ describe("text layout under transforms", () => {
    * Measure `text` through `getTextLayout` with the range stubbed, and
    * report the copy it was measured in, read while the copy is still in
    * the document: its text node, and the top of it, the child of the body
-   * it was parked as. Resolves once the task's microtasks have run, and the
-   * copy is gone.
+   * it was parked as. The copy is gone by the time this returns.
    *
    * @param {Text} text
    * @param {() => DOMRectReadOnly} [rect]
    */
-  async function measureThroughCopy(text, rect) {
+  function measureThroughCopy(text, rect) {
     /** @type {Array<{ text: Node, root: HTMLElement }>} */
     const copies = [];
     const restoreRange = stubMeasuringRange({
@@ -855,11 +874,12 @@ describe("text layout under transforms", () => {
     });
     const childrenBefore = document.body.childElementCount;
     try {
-      const layout = getTextLayout(text);
+      const held = holdTextLayout(text);
+      const layout = held.layout;
+      held.dispose();
       assert.equal(copies.length, 1);
       assert.notEqual(copies[0].text, text);
       assert.equal(copies[0].text.textContent, text.textContent);
-      await Promise.resolve();
       assert.equal(document.body.childElementCount, childrenBefore);
       return { layout, ...copies[0] };
     } finally {
@@ -890,14 +910,14 @@ describe("text layout under transforms", () => {
     return { card, label, textNode };
   }
 
-  test("text in an inline parent is measured in a copy of the box its lines are in", async () => {
+  test("text in an inline parent is measured in a copy of the box its lines are in", () => {
     // The span's computed width is `auto`, so a copy of the span alone would
     // be laid out in the body with nothing to wrap against, and its text
     // would come back on one line. The copy has to be of the card, whose
     // width the lines break at.
     const { card, textNode } = tiltedCard("a note long enough to wrap");
     try {
-      const { text, root } = await measureThroughCopy(textNode);
+      const { text, root } = measureThroughCopy(textNode);
       const label = /** @type {HTMLElement} */ (text.parentNode);
       assert.equal(label.localName, "span");
       assert.equal(label.parentNode, root);
@@ -909,12 +929,12 @@ describe("text layout under transforms", () => {
     }
   });
 
-  test("the copy holds everything the line box lays out, after the text too", async () => {
+  test("the copy holds everything the line box lays out, after the text too", () => {
     // What follows the text places it: it aligns the last line, takes space
     // in a flex box, and decides where a word running on past it breaks.
     const { card, textNode } = tiltedCard("a note");
     try {
-      const { root } = await measureThroughCopy(textNode);
+      const { root } = measureThroughCopy(textNode);
       assert.deepEqual(
         Array.from(root.children, (child) => child.localName),
         ["i", "span", "b"],
@@ -924,14 +944,14 @@ describe("text layout under transforms", () => {
     }
   });
 
-  test("the inline parent's animations and transitions are off in the copy", async () => {
+  test("the inline parent's animations and transitions are off in the copy", () => {
     // An animation would start again on the copy at its first keyframe and
     // beat the resolved value copied onto it.
     const { card, label, textNode } = tiltedCard("a note");
     label.style.animation = "grow 2s infinite";
     label.style.transition = "letter-spacing 1s";
     try {
-      const { text } = await measureThroughCopy(textNode);
+      const { text } = measureThroughCopy(textNode);
       const copy = /** @type {HTMLElement} */ (text.parentNode);
       for (const property of ["animation", "transition"]) {
         assert.equal(copy.style.getPropertyValue(property), "none", property);
@@ -942,7 +962,7 @@ describe("text layout under transforms", () => {
     }
   });
 
-  test("the inline parent keeps its resolved style in the copy", async () => {
+  test("the inline parent keeps its resolved style in the copy", () => {
     // A rule that reaches above the card matches the live span and not the
     // span in a copy parked in the body, so what it sets is copied over.
     const style = document.createElement("style");
@@ -958,7 +978,7 @@ describe("text layout under transforms", () => {
         window.getComputedStyle(/** @type {Element} */ (textNode.parentElement)).letterSpacing,
         "3px",
       );
-      const { text } = await measureThroughCopy(textNode);
+      const { text } = measureThroughCopy(textNode);
       assert.equal(/** @type {HTMLElement} */ (text.parentNode).style.letterSpacing, "3px");
     } finally {
       desk.remove();
@@ -966,7 +986,7 @@ describe("text layout under transforms", () => {
     }
   });
 
-  test("the text's position is read against its own parent in the copy", async () => {
+  test("the text's position is read against its own parent in the copy", () => {
     // The span starts 30px into the page and the card 10px; the text starts
     // at 50px. Measured against the span, as the untransformed path does, it
     // sits 20px in; against the card it would sit 40px in.
@@ -977,10 +997,7 @@ describe("text layout under transforms", () => {
       return new window.DOMRect(left, 0, 100, 20);
     };
     try {
-      const { layout } = await measureThroughCopy(
-        textNode,
-        () => new window.DOMRect(50, 4, 40, 12),
-      );
+      const { layout } = measureThroughCopy(textNode, () => new window.DOMRect(50, 4, 40, 12));
       assert.deepEqual({ left: layout.left, top: layout.top }, { left: 20, top: 4 });
     } finally {
       window.HTMLElement.prototype.getBoundingClientRect = original;
@@ -1021,7 +1038,7 @@ describe("text layout under transforms", () => {
     for (const node of [card, label, inLabel, inCard, bold, inBold, box, inner, inBox]) {
       mirror.adopt(node);
     }
-    return { card, texts: { inLabel, inCard, inBold, inBox } };
+    return { card, mirror, texts: { inLabel, inCard, inBold, inBox } };
   }
 
   /**
@@ -1043,15 +1060,42 @@ describe("text layout under transforms", () => {
     return { roots, restore };
   }
 
-  test("texts measured in one task share one copy of their line box", async () => {
+  /**
+   * Tell `mirror` what `change` does to the DOM, as the portal's observer
+   * would: the records a `MutationObserver` takes of it, ingested in a batch.
+   *
+   * @param {ReturnType<typeof createMirror>} mirror
+   * @param {() => void} change
+   */
+  function changeAndIngest(mirror, change) {
+    const observer = new window.MutationObserver(() => {});
+    observer.observe(document.body, {
+      subtree: true,
+      childList: true,
+      attributes: true,
+      attributeOldValue: true,
+      characterData: true,
+      characterDataOldValue: true,
+    });
+    change();
+    const records = observer.takeRecords();
+    observer.disconnect();
+    batch(() => mirror.ingest(records));
+  }
+
+  test("the texts of one line box share its copy, across tasks", async () => {
     // Measured in a copy each, the texts of a paragraph copy it once per
-    // text. One copy serves the pass, and a box of its own gets its own.
+    // text, and a portal measures a panel a frame at a time. One copy serves
+    // the box for as long as its texts are read, and a box of its own gets
+    // its own.
     const { card, texts } = cardOfTexts();
     const { roots, restore } = recordCopies();
     const childrenBefore = document.body.childElementCount;
     try {
-      for (const text of [texts.inLabel, texts.inCard, texts.inBold, texts.inBox]) {
-        getTextLayout(text);
+      const held = [holdTextLayout(texts.inLabel)];
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      for (const text of [texts.inCard, texts.inBold, texts.inBox]) {
+        held.push(holdTextLayout(text));
       }
       assert.equal(roots.length, 4);
       assert.equal(roots[0].className, "card");
@@ -1059,61 +1103,109 @@ describe("text layout under transforms", () => {
       assert.equal(roots[2], roots[0]);
       assert.equal(roots[3].localName, "em");
       assert.equal(document.body.childElementCount, childrenBefore + 2);
-      // The pass ends at the task's microtask checkpoint, and so do the copies.
-      await Promise.resolve();
-      assert.equal(document.body.childElementCount, childrenBefore);
+      // A copy goes when the last text reading it lets go.
+      held[0].dispose();
+      held[1].dispose();
+      assert.equal(roots[0].isConnected, true);
+      held[2].dispose();
       assert.equal(roots[0].isConnected, false);
+      held[3].dispose();
+      assert.equal(document.body.childElementCount, childrenBefore);
     } finally {
       card.remove();
       restore();
     }
   });
 
-  test("a change to the page ends the pass, and the next text gets a fresh copy", async () => {
-    const { card, texts } = cardOfTexts();
+  test("a change in the box rebuilds its copy, and a change elsewhere does not", () => {
+    const { card, mirror, texts } = cardOfTexts();
     const elsewhere = document.createElement("div");
+    const inside = document.createElement("span");
+    elsewhere.appendChild(inside);
     document.body.appendChild(elsewhere);
+    mirror.adopt(elsewhere);
+    mirror.adopt(inside);
     const { roots, restore } = recordCopies();
+    const held = [holdTextLayout(texts.inLabel), holdTextLayout(texts.inCard)];
     try {
-      getTextLayout(texts.inLabel);
-      // A change inside the box: the copy no longer matches it.
-      card.appendChild(document.createElement("u"));
-      getTextLayout(texts.inCard);
-      assert.notEqual(roots[1], roots[0]);
+      assert.equal(roots.length, 2);
+      // A change elsewhere in the page moves nothing the copy holds.
+      changeAndIngest(mirror, () => inside.setAttribute("data-moved", ""));
+      assert.equal(roots.length, 2);
+      // A change inside the box does, as deep in it as it is: both texts
+      // are measured again, in a copy that has it, and the old copy is gone.
+      const label = /** @type {HTMLElement} */ (texts.inLabel.parentElement);
+      changeAndIngest(mirror, () => label.appendChild(document.createElement("u")));
+      assert.equal(roots.length, 4);
+      assert.notEqual(roots[2], roots[0]);
+      assert.equal(roots[3], roots[2]);
+      assert.equal(roots[2].querySelector(".label")?.lastElementChild?.localName, "u");
       assert.equal(roots[0].isConnected, false);
-      assert.equal(roots[1].lastElementChild?.localName, "u");
-      // A change anywhere else in the page ends it too.
-      elsewhere.setAttribute("data-moved", "");
-      getTextLayout(texts.inBold);
-      assert.notEqual(roots[2], roots[1]);
-      await Promise.resolve();
     } finally {
+      held.forEach((reader) => reader.dispose());
       card.remove();
       elsewhere.remove();
       restore();
     }
   });
 
-  test("a measurement's own parked nodes do not end the pass", async () => {
-    // An SVG label measured between two texts parks a clone and removes it.
-    const { card, texts } = cardOfTexts();
-    const other = document.createElement("div");
-    document.body.appendChild(other);
+  test("a copy outlives what changes nothing it holds", async () => {
+    // A portal adopts a panel a node at a time, frame after frame, and the
+    // ray writes a hover flag on every element it crosses. Neither moves
+    // what the copy was made from, so neither rebuilds it, even when the
+    // one makes the box be read again with the other in it.
+    const card = document.createElement("div");
+    card.style.transform = "matrix(0.996, 0.087, -0.087, 0.996, 0, 0)";
+    const first = document.createTextNode("first ");
+    const link = document.createElement("a");
+    const second = document.createTextNode("second");
+    link.appendChild(second);
+    card.append(first, link);
+    document.body.appendChild(card);
+    const mirror = createMirror();
+    mirror.adopt(card);
+    mirror.adopt(first);
     const { roots, restore } = recordCopies();
+    const held = [holdTextLayout(first)];
     try {
-      getTextLayout(texts.inLabel);
-      createMeasurementClone(other).remove();
-      getTextLayout(texts.inCard);
-      assert.equal(roots[1], roots[0]);
+      changeAndIngest(mirror, () => link.setAttribute("data-xr-hover", ""));
+      // The rest of the box is adopted after the copy was made, and the
+      // adoption is announced a microtask later.
+      mirror.adopt(link);
+      mirror.adopt(second);
       await Promise.resolve();
+      held.push(holdTextLayout(second));
+      assert.equal(roots.length, 2);
+      assert.equal(roots[1], roots[0]);
+      assert.equal(roots[0].isConnected, true);
     } finally {
+      held.forEach((reader) => reader.dispose());
       card.remove();
-      other.remove();
       restore();
     }
   });
 
-  test("every element laid out in the box's lines keeps its resolved style", async () => {
+  test("an attribute changed above the box rebuilds its copy", () => {
+    // `.desk.night .card b` can restyle what is in the box from outside it.
+    const desk = document.createElement("div");
+    const { card, mirror, texts } = cardOfTexts();
+    desk.appendChild(card);
+    document.body.appendChild(desk);
+    mirror.adopt(desk);
+    const { roots, restore } = recordCopies();
+    const held = holdTextLayout(texts.inLabel);
+    try {
+      changeAndIngest(mirror, () => desk.setAttribute("class", "night"));
+      assert.equal(roots.length, 2);
+      assert.notEqual(roots[1], roots[0]);
+    } finally {
+      held.dispose();
+      desk.remove();
+      restore();
+    }
+  });
+
+  test("every element laid out in the box's lines keeps its resolved style", () => {
     // Shared by every text in the box, the copy dresses each inline element
     // in it, not only the path to the first text measured: which text came
     // first must not change what the others are measured against. What is
@@ -1127,8 +1219,8 @@ describe("text layout under transforms", () => {
     desk.appendChild(card);
     document.body.appendChild(desk);
     const { roots, restore } = recordCopies();
+    const held = holdTextLayout(texts.inLabel);
     try {
-      getTextLayout(texts.inLabel);
       const copy = roots[0];
       assert.equal(
         /** @type {HTMLElement} */ (copy.querySelector(".other")).style.letterSpacing,
@@ -1138,15 +1230,15 @@ describe("text layout under transforms", () => {
         /** @type {HTMLElement} */ (copy.querySelector(".inner")).style.letterSpacing,
         "",
       );
-      await Promise.resolve();
     } finally {
+      held.dispose();
       desk.remove();
       style.remove();
       restore();
     }
   });
 
-  test("the climb to the line box stops at the panel's root", async () => {
+  test("the climb to the line box stops at the panel's root", () => {
     // An inline panel root with an inline element under it: the box the
     // lines are in would be the page's `<div>` above the root, which no
     // portal mirrors. The copy stops at the root, and drops the attribute
@@ -1166,7 +1258,7 @@ describe("text layout under transforms", () => {
     mirror.adopt(bold);
     mirror.adopt(textNode);
     try {
-      const { root: copy } = await measureThroughCopy(textNode);
+      const { root: copy } = measureThroughCopy(textNode);
       assert.equal(copy.localName, "span");
       assert.equal(copy.hasAttribute(PORTAL_ATTRIBUTE), false);
     } finally {

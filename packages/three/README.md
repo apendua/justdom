@@ -1291,9 +1291,10 @@ content enjoys, because client rects come back with the transform already applie
 transform is measured against a detached, untransformed copy of the box its lines are laid out in
 instead: its parent, or the nearest ancestor that does not split across lines (`splitsAcrossLines`
 in `mirror.js`), with everything that box lays out. One copy of a box serves every text measured in
-it in the same task, so a paragraph is copied once rather than once per text in it. Its line boxes
-and positions are exact whatever the transform — including full 3D rotations — without the
-measurement ever touching the live elements or the transitions playing on them.
+it until something it was copied from changes, so a paragraph is copied once rather than once per
+text in it, across however many frames the panel is measured in. Its line boxes and positions are
+exact whatever the transform — including full 3D rotations — without the measurement ever touching
+the live elements or the transitions playing on them.
 
 ## Animation
 

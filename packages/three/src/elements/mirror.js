@@ -1,4 +1,12 @@
-import { addDependency, batch, Derived, fromEvent, NoValueError, Signal } from "@apendua/signal";
+import {
+  addDependency,
+  batch,
+  Derived,
+  fromEvent,
+  NoValueError,
+  onCleanup,
+  Signal,
+} from "@apendua/signal";
 import { Subject } from "@apendua/signal";
 import {
   buildCharacterEdges,
@@ -426,7 +434,7 @@ function splitsAcrossLines(element) {
 
 /**
  * `splitsAcrossLines` for a `display` the caller has read itself, as the
- * line box copy does without subscribing to it (`copyLineBox`).
+ * line box copy does without subscribing to it (`pairLaidOut`).
  *
  * @param {Element} element
  * @param {string} display
@@ -3082,19 +3090,9 @@ function parkMeasurementClone(element, clone, host) {
   if (host) {
     host.appendChild(clone);
   }
-  parkedNodes.add(parked);
   document.body.appendChild(parked);
   return clone;
 }
-
-/**
- * Everything `parkMeasurementClone` has put in the body, so that the line box
- * copies' observer can tell a measurement's own nodes coming and going from
- * a change to the page (`pageChanged`).
- *
- * @type {WeakSet<Node>}
- */
-const parkedNodes = new WeakSet();
 
 /**
  * Write every resolved style of `element` onto `clone` inline, so that the
@@ -3498,9 +3496,8 @@ function measureRevealLayout(text, range, frame, boundsRect, lines, offsets) {
  * the nearest ancestor that does not split across lines
  * (`splitsAcrossLines`), since a box that does has no width of its own for
  * the lines to break against. The climb stops at the panel's root, whatever
- * its `display`. One copy of a box serves every text measured in it while
- * it lasts; `lineBoxCopies` says how long that is, and `copyLineBox` what
- * the copy holds. The copy is never scrolled, so what it reports is already
+ * its `display`. One copy of a box serves every text measured in it, for as
+ * long as `getLineBoxCopy` keeps it. The copy is never scrolled, so what it reports is already
  * the content-space position the live path computes.
  *
  * @param {Text} text
@@ -3522,7 +3519,9 @@ function measureTextLayout(text) {
   while (!isPortalRoot(lineBox) && lineBox.parentElement && splitsAcrossLines(lineBox)) {
     lineBox = lineBox.parentElement;
   }
-  const cloneText = findInLineBoxCopy(lineBox, text);
+  // Every text in the box is in its copy, and a text added since the copy
+  // was made has rebuilt it.
+  const cloneText = /** @type {Text} */ (getLineBoxCopy(lineBox).texts.get(text));
   const cloneParent = /** @type {HTMLElement} */ (cloneText.parentElement);
   return measureTextRects(cloneText, cloneParent, whiteSpace, false, revealed);
 }
@@ -3534,151 +3533,150 @@ function measureTextLayout(text) {
  *   live text.
  */
 
-/**
- * The line box copies the texts under a transform are being measured in, by
- * the live box. A copy is made once and shared because measuring each of the
- * `n` texts in a paragraph in a copy of its own copies the paragraph `n`
- * times, and a browser lays out each copy (`bench/lineBoxCopy.bench.mjs`).
- * Its rules:
- *
- * - **Made** when a text is measured in a box that has no copy, and parked
- *   in the body as `createMeasurementClone` parks one.
- * - **Shared** by every text measured in that box after it, until the pass
- *   ends. A pass starts with the first copy made while none is held.
- * - **The pass ends** at the microtask checkpoint after it started, or,
- *   before a copy is shared, as soon as the page has changed since the pass
- *   started (`pageChanged`). Ending removes every copy and stops the
- *   observer. A text measured after that starts a new pass.
- * - **The observer does not see** a change made without touching the DOM: a
- *   stylesheet edited through the CSSOM, a font that finished loading, the
- *   viewport resized. None of these lands between two measurements in one
- *   task unless the page's own script makes it in the middle of the
- *   mirror's work, and the next task measures in a new pass.
- *
- * @type {Map<HTMLElement, LineBoxCopy>}
- */
-const lineBoxCopies = new Map();
+/** @type {WeakMap<HTMLElement, Derived<LineBoxCopy>>} */
+const lineBoxCopyCache = nodeCache();
 
 /**
- * What has changed in the document since the pass started, read
- * synchronously with `takeRecords`. Observing only while copies are held.
+ * The copy of `lineBox` the texts laid out in its lines are measured in under
+ * a transform. One copy serves them all, because measuring each of the `n`
+ * texts of a paragraph in a copy of its own copies the paragraph `n` times,
+ * and a browser lays out each copy (`bench/lineBoxCopy.bench.mjs`). Its
+ * rules are the rules of a cached read:
  *
- * @type {MutationObserver | null}
- */
-let lineBoxCopyObserver = null;
-
-/**
- * The copy of `text` in the copy of `lineBox` this pass holds, made if
- * there is none.
+ * - **Made** when the first text in the box is measured, and parked in the
+ *   body as `createMeasurementClone` parks one.
+ * - **Shared** by every text measured in the box while it lasts, whichever
+ *   task or frame measures it: a portal measures a panel a frame budget at a
+ *   time.
+ * - **Rebuilt** when what it was copied from changes: the box's shape
+ *   (`getLineBoxShape`), or anything that would re-measure the box from
+ *   above, which its reflow context and its size say. Between them they
+ *   cover a stylesheet, a font, the viewport and an ancestor's attributes.
+ *   The portal's presentational flags, hover and press, change none of them,
+ *   just as they re-measure no text. A font that finished loading rebuilds
+ *   nothing the copy holds, but the copy is laid out by the browser like the
+ *   page is, and is re-measured in it with the rest.
+ * - **Removed** when it is rebuilt, and when the last text reading it lets
+ *   go of it.
  *
- * @param {HTMLElement} lineBox
- * @param {Text} text Laid out in `lineBox`'s lines.
- * @returns {Text}
- */
-function findInLineBoxCopy(lineBox, text) {
-  if (lineBoxCopies.size > 0 && pageChanged()) {
-    releaseLineBoxCopies();
-  }
-  let copy = lineBoxCopies.get(lineBox);
-  if (!copy) {
-    copy = copyLineBox(lineBox);
-    if (lineBoxCopies.size === 0) {
-      // Observing from after the first copy is parked, so that parking it
-      // is not taken for a change to the page.
-      lineBoxCopyObserver = new window.MutationObserver(() => {});
-      lineBoxCopyObserver.observe(document, {
-        subtree: true,
-        childList: true,
-        attributes: true,
-        characterData: true,
-      });
-      queueMicrotask(releaseLineBoxCopies);
-    }
-    lineBoxCopies.set(lineBox, copy);
-  }
-  // Every text in the box is in its copy, and a text added since the copy
-  // was made would have ended the pass.
-  return /** @type {Text} */ (copy.texts.get(text));
-}
-
-/**
- * Whether anything in the document has changed since the pass started,
- * other than the measurements' own parked nodes coming, going, or changing.
- *
- * @returns {boolean}
- */
-function pageChanged() {
-  const records = lineBoxCopyObserver?.takeRecords() ?? [];
-  return records.some((record) => {
-    if (record.type === "childList" && record.target === document.body) {
-      return ![...record.addedNodes, ...record.removedNodes].every((node) => parkedNodes.has(node));
-    }
-    for (let node = /** @type {Node | null} */ (record.target); node; node = node.parentNode) {
-      if (parkedNodes.has(node)) {
-        return false;
-      }
-    }
-    return true;
-  });
-}
-
-/**
- * End the pass: remove every line box copy and stop observing.
- *
- * @returns {void}
- */
-function releaseLineBoxCopies() {
-  for (const { root } of lineBoxCopies.values()) {
-    root.remove();
-  }
-  lineBoxCopies.clear();
-  lineBoxCopyObserver?.disconnect();
-  lineBoxCopyObserver = null;
-}
-
-/**
- * A copy of `lineBox` and everything in it, parked, with the copy of each
- * text in it.
- *
- * The copy holds everything the box lays out, because what comes after a
- * text places it too: it aligns the text's last line, takes space from it in
- * a flex or grid box, and decides where a word running on across the text's
- * end breaks. The box and every element whose content is laid out in the
- * box's lines (one that splits across lines, inside others that do) keep
- * their resolved style, with their transforms, transitions and animations
- * off, so a selector that reaches above the box still sizes them. Everything
- * else is copied as `createMeasurementClone` copies descendants, with its
- * classes only: a selector that reaches above the box does not style it,
- * and its animations start again, either of which can move a text in a
- * centred or flex line box.
- *
- * `display` is read here without subscribing to it, since the copy is made
- * inside the measurement of whichever text came first and shared by the
- * rest: each text depends on its own climb, in `measureTextLayout`.
+ * A reader that is not itself read by anything, as a test may be, builds the
+ * copy afresh on every read, and the build it leaves is removed at the next.
  *
  * @param {HTMLElement} lineBox
  * @returns {LineBoxCopy}
  */
-function copyLineBox(lineBox) {
-  const root = /** @type {HTMLElement} */ (lineBox.cloneNode(true));
-  /** @type {Map<Text, Text>} */
-  const texts = new Map();
-  pairLaidOut(lineBox, root, texts);
-  return { root: parkMeasurementClone(lineBox, root, null), texts };
+function getLineBoxCopy(lineBox) {
+  let signal = lineBoxCopyCache.get(lineBox);
+  if (!signal) {
+    signal = new Derived(() => {
+      getLineBoxShape(lineBox);
+      getReflowContext(lineBox);
+      getBorderBoxSize(lineBox);
+      const copy = /** @type {HTMLElement} */ (lineBox.cloneNode(true));
+      /** @type {Map<Text, Text>} */
+      const texts = new Map();
+      pairLaidOut(lineBox, copy, texts, true);
+      const root = parkMeasurementClone(lineBox, copy, null);
+      onCleanup(() => root.remove());
+      return { root, texts };
+    });
+    lineBoxCopyCache.set(lineBox, signal);
+  }
+  return signal.get();
+}
+
+/** @type {WeakMap<HTMLElement, Derived<string>>} */
+const lineBoxShapeCache = nodeCache();
+
+/**
+ * What a copy of `lineBox` is made of, as one string: the elements and texts
+ * in it, in order, with the characters of every text and the attributes of
+ * every element, the portal's presentational and bookkeeping ones aside.
+ *
+ * The string is the copy's equality gate. Reading the box node by node
+ * depends on each node's adoption as well as on its content, and a portal
+ * adopts a panel a node at a time, frame after frame: built straight from
+ * those reads, the copy was rebuilt for every node adopted while it was
+ * mounting. Compared as a string, an adoption, or a hover flag, reads the box
+ * again for the same answer and stops there.
+ *
+ * @param {HTMLElement} lineBox
+ * @returns {string}
+ */
+function getLineBoxShape(lineBox) {
+  let signal = lineBoxShapeCache.get(lineBox);
+  if (!signal) {
+    signal = new Derived(() => {
+      /** @type {string[]} */
+      const parts = [];
+      describeShape(lineBox, parts);
+      return parts.join("");
+    });
+    lineBoxShapeCache.set(lineBox, signal);
+  }
+  return signal.get();
+}
+
+/**
+ * Append `node`'s children to the description `getLineBoxShape` builds,
+ * depending on each: on the child list, on a text's characters, and on an
+ * element's reflow context, which a change to one of its attributes bumps
+ * unless the portal declares the attribute presentational. Every length is
+ * written before what it measures, so that no text can pass for markup.
+ *
+ * @param {Node} node
+ * @param {string[]} parts
+ * @returns {void}
+ */
+function describeShape(node, parts) {
+  getChildNodes(node);
+  for (let child = node.firstChild; child; child = child.nextSibling) {
+    if (child.nodeType === Node.TEXT_NODE) {
+      const data = getTextDataCached(/** @type {Text} */ (child));
+      parts.push(`#${data.length}:${data}`);
+    } else if (child.nodeType === Node.ELEMENT_NODE) {
+      const element = /** @type {Element} */ (child);
+      getReflowContext(element);
+      parts.push(`<${element.localName}`);
+      for (const { name, value } of element.attributes) {
+        if (!PRESENTATIONAL_ATTRIBUTES.has(name) && !PORTAL_BOOKKEEPING_ATTRIBUTES.has(name)) {
+          parts.push(` ${name}=${value.length}:${value}`);
+        }
+      }
+      parts.push(">");
+      describeShape(element, parts);
+      parts.push("</>");
+    }
+  }
 }
 
 /**
  * Walk `live` and its copy side by side: pair up the texts, and dress each
  * element whose content is laid out in the line box's lines.
  *
+ * The box and every element whose content is laid out in its lines (one that
+ * splits across lines, inside others that do) keep their resolved style,
+ * with their transforms, transitions and animations off, so a selector that
+ * reaches above the box still sizes them, and which text was measured first
+ * does not change what the others are measured against. Everything else is
+ * copied as `createMeasurementClone` copies descendants, with its classes
+ * only: a selector that reaches above the box does not style it, and its
+ * animations start again, either of which can move a text in a centred or
+ * flex line box.
+ *
+ * Nothing here is a dependency. The copy depends on what `getLineBoxCopy`
+ * reads, and `display` is read straight from the computed style: through
+ * `splitsAcrossLines` every element's style would be one, and a hover flag
+ * restyles the element it lands on.
+ *
  * @param {Node} live
  * @param {Node} copy `live.cloneNode(true)`, or a part of one.
  * @param {Map<Text, Text>} texts
- * @param {boolean} [laidOut] Whether `live`'s content is laid out in the
- *   line box's lines, as the box's own is.
+ * @param {boolean} laidOut Whether `live`'s content is laid out in the line
+ *   box's lines, as the box's own is.
  * @returns {void}
  */
-function pairLaidOut(live, copy, texts, laidOut = true) {
+function pairLaidOut(live, copy, texts, laidOut) {
   for (
     let child = live.firstChild, childCopy = copy.firstChild;
     child && childCopy;

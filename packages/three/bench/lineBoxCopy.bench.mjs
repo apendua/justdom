@@ -18,9 +18,11 @@
  * The paragraph is a tilted card holding a `<p>` of `n` sentences, each a
  * `<b>` holding a word and then plain text: `2n` texts, half with the `<p>`
  * as their parent and half with a `<b>`. "all" measures every text in one
- * task, as a panel mounting the card does; "one" measures the first text
- * alone, as a single label changing does.
+ * task, as a box re-measured after a layout change is; "one" measures the
+ * first text alone, as a single label changing does. Each layout is held by
+ * an effect while it is read, as the mirror holds it.
  */
+import { Effect } from "@apendua/signal";
 import { createMirror, getTextLayout } from "../src/elements/mirror.js";
 
 const SIZES = [10, 50, 100, 200, 400];
@@ -142,10 +144,12 @@ async function run(sentences, which) {
   stylesCopied = 0;
   copiesParked = 0;
   const started = performance.now();
-  for (const text of which === "all" ? texts : texts.slice(0, 1)) {
-    getTextLayout(text);
-  }
-  // Whatever the measurement leaves for the end of the task is part of it.
+  // Each layout is held by an effect, as the mirror holds it, and let go of
+  // at the end, which is what removes the copy the layouts shared.
+  const readers = (which === "all" ? texts : texts.slice(0, 1)).map(
+    (text) => new Effect(() => getTextLayout(text)),
+  );
+  readers.forEach((reader) => reader.dispose());
   await new Promise((resolve) => setTimeout(resolve, 0));
   const ms = performance.now() - started;
   card.remove();

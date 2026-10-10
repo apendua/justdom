@@ -237,6 +237,18 @@ describe("svg style reading", () => {
       assert.equal(parsePoints("a b"), null);
     });
 
+    test("a points list stops at the first thing that is not a number, as a browser's does", () => {
+      assert.deepEqual(parsePoints("0,0 x 10,10"), [0, 0], "a word ends the list");
+      assert.deepEqual(parsePoints("0,0 --5,5"), [0, 0], "so does a doubled sign");
+      assert.deepEqual(parsePoints("0,0 1e999,5 10,10"), [0, 0], "and a number past finite");
+      assert.equal(parsePoints("1e,2 3,4"), null, "an exponent with no digits ends it at once");
+      assert.deepEqual(
+        parsePoints("0,0 10,10,"),
+        [0, 0, 10, 10],
+        "a trailing comma keeps the pairs",
+      );
+    });
+
     test("two readings are equal when every number is", () => {
       /** @type {import("./style.js").ShapeGeometry} */
       const polygon = { kind: "polygon", points: [0, 0, 10, 0] };

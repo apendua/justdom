@@ -370,23 +370,47 @@ export function shapeGeometryEqual(a, b) {
 }
 
 /**
- * A number in a `points` list, as SVG's grammar writes one. The numbers
- * are separated by spaces, by a comma with or without spaces around it, or
- * by nothing at all where a sign or a second decimal point starts the next
- * one (`10-5`, `0.5.5`).
+ * A number in a `points` list, as SVG's grammar writes one, matched only
+ * where the scan stands.
  */
-const POINTS_NUMBER = /[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?/g;
+const POINTS_NUMBER = /[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?/y;
+
+/**
+ * What separates two numbers in a `points` list: spaces, a comma with or
+ * without spaces around it, or nothing at all where a sign or a second
+ * decimal point starts the next number (`10-5`, `0.5.5`).
+ */
+const POINTS_SEPARATOR = /\s*,?\s*/y;
 
 /**
  * A `points` list read as SVG reads it: the coordinates in order, two to a
- * vertex, with an odd last one dropped. Null for a list with not one whole
- * pair in it, which draws nothing.
+ * vertex. The scan stops at the first token that is not a number or a
+ * separator, or at a number too large to be finite, and keeps the whole
+ * pairs read before it, as Chromium's `SVGPointList::Parse` does; an odd
+ * last number goes with it. Null for a list with not one whole pair in it,
+ * which draws nothing.
  *
  * @param {string} value
  * @returns {number[] | null}
  */
 export function parsePoints(value) {
-  const numbers = Array.from(value.matchAll(POINTS_NUMBER), ([match]) => Number(match));
+  /** @type {number[]} */
+  const numbers = [];
+  POINTS_SEPARATOR.lastIndex = 0;
+  POINTS_SEPARATOR.exec(value);
+  let at = POINTS_SEPARATOR.lastIndex;
+  while (at < value.length) {
+    POINTS_NUMBER.lastIndex = at;
+    const match = POINTS_NUMBER.exec(value);
+    const number = match ? Number(match[0]) : Number.NaN;
+    if (!Number.isFinite(number)) {
+      break;
+    }
+    numbers.push(number);
+    POINTS_SEPARATOR.lastIndex = POINTS_NUMBER.lastIndex;
+    POINTS_SEPARATOR.exec(value);
+    at = POINTS_SEPARATOR.lastIndex;
+  }
   if (numbers.length % 2 === 1) {
     numbers.pop();
   }

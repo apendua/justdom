@@ -18,9 +18,9 @@
  * since a stylesheet may select on it through `+` or `~`. The "transform"
  * column is an inline `style.transform` written on the first row, the motion
  * a gauge writes every frame, which moves no box and so should cost the row
- * and not the list. The "loading"
- * column is the portal's own flag toggled on its container, above every
- * element in the panel, and should cost nothing: the mirror drops it.
+ * and not the list. The "loading" column is the portal's own flag toggled on
+ * its container, above every element in the panel, and should cost nothing:
+ * the mirror drops it.
  *
  * Run with:
  *   node --import ./src/test/setup-jsdom.js src/elements/mirror.bench.js

@@ -18,6 +18,7 @@ import {
   trimLineRange,
 } from "./textLines.js";
 import { isSvgElement, isSvgRoot } from "./plugins.js";
+import { classify } from "./animationClock.js";
 import { clipBoxEqual, intersectClipBoxes, toLocalClipBox, UNCLIPPED } from "./clip.js";
 import {
   ACTIVE_ATTRIBUTE,
@@ -311,49 +312,11 @@ function isSelfScoped(element, name) {
 }
 
 /**
- * The CSS properties that move no box: an inline `style` write that changes
- * nothing else restyles the element and re-measures its own subtree, which a
- * transform moves, but leaves the layout around it alone. This is what keeps
- * a gauge that writes `style.transform` every frame at the cost of its own
- * subtree, where a width written the same way settles the panel.
- *
- * A property not in this set climbs, and so does anything the parse below
- * cannot read, a custom property included, since a `var()` may feed a width.
- */
-const PAINT_ONLY_PROPERTIES = new Set([
-  "transform",
-  "transform-origin",
-  "translate",
-  "rotate",
-  "scale",
-  "opacity",
-  "visibility",
-  "z-index",
-  "cursor",
-  "color",
-  "background",
-  "background-color",
-  "background-image",
-  "background-position",
-  "background-size",
-  "border-color",
-  "border-top-color",
-  "border-right-color",
-  "border-bottom-color",
-  "border-left-color",
-  "outline",
-  "outline-color",
-  "box-shadow",
-  "filter",
-  "fill",
-  "stroke",
-]);
-
-/**
  * An inline style's declarations, by property name. A declaration with no
- * colon keeps its text as its name, which no set of property names holds,
- * so a value the split cuts in two, a `data:` URL with a `;` in it say,
- * reads as a change that moves boxes.
+ * colon keeps its text as its name, which `classify` reads as layout. So a
+ * value the split cuts in two, a `data:` URL with a `;` in it say, reads as
+ * a change that moves boxes when the cut part changed, and as no change when
+ * it is the same before and after.
  *
  * @param {string | null} text
  * @returns {Map<string, string>}
@@ -379,7 +342,12 @@ function readDeclarations(text) {
 
 /**
  * Whether an inline style that went from `before` to `after` changed only
- * properties in `PAINT_ONLY_PROPERTIES`, added, removed or rewritten.
+ * properties that move no box, added, removed or rewritten: the ones the
+ * animation clock classes as paint or transform (`classify`), with the same
+ * default, an unknown property moves layout. This is what keeps a gauge that
+ * writes `style.transform` every frame at the cost of its own subtree, where
+ * a width written the same way settles the panel. A custom property moves
+ * layout too, since a `var()` may feed a width.
  *
  * @param {string | null} before
  * @param {string | null} after
@@ -389,12 +357,12 @@ function paintsOnly(before, after) {
   const was = readDeclarations(before);
   const now = readDeclarations(after);
   for (const [name, value] of now) {
-    if (was.get(name) !== value && !PAINT_ONLY_PROPERTIES.has(name)) {
+    if (was.get(name) !== value && classify(name) === "layout") {
       return false;
     }
   }
   for (const name of was.keys()) {
-    if (!now.has(name) && !PAINT_ONLY_PROPERTIES.has(name)) {
+    if (!now.has(name) && classify(name) === "layout") {
       return false;
     }
   }
@@ -1262,8 +1230,7 @@ export class DomMirror {
    *   style the label beside it. See `isSelfScoped`.
    * @param {boolean} [options.paintOnly] Whether the change is an inline
    *   style that moved no box, so the element's subtree re-measures and the
-   *   layout around it is not settled. False by default. See
-   *   `PAINT_ONLY_PROPERTIES`.
+   *   layout around it is not settled. False by default. See `paintsOnly`.
    * @returns {void}
    */
   attributeChanged(
@@ -1681,7 +1648,10 @@ export class DomMirror {
    * what makes appending to a list cost the same whether the list has ten
    * rows or a thousand: the arriving row is the last child, and there is
    * nothing after it to tell. Prepending still costs the whole list, which is
-   * right — everything in it moved.
+   * right — everything in it moved. A flex row keeps the claim for where its
+   * items start and not for their sizes, so an attribute change there names
+   * no child and the whole row hears it; a child-list or text change in one
+   * does not yet (see `FlowMode`).
    *
    * @param {Map<Element, Node | null>} containers
    * @returns {void}
@@ -1754,7 +1724,9 @@ export class DomMirror {
    *
    * `from` is a hint the container has to be able to honour: it is only obeyed
    * where the children are laid out in document order from a fixed start
-   * edge, and a `from` that is no longer a child of the element — the node
+   * edge, which in a flex row holds for where they start and not for their
+   * sizes (see `FlowMode`), and a `from` that is no longer a child of the
+   * element — the node
    * that named it having been removed by a later record in the same flush —
    * is no hint at all. Either way the fallback is the whole list, which is
    * what this always did.
@@ -1918,7 +1890,11 @@ function earlierOf(a, b) {
  * - `"flex"` — children are placed one after another in document order from a
  *   fixed start edge, but the cross axis is the container's to hand out:
  *   `stretch` and `align-items` mean a container that changed height changed
- *   its children with it.
+ *   its children with it. The order holds for where a child starts and not
+ *   for its size: the items share the main axis, so one that grows can
+ *   shrink the items before it. `attributeChanged` tells the whole row for
+ *   that reason; a child arriving or text rewritten does not yet (the plan's
+ *   "Found along the way").
  * - `"block"` — the same order, and the block axis is nobody's business but
  *   each child's own. A block container that got taller got taller *because*
  *   of its children, and stacking them from the top is all it ever does.
@@ -1934,7 +1910,8 @@ const flowModeCache = nodeCache();
  *
  * Two claims rest on this, and the distinction between them is what the three
  * answers are for. The first is that a change at one child cannot move the
- * children *before* it — a narrower claim than it sounds, since plenty of
+ * children *before* it, which a flex row keeps only for where they start
+ * (see `FlowMode`) — a narrower claim than it sounds, since plenty of
  * ordinary containers place their children from the far end, or from the
  * middle, or in an order of their own: adding a row to a `justify-content:
  * center` list moves every row already in it, and adding one to a

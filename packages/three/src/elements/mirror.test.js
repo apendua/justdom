@@ -2632,6 +2632,15 @@ describe("layout boundaries", () => {
       mirror.ingest([styled("width: 200px; transform: scaleX(0.6); opacity: 0.5;")]);
       assert.equal(reads.label, before + 1, "a width moved the label");
 
+      bar.style.removeProperty("width");
+      mirror.ingest([styled("width: 180px; transform: scaleX(0.6); opacity: 0.5;")]);
+      assert.equal(reads.label, before + 2, "a width taken out moved it too");
+
+      // The whole attribute goes, and what it held moved no box.
+      bar.removeAttribute("style");
+      mirror.ingest([styled("transform: scaleX(0.6); opacity: 0.5;")]);
+      assert.equal(reads.label, before + 2, "a style of paint alone taken out moved nothing");
+
       holder.dispose();
     } finally {
       container.remove();

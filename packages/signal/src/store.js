@@ -1,4 +1,4 @@
-import { addDependency, withComputation } from "./core.js";
+import { activeComputation, addDependency, withComputation } from "./core.js";
 import { Derived } from "./Derived.js";
 import { Signal } from "./Signal.js";
 import { batch } from "./scheduler.js";
@@ -7,6 +7,7 @@ import { useEffects } from "./operators.js";
 import { isPlainObject } from "./util.js";
 
 /**
+ * @import {ComputationLike} from "./core.js"
  * @import {EntityEffect} from "./types.js"
  * @import {IEmitter} from "./Emitter.js";
  */
@@ -29,8 +30,10 @@ import { isPlainObject } from "./util.js";
  *   `Derived`.
  * @property {(key: PropertyKey) => void} announce
  * @property {symbol} ownKeys The key the key set's readers depend on.
- * @property {number} mutating How many of the array methods in
- *   `arrayMutators` are running on the store. See there for what it changes.
+ * @property {ComputationLike | null | undefined} mutator The computation
+ *   that called the array method in `arrayMutators` running on the store,
+ *   `null` for a call outside any, and `undefined` while none runs. See
+ *   there for what it changes.
  * @property {Set<PropertyKey> | null} touched The data keys the program has
  *   written or deleted through the proxy since `trackWrites` was called,
  *   which `reshape` keeps. `null` until then, so a store nobody reloads
@@ -95,25 +98,31 @@ export function emit(data, event, payload) {
 }
 
 /**
- * The array methods that change the array they are called on, each run on
- * the store as one batch with the store's `mutating` count raised. The
- * method itself is the native one, called on the proxy, so every key it
- * reads and writes goes through the store's traps.
+ * The array methods that change the array they are called on. On a store,
+ * each runs as one batch with the store's `mutator` set to the computation
+ * that called it. The method itself is the native one, called on the proxy,
+ * so every key it reads and writes goes through the store's traps. Called
+ * on anything but a store, it is the native method and nothing more.
  *
  * One batch, because a method writes several keys, an index or two and
  * `length` for a `push`, every index for a `sort`, and a reader of more than
  * one must see the array once it is done rather than once per key.
  *
- * While `mutating` is raised, the store's traps record no read of its own
- * keys, since each method reads the array it writes, its `length` at least,
- * and an `Effect` that pushes would otherwise depend on the `length` it
- * writes and run again on its own push. A read of anything else, a `sort`
- * comparator's read of an element store, is recorded as any read is, so an
- * effect that sorts follows what it sorts by. And a value written while it
- * is raised always makes a new store at its index, never a write into the
- * store found there: `unshift` and `splice` copy an element up before they
- * write the index it came from, so that store is the one now held one index
- * on.
+ * While `mutator` is set, the store's traps record no read of its own keys
+ * by the computation that called the method, since each method reads the
+ * array it writes, its `length` at least, and an `Effect` that pushes would
+ * otherwise depend on the `length` it writes and run again on its own push.
+ * Every other read is recorded as any read is: the caller's read of another
+ * store, such as a `sort` comparator's read of an element store, so an
+ * effect that sorts follows what it sorts by, and any read by a computation
+ * that evaluates while the method runs, such as a getter the comparator
+ * reads, whose `Derived` is a computation of its own.
+ *
+ * And a plain object or an array written while `mutator` is set always
+ * makes a new store at its index, never a write into the store found there:
+ * `unshift` and `splice` copy an element up before they write the index it
+ * came from, so that store is the one now held one index on. A store is held
+ * as itself, as at any time, which is what lets `sort` or `shift` move one.
  *
  * @type {Map<PropertyKey, (this: unknown[], ...args: unknown[]) => unknown>}
  */
@@ -133,15 +142,19 @@ for (const name of [
     Reflect.get(Array.prototype, name)
   );
   arrayMutators.set(name, function (...args) {
-    const internals = /** @type {Internals} */ (internalsOf(this));
-    // Lowered inside the batch, before it drains: an effect the method
+    const internals = internalsOf(this);
+    if (!internals) {
+      return method.apply(this, args);
+    }
+    // Restored inside the batch, before it drains: an effect the method
     // queued re-runs after it, and its reads of the store are its own.
     return batch(() => {
-      internals.mutating += 1;
+      const previous = internals.mutator;
+      internals.mutator = activeComputation;
       try {
         return method.apply(this, args);
       } finally {
-        internals.mutating -= 1;
+        internals.mutator = previous;
       }
     });
   });
@@ -334,14 +347,14 @@ function store(data, operators = []) {
   };
 
   /**
-   * Record a read of `key` in the running computation, unless one of the
-   * store's own array methods made it. See `arrayMutators`.
+   * Record a read of `key` in the running computation, unless it is the one
+   * that called an array method running on the store. See `arrayMutators`.
    *
    * @param {PropertyKey} key
    * @returns {void}
    */
   const dependOn = (key) => {
-    if (internals.mutating === 0) {
+    if (internals.mutator !== activeComputation) {
       addDependency(getChangesAtKey(key));
     }
   };
@@ -373,7 +386,7 @@ function store(data, operators = []) {
     definition: undefined,
     announce,
     ownKeys,
-    mutating: 0,
+    mutator: undefined,
     touched: null,
   };
 
@@ -446,7 +459,12 @@ function store(data, operators = []) {
         if (kind) {
           const oldValue = state[key];
           const nested = internalsOf(oldValue);
-          if (nested && isOfKind(nested, kind) && !isStore(newValue) && internals.mutating === 0) {
+          if (
+            nested &&
+            isOfKind(nested, kind) &&
+            !isStore(newValue) &&
+            internals.mutator === undefined
+          ) {
             // Written into the nested store key by key, whose traps mark the
             // keys the value changes. This key holds the same store as
             // before, so it is not marked, as no unchanged key is.
@@ -671,12 +689,12 @@ function nestedStore(internals, value, owned) {
  * getter that builds a new object on each call re-runs them on every
  * reshape. A kept key re-runs nobody.
  *
- * `definition` is a plain object, or a store, which stands for its getters
- * and setters and the values it holds now. For a store made of an array it
- * is an array, or an array store. A store keeps the kind it was made with,
- * so a definition of the other kind throws, and for an array store its type
- * refuses one too. This is the whole of a hot reload
- * of a store; `replace` is an assignment and belongs to the running program.
+ * `definition` is a plain object, or a store, which stands for its getters and
+ * setters and the values it holds now. For a store made of an array it is an
+ * array, or an array store. A store keeps the kind it was made with, so a
+ * definition of the other kind throws, and for an array store its type refuses
+ * one too. This is the whole of a hot reload of a store; `replace` is an
+ * assignment and belongs to the running program.
  *
  * A key with a setter and no getter reads `undefined`, as it does when
  * `store()` makes it: a write to it goes to the setter, never to `state`.

@@ -1286,3 +1286,28 @@ test("reshape() of an array store refuses an object by its type", () => {
   // @ts-expect-error An array store takes an array.
   assert.throws(() => reshape(list, {}), /reshape\(\) takes a definition of the store's kind/);
 });
+
+test("a getter read inside an array method still follows the array", () => {
+  const state = store({
+    items: [{ n: 2 }, { n: 1 }],
+    get count() {
+      return this.items.length;
+    },
+  });
+  new Effect(() => {
+    state.items.sort((a, b) => {
+      void state.count;
+      return a.n - b.n;
+    });
+  });
+  state.items.push({ n: 3 });
+  assert.strictEqual(state.count, 3);
+});
+
+test("an array method taken off its store runs on what it is called on", () => {
+  const { push } = store([1]);
+  /** @type {number[]} */
+  const plain = [];
+  push.call(plain, 2);
+  assert.deepStrictEqual(plain, [2]);
+});

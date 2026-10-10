@@ -182,8 +182,8 @@ export function isBookkeepingMutation(mutation) {
  * mirrored, and the mirror will go on drawing the boxes at the size they had.
  *
  * A second, narrower contract applies to some of them but not all — see
- * `SELF_SCOPED_ATTRIBUTES` below, which is where the sibling combinators are
- * decided.
+ * `SELF_SCOPED_ATTRIBUTES` below, and `isSelfScoped`, which is where the
+ * sibling combinators are decided.
  *
  * The contract is worth the narrowness because of what it buys. These are by
  * far the most frequent mutations a panel sees — the ray writes one on every
@@ -252,15 +252,19 @@ const SELF_SCOPED_ATTRIBUTES = new Set(["data-xr-hover", "data-xr-active", "data
 
 /**
  * The attributes that place and size what SVG draws, self-scoped on any
- * element inside an `<svg>` root. Only an attribute selector on the value
- * itself, `[cx="3"] ~ circle`, could carry one to a sibling, and nobody
- * writes those. A drawing that moves writes them on every frame, on many
- * shapes at once, and under the ordinary scope each write restyled every
- * shape and label under the same parent.
+ * element inside an `<svg>` root by contract, as hover is. An attribute
+ * selector on the value itself, `[cx="3"] ~ circle`, would carry one to a
+ * sibling, and the mirror does not follow it. A drawing that moves writes
+ * these on every frame, on many shapes at once, and under the ordinary
+ * scope each write restyled every shape and label under the same parent.
+ * `dx`, `dy` and `rotate` place the characters of a `<text>`, and
+ * `transform` is how a group or a shape usually moves.
  *
  * Not on the root: its `width` and `height` size a CSS box in the page's
  * flow, as they do an `<img>`'s, and on HTML they are an author's
- * attributes like any other.
+ * attributes like any other. An `<svg>` directly inside a `<foreignObject>`
+ * is laid out the same way, but the portal draws nothing under a
+ * `<foreignObject>`, so what its siblings would restyle is never drawn.
  */
 const SVG_GEOMETRY_ATTRIBUTES = new Set([
   "x",
@@ -278,11 +282,16 @@ const SVG_GEOMETRY_ATTRIBUTES = new Set([
   "ry",
   "d",
   "points",
+  "dx",
+  "dy",
+  "rotate",
+  "transform",
 ]);
 
 /**
- * Whether a change of `name` on `element` is declared unable to restyle a
- * sibling. See `SELF_SCOPED_ATTRIBUTES` and `SVG_GEOMETRY_ATTRIBUTES`.
+ * Whether a change of `name` on `element` is declared, by contract, unable
+ * to restyle a sibling. See `SELF_SCOPED_ATTRIBUTES` and
+ * `SVG_GEOMETRY_ATTRIBUTES`.
  *
  * @param {Element} element
  * @param {string} name
@@ -1631,11 +1640,12 @@ export class DomMirror {
    *   restyle `node`'s siblings as well as its own subtree. True by
    *   default: an author's mutation can change which rules match across
    *   `~`, `+` and the structural pseudo-classes, and those reach exactly
-   *   that far. False for the changes that provably cannot move a
-   *   selector's verdict on a sibling — see `isSelfScoped` and
-   *   `animatedStyles` — which is what keeps hovering one row in a long
-   *   list off every other row in it, and moving one shape of a drawing
-   *   off every other shape in it.
+   *   that far. False for the changes that cannot move a selector's
+   *   verdict on a sibling, an animation (`animatedStyles`), and for the
+   *   ones declared not to by contract (`isSelfScoped`), whose sibling
+   *   rules are not followed. That is what keeps hovering one row in a
+   *   long list off every other row in it, and moving one shape of a
+   *   drawing off every other shape in it.
    * @returns {void}
    */
   #restyleScope(node, { reachesSiblings = true } = {}) {

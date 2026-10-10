@@ -556,17 +556,20 @@ Two things about a portal are worth knowing before writing UI for one.
 writes `data-xr-*` back onto the elements the ray is on, so re-measuring the panel on every
 attribute mutation would mean re-laying-out the whole thing on every twitch of the ray. Every
 attribute is followed: a class, an inline style, an app's own `data-*` or `aria-*` flag, an SVG
-shape's `d` or `fill`. Changing one restyles the element, its subtree and its siblings, and
-repaints; the one thing it re-measures is the element's own subtree, which is what a toggled
-`transform` moves (see below), and nothing outside it. So anything that changes _layout_ — a menu
-opening, a section expanding — has to be mounted and unmounted rather than hidden and shown.
+shape's `d` or `fill`. Changing one restyles the element, its subtree and its siblings (apart from
+the SVG geometry below, which stops at the element), and repaints; the one thing it re-measures is
+the element's own subtree, which is what a toggled `transform` moves (see below), and nothing
+outside it. So anything that changes _layout_ — a menu opening, a section expanding — has to be
+mounted and unmounted rather than hidden and shown.
 
-Inside an `<svg>`, the attributes that place and size a shape — `x`, `y`, `width`, `height`, `x1`,
-`y1`, `x2`, `y2`, `cx`, `cy`, `r`, `rx`, `ry`, `d` and `points` — restyle the element and its
-subtree but not its siblings, the way hover does below. A rule like `circle[cx="3"] ~ circle` is not
-followed. A drawing that moves writes these on many shapes every frame, and a restyle of every
-sibling for each one cost the whole drawing. On the `<svg>` root itself, `width` and `height` size a
-box in the page, and reach its siblings as any author's attribute does.
+Inside an `<svg>`, the attributes that place and size what it draws — `x`, `y`, `width`, `height`,
+`x1`, `y1`, `x2`, `y2`, `cx`, `cy`, `r`, `rx`, `ry`, `d`, `points`, `dx`, `dy`, `rotate` and
+`transform` — restyle the element and its subtree but not its siblings, the way hover does below. A
+rule like `circle[cx="3"] ~ circle` is not followed. A drawing that moves writes these on many
+shapes every frame, and a restyle of every sibling for each one cost the whole drawing. On the
+`<svg>` root itself, `width` and `height` size a box in the page, and reach its siblings as any
+author's attribute does. An `<svg>` directly inside a `<foreignObject>` is laid out the same way,
+but nothing under a `<foreignObject>` is drawn, so its siblings have nothing to restyle.
 
 **Hover and press are presentational, by contract.** The four attributes the portal writes itself —
 `data-xr-hover`, `data-xr-active`, `data-xr-checked` and `data-xr-focus` — restyle the panel but are

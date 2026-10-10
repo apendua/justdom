@@ -130,13 +130,13 @@ export function invert(m) {
  * A rect with no area, a line or one inverted as `intersectRects` leaves
  * two that share nothing, stays one with no area: `UNBOUNDED` short on each
  * axis of where its first corner lands, as far as the clip patch's open
- * box reaches the other way. So does any rect under a
- * matrix that flattens the plane. Inverted that far and not a point, since
- * the clip patch antialiases its edge over a pixel: a point, or a rect
- * inverted by a unit, leaves the pixels near it partly drawn when a panel
- * is drawn small, and one inverted by a million leaves none. A clip that holds
- * nothing then holds nothing in every frame it is carried to, where the
- * bounding box of its corners would have area under a turn.
+ * box reaches the other way. So does any rect under a matrix that flattens
+ * the plane. Inverted that far and not a point, since the clip patch
+ * antialiases its edge over a pixel: a point, or a rect inverted by a unit,
+ * leaves the pixels near it partly drawn when a panel is drawn small, and
+ * one inverted by a million leaves none. A clip that holds nothing then
+ * holds nothing in every frame it is carried to, where the bounding box of
+ * its corners would have area under a turn.
  *
  * @param {Matrix2D} m
  * @param {Rect} rect

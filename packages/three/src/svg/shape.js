@@ -260,14 +260,15 @@ const DESCRIPTIVE_TAGS = new Set(["title", "desc", "metadata"]);
  * the transforms on the two and by `clipPathUnits`. Under `userSpaceOnUse`
  * a percentage is of the viewport around the `<clipPath>`, whatever names
  * it, as a browser resolves the rect's lengths. One defined inside a
- * `<symbol>` or a `<marker>`, which Chrome does not take as a clip at all,
- * resolves against the viewport above the template, since the walk is not
- * told an instance to stop at. Under `objectBoundingBox`
- * the units are `box`, the element's box in the space the rect is in, and
- * an element with none is not clipped. For a template drawn somewhere
- * else, a `<symbol>`, a `<marker>` or an `<svg>` a `<use>` draws, the box
- * is the copy's, the one it is given where it is drawn, and not the
- * template's where it is defined, which a browser never lays out. A rect
+ * `<symbol>` or a `<marker>` resolves against the viewport above the
+ * template, since the walk is not told an instance to stop at. Chrome
+ * resolves one in a `<marker>` the same way, and does not take one in a
+ * `<symbol>` as a clip at all. Under `objectBoundingBox` the units are
+ * `box`, the element's box in the space the rect is in, and an element
+ * with none is not clipped. For a template drawn somewhere else, a
+ * `<symbol>`, a `<marker>` or an `<svg>` a `<use>` draws, the box is the
+ * copy's, the one it is given where it is drawn, and not the template's
+ * where it is defined, which a browser never lays out. A rect
  * with no area clips everything away, as a browser's empty clip does, and
  * so does an `objectBoundingBox` clip on an element whose box has no width
  * or height, which flattens the rect. The rect's `rx` and `ry` are not

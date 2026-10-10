@@ -1,6 +1,7 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
+import { UNBOUNDED } from "../elements/clip.js";
 import { createMirror } from "../elements/mirror.js";
 import { drawShape, drawUse } from "./template.js";
 
@@ -684,7 +685,7 @@ function clipBoxOf(mesh) {
 
 describe("viewport clips", () => {
   /** What the clip box holds for nothing clipped. */
-  const OPEN = [-1e6, -1e6, 1e6, 1e6];
+  const OPEN = [-UNBOUNDED, -UNBOUNDED, UNBOUNDED, UNBOUNDED];
 
   test("a nested svg clips what is inside it to its viewport, in the root's px", () => {
     const rect = svg("rect", { width: "100", height: "100", fill: "red" });
@@ -885,7 +886,7 @@ describe("viewport clips", () => {
 
 describe("clip-path", () => {
   /** What the clip box holds for nothing clipped. */
-  const OPEN = [-1e6, -1e6, 1e6, 1e6];
+  const OPEN = [-UNBOUNDED, -UNBOUNDED, UNBOUNDED, UNBOUNDED];
 
   /**
    * A `<clipPath>` holding what it is given, with a fresh id.

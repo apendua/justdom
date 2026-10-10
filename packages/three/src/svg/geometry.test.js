@@ -1,6 +1,7 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
+import { UNBOUNDED } from "../elements/clip.js";
 
 /**
  * @import { Matrix2D, Rect } from "./geometry.js";
@@ -98,8 +99,8 @@ describe("svg geometry", () => {
     assert.deepEqual(transformRect(turn, { left: 0, top: 0, right: 0, bottom: 0 }), {
       left: 0,
       top: 0,
-      right: -1e6,
-      bottom: -1e6,
+      right: -UNBOUNDED,
+      bottom: -UNBOUNDED,
     });
   });
 

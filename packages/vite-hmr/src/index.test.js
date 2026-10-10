@@ -576,6 +576,33 @@ describe("a state export", () => {
     assert.strictEqual(next.invalidation({ settings, scores, clicks, theme }), null);
   });
 
+  test("an array store is kept, and takes the new elements until the program writes to it", () => {
+    const hot = fakeHot();
+    const levels = reload(hot, "levels", store([{ name: "a" }, { name: "b" }]));
+    const first = levels[0];
+    /** @type {string[]} */
+    const seen = [];
+    const a = new Effect(() => {
+      seen.push(levels.map((level) => level.name).join(","));
+    });
+    assert.strictEqual(reload(hot, "levels", store([{ name: "a" }, { name: "c" }])), levels);
+    assert.strictEqual(levels[0], first, "an element store is reshaped in place");
+    levels.push({ name: "d" });
+    reload(hot, "levels", store([{ name: "x" }]));
+    assert.deepStrictEqual(seen, ["a,b", "a,c", "a,c,d"], "what the program pushed stays");
+    a.dispose();
+  });
+
+  test("a store that changed kind cannot be taken in place", () => {
+    const hot = fakeHot();
+    reload(hot, "thing", store({ a: 1 }));
+    const next = $hmr(hot);
+    const replaced = next.reloadable("thing", store([1]));
+    next.commit();
+    assert.ok(Array.isArray(replaced), "the new definition is what the new module gets");
+    assert.match(String(next.invalidation({ thing: replaced })), /thing cannot be replaced/);
+  });
+
   test("state that changed shape cannot be taken in place", () => {
     const hot = fakeHot();
     reload(hot, "thing", Signal.of(1));

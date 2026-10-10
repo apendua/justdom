@@ -14,7 +14,10 @@ import { isPlainObject } from "./util.js";
 /**
  * @typedef {object} Internals
  * @property {Emitter<Record<PropertyKey, unknown>>} emitter
- * @property {Record<PropertyKey, unknown>} state
+ * @property {Record<PropertyKey, unknown>} state An array for a store made
+ *   of one, a plain object otherwise.
+ * @property {boolean} array Whether `state` is an array. A store keeps the
+ *   kind it was made with.
  * @property {Map<PropertyKey, () => unknown>} getters
  * @property {Map<PropertyKey, (value: unknown) => void>} setters
  * @property {Map<PropertyKey, Derived<unknown>>} derived
@@ -90,6 +93,75 @@ export function emit(data, event, payload) {
 }
 
 /**
+ * The array methods that change the array they are called on, each run on
+ * the store as one batch outside any computation. One batch, because a
+ * method writes several keys, an index or two and `length` for a `push`,
+ * every index for a `sort`, and a reader of more than one must see the
+ * array once it is done rather than once per key. Outside any computation,
+ * because each of them reads the array too, its `length` at least, and an
+ * `Effect` that pushes would otherwise depend on the `length` it writes
+ * and run again on its own push. The method itself is the native one,
+ * called on the proxy, so every key it writes goes through the store's
+ * traps as any other write does.
+ *
+ * @type {Map<PropertyKey, (this: unknown[], ...args: unknown[]) => unknown>}
+ */
+const arrayMutators = new Map();
+for (const name of [
+  "copyWithin",
+  "fill",
+  "pop",
+  "push",
+  "reverse",
+  "shift",
+  "sort",
+  "splice",
+  "unshift",
+]) {
+  const method = /** @type {(this: unknown[], ...args: unknown[]) => unknown} */ (
+    Reflect.get(Array.prototype, name)
+  );
+  arrayMutators.set(name, function (...args) {
+    return batch(() => withComputation(null, () => method.apply(this, args)));
+  });
+}
+
+/**
+ * Which kind of store `value` is, or is made into when a store holds it: an
+ * array for an array, which has no prototype but `Array.prototype`, and an
+ * object for a plain object. Anything else, a `Map`, a typed array, an
+ * instance, is held as it is. Reads no key of `value` reactively.
+ *
+ * @param {unknown} value
+ * @returns {"array" | "object" | undefined}
+ */
+function storeKindOf(value) {
+  if (typeof value !== "object" || value === null) {
+    return undefined;
+  }
+  const internals = internalsOf(value);
+  if (internals) {
+    return internals.array ? "array" : "object";
+  }
+  if (Array.isArray(value)) {
+    return Object.getPrototypeOf(value) === Array.prototype ? "array" : undefined;
+  }
+  return isPlainObjectNoComputation(value) ? "object" : undefined;
+}
+
+/**
+ * Whether the store of `internals` is of `kind`, so that a value of that
+ * kind is written into it, or reshapes it, in place.
+ *
+ * @param {Internals} internals
+ * @param {"array" | "object" | undefined} kind
+ * @returns {boolean}
+ */
+function isOfKind(internals, kind) {
+  return kind !== undefined && internals.array === (kind === "array");
+}
+
+/**
  * @param {object} value
  */
 function ownKeysNoComputation(value) {
@@ -128,15 +200,23 @@ function bump(version) {
  * setter; and to the key itself otherwise. `oldValue`'s getters and setters
  * stay as they are, which only `reshape` changes.
  *
- * @param {Record<PropertyKey, unknown>} oldValue
- * @param {Record<PropertyKey, unknown>} newValue
+ * An array takes the length of `newValue` as well, so the elements past it
+ * go. Each index is assigned as a key is, so a plain object or an array
+ * written over a store of its kind at the same index is written into that
+ * store, and the store stays where it is.
+ *
+ * @param {Record<PropertyKey, unknown> | unknown[]} oldValue
+ * @param {Record<PropertyKey, unknown> | unknown[]} newValue
  */
 export function replace(oldValue, newValue) {
   batch(() => {
     Object.assign(oldValue, newValue);
+    if (Array.isArray(oldValue) && Array.isArray(newValue)) {
+      oldValue.length = newValue.length;
+    }
     for (const k of ownKeysNoComputation(oldValue)) {
       if (!Reflect.has(newValue, k)) {
-        delete oldValue[k];
+        delete (/** @type {Record<PropertyKey, unknown>} */ (oldValue)[k]);
       }
     }
   });
@@ -157,30 +237,38 @@ export function replace(oldValue, newValue) {
  * @return {object}
  */
 function store(data, operators = []) {
-  // TODO(@apendua): Handle array methods to trigger reactivity.
   /** @type {Map<PropertyKey, () => unknown>} */
   const getters = new Map();
   /** @type {Map<PropertyKey, (value: unknown) => void>} */
   const setters = new Map();
   /** @type {Record<PropertyKey, unknown>} */
   const state = withComputation(null, () => {
-    if (!isPlainObject(data)) {
-      throw new Error("Store can only be created from a plain object");
+    const kind = storeKindOf(data);
+    if (!kind) {
+      throw new Error("Store can only be created from a plain object or an array");
     }
     const descriptors = describe(data);
     defineAccessors(getters, setters, descriptors);
-    // A data key holds its value, a plain object made a store. A key with an
-    // accessor holds `undefined`, which is read only when the key has no
-    // getter; the getter is not run here. `reshapeWith` keeps the same.
+    // A data key holds its value, a plain object or an array made a store,
+    // and a store as itself. A key with an accessor holds `undefined`, which
+    // is read only when the key has no getter; the getter is not run here.
+    // `reshapeWith` keeps the same.
     /** @type {Record<PropertyKey, unknown>} */
-    const held = {};
+    const held = kind === "array" ? /** @type {never} */ ([]) : {};
     for (const key of Reflect.ownKeys(descriptors)) {
       const descriptor = descriptors[key];
       const value = descriptor.get || descriptor.set ? undefined : descriptor.value;
-      held[key] = isPlainObject(value) ? store(value) : value;
+      held[key] = storeKindOf(value) ? asStore(value) : value;
+    }
+    if (Array.isArray(held)) {
+      // The holes at its end are not keys, and only the length keeps them.
+      held.length = /** @type {unknown[]} */ (data).length;
     }
     return held;
   });
+  const array = Array.isArray(state);
+  /** The state as an array, read only when `array` says it is one. */
+  const elements = /** @type {unknown[]} */ (/** @type {unknown} */ (state));
   const ownKeys = Symbol("ownKeys");
 
   /** @type {Map<PropertyKey, Derived<unknown>>} */
@@ -244,6 +332,7 @@ function store(data, operators = []) {
   const internals = {
     emitter: eventListener,
     state,
+    array,
     getters,
     setters,
     derived,
@@ -263,6 +352,12 @@ function store(data, operators = []) {
       }
       if (key === internalsKey) {
         return internals;
+      }
+      if (array) {
+        const mutator = arrayMutators.get(key);
+        if (mutator) {
+          return mutator;
+        }
       }
       addDependency(getChangesAtKey(key));
       if (!getters.has(key)) {
@@ -291,21 +386,47 @@ function store(data, operators = []) {
         // too. The write does nothing, as on a frozen object outside strict
         // mode, rather than land in `state`, which a getter key is not read
         // from.
+      } else if (array && key === "length") {
+        const length = elements.length;
+        // Assigned first, so that a length that is not one throws as on an
+        // array, before anything is marked.
+        elements.length = /** @type {number} */ (newValue);
+        const next = elements.length;
+        if (next === length) {
+          return true;
+        }
+        internals.touched?.add(key);
+        batch(() => {
+          // The indices a shorter length cut off are gone, as by `delete`.
+          for (let index = next; index < length; index += 1) {
+            announce(String(index));
+          }
+          announce(key);
+          announce(ownKeys);
+        });
       } else {
-        if (isPlainObject(newValue)) {
+        const kind = storeKindOf(newValue);
+        if (kind) {
           const oldValue = state[key];
-          // We need to use non-reactive version of isPlainObject to prevent accidentally creating
-          // a circular dependency on oldValue should it be a store itself.
-          if (isPlainObjectNoComputation(oldValue)) {
+          const nested = internalsOf(oldValue);
+          if (nested && isOfKind(nested, kind) && !isStore(newValue)) {
             // Written into the nested store key by key, whose traps mark the
-            // keys the object changes. This key holds the same store as
+            // keys the value changes. This key holds the same store as
             // before, so it is not marked, as no unchanged key is.
-            replace(oldValue, newValue);
+            replace(
+              /** @type {Record<PropertyKey, unknown>} */ (oldValue),
+              /** @type {Record<PropertyKey, unknown>} */ (newValue),
+            );
             return true;
           }
-          // The key held no store, so the one made of the object is new and
-          // every key of it is a change the program made.
-          newValue = nestedStore(internals, newValue, true);
+          // A store is held as itself, so that an array method moving one
+          // from index to index moves it rather than copying it. A plain
+          // object or an array where the key held no store of its kind is
+          // made one, which is new, and every key of it is a change the
+          // program made.
+          if (!Object.is(oldValue, newValue)) {
+            newValue = nestedStore(internals, /** @type {object} */ (newValue), true);
+          }
         }
         if (Object.is(state[key], newValue)) {
           return true;
@@ -314,6 +435,7 @@ function store(data, operators = []) {
         // keeps. One that changes nothing marks nothing, so a value written
         // back to itself still follows the source.
         internals.touched?.add(key);
+        const length = array ? elements.length : 0;
         state[key] = newValue;
         // One write is one update. Announcing a change queues each dependent,
         // and outside a batch a queued dependent drains immediately — so
@@ -323,6 +445,10 @@ function store(data, operators = []) {
         // `ReactiveMap#notify`.
         batch(() => {
           announce(key);
+          if (array && elements.length !== length) {
+            // An index at or past the end moved the length with it.
+            announce("length");
+          }
           announce(ownKeys);
         });
       }
@@ -331,6 +457,12 @@ function store(data, operators = []) {
     has(_, key) {
       addDependency(getChangesAtKey(key));
       return key in state;
+    },
+    getOwnPropertyDescriptor(_, key) {
+      // What `Object.hasOwn` and a spread ask of each key, so that their
+      // reader follows the key as `in` does.
+      addDependency(getChangesAtKey(key));
+      return Reflect.getOwnPropertyDescriptor(state, key);
     },
     deleteProperty(_, key) {
       if (getters.has(key) || setters.has(key)) {
@@ -385,20 +517,23 @@ function store(data, operators = []) {
  * export's initialiser has evaluated. A write to a key with a getter or a
  * setter is not state and marks nothing. A write that changes nothing, or a
  * delete of a key the store does not have, marks nothing. A write marks the
- * keys whose value it changes, at whatever depth: an object assigned to a
- * key that held no store becomes a new store, every key of which is a
- * change, and one assigned over a nested store is written into it key by
- * key and marks the keys it changes there, not the key it sits at, which
- * holds the same store. A reload records nothing, since `reshape` writes
- * state directly rather than through the proxy, and clears the mark of a key
- * it gives an accessor to.
+ * keys whose value it changes, at whatever depth: a plain object or an
+ * array assigned to a key that held no store of its kind becomes a new
+ * store, every key of which is a change, and one assigned over a nested
+ * store of its kind is written into it key by key and marks the keys it
+ * changes there, not the key it sits at, which holds the same store. A
+ * store assigned to a key is held as itself and marks the key. An array is
+ * a store, so a method that changes it, a `push` or a `splice`, writes
+ * through it and marks what it changes. A reload records nothing, since
+ * `reshape` writes state directly rather than through the proxy, and clears
+ * the mark of a key it gives an accessor to.
  *
  * Only a write through the store is seen. A value the program mutates in
- * place, a `Map` or a `Set` it fills, an array it pushes to, an instance
- * whose field it sets, marks nothing, and a reload replaces it with the
- * definition's. State that has to survive a reload goes in a plain object,
- * which is a store and tracked, or in a `ReactiveMap` or `ReactiveSet`
- * export of its own, which is kept as state.
+ * place, a `Map` or a `Set` it fills, an instance whose field it sets, marks
+ * nothing, and a reload replaces it with the definition's. State that has to
+ * survive a reload goes in a plain object or an array, which is a store and
+ * tracked, or in a `ReactiveMap` or `ReactiveSet` export of its own, which
+ * is kept as state.
  *
  * @template {IEmitter<Record<any, any>>} T
  * @param {T} target A store.
@@ -441,17 +576,28 @@ function track(internals, owned) {
 }
 
 /**
- * A store made of `value` to nest in `internals`' store, recording the
+ * `value` if it is a store, and a store made of it otherwise.
+ *
+ * @param {object} value A store, a plain object or an array.
+ * @returns {object}
+ */
+function asStore(value) {
+  return isStore(value) ? value : store(value);
+}
+
+/**
+ * The store to nest in `internals`' store for `value`, recording the
  * program's writes if that one does: as the program's own when it assigned
- * the object, with every key marked, and as the source's otherwise.
+ * the value, with every key marked, and as the source's otherwise. A store
+ * is nested as itself, and keeps its marks if it has them.
  *
  * @param {Internals} internals
- * @param {object} value
+ * @param {object} value A store, a plain object or an array.
  * @param {boolean} owned
  * @returns {object}
  */
 function nestedStore(internals, value, owned) {
-  const inner = store(value);
+  const inner = asStore(value);
   if (internals.touched) {
     track(/** @type {Internals} */ (internalsOf(inner)), owned);
   }
@@ -469,14 +615,17 @@ function nestedStore(internals, value, owned) {
  * definition gives the key a getter or a setter. That wins as a change of
  * shape and clears the mark, so the key takes the definition's value if it
  * becomes a data key again. A nested store is reshaped the same way in
- * place, by its own marks, with the plain object at its key. A write into
- * it marks its own key and not the key it sits at, so that key is the
- * source's: when the definition drops it or makes it a value, the nested
- * store goes, the program's writes into it with it. A value that is not a
- * plain object, a `Map`, an array, an instance, is kept only at a key the
- * program assigned; one the program mutated in place is untouched to the
- * store and takes the definition's. A store nobody called `trackWrites` on
- * has no marks and takes the definition in full.
+ * place, by its own marks, with the plain object or the array at its key.
+ * A write into it marks its own key and not the key it sits at, so that key
+ * is the source's: when the definition drops it or makes it a value of
+ * another kind, the nested store goes, the program's writes into it with
+ * it. An array store is the program's as a whole once the program has
+ * written to it, and takes the definition's elements otherwise; see
+ * `reshapeArray`. A value that is not a plain object or an array, a `Map`,
+ * an instance, is kept only at a key the program assigned; one the program
+ * mutated in place is untouched to the store and takes the definition's. A
+ * store nobody called `trackWrites` on has no marks and takes the
+ * definition in full.
  *
  * A data key's value is written to the store's state, not through a setter,
  * so no setter runs. The readers of each key that changed re-run; a replaced
@@ -485,7 +634,9 @@ function nestedStore(internals, value, owned) {
  * reshape. A kept key re-runs nobody.
  *
  * `definition` is a plain object, or a store, which stands for its getters
- * and setters and the values it holds now. This is the whole of a hot reload
+ * and setters and the values it holds now. For a store made of an array it
+ * is an array, or an array store; one of the other kind throws, since a
+ * store keeps the kind it was made with. This is the whole of a hot reload
  * of a store; `replace` is an assignment and belongs to the running program.
  *
  * A key with a setter and no getter reads `undefined`, as it does when
@@ -505,10 +656,26 @@ export function reshape(target, definition) {
   if (!internals) {
     throw new Error("reshape() takes a store");
   }
-  const descriptors = describe(definition);
+  if (internals.array !== Array.isArray(definition)) {
+    throw new Error("reshape() takes a definition of the store's kind");
+  }
   batch(() => {
-    reshapeWith(internals, descriptors);
+    reshapeInto(internals, definition);
   });
+}
+
+/**
+ * Reshape the store of `internals` with `definition`, which is of its kind.
+ *
+ * @param {Internals} internals
+ * @param {object} definition
+ */
+function reshapeInto(internals, definition) {
+  if (internals.array) {
+    reshapeArray(internals, /** @type {unknown[]} */ (definition));
+  } else {
+    reshapeWith(internals, describe(definition));
+  }
 }
 
 /**
@@ -619,17 +786,17 @@ function reshapeWith(internals, descriptors) {
     const added = !Object.hasOwn(state, key);
     const old = state[key];
     const nested = internalsOf(old);
-    const plain = isPlainObjectNoComputation(value);
-    if (nested && plain) {
+    const kind = storeKindOf(value);
+    if (nested && isOfKind(nested, kind)) {
       // By the nested store's own marks, whoever wrote the key it sits at.
-      reshapeWith(nested, describe(value));
+      reshapeInto(nested, value);
       continue;
     }
     if (touched?.has(key)) {
       // The program wrote or deleted this key: what it did stays.
       continue;
     }
-    const next = plain ? nestedStore(internals, value, false) : value;
+    const next = kind ? nestedStore(internals, value, false) : value;
     if (!added && Object.is(old, next)) {
       continue;
     }
@@ -647,6 +814,76 @@ function reshapeWith(internals, descriptors) {
       announce(key);
       announce(ownKeys);
     }
+  }
+}
+
+/**
+ * Give the array store of `internals` the elements of `definition`, an array
+ * or an array store, unless the program has written to it.
+ *
+ * An array is the program's or the source's as a whole, not index by index:
+ * its indices are positions, not names, and a `shift` or a `splice` moves
+ * what each holds, so a mark on an index says nothing about the element now
+ * at it. A write the program makes to the array, to an index or to its
+ * length, by assignment or by any of its methods, keeps every element and
+ * the length as the program left them. A write into a store the array holds
+ * marks that store and not the array, as it would at a key of an object.
+ *
+ * An array the program has not written takes the definition's elements and
+ * length. An element that is a store, where the definition has a plain
+ * object or an array of its kind, is reshaped in place by its own marks, so
+ * that the program's writes into it stay. Every other element takes the
+ * definition's, and only the readers of an index whose element changed, and
+ * of the length when it did, re-run.
+ *
+ * @param {Internals} internals
+ * @param {unknown[]} definition
+ */
+function reshapeArray(internals, definition) {
+  const { state, announce, ownKeys, touched } = internals;
+  if (touched?.size) {
+    return;
+  }
+  const array = /** @type {unknown[]} */ (/** @type {unknown} */ (state));
+  const source = /** @type {unknown[]} */ (internalsOf(definition)?.state ?? definition);
+  const before = array.length;
+  for (let index = 0; index < source.length; index += 1) {
+    const key = String(index);
+    const had = Object.hasOwn(array, index);
+    if (!Object.hasOwn(source, index)) {
+      // A hole in the definition is one in the store.
+      if (had) {
+        delete array[index];
+        announce(key);
+        announce(ownKeys);
+      }
+      continue;
+    }
+    const value = source[index];
+    const old = array[index];
+    const nested = internalsOf(old);
+    const kind = storeKindOf(value);
+    if (nested && isOfKind(nested, kind)) {
+      reshapeInto(nested, /** @type {object} */ (value));
+      continue;
+    }
+    const next = kind ? nestedStore(internals, /** @type {object} */ (value), false) : value;
+    if (had && Object.is(old, next)) {
+      continue;
+    }
+    array[index] = next;
+    announce(key);
+    if (!had) {
+      announce(ownKeys);
+    }
+  }
+  for (let index = source.length; index < array.length; index += 1) {
+    announce(String(index));
+  }
+  array.length = source.length;
+  if (array.length !== before) {
+    announce("length");
+    announce(ownKeys);
   }
 }
 

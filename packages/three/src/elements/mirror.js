@@ -3630,13 +3630,15 @@ const lineBoxCopyCache = nodeCache();
  * attributes, its `id` and `name` among them, so a query the page makes
  * finds it beside the box. It is marked `inert` and `aria-hidden`, as every
  * measurement clone is (`parkMeasurementClone`), which keeps it out of focus
- * and the accessibility tree, not out of the page's own queries or its
- * stylesheets. A rule keyed on `[inert]` or `[aria-hidden]` matches inside
- * the copy where it matches nothing in the box. The copy's root and every
- * element `dressLaidOut` dresses carry their resolved style inline, which
- * such a rule does not override unless it is `!important`. An element laid
- * out in a box of its own keeps only its classes, so the rule can restyle it
- * and everything under it.
+ * and the accessibility tree, not out of the page's own queries. They are
+ * the marks the portal's container carries, so a stylesheet rule keyed on
+ * an `[inert]` or `[aria-hidden]` ancestor matches inside the copy as it
+ * matches inside the box. Without them the copy would differ from the box
+ * there. Where they do differ is a rule that needs the mark on the box
+ * itself, which nothing in the box carries. `p[inert]` matches the copy's
+ * root, whose resolved style is inline and wins over any rule that is not
+ * `!important`. `p[inert] .chip` also matches inside it, and restyles an
+ * element laid out in a box of its own, which keeps only its classes.
  *
  * A reader that is not itself read by anything, as a test may be, builds the
  * copy afresh on every read, and the build it leaves stays parked until the

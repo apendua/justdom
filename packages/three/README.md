@@ -561,6 +561,13 @@ repaints; the one thing it re-measures is the element's own subtree, which is wh
 `transform` moves (see below), and nothing outside it. So anything that changes _layout_ — a menu
 opening, a section expanding — has to be mounted and unmounted rather than hidden and shown.
 
+Inside an `<svg>`, the attributes that place and size a shape — `x`, `y`, `width`, `height`, `x1`,
+`y1`, `x2`, `y2`, `cx`, `cy`, `r`, `rx`, `ry`, `d` and `points` — restyle the element and its
+subtree but not its siblings, the way hover does below. A rule like `circle[cx="3"] ~ circle` is not
+followed. A drawing that moves writes these on many shapes every frame, and a restyle of every
+sibling for each one cost the whole drawing. On the `<svg>` root itself, `width` and `height` size a
+box in the page, and reach its siblings as any author's attribute does.
+
 **Hover and press are presentational, by contract.** The four attributes the portal writes itself —
 `data-xr-hover`, `data-xr-active`, `data-xr-checked` and `data-xr-focus` — restyle the panel but are
 declared unable to move it. Colour, background, border colour, opacity and `transform` all work; a

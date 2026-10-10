@@ -17,7 +17,7 @@ import {
   preservesWhitespace,
   trimLineRange,
 } from "./textLines.js";
-import { isSvgElement } from "./plugins.js";
+import { isSvgElement, isSvgRoot } from "./plugins.js";
 import { clipBoxEqual, intersectClipBoxes, toLocalClipBox, UNCLIPPED } from "./clip.js";
 import { PORTAL_ATTRIBUTE } from "./portalRoot.js";
 import { holdShared, shadowAccessor } from "./shadowAccessor.js";
@@ -249,6 +249,51 @@ const PRESENTATIONAL_ATTRIBUTES = new Set([
  * which does, reaches upward, where no mutation here is followed anyway.
  */
 const SELF_SCOPED_ATTRIBUTES = new Set(["data-xr-hover", "data-xr-active", "data-xr-focus"]);
+
+/**
+ * The attributes that place and size what SVG draws, self-scoped on any
+ * element inside an `<svg>` root. Only an attribute selector on the value
+ * itself, `[cx="3"] ~ circle`, could carry one to a sibling, and nobody
+ * writes those. A drawing that moves writes them on every frame, on many
+ * shapes at once, and under the ordinary scope each write restyled every
+ * shape and label under the same parent.
+ *
+ * Not on the root: its `width` and `height` size a CSS box in the page's
+ * flow, as they do an `<img>`'s, and on HTML they are an author's
+ * attributes like any other.
+ */
+const SVG_GEOMETRY_ATTRIBUTES = new Set([
+  "x",
+  "y",
+  "width",
+  "height",
+  "x1",
+  "y1",
+  "x2",
+  "y2",
+  "cx",
+  "cy",
+  "r",
+  "rx",
+  "ry",
+  "d",
+  "points",
+]);
+
+/**
+ * Whether a change of `name` on `element` is declared unable to restyle a
+ * sibling. See `SELF_SCOPED_ATTRIBUTES` and `SVG_GEOMETRY_ATTRIBUTES`.
+ *
+ * @param {Element} element
+ * @param {string} name
+ * @returns {boolean}
+ */
+function isSelfScoped(element, name) {
+  if (SELF_SCOPED_ATTRIBUTES.has(name)) {
+    return true;
+  }
+  return SVG_GEOMETRY_ATTRIBUTES.has(name) && isSvgElement(element) && !isSvgRoot(element);
+}
 
 /**
  * Whether a computed `transform` value is one the mirror treats as a
@@ -1048,7 +1093,7 @@ export class DomMirror {
         if (!PRESENTATIONAL_ATTRIBUTES.has(name)) {
           presentational = false;
         }
-        if (!SELF_SCOPED_ATTRIBUTES.has(name)) {
+        if (!isSelfScoped(element, name)) {
           selfScoped = false;
         }
       }
@@ -1079,7 +1124,7 @@ export class DomMirror {
    *   unable to restyle a sibling, so the restyle can stop at this element's
    *   own subtree. False by default. Independent of `presentational` because
    *   the two claims are: `data-xr-checked` moves no layout but may still
-   *   style the label beside it. See `SELF_SCOPED_ATTRIBUTES`.
+   *   style the label beside it. See `isSelfScoped`.
    * @returns {void}
    */
   attributeChanged(element, { presentational = false, selfScoped = false } = {}) {
@@ -1587,9 +1632,10 @@ export class DomMirror {
    *   default: an author's mutation can change which rules match across
    *   `~`, `+` and the structural pseudo-classes, and those reach exactly
    *   that far. False for the changes that provably cannot move a
-   *   selector's verdict on a sibling — see `SELF_SCOPED_ATTRIBUTES` and
+   *   selector's verdict on a sibling — see `isSelfScoped` and
    *   `animatedStyles` — which is what keeps hovering one row in a long
-   *   list off every other row in it.
+   *   list off every other row in it, and moving one shape of a drawing
+   *   off every other shape in it.
    * @returns {void}
    */
   #restyleScope(node, { reachesSiblings = true } = {}) {

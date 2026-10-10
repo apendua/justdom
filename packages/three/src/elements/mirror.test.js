@@ -424,6 +424,82 @@ describe("getComputedStyleCached", () => {
     list.remove();
   });
 
+  test("a shape's geometry restyles the shape, not its siblings", () => {
+    // page
+    // ├── svg ─┬── circleA
+    // │        └── circleB
+    // └── aside
+    //
+    // A drawing that moves writes `cx` and the like on many shapes a frame,
+    // and under the ordinary scope each one restyled every shape beside it.
+    // The root's `width` sizes a CSS box in the page, and is not narrowed.
+    const page = document.createElement("div");
+    const svg = document.createElementNS(SVG_NAMESPACE, "svg");
+    const circleA = document.createElementNS(SVG_NAMESPACE, "circle");
+    const circleB = document.createElementNS(SVG_NAMESPACE, "circle");
+    const aside = document.createElement("div");
+    svg.appendChild(circleA);
+    svg.appendChild(circleB);
+    page.appendChild(svg);
+    page.appendChild(aside);
+    document.body.appendChild(page);
+
+    const mirror = createMirror();
+    for (const node of [page, svg, circleA, circleB, aside]) {
+      mirror.adopt(node);
+    }
+
+    const reads = { circleA: 0, circleB: 0, aside: 0 };
+    /** @param {keyof typeof reads} key @param {Element} element */
+    const follow = (key, element) =>
+      new Effect(() => {
+        reads[key] += 1;
+        getComputedStyleCached(element);
+      });
+    const holders = [
+      follow("circleA", circleA),
+      follow("circleB", circleB),
+      follow("aside", aside),
+    ];
+    assert.deepEqual(reads, { circleA: 1, circleB: 1, aside: 1 });
+
+    /** @param {Element} target @param {string} name */
+    const wrote = (target, name) => {
+      const oldValue = target.getAttribute(name);
+      target.setAttribute(name, `${Number(oldValue ?? 0) + 1}`);
+      return /** @type {MutationRecord} */ (
+        /** @type {unknown} */ ({
+          type: "attributes",
+          target,
+          attributeName: name,
+          oldValue,
+          addedNodes: [],
+          removedNodes: [],
+        })
+      );
+    };
+
+    batch(() => mirror.ingest([wrote(circleA, "cx"), wrote(circleA, "r")]));
+    assert.deepEqual(reads, { circleA: 2, circleB: 1, aside: 1 }, "geometry stops at the shape");
+
+    batch(() => mirror.ingest([wrote(circleA, "cx"), wrote(circleA, "class")]));
+    assert.deepEqual(
+      reads,
+      { circleA: 3, circleB: 2, aside: 1 },
+      "an author's class in the same flush still reaches the siblings",
+    );
+
+    batch(() => mirror.ingest([wrote(svg, "width")]));
+    assert.deepEqual(
+      reads,
+      { circleA: 4, circleB: 3, aside: 2 },
+      "the root's width reaches what is beside it in the page",
+    );
+
+    holders.forEach((effect) => effect.dispose());
+    page.remove();
+  });
+
   test("a write that did not change the value invalidates nothing", () => {
     // The hover handlers re-assert `data-xr-*` on every pointer event, and
     // the observer dutifully reports each write. The mirror compares against

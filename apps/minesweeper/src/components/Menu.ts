@@ -243,9 +243,7 @@ const heading = (caption: string) =>
 
 /**
  * What only a session has, mounted while there is one and taken down when
- * it ends. Not hidden and shown: a panel measures the card again when its
- * children change, and not when one of them is hidden, so a section shown by
- * an attribute would hang out of the bottom of the card it grew.
+ * it ends.
  */
 const inSession = (render: () => Subscribable<Mountable>) =>
   list(() => (xrSession.get() ? [true] : []), render);

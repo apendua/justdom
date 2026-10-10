@@ -68,12 +68,11 @@ section of [`freedom`'s README](../freedom#layers) for what that costs and why. 
 `bottom: 100%` decides which way it opens, and only the panel knows which of the two keeps the menu
 over itself rather than hanging into the room.
 
-The menu is mounted and unmounted rather than hidden, because a portal re-measures on a tree change
-and only restyles on an attribute one, and it closes on a click anywhere else in the panel — scoped
-to the panel through `getPortalRoot`, so the mouse click that is busy pressing the trigger on the
-page behind does not also close it. The panel is looked up per click, not once when the menu opens,
-so a menu that is open when a portal takes the element it lives in, or lets it go, is scoped
-correctly on the next click.
+The menu is mounted when it opens and unmounted when it closes, and it closes on a click anywhere
+else in the panel — scoped to the panel through `getPortalRoot`, so the mouse click that is busy
+pressing the trigger on the page behind does not also close it. The panel is looked up per click,
+not once when the menu opens, so a menu that is open when a portal takes the element it lives in, or
+lets it go, is scoped correctly on the next click.
 
 `options` may be a getter, for a list that changes under the player — devices coming and going, a
 document being edited — and the open menu follows it.

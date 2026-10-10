@@ -63,5 +63,4 @@ handlers that already serve the mouse find the tile.
 
 Two controls are there only in a session: the × in the card's corner, which ends it, and
 Passthrough, which takes down the dark sphere the session is set against and shows the room. They
-are mounted when a session starts rather than hidden and shown, since a panel measures the card
-again when its children change and not when one of them is hidden.
+are mounted when a session starts and taken down when it ends.

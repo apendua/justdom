@@ -112,5 +112,4 @@ drive the emulated headset would otherwise go into the program.
 
 Two controls are there only in a session: Passthrough, which takes down the dark sphere the session
 is set against and shows the room, and the × at the end of the toolbar, which ends it. They are
-mounted when a session starts rather than hidden and shown, since a panel measures the toolbar again
-when its children change and not when one of them is hidden.
+mounted when a session starts and taken down when it ends.

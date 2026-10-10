@@ -1127,7 +1127,24 @@ export class DomMirror {
    * An attribute on `element` actually changed value. Restyles the
    * parent-of-target subtree (descendants through the element's own
    * signal, siblings through the parent's member signal — `:has()` alone
-   * is not modelled), and re-measures the element's own subtree.
+   * is not modelled), re-measures the element's own subtree, and settles
+   * the layout around it as a child arriving at its place would.
+   *
+   * The climb is what lets a class swap or a `hidden` resize the panel. It
+   * starts at the parent, telling the element and the children after it
+   * that they moved, and goes on only past a parent that changed size (see
+   * `#settleLayout`). Each child told re-measures its own box and stops
+   * there when the box came out where it was, so a swap that moved nothing
+   * costs a rect per child from the element on, one for the parent's size,
+   * one per positioned box in the panel (`outOfFlowLayout`), and no text.
+   * That is the scope the restyle above already has, since an author's
+   * attribute can restyle its siblings.
+   *
+   * Two elements start no climb. The panel's root has nothing above it in
+   * the panel, and its own size is in the subtree re-measured above. An
+   * SVG element under an `<svg>` root is placed in user space, so an
+   * attribute on it moves none of its siblings; the root's own attributes,
+   * its `width` say, are a box's and climb.
    *
    * @param {Node} element
    * @param {object} [options]
@@ -1151,6 +1168,10 @@ export class DomMirror {
       const record = recordOf(element);
       if (record) {
         bumpReflow(element, record);
+      }
+      const parent = element.parentElement;
+      if (parent && !isPortalRoot(element) && (!isSvgElement(element) || isSvgRoot(element))) {
+        this.#layoutChangedAt(parent, element);
       }
     });
   }
@@ -1474,7 +1495,8 @@ export class DomMirror {
 
   /**
    * The layout inside `container` changed: a child arrived or left, a text
-   * node was rewritten, a picture turned out to have a size.
+   * node was rewritten, a picture turned out to have a size, an attribute
+   * changed a child.
    *
    * @param {Element} container
    * @param {Node | null} from The earliest child the change could have

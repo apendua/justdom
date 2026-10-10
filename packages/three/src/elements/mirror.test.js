@@ -581,12 +581,7 @@ describe("getComputedStyleCached", () => {
       return getComputedStyleCached(element).backgroundColor;
     });
     const geometry = new Derived(() => getContentPosition(element));
-    const subscriptions = [
-      style.subscribe({ next: () => style.get() }),
-      geometry.subscribe({ next: () => geometry.get() }),
-    ];
-    style.get();
-    geometry.get();
+    const holders = [new Effect(() => style.get()), new Effect(() => geometry.get())];
     assert.deepEqual({ styleReads, rectReads }, { styleReads: 1, rectReads: 1 });
 
     /**
@@ -619,7 +614,7 @@ describe("getComputedStyleCached", () => {
     batch(() => mirror.ingest([record("data-xr-hover", null), record("class", "grown")]));
     assert.equal(rectReads, 3, "the class in the flush still carries the day");
 
-    subscriptions.forEach((subscription) => subscription.unsubscribe());
+    holders.forEach((effect) => effect.dispose());
     element.remove();
   });
 
@@ -654,12 +649,7 @@ describe("getComputedStyleCached", () => {
         return getComputedStyleCached(element).backgroundColor;
       });
       const geometry = new Derived(() => getContentPosition(element));
-      const subscriptions = [
-        style.subscribe({ next: () => style.get() }),
-        geometry.subscribe({ next: () => geometry.get() }),
-      ];
-      style.get();
-      geometry.get();
+      const holders = [new Effect(() => style.get()), new Effect(() => geometry.get())];
 
       element.setAttribute(name, "on");
       batch(() => mirror.ingest([attributeRecord(element, name, null)]));
@@ -672,7 +662,7 @@ describe("getComputedStyleCached", () => {
         measures ? `${name} may have moved the layout` : `${name} is presentational`,
       );
 
-      subscriptions.forEach((subscription) => subscription.unsubscribe());
+      holders.forEach((effect) => effect.dispose());
       element.remove();
     }
   });
@@ -714,30 +704,35 @@ describe("getComputedStyleCached", () => {
 });
 
 describe("measured geometry", () => {
-  test("an attribute change re-measures its target's own subtree, nothing else", () => {
-    // Attribute mutations cannot move layout — that contract stands — but
-    // they can toggle a CSS transform, which changes the client rects of
-    // exactly the mutated element's subtree.
+  test("an attribute change re-measures its target's subtree and what follows it", () => {
+    // An attribute can toggle a CSS transform, which changes the client
+    // rects of exactly the mutated element's subtree, or change the
+    // element's box, which moves the boxes after it. What comes before it
+    // in the flow cannot have moved.
+    const earlier = document.createElement("div");
     const parent = document.createElement("div");
     const child = document.createElement("div");
     const sibling = document.createElement("div");
     parent.appendChild(child);
+    document.body.appendChild(earlier);
     document.body.appendChild(parent);
     document.body.appendChild(sibling);
 
     const mirror = createMirror();
-    for (const node of [parent, child, sibling]) {
+    for (const node of [earlier, parent, child, sibling]) {
       mirror.adopt(node);
     }
 
     // What is counted is the measurement itself — the rect read — not what
     // propagates from it: a re-measure that lands on the same numbers is
     // deliberately silent downstream, and that silence is half the design.
-    const reads = { child: 0, sibling: 0 };
+    const reads = { earlier: 0, child: 0, sibling: 0 };
+    layout(earlier, () => [0, -20, 10, -10], { count: () => reads.earlier++ });
     layout(child, () => [0, 0, 10, 10], { count: () => reads.child++ });
     layout(sibling, () => [0, 20, 10, 30], { count: () => reads.sibling++ });
 
     const dependents = {
+      earlier: new Derived(() => getContentPosition(earlier)),
       child: new Derived(() => getContentPosition(child)),
       sibling: new Derived(() => getContentPosition(sibling)),
     };
@@ -747,36 +742,38 @@ describe("measured geometry", () => {
     // these tests measure — which mutations reach which elements — is
     // exactly what re-runs an effect.
     const holders = Object.values(dependents).map((dependent) => new Effect(() => dependent.get()));
-    assert.deepEqual(reads, { child: 1, sibling: 1 });
+    assert.deepEqual(reads, { earlier: 1, child: 1, sibling: 1 });
 
-    // A transform toggled on parent moves child's rect; sibling's is
-    // untouched and stays cached.
+    // A transform toggled on parent moves child's rect, and a size changed
+    // by the attribute would move the sibling after it, which re-measures
+    // its own box. The element before it stays cached.
     mirror.attributeChanged(parent);
-    assert.deepEqual(reads, { child: 2, sibling: 1 });
+    assert.deepEqual(reads, { earlier: 1, child: 2, sibling: 2 });
 
-    // Structural mutations still re-measure everything: layout is non-local.
+    // A structural change moves what follows it the same way.
     mirror.childListChanged(parent);
-    assert.deepEqual(reads, { child: 3, sibling: 2 });
+    assert.deepEqual(reads, { earlier: 1, child: 3, sibling: 3 });
 
     // The clock's style sample alone moves no rects…
     mirror.animatedStyles([parent]);
-    assert.deepEqual(reads, { child: 3, sibling: 2 });
+    assert.deepEqual(reads, { earlier: 1, child: 3, sibling: 3 });
 
     // …an animating transform moves its own subtree's…
     mirror.reflowed([parent]);
-    assert.deepEqual(reads, { child: 4, sibling: 2 });
+    assert.deepEqual(reads, { earlier: 1, child: 4, sibling: 3 });
 
     // …and an animating layout property moves anybody's.
     mirror.reflowed(null);
-    assert.deepEqual(reads, { child: 5, sibling: 3 });
+    assert.deepEqual(reads, { earlier: 2, child: 5, sibling: 4 });
 
     // An image arriving takes the size the picture turned out to have and
     // pushes everything after it along, so it re-measures the portal — the
     // same shape of event as a font arriving.
     mirror.contentLoaded();
-    assert.deepEqual(reads, { child: 6, sibling: 4 });
+    assert.deepEqual(reads, { earlier: 3, child: 6, sibling: 5 });
 
     holders.forEach((effect) => effect.dispose());
+    earlier.remove();
     parent.remove();
     sibling.remove();
   });
@@ -2464,6 +2461,113 @@ describe("layout boundaries", () => {
       assert.ok(reads.rowB > before.rowB, "the next row followed the one that grew");
 
       subscriptions.forEach((subscription) => subscription.unsubscribe());
+    } finally {
+      container.remove();
+    }
+  });
+
+  test("an attribute that hides a row moves the rows after it, and the panel", () => {
+    // F9 in the minesweeper register: `hidden` set on a row takes its box
+    // out of the flow, so the row after it moves up and the panel around
+    // them gets shorter. An author's attribute is a change in the row's own
+    // box, so it climbs the walk a child arriving climbs.
+    let rowAHeight = 40;
+
+    const container = document.createElement("div");
+    container.setAttribute(PORTAL_ATTRIBUTE, "");
+    const rowA = document.createElement("div");
+    const rowB = document.createElement("div");
+    container.appendChild(rowA);
+    container.appendChild(rowB);
+    document.body.appendChild(container);
+
+    const mirror = createMirror();
+    for (const node of [container, rowA, rowB]) {
+      mirror.adopt(node);
+    }
+
+    layout(container, () => [0, 0, 200, rowAHeight + 40]);
+    layout(rowA, () => [0, 0, 200, rowAHeight]);
+    layout(rowB, () => [0, rowAHeight, 200, rowAHeight + 40]);
+
+    try {
+      const watched = {
+        rowB: new Derived(() => getContentPosition(rowB)),
+        panel: new Derived(() => getBorderBoxSize(container)),
+      };
+      const holders = Object.values(watched).map((signal) => new Effect(() => signal.get()));
+      assert.equal(watched.rowB.get().y, 40);
+      assert.equal(watched.panel.get().height, 80);
+
+      rowA.hidden = true;
+      rowAHeight = 0;
+      mirror.ingest([
+        /** @type {MutationRecord} */ (
+          /** @type {unknown} */ ({
+            type: "attributes",
+            target: rowA,
+            attributeName: "hidden",
+            oldValue: null,
+            addedNodes: [],
+            removedNodes: [],
+          })
+        ),
+      ]);
+
+      assert.equal(watched.rowB.get().y, 0, "the next row moved up");
+      assert.equal(watched.panel.get().height, 40, "and the panel got shorter");
+
+      holders.forEach((effect) => effect.dispose());
+    } finally {
+      container.remove();
+    }
+  });
+
+  test("an attribute inside an <svg> moves none of the shapes beside it", () => {
+    // A shape is placed in user space, so its `d` or its `r` moves no
+    // sibling, and a chart that rewrites one every frame must not have the
+    // shapes and labels after it measured again. The `<svg>` root is a box
+    // in the HTML flow, so its own `width` moves what follows it.
+    const container = document.createElement("div");
+    container.setAttribute(PORTAL_ATTRIBUTE, "");
+    const svg = document.createElementNS(SVG_NAMESPACE, "svg");
+    const dot = document.createElementNS(SVG_NAMESPACE, "circle");
+    const ring = document.createElementNS(SVG_NAMESPACE, "circle");
+    const caption = document.createElement("div");
+    svg.appendChild(dot);
+    svg.appendChild(ring);
+    container.appendChild(svg);
+    container.appendChild(caption);
+    document.body.appendChild(container);
+
+    const mirror = createMirror();
+    for (const node of [container, svg, dot, ring, caption]) {
+      mirror.adopt(node);
+    }
+
+    const reads = { ring: 0, caption: 0 };
+    layout(container, () => [0, 0, 200, 140]);
+    layout(svg, () => [0, 0, 100, 100]);
+    layout(ring, () => [10, 10, 30, 30], { count: () => reads.ring++ });
+    layout(caption, () => [0, 100, 200, 140], { count: () => reads.caption++ });
+
+    try {
+      const watched = [
+        new Derived(() => getContentPosition(ring)),
+        new Derived(() => getContentPosition(caption)),
+      ];
+      const holders = watched.map((signal) => new Effect(() => signal.get()));
+      const before = { ...reads };
+
+      dot.setAttribute("r", "8");
+      mirror.attributeChanged(dot);
+      assert.deepEqual(reads, before, "a shape's attribute moved nothing beside it");
+
+      svg.setAttribute("width", "120");
+      mirror.attributeChanged(svg);
+      assert.equal(reads.caption, before.caption + 1, "the root's attribute moved the caption");
+
+      holders.forEach((effect) => effect.dispose());
     } finally {
       container.remove();
     }

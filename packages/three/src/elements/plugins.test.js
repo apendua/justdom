@@ -4,7 +4,13 @@ import * as THREE from "three";
 import { InteractionContext, InteractionManager } from "../interactions.js";
 import { DomMirror } from "./mirror.js";
 import { createPortal } from "./portal.js";
-import { isSvgElement, isSvgRoot, PortalPluginsContext, projectWithPlugins } from "./plugins.js";
+import {
+  findSvgElement,
+  isSvgElement,
+  isSvgRoot,
+  PortalPluginsContext,
+  projectWithPlugins,
+} from "./plugins.js";
 import { svgElements } from "../svg/index.js";
 
 /**
@@ -146,6 +152,26 @@ describe("portal plugins", () => {
     assert.equal(isSvgRoot(div), false);
     assert.equal(isSvgElement(rect), true);
     assert.equal(isSvgElement(div), false);
+  });
+
+  test("findSvgElement finds an SVG element by its id, of the kind asked for", () => {
+    const root = document.createElementNS(SVG_NS, "svg");
+    const marker = document.createElementNS(SVG_NS, "marker");
+    marker.id = "found-marker";
+    const g = document.createElementNS(SVG_NS, "g");
+    g.id = "not-a-marker";
+    const div = document.createElement("div");
+    div.id = "not-svg";
+    root.append(marker, g);
+    document.body.append(root, div);
+    assert.equal(findSvgElement(root, "found-marker", "marker"), marker);
+    assert.equal(findSvgElement(root, "not-a-marker", "marker"), null);
+    assert.equal(findSvgElement(root, "not-a-marker"), g, "any kind");
+    assert.equal(findSvgElement(root, "not-svg"), null);
+    assert.equal(findSvgElement(root, "missing"), null);
+    assert.equal(findSvgElement(root, null), null);
+    root.remove();
+    div.remove();
   });
 
   test("projectWithPlugins asks in order and stops at the first claim", () => {

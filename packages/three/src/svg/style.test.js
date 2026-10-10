@@ -9,6 +9,7 @@ import {
   parseLineJoin,
   parsePaint,
   parsePointerEvents,
+  parseUrlReference,
   readProperty,
   readShapeMarkup,
 } from "./style.js";
@@ -39,6 +40,17 @@ function element(tag, attributes) {
 const noViewport = () => null;
 
 describe("svg style reading", () => {
+  test("parseUrlReference reads a computed url, an attribute's, a full URL and none", () => {
+    assert.equal(parseUrlReference(`url("#arrow")`), "arrow");
+    assert.equal(parseUrlReference("url(#arrow)"), "arrow");
+    assert.equal(parseUrlReference(`url("https://example.com/page#arrow")`), "arrow");
+    // How jsdom computes `clip-path: url(#frame)`.
+    assert.equal(parseUrlReference("url(\\#frame)"), "frame");
+    assert.equal(parseUrlReference("none"), null);
+    assert.equal(parseUrlReference("inset(4px)"), null);
+    assert.equal(parseUrlReference(""), null);
+  });
+
   test("readProperty falls back to the presentation attribute", () => {
     const { el, style } = element("rect", { fill: "red" });
     assert.equal(readProperty(style, el, "fill"), "red");

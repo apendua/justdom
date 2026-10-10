@@ -2044,10 +2044,53 @@ group:
 A hit on the group is a hit on one of its shapes, so each shape's own `pointer-events` still decides
 whether it can be hit.
 
+A `clip-path` is drawn when it names a `<clipPath>` that holds one `<rect>`. That is the one shape
+the clip box a nested `<svg>` uses can hold, and the clip is that box:
+
+```html
+<defs>
+  <clipPath id="frame">
+    <rect width="32" height="32" />
+  </clipPath>
+</defs>
+<image href="sheet.png" x="-64" width="256" height="128" clip-path="url(#frame)" />
+```
+
+The rect is in the user space of the element that names it, so the element's own `transform` moves
+the clip with it, and a `clip-path` on a `<g>` or a `<use>` clips everything drawn under it. On a
+nested `<svg>` it is in the space the `<svg>`'s `x` and `y` are in. A `<symbol>`, a `<marker>` or an
+`<svg>` a `<use>` draws, with a `clip-path` of its own, clips every copy of itself. A percentage is
+of the viewport around the `<clipPath>`, whatever names it, as a browser resolves it. A `<clipPath>`
+defined inside a `<symbol>` or a `<marker>` resolves against the viewport above the template. Chrome
+resolves one in a `<marker>` the same way, and does not take one in a `<symbol>` as a clip at all.
+Under `clipPathUnits="objectBoundingBox"` the rect is a share of the element's box: for a copy, the
+box it is drawn in, and not where it is defined; for a nested `<svg>`, its `getBBox()` moved out
+past its `x`, `y` and `viewBox`; for anything else, its `getBBox()`, which is read again only when
+the chain that reads it is read again. For a `<g>` that is when one of its children has an attribute
+changed, since the mirror restyles all of them then. A restyle the mirror keeps to one element, a
+`data-xr-hover` for instance, reads the box again for that child alone, so two shapes under one
+`clip-path` can be clipped to two boxes. That lasts until the next attribute change on one of the
+`<g>`'s own children: a child added or removed, or a change below a child, reads the box again only
+for the children the mirror restyles then. A change the mirror never sees reads nothing. Each shape
+reads the box for itself, so a `<g>` under such a clip has its `getBBox()`, which forces a layout,
+read once for each shape under it. A `transform` on the `<clipPath>` or the `<rect>` moves the rect.
+The clip intersects the viewports around the element, and it trims a ray as it trims the drawing. As
+with a viewport, the box is axis-aligned in the `<svg>`'s frame, so a rect turned or skewed
+anywhere, by its own `transform`, the `<clipPath>`'s, the element's or a `<g>`'s above, clips to the
+bounding box of the turned rect. The corners are square whatever the rect's `rx` and `ry`. An edit
+to the rect reaches the clip when the `<clipPath>` is inside the panel; one elsewhere on the page is
+drawn as it was first read, as a `<marker>` is. A `<clipPath>` that is not in the document when the
+element is first drawn, such as one in `<defs>` a page renders after its content, is found the next
+time the element's chain is read, such as when the element is restyled. A `<title>`, `<desc>` or
+`<metadata>` beside the rect is skipped. Any other `<clipPath>`, such as one holding a circle, a
+path or two shapes, clips nothing. So does a basic shape such as `inset()`, and a `clip-path` on an
+`<svg>` root as it stands on the page; one a `<use>` draws is clipped as a `<symbol>` is. A clip of
+another shape needs a stencil or a second distance field.
+
 Not drawn yet: gradients and patterns (a `url(#…)` paint reads as `none`, though it still counts as
-painted for a ray), `clip-path`, `mask`, filters, `<foreignObject>` and `vector-effect`.
-[`docs/freedom-svg-plan.md`](../../docs/freedom-svg-plan.md) says what each would take; they go in
-when a panel needs one.
+painted for a ray), a `clip-path` of any shape but the rect above, `mask`, filters,
+`<foreignObject>` and `vector-effect`. [`docs/freedom-svg-plan.md`](../../docs/freedom-svg-plan.md)
+says what each would take; they go in when a panel needs one.
 
 Followed, and not said above: `<switch>` and an `<a>` outside a `<text>`, drawn as a `<g>` is;
 `transform-box: fill-box`; and `revert-layer` beside the other keywords that set nothing. Not

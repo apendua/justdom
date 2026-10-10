@@ -1,4 +1,12 @@
-import { addDependency, batch, Derived, fromEvent, NoValueError, Signal } from "@apendua/signal";
+import {
+  addDependency,
+  batch,
+  Derived,
+  fromEvent,
+  NoValueError,
+  onCleanup,
+  Signal,
+} from "@apendua/signal";
 import { Subject } from "@apendua/signal";
 import {
   buildCharacterEdges,
@@ -421,7 +429,18 @@ const ATOMIC_INLINE_TAGS = new Set([
  * @returns {boolean}
  */
 function splitsAcrossLines(element) {
-  const display = getComputedStyleCached(element).display;
+  return displaySplitsAcrossLines(element, getComputedStyleCached(element).display);
+}
+
+/**
+ * `splitsAcrossLines` for a `display` the caller has read itself, as the
+ * line box copy does without subscribing to it (`dressLaidOut`).
+ *
+ * @param {Element} element
+ * @param {string} display
+ * @returns {boolean}
+ */
+function displaySplitsAcrossLines(element, display) {
   if (display === "contents") {
     return true;
   }
@@ -3033,8 +3052,11 @@ export function getCheckedCached(element) {
  * is appended to the body in its place and parked instead: an SVG `<text>`
  * is laid out only inside an `<svg>` (`measureRuns` in `svg/text.js`). The
  * clone's own `visibility` hides it either way, since the style copied onto
- * it says `visible`; what is parked is only moved off-screen. The caller
- * removes what was appended, the host if it gave one.
+ * it says `visible`; what is parked is only moved off-screen, and marked
+ * `inert` and `aria-hidden`, which keep it out of focus and the
+ * accessibility tree. A clone of a panel's root drops `PORTAL_ATTRIBUTE`, so
+ * that it is measured in the body's frame rather than taken for a panel of
+ * its own. The caller removes what was appended, the host if it gave one.
  *
  * @template {HTMLElement | SVGElement} T
  * @param {T} element
@@ -3043,25 +3065,82 @@ export function getCheckedCached(element) {
  * @returns {T}
  */
 export function createMeasurementClone(element, host = null) {
-  const clone = /** @type {T} */ (element.cloneNode(true));
-  const computed = window.getComputedStyle(element);
-  for (let i = 0; i < computed.length; i++) {
-    const property = computed[i];
-    clone.style.setProperty(property, computed.getPropertyValue(property));
-  }
-  clone.style.setProperty("transform", "none", "important");
-  clone.style.setProperty("transition", "none", "important");
-  clone.style.setProperty("animation", "none", "important");
+  return parkMeasurementClone(element, /** @type {T} */ (element.cloneNode(true)), host);
+}
+
+/**
+ * The second half of `createMeasurementClone`, for a copy of `element` the
+ * caller has made itself: dress it in the element's resolved style, with
+ * its transform, transitions and animations switched off (`copyStillStyle`),
+ * and park it.
+ *
+ * @template {HTMLElement | SVGElement} T
+ * @param {T} element
+ * @param {T} clone
+ * @param {HTMLElement | SVGElement | null} host
+ * @returns {T}
+ */
+function parkMeasurementClone(element, clone, host) {
+  copyStillStyle(element, clone);
+  clone.removeAttribute(PORTAL_ATTRIBUTE);
   clone.style.setProperty("visibility", "hidden", "important");
   const parked = host ?? clone;
   parked.style.setProperty("position", "absolute", "important");
   parked.style.setProperty("top", "0", "important");
   parked.style.setProperty("left", "-99999px", "important");
+  parked.setAttribute("inert", "");
+  parked.setAttribute("aria-hidden", "true");
   if (host) {
     host.appendChild(clone);
   }
   document.body.appendChild(parked);
   return clone;
+}
+
+/**
+ * Write every resolved style of `element` onto `clone` inline, so that the
+ * clone is laid out as the element is wherever it is put, and switch its
+ * transform, transitions and animations off. An animation would start
+ * again on the clone at its first keyframe, and an animated value beats an
+ * inline one that is not `!important`.
+ *
+ * @param {HTMLElement | SVGElement} element
+ * @param {HTMLElement | SVGElement} clone
+ * @param {CSSStyleDeclaration} [computed] The element's computed style, if
+ *   the caller has it already.
+ * @returns {void}
+ */
+function copyStillStyle(element, clone, computed = window.getComputedStyle(element)) {
+  // Written as one declaration list, which the browser parses once, rather
+  // than a `setProperty` per property: a computed style has some 350.
+  /** @type {string[]} */
+  const declarations = [];
+  for (let i = 0; i < computed.length; i++) {
+    const property = computed[i];
+    declarations.push(`${property}: ${computed.getPropertyValue(property)}`);
+  }
+  // The custom properties the clone's own inline style sets go after them,
+  // since Chromium enumerates none in a computed style, and a child styled
+  // with `var(--gap)` would lose the `--gap` the element sets. Those alone:
+  // the rest of the inline style is in the computed values already, and an
+  // `!important` on it would outrank them. A custom property keeps its
+  // priority, since nothing in the computed list can be outranked by it, and
+  // an inline `!important` is what beats a stylesheet's.
+  for (let i = 0; i < clone.style.length; i++) {
+    const property = clone.style[i];
+    if (property.startsWith("--")) {
+      const priority = clone.style.getPropertyPriority(property);
+      declarations.push(
+        `${property}: ${clone.style.getPropertyValue(property)}${priority ? ` !${priority}` : ""}`,
+      );
+    }
+  }
+  declarations.push(
+    "transform: none !important",
+    "transition: none !important",
+    "animation: none !important",
+  );
+  clone.style.cssText = declarations.join("; ");
 }
 
 /**
@@ -3255,9 +3334,9 @@ function measureTextRectsWith(range, text, parentElement, whiteSpace, scrolled, 
   // The live tree's frame is its panel's; a clone's is the body it is
   // appended to.
   const frame = frameFor(parentElement);
-  // Against the live tree the parent's rect is shareable; a measurement
-  // clone is created and thrown away inside one measurement, so its rect is
-  // read directly.
+  // Against the live tree the parent's rect is shareable. A copy is none of
+  // the panel's nodes, so its rect is read directly, once for each text
+  // measured in it, even though a line box copy stands for many of them.
   const parentRect = scrolled
     ? readClientRect(parentElement)
     : measureClientRect(parentElement, frame);
@@ -3430,10 +3509,15 @@ function measureRevealLayout(text, range, frame, boundsRect, lines, offsets) {
  * Under a transform anywhere on the chain, the real tree's client rects are
  * screen-space bounds — a rotation would group lines by screen rows, which
  * is not where the browser broke them — so the measurement runs against a
- * detached untransformed clone of the parent instead. The text node is
- * always a direct child of its parent element, so finding it again in the
- * clone is an index lookup. The clone is never scrolled, so what it reports
- * is already the content-space position the live path computes.
+ * detached untransformed copy instead.
+ *
+ * The copy is of the box the text's lines are laid out in: the parent, or
+ * the nearest ancestor that does not split across lines
+ * (`splitsAcrossLines`), since a box that does has no width of its own for
+ * the lines to break against. The climb stops at the panel's root, whatever
+ * its `display`. One copy of a box serves every text measured in it, for as
+ * long as `getLineBoxCopy` keeps it. The copy is never scrolled, so what it
+ * reports is already the content-space position the live path computes.
  *
  * @param {Text} text
  * @returns {TextLayout}
@@ -3450,16 +3534,282 @@ function measureTextLayout(text) {
   if (!isTransformed(parentElement)) {
     return measureTextRects(text, parentElement, whiteSpace, true, revealed);
   }
-  const clone = createMeasurementClone(parentElement);
-  try {
-    const index = Array.prototype.indexOf.call(parentElement.childNodes, text);
-    const cloneText = clone.childNodes[index];
-    if (!(cloneText instanceof Text)) {
-      throw new NoValueError("Text node not found in measurement clone");
+  let lineBox = parentElement;
+  while (!isPortalRoot(lineBox) && lineBox.parentElement && splitsAcrossLines(lineBox)) {
+    lineBox = lineBox.parentElement;
+  }
+  const cloneText = findInCopy(getLineBoxCopy(lineBox), lineBox, text);
+  const cloneParent = /** @type {HTMLElement} */ (cloneText.parentElement);
+  return measureTextRects(cloneText, cloneParent, whiteSpace, false, revealed);
+}
+
+/**
+ * The node at the same place under `to` as `node` is under `from`, which a
+ * deep clone keeps, or nothing when `to` has no node there: a copy made
+ * before the change that put `node` where it is.
+ *
+ * @param {Node} node
+ * @param {Node} from An ancestor of `node`.
+ * @param {Node} to
+ * @returns {Node | undefined}
+ */
+export function counterpart(node, from, to) {
+  /** @type {number[]} */
+  const path = [];
+  for (let current = node; current !== from; current = /** @type {Node} */ (current.parentNode)) {
+    path.unshift(Array.prototype.indexOf.call(current.parentNode?.childNodes ?? [], current));
+  }
+  return path.reduce(
+    (/** @type {Node | undefined} */ current, index) => current?.childNodes[index],
+    to,
+  );
+}
+
+/**
+ * The copy of `text` in `copy`, a copy of `lineBox`: the node at the same
+ * place under it (`counterpart`).
+ *
+ * Found by place rather than kept by identity, because the copy follows the
+ * box's shape, not its nodes: a text replaced by one with the same
+ * characters, as setting `textContent` to what it was does, leaves the shape
+ * and the copy as they were, and the new node is still the node at that
+ * place.
+ *
+ * The copy can also lack the text for a moment. A text inserted into an
+ * element the portal has not adopted yet reaches the shape only once the
+ * adoption is announced, a microtask after the portal builds the text and
+ * may measure it (see `announceAdoption`). Until then the place holds
+ * something else or nothing, and the measurement waits, as a read that has
+ * no value yet does.
+ *
+ * @param {HTMLElement} copy
+ * @param {HTMLElement} lineBox An ancestor of `text`.
+ * @param {Text} text
+ * @returns {Text}
+ */
+function findInCopy(copy, lineBox, text) {
+  const found = counterpart(text, lineBox, copy);
+  if (!(found instanceof Text) || found.data !== text.data) {
+    throw new NoValueError("The line box copy does not hold this text yet");
+  }
+  return found;
+}
+
+/** @type {WeakMap<HTMLElement, Derived<HTMLElement>>} */
+const lineBoxCopyCache = nodeCache();
+
+/**
+ * The copy of `lineBox` the texts laid out in its lines are measured in under
+ * a transform. One copy serves them all, because measuring each of the `n`
+ * texts of a paragraph in a copy of its own copies the paragraph `n` times,
+ * and a browser lays out each copy (`bench/lineBoxCopy.bench.mjs`). Its
+ * rules are the rules of a cached read:
+ *
+ * - **Made** when the first text in the box is measured, and parked in the
+ *   body as `createMeasurementClone` parks one.
+ * - **Shared** by every text measured in the box while it lasts, whichever
+ *   task or frame measures it: a portal measures a panel a frame budget at a
+ *   time.
+ * - **Rebuilt** when what it was copied from changes: the box's shape
+ *   (`getLineBoxShape`), what can restyle it from above
+ *   (`readRestyledFromAbove`), or its size. Between them they cover a
+ *   stylesheet, a font, the viewport and an ancestor's attributes, and
+ *   nothing a text in the box would not be re-measured for: a box moved by
+ *   its siblings, or out of flow and so told of every layout in the panel,
+ *   keeps its copy.
+ *   The portal's presentational flags, hover and press, change none of them
+ *   (`PRESENTATIONAL_ATTRIBUTES`), just as they re-measure no text. Nor does
+ *   a text replaced by one with the same characters: `findInCopy` finds it
+ *   by its place. A font that finished loading does rebuild it, through the
+ *   layout epochs `readRestyledFromAbove` reads, as it re-measures every
+ *   text.
+ * - **Removed** when it is rebuilt, and when the last text reading it lets
+ *   go of it.
+ *
+ * While it stands it is in the page, a child of the body, with the box's
+ * attributes, its `id` and `name` among them, so a query the page makes
+ * finds it beside the box. It is marked `inert` and `aria-hidden`, as every
+ * measurement clone is (`parkMeasurementClone`), which keeps it out of focus
+ * and the accessibility tree, not out of the page's own queries. They are
+ * the marks the portal's container carries, so a stylesheet rule keyed on
+ * an `[inert]` or `[aria-hidden]` ancestor matches inside the copy as it
+ * matches inside the box. Without them the copy would differ from the box
+ * there. Where they do differ is a rule that needs the mark on the box
+ * itself, which nothing in the box carries. `p[inert]` matches the copy's
+ * root, whose resolved style is inline and wins over any rule that is not
+ * `!important`. `p[inert] .chip` also matches inside it, and restyles an
+ * element laid out in a box of its own, which keeps only its classes.
+ *
+ * A reader that is not itself read by anything, as a test may be, builds the
+ * copy afresh on every read, and the build it leaves stays parked until the
+ * next read of the same box removes it: after the last one, for good. Every
+ * reader in the mirror is read by an effect.
+ *
+ * @param {HTMLElement} lineBox
+ * @returns {HTMLElement} The copy, parked.
+ */
+function getLineBoxCopy(lineBox) {
+  let signal = lineBoxCopyCache.get(lineBox);
+  if (!signal) {
+    signal = new Derived(() => {
+      getLineBoxShape(lineBox);
+      readRestyledFromAbove(lineBox);
+      getBorderBoxSize(lineBox);
+      const copy = /** @type {HTMLElement} */ (lineBox.cloneNode(true));
+      dressLaidOut(lineBox, copy);
+      const root = parkMeasurementClone(lineBox, copy, null);
+      onCleanup(() => root.remove());
+      return root;
+    });
+    lineBoxCopyCache.set(lineBox, signal);
+  }
+  return signal.get();
+}
+
+/**
+ * Depend on what can restyle `lineBox`, or what is in it, from above: its
+ * own `reflow` signal and its ancestors' up to the panel's root, which an
+ * attribute change bumps unless it is presentational, and the portal-wide
+ * epochs a stylesheet, a font and the viewport bump.
+ *
+ * A narrower read than `getReflowContext(lineBox)`, which also follows the
+ * box's `moved` signal and, for a box out of flow, every settling in the
+ * panel. Both say where the box is, not what is in it, and its texts are
+ * measured relative to it.
+ *
+ * @param {HTMLElement} lineBox
+ * @returns {void}
+ */
+function readRestyledFromAbove(lineBox) {
+  const record = readRecordOf(lineBox);
+  if (record) {
+    record.mirror.layout.get();
+    record.mirror.globalLayout.get();
+  }
+  for (
+    let current = /** @type {Node | null} */ (lineBox);
+    current;
+    current = getParentElement(current)
+  ) {
+    readRecordOf(current)?.reflow.get();
+    if (isPortalRoot(current)) {
+      break;
     }
-    return measureTextRects(cloneText, clone, whiteSpace, false, revealed);
-  } finally {
-    clone.remove();
+  }
+}
+
+/** @type {WeakMap<HTMLElement, Derived<string>>} */
+const lineBoxShapeCache = nodeCache();
+
+/**
+ * What a copy of `lineBox` is made of, as one string: the elements and texts
+ * in it, in order, with the characters of every text and the attributes of
+ * every element, the portal's presentational and bookkeeping ones aside.
+ *
+ * The string is the copy's equality gate. Reading the box node by node
+ * depends on each node's adoption as well as on its content, and a portal
+ * adopts a panel a node at a time, frame after frame: built straight from
+ * those reads, the copy was rebuilt for every node adopted while it was
+ * mounting. Compared as a string, an adoption reads the box again for the
+ * same answer and stops there. The presentational attributes are left out
+ * so that the answer is the same when a hover flag happens to be set on
+ * something in the box at the time; a hover alone reads nothing here.
+ *
+ * @param {HTMLElement} lineBox
+ * @returns {string}
+ */
+function getLineBoxShape(lineBox) {
+  let signal = lineBoxShapeCache.get(lineBox);
+  if (!signal) {
+    signal = new Derived(() => {
+      /** @type {string[]} */
+      const parts = [];
+      describeShape(lineBox, parts);
+      return parts.join("");
+    });
+    lineBoxShapeCache.set(lineBox, signal);
+  }
+  return signal.get();
+}
+
+/**
+ * Append `node`'s children to the description `getLineBoxShape` builds,
+ * depending on each: on the child list, on a text's characters, and on an
+ * element's own reflow signal, which a change to one of its attributes bumps
+ * unless the portal declares the attribute presentational, and which waits
+ * for the element's adoption when it has no record yet. The box's own, its
+ * ancestors' and the portal-wide ones reach the copy through
+ * `readRestyledFromAbove`. Every length is written before what it measures,
+ * so that no text can pass for markup. Any other node, a comment a
+ * framework anchors to most of all, is written as a marker: `counterpart`
+ * counts it on the way to a text, so the description has to count it too.
+ *
+ * @param {Node} node
+ * @param {string[]} parts
+ * @returns {void}
+ */
+function describeShape(node, parts) {
+  for (const child of getChildNodes(node)) {
+    if (child.nodeType === Node.TEXT_NODE) {
+      const data = getTextDataCached(/** @type {Text} */ (child));
+      parts.push(`#${data.length}:${data}`);
+    } else if (child.nodeType === Node.ELEMENT_NODE) {
+      const element = /** @type {Element} */ (child);
+      readRecordOf(element)?.reflow.get();
+      parts.push(`<${element.localName}`);
+      for (const { name, value } of element.attributes) {
+        if (!PRESENTATIONAL_ATTRIBUTES.has(name) && !PORTAL_BOOKKEEPING_ATTRIBUTES.has(name)) {
+          parts.push(` ${name}=${value.length}:${value}`);
+        }
+      }
+      parts.push(">");
+      describeShape(element, parts);
+      parts.push("</>");
+    } else {
+      parts.push("<!>");
+    }
+  }
+}
+
+/**
+ * Walk `live` and its copy side by side, and dress each element whose
+ * content is laid out in the line box's lines.
+ *
+ * The box and every element whose content is laid out in its lines (one that
+ * splits across lines, inside others that do) keep their resolved style,
+ * with their transforms, transitions and animations off, so a selector that
+ * reaches above the box still sizes them, and which text was measured first
+ * does not change what the others are measured against. Everything else is
+ * copied as `createMeasurementClone` copies descendants, with its classes
+ * only: a selector that reaches above the box does not style it, and its
+ * animations start again, either of which can move a text in a centred or
+ * flex line box.
+ *
+ * Nothing here is a dependency. The copy depends on what `getLineBoxCopy`
+ * reads, and `display` is read straight from the computed style: through
+ * `splitsAcrossLines` every element's style would be one, and a hover flag
+ * restyles the element it lands on.
+ *
+ * @param {Node} live The line box, or an element whose content is laid out
+ *   in its lines.
+ * @param {Node} copy `live.cloneNode(true)`, or a part of one.
+ * @returns {void}
+ */
+function dressLaidOut(live, copy) {
+  for (
+    let child = live.firstChild, childCopy = copy.firstChild;
+    child && childCopy;
+    child = child.nextSibling, childCopy = childCopy.nextSibling
+  ) {
+    if (child.nodeType !== Node.ELEMENT_NODE) {
+      continue;
+    }
+    const element = /** @type {HTMLElement} */ (child);
+    const computed = window.getComputedStyle(element);
+    if (displaySplitsAcrossLines(element, computed.display)) {
+      copyStillStyle(element, /** @type {HTMLElement} */ (childCopy), computed);
+      dressLaidOut(element, childCopy);
+    }
   }
 }
 

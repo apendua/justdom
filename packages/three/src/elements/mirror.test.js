@@ -43,6 +43,59 @@ function layout(element, rect, { count } = {}) {
 }
 
 /**
+ * Stand in for the range text is measured with, which jsdom gives no
+ * geometry. Every rect the range reports is `rect()`, and its line boxes are
+ * that one rect; without `rect` it reports an empty range, no size and no
+ * line boxes.
+ *
+ * @param {{ onSelect?: (node: Node) => void, rect?: () => DOMRectReadOnly }} [options]
+ *   `onSelect` hears each node the range is pointed at, which is one per
+ *   measurement.
+ * @returns {() => void} Puts the document's own `createRange` back.
+ */
+function stubMeasuringRange({ onSelect, rect } = {}) {
+  const original = document.createRange;
+  resetMeasuringRangeForTests();
+  const empty = () =>
+    /** @type {DOMRect} */ ({ left: 0, top: 0, right: 0, bottom: 0, width: 0, height: 0 });
+  document.createRange = () =>
+    /** @type {Range} */ (
+      /** @type {unknown} */ ({
+        selectNodeContents: (/** @type {Node} */ node) => onSelect?.(node),
+        setStart: () => {},
+        setEnd: () => {},
+        getBoundingClientRect: rect ?? empty,
+        getClientRects: () =>
+          /** @type {DOMRectList} */ (/** @type {unknown} */ (rect ? [rect()] : [])),
+      })
+    );
+  return () => {
+    document.createRange = original;
+    resetMeasuringRangeForTests();
+  };
+}
+
+/**
+ * Read `text`'s layout the way the mirror does, from an effect that holds it
+ * until `dispose`, so that what the layout reads is held with it.
+ *
+ * @param {Text} text
+ */
+function holdTextLayout(text) {
+  /** @type {import("./mirror.js").TextLayout | undefined} */
+  let layout;
+  const effect = new Effect(() => {
+    layout = getTextLayout(text);
+  });
+  return {
+    get layout() {
+      return /** @type {import("./mirror.js").TextLayout} */ (layout);
+    },
+    dispose: () => effect.dispose(),
+  };
+}
+
+/**
  * @param {Element} element
  * @param {() => number} top
  */
@@ -764,21 +817,7 @@ describe("text layout under transforms", () => {
     // path run to completion. It records which trees were measured.
     /** @type {Node[]} */
     const measured = [];
-    const originalCreateRange = document.createRange;
-    resetMeasuringRangeForTests();
-    document.createRange = () =>
-      /** @type {Range} */ (
-        /** @type {unknown} */ ({
-          selectNodeContents: (/** @type {Node} */ node) => {
-            measured.push(node);
-          },
-          setStart: () => {},
-          setEnd: () => {},
-          getBoundingClientRect: () =>
-            /** @type {DOMRect} */ ({ left: 0, top: 0, right: 0, bottom: 0, width: 0, height: 0 }),
-          getClientRects: () => /** @type {DOMRectList} */ (/** @type {unknown} */ ([])),
-        })
-      );
+    const restoreRange = stubMeasuringRange({ onSelect: (node) => measured.push(node) });
 
     const parent = document.createElement("div");
     parent.style.transform = "matrix(2, 0, 0, 2, 0, 0)";
@@ -792,8 +831,8 @@ describe("text layout under transforms", () => {
 
     const childrenBefore = document.body.childElementCount;
     try {
-      const layout = getTextLayout(textNode);
-      assert.deepEqual(layout.lines, []);
+      const held = holdTextLayout(textNode);
+      assert.deepEqual(held.layout.lines, []);
       // The measurement ran against a clone's text, not the live node…
       assert.equal(measured.length, 1);
       assert.notEqual(measured[0], textNode);
@@ -801,12 +840,633 @@ describe("text layout under transforms", () => {
       // …the live parent was never touched — no attributes, no style writes
       // a `transition: transform` could smooth into a lie…
       assert.equal(parent.style.transform, "matrix(2, 0, 0, 2, 0, 0)");
-      // …and the clone did not outlive the measurement.
+      // …and the clone did not outlive the last reader of the layout.
+      held.dispose();
       assert.equal(document.body.childElementCount, childrenBefore);
     } finally {
       parent.remove();
-      document.createRange = originalCreateRange;
-      resetMeasuringRangeForTests();
+      restoreRange();
+    }
+  });
+
+  /**
+   * Measure `text` through `getTextLayout` with the range stubbed, and
+   * report the copy it was measured in, read while the copy is still in
+   * the document: its text node, and the top of it, the child of the body
+   * it was parked as. The copy is gone by the time this returns.
+   *
+   * @param {Text} text
+   * @param {() => DOMRectReadOnly} [rect]
+   */
+  function measureThroughCopy(text, rect) {
+    /** @type {Array<{ text: Node, root: HTMLElement }>} */
+    const copies = [];
+    const restoreRange = stubMeasuringRange({
+      rect,
+      onSelect: (node) => {
+        let root = /** @type {HTMLElement} */ (node.parentElement);
+        while (root.parentElement && root.parentElement !== document.body) {
+          root = root.parentElement;
+        }
+        copies.push({ text: node, root });
+      },
+    });
+    const childrenBefore = document.body.childElementCount;
+    try {
+      const held = holdTextLayout(text);
+      const layout = held.layout;
+      held.dispose();
+      assert.equal(copies.length, 1);
+      assert.notEqual(copies[0].text, text);
+      assert.equal(copies[0].text.textContent, text.textContent);
+      assert.equal(document.body.childElementCount, childrenBefore);
+      return { layout, ...copies[0] };
+    } finally {
+      restoreRange();
+    }
+  }
+
+  /**
+   * A tilted card, `150px` wide, holding an `<i>`, the label `<span>` with
+   * `text` in it, and a `<b>` after it, adopted by a mirror.
+   *
+   * @param {string} text
+   */
+  function tiltedCard(text) {
+    const card = document.createElement("div");
+    card.className = "card";
+    card.style.width = "150px";
+    card.style.transform = "matrix(0.996, 0.087, -0.087, 0.996, 0, 0)";
+    const label = document.createElement("span");
+    const textNode = document.createTextNode(text);
+    label.appendChild(textNode);
+    card.append(document.createElement("i"), label, document.createElement("b"));
+    document.body.appendChild(card);
+    const mirror = createMirror();
+    mirror.adopt(card);
+    mirror.adopt(label);
+    mirror.adopt(textNode);
+    return { card, label, textNode };
+  }
+
+  test("text in an inline parent is measured in a copy of the box its lines are in", () => {
+    // The span's computed width is `auto`, so a copy of the span alone would
+    // be laid out in the body with nothing to wrap against, and its text
+    // would come back on one line. The copy has to be of the card, whose
+    // width the lines break at.
+    const { card, textNode } = tiltedCard("a note long enough to wrap");
+    try {
+      const { text, root } = measureThroughCopy(textNode);
+      const label = /** @type {HTMLElement} */ (text.parentNode);
+      assert.equal(label.localName, "span");
+      assert.equal(label.parentNode, root);
+      assert.notEqual(root, card);
+      assert.equal(root.className, "card");
+      assert.equal(root.style.width, "150px");
+    } finally {
+      card.remove();
+    }
+  });
+
+  test("the copy holds everything the line box lays out, after the text too", () => {
+    // What follows the text places it: it aligns the last line, takes space
+    // in a flex box, and decides where a word running on past it breaks.
+    const { card, textNode } = tiltedCard("a note");
+    try {
+      const { root } = measureThroughCopy(textNode);
+      assert.deepEqual(
+        Array.from(root.children, (child) => child.localName),
+        ["i", "span", "b"],
+      );
+    } finally {
+      card.remove();
+    }
+  });
+
+  test("the inline parent's animations and transitions are off in the copy", () => {
+    // An animation would start again on the copy at its first keyframe and
+    // beat the resolved value copied onto it.
+    const { card, label, textNode } = tiltedCard("a note");
+    label.style.animation = "grow 2s infinite";
+    label.style.transition = "letter-spacing 1s";
+    try {
+      const { text } = measureThroughCopy(textNode);
+      const copy = /** @type {HTMLElement} */ (text.parentNode);
+      for (const property of ["animation", "transition"]) {
+        assert.equal(copy.style.getPropertyValue(property), "none", property);
+        assert.equal(copy.style.getPropertyPriority(property), "important", property);
+      }
+    } finally {
+      card.remove();
+    }
+  });
+
+  test("the inline parent keeps its resolved style in the copy", () => {
+    // A rule that reaches above the card matches the live span and not the
+    // span in a copy parked in the body, so what it sets is copied over.
+    const style = document.createElement("style");
+    style.textContent = ".desk .card span { letter-spacing: 3px; }";
+    document.head.appendChild(style);
+    const desk = document.createElement("div");
+    desk.className = "desk";
+    const { card, textNode } = tiltedCard("a note");
+    desk.appendChild(card);
+    document.body.appendChild(desk);
+    try {
+      assert.equal(
+        window.getComputedStyle(/** @type {Element} */ (textNode.parentElement)).letterSpacing,
+        "3px",
+      );
+      const { text } = measureThroughCopy(textNode);
+      assert.equal(/** @type {HTMLElement} */ (text.parentNode).style.letterSpacing, "3px");
+    } finally {
+      desk.remove();
+      style.remove();
+    }
+  });
+
+  test("the text's position is read against its own parent in the copy", () => {
+    // The span starts 30px into the page and the card 10px; the text starts
+    // at 50px. Measured against the span, as the untransformed path does, it
+    // sits 20px in; against the card it would sit 40px in.
+    const { card, textNode } = tiltedCard("a note");
+    const original = window.HTMLElement.prototype.getBoundingClientRect;
+    window.HTMLElement.prototype.getBoundingClientRect = function () {
+      const left = this.localName === "span" ? 30 : 10;
+      return new window.DOMRect(left, 0, 100, 20);
+    };
+    try {
+      const { layout } = measureThroughCopy(textNode, () => new window.DOMRect(50, 4, 40, 12));
+      assert.deepEqual({ left: layout.left, top: layout.top }, { left: 20, top: 4 });
+    } finally {
+      window.HTMLElement.prototype.getBoundingClientRect = original;
+      card.remove();
+    }
+  });
+
+  /**
+   * A tilted card holding a `<span class="label">` with a text in it, a text
+   * of the card's own, a `<b>` with a text, and an inline-block `<em>` with
+   * a `<span class="inner">` and a text: four texts, three laid out in the
+   * card's lines and one in the `<em>`'s, all adopted by a mirror.
+   */
+  function cardOfTexts() {
+    const card = document.createElement("div");
+    card.className = "card";
+    card.style.width = "150px";
+    card.style.transform = "matrix(0.996, 0.087, -0.087, 0.996, 0, 0)";
+    const label = document.createElement("span");
+    label.className = "label";
+    const inLabel = document.createTextNode("in the label");
+    label.appendChild(inLabel);
+    const inCard = document.createTextNode(" in the card ");
+    const bold = document.createElement("b");
+    bold.className = "other";
+    const inBold = document.createTextNode("in bold");
+    bold.appendChild(inBold);
+    const box = document.createElement("em");
+    box.style.display = "inline-block";
+    const inner = document.createElement("span");
+    inner.className = "inner";
+    const inBox = document.createTextNode("in a box of its own");
+    inner.appendChild(inBox);
+    box.appendChild(inner);
+    card.append(label, inCard, bold, box);
+    document.body.appendChild(card);
+    const mirror = createMirror();
+    for (const node of [card, label, inLabel, inCard, bold, inBold, box, inner, inBox]) {
+      mirror.adopt(node);
+    }
+    return { card, mirror, texts: { inLabel, inCard, inBold, inBox } };
+  }
+
+  /**
+   * Stub the range, and record the copy each measurement ran in: the child
+   * of the body it was parked as.
+   */
+  function recordCopies() {
+    /** @type {HTMLElement[]} */
+    const roots = [];
+    const restore = stubMeasuringRange({
+      onSelect: (node) => {
+        let root = /** @type {HTMLElement} */ (node.parentElement);
+        while (root.parentElement && root.parentElement !== document.body) {
+          root = root.parentElement;
+        }
+        roots.push(root);
+      },
+    });
+    return { roots, restore };
+  }
+
+  /**
+   * Tell `mirror` what `change` does to the DOM, as the portal's observer
+   * would: the records a `MutationObserver` takes of it, ingested in a batch.
+   *
+   * @param {ReturnType<typeof createMirror>} mirror
+   * @param {() => void} change
+   */
+  function changeAndIngest(mirror, change) {
+    const observer = new window.MutationObserver(() => {});
+    observer.observe(document.body, {
+      subtree: true,
+      childList: true,
+      attributes: true,
+      attributeOldValue: true,
+      characterData: true,
+      characterDataOldValue: true,
+    });
+    change();
+    const records = observer.takeRecords();
+    observer.disconnect();
+    batch(() => mirror.ingest(records));
+  }
+
+  test("the texts of one line box share its copy, across tasks", async () => {
+    // Measured in a copy each, the texts of a paragraph copy it once per
+    // text, and a portal measures a panel a frame at a time. One copy serves
+    // the box for as long as its texts are read, and a box of its own gets
+    // its own.
+    const { card, texts } = cardOfTexts();
+    const { roots, restore } = recordCopies();
+    const childrenBefore = document.body.childElementCount;
+    try {
+      const held = [holdTextLayout(texts.inLabel)];
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      for (const text of [texts.inCard, texts.inBold, texts.inBox]) {
+        held.push(holdTextLayout(text));
+      }
+      assert.equal(roots.length, 4);
+      assert.equal(roots[0].className, "card");
+      assert.equal(roots[1], roots[0]);
+      assert.equal(roots[2], roots[0]);
+      assert.equal(roots[3].localName, "em");
+      assert.equal(document.body.childElementCount, childrenBefore + 2);
+      // Parked in the page, kept out of focus and the accessibility tree.
+      assert.equal(roots[0].hasAttribute("inert"), true);
+      assert.equal(roots[0].getAttribute("aria-hidden"), "true");
+      // A copy goes when the last text reading it lets go.
+      held[0].dispose();
+      held[1].dispose();
+      assert.equal(roots[0].isConnected, true);
+      held[2].dispose();
+      assert.equal(roots[0].isConnected, false);
+      held[3].dispose();
+      assert.equal(document.body.childElementCount, childrenBefore);
+    } finally {
+      card.remove();
+      restore();
+    }
+  });
+
+  test("a change in the box rebuilds its copy, and a change elsewhere does not", () => {
+    const { card, mirror, texts } = cardOfTexts();
+    const elsewhere = document.createElement("div");
+    const inside = document.createElement("span");
+    elsewhere.appendChild(inside);
+    document.body.appendChild(elsewhere);
+    mirror.adopt(elsewhere);
+    mirror.adopt(inside);
+    const { roots, restore } = recordCopies();
+    const held = [holdTextLayout(texts.inLabel), holdTextLayout(texts.inCard)];
+    try {
+      assert.equal(roots.length, 2);
+      // A change elsewhere in the page moves nothing the copy holds.
+      changeAndIngest(mirror, () => inside.setAttribute("data-moved", ""));
+      assert.equal(roots.length, 2);
+      // A change inside the box does, as deep in it as it is: both texts
+      // are measured again, in a copy that has it, and the old copy is gone.
+      const label = /** @type {HTMLElement} */ (texts.inLabel.parentElement);
+      changeAndIngest(mirror, () => label.appendChild(document.createElement("u")));
+      assert.equal(roots.length, 4);
+      assert.notEqual(roots[2], roots[0]);
+      assert.equal(roots[3], roots[2]);
+      assert.equal(roots[2].querySelector(".label")?.lastElementChild?.localName, "u");
+      assert.equal(roots[0].isConnected, false);
+    } finally {
+      held.forEach((reader) => reader.dispose());
+      card.remove();
+      elsewhere.remove();
+      restore();
+    }
+  });
+
+  test("a copy outlives what changes nothing it holds", async () => {
+    // A portal adopts a panel a node at a time, frame after frame, and the
+    // ray writes a hover flag on every element it crosses. Neither moves
+    // what the copy was made from, so neither rebuilds it, even when the
+    // one makes the box be read again with the other in it.
+    const card = document.createElement("div");
+    card.style.transform = "matrix(0.996, 0.087, -0.087, 0.996, 0, 0)";
+    const first = document.createTextNode("first ");
+    const link = document.createElement("a");
+    const second = document.createTextNode("second");
+    link.appendChild(second);
+    card.append(first, link);
+    document.body.appendChild(card);
+    const mirror = createMirror();
+    mirror.adopt(card);
+    mirror.adopt(first);
+    const { roots, restore } = recordCopies();
+    const held = [holdTextLayout(first)];
+    try {
+      changeAndIngest(mirror, () => link.setAttribute("data-xr-hover", ""));
+      // The rest of the box is adopted after the copy was made, and the
+      // adoption is announced a microtask later.
+      mirror.adopt(link);
+      mirror.adopt(second);
+      await Promise.resolve();
+      held.push(holdTextLayout(second));
+      assert.equal(roots.length, 2);
+      assert.equal(roots[1], roots[0]);
+      assert.equal(roots[0].isConnected, true);
+    } finally {
+      held.forEach((reader) => reader.dispose());
+      card.remove();
+      restore();
+    }
+  });
+
+  test("a text replaced by one with the same characters is found in the copy", () => {
+    // A clock label written every tick, or a re-render through `innerHTML`,
+    // puts a new node where the old one was. The box's shape is the same,
+    // so nothing need rebuild its copy, and the new node has to be found at
+    // the old one's place. Not told to the mirror here, which is the state
+    // of a box whose size the change did not move.
+    const { card, mirror, texts } = cardOfTexts();
+    const label = /** @type {HTMLElement} */ (texts.inLabel.parentElement);
+    const { roots, restore } = recordCopies();
+    const held = [holdTextLayout(texts.inLabel)];
+    try {
+      label.textContent = "in the label";
+      const replacement = /** @type {Text} */ (label.firstChild);
+      assert.notEqual(replacement, texts.inLabel);
+      mirror.adopt(replacement);
+      held.push(holdTextLayout(replacement));
+      assert.equal(roots.length, 2);
+      assert.equal(roots[1], roots[0]);
+    } finally {
+      held.forEach((reader) => reader.dispose());
+      card.remove();
+      restore();
+    }
+  });
+
+  test("a copy with other characters at the text's place is not measured", () => {
+    // Until the change reaches the copy, the place holds the old characters,
+    // and measuring them would answer for a text that is no longer there.
+    const { card, mirror, texts } = cardOfTexts();
+    const label = /** @type {HTMLElement} */ (texts.inLabel.parentElement);
+    const { roots, restore } = recordCopies();
+    const held = [holdTextLayout(texts.inLabel)];
+    try {
+      label.textContent = "changed";
+      const replacement = /** @type {Text} */ (label.firstChild);
+      mirror.adopt(replacement);
+      const reader = holdTextLayout(replacement);
+      held.push(reader);
+      assert.equal(reader.layout, undefined);
+      assert.equal(roots.length, 1);
+    } finally {
+      held.forEach((reader) => reader.dispose());
+      card.remove();
+      restore();
+    }
+  });
+
+  test("a text the copy does not hold yet is measured once it does", async () => {
+    // Inserted into an element the portal had not adopted, a text reaches
+    // the box's shape when the adoption is announced, a microtask after the
+    // portal may already measure it. The measurement waits for it.
+    const { card, mirror, texts } = cardOfTexts();
+    const empty = document.createElement("i");
+    card.appendChild(empty);
+    const { roots, restore } = recordCopies();
+    const held = [holdTextLayout(texts.inLabel)];
+    try {
+      const late = document.createTextNode("late");
+      empty.appendChild(late);
+      mirror.adopt(empty);
+      mirror.adopt(late);
+      const reader = holdTextLayout(late);
+      held.push(reader);
+      assert.equal(roots.length, 1);
+      assert.equal(reader.layout, undefined);
+      // The adoption reaches the shape, the copy is rebuilt with the text in
+      // it, and both texts in the box are measured in the new copy.
+      await Promise.resolve();
+      assert.notEqual(reader.layout, undefined);
+      assert.equal(roots.length, 3);
+      assert.equal(roots[2], roots[1]);
+      assert.notEqual(roots[1], roots[0]);
+      assert.equal(roots[1].querySelector("i")?.textContent, "late");
+    } finally {
+      held.forEach((reader) => reader.dispose());
+      card.remove();
+      restore();
+    }
+  });
+
+  test("a comment put into the box rebuilds its copy", () => {
+    // Frameworks anchor to comments. The copy holds them as the box does,
+    // and a text is found by a place that counts them, so a comment coming
+    // or going has to rebuild the copy, or every text after it is looked
+    // for one place off.
+    const { card, mirror, texts } = cardOfTexts();
+    const label = /** @type {HTMLElement} */ (texts.inLabel.parentElement);
+    const { roots, restore } = recordCopies();
+    const held = [texts.inLabel, texts.inCard, texts.inBold].map((text) => holdTextLayout(text));
+    try {
+      assert.equal(roots.length, 3);
+      changeAndIngest(mirror, () => card.insertBefore(document.createComment("anchor"), label));
+      assert.equal(roots.length, 6);
+      assert.notEqual(roots[3], roots[0]);
+      assert.equal(new Set(roots.slice(3)).size, 1);
+      assert.equal(roots[3].firstChild?.nodeType, Node.COMMENT_NODE);
+    } finally {
+      held.forEach((reader) => reader.dispose());
+      card.remove();
+      restore();
+    }
+  });
+
+  test("a dressed element keeps the custom properties it sets", () => {
+    // Chromium enumerates no custom property in a computed style, so a copy
+    // written from one alone loses the `--gap` an inline style sets, and a
+    // child styled with `var(--gap)` with it.
+    const realGetComputedStyle = window.getComputedStyle;
+    window.getComputedStyle = (element, pseudo) => {
+      const computed = realGetComputedStyle(element, pseudo);
+      const names = Array.from({ length: computed.length }, (_, i) => computed[i]).filter(
+        (name) => !name.startsWith("--"),
+      );
+      return /** @type {CSSStyleDeclaration} */ (
+        new Proxy(computed, {
+          get(target, key) {
+            if (key === "length") {
+              return names.length;
+            }
+            if (typeof key === "string" && /^\d+$/.test(key)) {
+              return names[Number(key)];
+            }
+            const value = Reflect.get(target, key, target);
+            return typeof value === "function" ? value.bind(target) : value;
+          },
+        })
+      );
+    };
+    const { card, texts } = cardOfTexts();
+    const label = /** @type {HTMLElement} */ (texts.inLabel.parentElement);
+    label.style.setProperty("--gap", "8px");
+    const { roots, restore } = recordCopies();
+    const held = holdTextLayout(texts.inLabel);
+    try {
+      const copy = /** @type {HTMLElement} */ (roots[0].querySelector(".label"));
+      assert.equal(copy.style.getPropertyValue("--gap"), "8px");
+    } finally {
+      held.dispose();
+      card.remove();
+      restore();
+      window.getComputedStyle = realGetComputedStyle;
+    }
+  });
+
+  test("a change beside an out-of-flow box keeps its copy", () => {
+    // A tooltip or a centred dialog is laid out out of flow, and is told of
+    // every settling in the panel; its own position moves nothing in it. A
+    // text typed beside it re-measures none of its texts, and rebuilds no
+    // copy of it.
+    const panel = document.createElement("div");
+    const box = document.createElement("div");
+    box.style.position = "absolute";
+    box.style.width = "150px";
+    box.style.transform = "matrix(0.996, 0.087, -0.087, 0.996, 0, 0)";
+    /** @type {Text[]} */
+    const inBox = [];
+    for (let i = 0; i < 10; i++) {
+      const text = document.createTextNode(`text ${i} `);
+      inBox.push(text);
+      box.appendChild(text);
+    }
+    const beside = document.createElement("div");
+    const typed = document.createTextNode("typed");
+    beside.appendChild(typed);
+    panel.append(box, beside);
+    document.body.appendChild(panel);
+    const mirror = createMirror();
+    for (const node of [panel, box, ...inBox, beside, typed]) {
+      mirror.adopt(node);
+    }
+    const { roots, restore } = recordCopies();
+    const held = inBox.map((text) => holdTextLayout(text));
+    try {
+      for (const value of ["typed a", "typed ab", "typed abc"]) {
+        changeAndIngest(mirror, () => {
+          typed.data = value;
+        });
+      }
+      assert.equal(new Set(roots).size, 1);
+      assert.equal(roots.length, 10);
+    } finally {
+      held.forEach((reader) => reader.dispose());
+      panel.remove();
+      restore();
+    }
+  });
+
+  test("a font that finished loading rebuilds the copy", () => {
+    const { card, mirror, texts } = cardOfTexts();
+    const { roots, restore } = recordCopies();
+    const held = holdTextLayout(texts.inLabel);
+    try {
+      batch(() => mirror.fontsLoaded());
+      assert.equal(roots.length, 2);
+      assert.notEqual(roots[1], roots[0]);
+    } finally {
+      held.dispose();
+      card.remove();
+      restore();
+    }
+  });
+
+  test("an attribute changed above the box rebuilds its copy", () => {
+    // `.desk.night .card b` can restyle what is in the box from outside it.
+    const desk = document.createElement("div");
+    const { card, mirror, texts } = cardOfTexts();
+    desk.appendChild(card);
+    document.body.appendChild(desk);
+    mirror.adopt(desk);
+    const { roots, restore } = recordCopies();
+    const held = holdTextLayout(texts.inLabel);
+    try {
+      changeAndIngest(mirror, () => desk.setAttribute("class", "night"));
+      assert.equal(roots.length, 2);
+      assert.notEqual(roots[1], roots[0]);
+    } finally {
+      held.dispose();
+      desk.remove();
+      restore();
+    }
+  });
+
+  test("every element laid out in the box's lines keeps its resolved style", () => {
+    // Shared by every text in the box, the copy dresses each inline element
+    // in it, not only the path to the first text measured: which text came
+    // first must not change what the others are measured against. What is
+    // laid out in a box of its own keeps its classes only.
+    const style = document.createElement("style");
+    style.textContent = ".desk .card .other, .desk .card .inner { letter-spacing: 3px; }";
+    document.head.appendChild(style);
+    const desk = document.createElement("div");
+    desk.className = "desk";
+    const { card, texts } = cardOfTexts();
+    desk.appendChild(card);
+    document.body.appendChild(desk);
+    const { roots, restore } = recordCopies();
+    const held = holdTextLayout(texts.inLabel);
+    try {
+      const copy = roots[0];
+      assert.equal(
+        /** @type {HTMLElement} */ (copy.querySelector(".other")).style.letterSpacing,
+        "3px",
+      );
+      assert.equal(
+        /** @type {HTMLElement} */ (copy.querySelector(".inner")).style.letterSpacing,
+        "",
+      );
+    } finally {
+      held.dispose();
+      desk.remove();
+      style.remove();
+      restore();
+    }
+  });
+
+  test("the climb to the line box stops at the panel's root", () => {
+    // An inline panel root with an inline element under it: the box the
+    // lines are in would be the page's `<div>` above the root, which no
+    // portal mirrors. The copy stops at the root, and drops the attribute
+    // that would make it a panel of its own.
+    const page = document.createElement("div");
+    page.className = "page";
+    const root = document.createElement("span");
+    root.setAttribute(PORTAL_ATTRIBUTE, "");
+    const bold = document.createElement("b");
+    bold.style.transform = "matrix(2, 0, 0, 2, 0, 0)";
+    const textNode = document.createTextNode("hello");
+    bold.appendChild(textNode);
+    root.appendChild(bold);
+    page.appendChild(root);
+    document.body.appendChild(page);
+    const mirror = createMirror();
+    mirror.adopt(bold);
+    mirror.adopt(textNode);
+    try {
+      const { root: copy } = measureThroughCopy(textNode);
+      assert.equal(copy.localName, "span");
+      assert.equal(copy.hasAttribute(PORTAL_ATTRIBUTE), false);
+    } finally {
+      page.remove();
     }
   });
 });
@@ -900,18 +1560,7 @@ describe("a panel measured through a scale", () => {
     mirror.adopt(text);
     // The text is laid out at (20, 5) in the child, 60 by 16 layout px.
     const rect = () => new window.DOMRect(10 + 20 * 0.5, 20 + 5 * 0.5, 60 * 0.5, 16 * 0.5);
-    const originalCreateRange = document.createRange;
-    resetMeasuringRangeForTests();
-    document.createRange = () =>
-      /** @type {Range} */ (
-        /** @type {unknown} */ ({
-          selectNodeContents: () => {},
-          setStart: () => {},
-          setEnd: () => {},
-          getBoundingClientRect: rect,
-          getClientRects: () => /** @type {DOMRectList} */ (/** @type {unknown} */ ([rect()])),
-        })
-      );
+    const restoreRange = stubMeasuringRange({ rect });
     try {
       const measured = getTextLayout(text);
       assert.deepEqual(
@@ -924,8 +1573,7 @@ describe("a panel measured through a scale", () => {
       );
     } finally {
       stage.remove();
-      document.createRange = originalCreateRange;
-      resetMeasuringRangeForTests();
+      restoreRange();
     }
   });
 });
@@ -944,23 +1592,9 @@ describe("text layout as a dependency", () => {
     // is where jsdom puts it.
     const rect = () => new window.DOMRect(10, 20 - shifted, 30, 12);
 
-    const originalCreateRange = document.createRange;
-    resetMeasuringRangeForTests();
-    document.createRange = () => {
-      return /** @type {Range} */ (
-        /** @type {unknown} */ ({
-          // One range now serves every measurement, so "a measurement
-          // happened" is a node being selected, not a range being made.
-          selectNodeContents: () => {
-            measurements++;
-          },
-          setStart: () => {},
-          setEnd: () => {},
-          getBoundingClientRect: rect,
-          getClientRects: () => /** @type {DOMRectList} */ (/** @type {unknown} */ ([rect()])),
-        })
-      );
-    };
+    // One range serves every measurement, so "a measurement happened" is a
+    // node being selected, not a range being made.
+    const restoreRange = stubMeasuringRange({ rect, onSelect: () => measurements++ });
 
     const parent = document.createElement("div");
     const textNode = document.createTextNode("hello world");
@@ -1008,8 +1642,7 @@ describe("text layout as a dependency", () => {
     } finally {
       subscription.unsubscribe();
       parent.remove();
-      document.createRange = originalCreateRange;
-      resetMeasuringRangeForTests();
+      restoreRange();
     }
   });
 
@@ -1023,7 +1656,6 @@ describe("text layout as a dependency", () => {
     // client-rect terms really did change.
     /** @type {Set<Node>} */
     const measured = new Set();
-    const originalCreateRange = document.createRange;
     let scrollTop = 0;
     const rect = () => ({
       left: 10,
@@ -1033,19 +1665,10 @@ describe("text layout as a dependency", () => {
       width: 30,
       height: 12,
     });
-    resetMeasuringRangeForTests();
-    document.createRange = () => {
-      return /** @type {Range} */ (
-        /** @type {unknown} */ ({
-          /** @param {Node} node */
-          selectNodeContents: (node) => measured.add(node),
-          setStart: () => {},
-          setEnd: () => {},
-          getBoundingClientRect: rect,
-          getClientRects: () => /** @type {DOMRectList} */ (/** @type {unknown} */ ([rect()])),
-        })
-      );
-    };
+    const restoreRange = stubMeasuringRange({
+      rect: () => /** @type {DOMRectReadOnly} */ (rect()),
+      onSelect: (node) => measured.add(node),
+    });
 
     // scroller > row > #text — a row's label, which is where a list keeps
     // nearly all of its text — and text sitting directly in the scroller.
@@ -1114,8 +1737,7 @@ describe("text layout as a dependency", () => {
     } finally {
       holders.forEach((effect) => effect.dispose());
       scroller.remove();
-      document.createRange = originalCreateRange;
-      resetMeasuringRangeForTests();
+      restoreRange();
     }
   });
 });

@@ -3052,10 +3052,11 @@ export function getCheckedCached(element) {
  * is appended to the body in its place and parked instead: an SVG `<text>`
  * is laid out only inside an `<svg>` (`measureRuns` in `svg/text.js`). The
  * clone's own `visibility` hides it either way, since the style copied onto
- * it says `visible`; what is parked is only moved off-screen. A clone of a
- * panel's root drops `PORTAL_ATTRIBUTE`, so that it is measured in the
- * body's frame rather than taken for a panel of its own. The caller
- * removes what was appended, the host if it gave one.
+ * it says `visible`; what is parked is only moved off-screen, and marked
+ * `inert` and `aria-hidden`, which keep it out of focus and the
+ * accessibility tree. A clone of a panel's root drops `PORTAL_ATTRIBUTE`, so
+ * that it is measured in the body's frame rather than taken for a panel of
+ * its own. The caller removes what was appended, the host if it gave one.
  *
  * @template {HTMLElement | SVGElement} T
  * @param {T} element
@@ -3087,6 +3088,8 @@ function parkMeasurementClone(element, clone, host) {
   parked.style.setProperty("position", "absolute", "important");
   parked.style.setProperty("top", "0", "important");
   parked.style.setProperty("left", "-99999px", "important");
+  parked.setAttribute("inert", "");
+  parked.setAttribute("aria-hidden", "true");
   if (host) {
     host.appendChild(clone);
   }
@@ -3118,13 +3121,18 @@ function copyStillStyle(element, clone, computed = window.getComputedStyle(eleme
   }
   // The custom properties the clone's own inline style sets go after them,
   // since Chromium enumerates none in a computed style, and a child styled
-  // with `var(--gap)` would lose the `--gap` the element sets. Those alone,
-  // and without their priority: the rest of the inline style is in the
-  // computed values already, and an `!important` on it would outrank them.
+  // with `var(--gap)` would lose the `--gap` the element sets. Those alone:
+  // the rest of the inline style is in the computed values already, and an
+  // `!important` on it would outrank them. A custom property keeps its
+  // priority, since nothing in the computed list can be outranked by it, and
+  // an inline `!important` is what beats a stylesheet's.
   for (let i = 0; i < clone.style.length; i++) {
     const property = clone.style[i];
     if (property.startsWith("--")) {
-      declarations.push(`${property}: ${clone.style.getPropertyValue(property)}`);
+      const priority = clone.style.getPropertyPriority(property);
+      declarations.push(
+        `${property}: ${clone.style.getPropertyValue(property)}${priority ? ` !${priority}` : ""}`,
+      );
     }
   }
   declarations.push(
@@ -3613,9 +3621,16 @@ const lineBoxCopyCache = nodeCache();
  *   (`PRESENTATIONAL_ATTRIBUTES`), just as they re-measure no text. Nor does
  *   a text replaced by one with the same characters: `findInCopy` finds it
  *   by its place. A font that finished loading does rebuild it, through the
- *   layout epoch in the box's reflow context, as it re-measures every text.
+ *   layout epochs `readRestyledFromAbove` reads, as it re-measures every
+ *   text.
  * - **Removed** when it is rebuilt, and when the last text reading it lets
  *   go of it.
+ *
+ * While it stands it is in the page, a child of the body, with the box's
+ * attributes, its `id` and `name` among them, so a query the page makes
+ * finds it beside the box. It is marked `inert` and `aria-hidden`, as every
+ * measurement clone is (`parkMeasurementClone`), which keeps it out of focus
+ * and the accessibility tree, not out of the page's own queries.
  *
  * A reader that is not itself read by anything, as a test may be, builds the
  * copy afresh on every read, and the build it leaves stays parked until the
@@ -3716,8 +3731,10 @@ function getLineBoxShape(lineBox) {
  * unless the portal declares the attribute presentational, and which waits
  * for the element's adoption when it has no record yet. The box's own, its
  * ancestors' and the portal-wide ones reach the copy through
- * `readRestyledFromAbove`. Every length is
- * written before what it measures, so that no text can pass for markup.
+ * `readRestyledFromAbove`. Every length is written before what it measures,
+ * so that no text can pass for markup. Any other node, a comment a
+ * framework anchors to most of all, is written as a marker: `counterpart`
+ * counts it on the way to a text, so the description has to count it too.
  *
  * @param {Node} node
  * @param {string[]} parts
@@ -3740,6 +3757,8 @@ function describeShape(node, parts) {
       parts.push(">");
       describeShape(element, parts);
       parts.push("</>");
+    } else {
+      parts.push("<!>");
     }
   }
 }

@@ -1102,6 +1102,9 @@ describe("text layout under transforms", () => {
       assert.equal(roots[2], roots[0]);
       assert.equal(roots[3].localName, "em");
       assert.equal(document.body.childElementCount, childrenBefore + 2);
+      // Parked in the page, kept out of focus and the accessibility tree.
+      assert.equal(roots[0].hasAttribute("inert"), true);
+      assert.equal(roots[0].getAttribute("aria-hidden"), "true");
       // A copy goes when the last text reading it lets go.
       held[0].dispose();
       held[1].dispose();
@@ -1257,6 +1260,29 @@ describe("text layout under transforms", () => {
       assert.equal(roots[2], roots[1]);
       assert.notEqual(roots[1], roots[0]);
       assert.equal(roots[1].querySelector("i")?.textContent, "late");
+    } finally {
+      held.forEach((reader) => reader.dispose());
+      card.remove();
+      restore();
+    }
+  });
+
+  test("a comment put into the box rebuilds its copy", () => {
+    // Frameworks anchor to comments. The copy holds them as the box does,
+    // and a text is found by a place that counts them, so a comment coming
+    // or going has to rebuild the copy, or every text after it is looked
+    // for one place off.
+    const { card, mirror, texts } = cardOfTexts();
+    const label = /** @type {HTMLElement} */ (texts.inLabel.parentElement);
+    const { roots, restore } = recordCopies();
+    const held = [texts.inLabel, texts.inCard, texts.inBold].map((text) => holdTextLayout(text));
+    try {
+      assert.equal(roots.length, 3);
+      changeAndIngest(mirror, () => card.insertBefore(document.createComment("anchor"), label));
+      assert.equal(roots.length, 6);
+      assert.notEqual(roots[3], roots[0]);
+      assert.equal(new Set(roots.slice(3)).size, 1);
+      assert.equal(roots[3].firstChild?.nodeType, Node.COMMENT_NODE);
     } finally {
       held.forEach((reader) => reader.dispose());
       card.remove();

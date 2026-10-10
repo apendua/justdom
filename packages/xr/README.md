@@ -5,9 +5,9 @@ What every app with a headset session repeats, kept in one place: the emulated h
 the session a page reads for the controls that only make sense in a headset. Private to this
 repository.
 
-It has four entries for a page and no index, so that an app importing one does not pull in the
+It has three entries for a page and no index, so that an app importing one does not pull in the
 others. The emulator brings IWER and its dev UI with it, over half a megabyte, and is meant to be
-imported lazily; the session is a few signals. A fifth entry, the driver, is for the apps' check
+imported lazily; the session is a few signals. A fourth entry, the driver, is for the apps' check
 scripts.
 
 ## `@apendua.dev/headset/emulator`
@@ -81,21 +81,6 @@ This entry imports `@apendua/freedom`, so import it only from a module that alre
   should stand round the viewer: in a session, unless the room has been asked for and can be had.
 
 The signals are module state, one set per page.
-
-## `@apendua.dev/headset/focus`
-
-An experiment. `followXRFocus(root)` gives the page's focus to the field under `root` that freedom's
-keyboard is typing into, and blurs it when the keyboard is done with it. A ray's press is a click
-freedom dispatches itself, which moves no focus, so in a session a field is only ever focused in
-freedom's own sense: it carries `data-xr-focus`. Following that mark with `focus()` and `blur()`
-lets a keyboard paired with the headset, or the laptop's under the emulator, type into the field.
-
-It runs one way only. The mark moves the page's focus, and nothing moves the mark: if the page's
-focus leaves the field on its own, by Tab on a paired keyboard or a system keyboard closing,
-freedom's keyboard stays up and keeps typing into the field while real keys go elsewhere. What
-should happen then is not decided; `src/focus.js` has the rules. The todo app and the desk turn it
-on behind `?realfocus`, and the todo app's log under that flag shows what a headset does.
-`apps/todo-vanilla/tests/focus-check.mjs` runs it on the emulated headset.
 
 ## `@apendua.dev/headset/driver`
 

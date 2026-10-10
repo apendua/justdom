@@ -1,11 +1,11 @@
 /**
- * Part of the `?realfocus` experiment: a log, at the bottom of the card,
- * of what the page hears while a field has its focus in a session. It is
- * inside the element the scene mirrors, so it can be read in the headset,
- * where there are no dev tools.
+ * Behind `?keylog`: a log, at the bottom of the card, of what the page
+ * hears in a session. It is inside the element the scene mirrors, so it can
+ * be read in the headset, where there are no dev tools.
  *
  * What it is for is telling, on the device, whether the system's own
- * keyboard came up and whether keys reach the page:
+ * keyboard came up and whether a paired keyboard's keys reach the page
+ * (#547):
  *
  * - `navigator.virtualKeyboard`, Chromium's API for an on-screen
  *   keyboard, and the rectangle its `geometrychange` reports;

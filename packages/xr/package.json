@@ -18,10 +18,6 @@
       "types": "./lib-types/theming.d.ts",
       "import": "./src/theming.js"
     },
-    "./focus": {
-      "types": "./lib-types/focus.d.ts",
-      "import": "./src/focus.js"
-    },
     "./driver": "./driver/index.mjs"
   },
   "files": [

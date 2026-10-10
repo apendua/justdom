@@ -2,7 +2,6 @@ import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
 import { createMirror } from "../elements/mirror.js";
-import { PortalTemplatesContext } from "../elements/plugins.js";
 import { svgElements } from "./index.js";
 import { drawUse } from "./template.js";
 import { drawnRange, drawText } from "./text.js";
@@ -41,10 +40,10 @@ function svg(tag, attributes = {}, children = []) {
  * A root twice the size of its `viewBox` holding `content`, every node
  * adopted, and `draw` drawn through the entry point for it.
  *
- * With `portalOrder`, only the root and `draw` are adopted up front, and the
- * rest only when the drawing asks the portal's `PortalTemplatesContext` to
- * adopt it, which is the order a portal builds a `<text>` in: the element
- * first, its children after it.
+ * With `portalOrder`, only the root and `draw` are adopted up front, which
+ * is the order a portal builds a `<text>` in: the element first, its
+ * children after it. `adoptRest` then adopts the rest, as the portal's walk
+ * does once it reaches them.
  *
  * @param {Element[]} content
  * @param {Element} draw
@@ -68,11 +67,10 @@ function scene(content, draw, { portalOrder = false } = {}) {
   } else {
     root.childNodes.forEach(adopt);
   }
-  const ctx = PortalTemplatesContext.set({}, adopt);
   /** @type {Object3D | undefined} */
   let object;
   const subscription = (
-    draw.localName === "use" ? drawUse(ctx, draw) : drawText(ctx, draw)
+    draw.localName === "use" ? drawUse({}, draw) : drawText({}, draw)
   ).subscribe((value) => {
     object = value;
   });
@@ -82,6 +80,10 @@ function scene(content, draw, { portalOrder = false } = {}) {
     root,
     mirror,
     object: drawn,
+    /** Adopt what `portalOrder` left out, as the portal's walk does. */
+    adoptRest() {
+      draw.childNodes.forEach(adopt);
+    },
     /** One entry per range read: the `transform` the `<text>` had then. */
     transforms: layout.transforms,
     /** Every range made, with the node it points into now. */
@@ -244,12 +246,17 @@ describe("svg text", () => {
     s.teardown();
   });
 
-  test("an edit to the characters redraws that run, in the order a portal builds", () => {
+  test("an edit to the characters redraws that run, in the order a portal builds", async () => {
     const text = svg("text", { x: "0", y: "10", fill: "red" }, [
       "A",
       svg("tspan", { x: "20" }, ["B"]),
     ]);
     const s = scene([text], text, { portalOrder: true });
+    // The runs were read before their nodes had records. The walk adopts
+    // them after the `<text>`, and what read them comes round a microtask
+    // later (`announceAdoption` in `mirror.js`).
+    s.adoptRest();
+    await Promise.resolve();
     const [first, second] = s.meshes;
     const before = materialOf(first).alphaMap;
     const untouched = materialOf(second).alphaMap;

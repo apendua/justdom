@@ -23,7 +23,6 @@ import { installRange } from "../test/textRange.js";
 import { stubCanvas } from "../test/stubCanvas.js";
 import { isRunMesh } from "../test/runMesh.js";
 import { BoxBatchContext, createBoxBatch } from "./boxBatch.js";
-import { PortalTemplatesContext } from "./plugins.js";
 import { shape } from "../svg/shape.js";
 import { drawText } from "../svg/text.js";
 import { installSvgTextLayout } from "../test/svgTextLayout.js";
@@ -1487,12 +1486,7 @@ describe("an <svg> over a translucent flow box", () => {
       const meshes = [];
       const drawn = [
         board.drawWith(arrow, (ctx) => shape(ctx, arrow)),
-        board.drawWith(label, (ctx) =>
-          drawText(
-            PortalTemplatesContext.set(ctx, (node) => board.mirror.adopt(node)),
-            label,
-          ),
-        ),
+        board.drawWith(label, (ctx) => drawText(ctx, label)),
       ];
       for (const object of drawn) {
         object.traverse((child) => {
@@ -1579,12 +1573,7 @@ describe("an <svg> and a translucent stepped card", () => {
       const meshes = [];
       for (const object of [
         board.drawWith(dot, (ctx) => shape(ctx, dot)),
-        board.drawWith(label, (ctx) =>
-          drawText(
-            PortalTemplatesContext.set(ctx, (node) => board.mirror.adopt(node)),
-            label,
-          ),
-        ),
+        board.drawWith(label, (ctx) => drawText(ctx, label)),
       ]) {
         object.traverse((child) => {
           if (child instanceof THREE.Mesh) {

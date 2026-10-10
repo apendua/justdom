@@ -13,7 +13,7 @@ import {
   getTextDataCached,
   withMeasuringRange,
 } from "../elements/mirror.js";
-import { isSvgElement, PortalTemplatesContext, SVG_NAMESPACE } from "../elements/plugins.js";
+import { isSvgElement, SVG_NAMESPACE } from "../elements/plugins.js";
 import { place } from "../elements/place.js";
 import { generateTextTexture, getTextRenderStyle } from "../elements/textHelpers.js";
 import { preservesWhitespace } from "../elements/textLines.js";
@@ -197,22 +197,23 @@ function arraysEqual(a, b) {
 
 /**
  * The text nodes a `<text>` draws, in document order, each with its parent.
- * Each node is adopted as a template is before anything reads it, since the
- * portal adopts a `<text>`'s children only after the `<text>` is built, and
- * a read cached before that would be read again only once it did
- * (`readRecordOf` in `mirror.js`). Every element and text node on the way
- * is then read as a dependency, and so is every attribute that places
- * characters, so the runs are measured again when any of them changes.
+ * Every element and text node on the way is read as a dependency, and so is
+ * every attribute that places characters, so the runs are measured again
+ * when any of them changes. The portal adopts a `<text>`'s children only
+ * after the `<text>` is built, so the first reads of them come before their
+ * records, and are read again once the portal's walk adopts them
+ * (`readRecordOf` in `mirror.js`). A pumped portal therefore collects a
+ * `<text>`'s runs twice as it mounts it. The second finds the same runs,
+ * and the gate on `runs` stops it there, so what it costs is the walk.
  *
  * @param {Element} element
- * @param {(node: Node) => void} adopt The portal's `PortalTemplatesContext`.
  * @param {(element: Element) => readonly string[]} layoutStyle The element's
  *   `LAYOUT_PROPERTIES`, behind their gate.
  * @returns {{ runs: { node: Text, parent: Element }[], relative: boolean }}
  *   The runs, and whether any length placing them is a percentage, which is
  *   what the viewport around the text is read for.
  */
-function collectRuns(element, adopt, layoutStyle) {
+function collectRuns(element, layoutStyle) {
   /** @type {{ node: Text, parent: Element }[]} */
   const runs = [];
   let relative = false;
@@ -225,7 +226,6 @@ function collectRuns(element, adopt, layoutStyle) {
       relative = relative || (value?.includes("%") ?? false);
     }
     for (const child of getChildNodes(parent)) {
-      adopt(child);
       if (child.nodeType === Node.TEXT_NODE) {
         getTextDataCached(/** @type {Text} */ (child));
         runs.push({ node: /** @type {Text} */ (child), parent });
@@ -379,7 +379,6 @@ export function drawText(ctx, element, instance = null) {
   const object = new THREE.Object3D();
   const style = () => getComputedStyleCached(element);
   const textScale = TextScaleContext.get(ctx);
-  const adopt = PortalTemplatesContext.get(ctx);
 
   const own = new Derived(() => localMatrix(element, instance), { isEqual: matrixEqual });
   const chain = new Derived(() => readChain(element, instance), { isEqual: chainEqual });
@@ -419,7 +418,7 @@ export function drawText(ctx, element, instance = null) {
       // What moves text from outside its own subtree: a font arriving, or a
       // layout change the portal cannot name.
       getReflowContext(element);
-      const { runs: found, relative } = collectRuns(element, adopt, layoutStyle);
+      const { runs: found, relative } = collectRuns(element, layoutStyle);
       if (!found.length) {
         return [];
       }

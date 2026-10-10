@@ -20,6 +20,7 @@ import {
 import { isSvgElement } from "./plugins.js";
 import { clipBoxEqual, intersectClipBoxes, toLocalClipBox, UNCLIPPED } from "./clip.js";
 import { PORTAL_ATTRIBUTE } from "./portalRoot.js";
+import { holdShared, shadowAccessor } from "./shadowAccessor.js";
 import {
   frameFor,
   getGeometryGeneration,
@@ -35,6 +36,7 @@ import {
  * @import {TextBounds} from './textHelpers.js';
  * @import {ClipBox} from './clip.js';
  * @import {FramedRect, PanelFrame} from './panelFrame.js';
+ * @import {Subscribable} from '@apendua/signal';
  */
 
 /**
@@ -300,6 +302,12 @@ const nodeCaches = [];
  * cached reads that live beside the elements they serve, such as a list
  * item's number in `listMarker.js`; anything kept per node has to be one of
  * these, or a re-claimed node keeps the first mirror's signals under it.
+ * The exceptions hold nothing of a mirror's, only what the element itself
+ * announces, and are kept for the element's life in a plain `WeakMap` that
+ * says so where it is declared: `assignmentSources` below and
+ * `valueVersions` in `textInput.js`. `hiddenCache` below is not one of
+ * them: it holds a read of the computed style in a plain `WeakMap`, a gap
+ * the architecture plan records under "Found along the way".
  *
  * @template {WeakMap<any, any>} T
  * @returns {T}
@@ -311,14 +319,16 @@ export function nodeCache() {
 }
 
 /**
- * Drop everything this module remembers about a node: its record and every
- * cached read. The next `adopt` starts it over under whichever mirror asks.
+ * Drop everything this module remembers about a node: its record, whether
+ * held or let go of, and every cached read. The next `adopt` starts it over
+ * under whichever mirror asks.
  *
  * @param {Node} node
  * @returns {void}
  */
 export function forgetNode(node) {
   records.delete(node);
+  takeDeparted(node);
   for (const cache of nodeCaches) {
     cache.delete(node);
   }
@@ -600,13 +610,54 @@ class NodeRecord {
  * One registry for every portal: which mirror a node belongs to, and its
  * record. Module-level so the cached reads below can be called with a node
  * alone — the way `div`/`text` and the tests want to call them. A node
- * that no portal adopted reads as the DOM has it, and a cache of that read
- * follows the node's adoption (`readRecordOf`), so it is read again once
- * a portal does adopt it.
+ * that no portal adopted, or one its portal let go of (`release`), reads as
+ * the DOM has it, and a cache of that read follows the node's adoption
+ * (`readRecordOf`), so it is read again once a portal does adopt it.
  *
  * @type {WeakMap<Node, NodeRecord>}
  */
 const records = new WeakMap();
+
+/**
+ * The records of nodes that left a panel and whose objects are still drawn,
+ * waiting for the commit that takes them out (see `DomMirror.release`). Out
+ * of `records`, so that nothing reaches them, and kept, so that a node put
+ * back before the commit picks up the record its cached reads still hang
+ * from.
+ *
+ * @type {WeakMap<Node, NodeRecord>}
+ */
+const departed = new WeakMap();
+
+/**
+ * How many of `departed`'s records each mirror has, so that the ingest of an
+ * ordinary arrival, with none to take back, walks nothing (`reclaim`).
+ *
+ * It can stay above zero. A node let go of that the portal built no object
+ * for, a comment or a template's child, and that the page then took out of
+ * the departed subtree before the commit, is on neither of the walks the
+ * commit forgets by. Its record stays here, and from then on `reclaim` walks
+ * every added subtree and finds nothing in it: the cost this count saves,
+ * and nothing worse.
+ *
+ * @type {WeakMap<DomMirror, number>}
+ */
+const departures = new WeakMap();
+
+/**
+ * Take a node's record out of `departed`, keeping its mirror's count.
+ *
+ * @param {Node} node
+ * @returns {NodeRecord | undefined}
+ */
+function takeDeparted(node) {
+  const record = departed.get(node);
+  if (record) {
+    departed.delete(node);
+    departures.set(record.mirror, (departures.get(record.mirror) ?? 1) - 1);
+  }
+  return record;
+}
 
 /**
  * The nodes read before any portal adopted them, each with a signal the
@@ -628,14 +679,13 @@ let adopted = null;
  * Tell whatever read the node before it had a record to read it again (see
  * `readRecordOf`): from a microtask, and all the nodes adopted since the
  * last one together. `adopt` is called from readers' computations, by the
- * SVG plugin for a `<text>`'s runs and for a template, and by the list
- * marker for an item's first line, and a signal written with no batch open
- * drains the queue then and there, which would run the effects that depend
- * on the adoption in the middle of the computation that adopted, with the
- * `Derived` it is evaluating still empty: a reader of it would meet a
- * cycle. A microtask runs once the stack is empty, so nothing is computing,
- * and the one batch lets a template's subtree, adopted node by node, come
- * round as one update.
+ * list marker for an item's first line, and a signal written with no batch
+ * open drains the queue then and there, which would run the effects that
+ * depend on the adoption in the middle of the computation that adopted,
+ * with the `Derived` it is evaluating still empty: a reader of it would
+ * meet a cycle. A microtask runs once the stack is empty, so nothing is
+ * computing, and the one batch lets a template's subtree, adopted node by
+ * node, come round as one update.
  *
  * @param {Signal<boolean>} signal
  * @returns {void}
@@ -763,26 +813,116 @@ export class DomMirror {
    * @returns {void}
    */
   adopt(node) {
-    if (!records.has(node)) {
-      records.set(node, new NodeRecord(this, node));
-      const adoption = adoptions.get(node);
-      if (adoption) {
-        adoptions.delete(node);
-        announceAdoption(adoption);
+    if (records.has(node)) {
+      return;
+    }
+    let record = takeDeparted(node);
+    if (record) {
+      if (record.mirror !== this) {
+        // Another panel's, on its way out of it, and everything cached for
+        // it hangs off that panel's signals.
+        forgetNode(node);
+        record = undefined;
       }
+    }
+    records.set(node, record ?? new NodeRecord(this, node));
+    const adoption = adoptions.get(node);
+    if (adoption) {
+      adoptions.delete(node);
+      announceAdoption(adoption);
     }
   }
 
   /**
-   * Let go of a node this mirror adopted: its record and every read cached
-   * for it, so that a portal claiming it later — a second session over an
-   * element the page owns — is not left with this mirror's signals under
-   * it. See `forgetNode`.
+   * Let go of a node that left the panel, and of everything under it, while
+   * the portal keeps drawing their objects until its commit. From here on
+   * the mirror bumps nothing for them, and a read cached for one of them
+   * that runs again reads it as a node no portal adopted (`readRecordOf`),
+   * which depends on nothing the panel changes. The last thing they hear is
+   * a bump of the node's `reparented`, given here before its record is put
+   * aside, so that it does not depend on the ingest of the removal having
+   * come first. It cuts the subtree off its parent chain, so each read that
+   * depended on the panel runs once more, finds no record, and keeps
+   * nothing of the panel's. A font arriving, or a stylesheet changing,
+   * before the commit then reaches none of them.
+   *
+   * Their records are kept to one side rather than dropped. A node put back
+   * before the commit was moved, not removed, keeps its objects, and takes
+   * its record back (`reclaim`), so the reads its objects hold, which still
+   * hang from that record, hear it again. What the page did to the subtree
+   * while it was out is not heard, since the observer stops reporting a
+   * node once it has reported the node's removal.
    *
    * @param {Node} node
    * @returns {void}
    */
   release(node) {
+    batch(() => {
+      const record = records.get(node);
+      if (record?.mirror === this) {
+        bump(record.reparented);
+      }
+      this.#putAside(node);
+    });
+  }
+
+  /**
+   * @param {Node} node
+   * @returns {void}
+   */
+  #putAside(node) {
+    const record = records.get(node);
+    if (record?.mirror === this) {
+      records.delete(node);
+      departed.set(node, record);
+      departures.set(this, (departures.get(this) ?? 0) + 1);
+    }
+    node.childNodes.forEach((child) => {
+      this.#putAside(child);
+    });
+  }
+
+  /**
+   * Take back every node under `node`, itself included, that this mirror
+   * let go of (`release`), now that the panel has them again. The whole
+   * subtree is walked, not only from a node that was let go of: while out
+   * of the document the page may have put one inside an element the panel
+   * has never seen, and the flush then names that element. A mirror with
+   * nothing let go of walks nothing.
+   *
+   * @param {Node} node
+   * @returns {void}
+   */
+  reclaim(node) {
+    if (!departures.get(this)) {
+      return;
+    }
+    if (departed.get(node)?.mirror === this) {
+      this.adopt(node);
+    }
+    node.childNodes.forEach((child) => {
+      this.reclaim(child);
+    });
+  }
+
+  /**
+   * Drop everything remembered about a node this mirror let go of, its
+   * record and every read cached for it, once its objects are gone, so that
+   * a portal claiming it later, such as a second session over an element
+   * the page owns, is not left with this mirror's signals under it. See
+   * `forgetNode`. A node another panel has adopted since is that panel's,
+   * and is left to it.
+   *
+   * @param {Node} node
+   * @returns {void}
+   */
+  forget(node) {
+    // Held or let go of: one another panel has let go of since is still
+    // that panel's, waiting for its own commit or to be taken back.
+    const owner = (records.get(node) ?? departed.get(node))?.mirror;
+    if (owner && owner !== this) {
+      return;
+    }
     forgetNode(node);
   }
 
@@ -854,6 +994,9 @@ export class DomMirror {
             childListHint(mutation),
           );
           mutation.addedNodes.forEach((node) => {
+            // Back before the commit took it out: before the bump, so that
+            // the bump lands on the record its reads hang from.
+            this.reclaim(node);
             const record = recordOf(node);
             if (record) {
               bump(record.reparented);
@@ -2969,6 +3112,71 @@ export function getLocalClipBox(element) {
 const checkedCache = nodeCache();
 
 /**
+ * The assignments to each checkbox's `checked`, one source per element
+ * however many readers follow it. Not a `nodeCache()`, and on purpose: it
+ * holds no signal of any mirror's, only what the element's own accessor
+ * announces, so a release has nothing in it to forget. Kept for the
+ * element's life, which is what lets a reader built before a release and
+ * one built after it share the one accessor (see `checkedAssignments`).
+ *
+ * @type {WeakMap<HTMLInputElement, Subscribable<void>>}
+ */
+const assignmentSources = new WeakMap();
+
+/**
+ * Every assignment to the element's `checked` that moved it, for as long as
+ * something listens. The first listener installs an own accessor that calls
+ * through to the browser's and then says so (`shadowAccessor`), the last
+ * one to leave takes it off again, and every listener between shares it
+ * (`holdShared`), as `trackValue` holds a field's `value`: a reader that
+ * installed its own accessor over another's would leave the first deaf, and
+ * one that took the accessor away would leave the rest deaf. An element
+ * that already carries an own `checked`, an app's or a library's, is left
+ * with it and followed through `change` alone.
+ *
+ * @param {HTMLInputElement} element
+ * @returns {Subscribable<void>}
+ */
+function checkedAssignments(element) {
+  let source = assignmentSources.get(element);
+  if (!source) {
+    /** @type {Subject<void>} */
+    const assigned = new Subject();
+    const install = () =>
+      shadowAccessor(
+        element,
+        "checked",
+        /**
+         * @param {boolean} value
+         * @param {(value: boolean) => void} write
+         * @param {() => boolean} read
+         */
+        (value, write, read) => {
+          const before = read();
+          write(value);
+          if (read() !== before) {
+            assigned.next();
+          }
+        },
+      ) ?? (() => {});
+    source = {
+      subscribe(observer) {
+        const release = holdShared(element, "checked", install);
+        const subscription = assigned.subscribe(observer);
+        return {
+          unsubscribe() {
+            subscription.unsubscribe();
+            release();
+          },
+        };
+      },
+    };
+    assignmentSources.set(element, source);
+  }
+  return source;
+}
+
+/**
  * Whether a checkbox is ticked, as something the scene can be drawn from.
  *
  * This is the one piece of state here that a MutationObserver cannot report.
@@ -2977,13 +3185,14 @@ const checkedCache = nodeCache();
  * `input.checked = …` moves a property, which mutates nothing whatsoever. So
  * the two ways it can move are watched one each: `change`, which the browser
  * fires for the user's own toggles and for the synthetic click a ray sends,
- * and the property itself, instrumented below so that an assignment announces
- * itself the way an attribute mutation would.
+ * and the property itself, instrumented so that an assignment announces
+ * itself the way an attribute mutation would (`checkedAssignments`).
  *
  * The instrumentation is an own accessor that delegates to the one it shadows,
  * so the element goes on behaving exactly as it did — including for anything
- * else holding a reference to it — and is installed once per element, on the
- * first read.
+ * else holding a reference to it. It is on the element while something reads
+ * this, and taken off once nothing does, so a page that mirrored a box and
+ * ended its session is left with the box as it was.
  *
  * @param {HTMLInputElement} element
  * @returns {boolean}
@@ -2991,34 +3200,13 @@ const checkedCache = nodeCache();
 export function getCheckedCached(element) {
   let signal = checkedCache.get(element);
   if (!signal) {
-    /** @type {Subject<void>} */
-    const assigned = new Subject();
-    const descriptor = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(element), "checked");
-    const read = descriptor?.get;
-    const write = descriptor?.set;
-    if (read && write) {
-      Object.defineProperty(element, "checked", {
-        configurable: true,
-        enumerable: false,
-        get() {
-          return read.call(this);
-        },
-        /** @param {boolean} value */
-        set(value) {
-          const before = read.call(this);
-          write.call(this, value);
-          if (read.call(this) !== before) {
-            assigned.next();
-          }
-        },
-      });
-    }
     // Two edges rather than one `merge` of them: a dependency is anything with
     // a `subscribe`, and a node reading both is told by either. Both are built
     // outside the derivation so that each evaluation reads the *same*
     // dependency and keeps the edge it already has, rather than making a fresh
     // one to attach and dropping the old.
     const changed = fromEvent(element, "change");
+    const assigned = checkedAssignments(element);
     signal = new Derived(() => {
       addDependency(changed);
       addDependency(assigned);

@@ -4,7 +4,7 @@ import * as THREE from "three";
 import { createMirror } from "../elements/mirror.js";
 import { svgElements } from "./index.js";
 import { drawUse } from "./template.js";
-import { drawnRange, drawText } from "./text.js";
+import { drawnRange, drawText, measuringScale } from "./text.js";
 import { BOX_BUCKET_BIAS } from "../elements/boxBatch.js";
 import { getContentRenderOrder } from "../elements/elevation.js";
 import { installSvgTextLayout } from "../test/svgTextLayout.js";
@@ -115,6 +115,17 @@ function materialOf(mesh) {
 }
 
 /**
+ * The quad's size, in the `<text>`'s user space.
+ *
+ * @param {Mesh} mesh
+ */
+function sizeOf(mesh) {
+  mesh.geometry.computeBoundingBox();
+  const box = /** @type {THREE.Box3} */ (mesh.geometry.boundingBox);
+  return [box.max.x - box.min.x, box.max.y - box.min.y];
+}
+
+/**
  * The quad's top-left corner, in the `<text>`'s user space.
  *
  * @param {Mesh} mesh
@@ -143,6 +154,24 @@ describe("drawnRange", () => {
   });
 });
 
+describe("measuringScale", () => {
+  test("a font of 64 units or more is measured as it is", () => {
+    assert.equal(measuringScale("64px"), 1);
+    assert.equal(measuringScale("200px"), 1);
+  });
+
+  test("a smaller one by the power of two that brings it to 64 or more", () => {
+    assert.equal(measuringScale("63px"), 2);
+    assert.equal(measuringScale("16px"), 4);
+    assert.equal(measuringScale("0.62px"), 128);
+  });
+
+  test("a size that cannot be read is taken as 16", () => {
+    assert.equal(measuringScale(""), 4);
+    assert.equal(measuringScale("0px"), 4);
+  });
+});
+
 describe("svg text", () => {
   test("a run is a quad where the layout put it, in the text's user space, tinted by fill", () => {
     const text = svg("text", { x: "10", y: "20", fill: "red" }, ["Hello"]);
@@ -156,6 +185,28 @@ describe("svg text", () => {
     assert.ok(materialOf(mesh).alphaMap, "drawn as a coverage mask");
     assert.equal(materialOf(mesh).visible, true);
     s.teardown();
+  });
+
+  test("a font a fraction of a unit tall is placed as a large one would be", () => {
+    // The minesweeper's counts: a 0.62-unit font. Laid out at one pixel per
+    // unit, its ascent and descent round to nothing, so the line box sits
+    // on the baseline and the glyphs drawn in it hang below.
+    const small = svg("text", { x: "0", y: "0.18", "font-size": "0.62", fill: "red" }, ["3"]);
+    const s = scene([small], small);
+    const [mesh] = s.meshes;
+    const [, top] = cornerOf(mesh);
+    const [, height] = sizeOf(mesh);
+    s.teardown();
+    // The same text a hundred times larger, scaled back down.
+    const large = svg("text", { x: "0", y: "18", "font-size": "62", fill: "red" }, ["3"]);
+    const t = scene([large], large);
+    const largeTop = cornerOf(t.meshes[0])[1] / 100;
+    const largeHeight = sizeOf(t.meshes[0])[1] / 100;
+    t.teardown();
+    assert.ok(Math.abs(top - largeTop) < 0.01, `top at ${top}, not ${largeTop}`);
+    // Within the texels of bleed a texture is given below its glyphs, which
+    // are a few pixels at the size each is drawn at.
+    assert.ok(Math.abs(height - largeHeight) < 0.02, `drawn ${height} tall, not ${largeHeight}`);
   });
 
   test("the text is measured with its own transform off, and the object carries it", () => {

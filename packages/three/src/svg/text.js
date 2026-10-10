@@ -15,7 +15,12 @@ import {
 } from "../elements/mirror.js";
 import { isSvgElement, SVG_NAMESPACE } from "../elements/plugins.js";
 import { place } from "../elements/place.js";
-import { generateTextTexture, getTextRenderStyle } from "../elements/textHelpers.js";
+import {
+  DEFAULT_FONT_SIZE,
+  generateTextTexture,
+  getTextRenderStyle,
+  scaleTextRenderStyle,
+} from "../elements/textHelpers.js";
 import { preservesWhitespace } from "../elements/textLines.js";
 import { frameFor, measureClientRect } from "../elements/panelFrame.js";
 import { readTextScale, TextScaleContext } from "../elements/textScale.js";
@@ -46,17 +51,19 @@ import { parseNumber, parsePaint, parsePointerEvents, readProperty } from "./sty
  * per run. It is measured the way the mirror measures HTML text under a
  * transform: not in place, where the rects are screen-space bounds after
  * every matrix above, but in a detached copy with its own transform switched
- * off, laid out in an `<svg>` of its own that maps one user unit to one CSS
- * pixel. What that copy reports is already in the element's user space, so
- * the runs hang under the element's object like a shape's geometry does, and
- * a rotation on a `<g>` turns the text with it. A copy is measured off the
+ * off, laid out in an `<svg>` of its own that maps one user unit to a
+ * power of two of CSS pixels (`measuringScale`), and read back divided by it.
+ * What that comes to is already in the element's user space, so the runs
+ * hang under the element's object like a shape's geometry does, and a
+ * rotation on a `<g>` turns the text with it. A copy is measured off the
  * page, so text inside a `<symbol>` or a `<marker>` measures the same way.
  *
  * Each run is drawn by the same rasterizer as HTML text, as a coverage mask
- * tinted by `fill`, so a colour change is a uniform write. The texture is
- * drawn at as many device pixels per user unit as the root's viewport and
- * the matrices above give it, rounded to a step so a scale animation does
- * not redraw it every frame.
+ * tinted by `fill`, so a colour change is a uniform write. It is drawn at the
+ * size it was measured at, so the canvas reads the font's metrics at the
+ * size the layout did. The texture is drawn at as many device pixels per
+ * user unit as the root's viewport and the matrices above give it, rounded
+ * to a step so a scale animation does not redraw it every frame.
  *
  * @import {Source} from '@apendua/signal';
  * @import {Component, XREventMap} from '../core.js';
@@ -119,6 +126,37 @@ const LAYOUT_PROPERTIES = [
 
 /** Where `white-space` is in `LAYOUT_PROPERTIES`. */
 const WHITE_SPACE = LAYOUT_PROPERTIES.indexOf("white-space");
+
+/** Where `font-size` is in `FONT_PROPERTIES`. */
+const FONT_SIZE = FONT_PROPERTIES.indexOf("font-size");
+
+/**
+ * The smallest font, in CSS pixels, a `<text>` is measured and drawn at.
+ * A browser snaps a small font's ascent and descent to device pixels, and
+ * not the same way when it lays a line out as when a canvas measures the
+ * font. At a size of a pixel or two the two disagree by most of a line. In
+ * Chromium at two device pixels to one, the line box of a 0.62px font sits
+ * on its baseline, and the glyphs drawn on the canvas's baseline in it hang
+ * below where they belong. At this size the snapping is about one percent
+ * of the font.
+ */
+const MIN_MEASURED_FONT_SIZE = 64;
+
+/**
+ * How many CSS pixels a user unit is laid out at: one for a font of
+ * `MIN_MEASURED_FONT_SIZE` units or more, and otherwise the power of two
+ * that brings it there. A power of two, so dividing a measurement by it and
+ * multiplying it back loses nothing.
+ *
+ * @param {string} fontSize The `<text>`'s computed `font-size`, in user
+ *   units.
+ * @returns {number}
+ */
+export function measuringScale(fontSize) {
+  const size = Number.parseFloat(fontSize);
+  const resolved = size > 0 ? size : DEFAULT_FONT_SIZE;
+  return 2 ** Math.max(0, Math.ceil(Math.log2(MIN_MEASURED_FONT_SIZE / resolved)));
+}
 
 /**
  * One run of a `<text>`: the characters of one text node, where the browser
@@ -243,13 +281,13 @@ function collectRuns(element, layoutStyle) {
  * in its user space.
  *
  * The copy is the mirror's measurement clone (`createMeasurementClone`): the
- * element cloned deep, with every computed style of the `<text>` itself
- * copied onto it and its transform switched off, here in an `<svg>` at one
- * CSS pixel per unit. Where a length is a percentage, that `<svg>`'s
- * `viewBox` is the viewport the element is in, so the percentage resolves as
- * it does in place. The `<tspan>`s keep their classes, and the document's
- * stylesheets apply to them as usual; as with HTML text, a selector that
- * reaches above the `<text>` does not match the copy. In a copy made by a
+ * element cloned deep, with every computed style of the `<text>` itself copied
+ * onto it and its transform switched off, here in an `<svg>` at `scale` CSS
+ * pixels per unit. Its `viewBox` is the viewport the element is in where a
+ * length is a percentage, so the percentage resolves as it does in place, and a
+ * unit square where none is. The `<tspan>`s keep their classes, and the
+ * document's stylesheets apply to them as usual; as with HTML text, a selector
+ * that reaches above the `<text>` does not match the copy. In a copy made by a
  * `<use>`, the font is the drawn one. The runs are read through the mirror's
  * one range (`withMeasuringRange`).
  *
@@ -261,15 +299,15 @@ function collectRuns(element, layoutStyle) {
  *   drawn with.
  * @param {(element: Element) => readonly string[]} layoutStyle An element's
  *   `LAYOUT_PROPERTIES`, for its `white-space`.
+ * @param {number} scale From `measuringScale`.
  * @returns {TextRun[]}
  */
-function measureRuns(element, found, viewport, fonts, layoutStyle) {
+function measureRuns(element, found, viewport, fonts, layoutStyle, scale) {
   const host = document.createElementNS(SVG_NAMESPACE, "svg");
-  if (viewport) {
-    host.setAttribute("width", String(viewport.width));
-    host.setAttribute("height", String(viewport.height));
-    host.setAttribute("viewBox", `0 0 ${viewport.width} ${viewport.height}`);
-  }
+  const { width, height } = viewport ?? { width: 1, height: 1 };
+  host.setAttribute("width", String(width * scale));
+  host.setAttribute("height", String(height * scale));
+  host.setAttribute("viewBox", `0 0 ${width} ${height}`);
   host.style.setProperty("overflow", "visible", "important");
   const clone = createMeasurementClone(/** @type {SVGElement} */ (element), host);
   try {
@@ -301,10 +339,10 @@ function measureRuns(element, found, viewport, fonts, layoutStyle) {
           node,
           parent,
           text: drawn.text,
-          left: rect.left - origin.left,
-          top: rect.top - origin.top,
-          width: rect.width,
-          height: rect.height,
+          left: (rect.left - origin.left) / scale,
+          top: (rect.top - origin.top) / scale,
+          width: rect.width / scale,
+          height: rect.height / scale,
         });
       }
       return runs;
@@ -412,6 +450,7 @@ export function drawText(ctx, element, instance = null) {
     () => FONT_PROPERTIES.map((name) => readDrawnProperty(element, name, instance)),
     { isEqual: arraysEqual },
   );
+  const scale = new Derived(() => measuringScale(fonts.get()[FONT_SIZE]));
 
   const runs = new Derived(
     () => {
@@ -425,7 +464,7 @@ export function drawText(ctx, element, instance = null) {
       // Read only when a percentage needs it, so a root that resizes does
       // not measure text it does not move.
       const viewport = relative ? viewportSize(element, instance) : null;
-      return measureRuns(element, found, viewport, fonts.get(), layoutStyle);
+      return measureRuns(element, found, viewport, fonts.get(), layoutStyle, scale.get());
     },
     { isEqual: runsEqual },
   );
@@ -477,16 +516,22 @@ export function drawText(ctx, element, instance = null) {
           /** @type {Record<string, unknown>} */ (/** @type {unknown} */ (b)),
         ),
     });
+    // Drawn at the size it was measured at, `factor` times its user space,
+    // and brought back to it by the quad.
     const textureData = new Derived(() => {
-      const { text, width, height } = characters.get();
-      return generateTextTexture(
+      const factor = scale.get();
+      const { text } = characters.get();
+      const width = characters.get().width * factor;
+      const height = characters.get().height * factor;
+      const drawn = generateTextTexture(
         [{ text, left: 0, top: 0, width, height }],
-        renderStyle.get(),
+        scaleTextRenderStyle(renderStyle.get(), factor),
         { width, height },
         readTextScale(textScale),
         true,
-        unitScale.get(),
+        unitScale.get() / factor,
       );
+      return { ...drawn, width: drawn.width / factor, height: drawn.height / factor };
     });
     const paint = new Derived(() => parsePaint(read("fill")));
     const hidden = new Derived(() => isDrawnHidden(parent.get(), instance));

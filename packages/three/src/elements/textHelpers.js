@@ -13,7 +13,9 @@ import { onCleanup } from "@apendua/signal";
  * @property {number} height
  */
 
-const DEFAULT_FONT_SIZE = 16;
+/** The font size, in px, a style whose own cannot be read is drawn at. */
+export const DEFAULT_FONT_SIZE = 16;
+
 /**
  * The most device pixels a run is ever rasterized for each of its CSS pixels.
  *
@@ -182,6 +184,19 @@ function normalizeColor(color) {
 }
 
 /**
+ * The canvas `font` shorthand for a face at a size.
+ *
+ * @param {Pick<TextRenderStyle, "fontFamily" | "fontStyle" | "fontVariant" | "fontWeight">} face
+ * @param {number} fontSize In px.
+ * @returns {string}
+ */
+function fontShorthand(face, fontSize) {
+  return [face.fontStyle, face.fontVariant, face.fontWeight, `${fontSize}px`, face.fontFamily].join(
+    " ",
+  );
+}
+
+/**
  * @param {CSSStyleDeclaration} style
  * @returns {TextRenderStyle}
  */
@@ -201,21 +216,17 @@ export function getTextRenderStyle(style) {
   // one keyword the shorthand admits.
   const variant = style.fontVariantCaps === "small-caps" ? "small-caps" : "normal";
 
-  const font = [
-    style.fontStyle || "normal",
-    variant,
-    style.fontWeight || "400",
-    `${resolvedFontSize}px`,
-    style.fontFamily || "sans-serif",
-  ].join(" ");
-
-  return {
-    color: normalizeColor(style.color || "black"),
-    font,
+  const face = {
     fontFamily: style.fontFamily || "sans-serif",
     fontStyle: style.fontStyle || "normal",
     fontVariant: variant,
     fontWeight: style.fontWeight || "400",
+  };
+
+  return {
+    color: normalizeColor(style.color || "black"),
+    font: fontShorthand(face, resolvedFontSize),
+    ...face,
     fontSize: resolvedFontSize,
     letterSpacing: parsePixelValue(style.letterSpacing, resolvedFontSize),
     wordSpacing: parsePixelValue(style.wordSpacing, resolvedFontSize),
@@ -227,6 +238,29 @@ export function getTextRenderStyle(style) {
         ? normalizeColor(style.textDecorationColor)
         : normalizeColor(style.color || "black"),
     textDecorationThickness: parsePixelValue(style.textDecorationThickness, resolvedFontSize),
+  };
+}
+
+/**
+ * The same style with every length in it multiplied by `factor`: the font's
+ * size, its spacing and the thickness of its decorations. A run drawn in it
+ * at `factor` times its layout, through a `unitScale` divided by `factor`,
+ * comes out the same size on the same number of texels, but every metric the
+ * canvas reads is read off a font `factor` times larger.
+ *
+ * @param {TextRenderStyle} style
+ * @param {number} factor
+ * @returns {TextRenderStyle}
+ */
+export function scaleTextRenderStyle(style, factor) {
+  const fontSize = style.fontSize * factor;
+  return {
+    ...style,
+    font: fontShorthand(style, fontSize),
+    fontSize,
+    letterSpacing: style.letterSpacing * factor,
+    wordSpacing: style.wordSpacing * factor,
+    textDecorationThickness: style.textDecorationThickness * factor,
   };
 }
 

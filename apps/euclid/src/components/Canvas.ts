@@ -31,6 +31,17 @@ const svgStyle = className`
   display: block;
 `;
 
+/** How the drawing is drawn, decided once, when the page loads. */
+export interface CanvasOptions {
+  /**
+   * Whether construction lines and the rubber band of a line or circle in
+   * progress are dashed. Off by default: a headset draws every dash as
+   * geometry of its own, and rebuilds all of them each time the shape
+   * moves. `?dashes` on the page's address turns it on.
+   */
+  dashes?: boolean;
+}
+
 interface DragState {
   mode: "maybe" | "pan" | "drag";
   pointerId: number;
@@ -50,7 +61,7 @@ function realPoint(value: Point): { x: number; y: number } | null {
   return { x: affine.x.re, y: affine.y.re };
 }
 
-const Canvas = component((store: AppStore) => {
+const Canvas = component((store: AppStore, { dashes = false }: CanvasOptions = {}) => {
   let svgRef: SVGSVGElement | undefined;
   let drag: DragState | null = null;
   const grabbing = Signal.of(false);
@@ -160,7 +171,7 @@ const Canvas = component((store: AppStore) => {
 
   const dashFor = (id: string): string => {
     const item = itemAt(id);
-    if (item && !item.drawn && !store.highlightedIds.get().has(id)) {
+    if (dashes && item && !item.drawn && !store.highlightedIds.get().has(id)) {
       return "5 4";
     }
     return "";
@@ -350,14 +361,15 @@ const Canvas = component((store: AppStore) => {
     return realPoint(definition.value);
   };
 
-  // A dashed rubber-band preview of the line/circle being constructed.
+  // A rubber-band preview of the line/circle being constructed, dashed
+  // under `dashes`.
   const previewLayer = () =>
     $$("g", [
       children(
         $$("line", [
           attr("stroke", () => PREVIEW),
           attr("stroke-width", () => "1.25"),
-          attr("stroke-dasharray", () => "4 4"),
+          attr("stroke-dasharray", () => (dashes ? "4 4" : "")),
           attr("visibility", () => {
             const pending = store.pending.get();
             return pending?.tool === "line" && pendingAnchor() && store.cursorWorld.get()
@@ -385,7 +397,7 @@ const Canvas = component((store: AppStore) => {
           attr("fill", () => "none"),
           attr("stroke", () => PREVIEW),
           attr("stroke-width", () => "1.25"),
-          attr("stroke-dasharray", () => "4 4"),
+          attr("stroke-dasharray", () => (dashes ? "4 4" : "")),
           attr("visibility", () => {
             const pending = store.pending.get();
             return pending?.tool === "circle" && pendingAnchor() && store.cursorWorld.get()

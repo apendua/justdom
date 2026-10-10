@@ -27,7 +27,10 @@ interface of its own over a copy of the store. This is what replaced it.
 
 `Escape` cancels a step in progress; `Ctrl/Cmd+Z` (outside the editor) undoes the last structured
 edit. Objects mentioned in `draw` statements are inked; everything else renders as light
-construction lines.
+construction lines. These are solid unless the page's address has `?dashes`, which dashes them and
+the preview of a line or circle in progress. A headset draws each dash as geometry of its own and
+rebuilds every dash of a shape whenever the shape moves, so a drawing full of dashed lines follows a
+drag slowly there.
 
 ## Running it
 

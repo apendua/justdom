@@ -17,8 +17,10 @@
  * of, toggled on the first row. It costs what a class swap on the row costs,
  * since a stylesheet may select on it through `+` or `~`. The "transform"
  * column is an inline `style.transform` written on the first row, the motion
- * a gauge writes every frame, which moves no box and so should cost the row
- * and not the list. The "loading" column is the portal's own flag toggled on
+ * a gauge writes every frame, which moves no box and so should measure the
+ * row and not the list: its rects stay at 3. Its evals still grow with the
+ * list, because a `style` write restyles the row's siblings, as any author's
+ * attribute does. The "loading" column is the portal's own flag toggled on
  * its container, above every element in the panel, and should cost nothing:
  * the mirror drops it.
  *

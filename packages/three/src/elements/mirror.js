@@ -357,16 +357,30 @@ function paintsOnly(before, after) {
   const was = readDeclarations(before);
   const now = readDeclarations(after);
   for (const [name, value] of now) {
-    if (was.get(name) !== value && classify(name) === "layout") {
+    const old = was.get(name);
+    if (old !== value && (movesLayout(name, value) || movesLayout(name, old))) {
       return false;
     }
   }
-  for (const name of was.keys()) {
-    if (!now.has(name) && classify(name) === "layout") {
+  for (const [name, value] of was) {
+    if (!now.has(name) && movesLayout(name, value)) {
       return false;
     }
   }
   return true;
+}
+
+/**
+ * Whether one declaration can move a box. The name decides, through
+ * `classify`, except for `visibility: collapse`, which takes a table row or
+ * a flex item out of the layout where every other `visibility` only paints.
+ *
+ * @param {string} name
+ * @param {string | undefined} value
+ * @returns {boolean}
+ */
+function movesLayout(name, value) {
+  return classify(name) === "layout" || (name === "visibility" && value === "collapse");
 }
 
 /**
@@ -1648,10 +1662,10 @@ export class DomMirror {
    * what makes appending to a list cost the same whether the list has ten
    * rows or a thousand: the arriving row is the last child, and there is
    * nothing after it to tell. Prepending still costs the whole list, which is
-   * right — everything in it moved. A flex row keeps the claim for where its
-   * items start and not for their sizes, so an attribute change there names
-   * no child and the whole row hears it; a child-list or text change in one
-   * does not yet (see `FlowMode`).
+   * right — everything in it moved. A flex row does not keep the claim: an
+   * item that grows can shrink and move the items before it. So an attribute
+   * change there names no child and the whole row hears it; a child-list or
+   * text change in one does not yet (see `FlowMode`).
    *
    * @param {Map<Element, Node | null>} containers
    * @returns {void}
@@ -1724,12 +1738,12 @@ export class DomMirror {
    *
    * `from` is a hint the container has to be able to honour: it is only obeyed
    * where the children are laid out in document order from a fixed start
-   * edge, which in a flex row holds for where they start and not for their
-   * sizes (see `FlowMode`), and a `from` that is no longer a child of the
-   * element — the node
+   * edge, and a `from` that is no longer a child of the element — the node
    * that named it having been removed by a later record in the same flush —
    * is no hint at all. Either way the fallback is the whole list, which is
-   * what this always did.
+   * what this always did. A flex row obeys the hint although an item that
+   * grows can shrink and move the items before it, which leaves them stale
+   * after a child-list or text change (see `FlowMode`).
    *
    * @param {Element} element
    * @param {Node | null} from
@@ -1890,11 +1904,11 @@ function earlierOf(a, b) {
  * - `"flex"` — children are placed one after another in document order from a
  *   fixed start edge, but the cross axis is the container's to hand out:
  *   `stretch` and `align-items` mean a container that changed height changed
- *   its children with it. The order holds for where a child starts and not
- *   for its size: the items share the main axis, so one that grows can
- *   shrink the items before it. `attributeChanged` tells the whole row for
- *   that reason; a child arriving or text rewritten does not yet (the plan's
- *   "Found along the way").
+ *   its children with it. The order promises nothing about the items before
+ *   a change: they share the main axis, so one that grows can shrink every
+ *   item before it and move all but the first. `attributeChanged` tells the
+ *   whole row for that reason; a child arriving or text rewritten does not
+ *   yet (the plan's "Found along the way").
  * - `"block"` — the same order, and the block axis is nobody's business but
  *   each child's own. A block container that got taller got taller *because*
  *   of its children, and stacking them from the top is all it ever does.
@@ -1910,8 +1924,8 @@ const flowModeCache = nodeCache();
  *
  * Two claims rest on this, and the distinction between them is what the three
  * answers are for. The first is that a change at one child cannot move the
- * children *before* it, which a flex row keeps only for where they start
- * (see `FlowMode`) — a narrower claim than it sounds, since plenty of
+ * children *before* it, which a flex row does not keep (see `FlowMode`) — a
+ * narrower claim than it sounds, since plenty of
  * ordinary containers place their children from the far end, or from the
  * middle, or in an order of their own: adding a row to a `justify-content:
  * center` list moves every row already in it, and adding one to a

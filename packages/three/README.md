@@ -569,10 +569,11 @@ the parent, a text measurement for each text node after it, and a client rect fo
 box in the panel.
 
 Two changes stay cheaper. An inline `style` write that changes only properties that move no box,
-`transform`, `opacity`, `visibility`, the colours and the like, re-measures the element's subtree
-and nothing around it, so a gauge that writes `style.transform` every frame pays for itself alone.
-An SVG shape's `d` or `fill` is followed too, but a shape is placed in user space, so it moves none
-of the shapes beside it; the `<svg>` root's own attributes move what follows it, as a box's do.
+`transform`, `opacity`, a `visibility` other than `collapse`, the colours and the like, re-measures
+the element's subtree and nothing around it, so a gauge that writes `style.transform` every frame
+pays for re-measuring itself alone. An SVG shape's `d` or `fill` is followed too, but a shape is
+placed in user space, so it moves none of the shapes beside it; the `<svg>` root's own attributes
+move what follows it, as a box's do.
 
 Inside an `<svg>`, the attributes that place and size what it draws — `x`, `y`, `width`, `height`,
 `x1`, `y1`, `x2`, `y2`, `cx`, `cy`, `r`, `rx`, `ry`, `d`, `points`, `dx`, `dy`, `rotate` and

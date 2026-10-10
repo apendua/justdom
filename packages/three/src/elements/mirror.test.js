@@ -2641,6 +2641,15 @@ describe("layout boundaries", () => {
       mirror.ingest([styled("transform: scaleX(0.6); opacity: 0.5;")]);
       assert.equal(reads.label, before + 2, "a style of paint alone taken out moved nothing");
 
+      // `collapse` takes a table row or a flex item out of the layout, so
+      // the value decides and not the name.
+      bar.style.visibility = "collapse";
+      mirror.ingest([styled(null)]);
+      assert.equal(reads.label, before + 3, "a collapse moved the label");
+      bar.style.visibility = "visible";
+      mirror.ingest([styled("visibility: collapse;")]);
+      assert.equal(reads.label, before + 4, "and so did taking it off");
+
       holder.dispose();
     } finally {
       container.remove();

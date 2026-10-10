@@ -63,10 +63,12 @@ docs, unit tests or benchmarks, runs it, with minesweeper's and Euclid's, from
 
 In a session the same things work with a controller's trigger or a pinch: the keys are pressed with
 the ray, the floppies are dragged from their panel onto the monitor's, and the board's field opens a
-keyboard of its own in front of you, since the desk's keyboard is the monitor's. The charts, the
-board and the memo can be picked up by their edges; the memo takes the hand's whole rotation, so it
-can be tipped up to read. The power button under the screen ends the session; on Night Ops it is
-PWR, and on Paper Studio the terminal window's close box.
+keyboard of its own in front of you, since the desk's keyboard is the monitor's. A keyboard on the
+laptop or paired with the headset types on the monitor too, since the field never has the page's
+focus in a session (#547). The charts, the board and the memo can be picked up by their edges; the
+memo takes the hand's whole rotation, so it can be tipped up to read. The power button under the
+screen ends the session; on Night Ops it is PWR, and on Paper Studio the terminal window's close
+box.
 
 ## How it is put together
 

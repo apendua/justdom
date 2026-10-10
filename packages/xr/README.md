@@ -88,7 +88,6 @@ What an app's `tests/xr-check.mjs` imports to drive a session on the emulated he
 through the device `install` leaves on `window.xrDevice`: `launch()` for Chromium on SwiftShader,
 `frames(page, n)` to wait for frames, `headPosition(page)` for the origin of the `local` space,
 `aimAt(page, head, target)` to point the right controller's ray through a point,
-`aim(page, from, yaw, pitch)` to hold it at a point and turn it, for a check that sweeps the ray,
 `rotate(v, pitch, yaw)` to turn a point on a panel into the scene by the panel's angles,
 `press(page, "trigger" | "squeeze")`, `hold(page, button, 1 | 0)` to close or open a button for a
 drag, and `check`, `finish` and `closeAll` for the tally, the exit code and the teardown. It is in

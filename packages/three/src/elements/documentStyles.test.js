@@ -387,6 +387,24 @@ describe("watchDocumentStyles", () => {
       }
     });
 
+    test("a caller asking for a shorter interval announces no edit nobody made", async (t) => {
+      t.mock.timers.enable({ apis: ["setInterval"] });
+      const { style } = addSheet(".q { color: red; }");
+      await flush();
+      const watcher = watch();
+      const stopSlow = enableThemingMode({ interval: 1000 });
+      const stopFast = enableThemingMode({ interval: 100 });
+      try {
+        t.mock.timers.tick(1000);
+        assert.equal(watcher.count(), 0);
+      } finally {
+        stopFast();
+        stopSlow();
+        watcher.stop();
+        style.remove();
+      }
+    });
+
     test("a panel that starts watching hears the edits after it, not before", async (t) => {
       t.mock.timers.enable({ apis: ["setInterval"] });
       const { style, sheet } = addSheet(".j { color: red; }");

@@ -162,9 +162,6 @@ function syncPoller() {
   if (poller) {
     clearInterval(poller);
     poller = null;
-    // Nothing compares against it until the next start, which reads the
-    // rules afresh, so the text of every rule need not be kept alive.
-    fingerprint = "";
   } else {
     // Starting from nothing, the reads count from the rules as they are
     // now: a CSSOM edit made while theming mode was off, or while no panel
@@ -176,6 +173,11 @@ function syncPoller() {
   pollerInterval = wanted;
   if (wanted > 0) {
     poller = setInterval(poll, wanted);
+  } else {
+    // Stopped: nothing compares against it until the next start, which
+    // reads the rules afresh, so the text of every rule need not be kept
+    // alive.
+    fingerprint = "";
   }
 }
 

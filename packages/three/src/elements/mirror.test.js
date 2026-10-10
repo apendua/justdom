@@ -471,6 +471,8 @@ describe("getComputedStyleCached", () => {
         wrote(circleA, "cx"),
         wrote(circleA, "r"),
         wrote(circleA, "dx"),
+        wrote(circleA, "dy"),
+        wrote(circleA, "rotate"),
         wrote(circleA, "transform"),
       ]),
     );

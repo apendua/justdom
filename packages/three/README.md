@@ -557,10 +557,10 @@ writes `data-xr-*` back onto the elements the ray is on, so re-measuring the pan
 attribute mutation would mean re-laying-out the whole thing on every twitch of the ray. Every
 attribute is followed: a class, an inline style, an app's own `data-*` or `aria-*` flag, an SVG
 shape's `d` or `fill`. Changing one restyles the element, its subtree and its siblings (apart from
-the SVG geometry below, which stops at the element), and repaints; the one thing it re-measures is
-the element's own subtree, which is what a toggled `transform` moves (see below), and nothing
-outside it. So anything that changes _layout_ — a menu opening, a section expanding — has to be
-mounted and unmounted rather than hidden and shown.
+the SVG geometry below, which does not reach the siblings), and repaints; the one thing it
+re-measures is the element's own subtree, which is what a toggled `transform` moves (see below), and
+nothing outside it. So anything that changes _layout_ — a menu opening, a section expanding — has to
+be mounted and unmounted rather than hidden and shown.
 
 Inside an `<svg>`, the attributes that place and size what it draws — `x`, `y`, `width`, `height`,
 `x1`, `y1`, `x2`, `y2`, `cx`, `cy`, `r`, `rx`, `ry`, `d`, `points`, `dx`, `dy`, `rotate` and

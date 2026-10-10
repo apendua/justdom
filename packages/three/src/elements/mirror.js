@@ -3109,19 +3109,23 @@ function parkMeasurementClone(element, clone, host) {
  */
 function copyStillStyle(element, clone, computed = window.getComputedStyle(element)) {
   // Written as one declaration list, which the browser parses once, rather
-  // than a `setProperty` per property: a computed style has some 350. The
-  // list starts from the clone's own inline style, which a computed style
-  // does not cover: Chromium enumerates no custom property, and a child
-  // styled with `var(--gap)` would lose the `--gap` the element sets.
+  // than a `setProperty` per property: a computed style has some 350.
   /** @type {string[]} */
   const declarations = [];
-  const own = clone.style.cssText.replace(/;\s*$/, "");
-  if (own) {
-    declarations.push(own);
-  }
   for (let i = 0; i < computed.length; i++) {
     const property = computed[i];
     declarations.push(`${property}: ${computed.getPropertyValue(property)}`);
+  }
+  // The custom properties the clone's own inline style sets go after them,
+  // since Chromium enumerates none in a computed style, and a child styled
+  // with `var(--gap)` would lose the `--gap` the element sets. Those alone,
+  // and without their priority: the rest of the inline style is in the
+  // computed values already, and an `!important` on it would outrank them.
+  for (let i = 0; i < clone.style.length; i++) {
+    const property = clone.style[i];
+    if (property.startsWith("--")) {
+      declarations.push(`${property}: ${clone.style.getPropertyValue(property)}`);
+    }
   }
   declarations.push(
     "transform: none !important",
@@ -3532,8 +3536,30 @@ function measureTextLayout(text) {
 }
 
 /**
+ * The node at the same place under `to` as `node` is under `from`, which a
+ * deep clone keeps, or nothing when `to` has no node there: a copy made
+ * before the change that put `node` where it is.
+ *
+ * @param {Node} node
+ * @param {Node} from An ancestor of `node`.
+ * @param {Node} to
+ * @returns {Node | undefined}
+ */
+export function counterpart(node, from, to) {
+  /** @type {number[]} */
+  const path = [];
+  for (let current = node; current !== from; current = /** @type {Node} */ (current.parentNode)) {
+    path.unshift(Array.prototype.indexOf.call(current.parentNode?.childNodes ?? [], current));
+  }
+  return path.reduce(
+    (/** @type {Node | undefined} */ current, index) => current?.childNodes[index],
+    to,
+  );
+}
+
+/**
  * The copy of `text` in `copy`, a copy of `lineBox`: the node at the same
- * place under it.
+ * place under it (`counterpart`).
  *
  * Found by place rather than kept by identity, because the copy follows the
  * box's shape, not its nodes: a text replaced by one with the same
@@ -3554,18 +3580,7 @@ function measureTextLayout(text) {
  * @returns {Text}
  */
 function findInCopy(copy, lineBox, text) {
-  /** @type {number[]} */
-  const path = [];
-  for (let node = /** @type {Node} */ (text); node !== lineBox;) {
-    const parent = /** @type {Node} */ (node.parentNode);
-    path.push(Array.prototype.indexOf.call(parent.childNodes, node));
-    node = parent;
-  }
-  /** @type {Node | undefined} */
-  let found = copy;
-  for (let i = path.length - 1; i >= 0 && found; i--) {
-    found = found.childNodes[path[i]];
-  }
+  const found = counterpart(text, lineBox, copy);
   if (!(found instanceof Text) || found.data !== text.data) {
     throw new NoValueError("The line box copy does not hold this text yet");
   }
@@ -3588,9 +3603,12 @@ const lineBoxCopyCache = nodeCache();
  *   task or frame measures it: a portal measures a panel a frame budget at a
  *   time.
  * - **Rebuilt** when what it was copied from changes: the box's shape
- *   (`getLineBoxShape`), or anything that would re-measure the box from
- *   above, which its reflow context and its size say. Between them they
- *   cover a stylesheet, a font, the viewport and an ancestor's attributes.
+ *   (`getLineBoxShape`), what can restyle it from above
+ *   (`readRestyledFromAbove`), or its size. Between them they cover a
+ *   stylesheet, a font, the viewport and an ancestor's attributes, and
+ *   nothing a text in the box would not be re-measured for: a box moved by
+ *   its siblings, or out of flow and so told of every layout in the panel,
+ *   keeps its copy.
  *   The portal's presentational flags, hover and press, change none of them
  *   (`PRESENTATIONAL_ATTRIBUTES`), just as they re-measure no text. Nor does
  *   a text replaced by one with the same characters: `findInCopy` finds it
@@ -3612,10 +3630,10 @@ function getLineBoxCopy(lineBox) {
   if (!signal) {
     signal = new Derived(() => {
       getLineBoxShape(lineBox);
-      getReflowContext(lineBox);
+      readRestyledFromAbove(lineBox);
       getBorderBoxSize(lineBox);
       const copy = /** @type {HTMLElement} */ (lineBox.cloneNode(true));
-      dressLaidOut(lineBox, copy, true);
+      dressLaidOut(lineBox, copy);
       const root = parkMeasurementClone(lineBox, copy, null);
       onCleanup(() => root.remove());
       return root;
@@ -3623,6 +3641,38 @@ function getLineBoxCopy(lineBox) {
     lineBoxCopyCache.set(lineBox, signal);
   }
   return signal.get();
+}
+
+/**
+ * Depend on what can restyle `lineBox`, or what is in it, from above: its
+ * own `reflow` signal and its ancestors' up to the panel's root, which an
+ * attribute change bumps unless it is presentational, and the portal-wide
+ * epochs a stylesheet, a font and the viewport bump.
+ *
+ * A narrower read than `getReflowContext(lineBox)`, which also follows the
+ * box's `moved` signal and, for a box out of flow, every settling in the
+ * panel. Both say where the box is, not what is in it, and its texts are
+ * measured relative to it.
+ *
+ * @param {HTMLElement} lineBox
+ * @returns {void}
+ */
+function readRestyledFromAbove(lineBox) {
+  const record = readRecordOf(lineBox);
+  if (record) {
+    record.mirror.layout.get();
+    record.mirror.globalLayout.get();
+  }
+  for (
+    let current = /** @type {Node | null} */ (lineBox);
+    current;
+    current = getParentElement(current)
+  ) {
+    readRecordOf(current)?.reflow.get();
+    if (isPortalRoot(current)) {
+      break;
+    }
+  }
 }
 
 /** @type {WeakMap<HTMLElement, Derived<string>>} */
@@ -3664,8 +3714,9 @@ function getLineBoxShape(lineBox) {
  * depending on each: on the child list, on a text's characters, and on an
  * element's own reflow signal, which a change to one of its attributes bumps
  * unless the portal declares the attribute presentational, and which waits
- * for the element's adoption when it has no record yet. The ancestors' and
- * the portal-wide ones reach the copy through `getLineBoxCopy`. Every length is
+ * for the element's adoption when it has no record yet. The box's own, its
+ * ancestors' and the portal-wide ones reach the copy through
+ * `readRestyledFromAbove`. Every length is
  * written before what it measures, so that no text can pass for markup.
  *
  * @param {Node} node
@@ -3712,29 +3763,25 @@ function describeShape(node, parts) {
  * `splitsAcrossLines` every element's style would be one, and a hover flag
  * restyles the element it lands on.
  *
- * @param {Node} live
+ * @param {Node} live The line box, or an element whose content is laid out
+ *   in its lines.
  * @param {Node} copy `live.cloneNode(true)`, or a part of one.
- * @param {boolean} laidOut Whether `live`'s content is laid out in the line
- *   box's lines, as the box's own is.
  * @returns {void}
  */
-function dressLaidOut(live, copy, laidOut) {
+function dressLaidOut(live, copy) {
   for (
     let child = live.firstChild, childCopy = copy.firstChild;
     child && childCopy;
     child = child.nextSibling, childCopy = childCopy.nextSibling
   ) {
-    if (child.nodeType === Node.ELEMENT_NODE) {
-      const element = /** @type {HTMLElement} */ (child);
-      let childLaidOut = false;
-      if (laidOut) {
-        const computed = window.getComputedStyle(element);
-        childLaidOut = displaySplitsAcrossLines(element, computed.display);
-        if (childLaidOut) {
-          copyStillStyle(element, /** @type {HTMLElement} */ (childCopy), computed);
-        }
-      }
-      dressLaidOut(element, childCopy, childLaidOut);
+    if (child.nodeType !== Node.ELEMENT_NODE) {
+      continue;
+    }
+    const element = /** @type {HTMLElement} */ (child);
+    const computed = window.getComputedStyle(element);
+    if (displaySplitsAcrossLines(element, computed.display)) {
+      copyStillStyle(element, /** @type {HTMLElement} */ (childCopy), computed);
+      dressLaidOut(element, childCopy);
     }
   }
 }

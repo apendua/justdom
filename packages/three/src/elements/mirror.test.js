@@ -1305,6 +1305,64 @@ describe("text layout under transforms", () => {
     }
   });
 
+  test("a change beside an out-of-flow box keeps its copy", () => {
+    // A tooltip or a centred dialog is laid out out of flow, and is told of
+    // every settling in the panel; its own position moves nothing in it. A
+    // text typed beside it re-measures none of its texts, and rebuilds no
+    // copy of it.
+    const panel = document.createElement("div");
+    const box = document.createElement("div");
+    box.style.position = "absolute";
+    box.style.width = "150px";
+    box.style.transform = "matrix(0.996, 0.087, -0.087, 0.996, 0, 0)";
+    /** @type {Text[]} */
+    const inBox = [];
+    for (let i = 0; i < 10; i++) {
+      const text = document.createTextNode(`text ${i} `);
+      inBox.push(text);
+      box.appendChild(text);
+    }
+    const beside = document.createElement("div");
+    const typed = document.createTextNode("typed");
+    beside.appendChild(typed);
+    panel.append(box, beside);
+    document.body.appendChild(panel);
+    const mirror = createMirror();
+    for (const node of [panel, box, ...inBox, beside, typed]) {
+      mirror.adopt(node);
+    }
+    const { roots, restore } = recordCopies();
+    const held = inBox.map((text) => holdTextLayout(text));
+    try {
+      for (const value of ["typed a", "typed ab", "typed abc"]) {
+        changeAndIngest(mirror, () => {
+          typed.data = value;
+        });
+      }
+      assert.equal(new Set(roots).size, 1);
+      assert.equal(roots.length, 10);
+    } finally {
+      held.forEach((reader) => reader.dispose());
+      panel.remove();
+      restore();
+    }
+  });
+
+  test("a font that finished loading rebuilds the copy", () => {
+    const { card, mirror, texts } = cardOfTexts();
+    const { roots, restore } = recordCopies();
+    const held = holdTextLayout(texts.inLabel);
+    try {
+      batch(() => mirror.fontsLoaded());
+      assert.equal(roots.length, 2);
+      assert.notEqual(roots[1], roots[0]);
+    } finally {
+      held.dispose();
+      card.remove();
+      restore();
+    }
+  });
+
   test("an attribute changed above the box rebuilds its copy", () => {
     // `.desk.night .card b` can restyle what is in the box from outside it.
     const desk = document.createElement("div");

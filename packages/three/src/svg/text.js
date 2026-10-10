@@ -4,6 +4,7 @@ import { keyedList } from "../core.js";
 import { $, children } from "../operators.js";
 import { applyClip, clipRaycast } from "../elements/clip.js";
 import {
+  counterpart,
   createMeasurementClone,
   getAttributeCached,
   getChildNodes,
@@ -238,24 +239,6 @@ function collectRuns(element, adopt, layoutStyle) {
 }
 
 /**
- * The node at the same place under `to` as `node` is under `from`, which a
- * deep clone keeps.
- *
- * @param {Node} node
- * @param {Node} from
- * @param {Node} to
- * @returns {Node}
- */
-function counterpart(node, from, to) {
-  /** @type {number[]} */
-  const path = [];
-  for (let current = node; current !== from; current = /** @type {Node} */ (current.parentNode)) {
-    path.unshift(Array.prototype.indexOf.call(current.parentNode?.childNodes ?? [], current));
-  }
-  return path.reduce((current, index) => current.childNodes[index], to);
-}
-
-/**
  * Lay a `<text>` out in a detached copy and read back where each run went,
  * in its user space.
  *
@@ -305,7 +288,9 @@ function measureRuns(element, found, viewport, fonts, layoutStyle) {
         if (!drawn) {
           continue;
         }
-        const copy = counterpart(node, element, clone);
+        // The clone was made from `element` just above, so it holds every
+        // node in it.
+        const copy = /** @type {Text} */ (counterpart(node, element, clone));
         range.setStart(copy, drawn.start);
         range.setEnd(copy, drawn.end);
         const rect = measureClientRect(range, frame);

@@ -622,6 +622,78 @@ export function commitMatrix(object, matrix) {
  */
 
 /**
+ * A clip in a frame of the template's outer user space: the matrix from
+ * the frame to that space, and the rect in the frame.
+ *
+ * @typedef {object} FramedClip
+ * @property {Matrix2D} frame
+ * @property {Rect} rect
+ */
+
+/**
+ * @typedef {object} InstanceSpec
+ * @property {Element} template See `Instance.template`.
+ * @property {() => Chain} outer The chain of the element that draws the
+ *   copy, a marked shape or a `<use>`, in whose user space it is placed.
+ * @property {() => Matrix2D} placement From the template's user space to
+ *   that one.
+ * @property {Element | null} container The element in the copy that is a
+ *   container its content is drawn in, a `<marker>`, a `<symbol>` or an
+ *   `<svg>`, whose own opacity fades the copy, since the walk up from the
+ *   content stops below it. Null when the copy has none: the parent of an
+ *   element a `<use>` draws whole is not in the copy.
+ * @property {() => FramedClip | null} clip What the copy is clipped to, or
+ *   null for no clip of its own.
+ * @property {Instance["slot"]} slot
+ * @property {Instance["viewport"]} viewport
+ * @property {Instance["viewBoxOrigin"]} viewBoxOrigin
+ * @property {Inheritance | null} inherit
+ * @property {ReadonlySet<Element>} expanding
+ */
+
+/**
+ * An instance of a template, its chain composed from the chain of what
+ * draws it, in one place for a marker and a `<use>` alike: the placement
+ * after the outer matrix, the container's opacity times the outer opacity,
+ * and its clip, moved into the root's frame, cut out of the outer clip.
+ *
+ * @param {InstanceSpec} spec
+ * @returns {Instance}
+ */
+export function createInstance({ template, outer, placement, container, clip, ...rest }) {
+  return {
+    template,
+    chain: () => {
+      const at = outer();
+      const own = clip();
+      return {
+        ctm: multiply(at.ctm, placement()),
+        opacity: container
+          ? at.opacity * parseNumber(getComputedStyleCached(container).opacity, 1)
+          : at.opacity,
+        root: at.root,
+        clip: own ? clipThrough(at.clip, multiply(at.ctm, own.frame), own.rect) : at.clip,
+      };
+    },
+    ...rest,
+  };
+}
+
+/**
+ * A clip rect given in some frame, taken to the root's frame by `toRoot`
+ * and cut out of the clip already there. Where a rotation or a skew turns
+ * the rect, it clips to the box around it.
+ *
+ * @param {Rect | null} clip
+ * @param {Matrix2D} toRoot
+ * @param {Rect} rect
+ * @returns {Rect | null}
+ */
+function clipThrough(clip, toRoot, rect) {
+  return intersectRects(clip, transformRect(toRoot, rect));
+}
+
+/**
  * @typedef {object} Inheritance
  * @property {Element} boundary The element just above the copied content.
  *   A property no element between the content and this one changes is
@@ -794,7 +866,9 @@ export function readChain(element, instance = null) {
     let clip = top.clip;
     for (const { rect, below } of viewports) {
       const back = invert(below);
-      clip = intersectRects(clip, back ? transformRect(multiply(top.ctm, back), rect) : null);
+      if (back) {
+        clip = clipThrough(clip, multiply(top.ctm, back), rect);
+      }
     }
     return { ...top, clip };
   };
@@ -881,7 +955,7 @@ export function readChain(element, instance = null) {
  * @param {Chain} chain
  * @returns {number}
  */
-export function drawnOpacity({ root, opacity }) {
+function drawnOpacity({ root, opacity }) {
   return root ? opacity * getOpacity(root) : opacity;
 }
 
@@ -1213,14 +1287,35 @@ export function buildStrokeGeometry(path, spec, scale) {
  * an empty buffer draws nothing and costs nothing. Shared and never
  * disposed, like the rect quad.
  */
-export const emptyGeometry = new THREE.BufferGeometry();
+const emptyGeometry = new THREE.BufferGeometry();
 emptyGeometry.setAttribute("position", new THREE.BufferAttribute(new Float32Array(0), 3));
 
 /**
- * One of a shape's two meshes: the same material and clip on both, with the
- * geometry and the colour each coming from a computation of its own, so
- * that a colour animation is a uniform write and a geometry change is not
- * also a new material.
+ * What a mesh of an element draws: its geometry, whether and how it paints,
+ * and whether a ray can hit it.
+ *
+ * @typedef {object} MeshOptions
+ * @property {() => THREE.BufferGeometry | null} geometry Builds the
+ *   geometry, reading whatever decides it; re-run, and the previous geometry
+ *   disposed, when any of that changes.
+ * @property {() => boolean} paints Whether the region paints anything: a
+ *   fill or a stroke that is not `none`, a picture that has loaded.
+ * @property {EntityEffect<THREE.Mesh>[]} paint The effects that write the
+ *   material's colour, map and opacity.
+ * @property {() => boolean} hidden Whether `visibility` hides the element
+ *   this mesh paints.
+ * @property {() => boolean} hit Whether a ray can hit this region.
+ * @property {0 | 1} layer Which of the element's layers in its paint slot
+ *   the mesh draws in: 0 for a fill, a picture or a run of text, 1 for the
+ *   stroke over a fill.
+ */
+
+/**
+ * One mesh of an element: a shape's fill or stroke, a picture, a run of
+ * text. Every mesh of one element shares the element's clip, and each takes
+ * its geometry and its paint from computations of its own, so that a colour
+ * animation is a uniform write and a geometry change is not also a new
+ * material.
  *
  * Being drawn and being hit are separate questions, because
  * `pointer-events` answers the second on its own terms. A region that is
@@ -1230,35 +1325,16 @@ emptyGeometry.setAttribute("position", new THREE.BufferAttribute(new Float32Arra
  * answer is yes. It is drawn only for the first and raycast only for the
  * second.
  *
- * @param {object} options
- * @param {() => THREE.BufferGeometry | null} options.geometry Builds the
- *   geometry, reading whatever decides it; re-run, and the previous
- *   geometry disposed, when any of that changes.
- * @param {() => Paint | null} options.paint
- * @param {() => number} options.opacity What multiplies the paint's alpha:
- *   the element's own `opacity` chain and the `fill-opacity` or
- *   `stroke-opacity` that goes with this mesh.
- * @param {() => number} options.renderOrder
- * @param {{ value: THREE.Vector4 }} options.clip
- * @param {{ value: THREE.Matrix3 }} options.clipMatrix
- * @param {() => ClipBox} options.clipBox The box `clip` holds. Three's
- *   raycast reads it, and nothing is tracked there.
- * @param {() => boolean} options.hidden Whether `visibility` hides the
- *   element this mesh paints.
- * @param {() => boolean} options.hit Whether a ray can hit this region.
+ * @param {MeshOptions} options
+ * @param {() => number} renderOrder
+ * @param {ReturnType<typeof clipUniforms>} uniforms
  * @returns {Source<Component>}
  */
-function paintedMesh({
-  geometry,
-  paint,
-  opacity,
+function paintedMesh(
+  { geometry, paints, paint, hidden, hit },
   renderOrder,
-  clip,
-  clipMatrix,
-  clipBox,
-  hidden,
-  hit,
-}) {
+  { clip, clipMatrix, clipBox },
+) {
   const mesh = new THREE.Mesh();
   // Trimmed once, for the life of the mesh, to the part the clip patch
   // leaves drawn, with the same box, frame and matrix the shader uses. A
@@ -1273,12 +1349,14 @@ function paintedMesh({
   };
   return $(mesh, [
     set("material", () => {
+      // One material for the life of the mesh, whatever it shows, so the
+      // effects below that write to it are never undone by a new one. On
+      // the same terms as everything else a portal draws: two-sided,
+      // because the container's flip turns every plane away from the
+      // viewer; a single pass, because a flat mesh has no far surface to
+      // draw first; and no depth write, so the draw order and not the depth
+      // buffer decides what covers what on one plane.
       const material = new THREE.MeshBasicMaterial({
-        // On the same terms as everything else a portal draws: two-sided,
-        // because the container's flip turns every plane away from the
-        // viewer; a single pass, because a flat mesh has no far surface to
-        // draw first; and no depth write, so the draw order and not the
-        // depth buffer decides what covers what on one plane.
         side: THREE.DoubleSide,
         forceSinglePass: true,
         transparent: true,
@@ -1300,16 +1378,9 @@ function paintedMesh({
       });
       return built;
     }),
+    ...paint,
     effects((obj) => {
-      const material = /** @type {THREE.MeshBasicMaterial} */ (obj.material);
-      const current = paint();
-      if (current) {
-        material.color.copy(current.color);
-        material.opacity = current.alpha * opacity();
-      }
-    }),
-    effects((obj) => {
-      const drawn = paint() !== null && !hidden();
+      const drawn = paints() && !hidden();
       hittable = hit();
       /** @type {THREE.MeshBasicMaterial} */ (obj.material).visible = drawn;
       // The raycaster skips an invisible object, so a mesh that is only hit
@@ -1336,7 +1407,7 @@ function paintedMesh({
  *
  * @param {() => Chain} chain
  */
-export function clipUniforms(chain) {
+function clipUniforms(chain) {
   const clip = { value: new THREE.Vector4(-1e6, -1e6, 1e6, 1e6) };
   const clipMatrix = { value: new THREE.Matrix3() };
   // Apart from the matrix, so a transform animated above the element is a
@@ -1391,7 +1462,7 @@ export function clipUniforms(chain) {
  *   ancestor), so a group with nothing a ray can hit costs no more than
  *   its shapes would have cost on their own.
  */
-export function rayTarget(ctx, element, hittable) {
+function rayTarget(ctx, element, hittable) {
   const clickable = new Derived(() => isClickable(asHtml(element)));
   return effects((/** @type {THREE.Object3D<XREventMap>} */ obj) => {
     if (!clickable.get() || !hittable()) {
@@ -1404,6 +1475,106 @@ export function rayTarget(ctx, element, hittable) {
       forwardPointerEvents(ctx, asHtml(element), obj, { enabled: PortalReadyContext.get(ctx) }),
     );
   });
+}
+
+/**
+ * What an element that draws is handed to draw with, by `svgNode`.
+ *
+ * @typedef {object} SvgNode
+ * @property {() => Chain} chain The element's chain, compared by value.
+ * @property {() => number} opacity The opacity it is drawn at
+ *   (`drawnOpacity`).
+ * @property {(layer: 0 | 1 | 2) => PaintSlot} slot Where in the draw order a
+ *   layer of its paint goes (`paintSlot`).
+ * @property {(options: MeshOptions) => Source<Component>} mesh One of its
+ *   meshes, clipped by its clip and drawn in its slot. Template content is
+ *   never hit, whatever `options.hit` says.
+ */
+
+/**
+ * What an element that draws hands back to `svgNode`.
+ *
+ * @typedef {object} SvgDrawing
+ * @property {() => boolean} hittable Whether a ray can hit any of it, which
+ *   decides whether a clickable element is a ray target.
+ * @property {EntityEffect<THREE.Object3D>[]} content Its meshes, as
+ *   children, and whatever else hangs off its object.
+ */
+
+/**
+ * The object every SVG element the portal builds is drawn by, a shape, a
+ * picture, a `<text>` and a `<g>` alike: its own transform as the object's
+ * matrix, taken out of the scene by `display: none`, and, outside a
+ * template, a ray target while it is clickable.
+ *
+ * An element that draws passes `draw`, and is given its chain, its
+ * opacity, its paint slot and the clip its meshes share. The chain is read
+ * apart from what it decides, so a transform animated above the element
+ * stops at the clip matrix and reaches neither the draw order nor the
+ * alpha. A `<g>` passes null: it draws nothing, reads no chain, and is a
+ * ray target on `cursor` alone, since a hit on it is a hit on one of the
+ * shapes under it.
+ *
+ * Template content is drawn and never hit. The element a press on it would
+ * be forwarded to is the one in the template, which is nowhere on the page,
+ * so a copy is no ray target, and its meshes no ray finds, and it does not
+ * read the template's style to find that out.
+ *
+ * @param {WeakKey} ctx
+ * @param {Element} element
+ * @param {Instance | null} instance The instance the element is part of,
+ *   when it is template content drawn somewhere else.
+ * @param {((node: SvgNode) => SvgDrawing) | null} draw
+ * @param {EntityEffect<THREE.Object3D>[]} [decorate] More to hang off the
+ *   object.
+ * @returns {Source<THREE.Object3D>}
+ */
+export function svgNode(ctx, element, instance, draw, decorate = []) {
+  /** @type {THREE.Object3D<XREventMap>} */
+  const object = new THREE.Object3D();
+  const own = new Derived(() => localMatrix(element, instance), { isEqual: matrixEqual });
+  /** @type {() => boolean} */
+  let hittable = () => true;
+  /** @type {EntityEffect<THREE.Object3D>[]} */
+  let drawing = [];
+  if (draw) {
+    const chain = new Derived(() => readChain(element, instance), { isEqual: chainEqual });
+    const root = new Derived(() => chain.get().root);
+    const opacity = new Derived(() => drawnOpacity(chain.get()));
+    const uniforms = clipUniforms(() => chain.get());
+    /** @param {0 | 1 | 2} layer */
+    const slot = (layer) => paintSlot(element, root.get(), instance, layer);
+    const drawn = draw({
+      chain: () => chain.get(),
+      opacity: () => opacity.get(),
+      slot,
+      mesh: (options) =>
+        paintedMesh(
+          { ...options, hit: () => instance === null && options.hit() },
+          () => slot(options.layer).start,
+          uniforms,
+        ),
+    });
+    // Gated by value: the ray target's handlers are mounted while this is
+    // true, and a region switching on beside one already hit must not
+    // remount them, which would drop the flags they wrote.
+    const hit = new Derived(drawn.hittable);
+    hittable = () => hit.get();
+    drawing = [...uniforms.followClip, ...drawn.content];
+  }
+  return just(object, [
+    effects((obj) => {
+      commitMatrix(obj, own.get());
+    }),
+    ...(instance === null ? [rayTarget(ctx, element, hittable)] : []),
+    effects((obj) => {
+      // `display: none` takes the element out; `visibility` is the meshes'
+      // business, the way it is a box's quad and not its object.
+      obj.visible = getComputedStyleCached(element).display !== "none";
+    }),
+    ...drawing,
+    ...decorate,
+  ]);
 }
 
 /**
@@ -1438,9 +1609,6 @@ export function rayTarget(ctx, element, hittable) {
  * @returns {Source<THREE.Object3D>}
  */
 export function shape(ctx, element, { instance = null, decorate } = {}) {
-  /** @type {THREE.Object3D<XREventMap>} */
-  const object = new THREE.Object3D();
-
   const style = () => getComputedStyleCached(element);
 
   /**
@@ -1463,18 +1631,6 @@ export function shape(ctx, element, { instance = null, decorate } = {}) {
     return current ? parseShape(current) : null;
   });
 
-  /** This shape's own transform, which its object carries. */
-  const own = new Derived(() => localMatrix(element, instance), { isEqual: matrixEqual });
-
-  const chain = new Derived(() => readChain(element, instance), { isEqual: chainEqual });
-
-  // What the chain decides, apart, so a transform animated above the shape
-  // stops at the clip matrix and reaches neither the draw order, nor the
-  // alpha, nor — until it crosses a rung — the geometry.
-  const root = new Derived(() => chain.get().root);
-  const opacity = new Derived(() => drawnOpacity(chain.get()));
-  const scale = new Derived(() => samplingScale(matrixScale(chain.get().ctm)));
-
   /** @param {string} name */
   const read = (name) => readDrawnProperty(element, name, instance);
 
@@ -1484,14 +1640,6 @@ export function shape(ctx, element, { instance = null, decorate } = {}) {
   const strokeSpec = new Derived(() => readStrokeSpec(read, viewport), {
     isEqual: strokeSpecEqual,
   });
-
-  /**
-   * @param {0 | 1} layer 0 for the fill, 1 for the stroke drawn over it.
-   * @returns {() => number}
-   */
-  const renderOrderOf = (layer) => () => paintSlot(element, root.get(), instance, layer).start;
-
-  const { clip, clipMatrix, clipBox, followClip } = clipUniforms(() => chain.get());
 
   /**
    * Whether `visibility` hides this shape, as a box's `hidden` does: its
@@ -1528,81 +1676,83 @@ export function shape(ctx, element, { instance = null, decorate } = {}) {
   const fillHit = new Derived(() => hits(hitRegions.get().fill, "fill"));
   const strokeHit = new Derived(() => hits(hitRegions.get().stroke, "stroke"));
 
-  /**
-   * Whether a ray can hit any of the shape. One that no ray can hit is not
-   * registered, even under `cursor: pointer`: a hidden shape under the
-   * default `visiblePainted`, or one that paints nothing. `isClickable`
-   * already says no under `pointer-events: none`.
-   */
-  const hittable = new Derived(() => fillHit.get() || strokeHit.get());
+  return svgNode(ctx, element, instance, (node) => {
+    // Apart from the chain, so a transform animated above the shape
+    // reaches the geometry only when it crosses a rung.
+    const scale = new Derived(() => samplingScale(matrixScale(node.chain().ctm)));
 
-  /**
-   * Template content is drawn and never hit. The element a press on it would
-   * be forwarded to is the one in the template, which is nowhere on the
-   * page, so a marker on a clickable path does not take the press either.
-   */
-  const drawnOnly = instance !== null;
+    /**
+     * @param {Derived<Paint | null>} paint
+     * @param {string} opacityName `fill-opacity` or `stroke-opacity`.
+     * @returns {EntityEffect<THREE.Mesh>}
+     */
+    const tint = (paint, opacityName) =>
+      effects((obj) => {
+        const material = /** @type {THREE.MeshBasicMaterial} */ (obj.material);
+        const current = paint.get();
+        if (current) {
+          material.color.copy(current.color);
+          material.opacity = current.alpha * (node.opacity() * parseNumber(read(opacityName), 1));
+        }
+      });
 
-  return just(object, [
-    effects((obj) => {
-      commitMatrix(obj, own.get());
-    }),
-    rayTarget(ctx, element, () => !drawnOnly && hittable.get()),
-    effects((obj) => {
-      // `display: none` takes the shape out; `visibility` is the meshes'
-      // business, below, the way it is a box's quad and not its object.
-      obj.visible = style().display !== "none";
-    }),
-    ...followClip,
-    children(
-      // Fill before stroke: with equal render order and depth the sort
-      // falls back to mesh id, and the stroke has to cover the fill's edge.
-      flatMap((/** @type {boolean} */ filled) =>
-        filled
-          ? paintedMesh({
-              geometry: () => {
-                const current = path.get();
-                return current ? buildFillGeometry(current, fillRule.get(), scale.get()) : null;
-              },
-              paint: () => fillPaint.get(),
-              hidden: () => hidden.get(),
-              hit: () => !drawnOnly && fillHit.get(),
-              opacity: () => opacity.get() * parseNumber(read("fill-opacity"), 1),
-              renderOrder: renderOrderOf(0),
-              clip,
-              clipMatrix,
-              clipBox,
-            })
-          : Nothing(),
-      )(observable(() => fillPaint.get() !== null || fillHit.get())),
-      flatMap((/** @type {boolean} */ stroked) =>
-        stroked
-          ? paintedMesh({
-              geometry: () => {
-                const current = path.get();
-                return current ? buildStrokeGeometry(current, strokeSpec.get(), scale.get()) : null;
-              },
-              paint: () => strokePaint.get(),
-              hidden: () => hidden.get(),
-              hit: () => !drawnOnly && strokeHit.get(),
-              opacity: () => opacity.get() * parseNumber(read("stroke-opacity"), 1),
-              renderOrder: renderOrderOf(1),
-              clip,
-              clipMatrix,
-              clipBox,
-            })
-          : Nothing(),
-      )(observable(() => strokePaint.get() !== null || strokeHit.get())),
-    ),
-    ...(decorate?.({
-      read,
-      path: () => path.get(),
-      strokeWidth: () => strokeSpec.get().width,
-      chain: () => chain.get(),
-      markerSlot: () => paintSlot(element, root.get(), instance, 2),
-      hidden: () => hidden.get(),
-    }) ?? []),
-  ]);
+    return {
+      /**
+       * Whether a ray can hit any of the shape. One that no ray can hit is
+       * not registered, even under `cursor: pointer`: a hidden shape under
+       * the default `visiblePainted`, or one that paints nothing.
+       * `isClickable` already says no under `pointer-events: none`.
+       */
+      hittable: () => fillHit.get() || strokeHit.get(),
+      content: [
+        children(
+          // Fill before stroke: with equal render order and depth the sort
+          // falls back to mesh id, and the stroke has to cover the fill's
+          // edge.
+          flatMap((/** @type {boolean} */ filled) =>
+            filled
+              ? node.mesh({
+                  geometry: () => {
+                    const current = path.get();
+                    return current ? buildFillGeometry(current, fillRule.get(), scale.get()) : null;
+                  },
+                  paints: () => fillPaint.get() !== null,
+                  paint: [tint(fillPaint, "fill-opacity")],
+                  hidden: () => hidden.get(),
+                  hit: () => fillHit.get(),
+                  layer: 0,
+                })
+              : Nothing(),
+          )(observable(() => fillPaint.get() !== null || fillHit.get())),
+          flatMap((/** @type {boolean} */ stroked) =>
+            stroked
+              ? node.mesh({
+                  geometry: () => {
+                    const current = path.get();
+                    return current
+                      ? buildStrokeGeometry(current, strokeSpec.get(), scale.get())
+                      : null;
+                  },
+                  paints: () => strokePaint.get() !== null,
+                  paint: [tint(strokePaint, "stroke-opacity")],
+                  hidden: () => hidden.get(),
+                  hit: () => strokeHit.get(),
+                  layer: 1,
+                })
+              : Nothing(),
+          )(observable(() => strokePaint.get() !== null || strokeHit.get())),
+        ),
+        ...(decorate?.({
+          read,
+          path: () => path.get(),
+          strokeWidth: () => strokeSpec.get().width,
+          chain: node.chain,
+          markerSlot: () => node.slot(2),
+          hidden: () => hidden.get(),
+        }) ?? []),
+      ],
+    };
+  });
 }
 
 /**
@@ -1633,22 +1783,5 @@ export function shape(ctx, element, { instance = null, decorate } = {}) {
  * @returns {Source<THREE.Object3D>}
  */
 export function group(ctx, element, { instance = null, decorate = [] } = {}) {
-  /** @type {THREE.Object3D<XREventMap>} */
-  const object = new THREE.Object3D();
-  const matrix = new Derived(() => localMatrix(element, instance), { isEqual: matrixEqual });
-  return just(object, [
-    effects((obj) => {
-      commitMatrix(obj, matrix.get());
-    }),
-    effects((obj) => {
-      obj.visible = getComputedStyleCached(element).display !== "none";
-    }),
-    // A clickable group is hovered and pressed with the shape the ray is on,
-    // as `:hover` and `:active` reach the `<g>` around a shape on a page. It
-    // has no meshes of its own, so its hits are its shapes'. Template content
-    // is never hit, as a shape's is not, and a copy does not even read the
-    // template's style to find that out.
-    ...(instance === null ? [rayTarget(ctx, element, () => true)] : []),
-    ...decorate,
-  ]);
+  return svgNode(ctx, element, instance, null, decorate);
 }

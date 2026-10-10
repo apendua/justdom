@@ -2,7 +2,7 @@
   "name": "@apendua.dev/headset",
   "version": "1.0.0",
   "private": true,
-  "description": "What every headset app repeats: the emulated headset behind ?emulator, and the session a page reads",
+  "description": "What every headset app repeats: the emulated headset behind ?emulator, theming mode behind ?theming, and the session a page reads",
   "author": "apendua",
   "type": "module",
   "exports": {
@@ -13,6 +13,10 @@
     "./session": {
       "types": "./lib-types/session.d.ts",
       "import": "./src/session.js"
+    },
+    "./theming": {
+      "types": "./lib-types/theming.d.ts",
+      "import": "./src/theming.js"
     },
     "./focus": {
       "types": "./lib-types/focus.d.ts",
@@ -34,6 +38,7 @@
     "test:watch": "node --test --watch \"src/**/*.test.js\""
   },
   "dependencies": {
+    "@apendua/freedom": "workspace:*",
     "@apendua/signal": "workspace:*",
     "@iwer/devui": "^2.4.0",
     "iwer": "^2.4.0"

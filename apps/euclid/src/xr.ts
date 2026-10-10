@@ -1,4 +1,5 @@
 import { render, createXRButton } from "@apendua/freedom";
+import { followThemingQuery } from "@apendua.dev/headset/theming";
 import { svgElements } from "@apendua/freedom/svg";
 import { XRControllerModelFactory } from "three/examples/jsm/webxr/XRControllerModelFactory.js";
 import { OculusHandModel } from "three/examples/jsm/webxr/OculusHandModel.js";
@@ -14,6 +15,7 @@ import type { Mounts } from "./offer";
  * present.
  */
 export function offerXR(mounts: Mounts): void {
+  followThemingQuery(new URLSearchParams(location.search));
   const controllerModelFactory = new XRControllerModelFactory();
   const createControllerModel =
     controllerModelFactory.createControllerModel.bind(controllerModelFactory);

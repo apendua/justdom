@@ -1,4 +1,5 @@
 import { render, createXRButton } from "@apendua/freedom";
+import { followThemingQuery } from "@apendua.dev/headset/theming";
 import Stats from "stats.js";
 import { XRControllerModelFactory } from "three/examples/jsm/webxr/XRControllerModelFactory.js";
 import "./index.css";
@@ -10,6 +11,7 @@ if (!root) {
 }
 
 const query = new URLSearchParams(location.search);
+followThemingQuery(query);
 const controllerModelFactory = new XRControllerModelFactory();
 const createControllerModel =
   controllerModelFactory.createControllerModel.bind(controllerModelFactory);

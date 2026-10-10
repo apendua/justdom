@@ -1,4 +1,5 @@
 import { render, createXRButton } from "@apendua/freedom";
+import { followThemingQuery } from "@apendua.dev/headset/theming";
 import { canPresent } from "@apendua.dev/headset/session";
 import { XRControllerModelFactory } from "three/examples/jsm/webxr/XRControllerModelFactory.js";
 import { OculusHandModel } from "three/examples/jsm/webxr/OculusHandModel.js";
@@ -19,6 +20,7 @@ import TodoKeyboard from "./components/TodoKeyboard.js";
  */
 export async function offerXR(panel: HTMLElement): Promise<void> {
   const query = new URLSearchParams(location.search);
+  followThemingQuery(query);
   if (query.has("emulator")) {
     try {
       const { install } = await import("@apendua.dev/headset/emulator");

@@ -1292,6 +1292,41 @@ transform is measured against a detached, untransformed clone of its parent inst
 boxes and positions are exact whatever the transform — including full 3D rotations — without the
 measurement ever touching the live elements or the transitions playing on them.
 
+## Stylesheets
+
+A panel follows its document's stylesheets, not only its own elements. Rewriting a `<style>`
+element's text, adding or removing a `<style>` or a `<link rel="stylesheet">`, and a `<link>`
+finishing its load each restyle and re-measure every panel on the page. That is how a styling
+library that keeps a class name and rewrites the rule behind it, such as the `className` and
+`stylesheet` tags in [`@apendua/justdom`](../justdom), reaches a panel. Each of those changes costs
+a whole-panel restyle, so animate through an inline `style` instead, which restyles only the element
+it is on.
+
+A mutation observer finds those changes, and a change made through the CSSOM has nothing for it to
+find. That covers `insertRule`, writing to a rule's `style`, `adoptedStyleSheets`, and every rule
+you edit, add or switch off in the browser's developer tools. A panel keeps showing the rules it
+read before any of these.
+
+Theming mode follows those too, by reading the text of every rule on a timer:
+
+```js
+import { enableThemingMode } from "@apendua/freedom";
+
+if (new URLSearchParams(location.search).has("theming")) {
+  enableThemingMode(); // returns a function that turns it off again
+}
+```
+
+The apps in this repository turn it on with `?theming` in the address, through
+`followThemingQuery()` in `@apendua.dev/headset`. While it is on and a panel is mounted, it reads
+every rule's text every 250 milliseconds (pass `{ interval }` to change that) and restyles the
+panels when the text changed. A drag across the developer tools' colour picker lands as one restyle
+per read rather than one per step. The read takes a few milliseconds on a large stylesheet, on a
+timer outside the frame loop, which is fine at a desk and not worth paying in a headset, so turn it
+on only when it is asked for. Sheets brought in by `@import` are read along with the sheet that
+imports them. A sheet from another origin served without CORS hides its rules from script, and edits
+to it are not followed; serve the sheet you are theming from the page's own origin.
+
 ## Animation
 
 CSS transitions, keyframe animations and Web Animations play inside a portal: while anything is

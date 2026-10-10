@@ -22,12 +22,21 @@
  * watched is shared, the answer is the same for every panel, and a page with a
  * dozen panels on it should not walk the same records a dozen times.
  *
- * What it cannot see: rules changed through the CSSOM (`insertRule`, a
- * `CSSStyleDeclaration` written on a rule object) and `adoptedStyleSheets`,
- * neither of which mutates the DOM at all. A stylesheet that arrives over the
- * network does get through — the `<link>` announces itself with a `load`, the
- * one event a `<link>` has — which is worth having, because the panel that
- * mounted before its own stylesheet landed is otherwise wrong forever.
+ * What it cannot see by observing: rules changed through the CSSOM
+ * (`insertRule`, a `CSSStyleDeclaration` written on a rule object) and
+ * `adoptedStyleSheets`, neither of which mutates the DOM at all. Neither does
+ * a rule edited in the browser's developer tools, which goes through the
+ * CSSOM from inside the browser, where no script can intercept it. A
+ * stylesheet that arrives over the network does get through. The `<link>`
+ * announces itself with a `load`, the one event a `<link>` has, and that is
+ * worth having, because the panel that mounted before its own stylesheet
+ * landed is otherwise wrong forever.
+ *
+ * Theming mode (`enableThemingMode`) covers the rest by looking instead of
+ * listening. While it is on and a panel is watching, a timer reads every
+ * rule's text a few times a second and announces when that text changed. A
+ * page being themed turns it on to see its edits in the panel, and turns it
+ * on only when asked, since nothing else needs it.
  */
 
 /** @type {Set<() => void>} */
@@ -35,6 +44,142 @@ const listeners = new Set();
 
 /** @type {MutationObserver | null} */
 let observer = null;
+
+/**
+ * The callers that have theming mode on, each with the interval it asked for.
+ *
+ * @type {Map<object, number>}
+ */
+const themingRequests = new Map();
+
+/** Milliseconds between theming mode's reads, unless a caller asks otherwise. */
+const DEFAULT_INTERVAL = 250;
+
+/** @type {ReturnType<typeof setInterval> | null} */
+let poller = null;
+
+/** @type {number} */
+let pollerInterval = 0;
+
+/**
+ * The rules' text as the last poll or announcement saw it.
+ *
+ * @type {string}
+ */
+let fingerprint = "";
+
+/**
+ * The document's top-level sheets: the ones `<style>` and `<link>` bring,
+ * the one the developer tools add when a rule is created there, and the
+ * constructed ones adopted by script. A sheet brought in by `@import` is not
+ * among them; `readSheet` reaches it through the rule that imports it.
+ *
+ * @returns {CSSStyleSheet[]}
+ */
+function documentSheets() {
+  const sheets = [...document.styleSheets];
+  if (document.adoptedStyleSheets) {
+    sheets.push(...document.adoptedStyleSheets);
+  }
+  return sheets;
+}
+
+/**
+ * The text of every rule the document has, in order, with each sheet's
+ * media and whether it is switched off. Two reads that return the same
+ * string saw the same rules.
+ *
+ * @returns {string}
+ */
+function readRules() {
+  let text = "";
+  for (const sheet of documentSheets()) {
+    text += readSheet(sheet);
+  }
+  return text;
+}
+
+/**
+ * The text of one sheet's rules, and of every sheet it imports in the place
+ * it imports it. An `@import` rule's own text stays `@import url(...)`
+ * whatever is edited in the sheet it brings, so that sheet is read too.
+ *
+ * A sheet from another origin served without CORS refuses to show its rules
+ * to script, so it is counted by its address and an edit made to it in the
+ * developer tools goes unseen. So does one in a sheet still loading, which
+ * refuses the same way until its `load`, and its `load` is announced anyway.
+ *
+ * @param {CSSStyleSheet} sheet
+ * @returns {string}
+ */
+function readSheet(sheet) {
+  let text = `@sheet ${sheet.disabled ? "off" : "on"} ${sheet.media?.mediaText}\n`;
+  /** @type {CSSRuleList} */
+  let rules;
+  try {
+    rules = sheet.cssRules;
+  } catch {
+    return `${text}${sheet.href}\n`;
+  }
+  for (const rule of rules) {
+    text += `${rule.cssText}\n`;
+    // Only an `@import` has a sheet of its own; read by the property rather
+    // than by `instanceof`, which needs `CSSImportRule` to be a global.
+    const imported = /** @type {Partial<CSSImportRule>} */ (rule).styleSheet;
+    if (imported) {
+      text += readSheet(imported);
+    }
+  }
+  return text;
+}
+
+/**
+ * One poll: read the rules, and announce if they changed since the last read.
+ *
+ * @returns {void}
+ */
+function poll() {
+  const next = readRules();
+  if (next !== fingerprint) {
+    fingerprint = next;
+    notify();
+  }
+}
+
+/**
+ * Start, stop or re-time the poller to match what is being asked. It runs
+ * only while theming mode is on and some panel is listening, since a change
+ * nobody hears is not worth reading every rule for.
+ *
+ * @returns {void}
+ */
+function syncPoller() {
+  const wanted =
+    themingRequests.size > 0 && listeners.size > 0 ? Math.min(...themingRequests.values()) : 0;
+  if (wanted === pollerInterval) {
+    return;
+  }
+  if (poller) {
+    clearInterval(poller);
+    poller = null;
+  } else {
+    // Starting from nothing, the reads count from the rules as they are
+    // now: a CSSOM edit made while theming mode was off, or while no panel
+    // was mounted, is not announced. Re-timing a poller that was running
+    // keeps the last read, so an edit made since then is still announced
+    // at the next one.
+    fingerprint = readRules();
+  }
+  pollerInterval = wanted;
+  if (wanted > 0) {
+    poller = setInterval(poll, wanted);
+  } else {
+    // Stopped: nothing compares against it until the next start, which
+    // reads the rules afresh, so the text of every rule need not be kept
+    // alive.
+    fingerprint = "";
+  }
+}
 
 /**
  * Whether a `<link>` is the kind that brings rules. A preload hint and an
@@ -114,6 +259,18 @@ function touchesStyles(records) {
  * @returns {void}
  */
 function announce() {
+  // The rules as the panels are about to read them, so that the poll does
+  // not announce a second time what the observer just did.
+  if (poller) {
+    fingerprint = readRules();
+  }
+  notify();
+}
+
+/**
+ * @returns {void}
+ */
+function notify() {
   // A copy, because a listener is free to stop watching from inside the call —
   // a portal disposed by something a restyle triggered would otherwise mutate
   // the set being iterated.
@@ -136,13 +293,16 @@ function loadCallback(event) {
 /**
  * Watch the document's stylesheets. The listener is called once per observer
  * flush that carried a style change, which coalesces a burst of rewrites in
- * one tick into one announcement.
+ * one tick into one announcement. While theming mode is on (see
+ * `enableThemingMode`), it is also called once per timed read that found the
+ * rules' text changed.
  *
  * @param {() => void} listener
  * @returns {() => void} Stops watching. Idempotent.
  */
 export function watchDocumentStyles(listener) {
   listeners.add(listener);
+  syncPoller();
   if (!observer) {
     observer = new MutationObserver((records) => {
       if (touchesStyles(records)) {
@@ -162,10 +322,47 @@ export function watchDocumentStyles(listener) {
     if (!listeners.delete(listener)) {
       return;
     }
+    syncPoller();
     if (listeners.size === 0 && observer) {
       observer.disconnect();
       observer = null;
       document.head.removeEventListener("load", loadCallback, true);
+    }
+  };
+}
+
+/**
+ * Turn theming mode on: every panel follows every change to the document's
+ * rules, including the ones no observer reports. A rule edited or switched
+ * off in the browser's developer tools, a rule added there, an `insertRule`
+ * and a sheet adopted by script all restyle and re-measure the panels, as a
+ * rewritten `<style>` does without it.
+ *
+ * It costs a read of every rule's text each `interval`, on a timer and not in
+ * the frame loop, for as long as it is on and a panel is mounted. That is a
+ * few milliseconds on a large stylesheet, which is fine at a desk and not
+ * worth paying in a headset, so turn it on only when it is asked for. Each
+ * change it finds costs a whole-panel restyle and re-measure, the same as any
+ * other change to the rules; the interval is also what coalesces a burst of
+ * edits, such as a colour picker dragged across its range, into one.
+ *
+ * Several callers may turn it on at once; it stays on until all of them have
+ * turned it off, at the shortest interval any of them asked for.
+ *
+ * @param {object} [options]
+ * @param {number} [options.interval] Milliseconds between reads. 250 by
+ *   default, and 250 too for anything that is not a positive number, such as
+ *   0 or `NaN` from a query value that did not parse, which would otherwise
+ *   stop the reads every other caller asked for.
+ * @returns {() => void} Turns this caller's request off. Idempotent.
+ */
+export function enableThemingMode({ interval = DEFAULT_INTERVAL } = {}) {
+  const request = {};
+  themingRequests.set(request, interval > 0 ? interval : DEFAULT_INTERVAL);
+  syncPoller();
+  return () => {
+    if (themingRequests.delete(request)) {
+      syncPoller();
     }
   };
 }

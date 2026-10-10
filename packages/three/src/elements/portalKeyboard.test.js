@@ -365,6 +365,80 @@ describe("the portal's keyboard", () => {
     panel.cleanup();
   });
 
+  test("a click on a field's `<label for>` brings it up for that field", async () => {
+    const panel = keyboardPanel();
+    panel.input.id = "name";
+    const label = document.createElement("label");
+    label.htmlFor = "name";
+    panel.root.appendChild(label);
+    await settle();
+
+    // A press on the label is a click on it, as on a page, where the
+    // label's activation then focuses the field.
+    label.click();
+    await settle();
+    assert.equal(panels(), 2, "the board is up");
+    assert.equal(panel.created.length, 1);
+    assert.equal(panel.created[0].element, panel.input, "for the labelled field");
+    assert.ok(panel.input.hasAttribute("data-xr-focus"));
+
+    panel.cleanup();
+  });
+
+  test("a click on another field's label moves the typing there", async () => {
+    const panel = keyboardPanel();
+    await settle();
+    panel.press(panel.fieldObject());
+    await settle();
+
+    // A label around its field, the other way a label names one, with the
+    // click on what is inside it.
+    const label = document.createElement("label");
+    const text = document.createElement("span");
+    const other = document.createElement("input");
+    other.type = "text";
+    label.append(text, other);
+    panel.root.appendChild(label);
+    await settle();
+
+    text.click();
+    await settle();
+    assert.equal(panels(), 2, "still one board");
+    assert.equal(panel.input.hasAttribute("data-xr-focus"), false);
+    assert.ok(other.hasAttribute("data-xr-focus"), "the labelled field has the typing");
+
+    // A label of a field that cannot be typed into is anywhere else.
+    other.readOnly = true;
+    text.click();
+    await settle();
+    assert.equal(panels(), 1, "the board is gone");
+
+    panel.cleanup();
+  });
+
+  test("a label of a field outside the panel puts it away", async () => {
+    const panel = keyboardPanel();
+    await settle();
+    panel.press(panel.fieldObject());
+    await settle();
+
+    const outside = document.createElement("input");
+    outside.id = "outside";
+    document.body.appendChild(outside);
+    const label = document.createElement("label");
+    label.htmlFor = "outside";
+    panel.root.appendChild(label);
+    await settle();
+
+    label.click();
+    await settle();
+    assert.equal(panels(), 1, "the board is gone: the field is drawn on no panel here");
+    assert.equal(outside.hasAttribute("data-xr-focus"), false);
+
+    outside.remove();
+    panel.cleanup();
+  });
+
   test("the field leaving the document puts it away", async () => {
     const panel = keyboardPanel();
     await settle();

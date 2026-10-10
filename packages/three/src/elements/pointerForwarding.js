@@ -20,7 +20,12 @@ import {
 } from "./dragAndDrop.js";
 import { createFrameRequester } from "./frameRequester.js";
 import { HapticsContext, isArrival } from "./haptics.js";
-import { getComputedStyleCached, isPortalRoot } from "./mirror.js";
+import {
+  ACTIVE_ATTRIBUTE,
+  getComputedStyleCached,
+  HOVER_ATTRIBUTE,
+  isPortalRoot,
+} from "./mirror.js";
 import { describeElement } from "./panelFrame.js";
 import { movesList, sampleRay, ScrollDragsContext } from "./scroll.js";
 
@@ -1148,7 +1153,7 @@ function cross(chain, element, init, kind) {
  */
 
 /**
- * @param {"xrHover" | "xrActive"} name The flag, as `dataset` names it.
+ * @param {typeof HOVER_ATTRIBUTE | typeof ACTIVE_ATTRIBUTE} name
  * @returns {Flag}
  */
 function createFlag(name) {
@@ -1159,7 +1164,7 @@ function createFlag(name) {
     const count = counts.get(element) ?? 0;
     counts.set(element, count + 1);
     if (count === 0) {
-      element.dataset[name] = "true";
+      element.setAttribute(name, "true");
     }
   };
   /** @param {HTMLElement} element */
@@ -1169,7 +1174,7 @@ function createFlag(name) {
       counts.set(element, count - 1);
     } else if (count === 1) {
       counts.delete(element);
-      delete element.dataset[name];
+      element.removeAttribute(name);
     }
   };
   return {
@@ -1194,7 +1199,7 @@ function createFlag(name) {
     },
     forget(element) {
       counts.delete(element);
-      delete element.dataset[name];
+      element.removeAttribute(name);
     },
   };
 }
@@ -1429,8 +1434,8 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
    */
   const controls = new Map();
 
-  const hoverFlag = createFlag("xrHover");
-  const activeFlag = createFlag("xrActive");
+  const hoverFlag = createFlag(HOVER_ATTRIBUTE);
+  const activeFlag = createFlag(ACTIVE_ATTRIBUTE);
 
   /** @type {Map<XRTargetRaySpace, PanelHand>} */
   const panelHands = new Map();

@@ -172,9 +172,32 @@ export function isBookkeepingMutation(mutation) {
 }
 
 /**
+ * Set on every control a hand's pointer is over, for a stylesheet to answer
+ * as it would `:hover`. See `pointerForwarding.js`.
+ */
+export const HOVER_ATTRIBUTE = "data-xr-hover";
+
+/**
+ * Set on every control a hand is pressing, as `:active`.
+ */
+export const ACTIVE_ATTRIBUTE = "data-xr-active";
+
+/**
+ * Set on a mirrored checkbox while it is ticked, as `:checked`. See
+ * `checkbox.js`.
+ */
+export const CHECKED_ATTRIBUTE = "data-xr-checked";
+
+/**
+ * Set on the field the keyboard is typing into, as `:focus`. See
+ * `keyboardHost.js`.
+ */
+export const FOCUS_ATTRIBUTE = "data-xr-focus";
+
+/**
  * The attributes the portal writes onto elements itself, to say what the ray
- * is doing to them: hovering, pressing, and — for a checkbox, whose state no
- * mutation would otherwise report — ticked.
+ * and the keyboard are doing to them: hovering, pressing, typing into, and —
+ * for a checkbox, whose state no mutation would otherwise report — ticked.
  *
  * **A rule that follows one of these may restyle, but may not re-lay-out.**
  * Colour, background, border colour, opacity and `transform` are all fair
@@ -207,10 +230,10 @@ export function isBookkeepingMutation(mutation) {
  * move its layout on purpose.
  */
 const PRESENTATIONAL_ATTRIBUTES = new Set([
-  "data-xr-hover",
-  "data-xr-active",
-  "data-xr-checked",
-  "data-xr-focus",
+  HOVER_ATTRIBUTE,
+  ACTIVE_ATTRIBUTE,
+  CHECKED_ATTRIBUTE,
+  FOCUS_ATTRIBUTE,
 ]);
 
 /**
@@ -248,7 +271,7 @@ const PRESENTATIONAL_ATTRIBUTES = new Set([
  * field: `:focus` on a page reaches no sibling either, and `:focus-within`,
  * which does, reaches upward, where no mutation here is followed anyway.
  */
-const SELF_SCOPED_ATTRIBUTES = new Set(["data-xr-hover", "data-xr-active", "data-xr-focus"]);
+const SELF_SCOPED_ATTRIBUTES = new Set([HOVER_ATTRIBUTE, ACTIVE_ATTRIBUTE, FOCUS_ATTRIBUTE]);
 
 /**
  * Whether a computed `transform` value is one the mirror treats as a

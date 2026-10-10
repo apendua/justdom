@@ -9,8 +9,6 @@ import { isTextInput } from "./typing.js";
  * @import {KeyboardPreviewOptions} from './keyboardPreview.js';
  */
 
-export { FOCUS_ATTRIBUTE } from "./keyboardHost.js";
-
 /**
  * The keyboard a panel offers its text fields.
  *
@@ -33,7 +31,8 @@ export { FOCUS_ATTRIBUTE } from "./keyboardHost.js";
  * toward the hands like a phone on a stand (or below the panel, with
  * `placement: "panel"`), types into the field through
  * `typeIntoInput`, and goes on `Escape`, on a press anywhere in a panel
- * but on a field, when the field leaves the document, and with the panel.
+ * but on a field or its label, when the field leaves the document, and with
+ * the panel.
  * `Enter` submits and leaves the field being typed into, as it does on a
  * page, so a list can be filled one entry after another. While it is up the field carries `data-xr-focus`, which a
  * stylesheet may use the way it uses `:focus` — presentationally, exactly
@@ -131,6 +130,26 @@ function takesTheTyping(target) {
 }
 
 /**
+ * The field a click on this element gives the typing to through a label: a
+ * `<label>` around it names a field, by `for` or by holding it, and the field
+ * is one the keyboard can type into. A page's label focuses its field when it
+ * is clicked, and its activation then clicks the field, which
+ * `takesTheTyping` lets be.
+ *
+ * @param {EventTarget | null} target
+ * @returns {HTMLInputElement | null}
+ */
+function labelledField(target) {
+  const node = /** @type {Node | null} */ (target);
+  if (!node || node.nodeType !== Node.ELEMENT_NODE) {
+    return null;
+  }
+  const label = /** @type {Element} */ (node).closest("label");
+  const field = label?.control ?? null;
+  return takesTheTyping(field) ? /** @type {HTMLInputElement} */ (field) : null;
+}
+
+/**
  * A panel's side of the scene's keyboard: the `InputFocus` its fields are
  * built with, and the three ways a panel lets go of the board — a press in
  * it anywhere but on a field, a node of its leaving, and the panel itself
@@ -141,8 +160,10 @@ function takesTheTyping(target) {
  * the background, which it turns into a click on the panel's root, bubbles
  * to the root; so does a mouse click on a panel mirrored from the page. On
  * a page, each of those takes focus away from the field, and so here each
- * of them puts the keyboard away. A press that became a scroll clicks
- * nothing, and leaves the keyboard be.
+ * of them puts the keyboard away. A press on a field's label is the
+ * exception, as it is on a page: it moves the typing to the field, if the
+ * field is in this panel. A press that became a scroll clicks nothing, and
+ * leaves the keyboard be.
  *
  * @param {KeyboardHost} host
  * @param {KeyboardBinding} binding
@@ -158,7 +179,13 @@ export function bindPortalKeyboard(host, binding) {
 
   /** @param {Event} event */
   const onClick = (event) => {
-    if (host.field() !== null && !takesTheTyping(event.target)) {
+    if (takesTheTyping(event.target)) {
+      return;
+    }
+    const field = labelledField(event.target);
+    if (field && binding.containerElement.contains(field)) {
+      host.focus(field, binding);
+    } else if (host.field() !== null) {
       host.dismiss();
     }
   };

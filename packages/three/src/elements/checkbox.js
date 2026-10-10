@@ -2,7 +2,7 @@ import * as THREE from "three";
 import { Derived, effects, flatMap, mountEach, observable, onCleanup, set } from "@apendua/signal";
 import { $, Nothing } from "../operators.js";
 import { box } from "./div.js";
-import { getCheckedCached, getComputedStyleCached } from "./mirror.js";
+import { CHECKED_ATTRIBUTE, getCheckedCached, getComputedStyleCached } from "./mirror.js";
 import { applyClip } from "./clip.js";
 import { place } from "./place.js";
 
@@ -274,9 +274,9 @@ export function checkbox(ctx, element) {
       if (!checked.get()) {
         return;
       }
-      element.dataset.xrChecked = "true";
+      element.setAttribute(CHECKED_ATTRIBUTE, "true");
       onCleanup(() => {
-        delete element.dataset.xrChecked;
+        element.removeAttribute(CHECKED_ATTRIBUTE);
       });
     },
   )(surface$);

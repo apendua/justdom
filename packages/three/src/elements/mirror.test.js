@@ -414,6 +414,9 @@ describe("getComputedStyleCached", () => {
     batch(() => mirror.ingest([wrote("data-xr-active")]));
     assert.equal(reads, 1, "nor does a press");
 
+    batch(() => mirror.ingest([wrote("data-xr-focus")]));
+    assert.equal(reads, 1, "nor does the keyboard's focus");
+
     batch(() => mirror.ingest([wrote("data-xr-checked")]));
     assert.equal(reads, 2, "a tick does — `input:checked + label` is the point");
 
@@ -550,16 +553,17 @@ describe("getComputedStyleCached", () => {
     element.remove();
   });
 
-  test("press and checked are presentational too, and disabled is not", () => {
+  test("press, checked and focus are presentational too, and disabled is not", () => {
     // Every attribute the portal observes, and which side of the contract it
-    // falls on. The three the portal writes itself to report what the ray is
-    // doing are presentational; the three that belong to the author — and
-    // `disabled` is one of them, a reflected DOM attribute an application
-    // sets — keep the right to have moved the layout.
+    // falls on. The four the portal writes itself to report what the ray and
+    // the keyboard are doing are presentational; the three that belong to
+    // the author — and `disabled` is one of them, a reflected DOM attribute
+    // an application sets — keep the right to have moved the layout.
     const cases = [
       { name: "data-xr-hover", measures: false },
       { name: "data-xr-active", measures: false },
       { name: "data-xr-checked", measures: false },
+      { name: "data-xr-focus", measures: false },
       { name: "disabled", measures: true },
       { name: "class", measures: true },
       { name: "style", measures: true },

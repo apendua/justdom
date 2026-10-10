@@ -20,7 +20,7 @@ import TodoKeyboard from "./components/TodoKeyboard.js";
  */
 export async function offerXR(panel: HTMLElement): Promise<void> {
   const query = new URLSearchParams(location.search);
-  followThemingQuery();
+  followThemingQuery(query);
   if (query.has("emulator")) {
     try {
       const { install } = await import("@apendua.dev/headset/emulator");

@@ -9,7 +9,7 @@ if (!root) {
 }
 
 const query = new URLSearchParams(location.search);
-followThemingQuery();
+followThemingQuery(query);
 
 /**
  * `?svg=off` leaves the vector panel out, and with it the plugin that draws

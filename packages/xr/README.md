@@ -7,7 +7,7 @@ repository.
 
 It has three entries for a page and no index, so that an app importing one does not pull in the
 others. The emulator brings IWER and its dev UI with it, over half a megabyte, and is meant to be
-imported lazily; the session is a few signals. A third entry, the driver, is for the apps' check
+imported lazily; the session is a few signals. A fourth entry, the driver, is for the apps' check
 scripts.
 
 ## `@apendua.dev/headset/emulator`
@@ -52,15 +52,17 @@ do it with `globIgnores: ["**/emulator-*.js"]`.
 ```ts
 import { followThemingQuery } from "@apendua.dev/headset/theming";
 
-followThemingQuery();
+const query = new URLSearchParams(location.search);
+followThemingQuery(query);
 ```
 
-`followThemingQuery()` turns on freedom's `enableThemingMode()` when the page's address has
-`?theming`, and returns whether it did. The panels then follow rules edited, added or switched off
-in the browser's developer tools, which they otherwise miss; "Stylesheets" in freedom's README says
-what it reads and what that costs. It stays on for the life of the page. Every app built on freedom
-calls it next to where it reads `?emulator`, or where it calls `render()` when the module that reads
-`?emulator` imports nothing from three.js. `paperplane-xr` calls it in its labs edition only.
+`followThemingQuery(query)` turns on freedom's `enableThemingMode()` when the query has `?theming`,
+and returns what turns it off again, or null when the query did not ask. The panels then follow
+rules edited, added or switched off in the browser's developer tools, which they otherwise miss;
+"Stylesheets" in freedom's README says what it reads and what that costs. The apps never turn it
+off, so it stays on for the life of the page. Every app built on freedom calls it next to where it
+reads `?emulator`, or where it calls `render()` when the module that reads `?emulator` imports
+nothing from three.js. `paperplane-xr` calls it in its labs edition only.
 
 This entry imports `@apendua/freedom`, so import it only from a module that already does.
 
@@ -98,7 +100,7 @@ drag, and `check`, `finish` and `closeAll` for the tally, the exit code and the 
 
 `npm test` here, or `rush build --to @apendua.dev/headset`, runs `node --test` over `src`: the
 session's rules, `canPresent` against a stubbed `navigator.xr`, the clear-state shadow against a
-stand-in WebGL context, which queries `followThemingQuery` takes for `?theming`, and the
-offset-space fix against IWER's own `XRReferenceSpace`, including a test that fails once IWER fixes
-it and the fix can go. `install` itself needs a browser, and is exercised by the apps' own check
-scripts, as is the driver.
+stand-in WebGL context, which queries `followThemingQuery` takes for `?theming` and that it hands
+back freedom's off switch, and the offset-space fix against IWER's own `XRReferenceSpace`, including
+a test that fails once IWER fixes it and the fix can go. `install` itself needs a browser, and is
+exercised by the apps' own check scripts, as is the driver.

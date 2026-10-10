@@ -52,6 +52,9 @@ let observer = null;
  */
 const themingRequests = new Map();
 
+/** Milliseconds between theming mode's reads, unless a caller asks otherwise. */
+const DEFAULT_INTERVAL = 250;
+
 /** @type {ReturnType<typeof setInterval> | null} */
 let poller = null;
 
@@ -66,9 +69,10 @@ let pollerInterval = 0;
 let fingerprint = "";
 
 /**
- * Every sheet whose rules apply to the document: the ones `<style>` and
- * `<link>` bring, the one the developer tools add when a rule is created
- * there, and the constructed ones adopted by script.
+ * The document's top-level sheets: the ones `<style>` and `<link>` bring,
+ * the one the developer tools add when a rule is created there, and the
+ * constructed ones adopted by script. A sheet brought in by `@import` is not
+ * among them; `readSheet` reaches it through the rule that imports it.
  *
  * @returns {CSSStyleSheet[]}
  */
@@ -85,27 +89,45 @@ function documentSheets() {
  * media and whether it is switched off. Two reads that return the same
  * string saw the same rules.
  *
- * A sheet from another origin served without CORS refuses to show its rules
- * to script, so it is counted by its address and an edit made to it in the
- * developer tools goes unseen. So does one in a sheet still loading, which
- * refuses the same way until its `load`, and its `load` is announced anyway.
- *
  * @returns {string}
  */
 function readRules() {
   let text = "";
   for (const sheet of documentSheets()) {
-    text += `@sheet ${sheet.disabled ? "off" : "on"} ${sheet.media?.mediaText}\n`;
-    /** @type {CSSRuleList} */
-    let rules;
-    try {
-      rules = sheet.cssRules;
-    } catch {
-      text += `${sheet.href}\n`;
-      continue;
-    }
-    for (const rule of rules) {
-      text += `${rule.cssText}\n`;
+    text += readSheet(sheet);
+  }
+  return text;
+}
+
+/**
+ * The text of one sheet's rules, and of every sheet it imports in the place
+ * it imports it. An `@import` rule's own text stays `@import url(...)`
+ * whatever is edited in the sheet it brings, so that sheet is read too.
+ *
+ * A sheet from another origin served without CORS refuses to show its rules
+ * to script, so it is counted by its address and an edit made to it in the
+ * developer tools goes unseen. So does one in a sheet still loading, which
+ * refuses the same way until its `load`, and its `load` is announced anyway.
+ *
+ * @param {CSSStyleSheet} sheet
+ * @returns {string}
+ */
+function readSheet(sheet) {
+  let text = `@sheet ${sheet.disabled ? "off" : "on"} ${sheet.media?.mediaText}\n`;
+  /** @type {CSSRuleList} */
+  let rules;
+  try {
+    rules = sheet.cssRules;
+  } catch {
+    return `${text}${sheet.href}\n`;
+  }
+  for (const rule of rules) {
+    text += `${rule.cssText}\n`;
+    // Only an `@import` has a sheet of its own; read by the property rather
+    // than by `instanceof`, which needs `CSSImportRule` to be a global.
+    const imported = /** @type {Partial<CSSImportRule>} */ (rule).styleSheet;
+    if (imported) {
+      text += readSheet(imported);
     }
   }
   return text;
@@ -140,6 +162,9 @@ function syncPoller() {
   if (poller) {
     clearInterval(poller);
     poller = null;
+    // Nothing compares against it until the next start, which reads the
+    // rules afresh, so the text of every rule need not be kept alive.
+    fingerprint = "";
   } else {
     // Starting from nothing, the reads count from the rules as they are
     // now: a CSSOM edit made while theming mode was off, or while no panel
@@ -266,7 +291,9 @@ function loadCallback(event) {
 /**
  * Watch the document's stylesheets. The listener is called once per observer
  * flush that carried a style change, which coalesces a burst of rewrites in
- * one tick into one announcement.
+ * one tick into one announcement. While theming mode is on (see
+ * `enableThemingMode`), it is also called once per timed read that found the
+ * rules' text changed.
  *
  * @param {() => void} listener
  * @returns {() => void} Stops watching. Idempotent.
@@ -322,12 +349,14 @@ export function watchDocumentStyles(listener) {
  *
  * @param {object} [options]
  * @param {number} [options.interval] Milliseconds between reads. 250 by
- *   default.
+ *   default, and 250 too for anything that is not a positive number, such as
+ *   0 or `NaN` from a query value that did not parse, which would otherwise
+ *   stop the reads every other caller asked for.
  * @returns {() => void} Turns this caller's request off. Idempotent.
  */
-export function enableThemingMode({ interval = 250 } = {}) {
+export function enableThemingMode({ interval = DEFAULT_INTERVAL } = {}) {
   const request = {};
-  themingRequests.set(request, interval);
+  themingRequests.set(request, interval > 0 ? interval : DEFAULT_INTERVAL);
   syncPoller();
   return () => {
     if (themingRequests.delete(request)) {

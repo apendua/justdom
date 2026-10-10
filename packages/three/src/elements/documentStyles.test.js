@@ -304,6 +304,89 @@ describe("watchDocumentStyles", () => {
       }
     });
 
+    test("a sheet switched off is announced", async (t) => {
+      t.mock.timers.enable({ apis: ["setInterval"] });
+      const { style, sheet } = addSheet(".l { color: red; }");
+      await flush();
+      const watcher = watch();
+      const stopTheming = enableThemingMode({ interval: 100 });
+      try {
+        // The developer tools' checkbox on a whole sheet: no rule's text
+        // changes, only whether the sheet applies.
+        sheet.disabled = true;
+        t.mock.timers.tick(100);
+        assert.equal(watcher.count(), 1);
+      } finally {
+        stopTheming();
+        watcher.stop();
+        style.remove();
+      }
+    });
+
+    test("a rule edited in an imported sheet is announced", async (t) => {
+      t.mock.timers.enable({ apis: ["setInterval"] });
+      const { style, sheet } = addSheet("@import url('data:text/css,'); .m { color: red; }");
+      await flush();
+      const imported = /** @type {CSSImportRule} */ (sheet.cssRules[0]).styleSheet;
+      assert.ok(imported);
+      const watcher = watch();
+      const stopTheming = enableThemingMode({ interval: 100 });
+      try {
+        // The `@import` rule's own text is the same before and after.
+        imported.insertRule(".n { color: blue; }", 0);
+        t.mock.timers.tick(100);
+        assert.equal(watcher.count(), 1);
+      } finally {
+        stopTheming();
+        watcher.stop();
+        style.remove();
+      }
+    });
+
+    test("a sheet that hides its rules is read without throwing", async (t) => {
+      t.mock.timers.enable({ apis: ["setInterval"] });
+      const { style, sheet } = addSheet(".o { color: red; }");
+      await flush();
+      // What a sheet from another origin served without CORS does.
+      Object.defineProperty(sheet, "cssRules", {
+        get() {
+          throw new window.DOMException("cross-origin", "SecurityError");
+        },
+      });
+      const watcher = watch();
+      const stopTheming = enableThemingMode({ interval: 100 });
+      try {
+        t.mock.timers.tick(300);
+        assert.equal(watcher.count(), 0);
+      } finally {
+        stopTheming();
+        watcher.stop();
+        style.remove();
+      }
+    });
+
+    test("an interval that is not a positive number does not stop the reads", async (t) => {
+      t.mock.timers.enable({ apis: ["setInterval"] });
+      const { style, sheet } = addSheet(".p { color: red; }");
+      await flush();
+      const watcher = watch();
+      const stopFirst = enableThemingMode({ interval: 100 });
+      const stopSecond = enableThemingMode({ interval: 0 });
+      const stopThird = enableThemingMode({ interval: Number.NaN });
+      try {
+        const rule = /** @type {CSSStyleRule} */ (sheet.cssRules[0]);
+        rule.style.setProperty("color", "blue");
+        t.mock.timers.tick(100);
+        assert.equal(watcher.count(), 1);
+      } finally {
+        stopThird();
+        stopSecond();
+        stopFirst();
+        watcher.stop();
+        style.remove();
+      }
+    });
+
     test("a panel that starts watching hears the edits after it, not before", async (t) => {
       t.mock.timers.enable({ apis: ["setInterval"] });
       const { style, sheet } = addSheet(".j { color: red; }");

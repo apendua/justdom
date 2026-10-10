@@ -13,7 +13,7 @@ import Scene from "./components/Scene";
  * Loaded by `offerHeadset` only on a platform that can present.
  */
 export function offerXR(board: HTMLElement, menu: HTMLElement): void {
-  followThemingQuery();
+  followThemingQuery(new URLSearchParams(location.search));
   const controllerModelFactory = new XRControllerModelFactory();
   const createControllerModel =
     controllerModelFactory.createControllerModel.bind(controllerModelFactory);

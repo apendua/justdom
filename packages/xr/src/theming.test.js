@@ -3,8 +3,11 @@ import assert from "node:assert/strict";
 import { followThemingQuery } from "./theming.js";
 
 test("?theming turns theming mode on, and its absence does not", () => {
-  assert.equal(followThemingQuery("?theming"), true);
-  assert.equal(followThemingQuery("?emulator&theming"), true);
-  assert.equal(followThemingQuery("?emulator"), false);
-  assert.equal(followThemingQuery(""), false);
+  for (const search of ["?theming", "?emulator&theming"]) {
+    const stop = followThemingQuery(new URLSearchParams(search));
+    assert.equal(typeof stop, "function", search);
+    stop?.();
+  }
+  assert.equal(followThemingQuery(new URLSearchParams("?emulator")), null);
+  assert.equal(followThemingQuery(new URLSearchParams("")), null);
 });

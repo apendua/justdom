@@ -1323,9 +1323,9 @@ every rule's text every 250 milliseconds (pass `{ interval }` to change that) an
 panels when the text changed. A drag across the developer tools' colour picker lands as one restyle
 per read rather than one per step. The read takes a few milliseconds on a large stylesheet, on a
 timer outside the frame loop, which is fine at a desk and not worth paying in a headset, so turn it
-on only when it is asked for. A sheet from another origin served without CORS hides its rules from
-script, and edits to it are not followed; serve the sheet you are theming from the page's own
-origin.
+on only when it is asked for. Sheets brought in by `@import` are read along with the sheet that
+imports them. A sheet from another origin served without CORS hides its rules from script, and edits
+to it are not followed; serve the sheet you are theming from the page's own origin.
 
 ## Animation
 

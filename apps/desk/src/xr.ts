@@ -19,7 +19,7 @@ import type { Readable } from "./session.js";
  */
 export async function offerXR(desk: Readable<MountedDesk>): Promise<void> {
   const query = new URLSearchParams(location.search);
-  followThemingQuery();
+  followThemingQuery(query);
   if (query.has("emulator")) {
     try {
       const { install } = await import("@apendua.dev/headset/emulator");

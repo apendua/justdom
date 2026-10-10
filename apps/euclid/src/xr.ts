@@ -15,7 +15,7 @@ import type { Mounts } from "./offer";
  * present.
  */
 export function offerXR(mounts: Mounts): void {
-  followThemingQuery();
+  followThemingQuery(new URLSearchParams(location.search));
   const controllerModelFactory = new XRControllerModelFactory();
   const createControllerModel =
     controllerModelFactory.createControllerModel.bind(controllerModelFactory);

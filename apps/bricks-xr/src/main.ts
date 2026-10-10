@@ -10,7 +10,7 @@ if (!root) {
 
 const factory = new XRControllerModelFactory();
 const query = new URLSearchParams(location.search);
-followThemingQuery();
+followThemingQuery(query);
 
 // The emulator is a dynamic import in its own chunk, so it is only fetched when
 // it is asked for.

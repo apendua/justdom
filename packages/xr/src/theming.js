@@ -6,16 +6,14 @@ import { enableThemingMode } from "@apendua/freedom";
  * panels in the scene. See "Stylesheets" in freedom's README for what that
  * follows and what it costs.
  *
- * It stays on for the life of the page. Without `?theming` it does nothing,
- * and nothing is read on a timer.
+ * It stays on for the life of the page unless the switch it returns is
+ * called. Without `?theming` it does nothing, and nothing is read on a timer.
  *
- * @param {string} [search] The query to look in. The page's own by default.
- * @returns {boolean} Whether theming mode was turned on.
+ * @param {URLSearchParams} query The page's query, as the app already holds
+ *   it for `?emulator`.
+ * @returns {(() => void) | null} What turns theming mode off again, or null
+ *   when the query did not ask for it.
  */
-export function followThemingQuery(search = location.search) {
-  if (!new URLSearchParams(search).has("theming")) {
-    return false;
-  }
-  enableThemingMode();
-  return true;
+export function followThemingQuery(query) {
+  return query.has("theming") ? enableThemingMode() : null;
 }

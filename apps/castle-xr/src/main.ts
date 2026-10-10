@@ -11,7 +11,7 @@ if (!root) {
 }
 
 const query = new URLSearchParams(location.search);
-followThemingQuery();
+followThemingQuery(query);
 const controllerModelFactory = new XRControllerModelFactory();
 const createControllerModel =
   controllerModelFactory.createControllerModel.bind(controllerModelFactory);

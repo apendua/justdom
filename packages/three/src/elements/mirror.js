@@ -434,7 +434,7 @@ function splitsAcrossLines(element) {
 
 /**
  * `splitsAcrossLines` for a `display` the caller has read itself, as the
- * line box copy does without subscribing to it (`pairLaidOut`).
+ * line box copy does without subscribing to it (`dressLaidOut`).
  *
  * @param {Element} element
  * @param {string} display
@@ -3109,9 +3109,16 @@ function parkMeasurementClone(element, clone, host) {
  */
 function copyStillStyle(element, clone, computed = window.getComputedStyle(element)) {
   // Written as one declaration list, which the browser parses once, rather
-  // than a `setProperty` per property: a computed style has some 350.
+  // than a `setProperty` per property: a computed style has some 350. The
+  // list starts from the clone's own inline style, which a computed style
+  // does not cover: Chromium enumerates no custom property, and a child
+  // styled with `var(--gap)` would lose the `--gap` the element sets.
   /** @type {string[]} */
   const declarations = [];
+  const own = clone.style.cssText.replace(/;\s*$/, "");
+  if (own) {
+    declarations.push(own);
+  }
   for (let i = 0; i < computed.length; i++) {
     const property = computed[i];
     declarations.push(`${property}: ${computed.getPropertyValue(property)}`);
@@ -3497,8 +3504,8 @@ function measureRevealLayout(text, range, frame, boundsRect, lines, offsets) {
  * (`splitsAcrossLines`), since a box that does has no width of its own for
  * the lines to break against. The climb stops at the panel's root, whatever
  * its `display`. One copy of a box serves every text measured in it, for as
- * long as `getLineBoxCopy` keeps it. The copy is never scrolled, so what it reports is already
- * the content-space position the live path computes.
+ * long as `getLineBoxCopy` keeps it. The copy is never scrolled, so what it
+ * reports is already the content-space position the live path computes.
  *
  * @param {Text} text
  * @returns {TextLayout}
@@ -3519,21 +3526,53 @@ function measureTextLayout(text) {
   while (!isPortalRoot(lineBox) && lineBox.parentElement && splitsAcrossLines(lineBox)) {
     lineBox = lineBox.parentElement;
   }
-  // Every text in the box is in its copy, and a text added since the copy
-  // was made has rebuilt it.
-  const cloneText = /** @type {Text} */ (getLineBoxCopy(lineBox).texts.get(text));
+  const cloneText = findInCopy(getLineBoxCopy(lineBox), lineBox, text);
   const cloneParent = /** @type {HTMLElement} */ (cloneText.parentElement);
   return measureTextRects(cloneText, cloneParent, whiteSpace, false, revealed);
 }
 
 /**
- * @typedef {object} LineBoxCopy
- * @property {HTMLElement} root The copy of the line box, parked.
- * @property {Map<Text, Text>} texts The copy of each text in the box, by the
- *   live text.
+ * The copy of `text` in `copy`, a copy of `lineBox`: the node at the same
+ * place under it.
+ *
+ * Found by place rather than kept by identity, because the copy follows the
+ * box's shape, not its nodes: a text replaced by one with the same
+ * characters, as setting `textContent` to what it was does, leaves the shape
+ * and the copy as they were, and the new node is still the node at that
+ * place.
+ *
+ * The copy can also lack the text for a moment. A text inserted into an
+ * element the portal has not adopted yet reaches the shape only once the
+ * adoption is announced, a microtask after the portal builds the text and
+ * may measure it (see `announceAdoption`). Until then the place holds
+ * something else or nothing, and the measurement waits, as a read that has
+ * no value yet does.
+ *
+ * @param {HTMLElement} copy
+ * @param {HTMLElement} lineBox An ancestor of `text`.
+ * @param {Text} text
+ * @returns {Text}
  */
+function findInCopy(copy, lineBox, text) {
+  /** @type {number[]} */
+  const path = [];
+  for (let node = /** @type {Node} */ (text); node !== lineBox;) {
+    const parent = /** @type {Node} */ (node.parentNode);
+    path.push(Array.prototype.indexOf.call(parent.childNodes, node));
+    node = parent;
+  }
+  /** @type {Node | undefined} */
+  let found = copy;
+  for (let i = path.length - 1; i >= 0 && found; i--) {
+    found = found.childNodes[path[i]];
+  }
+  if (!(found instanceof Text) || found.data !== text.data) {
+    throw new NoValueError("The line box copy does not hold this text yet");
+  }
+  return found;
+}
 
-/** @type {WeakMap<HTMLElement, Derived<LineBoxCopy>>} */
+/** @type {WeakMap<HTMLElement, Derived<HTMLElement>>} */
 const lineBoxCopyCache = nodeCache();
 
 /**
@@ -3552,8 +3591,10 @@ const lineBoxCopyCache = nodeCache();
  *   (`getLineBoxShape`), or anything that would re-measure the box from
  *   above, which its reflow context and its size say. Between them they
  *   cover a stylesheet, a font, the viewport and an ancestor's attributes.
- *   The portal's presentational flags, hover and press, change none of them,
- *   just as they re-measure no text. A font that finished loading rebuilds
+ *   The portal's presentational flags, hover and press, change none of them
+ *   (`PRESENTATIONAL_ATTRIBUTES`), just as they re-measure no text. Nor does
+ *   a text replaced by one with the same characters: `findInCopy` finds it
+ *   by its place. A font that finished loading rebuilds
  *   nothing the copy holds, but the copy is laid out by the browser like the
  *   page is, and is re-measured in it with the rest.
  * - **Removed** when it is rebuilt, and when the last text reading it lets
@@ -3563,7 +3604,7 @@ const lineBoxCopyCache = nodeCache();
  * copy afresh on every read, and the build it leaves is removed at the next.
  *
  * @param {HTMLElement} lineBox
- * @returns {LineBoxCopy}
+ * @returns {HTMLElement} The copy, parked.
  */
 function getLineBoxCopy(lineBox) {
   let signal = lineBoxCopyCache.get(lineBox);
@@ -3573,12 +3614,10 @@ function getLineBoxCopy(lineBox) {
       getReflowContext(lineBox);
       getBorderBoxSize(lineBox);
       const copy = /** @type {HTMLElement} */ (lineBox.cloneNode(true));
-      /** @type {Map<Text, Text>} */
-      const texts = new Map();
-      pairLaidOut(lineBox, copy, texts, true);
+      dressLaidOut(lineBox, copy, true);
       const root = parkMeasurementClone(lineBox, copy, null);
       onCleanup(() => root.remove());
-      return { root, texts };
+      return root;
     });
     lineBoxCopyCache.set(lineBox, signal);
   }
@@ -3597,8 +3636,10 @@ const lineBoxShapeCache = nodeCache();
  * depends on each node's adoption as well as on its content, and a portal
  * adopts a panel a node at a time, frame after frame: built straight from
  * those reads, the copy was rebuilt for every node adopted while it was
- * mounting. Compared as a string, an adoption, or a hover flag, reads the box
- * again for the same answer and stops there.
+ * mounting. Compared as a string, an adoption reads the box again for the
+ * same answer and stops there. The presentational attributes are left out
+ * so that the answer is the same when a hover flag happens to be set on
+ * something in the box at the time; a hover alone reads nothing here.
  *
  * @param {HTMLElement} lineBox
  * @returns {string}
@@ -3629,8 +3670,7 @@ function getLineBoxShape(lineBox) {
  * @returns {void}
  */
 function describeShape(node, parts) {
-  getChildNodes(node);
-  for (let child = node.firstChild; child; child = child.nextSibling) {
+  for (const child of getChildNodes(node)) {
     if (child.nodeType === Node.TEXT_NODE) {
       const data = getTextDataCached(/** @type {Text} */ (child));
       parts.push(`#${data.length}:${data}`);
@@ -3651,8 +3691,8 @@ function describeShape(node, parts) {
 }
 
 /**
- * Walk `live` and its copy side by side: pair up the texts, and dress each
- * element whose content is laid out in the line box's lines.
+ * Walk `live` and its copy side by side, and dress each element whose
+ * content is laid out in the line box's lines.
  *
  * The box and every element whose content is laid out in its lines (one that
  * splits across lines, inside others that do) keep their resolved style,
@@ -3671,20 +3711,17 @@ function describeShape(node, parts) {
  *
  * @param {Node} live
  * @param {Node} copy `live.cloneNode(true)`, or a part of one.
- * @param {Map<Text, Text>} texts
  * @param {boolean} laidOut Whether `live`'s content is laid out in the line
  *   box's lines, as the box's own is.
  * @returns {void}
  */
-function pairLaidOut(live, copy, texts, laidOut) {
+function dressLaidOut(live, copy, laidOut) {
   for (
     let child = live.firstChild, childCopy = copy.firstChild;
     child && childCopy;
     child = child.nextSibling, childCopy = childCopy.nextSibling
   ) {
-    if (child.nodeType === Node.TEXT_NODE) {
-      texts.set(/** @type {Text} */ (child), /** @type {Text} */ (childCopy));
-    } else if (child.nodeType === Node.ELEMENT_NODE) {
+    if (child.nodeType === Node.ELEMENT_NODE) {
       const element = /** @type {HTMLElement} */ (child);
       let childLaidOut = false;
       if (laidOut) {
@@ -3694,7 +3731,7 @@ function pairLaidOut(live, copy, texts, laidOut) {
           copyStillStyle(element, /** @type {HTMLElement} */ (childCopy), computed);
         }
       }
-      pairLaidOut(element, childCopy, texts, childLaidOut);
+      dressLaidOut(element, childCopy, childLaidOut);
     }
   }
 }

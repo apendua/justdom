@@ -1185,6 +1185,127 @@ describe("text layout under transforms", () => {
     }
   });
 
+  test("a text replaced by one with the same characters is found in the copy", () => {
+    // A clock label written every tick, or a re-render through `innerHTML`,
+    // puts a new node where the old one was. The box's shape is the same,
+    // so nothing need rebuild its copy, and the new node has to be found at
+    // the old one's place. Not told to the mirror here, which is the state
+    // of a box whose size the change did not move.
+    const { card, mirror, texts } = cardOfTexts();
+    const label = /** @type {HTMLElement} */ (texts.inLabel.parentElement);
+    const { roots, restore } = recordCopies();
+    const held = [holdTextLayout(texts.inLabel)];
+    try {
+      label.textContent = "in the label";
+      const replacement = /** @type {Text} */ (label.firstChild);
+      assert.notEqual(replacement, texts.inLabel);
+      mirror.adopt(replacement);
+      held.push(holdTextLayout(replacement));
+      assert.equal(roots.length, 2);
+      assert.equal(roots[1], roots[0]);
+    } finally {
+      held.forEach((reader) => reader.dispose());
+      card.remove();
+      restore();
+    }
+  });
+
+  test("a copy with other characters at the text's place is not measured", () => {
+    // Until the change reaches the copy, the place holds the old characters,
+    // and measuring them would answer for a text that is no longer there.
+    const { card, mirror, texts } = cardOfTexts();
+    const label = /** @type {HTMLElement} */ (texts.inLabel.parentElement);
+    const { roots, restore } = recordCopies();
+    const held = [holdTextLayout(texts.inLabel)];
+    try {
+      label.textContent = "changed";
+      const replacement = /** @type {Text} */ (label.firstChild);
+      mirror.adopt(replacement);
+      const reader = holdTextLayout(replacement);
+      held.push(reader);
+      assert.equal(reader.layout, undefined);
+      assert.equal(roots.length, 1);
+    } finally {
+      held.forEach((reader) => reader.dispose());
+      card.remove();
+      restore();
+    }
+  });
+
+  test("a text the copy does not hold yet is measured once it does", async () => {
+    // Inserted into an element the portal had not adopted, a text reaches
+    // the box's shape when the adoption is announced, a microtask after the
+    // portal may already measure it. The measurement waits for it.
+    const { card, mirror, texts } = cardOfTexts();
+    const empty = document.createElement("i");
+    card.appendChild(empty);
+    const { roots, restore } = recordCopies();
+    const held = [holdTextLayout(texts.inLabel)];
+    try {
+      const late = document.createTextNode("late");
+      empty.appendChild(late);
+      mirror.adopt(empty);
+      mirror.adopt(late);
+      const reader = holdTextLayout(late);
+      held.push(reader);
+      assert.equal(roots.length, 1);
+      assert.equal(reader.layout, undefined);
+      // The adoption reaches the shape, the copy is rebuilt with the text in
+      // it, and both texts in the box are measured in the new copy.
+      await Promise.resolve();
+      assert.notEqual(reader.layout, undefined);
+      assert.equal(roots.length, 3);
+      assert.equal(roots[2], roots[1]);
+      assert.notEqual(roots[1], roots[0]);
+      assert.equal(roots[1].querySelector("i")?.textContent, "late");
+    } finally {
+      held.forEach((reader) => reader.dispose());
+      card.remove();
+      restore();
+    }
+  });
+
+  test("a dressed element keeps the custom properties it sets", () => {
+    // Chromium enumerates no custom property in a computed style, so a copy
+    // written from one alone loses the `--gap` an inline style sets, and a
+    // child styled with `var(--gap)` with it.
+    const realGetComputedStyle = window.getComputedStyle;
+    window.getComputedStyle = (element, pseudo) => {
+      const computed = realGetComputedStyle(element, pseudo);
+      const names = Array.from({ length: computed.length }, (_, i) => computed[i]).filter(
+        (name) => !name.startsWith("--"),
+      );
+      return /** @type {CSSStyleDeclaration} */ (
+        new Proxy(computed, {
+          get(target, key) {
+            if (key === "length") {
+              return names.length;
+            }
+            if (typeof key === "string" && /^\d+$/.test(key)) {
+              return names[Number(key)];
+            }
+            const value = Reflect.get(target, key, target);
+            return typeof value === "function" ? value.bind(target) : value;
+          },
+        })
+      );
+    };
+    const { card, texts } = cardOfTexts();
+    const label = /** @type {HTMLElement} */ (texts.inLabel.parentElement);
+    label.style.setProperty("--gap", "8px");
+    const { roots, restore } = recordCopies();
+    const held = holdTextLayout(texts.inLabel);
+    try {
+      const copy = /** @type {HTMLElement} */ (roots[0].querySelector(".label"));
+      assert.equal(copy.style.getPropertyValue("--gap"), "8px");
+    } finally {
+      held.dispose();
+      card.remove();
+      restore();
+      window.getComputedStyle = realGetComputedStyle;
+    }
+  });
+
   test("an attribute changed above the box rebuilds its copy", () => {
     // `.desk.night .card b` can restyle what is in the box from outside it.
     const desk = document.createElement("div");

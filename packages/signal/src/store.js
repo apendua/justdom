@@ -297,7 +297,12 @@ function store(data, operators = []) {
           // We need to use non-reactive version of isPlainObject to prevent accidentally creating
           // a circular dependency on oldValue should it be a store itself.
           if (isPlainObjectNoComputation(oldValue)) {
+            // The program assigned the whole object over the nested store the
+            // key holds, so the key and every data key it assigned are the
+            // program's, the ones `replace` finds unchanged included.
+            internals.touched?.add(key);
             replace(oldValue, newValue);
+            own(/** @type {Internals} */ (internalsOf(oldValue)), newValue);
             return true;
           }
           // The program wrote the whole object, so every key of the store
@@ -430,6 +435,31 @@ function track(internals, owned) {
     const nested = internalsOf(state[key]);
     if (nested) {
       track(nested, owned);
+    }
+  }
+}
+
+/**
+ * Mark every data key `value` assigns to a store as the program's, when the
+ * store records writes. `replace` has written them already and marked the
+ * ones that changed; the program assigned the whole object, so the rest are
+ * its too. The keys are the enumerable own ones, which `Object.assign` copies.
+ *
+ * @param {Internals} internals
+ * @param {object} value
+ */
+function own(internals, value) {
+  const { touched, getters, setters } = internals;
+  if (!touched) {
+    return;
+  }
+  for (const key of Reflect.ownKeys(value)) {
+    if (
+      Object.prototype.propertyIsEnumerable.call(value, key) &&
+      !getters.has(key) &&
+      !setters.has(key)
+    ) {
+      touched.add(key);
     }
   }
 }

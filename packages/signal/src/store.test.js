@@ -509,6 +509,19 @@ test("an object the program assigns is the program's, key by key", () => {
   assert.ok(isStore(kept.a), "the program's object stays where the definition has a value");
 });
 
+test("an object assigned over a nested store is the program's, key by key", () => {
+  const kept = /** @type {any} */ (store({ layout: { width: 1, height: 2 } }));
+  trackWrites(kept);
+  const nested = kept.layout;
+  kept.layout = { width: 10, height: 2 };
+  assert.strictEqual(kept.layout, nested, "assigned into the store the key holds");
+  reshape(kept, { layout: { width: 3, height: 4 } });
+  assert.strictEqual(kept.layout.width, 10, "a key that changed is the program's");
+  assert.strictEqual(kept.layout.height, 2, "and so is one replace() found unchanged");
+  reshape(kept, { layout: 5 });
+  assert.strictEqual(kept.layout, nested, "as is the key the object was assigned to");
+});
+
 test("a store the definition adds records writes like its parent", () => {
   const kept = /** @type {any} */ (store({ x: 1 }));
   trackWrites(kept);

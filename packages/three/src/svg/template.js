@@ -516,6 +516,11 @@ export function drawUse(ctx, element, instance = null) {
         },
         { isEqual: rectEqual },
       );
+      // Built once per change of the rect, not per read of the chain.
+      const framedViewport = new Derived(() => {
+        const rect = viewport.get();
+        return rect && { rect };
+      });
       const copy = createInstance({
         template: isViewport ? target : /** @type {Element} */ (target.parentElement),
         outer: () => chain.get(),
@@ -524,10 +529,7 @@ export function drawUse(ctx, element, instance = null) {
         // opacity fades it. The parent of an element drawn whole is not in
         // the copy, and adds nothing.
         container: isViewport ? target : null,
-        clip: () => {
-          const rect = viewport.get();
-          return rect && { frame: IDENTITY, rect };
-        },
+        clip: () => framedViewport.get(),
         slot: () => paintSlot(element, chain.get().root, instance, 0),
         viewport: () => {
           const fit = frame.get();

@@ -1387,25 +1387,26 @@ The apps in this repository turn it on with `?outlines` in the address, through
 `followOutlinesQuery()` in `@apendua.dev/headset`.
 
 Each outline is decided at a commit of its panel, from what happened to the element since the commit
-before. The line says why the element is outlined:
+before. The line says why the element is outlined, and the colour how often:
 
-- A solid line: the page changed the element, one of its attributes, its text or its children.
-- A dashed line, a ripple: the page did not touch the element, and something the panel reads for it
-  came out different all the same. A row moved down by the row above it growing, or a label that
-  inherits a colour its card changed.
-- A dotted line: the page did not touch the element, the panel read it again, and everything came
-  out as it was. Something told the mirror the element may have changed and it had not. That is
-  where a gap in the mirror's filtering shows, and where to look for one: a restyle that reached
-  further than it had to, or a layout walk that told more rows they moved than did.
-- A grey line: the page wrote to the element what was already there. The mirror drops such a write,
-  so it costs the panel nothing past the observer, but the page is still doing work for nothing,
-  often on every frame.
+| Line                                | Kind          | What it means                                                                                                                                                                                                                                                                                                                        |
+| ----------------------------------- | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Solid, coloured by rate             | changed       | The page changed the element: one of its attributes, its text or its children.                                                                                                                                                                                                                                                       |
+| Dashed (6 px on, 4 off), by rate    | ripple        | The page did not touch the element, and something the panel reads for it came out different all the same: a row moved down by the row above it growing, or a label that inherits a colour its card changed.                                                                                                                          |
+| Dotted (1.5 px on, 3 off), by rate  | wasted        | The page did not touch the element, the panel read it again, and everything came out as it was. Something told the mirror the element may have changed and it had not. That is where a gap in the mirror's filtering shows: a restyle that reached further than it had to, or a layout walk that told more rows they moved than did. |
+| Grey, solid                         | no-op write   | The page wrote to the element what was already there. The mirror drops such a write, so it costs the panel nothing past the observer, but the page is still doing work for nothing, often on every frame.                                                                                                                            |
+| Magenta, round the whole panel edge | forced commit | The panel's commit had to be forced (see below). Something in it changes on every frame.                                                                                                                                                                                                                                             |
 
-The colour of the first three says how often the element was outlined, counted in commits over about
-the last second: blue for once or less, green from two, yellow from five and red from ten. Each
-outline fades over a second after the commit that drew it. An HTML element, and an `<svg>` root, is
-outlined round its border box. An SVG element inside the root is outlined round its `getBBox`, in
-its own user space, so the outline turns and scales with the element.
+A commit sees an element by the strongest thing that happened to it, in the order of the table: a
+change the page made wins over a ripple, a ripple over a wasted read, and a wasted read over a write
+of what was there. An element the layout walk told it may have moved, and that nothing read again,
+cost nothing and is not drawn, though the report counts it.
+
+The rate counts the commits that outlined the element over about the last second: blue under two a
+second, green from two, yellow from five and red from ten. Each outline fades over a second after
+the commit that drew it. An HTML element, and an `<svg>` root, is outlined round its border box. An
+SVG element inside the root is outlined round its `getBBox`, in its own user space, so the outline
+turns and scales with the element.
 
 An outline goes up in the frame its commit is drawn in, never before. An atomic panel shows the page
 as it was at its last commit, so an outline taken when the page changed would stand round something
@@ -1425,9 +1426,13 @@ to hover an outline with, so read it over remote developer tools.
 What is counted is what the mirror does for each element: the records it lets through and drops, the
 rows the layout walk tells, and the cached reads it keeps per element (sizes, positions, clips, text
 layouts and the like), plus the style each box is drawn from. An effect that writes to a mesh on
-every frame from `useFrame` changes no DOM and reads no mirror, and draws no outline. Off, the mode
-costs the mirror one check per thing it would count. On, a panel is slower than it would be, and its
-outlines are redrawn on every frame until they fade, so measure frame times with it off.
+every frame from `useFrame` changes no DOM and reads no mirror, and draws no outline. Three outlines
+are expected and not a bug: a hovered element flashes blue, since the portal writes `data-xr-hover`
+on it; the children of an element whose class changed often go dotted, since the mirror restyles
+them to learn that nothing they inherit changed; and an animated element stays lit while it runs,
+since the animation clock restyles it on every frame. Off, the mode costs the mirror one check per
+thing it would count. On, a panel is slower than it would be, and its outlines are redrawn on every
+frame until they fade, so measure frame times with it off.
 
 ## Animation
 

@@ -99,6 +99,18 @@ describe("svg style reading", () => {
     assert.equal(transparent.alpha, 0);
   });
 
+  test("parsePaint draws a paint server's fallback colour, and nothing without one", () => {
+    const computed = parsePaint('url("#hatch") rgb(0, 128, 0)');
+    assert.ok(computed);
+    assert.equal(computed.color.getHexString(), "008000");
+    assert.equal(computed.alpha, 1);
+    const attribute = parsePaint("url(#hatch) black");
+    assert.ok(attribute);
+    assert.equal(attribute.color.getHexString(), "000000");
+    assert.equal(parsePaint("url(#hatch) none"), null);
+    assert.equal(parsePaint('url("#a) b") red')?.color.getHexString(), "ff0000");
+  });
+
   test("parseDashArray reads the computed and the attribute spellings", () => {
     assert.deepEqual(parseDashArray("4px, 2px"), [4, 2]);
     assert.deepEqual(parseDashArray("4 2"), [4, 2]);

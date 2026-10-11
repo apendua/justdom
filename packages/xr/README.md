@@ -72,8 +72,8 @@ the page is the page and the scene's chunk, with three.js in it, is never fetche
 If the emulator's chunk or the scene's cannot be fetched because the page came from a service
 worker's precache and a deploy has replaced the chunks it names, the page reloads once a newer
 worker has taken it over, and at once if one already has. A page whose worker has not been replaced
-has no newer page to reload into, so it waits rather than loops. Minesweeper, Euclid and the todo
-app offer their sessions this way.
+has no newer page to reload into, so it waits rather than loops. Minesweeper, Euclid, Knights and
+the todo app offer their sessions this way.
 
 ## `@apendua.dev/headset/scene`
 
@@ -161,8 +161,8 @@ It borrows Playwright from `apps/showcase-xr` and launches the Chromium at
 `/opt/pw-browsers/chromium-1194`, or the one `CHROMIUM` names. `precache(build, root)` builds an app
 with its own Vite and says which chunks its service worker precaches and which the page loads, for a
 check that holds the two equal; minesweeper's check and the todo app's drag check use it.
-Minesweeper's, the desk's and Euclid's checks use the rest, and `.github/workflows/driven.yml` runs
-all three on pull requests.
+Minesweeper's, the desk's, Euclid's and Knights' checks use the rest, and
+`.github/workflows/driven.yml` runs all four on pull requests.
 
 ## Tests
 

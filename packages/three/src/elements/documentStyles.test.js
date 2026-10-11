@@ -1,6 +1,6 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
-import { enableThemingMode, watchDocumentStyles } from "./documentStyles.js";
+import { enableThemingMode, leadingClass, watchDocumentStyles } from "./documentStyles.js";
 
 // jsdom-env exposes the common DOM globals, but not MutationObserver.
 if (typeof globalThis.MutationObserver === "undefined") {
@@ -431,5 +431,101 @@ describe("watchDocumentStyles", () => {
         style.remove();
       }
     });
+  });
+
+  test("a sheet whose rules all start from classes is announced with them", async () => {
+    // What a styling library writes as the elements it dresses arrive, a
+    // keyboard's when the keyboard opens. Only a panel the classes reach
+    // restyles, so the announcement has to name them, for a sheet arriving,
+    // rewritten, and leaving.
+    /** @type {(ReadonlySet<string> | null)[]} */
+    const heard = [];
+    const stop = watchDocumentStyles((scope) => heard.push(scope));
+    const style = document.createElement("style");
+    try {
+      style.innerHTML =
+        ".kb { color: red; } .kb:active, .kb[data-xr-active] > .cap { color: blue; }" +
+        " @media (min-width: 1px) { .row + .row { margin: 1px; } }";
+      document.head.appendChild(style);
+      await flush();
+      style.innerHTML = ".keys { color: green; }";
+      await flush();
+      style.remove();
+      await flush();
+      assert.deepEqual(
+        heard.map((scope) => scope && [...scope].sort()),
+        [["kb", "row"], ["kb", "keys", "row"], ["keys"]],
+        "what it styled when it arrived, before and after the rewrite, and when it left",
+      );
+    } finally {
+      style.remove();
+      stop();
+    }
+  });
+
+  test("a sheet with a rule that starts anywhere else is announced with no scope", async () => {
+    /** @type {(ReadonlySet<string> | null)[]} */
+    const heard = [];
+    const stop = watchDocumentStyles((scope) => heard.push(scope));
+    /** @type {HTMLStyleElement[]} */
+    const styles = [];
+    try {
+      for (const text of [
+        ".kb { color: red; } body .kb { color: blue; }",
+        ".kb { animation: spin 1s; } @keyframes spin { to { opacity: 0; } }",
+        ":not(.kb) { color: red; }",
+        // A quoted bracket hides the comma before `.b` from a reader that
+        // counts brackets, which would scope this to `a` alone.
+        '.a[data-label="("], .b { color: red; }',
+      ]) {
+        const style = document.createElement("style");
+        style.innerHTML = text;
+        document.head.appendChild(style);
+        styles.push(style);
+        await flush();
+      }
+      assert.deepEqual(heard, [null, null, null, null]);
+    } finally {
+      for (const style of styles) {
+        style.remove();
+      }
+      stop();
+    }
+  });
+
+  test("a selector starts from the class its first compound names", () => {
+    assert.equal(leadingClass(".a"), "a");
+    assert.equal(leadingClass("div.a:hover > .b"), "a");
+    assert.equal(leadingClass(".a + .b ~ c"), "a");
+    assert.equal(leadingClass(".class_x1-2[data-xr-active]::before"), "class_x1-2");
+    assert.equal(leadingClass("[data-k].a"), "a");
+    assert.equal(leadingClass("div .a"), null, "the class is on a descendant");
+    assert.equal(leadingClass(":not(.a)"), null, "inside a pseudo-class");
+    assert.equal(leadingClass(":is(.a, .b)"), null);
+    assert.equal(leadingClass(".kbé"), null, "a name that goes on past ASCII is not read");
+    assert.equal(leadingClass(".a.b#c"), "a");
+    assert.equal(leadingClass("*"), null);
+  });
+
+  test("a sheet that arrives and leaves in one flush styled nothing", async () => {
+    // A component that mounts and fails in the same tick subscribes and
+    // unsubscribes its classes before the observer reports either. No style
+    // was ever worked out from the sheet, so nothing restyles.
+    /** @type {(ReadonlySet<string> | null)[]} */
+    const heard = [];
+    const stop = watchDocumentStyles((scope) => heard.push(scope));
+    try {
+      const style = document.createElement("style");
+      style.innerHTML = ".gone { color: red; }";
+      document.head.appendChild(style);
+      style.remove();
+      await flush();
+      assert.deepEqual(
+        heard.map((scope) => scope && [...scope]),
+        [[]],
+      );
+    } finally {
+      stop();
+    }
   });
 });

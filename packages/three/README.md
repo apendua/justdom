@@ -1181,9 +1181,26 @@ with no re-layout and no re-rasterized text. Prefer it for motion, as on the fla
 
 A panel follows its document's stylesheets, not only its own elements. Rewriting a `<style>`
 element's text, adding or removing a `<style>` or a `<link rel="stylesheet">`, and a `<link>`
-finishing its load each restyle and re-measure every panel on the page, which is how the `className`
-and `stylesheet` tags in [`@apendua/justdom`](../justdom) reach a panel. Each costs a whole-panel
-restyle, so animate through an inline `style` instead.
+finishing its load each restyle the panels, which is how the `className` and `stylesheet` tags in
+[`@apendua/justdom`](../justdom) reach a panel.
+
+How much a change costs depends on what its rules start from:
+
+- When every rule in the `<style>` that changed starts from a class, as `.card { … }`,
+  `.card:hover > .label { … }` or a rule inside `@media` does, only the panels those classes can
+  reach restyle and re-measure: a panel with an element wearing one of them, or with one worn above
+  its root, or before the root or one of its ancestors among their siblings. A panel they cannot
+  reach pays nothing. That is every sheet a `className` writes whose body nests no rule, and a
+  `stylesheet` written from `.${CLASS_NAME}`, so a component that brings its own styles when it
+  mounts, such as a keyboard opening, restyles its own panel and leaves the other panels alone.
+- Any other rule (one starting from a tag, an attribute, `:root` or a descendant, a nested rule, an
+  `@keyframes` or an `@font-face`) and a `<link>` restyle and re-measure every panel on the page. So
+  does a rule that starts from a class but has an attribute value in its selector, as
+  `.screen[data-phosphor=amber]`, since the browser hands its selector back with the value quoted,
+  or a class name that needs an escape, as `.md\:flex`.
+
+Either way, animate through an inline `style` instead of a rule, which restyles only the element it
+is on.
 
 Not followed: a change made through the CSSOM, which a mutation observer cannot see — `insertRule`,
 writing to a rule's `style`, `adoptedStyleSheets`, and every rule edited, added or switched off in
@@ -1841,7 +1858,8 @@ chain is read. A `<title>`, `<desc>` or `<metadata>` beside the rect is skipped.
 Not followed:
 
 - Gradients and patterns: a `url(#…)` paint reads as `none`, though it still counts as painted for a
-  ray. `mask`, filters, `<foreignObject>` and `vector-effect`.
+  ray, and one given a fallback colour, `url(#hatch) black`, is drawn in that colour. `mask`,
+  filters, `<foreignObject>` and `vector-effect`.
   [`docs/freedom-svg-plan.md`](../../docs/freedom-svg-plan.md) says what each would take.
 - A `clip-path` of any shape but the rect above — a circle, a path, two shapes, a basic shape such
   as `inset()` — clips nothing, and so does a `clip-path` on an `<svg>` root as it stands on the
@@ -1935,12 +1953,13 @@ keys are pressed with the ray, whose floppies are dragged from one panel onto an
 menu, live SVG charts, draggable cards, a text field with the scene's keyboard and a memo that can
 be picked up and tipped to read.
 
-Four apps are run on every pull request that changes what this package ships, in an emulated headset
+Five apps are run on every pull request that changes what this package ships, in an emulated headset
 in headless Chromium; a change only to its docs, tests or benchmarks runs none of them.
 `.github/workflows/visual.yml` photographs the showcase and holds the picture against the one on
 record. `.github/workflows/driven.yml` plays [`apps/minesweeper`](../../apps/minesweeper), puts the
-desk up and draws in [`apps/euclid`](../../apps/euclid), with each app's `tests/xr-check.mjs`; each
-app's README says what its check does.
+desk up, draws in [`apps/euclid`](../../apps/euclid) and fights in
+[`apps/knights`](../../apps/knights), with each app's `tests/xr-check.mjs`; each app's README says
+what its check does.
 
 ## License
 

@@ -176,10 +176,17 @@ class SpriteStore {
 /**
  * Draws one frame of a sprite sheet.
  *
- * The whole sheet is placed as a single `<image>` and shifted so that the frame
- * we want lands at the origin; a clip path the size of one frame hides the
- * rest. That way switching frames only moves the image, and the browser never
- * has to fetch or decode anything again.
+ * The whole sheet is placed as a single `<image>` and shifted so that the
+ * frame we want lands at the origin; a clip path the size of one frame
+ * hides the rest. That way switching frames only moves the image, and the
+ * browser never has to fetch or decode anything again.
+ *
+ * The clip path is on a group around the image rather than on the image,
+ * and the shift is the image's `transform` rather than its `x` and `y`, for
+ * a headset panel's sake. A panel takes a new `transform` as a matrix write,
+ * where a new `x` or `y` would be a new quad ten times a second for every
+ * stack on the board; and a clip path on the image would move with its
+ * `transform`, as it does on the page, so the group holds it still.
  */
 const Sprite = component((_: WeakKey, props: SpriteProps) => {
   const sprite = new SpriteStore(props);
@@ -211,7 +218,7 @@ const Sprite = component((_: WeakKey, props: SpriteProps) => {
       $$("defs", [
         children(
           $$("clipPath", [
-            attr({ id: clipId, x: 0, y: 0 }),
+            attr({ id: clipId }),
             children(
               $$("rect", [
                 attr({ x: 0, y: 0 }),
@@ -222,17 +229,26 @@ const Sprite = component((_: WeakKey, props: SpriteProps) => {
           ]),
         ),
       ]),
-      $$("image", [
+      $$("g", [
         attr({ "clip-path": `url(#${clipId})` }),
-        attr("href", () => sprite.geometry?.source),
-        attr("transform", () => {
-          const geometry = sprite.geometry;
-          return geometry?.mirror ? `translate(${geometry.spriteWidth},0),scale(-1,1)` : undefined;
-        }),
-        attr("x", () => -(sprite.geometry?.frameOffsetX ?? 0)),
-        attr("y", () => -(sprite.geometry?.frameOffsetY ?? 0)),
-        attr("width", () => sprite.geometry?.imageWidth ?? 0),
-        attr("height", () => sprite.geometry?.imageHeight ?? 0),
+        children(
+          $$("image", [
+            attr({ x: 0, y: 0 }),
+            attr("href", () => sprite.geometry?.source),
+            attr("transform", () => {
+              const geometry = sprite.geometry;
+              if (!geometry) {
+                return undefined;
+              }
+              const shift = `translate(${-geometry.frameOffsetX},${-geometry.frameOffsetY})`;
+              return geometry.mirror
+                ? `translate(${geometry.spriteWidth},0) scale(-1,1) ${shift}`
+                : shift;
+            }),
+            attr("width", () => sprite.geometry?.imageWidth ?? 0),
+            attr("height", () => sprite.geometry?.imageHeight ?? 0),
+          ]),
+        ),
       ]),
     ),
   ]);

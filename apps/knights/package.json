@@ -13,13 +13,18 @@
     "test:watch": "vitest --environment jsdom"
   },
   "dependencies": {
+    "@apendua.dev/headset": "workspace:*",
     "@apendua.dev/media": "workspace:*",
+    "@apendua/freedom": "workspace:*",
     "@apendua/justdom": "workspace:*",
+    "@apendua/justui": "workspace:*",
     "@apendua/signal": "workspace:*",
     "@apendua/vite-hmr": "workspace:*",
     "@types/node": "^24.7.0",
+    "@types/three": "~0.185.0",
     "@vite-pwa/assets-generator": "^1.0.1",
     "eslint": "^9.37.0",
+    "three": "~0.185.0",
     "typescript": "^7.0.2",
     "vite": "^7.1.9",
     "vitest": "^3.2.4"

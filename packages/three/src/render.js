@@ -792,8 +792,9 @@ export function render(fn, options = {}) {
 
     return () => {
       renderer.setAnimationLoop(null);
-      // The idle pictures the texture cache keeps belong to this renderer's
-      // GL context, which is going.
+      // Free what the texture cache keeps idle as the renderer goes. The
+      // cache is shared, so this also drops pictures another live
+      // `render()` could have reused; it would load them again.
       releaseIdleImages();
       renderer.dispose();
       interactionManager.cleanup();

@@ -304,6 +304,100 @@ describe("the texture cache", () => {
     }
   });
 
+  test("a picture bigger than the budget is disposed alone", () => {
+    const loader = deferredLoader();
+    try {
+      acquireImage("/icon.png");
+      acquireImage("/photo.png");
+      const icon = loader.loads[0].land(64, 64).disposed;
+      const side = Math.sqrt(IDLE_BUDGET / 4) + 1;
+      const photo = loader.loads[1].land(side, side).disposed;
+      releaseImage("/icon.png");
+      releaseImage("/photo.png");
+      assert.deepEqual([icon(), photo()], [0, 1], "the icon stays idle");
+      acquireImage("/icon.png");
+      assert.equal(loader.loads.length, 2, "and comes back without loading");
+      releaseImage("/icon.png");
+    } finally {
+      loader.restore();
+    }
+  });
+
+  test("the budget never evicts a picture still on its way", () => {
+    const loader = deferredLoader();
+    try {
+      acquireImage("/inflight.png");
+      releaseImage("/inflight.png");
+      const side = Math.sqrt(IDLE_BUDGET / 4 / 2);
+      for (const url of ["/half-a.png", "/half-b.png", "/half-c.png"]) {
+        acquireImage(url);
+        loader.loads[loader.loads.length - 1].land(side, side);
+        releaseImage(url);
+      }
+      const { disposed } = loader.loads[0].land(4, 4);
+      assert.equal(disposed(), 0, "the fetch already in flight lands idle");
+      acquireImage("/inflight.png");
+      assert.equal(loader.loads.length, 4, "and is not loaded again");
+      releaseImage("/inflight.png");
+    } finally {
+      loader.restore();
+    }
+  });
+
+  test("a picture acquired back off the idle list no longer counts", () => {
+    const loader = deferredLoader();
+    try {
+      const side = Math.sqrt(IDLE_BUDGET / 4 / 4);
+      const urls = ["/q1.png", "/q2.png", "/q3.png", "/q4.png", "/q5.png"];
+      const counts = urls.map((url, i) => {
+        acquireImage(url);
+        return loader.loads[i].land(side, side).disposed;
+      });
+      for (const url of urls.slice(0, 4)) {
+        releaseImage(url);
+      }
+      acquireImage("/q1.png");
+      releaseImage("/q5.png");
+      assert.deepEqual(
+        counts.map((count) => count()),
+        [0, 0, 0, 0, 0],
+        "four quarters idle, one of them in use again",
+      );
+      releaseImage("/q1.png");
+    } finally {
+      loader.restore();
+    }
+  });
+
+  test("a picture that fails after its last user let go is tried again", () => {
+    const loader = deferredLoader();
+    try {
+      const url = "/gone-missing.png";
+      acquireImage(url);
+      releaseImage(url);
+      loader.loads[0].fail();
+      assert.equal(acquireImage(url).state.get().status, "loading");
+      assert.equal(loader.loads.length, 2);
+      releaseImage(url);
+    } finally {
+      loader.restore();
+    }
+  });
+
+  test("a picture released from the idle list in flight is disposed as it lands", () => {
+    const loader = deferredLoader();
+    try {
+      const url = "/dropped.png";
+      acquireImage(url);
+      releaseImage(url);
+      releaseIdleImages();
+      const { disposed } = loader.loads[0].land(4, 4);
+      assert.equal(disposed(), 1);
+    } finally {
+      loader.restore();
+    }
+  });
+
   test("a picture that failed is tried again once its users let go", () => {
     const loader = deferredLoader();
     try {

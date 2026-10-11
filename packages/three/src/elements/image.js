@@ -45,9 +45,6 @@ import { fitImage } from "./objectFit.js";
  * @typedef {object} ImageEntry
  * @property {Signal<ImageState>} state
  * @property {number} users How many elements are pointing at this URL.
- * @property {THREE.Texture | null} texture Kept beside the signal so that
- *   letting go of the last user can dispose it without a reactive read from
- *   inside a cleanup.
  */
 
 /**
@@ -85,19 +82,21 @@ import { fitImage } from "./objectFit.js";
  * a headset is a leak with a nicer name, so the idle entries are held to
  * `IDLE_BUDGET` bytes.
  *
- * Each entry is in one of four states, and these are all the moves:
+ * Each entry is in one of five states, and these are all the moves:
  *
- * - **loading**, with users: becomes loaded when its picture lands, and
- *   idle when its last user lets go;
+ * - **loading**, with users: becomes loaded when its picture lands, failed
+ *   when the load fails, and idle when its last user lets go;
  * - **loaded**, with users: becomes idle when its last user lets go;
+ * - **failed**, with users: becomes gone when its last user lets go, so
+ *   asking for the URL again tries again;
  * - **idle**, with no users, its picture kept or still on its way: becomes
- *   loaded or loading again when it is acquired, and gone when the budget
- *   evicts it or `releaseIdleImages` is called;
+ *   loaded or loading again when it is acquired. It becomes gone when its
+ *   load fails, when its picture alone is bigger than `IDLE_BUDGET`, when
+ *   the budget evicts it, or when `releaseIdleImages` is called. The budget
+ *   evicts the oldest idle pictures first, and never one still on its way,
+ *   which weighs nothing and would only throw its fetch away;
  * - **gone**: its texture disposed, or disposed as it lands. Acquiring the
  *   URL again starts a new entry, loading.
- *
- * A picture that fails to load is dropped when its last user lets go, so
- * asking for it again tries again.
  *
  * @type {Map<string, ImageEntry>}
  */
@@ -112,16 +111,24 @@ const entries = new Map();
 const idle = new Map();
 
 /**
- * How many bytes of uploaded pictures the idle entries may hold between
- * them: 16 MiB, a 2048 by 2048 picture or 1,024 icons of 64 by 64.
+ * What the idle entries weigh between them, kept as they come and go so that
+ * a release does not add up the whole idle list.
+ */
+let idleBytes = 0;
+
+/**
+ * How many bytes of pictures the idle entries may hold between them: 16 MiB,
+ * a 2048 by 2048 picture or 1,024 icons of 64 by 64. It counts each
+ * picture's base level. Its mipmaps, which three generates by default, add
+ * about a third on the GPU.
  */
 export const IDLE_BUDGET = 16 * 1024 * 1024;
 
 /**
- * What an entry's picture holds on the GPU, at four bytes a pixel. Nothing
- * for one still loading or failed. Read with `peek`, since a release runs
- * inside a cleanup, where a tracked read would make the computation being
- * torn down depend on the entry.
+ * What an entry's picture weighs, at four bytes a pixel. Nothing for one
+ * still loading or failed. Read with `peek`, since a release runs inside a
+ * cleanup, where a tracked read would make the computation being torn down
+ * depend on the entry.
  *
  * @param {ImageEntry} entry
  * @returns {number}
@@ -129,6 +136,18 @@ export const IDLE_BUDGET = 16 * 1024 * 1024;
 function bytesOf(entry) {
   const { texture, width, height } = entry.state.peek();
   return texture ? width * height * 4 : 0;
+}
+
+/**
+ * Take an entry off the idle list, if it is on it.
+ *
+ * @param {string} url
+ * @param {ImageEntry} entry
+ */
+function leaveIdle(url, entry) {
+  if (idle.delete(url)) {
+    idleBytes -= bytesOf(entry);
+  }
 }
 
 /**
@@ -140,24 +159,32 @@ function bytesOf(entry) {
  * @param {ImageEntry} entry
  */
 function forget(url, entry) {
-  idle.delete(url);
+  leaveIdle(url, entry);
   entries.delete(url);
-  entry.texture?.dispose();
-  entry.texture = null;
+  entry.state.peek().texture?.dispose();
 }
 
-/** Evict the oldest idle entries until the rest fit in `IDLE_BUDGET`. */
-function enforceBudget() {
-  let total = 0;
-  for (const entry of idle.values()) {
-    total += bytesOf(entry);
+/**
+ * Fit the idle list in `IDLE_BUDGET` now that `entry` weighs what it does on
+ * it: forget `entry` alone if it is bigger than the whole budget, and
+ * otherwise the oldest idle pictures, skipping any still on its way, until
+ * the rest fit.
+ *
+ * @param {string} url
+ * @param {ImageEntry} entry
+ */
+function fitIdle(url, entry) {
+  if (bytesOf(entry) > IDLE_BUDGET) {
+    forget(url, entry);
+    return;
   }
-  for (const [url, entry] of idle) {
-    if (total <= IDLE_BUDGET) {
+  for (const [oldest, candidate] of idle) {
+    if (idleBytes <= IDLE_BUDGET) {
       return;
     }
-    total -= bytesOf(entry);
-    forget(url, entry);
+    if (bytesOf(candidate) > 0) {
+      forget(oldest, candidate);
+    }
   }
 }
 
@@ -256,8 +283,8 @@ function entryFor(url) {
     url,
     (texture) => {
       if (entries.get(url) !== entry) {
-        // The entry was evicted while it was in flight. The texture was
-        // never uploaded and nothing is pointing at it.
+        // `releaseIdleImages` forgot the entry while it was in flight. The
+        // texture was never uploaded and nothing is pointing at it.
         texture.dispose();
         return;
       }
@@ -274,7 +301,6 @@ function entryFor(url) {
       /** @type {THREE.Texture<HTMLImageElement | HTMLCanvasElement>} */ (texture).image =
         uploadable(url, texture.image);
       const image = /** @type {{ width?: number, height?: number } | null} */ (texture.image);
-      entry.texture = texture;
       entry.state.set({
         status: "loaded",
         texture,
@@ -284,7 +310,8 @@ function entryFor(url) {
       if (idle.has(url)) {
         // Everyone let go while it was in flight. It lands idle, and now
         // weighs something.
-        enforceBudget();
+        idleBytes += bytesOf(entry);
+        fitIdle(url, entry);
       }
     },
     undefined,
@@ -316,7 +343,7 @@ function entryFor(url) {
  */
 export function acquireImage(url) {
   const entry = entryFor(url);
-  idle.delete(url);
+  leaveIdle(url, entry);
   entry.users += 1;
   return entry;
 }
@@ -343,7 +370,8 @@ export function releaseImage(url) {
     return;
   }
   idle.set(url, entry);
-  enforceBudget();
+  idleBytes += bytesOf(entry);
+  fitIdle(url, entry);
 }
 
 /**

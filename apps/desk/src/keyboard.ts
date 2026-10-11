@@ -1,5 +1,3 @@
-import type { Readable } from "./session.js";
-
 /**
  * A key as the rows below write it: the `KeyboardEvent.key` it stands for,
  * its legend, and the classes that size and colour it. A bare string is a
@@ -77,17 +75,11 @@ const PRESS_MS = 110;
 
 export interface KeyboardOptions {
   /**
-   * Where a key goes while no text field has focus, and where a cap's press
-   * goes in a session wherever the focus is. A key a script typed into an
-   * element without focus, as a session's keyboard does, is that element's.
+   * Where a key goes when no text field on the page has focus, unless a
+   * script typed it into an element without focus, as a session's keyboard
+   * does.
    */
   onKey: (key: string) => void;
-  /**
-   * Whether a session is showing the desk. The caps are the monitor's
-   * there, even while a field has the page's focus: the field is typed
-   * into with the keyboard freedom opens for it, or with a real keyboard.
-   */
-  presenting: Readable<boolean>;
 }
 
 /**
@@ -97,12 +89,12 @@ export interface KeyboardOptions {
  * session, or by the same key on a real keyboard. Either way it goes down
  * for a moment (`data-down`, a `transform` in the stylesheet) and types into
  * the text field that has focus, if one does, and into `onKey` otherwise.
- * In a session a field is typed into with the keyboard freedom opens for
- * it, and every cap pressed here goes to `onKey`, even while the field has
- * the page's focus, as it does under `?realfocus`. What that keyboard types
- * is the field's alone, and does not press a cap here or reach `onKey`.
+ * Only the page has focus to give: in a session a field is typed into with
+ * the keyboard freedom opens for it, and every cap pressed here goes to
+ * `onKey`. What that keyboard types is the field's alone, and does not press
+ * a cap here or reach `onKey`.
  */
-export function mountKeyboard(keys: HTMLElement, { onKey, presenting }: KeyboardOptions) {
+export function mountKeyboard(keys: HTMLElement, { onKey }: KeyboardOptions) {
   for (const row of ROWS) {
     const line = document.createElement("div");
     line.className = "krow";
@@ -143,7 +135,7 @@ export function mountKeyboard(keys: HTMLElement, { onKey, presenting }: Keyboard
       return;
     }
     pressDown(key);
-    const field = presenting.get() ? null : focusedField();
+    const field = focusedField();
     if (field) {
       typeInto(field, key);
     } else {
@@ -157,13 +149,8 @@ export function mountKeyboard(keys: HTMLElement, { onKey, presenting }: Keyboard
       return;
     }
     if (focusedField()) {
-      // The browser types into it. On the page these caps type into the
-      // field too, so they go down with it; in a session they are the
-      // monitor's and stay up.
-      if (!presenting.get()) {
-        pressDown(event.key);
-      }
-      return;
+      pressDown(event.key);
+      return; // the browser types into it
     }
     // A real key goes to what has focus. A keydown aimed at an element
     // without it was dispatched there by a script, and is that element's:

@@ -1,3 +1,5 @@
+import { FOCUS_ATTRIBUTE } from "@apendua/freedom/page";
+
 /**
  * An experiment, behind `?realfocus` in the apps that offer it: give the
  * page's focus to the field freedom's keyboard is typing into.
@@ -27,13 +29,6 @@
  *   then, the keyboard going or the field taking the focus back, is not
  *   decided.
  */
-
-/**
- * The mark freedom puts on the field its keyboard is typing into. Freedom's
- * entry point does not export the name, and the experiment stays out of
- * freedom until it is decided, so it is spelled out here.
- */
-const FOCUS_ATTRIBUTE = "data-xr-focus";
 
 /**
  * Follow freedom's focus with the page's, for every field under `root`.

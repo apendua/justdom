@@ -2,7 +2,8 @@ import * as THREE from "three";
 import { Derived, effects, flatMap, mountEach, observable, onCleanup, set } from "@apendua/signal";
 import { $, Nothing } from "../operators.js";
 import { box } from "./div.js";
-import { CHECKED_ATTRIBUTE, getCheckedCached, getComputedStyleCached } from "./mirror.js";
+import { getCheckedCached, getComputedStyleCached } from "./mirror.js";
+import { CHECKED_ATTRIBUTE } from "./portalRoot.js";
 import { applyClip } from "./clip.js";
 import { place } from "./place.js";
 

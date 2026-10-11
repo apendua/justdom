@@ -334,30 +334,31 @@ directly into a 3D or WebXR scene and still receive pointer events routed throug
 `interactions(ctx)`.
 
 An element is a ray target of its own when its computed `cursor` is `pointer`, the signal a page
-uses for "clickable", or when it is `draggable="true"` (see **Dragging and dropping** below), and
-its `pointer-events` is not `none`. A press on it arrives as `mousedown`, `mouseup` and `click` on
-the element, and the element carries `data-xr-hover` while the ray is on it and `data-xr-active`
-while it is held. Each hand's flags are its own: a button two hands are on, or two hands press,
-keeps each flag until the last of them leaves or lets go. The grip is the mouse's other button: a
-press of it, let go on the element it started on, arrives as `contextmenu`, which is where a page
-already flags a tile or opens a menu of its own. A grip that something above the panel took as it
-closed, a `drag()` that picks up what the panel hangs from with `squeeze` among its `buttons`, is
-that grab and sends nothing. Nor does a grip while the trigger carries a row (see **Dragging and
-dropping**) or moves a list, gliding included, on any panel: a page in the middle of a drag hears no
-other button. A trigger only resting on a row moves nothing yet, and a grip under it is a
-right-click as a mouse's is. Each of these events, and the `mousemove` a ray moving over the element
-sends, carries the point the ray met as `clientX` and `clientY`, mapped onto the page's own layout,
-so a page that finds what was pressed from where it was pressed, a board drawn as one `<svg>` path,
-reads the place a mouse over the same spot would have given it. A press, its release, its click, a
-right-click, a press on a scrolling list and the ray's arrival on a control, by the rule the hover
-pulse follows (see **Haptics**), each read where the page lays the panel out; a move, sent every
-frame, reads no layout and takes its point where the panel was last read, so a hover starts exact
-and drifts only by what the page moves while the ray stays. The point is on screen only for a panel
-mirroring an element the page shows. A panel built from a tree lives in a container the portal parks
-off screen, so its points are right against the page's own rects but `elementFromPoint` finds
-nothing at them. A scale on the mirrored root, or above it, is in the mapping, so on a page scaled
-to fit its window the point is where the page draws that spot; a rotation, a skew, a flip or a
-perspective there is left out, as the mirror leaves it out (see below).
+uses for "clickable", when it is `draggable="true"` (see **Dragging and dropping** below), or when
+it is the `<label>` of a text field (see **Text fields and the keyboard**), and its `pointer-events`
+is not `none`. A press on it arrives as `mousedown`, `mouseup` and `click` on the element, and the
+element carries `data-xr-hover` while the ray is on it and `data-xr-active` while it is held. Each
+hand's flags are its own: a button two hands are on, or two hands press, keeps each flag until the
+last of them leaves or lets go. The grip is the mouse's other button: a press of it, let go on the
+element it started on, arrives as `contextmenu`, which is where a page already flags a tile or opens
+a menu of its own. A grip that something above the panel took as it closed, a `drag()` that picks up
+what the panel hangs from with `squeeze` among its `buttons`, is that grab and sends nothing. Nor
+does a grip while the trigger carries a row (see **Dragging and dropping**) or moves a list, gliding
+included, on any panel: a page in the middle of a drag hears no other button. A trigger only resting
+on a row moves nothing yet, and a grip under it is a right-click as a mouse's is. Each of these
+events, and the `mousemove` a ray moving over the element sends, carries the point the ray met as
+`clientX` and `clientY`, mapped onto the page's own layout, so a page that finds what was pressed
+from where it was pressed, a board drawn as one `<svg>` path, reads the place a mouse over the same
+spot would have given it. A press, its release, its click, a right-click, a press on a scrolling
+list and the ray's arrival on a control, by the rule the hover pulse follows (see **Haptics**), each
+read where the page lays the panel out; a move, sent every frame, reads no layout and takes its
+point where the panel was last read, so a hover starts exact and drifts only by what the page moves
+while the ray stays. The point is on screen only for a panel mirroring an element the page shows. A
+panel built from a tree lives in a container the portal parks off screen, so its points are right
+against the page's own rects but `elementFromPoint` finds nothing at them. A scale on the mirrored
+root, or above it, is in the mapping, so on a page scaled to fit its window the point is where the
+page draws that spot; a rotation, a skew, a flip or a perspective there is left out, as the mirror
+leaves it out (see below).
 
 A press, its release and a move each send, ahead of their mouse event, the pointer event a browser
 sends ahead of it: `pointerdown`, `pointerup` and `pointermove`, at the same point. A page written
@@ -931,11 +932,12 @@ dragged in from outside the page. And a drag does not scroll a list it is held n
 
 A button on a page has a click to say it was pressed; a projected one is a quad at the end of a ray,
 and the hand holding the controller can be told. Every control in a panel, which is every element
-the ray-target rule covers (`cursor: pointer` or `draggable="true"`), pulses the controller's motors
-when the trigger closes on it, and the grip as well, as it closes and as it opens. Not a grip that
-something above the panel took as a grab, nor one closed while the trigger carries a row or moves a
-list (see **Projecting DOM into the scene** above); a grip not felt closing is not felt opening
-either. Nothing is marked: a panel with buttons in it is felt, and so is the keyboard.
+the ray-target rule covers (`cursor: pointer`, `draggable="true"` or a field's label), pulses the
+controller's motors when the trigger closes on it, and the grip as well, as it closes and as it
+opens. Not a grip that something above the panel took as a grab, nor one closed while the trigger
+carries a row or moves a list (see **Projecting DOM into the scene** above); a grip not felt closing
+is not felt opening either. Nothing is marked: a panel with buttons in it is felt, and so is the
+keyboard.
 
 A pulse when the ray arrives on a control is there too, and off unless a panel asks for it. A press
 is always worth telling the hand about. A hover is worth it where the player aims at one small
@@ -1181,11 +1183,14 @@ so an app that clears the field after a submit can take the next entry straight 
 anywhere in a panel other than on a field — a button, a row, the background — is focus leaving the
 field, and the board goes, as the field would blur on a page; a press on another field moves the
 typing there instead, and so does a press on a field's `<label>`, which focuses its field on a page.
-A label of a field outside the panel is anywhere else. Only a panel with a keyboard listens for that
-press, so one in a panel with `keyboard: false`, or on the scene outside every panel, leaves the
-board up. It also goes on `Escape`, which a board can offer as its "done" key, when the field being
-typed into leaves the document or its panel goes, when the session ends, and with the scene;
-`dismiss` on the target closes it for any other reason a board might have.
+Such a label is a ray target whatever its `cursor`, as the field is, unless it is under
+`pointer-events: none`. A label of a field outside the panel, or of one that is read-only or
+disabled, is anywhere else, and so is a button, a link or another control inside a label. Only a
+panel with a keyboard listens for that press, so one in a panel with `keyboard: false`, or on the
+scene outside every panel, leaves the board up. It also goes on `Escape`, which a board can offer as
+its "done" key, when the field being typed into leaves the document or its panel goes, when the
+session ends, and with the scene; `dismiss` on the target closes it for any other reason a board
+might have.
 
 A panel can still say something of its own. Its `keyboard` option is laid over the scene's, so a
 panel for entering a code can bring a different board, and `keyboard: false` gives a panel none:

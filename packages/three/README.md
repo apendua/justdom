@@ -654,7 +654,11 @@ length. Stripe from the top, not the bottom:
 
 Inserting or removing in the middle restyles the rows from that point on,
 which is also the set that moved; prepending restyles the list, correctly,
-since every row's `:nth-child` position changed.
+since every row's `:nth-child` position changed. A change at the start
+restyles what sits beside the list as well only when the list became empty
+or stopped being empty, since `:empty` is the one verdict on the list itself
+that a change to its rows can move. A log that drops its oldest row as each
+new one arrives restyles its rows and leaves the rest of the panel alone.
 
 **The panel's background is clickable, and it is the panel you should listen
 to.** A ray that lands on the panel but on none of its buttons hits the blocker

@@ -1348,7 +1348,7 @@ function setupRowList(listStyle = "") {
     list.insertBefore(row, before);
     mirror.adopt(row);
     track(row);
-    batch(() => mirror.ingest([childListRecord(list, previousSibling, [row], [])]));
+    batch(() => mirror.ingest([childListRecord(list, previousSibling, [row], [], before)]));
     return row;
   };
 
@@ -1357,9 +1357,9 @@ function setupRowList(listStyle = "") {
    * @returns {void}
    */
   const removeRow = (row) => {
-    const previousSibling = row.previousSibling;
+    const { previousSibling, nextSibling } = row;
     row.remove();
-    batch(() => mirror.ingest([childListRecord(list, previousSibling, [], [row])]));
+    batch(() => mirror.ingest([childListRecord(list, previousSibling, [], [row], nextSibling)]));
   };
 
   /** @param {Element} row */
@@ -1378,15 +1378,16 @@ function setupRowList(listStyle = "") {
  * @param {Node | null} previousSibling
  * @param {Node[]} addedNodes
  * @param {Node[]} removedNodes
+ * @param {Node | null} [nextSibling]
  * @returns {MutationRecord}
  */
-function childListRecord(target, previousSibling, addedNodes, removedNodes) {
+function childListRecord(target, previousSibling, addedNodes, removedNodes, nextSibling = null) {
   return /** @type {MutationRecord} */ (
     /** @type {unknown} */ ({
       type: "childList",
       target,
       previousSibling,
-      nextSibling: null,
+      nextSibling,
       addedNodes,
       removedNodes,
       attributeName: null,
@@ -1660,6 +1661,68 @@ describe("which siblings a change restyles", () => {
       assert.deepEqual(rows.map(restylesOf), [2, 2, 2, 2]);
     } finally {
       dispose();
+      container.remove();
+    }
+  });
+
+  /**
+   * An element beside the list, inside the same parent, whose colour is
+   * watched: what the list's siblings hear when its child list changes.
+   *
+   * @param {ReturnType<typeof createMirror>} mirror
+   * @param {Element} list
+   */
+  function watchNeighbour(mirror, list) {
+    const neighbour = document.createElement("div");
+    list.after(neighbour);
+    mirror.adopt(neighbour);
+    return { neighbour, ...watchStyles([neighbour]) };
+  }
+
+  test("dropping the first row of a list that keeps rows restyles the rows, not the list's neighbours", () => {
+    // A log that drops its oldest row as each new one arrives. Every row's
+    // position from the start moved, so every row restyles; the list was
+    // not empty before or after, so `:empty` held and nothing beside the
+    // list has a verdict that could have moved.
+    const { container, mirror, list, rows, removeRow } = setupRowList();
+    const { restylesOf, dispose } = watchStyles(rows);
+    const beside = watchNeighbour(mirror, list);
+    try {
+      removeRow(rows[0]);
+
+      assert.deepEqual(rows.slice(1).map(restylesOf), [2, 2, 2]);
+      assert.equal(beside.restylesOf(beside.neighbour), 1, "the list's neighbour kept its style");
+    } finally {
+      dispose();
+      beside.dispose();
+      container.remove();
+    }
+  });
+
+  test("removing the last row left restyles the list's neighbours, since `:empty` flipped", () => {
+    const { container, mirror, list, rows, removeRow } = setupRowList();
+    rows.slice(0, 3).forEach((row) => removeRow(row));
+    const beside = watchNeighbour(mirror, list);
+    try {
+      removeRow(rows[3]);
+
+      assert.equal(beside.restylesOf(beside.neighbour), 2);
+    } finally {
+      beside.dispose();
+      container.remove();
+    }
+  });
+
+  test("the first row into an empty list restyles the list's neighbours, since `:empty` flipped", () => {
+    const { container, mirror, list, rows, removeRow, insertRow } = setupRowList();
+    rows.forEach((row) => removeRow(row));
+    const beside = watchNeighbour(mirror, list);
+    try {
+      insertRow(null);
+
+      assert.equal(beside.restylesOf(beside.neighbour), 2);
+    } finally {
+      beside.dispose();
       container.remove();
     }
   });

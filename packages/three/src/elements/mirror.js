@@ -953,14 +953,14 @@ export class DomMirror {
   childListChanged(
     element,
     from = null,
-    { previous = from ? from.previousSibling : null, kinds = null } = {},
+    { previous = from ? from.previousSibling : null, kinds = null, kept = false } = {},
   ) {
     batch(() => {
       const record = recordOf(element);
       if (record) {
         bump(record.childList);
       }
-      this.#restyleAround(element, from, previous, kinds);
+      this.#restyleAround(element, from, previous, kinds, kept);
       this.#layoutChangedAt(element, from);
     });
   }
@@ -992,7 +992,11 @@ export class DomMirror {
    *
    *   - `:empty`, on the list itself, and through it on the list's own
    *     siblings via the combinators above. It can only flip when the
-   *     change was at the very start, which is the wide case below anyway.
+   *     change was at the very start, and not even then when an element
+   *     stood next to the change (`kept`). That element was in the list
+   *     before the change and after it, so the list was empty at neither.
+   *     A log that drops its oldest row as each new one arrives is that
+   *     case, and it restyles its rows and nothing around the list.
    *
    * What is knowingly not modelled is the `:nth-last-child` and
    * `:nth-last-of-type` family: a row appended at the end shifts the
@@ -1020,15 +1024,23 @@ export class DomMirror {
    *   what it gets is the narrowed tail with the whole list before the
    *   change restyled behind it: better than the old scope, and O(N)
    *   where the full hint is O(kinds).
+   * @param {boolean} kept Whether an element stood next to the change, in
+   *   the list before it and after it, so that `:empty` did not flip.
    * @returns {void}
    */
-  #restyleAround(element, from, previous, kinds) {
-    // Nothing to narrow from: no record to say where the change happened,
-    // or a change at the start of the list, where `:empty` may have flipped
-    // and every child's position from the start moved. The old answer —
-    // the list, its subtree and its siblings — is the right one here.
+  #restyleAround(element, from, previous, kinds, kept) {
     if (!previous || previous.parentNode !== element) {
-      this.#restyleScope(element);
+      // A change at the start of the list, or one whose place is lost:
+      // every child's position from the start may have moved, so every
+      // child restyles. Where `:empty` may have flipped too, the list and
+      // its siblings restyle with them, which is the old answer.
+      if (!kept) {
+        this.#restyleScope(element);
+        return;
+      }
+      for (let child = element.firstChild; child; child = child.nextSibling) {
+        this.#restyleScope(child, { reachesSiblings: false });
+      }
       return;
     }
     // Forward: the tail, from the change to the end.
@@ -1484,6 +1496,10 @@ function firstDisturbedChild(mutation) {
  *   when there is no telling.
  * @property {Iterable<string> | null} [kinds] The `nodeName`s of the
  *   elements added and removed, or null when unknown.
+ * @property {boolean} [kept] Whether the record's `previousSibling` or
+ *   `nextSibling` is an element. Either was in the list on both sides of
+ *   the change, so the list was not empty before it or after it. False
+ *   when unknown, which leaves `:empty` free to have flipped.
  */
 
 /**
@@ -1504,6 +1520,7 @@ function childListHint(mutation) {
   return {
     previous: previous && previous.parentNode === mutation.target ? previous : null,
     kinds,
+    kept: [previous, mutation.nextSibling].some((node) => node?.nodeType === Node.ELEMENT_NODE),
   };
 }
 

@@ -32,7 +32,10 @@ On a laptop the page is the page and nothing else. No session can be opened, so 
 no renderer is made and three.js is never fetched. `?emulator` installs a headset in the browser
 (IWER, with its dev panels) and the **Enter** button appears at the top, over the sky in the
 backdrop, since freedom's place for it at the bottom is the toolbar's. Press it and the emulated
-session is drawn over the page. `?emulator=bare` installs the runtime without the panels.
+session is drawn over the page. The controller and hand models come from this app's own origin,
+where `@apendua.dev/media`'s Vite plugin serves them. Knights has no service worker, so nothing
+precaches them, and a headset with no network draws no models. `?emulator=bare` installs the runtime
+without the panels.
 
 The page needed four changes to look the same in the panel. The first three do not show on the page;
 the fourth does:
@@ -70,12 +73,12 @@ elsewhere. A pull request that changes this app or a package it imports, other t
 tests or benchmarks, runs it, with minesweeper's, the desk's and Euclid's, from
 `.github/workflows/driven.yml`.
 
-| File                      | What it is                                                                                                                                                 |
-| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `src/main.ts`             | Mounts the game into `#root`, then offers a session through `offerHeadset` from `@apendua.dev/headset/offer`, which loads `xr.ts` only where one can open. |
-| `src/xr.ts`               | Makes the renderer with freedom's SVG plugin, follows `?theming` and `?outlines`, and adds the Enter button.                                               |
-| `src/components/Scene.ts` | The panel, `@apendua.dev/headset/scene`'s backdrop, lights and the cursors.                                                                                |
-| `src/placement.ts`        | Where the panel hangs, in plain numbers, shared with `tests/xr-check.mjs`.                                                                                 |
+| File                      | What it is                                                                                                                                                             |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/main.ts`             | Mounts the game into `#root`, then offers a session through `offerHeadset` from `@apendua.dev/headset/offer`, which loads `xr.ts` only where one can open.             |
+| `src/xr.ts`               | Makes the renderer with freedom's SVG plugin and the controller and hand models from this app's origin, follows `?theming` and `?outlines`, and adds the Enter button. |
+| `src/components/Scene.ts` | The panel, `@apendua.dev/headset/scene`'s backdrop, lights and the cursors.                                                                                            |
+| `src/placement.ts`        | Where the panel hangs, in plain numbers, shared with `tests/xr-check.mjs`.                                                                                             |
 
 ## How it is put together
 

@@ -2281,12 +2281,13 @@ program, whose keys are pressed with the ray, whose floppies are dragged from on
 another, with a layer menu, live SVG charts, draggable cards, a text field with the scene's keyboard
 and a memo that can be picked up and tipped to read.
 
-Four apps are run on every pull request that changes what this package ships, in an emulated headset
+Five apps are run on every pull request that changes what this package ships, in an emulated headset
 in headless Chromium; a change only to its docs, tests or benchmarks runs none of them.
 `.github/workflows/visual.yml` photographs the showcase and holds the picture against the one on
 record. `.github/workflows/driven.yml` plays [`apps/minesweeper`](../../apps/minesweeper), puts the
-desk up and draws in [`apps/euclid`](../../apps/euclid), with each app's `tests/xr-check.mjs`; each
-app's README says what its check does.
+desk up, draws in [`apps/euclid`](../../apps/euclid) and fights in
+[`apps/knights`](../../apps/knights), with each app's `tests/xr-check.mjs`; each app's README says
+what its check does.
 
 ## License
 

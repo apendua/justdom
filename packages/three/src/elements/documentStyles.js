@@ -64,8 +64,9 @@ const listeners = new Set();
 /**
  * What each `<style>` in the head was last seen to style, so that a sheet
  * leaving, or rewritten, can say what it used to style when its rules are
- * gone. A style element missing from it was there before anything watched,
- * and has no telling.
+ * gone. Every `<style>` in the head is recorded when watching starts, so
+ * one missing from it arrived since, in the flush being read, and styled
+ * nothing before that; see `rescope`.
  *
  * @type {WeakMap<Element, StyleScope>}
  */
@@ -260,7 +261,9 @@ const ENDS_NAME = /^$|^[.#[:\s>+~]/;
  * itself, outside any `:not()`, `:is()` or `:has()`, and outside attribute
  * brackets. Every element the selector matches is that element, in its
  * subtree, or after it among its siblings. Null when the first compound
- * names no class, or names it in a way this does not read.
+ * names no class, or names it in a way this does not read. A selector that
+ * reaches it carries no quote and no escape: `splitSelectors` has refused
+ * the list that had one.
  *
  * @param {string} selector
  * @returns {string | null}
@@ -270,9 +273,6 @@ export function leadingClass(selector) {
   let depth = 0;
   for (let i = 0; i < text.length; i++) {
     const c = text[i];
-    if (c === "\\" || c === '"' || c === "'") {
-      return null;
-    }
     if (c === "(" || c === "[") {
       depth += 1;
     } else if (c === ")" || c === "]") {
@@ -284,8 +284,8 @@ export function leadingClass(selector) {
       if (c === ".") {
         const name = PLAIN_CLASS.exec(text.slice(i + 1))?.[0];
         // Read only up to where the name ends. A name that goes on in a
-        // character this does not read, an escape or one past ASCII, is a
-        // longer name than it reads.
+        // character this does not read, one past ASCII, is a longer name
+        // than it reads.
         return name && ENDS_NAME.test(text[i + 1 + name.length] ?? "") ? name : null;
       }
     }

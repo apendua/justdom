@@ -502,9 +502,7 @@ describe("watchDocumentStyles", () => {
     assert.equal(leadingClass("div .a"), null, "the class is on a descendant");
     assert.equal(leadingClass(":not(.a)"), null, "inside a pseudo-class");
     assert.equal(leadingClass(":is(.a, .b)"), null);
-    assert.equal(leadingClass("[title='.a']"), null);
-    assert.equal(leadingClass(".a\\:b"), null, "an escape is not read");
-    assert.equal(leadingClass(".kbé"), null, "nor a name that goes on past ASCII");
+    assert.equal(leadingClass(".kbé"), null, "a name that goes on past ASCII is not read");
     assert.equal(leadingClass(".a.b#c"), "a");
     assert.equal(leadingClass("*"), null);
   });

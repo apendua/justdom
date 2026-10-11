@@ -71,7 +71,9 @@ import { addDependency, batch, Derived } from "@apendua/signal";
  * What the events that end a press carry besides, the `…end`, the
  * completion and the `…missed` alike: the `…start` the press began with,
  * so that a handler can ask the manager whether something took it
- * (`isStopped`). That is a question for the grip. A panel takes every
+ * (`isStopped`). That is a question for the grip, and a hold's: `drag()` and
+ * `carry()` look the start up among the presses they took (`createHold`),
+ * so that a release goes no further than its press did. A panel takes every
  * trigger press on what it can click, so on a panel a `select`'s start has
  * always been taken; it leaves a grip's start alone, so that a scene can
  * pick up with the grip what the panel hangs from.

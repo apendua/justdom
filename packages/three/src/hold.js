@@ -20,9 +20,11 @@ import { Signal } from "@apendua/signal";
  * @property {(event: InputEvent) => void} take Take a press: it goes no
  *   further, and neither will the release that ends it.
  * @property {(event: InputCancelEvent & PressEnd, button: DragButton) => H | null} release
- *   Hear a release. One that ends a press `take` took goes no further. It
- *   ends the hold if it is the holding hand's release of the button it holds
- *   with, and then the hold is what it hands back; otherwise null.
+ *   Hear a release. One that ends a press `take` took goes no further. If it
+ *   is the holding hand's release of the button it holds with, it is the one
+ *   that ends the hold, and the hold is handed back for the caller to end;
+ *   otherwise null. `held` is the caller's to clear, so a `drag()` can send
+ *   its `dragend` while `held()` still says the hand.
  */
 
 /**
@@ -35,7 +37,14 @@ import { Signal } from "@apendua/signal";
  * release comes. A carry is put down when it is disabled, and a drag may be
  * enabled again while a press it refused is still held, and in both the
  * release still belongs to its press. The manager hands every release its
- * press's start (`PressEnd`), which is what is looked up.
+ * press's start (`PressEnd`), which is what is looked up. It is looked up
+ * in a set of the starts taken here, and not asked of the manager
+ * (`isStopped`): a handler inside the object may have stopped the start and
+ * let its release through, and stopped is not stopped by this hold.
+ *
+ * The rule holds while the object, or a carry's handle, is in the scene. One
+ * taken out mid-press no longer listens, and the manager sends the release
+ * along the path it recorded at the press, on to whatever is behind.
  *
  * Only the holding hand's release, of the button it holds with, ends the
  * hold. A handover moves the hold to another hand, and the first hand's

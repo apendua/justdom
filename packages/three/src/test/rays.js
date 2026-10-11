@@ -39,3 +39,23 @@ export function bubble(object, event) {
     node.dispatchEvent(sent);
   }
 }
+
+/** @type {WeakMap<object, object>} Each hand's last `selectstart`. */
+const starts = new WeakMap();
+
+/**
+ * A ray event as the manager sends it: a press's `selectstart` is kept for
+ * the hand, and the events that end the press carry it as `start`.
+ *
+ * @template {{ type: string, controller: object }} E
+ * @param {E} event
+ * @returns {E}
+ */
+export function withStart(event) {
+  if (event.type === "selectstart") {
+    starts.set(event.controller, event);
+  } else if (event.type === "select" || event.type === "selectend") {
+    return { ...event, start: starts.get(event.controller) };
+  }
+  return event;
+}

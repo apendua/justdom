@@ -20,14 +20,11 @@ import {
 } from "./dragAndDrop.js";
 import { createFrameRequester } from "./frameRequester.js";
 import { HapticsContext, isArrival } from "./haptics.js";
-import {
-  ACTIVE_ATTRIBUTE,
-  getComputedStyleCached,
-  HOVER_ATTRIBUTE,
-  isPortalRoot,
-} from "./mirror.js";
+import { getComputedStyleCached, isPortalRoot } from "./mirror.js";
+import { ACTIVE_ATTRIBUTE, HOVER_ATTRIBUTE } from "./portalRoot.js";
 import { describeElement } from "./panelFrame.js";
 import { movesList, sampleRay, ScrollDragsContext } from "./scroll.js";
+import { labelledField } from "./typing.js";
 
 /**
  * @import {EntityEffect} from '@apendua/signal';
@@ -41,7 +38,8 @@ import { movesList, sampleRay, ScrollDragsContext } from "./scroll.js";
  * Whether the element asks to be a ray target of its own. `cursor: pointer`
  * is the same signal the ordinary web uses to mark an element clickable, so
  * buttons opt in through their stylesheet with no extra attribute. Everything
- * else — cards, labels, layout wrappers — stays out of the raycast set; the
+ * else — cards, layout wrappers, any label but a field's (see `isRayTarget`)
+ * — stays out of the raycast set; the
  * portal's blocker plane keeps the panel as a whole opaque to rays. SVG
  * shapes, and the `<g>`, `<a>` and nested `<svg>` that group them, follow
  * the same rule, and `cursor` is inherited into them from the page around
@@ -64,13 +62,29 @@ export function isClickable(element) {
  * Whether the element is a ray target of its own: something to click, or
  * something to pick up. A `draggable="true"` card is often styled
  * `cursor: grab` rather than `pointer`, and it has to be pressable to be
- * dragged.
+ * dragged. A `<label>` of a field the keyboard can type into is one without
+ * asking, as the field is (`textInput.js`): a page's label focuses its field
+ * whatever its cursor. `pointer-events: none` still wins.
  *
  * @param {HTMLElement} element
  * @returns {boolean}
  */
 export function isRayTarget(element) {
-  return isClickable(element) || isDragSource(element);
+  return isClickable(element) || isDragSource(element) || isFieldLabel(element);
+}
+
+/**
+ * @param {HTMLElement} element
+ * @returns {boolean}
+ */
+function isFieldLabel(element) {
+  if (element.localName !== "label") {
+    return false;
+  }
+  // Read for the invalidation too: a `for` written or a field disabled
+  // after mounting restyles the label, which asks again.
+  const style = getComputedStyleCached(element);
+  return style.getPropertyValue("pointer-events") !== "none" && labelledField(element) !== null;
 }
 
 /**

@@ -7,6 +7,36 @@
  */
 export const PORTAL_ATTRIBUTE = "data-xr-portal";
 
+/*
+ * The flags the portal writes on the elements it mirrors, for a stylesheet to
+ * answer as it would the pseudo-class each stands for. Here for the same
+ * reasons, and the mirror's contract sets (`PRESENTATIONAL_ATTRIBUTES` in
+ * `mirror.js`) and every writer take the names from here.
+ */
+
+/**
+ * Set on every control a hand's pointer is over, for a stylesheet to answer
+ * as it would `:hover`. See `pointerForwarding.js`.
+ */
+export const HOVER_ATTRIBUTE = "data-xr-hover";
+
+/**
+ * Set on every control a hand is pressing, as `:active`.
+ */
+export const ACTIVE_ATTRIBUTE = "data-xr-active";
+
+/**
+ * Set on a mirrored checkbox while it is ticked, as `:checked`. See
+ * `checkbox.js`.
+ */
+export const CHECKED_ATTRIBUTE = "data-xr-checked";
+
+/**
+ * Set on the field the keyboard is typing into, as `:focus`. See
+ * `keyboardHost.js`.
+ */
+export const FOCUS_ATTRIBUTE = "data-xr-focus";
+
 /**
  * The portal a node was projected through, if it was.
  *

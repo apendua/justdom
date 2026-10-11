@@ -19,7 +19,13 @@ import {
 } from "./textLines.js";
 import { isSvgElement } from "./plugins.js";
 import { clipBoxEqual, intersectClipBoxes, toLocalClipBox, UNCLIPPED } from "./clip.js";
-import { PORTAL_ATTRIBUTE } from "./portalRoot.js";
+import {
+  ACTIVE_ATTRIBUTE,
+  CHECKED_ATTRIBUTE,
+  FOCUS_ATTRIBUTE,
+  HOVER_ATTRIBUTE,
+  PORTAL_ATTRIBUTE,
+} from "./portalRoot.js";
 import { holdShared, shadowAccessor } from "./shadowAccessor.js";
 import {
   frameFor,
@@ -170,29 +176,6 @@ export function isBookkeepingMutation(mutation) {
     PORTAL_BOOKKEEPING_ATTRIBUTES.has(mutation.attributeName)
   );
 }
-
-/**
- * Set on every control a hand's pointer is over, for a stylesheet to answer
- * as it would `:hover`. See `pointerForwarding.js`.
- */
-export const HOVER_ATTRIBUTE = "data-xr-hover";
-
-/**
- * Set on every control a hand is pressing, as `:active`.
- */
-export const ACTIVE_ATTRIBUTE = "data-xr-active";
-
-/**
- * Set on a mirrored checkbox while it is ticked, as `:checked`. See
- * `checkbox.js`.
- */
-export const CHECKED_ATTRIBUTE = "data-xr-checked";
-
-/**
- * Set on the field the keyboard is typing into, as `:focus`. See
- * `keyboardHost.js`.
- */
-export const FOCUS_ATTRIBUTE = "data-xr-focus";
 
 /**
  * The attributes the portal writes onto elements itself, to say what the ray

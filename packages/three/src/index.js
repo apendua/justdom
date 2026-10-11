@@ -36,7 +36,7 @@ export {
 } from "./carry.js";
 export { createPortal } from "./elements/portal.js";
 export { enableThemingMode } from "./elements/documentStyles.js";
-export { getPortalRoot } from "./elements/portalRoot.js";
+export { FOCUS_ATTRIBUTE, getPortalRoot } from "./elements/portalRoot.js";
 export { isTextInput, typeIntoInput } from "./elements/typing.js";
 export { PREVIEW_ATTRIBUTE } from "./elements/keyboardPreview.js";
 export { PortalPluginsContext } from "./elements/plugins.js";

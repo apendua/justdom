@@ -1,4 +1,4 @@
-import { Derived, effects } from "@apendua/signal";
+import { Derived, effects, onCleanup } from "@apendua/signal";
 import { keyedList } from "../core.js";
 import { children } from "../operators.js";
 import {
@@ -565,6 +565,10 @@ export function drawText(ctx, element, instance = null) {
           true,
           unitScale.get() / factor,
         );
+        // Drawn for this value alone, so it goes with it.
+        onCleanup(() => {
+          drawn.texture.dispose();
+        });
         return { ...drawn, width: drawn.width / factor, height: drawn.height / factor };
       });
       const paint = new Derived(() => parsePaint(read("fill")));

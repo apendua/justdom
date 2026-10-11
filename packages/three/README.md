@@ -1668,6 +1668,12 @@ of hundreds of rows, which reaches the ceiling with every row at once; what a st
 quadratic in it. It only ever lowers. Off a scene — a portal on a plain page, or under a test runner
 — the page's `devicePixelRatio` is the whole answer, since the panel _is_ the page.
 
+A run keeps what it drew at the step below the one its panel shows. A player who leans in crosses
+into a step and then usually leans back out of it, and the step they come back to is the one below:
+the panel shows it again without drawing anything or uploading anything, from the rasters and the
+arrays it kept. A step two below, or one above, is let go of as the panel moves on. Holding the step
+below costs half again what the shown step costs, since a step costs half the one above it.
+
 ### Panel defaults
 
 Some of what a panel is told belongs to the scene rather than to any one panel. `render()` takes

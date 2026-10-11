@@ -1,7 +1,7 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
-import { createTextScale } from "./textScale.js";
+import { createTextScale, stepBelow } from "./textScale.js";
 import { placeAndScale } from "./place.js";
 
 /**
@@ -153,5 +153,54 @@ describe("createTextScale", () => {
     placeAndScale(container, 0, 0, -0.05, 0.001, 0.001, 0.001);
     scale.measure();
     assert.equal(scale.read(), 1);
+  });
+});
+
+describe("held steps", () => {
+  test("a panel holds the step it shows and the one below it, and no other", () => {
+    // 2.5 device pixels to the pixel: shown at 2.83.
+    const p = panel({ metresPerPixel: 0.001, distance: 0.4 });
+    p.scale.measure();
+    const shown = p.scale.read();
+    assert.equal(shown, 2 ** 1.5);
+    assert.equal(p.scale.holds(shown), true);
+    assert.equal(p.scale.holds(2), true);
+    assert.equal(p.scale.holds(Math.SQRT2), false);
+    assert.equal(p.scale.holds(4), false);
+  });
+
+  test("what it holds moves with the step it shows", () => {
+    const p = panel({ metresPerPixel: 0.001, distance: 0.4 });
+    p.scale.measure();
+    p.moveTo(1);
+    p.scale.measure();
+    assert.equal(p.scale.read(), 1);
+    assert.equal(p.scale.holds(1), true);
+    assert.equal(p.scale.holds(2 ** 1.5), false, "the step it left is above it");
+    assert.equal(p.scale.holds(2), false);
+  });
+
+  test("the step below is the very number the ladder hands out for it", () => {
+    // Compared with `===` by the runs that keep rasters under it, so the
+    // ones between the octaves have to come out exactly as `read` gives them.
+    for (const distance of [1, 0.7, 0.5, 0.4, 0.3]) {
+      const p = panel({ metresPerPixel: 0.001, distance });
+      p.scale.measure();
+      const step = p.scale.read();
+      const below = stepBelow(step);
+      if (below === null) {
+        assert.equal(step, 1);
+        continue;
+      }
+      // Measured a hair under the step below, which rounds up to it.
+      const lower = panel({ metresPerPixel: 0.001, distance: 1.001 / below });
+      lower.scale.measure();
+      assert.equal(lower.scale.read(), below);
+    }
+  });
+
+  test("a step a panel's cap put off the ladder has the ladder step under it below it", () => {
+    assert.equal(stepBelow(3), 2 ** 1.5);
+    assert.equal(stepBelow(1), null);
   });
 });

@@ -488,7 +488,7 @@ function buildPortal(ctx, ownOptions = {}) {
       CameraContext.get(ctx),
       maxTextScale,
     );
-    ctx = TextScaleContext.set(ctx, textScale.read);
+    ctx = TextScaleContext.set(ctx, textScale);
   } catch {
     // No renderer or camera on this context. Same shape of absence the late
     // frame hook below is written for, and the same answer: the panel does

@@ -1,5 +1,4 @@
 import * as THREE from "three";
-import { onCleanup } from "@apendua/signal";
 
 /**
  * @import {TextLine} from './textLines.js';
@@ -860,7 +859,10 @@ export function buildTextMipmaps(canvas) {
  *   matrices above the `<text>` divided by that factor. Multiplied in after
  *   `renderScale` is capped, since the cap is on how finely a panel is
  *   painted, and a user unit may be many CSS pixels.
- * @returns {TextTexture}
+ * @returns {TextTexture} The caller's to dispose. A run keeps its rasters
+ *   past the computation that drew them, one per step its panel holds
+ *   (`textRun.js`), so when one goes is the caller's call and not the
+ *   computation's.
  */
 export const generateTextTexture = (
   lines,
@@ -954,10 +956,6 @@ export const generateTextTexture = (
     texture.generateMipmaps = false;
   }
   texture.needsUpdate = true;
-
-  onCleanup(() => {
-    texture.dispose();
-  });
 
   return {
     texture,

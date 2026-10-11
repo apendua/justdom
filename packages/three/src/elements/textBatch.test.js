@@ -446,3 +446,150 @@ describe("text batch storage release", () => {
     assert.equal(boundTexture(p.container), texture);
   });
 });
+
+/**
+ * A canvas that counts the pixel reads the batch makes of it, which is what
+ * copying it into a layer costs.
+ *
+ * @param {number} width
+ * @param {number} height
+ */
+function countedCanvas(width, height) {
+  const canvas = {
+    width,
+    height,
+    reads: 0,
+    getContext: () => ({
+      getImageData: (
+        /** @type {number} */ _x,
+        /** @type {number} */ _y,
+        /** @type {number} */ w,
+        /** @type {number} */ h,
+      ) => {
+        canvas.reads += 1;
+        return { data: new Uint8ClampedArray(w * h * 4) };
+      },
+    }),
+  };
+  return canvas;
+}
+
+/**
+ * Show `canvas` on a run, as `textRun.js` does when its panel changes step:
+ * a new texture in the alpha map, and a quad of the same CSS size.
+ *
+ * @param {THREE.Mesh} mesh
+ * @param {ReturnType<typeof countedCanvas>} canvas
+ */
+function show(mesh, canvas) {
+  /** @type {THREE.MeshBasicMaterial} */ (mesh.material).alphaMap = new THREE.Texture(
+    /** @type {HTMLCanvasElement} */ (/** @type {unknown} */ (canvas)),
+  );
+}
+
+/**
+ * The array texture of every bucket with runs in it, by `renderOrder|size`.
+ *
+ * @param {THREE.Object3D} container
+ */
+function shownArrays(container) {
+  return /** @type {THREE.InstancedMesh[]} */ (container.children)
+    .filter((c) => c.isInstancedMesh && c.count > 0)
+    .map((c) => /** @type {THREE.ShaderMaterial} */ (c.material).uniforms.uRuns.value);
+}
+
+describe("text batch held steps", () => {
+  test("a run gone back to a raster the batch has copies nothing and builds no array", () => {
+    const container = new THREE.Group();
+    place(container, 0, 0, 0);
+    const batch = createTextBatch(container);
+    const mesh = run(24, 12);
+    container.add(mesh);
+    batch.add(mesh, { value: new THREE.Vector4(-1e6, -1e6, 1e6, 1e6) });
+
+    // Step 1, then the step above it, then back: two canvases of two sizes.
+    const coarse = countedCanvas(24, 12);
+    const fine = countedCanvas(34, 17);
+    show(mesh, coarse);
+    batch.flush();
+    const [coarseArray] = shownArrays(container);
+    show(mesh, fine);
+    batch.invalidate();
+    batch.flush();
+    const [fineArray] = shownArrays(container);
+    assert.notEqual(fineArray, coarseArray);
+
+    let disposed = false;
+    coarseArray.addEventListener("dispose", () => {
+      disposed = true;
+    });
+    show(mesh, coarse);
+    batch.invalidate();
+    batch.flush();
+
+    assert.deepEqual(shownArrays(container), [coarseArray], "drawn from the array it was in");
+    assert.equal(coarse.reads, 1, "its pixels were copied once, the first time it was shown");
+    assert.equal(fine.reads, 1);
+    assert.equal(disposed, false, "the array was neither disposed nor built again");
+    assert.equal(/** @type {THREE.Material} */ (mesh.material).visible, false);
+  });
+
+  test("a raster the run lets go of gives its layer back, and an emptied class its array", () => {
+    const container = new THREE.Group();
+    place(container, 0, 0, 0);
+    const batch = createTextBatch(container);
+    const mesh = run(24, 12);
+    container.add(mesh);
+    batch.add(mesh, { value: new THREE.Vector4(-1e6, -1e6, 1e6, 1e6) });
+
+    const coarse = countedCanvas(24, 12);
+    const fine = countedCanvas(34, 17);
+    show(mesh, coarse);
+    batch.flush();
+    const [coarseArray] = shownArrays(container);
+    show(mesh, fine);
+    batch.invalidate();
+    batch.flush();
+
+    let disposed = false;
+    coarseArray.addEventListener("dispose", () => {
+      disposed = true;
+    });
+    batch.flush();
+    assert.equal(disposed, false, "a held raster keeps its class's array");
+
+    batch.forget(mesh, /** @type {HTMLCanvasElement} */ (/** @type {unknown} */ (coarse)));
+    batch.flush();
+    assert.equal(disposed, true, "nobody is in the class any more");
+    assert.equal(shownArrays(container).length, 1, "and the run is still drawn at its step");
+  });
+
+  test("a run that leaves gives back the layer of every raster it had", () => {
+    const container = new THREE.Group();
+    place(container, 0, 0, 0);
+    const batch = createTextBatch(container);
+    const mesh = run(24, 12);
+    container.add(mesh);
+    batch.add(mesh, { value: new THREE.Vector4(-1e6, -1e6, 1e6, 1e6) });
+
+    show(mesh, countedCanvas(24, 12));
+    batch.flush();
+    const [coarseArray] = shownArrays(container);
+    show(mesh, countedCanvas(34, 17));
+    batch.invalidate();
+    batch.flush();
+    const [fineArray] = shownArrays(container);
+
+    /** @type {THREE.Texture[]} */
+    const disposed = [];
+    for (const array of [coarseArray, fineArray]) {
+      array.addEventListener("dispose", () => {
+        disposed.push(array);
+      });
+    }
+    batch.remove(mesh);
+    container.remove(mesh);
+    batch.flush();
+    assert.equal(disposed.length, 2);
+  });
+});

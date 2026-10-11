@@ -27,10 +27,22 @@ import { MAX_TEXT_SCALE } from "./textHelpers.js";
  */
 export const TextScaleContext = createProperty(
   /**
-   * @returns {(() => number) | null}
+   * @returns {TextScale | null}
    */
   () => null,
 );
+
+/**
+ * What a run asks its panel: the step to draw at, and which steps are worth
+ * keeping rasterized beside it.
+ *
+ * @typedef {object} TextScale
+ * @property {() => number} read The step the panel shows. A tracked read.
+ * @property {(step: number) => boolean} holds Whether the panel keeps a
+ *   run's raster at this step once the run is showing another. Untracked:
+ *   it is asked when a run lets go of rasters, which is not something that
+ *   should re-run because the answer moved.
+ */
 
 /**
  * How finely a run is rasterized: what the panel it is on measures, or, for
@@ -39,12 +51,12 @@ export const TextScaleContext = createProperty(
  * Read inside the computation that draws the run, so a panel the player walks
  * up to re-draws its text at the step it has reached.
  *
- * @param {(() => number) | null} textScale The run's `TextScaleContext`.
+ * @param {TextScale | null} textScale The run's `TextScaleContext`.
  * @returns {number}
  */
 export function readTextScale(textScale) {
   if (textScale) {
-    return textScale();
+    return textScale.read();
   }
   if (typeof window === "undefined") {
     return 1;
@@ -74,10 +86,12 @@ const MIN_DISTANCE = 0.05;
  * two it gets 2.83, which no eye has told the two apart from, at half the
  * memory and half of every upload the panel makes for the rest of its life.
  *
- * What it costs back is more boundaries to cross, and crossing one re-draws
- * every run on the panel. That is the trade, and it is the right way round:
- * a crossing is a burst that the hold below already makes rare, and the
- * memory is paid the whole time the panel is open.
+ * What it costs back is more boundaries to cross, and crossing up into a
+ * step re-draws every run on the panel. That is the trade, and it is the
+ * right way round: a crossing is a burst that the hold below already makes
+ * rare, and the memory is paid the whole time the panel is open. Crossing
+ * back down into the step below costs nothing to draw, since the panel holds
+ * it (`holds`).
  *
  * Counted in steps to a doubling rather than kept as the ratio itself so
  * that the ladder comes out *exact* on the octaves. `Math.SQRT2 ** 2` is
@@ -167,6 +181,26 @@ function pixelsPerUnitAtUnitDistance(renderer, camera) {
 }
 
 /**
+ * The step under `step` on the ladder, or null at the bottom of it.
+ *
+ * Found on the ladder rather than by dividing, so that it is the very number
+ * `stepFor` hands out for that step and a run's raster kept under it is found
+ * again. A step a panel's cap put off the ladder, 3 say, has the ladder step
+ * under it, 2.83, as its own. The tolerance is for the steps between the
+ * octaves, whose logarithm comes back a hair over the integer it is.
+ *
+ * @param {number} step
+ * @returns {number | null}
+ */
+export function stepBelow(step) {
+  const exponent = Math.ceil(Math.log2(step) * STEPS_PER_DOUBLING - 1e-9);
+  if (exponent <= 0) {
+    return null;
+  }
+  return 2 ** ((exponent - 1) / STEPS_PER_DOUBLING);
+}
+
+/**
  * The panel's own answer to "how sharp should this text be", remeasured once
  * a frame and published as a step the runs can be rasterized at.
  *
@@ -202,6 +236,19 @@ export function createTextScale(container, renderer, camera, maxScale = MAX_TEXT
      * @returns {number}
      */
     read: () => published.get(),
+
+    /**
+     * Whether a run keeps its raster at `held` while the panel shows the
+     * step it does now: the shown step, and the one below it. The one below
+     * is the step a panel leaned into has just left, which is the one the
+     * player leaning back out comes to first, and it costs half the shown
+     * step's memory. Any other step a run drew at is let go of when the run
+     * next changes texture.
+     *
+     * @param {number} held
+     * @returns {boolean}
+     */
+    holds: (held) => held === step || held === stepBelow(step),
 
     /**
      * Where the middle of the panel is, which is what its distance is

@@ -138,8 +138,8 @@ const NO_LAYER = -1;
  * The runs of one exact size, and the array texture holding them.
  *
  * Layers are handed out and taken back rather than repacked: a label whose
- * text changes rewrites its own layer of the mirror and disturbs nobody
- * else's. What reaches the GPU is the whole array, freshly allocated, once
+ * text changes gives its layer back and takes one off the free list, most
+ * often the same one, and disturbs nobody else's. What reaches the GPU is the whole array, freshly allocated, once
  * per rebuild that changed anything -- `commit` says why a layer at a time
  * was not enough.
  */
@@ -489,7 +489,7 @@ class Bucket {
     this.data.aColor[index * 4 + 1] = material.color.g;
     this.data.aColor[index * 4 + 2] = material.color.b;
     this.data.aColor[index * 4 + 3] = material.opacity;
-    this.data.aLayer[index] = member.layer;
+    this.data.aLayer[index] = /** @type {Slot} */ (member.shown).layer;
     const clip = member.clip.value;
     this.data.aClip[index * 4] = clip.x;
     this.data.aClip[index * 4 + 1] = clip.y;
@@ -535,16 +535,31 @@ class Bucket {
 }
 
 /**
- * What the batch keeps about one run between rebuilds: which layer of which
- * array holds its pixels, and the canvas those pixels came from — kept so that
- * a re-rasterized run is noticed and re-uploaded, and only then.
+ * Which layer of which array holds the pixels of one of a run's rasters.
+ *
+ * @typedef {object} Slot
+ * @property {SizeClass} sizeClass
+ * @property {number} layer
+ */
+
+/**
+ * What the batch keeps about one run between rebuilds: a layer for each of
+ * the run's rasters it has copied, keyed by the canvas the pixels came from,
+ * and which of them the run is showing.
+ *
+ * More than one, because a run keeps its rasters at the steps its panel
+ * holds (`textRun.js`), and a layer kept with each is what lets the panel
+ * go back to one of those steps without writing or uploading anything: the
+ * run shows a canvas the batch already has, and every array stays as it is.
+ * A layer goes back when the run lets go of its raster (`forget`) or leaves
+ * the batch (`remove`), and only then.
  *
  * @typedef {object} Member
  * @property {THREE.Mesh} mesh
  * @property {{ value: THREE.Vector4 }} clip The run's clip uniform (`textRun.js`).
- * @property {SizeClass | null} sizeClass
- * @property {number} layer
- * @property {HTMLCanvasElement | null} canvas
+ * @property {Map<HTMLCanvasElement, Slot>} slots
+ * @property {Slot | null} shown The slot of the canvas the run shows, when
+ *   the batch draws it.
  * @property {number} width
  * @property {number} height
  */
@@ -625,9 +640,8 @@ export class TextBatch {
     this.#members.set(mesh, {
       mesh,
       clip,
-      sizeClass: null,
-      layer: 0,
-      canvas: null,
+      slots: new Map(),
+      shown: null,
       width: 0,
       height: 0,
     });
@@ -648,14 +662,42 @@ export class TextBatch {
     if (!member) {
       return;
     }
-    if (member.sizeClass) {
-      member.sizeClass.release(member.layer);
+    for (const slot of member.slots.values()) {
+      slot.sizeClass.release(slot.layer);
     }
     this.#members.delete(mesh);
     if (mesh.material) {
       /** @type {THREE.Material} */ (mesh.material).visible = true;
     }
     mesh.frustumCulled = true;
+    this.invalidate();
+  }
+
+  /**
+   * Give back the layer a run's raster was copied into, because the run has
+   * let go of the raster: its panel no longer holds the step it was drawn
+   * at, or what the run says changed. Nothing to give back for a raster the
+   * batch never copied, which is every raster of a run it does not draw.
+   *
+   * Told by the run, at the commit that stops it showing the raster or after
+   * it, and never sooner. A layer given back while the run still showed its
+   * canvas would be taken again by the next rebuild and never returned.
+   *
+   * @param {THREE.Mesh} mesh
+   * @param {HTMLCanvasElement} canvas
+   * @returns {void}
+   */
+  forget(mesh, canvas) {
+    const member = this.#members.get(mesh);
+    const slot = member?.slots.get(canvas);
+    if (!member || !slot) {
+      return;
+    }
+    slot.sizeClass.release(slot.layer);
+    member.slots.delete(canvas);
+    if (member.shown === slot) {
+      member.shown = null;
+    }
     this.invalidate();
   }
 
@@ -692,9 +734,10 @@ export class TextBatch {
   }
 
   /**
-   * Make sure a run's pixels are in an array, moving it between arrays if it
-   * has been re-rasterized at a new size. Only a run whose canvas actually
-   * changed is uploaded, and then only its own layer.
+   * Make sure the pixels of the raster a run shows are in an array. A canvas
+   * the batch has a layer for already, which is a run gone back to a step its
+   * panel held, writes nothing, and the array it is in is not built again.
+   * Only a canvas the batch has not seen is copied, into a layer of its own.
    *
    * @param {Member} member
    * @returns {boolean} Whether the run can be drawn from a batch at all.
@@ -713,42 +756,28 @@ export class TextBatch {
     ).array;
     member.width = positions[3];
     member.height = positions[7];
-    const key = `${canvas.width}x${canvas.height}`;
-    const previousKey = member.sizeClass
-      ? `${member.sizeClass.width}x${member.sizeClass.height}`
-      : null;
-    if (previousKey !== key) {
-      // The run is leaving its old class whatever happens next, so the layer
-      // goes back first. Everything after this either gives the member a layer
-      // of the new class or leaves it holding none of either — a member left
-      // pointing at a class it has no layer in would hand that class a
-      // borrowed index the next time it moved, and the free list would start
-      // giving one layer to two runs.
-      if (member.sizeClass) {
-        member.sizeClass.release(member.layer);
-        member.sizeClass = null;
-        member.layer = NO_LAYER;
-      }
+    let slot = member.slots.get(canvas);
+    if (!slot) {
+      const key = `${canvas.width}x${canvas.height}`;
       let sizeClass = this.#classes.get(key);
       if (!sizeClass) {
         sizeClass = new SizeClass(canvas.width, canvas.height);
         this.#classes.set(key, sizeClass);
       }
       const layer = sizeClass.acquire();
-      member.canvas = null;
       if (layer === NO_LAYER) {
         // Full. The run draws itself, exactly as one with baked colours does,
         // and is asked again on the next rebuild — which is what lets it in
-        // when another run of its size goes away, since `remove` invalidates.
+        // when another run of its size goes away, since `remove` and `forget`
+        // invalidate.
+        member.shown = null;
         return false;
       }
-      member.sizeClass = sizeClass;
-      member.layer = layer;
+      slot = { sizeClass, layer };
+      sizeClass.write(layer, canvas);
+      member.slots.set(canvas, slot);
     }
-    if (member.canvas !== canvas) {
-      /** @type {SizeClass} */ (member.sizeClass).write(member.layer, canvas);
-      member.canvas = canvas;
-    }
+    member.shown = slot;
     return true;
   }
 
@@ -830,7 +859,7 @@ export class TextBatch {
     const keys = [];
     for (let i = 0; i < count; i++) {
       const member = found[i];
-      const sizeClass = /** @type {SizeClass} */ (member.sizeClass);
+      const sizeClass = /** @type {Slot} */ (member.shown).sizeClass;
       const key = `${sizeClass.width}x${sizeClass.height}|${member.mesh.renderOrder}`;
       keys.push(key);
       wanted.set(key, (wanted.get(key) ?? 0) + 1);
@@ -840,7 +869,7 @@ export class TextBatch {
       if (!bucket) {
         const member = found[keys.indexOf(key)];
         bucket = new Bucket(
-          /** @type {SizeClass} */ (member.sizeClass),
+          /** @type {Slot} */ (member.shown).sizeClass,
           member.mesh.renderOrder,
           this.#container,
         );
@@ -865,7 +894,8 @@ export class TextBatch {
       bucket.finish(bucket.count);
     }
     // Everything has been settled and written by now, so a class whose every
-    // layer has come back is one no run in the panel is in. Give its array
+    // layer has come back is one no run in the panel is in, at any step its
+    // panel holds. Give its array
     // back rather than hold the panel's high-water mark until it closes.
     for (const sizeClass of this.#classes.values()) {
       sizeClass.releaseStorageIfEmpty();

@@ -1,4 +1,4 @@
-import { enableThemingMode } from "@apendua/freedom";
+import { enableOutlinesMode, enableThemingMode } from "@apendua/freedom";
 
 /**
  * Turn on freedom's theming mode when the page's address asks for it with
@@ -16,4 +16,21 @@ import { enableThemingMode } from "@apendua/freedom";
  */
 export function followThemingQuery(query) {
   return query.has("theming") ? enableThemingMode() : null;
+}
+
+/**
+ * Turn on freedom's outlines mode when the page's address asks for it with
+ * `?outlines`, so that every panel outlines the elements that change, and
+ * those the mirror measures again for nothing. See "Outlines" in freedom's
+ * README for how to read them.
+ *
+ * In this entry beside `followThemingQuery` because it is the same kind of
+ * switch, read from the same query by the same apps.
+ *
+ * @param {URLSearchParams} query The page's query.
+ * @returns {(() => void) | null} What turns outlines mode off again, or null
+ *   when the query did not ask for it.
+ */
+export function followOutlinesQuery(query) {
+  return query.has("outlines") ? enableOutlinesMode() : null;
 }

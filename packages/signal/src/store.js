@@ -469,8 +469,9 @@ function store(data, operators = []) {
    * signal is also something `Computation` recognizes, so subscribing to it
    * touches no RxJS at all.
    *
-   * Created on first read rather than up front: a key nobody reads reactively
-   * needs nothing, and a write to one has nobody to tell.
+   * Created on the first read inside a computation rather than up front: a key
+   * nobody reads reactively needs nothing, and a write to one has nobody to
+   * tell.
    *
    * @type {Map<PropertyKey, Signal<number>>}
    */

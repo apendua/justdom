@@ -46,25 +46,25 @@ const tools: PendingStep["tool"][] = ["line", "circle"];
 
 describe("the drawing's dashes", () => {
   for (const tool of tools) {
-    it(`draws construction lines and the ${tool}'s rubber band solid by default`, () => {
+    it(`dashes construction lines and the ${tool}'s rubber band by default`, () => {
       const { constructionLine, constructionCircle, band, subscription } = mount(tool);
       expect(constructionLine.localName).toBe("line");
-      expect(constructionLine.getAttribute("stroke-dasharray")).toBe("");
+      expect(constructionLine.getAttribute("stroke-dasharray")).toBe("5 4");
       expect(constructionCircle.localName).toBe("circle");
-      expect(constructionCircle.getAttribute("stroke-dasharray")).toBe("");
+      expect(constructionCircle.getAttribute("stroke-dasharray")).toBe("5 4");
       expect(band.localName).toBe(tool);
       expect(band.getAttribute("visibility")).toBe("visible");
-      expect(band.getAttribute("stroke-dasharray")).toBe("");
+      expect(band.getAttribute("stroke-dasharray")).toBe("4 4");
       subscription.unsubscribe();
     });
 
-    it(`dashes them and the ${tool}'s rubber band when asked to`, () => {
+    it(`draws them and the ${tool}'s rubber band solid when dashes are off`, () => {
       const { constructionLine, constructionCircle, band, subscription } = mount(tool, {
-        dashes: true,
+        dashes: false,
       });
-      expect(constructionLine.getAttribute("stroke-dasharray")).toBe("5 4");
-      expect(constructionCircle.getAttribute("stroke-dasharray")).toBe("5 4");
-      expect(band.getAttribute("stroke-dasharray")).toBe("4 4");
+      expect(constructionLine.getAttribute("stroke-dasharray")).toBe("");
+      expect(constructionCircle.getAttribute("stroke-dasharray")).toBe("");
+      expect(band.getAttribute("stroke-dasharray")).toBe("");
       subscription.unsubscribe();
     });
   }

@@ -35,9 +35,8 @@ const svgStyle = className`
 export interface CanvasOptions {
   /**
    * Whether construction lines and the rubber band of a line or circle in
-   * progress are dashed. Off by default: a headset draws every dash as
-   * geometry of its own, and rebuilds all of them each time the shape
-   * moves. `?dashes` on the page's address turns it on.
+   * progress are dashed. On by default; `?dashes=off` on the page's address
+   * turns it off.
    */
   dashes?: boolean;
 }
@@ -61,7 +60,7 @@ function realPoint(value: Point): { x: number; y: number } | null {
   return { x: affine.x.re, y: affine.y.re };
 }
 
-const Canvas = component((store: AppStore, { dashes = false }: CanvasOptions = {}) => {
+const Canvas = component((store: AppStore, { dashes = true }: CanvasOptions = {}) => {
   let svgRef: SVGSVGElement | undefined;
   let drag: DragState | null = null;
   const grabbing = Signal.of(false);

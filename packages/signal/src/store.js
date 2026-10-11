@@ -41,11 +41,12 @@ import { isPlainObject } from "./util.js";
  *   there for what it changes.
  * @property {number} held How many keys of its owner hold the store, kept
  *   by every write and removal of a key of the owner's `state`, which the
- *   proxy makes the only ways to change one: it refuses `defineProperty`. A store held
- *   as itself can sit at two keys of its owner, after `list[1] = list[0]`,
- *   `list.meta = list[0]` or a `fill`, and a write into it through one key
- *   would show at the other, so the `set` trap writes into it in place only
- *   while this is 1. Unused for a store with no owner.
+ *   proxy makes the only ways to change one: it refuses `defineProperty` and
+ *   `preventExtensions`. A store held as itself can sit at two keys of its
+ *   owner, after `list[1] = list[0]`, `list.meta = list[0]` or a `fill`, and
+ *   a write into it through one key would show at the other, so the `set`
+ *   trap writes into it in place only while this is 1. Unused for a store
+ *   with no owner.
  * @property {Set<PropertyKey> | null} touched The data keys the program has
  *   written or deleted through the proxy since `trackWrites` was called,
  *   which `reshape` keeps. `null` until then, so a store nobody reloads
@@ -213,21 +214,27 @@ function countHolder(internals, value, delta) {
 }
 
 /**
- * The stores `value` holds at its data keys, read without running a getter,
- * or `null` when it holds none, which is the common case and allocates
- * nothing.
+ * The stores `value` holds at its data keys, at any depth through the plain
+ * objects and arrays it holds, which a write makes stores of, and not into
+ * a store, which is placed as it is. Read without running a getter. `null`
+ * when it holds none, which is the common case and allocates nothing.
  *
  * @param {object} value A plain object, an array or a store.
+ * @param {Set<unknown> | null} [stores] The set to add to.
  * @returns {Set<unknown> | null}
  */
-function storesIn(value) {
+function storesIn(value, stores = null) {
   const source = /** @type {object} */ (internalsOf(value)?.state ?? value);
-  /** @type {Set<unknown> | null} */
-  let stores = null;
   for (const key of Reflect.ownKeys(source)) {
     const descriptor = Reflect.getOwnPropertyDescriptor(source, key);
-    if (descriptor && "value" in descriptor && isStore(descriptor.value)) {
-      (stores ??= new Set()).add(descriptor.value);
+    if (!descriptor || !("value" in descriptor)) {
+      continue;
+    }
+    const held = descriptor.value;
+    if (isStore(held)) {
+      (stores ??= new Set()).add(held);
+    } else if (storeKindOf(held)) {
+      stores = storesIn(/** @type {object} */ (held), stores);
     }
   }
   return stores;
@@ -669,6 +676,12 @@ function store(data, operators = []) {
       // throws, as on a non-extensible object.
       return false;
     },
+    preventExtensions() {
+      // Refused too, so that `Object.preventExtensions`, `seal` and `freeze`
+      // throw before they touch `state`, which would otherwise refuse every
+      // later write of a new key, a `push` included.
+      return false;
+    },
     deleteProperty(_, key) {
       if (getters.has(key) || setters.has(key)) {
         // A key with a getter or a setter stays for the store's life, since
@@ -818,23 +831,20 @@ function nestedStore(internals, value, owned) {
  * @param {object} value
  * @param {Internals | undefined} from The definition's record, when the
  *   definition is a store.
+ * @param {Set<Internals>} adopted The stores the reload has re-owned, which
+ *   `countAdopted` counts when it is done.
  * @returns {object}
  */
-function adopt(internals, value, from) {
+function adopt(internals, value, from, adopted) {
   const nested = internalsOf(value);
   if (!nested) {
     return nestedStore(internals, value, false);
   }
   if (from && nested.owner === from) {
-    // The keys that hold it already, which a program assignment may have
-    // made; the write that places it at this key counts that one.
+    // Counted by `countAdopted` once the reload has written every key, since
+    // a key a program assignment made may hold it already.
     nested.owner = internals;
-    nested.held = 0;
-    for (const key of Reflect.ownKeys(internals.state)) {
-      if (internals.state[key] === value) {
-        nested.held += 1;
-      }
-    }
+    adopted.add(nested);
     if (internals.touched) {
       track(nested, false);
     }
@@ -964,8 +974,9 @@ function reshapeOwned(internals, held, value) {
  * @param {unknown} value
  * @param {Internals | undefined} from The definition's record, when the
  *   definition is a store.
+ * @param {Set<Internals>} adopted See `adopt`.
  */
-function reshapeKey(internals, key, value, from) {
+function reshapeKey(internals, key, value, from, adopted) {
   const { state, announce, ownKeys, touched } = internals;
   const had = Object.hasOwn(state, key);
   const old = state[key];
@@ -976,7 +987,9 @@ function reshapeKey(internals, key, value, from) {
     // The program wrote or deleted this key: what it did stays.
     return;
   }
-  const next = storeKindOf(value) ? adopt(internals, /** @type {object} */ (value), from) : value;
+  const next = storeKindOf(value)
+    ? adopt(internals, /** @type {object} */ (value), from, adopted)
+    : value;
   if (had && Object.is(old, next)) {
     return;
   }
@@ -1051,6 +1064,8 @@ function defineAccessors(getters, setters, descriptors) {
  */
 function reshapeWith(internals, descriptors, from) {
   const { state, getters, setters, derived, announce, ownKeys, touched } = internals;
+  /** @type {Set<Internals>} */
+  const adopted = new Set();
   const previous = new Map(getters);
   getters.clear();
   setters.clear();
@@ -1096,7 +1111,7 @@ function reshapeWith(internals, descriptors, from) {
       }
       continue;
     }
-    reshapeKey(internals, key, descriptor.value, from);
+    reshapeKey(internals, key, descriptor.value, from, adopted);
   }
   // The keys the definition no longer has, unless the program put them there.
   for (const key of Reflect.ownKeys(state)) {
@@ -1106,6 +1121,32 @@ function reshapeWith(internals, descriptors, from) {
       derived.delete(key);
       announce(key);
       announce(ownKeys);
+    }
+  }
+  countAdopted(internals, adopted);
+}
+
+/**
+ * Set `held` for the stores a reload re-owned, in one pass over the keys of
+ * `internals`' state once the reload has written every key: a key a program
+ * assignment made may hold one already, and a count kept per adoption would
+ * walk the state once per store.
+ *
+ * @param {Internals} internals
+ * @param {Set<Internals>} adopted
+ */
+function countAdopted(internals, adopted) {
+  if (adopted.size === 0) {
+    return;
+  }
+  for (const nested of adopted) {
+    nested.held = 0;
+  }
+  const { state } = internals;
+  for (const key of Reflect.ownKeys(state)) {
+    const nested = internalsOf(state[key]);
+    if (nested && adopted.has(nested)) {
+      nested.held += 1;
     }
   }
 }
@@ -1161,6 +1202,8 @@ function reshapeArray(internals, definition) {
     return;
   }
   const before = array.length;
+  /** @type {Set<Internals>} */
+  const adopted = new Set();
   for (let index = 0; index < source.length; index += 1) {
     const key = String(index);
     const had = Object.hasOwn(array, index);
@@ -1174,7 +1217,7 @@ function reshapeArray(internals, definition) {
       }
       continue;
     }
-    reshapeKey(internals, key, source[index], from);
+    reshapeKey(internals, key, source[index], from, adopted);
   }
   for (let index = source.length; index < array.length; index += 1) {
     countHolder(internals, array[index], -1);
@@ -1185,6 +1228,7 @@ function reshapeArray(internals, definition) {
     announce("length");
     announce(ownKeys);
   }
+  countAdopted(internals, adopted);
 }
 
 export default store;

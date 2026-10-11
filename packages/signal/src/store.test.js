@@ -1524,3 +1524,26 @@ test("Object.defineProperty() on a store throws", () => {
   );
   assert.strictEqual(list[1].n, 2);
 });
+
+test("replace() writes no store it places one level down in newValue", () => {
+  const s = /** @type {any} */ (store({ x: { inner: { v: 1 } } }));
+  const S = s.x.inner;
+  replace(s, { x: { inner: { v: 2 } }, y: { z: S } });
+  assert.strictEqual(s.y.z, S);
+  assert.strictEqual(S.v, 1);
+  assert.notStrictEqual(s.x.inner, S);
+  const t = /** @type {any} */ (store({ items: [{ n: 1 }], selected: [] }));
+  const E = t.items[0];
+  replace(t, { items: [{ n: 2 }], selected: [E] });
+  assert.strictEqual(E.n, 1);
+  assert.strictEqual(t.selected[0], E);
+});
+
+test("Object.preventExtensions() on a store throws and leaves it writable", () => {
+  const list = store([{ n: 1 }]);
+  assert.throws(() => Object.preventExtensions(list), TypeError);
+  assert.throws(() => Object.freeze(list), TypeError);
+  assert.strictEqual(Object.isExtensible(list), true);
+  list.push({ n: 2 });
+  assert.strictEqual(list.length, 2);
+});

@@ -4,7 +4,7 @@ import * as THREE from "three";
 import { createMirror } from "../elements/mirror.js";
 import { svgElements } from "./index.js";
 import { drawUse } from "./template.js";
-import { drawnRange, drawText, measuringScale } from "./text.js";
+import { drawnRange, drawText, layoutScale, measuringScale } from "./text.js";
 import { BOX_BUCKET_BIAS } from "../elements/boxBatch.js";
 import { getContentRenderOrder } from "../elements/elevation.js";
 import { installSvgTextLayout } from "../test/svgTextLayout.js";
@@ -47,11 +47,11 @@ function svg(tag, attributes = {}, children = []) {
  *
  * @param {Element[]} content
  * @param {Element} draw
- * @param {{ portalOrder?: boolean }} [options]
+ * @param {{ portalOrder?: boolean, viewBox?: string }} [options]
  */
-function scene(content, draw, { portalOrder = false } = {}) {
+function scene(content, draw, { portalOrder = false, viewBox = "0 0 50 25" } = {}) {
   const layout = installSvgTextLayout();
-  const root = svg("svg", { viewBox: "0 0 50 25" }, content);
+  const root = svg("svg", { viewBox }, content);
   root.getBoundingClientRect = () =>
     /** @type {DOMRect} */ ({ left: 0, top: 0, right: 100, bottom: 50, width: 100, height: 50 });
   document.body.appendChild(root);
@@ -88,6 +88,8 @@ function scene(content, draw, { portalOrder = false } = {}) {
     transforms: layout.transforms,
     /** Every range made, with the node it points into now. */
     ranges: layout.ranges,
+    /** Every measuring svg read: its size, and where it was parked. */
+    hosts: layout.hosts,
     /** @returns {Mesh[]} */
     get meshes() {
       /** @type {Mesh[]} */
@@ -155,20 +157,34 @@ describe("drawnRange", () => {
 });
 
 describe("measuringScale", () => {
-  test("a font of 64 units or more is measured as it is", () => {
-    assert.equal(measuringScale("64px"), 1);
-    assert.equal(measuringScale("200px"), 1);
+  test("a font of 64 units or more is drawn as it is", () => {
+    assert.equal(measuringScale(64), 1);
+    assert.equal(measuringScale(200), 1);
   });
 
   test("a smaller one by the power of two that brings it to 64 or more", () => {
-    assert.equal(measuringScale("63px"), 2);
-    assert.equal(measuringScale("16px"), 4);
-    assert.equal(measuringScale("0.62px"), 128);
+    assert.equal(measuringScale(63), 2);
+    assert.equal(measuringScale(16), 4);
+    assert.equal(measuringScale(0.62), 128);
   });
 
-  test("a size that cannot be read is taken as 16", () => {
-    assert.equal(measuringScale(""), 4);
-    assert.equal(measuringScale("0px"), 4);
+  test("no more than 1024 times, and once for a font of zero", () => {
+    assert.equal(measuringScale(0.01), 1024);
+    assert.equal(measuringScale(0), 1);
+  });
+});
+
+describe("layoutScale", () => {
+  test("is the smallest font's, where the measuring svg fits", () => {
+    assert.equal(layoutScale(0.62, { width: 1, height: 1 }), 128);
+  });
+
+  test("keeps the measuring svg within 2^20 px a side", () => {
+    // `font-size: 0.01` in a viewBox 10000 wide asks for 1024, which would
+    // make the svg ten million px wide.
+    const scale = layoutScale(0.01, { width: 10000, height: 100 });
+    assert.equal(scale, 64);
+    assert.ok(10000 * scale <= 2 ** 20);
   });
 });
 
@@ -207,6 +223,49 @@ describe("svg text", () => {
     // Within the texels of bleed a texture is given below its glyphs, which
     // are a few pixels at the size each is drawn at.
     assert.ok(Math.abs(height - largeHeight) < 0.02, `drawn ${height} tall, not ${largeHeight}`);
+  });
+
+  test("a small font in a tspan is placed as it is in a text of its own", () => {
+    const alone = svg("text", { x: "0", y: "0.18", "font-size": "0.62", fill: "red" }, ["3"]);
+    const s = scene([alone], alone);
+    const expected = [cornerOf(s.meshes[0]), sizeOf(s.meshes[0])];
+    s.teardown();
+    const tspan = svg("tspan", { x: "0", y: "0.18", "font-size": "0.62" }, ["3"]);
+    const text = svg("text", { "font-size": "64", fill: "red" }, [tspan]);
+    const t = scene([text], text);
+    assert.deepEqual([cornerOf(t.meshes[0]), sizeOf(t.meshes[0])], expected);
+    t.teardown();
+  });
+
+  test("a large font in a tspan is drawn as it is in a text of its own", () => {
+    // Drawn at the small font's scale, its texture would be read off a font
+    // 8192px tall, and its bleed would be 128 times thinner.
+    const alone = svg("text", { x: "0", y: "64", "font-size": "64", fill: "red" }, ["3"]);
+    const s = scene([alone], alone);
+    const expected = sizeOf(s.meshes[0]);
+    s.teardown();
+    const small = svg("tspan", { x: "0", y: "0.18" }, ["3"]);
+    const large = svg("tspan", { x: "10", y: "64", "font-size": "64" }, ["3"]);
+    const text = svg("text", { "font-size": "0.62", fill: "red" }, [small, large]);
+    const t = scene([text], text);
+    assert.deepEqual(sizeOf(t.meshes[1]), expected);
+    t.teardown();
+  });
+
+  test("the measuring svg stays within 2^20 px a side, parked off the page", () => {
+    // A font 0.01 units tall placed by a percentage of a viewport 10000
+    // wide. Laid out 8192 times over, the svg would be 81,920,000 px wide,
+    // past what Blink lays out in.
+    const text = svg("text", { x: "50%", y: "10", "font-size": "0.01", fill: "red" }, ["3"]);
+    const s = scene([text], text, { viewBox: "0 0 10000 5000" });
+    const [host] = s.hosts;
+    s.teardown();
+    assert.ok(host.width <= 2 ** 20, `${host.width} px wide`);
+    assert.ok(host.height <= 2 ** 20, `${host.height} px tall`);
+    // No part of it to the right of the page's left edge or below its top,
+    // where it would be scrollable overflow.
+    assert.ok(Number.parseFloat(host.left) + host.width < 0, `left at ${host.left}`);
+    assert.ok(Number.parseFloat(host.top) + host.height < 0, `top at ${host.top}`);
   });
 
   test("the text is measured with its own transform off, and the object carries it", () => {

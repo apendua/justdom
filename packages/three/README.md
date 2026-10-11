@@ -1976,22 +1976,25 @@ A `<text>` is drawn, with the `<tspan>`s and `<a>`s in it. The browser lays it o
 `dy`, `text-anchor`, the font and its spacing are its business, a percentage being of the nearest
 viewport. It is measured as HTML text under a transform is, in a detached copy with the `<text>`'s
 own transform switched off, so what comes back is already in its user space, and each text node is
-drawn as one textured quad there. A font under 64 units is laid out and drawn at the power of two
-that brings it to 64 CSS pixels, and scaled back down. A browser snaps a small font's ascent and
-descent to device pixels, and not the same way in a layout as on a canvas, so text a unit or two
-tall would otherwise be drawn off its baseline. The quad hangs under the same matrices as a shape: a
-rotated `<g>` turns the text with it. The colour is `fill`, with `fill-opacity` and `opacity`, and a
-colour change is a uniform write, not a new texture. The texture is drawn at the scale the matrices
-above give it, redrawn only when that crosses a half-octave, so a zoomed label stays sharp and a
-zoom does not redraw it each frame. Text takes its place in the paint order, and each run is a ray
-target by its own fill, its `<tspan>`'s `pointer-events` deciding as it does for a shape; the quads
-stand in for the glyphs. A change to one run touches that run alone, a new place being a geometry
-write and new characters a new texture, and a hover on the text measures nothing. Text in a
-`<symbol>` or a `<marker>` is drawn in each copy, taking the `<use>`'s font and fill where it sets
-none. Not followed: `stroke` on text, `<textPath>`, vertical writing modes, and a text node placed
-one character at a time (`x` or `rotate` with a list of values), which is drawn as one run from
-where its characters start. As with HTML text, a stylesheet rule that reaches above the `<text>` to
-style a `<tspan>` does not apply to the measured copy.
+drawn as one textured quad there. Text in a font under 64 units is enlarged by a power of two for
+both steps and scaled back down. The copy is laid out at the power of two that brings the smallest
+font among its runs to 64 CSS pixels, and each run is drawn at the one that brings its own font
+there. A browser snaps a small font's ascent and descent to device pixels, and not the same way in a
+layout as on a canvas, so text a unit or two tall would otherwise be drawn off its baseline. The
+factor is at most 1024, and the measuring `<svg>` at most 2^20 px a side, which keeps both inside
+what Blink lays out in, so a font under 1/16 of a unit stays a little snapped. The quad hangs under
+the same matrices as a shape: a rotated `<g>` turns the text with it. The colour is `fill`, with
+`fill-opacity` and `opacity`, and a colour change is a uniform write, not a new texture. The texture
+is drawn at the scale the matrices above give it, redrawn only when that crosses a half-octave, so a
+zoomed label stays sharp and a zoom does not redraw it each frame. Text takes its place in the paint
+order, and each run is a ray target by its own fill, its `<tspan>`'s `pointer-events` deciding as it
+does for a shape; the quads stand in for the glyphs. A change to one run touches that run alone, a
+new place being a geometry write and new characters a new texture, and a hover on the text measures
+nothing. Text in a `<symbol>` or a `<marker>` is drawn in each copy, taking the `<use>`'s font and
+fill where it sets none. Not followed: `stroke` on text, `<textPath>`, vertical writing modes, and a
+text node placed one character at a time (`x` or `rotate` with a list of values), which is drawn as
+one run from where its characters start. As with HTML text, a stylesheet rule that reaches above the
+`<text>` to style a `<tspan>` does not apply to the measured copy.
 
 ```html
 <text x="52" y="60" text-anchor="middle" fill="white">input</text>

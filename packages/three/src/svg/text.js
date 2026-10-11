@@ -16,9 +16,9 @@ import {
 import { isSvgElement, SVG_NAMESPACE } from "../elements/plugins.js";
 import { place } from "../elements/place.js";
 import {
-  DEFAULT_FONT_SIZE,
   generateTextTexture,
   getTextRenderStyle,
+  readFontSize,
   scaleTextRenderStyle,
 } from "../elements/textHelpers.js";
 import { preservesWhitespace } from "../elements/textLines.js";
@@ -52,18 +52,19 @@ import { parseNumber, parsePaint, parsePointerEvents, readProperty } from "./sty
  * transform: not in place, where the rects are screen-space bounds after
  * every matrix above, but in a detached copy with its own transform switched
  * off, laid out in an `<svg>` of its own that maps one user unit to a
- * power of two of CSS pixels (`measuringScale`), and read back divided by it.
+ * power of two of CSS pixels (`layoutScale`), and read back divided by it.
  * What that comes to is already in the element's user space, so the runs
  * hang under the element's object like a shape's geometry does, and a
  * rotation on a `<g>` turns the text with it. A copy is measured off the
  * page, so text inside a `<symbol>` or a `<marker>` measures the same way.
  *
  * Each run is drawn by the same rasterizer as HTML text, as a coverage mask
- * tinted by `fill`, so a colour change is a uniform write. It is drawn at the
- * size it was measured at, so the canvas reads the font's metrics at the
- * size the layout did. The texture is drawn at as many device pixels per
- * user unit as the root's viewport and the matrices above give it, rounded
- * to a step so a scale animation does not redraw it every frame.
+ * tinted by `fill`, so a colour change is a uniform write. It is drawn at a
+ * power of two of its size too (`measuringScale`), so the canvas reads the
+ * font's metrics at a size where they are not snapped, as the layout did.
+ * The texture is drawn at as many device pixels per user unit as the root's
+ * viewport and the matrices above give it, rounded to a step so a scale
+ * animation does not redraw it every frame.
  *
  * @import {Source} from '@apendua/signal';
  * @import {Component, XREventMap} from '../core.js';
@@ -127,9 +128,6 @@ const LAYOUT_PROPERTIES = [
 /** Where `white-space` is in `LAYOUT_PROPERTIES`. */
 const WHITE_SPACE = LAYOUT_PROPERTIES.indexOf("white-space");
 
-/** Where `font-size` is in `FONT_PROPERTIES`. */
-const FONT_SIZE = FONT_PROPERTIES.indexOf("font-size");
-
 /**
  * The smallest font, in CSS pixels, a `<text>` is measured and drawn at.
  * A browser snaps a small font's ascent and descent to device pixels, and
@@ -143,19 +141,55 @@ const FONT_SIZE = FONT_PROPERTIES.indexOf("font-size");
 const MIN_MEASURED_FONT_SIZE = 64;
 
 /**
- * How many CSS pixels a user unit is laid out at: one for a font of
- * `MIN_MEASURED_FONT_SIZE` units or more, and otherwise the power of two
- * that brings it there. A power of two, so dividing a measurement by it and
- * multiplying it back loses nothing.
+ * The most CSS pixels a user unit is laid out or drawn at. A run not placed
+ * by a percentage can be anywhere in user space, and at this scale a run
+ * 32,000 units out is still inside the 33.5 million px Blink lays out in.
+ * A font under 1/16 of a unit stays a little snapped.
+ */
+const MAX_MEASURING_SCALE = 1024;
+
+/**
+ * The most CSS pixels the measuring `<svg>` is on a side. Where a percentage
+ * places a run, the `<svg>` is the viewport the text is in, `layoutScale`
+ * times over, and this keeps it inside what Blink lays out in.
+ */
+const MAX_HOST_SIZE = 2 ** 20;
+
+/**
+ * How many CSS pixels a user unit is drawn at for a font of `fontSize`
+ * units: one for a font of `MIN_MEASURED_FONT_SIZE` or more, or of zero,
+ * which draws nothing, and otherwise the power of two that brings it there,
+ * up to `MAX_MEASURING_SCALE`. A power of two, so dividing a measurement by
+ * it and multiplying it back loses nothing.
  *
- * @param {string} fontSize The `<text>`'s computed `font-size`, in user
- *   units.
+ * @param {number} fontSize
  * @returns {number}
  */
 export function measuringScale(fontSize) {
-  const size = Number.parseFloat(fontSize);
-  const resolved = size > 0 ? size : DEFAULT_FONT_SIZE;
-  return 2 ** Math.max(0, Math.ceil(Math.log2(MIN_MEASURED_FONT_SIZE / resolved)));
+  if (!(fontSize > 0)) {
+    return 1;
+  }
+  const exponent = Math.ceil(Math.log2(MIN_MEASURED_FONT_SIZE / fontSize));
+  return 2 ** Math.min(Math.log2(MAX_MEASURING_SCALE), Math.max(0, exponent));
+}
+
+/**
+ * How many CSS pixels a user unit is laid out at: `measuringScale` for the
+ * smallest font a run is drawn in, since the copy lays every run out at
+ * once, and no more than keeps the measuring `<svg>` within
+ * `MAX_HOST_SIZE` a side. A larger font in the same `<text>` is laid out
+ * larger than 64px, which is no worse.
+ *
+ * @param {number} smallest The smallest `font-size`, in user units, of the
+ *   runs' parents.
+ * @param {{ width: number, height: number }} host The measuring `<svg>`'s
+ *   `viewBox`.
+ * @returns {number}
+ */
+export function layoutScale(smallest, host) {
+  const side = Math.max(host.width, host.height, 1);
+  const fits = 2 ** Math.floor(Math.log2(MAX_HOST_SIZE / side));
+  return Math.max(1, Math.min(measuringScale(smallest), fits));
 }
 
 /**
@@ -282,8 +316,8 @@ function collectRuns(element, layoutStyle) {
  *
  * The copy is the mirror's measurement clone (`createMeasurementClone`): the
  * element cloned deep, with every computed style of the `<text>` itself copied
- * onto it and its transform switched off, here in an `<svg>` at `scale` CSS
- * pixels per unit. Its `viewBox` is the viewport the element is in where a
+ * onto it and its transform switched off, here in an `<svg>` at `layoutScale`
+ * CSS pixels per unit. Its `viewBox` is the viewport the element is in where a
  * length is a percentage, so the percentage resolves as it does in place, and a
  * unit square where none is. The `<tspan>`s keep their classes, and the
  * document's stylesheets apply to them as usual; as with HTML text, a selector
@@ -299,17 +333,26 @@ function collectRuns(element, layoutStyle) {
  *   drawn with.
  * @param {(element: Element) => readonly string[]} layoutStyle An element's
  *   `LAYOUT_PROPERTIES`, for its `white-space`.
- * @param {number} scale From `measuringScale`.
+ * @param {number} smallest The smallest `font-size` of the runs' parents.
  * @returns {TextRun[]}
  */
-function measureRuns(element, found, viewport, fonts, layoutStyle, scale) {
+function measureRuns(element, found, viewport, fonts, layoutStyle, smallest) {
   const host = document.createElementNS(SVG_NAMESPACE, "svg");
-  const { width, height } = viewport ?? { width: 1, height: 1 };
-  host.setAttribute("width", String(width * scale));
-  host.setAttribute("height", String(height * scale));
-  host.setAttribute("viewBox", `0 0 ${width} ${height}`);
+  const box = viewport ?? { width: 1, height: 1 };
+  const scale = layoutScale(smallest, box);
+  const width = box.width * scale;
+  const height = box.height * scale;
+  host.setAttribute("width", String(width));
+  host.setAttribute("height", String(height));
+  host.setAttribute("viewBox", `0 0 ${box.width} ${box.height}`);
   host.style.setProperty("overflow", "visible", "important");
   const clone = createMeasurementClone(/** @type {SVGElement} */ (element), host);
+  // Parked above and to the left of the page by its own size, where no part
+  // of it is scrollable overflow. Parked at `createMeasurementClone`'s
+  // `left: -99999px`, an `<svg>` wider than that would reach into the page
+  // and give it a scrollbar while it is measured.
+  host.style.setProperty("left", `${-(width + 99999)}px`, "important");
+  host.style.setProperty("top", `${-(height + 99999)}px`, "important");
   try {
     FONT_PROPERTIES.forEach((name, i) => {
       if (fonts[i]) {
@@ -450,7 +493,23 @@ export function drawText(ctx, element, instance = null) {
     () => FONT_PROPERTIES.map((name) => readDrawnProperty(element, name, instance)),
     { isEqual: arraysEqual },
   );
-  const scale = new Derived(() => measuringScale(fonts.get()[FONT_SIZE]));
+  /** @type {WeakMap<Element, Derived<number>>} */
+  const fontSizes = new WeakMap();
+  /**
+   * The size of the font a run in `target` is drawn in, which in a copy made
+   * by a `<use>` is the one the copy is laid out in. Behind a gate of its
+   * own, like `layoutStyle`, so a restyle that keeps it measures nothing.
+   *
+   * @param {Element} target
+   */
+  const fontSize = (target) => {
+    let signal = fontSizes.get(target);
+    if (!signal) {
+      signal = new Derived(() => readFontSize(readDrawnProperty(target, "font-size", instance)));
+      fontSizes.set(target, signal);
+    }
+    return signal.get();
+  };
 
   const runs = new Derived(
     () => {
@@ -464,7 +523,10 @@ export function drawText(ctx, element, instance = null) {
       // Read only when a percentage needs it, so a root that resizes does
       // not measure text it does not move.
       const viewport = relative ? viewportSize(element, instance) : null;
-      return measureRuns(element, found, viewport, fonts.get(), layoutStyle, scale.get());
+      // A font of zero draws nothing, and does not count.
+      const sizes = found.map(({ parent }) => fontSize(parent)).filter((size) => size > 0);
+      const smallest = Math.min(...sizes);
+      return measureRuns(element, found, viewport, fonts.get(), layoutStyle, smallest);
     },
     { isEqual: runsEqual },
   );
@@ -516,17 +578,16 @@ export function drawText(ctx, element, instance = null) {
           /** @type {Record<string, unknown>} */ (/** @type {unknown} */ (b)),
         ),
     });
-    // Drawn at the size it was measured at, `factor` times its user space,
-    // and brought back to it by the quad.
+    // Drawn `factor` times its user space, for its own font, and brought
+    // back to it by the quad.
     const textureData = new Derived(() => {
-      const factor = scale.get();
-      const { text } = characters.get();
-      const width = characters.get().width * factor;
-      const height = characters.get().height * factor;
+      const factor = measuringScale(renderStyle.get().fontSize);
+      const { text, width, height } = characters.get();
+      const scaled = { width: width * factor, height: height * factor };
       const drawn = generateTextTexture(
-        [{ text, left: 0, top: 0, width, height }],
+        [{ text, left: 0, top: 0, ...scaled }],
         scaleTextRenderStyle(renderStyle.get(), factor),
-        { width, height },
+        scaled,
         readTextScale(textScale),
         true,
         unitScale.get() / factor,

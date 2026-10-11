@@ -14,7 +14,19 @@ import { onCleanup } from "@apendua/signal";
  */
 
 /** The font size, in px, a style whose own cannot be read is drawn at. */
-export const DEFAULT_FONT_SIZE = 16;
+const DEFAULT_FONT_SIZE = 16;
+
+/**
+ * A computed `font-size` as a number of px, or `DEFAULT_FONT_SIZE` where it
+ * is not a number. Zero is a size, and draws nothing.
+ *
+ * @param {string} value
+ * @returns {number}
+ */
+export function readFontSize(value) {
+  const size = Number.parseFloat(value);
+  return Number.isNaN(size) ? DEFAULT_FONT_SIZE : size;
+}
 
 /**
  * The most device pixels a run is ever rasterized for each of its CSS pixels.
@@ -201,8 +213,7 @@ function fontShorthand(face, fontSize) {
  * @returns {TextRenderStyle}
  */
 export function getTextRenderStyle(style) {
-  const fontSize = Number.parseFloat(style.fontSize || "");
-  const resolvedFontSize = Number.isNaN(fontSize) ? DEFAULT_FONT_SIZE : fontSize;
+  const resolvedFontSize = readFontSize(style.fontSize || "");
 
   // The `font-variant` slot of the canvas `font` shorthand is the CSS2 one:
   // `normal | small-caps`, and nothing else. `style.fontVariant` is the
@@ -242,11 +253,13 @@ export function getTextRenderStyle(style) {
 }
 
 /**
- * The same style with every length in it multiplied by `factor`: the font's
- * size, its spacing and the thickness of its decorations. A run drawn in it
- * at `factor` times its layout, through a `unitScale` divided by `factor`,
- * comes out the same size on the same number of texels, but every metric the
- * canvas reads is read off a font `factor` times larger.
+ * The same style with the font's size, its spacing and the thickness of its
+ * decorations multiplied by `factor`. A run drawn in it at `factor` times its
+ * layout, through a `unitScale` divided by `factor`, comes out the same size
+ * on the same number of texels, but every metric the canvas reads is read off
+ * a font `factor` times larger. The shadow is not scaled, and would come out
+ * `1 / factor` the size of the glyphs. SVG text, the one caller, draws its
+ * runs with no shadow.
  *
  * @param {TextRenderStyle} style
  * @param {number} factor

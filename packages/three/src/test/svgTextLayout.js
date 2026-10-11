@@ -5,7 +5,7 @@ import { resetMeasuringRangeForTests } from "../elements/mirror.js";
  * draw one.
  */
 
-/** The font size, in user units, of a `<text>` that sets none. */
+/** The font size, in user units, of a run whose parent sets none. */
 const FONT_SIZE = 4;
 
 /**
@@ -13,18 +13,20 @@ const FONT_SIZE = 4;
  * parent's `x` and sits on its `y` as a baseline, every character half an em
  * wide, the line three quarters of an em above the baseline and a quarter
  * below, and a percentage `x` is of the measuring `<svg>`'s `viewBox`. The em
- * is the `<text>`'s `font-size`, 4 units where it sets none, which makes a
- * character 2 units wide and the line 4 tall. The measuring `<svg>` reports
- * itself at (1000, 500), as an off-screen one would, so a run is read relative
- * to it, in CSS pixels: its `width` over its `viewBox`'s per unit, or one
- * without a `viewBox`. As a browser does, the line's ascent and descent are
- * rounded to whole pixels at that size. Every range read also records the
- * `transform` of the `<text>` it measured in, and every range made is kept with
- * the node it points into now.
+ * is the `font-size` of the run's `<tspan>`, or else of its `<text>`, 4 units
+ * where neither sets one, which makes a character 2 units wide and the line 4
+ * tall. The measuring `<svg>`, the parked `inert` one, reports itself at
+ * (1000, 500), as an off-screen one would, so a run is read relative to it,
+ * in CSS pixels: its `width` over its `viewBox`'s per unit. As a browser
+ * does, the line's ascent and descent are rounded to whole pixels at that
+ * size. Every range read also records the `transform` of the `<text>` it
+ * measured in, and every range made is kept with the node it points into
+ * now. Every measuring `<svg>` read records its size and where it is parked.
  *
  * @returns {{
  *   transforms: string[],
  *   ranges: { readonly container: Node | null }[],
+ *   hosts: { width: number, height: number, left: string, top: string }[],
  *   restore: () => void,
  * }}
  */
@@ -33,19 +35,31 @@ export function installSvgTextLayout() {
   const transforms = [];
   /** @type {{ readonly container: Node | null }[]} */
   const ranges = [];
+  /** @type {{ width: number, height: number, left: string, top: string }[]} */
+  const hosts = [];
   const originalRange = document.createRange;
   resetMeasuringRangeForTests();
   const originalRect = window.Element.prototype.getBoundingClientRect;
   window.Element.prototype.getBoundingClientRect = function () {
     const element = /** @type {Element} */ (this);
-    const host =
-      element.localName === "svg" &&
-      /** @type {SVGElement} */ (element).style.getPropertyValue("left") === "-99999px";
-    return /** @type {DOMRect} */ (
-      host
-        ? { left: 1000, top: 500, right: 1000, bottom: 500, width: 0, height: 0 }
-        : originalRect.call(element)
-    );
+    if (element.localName !== "svg" || !element.hasAttribute("inert")) {
+      return originalRect.call(element);
+    }
+    const { style } = /** @type {SVGElement} */ (element);
+    hosts.push({
+      width: Number(element.getAttribute("width")),
+      height: Number(element.getAttribute("height")),
+      left: style.getPropertyValue("left"),
+      top: style.getPropertyValue("top"),
+    });
+    return /** @type {DOMRect} */ ({
+      left: 1000,
+      top: 500,
+      right: 1000,
+      bottom: 500,
+      width: 0,
+      height: 0,
+    });
   };
   document.createRange = () => {
     /** @type {Node | null} */
@@ -71,11 +85,10 @@ export function installSvgTextLayout() {
           const text = /** @type {SVGElement} */ (parent.closest("text"));
           transforms.push(text.style.getPropertyValue("transform"));
           const host = /** @type {Element} */ (text.parentNode);
-          // Without a `viewBox`, a unit is a pixel.
-          const width = Number(host.getAttribute("width") ?? 300);
-          const viewBoxWidth = Number(host.getAttribute("viewBox")?.split(" ")[2] ?? width);
-          const scale = width / viewBoxWidth;
+          const viewBoxWidth = Number(host.getAttribute("viewBox")?.split(" ")[2]);
+          const scale = Number(host.getAttribute("width")) / viewBoxWidth;
           const em =
+            (parent === text ? 0 : Number.parseFloat(parent.getAttribute("font-size") ?? "")) ||
             Number.parseFloat(text.style.getPropertyValue("font-size")) ||
             Number.parseFloat(text.getAttribute("font-size") ?? "") ||
             FONT_SIZE;
@@ -102,6 +115,7 @@ export function installSvgTextLayout() {
   return {
     transforms,
     ranges,
+    hosts,
     restore() {
       document.createRange = originalRange;
       window.Element.prototype.getBoundingClientRect = originalRect;

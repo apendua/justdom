@@ -371,7 +371,7 @@ async function main() {
 
     const flags = () =>
       page.$$eval(
-        "#board svg image",
+        "#board svg image:not([visibility=hidden])",
         (images, url) => images.filter((image) => image.getAttribute("href") === url).length,
         flagUrl,
       );

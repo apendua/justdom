@@ -1,9 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, onTestFinished } from "vitest";
 import { children } from "@apendua/justdom";
 import { just } from "@apendua/signal";
 import type { Field } from "../store/Fields";
+import Root, { RootContext } from "../store/Root";
 import Viewport, { ViewportContext } from "../store/Viewport";
 import FieldStatus, { FLAG_URL, MINE_URL } from "./FieldStatus";
+import Game from "./Game";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 
@@ -21,16 +23,22 @@ function field(state: Partial<Pick<Field, "uncovered" | "flag" | "mine" | "nMine
   } as Field;
 }
 
+/** Mount `tree` into `element` until the test finishes. */
+function mount(element: Element, ...trees: Parameters<typeof children>): void {
+  const subscription = just(element, [children(...trees)]).subscribe({
+    error: (err) => {
+      throw err;
+    },
+  });
+  onTestFinished(() => subscription.unsubscribe());
+}
+
 /** The elements `FieldStatus` draws for `target`, inside an `<svg>`. */
 function draw(target: Field): Element[] {
   const viewport = new Viewport({ allFields: [target], screenWidth: 100, screenHeight: 100 });
   const ctx = ViewportContext.set({}, viewport);
   const svg = document.createElementNS(SVG_NS, "svg");
-  just(svg, [children(FieldStatus(ctx, target))]).subscribe({
-    error: (err) => {
-      throw err;
-    },
-  });
+  mount(svg, FieldStatus(ctx, target));
   return [...svg.querySelectorAll("*")];
 }
 
@@ -44,12 +52,63 @@ describe("FieldStatus", () => {
     const drawn = draw(target);
     expect(drawn.map((element) => element.tagName)).toEqual(["image"]);
     expect(drawn[0].getAttribute("href")).toBe(url);
-    expect(url).toMatch(/^data:image\/svg\+xml,/);
   });
 
   it("draws a count as text", () => {
     const drawn = draw(field({ uncovered: true, nMines: 3 }));
     expect(drawn.map((element) => element.tagName)).toEqual(["text"]);
     expect(drawn[0].textContent).toBe("3");
+  });
+
+  // A picture whose markup does not parse draws nothing, on the page and in
+  // the headset alike, and nothing else here would notice.
+  it.each([
+    ["mine", MINE_URL],
+    ["flag", FLAG_URL],
+  ])("the %s's picture is an SVG with a size of its own", (_, url) => {
+    const prefix = "data:image/svg+xml,";
+    expect(url.startsWith(prefix)).toBe(true);
+    const parsed = new DOMParser().parseFromString(
+      decodeURIComponent(url.slice(prefix.length)),
+      "image/svg+xml",
+    );
+    expect(parsed.getElementsByTagName("parsererror")).toHaveLength(0);
+    const root = parsed.documentElement;
+    expect([root.namespaceURI, root.localName]).toEqual([SVG_NS, "svg"]);
+    // freedom draws an SVG with no size of its own at 300 by 150.
+    expect(Number(root.getAttribute("width"))).toBeGreaterThan(0);
+    expect(Number(root.getAttribute("height"))).toBeGreaterThan(0);
+  });
+});
+
+describe("the board's pictures", () => {
+  // freedom disposes a texture when the last element naming its URL goes, so
+  // the mine's picture has to outlive the game that covers every field again.
+  it("are mounted from the start and stay through a new game", () => {
+    globalThis.ResizeObserver ??= class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    };
+    const board = document.createElement("div");
+    const menu = document.createElement("div");
+    const game = Game(RootContext.set({}, new Root(board)));
+    mount(board, ...game.board);
+    mount(menu, game.menu);
+
+    const pictures = () =>
+      [...board.querySelectorAll("image")].filter(
+        (image) => image.getAttribute("href") === MINE_URL,
+      );
+    const before = pictures();
+    expect(before).toHaveLength(1);
+
+    const restart = [...menu.querySelectorAll("button")].find(
+      (button) => button.textContent === "Restart",
+    );
+    const boardBefore = board.querySelector("svg");
+    restart?.click();
+    expect(board.querySelector("svg")).not.toBe(boardBefore);
+    expect(pictures()).toEqual(before);
   });
 });

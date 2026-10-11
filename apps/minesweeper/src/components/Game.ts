@@ -2,6 +2,7 @@ import { flatMap, observe, store } from "@apendua/signal";
 import { Fields, FieldsContext } from "../store/Fields";
 import { RootContext } from "../store/Root";
 import Viewport, { ViewportContext } from "../store/Viewport";
+import { FieldPictures } from "./FieldStatus";
 import Minefield from "./Minefield";
 import Menu, { SizePreset } from "./Menu";
 
@@ -18,9 +19,11 @@ const DEFAULT_PRESET = SIZE_PRESETS.find((preset) => preset.id === "medium") ?? 
  * mounted in two places on the page, because a headset session mirrors each
  * into a panel of its own, and a panel is the element it is mounted in.
  *
- * The board is rebuilt whole when a new game starts. The menu is built once
- * and follows the game through its props, so the panel it is mirrored into
- * keeps its place and its size across a restart.
+ * The board is rebuilt whole when a new game starts. The pictures of the flag
+ * and the mine mounted after it stay, so that a headset keeps their textures
+ * from one game to the next. The menu is built once and follows the game
+ * through its props, so the panel it is mirrored into keeps its place and
+ * its size across a restart.
  */
 const Game = (ctx: WeakKey) => {
   const dimensions = RootContext.get(ctx);
@@ -52,9 +55,10 @@ const Game = (ctx: WeakKey) => {
   return {
     // `flatMap` runs its callback inside a derivation, so it reads nothing but
     // the board it is handed: the rebuild belongs to `game` alone.
-    board: flatMap((game: Fields) => Minefield(FieldsContext.set(ctx, game), game))(
-      observe(state).game,
-    ),
+    board: [
+      flatMap((game: Fields) => Minefield(FieldsContext.set(ctx, game), game))(observe(state).game),
+      FieldPictures(),
+    ],
     menu: Menu(ctx, {
       presets: SIZE_PRESETS,
       get selectedId() {

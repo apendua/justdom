@@ -328,10 +328,10 @@ describe("the texture cache", () => {
     try {
       acquireImage("/inflight.png");
       releaseImage("/inflight.png");
-      const side = Math.sqrt(IDLE_BUDGET / 4 / 2);
+      // Exactly half the budget each, at four bytes a pixel.
       for (const url of ["/half-a.png", "/half-b.png", "/half-c.png"]) {
         acquireImage(url);
-        loader.loads[loader.loads.length - 1].land(side, side);
+        loader.loads[loader.loads.length - 1].land(2048, 1024);
         releaseImage(url);
       }
       const { disposed } = loader.loads[0].land(4, 4);
@@ -339,6 +339,31 @@ describe("the texture cache", () => {
       acquireImage("/inflight.png");
       assert.equal(loader.loads.length, 4, "and is not loaded again");
       releaseImage("/inflight.png");
+    } finally {
+      loader.restore();
+    }
+  });
+
+  test("a picture that lands idle counts, and as the newest", () => {
+    const loader = deferredLoader();
+    try {
+      acquireImage("/arriving.png");
+      releaseImage("/arriving.png");
+      // Exactly a quarter of the budget each: four fill it.
+      const urls = ["/r1.png", "/r2.png", "/r3.png", "/r4.png"];
+      const counts = urls.map((url) => {
+        acquireImage(url);
+        const { disposed } = loader.loads[loader.loads.length - 1].land(2048, 512);
+        releaseImage(url);
+        return disposed;
+      });
+      const arriving = loader.loads[0].land(2048, 512).disposed;
+      assert.deepEqual(
+        counts.map((count) => count()),
+        [1, 0, 0, 0],
+        "its weight pushes the oldest idle picture out",
+      );
+      assert.equal(arriving(), 0, "and not the picture that just arrived");
     } finally {
       loader.restore();
     }

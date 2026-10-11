@@ -94,7 +94,9 @@ import { fitImage } from "./objectFit.js";
  *   load fails, when its picture alone is bigger than `IDLE_BUDGET`, when
  *   the budget evicts it, or when `releaseIdleImages` is called. The budget
  *   evicts the oldest idle pictures first, and never one still on its way,
- *   which weighs nothing and would only throw its fetch away;
+ *   which weighs nothing and would only throw its fetch away. A picture
+ *   that lands while idle moves to the back of the line as the newest, so
+ *   it is never evicted by its own arrival;
  * - **gone**: its texture disposed, or disposed as it lands. Acquiring the
  *   URL again starts a new entry, loading.
  *
@@ -104,15 +106,17 @@ const entries = new Map();
 
 /**
  * The entries nobody is using, oldest first: a `Map` keeps insertion order,
- * and an entry is deleted and inserted again each time it goes idle.
+ * and an entry is deleted and inserted again each time it goes idle, and
+ * when its picture lands while it is idle.
  *
  * @type {Map<string, ImageEntry>}
  */
 const idle = new Map();
 
 /**
- * What the idle entries weigh between them, kept as they come and go so that
- * a release does not add up the whole idle list.
+ * What the idle entries weigh between them, kept current so that a release
+ * does not add up the whole idle list. It goes up when an entry goes idle
+ * and when an idle entry's picture lands, and down in `leaveIdle`.
  */
 let idleBytes = 0;
 
@@ -277,7 +281,7 @@ function entryFor(url) {
   // that no future reactive machinery in an entry can end up owned by a
   // panel that may be disposed while the load is still in flight.
   /** @type {ImageEntry} */
-  const entry = withChannel(null, () => ({ state: Signal.of(PENDING), users: 0, texture: null }));
+  const entry = withChannel(null, () => ({ state: Signal.of(PENDING), users: 0 }));
   entries.set(url, entry);
   loader.load(
     url,
@@ -308,8 +312,10 @@ function entryFor(url) {
         height: image?.height ?? 0,
       });
       if (idle.has(url)) {
-        // Everyone let go while it was in flight. It lands idle, and now
-        // weighs something.
+        // Everyone let go while it was in flight. It lands idle, now weighs
+        // something, and moves to the back of the line as the newest.
+        idle.delete(url);
+        idle.set(url, entry);
         idleBytes += bytesOf(entry);
         fitIdle(url, entry);
       }
@@ -375,8 +381,9 @@ export function releaseImage(url) {
 }
 
 /**
- * Dispose every idle entry's texture: for a renderer on its way out, whose
- * GL context the textures belong to.
+ * Dispose every idle entry's texture, to free memory as a renderer goes.
+ * The cache is shared, so this also drops pictures another live `render()`
+ * could have reused, which would load them again.
  *
  * @returns {void}
  */

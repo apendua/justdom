@@ -1,28 +1,23 @@
 import { render, createXRButton } from "@apendua/freedom";
 import { followOutlinesQuery, followThemingQuery } from "@apendua.dev/headset/theming";
+import { inputModels } from "@apendua.dev/headset/scene";
 import { svgElements } from "@apendua/freedom/svg";
-import { XRControllerModelFactory } from "three/examples/jsm/webxr/XRControllerModelFactory.js";
-import { OculusHandModel } from "three/examples/jsm/webxr/OculusHandModel.js";
-import type { XRHandSpace } from "three";
 import Scene from "./components/Scene";
 
 /**
  * Offer the page a headset: a scene that mirrors `board` and `menu`, the
  * elements the game is mounted in, into two panels, and freedom's Enter
  * button, which starts a session and is the way back in after one ends.
- * Loaded by `offerHeadset` only on a platform that can present.
+ * Loaded by `offerHeadset` from `@apendua.dev/headset/offer` only on a
+ * platform that can present.
  */
 export function offerXR(board: HTMLElement, menu: HTMLElement): void {
   followThemingQuery(new URLSearchParams(location.search));
   followOutlinesQuery(new URLSearchParams(location.search));
-  const controllerModelFactory = new XRControllerModelFactory();
-  const createControllerModel =
-    controllerModelFactory.createControllerModel.bind(controllerModelFactory);
-  const createHandModel = (hand: XRHandSpace) => new OculusHandModel(hand);
 
   render(Scene(board, menu), {
-    createControllerModel,
-    createHandModel,
+    // From this app's own origin, where `vite.config.mts` serves them.
+    ...inputModels(import.meta.env.BASE_URL),
     presentingOnly: true,
     // The board is an `<svg>`, which a panel draws only through this plugin.
     portalPlugins: [svgElements()],

@@ -13,7 +13,9 @@
  * have been installed. The browser is the Chromium a development container
  * keeps at `/opt/pw-browsers/chromium-1194`, or the one `CHROMIUM` names.
  */
-import { dirname, resolve } from "node:path";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
@@ -179,4 +181,61 @@ export async function hold(page, button, value) {
 export async function press(page, button) {
   await hold(page, button, 1);
   await hold(page, button, 0);
+}
+
+/**
+ * Build the app at `root` for production into a scratch directory, and say
+ * which JS its service worker precaches, and which JS the page loads before
+ * it offers anything: the entry chunk and every chunk it imports
+ * statically. The worker is installed on every visit, so whatever it lists
+ * is downloaded by every visitor. A check holds the two lists equal, which
+ * is how a `globIgnores` that stops matching a renamed chunk shows up.
+ *
+ * `build` is Vite's, from the app's own `vite`, which this package does not
+ * depend on.
+ *
+ * @param {typeof import("vite").build} build
+ * @param {string} root
+ * @returns {Promise<{ precached: string[], loaded: string[] }>}
+ */
+export async function precache(build, root) {
+  const outDir = mkdtempSync(join(tmpdir(), "precache-"));
+  try {
+    const built = await build({
+      root,
+      configFile: join(root, "vite.config.mts"),
+      logLevel: "warn",
+      build: { outDir, emptyOutDir: true, sourcemap: false },
+    });
+    const outputs = (Array.isArray(built) ? built : [built]).flatMap((result) =>
+      "output" in result ? result.output : [],
+    );
+    /** @type {Map<string, string[]>} */
+    const imports = new Map();
+    /** @type {string[]} */
+    const entries = [];
+    for (const item of outputs) {
+      if (item.type === "chunk") {
+        imports.set(item.fileName, item.imports);
+        if (item.isEntry) {
+          entries.push(item.fileName);
+        }
+      }
+    }
+    const loaded = new Set();
+    const visit = (/** @type {string} */ name) => {
+      if (!loaded.has(name)) {
+        loaded.add(name);
+        (imports.get(name) ?? []).forEach(visit);
+      }
+    };
+    entries.forEach(visit);
+    const worker = readFileSync(join(outDir, "sw.js"), "utf8");
+    const precached = [...worker.matchAll(/url:"([^"]+)"/g)]
+      .map((match) => match[1])
+      .filter((url) => url.startsWith("assets/") && url.endsWith(".js"));
+    return { precached: precached.sort(), loaded: [...loaded].sort() };
+  } finally {
+    rmSync(outDir, { recursive: true, force: true });
+  }
 }

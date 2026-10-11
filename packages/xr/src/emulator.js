@@ -16,7 +16,9 @@ import { offsetByTransform } from "./offsetSpaces.js";
  * @property {boolean} [devUI] Whether to install the dev UI: the headset and
  *   controller panels drawn over the scene. On for a person driving the
  *   app by hand, off for a script that sets the poses itself or
- *   photographs the scene and wants nothing else in the frame.
+ *   photographs the scene and wants nothing else in the frame. Without it
+ *   both controllers start turned away from the scene, so that no ray
+ *   reaches anything until the script aims one.
  * @property {KeyMap} [keyMap] Keys to move the dev UI's controllers to. Its
  *   default keymap drives them from WASD, the arrow keys and Q/E/R, so a
  *   game that listens to those keys on a desktop gets each press twice in
@@ -54,7 +56,25 @@ export function install({ devUI = true, keyMap } = {}) {
         bindKey(handedness, action, code);
       }
     }
+  } else {
+    turnAway(xrDevice);
   }
   /** @type {Window & { xrDevice?: XRDevice }} */ (window).xrDevice = xrDevice;
   return xrDevice;
+}
+
+/**
+ * Turn both controllers half round, about the vertical, from where IWER
+ * rests them: in front of the head and pointing ahead, with their rays on
+ * whatever the scene puts there. A script aims one hand at a time, and a
+ * hand it has not aimed would otherwise go on pointing at a panel, so the
+ * page would hear two pointers in every step and the other hand's moves
+ * could undo what the script checks.
+ *
+ * @param {XRDevice} xrDevice
+ */
+function turnAway(xrDevice) {
+  for (const controller of Object.values(xrDevice.controllers)) {
+    controller.quaternion.set(0, 1, 0, 0);
+  }
 }

@@ -20,25 +20,28 @@ The dev server is plain http on localhost, which browsers treat as a secure orig
 the emulator) work there. Serving it to a headset over the local network would need https and is not
 set up.
 
-On a laptop the page is the page and nothing else: no session can be opened, so no button is shown
-and no renderer is made. `?emulator` installs a headset in the browser (IWER, with its dev panels)
-and the **Enter VR** button appears at the bottom; press it and the emulated session is drawn over
-the page, driven from the panels. `?emulator=bare` installs the runtime without the panels, for a
-harness photographing the scene.
+On a laptop the page is the page and nothing else: no session can be opened, so no button is shown,
+no renderer is made and three.js is never fetched, not even by the service worker, which leaves the
+headset's chunks out of its precache. It leaves the controller and hand models under `profiles/` out
+too, so a session needs the network. `node tests/drag-check.mjs` builds the app for production first
+and fails unless its service worker precaches exactly the JS the page loads. `?emulator` installs a
+headset in the browser (IWER, with its dev panels) and the **Enter VR** button appears at the
+bottom; press it and the emulated session is drawn over the page, driven from the panels.
+`?emulator=bare` installs the runtime without the panels, for a harness photographing the scene.
 
 ## How it is put together
 
-| File                             | What it is                                                                                                                                                                                                       |
-| -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `src/main.ts`                    | Mounts `TodoApp` into `#root`, then offers a session that mirrors `#root`.                                                                                                                                       |
-| `src/xr.ts`                      | The offer: checks the platform can present, makes the renderer and the Enter button, shows the canvas only while a session runs. Hands `render()` the keyboard as a panel option.                                |
-| `src/components/TodoApp.ts`      | The app, written for the page: a field, an Add button, a count, and the list behind `scrollable` from `@apendua/justui`, reordered by dragging.                                                                  |
-| `src/components/TodoItem.ts`     | A row: a drag handle, a checkbox drawn honestly in both builds, a label, a Delete button.                                                                                                                        |
-| `tests/drag-check.mjs`           | Reorders the list by dragging, with the mouse on the page and with the controller in the emulator.                                                                                                               |
-| `src/focusDiagnostics.ts`        | Under `?keylog`, a log in the card of keys, focus and the system keyboard, to read in a headset.                                                                                                                 |
-| `src/components/Scene.ts`        | The scene: `dom(ctx, panel, …)`. Lights, a cursor, the panel, and the frame rate while a session runs.                                                                                                           |
-| `src/components/TodoKeyboard.ts` | What the headset's keyboard looks like: `keyboard` from `@apendua/justui` dressed for this panel.                                                                                                                |
-| `@apendua.dev/headset`           | Not a file here, but shared with the other headset apps: `xrSession`, the session the page is shown in, written by the scene and read by the app for its exit button; `canPresent`; and IWER behind `?emulator`. |
+| File                             | What it is                                                                                                                                                                                                                                                                                                                                          |
+| -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/main.ts`                    | Mounts `TodoApp` into `#root`, then offers a session that mirrors `#root`, through `@apendua.dev/headset`'s `offerHeadset`, which loads `xr.ts` only on a platform that can present.                                                                                                                                                                |
+| `src/xr.ts`                      | The session: makes the renderer with the controller and hand models from this app's origin, and the Enter button, and shows the canvas only while a session runs. Hands `render()` the keyboard as a panel option.                                                                                                                                  |
+| `src/components/TodoApp.ts`      | The app, written for the page: a field, an Add button, a count, and the list behind `scrollable` from `@apendua/justui`, reordered by dragging.                                                                                                                                                                                                     |
+| `src/components/TodoItem.ts`     | A row: a drag handle, a checkbox drawn honestly in both builds, a label, a Delete button.                                                                                                                                                                                                                                                           |
+| `tests/drag-check.mjs`           | Reorders the list by dragging, with the mouse on the page and with the controller in the emulator.                                                                                                                                                                                                                                                  |
+| `src/focusDiagnostics.ts`        | Under `?keylog`, a log in the card of keys, focus and the system keyboard, to read in a headset.                                                                                                                                                                                                                                                    |
+| `src/components/Scene.ts`        | The scene: `dom(ctx, panel, …)`. A backdrop, lights, a cursor, the panel, and the frame rate while a session runs.                                                                                                                                                                                                                                  |
+| `src/components/TodoKeyboard.ts` | What the headset's keyboard looks like: `keyboard` from `@apendua/justui` dressed for this panel.                                                                                                                                                                                                                                                   |
+| `@apendua.dev/headset`           | Not a file here, but shared with the other headset apps: IWER behind `?emulator` and the offer of a session; `canPresent`; `xrSession`, the session the page is shown in, written by the scene and read by the app for its exit button; the backdrop; and the controller and hand models, which `vite.config.mts` serves from `@apendua.dev/media`. |
 
 Three things the page does not know about, and does not need to.
 

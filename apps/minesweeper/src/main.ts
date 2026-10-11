@@ -1,7 +1,7 @@
 import { just } from "@apendua/signal";
 import { children } from "@apendua/justdom";
 import Game from "./components/Game";
-import { offerHeadset } from "./offer";
+import { offerHeadset } from "@apendua.dev/headset/offer";
 import Root, { RootContext } from "./store/Root";
 import "./index.css";
 
@@ -30,6 +30,8 @@ for (const [element, tree] of [
 // the very elements the game was just mounted into. It is loaded only once
 // a session is known to be possible, so a page that is only ever a page
 // does not fetch three.js.
-offerHeadset(board, menu).catch((err) => {
-  console.error("Could not offer an XR session:", err);
-});
+offerHeadset(() => import("./xr"))
+  .then((xr) => xr?.offerXR(board, menu))
+  .catch((err) => {
+    console.error("Could not offer an XR session:", err);
+  });

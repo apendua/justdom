@@ -1,7 +1,7 @@
 import { children } from "@apendua/justdom";
 import { just } from "@apendua/signal";
 import TodoApp from "./components/TodoApp";
-import { offerXR } from "./xr";
+import { offerHeadset } from "@apendua.dev/headset/offer";
 import { mountFocusDiagnostics } from "./focusDiagnostics";
 import "./index.css";
 
@@ -18,10 +18,14 @@ just(root, [children(TodoApp({}))]).subscribe({
 });
 
 // And the headset, offered to a page that can open one: the scene mirrors
-// the very element the app was just mounted into.
-offerXR(root).catch((err) => {
-  console.error("Could not offer an XR session:", err);
-});
+// the very element the app was just mounted into. It is loaded only once a
+// session is known to be possible, so a page that is only ever a page does
+// not fetch three.js.
+offerHeadset(() => import("./xr"))
+  .then((xr) => xr?.offerXR(root))
+  .catch((err) => {
+    console.error("Could not offer an XR session:", err);
+  });
 
 // A log in the card of the keys and focus the page hears, only when the
 // address asks for it, to read in a headset.

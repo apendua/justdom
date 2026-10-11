@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import * as THREE from "three";
 import { UNBOUNDED } from "../elements/clip.js";
 import { createMirror } from "../elements/mirror.js";
+import { leaveSizesUnmapped } from "../test/unmappedSizes.js";
 import { drawShape, drawUse } from "./template.js";
 
 /**
@@ -408,6 +409,44 @@ describe("use", () => {
     // in the symbol is (30, 20) in user space, twice that in px.
     assert.deepEqual(toRoot(mesh, 10, 10), [60, 40]);
     s.teardown();
+  });
+
+  test("a use's size reaches the symbol when the browser computes it as auto", () => {
+    // Chromium 152 does: the attribute sizes the copy, and only a
+    // stylesheet's size is in the computed value.
+    const restore = leaveSizesUnmapped();
+    try {
+      const symbol = svg("symbol", { id: "use-symbol-unmapped", viewBox: "0 0 10 10" }, [
+        svg("rect", { width: "10", height: "10", fill: "red" }),
+      ]);
+      const sized = svg("use", {
+        href: "#use-symbol-unmapped",
+        x: "20",
+        width: "20",
+        height: "20",
+      });
+      const percent = svg("use", { href: "#use-symbol-unmapped", width: "40%", height: "80%" });
+      const styled = svg("use", {
+        href: "#use-symbol-unmapped",
+        width: "20",
+        height: "20",
+        style: "width: 10px; height: 10px",
+      });
+      const s = scene(
+        [svg("defs", {}, [symbol]), sized, percent, styled],
+        [sized, percent, styled],
+      );
+      const [fromAttribute, fromPercent, fromStyle] = s.objects.map((o) => meshesUnder(o)[0]);
+      // As in the first test: (10, 10) is (40, 20), twice that in px.
+      assert.deepEqual(toRoot(fromAttribute, 10, 10), [80, 40]);
+      // 40% of 50 by 80% of 25 is 20 square at the origin.
+      assert.deepEqual(toRoot(fromPercent, 10, 10), [40, 40]);
+      // The stylesheet's 10 over the attribute's 20.
+      assert.deepEqual(toRoot(fromStyle, 10, 10), [20, 20]);
+      s.teardown();
+    } finally {
+      restore();
+    }
   });
 
   test("a percentage on the use follows a new viewBox on the root", () => {

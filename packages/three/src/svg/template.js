@@ -38,7 +38,13 @@ import {
   SHAPE_TAGS,
   createInstance,
 } from "./shape.js";
-import { clipsViewport, parseLengthIn, parseUrlReference, readProperty } from "./style.js";
+import {
+  clipsViewport,
+  parseLengthIn,
+  parseUrlReference,
+  readProperty,
+  readSize,
+} from "./style.js";
 
 /**
  * Templates: SVG content defined in one place and drawn in others. A
@@ -372,7 +378,7 @@ function symbolViewport(use, symbol, instance) {
    * @param {"width" | "height"} name
    */
   const size = (name) => {
-    const own = parseLengthIn(readProperty(style, use, name), viewport?.[name], Number.NaN);
+    const own = parseLengthIn(readSize(style, use, name), viewport?.[name], Number.NaN);
     if (!Number.isNaN(own)) {
       return own;
     }

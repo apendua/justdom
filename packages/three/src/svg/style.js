@@ -13,6 +13,7 @@ import { normalizeDashArray } from "./dash.js";
  * places the computed style is empty — a geometry property the browser does
  * not expose as CSS (`x1` on a `<line>`, `points` on a `<polygon>`), and a
  * test runner whose style engine knows none of these properties at all.
+ * `readSize` also falls back to it for a size the browser leaves `auto`.
  */
 
 /**
@@ -30,6 +31,26 @@ export function readProperty(style, element, name) {
     return computed;
   }
   return getAttributeCached(element, name) ?? "";
+}
+
+/**
+ * The `width` or `height` of a `<use>` or a nested `<svg>`: the computed
+ * value, or the attribute when the computed value is `auto`.
+ *
+ * Chromium 152 no longer maps either attribute to CSS on those two
+ * elements, and no version maps a percentage on a `<use>`, so `width="11"`
+ * computes to `auto` and is drawn at the attribute's size all the same. A
+ * stylesheet's `width: 9px` still reaches the computed value. `auto` there
+ * says only that no stylesheet set a size, and the attribute is read.
+ *
+ * @param {CSSStyleDeclaration} style
+ * @param {Element} element
+ * @param {"width" | "height"} name
+ * @returns {string}
+ */
+export function readSize(style, element, name) {
+  const value = readProperty(style, element, name);
+  return value === "auto" ? (getAttributeCached(element, name) ?? "") : value;
 }
 
 /**

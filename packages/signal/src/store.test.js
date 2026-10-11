@@ -1344,3 +1344,32 @@ test("a reload reshapes no element store moved in from another array", () => {
   assert.strictEqual(b[1], moved);
   assert.strictEqual(moved.n, 1);
 });
+
+test("a value assigned over a store from elsewhere makes a new store", () => {
+  const levels = store([
+    { id: 1, name: "a" },
+    { id: 2, name: "b" },
+  ]);
+  const game = store({ current: { id: 0, name: "none" } });
+  game.current = levels[1];
+  game.current = { id: 0, name: "none" };
+  assert.deepStrictEqual({ ...levels[1] }, { id: 2, name: "b" }, "nothing wrote into it");
+  assert.notStrictEqual(game.current, levels[1]);
+  const a = store([{ n: 1 }]);
+  const b = store([{ n: 2 }]);
+  a[0] = b[0];
+  a[0] = { n: 9 };
+  assert.strictEqual(b[0].n, 2);
+});
+
+test("push(undefined) makes an index", () => {
+  const list = store(/** @type {unknown[]} */ ([]));
+  /** @type {string[]} */
+  const keys = [];
+  new Effect(() => {
+    keys.push(Object.keys(list).join(","));
+  });
+  list.push(undefined);
+  assert.strictEqual(Object.hasOwn(list, 0), true);
+  assert.deepStrictEqual(keys, ["", "0"]);
+});

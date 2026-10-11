@@ -241,8 +241,8 @@ function bump(version) {
  *
  * An array takes the length of `newValue` as well, so the elements past it
  * go. Each index is assigned as a key is, so a plain object or an array
- * written over a store of its kind at the same index is written into that
- * store, and the store stays where it is.
+ * written over a store of its kind that `oldValue` owns, at the same index,
+ * is written into that store, and the store stays where it is.
  *
  * @param {Record<PropertyKey, unknown> | unknown[]} oldValue
  * @param {Record<PropertyKey, unknown> | unknown[]} newValue
@@ -428,6 +428,12 @@ function store(data, operators = []) {
         if (mutator) {
           return mutator;
         }
+        if (!Object.hasOwn(state, key) && Reflect.has(Array.prototype, key)) {
+          // A method such as `map` or `join`, found on the prototype. Its
+          // reads of the indices and `length` are what its caller depends
+          // on, and nothing writes to a method key.
+          return state[key];
+        }
       }
       dependOn(key);
       if (!getters.has(key)) {
@@ -482,14 +488,16 @@ function store(data, operators = []) {
           const oldValue = state[key];
           const nested = internalsOf(oldValue);
           if (
-            nested &&
+            nested?.owner === internals &&
             isOfKind(nested, kind) &&
             !isStore(newValue) &&
             internals.mutator === undefined
           ) {
-            // Written into the nested store key by key, whose traps mark the
-            // keys the value changes. This key holds the same store as
-            // before, so it is not marked, as no unchanged key is.
+            // Written into the nested store this one owns key by key, whose
+            // traps mark the keys the value changes. This key holds the same
+            // store as before, so it is not marked, as no unchanged key is. A
+            // store from elsewhere is its owner's, and the value makes a new
+            // store here, as on a reload.
             replace(
               /** @type {Record<PropertyKey, unknown>} */ (oldValue),
               /** @type {Record<PropertyKey, unknown>} */ (newValue),
@@ -499,13 +507,17 @@ function store(data, operators = []) {
           // A store is held as itself, so that an array method moving one
           // from index to index moves it rather than copying it, and keeps
           // its owner. A plain object or an array where the key held no
-          // store of its kind is made one, which is new and this store's,
-          // and every key of it is a change the program made.
+          // store of its kind that this one owns is made one, which is new
+          // and this store's, and every key of it is a change the program
+          // made.
           if (!isStore(newValue)) {
             newValue = nestedStore(internals, /** @type {object} */ (newValue), true);
           }
         }
-        if (Object.is(state[key], newValue)) {
+        // On an array, `undefined` at an index it does not have is a change:
+        // it makes the index, as a native write does. An object key an
+        // assigned object holds `undefined` for is not made, as before.
+        if (Object.is(state[key], newValue) && (!array || Object.hasOwn(state, key))) {
           return true;
         }
         // A write the program makes that changes a data key, which `reshape`
@@ -596,11 +608,12 @@ function store(data, operators = []) {
  * delete of a key the store does not have, marks nothing. A write marks the
  * keys whose value it changes, at whatever depth: a plain object or an array
  * assigned to a key that held no store of its kind becomes a new store, every
- * key of which is a change, and one assigned over a nested store of its kind is
- * written into it key by key and marks the keys it changes there, not the key
- * it sits at, which holds the same store. A store assigned to a key is held as
- * itself and marks the key, and stays its owner's: a reload never reshapes it
- * through that key. An array is a store, so a method that changes it, a `push`
+ * key of which is a change, and one assigned over a store of its kind the key
+ * owns is written into it key by key and marks the keys it changes there, not
+ * the key it sits at, which holds the same store. A store assigned to a key is
+ * held as itself and marks the key, and stays its owner's: a reload never
+ * reshapes it through that key, and a plain object or an array assigned over it
+ * makes a new store. An array is a store, so a method that changes it, a `push`
  * or a `splice`, writes through it and marks what it changes. A reload records
  * nothing, since `reshape` writes state directly rather than through the proxy,
  * and clears the mark of a key it gives an accessor to.
@@ -718,16 +731,18 @@ function adopt(internals, value, from) {
  * the array at its key. A write into it marks its own key and not the key it
  * sits at, so that key is the source's: when the definition drops it or makes
  * it a value of another kind, the nested store goes, the program's writes into
- * it with it. A store the program assigned to the key from elsewhere is held as
- * itself and is not the key's: the key is the program's, as a key it assigned a
- * value to is, and the store is reshaped only through its owner. An array store
- * keeps which element is at each index, and its length, once the program has
- * written to it, and takes the definition's elements otherwise, while the
- * element stores it owns are reshaped in place either way; see `reshapeArray`.
- * A value that is not a plain object or an array, a `Map`, an instance, is kept
- * only at a key the program assigned; one the program mutated in place is
- * untouched to the store and takes the definition's. A store nobody called
- * `trackWrites` on has no marks and takes the definition in full.
+ * it with it. A store this one owns that the program also holds at a second key
+ * is reshaped through each key in turn, so the later key's definition is what
+ * it ends with. A store the program assigned to the key from elsewhere is held
+ * as itself and is not the key's: the key is the program's, as a key it
+ * assigned a value to is, and the store is reshaped only through its owner. An
+ * array store keeps which element is at each index, and its length, once the
+ * program has written to it, and takes the definition's elements otherwise,
+ * while the element stores it owns are reshaped in place either way; see
+ * `reshapeArray`. A value that is not a plain object or an array, a `Map`, an
+ * instance, is kept only at a key the program assigned; one the program mutated
+ * in place is untouched to the store and takes the definition's. A store nobody
+ * called `trackWrites` on has no marks and takes the definition in full.
  *
  * A data key's value is written to the store's state, not through a setter,
  * so no setter runs. The readers of each key that changed re-run; a replaced
@@ -751,10 +766,10 @@ function adopt(internals, value, from) {
  *
  * @template {IEmitter<Record<any, any>>} T
  * @param {T} target A store.
- * @param {T extends readonly unknown[] ? readonly unknown[] : object} definition
- *   An array for a store made of one, which its type refuses anything else
- *   for. The type cannot refuse an array for a store made of an object,
- *   since an array is an object, so that throws.
+ * @param {T extends readonly unknown[] ? readonly unknown[] : object}
+ *   definition An array for a store made of one, which its type refuses
+ *   anything else for. The type cannot refuse an array for a store made of an
+ *   object, since an array is an object, so that throws.
  * @returns {void}
  */
 export function reshape(target, definition) {
@@ -785,6 +800,27 @@ function reshapeInto(internals, definition) {
 }
 
 /**
+ * Reshape `held`, what a key of `internals`' store holds, in place with the
+ * definition's `value`, if it is a store `internals` owns and `value` is of
+ * its kind. A store held at two keys or two indices is reshaped once for
+ * each, with the definition's value at each in turn, so the one at the later
+ * key is what it ends with.
+ *
+ * @param {Internals} internals
+ * @param {unknown} held
+ * @param {unknown} value
+ * @returns {boolean} Whether it reshaped `held`.
+ */
+function reshapeOwned(internals, held, value) {
+  const nested = internalsOf(held);
+  if (nested?.owner !== internals || !isOfKind(nested, storeKindOf(value))) {
+    return false;
+  }
+  reshapeInto(nested, /** @type {object} */ (value));
+  return true;
+}
+
+/**
  * Give the data key `key` of `internals`' store the definition's `value`. A
  * store the key owns, where `value` is of its kind, is reshaped in place by
  * its own marks, whoever wrote the key it sits at. Otherwise a key the
@@ -802,17 +838,14 @@ function reshapeKey(internals, key, value, from) {
   const { state, announce, ownKeys, touched } = internals;
   const had = Object.hasOwn(state, key);
   const old = state[key];
-  const nested = internalsOf(old);
-  const kind = storeKindOf(value);
-  if (nested?.owner === internals && isOfKind(nested, kind)) {
-    reshapeInto(nested, /** @type {object} */ (value));
+  if (reshapeOwned(internals, old, value)) {
     return;
   }
   if (touched?.has(key)) {
     // The program wrote or deleted this key: what it did stays.
     return;
   }
-  const next = kind ? adopt(internals, /** @type {object} */ (value), from) : value;
+  const next = storeKindOf(value) ? adopt(internals, /** @type {object} */ (value), from) : value;
   if (had && Object.is(old, next)) {
     return;
   }
@@ -985,11 +1018,7 @@ function reshapeArray(internals, definition) {
     // the ones this array owns follows the source.
     const shared = Math.min(array.length, source.length);
     for (let index = 0; index < shared; index += 1) {
-      const nested = internalsOf(array[index]);
-      const value = source[index];
-      if (nested?.owner === internals && isOfKind(nested, storeKindOf(value))) {
-        reshapeInto(nested, /** @type {object} */ (value));
-      }
+      reshapeOwned(internals, array[index], source[index]);
     }
     return;
   }

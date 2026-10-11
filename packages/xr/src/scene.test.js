@@ -2,7 +2,27 @@ import assert from "node:assert/strict";
 import { afterEach, beforeEach, describe, it } from "node:test";
 import * as THREE from "three";
 import { Derived } from "@apendua/signal";
-import { clientRect, inputModels } from "./scene.js";
+import { Backdrop, clientRect, inputModels } from "./scene.js";
+
+describe("Backdrop", () => {
+  it("lets its material go when it is taken down", () => {
+    /** @type {THREE.Material[]} */
+    const disposed = [];
+    const dispose = THREE.MeshBasicMaterial.prototype.dispose;
+    THREE.MeshBasicMaterial.prototype.dispose = function () {
+      disposed.push(this);
+      dispose.call(this);
+    };
+    try {
+      const mounted = Backdrop("#1e2430").subscribe({});
+      assert.equal(disposed.length, 0);
+      mounted.unsubscribe();
+      assert.equal(disposed.length, 1);
+    } finally {
+      THREE.MeshBasicMaterial.prototype.dispose = dispose;
+    }
+  });
+});
 
 describe("inputModels", () => {
   /** @type {string[]} */

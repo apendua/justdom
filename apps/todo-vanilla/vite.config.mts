@@ -46,6 +46,14 @@ export default defineConfig({
           },
         ],
       },
+      workbox: {
+        // Workbox's default glob takes every built chunk, and a worker that
+        // precaches the headset's chunks downloads them on every visit,
+        // headset or not. `offerHeadset` imports `xr` (and three.js with
+        // it) only where a session can be opened, and `emulator` only behind
+        // `?emulator`; a headset fetches them when it first asks.
+        globIgnores: ["**/xr-*.js", "**/three.module-*.js", "**/emulator-*.js"],
+      },
     }),
   ],
   build: {

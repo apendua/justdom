@@ -86,10 +86,13 @@ module that makes the scene, never from the page's entry.
   drawn first and takes no part in the depth test. A scene sets its `background` to the same colour
   for a VR session, where three honours it.
 - `inputModels(base)` returns `createControllerModel` and `createHandModel` for `render()`'s
-  options, reading the models from the app's own origin rather than three's default CDN, which a
-  headset with no network cannot reach. `base` is the app's `import.meta.env.BASE_URL`, and the
-  app's `vite.config.mts` has to list `@apendua.dev/media/vite`'s plugin, which serves the vendored
-  WebXR input profiles at `<base>profiles/`; `@apendua.dev/media`'s README says what is in them.
+  options, reading the models from the app's own origin rather than three's default CDN, so no other
+  origin is asked for them. A headset with no network draws them only if the app's service worker
+  precaches them (`@apendua.dev/media`'s README says how); minesweeper and the todo app precache
+  neither these nor the scene's chunk, so their sessions need the network. `base` is the app's
+  `import.meta.env.BASE_URL`, and the app's `vite.config.mts` has to list
+  `@apendua.dev/media/vite`'s plugin, which serves the vendored WebXR input profiles at
+  `<base>profiles/`; `@apendua.dev/media`'s README says what is in them.
 - `clientRect(element)` is the element's client rect, read again whenever the element is resized:
   called inside a panel's `effects`, it runs them again on each resize. A scale worked out from it
   follows the element when the window is resized during a session, rather than keeping the one it

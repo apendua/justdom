@@ -266,8 +266,8 @@ async function main() {
     console.log("\n== the controller models");
     {
       // A controller that connects asks for its model. The models are
-      // served from the app's own origin, so a headset with no network still
-      // draws its hands, and nothing is asked of a CDN.
+      // served from the app's own origin, as the scene's chunk is, and
+      // nothing is asked of a CDN.
       const own = new URL("profiles/", url);
       const models = requested.filter((at) => at.pathname.endsWith(".glb"));
       check(

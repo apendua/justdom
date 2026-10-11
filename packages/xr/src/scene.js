@@ -2,7 +2,7 @@ import * as THREE from "three";
 import { XRControllerModelFactory } from "three/examples/jsm/webxr/XRControllerModelFactory.js";
 import { XRHandModelFactory } from "three/examples/jsm/webxr/XRHandModelFactory.js";
 import { $ } from "@apendua/freedom";
-import { addDependency, component, effects, Stream } from "@apendua/signal";
+import { addDependency, component, effects, onCleanup, Stream } from "@apendua/signal";
 import { backdropShown } from "./session.js";
 
 /**
@@ -34,31 +34,33 @@ const backdropGeometry = new THREE.SphereGeometry(10, 32, 16);
  */
 export const Backdrop = component(
   /** @param {THREE.ColorRepresentation} color */
-  (color) =>
-    $(
-      new THREE.Mesh(
-        backdropGeometry,
-        new THREE.MeshBasicMaterial({
-          color,
-          side: THREE.BackSide,
-          depthWrite: false,
-          depthTest: false,
-        }),
-      ),
-      [
-        effects((o) => {
-          o.renderOrder = -1;
-          o.frustumCulled = false;
-          o.visible = backdropShown();
-        }),
-      ],
-    ),
+  (color) => {
+    // One per mount, since the colour is the caller's, and let go with it.
+    const material = new THREE.MeshBasicMaterial({
+      color,
+      side: THREE.BackSide,
+      depthWrite: false,
+      depthTest: false,
+    });
+    onCleanup(() => material.dispose());
+    return $(new THREE.Mesh(backdropGeometry, material), [
+      effects((o) => {
+        o.renderOrder = -1;
+        o.frustumCulled = false;
+        o.visible = backdropShown();
+      }),
+    ]);
+  },
 );
 
 /**
  * The models `render()` draws for the controllers and the tracked hands,
- * from the app's own origin rather than three's default CDN, which a
- * headset with no network cannot reach. Spread into `render()`'s options.
+ * from the app's own origin rather than three's default CDN, so no other
+ * origin is asked for them. Spread into `render()`'s options. A headset
+ * with no network draws them only if the app's service worker precaches
+ * them, which takes `globPatterns` covering the `.glb` and `.json` files
+ * under `profiles/`; minesweeper and the todo app precache neither
+ * these nor the scene's own chunk, so their sessions need the network.
  *
  * The files are `@apendua.dev/media`'s WebXR input profiles, which its Vite
  * plugin serves at `<base>profiles/`, so the app's `vite.config.mts` has to

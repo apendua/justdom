@@ -59,8 +59,6 @@ import { readTextScale, TextScaleContext } from "./textScale.js";
  */
 export function textRun(ctx, source, extra = []) {
   const batch = TextBatchContext.get(ctx);
-  // Made here rather than taken from `$`, so the batch can be handed the mesh
-  // itself from the effect at the end.
   const mesh = new Mesh();
 
   /**

@@ -19,6 +19,7 @@ import {
   createPortalScheduler,
   PortalSchedulerContext,
 } from "./elements/portalScheduler.js";
+import { releaseIdleImages } from "./elements/image.js";
 import { PortalPluginsContext } from "./elements/plugins.js";
 import { withPanelOptions } from "./elements/panelOptions.js";
 import {
@@ -791,6 +792,10 @@ export function render(fn, options = {}) {
 
     return () => {
       renderer.setAnimationLoop(null);
+      // Free what the texture cache keeps idle as the renderer goes. The
+      // cache is shared, so this also drops pictures another live
+      // `render()` could have reused; it would load them again.
+      releaseIdleImages();
       renderer.dispose();
       interactionManager.cleanup();
     };

@@ -1598,11 +1598,16 @@ crops it — so they cost a uniform write, and a translucent PNG composites over
 background.
 
 Textures are shared by URL and reference-counted: a list of a hundred rows wearing the same icon
-decodes and uploads it once, and the last element to let go of a picture disposes it. Loading goes
-through `THREE.TextureLoader` with the usual `crossOrigin: "anonymous"`, so a cross-origin image
-needs the CORS headers any WebGL texture needs. Swapping `src` swaps the picture; the element's
-`load` event is what says so, which also means a `srcset` is followed as soon as the browser has
-resolved it.
+decodes and uploads it once. A picture whose last element lets go of it is kept idle rather than
+disposed, so one that comes back (an icon swapped by a hover rule, a row remounted, a board dealt
+again) is drawn at once instead of loading again, which takes some frames even for a data URL. The
+idle pictures are held to 16 MiB at four bytes a pixel, counting each picture's base level and not
+the mipmaps three adds to it, the oldest disposed first when they go over it. A picture bigger than
+the whole budget is disposed alone, and `render` disposes the rest with its renderer. A picture that
+failed to load is not kept, so asking for it again tries again. Loading goes through
+`THREE.TextureLoader` with the usual `crossOrigin: "anonymous"`, so a cross-origin image needs the
+CORS headers any WebGL texture needs. Swapping `src` swaps the picture; the element's `load` event
+is what says so, which also means a `srcset` is followed as soon as the browser has resolved it.
 
 An SVG picture, one whose URL path ends in `.svg` or `.svgz` or an `image/svg+xml` data URL, is
 drawn on a canvas at its natural size and the canvas is uploaded, since Chrome on a laptop refuses

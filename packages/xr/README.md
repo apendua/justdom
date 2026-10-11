@@ -1,9 +1,9 @@
 # @apendua.dev/headset
 
 What every app with a headset session repeats, kept in one place: the emulated headset behind
-`?emulator`, freedom's theming mode behind `?theming`, whether the platform can present at all, and
-the session a page reads for the controls that only make sense in a headset. Private to this
-repository.
+`?emulator`, freedom's theming mode behind `?theming` and its outlines mode behind `?outlines`,
+whether the platform can present at all, and the session a page reads for the controls that only
+make sense in a headset. Private to this repository.
 
 It has three entries for a page and no index, so that an app importing one does not pull in the
 others. The emulator brings IWER and its dev UI with it, over half a megabyte, and is meant to be
@@ -50,10 +50,11 @@ do it with `globIgnores: ["**/emulator-*.js"]`.
 ## `@apendua.dev/headset/theming`
 
 ```ts
-import { followThemingQuery } from "@apendua.dev/headset/theming";
+import { followOutlinesQuery, followThemingQuery } from "@apendua.dev/headset/theming";
 
 const query = new URLSearchParams(location.search);
 followThemingQuery(query);
+followOutlinesQuery(query);
 ```
 
 `followThemingQuery(query)` turns on freedom's `enableThemingMode()` when the query has `?theming`,
@@ -63,6 +64,11 @@ rules edited, added or switched off in the browser's developer tools, which they
 off, so it stays on for the life of the page. Every app built on freedom calls it next to where it
 reads `?emulator`, or where it calls `render()` when the module that reads `?emulator` imports
 nothing from three.js. `paperplane-xr` calls it in its labs edition only.
+
+`followOutlinesQuery(query)` is the same switch for freedom's `enableOutlinesMode()` and
+`?outlines`: every panel outlines the elements that change, and the ones the mirror measures again
+for nothing. "Outlines" in freedom's README says how to read them. Every app calls it on the line
+after `followThemingQuery`.
 
 This entry imports `@apendua/freedom`, so import it only from a module that already does.
 
@@ -100,7 +106,8 @@ drag, and `check`, `finish` and `closeAll` for the tally, the exit code and the 
 
 `npm test` here, or `rush build --to @apendua.dev/headset`, runs `node --test` over `src`: the
 session's rules, `canPresent` against a stubbed `navigator.xr`, the clear-state shadow against a
-stand-in WebGL context, which queries `followThemingQuery` takes for `?theming` and that it hands
-back freedom's off switch, and the offset-space fix against IWER's own `XRReferenceSpace`, including
-a test that fails once IWER fixes it and the fix can go. `install` itself needs a browser, and is
-exercised by the apps' own check scripts, as is the driver.
+stand-in WebGL context, which queries `followThemingQuery` takes for `?theming` and
+`followOutlinesQuery` for `?outlines`, and that each hands back freedom's off switch, and the
+offset-space fix against IWER's own `XRReferenceSpace`, including a test that fails once IWER fixes
+it and the fix can go. `install` itself needs a browser, and is exercised by the apps' own check
+scripts, as is the driver.

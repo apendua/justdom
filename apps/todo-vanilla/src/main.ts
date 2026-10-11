@@ -2,7 +2,6 @@ import { children } from "@apendua/justdom";
 import { just } from "@apendua/signal";
 import TodoApp from "./components/TodoApp";
 import { offerXR } from "./xr";
-import { followXRFocus } from "@apendua.dev/headset/focus";
 import { mountFocusDiagnostics } from "./focusDiagnostics";
 import "./index.css";
 
@@ -24,10 +23,9 @@ offerXR(root).catch((err) => {
   console.error("Could not offer an XR session:", err);
 });
 
-// The experiment in `@apendua.dev/headset/focus`, only when the address
-// asks for it, with a log in the card of what the page hears meanwhile.
-if (new URLSearchParams(location.search).has("realfocus")) {
-  followXRFocus(root);
+// A log in the card of the keys and focus the page hears, only when the
+// address asks for it, to read in a headset.
+if (new URLSearchParams(location.search).has("keylog")) {
   // After the app, which `just` above has already rendered into `#root`:
   // its `children` owns the span from the first child to the last and
   // replaces it on every emission, and it emits once, synchronously, so a

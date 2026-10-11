@@ -123,11 +123,13 @@ export function emit(data, event, payload) {
  * computation that evaluates while the method runs, such as the `Derived` of a
  * getter the comparator reads.
  *
- * And a plain object or an array written while `mutator` is set always
- * makes a new store at its index, never a write into the store found there:
- * `unshift` and `splice` copy an element up before they write the index it
- * came from, so that store is the one now held one index on. A store is held
- * as itself, as at any time, which is what lets `sort` or `shift` move one.
+ * And a plain object or an array written while `mutator` is set always makes a
+ * new store at its index, one store per index it is written to, so a `fill`
+ * with one object makes as many stores as indices. It is never a write into the
+ * store found there: `unshift` and `splice` copy an element up before they
+ * write the index it came from, so that store is the one now held one index on.
+ * A store is held as itself, as at any time, which is what lets `sort` or
+ * `shift` move one.
  *
  * @type {Map<PropertyKey, (this: unknown[], ...args: unknown[]) => unknown>}
  */
@@ -189,6 +191,39 @@ function storeKindOf(value) {
 }
 
 /**
+ * Whether `state` holds `value` at one key only. A store held as itself can
+ * sit at two keys of the store that owns it, after `list[1] = list[0]` or a
+ * `fill`, and a write into it through one key would show at the other.
+ *
+ * @param {Record<PropertyKey, unknown>} state
+ * @param {unknown} value
+ * @returns {boolean}
+ */
+function heldAtOneKey(state, value) {
+  if (Array.isArray(state)) {
+    return state.indexOf(value) === state.lastIndexOf(value);
+  }
+  let count = 0;
+  for (const key of Reflect.ownKeys(state)) {
+    if (state[key] === value) {
+      count += 1;
+    }
+  }
+  return count <= 1;
+}
+
+/**
+ * Whether `key` is an array index: the canonical string of an integer from
+ * 0 to 2 ** 32 - 2.
+ *
+ * @param {PropertyKey} key
+ * @returns {boolean}
+ */
+function isIndex(key) {
+  return typeof key === "string" && String(Number(key) >>> 0) === key && key !== "4294967295";
+}
+
+/**
  * Whether the store of `internals` is of `kind`, so that a value of that
  * kind is written into it, or reshapes it, in place.
  *
@@ -241,8 +276,9 @@ function bump(version) {
  *
  * An array takes the length of `newValue` as well, so the elements past it
  * go. Each index is assigned as a key is, so a plain object or an array
- * written over a store of its kind that `oldValue` owns, at the same index,
- * is written into that store, and the store stays where it is.
+ * written over a store of its kind that `oldValue` owns, at the same index
+ * and at no other, is written into that store, and the store stays where it
+ * is.
  *
  * @param {Record<PropertyKey, unknown> | unknown[]} oldValue
  * @param {Record<PropertyKey, unknown> | unknown[]} newValue
@@ -378,6 +414,23 @@ function store(data, operators = []) {
   };
 
   /**
+   * Record a read of the data key `key`, as `dependOn` does. On an array,
+   * a key that is neither an index nor one of its own keys is not followed:
+   * it is a method such as `map`, or a key such as `toJSON` or
+   * `Symbol.isConcatSpreadable` that a method looks for, and nothing writes
+   * to one. Its reads of the indices and `length` are what its caller
+   * depends on.
+   *
+   * @param {PropertyKey} key
+   * @returns {void}
+   */
+  const dependOnKey = (key) => {
+    if (!array || isIndex(key) || Object.hasOwn(state, key)) {
+      dependOn(key);
+    }
+  };
+
+  /**
    * @param {PropertyKey} key
    * @returns {void}
    */
@@ -428,14 +481,8 @@ function store(data, operators = []) {
         if (mutator) {
           return mutator;
         }
-        if (!Object.hasOwn(state, key) && Reflect.has(Array.prototype, key)) {
-          // A method such as `map` or `join`, found on the prototype. Its
-          // reads of the indices and `length` are what its caller depends
-          // on, and nothing writes to a method key.
-          return state[key];
-        }
       }
-      dependOn(key);
+      dependOnKey(key);
       if (!getters.has(key)) {
         return state[key];
       }
@@ -491,13 +538,15 @@ function store(data, operators = []) {
             nested?.owner === internals &&
             isOfKind(nested, kind) &&
             !isStore(newValue) &&
-            internals.mutator === undefined
+            internals.mutator === undefined &&
+            heldAtOneKey(state, oldValue)
           ) {
             // Written into the nested store this one owns key by key, whose
             // traps mark the keys the value changes. This key holds the same
             // store as before, so it is not marked, as no unchanged key is. A
-            // store from elsewhere is its owner's, and the value makes a new
-            // store here, as on a reload.
+            // store from elsewhere is its owner's, and one this store also
+            // holds at another key is that key's too, so for either the value
+            // makes a new store here, as on a reload.
             replace(
               /** @type {Record<PropertyKey, unknown>} */ (oldValue),
               /** @type {Record<PropertyKey, unknown>} */ (newValue),
@@ -544,13 +593,13 @@ function store(data, operators = []) {
       return true;
     },
     has(_, key) {
-      dependOn(key);
+      dependOnKey(key);
       return key in state;
     },
     getOwnPropertyDescriptor(_, key) {
       // What `Object.hasOwn` and a spread ask of each key, so that their
       // reader follows the key as `in` does.
-      dependOn(key);
+      dependOnKey(key);
       return Reflect.getOwnPropertyDescriptor(state, key);
     },
     deleteProperty(_, key) {
@@ -609,14 +658,15 @@ function store(data, operators = []) {
  * keys whose value it changes, at whatever depth: a plain object or an array
  * assigned to a key that held no store of its kind becomes a new store, every
  * key of which is a change, and one assigned over a store of its kind the key
- * owns is written into it key by key and marks the keys it changes there, not
- * the key it sits at, which holds the same store. A store assigned to a key is
- * held as itself and marks the key, and stays its owner's: a reload never
- * reshapes it through that key, and a plain object or an array assigned over it
- * makes a new store. An array is a store, so a method that changes it, a `push`
- * or a `splice`, writes through it and marks what it changes. A reload records
- * nothing, since `reshape` writes state directly rather than through the proxy,
- * and clears the mark of a key it gives an accessor to.
+ * owns, and holds at no other key, is written into it key by key and marks the
+ * keys it changes there, not the key it sits at, which holds the same store. A
+ * store assigned to a key is held as itself and marks the key, and stays its
+ * owner's: a reload never reshapes it through that key, and a plain object or
+ * an array assigned over it makes a new store. An array is a store, so a method
+ * that changes it, a `push` or a `splice`, writes through it and marks what it
+ * changes. A reload records nothing, since `reshape` writes state directly
+ * rather than through the proxy, and clears the mark of a key it gives an
+ * accessor to.
  *
  * Only a write through the store is seen. A value the program mutates in
  * place, a `Map` or a `Set` it fills, an instance whose field it sets, marks
@@ -981,12 +1031,12 @@ function reshapeWith(internals, descriptors, from) {
  *
  * Which element the array holds at each index, and its length, are the
  * program's or the source's as a whole, not index by index: its indices are
- * positions, not names, and a `shift` or a `splice` moves what each holds,
- * so a mark on an index says nothing about the element now at it. A write
- * the program makes to the array, to an index or to its length, by
- * assignment or by any of its methods, keeps which element is at each index
- * and the length as the program left them. A write into a store the array
- * holds marks that store and not the array, as it would at a key of an
+ * positions, not names, and a `shift` or a `splice` moves what each holds, so a
+ * mark on an index says nothing about the element now at it. A write the
+ * program makes to the array, to any of its keys, an index, its length or
+ * another, by assignment or by any of its methods, keeps which element is at
+ * each index and the length as the program left them. A write into a store the
+ * array holds marks that store and not the array, as it would at a key of an
  * object.
  *
  * What is inside an element store the array owns follows the source either way.

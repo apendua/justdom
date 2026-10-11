@@ -1373,3 +1373,32 @@ test("push(undefined) makes an index", () => {
   assert.strictEqual(Object.hasOwn(list, 0), true);
   assert.deepStrictEqual(keys, ["", "0"]);
 });
+
+test("a value assigned over a store held at two keys makes a new store", () => {
+  const list = store([{ n: 1 }, { n: 2 }]);
+  list[1] = list[0];
+  list[1] = { n: 9 };
+  assert.strictEqual(list[0].n, 1, "the other index keeps its store as it was");
+  assert.strictEqual(list[1].n, 9);
+  assert.notStrictEqual(list[0], list[1]);
+  const s = /** @type {{ a: { v: number }, b?: { v: number } }} */ (store({ a: { v: 1 } }));
+  s.b = s.a;
+  s.b = { v: 2 };
+  assert.strictEqual(s.a.v, 1);
+  assert.strictEqual(s.b.v, 2);
+});
+
+test("an array follows no key that is neither an index nor its own", () => {
+  const list = /** @type {any} */ (store([1]));
+  let runs = 0;
+  new Effect(() => {
+    runs += 1;
+    void JSON.stringify(list);
+    void ("map" in list);
+  });
+  list.toJSON = () => "x";
+  list.map = 1;
+  assert.strictEqual(runs, 1);
+  list.push(2);
+  assert.strictEqual(runs, 2);
+});

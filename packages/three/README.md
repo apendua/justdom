@@ -1173,8 +1173,8 @@ A key goes into the field through `typeIntoInput`, which is exported too — the
 the caret, backspace takes one out, and `keydown`, `input` and `keyup` are dispatched in a browser's
 order, so an app that listens for `input` or for `keydown` of `Enter` on a page hears the same thing
 in the scene. `Enter` asks the field's form to submit, if it is in one. While the board is up the
-field carries `data-xr-focus`, a presentational flag like `data-xr-hover` for a stylesheet to draw a
-focus ring with, and a caret, at the end of the text until it is moved.
+field carries `data-xr-focus` (`FOCUS_ATTRIBUTE`), a presentational flag like `data-xr-hover` for a
+stylesheet to draw a focus ring with, and a caret, at the end of the text until it is moved.
 
 The board follows focus the way a page does. `Enter` submits and keeps the field being typed into,
 so an app that clears the field after a submit can take the next entry straight away. A press
@@ -2145,10 +2145,11 @@ Named here so that nothing public goes unmentioned; each has its JSDoc.
   `anchorToViewer` measures upright in it, and in a session without it the anchor falls back to
   `local`, which IWER leaves tilted when a session is entered with the head tipped.
 - From `@apendua/freedom/page`: `getPortalRoot` and `scrollElementBy` again, the two functions a
-  widget on a page asks of a portal, from an entry point that imports nothing from three.js. A
-  widget a page shows before any session, and a panel may mirror during one, imports them from
-  there, so that the page's own bundle does not carry the renderer; the dropdown and the scrolling
-  list in `@apendua/justui` do.
+  widget on a page asks of a portal, and `FOCUS_ATTRIBUTE`, the `data-xr-focus` the keyboard marks
+  the field it types into with, from an entry point that imports nothing from three.js. A widget a
+  page shows before any session, and a panel may mirror during one, imports them from there, so that
+  the page's own bundle does not carry the renderer; the dropdown and the scrolling list in
+  `@apendua/justui` do, and so does `@apendua.dev/headset`'s `focus` for the mark.
 - From `@apendua/freedom/svg`: `shape`, `group`, `image` and `drawText` are the builders
   `svgElements()` dispatches to, for a plugin that draws one SVG element its own way and hands the
   rest to them.

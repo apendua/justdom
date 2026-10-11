@@ -408,6 +408,55 @@ describe("the portal's keyboard", () => {
     panel.cleanup();
   });
 
+  test("a label in another container becomes a ray target once its field takes the typing", async () => {
+    const panel = keyboardPanel();
+    // Labels in one column and fields in the next: the field's attributes
+    // reach nothing under the label's own parent.
+    const labels = document.createElement("div");
+    const fields = document.createElement("div");
+    const field = document.createElement("input");
+    field.type = "text";
+    field.id = "other";
+    field.readOnly = true;
+    fields.appendChild(field);
+    const label = document.createElement("label");
+    label.htmlFor = "other";
+    labels.appendChild(label);
+    panel.root.append(labels, fields);
+    await settle();
+    const before = new Set(panel.targets);
+
+    field.readOnly = false;
+    await settle();
+    const added = [...panel.targets].filter((target) => !before.has(target));
+    assert.equal(added.length, 1, "the label, and only the label, is a target now");
+
+    panel.press(added[0]);
+    await settle();
+    assert.equal(panels(), 2, "the board is up");
+    assert.ok(field.hasAttribute("data-xr-focus"));
+
+    panel.cleanup();
+  });
+
+  test("a label becomes a ray target once a field is put inside it", async () => {
+    const panel = keyboardPanel();
+    const label = document.createElement("label");
+    label.appendChild(document.createElement("span"));
+    panel.root.appendChild(label);
+    await settle();
+    const before = new Set(panel.targets);
+
+    const field = document.createElement("input");
+    field.type = "text";
+    label.appendChild(field);
+    await settle();
+    const added = [...panel.targets].filter((target) => !before.has(target));
+    assert.equal(added.length, 2, "the field and its label are targets");
+
+    panel.cleanup();
+  });
+
   test("a button inside a field's label puts it away, as it blurs the field on a page", async () => {
     const panel = keyboardPanel();
     await settle();

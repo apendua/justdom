@@ -344,7 +344,17 @@ function readDeclarations(text) {
  * The properties that place and size a box, and so move nothing but that box
  * when the box is out of the flow: an absolutely positioned box adds nothing
  * to its parent's flow, so its siblings and its parent's size do not depend
- * on them.
+ * on them. The set holds the physical and logical offsets, sizes and margins
+ * an author writes, and the longhands a browser serializes a logical write
+ * as.
+ *
+ * One case escapes it. An out-of-flow box still counts towards its
+ * containing block's scrollable overflow, so where scrollbars take room, a
+ * desktop browser's classic ones, a box grown past the bottom of a scroller
+ * brings a scrollbar in and narrows what the boxes in the flow lay out in.
+ * A headset draws overlay scrollbars and a panel hides its overflow, so the
+ * rule holds where a session runs; a box left stale beside a positioned one
+ * on a desktop page is that case.
  */
 const OUT_OF_FLOW_GEOMETRY = new Set([
   "top",
@@ -352,9 +362,46 @@ const OUT_OF_FLOW_GEOMETRY = new Set([
   "bottom",
   "left",
   "inset",
+  "inset-block",
+  "inset-inline",
+  "inset-block-start",
+  "inset-block-end",
+  "inset-inline-start",
+  "inset-inline-end",
   "width",
   "height",
+  "min-width",
+  "max-width",
+  "min-height",
+  "max-height",
+  "block-size",
+  "inline-size",
+  "min-block-size",
+  "max-block-size",
+  "min-inline-size",
+  "max-inline-size",
+  "margin",
+  "margin-top",
+  "margin-right",
+  "margin-bottom",
+  "margin-left",
+  "margin-block",
+  "margin-inline",
+  "margin-block-start",
+  "margin-block-end",
+  "margin-inline-start",
+  "margin-inline-end",
 ]);
+
+/**
+ * Whether a computed `position` takes the box out of its parent's flow.
+ *
+ * @param {string} position
+ * @returns {boolean}
+ */
+function isOutOfFlowPosition(position) {
+  return position === "absolute" || position === "fixed";
+}
 
 /**
  * Whether an inline style that went from `before` to `after` moved no box but
@@ -367,6 +414,11 @@ const OUT_OF_FLOW_GEOMETRY = new Set([
  * in the flow settles the panel. A custom property moves layout, since a
  * `var()` may feed a width, and so does `position`, which is how a box joins
  * or leaves the flow.
+ *
+ * A `relative` or `sticky` box is left out although its offsets move it
+ * alone, because its `width` and `height` do move the flow and the gate reads
+ * the position, not the property: its offsets climb, which costs work and
+ * nothing else.
  *
  * The position is read from the browser rather than from the mirror's cache,
  * because an ancestor's class changed in the same flush may not have reached
@@ -382,37 +434,18 @@ function keepsToOwnBox(element, before, after) {
   const was = readDeclarations(before);
   const now = readDeclarations(after);
   let placesItself = false;
-  /**
-   * @param {string} name
-   * @param {(string | undefined)[]} values
-   * @returns {boolean} Whether the declaration may move another box.
-   */
-  const reachesOthers = (name, values) => {
-    if (!values.some((value) => movesLayout(name, value))) {
-      return false;
-    }
-    if (OUT_OF_FLOW_GEOMETRY.has(name)) {
-      placesItself = true;
-      return false;
-    }
-    return true;
-  };
-  for (const [name, value] of now) {
+  for (const name of new Set([...was.keys(), ...now.keys()])) {
     const old = was.get(name);
-    if (old !== value && reachesOthers(name, [value, old])) {
+    const value = now.get(name);
+    if (old === value || (!movesLayout(name, old) && !movesLayout(name, value))) {
+      continue;
+    }
+    if (!OUT_OF_FLOW_GEOMETRY.has(name)) {
       return false;
     }
+    placesItself = true;
   }
-  for (const [name, value] of was) {
-    if (!now.has(name) && reachesOthers(name, [value])) {
-      return false;
-    }
-  }
-  if (!placesItself) {
-    return true;
-  }
-  const position = window.getComputedStyle(element).position;
-  return position === "absolute" || position === "fixed";
+  return !placesItself || isOutOfFlowPosition(window.getComputedStyle(element).position);
 }
 
 /**
@@ -2216,8 +2249,7 @@ export function isPortalRoot(node) {
  * @returns {boolean}
  */
 function isPositioned(element) {
-  const position = getPositionStyle(element);
-  return position === "absolute" || position === "fixed";
+  return isOutOfFlowPosition(getPositionStyle(element));
 }
 
 /** @type {WeakMap<Node, Derived<number>>} */

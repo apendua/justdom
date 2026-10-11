@@ -2578,70 +2578,77 @@ describe("layout boundaries", () => {
     }
   });
 
-  test("an inline style that moves a positioned box leaves the boxes beside it alone", () => {
-    // A scrollbar thumb is positioned absolutely and moved by `top` and
-    // `height` on every scroll. Its box is out of the flow, so moving or
-    // resizing it moves nothing beside it; taking `position` away moves
-    // everything after it.
-    const container = document.createElement("div");
-    container.setAttribute(PORTAL_ATTRIBUTE, "");
-    const thumb = document.createElement("div");
-    thumb.style.position = "absolute";
-    const label = document.createElement("div");
-    container.appendChild(thumb);
-    container.appendChild(label);
-    document.body.appendChild(container);
+  for (const position of /** @type {const} */ (["absolute", "fixed"])) {
+    test(`an inline style that moves a box positioned ${position} leaves the boxes beside it alone`, () => {
+      // A scrollbar thumb is positioned absolutely and moved by `top` and
+      // `height` on every scroll. Its box is out of the flow, so moving or
+      // resizing it moves nothing beside it; taking `position` away moves
+      // everything after it.
+      const container = document.createElement("div");
+      container.setAttribute(PORTAL_ATTRIBUTE, "");
+      const thumb = document.createElement("div");
+      thumb.style.position = position;
+      const label = document.createElement("div");
+      container.appendChild(thumb);
+      container.appendChild(label);
+      document.body.appendChild(container);
 
-    const mirror = createMirror();
-    for (const node of [container, thumb, label]) {
-      mirror.adopt(node);
-    }
+      const mirror = createMirror();
+      for (const node of [container, thumb, label]) {
+        mirror.adopt(node);
+      }
 
-    const reads = { label: 0, thumb: 0 };
-    layout(container, () => [0, 0, 200, 20]);
-    layout(thumb, () => [190, 0, 200, 10], { count: () => reads.thumb++ });
-    layout(label, () => [0, 0, 200, 20], { count: () => reads.label++ });
+      const reads = { label: 0, thumb: 0 };
+      layout(container, () => [0, 0, 200, 20]);
+      layout(thumb, () => [190, 0, 200, 10], { count: () => reads.thumb++ });
+      layout(label, () => [0, 0, 200, 20], { count: () => reads.label++ });
 
-    /** @param {string | null} oldValue */
-    const styled = (oldValue) =>
-      /** @type {MutationRecord} */ (
-        /** @type {unknown} */ ({
-          type: "attributes",
-          target: thumb,
-          attributeName: "style",
-          oldValue,
-          addedNodes: [],
-          removedNodes: [],
-        })
-      );
+      /** @param {string | null} oldValue */
+      const styled = (oldValue) =>
+        /** @type {MutationRecord} */ (
+          /** @type {unknown} */ ({
+            type: "attributes",
+            target: thumb,
+            attributeName: "style",
+            oldValue,
+            addedNodes: [],
+            removedNodes: [],
+          })
+        );
 
-    try {
-      const watched = [
-        new Derived(() => getContentPosition(label)),
-        new Derived(() => getContentPosition(thumb)),
-      ];
-      const holders = watched.map((signal) => new Effect(() => signal.get()));
-      // A first settle reads as changed everywhere, so the ledger is primed
-      // before anything is asserted about it.
-      thumb.style.width = "10px";
-      mirror.ingest([styled("position: absolute;")]);
-      const before = { ...reads };
+      try {
+        const watched = [
+          new Derived(() => getContentPosition(label)),
+          new Derived(() => getContentPosition(thumb)),
+        ];
+        const holders = watched.map((signal) => new Effect(() => signal.get()));
+        // A first settle reads as changed everywhere, so the ledger is primed
+        // before anything is asserted about it.
+        thumb.style.width = "10px";
+        mirror.ingest([styled(`position: ${position};`)]);
+        const before = { ...reads };
 
-      thumb.style.top = "8px";
-      thumb.style.height = "12px";
-      mirror.ingest([styled("position: absolute; width: 10px;")]);
-      assert.equal(reads.label, before.label, "the thumb moved nothing beside it");
-      assert.equal(reads.thumb, before.thumb + 1, "and was measured where it went");
+        thumb.style.top = "8px";
+        thumb.style.height = "12px";
+        mirror.ingest([styled(`position: ${position}; width: 10px;`)]);
+        assert.equal(reads.label, before.label, "the thumb moved nothing beside it");
+        assert.equal(reads.thumb, before.thumb + 1, "and was measured where it went");
 
-      thumb.style.position = "static";
-      mirror.ingest([styled("position: absolute; width: 10px; top: 8px; height: 12px;")]);
-      assert.equal(reads.label, before.label + 1, "taking it into the flow moved the label");
+        thumb.style.removeProperty("top");
+        mirror.ingest([styled(`position: ${position}; width: 10px; top: 8px; height: 12px;`)]);
+        assert.equal(reads.label, before.label, "an offset taken off moved nothing beside it");
+        assert.equal(reads.thumb, before.thumb + 2, "and the thumb was measured again");
 
-      holders.forEach((effect) => effect.dispose());
-    } finally {
-      container.remove();
-    }
-  });
+        thumb.style.position = "static";
+        mirror.ingest([styled(`position: ${position}; width: 10px; height: 12px;`)]);
+        assert.equal(reads.label, before.label + 1, "taking it into the flow moved the label");
+
+        holders.forEach((effect) => effect.dispose());
+      } finally {
+        container.remove();
+      }
+    });
+  }
 
   test("an inline style that moves no box leaves the boxes after it alone", () => {
     // A gauge that writes `style.transform` every frame pays for its own

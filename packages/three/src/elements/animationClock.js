@@ -173,8 +173,9 @@ function kebab(name) {
  * The invalidation class of one animated property. Keyframes hand properties
  * back camelCased; transition events use the CSS names; both resolve here.
  * Anything unrecognized — including a missing name — is assumed to move
- * layout, the class that invalidates most. The mirror asks the same question
- * of an inline `style` write (`keepsToOwnBox` in mirror.js).
+ * layout, the class that invalidates most. The mirror asks `classify` the
+ * same question of an inline `style` write, and then whether the box is out
+ * of the flow (`keepsToOwnBox` in mirror.js).
  *
  * @param {string} [property]
  * @returns {AnimationClass}

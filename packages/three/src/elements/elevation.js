@@ -64,8 +64,11 @@ import { getDrawnBorderColor, parseAlpha } from "./VisualProperties.js";
  *
  * - Flow siblings are not stepped. Only an element that is positioned or
  *   transformed clears its siblings, and only those that are too. A box
- *   pulled over a neighbour by a negative margin, or a positioned box over a
- *   flow sibling, stays on the same plane as what it covers.
+ *   pulled over a neighbour by a negative margin stays on the plane of what
+ *   it covers, and so does a positioned box over a flow sibling, which puts
+ *   it behind that sibling's descendants, a `CONTENT_STEP` per level of
+ *   nesting: its own marks, 1 px in front of its quad, sit behind the first
+ *   level of what it covers.
  * - Only the sign of `z-index` counts. Two overlays stack in tree order,
  *   whatever their numbers.
  * - Boxes with a negative `z-index` are not stepped against each other.

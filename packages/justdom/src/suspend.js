@@ -89,10 +89,13 @@ class Manager {
       // second mounting of the same tree gets a content of its own.
       const node = fromObservable(content);
       const shared = toObservable(node);
-      // Both content and fallback are always subscribed, so that their effects
-      // are applied and cleanup works correctly. `takeUntil(keepAlive)` used to
-      // say this: a notifier that never emits, held open for the life of the
-      // subscription. Holding the node open says it directly.
+      // The content is always subscribed, so that its effects are applied
+      // once and its cleanup runs when the boundary goes, whichever branch is
+      // showing. `takeUntil(keepAlive)` used to say this: a notifier that
+      // never emits, held open for the life of the subscription. Holding the
+      // node open says it directly. The fallback is not held: it is the
+      // `flatMap` branch below while `ready` is false, and is unsubscribed
+      // when the content is swapped in.
       //
       // The content is subscribed first, before anything is on screen. While
       // hydrating it must not claim anything: a synchronous server render can

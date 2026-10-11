@@ -392,9 +392,12 @@ describe("text steps", () => {
  * world, and every array the pump sent up.
  *
  * @param {ReturnType<typeof handScale>} scale
- * @param {{ budget?: number, now?: () => number, textShadow?: string }} [options]
- *   The frame's budget, and the clock the pump reads its deadline on, all
- *   the time in the world by default; and the run's shadow.
+ * @param {{
+ *   budget?: number,
+ *   now?: () => number,
+ *   textShadow?: string,
+ * }} [options] The frame's budget, and the clock the pump reads its deadline
+ *   on, all the time in the world by default; and the run's shadow.
  */
 function preparedRun(scale, { budget = Infinity, now = () => 0, textShadow } = {}) {
   /** @type {(() => void) | null} */

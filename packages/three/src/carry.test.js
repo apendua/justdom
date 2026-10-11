@@ -521,6 +521,19 @@ describe("carry", () => {
     dispose();
   });
 
+  test("a handle taken out of the scene mid-carry, its release does not reach the room", () => {
+    // The press stopped at the handle, so the room never heard it, and the
+    // handle's listeners went with it: the release still stops where the
+    // press did.
+    const { left, panel, events, unmountHandle, dispose } = setup();
+    moveAside(panel);
+    press(left, "selectstart");
+    unmountHandle();
+    press(left, "selectend");
+    assert.deepEqual(events, []);
+    dispose();
+  });
+
   test("a hand that disconnects mid-carry puts the object down", () => {
     // Three sends no release for a hand it has lost, at the end of a
     // session say; the board would otherwise follow a hidden controller.

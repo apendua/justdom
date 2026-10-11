@@ -71,12 +71,15 @@ import { addDependency, batch, Derived } from "@apendua/signal";
  * What the events that end a press carry besides, the `…end`, the
  * completion and the `…missed` alike: the `…start` the press began with,
  * so that a handler can ask the manager whether something took it
- * (`isStopped`). That is a question for the grip, and a hold's: `drag()` and
- * `carry()` look the start up among the presses they took (`createHold`),
- * so that a release goes no further than its press did. A panel takes every
+ * (`isStopped`). The manager decides how far each of them goes: no further
+ * along the press's path than the start went, up to and including the
+ * object whose handler stopped it (`Press` in `interactions.js`), so a
+ * release never reaches what did not hear its press. Whether something
+ * took the start is then a question for the grip: a panel takes every
  * trigger press on what it can click, so on a panel a `select`'s start has
  * always been taken; it leaves a grip's start alone, so that a scene can
- * pick up with the grip what the panel hangs from.
+ * pick up with the grip what the panel hangs from, and the grip's end
+ * reaches the panel on its way there.
  *
  * @typedef {object} PressEnd
  * @property {InputEvent} start

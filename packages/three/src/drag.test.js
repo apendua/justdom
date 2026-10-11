@@ -78,12 +78,12 @@ function setup(options) {
     board.addEventListener(type, () => events.push(`board:${type}`));
   }
 
-  subscriptions.push(
-    $(box, [draggable()]).subscribe((component) => {
-      component.addTo(board);
-      board.updateMatrixWorld(true);
-    }),
-  );
+  // Mounted on its own, so a test can take it out of the scene while the
+  // board and the hands stay.
+  const boxSubscription = $(box, [draggable()]).subscribe((component) => {
+    component.addTo(board);
+    board.updateMatrixWorld(true);
+  });
 
   return {
     manager,
@@ -96,7 +96,9 @@ function setup(options) {
     held,
     /** One frame of the loop, which is when a held object says where it is. */
     frame: () => runFrame(renderer, 0, /** @type {any} */ ({})),
+    unmount: () => boxSubscription.unsubscribe(),
     dispose: () => {
+      boxSubscription.unsubscribe();
       for (const subscription of subscriptions) {
         subscription.unsubscribe();
       }
@@ -328,6 +330,19 @@ describe("drag", () => {
     press(left, "selectend");
     frame();
     assert.equal(moves.length, 2);
+    dispose();
+  });
+
+  test("taken out of the scene while held, its release does not reach the board", () => {
+    // The press stopped at the box, so the board never heard it, and the
+    // box's listeners went with it: the release still stops where the
+    // press did.
+    const { left, box, events, unmount, dispose } = setup();
+    press(left, "selectstart");
+    unmount();
+    assert.equal(box.parent, null);
+    press(left, "selectend");
+    assert.deepEqual(events, ["dragstart"]);
     dispose();
   });
 

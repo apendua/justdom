@@ -164,17 +164,24 @@ export class InteractionManager {
   }
 
   /**
+   * Send an event along a path, or along its first `reach` objects, until
+   * a handler stops it.
+   *
    * @template {InteractionEventType} TEvent
    * @param {THREE.Object3D<XREventMap>[]} path
    * @param {XREventMap[TEvent] & THREE.BaseEvent<TEvent>} event
+   * @param {number} [reach]
+   * @returns {number} How many objects it reached, the one that stopped it
+   *   included.
    */
-  #dispatchAlong(path, event) {
-    for (const target of path) {
-      target.dispatchEvent(event);
+  #dispatchAlong(path, event, reach = path.length) {
+    for (let i = 0; i < reach; i += 1) {
+      path[i].dispatchEvent(event);
       if (this.#done.get(event)) {
-        return;
+        return i + 1;
       }
     }
+    return reach;
   }
 
   /**
@@ -228,10 +235,24 @@ export class InteractionManager {
        * pressed. `start` is the event the press began with, handed to the
        * events that end it.
        *
+       * `reach` is how far along `path` the start went: up to and including
+       * the object whose handler stopped it, or the whole path when nothing
+       * did. The events that end the press go that far and no further, so
+       * whatever is behind the object that took the press hears neither the
+       * press nor its end. That holds for the `…end`, the completion and the
+       * `…missed`, the `lost` ones included, and it holds whatever became
+       * of the object since: one taken out of the scene mid-press no longer
+       * listens, and its release still stops where its press did. Each of
+       * them may still stop earlier, where a handler stops it, as `drag()`
+       * and `carry()` stop the release of a press they took. A start that
+       * nothing stops, as a panel leaves the grip's, goes on to whatever
+       * takes it, and its end reaches the panel and that object both.
+       *
        * @typedef {{
        *   object: THREE.Object3D<XREventMap>,
        *   target: THREE.Object3D<XREventMap> | undefined,
        *   path: THREE.Object3D<XREventMap>[],
+       *   reach: number,
        *   start: InputEvent,
        * }} Press
        */
@@ -297,8 +318,8 @@ export class InteractionManager {
           controller,
           intersection,
         };
-        this.#dispatchAlong(path, start);
-        return { object, target, path, start };
+        const reach = this.#dispatchAlong(path, start);
+        return { object, target, path, reach, start };
       };
 
       /**
@@ -308,7 +329,8 @@ export class InteractionManager {
        * went through, so a click reaches the same elements that have been
        * wearing the pressed styling since the start, even if the one pressed
        * has since been re-rendered. Anywhere else, it misses. The end, the
-       * completion and the miss each carry the start. A press whose hand
+       * completion and the miss each carry the start, and go no further
+       * along the path than the start did (see `Press`). A press whose hand
        * went misses wherever the ray was left, and its end and its miss
        * say `lost`.
        *
@@ -323,38 +345,50 @@ export class InteractionManager {
           return;
         }
         const intersection = lost ? undefined : this.getIntersection(controller);
-        const { object, path, start } = press;
+        const { object, path, reach, start } = press;
         const releasedOn = intersection && this.getTarget(intersection.object);
-        this.#dispatchAlong(path, {
-          type: /** @type {const} */ (`${button}end`),
-          inputSource,
-          target: object,
-          originalTarget: object,
-          controller,
-          intersection,
-          start,
-          lost,
-        });
-        if (intersection && press.target && releasedOn === press.target) {
-          this.#dispatchAlong(path, {
-            type: button,
+        this.#dispatchAlong(
+          path,
+          {
+            type: /** @type {const} */ (`${button}end`),
             inputSource,
             target: object,
             originalTarget: object,
             controller,
             intersection,
             start,
-          });
-        } else {
-          this.#dispatchAlong(path, {
-            type: /** @type {const} */ (`${button}missed`),
-            inputSource,
-            target: object,
-            originalTarget: object,
-            controller,
-            start,
             lost,
-          });
+          },
+          reach,
+        );
+        if (intersection && press.target && releasedOn === press.target) {
+          this.#dispatchAlong(
+            path,
+            {
+              type: button,
+              inputSource,
+              target: object,
+              originalTarget: object,
+              controller,
+              intersection,
+              start,
+            },
+            reach,
+          );
+        } else {
+          this.#dispatchAlong(
+            path,
+            {
+              type: /** @type {const} */ (`${button}missed`),
+              inputSource,
+              target: object,
+              originalTarget: object,
+              controller,
+              start,
+              lost,
+            },
+            reach,
+          );
         }
       };
 

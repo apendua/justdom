@@ -6,6 +6,7 @@ import { parseColor } from "./VisualProperties.js";
 import { applyClip, applyReveal } from "./clip.js";
 import { TextBatchContext } from "./textBatch.js";
 import { readTextScale, TextScaleContext } from "./textScale.js";
+import { TextPrepareContext } from "./textPrepare.js";
 
 /**
  * @import {MeshBasicMaterial, Texture, Vector4} from 'three';
@@ -13,6 +14,7 @@ import { readTextScale, TextScaleContext } from "./textScale.js";
  * @import {Component} from '../core.js';
  * @import {TextBounds, TextRenderStyle, TextTexture} from './textHelpers.js';
  * @import {TextLine} from './textLines.js';
+ * @import {PreparedRun} from './textPrepare.js';
  */
 
 /**
@@ -116,6 +118,19 @@ export function textRun(ctx, source, extra = []) {
    * @type {TextTexture[]}
    */
   const retired = [];
+  /**
+   * The texture the mesh draws, as of the last commit, which is the one
+   * raster nothing may dispose.
+   *
+   * @type {Texture | null}
+   */
+  let shown = null;
+
+  /**
+   * The pump that draws the run ahead of a step its panel is about to show,
+   * and null off a panel.
+   */
+  const preparer = TextPrepareContext.get(ctx);
 
   /**
    * Dispose of a raster, and tell the batch its layer is free.
@@ -138,10 +153,9 @@ export function textRun(ctx, source, extra = []) {
    * commit leaves the run showing what it showed, and the raster drawn for
    * that step in between stays until the run next changes texture.
    *
-   * @param {Texture} shown
    * @returns {void}
    */
-  const evict = (shown) => {
+  const evict = () => {
     for (const [step, raster] of rasters) {
       if (raster.texture !== shown && !textScale?.holds(step)) {
         rasters.delete(step);
@@ -152,6 +166,36 @@ export function textRun(ctx, source, extra = []) {
       dispose(raster);
     }
     retired.length = 0;
+  };
+
+  /**
+   * The run as the prepare pump sees it. It draws from what the shown raster
+   * was drawn from rather than reading the source, so preparing reads and
+   * holds nothing in the panel's graph. A run whose content changed and was
+   * not read again yet is prepared from its old content, and `textureData`
+   * drops that raster and queues the run again when it reads the new.
+   *
+   * @type {PreparedRun}
+   */
+  const preparedRun = {
+    prepare(step) {
+      if (!drawnFrom || rasters.has(step)) {
+        return;
+      }
+      const { lines, style, bounds, masked } = drawnFrom;
+      const raster = generateTextTexture(lines, style, bounds, step, masked);
+      rasters.set(step, raster);
+      if (masked) {
+        batch?.stage(mesh, /** @type {HTMLCanvasElement} */ (raster.texture.image));
+      }
+    },
+    release(step) {
+      const raster = rasters.get(step);
+      if (raster && raster.texture !== shown) {
+        rasters.delete(step);
+        dispose(raster);
+      }
+    },
   };
 
   // The raster at the step the panel shows: the one the run kept, or one
@@ -165,6 +209,7 @@ export function textRun(ctx, source, extra = []) {
       retired.push(...rasters.values());
       rasters.clear();
       drawnFrom = inputs;
+      preparer?.requeue(preparedRun);
     }
     let raster = rasters.get(step);
     if (!raster) {
@@ -192,8 +237,12 @@ export function textRun(ctx, source, extra = []) {
       } else {
         applyClip(material, source.clip);
       }
+      // The run is prepared for as long as it has a material, which is as
+      // long as it is mounted.
+      preparer?.register(preparedRun);
       onCleanup(() => {
         material.dispose();
+        preparer?.unregister(preparedRun);
         // And every raster the run kept, which go with it. Here rather than in
         // an effect of their own, which would be a scope per run for one
         // teardown. Their layers in the batch go with `batch.remove`, below.
@@ -203,6 +252,7 @@ export function textRun(ctx, source, extra = []) {
         rasters.clear();
         retired.length = 0;
         drawnFrom = null;
+        shown = null;
       });
       return material;
     }),
@@ -225,7 +275,8 @@ export function textRun(ctx, source, extra = []) {
       if (hadMap !== !!material.map || hadAlphaMap !== !!material.alphaMap) {
         material.needsUpdate = true;
       }
-      evict(texture);
+      shown = texture;
+      evict();
       batch?.invalidate();
     }),
     set("geometry", () => {

@@ -593,3 +593,139 @@ describe("text batch held steps", () => {
     assert.equal(disposed.length, 2);
   });
 });
+
+describe("text batch prepared steps", () => {
+  /**
+   * A panel of one run at its shown size, flushed, with an `upload` that
+   * records what it was given.
+   */
+  function prepared() {
+    const container = new THREE.Group();
+    place(container, 0, 0, 0);
+    const batch = createTextBatch(container);
+    const mesh = run(24, 12);
+    container.add(mesh);
+    batch.add(mesh, { value: new THREE.Vector4(-1e6, -1e6, 1e6, 1e6) });
+    show(mesh, countedCanvas(24, 12));
+    batch.flush();
+    /** @type {THREE.Texture[]} */
+    const uploaded = [];
+    /** @param {THREE.Texture} texture */
+    const upload = (texture) => {
+      uploaded.push(texture);
+    };
+    return { container, batch, mesh, uploaded, upload };
+  }
+
+  test("a staged raster is copied, but no rebuild builds an array for it", () => {
+    const p = prepared();
+    const fine = countedCanvas(34, 17);
+    p.batch.stage(p.mesh, /** @type {HTMLCanvasElement} */ (/** @type {unknown} */ (fine)));
+    assert.equal(fine.reads, 1);
+
+    p.batch.invalidate();
+    p.batch.flush();
+    assert.equal(p.uploaded.length, 0);
+    assert.equal(p.batch.commitStaged(Infinity, p.upload), false);
+    assert.equal(p.uploaded.length, 1, "built and sent up when the pump asks");
+    assert.equal(/** @type {THREE.DataArrayTexture} */ (p.uploaded[0]).image.width, 34);
+  });
+
+  test("showing a staged raster after its array went up copies and builds nothing", () => {
+    const p = prepared();
+    const fine = countedCanvas(34, 17);
+    p.batch.stage(p.mesh, /** @type {HTMLCanvasElement} */ (/** @type {unknown} */ (fine)));
+    p.batch.commitStaged(Infinity, p.upload);
+    const [array] = p.uploaded;
+    let disposed = false;
+    array.addEventListener("dispose", () => {
+      disposed = true;
+    });
+
+    show(p.mesh, fine);
+    p.batch.invalidate();
+    p.batch.flush();
+    assert.deepEqual(shownArrays(p.container), [array], "drawn from the array that went up");
+    assert.equal(fine.reads, 1);
+    assert.equal(disposed, false);
+    assert.equal(p.batch.commitStaged(Infinity, p.upload), false);
+    assert.equal(p.uploaded.length, 1, "nothing more to send");
+  });
+
+  test("a class a shown run changes is built by the rebuild, staged layers and all", () => {
+    const p = prepared();
+    // Staged at the shown size, so the shown run's class takes it.
+    p.batch.stage(
+      p.mesh,
+      /** @type {HTMLCanvasElement} */ (/** @type {unknown} */ (countedCanvas(24, 12))),
+    );
+    const other = run(24, 12);
+    p.container.add(other);
+    p.batch.add(other, { value: new THREE.Vector4(-1e6, -1e6, 1e6, 1e6) });
+    show(other, countedCanvas(24, 12));
+    p.batch.flush();
+
+    assert.equal(p.batch.commitStaged(Infinity, p.upload), false);
+    assert.equal(p.uploaded.length, 0, "the rebuild's array already carries the staged layer");
+  });
+
+  test("a bucket drawing from a class is rebound when the pump builds it", () => {
+    const p = prepared();
+    const [before] = shownArrays(p.container);
+    p.batch.stage(
+      p.mesh,
+      /** @type {HTMLCanvasElement} */ (/** @type {unknown} */ (countedCanvas(24, 12))),
+    );
+    p.batch.commitStaged(Infinity, p.upload);
+    const [after] = shownArrays(p.container);
+    assert.notEqual(after, before);
+    assert.equal(after, p.uploaded[0], "the bucket samples the array that replaced the old one");
+  });
+
+  test("the pump sends up a class at a time once past its bytes", () => {
+    const p = prepared();
+    for (const [width, height] of [
+      [34, 17],
+      [48, 24],
+    ]) {
+      p.batch.stage(
+        p.mesh,
+        /** @type {HTMLCanvasElement} */ (/** @type {unknown} */ (countedCanvas(width, height))),
+      );
+    }
+    assert.equal(p.batch.commitStaged(1, p.upload), true, "one more class to go");
+    assert.equal(p.uploaded.length, 1);
+    assert.equal(p.batch.commitStaged(1, p.upload), false);
+    assert.equal(p.uploaded.length, 2);
+  });
+});
+
+describe("text batch upload budget", () => {
+  test("a class that would take the frame past its bytes waits for the next call", () => {
+    const container = new THREE.Group();
+    place(container, 0, 0, 0);
+    const batch = createTextBatch(container);
+    const mesh = run(24, 12);
+    container.add(mesh);
+    batch.add(mesh, { value: new THREE.Vector4(-1e6, -1e6, 1e6, 1e6) });
+    show(mesh, countedCanvas(24, 12));
+    batch.flush();
+    // Two classes of 8 layers each: 34 * 17 * 4 * 8 and 48 * 24 * 4 * 8 bytes.
+    for (const [width, height] of [
+      [34, 17],
+      [48, 24],
+    ]) {
+      batch.stage(
+        mesh,
+        /** @type {HTMLCanvasElement} */ (/** @type {unknown} */ (countedCanvas(width, height))),
+      );
+    }
+    let uploads = 0;
+    const upload = () => {
+      uploads += 1;
+    };
+    const first = 34 * 17 * 4 * 8;
+    assert.equal(batch.commitStaged(first + 1, upload), true);
+    assert.equal(uploads, 1, "the second class would have gone past the bytes");
+  });
+});

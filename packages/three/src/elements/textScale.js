@@ -114,6 +114,27 @@ const STEPS_PER_DOUBLING = 2;
  */
 const COARSEN_MARGIN = 0.8;
 
+/**
+ * How close to the shown step the measurement has to come before the panel
+ * starts preparing the step above it.
+ *
+ * The step above is published the moment the measurement passes the shown
+ * step, so this is a share of the shown step, not of the one above. At 0.85
+ * a player leaning in at a steady pace gives the pump the last sixth of the
+ * way, and one standing still at the hold below a step (`COARSEN_MARGIN`) is
+ * well clear of it. A guess until a headset trace says otherwise.
+ */
+export const PREPARE_SHARE = 0.85;
+
+/**
+ * How long the measurement has to stay under `PREPARE_SHARE` of the shown
+ * step before the panel stops preparing the step above and frees what it
+ * made. Long enough that a head swaying on the threshold does not throw the
+ * work away and start it again, short enough that a player who stepped back
+ * does not leave a step's worth of memory behind for long.
+ */
+export const ABANDON_MS = 1000;
+
 const scratchScale = new THREE.Vector3();
 const scratchPosition = new THREE.Vector3();
 const scratchQuaternion = new THREE.Quaternion();
@@ -201,17 +222,33 @@ export function stepBelow(step) {
 }
 
 /**
+ * The step a panel showing `step` publishes when the measurement passes it,
+ * or null for a panel at its cap. Worked out as `stepFor` does, so that it is
+ * the very number a run is later asked to draw at.
+ *
+ * @param {number} step
+ * @param {number} max
+ * @returns {number | null}
+ */
+export function stepAbove(step, max) {
+  const exponent = Math.floor(Math.log2(step) * STEPS_PER_DOUBLING + 1e-9) + 1;
+  const above = Math.min(max, 2 ** (exponent / STEPS_PER_DOUBLING));
+  return above > step ? above : null;
+}
+
+/**
  * Whether a panel showing `shown` holds a run's raster at `held`: the shown
- * step, and the one below it. The one below is the step a panel leaned into
- * has just left, which is the one the player leaning back out comes to
- * first, and it costs half the shown step's memory.
+ * step, the one below it, and the one it is preparing. The one below is the
+ * step a panel leaned into has just left, which is the one the player
+ * leaning back out comes to first, and it costs half the shown step's memory.
  *
  * @param {number} shown
  * @param {number} held
+ * @param {number | null} [prepared]
  * @returns {boolean}
  */
-export function holdsStep(shown, held) {
-  return held === shown || held === stepBelow(shown);
+export function holdsStep(shown, held, prepared = null) {
+  return held === shown || held === stepBelow(shown) || held === prepared;
 }
 
 /**
@@ -230,8 +267,16 @@ export function holdsStep(shown, held) {
  *   ceiling is reached by hundreds of runs at once rather than by one. Only
  *   ever lowers: `MAX_TEXT_SCALE` is what a run is allowed to cost at all,
  *   and nothing asked for here goes above it.
+ * @param {{ now?: () => number }} [options] The clock `ABANDON_MS` is
+ *   measured on, injectable so tests are deterministic.
  */
-export function createTextScale(container, renderer, camera, maxScale = MAX_TEXT_SCALE) {
+export function createTextScale(
+  container,
+  renderer,
+  camera,
+  maxScale = MAX_TEXT_SCALE,
+  { now = () => performance.now() } = {},
+) {
   const max = Math.min(
     MAX_TEXT_SCALE,
     Math.max(1, Number.isFinite(maxScale) ? maxScale : MAX_TEXT_SCALE),
@@ -239,6 +284,21 @@ export function createTextScale(container, renderer, camera, maxScale = MAX_TEXT
   const published = Signal.of(1);
   /** Read back without tracking anything, which a frame callback must not. */
   let step = 1;
+  /**
+   * The step being prepared ahead of the measurement reaching it, or null.
+   * Always the step above `step` when set; the rules are in section 5.1 of
+   * `docs/freedom-text-step-cache.md`.
+   *
+   * @type {number | null}
+   */
+  let prepared = null;
+  /**
+   * When the measurement last fell under `PREPARE_SHARE` of the shown step
+   * while `prepared` was set, or null while it is above it.
+   *
+   * @type {number | null}
+   */
+  let fallingSince = null;
   /** The panel's middle, in the container's own pixels. */
   const centre = new THREE.Vector3();
 
@@ -259,7 +319,16 @@ export function createTextScale(container, renderer, camera, maxScale = MAX_TEXT
      * @param {number} held
      * @returns {boolean}
      */
-    holds: (held) => holdsStep(step, held),
+    holds: (held) => holdsStep(step, held, prepared),
+
+    /**
+     * The step being prepared ahead of the measurement, or null. Untracked,
+     * like `holds`: it is read once a frame by whoever runs the preparing,
+     * right after `measure`.
+     *
+     * @returns {number | null}
+     */
+    prepared: () => prepared,
 
     /**
      * Where the middle of the panel is, which is what its distance is
@@ -313,6 +382,21 @@ export function createTextScale(container, renderer, camera, maxScale = MAX_TEXT
       if (wanted > step || (wanted < step && measured <= boundary * COARSEN_MARGIN)) {
         step = wanted;
         published.set(wanted);
+        // Rule 3: the step above is a different step now. Whatever was
+        // prepared is the shown step, the one below it, or let go of.
+        prepared = null;
+        fallingSince = null;
+      }
+      const above = stepAbove(step, max);
+      if (above !== null && measured >= PREPARE_SHARE * step) {
+        prepared = above;
+        fallingSince = null;
+      } else if (prepared !== null) {
+        fallingSince ??= now();
+        if (now() - fallingSince >= ABANDON_MS) {
+          prepared = null;
+          fallingSince = null;
+        }
       }
     },
   };

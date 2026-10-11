@@ -6,10 +6,13 @@ import { createMirror } from "./mirror.js";
 import { text } from "./text.js";
 import { createTextBatch, TextBatchContext } from "./textBatch.js";
 import { holdsStep, stepBelow, TextScaleContext } from "./textScale.js";
+import { createTextPreparer, TextPrepareContext } from "./textPrepare.js";
+import { createPortalScheduler } from "./portalScheduler.js";
 import { installRange } from "../test/textRange.js";
 
 /**
  * @import {TextBatch} from './textBatch.js';
+ * @import {TextPreparer} from './textPrepare.js';
  */
 
 describe("text visibility", () => {
@@ -158,27 +161,37 @@ describe("text opacity", () => {
 function handScale() {
   const published = Signal.of(1);
   let shown = 1;
+  /** @type {number | null} */
+  let preparing = null;
   return {
     read: () => published.get(),
-    holds: (/** @type {number} */ step) => holdsStep(shown, step),
+    holds: (/** @type {number} */ step) => holdsStep(shown, step, preparing),
     /** @param {number} step */
     show(step) {
       shown = step;
+      preparing = null;
       published.set(step);
+    },
+    /** @param {number | null} step */
+    prepare(step) {
+      preparing = step;
     },
   };
 }
 
 /**
- * One text node, projected with `scale` on its context (and `batch`, if
- * given), and what it is drawn with.
+ * One text node, projected with `scale` on its context, and what it is
+ * drawn with.
  *
  * @param {ReturnType<typeof handScale>} scale
- * @param {(container: THREE.Object3D) => TextBatch} [withBatch]
- * @param {UpdateChannel} [channel] The channel its effects run in, as a
- *   portal's do.
+ * @param {{
+ *   withBatch?: (container: THREE.Object3D) => TextBatch,
+ *   channel?: UpdateChannel,
+ *   withPreparer?: (batch: TextBatch | null) => TextPreparer,
+ * }} [options] A batch to draw it, the channel its effects run in, as a
+ *   portal's do, and the pump that prepares it.
  */
-function steppedRun(scale, withBatch, channel) {
+function steppedRun(scale, { withBatch, channel, withPreparer } = {}) {
   const restore = installRange();
   const element = document.createElement("span");
   element.append("label");
@@ -193,6 +206,10 @@ function steppedRun(scale, withBatch, channel) {
   let ctx = TextScaleContext.set({}, scale);
   if (batch) {
     ctx = TextBatchContext.set(ctx, batch);
+  }
+  const preparer = withPreparer?.(batch) ?? null;
+  if (preparer) {
+    ctx = TextPrepareContext.set(ctx, preparer);
   }
   /** @type {THREE.Object3D | undefined} */
   let object;
@@ -223,6 +240,8 @@ function steppedRun(scale, withBatch, channel) {
     mirror,
     mesh,
     batch,
+    preparer,
+    container,
     shown,
     disposed,
     done: () => {
@@ -293,7 +312,7 @@ describe("text steps", () => {
   test("under an atomic channel, a raster let go of is disposed at the commit, not before", () => {
     const scale = handScale();
     const channel = new UpdateChannel({ name: "panel", order: 1, manual: true, atomic: true });
-    const run = steppedRun(scale, undefined, channel);
+    const run = steppedRun(scale, { channel });
     try {
       const coarse = run.shown();
       scale.show(Math.SQRT2);
@@ -328,9 +347,11 @@ describe("text steps", () => {
     const scale = handScale();
     /** @type {THREE.Object3D | null} */
     let panel = null;
-    const run = steppedRun(scale, (container) => {
-      panel = container;
-      return createTextBatch(container);
+    const run = steppedRun(scale, {
+      withBatch: (container) => {
+        panel = container;
+        return createTextBatch(container);
+      },
     });
     /** The array texture the run's bucket samples. */
     const array = () => {
@@ -358,6 +379,166 @@ describe("text steps", () => {
       assert.equal(released, true, "no run holds a raster at 1 any more");
     } finally {
       run.done();
+    }
+  });
+});
+
+/**
+ * A run on a panel that prepares steps ahead: a batch, a prepare pump paced
+ * by a scheduler whose frames the test runs by hand with all the time in the
+ * world, and every array the pump sent up.
+ *
+ * @param {ReturnType<typeof handScale>} scale
+ */
+function preparedRun(scale) {
+  /** @type {(() => void) | null} */
+  let tick = null;
+  const scheduler = createPortalScheduler({
+    budget: Infinity,
+    now: () => 0,
+    requestFrames: (callback) => {
+      tick = callback;
+      return () => {
+        tick = null;
+      };
+    },
+  });
+  /** @type {THREE.Texture[]} */
+  const uploaded = [];
+  const run = steppedRun(scale, {
+    withBatch: (container) => createTextBatch(container),
+    withPreparer: (batch) =>
+      createTextPreparer({
+        scheduler,
+        batch: /** @type {TextBatch} */ (batch),
+        holds: scale.holds,
+        upload: (texture) => {
+          uploaded.push(texture);
+        },
+        now: () => 0,
+      }),
+  });
+  const batch = /** @type {TextBatch} */ (run.batch);
+  const preparer = /** @type {TextPreparer} */ (run.preparer);
+  batch.flush();
+  /** The panel's step `step` is prepared, and a frame runs the pump. */
+  const prepare = (/** @type {number | null} */ step) => {
+    scale.prepare(step);
+    preparer.retarget(step);
+    /** @type {(() => void) | null} */ (tick)?.();
+  };
+  /** The array texture the run's visible bucket samples. */
+  const array = () => {
+    const bucket = /** @type {THREE.InstancedMesh | undefined} */ (
+      run.container.children.find(
+        (c) =>
+          /** @type {THREE.InstancedMesh} */ (c).isInstancedMesh &&
+          /** @type {THREE.InstancedMesh} */ (c).count > 0,
+      )
+    );
+    assert.ok(bucket);
+    return /** @type {THREE.ShaderMaterial} */ (bucket.material).uniforms.uRuns.value;
+  };
+  return { run, batch, preparer, prepare, uploaded, array };
+}
+
+/**
+ * Count the canvases made while `fn` runs, which is one per raster drawn.
+ *
+ * @param {() => void} fn
+ * @returns {number}
+ */
+function canvasesMade(fn) {
+  const real = document.createElement;
+  let made = 0;
+  // Counting one tag, restored below.
+  document.createElement = (/** @type {string} */ tag, /** @type {unknown} */ options) => {
+    if (tag === "canvas") {
+      made += 1;
+    }
+    return real.call(document, tag, /** @type {ElementCreationOptions} */ (options));
+  };
+  try {
+    fn();
+  } finally {
+    document.createElement = real;
+  }
+  return made;
+}
+
+describe("prepared text steps", () => {
+  test("a step prepared ahead is shown at the crossing without drawing, copying or uploading", () => {
+    const scale = handScale();
+    const p = preparedRun(scale);
+    try {
+      p.prepare(Math.SQRT2);
+      assert.equal(p.preparer.complete(), true);
+      assert.equal(p.uploaded.length, 1, "the prepared step's array went up ahead");
+      const [ahead] = p.uploaded;
+      let rebuilt = false;
+      ahead.addEventListener("dispose", () => {
+        rebuilt = true;
+      });
+
+      const drawn = canvasesMade(() => {
+        scale.show(Math.SQRT2);
+        p.preparer.retarget(null);
+        p.batch.flush();
+      });
+      assert.equal(drawn, 0, "the run was drawn at 1.41 already");
+      assert.equal(p.array(), ahead, "and drawn from the array that went up");
+      assert.equal(rebuilt, false);
+      assert.equal(p.uploaded.length, 1);
+    } finally {
+      p.run.done();
+    }
+  });
+
+  test("a step let go of before the crossing frees what was made for it", () => {
+    const scale = handScale();
+    const p = preparedRun(scale);
+    try {
+      const shown = p.run.shown();
+      p.prepare(Math.SQRT2);
+      const [ahead] = p.uploaded;
+      let freed = false;
+      ahead.addEventListener("dispose", () => {
+        freed = true;
+      });
+
+      p.prepare(null);
+      p.batch.flush();
+      assert.equal(freed, true, "no run holds a layer at 1.41 any more");
+      assert.equal(p.run.disposed.has(shown), false, "and the shown raster stays");
+      const drawn = canvasesMade(() => {
+        scale.show(Math.SQRT2);
+      });
+      assert.equal(drawn, 1, "so crossing draws it again");
+    } finally {
+      p.run.done();
+    }
+  });
+
+  test("a run whose content changes is prepared again from what it says now", () => {
+    const scale = handScale();
+    const p = preparedRun(scale);
+    try {
+      p.prepare(Math.SQRT2);
+      assert.equal(p.uploaded.length, 1);
+
+      p.run.node.data = "another label";
+      p.run.mirror.characterDataChanged(p.run.node);
+      assert.equal(p.preparer.complete(), false, "queued again");
+      p.prepare(Math.SQRT2);
+      assert.equal(p.preparer.complete(), true);
+      assert.equal(p.uploaded.length, 2);
+
+      const drawn = canvasesMade(() => {
+        scale.show(Math.SQRT2);
+      });
+      assert.equal(drawn, 0);
+    } finally {
+      p.run.done();
     }
   });
 });

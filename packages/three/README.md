@@ -1674,6 +1674,13 @@ the panel shows it again without drawing anything or uploading anything, from th
 arrays it kept. A step two below, or one above, is let go of as the panel moves on. Holding the step
 below costs half again what the shown step costs, since a step costs half the one above it.
 
+The step above is drawn before it is needed. Once the measurement comes within 0.85 of the step a
+panel shows, the panel draws every run at the step above, a run at a time, in whatever frame time
+the panels' own work leaves, and then sends the arrays it filled to the GPU, at most 512 kB a frame.
+Walking on across the boundary then swaps textures and draws nothing. If the measurement falls back
+under 0.85 for a second, the panel lets that step go. While it is held, a panel keeps up to three
+and a half times what the shown step costs: the step below at half and the step above at twice.
+
 ### Panel defaults
 
 Some of what a panel is told belongs to the scene rather than to any one panel. `render()` takes

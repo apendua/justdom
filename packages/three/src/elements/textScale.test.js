@@ -1,7 +1,7 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
-import { createTextScale, stepBelow } from "./textScale.js";
+import { ABANDON_MS, createTextScale, PREPARE_SHARE, stepAbove, stepBelow } from "./textScale.js";
 import { placeAndScale } from "./place.js";
 
 /**
@@ -37,14 +37,15 @@ function renderer() {
  *   distance: number,
  *   size?: [number, number],
  *   maxScale?: number,
+ *   now?: () => number,
  * }} options
  */
-function panel({ metresPerPixel, distance, size = [0, 0], maxScale }) {
+function panel({ metresPerPixel, distance, size = [0, 0], maxScale, now }) {
   const camera = new THREE.PerspectiveCamera(FOV, 1, 0.1, 100);
   camera.updateProjectionMatrix();
   camera.updateMatrixWorld();
   const container = new THREE.Group();
-  const scale = createTextScale(container, renderer(), camera, maxScale);
+  const scale = createTextScale(container, renderer(), camera, maxScale, { now });
   scale.setPanelSize(size[0], size[1]);
   /** @param {number} to */
   const moveTo = (to) => {
@@ -158,8 +159,9 @@ describe("createTextScale", () => {
 
 describe("held steps", () => {
   test("a panel holds the step it shows and the one below it, and no other", () => {
-    // 2.5 device pixels to the pixel: shown at 2.83.
-    const p = panel({ metresPerPixel: 0.001, distance: 0.4 });
+    // 2.1 device pixels to the pixel: shown at 2.83, and under the share of
+    // it that starts preparing 4.
+    const p = panel({ metresPerPixel: 0.001, distance: 1 / 2.1 });
     p.scale.measure();
     const shown = p.scale.read();
     assert.equal(shown, 2 ** 1.5);
@@ -202,5 +204,103 @@ describe("held steps", () => {
   test("a step a panel's cap put off the ladder has the ladder step under it below it", () => {
     assert.equal(stepBelow(3), 2 ** 1.5);
     assert.equal(stepBelow(1), null);
+  });
+});
+
+/**
+ * The distance at which the fixture's panel measures `measured` device
+ * pixels to the pixel.
+ *
+ * @param {number} measured
+ */
+const at = (measured) => 1 / measured;
+
+describe("prepared steps", () => {
+  test("a panel prepares the step above once the measurement nears the step it shows", () => {
+    const p = panel({ metresPerPixel: 0.001, distance: at(0.8) });
+    p.scale.measure();
+    assert.equal(p.scale.read(), 1);
+    assert.equal(p.scale.prepared(), null, "0.8 is under 0.85 of 1");
+
+    p.moveTo(at(0.9));
+    p.scale.measure();
+    assert.equal(p.scale.read(), 1);
+    assert.equal(p.scale.prepared(), Math.SQRT2);
+    assert.equal(p.scale.holds(Math.SQRT2), true, "what is being prepared is held");
+  });
+
+  test("crossing into the prepared step clears it, and the next is weighed afresh", () => {
+    const p = panel({ metresPerPixel: 0.001, distance: at(0.9) });
+    p.scale.measure();
+    assert.equal(p.scale.prepared(), Math.SQRT2);
+
+    // 1.1 publishes 1.41, and is under 0.85 of it (1.2).
+    p.moveTo(at(1.1));
+    p.scale.measure();
+    assert.equal(p.scale.read(), Math.SQRT2);
+    assert.equal(p.scale.prepared(), null);
+
+    // 1.3 publishes nothing new, and is over 0.85 of 1.41.
+    p.moveTo(at(1.3));
+    p.scale.measure();
+    assert.equal(p.scale.read(), Math.SQRT2);
+    assert.equal(p.scale.prepared(), 2);
+  });
+
+  test("a measurement that falls back is given a second before the step is let go", () => {
+    let time = 0;
+    const p = panel({ metresPerPixel: 0.001, distance: at(0.9), now: () => time });
+    p.scale.measure();
+    assert.equal(p.scale.prepared(), Math.SQRT2);
+
+    p.moveTo(at(0.7));
+    p.scale.measure();
+    time = ABANDON_MS - 1;
+    p.scale.measure();
+    assert.equal(p.scale.prepared(), Math.SQRT2, "not yet");
+    time = ABANDON_MS;
+    p.scale.measure();
+    assert.equal(p.scale.prepared(), null);
+    assert.equal(p.scale.holds(Math.SQRT2), false);
+  });
+
+  test("coming back over the share before the second is up starts the count again", () => {
+    let time = 0;
+    const p = panel({ metresPerPixel: 0.001, distance: at(0.9), now: () => time });
+    p.scale.measure();
+    p.moveTo(at(0.7));
+    p.scale.measure();
+    time = ABANDON_MS / 2;
+    p.moveTo(at(0.9));
+    p.scale.measure();
+    p.moveTo(at(0.7));
+    p.scale.measure();
+    time = ABANDON_MS;
+    p.scale.measure();
+    assert.equal(p.scale.prepared(), Math.SQRT2, "half a second under, since it came back");
+    time = ABANDON_MS * 1.5;
+    p.scale.measure();
+    assert.equal(p.scale.prepared(), null);
+  });
+
+  test("a panel at its cap prepares nothing", () => {
+    const p = panel({ metresPerPixel: 0.001, distance: at(1.9), maxScale: 2 });
+    p.scale.measure();
+    assert.equal(p.scale.read(), 2);
+    assert.ok(1.9 >= PREPARE_SHARE * 2);
+    assert.equal(p.scale.prepared(), null);
+  });
+
+  test("the step above is the very number the ladder publishes for it", () => {
+    assert.equal(stepAbove(1, 4), Math.SQRT2);
+    assert.equal(stepAbove(2, 4), 2 ** 1.5);
+    assert.equal(stepAbove(2 ** 1.5, 4), 4);
+    assert.equal(stepAbove(2 ** 1.5, 3), 3, "capped");
+    assert.equal(stepAbove(3, 3), null);
+    assert.equal(stepAbove(4, 4), null);
+    // And what a panel publishes when it crosses: 2.1 past 2.
+    const p = panel({ metresPerPixel: 0.001, distance: at(2.1) });
+    p.scale.measure();
+    assert.equal(p.scale.read(), stepAbove(2, 4));
   });
 });

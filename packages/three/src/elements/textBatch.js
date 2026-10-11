@@ -154,8 +154,16 @@ class SizeClass {
   next = 0;
   /** Bumped when the texture object is replaced, so buckets rebind. */
   generation = 0;
-  /** Whether the mirror has changed since the texture was last built. */
+  /** Whether a shown run changed the mirror since the texture was built. */
   stale = false;
+  /**
+   * Whether a prepared run changed the mirror since the texture was built.
+   * Kept apart from `stale` because a rebuild commits only for a shown run
+   * (rule 12 in `docs/freedom-text-step-cache.md`): the prepare pump writes
+   * a class over many frames, and committing it at each rebuild between
+   * them would upload the growing array again every time.
+   */
+  staged = false;
 
   /**
    * @param {number} width
@@ -176,9 +184,10 @@ class SizeClass {
    * here: `commit` builds it, once, after every write of a rebuild is in.
    *
    * @param {number} needed
+   * @param {boolean} staged Whether a prepared run is what needs the room.
    * @returns {void}
    */
-  #reserve(needed) {
+  #reserve(needed, staged) {
     if (needed <= this.capacity) {
       return;
     }
@@ -192,7 +201,19 @@ class SizeClass {
     }
     this.data = data;
     this.capacity = capacity;
-    this.stale = true;
+    this.#changed(staged);
+  }
+
+  /**
+   * @param {boolean} staged
+   * @returns {void}
+   */
+  #changed(staged) {
+    if (staged) {
+      this.staged = true;
+    } else {
+      this.stale = true;
+    }
   }
 
   /**
@@ -233,10 +254,37 @@ class SizeClass {
    * @returns {void}
    */
   commit() {
-    if (!this.stale || !this.data) {
+    if (this.stale) {
+      this.#build();
+    }
+  }
+
+  /**
+   * Build the texture for what prepared runs wrote, which `commit` leaves
+   * alone. The prepare pump calls it once it has written every run.
+   *
+   * @returns {boolean} Whether there was anything to build.
+   */
+  commitStaged() {
+    if (!this.staged) {
+      return false;
+    }
+    this.#build();
+    return true;
+  }
+
+  /**
+   * A fresh texture over the whole mirror, which carries every layer in it,
+   * shown and staged alike.
+   *
+   * @returns {void}
+   */
+  #build() {
+    this.stale = false;
+    this.staged = false;
+    if (!this.data) {
       return;
     }
-    this.stale = false;
     if (this.texture) {
       this.texture.dispose();
     }
@@ -265,19 +313,20 @@ class SizeClass {
    * already has room for, whatever the cap says — which matters, because it is
    * how a run declined earlier gets in once another leaves.
    *
+   * @param {boolean} [staged] Whether the layer is for a prepared run.
    * @returns {number}
    */
-  acquire() {
+  acquire(staged = false) {
     if (this.free.length) {
       const layer = /** @type {number} */ (this.free.pop());
-      this.#reserve(layer + 1);
+      this.#reserve(layer + 1, staged);
       return layer;
     }
     if (this.next >= MAXIMUM_LAYERS) {
       return NO_LAYER;
     }
     const layer = this.next++;
-    this.#reserve(layer + 1);
+    this.#reserve(layer + 1, staged);
     return layer;
   }
 
@@ -334,16 +383,17 @@ class SizeClass {
    *
    * @param {number} layer
    * @param {HTMLCanvasElement} canvas
+   * @param {boolean} [staged] Whether the pixels are a prepared run's.
    * @returns {void}
    */
-  write(layer, canvas) {
+  write(layer, canvas, staged = false) {
     const context = canvas.getContext("2d");
     if (layer === NO_LAYER || !context || !this.data) {
       return;
     }
     const pixels = context.getImageData(0, 0, this.width, this.height).data;
     this.data.set(pixels, layer * this.layerBytes);
-    this.stale = true;
+    this.#changed(staged);
   }
 
   /** @returns {void} */
@@ -355,6 +405,7 @@ class SizeClass {
     this.data = null;
     this.capacity = 0;
     this.stale = false;
+    this.staged = false;
   }
 }
 
@@ -395,6 +446,15 @@ class Bucket {
       }
       this.#build(capacity);
     }
+    this.rebind();
+  }
+
+  /**
+   * Draw from the texture the size class holds now, if it has built a new one.
+   *
+   * @returns {void}
+   */
+  rebind() {
     if (this.mesh && this.generation !== this.sizeClass.generation) {
       /** @type {THREE.ShaderMaterial} */ (this.mesh.material).uniforms.uRuns.value =
         this.sizeClass.texture;
@@ -703,6 +763,89 @@ export class TextBatch {
   }
 
   /**
+   * Copy a raster the run is not showing yet into a layer of its own, for a
+   * step its panel is preparing. The class it lands in is marked staged, not
+   * stale, so no rebuild builds its texture for it; `commitStaged` does, once
+   * every run is prepared. When the run later shows the canvas, `#settle`
+   * finds the layer, and nothing is copied or built at the crossing.
+   *
+   * Only for a mask: a raster with its colours baked in is never batched.
+   * Nothing for a run the batch has not taken in yet, or one whose class is
+   * full; it is copied at the crossing instead, as if it was never prepared.
+   *
+   * @param {THREE.Mesh} mesh
+   * @param {HTMLCanvasElement} canvas
+   * @returns {void}
+   */
+  stage(mesh, canvas) {
+    const member = this.#members.get(mesh);
+    if (!member || member.slots.has(canvas) || !canvas.width || !canvas.height) {
+      return;
+    }
+    const sizeClass = this.#classFor(canvas);
+    const layer = sizeClass.acquire(true);
+    if (layer === NO_LAYER) {
+      return;
+    }
+    sizeClass.write(layer, canvas, true);
+    member.slots.set(canvas, { sizeClass, layer });
+  }
+
+  /**
+   * Build and upload the arrays of the classes `stage` wrote into: at most
+   * `bytes` of them, and at least one class whatever its size. Each class's
+   * buckets are rebound to its new array here, in the same call that
+   * disposed the old one, so nothing samples a disposed texture until the
+   * next rebuild.
+   *
+   * @param {number} bytes
+   * @param {(texture: THREE.Texture) => void} upload Send a texture to the
+   *   GPU now rather than at the next render: `renderer.initTexture` in a
+   *   session. The batch is given it rather than a renderer, which it has no
+   *   business holding.
+   * @returns {boolean} Whether staged classes are left for another call.
+   */
+  commitStaged(bytes, upload) {
+    let spent = 0;
+    for (const sizeClass of this.#classes.values()) {
+      if (!sizeClass.staged) {
+        continue;
+      }
+      const size = sizeClass.capacity * sizeClass.layerBytes;
+      if (spent > 0 && spent + size > bytes) {
+        return true;
+      }
+      if (!sizeClass.commitStaged() || !sizeClass.texture) {
+        continue;
+      }
+      upload(sizeClass.texture);
+      for (const bucket of this.#buckets.values()) {
+        if (bucket.sizeClass === sizeClass) {
+          bucket.rebind();
+        }
+      }
+      spent += size;
+    }
+    return false;
+  }
+
+  /**
+   * The size class for a canvas of this size, made if there is none.
+   *
+   * @param {HTMLCanvasElement} canvas
+   * @returns {SizeClass}
+   */
+  #classFor(canvas) {
+    const key = `${canvas.width}x${canvas.height}`;
+    let sizeClass = this.#classes.get(key);
+    if (!sizeClass) {
+      sizeClass = new SizeClass(canvas.width, canvas.height);
+      this.#classes.set(key, sizeClass);
+    }
+    return sizeClass;
+  }
+
+  /**
    * Coalesced to one rebuild for the same reason the boxes' is: a single
    * mutation reaches a great many runs, and the rebuild is a walk of the panel
    * either way. Collected on the same two schedules, and for the same reason —
@@ -760,12 +903,7 @@ export class TextBatch {
     member.height = positions[7];
     let slot = member.slots.get(canvas);
     if (!slot) {
-      const key = `${canvas.width}x${canvas.height}`;
-      let sizeClass = this.#classes.get(key);
-      if (!sizeClass) {
-        sizeClass = new SizeClass(canvas.width, canvas.height);
-        this.#classes.set(key, sizeClass);
-      }
+      const sizeClass = this.#classFor(canvas);
       const layer = sizeClass.acquire();
       if (layer === NO_LAYER) {
         // Full. The run draws itself, exactly as one with baked colours does,

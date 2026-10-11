@@ -333,16 +333,16 @@ export function replace(oldValue, newValue) {
     // only the stores the set does not hold yet, and removes them again, so
     // each store is added and removed once.
     const found = storesIn(newValue);
-    const made = found !== null && placing === null;
-    /** @type {unknown[]} */
-    const added = [];
-    if (made) {
+    const outer = placing;
+    /** @type {unknown[] | null} */
+    let added = null;
+    if (found && outer === null) {
       placing = found;
-    } else if (found && placing) {
+    } else if (found && outer) {
       for (const held of found) {
-        if (!placing.has(held)) {
-          placing.add(held);
-          added.push(held);
+        if (!outer.has(held)) {
+          outer.add(held);
+          (added ??= []).push(held);
         }
       }
     }
@@ -357,11 +357,11 @@ export function replace(oldValue, newValue) {
         }
       }
     } finally {
-      if (made) {
+      if (found && outer === null) {
         placing = null;
-      } else {
+      } else if (outer && added) {
         for (const held of added) {
-          placing?.delete(held);
+          outer.delete(held);
         }
       }
     }
@@ -910,11 +910,15 @@ function adopt(internals, value, from, adopted) {
  * reshape. A kept key re-runs nobody.
  *
  * `definition` is a plain object, or a store, which stands for its getters and
- * setters and the values it holds now. For a store made of an array it is an
- * array, or an array store. A store keeps the kind it was made with, so a
- * definition of the other kind throws, and for an array store its type refuses
- * one too. This is the whole of a hot reload of a store; `replace` is an
- * assignment and belongs to the running program.
+ * setters and the values it holds now. A store the definition holds at a key,
+ * one it owns, is taken over as itself: after the reload the key holds that
+ * very store, and it is this store's. It becomes so once the reload is done, so
+ * a key where the program already holds it is left alone on this reload, as a
+ * key holding a store from elsewhere is, and reshaped through on the next. For
+ * a store made of an array it is an array, or an array store. A store keeps the
+ * kind it was made with, so a definition of the other kind throws, and for an
+ * array store its type refuses one too. This is the whole of a hot reload of a
+ * store; `replace` is an assignment and belongs to the running program.
  *
  * A key with a setter and no getter reads `undefined`, as it does when
  * `store()` makes it: a write to it goes to the setter, never to `state`.

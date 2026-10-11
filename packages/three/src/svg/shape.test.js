@@ -9,7 +9,8 @@ import { getControlRoot } from "../elements/pointerForwarding.js";
 import { bubble, forwardedPanel } from "../test/rays.js";
 import { OBSERVER_OPTIONS } from "../elements/portal.js";
 import { SVGLoader } from "three/examples/jsm/loaders/SVGLoader.js";
-import { buildFillGeometry, group, paintSlot, shape } from "./shape.js";
+import { buildFillGeometry, buildShapePath, group, paintSlot, shape } from "./shape.js";
+import { parsePoints } from "./style.js";
 import { BOX_BUCKET_BIAS } from "../elements/boxBatch.js";
 import { getContentRenderOrder } from "../elements/elevation.js";
 
@@ -1280,6 +1281,96 @@ describe("svg shape as a ray target", () => {
     assert.ok(fill.renderOrder < stroke.renderOrder, "the new fill under the old stroke");
     assert.equal(Math.floor(fill.renderOrder), Math.floor(stroke.renderOrder));
     assert.equal(/** @type {SVGElement} */ (s.element).dataset.xrHover, "true", "still hovered");
+    s.teardown();
+  });
+});
+
+describe("a shape's outline", () => {
+  /**
+   * What a path's outline is made of: per subpath, its kinds of curve, its
+   * closing and the points it samples to, which is all the fill and the
+   * stroke read of it.
+   *
+   * @param {THREE.ShapePath | null} path
+   */
+  const outline = (path) =>
+    path?.subPaths.map((subPath) => ({
+      curves: subPath.curves.map((curve) => curve.type),
+      autoClose: subPath.autoClose,
+      points: subPath.getPoints(8).map(({ x, y }) => [x, y]),
+    }));
+
+  /** @param {string} markup */
+  const loaded = (markup) =>
+    new SVGLoader().parse(`<svg xmlns="${SVG_NS}">${markup}</svg>`).paths[0];
+
+  test("each kind of shape is built as three's loader builds it", () => {
+    /** @type {[import("./style.js").ShapeGeometry, string][]} */
+    const cases = [
+      [
+        { kind: "rect", x: 1, y: 2, width: 10, height: 5, rx: 0, ry: 0 },
+        '<rect x="1" y="2" width="10" height="5" rx="0" ry="0"/>',
+      ],
+      [
+        { kind: "rect", x: 1, y: 2, width: 10, height: 5, rx: 2, ry: 1.5 },
+        '<rect x="1" y="2" width="10" height="5" rx="2" ry="1.5"/>',
+      ],
+      [{ kind: "circle", cx: 5, cy: -3, r: 4.25 }, '<circle cx="5" cy="-3" r="4.25"/>'],
+      [{ kind: "ellipse", cx: 0, cy: 1, rx: 4, ry: 2 }, '<ellipse cx="0" cy="1" rx="4" ry="2"/>'],
+      [{ kind: "line", x1: 1, y1: 2, x2: 3.5, y2: -4 }, '<line x1="1" y1="2" x2="3.5" y2="-4"/>'],
+      [{ kind: "polyline", points: [0, 0, 10, 0, 5, 0.5] }, '<polyline points="0,0 10,0 5,5e-1"/>'],
+      [{ kind: "polygon", points: [0, 0, 10, 0, 5, 5] }, '<polygon points="0 0 10 0 5 5"/>'],
+      [{ kind: "path", d: "M0 0 A5 5 0 0 1 10 0 Z" }, '<path d="M0 0 A5 5 0 0 1 10 0 Z"/>'],
+      // A quote in a `d` is escaped on its way into the document the loader
+      // parses, and the loader reads the path up to it.
+      [{ kind: "path", d: 'M0 0 L10 0 L10 10 Z "' }, '<path d="M0 0 L10 0 L10 10 Z"/>'],
+    ];
+    for (const [geometry, markup] of cases) {
+      const built = buildShapePath(geometry);
+      assert.ok(built, markup);
+      assert.deepEqual(outline(built), outline(loaded(markup)), markup);
+    }
+  });
+
+  test("a points list is read as a browser reads it, where the loader shifts its pairs", () => {
+    // A comma and then a space between the numbers of a pair: the loader
+    // takes one separator only, and pairs `0, 0 10, 0 5, 5` as (0,10),(0,5).
+    const geometry = /** @type {const} */ ({
+      kind: "polygon",
+      points: parsePoints("0, 0 10, 0 5, 5") ?? [],
+    });
+    assert.deepEqual(
+      outline(buildShapePath(geometry)),
+      outline(loaded('<polygon points="0,0 10,0 5,5"/>')),
+    );
+  });
+
+  test("a shape that moves is rebuilt without the loader; a path is parsed once per d", (t) => {
+    const parse = t.mock.method(SVGLoader.prototype, "parse");
+    for (const [tag, attributes, name] of /** @type {const} */ ([
+      ["circle", { cx: "5", cy: "5", r: "4", fill: "red" }, "cx"],
+      ["ellipse", { cx: "5", cy: "5", rx: "4", ry: "2", fill: "red" }, "cy"],
+      ["rect", { x: "0", y: "0", width: "10", height: "10", fill: "red" }, "x"],
+      ["line", { x1: "0", y1: "0", x2: "10", y2: "10", stroke: "red" }, "x2"],
+      ["polygon", { points: "0,0 10,0 5,5", fill: "red" }, "points"],
+    ])) {
+      const s = setup(tag, attributes);
+      for (const value of ["1", "2", "3"]) {
+        s.setAttribute(name, name === "points" ? `${value},0 10,0 5,5` : value);
+      }
+      s.teardown();
+    }
+    assert.equal(parse.mock.callCount(), 0, "no simple shape was written out and parsed");
+
+    // The parsed paths are cached for the whole process, so these two `d`s
+    // are this test's own: no other test may draw them, or the count below
+    // would find one already parsed.
+    const first = "M0 0 H21.0625 V11.0625 Z";
+    const second = "M0 0 H41.0625 V11.0625 Z";
+    const s = setup("path", { d: first, fill: "red" });
+    s.setAttribute("d", second);
+    s.setAttribute("d", first);
+    assert.equal(parse.mock.callCount(), 2, "each d is parsed once, and found again after");
     s.teardown();
   });
 });

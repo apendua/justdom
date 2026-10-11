@@ -394,16 +394,7 @@ describe("getComputedStyleCached", () => {
     /** @param {string} name */
     const wrote = (name) => {
       rowA.setAttribute(name, "true");
-      return /** @type {MutationRecord} */ (
-        /** @type {unknown} */ ({
-          type: "attributes",
-          target: rowA,
-          attributeName: name,
-          oldValue: null,
-          addedNodes: [],
-          removedNodes: [],
-        })
-      );
+      return attributeRecord(rowA, name, null);
     };
 
     // Same element, same position in the tree, so the attribute's name is
@@ -422,6 +413,105 @@ describe("getComputedStyleCached", () => {
 
     subscription.unsubscribe();
     list.remove();
+  });
+
+  test("a shape's geometry restyles the shape, not its siblings", () => {
+    // page
+    // ├── svg ─┬── circleA
+    // │        ├── circleB
+    // │        └── inner (a nested <svg>)
+    // └── aside
+    //
+    // A drawing that moves writes `cx` and the like on many shapes a frame,
+    // and under the ordinary scope each one restyled every shape beside it.
+    // The root's `width` sizes a CSS box in the page, and is not narrowed;
+    // nor is the same name on an HTML element.
+    const page = document.createElement("div");
+    const svg = document.createElementNS(SVG_NAMESPACE, "svg");
+    const circleA = document.createElementNS(SVG_NAMESPACE, "circle");
+    const circleB = document.createElementNS(SVG_NAMESPACE, "circle");
+    const inner = document.createElementNS(SVG_NAMESPACE, "svg");
+    const aside = document.createElement("div");
+    svg.appendChild(circleA);
+    svg.appendChild(circleB);
+    svg.appendChild(inner);
+    page.appendChild(svg);
+    page.appendChild(aside);
+    document.body.appendChild(page);
+
+    const mirror = createMirror();
+    for (const node of [page, svg, circleA, circleB, inner, aside]) {
+      mirror.adopt(node);
+    }
+
+    const reads = { svg: 0, circleA: 0, circleB: 0, aside: 0 };
+    /** @param {keyof typeof reads} key @param {Element} element */
+    const follow = (key, element) =>
+      new Effect(() => {
+        reads[key] += 1;
+        getComputedStyleCached(element);
+      });
+    const holders = [
+      follow("svg", svg),
+      follow("circleA", circleA),
+      follow("circleB", circleB),
+      follow("aside", aside),
+    ];
+    assert.deepEqual(reads, { svg: 1, circleA: 1, circleB: 1, aside: 1 });
+
+    /** @param {Element} target @param {string} name */
+    const wrote = (target, name) => {
+      const oldValue = target.getAttribute(name);
+      target.setAttribute(name, `${Number(oldValue ?? 0) + 1}`);
+      return attributeRecord(target, name, oldValue);
+    };
+
+    batch(() =>
+      mirror.ingest([
+        wrote(circleA, "cx"),
+        wrote(circleA, "r"),
+        wrote(circleA, "dx"),
+        wrote(circleA, "dy"),
+        wrote(circleA, "rotate"),
+        wrote(circleA, "transform"),
+      ]),
+    );
+    assert.deepEqual(
+      reads,
+      { svg: 1, circleA: 2, circleB: 1, aside: 1 },
+      "geometry stops at the shape",
+    );
+
+    batch(() => mirror.ingest([wrote(inner, "width")]));
+    assert.deepEqual(
+      reads,
+      { svg: 1, circleA: 2, circleB: 1, aside: 1 },
+      "a nested <svg>'s width is geometry too",
+    );
+
+    batch(() => mirror.ingest([wrote(circleA, "cx"), wrote(circleA, "class")]));
+    assert.deepEqual(
+      reads,
+      { svg: 1, circleA: 3, circleB: 2, aside: 1 },
+      "an author's class in the same flush still reaches the siblings",
+    );
+
+    batch(() => mirror.ingest([wrote(svg, "width")]));
+    assert.deepEqual(
+      reads,
+      { svg: 2, circleA: 4, circleB: 3, aside: 2 },
+      "the root's width reaches what is beside it in the page",
+    );
+
+    batch(() => mirror.ingest([wrote(aside, "width")]));
+    assert.deepEqual(
+      reads,
+      { svg: 3, circleA: 5, circleB: 4, aside: 3 },
+      "and so does the same name on an HTML element",
+    );
+
+    holders.forEach((effect) => effect.dispose());
+    page.remove();
   });
 
   test("a write that did not change the value invalidates nothing", () => {
@@ -449,17 +539,7 @@ describe("getComputedStyleCached", () => {
     assert.equal(reads, 1);
 
     /** @param {string | null} oldValue */
-    const record = (oldValue) =>
-      /** @type {MutationRecord} */ (
-        /** @type {unknown} */ ({
-          type: "attributes",
-          target: element,
-          attributeName: "data-xr-hover",
-          oldValue,
-          addedNodes: [],
-          removedNodes: [],
-        })
-      );
+    const record = (oldValue) => attributeRecord(element, "data-xr-hover", oldValue);
 
     // The value is "true" and was "true" before: not a change.
     batch(() => mirror.ingest([record("true")]));
@@ -510,17 +590,7 @@ describe("getComputedStyleCached", () => {
      * @param {string} name
      * @param {string | null} oldValue
      */
-    const record = (name, oldValue) =>
-      /** @type {MutationRecord} */ (
-        /** @type {unknown} */ ({
-          type: "attributes",
-          target: element,
-          attributeName: name,
-          oldValue,
-          addedNodes: [],
-          removedNodes: [],
-        })
-      );
+    const record = (name, oldValue) => attributeRecord(element, name, oldValue);
 
     element.setAttribute("data-xr-hover", "true");
     batch(() => mirror.ingest([record("data-xr-hover", null)]));
@@ -588,20 +658,7 @@ describe("getComputedStyleCached", () => {
       geometry.get();
 
       element.setAttribute(name, "on");
-      batch(() =>
-        mirror.ingest([
-          /** @type {MutationRecord} */ (
-            /** @type {unknown} */ ({
-              type: "attributes",
-              target: element,
-              attributeName: name,
-              oldValue: null,
-              addedNodes: [],
-              removedNodes: [],
-            })
-          ),
-        ]),
-      );
+      batch(() => mirror.ingest([attributeRecord(element, name, null)]));
 
       // Everything restyles — that half is never in question.
       assert.equal(styleReads, 2, `${name} restyles`);
@@ -638,17 +695,7 @@ describe("getComputedStyleCached", () => {
     assert.equal(reads, 1);
 
     /** @param {Element} target */
-    const record = (target) =>
-      /** @type {MutationRecord} */ (
-        /** @type {unknown} */ ({
-          type: "attributes",
-          target,
-          attributeName: "class",
-          oldValue: "was",
-          addedNodes: [],
-          removedNodes: [],
-        })
-      );
+    const record = (target) => attributeRecord(target, "class", "was");
 
     // Two mutations, two elements, one flush — the portal wraps ingest in
     // batch(), so a dependent watching both recomputes once, not once per
@@ -1989,6 +2036,27 @@ function setupRowList(listStyle = "") {
   const readsOf = (row) => reads.get(row) ?? 0;
 
   return { container, mirror, list, rows, insertRow, removeRow, readsOf, track };
+}
+
+/**
+ * An attribute record as the observer delivers it.
+ *
+ * @param {Element} target
+ * @param {string} attributeName
+ * @param {string | null} oldValue
+ * @returns {MutationRecord}
+ */
+function attributeRecord(target, attributeName, oldValue) {
+  return /** @type {MutationRecord} */ (
+    /** @type {unknown} */ ({
+      type: "attributes",
+      target,
+      attributeName,
+      oldValue,
+      addedNodes: [],
+      removedNodes: [],
+    })
+  );
 }
 
 /**

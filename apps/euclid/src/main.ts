@@ -30,8 +30,10 @@ document.addEventListener("keydown", (e) => {
 });
 
 // The app, mounted into the page exactly as a flat app is, in three places
-// the page lays out as one editor.
-const app = EuclidApp(store);
+// the page lays out as one editor. `?dashes=off` draws the construction
+// lines and the rubber band of a line or circle in progress solid.
+const query = new URLSearchParams(location.search);
+const app = EuclidApp(store, { dashes: query.get("dashes") !== "off" });
 for (const [element, tree] of [
   [toolbar, app.toolbar],
   [editor, app.editor],

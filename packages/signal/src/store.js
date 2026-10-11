@@ -39,6 +39,11 @@ import { isPlainObject } from "./util.js";
  *   that called the array method in `arrayMutators` running on the store,
  *   `null` for a call outside any, and `undefined` while none runs. See
  *   there for what it changes.
+ * @property {Set<unknown> | null} aliased While `replace` writes into the
+ *   store, the stores it holds at more than one key, which the `set` trap
+ *   reads in place of a scan of every key per write, and `null` otherwise.
+ *   A store the trap places at a key while it is set joins it, so a later
+ *   write in the same `replace` never goes into a store it just moved there.
  * @property {Set<PropertyKey> | null} touched The data keys the program has
  *   written or deleted through the proxy since `trackWrites` was called,
  *   which `reshape` keeps. `null` until then, so a store nobody reloads
@@ -191,18 +196,17 @@ function storeKindOf(value) {
 }
 
 /**
- * Whether `state` holds `value` at one key only. A store held as itself can
- * sit at two keys of the store that owns it, after `list[1] = list[0]` or a
- * `fill`, and a write into it through one key would show at the other.
+ * Whether `state` holds `value` at one key only, an index or any other. A
+ * store held as itself can sit at two keys of the store that owns it, after
+ * `list[1] = list[0]`, `list.meta = list[0]` or a `fill`, and a write into it
+ * through one key would show at the other. One pass over the keys, so
+ * `replace` asks `aliasedIn` once instead; see `Internals.aliased`.
  *
  * @param {Record<PropertyKey, unknown>} state
  * @param {unknown} value
  * @returns {boolean}
  */
 function heldAtOneKey(state, value) {
-  if (Array.isArray(state)) {
-    return state.indexOf(value) === state.lastIndexOf(value);
-  }
   let count = 0;
   for (const key of Reflect.ownKeys(state)) {
     if (state[key] === value) {
@@ -210,6 +214,29 @@ function heldAtOneKey(state, value) {
     }
   }
   return count <= 1;
+}
+
+/**
+ * The stores `state` holds at more than one key, found in one pass.
+ *
+ * @param {Record<PropertyKey, unknown>} state
+ * @returns {Set<unknown>}
+ */
+function aliasedIn(state) {
+  const seen = new Set();
+  const aliased = new Set();
+  for (const key of Reflect.ownKeys(state)) {
+    const value = state[key];
+    if (!isStore(value)) {
+      continue;
+    }
+    if (seen.has(value)) {
+      aliased.add(value);
+    } else {
+      seen.add(value);
+    }
+  }
+  return aliased;
 }
 
 /**
@@ -284,17 +311,28 @@ function bump(version) {
  * @param {Record<PropertyKey, unknown> | unknown[]} newValue
  */
 export function replace(oldValue, newValue) {
-  batch(() => {
-    Object.assign(oldValue, newValue);
-    if (Array.isArray(oldValue) && Array.isArray(newValue)) {
-      oldValue.length = newValue.length;
-    }
-    for (const k of ownKeysNoComputation(oldValue)) {
-      if (!Reflect.has(newValue, k)) {
-        delete (/** @type {Record<PropertyKey, unknown>} */ (oldValue)[k]);
+  const internals = internalsOf(oldValue);
+  const previous = internals?.aliased;
+  if (internals) {
+    internals.aliased = aliasedIn(internals.state);
+  }
+  try {
+    batch(() => {
+      Object.assign(oldValue, newValue);
+      if (Array.isArray(oldValue) && Array.isArray(newValue)) {
+        oldValue.length = newValue.length;
       }
+      for (const k of ownKeysNoComputation(oldValue)) {
+        if (!Reflect.has(newValue, k)) {
+          delete (/** @type {Record<PropertyKey, unknown>} */ (oldValue)[k]);
+        }
+      }
+    });
+  } finally {
+    if (internals) {
+      internals.aliased = previous ?? null;
     }
-  });
+  }
 }
 
 /**
@@ -415,11 +453,13 @@ function store(data, operators = []) {
 
   /**
    * Record a read of the data key `key`, as `dependOn` does. On an array,
-   * a key that is neither an index nor one of its own keys is not followed:
-   * it is a method such as `map`, or a key such as `toJSON` or
-   * `Symbol.isConcatSpreadable` that a method looks for, and nothing writes
-   * to one. Its reads of the indices and `length` are what its caller
-   * depends on.
+   * a key that is neither an index nor one of its own keys records a read
+   * of the key set instead: it is a method such as `map`, or a key such as
+   * `toJSON` or `Symbol.isConcatSpreadable` that a method looks for, and
+   * whether the array has it is a fact about its key set, which a write
+   * that adds the key announces. So no version is made per method name,
+   * and a reader still hears when the program adds such a key. The price is
+   * that `"map" in list` re-runs whenever a key is added, a `push` included.
    *
    * @param {PropertyKey} key
    * @returns {void}
@@ -427,6 +467,8 @@ function store(data, operators = []) {
   const dependOnKey = (key) => {
     if (!array || isIndex(key) || Object.hasOwn(state, key)) {
       dependOn(key);
+    } else {
+      dependOn(ownKeys);
     }
   };
 
@@ -459,6 +501,7 @@ function store(data, operators = []) {
     ownKeys,
     owner: null,
     mutator: undefined,
+    aliased: null,
     touched: null,
   };
   for (const inner of made) {
@@ -539,7 +582,7 @@ function store(data, operators = []) {
             isOfKind(nested, kind) &&
             !isStore(newValue) &&
             internals.mutator === undefined &&
-            heldAtOneKey(state, oldValue)
+            (internals.aliased ? !internals.aliased.has(oldValue) : heldAtOneKey(state, oldValue))
           ) {
             // Written into the nested store this one owns key by key, whose
             // traps mark the keys the value changes. This key holds the same
@@ -561,6 +604,8 @@ function store(data, operators = []) {
           // made.
           if (!isStore(newValue)) {
             newValue = nestedStore(internals, /** @type {object} */ (newValue), true);
+          } else {
+            internals.aliased?.add(newValue);
           }
         }
         // On an array, `undefined` at an index it does not have is a change:
@@ -851,10 +896,13 @@ function reshapeInto(internals, definition) {
 
 /**
  * Reshape `held`, what a key of `internals`' store holds, in place with the
- * definition's `value`, if it is a store `internals` owns and `value` is of
- * its kind. A store held at two keys or two indices is reshaped once for
- * each, with the definition's value at each in turn, so the one at the later
- * key is what it ends with.
+ * definition's `value`, if it is a store `internals` owns and `value` is of its
+ * kind. A store held at two keys or two indices is reshaped once for each, with
+ * the definition's value at each in turn, so the one at the later key is what
+ * it ends with. An assignment through either key makes a new store instead, and
+ * the two differ on purpose: an assignment is the program giving one key a new
+ * value, which must not show at the other, while a reload keeps what the
+ * program holds, its aliases included, and only edits what is inside it.
  *
  * @param {Internals} internals
  * @param {unknown} held

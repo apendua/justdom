@@ -1388,17 +1388,41 @@ test("a value assigned over a store held at two keys makes a new store", () => {
   assert.strictEqual(s.b.v, 2);
 });
 
-test("an array follows no key that is neither an index nor its own", () => {
+test("a reader of a key an array does not have follows its key set", () => {
   const list = /** @type {any} */ (store([1]));
-  let runs = 0;
+  /** @type {unknown[]} */
+  const metas = [];
   new Effect(() => {
-    runs += 1;
-    void JSON.stringify(list);
-    void ("map" in list);
+    metas.push(list.meta);
   });
+  /** @type {string[]} */
+  const strings = [];
+  new Effect(() => {
+    strings.push(JSON.stringify(list));
+  });
+  list.meta = 1;
+  list.meta = 2;
   list.toJSON = () => "x";
-  list.map = 1;
-  assert.strictEqual(runs, 1);
-  list.push(2);
-  assert.strictEqual(runs, 2);
+  assert.deepStrictEqual(metas, [undefined, 1, 2]);
+  assert.strictEqual(strings.at(-1), '"x"', "the reader hears the key it looked for appear");
+});
+
+test("an assignment over a store an array also holds at a non-index key makes a new store", () => {
+  const list = /** @type {any} */ (store([{ n: 1 }]));
+  list.meta = list[0];
+  list[0] = { n: 9 };
+  assert.strictEqual(list.meta.n, 1);
+  const other = /** @type {any} */ (store([{ n: 1 }]));
+  other.meta = other[0];
+  other.meta = { n: 9 };
+  assert.strictEqual(other[0].n, 1);
+});
+
+test("replace() writes no value into a store it also places elsewhere", () => {
+  const list = store([{ n: 1 }, { n: 2 }]);
+  const second = list[1];
+  replace(list, [second, { n: 5 }]);
+  assert.strictEqual(list[0], second);
+  assert.strictEqual(second.n, 2, "the store moved to index 0 is not written through index 1");
+  assert.strictEqual(list[1].n, 5);
 });

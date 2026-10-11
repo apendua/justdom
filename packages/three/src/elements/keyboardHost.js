@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { Effect, Signal, withChannel, withComputation } from "@apendua/signal";
-import { FOCUS_ATTRIBUTE, getBorderBoxSize } from "./mirror.js";
+import { getBorderBoxSize } from "./mirror.js";
+import { FOCUS_ATTRIBUTE } from "./portalRoot.js";
 import { place } from "./place.js";
 import { moveCaretToEnd, typeIntoInput } from "./typing.js";
 import { InputFocusContext, touchValue } from "./textInput.js";

@@ -1426,3 +1426,54 @@ test("replace() writes no value into a store it also places elsewhere", () => {
   assert.strictEqual(second.n, 2, "the store moved to index 0 is not written through index 1");
   assert.strictEqual(list[1].n, 5);
 });
+
+test("replace() writes nothing into a store it places at a later key", () => {
+  const list = store([{ n: 1 }, { n: 2 }]);
+  const first = list[0];
+  replace(list, [{ n: 5 }, first]);
+  assert.strictEqual(list[1], first);
+  assert.strictEqual(first.n, 1);
+  assert.strictEqual(list[0].n, 5);
+  assert.notStrictEqual(list[0], first);
+  const s = /** @type {any} */ (store({ a: { v: 1 } }));
+  const S = s.a;
+  replace(s, { a: { v: 9 }, c: S });
+  assert.strictEqual(s.c, S);
+  assert.strictEqual(S.v, 1);
+});
+
+test("an effect that a replace() runs assigns as any assignment does", () => {
+  const s = store({ a: { v: 1 }, n: 0 });
+  const A = s.a;
+  new Effect(() => {
+    if (s.n === 1) {
+      s.a = { v: 7 };
+    }
+  });
+  replace(s, { a: A, n: 1 });
+  assert.strictEqual(s.a, A, "written into the store the key holds once");
+  assert.strictEqual(A.v, 7);
+});
+
+test("replace() writes into an aliased store once the alias is gone, as assignments do", () => {
+  const s = /** @type {any} */ (store({ a: { v: 1 } }));
+  s.b = s.a;
+  const S = s.a;
+  replace(s, { a: { v: 2 }, b: { v: 3 } });
+  assert.notStrictEqual(s.a, S);
+  assert.strictEqual(s.b, S, "held at b alone by then, so written into");
+  assert.strictEqual(S.v, 3);
+});
+
+test("a reload leaves an array's non-index keys as they are", () => {
+  const def = /** @type {any} */ ([1, 2]);
+  def.meta = "x";
+  const list = /** @type {any} */ (store(def));
+  trackWrites(list);
+  const next = /** @type {any} */ ([1, 2]);
+  next.meta = "y";
+  reshape(list, next);
+  assert.strictEqual(list.meta, "x");
+  reshape(list, [1, 2]);
+  assert.strictEqual(Object.hasOwn(list, "meta"), true);
+});

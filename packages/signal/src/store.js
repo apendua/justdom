@@ -39,11 +39,16 @@ import { isPlainObject } from "./util.js";
  *   that called the array method in `arrayMutators` running on the store,
  *   `null` for a call outside any, and `undefined` while none runs. See
  *   there for what it changes.
- * @property {Set<unknown> | null} aliased While `replace` writes into the
- *   store, the stores it holds at more than one key, which the `set` trap
- *   reads in place of a scan of every key per write, and `null` otherwise.
- *   A store the trap places at a key while it is set joins it, so a later
- *   write in the same `replace` never goes into a store it just moved there.
+ * @property {number} held How many keys of its owner hold the store, kept
+ *   by every write and removal of a key of the owner's `state`. A store held
+ *   as itself can sit at two keys of its owner, after `list[1] = list[0]`,
+ *   `list.meta = list[0]` or a `fill`, and a write into it through one key
+ *   would show at the other, so the `set` trap writes into it in place only
+ *   while this is 1. Unused for a store with no owner.
+ * @property {Set<unknown> | null} placing While `replace` writes into the
+ *   store, the stores `newValue` holds, which the replace is about to place
+ *   at a key and so must not be written into first through another, and
+ *   `null` otherwise.
  * @property {Set<PropertyKey> | null} touched The data keys the program has
  *   written or deleted through the proxy since `trackWrites` was called,
  *   which `reshape` keeps. `null` until then, so a store nobody reloads
@@ -196,47 +201,36 @@ function storeKindOf(value) {
 }
 
 /**
- * Whether `state` holds `value` at one key only, an index or any other. A
- * store held as itself can sit at two keys of the store that owns it, after
- * `list[1] = list[0]`, `list.meta = list[0]` or a `fill`, and a write into it
- * through one key would show at the other. One pass over the keys, so
- * `replace` asks `aliasedIn` once instead; see `Internals.aliased`.
+ * Count `value` in to, or out of, the keys of `internals`' store that hold
+ * it, when it is a store that one owns. See `Internals.held`.
  *
- * @param {Record<PropertyKey, unknown>} state
+ * @param {Internals} internals
  * @param {unknown} value
- * @returns {boolean}
+ * @param {1 | -1} delta
  */
-function heldAtOneKey(state, value) {
-  let count = 0;
-  for (const key of Reflect.ownKeys(state)) {
-    if (state[key] === value) {
-      count += 1;
-    }
+function countHolder(internals, value, delta) {
+  const nested = internalsOf(value);
+  if (nested?.owner === internals) {
+    nested.held += delta;
   }
-  return count <= 1;
 }
 
 /**
- * The stores `state` holds at more than one key, found in one pass.
+ * The stores `value` holds at its data keys, read without running a getter.
  *
- * @param {Record<PropertyKey, unknown>} state
+ * @param {object} value A plain object, an array or a store.
  * @returns {Set<unknown>}
  */
-function aliasedIn(state) {
-  const seen = new Set();
-  const aliased = new Set();
-  for (const key of Reflect.ownKeys(state)) {
-    const value = state[key];
-    if (!isStore(value)) {
-      continue;
-    }
-    if (seen.has(value)) {
-      aliased.add(value);
-    } else {
-      seen.add(value);
+function storesIn(value) {
+  const source = /** @type {object} */ (internalsOf(value)?.state ?? value);
+  const stores = new Set();
+  for (const key of Reflect.ownKeys(source)) {
+    const descriptor = Reflect.getOwnPropertyDescriptor(source, key);
+    if (descriptor && "value" in descriptor && isStore(descriptor.value)) {
+      stores.add(descriptor.value);
     }
   }
-  return aliased;
+  return stores;
 }
 
 /**
@@ -302,22 +296,25 @@ function bump(version) {
  * stay as they are, which only `reshape` changes.
  *
  * An array takes the length of `newValue` as well, so the elements past it
- * go. Each index is assigned as a key is, so a plain object or an array
- * written over a store of its kind that `oldValue` owns, at the same index
- * and at no other, is written into that store, and the store stays where it
- * is.
+ * go. Each index is assigned as a key is, in order, so a plain object or an
+ * array written over a store of its kind that `oldValue` owns, held at that
+ * key and at no other by then, is written into that store, and the store
+ * stays where it is. A store `newValue` holds at any key is never written
+ * into, since the replace places it as itself.
  *
  * @param {Record<PropertyKey, unknown> | unknown[]} oldValue
  * @param {Record<PropertyKey, unknown> | unknown[]} newValue
  */
 export function replace(oldValue, newValue) {
   const internals = internalsOf(oldValue);
-  const previous = internals?.aliased;
-  if (internals) {
-    internals.aliased = aliasedIn(internals.state);
-  }
-  try {
-    batch(() => {
+  batch(() => {
+    // Set and restored inside the batch, before it drains, as `mutator` is:
+    // an effect the replace queued assigns as any assignment does.
+    const previous = internals ? internals.placing : null;
+    if (internals) {
+      internals.placing = storesIn(newValue);
+    }
+    try {
       Object.assign(oldValue, newValue);
       if (Array.isArray(oldValue) && Array.isArray(newValue)) {
         oldValue.length = newValue.length;
@@ -327,12 +324,12 @@ export function replace(oldValue, newValue) {
           delete (/** @type {Record<PropertyKey, unknown>} */ (oldValue)[k]);
         }
       }
-    });
-  } finally {
-    if (internals) {
-      internals.aliased = previous ?? null;
+    } finally {
+      if (internals) {
+        internals.placing = previous;
+      }
     }
-  }
+  });
 }
 
 /**
@@ -501,11 +498,13 @@ function store(data, operators = []) {
     ownKeys,
     owner: null,
     mutator: undefined,
-    aliased: null,
+    held: 0,
+    placing: null,
     touched: null,
   };
   for (const inner of made) {
     inner.owner = internals;
+    inner.held = 1;
   }
 
   const proxy = new Proxy(state, {
@@ -554,12 +553,17 @@ function store(data, operators = []) {
         // from.
       } else if (array && key === "length") {
         const length = elements.length;
+        const target = Number(newValue);
+        const removed = target < length ? elements.slice(target) : [];
         // Assigned first, so that a length that is not one throws as on an
-        // array, before anything is marked.
+        // array, before anything is marked or counted.
         elements.length = /** @type {number} */ (newValue);
         const next = elements.length;
         if (next === length) {
           return true;
+        }
+        for (const value of removed) {
+          countHolder(internals, value, -1);
         }
         internals.touched?.add(key);
         batch(() => {
@@ -582,7 +586,8 @@ function store(data, operators = []) {
             isOfKind(nested, kind) &&
             !isStore(newValue) &&
             internals.mutator === undefined &&
-            (internals.aliased ? !internals.aliased.has(oldValue) : heldAtOneKey(state, oldValue))
+            nested.held === 1 &&
+            !internals.placing?.has(oldValue)
           ) {
             // Written into the nested store this one owns key by key, whose
             // traps mark the keys the value changes. This key holds the same
@@ -604,8 +609,6 @@ function store(data, operators = []) {
           // made.
           if (!isStore(newValue)) {
             newValue = nestedStore(internals, /** @type {object} */ (newValue), true);
-          } else {
-            internals.aliased?.add(newValue);
           }
         }
         // On an array, `undefined` at an index it does not have is a change:
@@ -619,7 +622,9 @@ function store(data, operators = []) {
         // back to itself still follows the source.
         internals.touched?.add(key);
         const length = array ? elements.length : 0;
+        countHolder(internals, state[key], -1);
         state[key] = newValue;
+        countHolder(internals, newValue, 1);
         // One write is one update. Announcing a change queues each dependent,
         // and outside a batch a queued dependent drains immediately — so
         // without this the `ownKeys` readers would not be told until the
@@ -659,6 +664,7 @@ function store(data, operators = []) {
         // keeps as it keeps a write. One of a key the store does not have
         // marks nothing, so the source can still add the key.
         internals.touched?.add(key);
+        countHolder(internals, state[key], -1);
       }
       delete state[key];
       batch(() => {
@@ -803,7 +809,9 @@ function adopt(internals, value, from) {
     return nestedStore(internals, value, false);
   }
   if (from && nested.owner === from) {
+    // Counted in by the write that places it.
     nested.owner = internals;
+    nested.held = 0;
     if (internals.touched) {
       track(nested, false);
     }
@@ -815,29 +823,31 @@ function adopt(internals, value, from) {
  * Give `target` what `definition` defines, except for the keys the program has
  * written. Its getters and setters are the definition's. A key the program has
  * not touched takes the definition's side in full, its value or its absence, so
- * an edit to an initial value in source shows on a reload. A data key the
- * program wrote or deleted since `trackWrites` keeps what the program did: its
- * value stays, a key the program added stays, and a key the program deleted
- * stays deleted, whatever the definition says, until the definition gives the
- * key a getter or a setter. That wins as a change of shape and clears the mark,
- * so the key takes the definition's value if it becomes a data key again. A
- * nested store the key owns, one made there of a plain object or an array, is
- * reshaped the same way in place, by its own marks, with the plain object or
- * the array at its key. A write into it marks its own key and not the key it
- * sits at, so that key is the source's: when the definition drops it or makes
- * it a value of another kind, the nested store goes, the program's writes into
- * it with it. A store this one owns that the program also holds at a second key
- * is reshaped through each key in turn, so the later key's definition is what
- * it ends with. A store the program assigned to the key from elsewhere is held
- * as itself and is not the key's: the key is the program's, as a key it
- * assigned a value to is, and the store is reshaped only through its owner. An
- * array store keeps which element is at each index, and its length, once the
- * program has written to it, and takes the definition's elements otherwise,
- * while the element stores it owns are reshaped in place either way; see
- * `reshapeArray`. A value that is not a plain object or an array, a `Map`, an
- * instance, is kept only at a key the program assigned; one the program mutated
- * in place is untouched to the store and takes the definition's. A store nobody
- * called `trackWrites` on has no marks and takes the definition in full.
+ * an edit to an initial value in source shows on a reload. The exception is a
+ * key of an array store that is not an index, which a reload leaves as it is;
+ * see `reshapeArray`. A data key the program wrote or deleted since
+ * `trackWrites` keeps what the program did: its value stays, a key the program
+ * added stays, and a key the program deleted stays deleted, whatever the
+ * definition says, until the definition gives the key a getter or a setter.
+ * That wins as a change of shape and clears the mark, so the key takes the
+ * definition's value if it becomes a data key again. A nested store the key
+ * owns, one made there of a plain object or an array, is reshaped the same way
+ * in place, by its own marks, with the plain object or the array at its key. A
+ * write into it marks its own key and not the key it sits at, so that key is
+ * the source's: when the definition drops it or makes it a value of another
+ * kind, the nested store goes, the program's writes into it with it. A store
+ * this one owns that the program also holds at a second key is reshaped through
+ * each key in turn, so the later key's definition is what it ends with. A store
+ * the program assigned to the key from elsewhere is held as itself and is not
+ * the key's: the key is the program's, as a key it assigned a value to is, and
+ * the store is reshaped only through its owner. An array store keeps which
+ * element is at each index, and its length, once the program has written to it,
+ * and takes the definition's elements otherwise, while the element stores it
+ * owns are reshaped in place either way; see `reshapeArray`. A value that is
+ * not a plain object or an array, a `Map`, an instance, is kept only at a key
+ * the program assigned; one the program mutated in place is untouched to the
+ * store and takes the definition's. A store nobody called `trackWrites` on has
+ * no marks and takes the definition in full.
  *
  * A data key's value is written to the store's state, not through a setter,
  * so no setter runs. The readers of each key that changed re-run; a replaced
@@ -947,7 +957,9 @@ function reshapeKey(internals, key, value, from) {
   if (had && Object.is(old, next)) {
     return;
   }
+  countHolder(internals, old, -1);
   state[key] = next;
+  countHolder(internals, next, 1);
   announce(key);
   if (!had) {
     announce(ownKeys);
@@ -1052,6 +1064,7 @@ function reshapeWith(internals, descriptors, from) {
       touched?.delete(key);
       const added = !Object.hasOwn(state, key);
       if (added || state[key] !== undefined) {
+        countHolder(internals, state[key], -1);
         state[key] = undefined;
         announce(key);
       }
@@ -1065,6 +1078,7 @@ function reshapeWith(internals, descriptors, from) {
   // The keys the definition no longer has, unless the program put them there.
   for (const key of Reflect.ownKeys(state)) {
     if (!Object.hasOwn(descriptors, key) && !touched?.has(key)) {
+      countHolder(internals, state[key], -1);
       delete state[key];
       derived.delete(key);
       announce(key);
@@ -1099,9 +1113,12 @@ function reshapeWith(internals, descriptors, from) {
  * in from another array, is its owner's, and the array does not reshape it.
  *
  * An array the program has not written takes the definition's elements and
- * length. Every element that is not reshaped in place takes the
- * definition's, and only the readers of an index whose element changed, and
- * of the length when it did, re-run.
+ * length. Its keys that are not indices, a `meta` the program set or one the
+ * array was made with, are left as they are either way, getters and setters
+ * included: a reload reads the definition's indices and length alone. Every
+ * element that is not reshaped in place takes the definition's, and only the
+ * readers of an index whose element changed, and of the length when it did,
+ * re-run.
  *
  * @param {Internals} internals
  * @param {unknown[]} definition
@@ -1127,6 +1144,7 @@ function reshapeArray(internals, definition) {
     if (!Object.hasOwn(source, index)) {
       // A hole in the definition is one in the store.
       if (had) {
+        countHolder(internals, array[index], -1);
         delete array[index];
         announce(key);
         announce(ownKeys);
@@ -1136,6 +1154,7 @@ function reshapeArray(internals, definition) {
     reshapeKey(internals, key, source[index], from);
   }
   for (let index = source.length; index < array.length; index += 1) {
+    countHolder(internals, array[index], -1);
     announce(String(index));
   }
   array.length = source.length;

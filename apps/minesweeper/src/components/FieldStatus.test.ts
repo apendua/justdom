@@ -83,7 +83,7 @@ describe("FieldStatus", () => {
 
 describe("the board's pictures", () => {
   // freedom disposes a texture when the last element naming its URL goes, so
-  // the mine's picture has to outlive the game that covers every field again.
+  // the pictures have to outlive the game that covers every field again.
   it("are mounted from the start and stay through a new game", () => {
     globalThis.ResizeObserver ??= class {
       observe() {}
@@ -96,12 +96,17 @@ describe("the board's pictures", () => {
     mount(board, ...game.board);
     mount(menu, game.menu);
 
+    // One `<image>` for each picture, the same elements throughout: `toEqual`
+    // would pass on rebuilt ones with the same attributes.
     const pictures = () =>
-      [...board.querySelectorAll("image")].filter(
-        (image) => image.getAttribute("href") === MINE_URL,
-      );
+      [FLAG_URL, MINE_URL].map((url) => {
+        const images = [...board.querySelectorAll("image")].filter(
+          (image) => image.getAttribute("href") === url,
+        );
+        expect(images).toHaveLength(1);
+        return images[0];
+      });
     const before = pictures();
-    expect(before).toHaveLength(1);
 
     const restart = [...menu.querySelectorAll("button")].find(
       (button) => button.textContent === "Restart",
@@ -109,6 +114,6 @@ describe("the board's pictures", () => {
     const boardBefore = board.querySelector("svg");
     restart?.click();
     expect(board.querySelector("svg")).not.toBe(boardBefore);
-    expect(pictures()).toEqual(before);
+    pictures().forEach((image, i) => expect(image).toBe(before[i]));
   });
 });

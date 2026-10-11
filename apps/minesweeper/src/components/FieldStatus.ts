@@ -75,11 +75,11 @@ export const MINE_URL = picture(
  * holds them.
  *
  * freedom disposes a picture's texture when the last element naming its URL
- * goes, and rasterises it again for the next. Mines are drawn only after a
- * loss, and a new game covers every field, so without these every lost game
- * would pay for the mine's rasterisation in the frame it is revealed. They
- * are mounted beside the board rather than in it, since the board is built
- * again for each game.
+ * goes, and loads it again for the next. Mines are drawn only after a loss,
+ * and a new game covers every field, so without these the mines of every
+ * lost game would show nothing until the picture had loaded again. They are
+ * mounted beside the board rather than in it, since the board is built again
+ * for each game.
  */
 export function FieldPictures() {
   return $$("svg", [

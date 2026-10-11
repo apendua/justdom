@@ -10,6 +10,10 @@ import { CLASS_NAME, stylesheet } from "@apendua/justdom";
  * Two custom properties let the toolbar and the menu size their buttons
  * differently: the toolbar scales with the viewport height, the full screen
  * menu with its width.
+ *
+ * A ray in a headset session hovers a button by `data-xr-hover`, which
+ * freedom sets on it, since `:hover` belongs to the mouse alone; every rule
+ * written for `:hover` is written for both.
  */
 export const menuItem = stylesheet`
   .${CLASS_NAME} {
@@ -34,7 +38,8 @@ export const menuItem = stylesheet`
     padding: 0 calc(var(--menu-item-size, 5vh) * 0.6);
   }
 
-  .${CLASS_NAME}:hover {
+  .${CLASS_NAME}:hover,
+  .${CLASS_NAME}[data-xr-hover] {
     background: #777;
   }
 
@@ -49,7 +54,8 @@ export const menuItem = stylesheet`
   }
 
   .${CLASS_NAME}[data-disabled],
-  .${CLASS_NAME}[data-disabled]:hover {
+  .${CLASS_NAME}[data-disabled]:hover,
+  .${CLASS_NAME}[data-disabled][data-xr-hover] {
     background: var(--menu-item-hatch);
     border-color: #222;
     cursor: auto;
@@ -61,7 +67,8 @@ export const menuItem = stylesheet`
    * disabled button, but the text has to stay legible on it.
    */
   .${CLASS_NAME}[data-readonly],
-  .${CLASS_NAME}[data-readonly]:hover {
+  .${CLASS_NAME}[data-readonly]:hover,
+  .${CLASS_NAME}[data-readonly][data-xr-hover] {
     background: var(--menu-item-hatch);
     border-color: #222;
     cursor: auto;

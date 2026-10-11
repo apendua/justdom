@@ -16,6 +16,70 @@ back, with whatever it has left.
 **Continue** hands the turn over without moving. While a move is playing out the same button reads
 **Skip** and cuts the animation short — including the computer's.
 
+## In a headset
+
+On a headset the game is the very same DOM. The page keeps it, and `@apendua/freedom` mirrors the
+whole of `#root`, the battlefield and the toolbar under it, into one panel in front of the viewer,
+the way `minesweeper` and `euclid` mirror theirs. The ray moving over the board is a `mousemove` and
+the trigger is a `click`, each carrying the place on the page the ray met, so the handlers that
+serve the mouse preview the route and send the stack along it. The menu behind ☰ opens over the
+battlefield in the panel as it does on the page.
+
+Two controls are there only in a session: Passthrough, which takes down the dark sphere the session
+is set against and shows the room, and the × at the end of the toolbar, which ends the session.
+
+On a laptop the page is the page and nothing else. No session can be opened, so no button is shown,
+no renderer is made and three.js is never fetched. `?emulator` installs a headset in the browser
+(IWER, with its dev panels) and the **Enter** button appears at the top, over the sky in the
+backdrop, since freedom's place for it at the bottom is the toolbar's. Press it and the emulated
+session is drawn over the page. The controller and hand models come from this app's own origin,
+where `@apendua.dev/media`'s Vite plugin serves them. Knights has no service worker, so nothing
+precaches them, and a headset with no network draws no models. `?emulator=bare` installs the runtime
+without the panels.
+
+The page needed four changes to look the same in the panel. The first three do not show on the page;
+the fourth does:
+
+- The battlefield behind the board is an `<img>` under the rest, not the container's
+  `background-image`. A panel draws a `url()` background as nothing, which left the black grid on a
+  black room.
+- A sprite's frame is picked by the image's `transform`, not its `x` and `y`. A panel takes a new
+  `transform` as a matrix write, where a new `x` and `y` would be a new quad ten times a second for
+  every stack. The frame's `clip-path` is on a group around the image, so the `transform` does not
+  move the clip with it.
+- The walls are filled `url(#…) black`. A panel draws no `<pattern>` yet, and draws the fallback
+  colour instead, so the walls are solid black there and hatched on the page.
+- The board carries `cursor: pointer` while it takes orders, so on the page the mouse is a hand over
+  the whole board, walls and fields out of reach included. A panel sends the ray's moves and presses
+  only to what is under `cursor: pointer`.
+
+A click sends the stack to the field it lands on, not along the route the last `mousemove` showed.
+In a headset only the primary hand moves the mouse while either hand's trigger clicks, so the last
+move can be the other hand's, and a tap on a touchscreen comes with no move at all.
+
+`node tests/xr-check.mjs` loads the page alone in headless Chromium, which can present nothing, and
+fails if the headset scene is fetched, if the menu behind ☰ does not stack its items one under
+another, or if a click on a field the white stack can reach, with no move before it, does not send
+the stack there. Then it loads the page with the emulator and fails if the Enter button covers the
+toolbar. Then it plays on the emulated headset, which takes about a minute: it points the ray at a
+field the white stack can reach and checks that the route is drawn, pulls the trigger and checks
+that the click reached the board at that place and the turn passed on, then turns the passthrough on
+and leaves by the ×. `SHOTS=<dir>` also photographs the page and the session, and `STACKS=1` prints
+a stack for anything the page throws. It drives the browser and the controller through
+`@apendua.dev/headset/driver`, which borrows Playwright from `apps/showcase-xr`, so that project has
+to have been installed. It launches the Chromium at
+`/opt/pw-browsers/chromium-1194/chrome-linux/chrome`; `CHROMIUM=<path>` points it at one installed
+elsewhere. A pull request that changes this app or a package it imports, other than in docs, unit
+tests or benchmarks, runs it, with minesweeper's, the desk's and Euclid's, from
+`.github/workflows/driven.yml`.
+
+| File                      | What it is                                                                                                                                                             |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/main.ts`             | Mounts the game into `#root`, then offers a session through `offerHeadset` from `@apendua.dev/headset/offer`, which loads `xr.ts` only where one can open.             |
+| `src/xr.ts`               | Makes the renderer with freedom's SVG plugin and the controller and hand models from this app's origin, follows `?theming` and `?outlines`, and adds the Enter button. |
+| `src/components/Scene.ts` | The panel, `@apendua.dev/headset/scene`'s backdrop, lights and the cursors.                                                                                            |
+| `src/placement.ts`        | Where the panel hangs, in plain numbers, shared with `tests/xr-check.mjs`.                                                                                             |
+
 ## How it is put together
 
 The state lives in plain classes under `src/store`, with the parts that change held in a `store()`

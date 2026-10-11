@@ -42,7 +42,7 @@ anything the page throws. It drives the browser and the controller through
 `@apendua.dev/headset/driver`, which borrows Playwright from `apps/showcase-xr` and launches the
 Chromium at `/opt/pw-browsers/chromium-1194/chrome-linux/chrome`; `CHROMIUM=<path>` points it at one
 installed elsewhere. A pull request that changes this app or a package it imports, other than in
-docs, unit tests or benchmarks, runs it, with minesweeper's and Euclid's, from
+docs, unit tests or benchmarks, runs it, with minesweeper's, Euclid's and Knights', from
 `.github/workflows/driven.yml`.
 
 ## What you can do

@@ -1,6 +1,7 @@
 import { children } from "@apendua/justdom";
 import { just } from "@apendua/signal";
 import Game from "./components/Game";
+import { offerHeadset } from "@apendua.dev/headset/offer";
 import Root, { RootContext } from "./store/Root";
 import "./index.css";
 
@@ -20,3 +21,13 @@ just(rootElement, [children(Game(ctx))]).subscribe({
 
 // Drop the player straight into a battle, the way the original demo did.
 void root.createNewGame();
+
+// And the headset, offered to a page that can open one: the scene mirrors
+// the very element the game was just mounted into. It is loaded only once a
+// session is known to be possible, so a page that is only ever a page does
+// not fetch three.js.
+offerHeadset(() => import("./xr"))
+  .then((xr) => xr?.offerXR(rootElement))
+  .catch((err) => {
+    console.error("Could not offer an XR session:", err);
+  });

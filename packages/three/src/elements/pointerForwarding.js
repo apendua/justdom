@@ -20,7 +20,12 @@ import {
 } from "./dragAndDrop.js";
 import { createFrameRequester } from "./frameRequester.js";
 import { HapticsContext, isArrival } from "./haptics.js";
-import { getChildNodes, getComputedStyleCached, isPortalRoot } from "./mirror.js";
+import {
+  getAttributeCached,
+  getChildNodes,
+  getComputedStyleCached,
+  isPortalRoot,
+} from "./mirror.js";
 import { ACTIVE_ATTRIBUTE, getPortalRoot, HOVER_ATTRIBUTE } from "./portalRoot.js";
 import { describeElement } from "./panelFrame.js";
 import { movesList, sampleRay, ScrollDragsContext } from "./scroll.js";
@@ -72,15 +77,18 @@ export function isRayTarget(element) {
   return isClickable(element) || isDragSource(element) || isFieldLabel(element);
 }
 
+/** The attributes of a field that `takesTheTyping` reads. */
+const FIELD_ATTRIBUTES = ["type", "disabled", "readonly"];
+
 /**
  * Whether the element is a `<label>` of a field in its own panel that the
  * keyboard can type into. Asked again when the label is restyled, when a
- * child is put into it or taken out, and when the field it names is
- * restyled, which a `disabled` or `readOnly` written on the field does
- * wherever the field is. Not asked again for a field that arrives deeper
- * inside the label than its own children, nor for one the label's `for`
- * finds only after the label mounted, by an `id` written or by a field
- * arriving that carries it: nothing the label reads changes then.
+ * child is put into it or taken out, and when one of the field's
+ * `FIELD_ATTRIBUTES` changes, wherever the field is. Not asked again for a
+ * field that arrives deeper inside the label than its own children, nor
+ * for one the label's `for` finds only after the label mounted, by an `id`
+ * written or by a field arriving that carries it: nothing the label reads
+ * changes then.
  *
  * @param {HTMLElement} element
  * @returns {boolean}
@@ -98,7 +106,12 @@ function isFieldLabel(element) {
   if (!field || getPortalRoot(field) !== getPortalRoot(element)) {
     return false;
   }
-  getComputedStyleCached(field);
+  // The field's own attributes, which are all `takesTheTyping` reads, and
+  // not its computed style: that is recomputed many times while a panel
+  // mounts, and every label would be asked again each time.
+  for (const name of FIELD_ATTRIBUTES) {
+    getAttributeCached(field, name);
+  }
   // From the label itself no control inside it can refuse the click, so the
   // label's own `labelledField` is this field's `takesTheTyping`.
   return takesTheTyping(field);

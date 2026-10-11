@@ -47,6 +47,7 @@ import { createPanelForwarder, PointerForwarderContext } from "./pointerForwardi
 import { createPanelHandles } from "./panelHandles.js";
 import { CameraContext, frames, onLateFrame, RendererContext } from "../render.js";
 import { InteractionContext } from "../interactions.js";
+import { registerOutlineHost } from "./outlines.js";
 
 /**
  * @import {Mountable} from '../core.js';
@@ -631,6 +632,20 @@ function buildPortal(ctx, ownOptions = {}) {
     // not to carry by, which follows the hand in the renderer's frames.
   }
   const hasFrames = hasRenderer || typeof requestAnimationFrame === "function";
+
+  /**
+   * Where this panel draws its outlines while outlines mode is on (see
+   * `outlines.js`). Told of each commit taken and each one forced. Null
+   * where there are no frames, which is where there is no commit either.
+   */
+  const outlines = hasFrames
+    ? registerOutlineHost({
+        containerElement,
+        containerObject,
+        objectOf: (node) => nodeToObject.get(node),
+        requestFrames,
+      })
+    : null;
 
   /**
    * The two kinds of work a coming frame does for this panel: the animation
@@ -1269,6 +1284,7 @@ function buildPortal(ctx, ownOptions = {}) {
         textBatch.invalidate();
       }
     });
+    outlines?.commit();
     return true;
   };
 
@@ -1403,6 +1419,7 @@ function buildPortal(ctx, ownOptions = {}) {
           commitsEarly: () => !atomic && !loading.get(),
           commitDue,
           hasPendingCommit,
+          onForced: () => outlines?.forced(),
           onSettled: markLoaded,
           onQueued: (queued) => {
             pumpQueued = queued;
@@ -1540,6 +1557,12 @@ function buildPortal(ctx, ownOptions = {}) {
       }
     });
     contentChanged();
+    if (!pumpQueued) {
+      // A flush that left the panel nothing to do, such as a write of what
+      // was already there, has no commit coming. The panel already shows
+      // all of it, so what the flush counted goes up in outlines mode now.
+      outlines?.commit();
+    }
     return true;
   };
 
@@ -1898,6 +1921,7 @@ function buildPortal(ctx, ownOptions = {}) {
     // A frame asked for by an image that landed just as the portal came down.
     loadFrame?.();
     resizeEffect.dispose();
+    outlines?.dispose();
     mutationObserver.disconnect();
     animationClock.dispose();
     // After the observer, so nothing can ask for a rebuild on the way out.

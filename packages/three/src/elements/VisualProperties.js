@@ -7,10 +7,12 @@ import {
   memo,
   decorate,
   withChannel,
+  withComputation,
 } from "@apendua/signal";
 import { fromEvent, store } from "@apendua/signal";
 import { filtered, Subject } from "@apendua/signal";
 import { getBorderBoxSize, getComputedStyleCached, getOpacity } from "./mirror.js";
+import { isProbing, probeRecalculation } from "./outlineProbe.js";
 import { frameFor, measureClientRect } from "./panelFrame.js";
 
 import { ELEVATION_BAND, getDrawLevel, getElevation } from "./elevation.js";
@@ -342,6 +344,18 @@ export default class VisualProperties {
       drawLevel: getDrawLevel(element),
       elevation: getElevation(element),
     };
+    // For outlines mode: whether this run gave the box anything new. Read
+    // untracked, since the store is what this run is about to write.
+    const previous = this.#properties;
+    if (previous && isProbing()) {
+      const changed = withComputation(null, () =>
+        Object.entries(properties).some(
+          ([key, value]) =>
+            !Object.is(previous[/** @type {keyof RawVisualProperties} */ (key)], value),
+        ),
+      );
+      probeRecalculation(element, changed);
+    }
     batch(() => {
       if (this.#properties) {
         Object.assign(this.#properties, properties);

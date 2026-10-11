@@ -1,7 +1,7 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
-import { UpdateChannel } from "@apendua/signal";
-import { createPortalPump, MAX_BUILD_WAIT } from "./portalPump.js";
+import { Effect, Signal, UpdateChannel, withChannel } from "@apendua/signal";
+import { createPortalPump, MAX_BUILD_WAIT, MAX_COMMIT_WAIT } from "./portalPump.js";
 import { fakeClock } from "../test/clock.js";
 
 /** A stand-in for a DOM node: the pump only keeps and hands them back. */
@@ -137,6 +137,76 @@ describe("portal pump", () => {
       assert.equal(most, 1, `one node a frame throughout, at most ${most}`);
     } finally {
       chain.dispose();
+    }
+  });
+
+  test("a commit the bound forces is reported, and one that lands on its own is not", () => {
+    // Outlines mode flashes a panel whose commit had to be forced, so the
+    // pump says when it forces one. Two effects on an atomic channel with no
+    // budget: a frame reads one of them, and a signal both read, written
+    // before every frame, undoes that reading. The channel empties only when
+    // `MAX_COMMIT_WAIT` runs out.
+    const channel = new UpdateChannel({
+      name: "pump-test",
+      manual: true,
+      atomic: true,
+      maxStalePasses: Infinity,
+    });
+    const source = Signal.of(0);
+    const effects = withChannel(channel, () => [
+      new Effect(() => source.get()),
+      new Effect(() => source.get()),
+    ]);
+    /** @type {{ tick: (deadline: number) => boolean } | undefined} */
+    let ticker;
+    let forced = 0;
+    const pump = createPortalPump({
+      channel,
+      scheduler: {
+        schedule: (handed) => {
+          ticker = handed;
+        },
+        remove: () => {},
+      },
+      priority: 0,
+      buildNode: () => true,
+      onCommit: () => true,
+      onForced: () => {
+        forced += 1;
+      },
+      onSettled: () => {},
+      afterTick: () => {},
+    });
+    const clock = fakeClock();
+    try {
+      const frame = () => {
+        clock.advance(16);
+        /** @type {{ tick: (deadline: number) => boolean }} */ (ticker).tick(clock.now());
+      };
+      source.set(1);
+      pump.schedule();
+      let frames = 0;
+      while (frames < 200 && forced === 0) {
+        frame();
+        source.set(source.get() + 1);
+        frames += 1;
+      }
+      assert.equal(forced, 1, "the bound forced a commit");
+      assert.ok(
+        frames * 16 >= MAX_COMMIT_WAIT - 2 * 16,
+        `and only once the wait ran out, after ${frames} frames`,
+      );
+      // Left alone, the channel empties within a frame or two, unforced.
+      for (let i = 0; i < 4; i++) {
+        frame();
+      }
+      assert.equal(forced, 1, "a commit that lands on its own is not reported");
+    } finally {
+      for (const effect of effects) {
+        effect.dispose();
+      }
+      pump.dispose();
+      clock.restore();
     }
   });
 });

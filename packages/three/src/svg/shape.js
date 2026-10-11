@@ -626,7 +626,7 @@ export function commitMatrix(object, matrix) {
  * the frame to that space, and the rect in the frame.
  *
  * @typedef {object} FramedClip
- * @property {Matrix2D} frame
+ * @property {Matrix2D} [frame] Absent for a rect already in that space.
  * @property {Rect} rect
  */
 
@@ -672,7 +672,9 @@ export function createInstance({ template, outer, placement, container, clip, ..
           ? at.opacity * parseNumber(getComputedStyleCached(container).opacity, 1)
           : at.opacity,
         root: at.root,
-        clip: own ? clipThrough(at.clip, multiply(at.ctm, own.frame), own.rect) : at.clip,
+        clip: own
+          ? clipThrough(at.clip, own.frame ? multiply(at.ctm, own.frame) : at.ctm, own.rect)
+          : at.clip,
       };
     },
     ...rest,
@@ -1326,15 +1328,13 @@ emptyGeometry.setAttribute("position", new THREE.BufferAttribute(new Float32Arra
  * second.
  *
  * @param {MeshOptions} options
- * @param {() => number} renderOrder
+ * @param {(layer: 0 | 1 | 2) => PaintSlot} slot The element's paint slot,
+ *   which `options.layer` picks the mesh's render order from.
  * @param {ReturnType<typeof clipUniforms>} uniforms
  * @returns {Source<Component>}
  */
-function paintedMesh(
-  { geometry, paints, paint, hidden, hit },
-  renderOrder,
-  { clip, clipMatrix, clipBox },
-) {
+function paintedMesh({ geometry, paints, paint, hidden, hit, layer }, slot, uniforms) {
+  const { clip, clipMatrix, clipBox } = uniforms;
   const mesh = new THREE.Mesh();
   // Trimmed once, for the life of the mesh, to the part the clip patch
   // leaves drawn, with the same box, frame and matrix the shader uses. A
@@ -1389,7 +1389,7 @@ function paintedMesh(
     }),
     effects((obj) => {
       place(obj, 0, 0, 0);
-      obj.renderOrder = renderOrder();
+      obj.renderOrder = slot(layer).start;
     }),
   ]);
 }
@@ -1406,13 +1406,14 @@ function paintedMesh(
  * chain moves.
  *
  * @param {() => Chain} chain
+ * @param {Derived<Element | null>} root The chain's root, apart from the
+ *   matrix, so a transform animated above the element is a matrix write and
+ *   not a clip box read too. The element's own, which its paint slot reads
+ *   as well.
  */
-function clipUniforms(chain) {
+function clipUniforms(chain, root) {
   const clip = { value: new THREE.Vector4(-1e6, -1e6, 1e6, 1e6) };
   const clipMatrix = { value: new THREE.Matrix3() };
-  // Apart from the matrix, so a transform animated above the element is a
-  // matrix write and not a clip box read too.
-  const root = new Derived(() => chain().root);
   const viewports = new Derived(() => chain().clip, { isEqual: rectEqual });
   /** What `clip` holds, for the raycast, which reads it untracked. */
   let current = UNCLIPPED;
@@ -1507,8 +1508,9 @@ function rayTarget(ctx, element, hittable) {
  * matrix, taken out of the scene by `display: none`, and, outside a
  * template, a ray target while it is clickable.
  *
- * An element that draws passes `draw`, and is given its chain, its
- * opacity, its paint slot and the clip its meshes share. The chain is read
+ * An element that draws passes `draw`, and is given its chain, its opacity
+ * and its paint slot, and the meshes it asks for share the element's clip.
+ * The chain is read
  * apart from what it decides, so a transform animated above the element
  * stops at the clip matrix and reaches neither the draw order nor the
  * alpha. A `<g>` passes null: it draws nothing, reads no chain, and is a
@@ -1541,7 +1543,7 @@ export function svgNode(ctx, element, instance, draw, decorate = []) {
     const chain = new Derived(() => readChain(element, instance), { isEqual: chainEqual });
     const root = new Derived(() => chain.get().root);
     const opacity = new Derived(() => drawnOpacity(chain.get()));
-    const uniforms = clipUniforms(() => chain.get());
+    const uniforms = clipUniforms(() => chain.get(), root);
     /** @param {0 | 1 | 2} layer */
     const slot = (layer) => paintSlot(element, root.get(), instance, layer);
     const drawn = draw({
@@ -1549,11 +1551,7 @@ export function svgNode(ctx, element, instance, draw, decorate = []) {
       opacity: () => opacity.get(),
       slot,
       mesh: (options) =>
-        paintedMesh(
-          { ...options, hit: () => instance === null && options.hit() },
-          () => slot(options.layer).start,
-          uniforms,
-        ),
+        paintedMesh({ ...options, hit: () => instance === null && options.hit() }, slot, uniforms),
     });
     // Gated by value: the ray target's handlers are mounted while this is
     // true, and a region switching on beside one already hit must not

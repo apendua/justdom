@@ -507,7 +507,10 @@ export function drawText(ctx, element, instance = null) {
     };
 
     return {
-      /** Whether a ray can hit any run, which is what makes the text a target. */
+      /**
+       * Whether a ray can hit any run, which is what makes the text a
+       * target.
+       */
       hittable: () => runs.get().some((run) => runHits(run.parent, instance)),
       content: [
         children(

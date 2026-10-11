@@ -5,8 +5,12 @@ import { Signal, UpdateChannel, withChannel } from "@apendua/signal";
 import { createMirror } from "./mirror.js";
 import { text } from "./text.js";
 import { createTextBatch, TextBatchContext } from "./textBatch.js";
-import { stepBelow, TextScaleContext } from "./textScale.js";
+import { holdsStep, stepBelow, TextScaleContext } from "./textScale.js";
 import { installRange } from "../test/textRange.js";
+
+/**
+ * @import {TextBatch} from './textBatch.js';
+ */
 
 describe("text visibility", () => {
   test("a run follows its parent's visibility, which a nested element can override", () => {
@@ -156,7 +160,7 @@ function handScale() {
   let shown = 1;
   return {
     read: () => published.get(),
-    holds: (/** @type {number} */ step) => step === shown || step === stepBelow(shown),
+    holds: (/** @type {number} */ step) => holdsStep(shown, step),
     /** @param {number} step */
     show(step) {
       shown = step;
@@ -170,7 +174,7 @@ function handScale() {
  * given), and what it is drawn with.
  *
  * @param {ReturnType<typeof handScale>} scale
- * @param {(container: THREE.Object3D) => import("./textBatch.js").TextBatch} [withBatch]
+ * @param {(container: THREE.Object3D) => TextBatch} [withBatch]
  * @param {UpdateChannel} [channel] The channel its effects run in, as a
  *   portal's do.
  */
@@ -339,7 +343,7 @@ describe("text steps", () => {
       return /** @type {THREE.ShaderMaterial} */ (bucket.material).uniforms.uRuns.value;
     };
     try {
-      const batch = /** @type {import("./textBatch.js").TextBatch} */ (run.batch);
+      const batch = /** @type {TextBatch} */ (run.batch);
       batch.flush();
       const first = array();
       let released = false;

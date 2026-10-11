@@ -139,9 +139,9 @@ const NO_LAYER = -1;
  *
  * Layers are handed out and taken back rather than repacked: a label whose
  * text changes gives its layer back and takes one off the free list, most
- * often the same one, and disturbs nobody else's. What reaches the GPU is the whole array, freshly allocated, once
- * per rebuild that changed anything -- `commit` says why a layer at a time
- * was not enough.
+ * often the same one, and disturbs nobody else's. What reaches the GPU is the
+ * whole array, freshly allocated, once per rebuild that changed anything --
+ * `commit` says why a layer at a time was not enough.
  */
 class SizeClass {
   /** @type {THREE.DataArrayTexture | null} */
@@ -473,10 +473,11 @@ class Bucket {
   /**
    * @param {number} index
    * @param {Member} member
+   * @param {Slot} slot The layer the run is drawn from.
    * @param {THREE.Matrix4} matrix
    * @returns {void}
    */
-  write(index, member, matrix) {
+  write(index, member, slot, matrix) {
     const mesh = this.mesh;
     if (!mesh) {
       return;
@@ -489,7 +490,7 @@ class Bucket {
     this.data.aColor[index * 4 + 1] = material.color.g;
     this.data.aColor[index * 4 + 2] = material.color.b;
     this.data.aColor[index * 4 + 3] = material.opacity;
-    this.data.aLayer[index] = /** @type {Slot} */ (member.shown).layer;
+    this.data.aLayer[index] = slot.layer;
     const clip = member.clip.value;
     this.data.aClip[index * 4] = clip.x;
     this.data.aClip[index * 4 + 1] = clip.y;
@@ -558,8 +559,6 @@ class Bucket {
  * @property {THREE.Mesh} mesh
  * @property {{ value: THREE.Vector4 }} clip The run's clip uniform (`textRun.js`).
  * @property {Map<HTMLCanvasElement, Slot>} slots
- * @property {Slot | null} shown The slot of the canvas the run shows, when
- *   the batch draws it.
  * @property {number} width
  * @property {number} height
  */
@@ -605,6 +604,12 @@ export class TextBatch {
   #disposed = false;
   /** @type {Member[]} */
   #found = [];
+  /**
+   * The layer each of `#found` is drawn from, at the same index.
+   *
+   * @type {Slot[]}
+   */
+  #foundSlots = [];
   /** @type {THREE.Matrix4[]} */
   #matrices = [];
 
@@ -641,7 +646,6 @@ export class TextBatch {
       mesh,
       clip,
       slots: new Map(),
-      shown: null,
       width: 0,
       height: 0,
     });
@@ -695,9 +699,6 @@ export class TextBatch {
     }
     slot.sizeClass.release(slot.layer);
     member.slots.delete(canvas);
-    if (member.shown === slot) {
-      member.shown = null;
-    }
     this.invalidate();
   }
 
@@ -740,7 +741,8 @@ export class TextBatch {
    * Only a canvas the batch has not seen is copied, into a layer of its own.
    *
    * @param {Member} member
-   * @returns {boolean} Whether the run can be drawn from a batch at all.
+   * @returns {Slot | null} The layer the run is drawn from, or null when the
+   *   batch cannot draw it.
    */
   #settle(member) {
     const material = /** @type {THREE.MeshBasicMaterial} */ (member.mesh.material);
@@ -749,7 +751,7 @@ export class TextBatch {
     const texture = material.alphaMap;
     const canvas = texture ? /** @type {HTMLCanvasElement} */ (texture.image) : null;
     if (!canvas || !canvas.width || !canvas.height) {
-      return false;
+      return null;
     }
     const positions = /** @type {THREE.BufferAttribute} */ (
       member.mesh.geometry.getAttribute("position")
@@ -770,15 +772,13 @@ export class TextBatch {
         // and is asked again on the next rebuild — which is what lets it in
         // when another run of its size goes away, since `remove` and `forget`
         // invalidate.
-        member.shown = null;
-        return false;
+        return null;
       }
       slot = { sizeClass, layer };
       sizeClass.write(layer, canvas);
       member.slots.set(canvas, slot);
     }
-    member.shown = slot;
-    return true;
+    return slot;
   }
 
   /**
@@ -803,8 +803,10 @@ export class TextBatch {
       }
     }
     const found = this.#found;
+    const foundSlots = this.#foundSlots;
     const matrices = this.#matrices;
     found.length = 0;
+    foundSlots.length = 0;
     let count = 0;
 
     /**
@@ -819,15 +821,17 @@ export class TextBatch {
       const matrix = stackAt(depth).multiplyMatrices(parentMatrix, object.matrix);
       const member = this.#members.get(/** @type {THREE.Mesh} */ (object));
       if (member) {
-        const batched = this.#settle(member);
+        const slot = this.#settle(member);
+        const batched = slot !== null;
         // A run draws itself exactly when the batch cannot draw it, and this
         // is the one place that decides — so a run that changes its mind, by
         // gaining a decoration the mirror cannot tint, is handed back rather
         // than lost.
         /** @type {THREE.Material} */ (member.mesh.material).visible = !batched;
         member.mesh.frustumCulled = !batched;
-        if (batched) {
+        if (slot) {
           found.push(member);
+          foundSlots.push(slot);
           if (!matrices[count]) {
             matrices[count] = new THREE.Matrix4();
           }
@@ -859,7 +863,7 @@ export class TextBatch {
     const keys = [];
     for (let i = 0; i < count; i++) {
       const member = found[i];
-      const sizeClass = /** @type {Slot} */ (member.shown).sizeClass;
+      const sizeClass = foundSlots[i].sizeClass;
       const key = `${sizeClass.width}x${sizeClass.height}|${member.mesh.renderOrder}`;
       keys.push(key);
       wanted.set(key, (wanted.get(key) ?? 0) + 1);
@@ -867,10 +871,10 @@ export class TextBatch {
     for (const [key, needed] of wanted) {
       let bucket = this.#buckets.get(key);
       if (!bucket) {
-        const member = found[keys.indexOf(key)];
+        const index = keys.indexOf(key);
         bucket = new Bucket(
-          /** @type {Slot} */ (member.shown).sizeClass,
-          member.mesh.renderOrder,
+          foundSlots[index].sizeClass,
+          found[index].mesh.renderOrder,
           this.#container,
         );
         this.#buckets.set(key, bucket);
@@ -886,7 +890,7 @@ export class TextBatch {
     for (let i = 0; i < count; i++) {
       const bucket = this.#buckets.get(keys[i]);
       if (bucket) {
-        bucket.write(bucket.count, found[i], matrices[i]);
+        bucket.write(bucket.count, found[i], foundSlots[i], matrices[i]);
         bucket.count += 1;
       }
     }
@@ -895,8 +899,8 @@ export class TextBatch {
     }
     // Everything has been settled and written by now, so a class whose every
     // layer has come back is one no run in the panel is in, at any step its
-    // panel holds. Give its array
-    // back rather than hold the panel's high-water mark until it closes.
+    // panel holds. Give its array back rather than hold the panel's
+    // high-water mark until it closes.
     for (const sizeClass of this.#classes.values()) {
       sizeClass.releaseStorageIfEmpty();
     }

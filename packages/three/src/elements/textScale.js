@@ -201,6 +201,20 @@ export function stepBelow(step) {
 }
 
 /**
+ * Whether a panel showing `shown` holds a run's raster at `held`: the shown
+ * step, and the one below it. The one below is the step a panel leaned into
+ * has just left, which is the one the player leaning back out comes to
+ * first, and it costs half the shown step's memory.
+ *
+ * @param {number} shown
+ * @param {number} held
+ * @returns {boolean}
+ */
+export function holdsStep(shown, held) {
+  return held === shown || held === stepBelow(shown);
+}
+
+/**
  * The panel's own answer to "how sharp should this text be", remeasured once
  * a frame and published as a step the runs can be rasterized at.
  *
@@ -239,16 +253,13 @@ export function createTextScale(container, renderer, camera, maxScale = MAX_TEXT
 
     /**
      * Whether a run keeps its raster at `held` while the panel shows the
-     * step it does now: the shown step, and the one below it. The one below
-     * is the step a panel leaned into has just left, which is the one the
-     * player leaning back out comes to first, and it costs half the shown
-     * step's memory. Any other step a run drew at is let go of when the run
-     * next changes texture.
+     * step it does now (`holdsStep`). Any other step a run drew at is let go
+     * of when the run next changes texture.
      *
      * @param {number} held
      * @returns {boolean}
      */
-    holds: (held) => held === step || held === stepBelow(step),
+    holds: (held) => holdsStep(step, held),
 
     /**
      * Where the middle of the panel is, which is what its distance is

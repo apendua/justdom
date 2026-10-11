@@ -228,6 +228,16 @@ async function main() {
         if (!found) throw new Error(`no ${text} in the toolbar`);
         return found;
       }, label);
+      // The panel brings a change into the scene a budget's worth per
+      // frame, so a control that has just appeared, like one of the
+      // picker's options, may not be there yet for the ray to meet. How
+      // many frames that takes depends on the machine; the toolbar's
+      // container carries `data-xr-busy` until it has drawn the last of it.
+      await page.waitForFunction(
+        () => !document.querySelector("#toolbar[data-xr-busy]"),
+        undefined,
+        { timeout: 30_000 },
+      );
       const box = await handle.evaluate((e) => e.getBoundingClientRect().toJSON());
       await aimAt(await onPanel("toolbar", box.left + box.width / 2, box.top + box.height / 2));
       check(

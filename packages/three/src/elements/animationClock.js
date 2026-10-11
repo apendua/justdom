@@ -174,7 +174,7 @@ function kebab(name) {
  * back camelCased; transition events use the CSS names; both resolve here.
  * Anything unrecognized — including a missing name — is assumed to move
  * layout, the class that invalidates most. The mirror asks the same question
- * of an inline `style` write (`paintsOnly` in mirror.js).
+ * of an inline `style` write (`keepsToOwnBox` in mirror.js).
  *
  * @param {string} [property]
  * @returns {AnimationClass}

@@ -341,32 +341,78 @@ function readDeclarations(text) {
 }
 
 /**
- * Whether an inline style that went from `before` to `after` changed only
- * declarations that move no box, added, removed or rewritten, as `movesLayout`
- * decides each one. This is what keeps a gauge that writes `style.transform`
- * every frame at the cost of its own subtree, where a width written the same
- * way settles the panel. A custom property moves layout too, since a `var()`
- * may feed a width.
+ * The properties that place and size a box, and so move nothing but that box
+ * when the box is out of the flow: an absolutely positioned box adds nothing
+ * to its parent's flow, so its siblings and its parent's size do not depend
+ * on them.
+ */
+const OUT_OF_FLOW_GEOMETRY = new Set([
+  "top",
+  "right",
+  "bottom",
+  "left",
+  "inset",
+  "width",
+  "height",
+]);
+
+/**
+ * Whether an inline style that went from `before` to `after` moved no box but
+ * the element's own, across every declaration added, removed or rewritten.
+ * Each one either moves no box at all, as `movesLayout` decides, or places or
+ * sizes an element that is positioned absolutely or fixed, which moves that
+ * element alone. This is what keeps a gauge that writes `style.transform`
+ * every frame, and a scrollbar thumb that writes `top` and `height` on every
+ * scroll, at the cost of their own subtrees, where a width written on a box
+ * in the flow settles the panel. A custom property moves layout, since a
+ * `var()` may feed a width, and so does `position`, which is how a box joins
+ * or leaves the flow.
  *
+ * The position is read from the browser rather than from the mirror's cache,
+ * because an ancestor's class changed in the same flush may not have reached
+ * the cache yet. It is read only when a geometry declaration changed, so a
+ * write of paint alone costs no style read.
+ *
+ * @param {Element} element
  * @param {string | null} before
  * @param {string | null} after
  * @returns {boolean}
  */
-function paintsOnly(before, after) {
+function keepsToOwnBox(element, before, after) {
   const was = readDeclarations(before);
   const now = readDeclarations(after);
+  let placesItself = false;
+  /**
+   * @param {string} name
+   * @param {(string | undefined)[]} values
+   * @returns {boolean} Whether the declaration may move another box.
+   */
+  const reachesOthers = (name, values) => {
+    if (!values.some((value) => movesLayout(name, value))) {
+      return false;
+    }
+    if (OUT_OF_FLOW_GEOMETRY.has(name)) {
+      placesItself = true;
+      return false;
+    }
+    return true;
+  };
   for (const [name, value] of now) {
     const old = was.get(name);
-    if (old !== value && (movesLayout(name, value) || movesLayout(name, old))) {
+    if (old !== value && reachesOthers(name, [value, old])) {
       return false;
     }
   }
   for (const [name, value] of was) {
-    if (!now.has(name) && movesLayout(name, value)) {
+    if (!now.has(name) && reachesOthers(name, [value])) {
       return false;
     }
   }
-  return true;
+  if (!placesItself) {
+    return true;
+  }
+  const position = window.getComputedStyle(element).position;
+  return position === "absolute" || position === "fixed";
 }
 
 /**
@@ -1178,7 +1224,7 @@ export class DomMirror {
       // input's siblings, which is where a checkbox's label lives.
       let presentational = true;
       let selfScoped = true;
-      let paintOnly = true;
+      let contained = true;
       for (const [name, oldValue] of names) {
         const value = element.getAttribute(name);
         if (value === oldValue || PORTAL_BOOKKEEPING_ATTRIBUTES.has(name)) {
@@ -1187,8 +1233,8 @@ export class DomMirror {
         changed = true;
         if (!PRESENTATIONAL_ATTRIBUTES.has(name)) {
           presentational = false;
-          if (name !== "style" || !paintsOnly(oldValue, value)) {
-            paintOnly = false;
+          if (name !== "style" || !keepsToOwnBox(element, oldValue, value)) {
+            contained = false;
           }
         }
         if (!isSelfScoped(element, name)) {
@@ -1196,7 +1242,7 @@ export class DomMirror {
         }
       }
       if (changed) {
-        this.attributeChanged(element, { presentational, selfScoped, paintOnly });
+        this.attributeChanged(element, { presentational, selfScoped, contained });
       }
     }
     for (const [node, oldValue] of characterBaselines) {
@@ -1228,13 +1274,14 @@ export class DomMirror {
    * the items share the row, so an item that grows shrinks the items
    * before it as well as moving the ones after it.
    *
-   * Three changes start no climb. An inline `style` whose changed
-   * properties move no box (`paintOnly`) is the motion a page writes every
-   * frame. The panel's root has nothing above it in the panel, and its own
-   * size is in the subtree re-measured above. An SVG element under an
-   * `<svg>` root is placed in user space, so an attribute on it moves none
-   * of its siblings; the root's own attributes, its `width` say, are a
-   * box's and climb.
+   * Three changes start no climb. An inline `style` that moved no box but
+   * the element's own (`contained`, see `keepsToOwnBox`) is the motion a
+   * page writes every frame: a transform, a fade, a positioned thumb sliding
+   * along its track. The panel's root has nothing above it in the panel,
+   * and its own size is in the subtree re-measured above. An SVG element
+   * under an `<svg>` root is placed in user space, so an attribute on it
+   * moves none of its siblings; the root's own attributes, its `width` say,
+   * are a box's and climb.
    *
    * @param {Node} element
    * @param {object} [options]
@@ -1247,14 +1294,15 @@ export class DomMirror {
    *   own subtree. False by default. Independent of `presentational` because
    *   the two claims are: `data-xr-checked` moves no layout but may still
    *   style the label beside it. See `isSelfScoped`.
-   * @param {boolean} [options.paintOnly] Whether the change is an inline
-   *   style that moved no box, so the element's subtree re-measures and the
-   *   layout around it is not settled. False by default. See `paintsOnly`.
+   * @param {boolean} [options.contained] Whether the change is an inline
+   *   style that moved no box but the element's own, so the element's subtree
+   *   re-measures and the layout around it is not settled. False by default.
+   *   See `keepsToOwnBox`.
    * @returns {void}
    */
   attributeChanged(
     element,
-    { presentational = false, selfScoped = false, paintOnly = false } = {},
+    { presentational = false, selfScoped = false, contained = false } = {},
   ) {
     batch(() => {
       this.#restyleScope(element, { reachesSiblings: !selfScoped });
@@ -1268,7 +1316,7 @@ export class DomMirror {
       const parent = element.parentElement;
       if (
         parent &&
-        !paintOnly &&
+        !contained &&
         !isPortalRoot(element) &&
         (!isSvgElement(element) || isSvgRoot(element))
       ) {

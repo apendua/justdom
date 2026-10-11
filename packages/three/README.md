@@ -568,12 +568,16 @@ taking `hidden` off, resizes the panel as it would if it were mounted. A change 
 costs a client rect for the element, for each element after it and for the parent, a text
 measurement for each text node after it, and a client rect for each positioned box in the panel.
 
-Two changes stay cheaper. An inline `style` write that changes only properties that move no box,
-`transform`, `opacity`, a `visibility` other than `collapse`, the colours and the like, re-measures
-the element's subtree and nothing around it, so a gauge that writes `style.transform` every frame
-pays for re-measuring itself alone. An SVG shape's `d` or `fill` is followed too, but a shape is
-placed in user space, so it moves none of the shapes beside it; the `<svg>` root's own attributes
-move what follows it, as a box's do.
+Two changes stay cheaper. An inline `style` write that moves no box but the element's own
+re-measures the element's subtree and nothing around it. That is a write of properties that move no
+box at all, `transform`, `opacity`, a `visibility` other than `collapse`, the colours and the like,
+and a write of `top`, `right`, `bottom`, `left`, `inset`, `width` or `height` on an element
+positioned `absolute` or `fixed`, which is out of the flow. So a gauge that writes `style.transform`
+every frame, and a scrollbar thumb that writes `top` and `height` on every scroll, pay for
+re-measuring themselves alone. Changing `position` itself moves what follows, as any box joining or
+leaving the flow does. An SVG shape's `d` or `fill` is followed too, but a shape is placed in user
+space, so it moves none of the shapes beside it; the `<svg>` root's own attributes move what follows
+it, as a box's do.
 
 Inside an `<svg>`, the attributes that place and size what it draws — `x`, `y`, `width`, `height`,
 `x1`, `y1`, `x2`, `y2`, `cx`, `cy`, `r`, `rx`, `ry`, `d`, `points`, `dx`, `dy`, `rotate` and

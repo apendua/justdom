@@ -432,17 +432,28 @@ describe("use", () => {
         height: "20",
         style: "width: 10px; height: 10px",
       });
+      const styledAuto = svg("use", {
+        href: "#use-symbol-unmapped",
+        x: "20",
+        width: "20",
+        height: "20",
+        style: "width: auto; height: auto",
+      });
       const s = scene(
-        [svg("defs", {}, [symbol]), sized, percent, styled],
-        [sized, percent, styled],
+        [svg("defs", {}, [symbol]), sized, percent, styled, styledAuto],
+        [sized, percent, styled, styledAuto],
       );
-      const [fromAttribute, fromPercent, fromStyle] = s.objects.map((o) => meshesUnder(o)[0]);
+      const [fromAttribute, fromPercent, fromStyle, fromStyledAuto] = s.objects.map(
+        (o) => meshesUnder(o)[0],
+      );
       // As in the first test: (10, 10) is (40, 20), twice that in px.
       assert.deepEqual(toRoot(fromAttribute, 10, 10), [80, 40]);
       // 40% of 50 by 80% of 25 is 20 square at the origin.
       assert.deepEqual(toRoot(fromPercent, 10, 10), [40, 40]);
       // The stylesheet's 10 over the attribute's 20.
       assert.deepEqual(toRoot(fromStyle, 10, 10), [20, 20]);
+      // A stylesheet's `auto` reads the attribute, as any `auto` does.
+      assert.deepEqual(toRoot(fromStyledAuto, 10, 10), [80, 40]);
       s.teardown();
     } finally {
       restore();

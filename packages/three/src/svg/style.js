@@ -38,10 +38,11 @@ export function readProperty(style, element, name) {
  * value, or the attribute when the computed value is `auto`.
  *
  * Chromium 152 no longer maps either attribute to CSS on those two
- * elements, and no version maps a percentage on a `<use>`, so `width="11"`
- * computes to `auto` and is drawn at the attribute's size all the same. A
- * stylesheet's `width: 9px` still reaches the computed value. `auto` there
- * says only that no stylesheet set a size, and the attribute is read.
+ * elements, and neither 141 nor 152 maps a percentage on a `<use>`, so
+ * `width="11"` computes to `auto` and is drawn at the attribute's size all
+ * the same. A stylesheet's `width: 9px` still reaches the computed value.
+ * Any `auto` reads the attribute, a stylesheet's `width: auto` included,
+ * since the browser draws the attribute's size then too.
  *
  * @param {CSSStyleDeclaration} style
  * @param {Element} element
@@ -49,8 +50,10 @@ export function readProperty(style, element, name) {
  * @returns {string}
  */
 export function readSize(style, element, name) {
-  const value = readProperty(style, element, name);
-  return value === "auto" ? (getAttributeCached(element, name) ?? "") : value;
+  const computed = style.getPropertyValue(name);
+  return computed === "" || computed === "auto"
+    ? (getAttributeCached(element, name) ?? "")
+    : computed;
 }
 
 /**

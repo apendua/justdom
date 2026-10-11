@@ -1339,11 +1339,21 @@ the live elements or the transitions playing on them.
 
 A panel follows its document's stylesheets, not only its own elements. Rewriting a `<style>`
 element's text, adding or removing a `<style>` or a `<link rel="stylesheet">`, and a `<link>`
-finishing its load each restyle and re-measure every panel on the page. That is how a styling
-library that keeps a class name and rewrites the rule behind it, such as the `className` and
-`stylesheet` tags in [`@apendua/justdom`](../justdom), reaches a panel. Each of those changes costs
-a whole-panel restyle, so animate through an inline `style` instead, which restyles only the element
-it is on.
+finishing its load each restyle the panels. That is how a styling library that keeps a class name
+and rewrites the rule behind it, such as the `className` and `stylesheet` tags in
+[`@apendua/justdom`](../justdom), reaches a panel.
+
+How much a change costs depends on what its rules start from. When every rule in the `<style>` that
+changed starts from a class, as `.card { … }`, `.card:hover > .label { … }` or a rule inside
+`@media` does, only the elements wearing one of those classes restyle and re-measure, as though
+their `class` had changed, along with what that brings with it: their subtrees and the layout around
+them. A panel with none of them pays nothing. That is every sheet `className` writes, and a
+`stylesheet` written from `.${CLASS_NAME}`, so a component that brings its own styles when it
+mounts, such as a keyboard opening, restyles itself and leaves the other panels alone. Any other
+rule (one starting from a tag, an attribute, `:root` or a descendant, an `@keyframes` or an
+`@font-face`), a `<link>`, and a class worn above a panel's root restyle and re-measure every panel
+on the page. Either way, animate through an inline `style` instead of a rule, which restyles only
+the element it is on.
 
 A mutation observer finds those changes, and a change made through the CSSOM has nothing for it to
 find. That covers `insertRule`, writing to a rule's `style`, `adoptedStyleSheets`, and every rule

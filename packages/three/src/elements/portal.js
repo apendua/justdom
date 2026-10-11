@@ -1794,10 +1794,16 @@ function buildPortal(ctx, ownOptions = {}) {
   // The other event with no node to blame: the rules themselves changing. A
   // stylesheet lives in the head, which is nowhere near the subtree the
   // observer above watches, so a library that rewrites a rule while keeping
-  // the class name it is behind mutates nothing this panel can see.
-  const stopWatchingStyles = watchDocumentStyles(() => {
+  // the class name it is behind mutates nothing this panel can see. When the
+  // watcher can name the classes the changed rules start from, only the
+  // elements wearing them restyle; otherwise everything does.
+  const stopWatchingStyles = watchDocumentStyles((classes) => {
     projectChanges(() => {
-      mirror.documentStylesChanged();
+      if (classes) {
+        mirror.classRulesChanged(containerElement, classes);
+      } else {
+        mirror.documentStylesChanged();
+      }
     });
   });
 

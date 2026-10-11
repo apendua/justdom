@@ -39,6 +39,7 @@ const createPortal = (ctx, options = {}) =>
   });
 import { createPortalScheduler, PortalSchedulerContext } from "./portalScheduler.js";
 import { MAX_BUILD_WAIT, MAX_COMMIT_WAIT } from "./portalPump.js";
+import { enableOutlinesMode, outlinesReport } from "./outlines.js";
 import {
   countingManager,
   dispatchFontsEvent,
@@ -3018,6 +3019,52 @@ describe("createPortal", () => {
     }
   });
 
+  test("a sheet for one class restyles what wears it and nothing else", async () => {
+    // A keyboard that opens brings its styling library's sheets with it,
+    // each a rule for a class only the keyboard wears. They restyled and
+    // re-measured every panel on the page, which in outlines mode is every
+    // element going dotted and in a headset a frame missed. Read here
+    // through the outlines' counts: the rows that do not wear the class are
+    // not read again at all.
+    const root = document.createElement("div");
+    const list = document.createElement("div");
+    const rows = Array.from({ length: 4 }, (_, i) => {
+      const row = document.createElement("div");
+      row.id = `plain${i}`;
+      return row;
+    });
+    list.append(...rows);
+    const aside = document.createElement("div");
+    const dressed = document.createElement("div");
+    dressed.id = "dressed";
+    dressed.className = "kb_dressed";
+    aside.append(dressed);
+    root.append(list, aside);
+    document.body.append(root);
+    const portal = createPortal(InteractionContext.set({}, new InteractionManager()), { root });
+    portal.addTo(new THREE.Group());
+    await settle(portal);
+    const off = enableOutlinesMode();
+    const style = document.createElement("style");
+    try {
+      style.innerHTML = ".kb_dressed { padding: 4px; color: rgb(9, 8, 7); }";
+      document.head.append(style);
+      await drain();
+      const report = outlinesReport(Infinity);
+      const ids = report.map((row) => row.element.split("#").pop());
+      assert.ok(ids.includes("dressed"), `the dressed box was restyled, among ${ids}`);
+      for (const row of rows) {
+        assert.ok(!ids.includes(row.id), `${row.id} was not read again, among ${ids}`);
+      }
+    } finally {
+      off();
+      style.remove();
+      await drain();
+      portal.disconnect();
+      root.remove();
+    }
+  });
+
   test("a rule rewritten behind a stable class name restyles the panel", async () => {
     // What a styling library that hands out class names does when the value
     // inside one of its templates changes: it rewrites the rule in the head
@@ -3073,7 +3120,11 @@ describe("createPortal", () => {
       "the class attribute is not what changed",
     );
     assert.equal(dependent.get(), "rgb(4, 5, 6)", "the panel wears the colour the rule now says");
-    assert.equal(reads, 2, "and read it once more, not once per element in the head");
+    // The rule starts from the card's class, so the card restyles as though
+    // its `class` had changed: its own signal and its parent's member signal,
+    // each heard once by this reader, which reads on every invalidation
+    // rather than at the end of the batch. Not once per element in the head.
+    assert.equal(reads, 3, "and read it once per signal the restyle bumps");
 
     dependentSubscription.unsubscribe();
     subscription.unsubscribe();

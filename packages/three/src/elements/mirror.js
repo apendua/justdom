@@ -1626,7 +1626,9 @@ export class DomMirror {
    * ever hears about the change. See `documentStyles.js`.
    *
    * **It costs a whole-panel restyle and re-measure**, which is the honest
-   * price of an event that names nothing. Fine for a theme swap or a
+   * price of an event that names nothing. A change whose rules all start
+   * from classes names what it styles, and goes to `classRulesChanged`
+   * instead. Fine for a theme swap or a
    * state-driven rule; expensive for a value animated at frame rate. Animate
    * through an inline `style` instead — that is a mutation on the element
    * that moved, and it is scoped to it.
@@ -1640,6 +1642,48 @@ export class DomMirror {
   documentStylesChanged() {
     invalidatePanelFrames();
     this.#everythingChanged();
+  }
+
+  /**
+   * The document's stylesheets changed, and every rule that changed starts
+   * from one of `classes` (see `scopeOfSheet` in `documentStyles.js`). Such
+   * a rule matches only an element wearing the class, its subtree, and what
+   * comes after it among its siblings, which is what changing the element's
+   * `class` restyles and re-measures. So each element of the panel wearing
+   * one restyles as though its `class` had changed, and a panel with none of
+   * them restyles nothing. That is the usual case for a sheet a styling
+   * library writes as the elements it dresses arrive, such as a keyboard's
+   * when the keyboard opens.
+   *
+   * An element above the panel's root wearing one is outside the panel, and
+   * passes what the rule says down to all of it, so then everything changes.
+   *
+   * @param {Element} root The panel's root.
+   * @param {ReadonlySet<string>} classes Names `leadingClass` read, which
+   *   need no escaping in a selector.
+   * @returns {void}
+   */
+  classRulesChanged(root, classes) {
+    if (classes.size === 0) {
+      return;
+    }
+    const wears = (/** @type {Element} */ element) =>
+      [...classes].some((name) => element.classList.contains(name));
+    for (let above = root.parentElement; above; above = above.parentElement) {
+      if (wears(above)) {
+        this.documentStylesChanged();
+        return;
+      }
+    }
+    const selector = [...classes].map((name) => `.${name}`).join(", ");
+    batch(() => {
+      if (wears(root)) {
+        this.attributeChanged(root);
+      }
+      for (const element of root.querySelectorAll(selector)) {
+        this.attributeChanged(element);
+      }
+    });
   }
 
   /**

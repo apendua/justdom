@@ -12,11 +12,22 @@
  * repaints the page behind the panel and the panel goes on showing the colours
  * it read once.
  *
- * So this is the same shape of thing as fonts arriving: an event with no node
- * to blame, that restyles and re-measures everything at once. It is delivered
- * the same way, through `mirror.documentStylesChanged()`, and it costs the
- * same — see the note there before styling a panel from an observable that
- * emits at frame rate.
+ * In general this is the same shape of thing as fonts arriving: an event with
+ * no node to blame, that restyles and re-measures everything at once. It is
+ * delivered the same way, through `mirror.documentStylesChanged()`, and it
+ * costs the same — see the note there before styling a panel from an
+ * observable that emits at frame rate.
+ *
+ * Most sheets such a library writes can name what they style, though. A
+ * rule whose selector starts from a class matches only elements in the
+ * subtree of an element with that class, or after it among its siblings,
+ * and a `className` tag writes nothing else. So each announcement carries
+ * the classes every rule of the changed sheets starts from (`scopeOfSheet`),
+ * and a panel restyles only the elements that wear one, as though their
+ * `class` had changed (`mirror.classRulesChanged()`). A panel with none of
+ * them restyles nothing. A sheet with a rule that starts anywhere else or
+ * cannot be read, a `<link>`, and a change theming mode finds are announced
+ * with no classes, and cost a whole-panel restyle.
  *
  * One observer for the whole page rather than one per portal: the thing being
  * watched is shared, the answer is the same for every panel, and a page with a
@@ -39,8 +50,25 @@
  * on only when asked, since nothing else needs it.
  */
 
-/** @type {Set<() => void>} */
+/**
+ * What a style change can restyle: the classes every changed rule starts
+ * from, or null when there is no telling, which restyles everything.
+ *
+ * @typedef {ReadonlySet<string> | null} StyleScope
+ */
+
+/** @type {Set<(scope: StyleScope) => void>} */
 const listeners = new Set();
+
+/**
+ * What each `<style>` in the head was last seen to style, so that a sheet
+ * leaving, or rewritten, can say what it used to style when its rules are
+ * gone. A style element missing from it was there before anything watched,
+ * and has no telling.
+ *
+ * @type {WeakMap<Element, StyleScope>}
+ */
+const styleScopes = new WeakMap();
 
 /** @type {MutationObserver | null} */
 let observer = null;
@@ -142,7 +170,7 @@ function poll() {
   const next = readRules();
   if (next !== fingerprint) {
     fingerprint = next;
-    notify();
+    notify(null);
   }
 }
 
@@ -200,82 +228,254 @@ function isStylesheetLink(node) {
 }
 
 /**
- * Whether a node is one of the elements that can bring rules to the document.
+ * The `<style>` a node is in, or is, or null.
  *
  * @param {Node} node
- * @returns {boolean}
+ * @returns {Element | null}
  */
-function isStyleElement(node) {
-  return node.nodeName === "STYLE" || isStylesheetLink(node);
-}
-
-/**
- * Whether a mutation record's target sits inside a `<style>` — which is how a
- * rewritten rule arrives, since replacing a style element's text is a
- * `childList` change on the element or a `characterData` change on the text
- * node under it, depending on how the write was made.
- *
- * @param {Node} node
- * @returns {boolean}
- */
-function isInsideStyleElement(node) {
+function enclosingStyleElement(node) {
   for (let current = /** @type {Node | null} */ (node); current; current = current.parentNode) {
     if (current.nodeName === "STYLE") {
-      return true;
+      return /** @type {Element} */ (current);
     }
   }
-  return false;
+  return null;
 }
 
 /**
- * Whether this flush carries anything that could have changed what the
- * document's rules say. The head sees plenty that cannot — a title, a meta
- * tag, a preload hint — and a panel-wide restyle is far too expensive to
- * spend on those.
+ * A class name a selector can be scoped by without escaping: what
+ * `className` writes, and what a hand-written sheet usually has.
+ */
+const PLAIN_CLASS = /^-?[_a-zA-Z][_a-zA-Z0-9-]*/;
+
+/**
+ * The class a complex selector starts from: one named by the first compound
+ * itself, outside any `:not()`, `:is()` or `:has()`, and outside attribute
+ * brackets. Every element the selector matches is that element, in its
+ * subtree, or after it among its siblings. Null when the first compound
+ * names no class, or names it in a way this does not read.
  *
- * @param {MutationRecord[]} records
+ * @param {string} selector
+ * @returns {string | null}
+ */
+export function leadingClass(selector) {
+  const text = selector.trim();
+  let depth = 0;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (c === "\\" || c === '"' || c === "'") {
+      return null;
+    }
+    if (c === "(" || c === "[") {
+      depth += 1;
+    } else if (c === ")" || c === "]") {
+      depth -= 1;
+    } else if (depth === 0) {
+      if (/[\s>+~]/.test(c)) {
+        return null;
+      }
+      if (c === ".") {
+        const name = PLAIN_CLASS.exec(text.slice(i + 1))?.[0];
+        // A name that goes on in an escape is a longer name than it reads.
+        return name && text[i + 1 + name.length] !== "\\" ? name : null;
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * A selector list split at its top-level commas, so that `:is(a, b)` stays
+ * one selector.
+ *
+ * @param {string} list
+ * @returns {string[]}
+ */
+function splitSelectors(list) {
+  /** @type {string[]} */
+  const parts = [];
+  let depth = 0;
+  let start = 0;
+  for (let i = 0; i < list.length; i++) {
+    const c = list[i];
+    if (c === "(" || c === "[") {
+      depth += 1;
+    } else if (c === ")" || c === "]") {
+      depth -= 1;
+    } else if (c === "," && depth === 0) {
+      parts.push(list.slice(start, i));
+      start = i + 1;
+    }
+  }
+  parts.push(list.slice(start));
+  return parts;
+}
+
+/** `CSSRule.MEDIA_RULE` and `CSSRule.SUPPORTS_RULE`, which only group. */
+const GROUPING_RULES = new Set([4, 12]);
+
+/**
+ * Add the class each rule starts from to `classes`, and answer whether every
+ * rule had one. A rule inside `@media` or `@supports` counts as itself. Any
+ * other at-rule (`@keyframes`, `@font-face`, `@import`) and a nested rule
+ * reach past what a class can scope.
+ *
+ * @param {CSSRuleList} rules
+ * @param {Set<string>} classes
  * @returns {boolean}
  */
-function touchesStyles(records) {
+function collectLeadingClasses(rules, classes) {
+  for (const rule of rules) {
+    const style = /** @type {Partial<CSSStyleRule>} */ (rule);
+    if (typeof style.selectorText === "string") {
+      if (style.cssRules && style.cssRules.length > 0) {
+        return false;
+      }
+      for (const selector of splitSelectors(style.selectorText)) {
+        const name = leadingClass(selector);
+        if (name === null) {
+          return false;
+        }
+        classes.add(name);
+      }
+    } else if (GROUPING_RULES.has(rule.type)) {
+      if (!collectLeadingClasses(/** @type {CSSGroupingRule} */ (rule).cssRules, classes)) {
+        return false;
+      }
+    } else {
+      return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * What a `<style>` in the document styles now: the classes its rules start
+ * from, or null when one of them starts anywhere else or the rules cannot be
+ * read.
+ *
+ * @param {Element} element
+ * @returns {StyleScope}
+ */
+export function scopeOfSheet(element) {
+  const sheet = /** @type {HTMLStyleElement} */ (element).sheet;
+  if (!sheet) {
+    return null;
+  }
+  /** @type {Set<string>} */
+  const classes = new Set();
+  try {
+    return collectLeadingClasses(sheet.cssRules, classes) ? classes : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Remember what a `<style>` styles now, and answer what changed: what it
+ * styled before together with what it styles now, since a rule taken out
+ * restyles what it matched as much as a rule put in.
+ *
+ * @param {Element} element
+ * @returns {StyleScope}
+ */
+function rescope(element) {
+  const before = styleScopes.has(element) ? styleScopes.get(element) : null;
+  // A sheet that has left styles nothing any more.
+  const after = element.isConnected ? scopeOfSheet(element) : new Set();
+  if (element.isConnected) {
+    styleScopes.set(element, after);
+  }
+  return before && after ? new Set([...before, ...after]) : null;
+}
+
+/**
+ * What a flush can have restyled: undefined when it carries nothing that
+ * could have changed what the document's rules say, which is most of what
+ * the head sees (a title, a meta tag, a preload hint), and otherwise the
+ * scope of every style change in it together.
+ *
+ * @param {MutationRecord[]} records
+ * @returns {StyleScope | undefined}
+ */
+function scopeOfFlush(records) {
+  /** @type {Set<string>} */
+  const classes = new Set();
+  let touched = false;
+  let unscoped = false;
+  /** @param {StyleScope} scope */
+  const add = (scope) => {
+    touched = true;
+    if (scope === null) {
+      unscoped = true;
+    } else {
+      for (const name of scope) {
+        classes.add(name);
+      }
+    }
+  };
+  /** @type {Set<Element>} */
+  const rewritten = new Set();
   for (const record of records) {
-    if (isInsideStyleElement(record.target)) {
-      return true;
+    const enclosing = enclosingStyleElement(record.target);
+    if (enclosing) {
+      rewritten.add(enclosing);
     }
     for (const node of record.addedNodes) {
-      if (isStyleElement(node)) {
-        return true;
+      if (node.nodeName === "STYLE") {
+        rewritten.add(/** @type {Element} */ (node));
+      } else if (isStylesheetLink(node)) {
+        add(null);
       }
     }
     for (const node of record.removedNodes) {
-      if (isStyleElement(node)) {
-        return true;
+      if (node.nodeName === "STYLE") {
+        rewritten.add(/** @type {Element} */ (node));
+      } else if (isStylesheetLink(node)) {
+        add(null);
       }
     }
   }
-  return false;
+  for (const element of rewritten) {
+    // A sheet that arrives is new to `styleScopes`, and then what it styled
+    // before is nothing at all.
+    if (!styleScopes.has(element) && element.isConnected) {
+      styleScopes.set(element, new Set());
+    }
+    add(rescope(element));
+    if (!element.isConnected) {
+      styleScopes.delete(element);
+    }
+  }
+  if (!touched) {
+    return undefined;
+  }
+  return unscoped ? null : classes;
 }
 
 /**
+ * @param {StyleScope} scope
  * @returns {void}
  */
-function announce() {
+function announce(scope) {
   // The rules as the panels are about to read them, so that the poll does
   // not announce a second time what the observer just did.
   if (poller) {
     fingerprint = readRules();
   }
-  notify();
+  notify(scope);
 }
 
 /**
+ * @param {StyleScope} scope
  * @returns {void}
  */
-function notify() {
+function notify(scope) {
   // A copy, because a listener is free to stop watching from inside the call —
   // a portal disposed by something a restyle triggered would otherwise mutate
   // the set being iterated.
   for (const listener of [...listeners]) {
-    listener();
+    listener(scope);
   }
 }
 
@@ -286,27 +486,34 @@ function notify() {
 function loadCallback(event) {
   const target = event.target;
   if (target instanceof Node && isStylesheetLink(target)) {
-    announce();
+    announce(null);
   }
 }
 
 /**
  * Watch the document's stylesheets. The listener is called once per observer
  * flush that carried a style change, which coalesces a burst of rewrites in
- * one tick into one announcement. While theming mode is on (see
- * `enableThemingMode`), it is also called once per timed read that found the
- * rules' text changed.
+ * one tick into one announcement, with what the flush can have restyled (see
+ * `StyleScope`). While theming mode is on (see `enableThemingMode`), it is
+ * also called once per timed read that found the rules' text changed, with
+ * no scope.
  *
- * @param {() => void} listener
+ * @param {(scope: StyleScope) => void} listener
  * @returns {() => void} Stops watching. Idempotent.
  */
 export function watchDocumentStyles(listener) {
   listeners.add(listener);
   syncPoller();
   if (!observer) {
+    // What the sheets already in the head style, so that one leaving or
+    // rewritten later can say what it used to style.
+    for (const element of document.head.querySelectorAll("style")) {
+      styleScopes.set(element, scopeOfSheet(element));
+    }
     observer = new MutationObserver((records) => {
-      if (touchesStyles(records)) {
-        announce();
+      const scope = scopeOfFlush(records);
+      if (scope !== undefined) {
+        announce(scope);
       }
     });
     observer.observe(document.head, {
@@ -342,9 +549,10 @@ export function watchDocumentStyles(listener) {
  * the frame loop, for as long as it is on and a panel is mounted. That is a
  * few milliseconds on a large stylesheet, which is fine at a desk and not
  * worth paying in a headset, so turn it on only when it is asked for. Each
- * change it finds costs a whole-panel restyle and re-measure, the same as any
- * other change to the rules; the interval is also what coalesces a burst of
- * edits, such as a colour picker dragged across its range, into one.
+ * change it finds costs a whole-panel restyle and re-measure, since a read of
+ * every rule's text names no class; the interval is also what coalesces a
+ * burst of edits, such as a colour picker dragged across its range, into
+ * one.
  *
  * Several callers may turn it on at once; it stays on until all of them have
  * turned it off, at the shortest interval any of them asked for.

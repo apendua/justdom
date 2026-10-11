@@ -9,6 +9,7 @@ import {
   getTextRenderStyle,
   isTintableText,
   parseTextShadow,
+  scaleTextRenderStyle,
 } from "./textHelpers.js";
 
 /**
@@ -387,6 +388,27 @@ describe("getTextRenderStyle", () => {
     );
     assert.equal(style.font, "normal normal 600 32px sans-serif");
     assert.equal(style.fontVariant, "normal");
+  });
+
+  test("a scaled style is the same face with every length scaled", () => {
+    const style = getTextRenderStyle(
+      styleOf({
+        fontVariantCaps: "small-caps",
+        fontWeight: "700",
+        fontSize: "0.5px",
+        fontFamily: "serif",
+        letterSpacing: "0.1em",
+        wordSpacing: "0.25px",
+        textDecorationThickness: "0.125px",
+      }),
+    );
+    const scaled = scaleTextRenderStyle(style, 128);
+    assert.equal(scaled.font, "normal small-caps 700 64px serif");
+    assert.equal(scaled.fontSize, 64);
+    assert.ok(Math.abs(scaled.letterSpacing - 6.4) < 1e-9);
+    assert.equal(scaled.wordSpacing, 32);
+    assert.equal(scaled.textDecorationThickness, 16);
+    assert.equal(scaled.color, style.color);
   });
 });
 

@@ -36,14 +36,9 @@ import {
   viewportSize,
   shape,
   SHAPE_TAGS,
+  createInstance,
 } from "./shape.js";
-import {
-  clipsViewport,
-  parseLengthIn,
-  parseNumber,
-  parseUrlReference,
-  readProperty,
-} from "./style.js";
+import { clipsViewport, parseLengthIn, parseUrlReference, readProperty } from "./style.js";
 
 /**
  * Templates: SVG content defined in one place and drawn in others. A
@@ -285,26 +280,14 @@ function markers(ctx, element, host, hostInstance) {
             a === b || (!!a && !!b && matrixEqual(a.frame, b.frame) && rectEqual(a.rect, b.rect)),
         },
       );
-      /** @type {Instance} */
-      const instance = {
+      const instance = createInstance({
         template: marker,
-        chain: () => {
-          const at = host.chain();
-          const current = box.get();
-          return {
-            ctm: multiply(at.ctm, matrix.get()),
-            // The marker is a container its content is drawn in, so its own
-            // opacity fades the copy; the walk stops below it.
-            opacity: at.opacity * parseNumber(getComputedStyleCached(marker).opacity, 1),
-            root: at.root,
-            clip: current
-              ? intersectRects(
-                  at.clip,
-                  transformRect(multiply(at.ctm, current.frame), current.rect),
-                )
-              : at.clip,
-          };
-        },
+        outer: host.chain,
+        placement: () => matrix.get(),
+        // The marker is a container its content is drawn in, so its own
+        // opacity fades the copy.
+        container: marker,
+        clip: () => box.get(),
         slot: host.markerSlot,
         viewport: () => {
           const spec = readMarkerSpec(marker);
@@ -318,7 +301,7 @@ function markers(ctx, element, host, hostInstance) {
         // from the path it is drawn on.
         inherit: null,
         expanding: new Set([...expanding, marker]),
-      };
+      });
       mountInto(
         obj,
         just(new THREE.Object3D(), [
@@ -533,24 +516,20 @@ export function drawUse(ctx, element, instance = null) {
         },
         { isEqual: rectEqual },
       );
-      /** @type {Instance} */
-      const copy = {
+      // Built once per change of the rect, not per read of the chain.
+      const framedViewport = new Derived(() => {
+        const rect = viewport.get();
+        return rect && { rect };
+      });
+      const copy = createInstance({
         template: isViewport ? target : /** @type {Element} */ (target.parentElement),
-        chain: () => {
-          const at = chain.get();
-          const rect = viewport.get();
-          return {
-            ctm: multiply(at.ctm, placement.get()),
-            // A `<symbol>` or `<svg>` is a container in the copy, so its own
-            // opacity fades it; the walk stops below it. The parent of an
-            // element drawn whole is not in the copy, and adds nothing.
-            opacity: isViewport
-              ? at.opacity * parseNumber(getComputedStyleCached(target).opacity, 1)
-              : at.opacity,
-            root: at.root,
-            clip: rect ? intersectRects(at.clip, transformRect(at.ctm, rect)) : at.clip,
-          };
-        },
+        outer: () => chain.get(),
+        placement: () => placement.get(),
+        // A `<symbol>` or `<svg>` is a container in the copy, so its own
+        // opacity fades it. The parent of an element drawn whole is not in
+        // the copy, and adds nothing.
+        container: isViewport ? target : null,
+        clip: () => framedViewport.get(),
         slot: () => paintSlot(element, chain.get().root, instance, 0),
         viewport: () => {
           const fit = frame.get();
@@ -569,7 +548,7 @@ export function drawUse(ctx, element, instance = null) {
           read: (name) => readDrawnProperty(element, name, instance),
         },
         expanding: new Set([...expanding, target]),
-      };
+      });
       /** @type {EntityEffect<THREE.Object3D>[]} */
       const content = [];
       if (isViewport) {

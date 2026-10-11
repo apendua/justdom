@@ -1,8 +1,6 @@
-import * as THREE from "three";
-import { Derived, effects, just, onCleanup, set } from "@apendua/signal";
+import { Derived, effects } from "@apendua/signal";
 import { keyedList } from "../core.js";
-import { $, children } from "../operators.js";
-import { applyClip, clipRaycast } from "../elements/clip.js";
+import { children } from "../operators.js";
 import {
   counterpart,
   createMeasurementClone,
@@ -14,7 +12,6 @@ import {
   withMeasuringRange,
 } from "../elements/mirror.js";
 import { isSvgElement, SVG_NAMESPACE } from "../elements/plugins.js";
-import { place } from "../elements/place.js";
 import {
   generateTextTexture,
   getTextRenderStyle,
@@ -24,22 +21,9 @@ import {
 import { preservesWhitespace } from "../elements/textLines.js";
 import { frameFor, measureClientRect } from "../elements/panelFrame.js";
 import { readTextScale, TextScaleContext } from "../elements/textScale.js";
-import { matrixEqual, matrixScale, samplingScale } from "./geometry.js";
+import { matrixScale, samplingScale } from "./geometry.js";
 import { buildImageGeometry } from "./image.js";
-import {
-  chainEqual,
-  clipUniforms,
-  commitMatrix,
-  drawnOpacity,
-  isDrawnHidden,
-  localMatrix,
-  paintSlot,
-  rayTarget,
-  readChain,
-  readDrawnProperty,
-  regionHits,
-  viewportSize,
-} from "./shape.js";
+import { isDrawnHidden, readDrawnProperty, regionHits, svgNode, viewportSize } from "./shape.js";
 import { parseNumber, parsePaint, parsePointerEvents, readProperty } from "./style.js";
 
 /**
@@ -66,8 +50,9 @@ import { parseNumber, parsePaint, parsePointerEvents, readProperty } from "./sty
  * viewport and the matrices above give it, rounded to a step so a scale
  * animation does not redraw it every frame.
  *
+ * @import {MeshBasicMaterial, Object3D} from 'three';
  * @import {Source} from '@apendua/signal';
- * @import {Component, XREventMap} from '../core.js';
+ * @import {Component} from '../core.js';
  * @import {Instance} from './shape.js';
  */
 
@@ -430,22 +415,18 @@ function shallowEqual(a, b) {
 
 /**
  * Whether a ray can hit a run under the rule its parent's `pointer-events`
- * gives the fill, which is the region text has. Template content is drawn
- * and never hit, as it is in `shape`.
+ * gives the fill, which is the region text has. Template content is never
+ * hit whatever this says, which `svgNode` sees to.
  *
  * @param {Element} parent The run's `<text>`, `<tspan>` or `<a>`.
  * @param {Instance | null} instance
  * @returns {boolean}
  */
 function runHits(parent, instance) {
-  return (
-    !instance &&
-    regionHits(
-      parsePointerEvents(readProperty(getComputedStyleCached(parent), parent, "pointer-events"))
-        .fill,
-      () => readDrawnProperty(parent, "fill", instance),
-      () => isDrawnHidden(parent, instance),
-    )
+  return regionHits(
+    parsePointerEvents(readProperty(getComputedStyleCached(parent), parent, "pointer-events")).fill,
+    () => readDrawnProperty(parent, "fill", instance),
+    () => isDrawnHidden(parent, instance),
   );
 }
 
@@ -454,24 +435,10 @@ function runHits(parent, instance) {
  * @param {Element} element
  * @param {Instance | null} [instance] The instance the text is part of, when
  *   it is template content drawn somewhere else.
- * @returns {Source<THREE.Object3D>}
+ * @returns {Source<Object3D>}
  */
 export function drawText(ctx, element, instance = null) {
-  /** @type {THREE.Object3D<XREventMap>} */
-  const object = new THREE.Object3D();
-  const style = () => getComputedStyleCached(element);
   const textScale = TextScaleContext.get(ctx);
-
-  const own = new Derived(() => localMatrix(element, instance), { isEqual: matrixEqual });
-  const chain = new Derived(() => readChain(element, instance), { isEqual: chainEqual });
-  const root = new Derived(() => chain.get().root);
-  const opacity = new Derived(() => drawnOpacity(chain.get()));
-  /**
-   * CSS pixels per user unit, in steps. Apart from the panel's own scale,
-   * which `generateTextTexture` caps for HTML text; this part is not capped,
-   * or text in a small `viewBox` would be drawn soft.
-   */
-  const unitScale = new Derived(() => samplingScale(matrixScale(chain.get().ctm)));
 
   /** @type {WeakMap<Element, Derived<readonly string[]>>} */
   const layoutStyles = new WeakMap();
@@ -534,161 +501,134 @@ export function drawText(ctx, element, instance = null) {
     { isEqual: runsEqual },
   );
 
-  /** Whether a ray can hit any run, which is what makes the text a target. */
-  const hittable = new Derived(() => runs.get().some((run) => runHits(run.parent, instance)));
+  return svgNode(ctx, element, instance, (node) => {
+    /**
+     * CSS pixels per user unit, in steps. Apart from the panel's own scale,
+     * which `generateTextTexture` caps for HTML text; this part is not
+     * capped, or text in a small `viewBox` would be drawn soft.
+     */
+    const unitScale = new Derived(() => samplingScale(matrixScale(node.chain().ctm)));
 
-  const { clip, clipMatrix, clipBox, followClip } = clipUniforms(() => chain.get());
-
-  /**
-   * The mesh of the run for one text node. Mounted once per node by
-   * `keyedList`, and following the node's run from then on, so a run that
-   * moves or changes its characters is redrawn alone, and a node added or
-   * taken away mounts or unmounts its own run and no other.
-   *
-   * @param {Text} node
-   * @returns {Source<Component>}
-   */
-  const drawRun = (node) => {
-    /** @type {TextRun | undefined} */
-    let last;
-    // The node's run, or the one it had last, for the moment between the
-    // node being taken away and its mesh with it.
-    const run = new Derived(() => {
-      last = runs.get().find((each) => each.node === node) ?? last;
-      return /** @type {TextRun} */ (last);
-    });
-    const parent = new Derived(() => run.get().parent);
-    const characters = new Derived(
-      () => {
-        const { text, width, height } = run.get();
-        return { text, width, height };
-      },
-      { isEqual: (a, b) => a.text === b.text && a.width === b.width && a.height === b.height },
-    );
-    const position = new Derived(
-      () => {
-        const { left, top } = run.get();
-        return { left, top };
-      },
-      { isEqual: (a, b) => a.left === b.left && a.top === b.top },
-    );
-    /** @param {string} name */
-    const read = (name) => readDrawnProperty(parent.get(), name, instance);
-    const renderStyle = new Derived(() => getTextRenderStyle(runStyle(read)), {
-      isEqual: (a, b) =>
-        shallowEqual(
-          /** @type {Record<string, unknown>} */ (/** @type {unknown} */ (a)),
-          /** @type {Record<string, unknown>} */ (/** @type {unknown} */ (b)),
-        ),
-    });
-    // Drawn `factor` times its user space, for its own font, and brought
-    // back to it by the quad.
-    const textureData = new Derived(() => {
-      const factor = measuringScale(renderStyle.get().fontSize);
-      const { text, width, height } = characters.get();
-      const scaled = { width: width * factor, height: height * factor };
-      const drawn = generateTextTexture(
-        [{ text, left: 0, top: 0, ...scaled }],
-        scaleTextRenderStyle(renderStyle.get(), factor),
-        scaled,
-        readTextScale(textScale),
-        true,
-        unitScale.get() / factor,
+    /**
+     * The mesh of the run for one text node. Mounted once per node by
+     * `keyedList`, and following the node's run from then on, so a run that
+     * moves or changes its characters is redrawn alone, and a node added or
+     * taken away mounts or unmounts its own run and no other.
+     *
+     * @param {Text} textNode
+     * @returns {Source<Component>}
+     */
+    const drawRun = (textNode) => {
+      /** @type {TextRun | undefined} */
+      let last;
+      // The node's run, or the one it had last, for the moment between the
+      // node being taken away and its mesh with it.
+      const run = new Derived(() => {
+        last = runs.get().find((each) => each.node === textNode) ?? last;
+        return /** @type {TextRun} */ (last);
+      });
+      const parent = new Derived(() => run.get().parent);
+      const characters = new Derived(
+        () => {
+          const { text, width, height } = run.get();
+          return { text, width, height };
+        },
+        { isEqual: (a, b) => a.text === b.text && a.width === b.width && a.height === b.height },
       );
-      return { ...drawn, width: drawn.width / factor, height: drawn.height / factor };
-    });
-    const paint = new Derived(() => parsePaint(read("fill")));
-    const hidden = new Derived(() => isDrawnHidden(parent.get(), instance));
-    const hits = new Derived(() => runHits(parent.get(), instance));
+      const position = new Derived(
+        () => {
+          const { left, top } = run.get();
+          return { left, top };
+        },
+        { isEqual: (a, b) => a.left === b.left && a.top === b.top },
+      );
+      /** @param {string} name */
+      const read = (name) => readDrawnProperty(parent.get(), name, instance);
+      const renderStyle = new Derived(() => getTextRenderStyle(runStyle(read)), {
+        isEqual: (a, b) =>
+          shallowEqual(
+            /** @type {Record<string, unknown>} */ (/** @type {unknown} */ (a)),
+            /** @type {Record<string, unknown>} */ (/** @type {unknown} */ (b)),
+          ),
+      });
+      // Drawn `factor` times its user space, for its own font, and brought
+      // back to it by the quad.
+      const textureData = new Derived(() => {
+        const factor = measuringScale(renderStyle.get().fontSize);
+        const { text, width, height } = characters.get();
+        const scaled = { width: width * factor, height: height * factor };
+        const drawn = generateTextTexture(
+          [{ text, left: 0, top: 0, ...scaled }],
+          scaleTextRenderStyle(renderStyle.get(), factor),
+          scaled,
+          readTextScale(textScale),
+          true,
+          unitScale.get() / factor,
+        );
+        return { ...drawn, width: drawn.width / factor, height: drawn.height / factor };
+      });
+      const paint = new Derived(() => parsePaint(read("fill")));
+      const hidden = new Derived(() => isDrawnHidden(parent.get(), instance));
+      const hits = new Derived(() => runHits(parent.get(), instance));
 
-    const mesh = new THREE.Mesh();
-    clipRaycast(mesh, clipBox, mesh, clipMatrix);
-    const clipped = mesh.raycast;
-    let rayHits = false;
-    mesh.raycast = (raycaster, intersects) => {
-      if (rayHits) {
-        clipped(raycaster, intersects);
-      }
+      return node.mesh({
+        geometry: () => {
+          const { width, height } = textureData.get();
+          const { left, top } = position.get();
+          return buildImageGeometry({
+            left,
+            top,
+            right: left + width,
+            bottom: top + height,
+            u0: 0,
+            v0: 0,
+            u1: 1,
+            v1: 1,
+          });
+        },
+        paints: () => paint.get() !== null,
+        paint: [
+          effects((obj) => {
+            const material = /** @type {MeshBasicMaterial} */ (obj.material);
+            // A coverage mask, white on black, read through the alpha map;
+            // the colour comes from the material. Three compiles a program
+            // with an alpha map or without one, so only the first texture
+            // recompiles.
+            if (!material.alphaMap) {
+              material.needsUpdate = true;
+            }
+            material.alphaMap = textureData.get().texture;
+          }),
+          effects((obj) => {
+            const material = /** @type {MeshBasicMaterial} */ (obj.material);
+            const current = paint.get();
+            if (current) {
+              material.color.copy(current.color);
+            }
+            material.opacity =
+              (current?.alpha ?? 0) * parseNumber(read("fill-opacity"), 1) * node.opacity();
+          }),
+        ],
+        hidden: () => hidden.get(),
+        hit: () => hits.get(),
+        layer: 0,
+      });
     };
 
-    return $(mesh, [
-      set("material", () => {
-        const material = new THREE.MeshBasicMaterial({
-          side: THREE.DoubleSide,
-          forceSinglePass: true,
-          transparent: true,
-          depthWrite: false,
-        });
-        applyClip(material, clip, clipMatrix);
-        onCleanup(() => {
-          material.dispose();
-        });
-        return material;
-      }),
-      effects((obj) => {
-        const material = /** @type {THREE.MeshBasicMaterial} */ (obj.material);
-        // A coverage mask, white on black, read through the alpha map; the
-        // colour comes from the material. Three compiles a program with an
-        // alpha map or without one, so only the first texture recompiles.
-        if (!material.alphaMap) {
-          material.needsUpdate = true;
-        }
-        material.alphaMap = textureData.get().texture;
-      }),
-      set("geometry", () => {
-        const { width, height } = textureData.get();
-        const { left, top } = position.get();
-        const geometry = buildImageGeometry({
-          left,
-          top,
-          right: left + width,
-          bottom: top + height,
-          u0: 0,
-          v0: 0,
-          u1: 1,
-          v1: 1,
-        });
-        onCleanup(() => {
-          geometry.dispose();
-        });
-        return geometry;
-      }),
-      effects((obj) => {
-        const material = /** @type {THREE.MeshBasicMaterial} */ (obj.material);
-        const current = paint.get();
-        if (current) {
-          material.color.copy(current.color);
-        }
-        material.opacity =
-          (current?.alpha ?? 0) * parseNumber(read("fill-opacity"), 1) * opacity.get();
-      }),
-      effects((obj) => {
-        const drawn = paint.get() !== null && !hidden.get();
-        rayHits = hits.get();
-        /** @type {THREE.MeshBasicMaterial} */ (obj.material).visible = drawn;
-        obj.visible = drawn || rayHits;
-      }),
-      effects((obj) => {
-        place(obj, 0, 0, 0);
-        obj.renderOrder = paintSlot(element, root.get(), instance, 0).start;
-      }),
-    ]);
-  };
-
-  return just(object, [
-    effects((obj) => {
-      commitMatrix(obj, own.get());
-    }),
-    rayTarget(ctx, element, () => hittable.get()),
-    effects((obj) => {
-      obj.visible = style().display !== "none";
-    }),
-    ...followClip,
-    children(
-      keyedList(
-        () => runs.get().map((run) => /** @type {[Text, TextRun]} */ ([run.node, run])),
-        (_run, node) => drawRun(node),
-      ),
-    ),
-  ]);
+    return {
+      /**
+       * Whether a ray can hit any run, which is what makes the text a
+       * target.
+       */
+      hittable: () => runs.get().some((run) => runHits(run.parent, instance)),
+      content: [
+        children(
+          keyedList(
+            () => runs.get().map((run) => /** @type {[Text, TextRun]} */ ([run.node, run])),
+            (_run, textNode) => drawRun(textNode),
+          ),
+        ),
+      ],
+    };
+  });
 }

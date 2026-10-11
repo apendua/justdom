@@ -50,6 +50,7 @@ import {
   pump,
   settle,
 } from "../test/portalHarness.js";
+import { withStart } from "../test/rays.js";
 
 describe("createPortal", () => {
   test("only clickable elements become ray targets, plus one blocker plane", async () => {
@@ -3774,17 +3775,18 @@ describe("a draggable panel", () => {
     const { portal, parent } = setup({ draggable: { onPutDown: () => putDown++ } });
     const top = /** @type {THREE.Object3D} */ (parent.getObjectByName("panel-handle-top"));
     const controller = new THREE.Group();
-    const press = (/** @type {string} */ type) =>
+    for (const type of ["selectstart", "selectend"]) {
       top.dispatchEvent(
-        /** @type {any} */ ({
-          type,
-          controller,
-          inputSource: {},
-          intersection: { object: top, point: new THREE.Vector3() },
-        }),
+        /** @type {any} */ (
+          withStart({
+            type,
+            controller,
+            inputSource: {},
+            intersection: { object: top, point: new THREE.Vector3() },
+          })
+        ),
       );
-    press("selectstart");
-    press("selectend");
+    }
     assert.equal(putDown, 1, "carried, and put down");
     portal.disconnect();
   });

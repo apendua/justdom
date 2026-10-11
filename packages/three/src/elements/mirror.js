@@ -19,7 +19,13 @@ import {
 } from "./textLines.js";
 import { isSvgElement, isSvgRoot } from "./plugins.js";
 import { clipBoxEqual, intersectClipBoxes, toLocalClipBox, UNCLIPPED } from "./clip.js";
-import { PORTAL_ATTRIBUTE } from "./portalRoot.js";
+import {
+  ACTIVE_ATTRIBUTE,
+  CHECKED_ATTRIBUTE,
+  FOCUS_ATTRIBUTE,
+  HOVER_ATTRIBUTE,
+  PORTAL_ATTRIBUTE,
+} from "./portalRoot.js";
 import { holdShared, shadowAccessor } from "./shadowAccessor.js";
 import {
   frameFor,
@@ -173,8 +179,8 @@ export function isBookkeepingMutation(mutation) {
 
 /**
  * The attributes the portal writes onto elements itself, to say what the ray
- * is doing to them: hovering, pressing, and — for a checkbox, whose state no
- * mutation would otherwise report — ticked.
+ * and the keyboard are doing to them: hovering, pressing, typing into, and —
+ * for a checkbox, whose state no mutation would otherwise report — ticked.
  *
  * **A rule that follows one of these may restyle, but may not re-lay-out.**
  * Colour, background, border colour, opacity and `transform` are all fair
@@ -207,10 +213,10 @@ export function isBookkeepingMutation(mutation) {
  * move its layout on purpose.
  */
 const PRESENTATIONAL_ATTRIBUTES = new Set([
-  "data-xr-hover",
-  "data-xr-active",
-  "data-xr-checked",
-  "data-xr-focus",
+  HOVER_ATTRIBUTE,
+  ACTIVE_ATTRIBUTE,
+  CHECKED_ATTRIBUTE,
+  FOCUS_ATTRIBUTE,
 ]);
 
 /**
@@ -248,7 +254,7 @@ const PRESENTATIONAL_ATTRIBUTES = new Set([
  * field: `:focus` on a page reaches no sibling either, and `:focus-within`,
  * which does, reaches upward, where no mutation here is followed anyway.
  */
-const SELF_SCOPED_ATTRIBUTES = new Set(["data-xr-hover", "data-xr-active", "data-xr-focus"]);
+const SELF_SCOPED_ATTRIBUTES = new Set([HOVER_ATTRIBUTE, ACTIVE_ATTRIBUTE, FOCUS_ATTRIBUTE]);
 
 /**
  * The attributes that place and size what SVG draws, self-scoped on any

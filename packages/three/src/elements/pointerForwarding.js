@@ -20,9 +20,16 @@ import {
 } from "./dragAndDrop.js";
 import { createFrameRequester } from "./frameRequester.js";
 import { HapticsContext, isArrival } from "./haptics.js";
-import { getComputedStyleCached, isPortalRoot } from "./mirror.js";
+import {
+  getAttributeCached,
+  getChildNodes,
+  getComputedStyleCached,
+  isPortalRoot,
+} from "./mirror.js";
+import { ACTIVE_ATTRIBUTE, getPortalRoot, HOVER_ATTRIBUTE } from "./portalRoot.js";
 import { describeElement } from "./panelFrame.js";
 import { movesList, sampleRay, ScrollDragsContext } from "./scroll.js";
+import { takesTheTyping } from "./typing.js";
 
 /**
  * @import {EntityEffect} from '@apendua/signal';
@@ -36,11 +43,11 @@ import { movesList, sampleRay, ScrollDragsContext } from "./scroll.js";
  * Whether the element asks to be a ray target of its own. `cursor: pointer`
  * is the same signal the ordinary web uses to mark an element clickable, so
  * buttons opt in through their stylesheet with no extra attribute. Everything
- * else — cards, labels, layout wrappers — stays out of the raycast set; the
- * portal's blocker plane keeps the panel as a whole opaque to rays. SVG
- * shapes, and the `<g>`, `<a>` and nested `<svg>` that group them, follow
- * the same rule, and `cursor` is inherited into them from the page around
- * the `<svg>`.
+ * else — cards, layout wrappers, any label but a field's (see `isRayTarget`)
+ * — stays out of the raycast set; the portal's blocker plane keeps the panel
+ * as a whole opaque to rays. SVG shapes, and the `<g>`, `<a>` and nested
+ * `<svg>` that group them, follow the same rule, and `cursor` is inherited
+ * into them from the page around the `<svg>`.
  *
  * `pointer-events: none` says the opposite, as it does on a page, and wins.
  * `cursor` is inherited, so an icon's `<svg>` inside a button computes
@@ -59,13 +66,55 @@ export function isClickable(element) {
  * Whether the element is a ray target of its own: something to click, or
  * something to pick up. A `draggable="true"` card is often styled
  * `cursor: grab` rather than `pointer`, and it has to be pressable to be
- * dragged.
+ * dragged. A `<label>` of a field the keyboard can type into is one without
+ * asking, as the field is (`textInput.js`): a page's label focuses its field
+ * whatever its cursor. `pointer-events: none` still wins.
  *
  * @param {HTMLElement} element
  * @returns {boolean}
  */
 export function isRayTarget(element) {
-  return isClickable(element) || isDragSource(element);
+  return isClickable(element) || isDragSource(element) || isFieldLabel(element);
+}
+
+/** The attributes of a field that `takesTheTyping` reads. */
+const FIELD_ATTRIBUTES = ["type", "disabled", "readonly"];
+
+/**
+ * Whether the element is a `<label>` of a field in its own panel that the
+ * keyboard can type into. Asked again when the label is restyled, when a
+ * child is put into it or taken out, and when one of the field's
+ * `FIELD_ATTRIBUTES` changes, wherever the field is. Not asked again for a
+ * field that arrives deeper inside the label than its own children, nor
+ * for one the label's `for` finds only after the label mounted, by an `id`
+ * written or by a field arriving that carries it: nothing the label reads
+ * changes then.
+ *
+ * @param {HTMLElement} element
+ * @returns {boolean}
+ */
+function isFieldLabel(element) {
+  if (element.localName !== "label") {
+    return false;
+  }
+  const style = getComputedStyleCached(element);
+  if (style.getPropertyValue("pointer-events") === "none") {
+    return false;
+  }
+  getChildNodes(element);
+  const field = /** @type {HTMLLabelElement} */ (element).control;
+  if (!field || getPortalRoot(field) !== getPortalRoot(element)) {
+    return false;
+  }
+  // The field's own attributes, which are all `takesTheTyping` reads, and
+  // not its computed style: that is recomputed many times while a panel
+  // mounts, and every label would be asked again each time.
+  for (const name of FIELD_ATTRIBUTES) {
+    getAttributeCached(field, name);
+  }
+  // From the label itself no control inside it can refuse the click, so the
+  // label's own `labelledField` is this field's `takesTheTyping`.
+  return takesTheTyping(field);
 }
 
 /**
@@ -1148,7 +1197,7 @@ function cross(chain, element, init, kind) {
  */
 
 /**
- * @param {"xrHover" | "xrActive"} name The flag, as `dataset` names it.
+ * @param {typeof HOVER_ATTRIBUTE | typeof ACTIVE_ATTRIBUTE} name
  * @returns {Flag}
  */
 function createFlag(name) {
@@ -1159,7 +1208,7 @@ function createFlag(name) {
     const count = counts.get(element) ?? 0;
     counts.set(element, count + 1);
     if (count === 0) {
-      element.dataset[name] = "true";
+      element.setAttribute(name, "true");
     }
   };
   /** @param {HTMLElement} element */
@@ -1169,7 +1218,7 @@ function createFlag(name) {
       counts.set(element, count - 1);
     } else if (count === 1) {
       counts.delete(element);
-      delete element.dataset[name];
+      element.removeAttribute(name);
     }
   };
   return {
@@ -1194,7 +1243,7 @@ function createFlag(name) {
     },
     forget(element) {
       counts.delete(element);
-      delete element.dataset[name];
+      element.removeAttribute(name);
     },
   };
 }
@@ -1429,8 +1478,8 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
    */
   const controls = new Map();
 
-  const hoverFlag = createFlag("xrHover");
-  const activeFlag = createFlag("xrActive");
+  const hoverFlag = createFlag(HOVER_ATTRIBUTE);
+  const activeFlag = createFlag(ACTIVE_ATTRIBUTE);
 
   /** @type {Map<XRTargetRaySpace, PanelHand>} */
   const panelHands = new Map();

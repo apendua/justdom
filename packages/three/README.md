@@ -219,11 +219,12 @@ other hand while the object is carried is a handover — the object moves to tha
 carries on, one `dragstart` and one `dragend` for the whole of it — and only the holding hand's
 release, of the button it is holding with, ends the drag. **It swallows the presses it takes:** the
 press that picks the object up and the release that lets it go never reach whatever is behind, so
-picking up a brick never also picks up the board it sits on. While `enabled`, a release is swallowed
-whether or not its press was taken, so an object made carriable during a press keeps that release
-from whatever took the press. An object taken out of the scene mid-drag leaves the hand too, and a
-hand that disconnects, as every hand does when a session ends, lets go of what it holds, with a
-`dragend`, as though it had been released where it was.
+picking up a brick never also picks up the board it sits on. While the object is in the scene, a
+release is swallowed if and only if its press was, whatever `enabled` says in between, so whatever
+is behind hears a press and its release or neither. An object taken out of the scene mid-drag leaves
+the hand too, and no longer hears the release, which goes on to whatever was behind it. A hand that
+disconnects, as every hand does when a session ends, lets go of what it holds, with a `dragend`, as
+though it had been released where it was.
 
 `RendererContext` is the property behind the once-a-frame `dragmove`, and `useFrame`; it is exported
 so a test can mount a draggable object without a renderer — `RendererContext.set(ctx, {})` is enough
@@ -277,12 +278,14 @@ reparented. Its place in the hand is `beginFreeCarry(hand, object)`, the hand's 
 inverted times the object's, and each frame puts it at the hand's matrix times that. A draggable
 panel with `level: false` is carried this way.
 
-The bookkeeping is `drag()`'s: a press from the other hand mid-carry is a handover, taking the grip
-afresh from wherever its own ray lands, and only the carrying hand's release puts the object down;
-`held()` says which hand has it. One difference: a carry that is disabled while under way is put
-down where it is, since nothing was reparented and there is nothing to undo — and so is one whose
-handle leaves the scene, since the release it is waiting for would go to a handle no longer
-listening. A carrying hand that disconnects puts the object down where it is, as a drag's does.
+The bookkeeping is `drag()`'s, in one place (`createHold` in `hold.js`): a press from the other hand
+mid-carry is a handover, taking the grip afresh from wherever its own ray lands, only the carrying
+hand's release puts the object down, and, while the handle is in the scene, a release is swallowed
+if and only if its press was; `held()` says which hand has it. One difference: a carry that is
+disabled while under way is put down where it is, since nothing was reparented and there is nothing
+to undo, and its release is still swallowed when it comes. So is one whose handle leaves the scene,
+since the release it is waiting for goes to a handle no longer listening, and on to whatever is
+behind. A carrying hand that disconnects puts the object down where it is, as a drag's does.
 
 ## Hands
 
@@ -332,30 +335,31 @@ directly into a 3D or WebXR scene and still receive pointer events routed throug
 `interactions(ctx)`.
 
 An element is a ray target of its own when its computed `cursor` is `pointer`, the signal a page
-uses for "clickable", or when it is `draggable="true"` (see **Dragging and dropping** below), and
-its `pointer-events` is not `none`. A press on it arrives as `mousedown`, `mouseup` and `click` on
-the element, and the element carries `data-xr-hover` while the ray is on it and `data-xr-active`
-while it is held. Each hand's flags are its own: a button two hands are on, or two hands press,
-keeps each flag until the last of them leaves or lets go. The grip is the mouse's other button: a
-press of it, let go on the element it started on, arrives as `contextmenu`, which is where a page
-already flags a tile or opens a menu of its own. A grip that something above the panel took as it
-closed, a `drag()` that picks up what the panel hangs from with `squeeze` among its `buttons`, is
-that grab and sends nothing. Nor does a grip while the trigger carries a row (see **Dragging and
-dropping**) or moves a list, gliding included, on any panel: a page in the middle of a drag hears no
-other button. A trigger only resting on a row moves nothing yet, and a grip under it is a
-right-click as a mouse's is. Each of these events, and the `mousemove` a ray moving over the element
-sends, carries the point the ray met as `clientX` and `clientY`, mapped onto the page's own layout,
-so a page that finds what was pressed from where it was pressed, a board drawn as one `<svg>` path,
-reads the place a mouse over the same spot would have given it. A press, its release, its click, a
-right-click, a press on a scrolling list and the ray's arrival on a control, by the rule the hover
-pulse follows (see **Haptics**), each read where the page lays the panel out; a move, sent every
-frame, reads no layout and takes its point where the panel was last read, so a hover starts exact
-and drifts only by what the page moves while the ray stays. The point is on screen only for a panel
-mirroring an element the page shows. A panel built from a tree lives in a container the portal parks
-off screen, so its points are right against the page's own rects but `elementFromPoint` finds
-nothing at them. A scale on the mirrored root, or above it, is in the mapping, so on a page scaled
-to fit its window the point is where the page draws that spot; a rotation, a skew, a flip or a
-perspective there is left out, as the mirror leaves it out (see below).
+uses for "clickable", when it is `draggable="true"` (see **Dragging and dropping** below), or when
+it is the `<label>` of a text field (see **Text fields and the keyboard**), and its `pointer-events`
+is not `none`. A press on it arrives as `mousedown`, `mouseup` and `click` on the element, and the
+element carries `data-xr-hover` while the ray is on it and `data-xr-active` while it is held. Each
+hand's flags are its own: a button two hands are on, or two hands press, keeps each flag until the
+last of them leaves or lets go. The grip is the mouse's other button: a press of it, let go on the
+element it started on, arrives as `contextmenu`, which is where a page already flags a tile or opens
+a menu of its own. A grip that something above the panel took as it closed, a `drag()` that picks up
+what the panel hangs from with `squeeze` among its `buttons`, is that grab and sends nothing. Nor
+does a grip while the trigger carries a row (see **Dragging and dropping**) or moves a list, gliding
+included, on any panel: a page in the middle of a drag hears no other button. A trigger only resting
+on a row moves nothing yet, and a grip under it is a right-click as a mouse's is. Each of these
+events, and the `mousemove` a ray moving over the element sends, carries the point the ray met as
+`clientX` and `clientY`, mapped onto the page's own layout, so a page that finds what was pressed
+from where it was pressed, a board drawn as one `<svg>` path, reads the place a mouse over the same
+spot would have given it. A press, its release, its click, a right-click, a press on a scrolling
+list and the ray's arrival on a control, by the rule the hover pulse follows (see **Haptics**), each
+read where the page lays the panel out; a move, sent every frame, reads no layout and takes its
+point where the panel was last read, so a hover starts exact and drifts only by what the page moves
+while the ray stays. The point is on screen only for a panel mirroring an element the page shows. A
+panel built from a tree lives in a container the portal parks off screen, so its points are right
+against the page's own rects but `elementFromPoint` finds nothing at them. A scale on the mirrored
+root, or above it, is in the mapping, so on a page scaled to fit its window the point is where the
+page draws that spot; a rotation, a skew, a flip or a perspective there is left out, as the mirror
+leaves it out (see below).
 
 A press, its release and a move each send, ahead of their mouse event, the pointer event a browser
 sends ahead of it: `pointerdown`, `pointerup` and `pointermove`, at the same point. A page written
@@ -939,11 +943,12 @@ dragged in from outside the page. And a drag does not scroll a list it is held n
 
 A button on a page has a click to say it was pressed; a projected one is a quad at the end of a ray,
 and the hand holding the controller can be told. Every control in a panel, which is every element
-the ray-target rule covers (`cursor: pointer` or `draggable="true"`), pulses the controller's motors
-when the trigger closes on it, and the grip as well, as it closes and as it opens. Not a grip that
-something above the panel took as a grab, nor one closed while the trigger carries a row or moves a
-list (see **Projecting DOM into the scene** above); a grip not felt closing is not felt opening
-either. Nothing is marked: a panel with buttons in it is felt, and so is the keyboard.
+the ray-target rule covers (`cursor: pointer`, `draggable="true"` or a field's label), pulses the
+controller's motors when the trigger closes on it, and the grip as well, as it closes and as it
+opens. Not a grip that something above the panel took as a grab, nor one closed while the trigger
+carries a row or moves a list (see **Projecting DOM into the scene** above); a grip not felt closing
+is not felt opening either. Nothing is marked: a panel with buttons in it is felt, and so is the
+keyboard.
 
 A pulse when the ray arrives on a control is there too, and off unless a panel asks for it. A press
 is always worth telling the hand about. A hover is worth it where the player aims at one small
@@ -1181,18 +1186,22 @@ A key goes into the field through `typeIntoInput`, which is exported too — the
 the caret, backspace takes one out, and `keydown`, `input` and `keyup` are dispatched in a browser's
 order, so an app that listens for `input` or for `keydown` of `Enter` on a page hears the same thing
 in the scene. `Enter` asks the field's form to submit, if it is in one. While the board is up the
-field carries `data-xr-focus`, a presentational flag like `data-xr-hover` for a stylesheet to draw a
-focus ring with, and a caret, at the end of the text until it is moved.
+field carries `data-xr-focus` (`FOCUS_ATTRIBUTE`), a presentational flag like `data-xr-hover` for a
+stylesheet to draw a focus ring with, and a caret, at the end of the text until it is moved.
 
 The board follows focus the way a page does. `Enter` submits and keeps the field being typed into,
 so an app that clears the field after a submit can take the next entry straight away. A press
 anywhere in a panel other than on a field — a button, a row, the background — is focus leaving the
 field, and the board goes, as the field would blur on a page; a press on another field moves the
-typing there instead. Only a panel with a keyboard listens for that press, so one in a panel with
-`keyboard: false`, or on the scene outside every panel, leaves the board up. It also goes on
-`Escape`, which a board can offer as its "done" key, when the field being typed into leaves the
-document or its panel goes, when the session ends, and with the scene; `dismiss` on the target
-closes it for any other reason a board might have.
+typing there instead, and so does a press on a field's `<label>`, which focuses its field on a page.
+Such a label is a ray target whatever its `cursor`, as the field is, unless it is under
+`pointer-events: none`. A label of a field outside the panel, or of one that is read-only or
+disabled, is anywhere else, and so is a button, a link or another control inside a label. Only a
+panel with a keyboard listens for that press, so one in a panel with `keyboard: false`, or on the
+scene outside every panel, leaves the board up. It also goes on `Escape`, which a board can offer as
+its "done" key, when the field being typed into leaves the document or its panel goes, when the
+session ends, and with the scene; `dismiss` on the target closes it for any other reason a board
+might have.
 
 A panel can still say something of its own. Its `keyboard` option is laid over the scene's, so a
 panel for entering a code can bring a different board, and `keyboard: false` gives a panel none:
@@ -2156,10 +2165,11 @@ Named here so that nothing public goes unmentioned; each has its JSDoc.
   `anchorToViewer` measures upright in it, and in a session without it the anchor falls back to
   `local`, which IWER leaves tilted when a session is entered with the head tipped.
 - From `@apendua/freedom/page`: `getPortalRoot` and `scrollElementBy` again, the two functions a
-  widget on a page asks of a portal, from an entry point that imports nothing from three.js. A
-  widget a page shows before any session, and a panel may mirror during one, imports them from
-  there, so that the page's own bundle does not carry the renderer; the dropdown and the scrolling
-  list in `@apendua/justui` do.
+  widget on a page asks of a portal, and `FOCUS_ATTRIBUTE`, the `data-xr-focus` the keyboard marks
+  the field it types into with, from an entry point that imports nothing from three.js. A widget a
+  page shows before any session, and a panel may mirror during one, imports them from there, so that
+  the page's own bundle does not carry the renderer; the dropdown and the scrolling list in
+  `@apendua/justui` do.
 - From `@apendua/freedom/svg`: `shape`, `group`, `image` and `drawText` are the builders
   `svgElements()` dispatches to, for a plugin that draws one SVG element its own way and hands the
   rest to them.

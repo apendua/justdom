@@ -1,29 +1,14 @@
 import * as THREE from "three";
-import { Derived, effects, just, onCleanup, set } from "@apendua/signal";
-import { $, children } from "../operators.js";
-import { applyClip, clipRaycast } from "../elements/clip.js";
+import { Derived, effects, onCleanup } from "@apendua/signal";
+import { children } from "../operators.js";
 import { acquireImage, releaseImage } from "../elements/image.js";
 import { getAttributeCached, getComputedStyleCached } from "../elements/mirror.js";
-import { place } from "../elements/place.js";
-import { matrixEqual, parsePreserveAspectRatio, viewportMatrix } from "./geometry.js";
-import {
-  chainEqual,
-  clipUniforms,
-  commitMatrix,
-  drawnOpacity,
-  emptyGeometry,
-  isDrawnHidden,
-  localMatrix,
-  paintSlot,
-  rayTarget,
-  readChain,
-  viewportSize,
-} from "./shape.js";
+import { parsePreserveAspectRatio, viewportMatrix } from "./geometry.js";
+import { isDrawnHidden, svgNode, viewportSize } from "./shape.js";
 import { parseLengthIn, parsePointerEvents, readProperty } from "./style.js";
 
 /**
  * @import {Source} from '@apendua/signal';
- * @import {XREventMap} from '../core.js';
  * @import {Size} from '../elements/objectFit.js';
  * @import {PreserveAspectRatio} from './geometry.js';
  * @import {Instance} from './shape.js';
@@ -215,14 +200,7 @@ export function getSvgImageSource(element) {
  * @returns {Source<THREE.Object3D>}
  */
 export function image(ctx, element, instance = null) {
-  /** @type {THREE.Object3D<XREventMap>} */
-  const object = new THREE.Object3D();
   const style = () => getComputedStyleCached(element);
-
-  const own = new Derived(() => localMatrix(element, instance), { isEqual: matrixEqual });
-  const chain = new Derived(() => readChain(element, instance), { isEqual: chainEqual });
-  const root = new Derived(() => chain.get().root);
-  const opacity = new Derived(() => drawnOpacity(chain.get()));
 
   const source = new Derived(() => getSvgImageSource(element));
 
@@ -282,96 +260,45 @@ export function image(ctx, element, instance = null) {
    * behind.
    */
   const hittable = new Derived(() => {
-    if (instance) {
-      // Drawn and never hit, as template content is in `shape`.
-      return false;
-    }
     const rule = parsePointerEvents(readProperty(style(), element, "pointer-events")).fill;
     return rule !== null && (!rule.visible || !hidden.get());
   });
 
-  const { clip, clipMatrix, clipBox, followClip } = clipUniforms(() => chain.get());
-
-  const mesh = new THREE.Mesh();
-  clipRaycast(mesh, clipBox, mesh, clipMatrix);
-  const clipped = mesh.raycast;
-  let rayHits = false;
-  mesh.raycast = (raycaster, intersects) => {
-    if (rayHits) {
-      clipped(raycaster, intersects);
-    }
-  };
-
-  return just(object, [
-    effects((obj) => {
-      commitMatrix(obj, own.get());
-    }),
-    rayTarget(ctx, element, () => hittable.get() && quad.get() !== null),
-    effects((obj) => {
-      obj.visible = style().display !== "none";
-    }),
-    ...followClip,
-    children(
-      $(mesh, [
-        set("material", () => {
-          // One material for the life of the node, whatever picture it
-          // shows. The effects below write its opacity and visibility, and
-          // a material built afresh per picture would come back without
-          // them, since a picture arrives after the node is built.
-          const material = new THREE.MeshBasicMaterial({
-            side: THREE.DoubleSide,
-            forceSinglePass: true,
-            transparent: true,
-            depthWrite: false,
-          });
-          applyClip(material, clip, clipMatrix);
-          onCleanup(() => {
-            material.dispose();
-          });
-          return material;
+  return svgNode(ctx, element, instance, (node) => ({
+    hittable: () => hittable.get() && quad.get() !== null,
+    content: [
+      children(
+        node.mesh({
+          geometry: () => {
+            const current = quad.get();
+            return current ? buildImageGeometry(current) : null;
+          },
+          // A picture paints once it has loaded, which is after the node is
+          // built, into the material the node was built with.
+          paints: () => quad.get() !== null,
+          paint: [
+            effects((obj) => {
+              const material = /** @type {THREE.MeshBasicMaterial} */ (obj.material);
+              const next = texture.get();
+              if (material.map !== next) {
+                // Three compiles a program with a map or without one, so
+                // gaining or losing it recompiles; one picture replacing
+                // another does not.
+                if (!material.map !== !next) {
+                  material.needsUpdate = true;
+                }
+                material.map = next;
+              }
+            }),
+            effects((obj) => {
+              /** @type {THREE.MeshBasicMaterial} */ (obj.material).opacity = node.opacity();
+            }),
+          ],
+          hidden: () => hidden.get(),
+          hit: () => quad.get() !== null && hittable.get(),
+          layer: 0,
         }),
-        set("geometry", () => {
-          const current = quad.get();
-          if (!current) {
-            return emptyGeometry;
-          }
-          const built = buildImageGeometry(current);
-          onCleanup(() => {
-            built.dispose();
-          });
-          return built;
-        }),
-        effects((obj) => {
-          const material = /** @type {THREE.MeshBasicMaterial} */ (obj.material);
-          const next = texture.get();
-          if (material.map !== next) {
-            // Three compiles a program with a map or without one, so gaining
-            // or losing it recompiles; one picture replacing another does
-            // not.
-            if (!material.map !== !next) {
-              material.needsUpdate = true;
-            }
-            material.map = next;
-          }
-        }),
-        effects((obj) => {
-          /** @type {THREE.MeshBasicMaterial} */ (obj.material).opacity = opacity.get();
-        }),
-        effects((obj) => {
-          const shown = quad.get() !== null;
-          const drawn = shown && !hidden.get();
-          rayHits = shown && hittable.get();
-          /** @type {THREE.MeshBasicMaterial} */ (obj.material).visible = drawn;
-          // The raycaster skips an invisible object, so a picture that is
-          // only hit, under `pointer-events: all` while hidden, stays visible
-          // and its material keeps it out of the draw.
-          obj.visible = drawn || rayHits;
-        }),
-        effects((obj) => {
-          place(obj, 0, 0, 0);
-          obj.renderOrder = paintSlot(element, root.get(), instance, 0).start;
-        }),
-      ]),
-    ),
-  ]);
+      ),
+    ],
+  }));
 }

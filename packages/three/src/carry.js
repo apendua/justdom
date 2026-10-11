@@ -1,6 +1,5 @@
 import * as THREE from "three";
 import {
-  Signal,
   component,
   effects,
   makeNonReactive,
@@ -9,6 +8,7 @@ import {
   withComputation,
 } from "@apendua/signal";
 import { asReader, InteractionContext, interactions, setWorldMatrix } from "./interactions.js";
+import { createHold } from "./hold.js";
 import { $ } from "./operators.js";
 import { useFrame } from "./render.js";
 
@@ -276,7 +276,8 @@ export function applyLevelPose(object, pose) {
  *   `makeInteractive` takes. Unlike a drag, a carry that is disabled while
  *   under way is put down where it is: nothing was reparented, so there is
  *   nothing to undo, and a board left hanging off a hand that can no longer
- *   steer it is worse than one set down.
+ *   steer it is worse than one set down. The release of the press it was
+ *   taken with is still swallowed when it comes.
  * @property {boolean} [level] Whether the hand's tilt is kept from the
  *   carried thing. True by default, which is the point of a carry: it turns
  *   only about the vertical, about the grab point, and keeps whatever tilt
@@ -298,7 +299,7 @@ export function applyLevelPose(object, pose) {
  *   decision — `makeInteractive()` goes in the same list, or the presses
  *   bubble up from parts that already are. A handle taken out of the scene
  *   mid-carry puts the carried thing down, since the release that would have
- *   is not coming to it any more.
+ *   is not coming to it any more; it goes on to whatever is behind.
  * @property {() => CarryHold | null} held The hand carrying the object, or
  *   null while nobody is. Reactive: read it inside an effect and the effect
  *   re-runs as the object is taken, handed over, and put down.
@@ -323,12 +324,13 @@ export function applyLevelPose(object, pose) {
  * pressed a button. A scene that does want any unclaimed press to carry can
  * put `handle()` on the carried object itself.
  *
- * The bookkeeping is `drag()`'s: it remembers which hand, so a press from the
- * other hand while the object is carried is a handover — the new hand takes
- * the grip from wherever its own ray lands — and only the carrying hand's
- * release puts the object down, a `lost` one included, which the manager
- * sends for a hand that disconnects; and the presses a handle takes never
- * reach whatever is behind it.
+ * The bookkeeping is `drag()`'s, both taken from `createHold`: it remembers
+ * which hand, so a press from the other hand while the object is carried is
+ * a handover — the new hand takes the grip from wherever its own ray lands —
+ * and only the carrying hand's release puts the object down, a `lost` one
+ * included, which the manager sends for a hand that disconnects; and, while
+ * the handle is in the scene, the presses it takes never reach whatever is
+ * behind it, nor do their releases.
  *
  * ```js
  * const board = carry(ctx, { enabled: () => phase.get() === "build" });
@@ -356,7 +358,7 @@ export function carry(ctx, options = {}) {
    * the one and never changes the other. Not kept level, it is where the
    * thing is in the hand's frame, which has both in it.
    *
-   * @typedef {CarryHold & { handle: Object3D } & (
+   * @typedef {CarryHold & { button: "select", handle: Object3D } & (
    *   | {
    *       grip: Grip;
    *       rotation: THREE.Quaternion;
@@ -366,7 +368,9 @@ export function carry(ctx, options = {}) {
    *   | { offset: THREE.Matrix4; grip?: never }
    * )} Holding
    */
-  const hold = Signal.of(/** @type {Holding | null} */ (null));
+  /** @type {import("./hold.js").HandHold<Holding>} */
+  const presses = createHold(manager);
+  const hold = presses.held;
   /** @type {Object3D | undefined} */
   let object;
 
@@ -379,7 +383,7 @@ export function carry(ctx, options = {}) {
       if (!isEnabled()) {
         return;
       }
-      manager.stopPropagation(event);
+      presses.take(event);
       if (!object) {
         return;
       }
@@ -393,6 +397,7 @@ export function carry(ctx, options = {}) {
       hold.set({
         controller,
         inputSource,
+        button: "select",
         handle,
         ...(level
           ? takeLevel(hand, event.intersection.point, object.matrixWorld)
@@ -406,18 +411,7 @@ export function carry(ctx, options = {}) {
      * @param {InputCancelEvent & PressEnd} event
      */
     (event) => {
-      const current = hold.get();
-      if (!current) {
-        // The press this releases was swallowed above while it was carriable,
-        // so the release is swallowed too rather than reaching whatever is
-        // behind as a release it never saw the press of.
-        if (isEnabled()) {
-          manager.stopPropagation(event);
-        }
-        return;
-      }
-      manager.stopPropagation(event);
-      if (current.controller === event.controller) {
+      if (presses.release(event, "select")) {
         hold.set(null);
       }
     },

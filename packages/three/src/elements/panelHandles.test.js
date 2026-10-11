@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import * as THREE from "three";
 import { RendererContext } from "../render.js";
 import { countingManager } from "../test/portalHarness.js";
+import { withStart } from "../test/rays.js";
 import { createPanelHandles, DEFAULT_HANDLE_WIDTH } from "./panelHandles.js";
 
 /**
@@ -28,23 +29,21 @@ function setup(options) {
   const controller = new THREE.Group();
   /**
    * A press or a release on a strip, by the one hand, as the manager
-   * dispatches it.
+   * dispatches it: the release carries the start of its press.
    *
    * @param {"selectstart" | "selectend"} type
    * @param {THREE.Object3D} object
    */
   const press = (type, object) => {
-    manager.dispatch(
-      /** @type {any} */ (object),
-      /** @type {any} */ ({
-        type,
-        target: object,
-        originalTarget: object,
-        controller,
-        inputSource: {},
-        intersection: { object, point: object.getWorldPosition(new THREE.Vector3()) },
-      }),
-    );
+    const event = {
+      type,
+      target: object,
+      originalTarget: object,
+      controller,
+      inputSource: {},
+      intersection: { object, point: object.getWorldPosition(new THREE.Vector3()) },
+    };
+    manager.dispatch(/** @type {any} */ (object), /** @type {any} */ (withStart(event)));
   };
   return { targets, room, handles, strip, press };
 }

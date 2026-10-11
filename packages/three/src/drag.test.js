@@ -86,6 +86,7 @@ function setup(options) {
   );
 
   return {
+    manager,
     left,
     right,
     board,
@@ -237,6 +238,49 @@ describe("drag", () => {
     enabled = false;
     press(left, "selectend");
     assert.strictEqual(box.parent, board);
+    assert.deepEqual(events, ["dragstart", "dragend"]);
+    dispose();
+  });
+
+  test("a press it refused is not followed by a release it takes", () => {
+    let enabled = false;
+    const { left, board, box, events, dispose } = setup({ enabled: () => enabled });
+    press(left, "selectstart");
+    // Enabled again while the trigger is down: the release belongs to the
+    // press that went through to the board, and goes there too.
+    enabled = true;
+    press(left, "selectend");
+    assert.strictEqual(box.parent, board);
+    assert.deepEqual(events, ["board:selectstart", "board:selectend"]);
+    dispose();
+  });
+
+  test("a press it refused mid-drag goes through with its release", () => {
+    let enabled = true;
+    const { manager, left, right, board, box, events, held, dispose } = setup({
+      enabled: () => enabled,
+    });
+    press(left, "selectstart");
+    // Held, the box hangs from the hand, and nothing is behind it to hear
+    // what goes through; the manager says whether anything stopped it.
+    /** @type {Record<string, any>} */
+    const heard = {};
+    for (const type of /** @type {const} */ (["selectstart", "selectend"])) {
+      box.addEventListener(type, (event) => {
+        heard[type] = event;
+      });
+    }
+    enabled = false;
+    // The other hand cannot take it over now, so its press goes on, and so
+    // does the release that ends that press.
+    press(right, "selectstart");
+    press(right, "selectend");
+    assert.strictEqual(held()?.controller, left);
+    assert.equal(manager.isStopped(heard.selectstart), false, "the press went on");
+    assert.equal(manager.isStopped(heard.selectend), false, "and so did its release");
+    press(left, "selectend");
+    assert.strictEqual(box.parent, board);
+    assert.equal(manager.isStopped(heard.selectend), true, "the holding hand's is taken");
     assert.deepEqual(events, ["dragstart", "dragend"]);
     dispose();
   });

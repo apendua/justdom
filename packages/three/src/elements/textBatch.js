@@ -157,13 +157,17 @@ class SizeClass {
   /** Whether a shown run changed the mirror since the texture was built. */
   stale = false;
   /**
-   * Whether a prepared run changed the mirror since the texture was built.
-   * Kept apart from `stale` because a rebuild commits only for a shown run
-   * (rule 12 in `docs/freedom-text-step-cache.md`): the prepare pump writes
-   * a class over many frames, and committing it at each rebuild between
-   * them would upload the growing array again every time.
+   * The layers prepared runs wrote since the texture was built, which the
+   * texture does not hold. Kept apart from `stale` because a rebuild commits
+   * only for a shown run (rule 12 in `docs/freedom-text-step-cache.md`):
+   * the prepare pump writes a class over many frames, and committing it at
+   * each rebuild between them would upload the growing array again every
+   * time. Kept per layer so that a layer given back takes its claim on a
+   * build with it, and so that a shown run drawing from one can be told.
+   *
+   * @type {Set<number>}
    */
-  staged = false;
+  #staged = new Set();
 
   /**
    * @param {number} width
@@ -174,6 +178,21 @@ class SizeClass {
     this.height = height;
   }
 
+  /** Whether the mirror holds layers the texture does not. */
+  get staged() {
+    return this.#staged.size > 0;
+  }
+
+  /**
+   * Whether `layer` was written by a prepared run and not built since.
+   *
+   * @param {number} layer
+   * @returns {boolean}
+   */
+  isStaged(layer) {
+    return this.#staged.has(layer);
+  }
+
   /** @returns {number} */
   get layerBytes() {
     return this.width * this.height * 4;
@@ -182,6 +201,9 @@ class SizeClass {
   /**
    * Room in the mirror for this many layers. The texture is not touched
    * here: `commit` builds it, once, after every write of a rebuild is in.
+   *
+   * Growth for a prepared run marks nothing: the layer it makes room for is
+   * marked when it is written, and a layer never written needs no build.
    *
    * @param {number} needed
    * @param {boolean} staged Whether a prepared run is what needs the room.
@@ -201,17 +223,7 @@ class SizeClass {
     }
     this.data = data;
     this.capacity = capacity;
-    this.#changed(staged);
-  }
-
-  /**
-   * @param {boolean} staged
-   * @returns {void}
-   */
-  #changed(staged) {
-    if (staged) {
-      this.staged = true;
-    } else {
+    if (!staged) {
       this.stale = true;
     }
   }
@@ -266,7 +278,7 @@ class SizeClass {
    * @returns {boolean} Whether there was anything to build.
    */
   commitStaged() {
-    if (!this.staged) {
+    if (!this.#staged.size) {
       return false;
     }
     this.#build();
@@ -281,7 +293,7 @@ class SizeClass {
    */
   #build() {
     this.stale = false;
-    this.staged = false;
+    this.#staged.clear();
     if (!this.data) {
       return;
     }
@@ -338,6 +350,7 @@ class SizeClass {
     if (layer === NO_LAYER) {
       return;
     }
+    this.#staged.delete(layer);
     this.free.push(layer);
   }
 
@@ -393,7 +406,11 @@ class SizeClass {
     }
     const pixels = context.getImageData(0, 0, this.width, this.height).data;
     this.data.set(pixels, layer * this.layerBytes);
-    this.#changed(staged);
+    if (staged) {
+      this.#staged.add(layer);
+    } else {
+      this.stale = true;
+    }
   }
 
   /** @returns {void} */
@@ -405,7 +422,7 @@ class SizeClass {
     this.data = null;
     this.capacity = 0;
     this.stale = false;
-    this.staged = false;
+    this.#staged.clear();
   }
 }
 
@@ -764,10 +781,11 @@ export class TextBatch {
 
   /**
    * Copy a raster the run is not showing yet into a layer of its own, for a
-   * step its panel is preparing. The class it lands in is marked staged, not
-   * stale, so no rebuild builds its texture for it; `commitStaged` does, once
-   * every run is prepared. When the run later shows the canvas, `#settle`
-   * finds the layer, and nothing is copied or built at the crossing.
+   * step its panel is preparing. The layer is marked staged, not stale, so
+   * no rebuild builds its class for it; `commitStaged` does, once every run
+   * is prepared. When the run later shows the canvas, `#settle` finds the
+   * layer, and nothing is copied or built at the crossing, unless the panel
+   * crossed before the pump built the class, and then that rebuild does.
    *
    * Only for a mask: a raster with its colours baked in is never batched.
    * Nothing for a run the batch has not taken in yet, or one whose class is
@@ -775,20 +793,25 @@ export class TextBatch {
    *
    * @param {THREE.Mesh} mesh
    * @param {HTMLCanvasElement} canvas
-   * @returns {void}
+   * @returns {boolean} Whether the batch has the canvas, to draw from once
+   *   the run shows it.
    */
   stage(mesh, canvas) {
     const member = this.#members.get(mesh);
-    if (!member || member.slots.has(canvas) || !canvas.width || !canvas.height) {
-      return;
+    if (!member || !canvas.width || !canvas.height) {
+      return false;
+    }
+    if (member.slots.has(canvas)) {
+      return true;
     }
     const sizeClass = this.#classFor(canvas);
     const layer = sizeClass.acquire(true);
     if (layer === NO_LAYER) {
-      return;
+      return false;
     }
     sizeClass.write(layer, canvas, true);
     member.slots.set(canvas, { sizeClass, layer });
+    return true;
   }
 
   /**
@@ -915,6 +938,10 @@ export class TextBatch {
       slot = { sizeClass, layer };
       sizeClass.write(layer, canvas);
       member.slots.set(canvas, slot);
+    } else if (slot.sizeClass.isStaged(slot.layer)) {
+      // Prepared, and the panel crossed before the pump built its class:
+      // drawn now, so this rebuild builds it, as a shown write would.
+      slot.sizeClass.stale = true;
     }
     return slot;
   }

@@ -17,8 +17,11 @@ export const UPLOAD_BYTES_PER_FRAME = 512 * 1024;
  * What the prepare pump asks of a run.
  *
  * @typedef {object} PreparedRun
- * @property {(step: number) => void} prepare Draw the run at `step` and keep
- *   it, if it has not already. Reads nothing reactive.
+ * @property {(step: number) => Texture | null} prepare Draw the run at
+ *   `step` and keep it, if it has not already. Reads nothing reactive.
+ *   Returns the texture it drew when the batch did not stage it, which is a
+ *   run with its colours baked in or one the batch does not draw, for the
+ *   pump to send up itself; null otherwise.
  * @property {(step: number) => void} release Let go of the run's raster at
  *   `step`, unless the run is showing it.
  */
@@ -31,15 +34,14 @@ export const UPLOAD_BYTES_PER_FRAME = 512 * 1024;
  * @property {(run: PreparedRun) => void} requeue What the run says changed,
  *   so whatever it prepared is gone (rule 7).
  * @property {(step: number | null) => void} retarget The step the panel is
- *   preparing now, as `TextScale.prepared` says after each measurement.
- * @property {() => boolean} complete Whether every run is prepared at the
- *   target and every class it wrote is uploaded. True with no target.
+ *   preparing now, as the panel's `createTextScale().prepared` says after
+ *   each measurement.
  * @property {() => void} dispose
  */
 
 /**
  * The prepare pump a panel's runs register with, for the steps the panel
- * prepares ahead of the measurement (`TextScale.prepared`). Set by
+ * prepares ahead of the measurement (`createTextScale().prepared`). Set by
  * `createPortal` beside `TextScaleContext`, and null wherever that is.
  */
 export const TextPrepareContext = createProperty(
@@ -84,8 +86,6 @@ export function createTextPreparer({
   const queue = new Set();
   /** @type {number | null} */
   let target = null;
-  /** Whether everything for `target` is drawn and uploaded. */
-  let done = true;
 
   /** @type {PortalPump} */
   const pump = {
@@ -100,16 +100,15 @@ export function createTextPreparer({
           return false;
         }
         queue.delete(run);
-        run.prepare(target);
+        const unstaged = run.prepare(target);
+        if (unstaged) {
+          upload(unstaged);
+        }
       }
       if (now() >= deadline) {
         return false;
       }
-      if (batch.commitStaged(UPLOAD_BYTES_PER_FRAME, upload)) {
-        return false;
-      }
-      done = true;
-      return true;
+      return !batch.commitStaged(UPLOAD_BYTES_PER_FRAME, upload);
     },
   };
 
@@ -119,7 +118,6 @@ export function createTextPreparer({
       return;
     }
     queue.add(run);
-    done = false;
     scheduler.schedule(pump);
   };
 
@@ -140,7 +138,10 @@ export function createTextPreparer({
       const previous = target;
       target = step;
       queue.clear();
-      done = true;
+      if (step === null) {
+        // Nothing to prepare, so nothing to ask frames for.
+        scheduler.remove(pump);
+      }
       // Rules 3 and 4: what was made for a step the panel no longer holds
       // goes now. A run never lets go of the raster it is showing.
       if (previous !== null && !holds(previous)) {
@@ -152,7 +153,6 @@ export function createTextPreparer({
         enqueue(run);
       }
     },
-    complete: () => done,
     dispose() {
       scheduler.remove(pump);
       queue.clear();

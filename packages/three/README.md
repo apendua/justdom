@@ -1671,15 +1671,17 @@ quadratic in it. It only ever lowers. Off a scene — a portal on a plain page, 
 A run keeps what it drew at the step below the one its panel shows. A player who leans in crosses
 into a step and then usually leans back out of it, and the step they come back to is the one below:
 the panel shows it again without drawing anything or uploading anything, from the rasters and the
-arrays it kept. A step two below, or one above, is let go of as the panel moves on. Holding the step
-below costs half again what the shown step costs, since a step costs half the one above it.
+arrays it kept. Holding the step below costs half again what the shown step costs, since a step
+costs half the one above it.
 
-The step above is drawn before it is needed. Once the measurement comes within 0.85 of the step a
-panel shows, the panel draws every run at the step above, a run at a time, in whatever frame time
-the panels' own work leaves, and then sends the arrays it filled to the GPU, at most 512 kB a frame.
-Walking on across the boundary then swaps textures and draws nothing. If the measurement falls back
-under 0.85 for a second, the panel lets that step go. While it is held, a panel keeps up to three
-and a half times what the shown step costs: the step below at half and the step above at twice.
+And the step above is drawn before it is needed. Once the measurement comes within 0.85 of the step
+a panel shows, the panel draws every run at the step above, a run at a time, in whatever frame time
+the panels' own work leaves, and then sends what it drew to the GPU, at most 512 kB of arrays a
+frame. Walking on across the boundary then swaps textures and draws nothing. If the measurement
+falls back under 0.85 for a second, the panel lets that step go. Any other step, two below or one
+above that is not being prepared, is let go of as the panel moves on. While a step is prepared, a
+panel keeps up to three and a half times what the shown step costs: the step below at half and the
+step above at twice.
 
 ### Panel defaults
 

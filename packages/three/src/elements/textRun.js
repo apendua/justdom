@@ -180,14 +180,16 @@ export function textRun(ctx, source, extra = []) {
   const preparedRun = {
     prepare(step) {
       if (!drawnFrom || rasters.has(step)) {
-        return;
+        return null;
       }
       const { lines, style, bounds, masked } = drawnFrom;
       const raster = generateTextTexture(lines, style, bounds, step, masked);
       rasters.set(step, raster);
-      if (masked) {
-        batch?.stage(mesh, /** @type {HTMLCanvasElement} */ (raster.texture.image));
+      const canvas = /** @type {HTMLCanvasElement} */ (raster.texture.image);
+      if (masked && batch?.stage(mesh, canvas)) {
+        return null;
       }
+      return raster.texture;
     },
     release(step) {
       const raster = rasters.get(step);

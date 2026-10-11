@@ -188,12 +188,15 @@ function handScale() {
  *   withBatch?: (container: THREE.Object3D) => TextBatch,
  *   channel?: UpdateChannel,
  *   withPreparer?: (batch: TextBatch | null) => TextPreparer,
+ *   textShadow?: string,
  * }} [options] A batch to draw it, the channel its effects run in, as a
- *   portal's do, and the pump that prepares it.
+ *   portal's do, the pump that prepares it, and a shadow, which bakes the
+ *   run's colours in.
  */
-function steppedRun(scale, { withBatch, channel, withPreparer } = {}) {
+function steppedRun(scale, { withBatch, channel, withPreparer, textShadow = "" } = {}) {
   const restore = installRange();
   const element = document.createElement("span");
+  element.style.textShadow = textShadow;
   element.append("label");
   document.body.appendChild(element);
   const mirror = createMirror();
@@ -389,12 +392,15 @@ describe("text steps", () => {
  * world, and every array the pump sent up.
  *
  * @param {ReturnType<typeof handScale>} scale
+ * @param {{ budget?: number, now?: () => number, textShadow?: string }} [options]
+ *   The frame's budget, and the clock the pump reads its deadline on, all
+ *   the time in the world by default; and the run's shadow.
  */
-function preparedRun(scale) {
+function preparedRun(scale, { budget = Infinity, now = () => 0, textShadow } = {}) {
   /** @type {(() => void) | null} */
   let tick = null;
   const scheduler = createPortalScheduler({
-    budget: Infinity,
+    budget,
     now: () => 0,
     requestFrames: (callback) => {
       tick = callback;
@@ -406,6 +412,7 @@ function preparedRun(scale) {
   /** @type {THREE.Texture[]} */
   const uploaded = [];
   const run = steppedRun(scale, {
+    textShadow,
     withBatch: (container) => createTextBatch(container),
     withPreparer: (batch) =>
       createTextPreparer({
@@ -415,7 +422,7 @@ function preparedRun(scale) {
         upload: (texture) => {
           uploaded.push(texture);
         },
-        now: () => 0,
+        now,
       }),
   });
   const batch = /** @type {TextBatch} */ (run.batch);
@@ -439,7 +446,7 @@ function preparedRun(scale) {
     assert.ok(bucket);
     return /** @type {THREE.ShaderMaterial} */ (bucket.material).uniforms.uRuns.value;
   };
-  return { run, batch, preparer, prepare, uploaded, array };
+  return { run, batch, preparer, prepare, uploaded, array, running: () => tick !== null };
 }
 
 /**
@@ -472,7 +479,6 @@ describe("prepared text steps", () => {
     const p = preparedRun(scale);
     try {
       p.prepare(Math.SQRT2);
-      assert.equal(p.preparer.complete(), true);
       assert.equal(p.uploaded.length, 1, "the prepared step's array went up ahead");
       const [ahead] = p.uploaded;
       let rebuilt = false;
@@ -489,6 +495,58 @@ describe("prepared text steps", () => {
       assert.equal(p.array(), ahead, "and drawn from the array that went up");
       assert.equal(rebuilt, false);
       assert.equal(p.uploaded.length, 1);
+    } finally {
+      p.run.done();
+    }
+  });
+
+  test("a crossing before the pump sent the arrays up draws from an array built for it", () => {
+    const scale = handScale();
+    // The pump's clock passes the deadline after the first run it prepares,
+    // so it never reaches its upload.
+    let time = 0;
+    const p = preparedRun(scale, { budget: 1, now: () => time++ });
+    try {
+      p.prepare(Math.SQRT2);
+      assert.equal(p.uploaded.length, 0, "the pump stopped before its upload");
+
+      scale.show(Math.SQRT2);
+      p.preparer.retarget(null);
+      p.batch.flush();
+      const array = p.array();
+      assert.ok(array, "the run is drawn from an array, not from nothing");
+      assert.equal(
+        array.image.width,
+        /** @type {THREE.Texture} */ (p.run.mesh.material.alphaMap).image.width,
+      );
+    } finally {
+      p.run.done();
+    }
+  });
+
+  test("a run with its colours baked in is sent up by the pump itself", () => {
+    const scale = handScale();
+    const p = preparedRun(scale, { textShadow: "1px 1px 0 rgb(255, 0, 0)" });
+    try {
+      assert.equal(p.run.mesh.material.alphaMap, null, "baked, so the batch declines it");
+      p.prepare(Math.SQRT2);
+      assert.equal(p.uploaded.length, 1);
+      scale.show(Math.SQRT2);
+      assert.equal(p.run.mesh.material.map, p.uploaded[0], "the texture shown is the one sent up");
+    } finally {
+      p.run.done();
+    }
+  });
+
+  test("letting the step go stops the pump asking for frames", () => {
+    const scale = handScale();
+    let time = 0;
+    const p = preparedRun(scale, { budget: 1, now: () => time++ });
+    try {
+      p.prepare(Math.SQRT2);
+      assert.equal(p.running(), true, "stopped before its upload, so still waiting");
+      p.preparer.retarget(null);
+      assert.equal(p.running(), false);
     } finally {
       p.run.done();
     }
@@ -528,10 +586,8 @@ describe("prepared text steps", () => {
 
       p.run.node.data = "another label";
       p.run.mirror.characterDataChanged(p.run.node);
-      assert.equal(p.preparer.complete(), false, "queued again");
       p.prepare(Math.SQRT2);
-      assert.equal(p.preparer.complete(), true);
-      assert.equal(p.uploaded.length, 2);
+      assert.equal(p.uploaded.length, 2, "queued again, drawn again and sent up again");
 
       const drawn = canvasesMade(() => {
         scale.show(Math.SQRT2);

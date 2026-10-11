@@ -682,6 +682,35 @@ describe("text batch prepared steps", () => {
     assert.equal(after, p.uploaded[0], "the bucket samples the array that replaced the old one");
   });
 
+  test("a staged raster shown before the pump built its class is built by the rebuild", () => {
+    const p = prepared();
+    const fine = countedCanvas(34, 17);
+    p.batch.stage(p.mesh, /** @type {HTMLCanvasElement} */ (/** @type {unknown} */ (fine)));
+
+    // The panel crossed before the pump's `commitStaged`.
+    show(p.mesh, fine);
+    p.batch.invalidate();
+    p.batch.flush();
+    const [array] = shownArrays(p.container);
+    assert.ok(array, "the bucket samples an array, not nothing");
+    assert.equal(array.image.width, 34);
+    assert.equal(fine.reads, 1, "built from the copy the stage made");
+    assert.equal(p.batch.commitStaged(Infinity, p.upload), false);
+    assert.equal(p.uploaded.length, 0, "and nothing is left for the pump");
+  });
+
+  test("a staged layer let go of leaves its class nothing to send up", () => {
+    const p = prepared();
+    // At the shown size, so the class keeps a shown run after the release.
+    const fine = /** @type {HTMLCanvasElement} */ (/** @type {unknown} */ (countedCanvas(24, 12)));
+    p.batch.stage(p.mesh, fine);
+    p.batch.forget(p.mesh, fine);
+    p.batch.flush();
+
+    assert.equal(p.batch.commitStaged(Infinity, p.upload), false);
+    assert.equal(p.uploaded.length, 0);
+  });
+
   test("the pump sends up a class at a time once past its bytes", () => {
     const p = prepared();
     for (const [width, height] of [

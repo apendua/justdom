@@ -1,4 +1,5 @@
 import { Derived } from "@apendua/signal";
+import { getPortalRoot } from "./portalRoot.js";
 
 /**
  * What outlines mode (`outlines.js`) counts, and the hooks the mirror calls
@@ -35,11 +36,21 @@ import { Derived } from "@apendua/signal";
  */
 
 /**
- * The tallies since each element's panel last committed, or null while
- * outlines mode is off. Keyed by element, in the order the elements were
- * first reported.
+ * A tally with nothing counted yet.
  *
- * @type {Map<Element, Tally> | null}
+ * @returns {Tally}
+ */
+export function emptyTally() {
+  return { changes: 0, noopWrites: 0, ripples: 0, recalculated: 0, unchanged: 0 };
+}
+
+/**
+ * The tallies since each element's panel last committed, or null while
+ * outlines mode is off. Keyed by the panel's container element
+ * (`getPortalRoot`), then by element, so that a commit takes its own
+ * panel's tallies in one step.
+ *
+ * @type {Map<Element, Map<Element, Tally>> | null}
  */
 let tallies = null;
 
@@ -105,13 +116,19 @@ function tallyOf(node) {
     return null;
   }
   const element = elementOf(node);
-  if (!element) {
+  const root = element && getPortalRoot(element);
+  if (!element || !root) {
     return null;
   }
-  let tally = tallies.get(element);
+  let panel = tallies.get(root);
+  if (!panel) {
+    panel = new Map();
+    tallies.set(root, panel);
+  }
+  let tally = panel.get(element);
   if (!tally) {
-    tally = { changes: 0, noopWrites: 0, ripples: 0, recalculated: 0, unchanged: 0 };
-    tallies.set(element, tally);
+    tally = emptyTally();
+    panel.set(element, tally);
   }
   return tally;
 }
@@ -173,23 +190,23 @@ export function probeRecalculation(node, changed) {
 }
 
 /**
- * Hand `take` the tally of every element `within` contains, and forget
- * those tallies. Tallies of elements that left the document are dropped
- * as well, since no panel will commit them.
+ * Hand `take` the tally of every element in the panel whose container
+ * element is `root`, and forget them. An element that has left the
+ * document since it was counted is forgotten without being handed over:
+ * the panel has nothing of it to outline.
  *
- * @param {Element} within
+ * @param {Element} root
  * @param {(element: Element, tally: Tally) => void} take
  * @returns {void}
  */
-export function takeTallies(within, take) {
-  if (!tallies) {
+export function takeTallies(root, take) {
+  const panel = tallies?.get(root);
+  if (!panel) {
     return;
   }
-  for (const [element, tally] of tallies) {
-    if (!element.isConnected) {
-      tallies.delete(element);
-    } else if (within.contains(element)) {
-      tallies.delete(element);
+  tallies?.delete(root);
+  for (const [element, tally] of panel) {
+    if (element.isConnected) {
       take(element, tally);
     }
   }

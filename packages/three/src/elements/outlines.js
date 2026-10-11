@@ -1,7 +1,8 @@
 import * as THREE from "three";
 import { withComputation } from "@apendua/signal";
 import { getBorderBoxSize } from "./mirror.js";
-import { setProbing, takeTallies, unprobed } from "./outlineProbe.js";
+import { emptyTally, setProbing, takeTallies, unprobed } from "./outlineProbe.js";
+import { describeElement } from "./panelFrame.js";
 
 /**
  * @import {Tally} from './outlineProbe.js';
@@ -46,7 +47,9 @@ import { setProbing, takeTallies, unprobed } from "./outlineProbe.js";
 /** How long, in milliseconds, an outline takes to fade after a commit. */
 const FADE = 1000;
 
-/** The time constant, in milliseconds, of the rate an outline is coloured by. */
+/**
+ * The time constant, in milliseconds, of the rate an outline is coloured by.
+ */
 const RATE_WINDOW = 1000;
 
 /** How many outlines one panel draws at most in each style. */
@@ -72,7 +75,7 @@ const FORCED_MARGIN = 2;
  * @property {number} height
  * @property {Tally} total Everything counted for it since outlines mode was
  *   turned on.
- * @property {number} commits How many commits it was part of in that time.
+ * @property {number} commits How many commits drew it in that time.
  */
 
 /**
@@ -303,6 +306,11 @@ function createOverlay({ containerElement, containerObject, objectOf, requestFra
   group.matrixAutoUpdate = false;
   group.add(solid.lines, dashed.lines, dotted.lines);
   containerObject.add(group);
+  // The container's walk recomputes a child's world matrix only when the
+  // child asks or the container moved, and a panel standing still has not.
+  // Without this, an overlay made after the panel was placed, by turning the
+  // mode on from the console, stays at the scene's origin.
+  group.matrixWorldNeedsUpdate = true;
 
   /**
    * When the panel's commit was last forced, or null.
@@ -393,7 +401,7 @@ function createOverlay({ containerElement, containerObject, objectOf, requestFra
             at: now,
             width: 0,
             height: 0,
-            total: { changes: 0, noopWrites: 0, ripples: 0, recalculated: 0, unchanged: 0 },
+            total: emptyTally(),
             commits: 0,
           };
         }
@@ -412,6 +420,9 @@ function createOverlay({ containerElement, containerObject, objectOf, requestFra
         entry.kind = kind;
         entry.at = now;
         entry.commits += 1;
+        // A size nothing in the panel reads, as an SVG shape's, is not
+        // cached, and this asks the browser for it: a forced layout per such
+        // outline per commit, paid only while the mode is on.
         const size = quietly(() => getBorderBoxSize(/** @type {HTMLElement} */ (element)));
         entry.width = size.width;
         entry.height = size.height;
@@ -431,6 +442,8 @@ function createOverlay({ containerElement, containerObject, objectOf, requestFra
     dispose() {
       stopFrames?.();
       stopFrames = null;
+      // What the panel counted and never committed goes with it.
+      takeTallies(containerElement, () => {});
       group.removeFromParent();
       solid.dispose();
       dashed.dispose();
@@ -463,6 +476,15 @@ let report = new WeakMap();
  * @type {Set<WeakRef<Element>>}
  */
 let reported = new Set();
+
+/**
+ * Takes an element's reference out of `reported` once the element is
+ * collected, so that a list re-rendering its rows for as long as the mode is
+ * on does not grow `reported` without end.
+ *
+ * @type {FinalizationRegistry<WeakRef<Element>>}
+ */
+const collected = new FinalizationRegistry((ref) => reported.delete(ref));
 
 /** Whether outlines mode is on. */
 let enabled = false;
@@ -579,14 +601,16 @@ export function outlinesReport(limit = 20) {
  */
 function remember(element, entry) {
   if (!report.has(element)) {
-    reported.add(new WeakRef(element));
+    const ref = new WeakRef(element);
+    reported.add(ref);
+    collected.register(element, ref);
   }
   report.set(element, entry);
 }
 
 /**
- * A short path to `element`, for a reader to find it by: tag, id and
- * classes, up to three levels.
+ * A short path to `element`, for a reader to find it by: up to three levels
+ * of `describeElement`.
  *
  * @param {Element} element
  * @returns {string}
@@ -597,14 +621,7 @@ function describe(element) {
   /** @type {Element | null} */
   let current = element;
   for (let depth = 0; current && depth < 3; depth++) {
-    let part = current.localName;
-    if (current.id) {
-      part += `#${current.id}`;
-    }
-    for (const name of current.classList) {
-      part += `.${name}`;
-    }
-    parts.unshift(part);
+    parts.unshift(describeElement(current));
     current = current.parentElement;
   }
   return parts.join(" > ");

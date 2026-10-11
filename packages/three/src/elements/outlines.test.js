@@ -4,7 +4,10 @@ import * as THREE from "three";
 import { InteractionContext, InteractionManager } from "../interactions.js";
 import { createPortal } from "./portal.js";
 import { classify, enableOutlinesMode, outlinesReport, rampColor } from "./outlines.js";
+import { emptyTally } from "./outlineProbe.js";
+import { MAX_COMMIT_WAIT } from "./portalPump.js";
 import { drain, flushFrame, nextMacrotask, settle } from "../test/portalHarness.js";
+import { fakeClock } from "../test/clock.js";
 
 /**
  * A panel the page already has: a list of four rows, each a plain box with
@@ -53,9 +56,10 @@ async function rowsPanel() {
         solid: solid.geometry.drawRange.count / 8,
         dashed: dashed.geometry.drawRange.count / 8,
         dotted: dotted.geometry.drawRange.count / 8,
-        solidColor: () => {
+        solidColor: (index = 0) => {
           const colors = solid.geometry.getAttribute("color");
-          return new THREE.Color(colors.getX(0), colors.getY(0), colors.getZ(0));
+          const vertex = index * 8;
+          return new THREE.Color(colors.getX(vertex), colors.getY(vertex), colors.getZ(vertex));
         },
       };
     },
@@ -202,6 +206,81 @@ describe("outlines mode", () => {
     }
   });
 
+  test("an overlay made after the panel was placed is drawn on the panel", async () => {
+    // Turning the mode on from the console, on a panel that has stopped
+    // moving: the container's own walk recomputes only what asks for it.
+    const panel = await rowsPanel();
+    try {
+      const parent = /** @type {THREE.Object3D} */ (panel.containerObject.parent);
+      parent.updateMatrixWorld();
+      const off = enableOutlinesMode();
+      try {
+        parent.updateMatrixWorld();
+        const overlay = /** @type {THREE.Object3D} */ (
+          panel.containerObject.children.find((child) =>
+            child.children.some((line) => line instanceof THREE.LineSegments),
+          )
+        );
+        assert.ok(
+          overlay.matrixWorld.equals(panel.containerObject.matrixWorld),
+          "the overlay stands where the container does",
+        );
+        assert.ok(
+          overlay.children[0].matrixWorld.equals(panel.containerObject.matrixWorld),
+          "and so do its lines",
+        );
+      } finally {
+        off();
+      }
+    } finally {
+      await panel.dispose();
+    }
+  });
+
+  test("a commit the wait had to force flashes the panel's edge magenta", async () => {
+    // A row restyled before every frame undoes the reading a zero budget
+    // got through, so the panel lands only when `MAX_COMMIT_WAIT` runs out.
+    const clock = fakeClock();
+    try {
+      const panel = await rowsPanel();
+      const off = enableOutlinesMode();
+      try {
+        const magenta = () => {
+          const drawn = panel.drawn();
+          for (let index = 0; index < (drawn?.solid ?? 0); index++) {
+            if (drawn?.solidColor(index).getHexString() === "d946ef") {
+              return true;
+            }
+          }
+          return false;
+        };
+        let frames = 0;
+        while (frames < 200 && !magenta()) {
+          panel.rows[frames % 4].style.backgroundColor = `rgb(${frames % 250}, 2, 3)`;
+          await nextMacrotask();
+          clock.advance(16);
+          flushFrame();
+          await nextMacrotask();
+          frames += 1;
+        }
+        assert.ok(magenta(), "the edge is outlined in magenta");
+        assert.ok(
+          frames * 16 >= MAX_COMMIT_WAIT - 2 * 16,
+          `once the wait ran out, after ${frames} frames`,
+        );
+        clock.advance(1000);
+        flushFrame();
+        await nextMacrotask();
+        assert.ok(!magenta(), "and fades within a second");
+      } finally {
+        off();
+        await panel.dispose();
+      }
+    } finally {
+      clock.restore();
+    }
+  });
+
   test("turning the mode off takes the overlay away and stops counting", async () => {
     const panel = await rowsPanel();
     const off = enableOutlinesMode();
@@ -217,7 +296,7 @@ describe("outlines mode", () => {
   });
 
   test("a commit sees an element by the strongest thing that happened to it", () => {
-    const none = { changes: 0, noopWrites: 0, ripples: 0, recalculated: 0, unchanged: 0 };
+    const none = emptyTally();
     assert.equal(classify({ ...none, changes: 1, recalculated: 3 }), "changed");
     assert.equal(classify({ ...none, ripples: 1, recalculated: 3, unchanged: 2 }), "ripple");
     assert.equal(classify({ ...none, ripples: 1, recalculated: 3, unchanged: 3 }), "wasted");

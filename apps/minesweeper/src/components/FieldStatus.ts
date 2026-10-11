@@ -26,7 +26,48 @@ const NUMBER_COLORS: Record<number, string> = {
   8: "#495057",
 };
 
-const MINE_SPIKE_ANGLES = Array.from({ length: 8 }, (_, i) => (Math.PI / 4) * i);
+/** How many pixels a side the flag and the mine are rasterised at. */
+const PICTURE_SIZE = 128;
+
+/**
+ * A picture of `body`, drawn in a unit box centred on the origin, as an SVG
+ * data URL.
+ *
+ * The flag and the mine are pictures rather than shapes for the headset's
+ * sake. freedom triangulates every shape it mirrors and gives it meshes of
+ * its own, so a lost game, which uncovers every mine at once, had the panel
+ * build about a thousand meshes before it showed the board. An `<image>` is
+ * one quad, and freedom rasterises each URL once and shares the texture
+ * between every element that names it.
+ */
+function picture(body: string): string {
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${PICTURE_SIZE}" ` +
+    `height="${PICTURE_SIZE}" viewBox="-0.5 -0.5 1 1">${body}</svg>`;
+  return `data:image/svg+xml,${encodeURIComponent(svg)}`;
+}
+
+export const FLAG_URL = picture(
+  '<line x1="-0.02" y1="0.32" x2="-0.02" y2="-0.34" stroke="#2b2b2b" ' +
+    'stroke-width="0.05" stroke-linecap="round"/>' +
+    '<polygon points="-0.02,-0.34 0.32,-0.2 -0.02,-0.06" fill="#e8590c" ' +
+    'stroke="#a83200" stroke-width="0.02" stroke-linejoin="round"/>' +
+    '<ellipse cx="0" cy="0.34" rx="0.16" ry="0.045" fill="#2b2b2b" fill-opacity="0.45"/>',
+);
+
+const MINE_SPIKES = Array.from({ length: 8 }, (_, i) => {
+  const angle = (Math.PI / 4) * i;
+  const [cos, sin] = [Math.cos(angle), Math.sin(angle)];
+  const at = (r: number) => `${(cos * r).toFixed(3)} ${(sin * r).toFixed(3)}`;
+  return `M${at(0.27)}L${at(0.4)}`;
+}).join("");
+
+export const MINE_URL = picture(
+  '<circle r="0.42" fill="#e03131" fill-opacity="0.28"/>' +
+    `<path d="${MINE_SPIKES}" stroke="#1a1a1a" stroke-width="0.05" stroke-linecap="round"/>` +
+    '<circle r="0.26" fill="#1a1a1a"/>' +
+    '<circle cx="-0.09" cy="-0.09" r="0.065" fill="#ffffff" fill-opacity="0.75"/>',
+);
 
 /**
  * What a field is showing: a flag, a mine, the count of its neighbours, or
@@ -60,67 +101,16 @@ export default component((ctx: WeakKey, field: Field) => {
       return $$("g", []);
     }
 
-    if (kind === "flag") {
-      return $$("g", [
+    if (kind === "flag" || kind === "mine") {
+      return $$("image", [
         attr("transform", transform),
-        children(
-          $$("line", [
-            attr({
-              x1: -0.02,
-              y1: 0.32,
-              x2: -0.02,
-              y2: -0.34,
-              stroke: "#2b2b2b",
-              "stroke-width": 0.05,
-              "stroke-linecap": "round",
-            }),
-          ]),
-          $$("polygon", [
-            attr({
-              points: "-0.02,-0.34 0.32,-0.2 -0.02,-0.06",
-              fill: "#e8590c",
-              stroke: "#a83200",
-              "stroke-width": 0.02,
-              "stroke-linejoin": "round",
-            }),
-          ]),
-          $$("ellipse", [
-            attr({
-              cx: 0,
-              cy: 0.34,
-              rx: 0.16,
-              ry: 0.045,
-              fill: "#2b2b2b",
-              "fill-opacity": 0.45,
-            }),
-          ]),
-        ),
-      ]);
-    }
-
-    if (kind === "mine") {
-      return $$("g", [
-        attr("transform", transform),
-        children(
-          $$("circle", [attr({ r: 0.42, fill: "#e03131", "fill-opacity": 0.28 })]),
-          ...MINE_SPIKE_ANGLES.map((angle) =>
-            $$("line", [
-              attr({
-                x1: Math.cos(angle) * 0.27,
-                y1: Math.sin(angle) * 0.27,
-                x2: Math.cos(angle) * 0.4,
-                y2: Math.sin(angle) * 0.4,
-                stroke: "#1a1a1a",
-                "stroke-width": 0.05,
-                "stroke-linecap": "round",
-              }),
-            ]),
-          ),
-          $$("circle", [attr({ r: 0.26, fill: "#1a1a1a" })]),
-          $$("circle", [
-            attr({ cx: -0.09, cy: -0.09, r: 0.065, fill: "#ffffff", "fill-opacity": 0.75 }),
-          ]),
-        ),
+        attr({
+          href: kind === "flag" ? FLAG_URL : MINE_URL,
+          x: -0.5,
+          y: -0.5,
+          width: 1,
+          height: 1,
+        }),
       ]);
     }
 

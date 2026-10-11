@@ -132,6 +132,8 @@ async function main() {
   if (!url) throw new Error("no vite url");
   /** @type {typeof import("../src/placement.ts")} */
   const placement = /** @type {any} */ (await server.ssrLoadModule("/src/placement.ts"));
+  /** @type {string} */
+  const flagUrl = (await server.ssrLoadModule("/src/components/FieldStatus.ts")).FLAG_URL;
 
   const browser = await launch();
   try {
@@ -367,7 +369,12 @@ async function main() {
         return points;
       });
 
-    const flags = () => page.$$eval("#board svg polygon", (polygons) => polygons.length);
+    const flags = () =>
+      page.$$eval(
+        "#board svg image",
+        (images, url) => images.filter((image) => image.getAttribute("href") === url).length,
+        flagUrl,
+      );
     const coveredPath = () => page.$eval("#board svg path", (path) => path.getAttribute("d") ?? "");
 
     console.log("\n== the board");

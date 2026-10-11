@@ -12,7 +12,13 @@ import {
   hidesVisibility,
 } from "./mirror.js";
 import { getContentRenderOrder } from "./elevation.js";
-import { clipBoxEqual, toLocalClipBox, UNBOUNDED, UNCLIPPED } from "./clip.js";
+import {
+  clipBoxEqual,
+  toLocalClipBox,
+  UNBOUNDED,
+  unboundedClipUniform,
+  UNCLIPPED,
+} from "./clip.js";
 import { place } from "./place.js";
 import { TextBatchContext } from "./textBatch.js";
 import { textRun } from "./textRun.js";
@@ -82,7 +88,7 @@ export function text(ctx, textNode) {
     { isEqual: clipBoxEqual },
   );
 
-  const clipUniform = { value: new THREE.Vector4(-1e6, -1e6, 1e6, 1e6) };
+  const clipUniform = unboundedClipUniform();
 
   /**
    * Where this run is cut short, and the uniform that says so — for a node
@@ -104,11 +110,6 @@ export function text(ctx, textNode) {
     ? { cut, uniform: { value: new THREE.Vector4(-UNBOUNDED, -UNBOUNDED, -UNBOUNDED, 1) } }
     : null;
 
-  // Hoisted so the batch can be handed the mesh itself: registering from
-  // inside the operators below would mean reaching for whatever `$` happened
-  // to be dressing.
-  const mesh = new THREE.Mesh();
-
   return just(object, [
     // One effect for both cheap writes: where the text sits and what trims
     // it move together — a scroll shifts the clip while the content-space
@@ -122,7 +123,6 @@ export function text(ctx, textNode) {
     children(
       textRun(
         ctx,
-        mesh,
         {
           layout: () => layout,
           renderStyle: () => renderStyle,

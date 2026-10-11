@@ -1,3 +1,4 @@
+import { Mesh } from "three";
 import { effects, onCleanup, selector, set } from "@apendua/signal";
 import { $ } from "../operators.js";
 import { createMarkMaterial, generateTextTexture, makeTextQuadGeometry } from "./textHelpers.js";
@@ -7,7 +8,7 @@ import { TextBatchContext } from "./textBatch.js";
 import { readTextScale, TextScaleContext } from "./textScale.js";
 
 /**
- * @import {Mesh, MeshBasicMaterial, Vector4} from 'three';
+ * @import {MeshBasicMaterial, Vector4} from 'three';
  * @import {EntityEffect, Source} from '@apendua/signal';
  * @import {Component} from '../core.js';
  * @import {TextBounds, TextRenderStyle} from './textHelpers.js';
@@ -51,14 +52,16 @@ import { readTextScale, TextScaleContext } from "./textScale.js";
  * so, through `invalidate`, which is cheap and coalesced.
  *
  * @param {WeakKey} ctx
- * @param {Mesh} mesh
  * @param {TextRunSource} source
  * @param {EntityEffect<Mesh>[]} [extra] Effects of the caller's own,
  *   mounted with the run and before everything else on it.
  * @returns {Source<Component>}
  */
-export function textRun(ctx, mesh, source, extra = []) {
+export function textRun(ctx, source, extra = []) {
   const batch = TextBatchContext.get(ctx);
+  // Made here rather than taken from `$`, so the batch can be handed the mesh
+  // itself from the effect at the end.
+  const mesh = new Mesh();
 
   /**
    * How finely the run is rasterized, as the panel it is on measures it,

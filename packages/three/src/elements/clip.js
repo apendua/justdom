@@ -32,6 +32,16 @@ import * as THREE from "three";
  */
 export const UNBOUNDED = 1e6;
 
+/**
+ * A clip uniform that clips nothing yet, for a run that writes its own box
+ * into it once it knows where it sits.
+ *
+ * @returns {{ value: THREE.Vector4 }}
+ */
+export function unboundedClipUniform() {
+  return { value: new THREE.Vector4(-UNBOUNDED, -UNBOUNDED, UNBOUNDED, UNBOUNDED) };
+}
+
 /** @type {ClipBox} */
 export const UNCLIPPED = {
   left: -UNBOUNDED,

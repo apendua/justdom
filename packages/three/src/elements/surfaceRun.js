@@ -1,11 +1,11 @@
-import * as THREE from "three";
 import { effects } from "@apendua/signal";
-import { toLocalClipBox } from "./clip.js";
+import { toLocalClipBox, unboundedClipUniform } from "./clip.js";
 import { place } from "./place.js";
 import { TextBatchContext } from "./textBatch.js";
 import { textRun } from "./textRun.js";
 
 /**
+ * @import {Mesh} from 'three';
  * @import {EntityEffect} from '@apendua/signal';
  * @import {Component} from '../core.js';
  * @import {BoxSurface} from './div.js';
@@ -37,19 +37,17 @@ import { textRun } from "./textRun.js";
  * @param {WeakKey} ctx
  * @param {BoxSurface} surface
  * @param {SurfaceRunSource} source
- * @param {EntityEffect<THREE.Mesh>[]} [extra] Effects of the caller's own,
- *   mounted with the run and before everything else on it.
+ * @param {EntityEffect<Mesh>[]} [extra] Effects of the caller's own,
+ *   mounted with the run, after the trim of its hits to the box's clip and
+ *   before everything else on it.
  * @returns {import("@apendua/signal").Source<Component>}
  */
 export function surfaceRun(ctx, surface, source, extra = []) {
   const batch = TextBatchContext.get(ctx);
-  const clip = { value: new THREE.Vector4(-1e6, -1e6, 1e6, 1e6) };
-  const mesh = new THREE.Mesh();
-  surface.clipMesh(mesh);
+  const clip = unboundedClipUniform();
 
   return textRun(
     ctx,
-    mesh,
     {
       layout: source.layout,
       renderStyle: source.renderStyle,
@@ -62,6 +60,10 @@ export function surfaceRun(ctx, surface, source, extra = []) {
       clip,
     },
     [
+      // Trimmed to the box's clip for the ray, before anything else.
+      (obj) => {
+        surface.clipMesh(obj);
+      },
       ...extra,
       // Where the run sits and what trims it, together: a field's value
       // scrolling under its caret moves both.

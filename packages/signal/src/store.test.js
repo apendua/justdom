@@ -731,6 +731,18 @@ test("store() makes a store of a plain object at a symbol key", () => {
   assert.strictEqual(runs, 1);
 });
 
+test("store() skips a symbol key the definition reports but has not", () => {
+  // A proxy over a plain object passes as one, and its `ownKeys` trap can
+  // list a key with no descriptor, which a spread skips.
+  const ghost = Symbol("ghost");
+  const definition = new Proxy(
+    { a: 1 },
+    { ownKeys: (target) => [...Reflect.ownKeys(target), ghost] },
+  );
+  const kept = store(definition);
+  assert.deepStrictEqual(Reflect.ownKeys(kept), ["a"]);
+});
+
 test("reshape() puts a key that gains only a setter in the store", () => {
   const kept = store({ x: 1 });
   reshape(kept, {

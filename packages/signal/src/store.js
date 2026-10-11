@@ -9,8 +9,8 @@ import { isPlainObject } from "./util.js";
 /**
  * @import {ComputationLike} from "./core.js"
  * @import {EntityEffect} from "./types.js"
- * @typedef {Map<PropertyKey, PropertyDescriptor>} Descriptors
  * @import {IEmitter} from "./Emitter.js";
+ * @typedef {Map<PropertyKey, PropertyDescriptor>} Descriptors
  */
 
 /**
@@ -93,7 +93,7 @@ class Brand extends Stamped {
 
   /**
    * @param {unknown} value
-   * @returns {Internals | undefined}
+   * @returns {Internals | undefined} The record of `value` if it is a store.
    */
   static internalsOf(value) {
     return typeof value === "object" && value !== null && #internals in value
@@ -102,13 +102,7 @@ class Brand extends Stamped {
   }
 }
 
-/**
- * @param {unknown} value
- * @returns {Internals | undefined} The record of `value` if it is a store.
- */
-function internalsOf(value) {
-  return Brand.internalsOf(value);
-}
+const internalsOf = Brand.internalsOf;
 
 /**
  * Whether `value` is a store — the proxy `store()` handed back, as opposed to
@@ -1074,11 +1068,11 @@ function describe(definition) {
         /** @type {PropertyDescriptor} */ (Reflect.getOwnPropertyDescriptor(definition, key)),
       );
     }
+    // Unlike `Object.keys`, this lists a key that has no descriptor, which
+    // a proxy's `ownKeys` trap can report, and which a spread skips.
     for (const key of Object.getOwnPropertySymbols(definition)) {
-      const descriptor = /** @type {PropertyDescriptor} */ (
-        Reflect.getOwnPropertyDescriptor(definition, key)
-      );
-      if (descriptor.enumerable) {
+      const descriptor = Reflect.getOwnPropertyDescriptor(definition, key);
+      if (descriptor?.enumerable) {
         descriptors.set(key, descriptor);
       }
     }

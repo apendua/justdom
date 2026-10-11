@@ -110,8 +110,8 @@ getXRSession(ctx)?.end();
 `getXRSession(ctx)` is reactive and null between sessions. A page mounted before there is a renderer
 to ask reads the session from `xrSession` in `@apendua.dev/headset/session` instead, which the scene
 writes: minesweeper, Euclid and turntable through `enterSession(getXRSession(ctx))`, the desk with
-`xrSession.set` in its own `session.ts`. `apps/minesweeper`'s × and `apps/desk`'s power button both
-call `end()` on the session that signal holds.
+`xrSession.set` in its `components/Scene.ts`. `apps/minesweeper`'s × and `apps/desk`'s power button
+both call `end()` on the session that signal holds.
 
 The parts of `createXRButton` are exported for an app that builds its own button:
 `requestFrameRate(renderer, preference)`, `anchorToViewer(renderer)`, `installCrashPanel(renderer)`

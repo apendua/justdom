@@ -207,7 +207,8 @@ export function image(ctx, element, instance = null) {
   /**
    * The share in the texture, which changes only when the URL does, for the
    * reason `contentImage` gives: a release followed by an acquire of the
-   * same URL would dispose the texture and fetch it again.
+   * same URL sends the entry through the idle list, where a full budget
+   * could dispose it and the acquire would fetch it again.
    */
   const owned = new Derived(() => {
     const url = source.get();

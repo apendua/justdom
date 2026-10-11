@@ -19,6 +19,7 @@ import {
   createPortalScheduler,
   PortalSchedulerContext,
 } from "./elements/portalScheduler.js";
+import { releaseIdleImages } from "./elements/image.js";
 import { PortalPluginsContext } from "./elements/plugins.js";
 import { withPanelOptions } from "./elements/panelOptions.js";
 import {
@@ -791,6 +792,9 @@ export function render(fn, options = {}) {
 
     return () => {
       renderer.setAnimationLoop(null);
+      // The idle pictures the texture cache keeps belong to this renderer's
+      // GL context, which is going.
+      releaseIdleImages();
       renderer.dispose();
       interactionManager.cleanup();
     };

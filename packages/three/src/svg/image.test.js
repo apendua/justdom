@@ -1,8 +1,8 @@
-import { describe, test } from "node:test";
+import { afterEach, describe, test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
 import { createMirror } from "../elements/mirror.js";
-import { acquireImage, releaseImage } from "../elements/image.js";
+import { acquireImage, releaseIdleImages, releaseImage } from "../elements/image.js";
 import { parsePreserveAspectRatio } from "./geometry.js";
 import { buildImageGeometry, getSvgImageSource, image, placeImage } from "./image.js";
 import { shape } from "./shape.js";
@@ -10,6 +10,10 @@ import { shape } from "./shape.js";
 /**
  * @import { Mesh, MeshBasicMaterial, Object3D } from "three";
  */
+
+// As in `elements/image.test.js`, each test starts from an empty texture
+// cache, with no picture left idle by the test before.
+afterEach(() => releaseIdleImages());
 
 // jsdom-env installs the common DOM globals, but not DOMParser, which three's
 // SVGLoader parses its document with.
@@ -531,10 +535,13 @@ describe("svg image", () => {
       s.material.addEventListener("dispose", () => disposed.push("material"));
       texture.addEventListener("dispose", () => disposed.push("texture"));
       s.teardown();
-      assert.deepEqual(disposed.sort(), ["geometry", "material", "texture"]);
-      // The last share went with the element, so the URL is forgotten.
-      assert.notEqual(acquireImage(PICTURE), entry);
+      assert.deepEqual(disposed.sort(), ["geometry", "material"]);
+      // The last share went with the element, and the picture is kept idle
+      // for whoever asks next, until the idle pictures are released.
+      assert.equal(acquireImage(PICTURE), entry);
       releaseImage(PICTURE);
+      releaseIdleImages();
+      assert.deepEqual(disposed.sort(), ["geometry", "material", "texture"]);
     });
   });
 });

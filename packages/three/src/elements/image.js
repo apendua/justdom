@@ -78,13 +78,88 @@ import { fitImage } from "./objectFit.js";
 
 /**
  * Textures are shared by URL, so a list of a hundred rows wearing the same
- * icon decodes and uploads it once. Entries are refcounted rather than kept
- * forever: a panel that has finished with an image has finished with the
- * VRAM too, and an unbounded cache in a headset is a leak with a nicer name.
+ * icon decodes and uploads it once. Entries are refcounted, and an entry
+ * whose last user lets go is kept idle rather than disposed, so a picture
+ * that comes back (an icon swapped by a hover rule, a row remounted, a game
+ * dealt again) is drawn at once and not loaded again. An unbounded cache in
+ * a headset is a leak with a nicer name, so the idle entries are held to
+ * `IDLE_BUDGET` bytes.
+ *
+ * Each entry is in one of four states, and these are all the moves:
+ *
+ * - **loading**, with users: becomes loaded when its picture lands, and
+ *   idle when its last user lets go;
+ * - **loaded**, with users: becomes idle when its last user lets go;
+ * - **idle**, with no users, its picture kept or still on its way: becomes
+ *   loaded or loading again when it is acquired, and gone when the budget
+ *   evicts it or `releaseIdleImages` is called;
+ * - **gone**: its texture disposed, or disposed as it lands. Acquiring the
+ *   URL again starts a new entry, loading.
+ *
+ * A picture that fails to load is dropped when its last user lets go, so
+ * asking for it again tries again.
  *
  * @type {Map<string, ImageEntry>}
  */
 const entries = new Map();
+
+/**
+ * The entries nobody is using, oldest first: a `Map` keeps insertion order,
+ * and an entry is deleted and inserted again each time it goes idle.
+ *
+ * @type {Map<string, ImageEntry>}
+ */
+const idle = new Map();
+
+/**
+ * How many bytes of uploaded pictures the idle entries may hold between
+ * them: 16 MiB, a 2048 by 2048 picture or 1,024 icons of 64 by 64.
+ */
+export const IDLE_BUDGET = 16 * 1024 * 1024;
+
+/**
+ * What an entry's picture holds on the GPU, at four bytes a pixel. Nothing
+ * for one still loading or failed. Read with `peek`, since a release runs
+ * inside a cleanup, where a tracked read would make the computation being
+ * torn down depend on the entry.
+ *
+ * @param {ImageEntry} entry
+ * @returns {number}
+ */
+function bytesOf(entry) {
+  const { texture, width, height } = entry.state.peek();
+  return texture ? width * height * 4 : 0;
+}
+
+/**
+ * Forget an entry and dispose its texture. One still loading has none yet,
+ * and the load callback disposes the texture when it lands, since the URL no
+ * longer maps to this entry.
+ *
+ * @param {string} url
+ * @param {ImageEntry} entry
+ */
+function forget(url, entry) {
+  idle.delete(url);
+  entries.delete(url);
+  entry.texture?.dispose();
+  entry.texture = null;
+}
+
+/** Evict the oldest idle entries until the rest fit in `IDLE_BUDGET`. */
+function enforceBudget() {
+  let total = 0;
+  for (const entry of idle.values()) {
+    total += bytesOf(entry);
+  }
+  for (const [url, entry] of idle) {
+    if (total <= IDLE_BUDGET) {
+      return;
+    }
+    total -= bytesOf(entry);
+    forget(url, entry);
+  }
+}
 
 /**
  * `TextureLoader` fetches the URL itself rather than reusing the `<img>` the
@@ -181,8 +256,8 @@ function entryFor(url) {
     url,
     (texture) => {
       if (entries.get(url) !== entry) {
-        // Everyone who asked for this let go while it was in flight. The
-        // texture was never uploaded and nothing is pointing at it.
+        // The entry was evicted while it was in flight. The texture was
+        // never uploaded and nothing is pointing at it.
         texture.dispose();
         return;
       }
@@ -206,10 +281,20 @@ function entryFor(url) {
         width: image?.width ?? 0,
         height: image?.height ?? 0,
       });
+      if (idle.has(url)) {
+        // Everyone let go while it was in flight. It lands idle, and now
+        // weighs something.
+        enforceBudget();
+      }
     },
     undefined,
     () => {
       if (entries.get(url) !== entry) {
+        return;
+      }
+      if (idle.has(url)) {
+        // Nobody is waiting for it, and a failure is not worth keeping.
+        forget(url, entry);
         return;
       }
       // A broken image draws nothing at all — no alt text, no placeholder
@@ -223,39 +308,54 @@ function entryFor(url) {
 }
 
 /**
- * Take a share in the texture for a URL, loading it if this is the first
- * asker.
+ * Take a share in the texture for a URL, loading it if no entry has it,
+ * loaded or idle.
  *
  * @param {string} url
  * @returns {ImageEntry}
  */
 export function acquireImage(url) {
   const entry = entryFor(url);
+  idle.delete(url);
   entry.users += 1;
   return entry;
 }
 
 /**
- * Give it back. The last one out disposes the texture and forgets the URL, so
- * asking again reloads it — which is the right trade for a panel that has
- * been taken down, and a small cost for one that is churning through the same
- * few images.
+ * Give it back. The last one out leaves the entry idle, its texture kept for
+ * whoever asks next, unless its picture failed, which is forgotten so that
+ * asking again tries again.
  *
  * @param {string} url
  * @returns {void}
  */
 export function releaseImage(url) {
   const entry = entries.get(url);
-  if (!entry) {
+  if (!entry || entry.users === 0) {
     return;
   }
   entry.users -= 1;
   if (entry.users > 0) {
     return;
   }
-  entries.delete(url);
-  entry.texture?.dispose();
-  entry.texture = null;
+  if (entry.state.peek().status === "error") {
+    forget(url, entry);
+    return;
+  }
+  idle.set(url, entry);
+  enforceBudget();
+}
+
+/**
+ * Dispose every idle entry's texture: for a renderer on its way out, whose
+ * GL context the textures belong to.
+ *
+ * @returns {void}
+ */
+export function releaseIdleImages() {
+  for (const [url, entry] of idle) {
+    forget(url, entry);
+  }
 }
 
 /**
@@ -392,8 +492,9 @@ function contentImageEqual(a, b) {
  *    already said, and string equality stops there;
  *  - the share in the texture, so that a load — or a resize, or a restyle —
  *    is never a reason to let go of it. Ownership changes only when the URL
- *    does, because a release followed by an acquire of the same URL would
- *    dispose the texture and fetch it again;
+ *    does, because a release followed by an acquire of the same URL sends
+ *    the entry through the idle list, where a full budget could dispose it
+ *    and the acquire would fetch it again;
  *  - the placement, which reads the layout and the style and re-runs as often
  *    as either moves. Its equality is by value, so an animation that leaves
  *    the picture where it was writes no uniforms.

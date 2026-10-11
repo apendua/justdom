@@ -7,6 +7,7 @@ import { createMirror } from "../elements/mirror.js";
 import { setContentGroup } from "../elements/contentGroup.js";
 import { getControlRoot } from "../elements/pointerForwarding.js";
 import { bubble, forwardedPanel } from "../test/rays.js";
+import { leaveSizesUnmapped } from "../test/unmappedSizes.js";
 import { OBSERVER_OPTIONS } from "../elements/portal.js";
 import { SVGLoader } from "three/examples/jsm/loaders/SVGLoader.js";
 import { buildFillGeometry, buildShapePath, group, paintSlot, shape } from "./shape.js";
@@ -842,6 +843,21 @@ describe("svg shape", () => {
       nestedSvgMatrix({ width: "50%", viewBox: "0 0 4 2" }, "0 0 10 5"),
       [1.25, 0, 0, 1.25, 0, 1.25],
     );
+  });
+
+  test("a nested svg's size attributes hold when the browser computes them as auto", () => {
+    // Chromium 152 does, and draws the attributes' size all the same.
+    const restore = leaveSizesUnmapped();
+    try {
+      assert.deepEqual(
+        nestedSvgMatrix({ x: "10", y: "20", width: "40", height: "20", viewBox: "0 0 4 2" }),
+        [10, 0, 0, 10, 10, 20],
+      );
+      // With no attribute, `auto` is still the whole viewport around it.
+      assert.deepEqual(nestedSvgMatrix({ viewBox: "0 0 4 2" }, "0 0 10 5"), [2.5, 0, 0, 2.5, 0, 0]);
+    } finally {
+      restore();
+    }
   });
 
   test("teardown disposes what it made", () => {

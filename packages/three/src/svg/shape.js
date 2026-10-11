@@ -65,6 +65,7 @@ import {
   parseUrlReference,
   readProperty,
   readShapeGeometry,
+  readSize,
   shapeGeometryEqual,
   viewportReferences,
 } from "./style.js";
@@ -612,11 +613,11 @@ export function svgViewport(svg, instance = null) {
   const style = getComputedStyleCached(svg);
   const outer = viewportSize(svg, instance);
   /**
-   * @param {string} name
+   * @param {"width" | "height"} name
    * @param {"width" | "height"} axis
    */
   const size = (name, axis) => {
-    const value = parseLengthIn(readProperty(style, svg, name), outer?.[axis], Number.NaN);
+    const value = parseLengthIn(readSize(style, svg, name), outer?.[axis], Number.NaN);
     return Number.isNaN(value) ? (outer?.[axis] ?? Number.NaN) : value;
   };
   return {

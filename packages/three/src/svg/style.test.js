@@ -13,6 +13,7 @@ import {
   readProperty,
   parsePoints,
   readShapeGeometry,
+  readSize,
   shapeGeometryEqual,
 } from "./style.js";
 
@@ -57,6 +58,20 @@ describe("svg style reading", () => {
     const { el, style } = element("rect", { fill: "red" });
     assert.equal(readProperty(style, el, "fill"), "red");
     assert.equal(readProperty(style, el, "stroke"), "");
+  });
+
+  test("readSize reads the attribute where the computed size is auto", () => {
+    const { el } = element("use", { width: "11", height: "50%" });
+    /** @param {string} value */
+    const computed = (value) =>
+      /** @type {CSSStyleDeclaration} */ (
+        /** @type {unknown} */ ({ getPropertyValue: () => value })
+      );
+    assert.equal(readSize(computed("auto"), el, "width"), "11");
+    assert.equal(readSize(computed("auto"), el, "height"), "50%");
+    assert.equal(readSize(computed("9px"), el, "width"), "9px");
+    const { el: bare } = element("use", {});
+    assert.equal(readSize(computed("auto"), bare, "width"), "");
   });
 
   test("parseLength reads px and unitless, and refuses percentages", () => {

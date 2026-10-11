@@ -76,13 +76,16 @@ import { useFrame } from "./render.js";
  * - **It swallows the presses it takes.** A press that picks the object up,
  *   and the release that lets it go, do not reach whatever is behind — the
  *   board the object sits on, the tray it was pulled off — so picking up a
- *   brick never also picks up the board. A release is swallowed if and only
- *   if its press was, whatever `enabled` says in between (see `createHold`).
+ *   brick never also picks up the board. While the object is in the scene, a
+ *   release is swallowed if and only if its press was, whatever `enabled`
+ *   says in between (see `createHold`).
  *
  * One `drag()` per object: the hold is the object's. Interactivity is not
  * part of it — an object that can be pointed at without being carriable is
  * common — so `makeInteractive()` goes in the same list. Taking the object out
- * of the scene mid-drag takes it off the hand too. A hand that disconnects
+ * of the scene mid-drag takes it off the hand too, and its listeners with it,
+ * so the release goes on along the press's path to whatever was behind, the
+ * board it sat on. A hand that disconnects
  * mid-drag lets go where it is: the manager ends its press with a `lost`
  * release, which this hears as any other.
  *

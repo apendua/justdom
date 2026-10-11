@@ -280,12 +280,12 @@ panel with `level: false` is carried this way.
 
 The bookkeeping is `drag()`'s, in one place (`createHold` in `hold.js`): a press from the other hand
 mid-carry is a handover, taking the grip afresh from wherever its own ray lands, only the carrying
-hand's release puts the object down, and a release is swallowed if and only if its press was;
-`held()` says which hand has it. One difference: a carry that is disabled while under way is put
-down where it is, since nothing was reparented and there is nothing to undo, and its release is
-still swallowed when it comes. So is one whose handle leaves the scene, since the release it is
-waiting for would go to a handle no longer listening, and goes on to whatever is behind. A carrying
-hand that disconnects puts the object down where it is, as a drag's does.
+hand's release puts the object down, and, while the handle is in the scene, a release is swallowed
+if and only if its press was; `held()` says which hand has it. One difference: a carry that is
+disabled while under way is put down where it is, since nothing was reparented and there is nothing
+to undo, and its release is still swallowed when it comes. So is one whose handle leaves the scene,
+since the release it is waiting for goes to a handle no longer listening, and on to whatever is
+behind. A carrying hand that disconnects puts the object down where it is, as a drag's does.
 
 ## Hands
 

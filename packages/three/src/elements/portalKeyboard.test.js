@@ -18,6 +18,7 @@ import { rectGeometry } from "./sdfRect.js";
 import { CARET_BLINK_MS } from "./textInput.js";
 import { recordingSource } from "../test/rumble.js";
 import { PREVIEW_ATTRIBUTE } from "./keyboardPreview.js";
+import { withStart } from "../test/rays.js";
 import { getCaretOffset } from "./typing.js";
 
 /**
@@ -1369,26 +1370,6 @@ function wideInputs() {
     Reflect.deleteProperty(proto, "offsetWidth");
     Reflect.deleteProperty(proto, "offsetHeight");
   };
-}
-
-/** @type {WeakMap<object, object>} Each hand's last `selectstart`. */
-const starts = new WeakMap();
-
-/**
- * A ray event as the manager sends it: a press's `selectstart` is kept for
- * the hand, and the events that end the press carry it as `start`.
- *
- * @template {{ type: string, controller: object }} E
- * @param {E} event
- * @returns {E}
- */
-function withStart(event) {
-  if (event.type === "selectstart") {
-    starts.set(event.controller, event);
-  } else if (event.type === "select" || event.type === "selectend") {
-    return { ...event, start: starts.get(event.controller) };
-  }
-  return event;
 }
 
 /**

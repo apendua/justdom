@@ -219,9 +219,10 @@ other hand while the object is carried is a handover — the object moves to tha
 carries on, one `dragstart` and one `dragend` for the whole of it — and only the holding hand's
 release, of the button it is holding with, ends the drag. **It swallows the presses it takes:** the
 press that picks the object up and the release that lets it go never reach whatever is behind, so
-picking up a brick never also picks up the board it sits on. A release is swallowed if and only if
-its press was, whatever `enabled` says in between, so whatever is behind hears a press and its
-release or neither. An object taken out of the scene mid-drag leaves the hand too, and a hand that
+picking up a brick never also picks up the board it sits on. While the object is in the scene, a
+release is swallowed if and only if its press was, whatever `enabled` says in between, so whatever
+is behind hears a press and its release or neither. An object taken out of the scene mid-drag leaves
+the hand too, and no longer hears the release, which goes on to whatever was behind it. A hand that
 disconnects, as every hand does when a session ends, lets go of what it holds, with a `dragend`, as
 though it had been released where it was.
 
@@ -283,8 +284,8 @@ hand's release puts the object down, and a release is swallowed if and only if i
 `held()` says which hand has it. One difference: a carry that is disabled while under way is put
 down where it is, since nothing was reparented and there is nothing to undo, and its release is
 still swallowed when it comes. So is one whose handle leaves the scene, since the release it is
-waiting for would go to a handle no longer listening. A carrying hand that disconnects puts the
-object down where it is, as a drag's does.
+waiting for would go to a handle no longer listening, and goes on to whatever is behind. A carrying
+hand that disconnects puts the object down where it is, as a drag's does.
 
 ## Hands
 

@@ -2,10 +2,8 @@ import { describe, expect, it, onTestFinished } from "vitest";
 import { children } from "@apendua/justdom";
 import { just } from "@apendua/signal";
 import type { Field } from "../store/Fields";
-import Root, { RootContext } from "../store/Root";
 import Viewport, { ViewportContext } from "../store/Viewport";
 import FieldStatus, { FLAG_URL, MINE_URL } from "./FieldStatus";
-import Game from "./Game";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 
@@ -78,42 +76,5 @@ describe("FieldStatus", () => {
     // freedom draws an SVG with no size of its own at 300 by 150.
     expect(Number(root.getAttribute("width"))).toBeGreaterThan(0);
     expect(Number(root.getAttribute("height"))).toBeGreaterThan(0);
-  });
-});
-
-describe("the board's pictures", () => {
-  // freedom disposes a texture when the last element naming its URL goes, so
-  // the pictures have to outlive the game that covers every field again.
-  it("are mounted from the start and stay through a new game", () => {
-    globalThis.ResizeObserver ??= class {
-      observe() {}
-      unobserve() {}
-      disconnect() {}
-    };
-    const board = document.createElement("div");
-    const menu = document.createElement("div");
-    const game = Game(RootContext.set({}, new Root(board)));
-    mount(board, ...game.board);
-    mount(menu, game.menu);
-
-    // One `<image>` for each picture, the same elements throughout: `toEqual`
-    // would pass on rebuilt ones with the same attributes.
-    const pictures = () =>
-      [FLAG_URL, MINE_URL].map((url) => {
-        const images = [...board.querySelectorAll("image")].filter(
-          (image) => image.getAttribute("href") === url,
-        );
-        expect(images).toHaveLength(1);
-        return images[0];
-      });
-    const before = pictures();
-
-    const restart = [...menu.querySelectorAll("button")].find(
-      (button) => button.textContent === "Restart",
-    );
-    const boardBefore = board.querySelector("svg");
-    restart?.click();
-    expect(board.querySelector("svg")).not.toBe(boardBefore);
-    pictures().forEach((image, i) => expect(image).toBe(before[i]));
   });
 });

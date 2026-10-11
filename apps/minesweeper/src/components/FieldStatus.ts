@@ -38,8 +38,9 @@ const PICTURE_SIZE = 128;
  * its own, so a lost game, which uncovers every mine at once, had the panel
  * build close to 700 meshes on the medium board before it showed them. An
  * `<image>` is one quad, and freedom shares one texture between every
- * element that names the URL, for as long as one of them is mounted.
- * `FieldPictures` keeps one mounted for each.
+ * element that names the URL. It keeps the texture idle once the last of
+ * them goes, so the mines of the next lost game are drawn without loading
+ * the picture again.
  */
 function picture(body: string): string {
   const svg =
@@ -69,28 +70,6 @@ export const MINE_URL = picture(
     '<circle r="0.26" fill="#1a1a1a"/>' +
     '<circle cx="-0.09" cy="-0.09" r="0.065" fill="#ffffff" fill-opacity="0.75"/>',
 );
-
-/**
- * The flag and the mine, never shown, for as long as the board's element
- * holds them.
- *
- * freedom disposes a picture's texture when the last element naming its URL
- * goes, and loads it again for the next. Mines are drawn only after a loss,
- * and a new game covers every field, so without these the mines of every
- * lost game would show nothing until the picture had loaded again. They are
- * mounted beside the board rather than in it, since the board is built again
- * for each game.
- */
-export function FieldPictures() {
-  return $$("svg", [
-    attr({ width: 0, height: 0, "aria-hidden": "true", style: "position: absolute" }),
-    children(
-      ...[FLAG_URL, MINE_URL].map((href) =>
-        $$("image", [attr({ href, width: 1, height: 1, visibility: "hidden" })]),
-      ),
-    ),
-  ]);
-}
 
 /**
  * What a field is showing: a flag, a mine, the count of its neighbours, or

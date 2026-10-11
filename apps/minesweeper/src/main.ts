@@ -15,11 +15,11 @@ if (!board || !menu) {
 // one place and the menu in another. The board is fitted to its own
 // element, which the page lays out beside or below the menu.
 const game = Game(RootContext.set({}, new Root(board)));
-for (const [element, trees] of [
+for (const [element, tree] of [
   [board, game.board],
-  [menu, [game.menu]],
+  [menu, game.menu],
 ] as const) {
-  just(element, [children(...trees)]).subscribe({
+  just(element, [children(tree)]).subscribe({
     error: (err) => {
       console.error("Error mounting the game:", err);
     },

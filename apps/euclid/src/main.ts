@@ -2,7 +2,7 @@ import { children } from "@apendua/justdom";
 import { just } from "@apendua/signal";
 import "./index.css";
 import EuclidApp from "./components/EuclidApp";
-import { offerHeadset } from "./offer";
+import { offerHeadset } from "@apendua.dev/headset/offer";
 import AppStore from "./store/App";
 
 const toolbar = document.querySelector<HTMLDivElement>("#toolbar");
@@ -55,6 +55,8 @@ requestAnimationFrame(() => {
 // the very elements the app was just mounted into. It is loaded only once a
 // session is known to be possible, so a page that is only ever a page does
 // not fetch three.js.
-offerHeadset({ toolbar, editor, canvas }).catch((err) => {
-  console.error("Could not offer an XR session:", err);
-});
+offerHeadset(() => import("./xr"))
+  .then((xr) => xr?.offerXR({ toolbar, editor, canvas }))
+  .catch((err) => {
+    console.error("Could not offer an XR session:", err);
+  });

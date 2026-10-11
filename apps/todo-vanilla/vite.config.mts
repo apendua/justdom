@@ -1,6 +1,7 @@
 import { defineConfig } from "vite";
 import { VitePWA } from "vite-plugin-pwa";
 import PluginHMR from "@apendua/vite-hmr/plugin";
+import XRProfilesPlugin from "@apendua.dev/media/vite";
 
 // https://vitejs.dev/config/
 export default defineConfig({
@@ -8,6 +9,10 @@ export default defineConfig({
     // WebXR is only offered on a secure origin, and a headset on the same
     // network reaches the dev server by IP: https it is.
     PluginHMR(),
+    // The controller and hand models, from this repository rather than a
+    // CDN: they are served at `<base>profiles/`, where `inputModels` from
+    // `@apendua.dev/headset/scene` points three's factories.
+    XRProfilesPlugin(),
     VitePWA({
       registerType: "autoUpdate",
       manifest: {

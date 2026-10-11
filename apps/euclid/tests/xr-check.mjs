@@ -15,6 +15,8 @@
  * chunk and every chunk it imports statically. And the page alone, with no
  * emulator, must not fetch the headset scene. Then, in a session, in order:
  *
+ * - no ray reaches the drawing before a step aims one, since the emulator
+ *   starts both controllers turned away from the scene;
  * - Point, in the toolbar panel, picks the point tool, and the trigger on
  *   empty paper writes a `point(…)` statement through the drawing's own
  *   pointer handlers, at the place the ray met;
@@ -156,6 +158,14 @@ async function main() {
     if (SHOTS) {
       await page.screenshot({ path: join(SHOTS, "page.png") });
     }
+    // Every pointer the drawing hears, from the moment the session starts.
+    await page.evaluate(() => {
+      /** @type {any} */ const w = window;
+      w.__pointers = new Set();
+      document.querySelector("#canvas")?.addEventListener("pointermove", (event) => {
+        w.__pointers.add(/** @type {PointerEvent} */ (event).pointerId);
+      });
+    });
     await page.click("#ARButton, #VRButton");
     await page.waitForFunction(
       () =>
@@ -164,6 +174,15 @@ async function main() {
         ) && !document.querySelector("[data-xr-loading]"),
     );
     await frames(page, 30);
+
+    console.log("\n== the hands at rest");
+    // The emulator starts both controllers turned away from the scene, so
+    // that the drawing hears only the hand a step aims, and a check of what
+    // that hand did is not undone by the other one's moves.
+    check(
+      (await page.evaluate(() => /** @type {any} */ (window).__pointers.size)) === 0,
+      "no ray reaches the drawing before one is aimed",
+    );
 
     const head = await headPosition(page);
 
@@ -316,13 +335,6 @@ async function main() {
             (c) => c.getAttribute("r") === "7" && c.getAttribute("visibility") === "visible",
           ),
         );
-      // The emulator's left controller rests with its ray on the drawing
-      // too, and its moves, far from A, would hide the ring whatever the
-      // right hand's ray did. Turned round, it points at nothing.
-      await page.evaluate(() => {
-        const left = /** @type {any} */ (window).xrDevice.controllers.left;
-        Object.assign(left.quaternion, { x: 0, y: 1, z: 0, w: 0 });
-      });
       const { x, y } = await pointOnPage("A");
       await aimAt(await onPanel("canvas", x, y));
       await frames(page, 6);

@@ -1,11 +1,16 @@
 import { defineConfig } from "vite";
 import { VitePWA } from "vite-plugin-pwa";
 import PluginHMR from "@apendua/vite-hmr/plugin";
+import XRProfilesPlugin from "@apendua.dev/media/vite";
 
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [
     PluginHMR(),
+    // The controller and hand models, from this repository rather than a
+    // CDN: they are served at `<base>profiles/`, where `inputModels` from
+    // `@apendua.dev/headset/scene` points three's factories.
+    XRProfilesPlugin(),
     VitePWA({
       registerType: "autoUpdate",
       manifest: {
@@ -42,9 +47,12 @@ export default defineConfig({
       workbox: {
         // Workbox's default glob takes every built chunk, and a worker that
         // precaches the headset's chunks downloads them on every visit,
-        // headset or not. `offer.ts` imports `xr` (and three.js with it)
-        // only where a session can be opened, and `emulator` only behind
-        // `?emulator`; a headset fetches them when it first asks.
+        // headset or not. `offerHeadset` imports `xr` (and three.js with
+        // it) only where a session can be opened, and `emulator` only behind
+        // `?emulator`; a headset fetches them when it first asks. The
+        // controller and hand models under `profiles/` are not JS, CSS or
+        // HTML, so the default glob leaves them out too, and they are
+        // fetched the same way.
         globIgnores: ["**/xr-*.js", "**/three.module-*.js", "**/emulator-*.js"],
       },
     }),

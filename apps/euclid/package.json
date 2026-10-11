@@ -16,6 +16,7 @@
     "@apendua.dev/euclid-core": "workspace:*",
     "@apendua.dev/euclid-lang": "workspace:*",
     "@apendua.dev/headset": "workspace:*",
+    "@apendua.dev/media": "workspace:*",
     "@apendua/freedom": "workspace:*",
     "@apendua/justdom": "workspace:*",
     "@apendua/justui": "workspace:*",

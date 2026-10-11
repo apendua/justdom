@@ -3,8 +3,8 @@ import { $, children, cursors, dom, getScene, getXRSession } from "@apendua/free
 import type { PortalOptions } from "@apendua/freedom";
 import { createDiagnostics, useDiagnostics } from "@apendua/justui";
 import { component, effects, effectsOnly, Stream, useEffects } from "@apendua/signal";
-import { backdropShown, enterSession } from "@apendua.dev/headset/session";
-import type { Mounts } from "../offer";
+import { enterSession } from "@apendua.dev/headset/session";
+import { Backdrop, clientRect } from "@apendua.dev/headset/scene";
 import {
   BOARD_AT,
   boardScale,
@@ -29,40 +29,19 @@ const BACKDROP = "#141210";
  */
 const NOTHING = new Stream<never>(() => {});
 
-const backdropMaterial = new THREE.MeshBasicMaterial({
-  color: BACKDROP,
-  side: THREE.BackSide,
-  depthWrite: false,
-  depthTest: false,
-});
-const backdropGeometry = new THREE.SphereGeometry(10, 32, 16);
-
-/**
- * An opaque sky in `BACKDROP`, for the case `scene.background` cannot
- * cover, and taken down by the toolbar's passthrough switch.
- *
- * In an AR session three clears the frame to transparent whatever the
- * scene's background says, so that the passthrough shows. A sphere around
- * the viewer, drawn first and taking no part in the depth test, is a
- * background three has no rule about: everything else in the scene draws
- * over it, and nothing of the room shows through. Inside the camera's far
- * plane, which is 20 m.
- */
-const Backdrop = component(() =>
-  $(new THREE.Mesh(backdropGeometry, backdropMaterial), [
-    effects((o) => {
-      o.renderOrder = -1;
-      o.frustumCulled = false;
-      o.visible = backdropShown();
-    }),
-  ]),
-);
+/** The three elements the app is mounted in, each a panel in a session. */
+export interface Mounts {
+  toolbar: HTMLElement;
+  editor: HTMLElement;
+  canvas: HTMLElement;
+}
 
 /**
  * One of the page's mount points, mirrored into a panel at `at`, turned to
- * face the head and scaled by `scale`, which is asked for as the session
- * starts, from the size the page laid the element out at. There only while
- * a session is presenting.
+ * face the head and scaled by `scale`, which is asked for from the size the
+ * page laid the element out at, as the session starts and again whenever
+ * the element is resized, as it is when the window is. There only while a
+ * session is presenting.
  *
  * Every panel can be picked up by its edges and put somewhere else, the
  * player's move added on top of where it is placed here. `options` is laid
@@ -79,15 +58,13 @@ const Panel = component(
     if (!getXRSession(ctx)) {
       return NOTHING;
     }
-    // Measured once, as the session starts.
-    const scalar = scale(element.getBoundingClientRect());
     const { pitch, yaw } = facing(at);
     return dom(
       ctx,
       element,
       [
         effects((o) => {
-          o.scale.setScalar(scalar);
+          o.scale.setScalar(scale(clientRect(element)));
           o.position.set(...at);
           o.rotation.set(pitch, yaw, 0, "YXZ");
         }),
@@ -137,7 +114,7 @@ export const Scene = ({ toolbar, editor, canvas }: Mounts) =>
         }
       }),
       children(
-        Backdrop(),
+        Backdrop(BACKDROP),
         $(new THREE.PointLight(0xffffff, 100, 5), [
           effects((o) => {
             o.position.set(0, 1, 3);

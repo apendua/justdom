@@ -2,7 +2,7 @@
   "name": "@apendua.dev/headset",
   "version": "1.0.0",
   "private": true,
-  "description": "What every headset app repeats: the emulated headset behind ?emulator, theming mode behind ?theming, and the session a page reads",
+  "description": "What every headset app repeats: the emulated headset behind ?emulator, the offer of a session, theming mode behind ?theming, the session a page reads, and the backdrop and hand models a scene draws",
   "author": "apendua",
   "type": "module",
   "exports": {
@@ -10,9 +10,17 @@
       "types": "./lib-types/emulator.d.ts",
       "import": "./src/emulator.js"
     },
+    "./offer": {
+      "types": "./lib-types/offer.d.ts",
+      "import": "./src/offer.js"
+    },
     "./session": {
       "types": "./lib-types/session.d.ts",
       "import": "./src/session.js"
+    },
+    "./scene": {
+      "types": "./lib-types/scene.d.ts",
+      "import": "./src/scene.js"
     },
     "./theming": {
       "types": "./lib-types/theming.d.ts",
@@ -41,7 +49,12 @@
   },
   "devDependencies": {
     "@types/node": "^24.7.0",
+    "@types/three": "~0.185.0",
     "@types/webxr": "^0.5.24",
+    "three": "~0.185.0",
     "typescript": "^7.0.2"
+  },
+  "peerDependencies": {
+    "three": ">=0.180.0"
   }
 }

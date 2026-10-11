@@ -60,25 +60,25 @@ docs, unit tests or benchmarks, runs it, with minesweeper's and the desk's, from
 
 ## How it is put together
 
-| File                          | What it is                                                                                                                                                             |
-| ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `src/main.ts`                 | Mounts the toolbar into `#toolbar`, the program into `#editor` and the drawing into `#canvas`, then offers a session that mirrors all three.                           |
-| `src/components/EuclidApp.ts` | The three trees over one store.                                                                                                                                        |
-| `src/components/Canvas.ts`    | The drawing: one `<svg>`, driven by pointer events, which finds what was pressed from where it was pressed.                                                            |
-| `src/components/Editor.ts`    | The program: a transparent `<textarea>` over a highlighted copy of the code, which also grounds the selected statement.                                                |
-| `src/components/Toolbar.ts`   | The tools, undo, zoom, the hint, the construction picker, and the × and Passthrough a session adds.                                                                    |
-| `src/store/App.ts`            | The state: the code, what it evaluates to, the tool in progress and the view.                                                                                          |
-| `src/offer.ts`                | The offer: installs `@apendua.dev/headset`'s emulator behind `?emulator`, checks the platform can present, and only then loads `xr.ts`. Imports nothing from three.js. |
-| `src/xr.ts`                   | The session: makes the renderer with freedom's SVG plugin, and the Enter button.                                                                                       |
-| `src/components/Scene.ts`     | The scene: the three panels, a backdrop, lights, the cursors and the frame rate.                                                                                       |
-| `src/placement.ts`            | Where the panels hang, in plain numbers, shared with `tests/xr-check.mjs`.                                                                                             |
+| File                          | What it is                                                                                                                                                                                                                                             |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `src/main.ts`                 | Mounts the toolbar into `#toolbar`, the program into `#editor` and the drawing into `#canvas`, then offers a session that mirrors all three, through `@apendua.dev/headset`'s `offerHeadset`, which loads `xr.ts` only on a platform that can present. |
+| `src/components/EuclidApp.ts` | The three trees over one store.                                                                                                                                                                                                                        |
+| `src/components/Canvas.ts`    | The drawing: one `<svg>`, driven by pointer events, which finds what was pressed from where it was pressed.                                                                                                                                            |
+| `src/components/Editor.ts`    | The program: a transparent `<textarea>` over a highlighted copy of the code, which also grounds the selected statement.                                                                                                                                |
+| `src/components/Toolbar.ts`   | The tools, undo, zoom, the hint, the construction picker, and the × and Passthrough a session adds.                                                                                                                                                    |
+| `src/store/App.ts`            | The state: the code, what it evaluates to, the tool in progress and the view.                                                                                                                                                                          |
+| `src/xr.ts`                   | The session: makes the renderer with freedom's SVG plugin and the controller and hand models from this app's origin, and the Enter button.                                                                                                             |
+| `src/components/Scene.ts`     | The scene: the three panels, a backdrop, lights, the cursors and the frame rate.                                                                                                                                                                       |
+| `src/placement.ts`            | Where the panels hang, in plain numbers, shared with `tests/xr-check.mjs`.                                                                                                                                                                             |
 
 The app is mounted in three places because a panel is the element it mirrors, and the three hang
 apart in a session: the drawing straight ahead, the program to its left, turned to face the viewer,
 and the toolbar over both and nearer than either, so that the picker's menu, which opens downwards,
-hangs in front of the drawing. Each is scaled as the session starts from the size the page laid it
-out at. Each can also be picked up by its edges, whose strips show while a ray is on the panel, and
-put somewhere else for the rest of the session.
+hangs in front of the drawing. Each is scaled from the size the page laid it out at, as the session
+starts and again whenever its element is resized, as it is when the window is. Each can also be
+picked up by its edges, whose strips show while a ray is on the panel, and put somewhere else for
+the rest of the session.
 
 The drawing's panel is not atomic, unlike the other two. freedom holds an atomic panel's change back
 until a frame finds nothing left to resolve, or until it has waited a second, and a point dragged or

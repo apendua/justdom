@@ -228,6 +228,9 @@ async function main() {
       errors.push(error.message);
       console.log("[pageerror]", process.env.STACKS ? error.stack : error.message);
     });
+    /** @type {URL[]} */
+    const requested = [];
+    page.on("request", (request) => requested.push(new URL(request.url())));
     await page.goto(`${url}?emulator=bare`, { waitUntil: "load" });
     await page.waitForSelector("#board svg path");
     await page.waitForSelector("#ARButton, #VRButton");
@@ -259,6 +262,25 @@ async function main() {
     // Where the head was as the session started, which is the origin of the
     // `local` space the scene is laid out in.
     const head = await headPosition(page);
+
+    console.log("\n== the controller models");
+    {
+      // A controller that connects asks for its model. The models are
+      // served from the app's own origin, so a headset with no network still
+      // draws its hands, and nothing is asked of a CDN.
+      const own = new URL("profiles/", url);
+      const models = requested.filter((at) => at.pathname.endsWith(".glb"));
+      check(
+        models.length > 0 && models.every((at) => at.href.startsWith(own.href)),
+        `the controller models come from ${own.pathname} ` +
+          `(${models.map((at) => at.href).join(", ") || "none"})`,
+      );
+      const elsewhere = requested.filter((at) => at.origin !== own.origin);
+      check(
+        elsewhere.length === 0,
+        `and nothing is fetched from another origin (${elsewhere.map((at) => at.host).join(", ")})`,
+      );
+    }
 
     /**
      * Where a point of the board element, in its own px, is in the scene.
@@ -441,6 +463,42 @@ async function main() {
       // A big update reaches a panel whole, a few frames after the page.
       await frames(page, 30);
       await page.screenshot({ path: join(SHOTS, "session.png") });
+    }
+
+    console.log("\n== a resized window");
+    {
+      // The page fits the board to its window again, and the panel follows:
+      // the board stays as tall in the room, so a point of it is where the
+      // figures say, at the board's new size.
+      await page.setViewportSize({ width: 1024, height: 900 });
+      await page.waitForFunction(() => {
+        const board = /** @type {HTMLElement} */ (document.querySelector("#board"));
+        return board.querySelector("svg")?.getAttribute("height") === String(board.clientHeight);
+      });
+      // The board's panel brings the refitted board in a budget's worth a
+      // frame, and carries `data-xr-busy` until it has drawn the last of it.
+      await page.waitForFunction(() => !document.querySelector("#board[data-xr-busy]"), undefined, {
+        timeout: 30_000,
+      });
+      await frames(page, 10);
+      const points = await coveredPoints();
+      const at = points[0];
+      if (!at) throw new Error("no covered tiles to aim at");
+      await page.evaluate(() => {
+        /** @type {any} */ (window).__heard = [];
+      });
+      await aimAt(page, head, await onBoard(at.x, at.y));
+      await press(page, "squeeze");
+      await frames(page, 10);
+      const [event] = await page.evaluate(() => /** @type {any} */ (window).__heard);
+      const rect = await page.evaluate(() =>
+        /** @type {Element} */ (document.querySelector("#board")).getBoundingClientRect().toJSON(),
+      );
+      const off = event
+        ? Math.hypot(event.clientX - (rect.left + at.x), event.clientY - (rect.top + at.y))
+        : Infinity;
+      console.log("  aimed:", JSON.stringify({ at, board: rect, heard: event }));
+      check(off < 12, `a press lands where it was aimed (${off.toFixed(1)} px off)`);
     }
 
     console.log("\n== the menu");

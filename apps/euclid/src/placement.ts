@@ -5,8 +5,9 @@
  * so that `tests/xr-check.mjs` aims the controller from the same figures
  * the scene places the panels by.
  *
- * A panel is a centimetre a px before it is scaled, and each is scaled as
- * the session starts from the size its element was laid out at.
+ * A panel is a centimetre a px before it is scaled, and each is scaled from
+ * the size its element is laid out at, as the session starts and again
+ * whenever the element is resized.
  */
 
 export type Vec3 = readonly [number, number, number];
